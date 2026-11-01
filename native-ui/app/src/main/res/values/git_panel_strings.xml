@@ -61,7 +61,7 @@
     <string name="git_panel_error_failed">Couldn\'t read Git data</string>
     <string name="git_panel_tab_branches">Branches</string>
     <string name="git_panel_tracking">Tracking %1$s</string>
-    <string name="git_panel_no_upstream">No upstream branch</string>
+    <string name="git_panel_no_upstream">No upstream</string>
     <string name="git_panel_upstream_missing">Upstream %1$s not found locally</string>
     <string name="git_panel_head">HEAD %1$s</string>
     <string name="git_panel_fetch_never">Never fetched</string>

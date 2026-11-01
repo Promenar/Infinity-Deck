@@ -112,7 +112,7 @@ private fun AdeGitPanel(text: LabAdeText) {
         staged = GitChangeList.Empty,
         unstaged = GitChangeList.Empty,
         untracked = GitChangeList.Empty,
-        tracking = GitTracking(upstreamMissing = true),
+        tracking = GitTracking(),
         repositoryName = "starlog",
     )
     val branches = GitBranchList(

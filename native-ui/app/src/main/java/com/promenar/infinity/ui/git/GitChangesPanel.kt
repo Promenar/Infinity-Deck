@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Commit
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -280,7 +282,8 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
     val detail = state.detail
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
-        verticalAlignment = Alignment.CenterVertically,
+        // 页头可能多行：返回与刷新按钮对齐首行，不随整块居中。
+        verticalAlignment = Alignment.Top,
     ) {
         AnimatedVisibility(
             visible = detail != null || actions.onExit != null,
@@ -301,7 +304,10 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
             label = "git_panel_title",
         ) { shown ->
             val detail = shown.detail
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.RowTwoLineGap)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.RowTwoLineGap, Alignment.CenterVertically),
+            ) {
                 when (detail) {
                     null -> {
                         val status = (shown.status as? GitLoad.Ready)?.value
@@ -385,55 +391,98 @@ private fun HeaderTitles(title: String, subtitle: String, identifier: Boolean) {
     )
 }
 
-/** 列表页页头：分支名、跟踪的上游、HEAD 与上次抓取时间。 */
+/**
+ * 列表页页头：首行仓库名，次行分支标签后接上游、HEAD 与上次抓取时间；窄窗口或大字体时元信息折到标签下方。
+ * 旧检查端不输出仓库名时以分支为标题。上游在本地不存在属于异常，单独一行以错误色提示。
+ */
 @Composable
 private fun BranchHeader(status: GitStatus, nowMillis: Long?) {
-    // 有仓库名时以仓库名为标题，分支降为副行；旧检查端不输出仓库名时保持分支标题。
     val repository = status.repositoryName?.takeIf { it.isNotBlank() }
-    if (repository != null) {
+    val branch = branchLabel(status.branch, status.detached, status.head?.take(7), status.unborn)
+    Row(
+        // 首行与刷新按钮同高，二者居中对齐。
+        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    ) {
+        if (repository != null) {
+            Icon(
+                imageVector = Icons.Rounded.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
         InfinityIdentifierText(
-            text = repository,
-            style = InfinityTypography.titleMedium,
+            text = repository ?: branch,
+            style = if (repository == null) InfinityTypography.titleMedium.copy(fontFamily = InfinityMonospace) else InfinityTypography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            maxLines = if (repository == null) 2 else 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.semantics { heading() },
         )
     }
-    InfinityIdentifierText(
-        text = branchLabel(status.branch, status.detached, status.head?.take(7), status.unborn),
-        style = (if (repository == null) InfinityTypography.titleMedium else InfinityTypography.bodyMedium).copy(fontFamily = InfinityMonospace),
-        color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-        modifier = if (repository == null) Modifier.semantics { heading() } else Modifier,
-    )
     val tracking = status.tracking
     val upstream = tracking.upstream
-    if (!status.detached) {
-        Text(
-            text = when {
-                upstream == null -> stringResource(R.string.git_panel_no_upstream)
-                tracking.upstreamMissing == true -> stringResource(R.string.git_panel_upstream_missing, upstream)
-                else -> stringResource(R.string.git_panel_tracking, upstream)
-            },
+    val missing = tracking.upstreamMissing == true && upstream != null
+    val now = nowMillis ?: remember(status) { System.currentTimeMillis() }
+    val meta = listOfNotNull(
+        when {
+            status.detached || missing -> null
+            upstream == null -> stringResource(R.string.git_panel_no_upstream)
+            else -> stringResource(R.string.git_panel_tracking, upstream)
+        },
+        // 分离 HEAD 的分支标签已含提交号，不再重复。
+        status.head?.take(7)?.takeUnless { status.detached },
+        fetchAgeLabel(gitFetchAge(status.lastFetchSeconds, now)),
+    )
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (repository != null) BranchChip(branch)
+        InfinityMetaLine(
+            segments = meta,
             style = InfinityTypography.bodySmall,
-            color = if (tracking.upstreamMissing == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+        )
+    }
+    if (missing) {
+        Text(
+            text = stringResource(R.string.git_panel_upstream_missing, upstream.orEmpty()),
+            style = InfinityTypography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }
-    val now = nowMillis ?: remember(status) { System.currentTimeMillis() }
-    val parts = listOfNotNull(
-        status.head?.take(7)?.let { stringResource(R.string.git_panel_head, it) },
-        fetchAgeLabel(gitFetchAge(status.lastFetchSeconds, now)),
-    )
-    InfinityMetaLine(
-        segments = parts,
-        style = InfinityTypography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 2,
-    )
+}
+
+/** 当前分支的小标签：分支图标加等宽分支名，过长时截断。 */
+@Composable
+private fun BranchChip(branch: String) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(Icons.Rounded.AccountTree, contentDescription = null, modifier = Modifier.size(14.dp))
+            InfinityIdentifierText(
+                text = branch,
+                style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 @Composable

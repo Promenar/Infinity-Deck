@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 改进
+
+- Git 面板页头压成两行：首行仓库名与刷新按钮对齐，次行以分支标签开头，后接上游、HEAD 与抓取时间；只有上游在本地不存在时才单独以错误色提示。
+
 ### 修复
 
 - 分支方案卡出现时自动滚到输入栏上方，“不需要 / 在此执行 / 派发到分支”三个按钮不再被输入栏遮住。
