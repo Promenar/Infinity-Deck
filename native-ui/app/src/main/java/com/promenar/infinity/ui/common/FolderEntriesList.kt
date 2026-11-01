@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,8 @@ fun FolderEntriesList(
     /** 非 null 时支持多选：长按进入选择，选择期间点按切换，行首显示勾选框。 */
     selection: Set<String>? = null,
     onEntryLongClick: ((ExternalFolderEntry) -> Unit)? = null,
+    /** 为 true 时行与行之间画细分隔线。 */
+    dividers: Boolean = false,
 ) = Column(modifier.fillMaxWidth()) {
     AnimatedVisibility(visible = loading, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
         LinearProgressIndicator(
@@ -120,7 +123,7 @@ fun FolderEntriesList(
                     text = emptyText,
                     modifier = Modifier.then(if (statusTag != null) Modifier.testTag(statusTag) else Modifier),
                 )
-                FolderListPhase.Content -> FolderEntryRows(listing.entries, onEntryClick, listTag, selection, onEntryLongClick)
+                FolderListPhase.Content -> FolderEntryRows(listing.entries, onEntryClick, listTag, selection, onEntryLongClick, dividers)
             }
         }
     }
@@ -133,6 +136,7 @@ private fun FolderEntryRows(
     listTag: String?,
     selection: Set<String>?,
     onEntryLongClick: ((ExternalFolderEntry) -> Unit)?,
+    dividers: Boolean,
 ) {
     val context = LocalContext.current
     LazyColumn(
@@ -142,7 +146,10 @@ private fun FolderEntryRows(
             .then(if (listTag != null) Modifier.testTag(listTag) else Modifier),
         contentPadding = PaddingValues(vertical = InfinitySpacing.XSmall),
     ) {
-        items(entries, key = { it.path }) { entry ->
+        itemsIndexed(entries, key = { _, entry -> entry.path }) { index, entry -> Column {
+            if (dividers && index > 0) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            }
             val selecting = !selection.isNullOrEmpty()
             val checked = selection?.contains(entry.path) == true
             val subtitle = if (entry.isDirectory) null else Formatter.formatShortFileSize(context, entry.size)
@@ -184,7 +191,7 @@ private fun FolderEntryRows(
                         .semantics { if (selecting) selected = checked },
                 )
             }
-        }
+        } }
     }
 }
 

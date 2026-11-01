@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 文件面板 -->
+    <string name="files_panel_group_workspace_named">Workspace · %1$s</string>
+    <plurals name="files_panel_hidden_system_trash">
+        <item quantity="one">%1$d system trash file hidden</item>
+        <item quantity="other">%1$d system trash files hidden</item>
+    </plurals>
+    <plurals name="files_panel_folder_child_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="files_panel_folder_empty">Empty</string>
+
+    <!-- 任务日志对话框 -->
+    <string name="job_log_title_named">Job log · %1$s</string>
+    <string name="job_log_status_live">Running · live</string>
+    <string name="job_log_status_exited_code">Finished · exit %1$d</string>
+    <string name="job_log_status_finished">Finished</string>
+    <string name="job_log_status_stopped">Stopped</string>
+    <string name="job_log_status_timed_out">Timed out</string>
+    <string name="job_log_status_interrupted">Interrupted</string>
+    <string name="job_log_status_failed">Failed</string>
+    <string name="job_log_tail_limit">Showing the last %1$d characters</string>
+    <string name="job_log_full_output">Showing the full output</string>
+    <string name="job_log_updated_just_now">updated just now</string>
+    <plurals name="job_log_updated_seconds_ago">
+        <item quantity="one">updated %1$d second ago</item>
+        <item quantity="other">updated %1$d seconds ago</item>
+    </plurals>
+    <string name="job_log_reading_slow">Still reading…</string>
+    <string name="job_log_read_cancelled">Reading was cancelled.</string>
+    <string name="job_log_refresh_failed">Could not refresh. Showing the last output read.</string>
+</resources>

@@ -195,6 +195,9 @@ internal fun WorkspaceFolderBrowser(
                         onImport = onImport.takeIf { shownAtRoot },
                         onToggleSelection = fileActions?.onToggleSelect,
                         selectionKeys = fileOps.selection.keys,
+                        // 根部在外部文件夹入口与文件列表之间加分组标题；子目录已有面包屑，不再重复。
+                        groupLabel = rootTitle.takeIf { shownAtRoot },
+                        contentHorizontalPadding = InfinitySpacing.Small,
                     )
                 }
             }

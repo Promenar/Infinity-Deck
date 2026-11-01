@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 文件面板 -->
+    <string name="files_panel_group_workspace_named">工作区 · %1$s</string>
+    <plurals name="files_panel_hidden_system_trash">
+        <item quantity="other">已隐藏 %1$d 个系统回收区文件</item>
+    </plurals>
+    <plurals name="files_panel_folder_child_count">
+        <item quantity="other">%1$d 项</item>
+    </plurals>
+    <string name="files_panel_folder_empty">空</string>
+
+    <!-- 任务日志对话框 -->
+    <string name="job_log_title_named">任务日志 · %1$s</string>
+    <string name="job_log_status_live">运行中 · 实时</string>
+    <string name="job_log_status_exited_code">已结束 · 退出码 %1$d</string>
+    <string name="job_log_status_finished">已结束</string>
+    <string name="job_log_status_stopped">已停止</string>
+    <string name="job_log_status_timed_out">已超时</string>
+    <string name="job_log_status_interrupted">已中断</string>
+    <string name="job_log_status_failed">失败</string>
+    <string name="job_log_tail_limit">显示最后 %1$d 字符</string>
+    <string name="job_log_full_output">显示全部输出</string>
+    <string name="job_log_updated_just_now">刚刚更新</string>
+    <plurals name="job_log_updated_seconds_ago">
+        <item quantity="other">%1$d 秒前更新</item>
+    </plurals>
+    <string name="job_log_reading_slow">仍在读取…</string>
+    <string name="job_log_read_cancelled">已取消读取。</string>
+    <string name="job_log_refresh_failed">刷新失败，显示的是上次读取的内容。</string>
+</resources>

@@ -114,6 +114,36 @@ internal fun resolveFilesPanelUiState(
     else -> FilesPanelUiState.Empty
 }
 
+/**
+ * Android MediaStore 回收站与写入暂存在共享存储上留下的改名条目：`.trashed-<数字>-<原名>`、`.pending-<数字>-<原名>`。
+ * 只用于文件面板显示过滤，不影响索引、文件工具与 Linux 文件页。
+ */
+private val SystemTrashNamePattern = Regex("""^\.(trashed|pending)-\d+-.+""")
+
+internal fun isSystemTrashName(name: String): Boolean = SystemTrashNamePattern.matches(name)
+
+/** 过滤系统回收区条目后的可见列表与被隐藏的数量。 */
+internal data class SystemTrashPartition<T>(val visible: List<T>, val hiddenCount: Int)
+
+internal fun <T> partitionSystemTrash(entries: List<T>, nameOf: (T) -> String): SystemTrashPartition<T> {
+    val visible = entries.filterNot { isSystemTrashName(nameOf(it)) }
+    return SystemTrashPartition(visible, entries.size - visible.size)
+}
+
+/**
+ * 树形面板中当前可见层级里被隐藏的系统回收区条目总数：根层级加上每个已展开且可见目录的直接子项。
+ * [hiddenByParent] 只统计已加载的目录，不触发额外读取。
+ */
+internal fun countHiddenSystemTrash(
+    rootHidden: Int,
+    hiddenByParent: Map<String, Int>,
+    expandedVisibleDirectoryIds: Set<String>,
+): Int = rootHidden + expandedVisibleDirectoryIds.sumOf { hiddenByParent[it] ?: 0 }
+
+/** 已加载子项的目录才显示子项数；未加载（null）时不显示，避免为此新增读取。 */
+internal fun loadedChildCount(directoryUuid: String, childrenByParent: Map<String, List<*>>): Int? =
+    childrenByParent[directoryUuid]?.size
+
 /** 文件批量操作的稳定结果；底层异常不得进入 UI 文案。 */
 data class FileBatchOperationResult(
     val attemptedIds: List<String>,
