@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Toll
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.DeveloperMode
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -76,6 +77,9 @@ import coil3.compose.AsyncImage
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.developer.DeveloperModeStore
+import com.promenar.infinity.ui.developer.DeveloperUnlockCounter
+import com.promenar.infinity.ui.developer.DeveloperUnlockResult
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
@@ -114,6 +118,8 @@ fun UserSettingsHomeScreen(
     val settingsError by viewModel.settingsError.collectAsState()
     val mcpServers by viewModel.mcpServers.collectAsState()
     val environment = rememberEnvironmentConnectionState()
+    val developerModeStore = remember(context) { DeveloperModeStore.get(context) }
+    val developerModeEnabled by developerModeStore.enabled.collectAsState()
     val diagnosticsChooserTitle = stringResource(R.string.settings_diagnostics_export)
     val coroutineScope = rememberCoroutineScope()
 
@@ -128,7 +134,7 @@ fun UserSettingsHomeScreen(
         onFailure = viewModel::reportAvatarImportFailure,
     )
 
-    val state = remember(userName, userAvatar, settingsError, selectedRoute, language, mcpServers.size, environment) {
+    val state = remember(userName, userAvatar, settingsError, selectedRoute, language, mcpServers.size, environment, developerModeEnabled) {
         UserSettingsHomeScreenState(
             userName = userName,
             selectedRoute = selectedRoute,
@@ -138,6 +144,7 @@ fun UserSettingsHomeScreen(
             language = language,
             mcpServerCount = mcpServers.size,
             environment = environment,
+            developerModeEnabled = developerModeEnabled,
         )
     }
     val exportDiagnostics: () -> Unit = {
@@ -186,6 +193,7 @@ fun UserSettingsHomeScreen(
             onOpenGithub = actions.onOpenGithub,
             onDismiss = { showAbout = false },
             popover = InfinityPopoverSpec(aboutAnchor, align = InfinityPopoverAlign.Auto),
+            onVersionTap = rememberDeveloperUnlockTap(developerModeStore),
         )
     }
 
@@ -226,6 +234,8 @@ internal data class UserSettingsHomeScreenState(
     val language: String = "zh",
     val mcpServerCount: Int? = null,
     val environment: EnvironmentConnectionState = EnvironmentConnectionState(),
+    /** 版本号连点解锁后为 true，“关于”前多出开发者分组。 */
+    val developerModeEnabled: Boolean = false,
 )
 
 internal data class UserSettingsHomeScreenActions(
@@ -467,6 +477,24 @@ internal fun UserSettingsHomeScreenContent(
                 }
             }
 
+            if (state.developerModeEnabled) {
+                item {
+                    InfinitySettingsSection(
+                        title = stringResource(R.string.devmode_section),
+                        headerStartPadding = InfinitySpacing.ScreenHorizontal,
+                    ) {
+                        UserSettingsNavigationItem(
+                            icon = Icons.Rounded.DeveloperMode,
+                            title = stringResource(R.string.devmode_entry_title),
+                            subtitle = stringResource(R.string.devmode_entry_desc),
+                            onClick = { actions.onNavigateToSecondary(NavDestinations.DEVELOPER) },
+                            selected = state.selectedRoute == NavDestinations.DEVELOPER,
+                            modifier = Modifier.testTag("settings_developer"),
+                        )
+                    }
+                }
+            }
+
             item {
                 InfinitySettingsSection(
                     title = stringResource(R.string.settings_section_about),
@@ -633,6 +661,8 @@ internal fun AboutInfinitySheet(
     onDismiss: () -> Unit,
     popover: InfinityPopoverSpec? = null,
     versionInfo: AppVersionInfo = AppVersionInfo.current(),
+    /** 点版本号一行：连点开启开发者模式。 */
+    onVersionTap: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val channel = channelLabel(versionInfo)
@@ -650,7 +680,9 @@ internal fun AboutInfinitySheet(
             text = appVersionLine(versionInfo),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.testTag("settings_about_version"),
+            modifier = Modifier
+                .clickable(interactionSource = null, indication = null, onClick = onVersionTap)
+                .testTag("settings_about_version"),
         )
         Text(
             text = stringResource(R.string.settings_about_commit, versionInfo.commitOrUnknown),
@@ -681,6 +713,33 @@ internal fun AboutInfinitySheet(
             },
             modifier = Modifier.testTag("settings_about_github"),
         )
+    }
+}
+
+/** 版本号连点：按 [DeveloperUnlockCounter] 的结果弹提示，满次数时打开开发者模式。 */
+@Composable
+private fun rememberDeveloperUnlockTap(store: DeveloperModeStore): () -> Unit {
+    val context = LocalContext.current
+    val counter = remember { DeveloperUnlockCounter() }
+    var toast by remember { mutableStateOf<android.widget.Toast?>(null) }
+    return remember(store, context) {
+        {
+            val message = when (val result = counter.tap(android.os.SystemClock.uptimeMillis(), store.enabled.value)) {
+                DeveloperUnlockResult.Silent -> null
+                is DeveloperUnlockResult.Remaining ->
+                    context.resources.getQuantityString(R.plurals.devmode_taps_remaining, result.taps, result.taps)
+                DeveloperUnlockResult.Unlocked -> {
+                    store.setEnabled(true)
+                    context.getString(R.string.devmode_unlocked)
+                }
+                DeveloperUnlockResult.AlreadyEnabled -> context.getString(R.string.devmode_already_enabled)
+            }
+            if (message != null) {
+                // 连点时新提示顶掉旧提示，避免排队弹很久。
+                toast?.cancel()
+                toast = android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).also { it.show() }
+            }
+        }
     }
 }
 

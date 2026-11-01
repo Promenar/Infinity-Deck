@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 开发者模式：关于面板连点解锁、设置首页入口与开发者页 -->
+    <plurals name="devmode_taps_remaining">
+        <item quantity="one">%1$d more tap to turn on developer mode</item>
+        <item quantity="other">%1$d more taps to turn on developer mode</item>
+    </plurals>
+    <string name="devmode_unlocked">Developer mode is on</string>
+    <string name="devmode_already_enabled">Developer mode is already on</string>
+    <string name="devmode_disabled">Developer mode is off</string>
+    <string name="devmode_section">Developer</string>
+    <string name="devmode_entry_title">Developer options</string>
+    <string name="devmode_entry_desc">Visual Lab and debugging tools</string>
+    <string name="devmode_title">Developer options</string>
+    <string name="devmode_toggle_title">Developer mode</string>
+    <string name="devmode_toggle_desc">Turn off to hide this page from Settings</string>
+    <string name="devmode_section_tools">Tools</string>
+    <string name="devmode_section_mode">Mode</string>
+
+    <!-- 视觉实验室目录 -->
+    <string name="lab_title">Visual Lab</string>
+    <string name="lab_entry_desc">Open any page, state or workflow with scripted data</string>
+    <string name="lab_sandbox_note">Every version runs on scripted in-memory data. Nothing here reads or writes your chats, keys or workspaces, calls a model, or runs a command.</string>
+    <string name="lab_section_pages">Pages</string>
+    <string name="lab_section_workflows">Workflows</string>
+    <string name="lab_section_states">States</string>
+    <plurals name="lab_node_version_count">
+        <item quantity="one">%1$d version</item>
+        <item quantity="other">%1$d versions</item>
+    </plurals>
+    <string name="lab_kind_state">State</string>
+    <string name="lab_kind_workflow">Workflow</string>
+    <string name="lab_fit_inner">Inner screen</string>
+    <string name="lab_fit_outer">Cover screen</string>
+    <string name="lab_version_pending">This version is wired up in the next build: it will render the real chat components with scripted data.</string>
+    <string name="lab_version_missing">This version no longer exists</string>
+    <string name="lab_version_id">ID: %1$s</string>
+
+    <string name="lab_node_chat">Chats</string>
+    <string name="lab_node_conversation">Chat page</string>
+    <string name="lab_node_inspector">Inspector</string>
+    <string name="lab_node_terminal">Terminal</string>
+
+    <string name="lab_v_ade_json">Add JSON output to starlog</string>
+    <string name="lab_v_ade_json_desc">Plan, two sub-agents in parallel, implement, full suite in the background, branch chat, commit</string>
+    <string name="lab_v_ops_502">Fix the 502 on web-01</string>
+    <string name="lab_v_ops_502_desc">SSH approval, find the services, root cause, approved fix, verified 200</string>
+    <string name="lab_v_subagents">Sub-agents in parallel</string>
+    <string name="lab_v_subagents_desc">Two sub-agent cards running side by side</string>
+    <string name="lab_v_background_job">Background job running</string>
+    <string name="lab_v_background_job_desc">The full test suite in the run dock at step 3 of 6</string>
+    <string name="lab_v_branch_plan">Work plan awaiting dispatch</string>
+    <string name="lab_v_branch_plan_desc">Branch chat proposal in a new worktree with all three choices</string>
+    <string name="lab_v_git_worktrees">Git: branches and worktrees</string>
+    <string name="lab_v_git_worktrees_desc">Each worktree mapped to the chat that uses it</string>
+    <string name="lab_v_inspector_plan">Plan and background jobs</string>
+    <string name="lab_v_inspector_plan_desc">Finished steps, sub-agents and background jobs</string>
+    <string name="lab_v_fastfetch">fastfetch</string>
+    <string name="lab_v_fastfetch_desc">Alpine logo and system information</string>
+    <string name="lab_v_apk_add">apk add fastfetch</string>
+    <string name="lab_v_apk_add_desc">Package install output line by line</string>
+</resources>

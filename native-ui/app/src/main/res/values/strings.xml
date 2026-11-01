@@ -983,17 +983,6 @@
     <string name="theme_text">Text</string>
     <string name="theme_text_scale">Custom text size</string>
     <string name="theme_text_scale_desc">Scales text only, not the layout</string>
-    <string name="developer_title">Developer panel</string>
-    <string name="developer_diagnostics_section">Diagnostics and debugging</string>
-    <string name="developer_export_logs">Export runtime logs</string>
-    <string name="developer_export_logs_desc">Share infinity_logs.txt for troubleshooting</string>
-    <string name="developer_share_logs_chooser">Share log file</string>
-    <string name="developer_clear_logs">Clear runtime logs</string>
-    <string name="developer_clear_logs_desc">Reset the log file size</string>
-    <string name="developer_device_section">Device information</string>
-    <string name="developer_os_version">OS version</string>
-    <string name="developer_model">Model</string>
-    <string name="developer_manufacturer">Manufacturer</string>
 
 
     <!-- TokenUsageScreen -->

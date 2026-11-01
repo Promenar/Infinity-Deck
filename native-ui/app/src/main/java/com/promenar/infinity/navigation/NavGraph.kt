@@ -92,6 +92,12 @@ object NavDestinations {
     const val LOCAL_MODELS = "local_models"
     const val PROVIDER_LIST = "provider_list"
     const val DEFAULT_MODELS = "default_models"
+    /** 开发者页：版本号连点解锁后才在设置首页出现。 */
+    const val DEVELOPER = "developer"
+    /** 视觉实验室目录，path 为目录节点路径（如 chat/conversation），空为根目录。 */
+    const val VISUAL_LAB = "visual_lab?path={path}"
+    /** 视觉实验室的一个版本：整页渲染，不进设置右列。 */
+    const val LAB_VERSION = "lab_version/{versionId}"
 
     fun chatHero(sessionId: String) = "chat_hero/$sessionId"
     fun agentEdit(agentId: String) = "agent_edit/$agentId"
@@ -111,6 +117,8 @@ object NavDestinations {
     private fun query(vararg params: Pair<String, String?>) = params.filter { it.second != null }
         .joinToString("&", prefix = "?") { (key, value) -> "$key=${android.net.Uri.encode(value)}" }
         .takeIf { it != "?" }.orEmpty()
+    fun visualLab(path: String = "") = if (path.isEmpty()) "visual_lab" else "visual_lab?path=${android.net.Uri.encode(path)}"
+    fun labVersion(versionId: String) = "lab_version/${android.net.Uri.encode(versionId)}"
     fun subagentViewer(sessionId: String, stepId: String, index: Int) =
         "subagent/${android.net.Uri.encode(sessionId)}/${android.net.Uri.encode(stepId)}/$index"
 }
@@ -298,6 +306,16 @@ fun InfinityNavGraph(
         }
 
         settingsDestinations(SettingsNavigator(navController))
+
+        composablePage(
+            route = NavDestinations.LAB_VERSION,
+            arguments = listOf(navArgument("versionId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            com.promenar.infinity.ui.lab.LabVersionScreen(
+                versionId = backStackEntry.arguments?.getString("versionId").orEmpty(),
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
 
         composablePage(
             route = NavDestinations.KNOWLEDGE_GRAPH_ROUTE,
@@ -656,6 +674,29 @@ internal fun NavGraphBuilder.settingsDestinations(navigator: SettingsNavigator) 
             com.promenar.infinity.ui.settings.NetworkAccessSettingsScreen(
                 onBack = { navigator.back() },
                 onOpenTailscale = { navigator.open(NavDestinations.TAILSCALE_CONFIG) },
+            )
+        }
+    }
+
+    composablePage(NavDestinations.DEVELOPER) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.developer.DeveloperRoute(
+                onNavigateBack = { navigator.back() },
+                onOpenVisualLab = { navigator.open(NavDestinations.visualLab()) },
+            )
+        }
+    }
+
+    composablePage(
+        route = NavDestinations.VISUAL_LAB,
+        arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.lab.VisualLabScreen(
+                path = entry.arguments?.getString("path").orEmpty(),
+                onNavigateBack = { navigator.back() },
+                onOpenNode = { path -> navigator.open(NavDestinations.visualLab(path)) },
+                onOpenVersion = { version -> navigator.open(NavDestinations.labVersion(version.id)) },
             )
         }
     }

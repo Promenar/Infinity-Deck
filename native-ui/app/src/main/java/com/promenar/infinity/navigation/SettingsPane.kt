@@ -58,6 +58,7 @@ internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.BACKGROUND_ACTIVITY,
     NavDestinations.TOKEN_USAGE,
     NavDestinations.BACKUP_SETTINGS,
+    NavDestinations.DEVELOPER,
 )
 
 /** 能在右列内打开的设置页（路由的首段）；终端、文件、知识图谱、会话等整页内容不在其中。 */
@@ -67,6 +68,7 @@ private val SettingsPaneRouteBases: Set<String> = SettingsPaneRoots.toSet() + se
     "provider_models",
     NavDestinations.LINUX_PACKAGES,
     NavDestinations.LINUX_MIRRORS,
+    "visual_lab",
 )
 
 internal fun isSettingsPaneRoute(route: String): Boolean =

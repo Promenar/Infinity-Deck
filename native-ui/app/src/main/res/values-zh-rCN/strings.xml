@@ -984,17 +984,6 @@
     <string name="theme_text">文字</string>
     <string name="theme_text_scale">自定义文字大小</string>
     <string name="theme_text_scale_desc">只放大文字，不改变布局</string>
-    <string name="developer_title">开发者面板</string>
-    <string name="developer_diagnostics_section">系统诊断与调试</string>
-    <string name="developer_export_logs">导出运行日志</string>
-    <string name="developer_export_logs_desc">分享 infinity_logs.txt 文件以进行故障诊断</string>
-    <string name="developer_share_logs_chooser">分享日志文件</string>
-    <string name="developer_clear_logs">清除运行日志</string>
-    <string name="developer_clear_logs_desc">重置日志文件大小</string>
-    <string name="developer_device_section">设备信息</string>
-    <string name="developer_os_version">系统版本</string>
-    <string name="developer_model">型号</string>
-    <string name="developer_manufacturer">制造商</string>
 
 
     <!-- TokenUsageScreen -->

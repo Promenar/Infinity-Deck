@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 开发者模式：关于面板连点解锁、设置首页入口与开发者页 -->
+    <plurals name="devmode_taps_remaining">
+        <item quantity="other">再点 %1$d 次进入开发者模式</item>
+    </plurals>
+    <string name="devmode_unlocked">已开启开发者模式</string>
+    <string name="devmode_already_enabled">开发者模式已开启</string>
+    <string name="devmode_disabled">已关闭开发者模式</string>
+    <string name="devmode_section">开发者</string>
+    <string name="devmode_entry_title">开发者选项</string>
+    <string name="devmode_entry_desc">视觉实验室与调试工具</string>
+    <string name="devmode_title">开发者选项</string>
+    <string name="devmode_toggle_title">开发者模式</string>
+    <string name="devmode_toggle_desc">关闭后设置中不再显示本页</string>
+    <string name="devmode_section_tools">工具</string>
+    <string name="devmode_section_mode">模式</string>
+
+    <!-- 视觉实验室目录 -->
+    <string name="lab_title">视觉实验室</string>
+    <string name="lab_entry_desc">用脚本数据打开任意页面、状态与工作流</string>
+    <string name="lab_sandbox_note">所有版本只使用内存中的脚本数据：不读写你的会话、密钥与工作区，不请求模型，也不执行命令。</string>
+    <string name="lab_section_pages">页面</string>
+    <string name="lab_section_workflows">工作流</string>
+    <string name="lab_section_states">状态</string>
+    <plurals name="lab_node_version_count">
+        <item quantity="other">%1$d 个版本</item>
+    </plurals>
+    <string name="lab_kind_state">状态</string>
+    <string name="lab_kind_workflow">工作流</string>
+    <string name="lab_fit_inner">内屏</string>
+    <string name="lab_fit_outer">外屏</string>
+    <string name="lab_version_pending">该版本将在下一版接入：用脚本数据渲染真实的会话组件。</string>
+    <string name="lab_version_missing">该版本已不存在</string>
+    <string name="lab_version_id">ID：%1$s</string>
+
+    <string name="lab_node_chat">对话</string>
+    <string name="lab_node_conversation">会话页</string>
+    <string name="lab_node_inspector">检查器</string>
+    <string name="lab_node_terminal">终端</string>
+
+    <string name="lab_v_ade_json">给 starlog 加 JSON 输出</string>
+    <string name="lab_v_ade_json_desc">计划、两个子代理并行、实现、后台完整测试、分支会话、提交</string>
+    <string name="lab_v_ops_502">web-01 502 排障</string>
+    <string name="lab_v_ops_502_desc">SSH 审批、定位服务、查明根因、批准修复、验证 200</string>
+    <string name="lab_v_subagents">子代理并行</string>
+    <string name="lab_v_subagents_desc">两张子代理卡片同时运行</string>
+    <string name="lab_v_background_job">后台任务运行中</string>
+    <string name="lab_v_background_job_desc">完整测试套件在运行条中，第 3/6 步</string>
+    <string name="lab_v_branch_plan">工作方案待派发</string>
+    <string name="lab_v_branch_plan_desc">新建 worktree 的分支会话提议，三个按钮完整可见</string>
+    <string name="lab_v_git_worktrees">Git：分支与 worktree</string>
+    <string name="lab_v_git_worktrees_desc">各 worktree 对应到使用它的会话</string>
+    <string name="lab_v_inspector_plan">计划与后台任务</string>
+    <string name="lab_v_inspector_plan_desc">已完成步骤、子代理与后台任务</string>
+    <string name="lab_v_fastfetch">fastfetch</string>
+    <string name="lab_v_fastfetch_desc">Alpine 标志与系统信息</string>
+    <string name="lab_v_apk_add">apk add fastfetch</string>
+    <string name="lab_v_apk_add_desc">安装输出逐行出现</string>
+</resources>
