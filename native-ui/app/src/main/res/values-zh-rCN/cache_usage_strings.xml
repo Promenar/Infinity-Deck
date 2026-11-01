@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cache_hit_rate">缓存命中</string>
+    <string name="cache_not_reported">未报告</string>
+    <string name="cache_segment_read">读取</string>
+    <string name="cache_segment_write">写入</string>
+    <string name="cache_segment_uncached">未缓存</string>
+    <string name="cache_segment_item">%1$s %2$s</string>
+    <string name="cache_segment_separator">，</string>
+    <string name="generation_stats_cache_coverage">%1$d/%2$d 轮已报告</string>
+</resources>

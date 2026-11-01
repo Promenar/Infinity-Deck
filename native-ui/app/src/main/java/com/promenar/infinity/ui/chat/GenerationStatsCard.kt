@@ -57,7 +57,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.CacheSegmentBar
 import com.promenar.infinity.ui.common.InfinityMetaSeparator
+import com.promenar.infinity.ui.common.formatCacheHitRate
 import com.promenar.infinity.ui.theme.InfinityElevation
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -203,9 +205,8 @@ internal fun GenerationStatsCard(
                     color = colors.onSurfaceVariant,
                 )
             }
+            summary.cache?.let { CacheSection(it, locale) }
             Column {
-                summary.cacheReadTokens?.let { StatsRow(stringResource(R.string.generation_stats_cache_read), count(it)!!) }
-                summary.uncachedInputTokens?.let { StatsRow(stringResource(R.string.generation_stats_uncached), count(it)!!) }
                 summary.reasoningTokens?.let { StatsRow(stringResource(R.string.generation_stats_reasoning), count(it)!!) }
                 StatsRow(
                     stringResource(R.string.generation_stats_ttft),
@@ -341,6 +342,45 @@ private fun StatsRow(
     }
 }
 
+/** 输入缓存：命中率与读取 / 写入 / 未缓存分段条；部分轮次未报告时注明覆盖，全部未报告时只显示“未报告”。 */
+@Composable
+private fun CacheSection(cache: GenerationCacheSummary, locale: Locale) {
+    val label = stringResource(R.string.cache_hit_rate)
+    val rate = cache.hitRate
+    if (rate == null) {
+        StatsRow(label, stringResource(R.string.cache_not_reported))
+        return
+    }
+    val colors = MaterialTheme.colorScheme
+    val rateText = formatCacheHitRate(rate, locale)
+    Column(
+        modifier = Modifier.testTag(GENERATION_STATS_CACHE_TAG),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        val description = stringResource(R.string.generation_stats_metric_description, label, rateText)
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 28.dp).clearAndSetSemantics { contentDescription = description },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = InfinityTypography.bodySmall, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(rateText, style = InfinityTypography.labelLarge, color = colors.primary)
+        }
+        CacheSegmentBar(
+            readTokens = cache.readTokens,
+            writeTokens = cache.writeTokens,
+            uncachedTokens = cache.uncachedTokens,
+            formatCount = { formatStatsCount(it, locale) },
+        )
+        if (cache.reportedRounds < cache.totalRounds) {
+            Text(
+                text = stringResource(R.string.generation_stats_cache_coverage, cache.reportedRounds, cache.totalRounds),
+                style = InfinityTypography.labelSmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun RuntimeBreakdownSection(
     breakdown: GenerationRuntimeBreakdown,
@@ -421,3 +461,4 @@ private fun RuntimeBar(label: String, duration: String, fraction: Float, color: 
 
 internal const val GENERATION_STATS_CARD_TAG = "CHAT_GENERATION_STATS_CARD"
 internal const val GENERATION_STATS_BREAKDOWN_TOGGLE_TAG = "CHAT_GENERATION_STATS_BREAKDOWN_TOGGLE"
+internal const val GENERATION_STATS_CACHE_TAG = "CHAT_GENERATION_STATS_CACHE"

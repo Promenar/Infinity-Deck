@@ -5,8 +5,6 @@
     <string name="generation_stats_input">Input</string>
     <string name="generation_stats_output">Output</string>
     <string name="generation_stats_generation_speed">Speed</string>
-    <string name="generation_stats_cache_read">Cache read</string>
-    <string name="generation_stats_uncached">Uncached</string>
     <string name="generation_stats_reasoning">Reasoning tokens</string>
     <string name="generation_stats_ttft">Time to first token</string>
     <string name="generation_stats_end_to_end_throughput">End-to-end throughput</string>

@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.chat
 
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
+import com.promenar.infinity.data.model.TokenUsage
 
 /**
  * 一个回复气泡（组内全部模型轮次）的生成统计。缺数据的项为 null，界面显示“—”或不显示。
@@ -12,8 +13,8 @@ internal data class GenerationStatsSummary(
     val rounds: Int,
     val inputTokens: Long?,
     val outputTokens: Long?,
-    val cacheReadTokens: Long?,
-    val uncachedInputTokens: Long?,
+    /** 主模型输入缓存；本组没有服务商实报的用量时为 null。 */
+    val cache: GenerationCacheSummary?,
     val reasoningTokens: Long?,
     val estimated: Boolean,
     val timeToFirstTokenMs: Long?,
@@ -26,6 +27,24 @@ internal data class GenerationStatsSummary(
     /** 组内全部工具调用次数（按调用 ID 合并调用与结果）。 */
     val toolCalls: Int = 0,
 )
+
+/**
+ * 一组主模型请求的输入缓存统计。只有报告了缓存读取且数值正常（读取 + 写入不超过主模型输入）的轮次计入
+ * [readTokens]、[writeTokens] 与 [reportedInputTokens]；未报告的轮次不当作 0。
+ */
+internal data class GenerationCacheSummary(
+    val readTokens: Long,
+    val writeTokens: Long,
+    val reportedInputTokens: Long,
+    val reportedRounds: Int,
+    /** 有服务商实报用量的轮次数（不含本地估算）。 */
+    val totalRounds: Int,
+) {
+    val uncachedTokens: Long get() = (reportedInputTokens - readTokens - writeTokens).coerceAtLeast(0)
+
+    /** 命中率 0..1；没有已报告轮次或输入为 0 时为 null。 */
+    val hitRate: Double? get() = if (reportedRounds > 0 && reportedInputTokens > 0) readTokens.toDouble() / reportedInputTokens else null
+}
 
 /** 运行时间分布；[toolMs] 与 [otherMs] 在工具耗时未知时为 null。 */
 internal data class GenerationRuntimeBreakdown(
@@ -52,9 +71,8 @@ internal fun summarizeGenerationStats(
     val roundOutputs = rounds.map { msg -> msg.tokens?.let { mainPart(it.output, it.summaryOutput) } }
     val input = usages.takeIf { it.isNotEmpty() }?.sumOf { mainPart(it.input, it.summaryInput) }
     val output = usages.takeIf { it.isNotEmpty() }?.sumOf { mainPart(it.output, it.summaryOutput) }
-    val cacheRead = usages.mapNotNull { it.cacheReadInput?.toLong()?.coerceAtLeast(0) }.takeIf { it.isNotEmpty() }?.sum()
     val reasoning = usages.mapNotNull { it.reasoningOutput?.toLong()?.coerceAtLeast(0) }.takeIf { it.isNotEmpty() }?.sum()
-    val uncached = if (cacheRead != null && input != null) (input - cacheRead).coerceAtLeast(0) else null
+    val cache = summarizeCache(usages)
 
     val timings = rounds.map { msg ->
         val record = msg.tokens?.timing
@@ -98,8 +116,7 @@ internal fun summarizeGenerationStats(
         rounds = rounds.size,
         inputTokens = input,
         outputTokens = output,
-        cacheReadTokens = cacheRead,
-        uncachedInputTokens = uncached,
+        cache = cache,
         reasoningTokens = reasoning,
         estimated = usages.any { it.estimated },
         timeToFirstTokenMs = ttft,
@@ -109,4 +126,25 @@ internal fun summarizeGenerationStats(
         runtime = runtime,
         toolCalls = messages.sumOf { toolInvocations(it.executionSteps.orEmpty()).size },
     )
+}
+
+private fun summarizeCache(usages: List<TokenUsage>): GenerationCacheSummary? {
+    val reportedUsages = usages.filterNot { it.estimated }
+    if (reportedUsages.isEmpty()) return null
+    var read = 0L
+    var write = 0L
+    var reportedInput = 0L
+    var reportedRounds = 0
+    reportedUsages.forEach { usage ->
+        val cacheRead = usage.cacheReadInput?.toLong() ?: return@forEach
+        val cacheWrite = usage.cacheWriteInput?.toLong()?.coerceAtLeast(0) ?: 0
+        // 摘要模型并入的用量没有缓存字段，命中率只按主模型输入计算。
+        val mainInput = (usage.input.toLong() - usage.summaryInput.toLong().coerceAtLeast(0)).coerceAtLeast(0)
+        if (cacheRead < 0 || cacheRead + cacheWrite > mainInput) return@forEach
+        read += cacheRead
+        write += cacheWrite
+        reportedInput += mainInput
+        reportedRounds++
+    }
+    return GenerationCacheSummary(read, write, reportedInput, reportedRounds, reportedUsages.size)
 }

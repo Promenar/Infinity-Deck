@@ -51,7 +51,7 @@ private val MultiRound = listOf(
     Message("tool-1", MessageRole.TOOL, "搜索结果"),
     Message(
         "round-2", MessageRole.ASSISTANT, "",
-        tokens = TokenUsage(15_902, 141, 16_043, cacheReadInput = 12_288, timing = GenerationTimingRecord(T0 + 5_900, T0 + 6_700, T0 + 7_600)),
+        tokens = TokenUsage(15_902, 141, 16_043, timing = GenerationTimingRecord(T0 + 5_900, T0 + 6_700, T0 + 7_600)),
         executionSteps = listOf(
             ExecutionStep("call-2", "tool_call", "read_file", "{}", "call-2", timestamp = T0 + 7_700),
             ExecutionStep("res-2", "tool_result", "read_file", toolCallId = "call-2", content = "ok", timestamp = T0 + 8_150),

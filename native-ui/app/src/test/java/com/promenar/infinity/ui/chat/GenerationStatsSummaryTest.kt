@@ -33,8 +33,9 @@ class GenerationStatsSummaryTest {
         assertThat(summary.rounds).isEqualTo(1)
         assertThat(summary.inputTokens).isEqualTo(1_000)
         assertThat(summary.outputTokens).isEqualTo(200)
-        assertThat(summary.cacheReadTokens).isEqualTo(600)
-        assertThat(summary.uncachedInputTokens).isEqualTo(400)
+        assertThat(summary.cache).isEqualTo(GenerationCacheSummary(readTokens = 600, writeTokens = 0, reportedInputTokens = 1_000, reportedRounds = 1, totalRounds = 1))
+        assertThat(summary.cache!!.uncachedTokens).isEqualTo(400)
+        assertThat(summary.cache!!.hitRate).isWithin(1e-9).of(0.6)
         assertThat(summary.reasoningTokens).isEqualTo(50)
         assertThat(summary.estimated).isFalse()
         assertThat(summary.timeToFirstTokenMs).isEqualTo(500)
@@ -57,9 +58,10 @@ class GenerationStatsSummaryTest {
         assertThat(summary.rounds).isEqualTo(2)
         assertThat(summary.inputTokens).isEqualTo(2_300)
         assertThat(summary.outputTokens).isEqualTo(400)
-        // 只有第一轮报告了缓存：仍按“输入 − 缓存读取”给出未缓存。
-        assertThat(summary.cacheReadTokens).isEqualTo(800)
-        assertThat(summary.uncachedInputTokens).isEqualTo(1_500)
+        // 只有第一轮报告了缓存：命中率只按已报告轮次计算，未报告的第二轮不当作 0。
+        assertThat(summary.cache).isEqualTo(GenerationCacheSummary(readTokens = 800, writeTokens = 0, reportedInputTokens = 1_000, reportedRounds = 1, totalRounds = 2))
+        assertThat(summary.cache!!.hitRate).isWithin(1e-9).of(0.8)
+        assertThat(summary.cache!!.uncachedTokens).isEqualTo(200)
         assertThat(summary.reasoningTokens).isNull()
         assertThat(summary.timeToFirstTokenMs).isEqualTo(400)
         assertThat(summary.endToEndMs).isEqualTo(6_600)
@@ -82,8 +84,10 @@ class GenerationStatsSummaryTest {
 
         val legacy = summarizeGenerationStats(listOf(assistant("a", TokenUsage(10, 5, 15))))
         assertThat(legacy.inputTokens).isEqualTo(10)
-        assertThat(legacy.cacheReadTokens).isNull()
-        assertThat(legacy.uncachedInputTokens).isNull()
+        // 服务商未报告缓存：保留缓存段但命中率为 null，界面显示“未报告”。
+        assertThat(legacy.cache).isEqualTo(GenerationCacheSummary(0, 0, 0, reportedRounds = 0, totalRounds = 1))
+        assertThat(legacy.cache!!.hitRate).isNull()
+        assertThat(noTokens.cache).isNull()
         assertThat(legacy.generationTokensPerSecond).isNull()
         assertThat(legacy.runtime).isNull()
     }
@@ -110,6 +114,8 @@ class GenerationStatsSummaryTest {
         assertThat(summary.estimated).isTrue()
         assertThat(summary.inputTokens).isEqualTo(100)
         assertThat(summary.outputTokens).isEqualTo(30)
+        // 本地估算的用量不参与缓存统计。
+        assertThat(summary.cache).isNull()
     }
 
     @Test
@@ -121,8 +127,8 @@ class GenerationStatsSummaryTest {
         assertThat(rollback.endToEndMs).isNull()
         assertThat(rollback.generationTokensPerSecond).isNull()
         assertThat(rollback.runtime).isNull()
-        // 缓存读取大于输入时未缓存下限为 0。
-        assertThat(rollback.uncachedInputTokens).isEqualTo(0)
+        // 缓存读取大于输入属于统计异常，不计入已报告轮次。
+        assertThat(rollback.cache).isEqualTo(GenerationCacheSummary(0, 0, 0, reportedRounds = 0, totalRounds = 1))
 
         val zeroDuration = summarizeGenerationStats(listOf(
             assistant("a", TokenUsage(10, 10, 20, timing = timing(1_000, 1_000, 1_000))),
@@ -152,6 +158,28 @@ class GenerationStatsSummaryTest {
             toolDurationsMs = listOf(null),
         )
         assertThat(unknownTool.runtime).isEqualTo(GenerationRuntimeBreakdown(1_000, null, null))
+    }
+
+    @Test
+    fun `缓存写入计入分母且摘要并入的输入不计入命中率`() {
+        val summary = summarizeGenerationStats(listOf(
+            assistant("a", TokenUsage(10_000, 100, 10_100, cacheReadInput = 0, cacheWriteInput = 9_000)),
+            assistant("b", TokenUsage(10_500, 100, 10_600, summaryInput = 500, cacheReadInput = 9_000, cacheWriteInput = 400)),
+        ))
+
+        val cache = summary.cache!!
+        assertThat(cache.reportedInputTokens).isEqualTo(20_000)
+        assertThat(cache.readTokens).isEqualTo(9_000)
+        assertThat(cache.writeTokens).isEqualTo(9_400)
+        assertThat(cache.uncachedTokens).isEqualTo(1_600)
+        // 两轮先求和再相除，不平均各轮百分比。
+        assertThat(cache.hitRate).isWithin(1e-9).of(0.45)
+    }
+
+    @Test
+    fun `命中率按本地化百分比保留一位小数`() {
+        assertThat(com.promenar.infinity.ui.common.formatCacheHitRate(0.8504, Locale.US)).isEqualTo("85.0%")
+        assertThat(com.promenar.infinity.ui.common.formatCacheHitRate(0.0, Locale.US)).isEqualTo("0.0%")
     }
 
     @Test

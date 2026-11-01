@@ -5,8 +5,6 @@
     <string name="generation_stats_input">输入</string>
     <string name="generation_stats_output">输出</string>
     <string name="generation_stats_generation_speed">生成速度</string>
-    <string name="generation_stats_cache_read">缓存读取</string>
-    <string name="generation_stats_uncached">未缓存</string>
     <string name="generation_stats_reasoning">推理 Token</string>
     <string name="generation_stats_ttft">首 Token 耗时</string>
     <string name="generation_stats_end_to_end_throughput">端到端吞吐</string>
