@@ -25,7 +25,8 @@ internal object ProtocolUsageParsers {
             output = usage.count("completion_tokens") ?: 0,
             total = usage.count("total_tokens") ?: 0,
             cacheReadInput = promptDetails?.count("cached_tokens") ?: cacheHit ?: usage.count("cached_tokens"),
-            cacheWriteInput = promptDetails?.count("cache_write_tokens"),
+            cacheWriteInput = promptDetails?.count("cache_write_tokens") ?: promptDetails?.count("cache_creation_input_tokens"),
+            cacheWriteLongTtlInput = (promptDetails?.get("cache_write_tokens_details") as? JsonObject)?.count("ttl_12h_tokens"),
             reasoningOutput = completionDetails?.count("reasoning_tokens"),
         )
     }
@@ -39,6 +40,8 @@ internal object ProtocolUsageParsers {
             output = output,
             total = usage.count("total_tokens") ?: saturatingAdd(input, output),
             cacheReadInput = (usage["input_tokens_details"] as? JsonObject)?.count("cached_tokens"),
+            cacheWriteInput = (usage["input_tokens_details"] as? JsonObject)?.count("cache_write_tokens"),
+            cacheWriteLongTtlInput = ((usage["input_tokens_details"] as? JsonObject)?.get("cache_write_tokens_details") as? JsonObject)?.count("ttl_12h_tokens"),
             reasoningOutput = (usage["output_tokens_details"] as? JsonObject)?.count("reasoning_tokens"),
         )
     }
@@ -60,6 +63,8 @@ internal object ProtocolUsageParsers {
             total = saturatingAdd(input, output),
             cacheReadInput = cacheRead,
             cacheWriteInput = cacheWrite,
+            cacheWriteLongTtlInput = (delta?.get("cache_creation") as? JsonObject)?.count("ephemeral_1h_input_tokens")
+                ?: (start?.get("cache_creation") as? JsonObject)?.count("ephemeral_1h_input_tokens"),
         )
     }
 

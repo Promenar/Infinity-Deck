@@ -39,6 +39,34 @@ import org.junit.Test
 
 /** 子代理运行循环：受限工具集、继承父会话的范围权限、运行中审批、超时与取消。 */
 class SubagentRunnerTest {
+    @Test fun `旧缓存聚合追加首个请求快照不重复计算旧用量`() = runTest {
+        val legacy = com.promenar.infinity.domain.repository.CacheUsageAggregate(1, 1, 100, 80)
+        val result = runner(ScriptedModels(listOf(text("完成"), StreamChunk.Usage(ProtocolUsage(100, 2, 102, cacheReadInput = 20)))), FakeHost(emptyList()))
+            .run(parent(), session("auto"), "legacy", run().copy(inputTokens = 100, cache = legacy), null) { _, _ -> }
+        assertThat(result.cache).isEqualTo(com.promenar.infinity.domain.repository.CacheUsageAggregate(2, 2, 200, 100))
+        assertThat(result.cacheRequests).hasSize(1)
+        assertThat(result.legacyCache()).isEqualTo(legacy)
+        assertThat(result.cacheSince(SubagentUsageWatermark())).isEqualTo(result.cache)
+    }
+
+    @Test fun `缓存快照逐轮取最大并只给已报告请求累计分母`() = runTest {
+        val models = ScriptedModels(
+            listOf(toolCall("a", "read_file", "{}"), StreamChunk.Usage(ProtocolUsage(100, 2, 102, cacheReadInput = 80, cacheWriteInput = 20, cacheWriteLongTtlInput = 5)),
+                StreamChunk.Usage(ProtocolUsage(90, 1, 91, cacheReadInput = 60, cacheWriteInput = 10, cacheWriteLongTtlInput = 2))),
+            listOf(toolCall("b", "read_file", "{}"), StreamChunk.Usage(ProtocolUsage(200, 2, 202, cacheWriteInput = 10))),
+            listOf(text("完成"), StreamChunk.Usage(ProtocolUsage(50, 2, 52, cacheReadInput = 0))),
+        )
+        val result = runner(models, FakeHost(listOf(read))).run(parent(), session("auto"), "step", run(), null) { _, _ -> }
+        assertThat(result.cacheReadInput).isEqualTo(80)
+        assertThat(result.cacheWriteInput).isEqualTo(30)
+        assertThat(result.cacheWriteLongTtlInput).isEqualTo(5)
+        assertThat(result.cache).isEqualTo(com.promenar.infinity.domain.repository.CacheUsageAggregate(3, 2, 150, 80, 30, 5))
+        val plain = runner(ScriptedModels(listOf(text("完成"), usage(100, 2))), FakeHost(emptyList()))
+            .run(parent(), session("auto"), "plain", run(), null) { _, _ -> }
+        assertThat(plain.cacheReadInput).isNull()
+        assertThat(plain.cache.reportedRequests).isEqualTo(0)
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test fun `子代理云端和本地每轮先路由再注入实际模型且发送不重复路由`() = runTest {
         for (local in listOf(false, true)) {

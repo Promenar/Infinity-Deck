@@ -7,6 +7,10 @@ import com.promenar.infinity.domain.repository.TokenUsageAggregate
 import com.promenar.infinity.domain.repository.SessionTokenUsage
 import com.promenar.infinity.domain.repository.DailyTokenStats
 import com.promenar.infinity.domain.repository.CategoryTokenStats
+import com.promenar.infinity.domain.repository.CacheUsageAggregate
+import com.promenar.infinity.domain.repository.plus
+import com.promenar.infinity.domain.repository.sumCacheUsage
+import com.promenar.infinity.data.model.cacheUsageAggregate
 import com.promenar.infinity.data.rag.KgUsageStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,6 +29,7 @@ class TokenStatsRepository(
             inputTokens = row.total_input + kg.inputTokens + rolledBack.inputTokens,
             outputTokens = row.total_output + kg.outputTokens + rolledBack.outputTokens,
             estimated = kg.estimated || rolledBack.estimated,
+            cache = row.cache,
         )
     }
 
@@ -34,7 +39,8 @@ class TokenStatsRepository(
                 modelId = row.model_id,
                 usage = TokenUsageAggregate(
                     inputTokens = row.total_input,
-                    outputTokens = row.total_output
+                    outputTokens = row.total_output,
+                    cache = row.cache,
                 )
             )
         }
@@ -47,6 +53,7 @@ class TokenStatsRepository(
         (chat + kg + rolledBack).groupBy { it.modelId }.map { (modelId, entries) ->
             ModelTokenStats(modelId, TokenUsageAggregate(
                 entries.sumOf { it.usage.inputTokens }, entries.sumOf { it.usage.outputTokens }, entries.any { it.usage.estimated },
+                cache = entries.map { it.usage.cache }.sumCacheUsage(),
             ))
         }
     }
@@ -55,16 +62,19 @@ class TokenStatsRepository(
         val entities = messageDao.getMessagesWithTokensBySession(sessionId)
         var input = 0L
         var output = 0L
+        var cache = CacheUsageAggregate()
         for (entity in entities) {
             val usage = parseTokens(entity.tokens) ?: continue
             input += usage.input
             output += usage.output
+            if (entity.role == "assistant") cache += usage.cacheUsageAggregate()
         }
         val rolledBack = records.filter { it.sessionId == sessionId }.usage()
         TokenUsageAggregate(
             inputTokens = input + rolledBack.inputTokens,
             outputTokens = output + rolledBack.outputTokens,
             estimated = rolledBack.estimated,
+            cache = cache,
         )
     }
 
@@ -75,7 +85,7 @@ class TokenStatsRepository(
                 sessionId = row.session_id,
                 title = row.title,
                 inputTokens = row.total_input,
-                outputTokens = row.total_output
+                outputTokens = row.total_output,
             )
         }
         val rolledBack = records.map { record ->
@@ -97,7 +107,8 @@ class TokenStatsRepository(
             DailyTokenStats(
                 day = day,
                 inputTokens = row.total_input,
-                outputTokens = row.total_output
+                outputTokens = row.total_output,
+                cache = row.cache,
             )
         }
         val firstDay = java.time.Instant.ofEpochMilli(sinceTimestamp).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
@@ -109,7 +120,7 @@ class TokenStatsRepository(
             DailyTokenStats(day, record.usage.input.toLong(), record.usage.output.toLong())
         }
         (chat + kg + rolledBack).groupBy { it.day }.map { (day, records) ->
-            DailyTokenStats(day, records.sumOf { it.inputTokens }, records.sumOf { it.outputTokens })
+            DailyTokenStats(day, records.sumOf { it.inputTokens }, records.sumOf { it.outputTokens }, records.map { it.cache }.sumCacheUsage())
         }.sortedBy { it.day }
     }
 
@@ -120,7 +131,7 @@ class TokenStatsRepository(
             val rolledBack = records.usage()
             listOf(
                 CategoryTokenStats("chat", TokenUsageAggregate(
-                    chat.total_input + rolledBack.inputTokens, chat.total_output + rolledBack.outputTokens, rolledBack.estimated,
+                    chat.total_input + rolledBack.inputTokens, chat.total_output + rolledBack.outputTokens, rolledBack.estimated, cache = chat.cache,
                 )),
                 CategoryTokenStats("kg", TokenUsageAggregate(kg.usage.inputTokens, kg.usage.outputTokens, kg.usage.estimated), kg.calls),
             )

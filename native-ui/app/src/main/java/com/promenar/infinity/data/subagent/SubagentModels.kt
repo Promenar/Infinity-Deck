@@ -100,6 +100,14 @@ data class SubagentRun(
     val inputTokens: Int = 0,
     val outputTokens: Int = 0,
     val totalTokens: Int = 0,
+    val cacheReadInput: Int? = null,
+    val cacheWriteInput: Int? = null,
+    val cacheWriteLongTtlInput: Int? = null,
+    /** 按请求结算，混合已报告和未报告请求时保留准确分母。 */
+    val cache: com.promenar.infinity.domain.repository.CacheUsageAggregate = com.promenar.infinity.domain.repository.CacheUsageAggregate(),
+    val dailyCacheUsage: Map<String, com.promenar.infinity.domain.repository.CacheUsageAggregate> = emptyMap(),
+    /** 逐请求快照用于检查点恢复、每日报告语义和重置水位。 */
+    val cacheRequests: List<SubagentCacheRequestUsage> = emptyList(),
     val tokensEstimated: Boolean = false,
     /** 每次交回结果或重启中断的稳定通知序号。 */
     val completionSequence: Int = 0,
@@ -188,3 +196,13 @@ object SubagentLimits {
         if (taskTokenLimit <= 0) MAX_TOTAL_TOKENS
         else (taskTokenLimit / count.coerceAtLeast(1)).coerceIn(1, MAX_TOTAL_TOKENS.toLong()).toInt()
 }
+
+/** 与旧输入输出水位使用相同 JSON 键，缺少缓存水位的旧文件可直接解码。 */
+@Serializable
+data class SubagentUsageWatermark(
+    val input: Int = 0,
+    val output: Int = 0,
+    val total: Int = 0,
+    val cache: com.promenar.infinity.domain.repository.CacheUsageAggregate = com.promenar.infinity.domain.repository.CacheUsageAggregate(),
+    val cacheRequestIds: Set<String> = emptySet(),
+)

@@ -18,6 +18,7 @@ class TokenUsageSerializationTest {
         assertThat(decoded).isEqualTo(TokenUsage(120, 30, 150))
         assertThat(decoded.cacheReadInput).isNull()
         assertThat(decoded.cacheWriteInput).isNull()
+        assertThat(decoded.cacheWriteLongTtlInput).isNull()
         assertThat(decoded.reasoningOutput).isNull()
         assertThat(decoded.timing).isNull()
     }
@@ -33,6 +34,7 @@ class TokenUsageSerializationTest {
 
         assertThat(encoded).doesNotContain("cacheReadInput")
         assertThat(encoded).doesNotContain("cacheWriteInput")
+        assertThat(encoded).doesNotContain("cacheWriteLongTtlInput")
         assertThat(encoded).doesNotContain("reasoningOutput")
         assertThat(encoded).doesNotContain("timing")
         val tree = Json.parseToJsonElement(encoded).jsonObject
@@ -44,7 +46,7 @@ class TokenUsageSerializationTest {
     fun `新字段往返且 0 与未知计时点区分保存`() {
         val usage = TokenUsage(
             input = 3520, output = 240, total = 3760,
-            cacheReadInput = 3000, cacheWriteInput = 0, reasoningOutput = null,
+            cacheReadInput = 3000, cacheWriteInput = 0, cacheWriteLongTtlInput = 0, reasoningOutput = null,
             timing = GenerationTimingRecord(requestStartedAt = 1_000, firstOutputAt = null, endedAt = 4_500),
         )
 
@@ -53,6 +55,7 @@ class TokenUsageSerializationTest {
 
         assertThat(decoded).isEqualTo(usage)
         assertThat(encoded).contains("\"cacheWriteInput\":0")
+        assertThat(encoded).contains("\"cacheWriteLongTtlInput\":0")
         assertThat(encoded).doesNotContain("reasoningOutput")
         assertThat(encoded).doesNotContain("firstOutputAt")
         // 汇总 SQL 依赖的 $.input 仍是全部输入。

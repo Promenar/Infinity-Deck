@@ -18,9 +18,9 @@ class SubagentTokenStatsRepository(
     private suspend fun records(): List<Record> {
         val baseline = store.usageWatermarks()
         return store.all().flatMap { batch -> batch.runs.filter { it.id.isNotEmpty() }.map { run ->
-            val reset = baseline[run.id] ?: TokenUsage()
+            val reset = baseline[run.id] ?: SubagentUsageWatermark()
             Record(batch.sessionId, run, TokenUsageAggregate((run.inputTokens - reset.input).coerceAtLeast(0).toLong(),
-                (run.outputTokens - reset.output).coerceAtLeast(0).toLong(), run.tokensEstimated))
+                (run.outputTokens - reset.output).coerceAtLeast(0).toLong(), run.tokensEstimated, cache = run.cacheSince(reset)))
         } }
     }
     override suspend fun getTotalUsage() = lock.withLock { base.getTotalUsage() + records().map { it.usage }.sumUsage() }
@@ -41,11 +41,12 @@ class SubagentTokenStatsRepository(
         val since = System.currentTimeMillis() - days.toLong() * 86_400_000
         val baseline = store.usageWatermarks()
         val firstDay = java.time.Instant.ofEpochMilli(since).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
-        val extra = records().flatMap { record -> record.run.dailyUsage.filterKeys { it >= firstDay }.map { (day, usage) ->
-            val reset = baseline["${record.run.id}/$day"] ?: TokenUsage()
-            DailyTokenStats(day, (usage.input - reset.input).coerceAtLeast(0).toLong(), (usage.output - reset.output).coerceAtLeast(0).toLong())
+        val extra = records().flatMap { record -> (record.run.dailyUsage.keys + record.run.dailyCacheUsage.keys).filter { it >= firstDay }.map { day ->
+            val usage = record.run.dailyUsage[day] ?: TokenUsage()
+            val reset = baseline["${record.run.id}/$day"] ?: SubagentUsageWatermark()
+            DailyTokenStats(day, (usage.input - reset.input).coerceAtLeast(0).toLong(), (usage.output - reset.output).coerceAtLeast(0).toLong(), cache = record.run.cacheSince(reset, day))
         } }
-        (base.getDailyTrend(days) + extra).groupBy { it.day }.map { (day, values) -> DailyTokenStats(day, values.sumOf { it.inputTokens }, values.sumOf { it.outputTokens }) }.sortedBy { it.day }
+        (base.getDailyTrend(days) + extra).groupBy { it.day }.map { (day, values) -> DailyTokenStats(day, values.sumOf { it.inputTokens }, values.sumOf { it.outputTokens }, values.map { it.cache }.sumCacheUsage()) }.sortedBy { it.day }
     }
     override suspend fun getUsageByCategory() = lock.withLock {
         val records = records()
@@ -63,5 +64,5 @@ class SubagentTokenStatsRepository(
         }
     }
 }
-private operator fun TokenUsageAggregate.plus(other: TokenUsageAggregate) = TokenUsageAggregate(inputTokens + other.inputTokens, outputTokens + other.outputTokens, estimated || other.estimated)
+private operator fun TokenUsageAggregate.plus(other: TokenUsageAggregate) = TokenUsageAggregate(inputTokens + other.inputTokens, outputTokens + other.outputTokens, estimated || other.estimated, cache + other.cache)
 private fun List<TokenUsageAggregate>.sumUsage() = fold(TokenUsageAggregate()) { sum, value -> sum + value }

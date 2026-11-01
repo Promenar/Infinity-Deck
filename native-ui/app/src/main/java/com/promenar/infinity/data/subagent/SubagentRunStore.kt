@@ -115,26 +115,30 @@ class SubagentRunStore(
         }
     }
 
-    suspend fun usageWatermarks(): Map<String, TokenUsage> = withContext(dispatcher) {
+    suspend fun usageWatermarks(): Map<String, SubagentUsageWatermark> = withContext(dispatcher) {
         mutex.withLock {
             val base = checkedRoot(false) ?: return@withLock emptyMap()
             val file = File(base, "usage-watermarks.json").also { checkChild(it, base) }
-            if (!file.isFile) emptyMap() else json.decodeFromString<kotlin.collections.Map<String, TokenUsage>>(file.readText())
+            if (!file.isFile) emptyMap() else json.decodeFromString<kotlin.collections.Map<String, SubagentUsageWatermark>>(file.readText())
         }
     }
 
     suspend fun resetUsageWatermarks() {
         val watermark = all().flatMap { it.runs }.filter { it.id.isNotEmpty() }.flatMap { run ->
-            listOf(run.id to TokenUsage(input = run.inputTokens, output = run.outputTokens, total = run.totalTokens)) +
-                run.dailyUsage.map { (day, usage) -> "${run.id}/$day" to usage }
+            listOf(run.id to SubagentUsageWatermark(run.inputTokens, run.outputTokens, run.totalTokens, run.legacyCache(), run.cacheRequests.mapTo(mutableSetOf()) { it.id })) +
+                (run.dailyUsage.keys + run.dailyCacheUsage.keys + run.cacheRequests.map { it.day }).map { day ->
+                    val usage = run.dailyUsage[day] ?: TokenUsage()
+                    "${run.id}/$day" to SubagentUsageWatermark(usage.input, usage.output, usage.total,
+                        run.legacyCache(day), run.cacheRequests.filter { it.day == day }.mapTo(mutableSetOf()) { it.id })
+                }
         }.toMap()
         restoreUsageWatermarks(watermark)
     }
 
-    suspend fun restoreUsageWatermarks(watermark: Map<String, TokenUsage>) = withContext(dispatcher) { mutex.withLock {
+    suspend fun restoreUsageWatermarks(watermark: Map<String, SubagentUsageWatermark>) = withContext(dispatcher) { mutex.withLock {
         val base = checkNotNull(checkedRoot(true))
         val file = File(base, "usage-watermarks.json").also { checkChild(it, base) }
-        atomicText(file, json.encodeToString(kotlinx.serialization.builtins.MapSerializer(kotlinx.serialization.serializer<String>(), TokenUsage.serializer()), watermark))
+        atomicText(file, json.encodeToString(kotlinx.serialization.builtins.MapSerializer(kotlinx.serialization.serializer<String>(), SubagentUsageWatermark.serializer()), watermark))
     } }
 
     suspend fun execution(sessionId: String, stepId: String, id: String): SubagentExecutionState? = withContext(dispatcher) {

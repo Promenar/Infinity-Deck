@@ -350,6 +350,7 @@ class ChatGenerationRunner(
                                         totalTokens = (reportedUsage ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                                         cacheReadInputTokens = maxReported(snapshot.cacheReadInputTokens, chunk.cacheReadInput),
                                         cacheWriteInputTokens = maxReported(snapshot.cacheWriteInputTokens, chunk.cacheWriteInput),
+                                        cacheWriteLongTtlInputTokens = maxReported(snapshot.cacheWriteLongTtlInputTokens, chunk.cacheWriteLongTtlInput),
                                         reasoningOutputTokens = maxReported(snapshot.reasoningOutputTokens, chunk.reasoningOutput),
                                     )
                                     snapshot = persist(request, snapshot, emit)

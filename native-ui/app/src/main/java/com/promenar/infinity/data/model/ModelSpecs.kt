@@ -1797,29 +1797,34 @@ private fun ResolvedModelMetadata.toLegacyModelSpec(): ModelSpec = ModelSpec(
 
 data class ModelPricing(
     val inputPerMillion: Double,
-    val outputPerMillion: Double
+    val outputPerMillion: Double,
+    val cacheReadPerMillion: Double? = null,
+    val cacheWritePerMillion: Double? = null,
+    val cacheWriteLongTtlPerMillion: Double? = null,
 )
 
+// 缓存单价按官方标准文本短上下文档填写，单位为美元/百万 Token；未能唯一对应的家族或分档保留 null。
+// 核对日期：2026-11-02。来源：OpenAI 模型页、Claude pricing、Gemini API pricing、Z.AI pricing。
 private val MODEL_PRICING: List<Pair<ModelPattern, ModelPricing>> = listOf(
-    ModelPattern.StringPattern("gpt-4.1") to ModelPricing(2.0, 8.0),
-    ModelPattern.StringPattern("gpt-4.1-mini") to ModelPricing(0.40, 1.60),
-    ModelPattern.StringPattern("gpt-4.1-nano") to ModelPricing(0.10, 0.40),
-    ModelPattern.StringPattern("gpt-4o") to ModelPricing(2.50, 10.0),
-    ModelPattern.StringPattern("gpt-4o-mini") to ModelPricing(0.15, 0.60),
-    ModelPattern.StringPattern("o3") to ModelPricing(2.0, 8.0),
-    ModelPattern.StringPattern("o4-mini") to ModelPricing(1.10, 4.40),
-    ModelPattern.StringPattern("o1") to ModelPricing(15.0, 60.0),
-    ModelPattern.StringPattern("o1-mini") to ModelPricing(3.0, 12.0),
+    ModelPattern.StringPattern("gpt-4.1") to ModelPricing(2.0, 8.0, 0.50),
+    ModelPattern.StringPattern("gpt-4.1-mini") to ModelPricing(0.40, 1.60, 0.10),
+    ModelPattern.StringPattern("gpt-4.1-nano") to ModelPricing(0.10, 0.40, 0.025),
+    ModelPattern.StringPattern("gpt-4o") to ModelPricing(2.50, 10.0, 1.25),
+    ModelPattern.StringPattern("gpt-4o-mini") to ModelPricing(0.15, 0.60, 0.075),
+    ModelPattern.StringPattern("o3") to ModelPricing(2.0, 8.0, 0.50),
+    ModelPattern.StringPattern("o4-mini") to ModelPricing(1.10, 4.40, 0.275),
+    ModelPattern.StringPattern("o1") to ModelPricing(15.0, 60.0, 7.50),
+    ModelPattern.StringPattern("o1-mini") to ModelPricing(3.0, 12.0, 0.55),
     ModelPattern.StringPattern("claude-sonnet") to ModelPricing(3.0, 15.0),
     ModelPattern.StringPattern("claude-opus") to ModelPricing(15.0, 75.0),
     ModelPattern.StringPattern("claude-haiku") to ModelPricing(0.80, 4.0),
     ModelPattern.StringPattern("claude-3.5-sonnet") to ModelPricing(3.0, 15.0),
-    ModelPattern.StringPattern("claude-3.5-haiku") to ModelPricing(0.80, 4.0),
+    ModelPattern.StringPattern("claude-3.5-haiku") to ModelPricing(0.80, 4.0, 0.08, 1.0, 1.60),
     ModelPattern.StringPattern("deepseek-chat") to ModelPricing(0.27, 1.10),
     ModelPattern.StringPattern("deepseek-reasoner") to ModelPricing(0.55, 2.19),
     ModelPattern.RegexPattern(Regex("""deepseek-r1""", RegexOption.IGNORE_CASE)) to ModelPricing(0.55, 2.19),
-    ModelPattern.StringPattern("gemini-2.5-pro") to ModelPricing(1.25, 10.0),
-    ModelPattern.StringPattern("gemini-2.5-flash") to ModelPricing(0.15, 0.60),
+    ModelPattern.StringPattern("gemini-2.5-pro") to ModelPricing(1.25, 10.0, 0.125),
+    ModelPattern.StringPattern("gemini-2.5-flash") to ModelPricing(0.15, 0.60, 0.03),
     ModelPattern.StringPattern("gemini-2.0-flash") to ModelPricing(0.10, 0.40),
     ModelPattern.StringPattern("gemini-1.5-pro") to ModelPricing(1.25, 5.0),
     ModelPattern.StringPattern("gemini-1.5-flash") to ModelPricing(0.075, 0.30),
@@ -1829,28 +1834,28 @@ private val MODEL_PRICING: List<Pair<ModelPattern, ModelPricing>> = listOf(
     ModelPattern.StringPattern("qwen") to ModelPricing(0.30, 0.90),
 
     // ==================== 2026 年定价更新 ====================
-    ModelPattern.StringPattern("gpt-5.5") to ModelPricing(7.50, 30.0),
-    ModelPattern.StringPattern("gpt-5.4") to ModelPricing(5.0, 20.0),
+    ModelPattern.StringPattern("gpt-5.5") to ModelPricing(7.50, 30.0, 0.50),
+    ModelPattern.StringPattern("gpt-5.4") to ModelPricing(5.0, 20.0, 0.25),
     ModelPattern.StringPattern("gpt-5.3") to ModelPricing(3.75, 15.0),
-    ModelPattern.StringPattern("gpt-5.2") to ModelPricing(3.75, 15.0),
-    ModelPattern.StringPattern("gpt-5.1") to ModelPricing(3.75, 15.0),
+    ModelPattern.StringPattern("gpt-5.2") to ModelPricing(3.75, 15.0, 0.175),
+    ModelPattern.StringPattern("gpt-5.1") to ModelPricing(3.75, 15.0, 0.125),
     ModelPattern.StringPattern("gpt-5-pro") to ModelPricing(15.0, 60.0),
-    ModelPattern.StringPattern("gpt-5-nano") to ModelPricing(0.075, 0.30),
-    ModelPattern.StringPattern("gpt-5-codex") to ModelPricing(3.75, 15.0),
+    ModelPattern.StringPattern("gpt-5-nano") to ModelPricing(0.075, 0.30, 0.005),
+    ModelPattern.StringPattern("gpt-5-codex") to ModelPricing(3.75, 15.0, 0.125),
     ModelPattern.StringPattern("o3-pro") to ModelPricing(10.0, 40.0),
-    ModelPattern.StringPattern("claude-sonnet-5") to ModelPricing(5.0, 25.0),
-    ModelPattern.StringPattern("claude-sonnet-4-6") to ModelPricing(3.75, 18.75),
-    ModelPattern.StringPattern("claude-opus-4-7") to ModelPricing(18.75, 93.75),
-    ModelPattern.StringPattern("claude-haiku-4-5") to ModelPricing(1.0, 5.0),
-    ModelPattern.StringPattern("gemini-3.1-pro") to ModelPricing(1.875, 7.50),
+    ModelPattern.StringPattern("claude-sonnet-5") to ModelPricing(5.0, 25.0, 0.20, 2.50, 4.0),
+    ModelPattern.StringPattern("claude-sonnet-4-6") to ModelPricing(3.75, 18.75, 0.30, 3.75, 6.0),
+    ModelPattern.StringPattern("claude-opus-4-7") to ModelPricing(18.75, 93.75, 0.50, 6.25, 10.0),
+    ModelPattern.StringPattern("claude-haiku-4-5") to ModelPricing(1.0, 5.0, 0.10, 1.25, 2.0),
+    ModelPattern.StringPattern("gemini-3.1-pro") to ModelPricing(1.875, 7.50, 0.20),
     ModelPattern.StringPattern("gemini-3.1-flash") to ModelPricing(0.25, 0.75),
-    ModelPattern.StringPattern("gemini-3.1-flash-lite") to ModelPricing(0.25, 1.50),
+    ModelPattern.StringPattern("gemini-3.1-flash-lite") to ModelPricing(0.25, 1.50, 0.025),
     ModelPattern.StringPattern("gemini-3-pro") to ModelPricing(1.25, 5.0),
-    ModelPattern.StringPattern("gemini-3-flash") to ModelPricing(0.15, 0.60),
+    ModelPattern.StringPattern("gemini-3-flash") to ModelPricing(0.15, 0.60, 0.05),
     ModelPattern.StringPattern("deepseek-v4-pro") to ModelPricing(0.60, 2.40),
     ModelPattern.StringPattern("grok-4.1") to ModelPricing(2.50, 10.0),
     ModelPattern.StringPattern("grok-4-fast") to ModelPricing(1.0, 4.0),
-    ModelPattern.StringPattern("glm-5.1") to ModelPricing(0.70, 2.80),
+    ModelPattern.StringPattern("glm-5.1") to ModelPricing(0.70, 2.80, 0.26),
     ModelPattern.StringPattern("qwen-3.6-plus") to ModelPricing(0.28, 1.12),
     ModelPattern.StringPattern("qwen-flash") to ModelPricing(0.082, 0.32),
     ModelPattern.StringPattern("mistral-3-large") to ModelPricing(2.0, 6.0),
@@ -1858,10 +1863,22 @@ private val MODEL_PRICING: List<Pair<ModelPattern, ModelPricing>> = listOf(
 )
 
 fun findModelPricing(modelId: String): ModelPricing? {
-    for ((pattern, pricing) in MODEL_PRICING) {
-        if (pattern.matches(modelId)) {
-            return pricing
-        }
-    }
-    return null
+    val matched = MODEL_PRICING.mapNotNull { (pattern, pricing) -> pattern.rank(modelId)?.let { Triple(it, pattern, pricing) } }
+        .maxByOrNull { it.first } ?: return null
+    val pattern = matched.second as? ModelPattern.StringPattern ?: return matched.third
+    val suffix = modelId.lowercase().substringAfter(pattern.value.lowercase())
+    // 普通输入输出保留家族回退；缓存价仅适用于已核实别名，不能扩散到 mini/pro/lite 等变体。
+    return if (suffix.isEmpty() || suffix in VERIFIED_CACHE_PRICE_SUFFIXES[pattern.value].orEmpty()) matched.third
+    else matched.third.copy(cacheReadPerMillion = null, cacheWritePerMillion = null, cacheWriteLongTtlPerMillion = null)
 }
+
+/** 官方模型页列明的同价快照或预览别名；未核实的后缀保持未知。 */
+private val VERIFIED_CACHE_PRICE_SUFFIXES = mapOf(
+    "gpt-4.1" to setOf("-2025-04-14"),
+    "gpt-4.1-mini" to setOf("-2025-04-14"),
+    "gpt-4.1-nano" to setOf("-2025-04-14"),
+    "gpt-5.4" to setOf("-2026-03-05"),
+    "gpt-5.5" to setOf("-2026-04-23"),
+    "gemini-3.1-pro" to setOf("-preview", "-preview-customtools"),
+    "gemini-3-flash" to setOf("-preview"),
+)

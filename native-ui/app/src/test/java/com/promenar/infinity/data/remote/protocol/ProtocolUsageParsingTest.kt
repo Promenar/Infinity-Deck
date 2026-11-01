@@ -142,5 +142,29 @@ class ProtocolUsageParsingTest {
         assertThat(usage).isEqualTo(ProtocolUsage(3520, 240, 3760, cacheReadInput = 3000, cacheWriteInput = 500))
     }
 
+    @Test
+    fun `Responses 写入与百炼创建字段保留显式零和缺失语义`() {
+        assertThat(ProtocolUsageParsers.openAiResponses(obj("""{"input_tokens":100,"input_tokens_details":{"cache_write_tokens":60}}""")).cacheWriteInput).isEqualTo(60)
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"prompt_tokens":100,"prompt_tokens_details":{"cache_creation_input_tokens":0}}""")).cacheWriteInput).isEqualTo(0)
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"prompt_tokens":100,"prompt_tokens_details":{"cache_creation_input_tokens":60}}""")).cacheWriteInput).isEqualTo(60)
+    }
+
+    @Test
+    fun `长 TTL 明细为总写入子集且缺失零值与仅写入均可辨识`() {
+        val responses = ProtocolUsageParsers.openAiResponses(obj("""{"input_tokens":100,"input_tokens_details":{"cache_write_tokens":60,"cache_write_tokens_details":{"ttl_30m_tokens":20,"ttl_12h_tokens":40}}}"""))
+        assertThat(responses.cacheWriteInput).isEqualTo(60)
+        assertThat(responses.cacheWriteLongTtlInput).isEqualTo(40)
+        assertThat(responses.cacheReadInput).isNull()
+        val anthropic = ProtocolUsageParsers.anthropic(obj("""{"input_tokens":10,"cache_creation_input_tokens":60,"cache_creation":{"ephemeral_1h_input_tokens":40}}"""))
+        assertThat(anthropic.input).isEqualTo(70)
+        assertThat(anthropic.cacheWriteLongTtlInput).isEqualTo(40)
+        assertThat(ProtocolUsageParsers.anthropic(null, obj("""{"cache_creation":{"ephemeral_1h_input_tokens":0}}""")).cacheWriteLongTtlInput).isEqualTo(0)
+        assertThat(ProtocolUsageParsers.openAiResponses(obj("{}")).cacheWriteLongTtlInput).isNull()
+        assertThat(ProtocolUsageParsers.openAiResponses(obj("""{"input_tokens_details":{"cache_write_tokens":0,"cache_write_tokens_details":{"ttl_12h_tokens":0}}}""")).cacheWriteLongTtlInput).isEqualTo(0)
+        val kimi = ProtocolUsageParsers.openAiChat(obj("""{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":12,"cache_write_tokens":0}}"""))
+        assertThat(kimi.cacheReadInput).isEqualTo(12)
+        assertThat(kimi.cacheWriteInput).isEqualTo(0)
+    }
+
     private fun request() = PromptRequest(listOf(ProtocolMessage("user", "synthetic")), "fixture")
 }

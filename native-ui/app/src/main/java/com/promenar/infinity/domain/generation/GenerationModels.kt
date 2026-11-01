@@ -104,6 +104,7 @@ data class GenerationSnapshot(
     val reasoningOutputTokens: Int? = null,
     /** 本轮模型请求的时间点；尚未发出请求时为 null。 */
     val timing: GenerationTiming? = null,
+    val cacheWriteLongTtlInputTokens: Int? = null,
 )
 
 /** 单轮模型请求的时间点（epoch 毫秒）；未知时间点为 null。 */
@@ -131,6 +132,7 @@ sealed interface GenerationChunk {
         val cacheReadInput: Int? = null,
         val cacheWriteInput: Int? = null,
         val reasoningOutput: Int? = null,
+        val cacheWriteLongTtlInput: Int? = null,
     ) : GenerationChunk
     data class Citations(val citations: List<GenerationCitation>) : GenerationChunk
     data class Failure(val failure: GenerationFailure) : GenerationChunk
