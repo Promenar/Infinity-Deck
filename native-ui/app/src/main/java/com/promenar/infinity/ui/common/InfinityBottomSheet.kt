@@ -111,9 +111,11 @@ fun InfinityModalSheet(
         properties = properties,
         dragHandle = { InfinitySheetDragHandle() },
     ) {
-        when (height) {
-            InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight(), content = content)
-            InfinitySheetHeight.Content -> content()
+        InfinityWindowBackScope {
+            when (height) {
+                InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight(), content = content)
+                InfinitySheetHeight.Content -> content()
+            }
         }
     }
 }
@@ -146,35 +148,37 @@ private fun InfinityCenteredSheet(
             usePlatformDefaultWidth = false,
         ),
     ) {
-        // 对话框窗口占满宽度；两侧留白点按同样视为点外部。
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    enabled = dismissOutside,
-                    onClick = onDismissRequest,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = containerColor,
-                modifier = modifier
-                    .padding(horizontal = 32.dp)
-                    .widthIn(max = 640.dp)
+        InfinityWindowBackScope {
+            // 对话框窗口占满宽度；两侧留白点按同样视为点外部。
+            Box(
+                modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (height == InfinitySheetHeight.Full) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
-                    .testTag(InfinitySheetTags.CENTERED),
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = dismissOutside,
+                        onClick = onDismissRequest,
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = containerColor,
+                    modifier = modifier
+                        .padding(horizontal = 32.dp)
+                        .widthIn(max = 640.dp)
                         .fillMaxWidth()
-                        .then(if (height == InfinitySheetHeight.Full) Modifier.fillMaxHeight() else Modifier)
-                        .padding(top = 20.dp),
-                    content = content,
-                )
+                        .then(if (height == InfinitySheetHeight.Full) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
+                        .testTag(InfinitySheetTags.CENTERED),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (height == InfinitySheetHeight.Full) Modifier.fillMaxHeight() else Modifier)
+                            .padding(top = 20.dp),
+                        content = content,
+                    )
+                }
             }
         }
     }

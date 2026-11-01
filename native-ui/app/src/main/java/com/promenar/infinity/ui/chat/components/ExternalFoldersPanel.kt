@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
 import android.text.format.Formatter
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
@@ -95,6 +97,8 @@ import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.ui.workspace.KnowledgeReadOnlyTag
+import com.promenar.infinity.ui.workspace.SharedFolderPicker
+import com.promenar.infinity.ui.theme.breakableIdentifier
 import com.promenar.infinity.domain.storage.ExternalRecycleItem
 import com.promenar.infinity.domain.storage.IExternalFolderManager
 import com.promenar.infinity.ui.common.ConfirmDialog
@@ -167,7 +171,14 @@ private fun ExternalFoldersPanelContent(
     var formSource by rememberSaveable { mutableStateOf<ExternalMountSource?>(null) }
     var alias by rememberSaveable { mutableStateOf("") }
     var sourcePath by rememberSaveable { mutableStateOf("") }
-    var pendingAlias by rememberSaveable { mutableStateOf<String?>(null) }
+    var manualPath by rememberSaveable { mutableStateOf(false) }
+    var pickingFolder by rememberSaveable { mutableStateOf(false) }
+    // 表单里选定的系统授权文件夹：授权在点“挂载文件夹”时才持久保存，中途离开不留下授权。
+    var pickedTreeUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickedTreeFlags by rememberSaveable { mutableStateOf(0) }
+    var pickedTreeName by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickedTreeLocation by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingFormPick by rememberSaveable { mutableStateOf(false) }
     var pendingMountId by rememberSaveable { mutableStateOf<String?>(null) }
     var pickerActive by rememberSaveable { mutableStateOf(false) }
     var browseMountId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -216,34 +227,46 @@ private fun ExternalFoldersPanelContent(
         }
     }
 
+    val primaryVolumeLabel = stringResource(R.string.workspace_picker_shared_volume)
+    // 别名仍是自动生成的默认值时改用选定目录名。
+    val adoptFolderAlias: (String?) -> Unit = { folderName ->
+        if (folderName != null && isGeneratedMountAlias(alias)) {
+            mountAliasFromFolderName(folderName, mounts.map { it.alias })?.let { alias = it }
+        }
+    }
     val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         pickerActive = false
-        val requestedAlias = pendingAlias
+        val formPick = pendingFormPick
         val requestedMountId = pendingMountId
-        pendingAlias = null
+        pendingFormPick = false
         pendingMountId = null
         if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
         val resultIntent = result.data ?: return@rememberLauncherForActivityResult
         val treeUri = resultIntent.data ?: return@rememberLauncherForActivityResult
-        if (requestedAlias == null && requestedMountId == null) return@rememberLauncherForActivityResult
-        perform {
-            if (requestedMountId != null) {
+        if (requestedMountId != null) {
+            perform {
                 manager.reauthorize(requestedMountId, treeUri.toString(), resultIntent.flags)
-            } else if (requestedAlias != null) {
-                manager.addSaf(
-                    alias = requestedAlias,
-                    sessionId = requireNotNull(sessionId?.takeIf(String::isNotBlank)),
-                    treeUri = treeUri.toString(),
-                    grantFlags = resultIntent.flags,
-                )
+                formSource = null
+                managerOpen = true
             }
-            formSource = null
-            managerOpen = true
+        } else if (formPick && formSource == ExternalMountSource.Saf) {
+            pickedTreeUri = treeUri.toString()
+            pickedTreeFlags = resultIntent.flags
+            pickedTreeName = null
+            pickedTreeLocation = null
+            perform {
+                val picked = withContext(Dispatchers.IO) { describeSafTree(context, treeUri, primaryVolumeLabel) }
+                if (pickedTreeUri == treeUri.toString()) {
+                    pickedTreeName = picked.name
+                    pickedTreeLocation = picked.location
+                    adoptFolderAlias(picked.name)
+                }
+            }
         }
     }
 
-    val launchTreePicker: (String?, String?) -> Unit = { requestedAlias, requestedMountId ->
-        pendingAlias = requestedAlias
+    val launchTreePicker: (Boolean, String?) -> Unit = { formPick, requestedMountId ->
+        pendingFormPick = formPick
         pendingMountId = requestedMountId
         pickerActive = true
         notice = null
@@ -258,7 +281,7 @@ private fun ExternalFoldersPanelContent(
             )
         } catch (_: Exception) {
             pickerActive = false
-            pendingAlias = null
+            pendingFormPick = false
             pendingMountId = null
             notice = R.string.mount_operation_error
         }
@@ -339,6 +362,8 @@ private fun ExternalFoldersPanelContent(
     if (managerOpen) {
         val browseMount = mounts.firstOrNull { it.id == browseMountId }
         val page = when {
+            formSource == ExternalMountSource.RealPath && pickingFolder && ExternalMountSource.RealPath in sources ->
+                ExternalMountPage.PickFolder
             formSource != null && formSource in sources -> ExternalMountPage.Form(formSource!!)
             browseMount != null -> ExternalMountPage.Browse(browseMount.id)
             recycleOpen -> ExternalMountPage.Recycle
@@ -346,6 +371,7 @@ private fun ExternalFoldersPanelContent(
         }
         val backToManager: () -> Unit = {
             formSource = null
+            pickingFolder = false
             browseMountId = null
             recycleOpen = false
             notice = null
@@ -378,16 +404,17 @@ private fun ExternalFoldersPanelContent(
                         notice = notice,
                         onRefresh = refresh,
                         onAdd = { source ->
-                            var candidate = "external"
-                            var suffix = 2
-                            while (mounts.any { it.alias == candidate }) candidate = "external" + suffix++
-                            alias = candidate
+                            alias = nextGeneratedMountAlias(mounts.map { it.alias })
                             sourcePath = ""
+                            manualPath = false
+                            pickedTreeUri = null
+                            pickedTreeName = null
+                            pickedTreeLocation = null
                             notice = null
                             formSource = source
                         },
                         onBrowse = { notice = null; browseMountId = it.id },
-                        onReauthorize = { launchTreePicker(null, it.id) },
+                        onReauthorize = { launchTreePicker(false, it.id) },
                         onRemove = { removeMountId = it.id },
                         onGrantRealPath = openAccessSettings,
                         onRecycle = { notice = null; recycleOpen = true },
@@ -404,17 +431,39 @@ private fun ExternalFoldersPanelContent(
                         source = current.source,
                         alias = alias,
                         sourcePath = sourcePath,
+                        pickedFolder = if (current.source == ExternalMountSource.Saf) {
+                            pickedTreeUri?.let { uri ->
+                                PickedMountFolder(pickedTreeName ?: safTreeFallbackName(Uri.decode(uri.substringAfterLast('/'))) ?: uri, pickedTreeLocation)
+                            }
+                        } else pickedRealPathFolder(sourcePath),
+                        manualPath = manualPath,
                         hasCurrentSession = !sessionId.isNullOrBlank(),
                         realPathPermission = realPathPermission,
                         busy = busy || pickerActive,
                         notice = notice,
                         onAliasChanged = { alias = it },
                         onPathChanged = { sourcePath = it },
+                        onShowManualPath = { manualPath = true },
+                        onPickFolder = {
+                            notice = null
+                            if (current.source == ExternalMountSource.Saf) launchTreePicker(true, null)
+                            else pickingFolder = true
+                        },
                         onGrantAccess = openAccessSettings,
                         onBack = backToManager,
                         onConfirm = {
+                            val treeUri = pickedTreeUri
                             if (current.source == ExternalMountSource.Saf) {
-                                launchTreePicker(alias.trim(), null)
+                                if (treeUri != null) perform {
+                                    manager.addSaf(
+                                        alias = alias.trim(),
+                                        sessionId = requireNotNull(sessionId?.takeIf(String::isNotBlank)),
+                                        treeUri = treeUri,
+                                        grantFlags = pickedTreeFlags,
+                                    )
+                                    pickedTreeUri = null
+                                    formSource = null
+                                }
                             } else if (BuildConfig.ALL_FILES_ACCESS_AVAILABLE && DistributionCapabilities.allFilesAccessAvailable) {
                                 perform {
                                     manager.addRealPath(
@@ -426,6 +475,15 @@ private fun ExternalFoldersPanelContent(
                                 }
                             }
                         },
+                    )
+                    ExternalMountPage.PickFolder -> SharedFolderPicker(
+                        initialPath = sourcePath,
+                        onPicked = { path ->
+                            sourcePath = path
+                            adoptFolderAlias(pickedRealPathFolder(path)?.name)
+                            pickingFolder = false
+                        },
+                        onExit = { pickingFolder = false },
                     )
                     is ExternalMountPage.Browse -> mounts.firstOrNull { it.id == current.mountId }?.let { mount ->
                         ExternalMountBrowserPage(
@@ -464,14 +522,43 @@ private fun ExternalFoldersPanelContent(
     }
 }
 
-/** 外部文件夹面板内的页面；挂载管理为根，其它页面比它深一层。 */
+/**
+ * 系统授权文件夹的显示名与可读位置：名称取提供方给出的目录显示名，取不到时用文档 ID 末段；
+ * 外部存储显示“内部存储/…”位置，其它提供方（如 Termux）显示提供方应用名。查询失败不阻断挂载。
+ */
+private fun describeSafTree(context: Context, treeUri: Uri, primaryVolumeLabel: String): PickedMountFolder {
+    val documentId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
+    val displayName = documentId?.let { id ->
+        runCatching {
+            context.contentResolver.query(
+                DocumentsContract.buildDocumentUriUsingTree(treeUri, id),
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null,
+            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }.getOrNull()
+    }?.takeIf(String::isNotBlank)
+    val location = safTreeLocationLabel(treeUri.authority, documentId, primaryVolumeLabel)
+        ?: runCatching {
+            val packageManager = context.packageManager
+            treeUri.authority?.let { packageManager.resolveContentProvider(it, 0) }
+                ?.applicationInfo?.loadLabel(packageManager)?.toString()
+        }.getOrNull()
+    return PickedMountFolder(displayName ?: safTreeFallbackName(documentId) ?: treeUri.toString(), location)
+}
+
+/** 外部文件夹面板内的页面；挂载管理为根，表单、浏览与回收区比它深一层，表单内选目录再深一层。 */
 private sealed interface ExternalMountPage {
     data object Manager : ExternalMountPage
     data class Form(val source: ExternalMountSource) : ExternalMountPage
+    /** 存储路径表单内浏览手机存储选目录，比表单再深一层。 */
+    data object PickFolder : ExternalMountPage
     data class Browse(val mountId: String) : ExternalMountPage
     data object Recycle : ExternalMountPage
 
-    val depth: Int get() = if (this == Manager) 0 else 1
+    val depth: Int get() = when (this) {
+        Manager -> 0
+        PickFolder -> 2
+        else -> 1
+    }
 }
 
 /** 挂载管理首页：已挂载、添加方式与回收区三组，刷新放在页头。 */
@@ -701,18 +788,25 @@ internal fun knowledgeMountOption(preview: com.promenar.infinity.data.knowledge.
 internal const val KNOWLEDGE_MOUNT_ADD_TAG = "external_mount_add_knowledge"
 
 
-/** 添加挂载：别名与来源，主操作固定在底部。挂载只属于当前会话且可读写。 */
+/**
+ * 添加挂载：别名与文件夹，主操作固定在底部。挂载只属于当前会话且可读写。
+ * 存储路径在应用内浏览手机存储选定，也可展开手动输入；文件夹授权在系统选择器中选定，点“挂载文件夹”时才保存授权。
+ */
 @Composable
 internal fun ExternalMountFormContent(
     source: ExternalMountSource,
     alias: String,
     sourcePath: String,
+    pickedFolder: PickedMountFolder?,
+    manualPath: Boolean,
     hasCurrentSession: Boolean,
     realPathPermission: Boolean,
     busy: Boolean,
     notice: Int?,
     onAliasChanged: (String) -> Unit,
     onPathChanged: (String) -> Unit,
+    onShowManualPath: () -> Unit,
+    onPickFolder: () -> Unit,
     onGrantAccess: (() -> Unit)?,
     onBack: () -> Unit,
     onConfirm: () -> Unit,
@@ -749,7 +843,7 @@ internal fun ExternalMountFormContent(
             }.map { stringResource(it) }.joinToString("\n"),
         ) {
             Column(
-                Modifier.padding(InfinitySpacing.Large),
+                Modifier.padding(start = InfinitySpacing.Large, end = InfinitySpacing.Large, top = InfinitySpacing.Large),
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
             ) {
                 OutlinedTextField(
@@ -762,7 +856,29 @@ internal fun ExternalMountFormContent(
                     textStyle = InfinityTypography.bodyLarge.forInput(),
                     modifier = Modifier.fillMaxWidth().testTag("external_mount_alias"),
                 )
-                if (!isSaf) {
+            }
+            val pickEnabled = !busy && (isSaf || realPathPermission)
+            InfinitySettingsItem(
+                // 目录名与路径都只在分隔符处换行；路径末段是要确认的目录，放宽行数让它不被省略。
+                title = pickedFolder?.name?.breakableIdentifier() ?: stringResource(R.string.mount_select_folder),
+                subtitle = pickedFolder?.location
+                    ?: stringResource(if (isSaf) R.string.mount_pick_saf_desc else R.string.mount_pick_real_path_desc),
+                subtitleIsIdentifier = pickedFolder?.location != null,
+                subtitleMaxLines = 6,
+                onClick = onPickFolder,
+                enabled = pickEnabled,
+                showChevron = true,
+                leadingContent = {
+                    Icon(
+                        if (pickedFolder == null) Icons.Rounded.CreateNewFolder else Icons.Rounded.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                modifier = Modifier.testTag("external_mount_pick_folder"),
+            )
+            if (!isSaf) {
+                if (manualPath) {
                     OutlinedTextField(
                         value = sourcePath,
                         onValueChange = onPathChanged,
@@ -770,8 +886,21 @@ internal fun ExternalMountFormContent(
                         supportingText = { Text(stringResource(R.string.mount_path_hint)) },
                         enabled = !busy,
                         textStyle = InfinityTypography.bodyLarge.forInput(),
-                        modifier = Modifier.fillMaxWidth().testTag("external_mount_real_path"),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = InfinitySpacing.Large)
+                            .padding(bottom = InfinitySpacing.Small)
+                            .testTag("external_mount_real_path"),
                     )
+                } else {
+                    TextButton(
+                        onClick = onShowManualPath,
+                        enabled = !busy,
+                        modifier = Modifier
+                            .padding(horizontal = InfinitySpacing.Small)
+                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .testTag("external_mount_manual_path"),
+                    ) { Text(stringResource(R.string.mount_manual_path)) }
                 }
             }
             if (!isSaf && !realPathPermission) {
@@ -793,13 +922,14 @@ internal fun ExternalMountFormContent(
     }
     Button(
         onClick = onConfirm,
-        enabled = hasCurrentSession && !busy && alias.isNotBlank() && (isSaf || (realPathPermission && sourcePath.isNotBlank())),
+        enabled = hasCurrentSession && !busy && alias.isNotBlank() &&
+            (if (isSaf) pickedFolder != null else realPathPermission && sourcePath.isNotBlank()),
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = InfinitySpacing.Small)
             .heightIn(min = InfinitySpacing.MinimumTouchTarget)
             .testTag("external_mount_confirm"),
-    ) { Text(stringResource(if (isSaf) R.string.mount_select_folder else R.string.mount_confirm)) }
+    ) { Text(stringResource(R.string.mount_confirm)) }
 }
 
 @Composable

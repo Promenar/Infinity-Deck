@@ -48,10 +48,14 @@
     <string name="mount_section_mounted">Mounted</string>
     <string name="mount_empty_hint">After you add a folder, the Agent can work with its files at /mnt/alias/.</string>
     <string name="mount_add_saf_desc">Choose a folder in the system picker, including app folders such as Termux</string>
-    <string name="mount_add_real_path_desc">Enter a storage path. Requires All files access</string>
+    <string name="mount_add_real_path_desc">Browse or enter a storage path. Requires All files access</string>
     <string name="mount_recycle_desc">Restore files the Agent deleted from mounted folders</string>
     <string name="mount_more_actions">More actions for %1$s</string>
     <string name="mount_form_section_target">Folder</string>
     <string name="mount_saf_command_note">Only file tools can reach this folder; commands can\'t.</string>
     <string name="mount_real_path_command_note">File tools use /mnt/alias/; commands use its real path.</string>
+    <string name="mount_picker_root">Locations</string>
+    <string name="mount_pick_real_path_desc">Browse phone storage</string>
+    <string name="mount_pick_saf_desc">Authorize in the system folder picker</string>
+    <string name="mount_manual_path">Enter path manually</string>
 </resources>

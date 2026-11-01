@@ -48,10 +48,14 @@
     <string name="mount_section_mounted">已挂载</string>
     <string name="mount_empty_hint">添加文件夹后，智能体可在 /mnt/别名/ 下读写其中的文件。</string>
     <string name="mount_add_saf_desc">在系统文件夹选择器中授权，可选择 Termux 等应用目录</string>
-    <string name="mount_add_real_path_desc">填写存储路径，需要“所有文件访问”权限</string>
+    <string name="mount_add_real_path_desc">浏览或填写存储路径，需要“所有文件访问”权限</string>
     <string name="mount_recycle_desc">恢复智能体从挂载文件夹中删除的文件</string>
     <string name="mount_more_actions">%1$s 的更多操作</string>
     <string name="mount_form_section_target">文件夹</string>
     <string name="mount_saf_command_note">只有文件工具能访问，命令看不到此文件夹。</string>
     <string name="mount_real_path_command_note">文件工具经 /mnt/别名/ 访问，命令用真实路径访问。</string>
+    <string name="mount_picker_root">位置</string>
+    <string name="mount_pick_real_path_desc">浏览手机存储</string>
+    <string name="mount_pick_saf_desc">在系统文件夹选择器中授权</string>
+    <string name="mount_manual_path">手动输入路径</string>
 </resources>
