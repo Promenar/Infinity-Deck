@@ -51,4 +51,16 @@ class RemoteTerminalBufferTest {
         assertThat(terminal.emulator.screen.transcriptText.trim()).isEmpty()
         assertThat(sent).isEmpty()
     }
+
+    @Test
+    fun `清空后光标回到左上角，再写入从首行首列开始`() {
+        val terminal = RemoteTerminalBuffer(20, 4)
+        terminal.append("one\r\ntwo\r\nprompt$ ")
+        terminal.clear()
+
+        assertThat(terminal.emulator.cursorRow).isEqualTo(0)
+        assertThat(terminal.emulator.cursorCol).isEqualTo(0)
+        terminal.append("again")
+        assertThat(terminal.emulator.screen.getSelectedText(0, 0, 19, 0).trim()).isEqualTo("again")
+    }
 }

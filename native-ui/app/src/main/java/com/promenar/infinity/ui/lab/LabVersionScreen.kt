@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -30,7 +31,10 @@ fun LabVersionScreen(
 ) {
     val scene = remember(versionId) { LabScenes.scene(versionId) }
     if (scene != null) {
-        LabStage(scene = scene, record = record, onExit = onNavigateBack)
+        // 深链以单顶方式复用版本页，舞台状态按版本与录制标记重建，新深链的录制模式才会生效。
+        key(versionId, record) {
+            LabStage(scene = scene, record = record, onExit = onNavigateBack)
+        }
         return
     }
     val version = LabCatalog.version(versionId)

@@ -50,6 +50,9 @@ internal class RemoteTerminalBuffer(columns: Int = 80, rows: Int = 24) {
         emulator.doDecSetOrReset(false, 1049)
         clearScreen()
         emulator.screen.clearTranscript()
+        // reset() 不动光标，退出备用屏幕又会恢复旧光标；移回左上角，之后的写入才从首行首列开始。
+        val home = "\u001B[H".toByteArray(Charsets.US_ASCII)
+        emulator.append(home, home.size)
     }
 
     private fun clearScreen() {
