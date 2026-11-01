@@ -124,10 +124,12 @@ fun rememberSessionWorkspaceMedia(
     onLocate: (String) -> Unit,
 ): WorkspaceMediaEnvironment? {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val application = context.applicationContext as? com.promenar.infinity.InfinityApplication
+    // 实验室沙箱里不解析真实工作区，也不动进程里正在播放的媒体与分享缓存。
+    val sandboxed = com.promenar.infinity.ui.common.LocalLabSandbox.current
+    val application = (context.applicationContext as? com.promenar.infinity.InfinityApplication)?.takeUnless { sandboxed }
     val currentOnLocate by androidx.compose.runtime.rememberUpdatedState(onLocate)
     val stableOnLocate = remember { { path: String -> currentOnLocate(path) } }
-    LaunchedEffect(sessionId) { MediaPlaybackCoordinator.Shared.pauseAll() }
+    LaunchedEffect(sessionId) { if (!sandboxed) MediaPlaybackCoordinator.Shared.pauseAll() }
     LaunchedEffect(application) {
         if (application != null && shareCacheCleaned.compareAndSet(false, true)) {
             withContext(Dispatchers.IO) { runCatching { MediaFileActions.cleanupShareCache(application) } }

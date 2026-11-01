@@ -560,11 +560,15 @@ internal fun inspectorStripLift(fraction: Float, dragY: Float, maxLiftPx: Float)
 @Composable
 internal fun Modifier.inspectorStripDrag(maxLiftPx: Float): Modifier {
     val context = LocalContext.current
-    val prefs = remember(context) { context.applicationContext.getSharedPreferences("infinity_ui_state", Context.MODE_PRIVATE) }
-    var fraction by remember { mutableFloatStateOf(prefs.getFloat("chat_inspector_strip_lift", 0f).coerceIn(0f, 1f)) }
+    // 实验室沙箱里只在内存中拖动，不读写真实的界面偏好。
+    val sandboxed = com.promenar.infinity.ui.common.LocalLabSandbox.current
+    val prefs = remember(context, sandboxed) {
+        if (sandboxed) null else context.applicationContext.getSharedPreferences("infinity_ui_state", Context.MODE_PRIVATE)
+    }
+    var fraction by remember { mutableFloatStateOf(prefs?.getFloat("chat_inspector_strip_lift", 0f)?.coerceIn(0f, 1f) ?: 0f) }
     val maxLift by rememberUpdatedState(maxLiftPx)
     val haptics by rememberUpdatedState(LocalInfinityHaptics.current)
-    val save = { prefs.edit().putFloat("chat_inspector_strip_lift", fraction).apply() }
+    val save = { prefs?.edit()?.putFloat("chat_inspector_strip_lift", fraction)?.apply(); Unit }
     return this
         .offset { IntOffset(0, -(fraction * maxLift.coerceAtLeast(0f)).roundToInt()) }
         .pointerInput(prefs) {

@@ -138,7 +138,9 @@ internal fun rememberApprovalDiffPreview(
     sessionId: String?,
     privateWorkspaceRootUuid: String?,
 ): ApprovalDiffPreview? {
-    val application = LocalContext.current.applicationContext as? InfinityApplication
+    // 实验室沙箱里不读工作区，审批卡回退为参数片段。
+    val sandboxed = com.promenar.infinity.ui.common.LocalLabSandbox.current
+    val application = (LocalContext.current.applicationContext as? InfinityApplication)?.takeUnless { sandboxed }
     val loader = remember(application) {
         application?.let { ApprovalDiffPreviewLoader(it.workspaceRepository, it.externalFolderManager) }
     }

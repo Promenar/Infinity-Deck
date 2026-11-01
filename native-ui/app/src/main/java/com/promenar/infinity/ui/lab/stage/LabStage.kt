@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -131,6 +132,12 @@ private fun <S> WorkflowStage(
         if (player.playback.playing) player.togglePlay()
         delay(RECORD_LEAD_IN_MS)
         if (!player.playback.playing) player.togglePlay()
+    }
+    LaunchedEffect(player, scope) {
+        snapshotFlow { player.playback.positionMs }.collect { position ->
+            val anchor = System.currentTimeMillis() - position
+            if (kotlin.math.abs(anchor - scope.anchorMs) > ANCHOR_DRIFT_MS) scope.anchorMs = anchor
+        }
     }
     scene.content(scope, player.state)
     Box(Modifier.fillMaxSize()) {
@@ -235,4 +242,5 @@ internal fun formatLabSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) speed.toInt().toString() else speed.toString()
 
 private const val AUTO_HIDE_MS = 3_000L
+private const val ANCHOR_DRIFT_MS = 300L
 internal const val RECORD_LEAD_IN_MS = 1_500L

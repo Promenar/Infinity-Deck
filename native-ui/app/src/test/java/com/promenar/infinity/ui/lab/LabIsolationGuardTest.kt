@@ -71,6 +71,22 @@ class LabIsolationGuardTest {
     }
 
     @Test
+    fun `只放行逐个点名的 Git 值类型与带限定名的顶栏摘要`() {
+        val file = temporaryDirectory.resolve("Git.kt").toFile()
+        file.writeText("import com.promenar.infinity.data.git.GitStatus\nimport com.promenar.infinity.data.git.GitBranchList\nval s = GitEntrySummary.Repository(null)")
+        assertThat(LabSourceIsolation.scan(temporaryDirectory.toFile())).isEmpty()
+        listOf(
+            "import com.promenar.infinity.data.git.GitInspector",
+            "import com.promenar.infinity.data.git.*",
+            "import com.promenar.infinity.data.git.GitStatus as Inspector\nval x = com.promenar.infinity.data.git.GitInspector()",
+            "val r: Repository? = null",
+        ).forEach { code ->
+            file.writeText(code)
+            assertThat(LabSourceIsolation.scan(temporaryDirectory.toFile())).isNotEmpty()
+        }
+    }
+
+    @Test
     fun `缺失目录与空目录均不得空扫描通过`() {
         assertThrows(IllegalArgumentException::class.java) { LabSourceIsolation.scan(temporaryDirectory.resolve("missing").toFile()) }
         assertThrows(IllegalArgumentException::class.java) { LabSourceIsolation.scan(temporaryDirectory.toFile()) }
@@ -103,6 +119,16 @@ internal object LabSourceIsolation {
         "GitWorkTreeReader", "NioGitWorkTreeReader", "GitSshBridge", "GitRemoteBroker", "GitCredentialProxy",
         "GitHubApiProxy", "GitHubApiForwarder", "LinuxGitEnvironment", "SshConnectionService",
     )
+    /**
+     * `data.git` 中只承载数据、不含任何执行能力的值类型：Git 面板的内容层以它们为输入，
+     * 实验室须逐个点名导入；通配导入与其它类型仍按包规则拦截。
+     */
+    private val GIT_VALUE_TYPES = setOf(
+        "GitStatus", "GitBranch", "GitBranchList", "GitChangeList", "GitTracking", "GitFileChange", "GitChangeKind", "GitChangeGroup",
+    )
+    private val GIT_VALUE_IMPORT = Regex("^\\s*import\\s+com\\.promenar\\.infinity\\.data\\.git\\.(\\w+)\\s*$")
+    /** 会话顶栏的 Git 摘要 `GitEntrySummary.Repository` 是界面数据类，带限定名时不按持久化类型处理。 */
+    private val GIT_SUMMARY_QUALIFIER = Regex("GitEntrySummary\\s*\\.\\s*$")
     private val IDENTIFIER = Regex("`[^`\\n]+`|[\\p{L}_][\\p{L}\\p{N}_]*")
     private val SYSTEM_PACKAGE = Regex("\\b(?:com\\s*\\.\\s*promenar\\s*\\.\\s*infinity\\s*\\.\\s*)?data\\s*\\.\\s*(?:ssh|git|linux)\\b")
     private val EXECUTOR_NAME = Regex("(?:.*(?:Ssh|SSH|Git).*(?:Executor|Runner|Runtime|Service|Broker|Bridge|Forwarder|Proxy|Client|Control|Environment))")
@@ -119,10 +145,17 @@ internal object LabSourceIsolation {
             val source = KotlinCodeMask(file.readText()).mask()
             fun hit(offset: Int, rule: String, symbol: String) = Violation(file, source.take(offset).count { it == '\n' } + 1, rule, symbol)
             buildList {
-                SYSTEM_PACKAGE.findAll(source.replace('`', ' ')).forEach { add(hit(it.range.first, SYSTEM_PACKAGE_RULE, it.value)) }
+                val lines = source.lines()
+                SYSTEM_PACKAGE.findAll(source.replace('`', ' ')).forEach { match ->
+                    val line = lines[source.take(match.range.first).count { it == '\n' }]
+                    val allowed = GIT_VALUE_IMPORT.find(line)?.groupValues?.get(1) in GIT_VALUE_TYPES
+                    if (!allowed) add(hit(match.range.first, SYSTEM_PACKAGE_RULE, match.value))
+                }
                 IDENTIFIER.findAll(source).forEach { match ->
                     val name = match.value.removeSurrounding("`")
+                    val qualifiedSummary = name == "Repository" && GIT_SUMMARY_QUALIFIER.containsMatchIn(source.substring(0, match.range.first))
                     val rule = when {
+                        qualifiedSummary -> null
                         name == "InfinityApplication" -> APPLICATION_RULE
                         name.endsWith("Repository") || name.endsWith("Dao") -> STORAGE_RULE
                         name in MODEL_TYPES -> MODEL_RULE
