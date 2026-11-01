@@ -646,6 +646,14 @@ fun ChatScreenContent(
         withFrameNanos { }
         scrollItemAboveComposer(approvalItemIndex)
     }
+    // 分支方案卡同样排在消息之后（提问卡、保密输入卡之后）：出现时滚到输入栏上方，三个选择按钮可见可点。
+    val branchPlanItemIndex = approvalItemIndex +
+        (if (state.pendingQuestion != null) 1 else 0) + (if (state.pendingSecretInput != null) 1 else 0)
+    LaunchedEffect(pendingBranchPlan?.toolCallId) {
+        if (pendingBranchPlan == null) return@LaunchedEffect
+        withFrameNanos { }
+        scrollItemAboveComposer(branchPlanItemIndex)
+    }
 
     val latestAssistantMsg = uiState.messages.lastOrNull { it.role == MessageRole.ASSISTANT }
     val followContentLength = (latestAssistantMsg?.content?.length ?: 0) +

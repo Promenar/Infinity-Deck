@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 分支方案卡出现时自动滚到输入栏上方，“不需要 / 在此执行 / 派发到分支”三个按钮不再被输入栏遮住。
+
 ### 文档
 
 - README 中英文版围绕四项核心能力重写：口袋里的真 Linux、桌面级 Agent 开发环境（子代理、后台任务、分支会话与 worktree、Git 面板）、SSH 运维与折叠屏内外屏适配；截图按中英文界面分别重拍，中文版版本号同步到 0.10.0-beta。

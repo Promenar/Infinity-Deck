@@ -209,7 +209,8 @@ internal fun adeFrame(s: AdeState): LabChatFrame {
             if (stage >= ADE_TASK) listOf(task) else emptyList()))
         if (stage >= ADE_IMPLEMENT) add(assistantMessage("ade_a4", body(ADE_IMPLEMENT, t.implement), AdeTimes.IMPLEMENT,
             if (stage >= ADE_FILES) files else emptyList()))
-        if (stage >= ADE_TEST_FILE) add(assistantMessage("ade_a5", "", AdeTimes.TEST_FILE, listOf(testFile)))
+        // 写测试前有一段思考，真实会话里它把两组文件改动分成两行。
+        if (stage >= ADE_TEST_FILE) add(assistantMessage("ade_a5", "", AdeTimes.TEST_FILE, listOf(testFile)).copy(reasoning = t.testThinking))
         if (stage >= ADE_QUICK) add(assistantMessage("ade_a6", body(ADE_QUICK, t.quickTest), AdeTimes.QUICK,
             if (stage >= ADE_QUICK_RUN) listOf(quick) else emptyList()))
         if (stage >= ADE_BACKGROUND) add(assistantMessage("ade_a7", body(ADE_BACKGROUND, t.toBackground), AdeTimes.BACKGROUND,

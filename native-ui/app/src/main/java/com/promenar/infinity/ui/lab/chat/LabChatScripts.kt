@@ -45,6 +45,7 @@ internal class LabAdeText(zh: Boolean) {
     } else {
         "Both sub-agents reported back: the change sits in argument parsing in `__main__.py` and the output layer in `report.py`, and the tests miss JSON structure and empty logs. Implementing now."
     }
+    val testThinking = if (zh) "实现完成，接着按测试缺口补 JSON 结构、空日志与只有错误行三类用例。" else "Implementation done. Next, tests for JSON structure, an empty log and an errors-only log."
     val quickTest = if (zh) {
         "实现和测试都写好了，先跑快速测试验证（把大日志缩到 1000 行，避免慢测）。"
     } else {
@@ -70,9 +71,9 @@ internal class LabAdeText(zh: Boolean) {
             "unaffected; tests/test_config.py covers a missing file, partial fields, invalid TOML and defaults; python -m unittest discover -s tests -t . is green."
     }
     val branchReason = if (zh) {
-        "与当前 main 上的 --json 改动完全隔离，避免两边同时改 __main__.py 造成冲突；TOML 迁移需要独立分支评审后再合入。批准即执行这条 git worktree add。"
+        "与当前 main 上的 --json 改动完全隔离，避免两边同时改 __main__.py 造成冲突；TOML 迁移需要独立分支评审后再合入。"
     } else {
-        "Keeps it fully apart from the --json change on main so the two never edit __main__.py at once; the TOML migration needs its own branch review before merging. Approving runs this git worktree add."
+        "Keeps it fully apart from the --json change on main so the two never edit __main__.py at once; the TOML migration needs its own branch review before merging."
     }
     val branchSteps = if (zh) {
         listOf("新增 starlog/config.py 读取 TOML 并合并默认值", "命令行参数覆盖配置文件", "补 tests/test_config.py 四种情况", "跑完整测试并提交")
