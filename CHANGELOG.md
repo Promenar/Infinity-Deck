@@ -3382,8 +3382,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.10.0-beta] - 2026-11-01
-
 ### 新增
 - **智能上下文管理**:
     - 在 `ChatViewModel` 中实现了滑动窗口上下文管理。
