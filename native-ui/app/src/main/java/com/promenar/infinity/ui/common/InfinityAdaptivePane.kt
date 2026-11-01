@@ -4,6 +4,7 @@ import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.findViewTreeNavigationEventDispatcherOwner
 import com.promenar.infinity.navigation.PageLayer
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinityPureBlack
@@ -385,6 +388,23 @@ private fun Modifier.paneBackEffect(back: InfinityPaneBackState, dark: Boolean, 
             if (amount > 0f) drawRect(InfinityPureBlack.copy(alpha = maxDim * amount))
         }
     }
+
+/**
+ * 对话框与上滑面板是独立窗口，系统返回先派发给该窗口。[InfinityBackScope] 显式提供的 Activity 调度器会经组合局部值传进窗口内容，
+ * 使内容里的 BackHandler 注册到收不到这次返回的 Activity 上，返回键直接关掉整个面板。这里改回当前窗口视图树上的调度器；
+ * 视图树上取不到时保留传入的值。
+ */
+@Composable
+fun InfinityWindowBackScope(content: @Composable () -> Unit) {
+    val view = LocalView.current
+    val owner = remember(view) { view.findViewTreeOnBackPressedDispatcherOwner() }
+    val events = remember(view) { view.findViewTreeNavigationEventDispatcherOwner() }
+    val provided = listOfNotNull(
+        owner?.let { LocalOnBackPressedDispatcherOwner provides it },
+        events?.let { LocalNavigationEventDispatcherOwner provides it },
+    )
+    CompositionLocalProvider(*provided.toTypedArray(), content = content)
+}
 
 /**
  * [active] 为 false 时，内容中的 BackHandler、PredictiveBackHandler 与 NavHost 改挂到不接收系统返回的调度器上；

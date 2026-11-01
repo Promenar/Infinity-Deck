@@ -66,6 +66,65 @@ class ExternalFoldersPanelStateTest {
         assertThat(externalPreviewFileName("a\u0000b.pdf")).isEqualTo("a_b.pdf")
     }
 
+    @Test
+    fun `默认别名取第一个未占用的 external 序号`() {
+        assertThat(nextGeneratedMountAlias(emptyList())).isEqualTo("external")
+        assertThat(nextGeneratedMountAlias(listOf("external", "external2"))).isEqualTo("external3")
+        assertThat(nextGeneratedMountAlias(listOf("docs"))).isEqualTo("external")
+    }
+
+    @Test
+    fun `只有自动生成的默认别名会被目录名替换`() {
+        assertThat(isGeneratedMountAlias("external")).isTrue()
+        assertThat(isGeneratedMountAlias("external2")).isTrue()
+        assertThat(isGeneratedMountAlias("external12")).isTrue()
+        assertThat(isGeneratedMountAlias(" external3 ")).isTrue()
+        assertThat(isGeneratedMountAlias("external1")).isFalse()
+        assertThat(isGeneratedMountAlias("external-docs")).isFalse()
+        assertThat(isGeneratedMountAlias("documents")).isFalse()
+        assertThat(isGeneratedMountAlias("")).isFalse()
+    }
+
+    @Test
+    fun `目录名转别名时规整大小写与空白并避开重名`() {
+        assertThat(mountAliasFromFolderName("Documents", emptyList())).isEqualTo("documents")
+        assertThat(mountAliasFromFolderName("My  Notes 2026", emptyList())).isEqualTo("my-notes-2026")
+        assertThat(mountAliasFromFolderName("论文初稿", emptyList())).isEqualTo("论文初稿")
+        assertThat(mountAliasFromFolderName("Documents", listOf("documents", "documents-2"))).isEqualTo("documents-3")
+        assertThat(mountAliasFromFolderName("a".repeat(60), emptyList())).hasLength(40)
+    }
+
+    @Test
+    fun `目录名不能作别名时不替换`() {
+        assertThat(mountAliasFromFolderName("   ", emptyList())).isNull()
+        assertThat(mountAliasFromFolderName("..", emptyList())).isNull()
+        assertThat(mountAliasFromFolderName("mnt", emptyList())).isNull()
+        assertThat(mountAliasFromFolderName("Skills", emptyList())).isNull()
+        assertThat(mountAliasFromFolderName(".infinity", emptyList())).isNull()
+    }
+
+    @Test
+    fun `真实路径目录名取末段且空路径视为未选`() {
+        assertThat(pickedRealPathFolder("/storage/emulated/0/Documents"))
+            .isEqualTo(PickedMountFolder("Documents", "/storage/emulated/0/Documents"))
+        assertThat(pickedRealPathFolder("/storage/emulated/0/Music/")?.name).isEqualTo("Music")
+        assertThat(pickedRealPathFolder("  ")).isNull()
+    }
+
+    @Test
+    fun `外部存储授权位置转成可读路径而其它提供方不显示`() {
+        val authority = "com.android.externalstorage.documents"
+        assertThat(safTreeLocationLabel(authority, "primary:Documents/reports", "内部存储"))
+            .isEqualTo("内部存储/Documents/reports")
+        assertThat(safTreeLocationLabel(authority, "1A2B-3C4D:Music", "内部存储")).isEqualTo("1A2B-3C4D/Music")
+        assertThat(safTreeLocationLabel(authority, "primary:", "内部存储")).isEqualTo("内部存储")
+        assertThat(safTreeLocationLabel("com.termux.documents", "/data/data/com.termux/files/home", "内部存储")).isNull()
+        assertThat(safTreeLocationLabel(authority, null, "内部存储")).isNull()
+        assertThat(safTreeFallbackName("primary:Documents/reports")).isEqualTo("reports")
+        assertThat(safTreeFallbackName("/data/data/com.termux/files/home")).isEqualTo("home")
+        assertThat(safTreeFallbackName("primary:")).isNull()
+    }
+
     private fun mount(id: String, sessionId: String) = ExternalMount(
         id = id,
         alias = id,

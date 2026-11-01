@@ -140,6 +140,8 @@ data class WorkspacePickerUiState(
     val linuxHome: LinuxHomeAvailability = LinuxHomeAvailability.UNSUPPORTED,
     /** 会话保存的运行模式；内置模式下 Linux 中的文件夹灰显，null 表示不针对具体会话。 */
     val runMode: SessionRunMode? = null,
+    /** 只浏览共享存储卷（挂载外部文件夹选路径）：首页只列存储卷，不列工作区登记、项目与 Linux。 */
+    val sharedOnly: Boolean = false,
 )
 
 /** Linux 主目录；选中它时沿用“Linux 主目录”显示名，其它目录取目录名。 */
@@ -411,22 +413,27 @@ fun WorkspacePickerContent(
     onUseFolder: () -> Unit = {},
     onGrantPermission: () -> Unit = {},
     onRetry: () -> Unit = {},
+    /** 面包屑首段名称，null 时为“工作区”。 */
+    rootTitle: String? = null,
+    /** 非 null 时首页也显示页头，返回按钮离开选择器（嵌在其它面板中使用时）。 */
+    onExitRoot: (() -> Unit)? = null,
 ) = Column(modifier.fillMaxSize()) {
     val page = state.page
     val projectsLabel = stringResource(R.string.workspace_picker_shared_folder)
     val volumeLabels = state.sharedRoots.associateWith { sharedVolumeLabel(state.sharedRoots, it) }
-    if (page != WorkspacePickerPage.Home) {
+    if (page != WorkspacePickerPage.Home || onExitRoot != null) {
         val crumbs = page.crumbs({ volumeLabels[it] ?: it.name }, projectsLabel, stringResource(R.string.workspace_picker_linux_root)).collapsedForDisplay()
         FolderBreadcrumbsBar(
             folderStack = crumbs,
-            rootTitle = stringResource(R.string.workspace_picker_root),
+            rootTitle = rootTitle ?: stringResource(R.string.workspace_picker_root),
             onNavigateBack = { onNavigate(page.parent()) },
             onNavigateToCrumb = { index -> onNavigate(page.navigateToCrumb(crumbs.getOrNull(index - 1)?.id)) },
             modifier = Modifier.testTag("workspace_picker_breadcrumbs"),
             backButtonTag = "workspace_picker_back",
+            onExitRoot = onExitRoot,
             actions = {
-                // 与返回按钮对称地放在页头右侧，不再单独占一行；Linux 起点列表的父目录是不可选的 `/`，不提供新建。
-                if (page != WorkspacePickerPage.Linux(null)) {
+                // 与返回按钮对称地放在页头右侧，不再单独占一行；Linux 起点列表的父目录是不可选的 `/`，首页没有当前目录，都不提供新建。
+                if (page != WorkspacePickerPage.Linux(null) && page != WorkspacePickerPage.Home) {
                     Spacer(Modifier.width(InfinitySpacing.Small))
                     FilledTonalIconButton(
                         onClick = onCreate,
@@ -545,6 +552,10 @@ private fun LazyListScope.homeItems(
     onPickLinuxHome: (WorkspaceEntity) -> Unit,
     onGrantPermission: () -> Unit,
 ) {
+    if (state.sharedOnly) {
+        sharedVolumeItems(state, volumeLabels, onNavigate)
+        return
+    }
     val projects = state.registered.filter { it.kind == WorkspaceEntity.KIND_PROJECT }
     val shared = state.registered.filter { it.kind == WorkspaceEntity.KIND_SHARED }
     // 应用内存储：本会话文件夹与共享文件夹。
@@ -596,16 +607,26 @@ private fun LazyListScope.homeItems(
             )
         }
     } else {
-        items(state.sharedRoots, key = { "volume:" + it.path }) { volume ->
-            WorkspaceOptionRow(
-                title = volumeLabels[volume] ?: volume.name,
-                subtitle = AnnotatedString(stringResource(R.string.workspace_picker_shared_volume_desc)),
-                tagsKind = WorkspaceEntity.KIND_SHARED,
-                onClick = { onNavigate(WorkspacePickerPage.Shared(volume, volume)) },
-                leading = { Icon(Icons.Rounded.SdStorage, null, tint = MaterialTheme.colorScheme.primary) },
-                modifier = Modifier.testTag("workspace_picker_volume"),
-            )
-        }
+        sharedVolumeItems(state, volumeLabels, onNavigate)
+    }
+}
+
+private fun LazyListScope.sharedVolumeItems(
+    state: WorkspacePickerUiState,
+    volumeLabels: Map<File, String>,
+    onNavigate: (WorkspacePickerPage) -> Unit,
+) {
+    items(state.sharedRoots, key = { "volume:" + it.path }) { volume ->
+        WorkspaceOptionRow(
+            title = volumeLabels[volume] ?: volume.name,
+            subtitle = AnnotatedString(stringResource(R.string.workspace_picker_shared_volume_desc)),
+            tagsKind = WorkspaceEntity.KIND_SHARED,
+            // 挂载选路径时不涉及工作区的备份与留存，标签不适用。
+            showTags = !state.sharedOnly,
+            onClick = { onNavigate(WorkspacePickerPage.Shared(volume, volume)) },
+            leading = { Icon(Icons.Rounded.SdStorage, null, tint = MaterialTheme.colorScheme.primary) },
+            modifier = Modifier.testTag("workspace_picker_volume"),
+        )
     }
 }
 
