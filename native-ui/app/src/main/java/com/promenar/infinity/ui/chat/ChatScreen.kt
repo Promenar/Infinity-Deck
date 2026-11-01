@@ -489,6 +489,32 @@ fun ChatScreenContent(
     val pipelineGroups = remember(uiState.messages) { buildPipelineGroups(uiState.messages) }
     // 计划工具结果不带清单，按会话顺序回放出每次调用前后的计划，供工具行展开时显示计划清单。
     val planSnapshots = remember(uiState.messages) { planCallSnapshots(uiState.messages) }
+    // 本轮唯一的进行中元素：只在最后一个助手分组上判定，动画与计时挂在它身上（工具行、思考行、正文末尾、等待行或审批与提问卡）。
+    val liveToolKeys = LocalToolLiveOutput.current?.activeKeys?.collectAsState()?.value.orEmpty()
+    val lastAssistantGroup = pipelineGroups.lastOrNull()?.takeIf { !it.isUser && !it.isNotice }
+    val visibleApproval = uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting }
+    val liveStep = remember(
+        lastAssistantGroup?.messages, state.generationPhase, uiState.isGenerating, uiState.streamingContent.isNotEmpty(),
+        visibleApproval, state.pendingQuestion, liveToolKeys, state.generationStartedAt,
+    ) {
+        lastAssistantGroup?.let { group ->
+            val groupIds = group.messages.mapTo(HashSet()) { it.id }
+            resolveLiveStep(
+                group.messages,
+                LiveTurnSignals(
+                    phase = state.generationPhase,
+                    isGenerating = uiState.isGenerating,
+                    hasStreamingContent = uiState.streamingContent.isNotEmpty(),
+                    awaitingApproval = groupHasPendingApproval(group, visibleApproval, isLastGroup = true),
+                    approvalMessageId = visibleApproval?.assistantMessageId,
+                    awaitingAnswer = state.pendingQuestion?.assistantMessageId?.let { it in groupIds } == true,
+                    questionMessageId = state.pendingQuestion?.assistantMessageId,
+                    liveToolKeys = liveToolKeys,
+                    generationStartedAt = state.generationStartedAt,
+                ),
+            )
+        }
+    }
     val secretsByGroup = remember(pipelineGroups, state.secretOutputCards, state.secretInputReceipts) {
         secretItemsByGroup(pipelineGroups.map { group -> group.messages.mapTo(HashSet()) { it.id } }, state.secretOutputCards, state.secretInputReceipts)
     }
@@ -1072,6 +1098,9 @@ fun ChatScreenContent(
                             } else {
                                 null
                             },
+                            liveStep = if (group === lastAssistantGroup) liveStep else null,
+                            // 等待模型过久时停止当前生成并按最后一条用户消息重新生成（与失败提示的“重试”同一入口）。
+                            onStopAndRetry = actions.onRetryLastMessage,
                         )
                     }
                     secretsByGroup[idx]?.let { secrets ->
@@ -1099,12 +1128,15 @@ fun ChatScreenContent(
                 state.pendingQuestion?.let { question ->
                     item(key = "ask_question") {
                         ChatApprovalLiveRegion(Modifier.animateItem(fadeInSpec = ChatItemFadeIn, placementSpec = null, fadeOutSpec = ChatItemFadeOut)) {
-                            AskUserCard(
-                                request = question.request,
-                                stateKey = question.toolCallId,
-                                onSubmit = { answer -> actions.onAnswerQuestion(question, answer) },
-                                onSkip = { actions.onAnswerQuestion(question, com.promenar.infinity.domain.ask.AskUserAnswer(skipped = true)) },
-                            )
+                            Column {
+                                liveStep?.takeIf { it.kind == LiveStepKind.QUESTION }?.let { LiveWaitBadge(it) }
+                                AskUserCard(
+                                    request = question.request,
+                                    stateKey = question.toolCallId,
+                                    onSubmit = { answer -> actions.onAnswerQuestion(question, answer) },
+                                    onSkip = { actions.onAnswerQuestion(question, com.promenar.infinity.domain.ask.AskUserAnswer(skipped = true)) },
+                                )
+                            }
                         }
                     }
                 }
@@ -1148,70 +1180,73 @@ fun ChatScreenContent(
                 uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting }?.let { request ->
                     item(key = "approval_request") {
                         ChatApprovalLiveRegion(Modifier.animateItem(fadeInSpec = ChatItemFadeIn, placementSpec = null, fadeOutSpec = ChatItemFadeOut)) {
-                            ApprovalCard(
-                                toolName = request.calls.firstOrNull()?.toolName
-                                    ?: request.toolName
-                                    ?: stringResource(R.string.chat_approval_unknown_tool),
-                                description = request.reason.orEmpty(),
-                                calls = request.calls.map { call ->
-                                    ApprovalDisplayCall(
-                                        name = call.toolName,
-                                        argumentsSummary = call.argumentsSummary,
-                                        riskLabel = approvalRiskLabel(call.risk),
-                                        executionTarget = call.executionTarget,
-                                        highRisk = call.risk in setOf("delete", "process"),
-                                        preview = remember(call, request.assistantMessageId, uiState.messages) {
-                                            ApprovalPreview.forCall(call, uiState.messages, request.assistantMessageId)
-                                        },
-                                        diffPreview = com.promenar.infinity.ui.chat.diff.rememberApprovalDiffPreview(
-                                            call = call,
-                                            messages = uiState.messages,
-                                            assistantMessageId = request.assistantMessageId,
-                                            sessionId = uiState.session?.id,
-                                            privateWorkspaceRootUuid = uiState.session?.workspaceRootUuid,
-                                        ),
-                                        schedule = if (call.toolName != "schedule_create") null else {
-                                            val context = LocalContext.current
-                                            remember(call, request.assistantMessageId, uiState.messages) {
-                                                ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)?.let { args ->
-                                                    scheduleApprovalPreview(
-                                                        args = args,
-                                                        nowMillis = System.currentTimeMillis(),
-                                                        zoneId = java.time.ZoneId.systemDefault().id,
-                                                        exactAlarmAvailable = com.promenar.infinity.distribution.DistributionCapabilities.exactAlarmAvailable,
-                                                        canScheduleExact = com.promenar.infinity.background.schedule.canScheduleExact(context),
-                                                    )
+                            Column {
+                                liveStep?.takeIf { it.kind == LiveStepKind.APPROVAL }?.let { LiveWaitBadge(it) }
+                                ApprovalCard(
+                                    toolName = request.calls.firstOrNull()?.toolName
+                                        ?: request.toolName
+                                        ?: stringResource(R.string.chat_approval_unknown_tool),
+                                    description = request.reason.orEmpty(),
+                                    calls = request.calls.map { call ->
+                                        ApprovalDisplayCall(
+                                            name = call.toolName,
+                                            argumentsSummary = call.argumentsSummary,
+                                            riskLabel = approvalRiskLabel(call.risk),
+                                            executionTarget = call.executionTarget,
+                                            highRisk = call.risk in setOf("delete", "process"),
+                                            preview = remember(call, request.assistantMessageId, uiState.messages) {
+                                                ApprovalPreview.forCall(call, uiState.messages, request.assistantMessageId)
+                                            },
+                                            diffPreview = com.promenar.infinity.ui.chat.diff.rememberApprovalDiffPreview(
+                                                call = call,
+                                                messages = uiState.messages,
+                                                assistantMessageId = request.assistantMessageId,
+                                                sessionId = uiState.session?.id,
+                                                privateWorkspaceRootUuid = uiState.session?.workspaceRootUuid,
+                                            ),
+                                            schedule = if (call.toolName != "schedule_create") null else {
+                                                val context = LocalContext.current
+                                                remember(call, request.assistantMessageId, uiState.messages) {
+                                                    ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)?.let { args ->
+                                                        scheduleApprovalPreview(
+                                                            args = args,
+                                                            nowMillis = System.currentTimeMillis(),
+                                                            zoneId = java.time.ZoneId.systemDefault().id,
+                                                            exactAlarmAvailable = com.promenar.infinity.distribution.DistributionCapabilities.exactAlarmAvailable,
+                                                            canScheduleExact = com.promenar.infinity.background.schedule.canScheduleExact(context),
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                        },
-                                        background = remember(call, request.assistantMessageId, uiState.messages) {
-                                            ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)?.let {
-                                                backgroundRunPreview(it, com.promenar.infinity.distribution.DistributionCapabilities.backgroundKeepAliveAvailable)
-                                            }
-                                        },
-                                        transfer = remember(call, request.assistantMessageId, uiState.messages) {
-                                            ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)
-                                                ?.let { sftpTransferApprovalPreview(call.toolName, it) }
-                                        },
-                                        knowledgeAccess = if (call.toolName != REQUEST_KNOWLEDGE_ACCESS_TOOL) null else {
-                                            remember(call, request.assistantMessageId, uiState.messages) {
-                                                val reason = ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)
-                                                    ?.get("reason")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
-                                                knowledgeAccessApproval(call.toolName, call.executionTarget, reason)
-                                            }
-                                        },
-                                    )
-                                }.ifEmpty {
-                                    listOf(ApprovalDisplayCall(
-                                        name = request.toolName ?: stringResource(R.string.chat_approval_unknown_tool),
-                                        argumentsSummary = request.args.orEmpty(),
-                                        riskLabel = approvalRiskLabel(request.type.orEmpty()),
-                                    ))
-                                },
-                                onApprove = { actions.onApprove(request) },
-                                onApproveAll = { actions.onApproveAll(request) },
-                                onDecline = { actions.onDecline(request) },
-                            )
+                                            },
+                                            background = remember(call, request.assistantMessageId, uiState.messages) {
+                                                ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)?.let {
+                                                    backgroundRunPreview(it, com.promenar.infinity.distribution.DistributionCapabilities.backgroundKeepAliveAvailable)
+                                                }
+                                            },
+                                            transfer = remember(call, request.assistantMessageId, uiState.messages) {
+                                                ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)
+                                                    ?.let { sftpTransferApprovalPreview(call.toolName, it) }
+                                            },
+                                            knowledgeAccess = if (call.toolName != REQUEST_KNOWLEDGE_ACCESS_TOOL) null else {
+                                                remember(call, request.assistantMessageId, uiState.messages) {
+                                                    val reason = ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)
+                                                        ?.get("reason")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                                                    knowledgeAccessApproval(call.toolName, call.executionTarget, reason)
+                                                }
+                                            },
+                                        )
+                                    }.ifEmpty {
+                                        listOf(ApprovalDisplayCall(
+                                            name = request.toolName ?: stringResource(R.string.chat_approval_unknown_tool),
+                                            argumentsSummary = request.args.orEmpty(),
+                                            riskLabel = approvalRiskLabel(request.type.orEmpty()),
+                                        ))
+                                    },
+                                    onApprove = { actions.onApprove(request) },
+                                    onApproveAll = { actions.onApproveAll(request) },
+                                    onDecline = { actions.onDecline(request) },
+                                )
+                            }
                         }
                     }
                 }

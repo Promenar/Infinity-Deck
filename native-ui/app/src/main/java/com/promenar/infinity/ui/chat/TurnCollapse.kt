@@ -55,10 +55,14 @@ internal fun buildCollapsedTurnPlan(
     if (messages.any { !it.pendingApprovalToolIds.isNullOrEmpty() }) return null
     val finalAssistant = messages.lastOrNull { it.role == MessageRole.ASSISTANT } ?: return null
     if (!finalAssistant.toolCalls.isNullOrEmpty() || finalAssistant.content.isBlank()) return null
-    val finalContent = steps.lastOrNull() as? PipelineStep.Content ?: return null
+    // 同一条消息按“正文 → 工具”排列：最后一条助手消息若还带有已完成的工具步骤，它们排在正文之后，
+    // 收起时并入过程；正文之后出现其它步骤（如会话记录）则不是可收起的完成态。
+    val finalIndex = steps.indexOfLast { it is PipelineStep.Content }
+    val finalContent = steps.getOrNull(finalIndex) as? PipelineStep.Content ?: return null
     if (finalContent.messageId != finalAssistant.id || finalContent.content.isBlank()) return null
+    if (steps.drop(finalIndex + 1).any { it !is PipelineStep.ToolExec }) return null
 
-    val processSteps = steps.dropLast(1)
+    val processSteps = steps.filterIndexed { index, _ -> index != finalIndex }
     val toolGroups = processSteps.filterIsInstance<PipelineStep.ToolExec>()
     val thinkingCount = processSteps.count { it is PipelineStep.Thinking }
     if (toolGroups.isEmpty() && thinkingCount == 0) return null

@@ -114,7 +114,7 @@ class PipelineBubbleTest {
     }
 
     @Test
-    fun `streaming body creates content step after thinking and tools for empty placeholder`() {
+    fun `流式正文占位排在思考之后、本条消息的工具之前`() {
         val message = Message(
             id = "assistant-streaming",
             role = MessageRole.ASSISTANT,
@@ -137,20 +137,28 @@ class PipelineBubbleTest {
         )
 
         assertThat(plan.steps.map { it::class.simpleName })
-            .containsExactly("Thinking", "ToolExec", "Content")
+            .containsExactly("Thinking", "Content", "ToolExec")
             .inOrder()
-        // 已有正文时生成指示仍跟在末尾，直到本轮结束。
-        assertThat(plan.showStandaloneCursor).isTrue()
+        assertThat(plan.steps.filterIsInstance<PipelineStep.Content>().single().messageId).isEqualTo("assistant-streaming")
         assertThat(plan.showContentCursor).isFalse()
+    }
+
+    @Test
+    fun `同一条消息先说正文再调用工具时正文在工具上方`() {
+        val message = Message(
+            "say-then-run", MessageRole.ASSISTANT, "现在删除源仓库", reasoning = "确认路径",
+            executionSteps = listOf(ExecutionStep("call", "tool_call", "shell_exec", "{}", "c1", timestamp = 1_000)),
+        )
+        val plan = buildPipelineRenderPlan(listOf(message), isGenerating = true, hasStreamingContent = false)
+        assertThat(plan.steps.map { it::class.simpleName }).containsExactly("Thinking", "Content", "ToolExec").inOrder()
     }
 
     @Test
     fun `finished turn hides generation indicator`() {
         val message = Message(id = "assistant-done", role = MessageRole.ASSISTANT, content = "完成")
+        val group = PipelineGroup(listOf(message), isUser = false)
 
-        val plan = buildPipelineRenderPlan(messages = listOf(message), isGenerating = false, hasStreamingContent = false)
-
-        assertThat(plan.showStandaloneCursor).isFalse()
+        assertThat(previewLiveStep(group, isGenerating = false, streamingContent = "")).isNull()
     }
 
     @Test
@@ -168,8 +176,11 @@ class PipelineBubbleTest {
         )
 
         assertThat(plan.steps).isEmpty()
-        assertThat(plan.showStandaloneCursor).isTrue()
         assertThat(plan.showContentCursor).isFalse()
+        // 首字前没有步骤可挂：流末尾单独一行“等待模型响应”。
+        val live = previewLiveStep(PipelineGroup(listOf(message), isUser = false), isGenerating = true, streamingContent = "")
+        assertThat(live?.kind).isEqualTo(LiveStepKind.WAITING_MODEL)
+        assertThat(live?.isTailRow).isTrue()
     }
 
 

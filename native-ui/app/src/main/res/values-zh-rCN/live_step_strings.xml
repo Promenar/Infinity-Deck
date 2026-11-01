@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 会话流里正在进行的那一步 -->
+    <string name="live_step_waiting_model">等待模型响应</string>
+    <string name="live_step_preparing_tool">正在准备工具调用</string>
+    <string name="live_step_stalled_hint">超过 30 秒未收到回应，可能是网络或服务繁忙</string>
+    <string name="live_step_stop_and_retry">停止并重试</string>
+    <string name="live_step_waited">已等待 %1$s</string>
+    <string name="live_step_thinking_elapsed">思考中 · %1$s</string>
+</resources>
