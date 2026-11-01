@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- SSH 终端清空缓冲（断开后重连）时把光标移回左上角，新连接的输出不再从旧提示符的位置接着写。
+- 视觉实验室：已打开某个版本时再用深链以录制模式打开另一版本，录制模式现在会生效（隐藏系统栏与控制条），不再沿用上一个版本的非录制状态。
+
 ## [0.11.1-beta] - 2026-11-02
 
 ### 改进
