@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.lab.chat
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabScene
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.lab.stage.LabWorkflowScene
+import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /**
  * 对话目录（会话页与检查器）下的版本场景。工作流按时间轴回放；状态版本是同一脚本在某一时刻的定格，
@@ -129,6 +131,10 @@ private fun AdeGitPanel(text: LabAdeText) {
         ),
         // 提交列表不在脚本里，分支与变更两页可以切换。
         actions = GitPanelActions(onSelectTab = { if (it != GitPanelTab.COMMITS) tab = it }),
-        modifier = Modifier.fillMaxSize(),
+        // 与 GitChangesPage 在检视器里的边距一致。
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = InfinitySpacing.XSmall)
+            .padding(horizontal = InfinitySpacing.ScreenHorizontal),
     )
 }
