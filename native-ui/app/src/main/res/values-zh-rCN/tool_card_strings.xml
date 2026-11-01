@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 对话流工具调用详情卡：计划清单、后台任务查看与通用字段展示。 -->
+<resources>
+    <string name="tool_card_plan_summary_created">创建计划 · 「%1$s」，共 %2$d 步</string>
+    <string name="tool_card_plan_summary_created_untitled">创建计划 · 共 %1$d 步</string>
+    <string name="tool_card_plan_summary_viewed">查看计划 · 第 %1$d / %2$d 步</string>
+    <string name="tool_card_plan_summary_viewed_done">查看计划 · %1$d 步已全部完成</string>
+    <string name="tool_card_plan_summary_done_started">更新计划 · 完成「%1$s」，开始「%2$s」</string>
+    <string name="tool_card_plan_summary_done_many_started">更新计划 · 完成 %1$d 步，开始「%2$s」</string>
+    <string name="tool_card_plan_summary_done">更新计划 · 完成「%1$s」</string>
+    <string name="tool_card_plan_summary_done_many">更新计划 · 完成 %1$d 步</string>
+    <string name="tool_card_plan_summary_started">更新计划 · 开始「%1$s」</string>
+    <string name="tool_card_plan_just_done">刚完成</string>
+    <string name="tool_card_plan_current">当前</string>
+    <string name="tool_card_plan_state_done">已完成</string>
+    <string name="tool_card_plan_state_current">进行中</string>
+    <string name="tool_card_plan_state_todo">待办</string>
+    <string name="tool_card_plan_position">第 %1$d / %2$d 步</string>
+    <string name="tool_card_plan_all_done">%1$d 步已全部完成</string>
+    <string name="tool_card_raw_show">原始数据</string>
+    <string name="tool_card_raw_hide">收起原始数据</string>
+    <string name="tool_card_job_summary">%1$s · %2$s · %3$s</string>
+    <string name="tool_card_job_summary_elapsed">%1$s · %2$s · %3$s %4$s</string>
+    <string name="tool_card_job_unnamed">后台任务</string>
+    <string name="tool_card_job_state_running">运行中</string>
+    <string name="tool_card_job_state_completed">已完成</string>
+    <string name="tool_card_job_state_exited">已退出</string>
+    <string name="tool_card_job_state_stopped">已停止</string>
+    <string name="tool_card_job_state_timed_out">已超时</string>
+    <string name="tool_card_job_state_interrupted">已中断</string>
+    <string name="tool_card_job_state_failed">失败</string>
+    <string name="tool_card_job_state_other">%1$s</string>
+    <string name="tool_card_job_label_state">状态</string>
+    <string name="tool_card_job_label_elapsed">已运行</string>
+    <string name="tool_card_job_label_exit_code">退出码</string>
+    <string name="tool_card_job_label_started">开始于</string>
+    <string name="tool_card_job_log_empty">暂无输出</string>
+    <string name="tool_card_job_log_truncated">仅显示日志末尾</string>
+    <string name="tool_card_job_open_log">打开完整日志</string>
+    <string name="tool_card_job_stop">停止任务</string>
+    <string name="tool_card_job_value_unknown">—</string>
+    <string name="tool_card_fields_arguments">参数</string>
+    <string name="tool_card_fields_result">结果</string>
+    <string name="tool_card_fields_expand">展开</string>
+    <string name="tool_card_fields_collapse">收起</string>
+</resources>

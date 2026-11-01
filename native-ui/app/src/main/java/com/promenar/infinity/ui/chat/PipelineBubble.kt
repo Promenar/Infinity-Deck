@@ -1234,10 +1234,12 @@ internal fun InlineToolRow(
         invocations.singleOrNull { !it.complete }?.let { commandStepLabel(it.name, it.call?.toolArgs, jobLabels) }
     } else null
     val runningCommandText = runningCommand?.let { runningCommandText(it) }
+    // 单个计划或任务查看调用：摘要直接说明这次改了什么、任务处于什么状态。
+    val cardSummaryText = toolCardSummaryText(invocations, jobLabels)
     val segments = buildList<CharSequence> {
         if (stateSummaries.isNotEmpty()) add(stateSummaries.joinToString("，"))
         // 文件改动只来自成功的文件工具：全是文件编辑时标题直接给出文件与行数，混合工具时作为补充段。
-        if (!stateOnly && (!showFileTitle || !summary.isFileEditOnly)) add(runningCommandText ?: toolGroupSummaryText(summary))
+        if (!stateOnly && (!showFileTitle || !summary.isFileEditOnly)) add(runningCommandText ?: cardSummaryText ?: toolGroupSummaryText(summary))
         if (showFileTitle) add(com.promenar.infinity.ui.chat.diff.fileChangesStyledTitle(fileChanges))
         if (summary.failedCount == 0 && summary.runningAction == null) summary.durationMs?.let { add(stepDurationText(it)) }
     }
@@ -1322,10 +1324,26 @@ internal fun InlineToolRow(
                             commandStep?.waitLimitSeconds?.let { limit ->
                                 JobWaitProgress(limit, startedAt = invocation.call?.timestamp, running = !invocation.complete)
                             }
+                            // 计划与任务查看调用改用专用卡片；其余工具的 JSON 参数与结果按字段列出。
+                            val planCard = rememberPlanCardModel(invocation)
+                            val jobCard = if (planCard == null) rememberJobCardModel(invocation) else null
+                            val fieldFallback = planCard == null && jobCard == null && usesFieldFallback(invocation.name)
+                            if (planCard != null) {
+                                PlanToolCard(
+                                    model = planCard,
+                                    arguments = invocation.call?.toolArgs,
+                                    results = invocation.results.mapNotNull { it.content },
+                                )
+                            } else if (jobCard != null) {
+                                JobToolCard(jobCard)
+                            }
                             // 等待、查看、停止任务的参数只有任务号，标题已说明对象，不再显示原始参数。
-                            val argumentsShown = commandStep?.kind !in setOf(CommandStepKind.WAIT, CommandStepKind.STATUS, CommandStepKind.STOP)
+                            val argumentsShown = planCard == null &&
+                                commandStep?.kind !in setOf(CommandStepKind.WAIT, CommandStepKind.STATUS, CommandStepKind.STOP)
                             invocation.call?.toolArgs?.takeIf { argumentsShown && it.isNotBlank() }?.let { args ->
-                                ExpandableToolText(text = args, collapsedLines = 6, arguments = true)
+                                val fields = remember(args, fieldFallback) { if (fieldFallback) toolFieldRows(args) else null }
+                                if (fields != null) ToolFieldList(fields, arguments = true)
+                                else ExpandableToolText(text = args, collapsedLines = 6, arguments = true)
                             }
                             invocation.results.forEach { result ->
                                 val media = result.media
@@ -1346,7 +1364,11 @@ internal fun InlineToolRow(
                                 }
                                 result.content?.takeIf(String::isNotBlank)?.let { content ->
                                     if (result.type == "error") ToolErrorBlock(content)
-                                    else ExpandableToolText(text = content, collapsedLines = 12)
+                                    else if (planCard == null && jobCard == null) {
+                                        val fields = remember(content, fieldFallback) { if (fieldFallback) toolFieldRows(content) else null }
+                                        if (fields != null) ToolFieldList(fields, arguments = false)
+                                        else ExpandableToolText(text = content, collapsedLines = 12)
+                                    }
                                 }
                             }
                         }
