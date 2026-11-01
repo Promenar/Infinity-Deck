@@ -197,7 +197,7 @@ class BuiltinExecService(
                 val finishWorkspace = try { com.promenar.infinity.data.repository.WorkspaceExternalMutationCoordinator.begin(root.toPath()) }
                 catch (failure: Throwable) { withContext(kotlinx.coroutines.NonCancellable) { finishMutation?.invoke() }; throw failure }
                 return com.promenar.infinity.data.jobs.PreparedBackgroundCommand(
-                    request.copy(environment = request.environment + lease.environment + gitEnvironment + secrets), lease::close,
+                    request.copy(environment = linuxCommandEnvironment(request.environment, lease.environment, secrets)), lease::close,
                     afterRun = { try { packageProvenance.after(before, resolvedSessionId, title) } finally { try { finishMutation?.invoke() } finally { finishWorkspace() } } },
                 )
             }
@@ -265,8 +265,8 @@ class BuiltinExecService(
             val base = if (kind == ExecRunKind.LINUX) {
                 linuxRequest(root, workspaceKind, sessionId, linuxSource ?: source, stdin, timeoutSeconds, target, LinuxGitEnvironment.from(lease.environment))
             } else request(root, workspaceKind)
-            val commandRequest = base.copy(environment = base.environment + lease.environment +
-                (if (kind == ExecRunKind.LINUX) LinuxGitEnvironment.from(lease.environment) else emptyMap()) + secrets,
+            val commandRequest = base.copy(environment = if (kind == ExecRunKind.LINUX) linuxCommandEnvironment(base.environment, lease.environment, secrets)
+                else base.environment + lease.environment + secrets,
                 terminal = base.terminal && capture == null,
                 outputLimitOverride = if (capture != null) SecretIoLimits.MAX_SECRET_BYTES + 1 else null,
                 outputTransform = if (capture == null && sessionId != null && redactor != null) secretCommandOutput(sessionId, redactor) else null)

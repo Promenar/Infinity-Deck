@@ -9,6 +9,8 @@ import com.promenar.infinity.data.git.remote.GitRemoteBroker
 import com.promenar.infinity.data.git.remote.GitRemoteLease
 import com.promenar.infinity.data.git.remote.GitRemoteSessions
 import com.promenar.infinity.data.linux.LinuxGhConfig
+import com.promenar.infinity.data.linux.LinuxLaunchBuilder
+import com.promenar.infinity.data.linux.PackagedProot
 import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
 import com.promenar.infinity.data.repository.*
 import com.promenar.infinity.data.storage.ExternalMountPaths
@@ -36,6 +38,57 @@ import org.junit.Before
 import org.junit.Test
 
 class LinuxExecIntegrationTest {
+    @Test fun `前台Linux最终请求保留凭据与全部挂载信任配置`() = runBlocking<Unit> {
+        val exec = safeDirectoryService()
+        assertThat(shell(exec, "true").exitCode).isEqualTo(0)
+        assertFinalGitEnvironment(terminalEnvironments.single())
+    }
+
+    @Test fun `后台Linux最终请求保留凭据与全部挂载信任配置`() = runBlocking<Unit> {
+        val prepared = safeDirectoryService().prepareBackgroundCommand(BackgroundJobRunner.LINUX, "true", null,
+            BackgroundJobLocation(workspace, workspace, true, false, sessionId = "s"), 1, "s")
+        try {
+            assertFinalGitEnvironment(prepared.request.environment)
+        } finally { prepared.close() }
+    }
+
+    private val safeDirectoryLease = mapOf(
+        GitRemoteBroker.ENV_HTTP_PROXY to "127.0.0.1:43123",
+        GitRemoteBroker.ENV_NONCE to "synthetic-safe-directory-command",
+        GitRemoteBroker.ENV_CREDENTIAL_HOSTS to "git.test,git.example.test",
+    )
+
+    private fun safeDirectoryService(): BuiltinExecService {
+        runtime.launchBuilder = LinuxLaunchBuilder(PackagedProot(File(root, "lib")),
+            File(root, "alpine").apply { mkdirs() }, File(root, "cache"), tailnetEnvironment = { emptyMap() })
+        val mount = File(root, "shared").apply { mkdirs() }
+        return service(mounts = listOf(ExternalMount("probe", "gitprobe-root", "real_path", mount.path, "s", 0)),
+            gitRemote = GitRemoteSessions {
+                object : GitRemoteLease {
+                    override val environment = safeDirectoryLease
+                    override fun close() = Unit
+                }
+            })
+    }
+
+    private fun assertFinalGitEnvironment(environment: Map<String, String>) {
+        val credentials = LinuxGitEnvironment.from(safeDirectoryLease)
+        val start = credentials.getValue("GIT_CONFIG_COUNT").toInt()
+        val roots = listOf("/workspace", "/workspace/*", "/mnt/gitprobe-root", "/mnt/gitprobe-root/*", "/mnt/skills", "/mnt/skills/*")
+        val count = start + roots.size
+        assertThat(environment["GIT_CONFIG_COUNT"]).isEqualTo(count.toString())
+        assertThat(environment.keys.filter { it.startsWith("GIT_CONFIG_KEY_") }).containsExactlyElementsIn((0 until count).map { "GIT_CONFIG_KEY_$it" })
+        assertThat(environment.keys.filter { it.startsWith("GIT_CONFIG_VALUE_") }).containsExactlyElementsIn((0 until count).map { "GIT_CONFIG_VALUE_$it" })
+        (0 until start).forEach { index ->
+            assertThat(environment["GIT_CONFIG_KEY_$index"]).isEqualTo(credentials["GIT_CONFIG_KEY_$index"])
+            assertThat(environment["GIT_CONFIG_VALUE_$index"]).isEqualTo(credentials["GIT_CONFIG_VALUE_$index"])
+        }
+        roots.forEachIndexed { index, path ->
+            assertThat(environment["GIT_CONFIG_KEY_${start + index}"]).isEqualTo("safe.directory")
+            assertThat(environment["GIT_CONFIG_VALUE_${start + index}"]).isEqualTo(path)
+        }
+    }
+
     @Test fun `前后台Linux都追加git配置且内置命令不追加`() = runBlocking<Unit> {
         val leaseEnvironment = mapOf(
             GitRemoteBroker.ENV_HTTP_PROXY to "127.0.0.1:43123",
@@ -177,6 +230,7 @@ class LinuxExecIntegrationTest {
     private lateinit var workspace: File
     private lateinit var runtime: FakeLinuxRuntime
     private lateinit var runner: BuiltinCommandRunner
+    private val terminalEnvironments = mutableListOf<Map<String, String>>()
     private val scopes = mutableListOf<CoroutineScope>()
     private val keepKinds = mutableListOf<ExecRunKind>()
     private var homeResolutions = 0
@@ -193,6 +247,7 @@ class LinuxExecIntegrationTest {
             signaller = { group, signal -> ProcessBuilder("/bin/kill", "-$signal", "-$group").start().waitFor() },
             scratchDirectory = { File(root, "scratch") }, killGraceMillis = 50, pollMillis = 20,
             terminalFactory = { argv, directory, environment ->
+                terminalEnvironments += environment.toMap()
                 val process = ProcessBuilder(listOf("/usr/bin/perl", "-e", "setpgrp(0, 0); exec @ARGV or exit 127") + argv)
                     .directory(directory).redirectErrorStream(true).apply { environment().clear(); environment().putAll(environment) }.start()
                 object : Process() {
@@ -774,6 +829,7 @@ private class FakeLinuxRuntime(root: File) : LinuxRuntime {
     override val paths = LinuxPaths(File(root,"rootfs"), File(root,"rootfs/root"))
     val specs = mutableListOf<LinuxLaunchSpec>()
     var unavailableOnPrepare = false
+    var launchBuilder: LinuxLaunchBuilder? = null
     override suspend fun setAgentEnabled(enabled: Boolean) { agentEnabled.value = enabled }
     override fun startInstall(options: LinuxInstallOptions) = Unit
     override fun cancelInstall() = Unit
@@ -785,6 +841,8 @@ private class FakeLinuxRuntime(root: File) : LinuxRuntime {
     override suspend fun prepareLaunch(spec: LinuxLaunchSpec): LinuxProcessLaunch {
         if(unavailableOnPrepare || state.value !is LinuxRuntimeState.Ready) throw LinuxUnavailableException(LinuxRuntimeState.NotInstalled(0))
         specs += spec
-        return LinuxProcessLaunch("/bin/sh", listOf("-c",spec.argv.last()), mapOf("PATH" to "/usr/bin:/bin") + spec.environment, checkNotNull(spec.workspace))
+        val environment = launchBuilder?.build(spec, maintainHomeConfiguration = false)?.environment
+            ?: (mapOf("PATH" to "/usr/bin:/bin") + spec.environment)
+        return LinuxProcessLaunch("/bin/sh", listOf("-c",spec.argv.last()), environment, checkNotNull(spec.workspace))
     }
 }
