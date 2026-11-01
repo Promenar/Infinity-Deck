@@ -11,8 +11,16 @@ val INFINITY_DATABASE_MIGRATIONS: Array<Migration>
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_18, MIGRATION_17_18,
         MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24,
         MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
-        MIGRATION_30_31,
+        MIGRATION_30_31, MIGRATION_31_32,
     )
+
+/** 模型侧轮次上下文与生成提醒分别保存原文，历史消息保持为空。 */
+val MIGRATION_31_32 = object : Migration(31, 32) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE messages ADD COLUMN turn_context TEXT")
+        db.execSQL("ALTER TABLE messages ADD COLUMN request_instruction TEXT")
+    }
+}
 
 /** 用户消息的引用批注以可空 JSON 文本保存。 */
 val MIGRATION_30_31 = object : Migration(30, 31) {

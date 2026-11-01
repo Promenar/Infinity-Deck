@@ -103,7 +103,7 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         ParameterSchemeEntity::class,
         com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity::class,
     ],
-    version = 31,
+    version = 32,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -218,3 +218,5 @@ internal const val INFINITY_SCHEMA_V29_IDENTITY_HASH = "9d0bef4ef8c9c7850437f014
 internal const val INFINITY_SCHEMA_V30_IDENTITY_HASH = "ccac3b935d14b590734779048ef2eaf2"
 
 internal const val INFINITY_SCHEMA_V31_IDENTITY_HASH = "f4d6fe7e2fb95b1bb98f165bb840d058"
+
+internal const val INFINITY_SCHEMA_V32_IDENTITY_HASH = "1ecb27d0ac1c4dbf13e23fd519b8cfe3"

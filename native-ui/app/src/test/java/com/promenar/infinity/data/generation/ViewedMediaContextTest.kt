@@ -8,12 +8,14 @@ import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.remote.protocol.*
 import com.promenar.infinity.domain.media.*
 import io.mockk.mockk
+import io.mockk.coEvery
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -28,6 +30,11 @@ import java.nio.file.Files
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ViewedMediaContextTest {
+    @Before fun initializeMocksBeforeNativeImages() {
+        // 原生位图用例会先占用图形运行时；提前安装测试代理，避免后续动态附着受其影响。
+        mockk<android.content.SharedPreferences>(relaxed = true)
+    }
+
     private fun imageBytes(width: Int, height: Int, alpha: Boolean): ByteArray {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(if (alpha) Color.argb(80, 25, 30, 60) else Color.RED)
@@ -69,7 +76,7 @@ class ViewedMediaContextTest {
             val target = MediaViewTarget(ModelCapabilities(vision = true))
             val result = viewer.view("s", MediaViewRequest(listOf("/a.png")), target)
             assertThat(result.viewedMedia).hasSize(1)
-            val session = Session("s", "a", messages = listOf(
+            val session = Session("s", "a", modelId = "p::m", messages = listOf(
                 Message("u", MessageRole.USER, "查看"),
                 Message("a", MessageRole.ASSISTANT, "", toolCalls = listOf(ToolCall("call", "view_media", "{}"))),
                 Message("t", MessageRole.TOOL, result.content, toolCallId = "call", name = "view_media", viewedMedia = result.viewedMedia),
@@ -80,6 +87,10 @@ class ViewedMediaContextTest {
             val loader = ViewedMediaContextLoader(viewer) { _, _ -> loadingThreads += Thread.currentThread(); target }
             val messages = strategy.buildProtocolMessages(session, "")
             repeat(2) { assertThat(loader.attach(session, messages, "r").last().imageUrls).hasSize(1) }
+            val remindedSession = session.copy(messages = session.messages + Message("reminded", MessageRole.ASSISTANT, "", requestInstruction = "模型尾部提醒"))
+            val reminded = loader.attach(remindedSession, strategy.buildProtocolMessages(remindedSession, ""), "r")
+            assertThat(reminded.first { it.role == "tool" }.imageUrls).hasSize(1)
+
             assertThat(loadingThreads.all { it !== callingThread }).isTrue()
             assertThat(cache.listFiles().orEmpty().sumOf { it.length() }).isAtMost(2048L)
             val historicalSession = session.copy(messages = session.messages + Message("next", MessageRole.USER, "第二轮"))
@@ -98,17 +109,25 @@ class ViewedMediaContextTest {
             }
             val provider = com.promenar.infinity.data.remote.provider.LlmProvider(protocol)
             val store = com.promenar.infinity.ui.chat.ChatStore().apply { upsertSession(session) }
+            val settings = mockk<android.content.SharedPreferences>(relaxed = true)
+            val router = object : com.promenar.infinity.data.remote.ProviderRequestRouter {
+                override fun resolve(modelId: String) = com.promenar.infinity.data.remote.ProviderResolution.Success(
+                    com.promenar.infinity.data.remote.ResolvedProviderModel(modelId, "m", "p", "本地",
+                        com.promenar.infinity.data.remote.UnifiedProviderConfig(ProtocolType.Local, "", "", "m")),
+                )
+                override fun createClient(resolved: com.promenar.infinity.data.remote.ResolvedProviderModel): com.promenar.infinity.data.remote.UnifiedLlmClient = error("本地夹具不创建远程客户端")
+            }
             val runtime = DefaultChatGenerationRuntime(
-                mockk(relaxed = true), this, store, mockk(), mockk(), mockk(), mockk(), mockk(),
-                { provider }, provider, mockk(), mockk(), mockk(), null, mockk(), mockk(), strategy, mockk(),
-                mediaContextLoader = loader,
+                settings, this, store,
+                agentRepository = mockk { coEvery { getById(any()) } returns null },
+                configResolver = com.promenar.infinity.domain.usecase.AgentConfigResolver(settings),
+                routeGate = ChatProviderRouteGate(router),
+                contextBuilder = com.promenar.infinity.ui.chat.manager.ContextBuilder(), messageManager = mockk(relaxed = true),
+                localProviderFactory = { provider }, provider = provider,
+                toolLedger = mockk(relaxed = true), toolExecutor = mockk(relaxed = true), postProcessor = mockk(relaxed = true),
+                memoryManager = null, summaryManager = mockk(relaxed = true), sessionManager = mockk(relaxed = true),
+                contentStrategy = strategy, ui = mockk(relaxed = true), mediaContextLoader = loader,
             )
-            DefaultChatGenerationRuntime::class.java.getDeclaredField("preparedRoute").apply {
-                isAccessible = true; set(runtime, ChatProviderRoute(null, "m", null, useLocalProvider = true, modelId = "p::m"))
-            }
-            DefaultChatGenerationRuntime::class.java.getDeclaredField("preparedPrompt").apply {
-                isAccessible = true; set(runtime, PromptRequest(loader.attach(session, messages, "p::m"), "m"))
-            }
             val request = com.promenar.infinity.domain.generation.GenerationRequest("s", "a", "u", "查看", emptyList(), com.promenar.infinity.domain.generation.GenerationRuntimePolicy.BACKGROUND_ALLOWED)
             runtime.stream(request, 0).toList()
             assertThat(sent.last().messages.last().imageUrls).hasSize(1)

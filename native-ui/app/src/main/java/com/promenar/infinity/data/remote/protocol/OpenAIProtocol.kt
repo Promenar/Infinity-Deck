@@ -262,9 +262,15 @@ class OpenAIProtocol(
                     
                     val hasMultimodal = msg.imageUrls?.isNotEmpty() == true || msg.audioData?.isNotEmpty() == true
                     if (!hasMultimodal) {
-                        put("content", msg.content.ifEmpty { "" })
+                        put("content", msg.textWithTurnContext())
                     } else {
                         val contentParts = buildJsonArray {
+                            msg.userTurnContext()?.let { context ->
+                                add(buildJsonObject {
+                                    put("type", "text")
+                                    put("text", context)
+                                })
+                            }
                             add(buildJsonObject {
                                 put("type", "text")
                                 put("text", msg.content)
@@ -331,7 +337,7 @@ class OpenAIProtocol(
             }
 
             if (!request.tools.isNullOrEmpty()) {
-                put("tools", JsonArray(request.tools.map { tool ->
+                put("tools", JsonArray(request.tools.canonicalizedForRequest().map { tool ->
                     buildJsonObject {
                         put("type", tool.type)
                         put("function", buildJsonObject {

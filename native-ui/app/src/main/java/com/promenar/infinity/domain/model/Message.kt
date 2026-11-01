@@ -13,6 +13,8 @@ data class Message(
     val tokenUsage: TokenUsage? = null,
     val timestamp: Long = 0L,
     val quotes: List<com.promenar.infinity.data.model.MessageQuote>? = null,
+    val turnContext: String? = null,
+    val requestInstruction: String? = null,
 )
 
 data class MessageDocumentAttachment(

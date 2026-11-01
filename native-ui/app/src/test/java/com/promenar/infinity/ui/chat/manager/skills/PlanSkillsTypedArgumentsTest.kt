@@ -52,6 +52,23 @@ class PlanSkillsTypedArgumentsTest {
     }
 
     @Test
+    fun `计划更新结果返回完整新状态供冻结上下文中的模型读取`() = runTest {
+        val state = TaskState(id = "plan", title = "新目标", status = "active", steps = listOf(
+            TaskStep("leaf", title = "新步骤", status = "done", description = "新说明", note = "新备注"),
+        ))
+        val repo = io.mockk.mockk<ITaskRepository>()
+        io.mockk.coEvery { repo.updatePlan(any(), any()) } returns state
+        io.mockk.every { repo.countLeafProgress(any()) } returns (1 to 1)
+        val result = UpdatePlanSkill(repo).execute(Json.parseToJsonElement(
+            """{"operations":[{"action":"set_status","stepId":"leaf","payload":{"status":"done"}}]}""",
+        ).jsonObject, context)
+        val plan = Json.parseToJsonElement(result.content).jsonObject["currentPlan"]!!.jsonObject
+        assertThat(plan["steps"]).isEqualTo(kotlinx.serialization.json.Json.encodeToJsonElement(
+            kotlinx.serialization.builtins.ListSerializer(TaskStep.serializer()), state.steps,
+        ))
+    }
+
+    @Test
     fun `initialize plan 直接消费递归 tree 数组并保持整数`() = runTest {
         val repo = RecordingTaskRepository()
         val args = Json.parseToJsonElement(

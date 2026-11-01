@@ -54,14 +54,14 @@ class StateBoardMigrationTest {
                 seed("sessions", mapOf("id" to "s", "agent_id" to "a", "title" to "旧会话"))
                 seed("messages", mapOf("id" to "m", "session_id" to "s", "role" to "assistant", "content" to "保留正文"))
             }
-            val migrated = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31).allowMainThreadQueries().build()
+            val migrated = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32).allowMainThreadQueries().build()
             try {
                 val db = migrated
                 val sqlite = db.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(31)
+                assertThat(sqlite.version).isEqualTo(32)
                 assertThat(sqlite.query("PRAGMA foreign_key_list(state_board_versions)").use { it.count }).isEqualTo(3)
                 assertThat(sqlite.query("PRAGMA index_list(state_board_versions)").use { it.count }).isEqualTo(2)
-                assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use { it.hasCompleteCurrentRoomSchema(31, INFINITY_SCHEMA_V31_IDENTITY_HASH) }).isTrue()
+                assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use { it.hasCompleteCurrentRoomSchema(32, INFINITY_SCHEMA_V32_IDENTITY_HASH) }).isTrue()
                 assertThat(db.sessionDao().getById("s")!!.title).isEqualTo("旧会话")
                 assertThat(db.messageDao().getById("m")!!.content).isEqualTo("保留正文")
                 StateBoardRepository(db).define("s", "m", "面板", listOf(StateField("hp", "生命值", "number", JsonPrimitive(80))))

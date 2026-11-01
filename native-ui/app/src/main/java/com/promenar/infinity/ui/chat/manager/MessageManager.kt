@@ -319,6 +319,20 @@ class MessageManager(
         }
     }
 
+    /** 模型专用字段先提交数据库，再更新内存；持久化失败时不得发送请求。 */
+    suspend fun persistModelInputs(sessionId: String, messageId: String, updates: Map<String, String?>) =
+        withContextMutation(sessionId) {
+            require(updates.keys.all { it == "turnContext" || it == "requestInstruction" || it == "modelId" })
+            messageRepository.updatePartial(messageId, updates)
+            store.updateMessageInSession(sessionId, messageId) { message ->
+                message.copy(
+                    modelId = if ("modelId" in updates) updates["modelId"] else message.modelId,
+                    turnContext = if ("turnContext" in updates) updates["turnContext"] else message.turnContext,
+                    requestInstruction = if ("requestInstruction" in updates) updates["requestInstruction"] else message.requestInstruction,
+                )
+            }
+        }
+
     /** 用户主动编辑正文；流式更新仍使用 updateMessageContent。 */
     suspend fun editMessageContent(sessionId: String, messageId: String, content: String) = withContextMutation(sessionId) {
         val purgeKeys = setOf("$sessionId:$messageId")
@@ -338,7 +352,7 @@ class MessageManager(
                                 val saved = byId[message.id]
                                 when {
                                     saved == null -> message
-                                    message.id == messageId -> message.copy(content = saved.content, isArchived = saved.isArchived)
+                                    message.id == messageId -> message.copy(content = saved.content, isArchived = saved.isArchived, turnContext = saved.turnContext)
                                     else -> message.copy(isArchived = saved.isArchived)
                                 }
                             },

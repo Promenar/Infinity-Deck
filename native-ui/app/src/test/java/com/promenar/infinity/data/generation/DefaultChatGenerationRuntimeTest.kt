@@ -1606,7 +1606,7 @@ class DefaultChatGenerationRuntimeTest {
                 )
             }
         }
-        val persistedMessages = mutableMapOf(assistant.id to assistant)
+        val persistedMessages = mutableMapOf(assistant.id to assistant, "u-rag" to Message("u-rag", MessageRole.USER, "question"))
         val messageRepository = object : IMessageRepository {
             override suspend fun insert(message: Message, sessionId: String) {
                 persistedMessages[message.id] = message
@@ -1617,6 +1617,8 @@ class DefaultChatGenerationRuntimeTest {
                 @Suppress("UNCHECKED_CAST")
                 persistedMessages[messageId] = current.copy(
                     content = updates["content"] as? String ?: current.content,
+                    turnContext = if ("turnContext" in updates) updates["turnContext"] as? String else current.turnContext,
+                    requestInstruction = if ("requestInstruction" in updates) updates["requestInstruction"] as? String else current.requestInstruction,
                     ragReferences = if ("ragReferences" in updates) {
                         updates["ragReferences"] as? List<RagReference>
                     } else {
@@ -1908,7 +1910,7 @@ class DefaultChatGenerationRuntimeTest {
     @Test
     fun `CONTINUE强刷assistant后多轮Prompt保留全部工具配对`() = runTest {
         val (prompts, searches, executorPreparedSnapshots) = runThreeRoundToolScenario()
-        val advertisedNames = listOf("search", "read_file")
+        val advertisedNames = listOf("read_file", "search")
 
         assertThat(prompts).hasSize(3)
         val third = prompts[2].messages
@@ -1921,10 +1923,10 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(prompts.map { it.toolChoice }).containsExactly(
             ProtocolToolChoice.AUTO, ProtocolToolChoice.AUTO, ProtocolToolChoice.AUTO,
         ).inOrder()
-        // 检索只依赖用户问题：三轮请求只检索一次，且每轮系统提示都带同一份检索结果。
+        // 检索只依赖用户问题：只执行一次，冻结资料随同一条用户消息重放。
         assertThat(searches).isEqualTo(1)
         assertThat(prompts.all { prompt ->
-            prompt.messages.first { it.role == "system" }.content.contains("RAG-CONTEXT-MARKER")
+            prompt.messages.first { it.role == "user" }.turnContext.orEmpty().contains("RAG-CONTEXT-MARKER")
         }).isTrue()
     }
 
@@ -1936,7 +1938,7 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(prompts[0].toolChoice).isEqualTo(ProtocolToolChoice.AUTO)
         assertThat(prompts[2].toolChoice).isEqualTo(ProtocolToolChoice.NONE)
         assertThat(prompts[2].tools.orEmpty().map { it.function.name }).containsExactly("search", "read_file")
-        assertThat(prompts[2].messages.first { it.role == "system" }.content)
+        assertThat(prompts[2].messages.last().content)
             .contains("## Tool Budget Exhausted")
     }
 
@@ -1967,7 +1969,7 @@ class DefaultChatGenerationRuntimeTest {
     }
 
     @Test
-    fun `四轮无正文工具后提醒只追加协议尾部且不进入会话`() = runTest {
+    fun `四轮无正文工具后提醒持久化并保持历史前缀且不进入正文`() = runTest {
         var saved: Session? = null
         val prefixes = mutableListOf<List<com.promenar.infinity.data.remote.protocol.ProtocolMessage>>()
         var latestPrefix = emptyList<com.promenar.infinity.data.remote.protocol.ProtocolMessage>()
@@ -1983,17 +1985,24 @@ class DefaultChatGenerationRuntimeTest {
         }
         assertThat(prefixes).hasSize(prompts.size)
         prompts.zip(prefixes).forEachIndexed { index, (prompt, prefix) ->
-            assertThat(if (index >= 4) prompt.messages.dropLast(1) else prompt.messages).isEqualTo(prefix)
+            assertThat(prompt.messages).isEqualTo(prefix)
         }
         assertThat(saved!!.messages.none { it.content.contains("[System reminder]") }).isTrue()
-        assertThat(writes.none { it.contains("[System reminder]") }).isTrue()
+        assertThat(saved!!.messages.any { it.requestInstruction.orEmpty().contains("[System reminder]") }).isTrue()
+        assertThat(writes.any { it.contains("requestInstruction=") && it.contains("[System reminder]") }).isTrue()
+        prompts.zipWithNext().forEach { (before, after) ->
+            assertThat(after.messages.take(before.messages.size)).isEqualTo(before.messages)
+        }
     }
 
     @Test
     fun `第四轮工具后预算收尾不附加进展提醒`() = runTest {
         val (prompts, _, _) = runThreeRoundToolScenario(loopLimit = 4, toolRoundCount = 5)
         assertThat(prompts.last().toolChoice).isEqualTo(ProtocolToolChoice.NONE)
-        assertThat(prompts.last().messages.none { it.content.contains("[System reminder]") }).isTrue()
+        assertThat(prompts.last().messages.last().content).doesNotContain("[System reminder]")
+        assertThat(prompts.last().messages.last().content).contains("Tool Budget Exhausted")
+        assertThat(prompts.last().messages.take(prompts[prompts.lastIndex - 1].messages.size))
+            .isEqualTo(prompts[prompts.lastIndex - 1].messages)
     }
 
     @Test
@@ -2018,7 +2027,8 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(prompts).hasSize(7)
         assertThat(prompts[4].messages.last().content).contains("[System reminder]")
         assertThat(prompts[5].messages).isEqualTo(prompts[4].messages)
-        assertThat(prompts[6].messages.none { it.content.contains("[System reminder]") }).isTrue()
+        assertThat(prompts[6].messages.last().content).doesNotContain("[System reminder]")
+        assertThat(prompts[6].messages.take(prompts[4].messages.size)).isEqualTo(prompts[4].messages)
     }
 
     private suspend fun kotlinx.coroutines.test.TestScope.runThreeRoundToolScenario(

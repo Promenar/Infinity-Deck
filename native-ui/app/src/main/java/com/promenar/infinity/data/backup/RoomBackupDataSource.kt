@@ -46,6 +46,7 @@ internal const val ROOM_SCHEMA_V26_IDENTITY_HASH = com.promenar.infinity.data.lo
 internal const val ROOM_SCHEMA_V27_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V27_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V28_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V28_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V29_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V29_IDENTITY_HASH
+internal const val ROOM_SCHEMA_V32_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V32_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V31_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V31_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V30_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V30_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V25_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V25_IDENTITY_HASH
@@ -563,6 +564,7 @@ class RoomBackupDataSource(
         }
         val upgraded = when (decoded.schemaVersion) {
             DATABASE_SCHEMA_VERSION -> return decoded
+            12 -> decoded
             11 -> decoded
             10 -> upgradeV10Payload(decoded)
             9 -> upgradeV10Payload(upgradeV9Payload(decoded))
@@ -584,7 +586,7 @@ class RoomBackupDataSource(
         } else upgraded
         val messages = current.tables["messages"] ?: throw BackupValidationException("数据库 payload 缺少表: messages")
         return current.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = current.tables +
-            ("messages" to messages.map { row -> JsonObject(mapOf("quotes" to JsonNull) + row) }))
+            ("messages" to messages.map { row -> JsonObject(mapOf("quotes" to JsonNull, "turn_context" to JsonNull, "request_instruction" to JsonNull) + row) }))
     }
 
     /** 历史包没有运行模式，恢复为未确定状态，首次进入会话时再检查。 */
@@ -943,8 +945,8 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        if (sqlite.version != 31 || identityHash != ROOM_SCHEMA_V31_IDENTITY_HASH) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v31")
+        if (sqlite.version != 32 || identityHash != ROOM_SCHEMA_V32_IDENTITY_HASH) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v32")
         }
         INSERT_ORDER.forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->

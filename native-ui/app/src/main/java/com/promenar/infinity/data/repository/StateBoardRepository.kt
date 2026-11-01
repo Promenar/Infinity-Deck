@@ -29,7 +29,10 @@ class StateBoardRepository(private val database: InfinityDatabase, private val n
     fun endGeneration(sessionId: String, owner: String) {
         generationScopes.update { if (it[sessionId]?.owner == owner) it - sessionId else it }
     }
-    fun recordContextRead(sessionId: String, messageId: String, revision: Long) { contextRevisions["$sessionId:$messageId"] = revision }
+    fun recordContextRead(sessionId: String, messageId: String, revision: Long) = synchronized(contextRevisions) {
+        val key = "$sessionId:$messageId"
+        contextRevisions[key] = maxOf(contextRevisions[key] ?: 0, revision)
+    }
     private fun excluded(sessionId: String, explicit: Set<String>) = explicit + generationScopes.value[sessionId]?.excluded.orEmpty()
 
     suspend fun get(sessionId: String, excluded: Set<String> = emptySet()): StateBoardSnapshot? =

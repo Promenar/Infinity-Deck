@@ -78,35 +78,38 @@ class SlashSkillActivationTest {
         assertThat(loaded.activation).contains("- scripts/run.py")
     }
 
-    @Test fun `系统提示段落：已加载时说明无需再激活并包裹技能正文`() {
+    @Test fun `上下文段落说明技能已加载并保留正文`() {
         val section = SlashSkillActivation.promptSection(RequestedSkill.Loaded("demo", "# Skill: demo\nbody"))
         assertThat(section.lines().first()).isEqualTo("## Requested Skill")
-        assertThat(section).contains("`/demo`")
+        assertThat(section).contains("`demo`")
         assertThat(section).contains("do not call `activate_skill`")
         assertThat(section).contains("<skill_activation>\n# Skill: demo\nbody\n</skill_activation>")
         val unavailable = SlashSkillActivation.promptSection(RequestedSkill.Unavailable("off"))
-        assertThat(unavailable).contains("`/off`")
+        assertThat(unavailable).contains("`off`")
         assertThat(unavailable).contains("not available")
         assertThat(unavailable).doesNotContain("<skill_activation>")
     }
 
-    @Test fun `上下文构建把点名技能放在历史摘要之后、系统时间之前，未点名时不出现`() = runTest {
+    @Test fun `上下文构建把点名技能放在冻结用户块中且不改变系统提示`() = runTest {
         val session = Session(id = "s1", agentId = "a1", summary = "Earlier summary")
         val base = ContextBuilderParams(
             sessionId = "s1", content = "/demo 整理", assistantMsgId = "m1", session = session,
             availableToolNames = setOf("activate_skill"), availableSkills = listOf(slashTestSkill("demo")),
         )
-        val prompt = ContextBuilder().buildContext(
+        val context = ContextBuilder().buildContext(
             base.copy(requestedSkill = RequestedSkill.Loaded("demo", "# Skill: demo\nSteps")),
-        ).finalSystemPrompt
-        val skillIndex = prompt.indexOf("## Requested Skill")
-        assertThat(skillIndex).isGreaterThan(prompt.indexOf("## Skills"))
-        assertThat(skillIndex).isGreaterThan(prompt.indexOf("</history_summary>"))
-        assertThat(skillIndex).isLessThan(prompt.indexOf("[System Time:"))
-        assertThat(prompt).contains("<skill_activation>\n# Skill: demo\nSteps\n</skill_activation>")
-        assertThat(prompt.trimEnd().lines().last()).contains("System Time")
+        )
+        val plain = ContextBuilder().buildContext(base.copy(content = "整理"))
+        assertThat(context.finalSystemPrompt).isEqualTo(plain.finalSystemPrompt)
+        assertThat(context.finalSystemPrompt).doesNotContain("## Requested Skill")
+        assertThat(context.turnContext).contains("<skill_activation>\n# Skill: demo\nSteps\n</skill_activation>")
+        assertThat(plain.turnContext).doesNotContain("## Requested Skill")
+    }
 
-        val plain = ContextBuilder().buildContext(base.copy(content = "整理")).finalSystemPrompt
-        assertThat(plain).doesNotContain("## Requested Skill")
+    @Test fun `合法点名加载多个技能并保持确定顺序且拒绝词内伪点名`() = runTest {
+        val skills = listOf(slashTestSkill("zulu"), slashTestSkill("alpha"))
+        val requested = SlashSkillActivation.resolveAll("/zulu 开始，请使用 \$alpha 与 \$zulu", skills, document)
+        assertThat(requested.map { it.name }).containsExactly("alpha", "zulu").inOrder()
+        assertThat(SlashSkillActivation.resolveAll("x\$alpha \$zulu--bad \$alpha_", skills, document)).isEmpty()
     }
 }

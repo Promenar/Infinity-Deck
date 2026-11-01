@@ -15,6 +15,7 @@ object ApproximateTokenEstimator {
     fun estimate(message: ProtocolMessage): Int =
         MESSAGE_OVERHEAD_TOKENS +
             estimate(message.content) +
+            (if (message.role == "user" && !message.turnContext.isNullOrEmpty()) estimate(message.turnContext) + 1 else 0) +
             estimate(message.reasoning.orEmpty()) +
             message.toolCalls.orEmpty().sumOf { estimate(it.name) + estimate(it.arguments) } +
             message.imageUrls.orEmpty().size * IMAGE_TOKENS +

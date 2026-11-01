@@ -44,55 +44,35 @@ class SystemPromptSectionsSkillsTest {
         assertThat(catalog).contains("\$INFINITY_SKILLS/<name>")
     }
 
-    @Test fun `点名提供两级显式技能但不提供停用或待信任技能`() {
+    @Test fun `完整技能目录包含显式技能但排除停用与未信任技能`() {
         val skills = listOf(
             skill("demo", implicit = false), skill("demo", SkillScope.PROJECT, implicit = false),
             skill("disabled", status = SkillStatus.DISABLED), skill("pending", status = SkillStatus.PENDING_TRUST),
             skill("broken", status = SkillStatus.BROKEN),
         )
-        assertThat(SystemPromptSections.skillCatalog(skills)).isEmpty()
-        val catalog = SystemPromptSections.skillCatalog(skills, "\$demo \$disabled \$pending \$broken")
+        val catalog = SystemPromptSections.skillCatalog(skills)
         assertThat(catalog).contains("/skills/demo/SKILL.md")
         assertThat(catalog).contains("/.agents/skills/demo/SKILL.md")
-        assertThat(catalog).contains("must use")
+        assertThat(catalog).contains("explicit request only")
         listOf("disabled", "pending", "broken").forEach { assertThat(catalog).doesNotContain("/$it/SKILL.md") }
     }
 
-    @Test fun `点名只匹配空白后完整合法名称`() {
-        val skills = listOf(skill("demo", implicit = false))
-        listOf("\$demo", "请使用 \$demo。", "正文\n\$demo,", "\t\$demo", "请使用\u3000\$demo", "请使用\u00a0\$demo").forEach {
-            assertThat(SystemPromptSections.skillCatalog(skills, it)).contains("/skills/demo/SKILL.md")
+    @Test fun `技能目录不依赖本条用户消息或扫描顺序`() {
+        val skills = listOf(skill("zulu", implicit = false), skill("alpha"))
+        val catalog = SystemPromptSections.skillCatalog(skills)
+        listOf("", "请使用 \$zulu", "x\$alpha", "/zulu 执行任务").forEach {
+            assertThat(SystemPromptSections.skillCatalog(skills.reversed(), it)).isEqualTo(catalog)
         }
-        listOf("x\$demo", "\$demo-more", "\$demo--bad", "\$demo_bad", "\$demoX", "\$demo-", "\$" + "a".repeat(65)).forEach {
-            assertThat(SystemPromptSections.skillCatalog(skills, it)).isEmpty()
-        }
+        assertThat(catalog.indexOf("- alpha:")).isLessThan(catalog.indexOf("- zulu:"))
     }
 
-    @Test fun `预算包含段落开销且点名技能优先于名称排序`() {
+    @Test fun `窗口截断只依赖技能清单与窗口`() {
         val skills = (0..29).map { skill("alpha-$it", description = "A".repeat(100)) } + skill("zulu", implicit = false)
-        val catalog = SystemPromptSections.skillCatalog(skills, "\$zulu", modelContextTokens = 15_000)
-
+        val catalog = SystemPromptSections.skillCatalog(skills, modelContextTokens = 15_000)
+        assertThat(SystemPromptSections.skillCatalog(skills, "\$zulu", 15_000)).isEqualTo(catalog)
         assertThat(catalog.length).isAtMost(1200)
-        assertThat(catalog).contains("/skills/zulu/SKILL.md")
-        assertThat(catalog.indexOf("- zulu:")).isLessThan(catalog.indexOf("- alpha-"))
         val listed = catalog.lineSequence().count { it.startsWith("- ") && it.contains("source=") }
         assertThat(catalog).contains("${31 - listed} more skills")
-    }
-
-    @Test fun `点名技能描述过长时压缩描述以保留所有可容纳的点名路径`() {
-        val skills = listOf(
-            skill("alpha", description = "隐式说明"),
-            skill("demo", implicit = false, description = "D".repeat(1024)),
-            skill("zulu", implicit = false, description = "Z".repeat(1024)),
-        )
-        val catalog = SystemPromptSections.skillCatalog(skills, "\$demo \$zulu", modelContextTokens = 15_000)
-
-        assertThat(catalog.length).isAtMost(1200)
-        assertThat(catalog).contains("/skills/demo/SKILL.md")
-        assertThat(catalog).contains("/skills/zulu/SKILL.md")
-        assertThat(catalog).contains("source=user")
-        assertThat(catalog).contains("demo: D")
-        assertThat(catalog).contains("1 more skills")
     }
 
     @Test fun `普通技能按名称顺序截断且默认不再限制五十项`() {
@@ -102,7 +82,7 @@ class SystemPromptSectionsSkillsTest {
         assertThat(catalog.length).isAtMost(8000)
     }
 
-    @Test fun `点名数量超过预算时保留能容纳的点名前缀`() {
+    @Test fun `显式技能数量超过预算时保留能容纳的名称前缀`() {
         val skills = (0..49).map { skill("demo-$it", implicit = false) }
         val mentions = skills.joinToString(" ") { "\$${it.name}" }
         val catalog = SystemPromptSections.skillCatalog(skills, mentions, modelContextTokens = 15_000)

@@ -220,7 +220,7 @@ class OpenAIResponsesProtocol(
             request.maxTokens?.let { put("max_output_tokens", it) }
             putResponsesReasoning(adapted)
             if (!request.tools.isNullOrEmpty()) {
-                put("tools", JsonArray(request.tools.map { tool ->
+                put("tools", JsonArray(request.tools.canonicalizedForRequest().map { tool ->
                     buildJsonObject {
                         put("type", "function")
                         put("name", tool.function.name)
@@ -263,14 +263,20 @@ class OpenAIResponsesProtocol(
             })
         }
         val items = mutableListOf<JsonObject>()
-        if (content.isNotEmpty() || toolCalls.isNullOrEmpty()) {
+        if (content.isNotEmpty() || userTurnContext() != null || toolCalls.isNullOrEmpty()) {
             items += buildJsonObject {
                 put("role", if (role == "system") "developer" else role)
                 val hasMultimodal = imageUrls?.isNotEmpty() == true
                 if (!hasMultimodal) {
-                    put("content", resultText)
+                    put("content", textWithTurnContext(resultText))
                 } else {
                     put("content", buildJsonArray {
+                        userTurnContext()?.let { context ->
+                            add(buildJsonObject {
+                                put("type", "input_text")
+                                put("text", context)
+                            })
+                        }
                         add(buildJsonObject {
                             put("type", "input_text")
                             put("text", resultText)

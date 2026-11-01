@@ -52,6 +52,27 @@ class ChatGenerationContentStrategyTest {
             .containsExactly("u1", "a1", "u2").inOrder()
     }
 
+    @Test
+    fun `新旧用户消息分离模型上下文且历史提醒按原位置重放`() {
+        val messages = listOf(
+            Message("old", MessageRole.USER, "旧正文"),
+            Message("a0", MessageRole.ASSISTANT, "旧回答"),
+            Message("u1", MessageRole.USER, "新正文", turnContext = "<turn_context>\n资料\r\n</turn_context>"),
+            Message("a1", MessageRole.ASSISTANT, "", requestInstruction = "尾部提醒"),
+        )
+        val session = Session("s", "agent", messages = messages)
+        val before = strategy().buildProtocolMessages(session, "稳定系统")
+        assertThat(before[1].content).isEqualTo("旧正文")
+        assertThat(before[1].turnContext).isNull()
+        assertThat(before[3].content).isEqualTo("新正文")
+        assertThat(before[3].turnContext).isEqualTo(messages[2].turnContext)
+        assertThat(before.last().content).isEqualTo("尾部提醒")
+        val completed = session.copy(messages = messages.dropLast(1) + messages.last().copy(content = "回答") + Message("u2", MessageRole.USER, "后续问题"))
+        val after = strategy().buildProtocolMessages(completed, "稳定系统")
+        assertThat(after.take(before.size)).isEqualTo(before)
+        assertThat(messages[2].content).isEqualTo("新正文")
+    }
+
     private val write = ToolCall("call-w", "write_file", "{}")
     private val read = ToolCall("call-r", "read_file", "{}")
 

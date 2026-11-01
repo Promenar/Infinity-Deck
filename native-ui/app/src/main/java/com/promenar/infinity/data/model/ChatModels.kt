@@ -592,6 +592,10 @@ data class Message(
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val viewedMedia: List<com.promenar.infinity.domain.media.ViewedMedia>? = null,
+    /** 仅供模型使用的轮次原文上下文，与用户正文分别保存。 */
+    val turnContext: String? = null,
+    /** 生成该助手消息前发送给模型的尾部提醒。 */
+    val requestInstruction: String? = null,
 )
 
 @Serializable

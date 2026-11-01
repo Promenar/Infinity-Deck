@@ -53,7 +53,7 @@ interface MessageDao {
         return affected
     }
 
-    @Query("UPDATE messages SET content = :content WHERE session_id = :sessionId AND id = :messageId")
+    @Query("UPDATE messages SET content = :content, turn_context = NULL WHERE session_id = :sessionId AND id = :messageId")
     suspend fun updateEditedContentInSession(sessionId: String, messageId: String, content: String): Int
 
     /** 编辑已摘要消息时，正文与摘要失效必须在同一个事务中生效。 */

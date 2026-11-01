@@ -90,4 +90,8 @@ data class MessageEntity(
     val errorMessage: String? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
+    @ColumnInfo(name = "turn_context")
+    val turnContext: String? = null,
+    @ColumnInfo(name = "request_instruction")
+    val requestInstruction: String? = null,
 )

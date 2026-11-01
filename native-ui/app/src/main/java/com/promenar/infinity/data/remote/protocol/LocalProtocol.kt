@@ -19,7 +19,7 @@ class LocalProtocol(
     override suspend fun sendPrompt(request: PromptRequest): Flow<StreamChunk> = flow {
         val formattedPrompt = promptTemplate.format(
             messages = localMessagesWithToolMedia(request.messages),
-            tools = request.tools.takeIf { request.toolChoice != ProtocolToolChoice.NONE },
+            tools = request.tools?.canonicalizedForRequest().takeIf { request.toolChoice != ProtocolToolChoice.NONE },
         )
 
         val genConfig = ProtocolParamAdapter.buildGenerateConfig(request)
@@ -34,7 +34,7 @@ class LocalProtocol(
     override suspend fun sendPromptSync(request: PromptRequest): PromptResponse {
         val formattedPrompt = promptTemplate.format(
             messages = localMessagesWithToolMedia(request.messages),
-            tools = request.tools.takeIf { request.toolChoice != ProtocolToolChoice.NONE },
+            tools = request.tools?.canonicalizedForRequest().takeIf { request.toolChoice != ProtocolToolChoice.NONE },
         )
 
         val genConfig = ProtocolParamAdapter.buildGenerateConfig(request)
@@ -75,7 +75,7 @@ class ChatMLTemplate : PromptTemplate() {
     override fun format(messages: List<ProtocolMessage>, tools: List<ProtocolTool>?): String {
         val sb = StringBuilder()
         for (msg in messages) {
-            sb.append("<|im_start|>${msg.role}\n${msg.content}<|im_end|>\n")
+            sb.append("<|im_start|>${msg.role}\n${msg.textWithTurnContext()}<|im_end|>\n")
         }
         sb.append("<|im_start|>assistant\n")
         return sb.toString()
@@ -87,7 +87,7 @@ class Llama3Template : PromptTemplate() {
         val sb = StringBuilder("<|begin_of_text|>")
         for (msg in messages) {
             sb.append("<|start_header_id|>${msg.role}<|end_header_id|>\n\n")
-            sb.append("${msg.content}<|eot_id|>")
+            sb.append("${msg.textWithTurnContext()}<|eot_id|>")
         }
         sb.append("<|start_header_id|>assistant<|end_header_id|>\n\n")
         return sb.toString()
@@ -108,7 +108,7 @@ class MistralTemplate : PromptTemplate() {
 
         val lastUser = userMsgs.lastOrNull()
         if (lastUser != null) {
-            sb.append("${lastUser.content} [/INST]")
+            sb.append("${lastUser.textWithTurnContext()} [/INST]")
         }
 
         return sb.toString()
@@ -120,7 +120,7 @@ class GemmaTemplate : PromptTemplate() {
         val sb = StringBuilder("<bos>")
         for (msg in messages) {
             val role = if (msg.role == "assistant") "model" else msg.role
-            sb.append("<start_of_turn>$role\n${msg.content}<end_of_turn>\n")
+            sb.append("<start_of_turn>$role\n${msg.textWithTurnContext()}<end_of_turn>\n")
         }
         sb.append("<start_of_turn>model\n")
         return sb.toString()

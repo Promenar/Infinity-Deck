@@ -57,6 +57,7 @@ abstract class StateBoardSkill(
             }
             else -> { require(args.isEmpty()) { "state_get 不接受参数。" }; previous }
         }
+        if (name == "state_get" && owner != null) repo.recordContextRead(context.sessionId, owner, snapshot?.revision ?: 0)
         ToolResult(id = name, content = buildJsonObject {
             put("action", name)
             put("created", name == "state_define" && previous?.board == null)

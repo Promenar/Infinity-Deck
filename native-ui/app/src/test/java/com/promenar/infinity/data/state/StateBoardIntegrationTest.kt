@@ -44,7 +44,22 @@ class StateBoardIntegrationTest {
         sessionId = "s", content = "继续", assistantMsgId = "assistant", session = Session("s", "a"),
         availableToolNames = if (enabled) setOf("state_define", "state_update", "state_get", "state_remove") else emptySet(),
         stateExcludedMessageIds = excluded,
-    )).finalSystemPrompt
+    )).let { it.finalSystemPrompt + "\n" + it.turnContext }
+
+    @Test fun `读取新状态后冻结块不会降低工具已读版本`() = runBlocking {
+        define()
+        val builder = ContextBuilder(stateBoardRepository = repo)
+        val params = ContextBuilderParams("s", "继续", assistantMsgId = "assistant", session = Session("s", "a"))
+        val initial = builder.buildContext(params)
+        repo.edit("s", repo.get("s")!!.revision, listOf(StateOperation("hp", "set", JsonPrimitive(90))))
+        val update = args("""{"operations":[{"key":"hp","op":"increment","value":-5}]}""")
+        assertThat(StateUpdateSkill(repo).execute(update, context).status).isEqualTo("error")
+        assertThat(StateGetSkill(repo).execute(args("{}"), context).status).isEqualTo("success")
+        val frozen = builder.buildContext(params.copy(cachedTurnContext = initial.turnContext, cachedRetrieval = initial.retrieval))
+        assertThat(frozen.turnContext).isEqualTo(initial.turnContext)
+        assertThat(StateUpdateSkill(repo).execute(update, context).status).isEqualTo("success")
+        assertThat(repo.get("s")!!.board!!.fields.first().value).isEqualTo(JsonPrimitive(85))
+    }
 
     @Test fun `工具定义读取更新移除返回完整结构与变化`() = runBlocking {
         assertThat(define().status).isEqualTo("success")

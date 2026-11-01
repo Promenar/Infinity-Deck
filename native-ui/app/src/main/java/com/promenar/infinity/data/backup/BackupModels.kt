@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /** 可移植数据库备份结构版本，独立于 Room 数据库版本。 */
-internal const val DATABASE_BACKUP_SCHEMA_VERSION = 12
+internal const val DATABASE_BACKUP_SCHEMA_VERSION = 13
 
 enum class BackupContent {
     DATABASE,

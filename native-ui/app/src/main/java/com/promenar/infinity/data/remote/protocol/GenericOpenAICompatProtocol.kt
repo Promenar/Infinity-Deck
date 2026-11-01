@@ -269,9 +269,15 @@ class GenericOpenAICompatProtocol(
                     
                     val hasMultimodal = msg.imageUrls?.isNotEmpty() == true || msg.audioData?.isNotEmpty() == true
                     if (!hasMultimodal) {
-                        put("content", msg.content.ifEmpty { "" })
+                        put("content", msg.textWithTurnContext())
                     } else {
                         val contentParts = buildJsonArray {
+                            msg.userTurnContext()?.let { context ->
+                                add(buildJsonObject {
+                                    put("type", "text")
+                                    put("text", context)
+                                })
+                            }
                             add(buildJsonObject {
                                 put("type", "text")
                                 put("text", msg.content)
@@ -343,7 +349,7 @@ class GenericOpenAICompatProtocol(
             // OpenAI 兼容端点只接受 function 工具。
             if (request.tools != null && request.tools.isNotEmpty()) {
                 put("tools", buildJsonArray {
-                    request.tools.forEach { tool ->
+                    request.tools.canonicalizedForRequest().forEach { tool ->
                         add(buildJsonObject {
                             put("type", tool.type)
                             put("function", buildJsonObject {

@@ -58,6 +58,10 @@ data class ProtocolMessage(
     val videoData: List<VideoInput>? = null,
     /** 成功查看的工作区路径，顺序与工具结果一致。 */
     val mediaPaths: List<String>? = null,
+    /** 用户轮次固定的上下文；由协议放在用户原文之前，原文仍保存在 [content]。 */
+    val turnContext: String? = null,
+    /** 尾部运行提醒不代表新用户轮；仅用于客户端的媒体与签名范围判断。 */
+    @Transient val isRuntimeInstruction: Boolean = false,
 )
 
 @Serializable

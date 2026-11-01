@@ -307,6 +307,13 @@ class AnthropicProtocol(
                             contentParts.add(block.toJson())
                         }
                     }
+
+                    msg.userTurnContext()?.let { context ->
+                        contentParts.add(buildJsonObject {
+                            put("type", "text")
+                            put("text", context)
+                        })
+                    }
                     
                     // 1. Handle Text Content
                     if (msg.content.isNotEmpty() && msg.role != "tool") {
@@ -399,7 +406,7 @@ class AnthropicProtocol(
                     }
 
                     // 5. Finalize Content Field
-                    if (contentParts.size == 1 && contentParts[0]["type"]?.jsonPrimitive?.content == "text" && msg.role != "tool") {
+                    if (contentParts.size == 1 && contentParts[0]["type"]?.jsonPrimitive?.content == "text" && msg.role != "tool" && msg.userTurnContext() == null) {
                         // Optimization: plain text string if only one text part (and not a tool result which might prefer blocks)
                         put("content", msg.content)
                     } else if (contentParts.isNotEmpty()) {
@@ -424,7 +431,7 @@ class AnthropicProtocol(
             reasoning.effort?.let { effort -> put("output_config", buildJsonObject { put("effort", effort) }) }
 
             if (request.tools != null && request.tools.isNotEmpty()) {
-                put("tools", JsonArray(request.tools.map { tool ->
+                put("tools", JsonArray(request.tools.canonicalizedForRequest().map { tool ->
                     buildJsonObject {
                         put("name", tool.function.name)
                         put("description", tool.function.description)

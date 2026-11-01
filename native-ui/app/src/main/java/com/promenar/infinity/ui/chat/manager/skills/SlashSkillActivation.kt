@@ -6,7 +6,7 @@ import com.promenar.infinity.data.skills.SkillScope
 import com.promenar.infinity.data.skills.SkillSlashInvocation
 import kotlinx.coroutines.CancellationException
 
-/** 本轮用户以 `/技能名` 点名的技能；由客户端在生成前完成加载。 */
+/** 本轮用户显式点名的技能；由客户端在生成前完成加载。 */
 sealed interface RequestedSkill {
     val name: String
 
@@ -18,8 +18,8 @@ sealed interface RequestedSkill {
 }
 
 /**
- * 斜杠技能命令的预加载：生成每一轮请求时把技能说明作为系统提示的一个段落注入，
- * 模型无需再调用 `activate_skill`。只影响点名的这一轮，后续轮次不再携带。
+ * 显式点名技能预加载到用户轮上下文，正文随消息保存并重放。
+ * 模型无需再次读取已经加载的技能。
  */
 object SlashSkillActivation {
     /** 与 `activate_skill` 共用的技能说明格式。 */
@@ -68,22 +68,39 @@ object SlashSkillActivation {
         }
     }
 
-    /** 系统提示中的“本轮点名技能”段落；英文书写，与其它系统提示段落一致。 */
+    /** 斜杠命令与合法 $名称点名共用相同的信任选择与读取规则。 */
+    suspend fun resolveAll(
+        userText: String,
+        skills: List<DiscoveredSkill>,
+        readDocument: suspend (DiscoveredSkill) -> ParsedSkillDocument?,
+    ): List<RequestedSkill> {
+        val names = buildSet {
+            SkillSlashInvocation.parse(userText)?.skillName?.let(::add)
+            Regex("""\$([a-zA-Z0-9_-]+)""").findAll(userText).filter {
+                it.range.first == 0 || userText[it.range.first - 1].isWhitespace()
+            }.map { it.groupValues[1] }.filter {
+                runCatching { com.promenar.infinity.data.skills.SkillMarkdownParser.validateName(it) }.isSuccess
+            }.forEach(::add)
+        }
+        return names.sorted().mapNotNull { resolve("/$it", skills, readDocument) }
+    }
+
+    /** 本轮上下文中的点名技能段落；正文仅在显式请求时生效。 */
     fun promptSection(requested: RequestedSkill): String = buildString {
         appendLine("## Requested Skill")
         when (requested) {
             is RequestedSkill.Loaded -> {
                 appendLine(
-                    "The user's latest message starts with the slash command `/${requested.name}`, which loads this skill for the current turn. " +
+                    "The user explicitly requested skill `${requested.name}` for this turn using a slash command or \$name mention. " +
                         "Its SKILL.md is already loaded below, so do not call `activate_skill` for it. " +
-                        "Treat the text after `/${requested.name}` as the user's request and follow the skill's instructions.",
+                        "Follow the skill for the user's request in this turn; historical skill activations are context, not a new request.",
                 )
                 appendLine("<skill_activation>")
                 appendLine(requested.activation)
                 appendLine("</skill_activation>")
             }
             is RequestedSkill.Unavailable -> appendLine(
-                "The user's latest message starts with `/${requested.name}`, but that skill is not available (disabled, untrusted, or unreadable). " +
+                "The user explicitly requested `${requested.name}`, but that skill is not available (disabled, untrusted, or unreadable). " +
                     "Tell the user briefly, then help with the rest of the message without it.",
             )
         }

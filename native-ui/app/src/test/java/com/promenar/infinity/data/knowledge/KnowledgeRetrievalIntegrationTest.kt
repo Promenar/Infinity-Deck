@@ -47,7 +47,8 @@ class KnowledgeRetrievalIntegrationTest {
         val tool = builder.buildContext(base)
         coVerify(exactly = 0) { rag.retrieveContext(any(), any(), any(), any()) }
         coVerify(exactly = 0) { kg.retrieveContext(any(), any(), any(), any()) }
-        assertThat(tool.finalSystemPrompt).contains("可检索资料目录")
+        assertThat(tool.turnContext).contains("可检索资料目录")
+        assertThat(tool.finalSystemPrompt).doesNotContain("可检索资料目录")
         val off = builder.buildContext(base.copy(session = base.session.copy(options = SessionOptions(toolsEnabled = false))))
         coVerify(exactly = 1) { rag.retrieveContext(any(), any(), any(), any()) }
         coVerify(exactly = 1) { kg.retrieveContext(any(), any(), any(), any()) }
@@ -76,7 +77,8 @@ class KnowledgeRetrievalIntegrationTest {
         val advertised = builder.buildContext(ContextBuilderParams("s", "q", assistantMsgId = "m", session = Session("s", "a"),
             retrievalMode = AgentRetrievalMode.TOOL, knowledgeCatalog = "可检索资料目录", availableToolNames = setOf("knowledge_search")))
         coVerify(exactly = 4) { rag.retrieveContext(any(), any(), any(), any()) }
-        assertThat(advertised.finalSystemPrompt).contains("可检索资料目录")
+        assertThat(advertised.turnContext).contains("可检索资料目录")
+        assertThat(advertised.finalSystemPrompt).doesNotContain("可检索资料目录")
     }
 
     @Test fun `工具注册与执行重验使用相同谓词且关闭工具只保留web_search`() = runTest {
@@ -85,15 +87,15 @@ class KnowledgeRetrievalIntegrationTest {
             ProtocolTool(function = ProtocolToolFunction(name, "说明", "{}"), sourceId = "builtin", runtimeToolId = name, risk = ToolRisk.SAFE_READ)
         } }
         val settings = mockk<SharedPreferences>(relaxed = true) { every { getStringSet(any(), any()) } returns null }
-        var material = false
         var config = AgentRetrievalConfig(retrievalMode = AgentRetrievalMode.TOOL)
         val resolver = DefaultSessionToolResolver(settings, registry,
-            knowledgeSearchAllowed = { effectiveRetrievalMode(config, it.options.toolsEnabled) != AgentRetrievalMode.AUTO && material },
+            knowledgeSearchAllowed = { com.promenar.infinity.data.generation.knowledgeSearchAvailableForPrompt(it, config) },
             knowledgeAccessAllowed = { effectiveKnowledgeFileAccess(config, it.options.toolsEnabled) == KnowledgeFileAccess.ON_REQUEST })
         val session = Session("s", "a")
-        assertThat(resolver.resolve(session).map { it.function.name }).containsExactly("request_knowledge_access", "web_search")
-        material = true
+        assertThat(resolver.resolve(session).map { it.function.name }).containsExactlyElementsIn(names)
         assertThat(resolver.resolveForExecution(session).map { it.function.name }).containsExactlyElementsIn(names)
+        assertThat(resolver.resolve(session.copy(ragOptions = RagOptions(enableMemory = false, enableDocs = false))).map { it.function.name })
+            .doesNotContain("knowledge_search")
         config = config.copy(knowledgeFileAccess = KnowledgeFileAccess.OFF)
         assertThat(resolver.resolve(session).map { it.function.name }).doesNotContain("request_knowledge_access")
         assertThat(resolver.resolve(session.copy(options = SessionOptions(toolsEnabled = false))).map { it.function.name }).containsExactly("web_search")

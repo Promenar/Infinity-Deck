@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.chat.manager
 
 import com.promenar.infinity.AppBrand
 import com.promenar.infinity.data.skills.DiscoveredSkill
-import com.promenar.infinity.data.skills.SkillMarkdownParser
 import com.promenar.infinity.data.skills.SkillStatus
 import com.promenar.infinity.data.storage.isUserSkills
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
@@ -167,14 +166,10 @@ object SystemPromptSections {
                 append(it)
             }
             if (workspace is com.promenar.infinity.data.workspace.SessionWorkspace.Directory && workspaceSkillsShadowed) {
-                appendLine("- The workspace root contains a `skills` entry. File tools expose user skills at `/skills`, hiding that workspace entry; access the workspace's own entry as `./skills` through `shell_exec`.")
+                appendLine("- File tools reserve `/skills` for user skills. If the workspace root contains a `skills` entry, access that entry as `./skills` through `shell_exec`.")
             }
             if (workspaceChanged) {
-                if (currentWorkspace(workspace, usesLinux) == null) {
-                    appendLine()
-                    appendLine("### Current Workspace")
-                }
-                appendLine("- The user switched this conversation's workspace earlier. Paths, uuids and hashes in earlier messages may belong to a previous workspace; list or read files again before reusing them.")
+                appendLine("- Paths, uuids and hashes are scoped to the current workspace. After switching workspaces, list or read files again before reusing earlier values.")
             }
             mountedFolders(mounts, usesLinux)?.let {
                 appendLine()
@@ -284,7 +279,6 @@ object SystemPromptSections {
 
     private const val MAX_SKILL_CATALOG_CHARS = 8000
     private val SKILL_READING_TOOLS = setOf("activate_skill", "read_file", "read_skill_file")
-    private val SKILL_MENTION = Regex("\\$([a-zA-Z0-9_-]+)")
 
     fun canReadSkills(toolNames: Set<String>?): Boolean = toolNames?.any(SKILL_READING_TOOLS::contains) == true
 
@@ -293,23 +287,16 @@ object SystemPromptSections {
         content: String = "",
         modelContextTokens: Int? = null,
     ): String {
-        val mentioned = SKILL_MENTION.findAll(content).filter {
-            it.range.first == 0 || content[it.range.first - 1].isWhitespace()
-        }.map { it.groupValues[1] }.filter { name ->
-            runCatching { SkillMarkdownParser.validateName(name) }.isSuccess
-        }.toSet()
-        val available = skills.filter {
-            it.status == SkillStatus.ENABLED && (it.allowImplicitInvocation || it.name in mentioned)
-        }.distinctBy { it.id }.sortedWith(
-            compareByDescending<DiscoveredSkill> { it.name in mentioned }.thenBy { it.name }.thenBy { it.scope.ordinal },
-        )
+        val available = skills.filter { it.status == SkillStatus.ENABLED }
+            .sortedWith(compareBy<DiscoveredSkill> { it.name }.thenBy { it.scope.ordinal }.thenBy { it.id })
+            .distinctBy { it.id }
         if (available.isEmpty()) return ""
         // 英文提示沿用近似估算器的 ASCII 约 4 字符/token，使用 Long 避免大窗口溢出。
         val budget = modelContextTokens?.takeIf { it > 0 }?.let {
             minOf(MAX_SKILL_CATALOG_CHARS.toLong(), it.toLong() * 4 / 50).toInt()
         } ?: MAX_SKILL_CATALOG_CHARS
         val header = "## Skills\n" +
-            "When a task matches a skill's description, first read its SKILL.md using `activate_skill` or a file-reading tool and follow it. " +
+            "For skills allowing implicit invocation, when a task matches the description, first read its SKILL.md using `activate_skill` or a file-reading tool and follow it. " +
             "You must use skills explicitly requested with \$name. Read bundled files as needed with `read_skill_file` or file tools. " +
             "Run bundled scripts with `shell_exec`/`python_exec`, subject to those tools' approval rules. " +
             "User scripts are at `\$INFINITY_SKILLS/<name>` in the shell; project scripts are at `.agents/skills/<name>` in the workspace.\n"
@@ -319,37 +306,18 @@ object SystemPromptSections {
         }
         val result = StringBuilder(header)
         fun line(skill: DiscoveredSkill, description: String): String {
-            val requested = if (skill.name in mentioned) "; explicitly requested" else ""
+            val requested = if (!skill.allowImplicitInvocation) "; explicit request only" else ""
             return "- ${skill.name}: $description [source=${skill.scope.name.lowercase()}; path=${skill.virtualDir}/SKILL.md$requested]\n"
         }
-        // 先确定可容纳的点名前缀，再为后续条目预留空间；全部可容纳时不预留省略提示。
-        val requestedMinimums = available.takeWhile { it.name in mentioned }.map { line(it, "…").length }
-        var requestedToKeep = requestedMinimums.size
-        var minimumChars = requestedMinimums.sumOf(Int::toLong)
-        fun footerSize(omitted: Int) = if (omitted > 0) omittedLine(omitted).length else 0
-        while (requestedToKeep > 0 && header.length + minimumChars + footerSize(available.size - requestedToKeep) > budget) {
-            requestedToKeep--
-            minimumChars -= requestedMinimums[requestedToKeep]
-        }
-        val minimumRequestedTail = IntArray(available.size + 1)
-        for (index in available.indices.reversed()) {
-            val minimum = if (index < requestedToKeep) requestedMinimums[index] else 0
-            minimumRequestedTail[index] = minimumRequestedTail[index + 1] + minimum
-        }
         var listed = 0
-        for ((index, skill) in available.withIndex()) {
+        for (skill in available) {
             val description = (skill.shortDescription?.takeIf(String::isNotBlank) ?: skill.description)
                 .replace('\n', ' ').replace('\r', ' ')
-            val requested = skill.name in mentioned
-            if (requested && index >= requestedToKeep) break
-            val remaining = if (requested) available.size - requestedToKeep else available.size - listed - 1
-            val reserved = if (requested) minimumRequestedTail[index + 1] else 0
-            val descriptionBudget = budget - result.length - line(skill, "").length - footerSize(remaining) - reserved
-            if (descriptionBudget < 1 || (!requested && description.length > descriptionBudget)) break
-            val fitted = if (description.length <= descriptionBudget) description else if (descriptionBudget == 1) {
-                description.take(1).takeUnless { it[0].isHighSurrogate() } ?: "…"
-            } else {
-                val head = description.take(descriptionBudget - 1)
+            val footer = if (listed + 1 < available.size) omittedLine(available.size - listed - 1).length else 0
+            val descriptionBudget = budget - result.length - line(skill, "").length - footer
+            if (descriptionBudget < 1) break
+            val fitted = if (description.length <= descriptionBudget) description else {
+                val head = description.take((descriptionBudget - 1).coerceAtLeast(0))
                 (if (head.lastOrNull()?.isHighSurrogate() == true) head.dropLast(1) else head) + "…"
             }
             result.append(line(skill, fitted))

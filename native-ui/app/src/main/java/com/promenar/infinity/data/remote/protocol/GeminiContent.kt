@@ -76,7 +76,7 @@ internal object GeminiContentCodec {
         val originalMessages = request.messages.filter { it.role != "system" }
         val contentMessages = messagesWithToolMedia(originalMessages, request.model, isVertex)
         // 合成媒体消息属于工具结果，不能重置原始用户轮次的签名范围。
-        val currentUser = originalMessages.lastOrNull { it.role == "user" }
+        val currentUser = originalMessages.lastOrNull { it.role == "user" && !it.isRuntimeInstruction }
         val currentTurnStart = contentMessages.indexOfLast { it === currentUser }
         val callNames = contentMessages.flatMap { it.toolCalls.orEmpty() }.associate { it.id to it.name }
         val hasFunctionTools = !request.tools.isNullOrEmpty()
@@ -121,7 +121,7 @@ internal object GeminiContentCodec {
                 put("tools", buildJsonArray {
                     if (hasFunctionTools) {
                         add(buildJsonObject {
-                            put("functionDeclarations", JsonArray(request.tools.orEmpty().map { tool ->
+                            put("functionDeclarations", JsonArray(request.tools.orEmpty().canonicalizedForRequest().map { tool ->
                                 buildJsonObject {
                                     put("name", tool.function.name)
                                     put("description", tool.function.description)
@@ -283,6 +283,7 @@ internal object GeminiContentCodec {
     }
 
     private fun userParts(message: ProtocolMessage): List<JsonObject> = buildList {
+        message.userTurnContext()?.let { context -> add(buildJsonObject { put("text", context) }) }
         if (message.content.isNotEmpty()) add(buildJsonObject { put("text", message.content) })
         message.imageUrls?.forEach { image ->
             add(inlineData(image.mimeType, image.base64.orEmpty()))

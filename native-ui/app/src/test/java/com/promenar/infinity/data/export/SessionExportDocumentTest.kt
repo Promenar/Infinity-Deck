@@ -20,6 +20,19 @@ class SessionExportDocumentTest {
         Message("t", MessageRole.TOOL, "完整输出不应作为正文", toolCallId = "t", name = "search", createdAt = 300),
     )
 
+    @Test fun `模型专用上下文和请求指令不进入展示导出正文`() {
+        val hidden = messages.map { it.copy(turnContext = "MODEL_ONLY_CONTEXT", requestInstruction = "MODEL_ONLY_INSTRUCTION") }
+        val baseline = ExportDocumentBuilder.build(session, messages, SessionExportOptions(true, true), 1000)
+        val doc = ExportDocumentBuilder.build(session, hidden, SessionExportOptions(true, true), 1000)
+        assertEquals(baseline, doc)
+        listOf(SessionExportFormat.MARKDOWN, SessionExportFormat.TXT).forEach { format ->
+            val rendered = ExportTextRenderer.render(doc, format, true)
+            assertFalse(rendered.contains("MODEL_ONLY_CONTEXT"))
+            assertFalse(rendered.contains("MODEL_ONLY_INSTRUCTION"))
+            assertTrue(rendered.contains("正文"))
+        }
+    }
+
     @Test fun `文档保留元数据引用且思考和工具默认隐藏`() {
         val doc = ExportDocumentBuilder.build(session, messages, SessionExportOptions(), 1000)
         assertEquals(listOf("USER", "ASSISTANT"), doc.messages.map { it.role })

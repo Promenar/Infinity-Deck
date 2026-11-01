@@ -195,6 +195,8 @@ fun MessageEntity.toDomain(): Message {
         errorMessage = errorMessage,
         createdAt = createdAt,
         viewedMedia = envelope?.viewedMedia,
+        turnContext = turnContext,
+        requestInstruction = requestInstruction,
     )
 }
 
@@ -240,5 +242,7 @@ fun Message.toEntity(sessionId: String): MessageEntity = MessageEntity(
     toolResults = toolResults?.let { encodeToJson(it) },
     isError = if (isError) 1 else 0,
     errorMessage = errorMessage,
-    createdAt = createdAt
+    createdAt = createdAt,
+    turnContext = turnContext,
+    requestInstruction = requestInstruction,
 )

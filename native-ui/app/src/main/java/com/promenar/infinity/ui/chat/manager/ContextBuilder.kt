@@ -1,6 +1,5 @@
 package com.promenar.infinity.ui.chat.manager
 
-import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import com.promenar.infinity.data.agent.AgentMemoryPolicy
 import com.promenar.infinity.data.agent.AgentRetrievalMode
 import com.promenar.infinity.data.memory.LongTermMemoryAccess
@@ -41,6 +40,8 @@ data class ContextBuilderResult(
     ),
     /** 模型请求所见的状态版本，工具续轮创建新助手消息时继承此值。 */
     val stateBoardRevision: Long = 0,
+    /** 仅发送给模型、随用户消息持久化的本轮上下文原文。 */
+    val turnContext: String = "",
 )
 
 /** 依赖用户问题的检索结果（联网搜索、文档与记忆、知识图谱），与工具轮次无关。 */
@@ -73,9 +74,9 @@ data class ContextBuilderParams(
     val agentMemoryPolicy: AgentMemoryPolicy = AgentMemoryPolicy(),
     /** 本轮实际广告给模型的工具名；null 表示调用方未提供，按会话开关输出通用工具说明。 */
     val availableToolNames: Set<String>? = null,
-    /** 当前会话两级技能扫描结果；提示段落按状态、隐式策略和用户点名筛选。 */
+    /** 当前会话两级技能扫描结果；目录按可用状态和名称确定性排列。 */
     val availableSkills: List<com.promenar.infinity.data.skills.DiscoveredSkill> = emptyList(),
-    /** 同一次生成中首轮的检索结果；非空时跳过联网搜索、RAG 与 KG 检索，只重建系统提示。 */
+    /** 同一次生成中首轮的检索结果；非空时跳过联网搜索、RAG 与 KG 检索。 */
     val cachedRetrieval: ContextRetrieval? = null,
     /** 会话当前工作区；null 表示调用方未解析，按私有工作区说明。 */
     val workspace: com.promenar.infinity.data.workspace.SessionWorkspace? = null,
@@ -88,6 +89,10 @@ data class ContextBuilderParams(
     val stateExcludedMessageIds: Set<String> = emptySet(),
     /** 本轮请求实际发送的模型 ID，已完成提供商路由解析。 */
     val runtimeModelId: String? = null,
+    /** 非空时连同空字符串一起视为已冻结，不重新读取本轮易变资料。 */
+    val cachedTurnContext: String? = null,
+    /** 用户通过 $名称点名并已加载的技能正文。 */
+    val requestedSkills: List<com.promenar.infinity.ui.chat.manager.skills.RequestedSkill> = emptyList(),
 )
 
 interface WebSearchProvider {
@@ -164,10 +169,12 @@ class ContextBuilder(
     private val longTermMemoryAccess: LongTermMemoryAccess? = null,
 ) {
     suspend fun buildContext(params: ContextBuilderParams): ContextBuilderResult {
-        val retrieval = params.cachedRetrieval ?: retrieve(params)
+        val frozen = params.cachedTurnContext
+        val retrieval = params.cachedRetrieval ?: if (frozen == null) retrieve(params) else
+            ContextRetrieval("", emptyList(), "", emptyList(), null, "", emptyList(), effectiveRagOptions = computeEffectiveRagOptions(params))
 
         // 预取任务计划（suspend 调用）
-        val activePlan: TaskState? = if (!params.session.options.toolsEnabled) null else try {
+        val activePlan: TaskState? = if (frozen != null || !params.session.options.toolsEnabled) null else try {
             taskRepository?.getPlan(params.sessionId)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
@@ -176,16 +183,12 @@ class ContextBuilder(
             null
         }
 
-        val workspaceSkillsShadowed = (params.workspace as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory)?.let {
-            withContext(Dispatchers.IO) {
-                java.nio.file.Files.exists(it.root.resolve("skills").toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)
-            }
-        } ?: false
-        val stateSnapshot = if (params.session.options.toolsEnabled) {
+        val stateSnapshot = if (frozen == null && params.session.options.toolsEnabled) {
             stateBoardRepository?.get(params.sessionId, params.stateExcludedMessageIds)
         } else null
-        stateBoardRepository?.recordContextRead(params.sessionId, params.assistantMsgId, stateSnapshot?.revision ?: 0)
-        val memoryContext = if (params.session.options.toolsEnabled && longTermMemoryRepository != null && longTermMemoryAccess != null) {
+        val stateRevision = if (frozen == null) stateSnapshot?.revision ?: 0 else turnContextMetadata(frozen)?.stateRevision ?: 0
+        stateBoardRepository?.recordContextRead(params.sessionId, params.assistantMsgId, stateRevision)
+        val memoryContext = if (frozen == null && params.session.options.toolsEnabled && longTermMemoryRepository != null && longTermMemoryAccess != null) {
             try {
                 if (longTermMemoryAccess.isEnabled(params.session)) {
                     longTermMemoryContext(
@@ -200,19 +203,11 @@ class ContextBuilder(
                 ""
             }
         } else ""
-        val systemPrompt = buildSystemPrompt(
-            params = params,
-            ragContext = retrieval.ragContext,
-            ragReferences = retrieval.ragReferences,
-            searchContext = retrieval.searchContext,
-            kgContext = retrieval.kgContext,
-            activePlan = activePlan,
-            workspaceSkillsShadowed = workspaceSkillsShadowed,
-            memoryContext = memoryContext,
-        ) + stateBoardContext(
-            stateSnapshot?.board,
-            params.session.options.toolsEnabled && (params.availableToolNames == null || "state_update" in params.availableToolNames),
-        )
+        val systemPrompt = buildSystemPrompt(params)
+        val turnContext = frozen ?: buildTurnContext(params, retrieval, activePlan, memoryContext,
+            stateBoardContext(stateSnapshot?.board,
+                params.session.options.toolsEnabled && (params.availableToolNames == null || "state_update" in params.availableToolNames)),
+            stateRevision)
 
         return ContextBuilderResult(
             searchContext = retrieval.searchContext,
@@ -224,7 +219,8 @@ class ContextBuilder(
             kgPaths = retrieval.kgPaths,
             ragTrace = retrieval.ragTrace,
             retrieval = retrieval,
-            stateBoardRevision = stateSnapshot?.revision ?: 0,
+            stateBoardRevision = stateRevision,
+            turnContext = turnContext,
         )
     }
 
@@ -414,16 +410,7 @@ class ContextBuilder(
         }
     }
 
-    private fun buildSystemPrompt(
-        params: ContextBuilderParams,
-        ragContext: String,
-        ragReferences: List<RagReference>,
-        searchContext: String,
-        kgContext: String = "",
-        activePlan: TaskState? = null,
-        workspaceSkillsShadowed: Boolean = false,
-        memoryContext: String = "",
-    ): String {
+    private fun buildSystemPrompt(params: ContextBuilderParams): String {
         val sb = StringBuilder()
         val session = params.session
 
@@ -453,8 +440,8 @@ class ContextBuilder(
                 names,
                 generic = false,
                 workspace = params.workspace,
-                workspaceChanged = session.messages.any { it.isWorkspaceSwitchNotice },
-                workspaceSkillsShadowed = workspaceSkillsShadowed,
+                workspaceChanged = true,
+                workspaceSkillsShadowed = params.workspace is com.promenar.infinity.data.workspace.SessionWorkspace.Directory,
                 mounts = params.mounts,
                 runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
             )
@@ -466,52 +453,22 @@ class ContextBuilder(
 
         // 3.1 两级技能目录：只在模型有读取入口时披露元数据，正文按需加载。
         if (SystemPromptSections.canReadSkills(params.availableToolNames)) {
-            SystemPromptSections.skillCatalog(params.availableSkills, params.content, params.modelContextTokens)
+            SystemPromptSections.skillCatalog(params.availableSkills, modelContextTokens = params.modelContextTokens)
                 .takeIf(String::isNotEmpty)?.let {
                     sb.appendLine()
                     sb.append(it)
                 }
         }
 
-        // 4. 任务计划
-        if (session.options.toolsEnabled && activePlan != null && activePlan.status !in listOf("idle", "dropped")) {
+        // 范围来自配置；目录中的数量、标题与索引状态属于本轮资料快照。
+        if (contextRetrievalMode(params) != AgentRetrievalMode.AUTO) {
+            val options = computeEffectiveRagOptions(params)
             sb.appendLine()
-            appendTaskContext(sb, activePlan)
-        }
-
-        // 5. 外部检索数据：只作为资料，不作为指令。
-        val references = buildString {
-            if (contextRetrievalMode(params) != AgentRetrievalMode.AUTO && params.knowledgeCatalog.isNotBlank()) {
-                appendLine(params.knowledgeCatalog)
-            }
-            if (memoryContext.isNotEmpty()) append(memoryContext)
-            if (ragContext.isNotBlank()) {
-                if (isNotEmpty()) appendLine()
-                appendLine("### Retrieved Context")
-                appendLine(ragContext.trim())
-            } else if (ragReferences.isNotEmpty()) {
-                if (isNotEmpty()) appendLine()
-                appendLine("### Retrieved Context")
-                ragReferences.forEach { ref -> appendLine("- [${ref.source}] ${ref.content.take(400)}") }
-            }
-            if (kgContext.isNotEmpty()) {
-                if (isNotEmpty()) appendLine()
-                appendLine("### Knowledge Graph Relations")
-                appendLine(kgContext.trim())
-            }
-            if (searchContext.isNotEmpty()) {
-                if (isNotEmpty()) appendLine()
-                appendLine("### Web Search Results")
-                appendLine(searchContext.trim())
-            }
-        }
-        if (references.isNotEmpty()) {
-            sb.appendLine()
-            sb.appendLine("## Reference Material")
-            sb.appendLine(SystemPromptSections.DATA_BOUNDARY)
-            sb.appendLine("<reference_material>")
-            sb.append(references)
-            sb.appendLine("</reference_material>")
+            sb.appendLine("## Knowledge Catalog")
+            sb.appendLine("- Document scope: ${options.effectiveDocumentScope}; history scope: ${options.effectiveMemoryScope}.")
+            sb.appendLine("- Selected documents: ${options.activeDocIds.sorted().joinToString(", ")}")
+            sb.appendLine("- Selected folders: ${options.activeFolderIds.sorted().joinToString(", ")}")
+            sb.appendLine("- Material titles and index status, when available, are in the user turn context. Use knowledge tools to inspect current material.")
         }
 
         // 6. 历史摘要
@@ -524,20 +481,62 @@ class ContextBuilder(
             sb.appendLine("</history_summary>")
         }
 
-        // 6.1 本轮斜杠命令点名的技能：只随这一轮出现，放在稳定段落之后，减少对前缀缓存的破坏。
-        params.requestedSkill?.let {
-            sb.appendLine()
-            sb.append(com.promenar.infinity.ui.chat.manager.skills.SlashSkillActivation.promptSection(it))
-        }
-
-        // 7. 易变环境信息放在末尾，减少对前缀缓存的破坏。
-        if (session.options.enableTimeInjection) {
-            val now = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm EEEE", java.util.Locale.US).format(java.util.Date())
-            sb.appendLine()
-            sb.appendLine("[System Time: $now (${java.util.TimeZone.getDefault().id})]")
-        }
-
         return sb.toString().trimEnd() + "\n"
+    }
+
+    /** 段落顺序固定；空块也由调用方保存，避免续轮重新采样时间与状态。 */
+    private fun buildTurnContext(
+        params: ContextBuilderParams,
+        retrieval: ContextRetrieval,
+        activePlan: TaskState?,
+        memoryContext: String,
+        stateContext: String,
+        stateRevision: Long,
+    ): String {
+        val body = buildString {
+            if (params.session.options.enableTimeInjection) {
+                val now = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm EEEE", java.util.Locale.US).format(java.util.Date())
+                appendLine("[System Time: $now (${java.util.TimeZone.getDefault().id})]")
+            }
+            val references = buildString {
+                if (contextRetrievalMode(params) != AgentRetrievalMode.AUTO && params.knowledgeCatalog.isNotBlank()) {
+                    appendLine("### Available Material Snapshot")
+                    appendLine(params.knowledgeCatalog)
+                }
+                if (memoryContext.isNotEmpty()) appendLine(memoryContext)
+                if (retrieval.ragContext.isNotBlank() || retrieval.ragReferences.isNotEmpty()) {
+                    appendLine("### Retrieved Context")
+                    if (retrieval.ragContext.isNotBlank()) appendLine(retrieval.ragContext.trim()) else
+                        retrieval.ragReferences.forEach { appendLine("- [${it.source}] ${it.content.take(400)}") }
+                }
+                if (retrieval.kgContext.isNotEmpty()) {
+                    appendLine("### Knowledge Graph Relations")
+                    appendLine(retrieval.kgContext.trim())
+                }
+                if (retrieval.searchContext.isNotEmpty()) {
+                    appendLine("### Web Search Results")
+                    appendLine(retrieval.searchContext.trim())
+                }
+            }
+            if (references.isNotEmpty()) {
+                appendLine("## Reference Material")
+                appendLine(SystemPromptSections.DATA_BOUNDARY)
+                appendLine("<reference_material>")
+                append(references)
+                appendLine("</reference_material>")
+            }
+            if (params.session.options.toolsEnabled && activePlan != null && activePlan.status !in listOf("idle", "dropped"))
+                appendTaskContext(this, activePlan)
+            if (stateContext.isNotEmpty()) {
+                appendLine("<state_board revision=\"$stateRevision\">")
+                append(stateContext)
+                appendLine("</state_board>")
+            }
+            (listOfNotNull(params.requestedSkill) + params.requestedSkills).distinctBy { it.name }.forEach {
+                append(com.promenar.infinity.ui.chat.manager.skills.SlashSkillActivation.promptSection(it))
+            }
+        }
+        return "<turn_context>\n<snapshot_metadata>${json.encodeToString(TurnContextMetadata(stateRevision, params.assistantMsgId))}</snapshot_metadata>\n$body</turn_context>"
     }
 
     /** 已完成步骤仅保留标题，当前与未完成步骤保留完整说明。 */

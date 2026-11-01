@@ -70,8 +70,8 @@ class ContextBuilderTest {
                 session = Session(id = "s", agentId = "a", ragOptions = RagOptions(enableMemory = true, enableKnowledgeGraph = true)),
                 onRagProgress = { stage, _, _ -> stages += stage },
             ))
-            assertThat(result.finalSystemPrompt).contains("VALID_RAG_CONTEXT")
-            assertThat(result.finalSystemPrompt).doesNotContain("INVALID_KG_CONTEXT")
+            assertThat(result.turnContext).contains("VALID_RAG_CONTEXT")
+            assertThat(result.turnContext).doesNotContain("INVALID_KG_CONTEXT")
             assertThat(result.kgPaths).isEmpty()
             assertThat(stages).contains("KG failed")
             assertThat(stages).doesNotContain("Context ready")
@@ -200,7 +200,7 @@ class ContextBuilderTest {
             session = session
         ))
 
-        assertThat(result.finalSystemPrompt).contains("System Time")
+        assertThat(result.turnContext).contains("System Time")
     }
 
     @Test
@@ -247,22 +247,24 @@ class ContextBuilderTest {
             session = session
         ))
 
-        assertThat(result.finalSystemPrompt).contains("Active Task")
-        assertThat(result.finalSystemPrompt).contains("Build app")
+        assertThat(result.turnContext).contains("Active Task")
+        assertThat(result.turnContext).contains("Build app")
     }
 
     @Test
-    fun systemPromptAddsNoBuiltInIdentityAndPlacesTimeLast() = testScope.runTest {
+    fun systemPromptAddsNoBuiltInIdentityAndKeepsTimeInTurnContext() = testScope.runTest {
         val session = Session(id = "s1", agentId = "a1", customPrompt = "Be concise")
 
-        val prompt = ContextBuilder().buildContext(
+        val context = ContextBuilder().buildContext(
             ContextBuilderParams("s1", "hi", assistantMsgId = "m1", session = session, availableToolNames = emptySet()),
-        ).finalSystemPrompt
+        )
+        val prompt = context.finalSystemPrompt
 
         assertThat(prompt).startsWith("## Session Instructions")
         assertThat(prompt.indexOf("Be concise")).isGreaterThan(0)
         assertThat(prompt).doesNotContain("## Tool Use")
-        assertThat(prompt.trimEnd().lines().last()).contains("System Time")
+        assertThat(prompt).doesNotContain("System Time")
+        assertThat(context.turnContext).contains("System Time")
     }
 
     @Test
@@ -408,7 +410,7 @@ class ContextBuilderTest {
                 "s1", "hi", assistantMsgId = "m1",
                 session = Session("s1", "a1", options = com.promenar.infinity.data.model.SessionOptions(economyMode = economy, enableTimeInjection = false)),
             ),
-        ).finalSystemPrompt
+        ).turnContext
 
         val regular = prompt(false)
         assertThat(prompt(true)).isEqualTo(regular)
@@ -436,7 +438,7 @@ class ContextBuilderTest {
     }
 
     @Test
-    fun rootSkillsShadowNoticeRequiresDirectoryWorkspaceAndRootEntry() = testScope.runTest {
+    fun rootSkillsShadowNoticeOnlyDependsOnDirectoryWorkspace() = testScope.runTest {
         val root = java.nio.file.Files.createTempDirectory("skill-shadow").toFile()
         try {
             val entity = com.promenar.infinity.data.local.db.entity.WorkspaceEntity("project", "project", "项目", "repo", 1)
@@ -446,13 +448,13 @@ class ContextBuilderTest {
                 workspace = workspace, availableToolNames = setOf("read_file"),
             )).finalSystemPrompt
             root.resolve("sub/skills").mkdirs()
-            assertThat(prompt(directory)).doesNotContain("hiding that workspace entry")
+            assertThat(prompt(directory)).contains("File tools reserve `/skills`")
             root.resolve("skills").writeText("workspace entry")
-            assertThat(prompt(directory)).contains("hiding that workspace entry")
+            assertThat(prompt(directory)).contains("File tools reserve `/skills`")
             assertThat(prompt(directory)).contains("./skills")
             for (workspace in listOf(null, com.promenar.infinity.data.workspace.SessionWorkspace.Private,
                 com.promenar.infinity.data.workspace.SessionWorkspace.Unavailable("project", entity, "不可用"))) {
-                assertThat(prompt(workspace)).doesNotContain("hiding that workspace entry")
+                assertThat(prompt(workspace)).doesNotContain("File tools reserve `/skills`")
             }
         } finally {
             root.deleteRecursively()
@@ -468,7 +470,7 @@ class ContextBuilderTest {
         }
         val prompt = ContextBuilder(ragProvider = ragProvider).buildContext(
             ContextBuilderParams("s1", "news", assistantMsgId = "m1", session = Session("s1", "a1")),
-        ).finalSystemPrompt
+        ).turnContext
 
         val boundary = prompt.indexOf(SystemPromptSections.DATA_BOUNDARY)
         assertThat(boundary).isAtLeast(0)
@@ -501,7 +503,7 @@ class ContextBuilderTest {
         ))
 
         assertThat(result.searchContext).isEmpty()
-        assertThat(result.finalSystemPrompt).doesNotContain("Web Search Results")
+        assertThat(result.turnContext).doesNotContain("Web Search Results")
         assertThat(result.citations).isEmpty()
     }
 
@@ -762,8 +764,8 @@ class ContextBuilderTest {
             session = session
         ))
 
-        assertThat(result.finalSystemPrompt).contains("## Retrieved Context")
-        assertThat(result.finalSystemPrompt).contains(longTail)
+        assertThat(result.turnContext).contains("## Retrieved Context")
+        assertThat(result.turnContext).contains(longTail)
     }
 
     @Test
@@ -837,7 +839,7 @@ class ContextBuilderTest {
         ))
 
         assertThat(kgCalled).isFalse()
-        assertThat(result.finalSystemPrompt).doesNotContain("Knowledge Graph Relations")
+        assertThat(result.turnContext).doesNotContain("Knowledge Graph Relations")
         assertThat(result.kgPaths).isEmpty()
     }
 
@@ -884,8 +886,8 @@ class ContextBuilderTest {
             session = session
         ))
 
-        assertThat(result.finalSystemPrompt).contains("Knowledge Graph Relations")
-        assertThat(result.finalSystemPrompt).contains("entity A")
+        assertThat(result.turnContext).contains("Knowledge Graph Relations")
+        assertThat(result.turnContext).contains("entity A")
     }
 
     @Test
@@ -986,7 +988,7 @@ class ContextBuilderTest {
         assertThat(result.kgPaths).hasSize(1)
         assertThat(result.kgPaths.first().edges).hasSize(1)
         assertThat(result.kgPaths.first().edges.first().relation).isEqualTo("related_to")
-        assertThat(result.finalSystemPrompt).contains("Knowledge Graph Relations")
+        assertThat(result.turnContext).contains("Knowledge Graph Relations")
     }
 
     @Test
@@ -1028,7 +1030,7 @@ class ContextBuilderTest {
         ))
 
         assertThat(result.kgPaths).isEmpty()
-        assertThat(result.finalSystemPrompt).doesNotContain("Knowledge Graph Relations")
+        assertThat(result.turnContext).doesNotContain("Knowledge Graph Relations")
     }
 
     @Test
@@ -1070,7 +1072,7 @@ class ContextBuilderTest {
         ))
 
         assertThat(result.kgPaths).isEmpty()
-        assertThat(result.finalSystemPrompt).doesNotContain("Knowledge Graph Relations")
+        assertThat(result.turnContext).doesNotContain("Knowledge Graph Relations")
     }
 
     @Test
@@ -1184,7 +1186,7 @@ class ContextBuilderTest {
 
         assertThat(kgCalled).isTrue()
         assertThat(result.kgPaths).isEmpty()
-        assertThat(result.finalSystemPrompt).contains("KG")
+        assertThat(result.turnContext).contains("KG")
     }
 
     @Test

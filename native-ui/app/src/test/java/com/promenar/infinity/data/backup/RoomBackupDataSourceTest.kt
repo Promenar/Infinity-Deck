@@ -87,6 +87,46 @@ import kotlinx.serialization.json.jsonPrimitive
 @Config(sdk = [33])
 class RoomBackupDataSourceTest {
     @Test
+    fun `轮次上下文备份恢复保持完整原文字节且正文独立`() = runBlocking {
+        emptyWorkspaceBackup()
+        db.sessionDao().insert(SessionEntity("context-session", "agent-empty", createdAt = 1, updatedAt = 1))
+        val raw = "  工作区：/项目/甲\r\n<state>\n🧪 & data\n</state>\n\n"
+        db.messageDao().insert(Message("context-user", MessageRole.USER, "用户正文", turnContext = raw).toEntity("context-session"))
+        db.messageDao().insert(Message("context-assistant", MessageRole.ASSISTANT, "助手正文", requestInstruction = raw).toEntity("context-session"))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val row = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+            .getValue("tables").jsonObject.getValue("messages").jsonArray.first { it.jsonObject["id"]?.jsonPrimitive?.content == "context-user" }.jsonObject
+        assertThat(row.getValue("turn_context").jsonPrimitive.content).isEqualTo(raw)
+        db.messageDao().deleteById("context-user")
+        db.messageDao().deleteById("context-assistant")
+        newDataSource().restore(validated(snapshot))
+        val restored = db.messageDao().getById("context-user")!!.toDomain()
+        assertThat(restored.turnContext!!.toByteArray(Charsets.UTF_8)).isEqualTo(raw.toByteArray(Charsets.UTF_8))
+        assertThat(restored.content).isEqualTo("用户正文")
+        val assistant = db.messageDao().getById("context-assistant")!!.toDomain()
+        assertThat(assistant.requestInstruction!!.toByteArray(Charsets.UTF_8)).isEqualTo(raw.toByteArray(Charsets.UTF_8))
+        assertThat(assistant.content).isEqualTo("助手正文")
+    }
+
+    @Test
+    fun `v12备份缺轮次上下文列时恢复为空且保留正文`() = runBlocking {
+        emptyWorkspaceBackup()
+        db.sessionDao().insert(SessionEntity("context-session", "agent-empty", createdAt = 1, updatedAt = 1))
+        db.messageDao().insert(MessageEntity("context-user", "context-session", "user", "旧正文", createdAt = 1))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val root = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val tables = root.getValue("tables").jsonObject
+        val legacy = JsonObject(root + mapOf("schemaVersion" to JsonPrimitive(12),
+            "tables" to JsonObject(tables + ("messages" to JsonArray(tables.getValue("messages").jsonArray.map {
+                JsonObject(it.jsonObject - "turn_context" - "request_instruction")
+            }))))).toString().toByteArray()
+        newDataSource().restore(validated(snapshot, database = legacy))
+        assertThat(db.messageDao().getById("context-user")!!.toDomain().turnContext).isNull()
+        assertThat(db.messageDao().getById("context-user")!!.toDomain().requestInstruction).isNull()
+        assertThat(db.messageDao().getById("context-user")!!.content).isEqualTo("旧正文")
+    }
+
+    @Test
     fun `带引用且正文为空的消息备份恢复后保持结构化引用`() = runBlocking {
         emptyWorkspaceBackup()
         db.sessionDao().insert(SessionEntity("quote-session", "agent-empty", createdAt = 1, updatedAt = 1))
@@ -469,12 +509,12 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `v8至v12备份缺运行模式列时拒绝恢复且保留当前数据`() = runBlocking {
+    fun `v8至v13备份缺运行模式列时拒绝恢复且保留当前数据`() = runBlocking {
         seedCompleteGraph()
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
         val root = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
         val tables = root.getValue("tables").jsonObject
-        for (version in 8..12) {
+        for (version in 8..13) {
             val legacyTables = if (version == 8) tables - "long_term_memories" else tables
             val missingMode = JsonObject(root + mapOf(
                 "schemaVersion" to JsonPrimitive(version),
@@ -493,7 +533,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(12)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(13)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -1093,8 +1133,8 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(12)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("12")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(13)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("13")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",

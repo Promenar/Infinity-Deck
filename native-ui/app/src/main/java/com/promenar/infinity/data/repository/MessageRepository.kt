@@ -102,6 +102,9 @@ open class MessageRepository(
         updates.forEach { (key, value) ->
             result = when (key) {
                 "content" -> result.copy(content = value as? String ?: result.content)
+                "modelId" -> result.copy(modelId = value as? String)
+                "turnContext" -> result.copy(turnContext = value as? String)
+                "requestInstruction" -> result.copy(requestInstruction = value as? String)
                 "quotes" -> result.copy(quotes = (value as? List<MessageQuote>)?.takeIf { it.isNotEmpty() }?.let { encode(it) })
                 "status" -> result.copy(status = value as? String)
                 "reasoning" -> result.copy(reasoning = value as? String)
@@ -180,6 +183,8 @@ open class MessageRepository(
             content = content,
             modelId = modelId,
             quotes = quotes,
+            turnContext = turnContext,
+            requestInstruction = requestInstruction,
             documents = userDocuments.orEmpty().map { document ->
                 com.promenar.infinity.domain.model.MessageDocumentAttachment(
                     name = document.name,

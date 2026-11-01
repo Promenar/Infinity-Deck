@@ -57,9 +57,9 @@ class SessionRunModeMigrationTest {
                 sqlite.version = 26
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32).allowMainThreadQueries().build()
             try {
-                assertThat(room.openHelper.writableDatabase.version).isEqualTo(31)
+                assertThat(room.openHelper.writableDatabase.version).isEqualTo(32)
                 assertThat(room.sessionDao().getById("s")!!.title).isEqualTo("保留旧会话😀")
                 assertThat(room.sessionDao().getById("s")!!.runMode).isNull()
                 val activity = room.sessionDao().getById("s")!!.updatedAt
@@ -70,7 +70,7 @@ class SessionRunModeMigrationTest {
                 assertThat(room.sessionDao().getById("s")!!.updatedAt).isEqualTo(activity)
                 assertThat(room.sessionDao().countLinuxSessions()).isEqualTo(1)
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(31, INFINITY_SCHEMA_V31_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(32, INFINITY_SCHEMA_V32_IDENTITY_HASH)
                 }).isTrue()
             } finally { room.close() }
         } finally { context.deleteDatabase(name) }

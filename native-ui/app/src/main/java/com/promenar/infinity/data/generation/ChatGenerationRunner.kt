@@ -479,6 +479,11 @@ class ChatGenerationRunner(
                         attempt++
                         if (!flushRoundBoundaryWithRetry()) return
                         if (runtime.shouldYieldAtRoundBoundary(request)) break
+                        runtime.prepareContinuation(request)?.let { assistantMessageId ->
+                            safeEmit(GenerationEvent.TargetChanged(assistantMessageId))
+                        }
+                        snapshot = GenerationSnapshot()
+                        resultsCommitted = false
                         phase(GenerationPhase.BUILDING_CONTEXT)
                         val continuationPreparation = runtime.buildContext(request)
                         if (continuationPreparation is GenerationPreparationOutcome.Handled) {
@@ -500,11 +505,6 @@ class ChatGenerationRunner(
                             }
                             return
                         }
-                        runtime.prepareContinuation(request)?.let { assistantMessageId ->
-                            safeEmit(GenerationEvent.TargetChanged(assistantMessageId))
-                        }
-                        snapshot = GenerationSnapshot()
-                        resultsCommitted = false
                         snapshot = persist(request, snapshot, emit)
                     }
                     GenerationToolDecision.WAIT_FOR_APPROVAL, GenerationToolDecision.WAIT_FOR_INPUT -> {

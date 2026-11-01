@@ -1173,7 +1173,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             chatStore,
             generationMessageManager,
             skillRegistry,
-            sessionToolResolver,
+            mainChatToolResolver,
             taskRepository,
             toolExecutionLedger,
             sessionExecutionGate,
@@ -1230,7 +1230,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             ) { modelId -> generationLocalProviders.create(modelId) }.historySummaryManager(provider),
             sessionManager = generationSessionManager,
             skillRegistry = skillRegistry,
-            toolResolver = sessionToolResolver,
+            toolResolver = mainChatToolResolver,
             presentationStore = generationPresentationStore,
             skillCatalog = skillCatalog,
             toolAllowlistStore = toolAllowlistStore,
@@ -1884,7 +1884,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.rag.effectiveKnowledgeFileAccess(knowledgeConfigForTools(current.agentId), current.options.toolsEnabled) ==
             com.promenar.infinity.data.agent.KnowledgeFileAccess.ON_REQUEST
 
-    val sessionToolResolver: com.promenar.infinity.data.generation.SessionToolResolver by lazy {
+    val sessionToolResolver: com.promenar.infinity.data.generation.SessionToolResolver by lazy { createSessionToolResolver(false) }
+    private val mainChatToolResolver: com.promenar.infinity.data.generation.SessionToolResolver by lazy { createSessionToolResolver(true) }
+
+    private fun createSessionToolResolver(stableKnowledgeAvailability: Boolean): com.promenar.infinity.data.generation.SessionToolResolver =
         object : com.promenar.infinity.data.generation.SessionToolResolver {
             override fun resolve(session: com.promenar.infinity.data.model.Session): List<com.promenar.infinity.data.remote.protocol.ProtocolTool> =
                 com.promenar.infinity.data.generation.DefaultSessionToolResolver(
@@ -1893,9 +1896,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     longTermMemoryAllowed = longTermMemoryAccess::isEnabledForToolAdvertisement,
                     knowledgeSearchAllowed = { current ->
                         val config = knowledgeConfigForTools(current.agentId)
-                        com.promenar.infinity.data.rag.effectiveRetrievalMode(config, current.options.toolsEnabled) != com.promenar.infinity.data.agent.AgentRetrievalMode.AUTO &&
-                            knowledgeCatalog.hasIndexedMaterial(current, com.promenar.infinity.data.rag.resolveEffectiveRagOptions(current.ragOptions,
-                                memoryPolicy = config?.memoryPolicy ?: com.promenar.infinity.data.agent.AgentMemoryPolicy()))
+                        if (stableKnowledgeAvailability) com.promenar.infinity.data.generation.knowledgeSearchAvailableForPrompt(current, config) else
+                            com.promenar.infinity.data.rag.effectiveRetrievalMode(config, current.options.toolsEnabled) != com.promenar.infinity.data.agent.AgentRetrievalMode.AUTO &&
+                                knowledgeCatalog.hasIndexedMaterial(current, com.promenar.infinity.data.rag.resolveEffectiveRagOptions(current.ragOptions,
+                                    memoryPolicy = config?.memoryPolicy ?: com.promenar.infinity.data.agent.AgentMemoryPolicy()))
                     },
                     knowledgeAccessAllowed = ::knowledgeAccessAllowedForTools,
                     subagentModelPolicy = { current -> knowledgeConfigForTools(current.agentId)?.subagentModels ?: com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
@@ -1915,7 +1919,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     else resolve(current.copy(modelId = target.modelId))
                 }
         }
-    }
 
     private val workspaceMediaViewer by lazy {
         com.promenar.infinity.data.generation.WorkspaceMediaViewer(

@@ -5,6 +5,8 @@ import com.promenar.infinity.data.model.TaskStep
 import com.promenar.infinity.data.model.ToolResult
 import com.promenar.infinity.data.repository.TaskRepository
 import com.promenar.infinity.domain.repository.ITaskRepository
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -37,6 +39,7 @@ internal fun JsonObjectBuilder.putPlanSummary(repo: ITaskRepository, state: Task
         put("total", total)
     })
     put("currentFocusStepId", state.currentFocusStepId.orEmpty())
+    put("steps", Json.encodeToJsonElement(state.steps))
 }
 
 internal fun flattenSteps(steps: List<TaskStep>): List<TaskStep> =

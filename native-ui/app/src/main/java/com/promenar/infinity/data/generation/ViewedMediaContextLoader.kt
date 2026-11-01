@@ -23,7 +23,7 @@ class ViewedMediaContextLoader(
         val cleanMessages = messages.map { message ->
             if (message.role == "tool" && message.name == "view_media") message.copy(imageUrls = null, audioData = null, videoData = null, mediaPaths = null) else message
         }
-        val currentTurn = cleanMessages.indexOfLast { it.role == "user" }
+        val currentTurn = cleanMessages.indexOfLast { it.role == "user" && !it.isRuntimeInstruction }
         val records = session.messages.filter { it.role == MessageRole.TOOL && it.name == "view_media" }
             .associateBy { it.toolCallId }
         val resolvedTarget = if (cleanMessages.drop(currentTurn + 1).any { it.role == "tool" && !records[it.toolCallId]?.viewedMedia.isNullOrEmpty() }) target(session, modelId) else return@withContext cleanMessages

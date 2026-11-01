@@ -54,6 +54,14 @@ class DualDatabaseFullGraphContractTest {
 
             SQLiteDatabase.openDatabase(currentPath.toString(), null, SQLiteDatabase.OPEN_READONLY).use { database ->
                 assertThat(count(database, "sessions")).isEqualTo(2)
+                val legacyUser = RecoveryStableId.map("messages", "id", USER_MESSAGE_ID)
+                val legacyAssistantContext = RecoveryStableId.map("messages", "id", ASSISTANT_ID)
+                assertThat(value(database, "SELECT turn_context FROM messages WHERE id=?", arrayOf(USER_MESSAGE_ID)))
+                    .isEqualTo("  current context $USER_MESSAGE_ID\r\n🧪\n")
+                assertThat(value(database, "SELECT turn_context FROM messages WHERE id=?", arrayOf(legacyUser)))
+                    .isEqualTo("  legacy context $USER_MESSAGE_ID\r\n🧪\n")
+                assertThat(value(database, "SELECT request_instruction FROM messages WHERE id=?", arrayOf(legacyAssistantContext)))
+                    .isEqualTo("  legacy instruction $ASSISTANT_ID\r\n🧪\n")
                 assertThat(count(database, "workspace_files")).isEqualTo(4)
                 assertThat(count(database, "vectorization_tasks")).isEqualTo(2)
                 assertThat(count(database, "kg_jit_cache")).isEqualTo(0)
@@ -344,6 +352,7 @@ class DualDatabaseFullGraphContractTest {
                 sessionId = SESSION_ID,
                 role = "user",
                 content = "$label user",
+                turnContext = "  $label context $USER_MESSAGE_ID\r\n🧪\n",
                 createdAt = now,
             ),
         )
@@ -353,6 +362,7 @@ class DualDatabaseFullGraphContractTest {
                 sessionId = SESSION_ID,
                 role = "assistant",
                 content = "$label assistant",
+                requestInstruction = "  $label instruction $ASSISTANT_ID\r\n🧪\n",
                 ragReferences = "[{\"documentId\":\"$FILE_ID\",\"messageId\":\"$USER_MESSAGE_ID\"}]",
                 toolCalls = "[{\"id\":\"$TOOL_CALL_ID\",\"name\":\"$REMOTE_TOOL_NAME\",\"arguments\":\"{}\"}]",
                 pendingApprovalToolIds = "[\"$TOOL_CALL_ID\"]",

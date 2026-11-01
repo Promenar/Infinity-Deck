@@ -8,6 +8,23 @@ import com.promenar.infinity.data.model.*
 
 class BranchSessionPlannerTest {
     @Test
+    fun `分支复制保留独立轮次上下文原文且不改写内容中的消息标识`() {
+        val raw = "  <context>m1 /项目/甲\r\n🧪</context>\n"
+        val original = Message("m1", MessageRole.USER, "用户正文", turnContext = raw).toEntity("source")
+        val assistant = Message("m2", MessageRole.ASSISTANT, "助手正文", status = "success", requestInstruction = raw).toEntity("source")
+        val result = BranchSessionPlanner.plan(session(), listOf(original, assistant), "m2", "branch", 2) { "copy-$it" }
+        val copied = (result as BranchSessionPlanResult.Ready).plan.messages.first()
+        assertThat(copied.id).isEqualTo("copy-m1")
+        assertThat(copied.turnContext!!.toByteArray(Charsets.UTF_8)).isEqualTo(raw.toByteArray(Charsets.UTF_8))
+        assertThat(copied.toDomain().turnContext).isEqualTo(raw)
+        assertThat(copied.content).isEqualTo("用户正文")
+        assertThat(original.turnContext).isEqualTo(raw)
+        val copiedAssistant = (result as BranchSessionPlanResult.Ready).plan.messages.last()
+        assertThat(copiedAssistant.requestInstruction!!.toByteArray(Charsets.UTF_8)).isEqualTo(raw.toByteArray(Charsets.UTF_8))
+        assertThat(copiedAssistant.content).isEqualTo("助手正文")
+    }
+
+    @Test
     fun `分支引用来源在复制范围内时改写否则保留且只有引用的用户消息可分支`() {
         val quotes = listOf(MessageQuote("m1", "来源", "批注"), MessageQuote("outside", "外部来源", "外部批注"))
         val messages = listOf(message("m1", "assistant", "来源"),

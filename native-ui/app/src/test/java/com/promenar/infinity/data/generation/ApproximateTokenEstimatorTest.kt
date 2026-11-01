@@ -17,6 +17,17 @@ class ApproximateTokenEstimatorTest {
     }
 
     @Test
+    fun `用户上下文计入预算而非用户字段不增加输入`() {
+        val user = ProtocolMessage("user", "输入")
+        val block = "资料".repeat(100)
+        assertThat(ApproximateTokenEstimator.estimate(user.copy(turnContext = block)))
+            .isEqualTo(ApproximateTokenEstimator.estimate(user) + ApproximateTokenEstimator.estimate(block) + 1)
+        val assistant = ProtocolMessage("assistant", "回复")
+        assertThat(ApproximateTokenEstimator.estimate(assistant.copy(turnContext = block)))
+            .isEqualTo(ApproximateTokenEstimator.estimate(assistant))
+    }
+
+    @Test
     fun `相同对话增大工具定义会计入请求预算`() {
         val prompt = PromptRequest(model = "model", messages = listOf(ProtocolMessage("user", "读取资料")))
         val withTools = prompt.copy(tools = listOf(ProtocolTool(

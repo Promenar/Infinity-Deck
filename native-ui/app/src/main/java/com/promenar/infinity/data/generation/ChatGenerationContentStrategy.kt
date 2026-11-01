@@ -80,7 +80,7 @@ internal fun sanitizeProtocolHistory(messages: List<Message>): List<Message> {
         }
         val original = message.toolCalls.orEmpty()
         val calls = original.filter { it.id.isNotBlank() }.distinctBy { it.id }
-        if (message.content.isBlank() && calls.isEmpty()) continue
+        if (message.content.isBlank() && calls.isEmpty() && message.requestInstruction.isNullOrBlank()) continue
         result += if (calls.size == original.size) message else message.copy(toolCalls = calls)
         openCalls = calls.associateBy { it.id }
     }
@@ -147,6 +147,10 @@ class DefaultChatGenerationContentStrategy(
         val history = sanitizeProtocolHistory(protocolMessages)
         val currentTurnStart = history.indexOfLast { it.role == MessageRole.USER }
         history.forEachIndexed { index, message ->
+            if (message.role == MessageRole.ASSISTANT) {
+                message.requestInstruction?.takeIf(String::isNotEmpty)?.let { add(ProtocolMessage("user", it, isRuntimeInstruction = true)) }
+                if (message.content.isBlank() && message.toolCalls.isNullOrEmpty()) return@forEachIndexed
+            }
             add(
                 when (message.role) {
                     MessageRole.USER -> ProtocolMessage(
@@ -155,6 +159,7 @@ class DefaultChatGenerationContentStrategy(
                             MessageQuoteFormatter.formatUserContent(message.content, message.quotes),
                             message.userDocuments.orEmpty(),
                         ),
+                        turnContext = message.turnContext,
                         imageUrls = message.userImages?.map { dataUrl ->
                             val base64Index = dataUrl.indexOf("base64,")
                             val mimeEnd = dataUrl.indexOf(';')

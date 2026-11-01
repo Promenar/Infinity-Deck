@@ -83,7 +83,6 @@ import kotlinx.serialization.decodeFromString
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
-import org.junit.Ignore
 import kotlinx.serialization.encodeToString
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -341,7 +340,7 @@ class P0RuntimeIntegrationTest {
         assertThat(firstProgress.estimated).isTrue()
         assertThat(fixture.prompts).hasSize(1)
         assertThat(fixture.prompts.single().toolChoice).isEqualTo(ProtocolToolChoice.NONE)
-        assertThat(fixture.prompts.single().messages.first { it.role == "system" }.content).contains("Tool Budget Exhausted")
+        assertThat(fixture.prompts.single().messages.last().content).contains("Tool Budget Exhausted")
         assertThat(fixture.executedCalls).containsExactly("call-1")
         assertThat(fixture.messageRepository.getById("assistant")!!.tokens).isEqualTo(storedUsage)
         assertThat(fixture.messageRepository.getById("resumed")!!.content).isEqualTo("预算收尾")
@@ -380,7 +379,7 @@ class P0RuntimeIntegrationTest {
         val fixture = fixture()
         val continuationEntered = CompletableDeferred<Unit>()
         fixture.onContext = { round ->
-            if (round == 2) {
+            if (round == 3) {
                 continuationEntered.complete(Unit)
                 awaitCancellation()
             }
@@ -396,7 +395,11 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.prompts).hasSize(1)
         val persisted = fixture.messageRepository.getBySession("session")
         assertThat(persisted.first { it.id == "assistant" }.toolCalls!!.map { it.id }).containsExactly("call-1")
-        assertThat(persisted.first { it.id == "assistant" }.status).isEqualTo("cancelled")
+        assertThat(persisted.first { it.id == "assistant" }.status).isNull()
+        val cancelled = persisted.single { it.role == MessageRole.ASSISTANT && it.id != "assistant" }
+        assertThat(cancelled.status).isEqualTo("cancelled")
+        assertThat(cancelled.content).isEmpty()
+        assertThat(cancelled.toolCalls).isEmpty()
         assertThat(persisted.single { it.role == MessageRole.TOOL }.toolCallId).isEqualTo("call-1")
         assertThat(persisted.single { it.role == MessageRole.TOOL }.content).isEqualTo("完整工具结果")
         assertThat(fixture.store.getSession("session")!!.messages.first { it.id == "assistant" }.toolCalls!!.single().id)
@@ -499,7 +502,6 @@ class P0RuntimeIntegrationTest {
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
     }
 
-    @Ignore("P1 前缀稳定改造后启用")
     @Test
     fun `前缀P1_时间跨分钟`() = runTest {
         val fixture = prefixFixture()
@@ -511,12 +513,11 @@ class P0RuntimeIntegrationTest {
             fixture.onPrompt = { index, _ -> if (index == 1) now += 60_000 }
             ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
             assertThat(fixture.prompts).hasSize(2)
-            assertThat(fixture.prompts[0].messages.first().content).contains("System Time")
+            assertThat(fixture.prompts[0].messages.first { it.role == "user" }.turnContext).contains("System Time")
             assertPrefix(fixture.prompts[0], fixture.prompts[1])
         } finally { io.mockk.unmockkConstructor(java.util.Date::class) }
     }
 
-    @Ignore("P1 前缀稳定改造后启用")
     @Test
     fun `前缀P1_轮内更新任务计划`() = runTest {
         val fixture = prefixFixture()
@@ -528,11 +529,10 @@ class P0RuntimeIntegrationTest {
         fixture.onPrompt = { index, _ -> if (index == 1) plan = plan.copy(steps = plan.steps.map { it.copy(status = "completed") }) }
         ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
         assertThat(fixture.prompts).hasSize(2)
-        assertThat(fixture.prompts[0].messages.first().content).contains("目标")
+        assertThat(fixture.prompts[0].messages.first { it.role == "user" }.turnContext).contains("目标")
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
     }
 
-    @Ignore("P1 前缀稳定改造后启用")
     @Test
     fun `前缀P1_轮内更新状态板`() = runTest {
         val fixture = prefixFixture()
@@ -546,11 +546,10 @@ class P0RuntimeIntegrationTest {
         )) }
         ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
         assertThat(fixture.prompts).hasSize(2)
-        assertThat(fixture.prompts[0].messages.first().content).contains("会话状态面板")
+        assertThat(fixture.prompts[0].messages.first { it.role == "user" }.turnContext).contains("会话状态面板")
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
     }
 
-    @Ignore("P1 前缀稳定改造后启用")
     @Test
     fun `前缀P1_本条消息点名技能`() = runTest {
         val fixture = prefixFixture()
@@ -565,8 +564,249 @@ class P0RuntimeIntegrationTest {
             )
         }
         adjacentTurns(fixture, secondContent = "/demo 后续任务")
-        assertThat(fixture.prompts[1].messages.first().content).contains("Requested Skill")
+        assertThat(fixture.prompts[1].messages.last { it.role == "user" }.turnContext).contains("Requested Skill")
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
+    }
+
+    @Test
+    fun `本轮块在首请求前持久化且重建运行时跨轮按数据库原文重放`() = runTest {
+        val fixture = prefixFixture()
+        fixture.sessions.updateSessionOptions("session", fixture.store.getSession("session")!!.options.copy(enableTimeInjection = true))
+        fixture.onPrompt = { _, prompt ->
+            val sent = prompt.messages.first { it.role == "user" }.turnContext
+            assertThat(fixture.database.messageDao().getById("user")!!.turnContext).isEqualTo(sent)
+        }
+        fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        val saved = fixture.messageRepository.getById("user")!!.turnContext
+        assertThat(saved).contains("<turn_context>")
+        fixture.rebuildFromRepositories()
+        fixture.messages.addMessage("session", Message("user-next", MessageRole.USER, "新的问题"))
+        fixture.messages.addMessage("session", Message("assistant-next", MessageRole.ASSISTANT, "", parentMessageId = "user-next"))
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
+            userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = "新的问题",
+        )) {}
+        assertThat(fixture.prompts[1].messages.first { it.role == "user" }.turnContext!!.toByteArray())
+            .isEqualTo(saved!!.toByteArray())
+        assertPrefix(fixture.prompts[0], fixture.prompts[1])
+    }
+
+    @Test
+    fun `自动重试与工具续轮复用冻结块且不重新读取计划`() = runTest {
+        val fixture = prefixFixture()
+        val tasks = mockk<com.promenar.infinity.domain.repository.ITaskRepository>()
+        coEvery { tasks.getPlan("session") } returns com.promenar.infinity.data.model.TaskState("plan", "冻结目标", status = "doing")
+        fixture.realContextBuilder = ContextBuilder(taskRepository = tasks)
+        fixture.preferences.edit().putInt("stream_retry_limit", 1).commit()
+        fixture.rounds = { index -> when (index) {
+            1 -> listOf(StreamChunk.Error(code = com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK, retryable = true))
+            2 -> listOf(StreamChunk.ToolCallDelta("retry-tool", "write_file", """{"path":"/retry.md"}""", 0), StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("retry-tool")))
+            else -> listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN))
+        } }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        assertThat(fixture.prompts).hasSize(3)
+        assertThat(fixture.prompts[1]).isEqualTo(fixture.prompts[0])
+        assertPrefix(fixture.prompts[1], fixture.prompts[2])
+        coVerify(exactly = 1) { tasks.getPlan("session") }
+    }
+
+    @Test
+    fun `恢复续写复用块而重新生成覆盖对应用户消息的块`() = runTest {
+        val fixture = prefixFixture()
+        var goal = "原目标"
+        val tasks = mockk<com.promenar.infinity.domain.repository.ITaskRepository>()
+        coEvery { tasks.getPlan("session") } answers { com.promenar.infinity.data.model.TaskState("plan", goal, status = "doing") }
+        fixture.realContextBuilder = ContextBuilder(taskRepository = tasks)
+        fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        val original = fixture.messageRepository.getById("user")!!.turnContext
+        goal = "新的目标"
+        fixture.rebuildFromRepositories()
+        fixture.messages.addMessage("session", Message("resumed", MessageRole.ASSISTANT, "", parentMessageId = "user"))
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(assistantMessageId = "resumed")) {}
+        assertThat(fixture.messageRepository.getById("user")!!.turnContext).isEqualTo(original)
+        coVerify(exactly = 1) { tasks.getPlan("session") }
+        fixture.messages.addMessage("session", Message("regenerated", MessageRole.ASSISTANT, "", parentMessageId = "user"))
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
+            assistantMessageId = "regenerated", messageIdsToReplace = setOf("assistant", "resumed"),
+        )) {}
+        val regenerated = fixture.messageRepository.getById("user")!!.turnContext
+        assertThat(regenerated).contains("新的目标")
+        assertThat(regenerated).isNotEqualTo(original)
+        assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext).isEqualTo(regenerated)
+        coVerify(exactly = 2) { tasks.getPlan("session") }
+    }
+
+    @Test
+    fun `自动重试发送前立即采用最新权限模型路由与工具开关但不重采样用户块`() = runTest {
+        val fixture = prefixFixture()
+        fixture.preferences.edit().putInt("stream_retry_limit", 1).commit()
+        fixture.onPrompt = { index, _ -> if (index == 1) {
+            fixture.sessions.updateSession("session", mapOf("executionMode" to "workspace", "modelId" to "local::changed-model"))
+            fixture.sessions.updateSessionOptions("session", fixture.store.getSession("session")!!.options.copy(toolsEnabled = false))
+        } }
+        fixture.rounds = { index -> if (index == 1) listOf(
+            StreamChunk.Error(code = com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK, retryable = true),
+        ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        assertThat(fixture.prompts).hasSize(2)
+        assertThat(fixture.prompts.first().tools).isNotEmpty()
+        assertThat(fixture.prompts.last().tools).isNull()
+        assertThat(fixture.prompts.last().messages.first().content).contains("Current scope: Workspace")
+        assertThat(fixture.resolvedModels.last()).isEqualTo("local::changed-model")
+        assertThat(fixture.messageRepository.getById("assistant")!!.modelId).isEqualTo("local::changed-model")
+        assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext)
+            .isEqualTo(fixture.prompts.first().messages.first { it.role == "user" }.turnContext)
+    }
+
+    @Test
+    fun `旧用户无块的续写保留空字段且不补生成当前时间`() = runTest {
+        val fixture = fixture(priorToolResults = listOf("升级前的工具结果"))
+        fixture.realContextBuilder = ContextBuilder()
+        fixture.rounds = { listOf(StreamChunk.TextDelta("续写完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        assertThat(fixture.database.messageDao().getById("user")!!.turnContext).isNull()
+        assertThat(fixture.prompts.single().messages.first { it.role == "user" }.turnContext).isNull()
+        assertThat(fixture.prompts.single().messages.none { it.content.contains("System Time") }).isTrue()
+    }
+
+    @Test
+    fun `删除全部旧回复后重新生成也覆盖用户块`() = runTest {
+        val fixture = prefixFixture()
+        fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        val original = fixture.messageRepository.getById("user")!!.turnContext
+        fixture.messages.deleteMessage("session", "assistant")
+        fixture.messages.addMessage("session", Message("new-answer", MessageRole.ASSISTANT, "", parentMessageId = "user"))
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(assistantMessageId = "new-answer")) {}
+        val saved = fixture.messageRepository.getById("user")!!.turnContext
+        assertThat(saved).isNotEqualTo(original)
+        assertThat(saved).contains("new-answer")
+    }
+
+    @Test
+    fun `重新生成失败恢复原用户块及其对应旧回复`() = runTest {
+        val fixture = prefixFixture()
+        fixture.rounds = { listOf(StreamChunk.TextDelta("原回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        val original = fixture.messageRepository.getById("user")!!.turnContext
+        fixture.preferences.edit().putInt("stream_retry_limit", 0).commit()
+        fixture.messages.addMessage("session", Message("failed-regenerate", MessageRole.ASSISTANT, "", parentMessageId = "user"))
+        fixture.rounds = { listOf(StreamChunk.Error(code = com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK, retryable = false)) }
+        try {
+            ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
+                assistantMessageId = "failed-regenerate", messageIdsToReplace = setOf("assistant"),
+            )) {}
+        } catch (_: com.promenar.infinity.domain.generation.GenerationFailedException) { }
+        assertThat(fixture.messageRepository.getById("user")!!.turnContext).isEqualTo(original)
+        assertThat(fixture.messageRepository.getById("assistant")!!.content).isEqualTo("原回答")
+        assertThat(fixture.messageRepository.getById("failed-regenerate")).isNull()
+    }
+
+    @Test
+    fun `状态工具实际读到的新版本经续轮与重建上下文继承且初始块不变`() = runTest {
+        val fixture = prefixFixture()
+        val states = com.promenar.infinity.data.repository.StateBoardRepository(fixture.database)
+        fixture.stateBoards = states
+        fixture.messages.addMessage("session", Message("excluded", MessageRole.ASSISTANT, "旧状态读取", toolCalls = listOf(ToolCall("old-state", "state_get", "{}"))))
+        fixture.messages.addMessage("session", Message("excluded-result", MessageRole.TOOL,
+            """{"action":"state_get","revision":999,"board":null}""", toolCallId = "old-state", name = "state_get", parentMessageId = "excluded"))
+        states.define("session", "assistant", "面板", listOf(com.promenar.infinity.data.state.StateField("hp", "生命值", "number", kotlinx.serialization.json.JsonPrimitive(80))))
+        fixture.realContextBuilder = ContextBuilder(stateBoardRepository = states)
+        val get = com.promenar.infinity.ui.chat.manager.skills.StateGetSkill(states)
+        val update = com.promenar.infinity.ui.chat.manager.skills.StateUpdateSkill(states)
+        val definitions = listOf(get, update)
+        fixture.advertisedTools = definitions.map { ProtocolTool(
+            function = ProtocolToolFunction(it.name, it.description, it.parametersSchema), runtimeToolId = it.id, risk = it.risk,
+        ) }
+        val names = definitions.map { it.name }.toSet()
+        fixture.preferences.edit().putStringSet("enabled_skills", names).putStringSet("known_builtin_skills", names).commit()
+        fixture.toolAction = { owner, call ->
+            val context = object : com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext {
+                override val sessionId = "session"
+                override val agentId = "agent"
+                override val workspacePath: String? = null
+                override val workspaceRootUuid = "root"
+                override val assistantMessageId = owner
+            }
+            val result = definitions.single { it.name == call.name }.execute(
+                json.parseToJsonElement(call.arguments) as kotlinx.serialization.json.JsonObject, context,
+            )
+            assertThat(result.status).isEqualTo(if (call.id == "stale-update") "error" else "success")
+            result.content
+        }
+        fixture.onPrompt = { index, _ -> if (index == 1) states.edit("session", states.get("session")!!.revision,
+            listOf(com.promenar.infinity.data.state.StateOperation("hp", "set", kotlinx.serialization.json.JsonPrimitive(90)))) }
+        fixture.rounds = { index -> when(index) {
+            1 -> listOf(StreamChunk.ToolCallDelta("stale-update", "state_update", """{"operations":[{"key":"hp","op":"increment","value":-5}]}""", 0),
+                StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("stale-update")))
+            2 -> listOf(StreamChunk.ToolCallDelta("get", "state_get", "{}", 0), StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("get")))
+            3 -> listOf(StreamChunk.ToolCallDelta("update", "state_update", """{"operations":[{"key":"hp","op":"increment","value":-5}]}""", 0),
+                StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("update")))
+            else -> listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN))
+        } }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(messageIdsToReplace = setOf("excluded"))) {}
+        assertThat(fixture.prompts).hasSize(4)
+        assertThat(states.get("session")!!.board!!.fields.single().value).isEqualTo(kotlinx.serialization.json.JsonPrimitive(85))
+        fixture.prompts.zipWithNext().forEach { (before, after) -> assertPrefix(before, after) }
+    }
+
+    @Test
+    fun `用户块持久化失败时不得发送首个模型请求`() = runTest {
+        val fixture = prefixFixture()
+        fixture.useMessageRepositoryForManager(object : com.promenar.infinity.data.repository.IMessageRepository by fixture.messageRepository {
+            override suspend fun updatePartial(messageId: String, updates: Map<String, Any?>) {
+                if ("turnContext" in updates) throw java.io.IOException("模拟上下文写入失败")
+                fixture.messageRepository.updatePartial(messageId, updates)
+            }
+        })
+        val result = runCatching { ChatGenerationRunner(fixture.runtime()).run(fixture.request) {} }
+        assertThat(result.isFailure).isTrue()
+        assertThat(fixture.prompts).isEmpty()
+        assertThat(fixture.database.messageDao().getById("user")!!.turnContext).isNull()
+    }
+
+    @Test
+    fun `续轮模型字段写入失败不能把上一助手正文复制到新失败占位`() = runTest {
+        val fixture = prefixFixture()
+        fixture.useMessageRepositoryForManager(object : com.promenar.infinity.data.repository.IMessageRepository by fixture.messageRepository {
+            override suspend fun updatePartial(messageId: String, updates: Map<String, Any?>) {
+                if (messageId != "assistant" && "requestInstruction" in updates) throw java.io.IOException("模拟续轮字段写入失败")
+                fixture.messageRepository.updatePartial(messageId, updates)
+            }
+        })
+        fixture.rounds = { index -> if (index == 1) listOf(
+            StreamChunk.TextDelta("阶段正文"),
+            StreamChunk.ToolCallDelta("continue-failure", "write_file", """{"path":"/continue.md"}""", 0),
+            StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("continue-failure")),
+        ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        val result = runCatching { ChatGenerationRunner(fixture.runtime()).run(fixture.request) {} }
+        assertThat(result.exceptionOrNull()?.message).isEqualTo("模拟续轮字段写入失败")
+        assertThat(fixture.prompts).hasSize(1)
+        assertThat(fixture.messageRepository.getById("assistant")!!.content).isEqualTo("阶段正文")
+        val next = fixture.messageRepository.getBySession("session").single { it.role == MessageRole.ASSISTANT && it.id != "assistant" }
+        assertThat(next.content).isEmpty()
+        assertThat(next.toolCalls).isEmpty()
+        assertThat(fixture.prompts).hasSize(1)
+    }
+
+    @Test
+    fun `发送前配置刷新拒绝可重试且不得提前删除重新生成目标`() = runTest {
+        val fixture = prefixFixture()
+        fixture.rounds = { listOf(StreamChunk.TextDelta("原回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        fixture.messages.addMessage("session", Message("reroute-target", MessageRole.ASSISTANT, "", parentMessageId = "user"))
+        val request = fixture.request.copy(assistantMessageId = "reroute-target", messageIdsToReplace = setOf("assistant"))
+        val runtime = fixture.runtime()
+        runtime.prepare(request)
+        assertThat(runtime.buildContext(request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        fixture.providerUnavailable = true
+        assertThat(runtime.stream(request, 0).toList().single()).isInstanceOf(com.promenar.infinity.domain.generation.GenerationChunk.Failure::class.java)
+        assertThat(fixture.messageRepository.getById("reroute-target")).isNotNull()
+        assertThat(fixture.messageRepository.getById("assistant")!!.content).isEqualTo("原回答")
+        fixture.providerUnavailable = false
+        assertThat(runtime.stream(request, 0).toList().any { it is com.promenar.infinity.domain.generation.GenerationChunk.Text }).isTrue()
+        assertThat(fixture.prompts).hasSize(2)
     }
 
     private suspend fun TestScope.prefixFixture(): Fixture = fixture().also {
@@ -665,6 +905,8 @@ class P0RuntimeIntegrationTest {
         var providerUnavailable = false
         var skillCatalog: com.promenar.infinity.data.skills.SkillCatalog? = null
         var realContextBuilder: ContextBuilder? = null
+        var stateBoards: com.promenar.infinity.data.repository.StateBoardRepository? = null
+        var toolAction: (suspend (String, ToolCall) -> String)? = null
         var summaryResponse = PromptResponse("")
         var toolResult = "完整工具结果"
         var onPrompt: suspend (Int, PromptRequest) -> Unit = { _, _ -> }
@@ -675,7 +917,7 @@ class P0RuntimeIntegrationTest {
                 StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("call-1")),
             ) else listOf(StreamChunk.TextDelta("任务完成"), StreamChunk.Completed(CompletionReason.END_TURN))
         }
-        val advertisedTools = listOf(ProtocolTool(
+        var advertisedTools = listOf(ProtocolTool(
             function = ProtocolToolFunction("write_file", "写入文件", """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"""),
             risk = ToolRisk.FILE_WRITE, runtimeToolId = "write_file",
         ))
@@ -697,7 +939,7 @@ class P0RuntimeIntegrationTest {
                     ledger.register(key, identity)
                     if (call.id in allowed && ledger.claim(key, identity)) {
                         executedCalls += call.id
-                        val result = ledger.finishWithResult(key, call.name, toolResult, null, ToolExecutionOutcome.Succeeded)
+                        val result = ledger.finishWithResult(key, call.name, toolAction?.invoke(messageId, call) ?: toolResult, null, ToolExecutionOutcome.Succeeded)
                         result?.let { messages.mirrorPersistedMessage(sessionId, it) }
                     }
                 }
@@ -710,6 +952,10 @@ class P0RuntimeIntegrationTest {
                     toolCallId = call.id, parentMessageId = messageId, name = call.name,
                 ))
             }
+        }
+
+        fun useMessageRepositoryForManager(repository: com.promenar.infinity.data.repository.IMessageRepository) {
+            messages = MessageManager(store, repository, sessionRepository, scope)
         }
 
         suspend fun rebuildFromRepositories() {
@@ -773,7 +1019,7 @@ class P0RuntimeIntegrationTest {
                 summaryManager = RoutedToolResultSummarizer(ChatProviderRouteGate(router)) { provider }.historySummaryManager(provider),
                 sessionManager = sessions, contentStrategy = DefaultChatGenerationContentStrategy(preferences, registry),
                 ui = mockk(relaxed = true), outputStore = outputStore, interactionStore = interactions,
-                compactionPipeline = pipeline, skillCatalog = skillCatalog,
+                compactionPipeline = pipeline, skillCatalog = skillCatalog, stateBoardRepository = stateBoards,
             )
         }
     }
