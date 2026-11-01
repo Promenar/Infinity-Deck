@@ -487,6 +487,8 @@ fun ChatScreenContent(
     val agentName = uiState.agentName
 
     val pipelineGroups = remember(uiState.messages) { buildPipelineGroups(uiState.messages) }
+    // 计划工具结果不带清单，按会话顺序回放出每次调用前后的计划，供工具行展开时显示计划清单。
+    val planSnapshots = remember(uiState.messages) { planCallSnapshots(uiState.messages) }
     val secretsByGroup = remember(pipelineGroups, state.secretOutputCards, state.secretInputReceipts) {
         secretItemsByGroup(pipelineGroups.map { group -> group.messages.mapTo(HashSet()) { it.id } }, state.secretOutputCards, state.secretInputReceipts)
     }
@@ -1013,7 +1015,7 @@ fun ChatScreenContent(
                             .animateItem(fadeInSpec = ChatItemFadeIn, placementSpec = null, fadeOutSpec = null)
                             .padding(top = spacing.beforeDp.dp),
                     ) {
-                    CompositionLocalProvider(LocalMessageQuoteActions provides quoteActions) {
+                    CompositionLocalProvider(LocalMessageQuoteActions provides quoteActions, LocalPlanCallSnapshots provides planSnapshots) {
                         PipelineBubble(
                             hasRagContent = hasRagContent,
                             modifier = Modifier,

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 对话流工具调用详情卡：计划清单、后台任务查看与通用字段展示。 -->
+<resources>
+    <string name="tool_card_plan_summary_created">Created plan · “%1$s” · %2$d steps</string>
+    <string name="tool_card_plan_summary_created_untitled">Created plan · %1$d steps</string>
+    <string name="tool_card_plan_summary_viewed">Checked plan · step %1$d of %2$d</string>
+    <string name="tool_card_plan_summary_viewed_done">Checked plan · all %1$d steps done</string>
+    <string name="tool_card_plan_summary_done_started">Updated plan · finished “%1$s”, started “%2$s”</string>
+    <string name="tool_card_plan_summary_done_many_started">Updated plan · finished %1$d steps, started “%2$s”</string>
+    <string name="tool_card_plan_summary_done">Updated plan · finished “%1$s”</string>
+    <string name="tool_card_plan_summary_done_many">Updated plan · finished %1$d steps</string>
+    <string name="tool_card_plan_summary_started">Updated plan · started “%1$s”</string>
+    <string name="tool_card_plan_just_done">Just done</string>
+    <string name="tool_card_plan_current">Current</string>
+    <string name="tool_card_plan_state_done">Done</string>
+    <string name="tool_card_plan_state_current">In progress</string>
+    <string name="tool_card_plan_state_todo">To do</string>
+    <string name="tool_card_plan_position">Step %1$d of %2$d</string>
+    <string name="tool_card_plan_all_done">All %1$d steps done</string>
+    <string name="tool_card_raw_show">Raw data</string>
+    <string name="tool_card_raw_hide">Hide raw data</string>
+    <string name="tool_card_job_summary">%1$s · %2$s · %3$s</string>
+    <string name="tool_card_job_summary_elapsed">%1$s · %2$s · %3$s %4$s</string>
+    <string name="tool_card_job_unnamed">Background job</string>
+    <string name="tool_card_job_state_running">Running</string>
+    <string name="tool_card_job_state_completed">Completed</string>
+    <string name="tool_card_job_state_exited">Exited</string>
+    <string name="tool_card_job_state_stopped">Stopped</string>
+    <string name="tool_card_job_state_timed_out">Timed out</string>
+    <string name="tool_card_job_state_interrupted">Interrupted</string>
+    <string name="tool_card_job_state_failed">Failed</string>
+    <string name="tool_card_job_state_other">%1$s</string>
+    <string name="tool_card_job_label_state">Status</string>
+    <string name="tool_card_job_label_elapsed">Running for</string>
+    <string name="tool_card_job_label_exit_code">Exit code</string>
+    <string name="tool_card_job_label_started">Started at</string>
+    <string name="tool_card_job_log_empty">No output yet</string>
+    <string name="tool_card_job_log_truncated">Showing the end of the log</string>
+    <string name="tool_card_job_open_log">Open full log</string>
+    <string name="tool_card_job_stop">Stop job</string>
+    <string name="tool_card_job_value_unknown">—</string>
+    <string name="tool_card_fields_arguments">Arguments</string>
+    <string name="tool_card_fields_result">Result</string>
+    <string name="tool_card_fields_expand">Show more</string>
+    <string name="tool_card_fields_collapse">Show less</string>
+</resources>
