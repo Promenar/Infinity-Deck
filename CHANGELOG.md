@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 ### 修复
 
 - 用量页“用量分类”中的子代理用量误标为“聊天”，现单独显示为“子代理”。
+- Linux 模式下，工作区或挂载目录位于手机共享存储时，git 因属主不一致报 `dubious ownership` 而拒绝操作。现在每次启动 Linux 命令或终端时，应用把本次绑定的 `/workspace` 与各个 `/mnt/<别名>`（含其下子目录）作为 `safe.directory` 注入，无需手动配置，重置 Linux 后依然有效，也不改动用户的 `~/.gitconfig`。
 
 ## [0.12.0-beta] - 2026-11-02
 

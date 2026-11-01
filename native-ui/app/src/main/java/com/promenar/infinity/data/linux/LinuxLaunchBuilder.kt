@@ -79,6 +79,7 @@ class LinuxLaunchBuilder(
         if (spec.workspace != null) environment["INFINITY_WORKSPACE"] = "/workspace"
         environment.putAll(tailnetEnvironment().filterKeys { it in PROXY_KEYS })
         environment.putAll(spec.environment)
+        LinuxGitSafeDirectories.appendTo(environment, listOfNotNull("/workspace".takeIf { spec.workspace != null }) + spec.mounts.map { it.guestPath })
         if (spec.wakeInbox != null) environment[LinuxWakeLimits.ENVIRONMENT_VARIABLE] = LinuxWakeLimits.GUEST_DIRECTORY
         val runtimeEnvironment = environment.withLegacyWorkspaceAliases()
         // 旧受管忽略区块清理失败不阻止命令启动；修复启动不改 rootfs 配置。
