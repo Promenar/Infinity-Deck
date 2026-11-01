@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.1-beta] - 2026-11-02
+
+### 修复
+
+- 0.13.0-beta 的 Linux git `safe.directory` 注入在配置了 Git 凭据的会话中不生效，共享存储上的工作区或挂载仍报 `dubious ownership`。原因是凭据配置在启动后被再次合并，覆盖了配置条目总数；现在启动时计算的配置原样保留，凭据与目录信任同时生效。
+
 ## [0.13.0-beta] - 2026-11-02
 
 ### 新功能
