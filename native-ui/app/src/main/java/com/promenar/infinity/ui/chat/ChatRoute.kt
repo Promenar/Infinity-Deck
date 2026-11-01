@@ -1251,6 +1251,8 @@ fun ChatRoute(
                     workspaceSwitchFailed = false
                     pickingWorkspace = true
                 },
+                // 与输入区停止按钮同一入口；只在本会话确有生成进行时提供，待审批造成的停用不显示。
+                onStopGeneration = if (uiState.isGenerating) chatViewModel::stopGeneration else null,
             ),
             workspaceKey = boundWorkspaceId to workspaceRefresh,
         )

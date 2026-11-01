@@ -119,3 +119,27 @@ internal fun runPlanGroups(steps: List<TaskPanelStep>): List<RunPlanGroup> {
     flush()
     return groups.filter { it.steps.isNotEmpty() || it.title != null }
 }
+
+/**
+ * 状态卡的步数口径，与计划页签“已完成/总数”、清单“当前”标记同源：
+ * 仍有未完成步骤时，[AtStep.position] 是清单中标“当前”的那一步在全部叶子步骤中的序号（从 1 起），
+ * 不用“已完成数 + 1”推算——步骤乱序完成时两者不一致；全部完成或放弃时给出完成数与总数。
+ */
+internal sealed interface RunPlanStepSummary {
+    data class AtStep(val position: Int, val total: Int) : RunPlanStepSummary
+    data class Finished(val done: Int, val total: Int) : RunPlanStepSummary
+}
+
+/** 清单中标“当前”的步骤：取计划状态里的当前步骤（进行中的叶子优先，否则第一个未完成叶子）；计划全部完成时没有当前步骤。 */
+internal fun runPlanCurrentStepId(plan: TaskPanelUiState): String? =
+    plan.currentStepId.takeIf { !plan.isCompleted && it.isNotEmpty() }
+
+internal fun runPlanStepSummary(plan: TaskPanelUiState): RunPlanStepSummary? {
+    if (plan.totalCount <= 0) return null
+    if (plan.isCompleted) return RunPlanStepSummary.Finished(plan.doneCount, plan.totalCount)
+    val leaves = plan.steps.filter { !it.isGroup }
+    val index = runPlanCurrentStepId(plan)?.let { id -> leaves.indexOfFirst { it.id == id } } ?: -1
+    // 只带计数、没有清单的状态退回按完成数推算。
+    val position = if (index >= 0) index + 1 else plan.doneCount + 1
+    return RunPlanStepSummary.AtStep(position.coerceIn(1, plan.totalCount), plan.totalCount)
+}

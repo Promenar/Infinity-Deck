@@ -223,6 +223,21 @@ class AgentReachModelsTest {
         running: Boolean = false,
     ) = AgentNetworkSnapshot(lanHosts, available, enabled, running, emptyList(), emptyList())
 
+    @Test
+    fun `工作区切换说明条：失败优先，生成中停用时有入口才给停止生成`() {
+        val stop = {}
+        assertThat(reachSwitchHint(null)).isNull()
+        assertThat(reachSwitchHint(AgentReachWorkspaceSwitch(busy = false, failed = false, onChoose = {}))).isNull()
+        assertThat(reachSwitchHint(AgentReachWorkspaceSwitch(busy = true, failed = false, onChoose = {}, onStopGeneration = stop)))
+            .isEqualTo(ReachSwitchHint(ReachSwitchHintKind.BUSY, showStop = true))
+        assertThat(reachSwitchHint(AgentReachWorkspaceSwitch(busy = true, failed = false, onChoose = {})))
+            .isEqualTo(ReachSwitchHint(ReachSwitchHintKind.BUSY, showStop = false))
+        assertThat(reachSwitchHint(AgentReachWorkspaceSwitch(busy = true, failed = true, onChoose = {}, onStopGeneration = stop)))
+            .isEqualTo(ReachSwitchHint(ReachSwitchHintKind.FAILED, showStop = false))
+        assertThat(reachSwitchHint(AgentReachWorkspaceSwitch(busy = false, failed = true, onChoose = {})))
+            .isEqualTo(ReachSwitchHint(ReachSwitchHintKind.FAILED, showStop = false))
+    }
+
     private fun mount(alias: String, source: String, sessionId: String, unavailable: String? = null) =
         ExternalMount("id-$alias", alias, source, "src-$alias", sessionId, 1L, unavailable)
 
