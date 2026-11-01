@@ -335,11 +335,11 @@ internal fun LiveToolTicker(step: LiveStep) {
 
 /**
  * 流末尾的等待行：“等待模型响应”或“正在准备工具调用”，前为动画、后为计时。
- * 等待模型超过 30 秒仍无输出时文字改为警示色，下方说明可能原因，并提供 [onStopAndRetry]。
+ * 等待模型超过 30 秒仍无输出时文字改为警示色，下方说明可能原因，并提供 [onStopGeneration] 只停止本轮、不重跑已执行的工具。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun LiveWaitingRow(step: LiveStep, onStopAndRetry: (() -> Unit)?, modifier: Modifier = Modifier) {
+internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, modifier: Modifier = Modifier) {
     val startedAt = step.startedAt
     val now = startedAt?.let { rememberLiveNow(it).value }
     val stalled = now != null && step.isStalled(now)
@@ -385,14 +385,14 @@ internal fun LiveWaitingRow(step: LiveStep, onStopAndRetry: (() -> Unit)?, modif
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag(LIVE_STEP_STALLED_HINT_TAG),
                 )
-                if (onStopAndRetry != null) {
+                if (onStopGeneration != null) {
                     TextButton(
-                        onClick = onStopAndRetry,
+                        onClick = onStopGeneration,
                         colors = ButtonDefaults.textButtonColors(contentColor = warning),
                         contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
                         modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(LIVE_STEP_STOP_TAG),
                     ) {
-                        Text(stringResource(R.string.live_step_stop_and_retry), style = InfinityTypography.labelLarge)
+                        Text(stringResource(R.string.live_step_stop), style = InfinityTypography.labelLarge)
                     }
                 }
             }

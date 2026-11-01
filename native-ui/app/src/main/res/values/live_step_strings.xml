@@ -4,7 +4,7 @@
     <string name="live_step_waiting_model">Waiting for model response</string>
     <string name="live_step_preparing_tool">Preparing tool call</string>
     <string name="live_step_stalled_hint">No response for over 30 seconds. The network or service may be busy.</string>
-    <string name="live_step_stop_and_retry">Stop and retry</string>
+    <string name="live_step_stop">Stop generating</string>
     <string name="live_step_waited">Waited %1$s</string>
     <string name="live_step_thinking_elapsed">Thinking · %1$s</string>
 </resources>

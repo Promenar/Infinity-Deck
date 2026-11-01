@@ -208,8 +208,8 @@ fun PipelineBubble(
     failureActions: GenerationFailureActions? = null,
     /** 本组当前唯一的进行中元素；会话页按生成阶段判定后只传给最后一组，预览按消息内容推断。 */
     liveStep: LiveStep? = previewLiveStep(group, isGenerating, streamingContent),
-    /** 等待模型超过 30 秒时的“停止并重试”；为 null 时不显示按钮。 */
-    onStopAndRetry: (() -> Unit)? = null,
+    /** 等待模型超过 30 秒时的“停止生成”；为 null 时不显示按钮。 */
+    onStopGeneration: (() -> Unit)? = null,
     ragContent: @Composable () -> Unit = {},
 ) {
     if (group.isNotice) {
@@ -370,7 +370,7 @@ fun PipelineBubble(
         // 进行中元素在流末尾：正文流式时动画紧跟正文，等待模型或准备工具调用时单独一行。
         liveStep?.let { live ->
             if (live.kind == LiveStepKind.CONTENT) GenerationIndicator(live.motionPhase)
-            else if (live.isTailRow) LiveWaitingRow(live, onStopAndRetry)
+            else if (live.isTailRow) LiveWaitingRow(live, onStopGeneration)
         }
         if (!isGenerating) CanvasInvocationCards(
             allSteps.filterIsInstance<PipelineStep.ToolExec>().flatMap { it.steps },

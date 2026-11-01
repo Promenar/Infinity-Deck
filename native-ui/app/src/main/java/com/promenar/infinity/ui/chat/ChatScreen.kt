@@ -1099,8 +1099,8 @@ fun ChatScreenContent(
                                 null
                             },
                             liveStep = if (group === lastAssistantGroup) liveStep else null,
-                            // 等待模型过久时停止当前生成并按最后一条用户消息重新生成（与失败提示的“重试”同一入口）。
-                            onStopAndRetry = actions.onRetryLastMessage,
+                            // 等待模型过久时只停止本轮；不自动重跑，避免重复执行本轮已经跑过的工具。
+                            onStopGeneration = actions.onStop,
                         )
                     }
                     secretsByGroup[idx]?.let { secrets ->
