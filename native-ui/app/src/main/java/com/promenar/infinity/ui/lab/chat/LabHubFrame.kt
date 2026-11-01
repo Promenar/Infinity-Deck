@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import com.promenar.infinity.data.model.Session
+import com.promenar.infinity.domain.avatar.AgentAvatarPalette
 import com.promenar.infinity.domain.model.Agent
 import com.promenar.infinity.ui.AdaptiveNavigationFrame
 import com.promenar.infinity.ui.AppTab
@@ -39,10 +40,11 @@ private const val LAB_HUB_ADE = "lab-hub-ade"
 private const val LAB_HUB_OPS = "lab-hub-ops"
 private const val MINUTE = 60_000L
 
-/** 两个演示助手：Infinity 承载两段演示会话，Atlas 没有会话。 */
+/** 两个演示助手：Infinity 承载两段演示会话，Atlas 没有会话；头像色取调色板的靛蓝。 */
+private val labAgentColor = AgentAvatarPalette.swatches.first { it.key == "indigo" }.hex
 private val labHubAgents = listOf(
-    AgentDisplayItem(Agent(LAB_AGENT_INFINITY, LAB_AGENT, icon = "sym:auto_awesome", color = "#C0C1FF"), LAB_AGENT, ""),
-    AgentDisplayItem(Agent(LAB_AGENT_ATLAS, "Atlas", icon = "sym:edit_note", color = "#C0C1FF"), "Atlas", ""),
+    AgentDisplayItem(Agent(LAB_AGENT_INFINITY, LAB_AGENT, icon = "sym:auto_awesome", color = labAgentColor), LAB_AGENT, ""),
+    AgentDisplayItem(Agent(LAB_AGENT_ATLAS, "Atlas", icon = "sym:edit_note", color = labAgentColor), "Atlas", ""),
 )
 
 /**

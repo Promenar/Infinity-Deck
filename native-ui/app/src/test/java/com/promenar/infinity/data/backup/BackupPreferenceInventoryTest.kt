@@ -75,6 +75,7 @@ class BackupPreferenceInventoryTest {
             "ui/settings/BackupViewModel.kt#prefs" to "infinity_backup_settings",
             "ui/settings/SettingsViewModel.kt#prefs" to "infinity_settings",
             "ui/theme/ThemePreferenceStore.kt#preferences" to "infinity_settings",
+            "ui/developer/DeveloperMode.kt#prefs" to "infinity_settings",
             "data/script/ScriptSettings.kt#preferences" to "infinity_settings",
             "data/network/AgentNetworkSettings.kt#preferences" to "infinity_settings",
             "ui/settings/LocalModelsViewModel.kt#prefs" to "infinity_settings",

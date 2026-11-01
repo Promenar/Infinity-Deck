@@ -720,19 +720,20 @@ internal fun AboutInfinitySheet(
 @Composable
 private fun rememberDeveloperUnlockTap(store: DeveloperModeStore): () -> Unit {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val counter = remember { DeveloperUnlockCounter() }
     var toast by remember { mutableStateOf<android.widget.Toast?>(null) }
-    return remember(store, context) {
+    return remember(store, context, resources) {
         {
             val message = when (val result = counter.tap(android.os.SystemClock.uptimeMillis(), store.enabled.value)) {
                 DeveloperUnlockResult.Silent -> null
                 is DeveloperUnlockResult.Remaining ->
-                    context.resources.getQuantityString(R.plurals.devmode_taps_remaining, result.taps, result.taps)
+                    resources.getQuantityString(R.plurals.devmode_taps_remaining, result.taps, result.taps)
                 DeveloperUnlockResult.Unlocked -> {
                     store.setEnabled(true)
-                    context.getString(R.string.devmode_unlocked)
+                    resources.getString(R.string.devmode_unlocked)
                 }
-                DeveloperUnlockResult.AlreadyEnabled -> context.getString(R.string.devmode_already_enabled)
+                DeveloperUnlockResult.AlreadyEnabled -> resources.getString(R.string.devmode_already_enabled)
             }
             if (message != null) {
                 // 连点时新提示顶掉旧提示，避免排队弹很久。
