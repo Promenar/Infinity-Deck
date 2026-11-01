@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
@@ -63,6 +64,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -94,6 +96,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -101,6 +104,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.LocalTextStyle
 import com.promenar.infinity.R
@@ -115,6 +119,7 @@ import com.promenar.infinity.ui.common.KgStatus
 import com.promenar.infinity.ui.common.KgStatusIcon
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.forInput
 import java.text.SimpleDateFormat
@@ -211,6 +216,12 @@ internal fun FilesPanel(
      */
     onToggleSelection: ((FileEntry) -> Unit)? = null,
     selectionKeys: Set<String> = emptySet(),
+    /** 列表卡上方的小号分组标题；null 时不显示。 */
+    groupLabel: String? = null,
+    /** 外部文件夹入口卡与列表卡共用的水平边距，保证两张卡同宽对齐。 */
+    contentHorizontalPadding: Dp = 0.dp,
+    /** 默认隐藏 MediaStore 回收区留下的 `.trashed-*`、`.pending-*` 条目，只影响显示。 */
+    hideSystemTrash: Boolean = true,
 ) {
     val rootsFlow = remember(rootFiles, workspaceRootUuid, workspaceRepo) {
         if (rootFiles == null) {
@@ -220,7 +231,9 @@ internal fun FilesPanel(
             } ?: flowOf(emptyList())
         } else flowOf(rootFiles)
     }
-    val roots by rootsFlow.collectAsState(initial = rootFiles.orEmpty())
+    val loadedRoots by rootsFlow.collectAsState(initial = rootFiles.orEmpty())
+    val rootPartition = partitionSystemTrashIf(hideSystemTrash, loadedRoots)
+    val roots = rootPartition.visible
 
     val searchVisibleIds by produceState<Set<String>?>(
         initialValue = null,
@@ -267,11 +280,13 @@ internal fun FilesPanel(
             explicitlyCollapsedIds.forEach { put(it, false) }
         }
     }
+    val childPartitions = childrenByParent.mapValues { (_, children) -> partitionSystemTrashIf(hideSystemTrash, children) }
+    val shownChildren = childPartitions.mapValues { (_, partition) -> partition.visible }
     val projectedChildren = if (searchQuery.isBlank()) {
-        childrenByParent
+        shownChildren
     } else {
         val visibleIds = searchVisibleIds.orEmpty()
-        childrenByParent.mapValues { (_, children) -> children.filter { it.uuid in visibleIds } }
+        shownChildren.mapValues { (_, children) -> children.filter { it.uuid in visibleIds } }
     }
     val forceExpandedIds = if (searchQuery.isBlank()) emptySet() else searchVisibleIds.orEmpty()
     val visibleNodes = projectVisibleFileNodes(
@@ -298,6 +313,11 @@ internal fun FilesPanel(
             }
             .mapTo(linkedSetOf()) { it.file.uuid }
     }
+    val hiddenSystemTrashCount = countHiddenSystemTrash(
+        rootHidden = rootPartition.hiddenCount,
+        hiddenByParent = childPartitions.mapValues { (_, partition) -> partition.hiddenCount },
+        expandedVisibleDirectoryIds = expandedDirectoryIds,
+    )
     val requiredDirectorySubscriptionIds = resolveRequiredDirectorySubscriptionIds(
         visibleNodes = visibleNodes,
         visibleNodeIds = composedNodeRefCounts.keys.toSet(),
@@ -402,6 +422,7 @@ internal fun FilesPanel(
             allowTreeExpansion = allowTreeExpansion,
             onToggleSelection = onToggleSelection,
             selectionKeys = selectionKeys,
+            childCount = if (node.file.isDirectory) loadedChildCount(node.file.uuid, shownChildren) else null,
         )
     }
 
@@ -417,6 +438,9 @@ internal fun FilesPanel(
                     workspaceRootUuid = workspaceRootUuid,
                     manager = manager,
                     onReindex = onReindex,
+                    modifier = Modifier
+                        .padding(horizontal = contentHorizontalPadding)
+                        .padding(top = InfinitySpacing.XSmall),
                 )
             }
             val lastDeleteFailure = remember { arrayOfNulls<FileBatchOperationResult>(1) }
@@ -449,6 +473,9 @@ internal fun FilesPanel(
                     ) { Text(stringResource(R.string.common_dismiss)) }
                 }
             }
+            groupLabel?.let { label ->
+                FilesPanelGroupLabel(label, Modifier.padding(horizontal = contentHorizontalPadding))
+            }
             // 加载、空、错误与文件列表之间交叉淡入，不再整块跳变。
             val stateModifier = if (useScroll) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
             AnimatedContent(
@@ -462,38 +489,55 @@ internal fun FilesPanel(
                     modifier = stateModifier,
                     onRetry = onRetryLoad,
                 )
-                FilesPanelUiState.Empty -> EmptyFilesState(stateModifier, onImport)
+                FilesPanelUiState.Empty -> Column(stateModifier) {
+                    EmptyFilesState(if (useScroll) Modifier.weight(1f) else Modifier, onImport)
+                    HiddenSystemTrashFooter(hiddenSystemTrashCount, Modifier.padding(horizontal = contentHorizontalPadding))
+                }
                 FilesPanelUiState.SearchEmpty -> SearchEmptyFilesState(stateModifier)
-                FilesPanelUiState.Content -> Surface(
-                    modifier = stateModifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                ) {
-                    if (useScroll) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("files_panel_tree_list"),
-                        ) {
-                            items(
-                                items = visibleNodes,
-                                key = { it.file.uuid },
-                                contentType = { if (it.file.isDirectory) "directory" else "file" },
-                            ) { node -> Box(Modifier.animateItem()) { content(node) } }
-                        }
-                    } else {
-                        // 外层页面拥有滚动时保持非滚动容器，但仍以 UUID key 渲染单层投影。
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate))
-                                .testTag("files_panel_tree_list"),
-                        ) {
-                            visibleNodes.forEach { node -> key(node.file.uuid) { content(node) } }
+                // 列表卡按内容收拢高度（最多占满剩余空间），隐藏计数紧跟在卡片下方。
+                FilesPanelUiState.Content -> Column(stateModifier.padding(horizontal = contentHorizontalPadding)) {
+                    Surface(
+                        modifier = (if (useScroll) Modifier.weight(1f, fill = false) else Modifier)
+                            .fillMaxWidth()
+                            .padding(top = if (groupLabel != null) 0.dp else InfinitySpacing.Small, bottom = InfinitySpacing.XSmall),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        if (useScroll) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("files_panel_tree_list"),
+                            ) {
+                                itemsIndexed(
+                                    items = visibleNodes,
+                                    key = { _, node -> node.file.uuid },
+                                    contentType = { _, node -> if (node.file.isDirectory) "directory" else "file" },
+                                ) { index, node ->
+                                    Column(Modifier.animateItem()) {
+                                        if (index > 0) FilesPanelRowDivider()
+                                        content(node)
+                                    }
+                                }
+                            }
+                        } else {
+                            // 外层页面拥有滚动时保持非滚动容器，但仍以 UUID key 渲染单层投影。
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate))
+                                    .testTag("files_panel_tree_list"),
+                            ) {
+                                visibleNodes.forEachIndexed { index, node ->
+                                    key(node.file.uuid) {
+                                        if (index > 0) FilesPanelRowDivider()
+                                        content(node)
+                                    }
+                                }
+                            }
                         }
                     }
+                    HiddenSystemTrashFooter(hiddenSystemTrashCount)
                 }
             } }
         }
@@ -636,6 +680,7 @@ private fun FileTreeRow(
     allowTreeExpansion: Boolean = true,
     onToggleSelection: ((FileEntry) -> Unit)? = null,
     selectionKeys: Set<String> = emptySet(),
+    childCount: Int? = null,
 ) {
     val file = node.file
     var showMenu by rememberSaveable(file.uuid, "menu") { mutableStateOf(false) }
@@ -718,6 +763,7 @@ private fun FileTreeRow(
         // 多选期间点按目录图标也只切换选择，不进入目录。
         onFolderClick = if (onToggleSelection != null && isMultiSelectMode) ({ _, _ -> haptics.toggle(!isSelected); onToggleSelection(file) }) else onFolderClick,
         allowTreeExpansion = allowTreeExpansion,
+        childCount = childCount,
         modifier = Modifier
             .testTag("files_panel_node_${file.uuid}")
             .infinityMenuHost(showMenu && hasMenuActions)
@@ -949,6 +995,8 @@ private fun FileRow(
     onToggleExpanded: (() -> Unit)? = null,
     onFolderClick: ((String, String) -> Unit)? = null,
     allowTreeExpansion: Boolean = true,
+    /** 已加载的子项数；仅目录且有现成数据时显示在副标题。 */
+    childCount: Int? = null,
     modifier: Modifier = Modifier,
     nowMillis: Long,
     menuContent: (@Composable () -> Unit)? = null,
@@ -1012,7 +1060,19 @@ private fun FileRow(
                 }
             },
             supportingContent = if (file.isDirectory) {
-                null
+                childCount?.let { count ->
+                    {
+                        Text(
+                            text = if (count == 0) {
+                                stringResource(R.string.files_panel_folder_empty)
+                            } else {
+                                pluralStringResource(R.plurals.files_panel_folder_child_count, count, count)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             } else {
                 {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1198,6 +1258,53 @@ private fun MoveToSheet(
         }
     }
 }
+
+private fun partitionSystemTrashIf(enabled: Boolean, entries: List<FileEntry>): SystemTrashPartition<FileEntry> =
+    if (enabled) partitionSystemTrash(entries) { it.name } else SystemTrashPartition(entries, 0)
+
+/** 列表卡上方的小号分组标题，左缘与卡内行文字对齐。 */
+@Composable
+internal fun FilesPanelGroupLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = InfinityTypography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                start = InfinitySpacing.RowHorizontal,
+                end = InfinitySpacing.RowHorizontal,
+                top = InfinitySpacing.Large,
+                bottom = InfinitySpacing.SectionHeaderBottom,
+            )
+            .testTag(TAG_FILES_PANEL_GROUP_LABEL),
+    )
+}
+
+@Composable
+private fun FilesPanelRowDivider() {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+}
+
+/** 列表下方的一行小字，说明隐藏了多少系统回收区文件；为 0 时不占位。 */
+@Composable
+internal fun HiddenSystemTrashFooter(count: Int, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    Text(
+        text = pluralStringResource(R.plurals.files_panel_hidden_system_trash, count, count),
+        style = InfinityTypography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.Small)
+            .testTag(TAG_FILES_PANEL_HIDDEN_TRASH),
+    )
+}
+
+private const val TAG_FILES_PANEL_GROUP_LABEL = "files_panel_group_label"
+private const val TAG_FILES_PANEL_HIDDEN_TRASH = "files_panel_hidden_system_trash"
 
 @Composable
 private fun FilesPanelLoadingState(modifier: Modifier = Modifier) {

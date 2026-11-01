@@ -256,7 +256,8 @@ class FilesPanelStateTest {
         ).readText()
 
         assertThat(source).contains("items = visibleNodes")
-        assertThat(source).contains("key = { it.file.uuid }")
+        // 行间分隔线需要下标，改用 itemsIndexed，键仍是文件 UUID。
+        assertThat(source).contains("key = { _, node -> node.file.uuid }")
         assertThat(source).contains(
             "val rootsFlow = remember(rootFiles, workspaceRootUuid, workspaceRepo)",
         )

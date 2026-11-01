@@ -191,38 +191,50 @@ private fun DirectoryListView(
             extraActions()
         },
     )
+    // 根部：外部文件夹入口卡与下方列表卡同宽对齐，中间是“工作区 · 名称”分组标题。
     AnimatedVisibility(visible = crumbs.isEmpty(), enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-        Column { rootHeader() }
+        Column(Modifier.padding(horizontal = InfinitySpacing.Small)) {
+            rootHeader()
+            FilesPanelGroupLabel(stringResource(R.string.files_panel_group_workspace_named, rootTitle))
+        }
     }
     val error = state.error
-    FolderEntriesList(
-        path = state.path,
-        depth = crumbs.size,
-        entries = state.entries,
-        loading = state.isLoading,
-        error = error?.let {
-            it.reason?.let { reason -> stringResource(R.string.resource_explorer_directory_load_failed, reason) }
-                ?: stringResource(R.string.resource_explorer_directory_load_failed_generic)
-        },
-        emptyText = stringResource(R.string.resource_explorer_directory_empty),
-        onEntryClick = { entry ->
-            when {
-                fileActions != null && state.selection.isNotEmpty() -> fileActions.onToggleSelect(entry.path)
-                entry.isDirectory -> onNavigate(entry.path)
-                else -> onOpenFile(entry)
-            }
-        },
-        selection = state.selection.takeIf { fileActions != null },
-        onEntryLongClick = fileActions?.let { actions -> { entry -> actions.onToggleSelect(entry.path) } },
-        onRetry = onRefresh,
-        listTag = UiTags.RESOURCE_EXPLORER_DIRECTORY_LIST,
-        statusTag = UiTags.RESOURCE_EXPLORER_DIRECTORY_STATUS,
-        retryTag = UiTags.RESOURCE_EXPLORER_RETRY_LOAD,
-        modifier = Modifier
-            // 有操作栏时列表占满剩余空间，操作栏贴底。
+    // MediaStore 回收区改名条目只在此处隐藏显示，选择、复制等操作仍以完整目录为准。
+    val trash = remember(state.entries) { partitionSystemTrash(state.entries) { it.name } }
+    Column(
+        Modifier
+            // 有操作栏时占满剩余空间，操作栏贴底；列表卡按内容收拢，隐藏计数紧跟其下。
             .weight(1f, fill = fileActions != null)
             .padding(horizontal = InfinitySpacing.Small),
-    )
+    ) {
+        FolderEntriesList(
+            path = state.path,
+            depth = crumbs.size,
+            entries = trash.visible,
+            loading = state.isLoading,
+            error = error?.let {
+                it.reason?.let { reason -> stringResource(R.string.resource_explorer_directory_load_failed, reason) }
+                    ?: stringResource(R.string.resource_explorer_directory_load_failed_generic)
+            },
+            emptyText = stringResource(R.string.resource_explorer_directory_empty),
+            onEntryClick = { entry ->
+                when {
+                    fileActions != null && state.selection.isNotEmpty() -> fileActions.onToggleSelect(entry.path)
+                    entry.isDirectory -> onNavigate(entry.path)
+                    else -> onOpenFile(entry)
+                }
+            },
+            selection = state.selection.takeIf { fileActions != null },
+            onEntryLongClick = fileActions?.let { actions -> { entry -> actions.onToggleSelect(entry.path) } },
+            onRetry = onRefresh,
+            listTag = UiTags.RESOURCE_EXPLORER_DIRECTORY_LIST,
+            statusTag = UiTags.RESOURCE_EXPLORER_DIRECTORY_STATUS,
+            retryTag = UiTags.RESOURCE_EXPLORER_RETRY_LOAD,
+            dividers = true,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        HiddenSystemTrashFooter(trash.hiddenCount)
+    }
     if (fileActions == null) return@Column
     AnimatedVisibility(visible = state.operating, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
         LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large))
