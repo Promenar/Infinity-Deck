@@ -96,8 +96,8 @@ object NavDestinations {
     const val DEVELOPER = "developer"
     /** 视觉实验室目录，path 为目录节点路径（如 chat/conversation），空为根目录。 */
     const val VISUAL_LAB = "visual_lab?path={path}"
-    /** 视觉实验室的一个版本：整页渲染，不进设置右列。 */
-    const val LAB_VERSION = "lab_version/{versionId}"
+    /** 视觉实验室的一个版本：整页渲染，不进设置右列；record 为 true 时以录制模式打开。 */
+    const val LAB_VERSION = "lab_version/{versionId}?record={record}"
 
     fun chatHero(sessionId: String) = "chat_hero/$sessionId"
     fun agentEdit(agentId: String) = "agent_edit/$agentId"
@@ -118,7 +118,8 @@ object NavDestinations {
         .joinToString("&", prefix = "?") { (key, value) -> "$key=${android.net.Uri.encode(value)}" }
         .takeIf { it != "?" }.orEmpty()
     fun visualLab(path: String = "") = if (path.isEmpty()) "visual_lab" else "visual_lab?path=${android.net.Uri.encode(path)}"
-    fun labVersion(versionId: String) = "lab_version/${android.net.Uri.encode(versionId)}"
+    fun labVersion(versionId: String, record: Boolean = false) =
+        "lab_version/${android.net.Uri.encode(versionId)}" + if (record) "?record=true" else ""
     fun subagentViewer(sessionId: String, stepId: String, index: Int) =
         "subagent/${android.net.Uri.encode(sessionId)}/${android.net.Uri.encode(stepId)}/$index"
 }
@@ -309,10 +310,14 @@ fun InfinityNavGraph(
 
         composablePage(
             route = NavDestinations.LAB_VERSION,
-            arguments = listOf(navArgument("versionId") { type = NavType.StringType }),
+            arguments = listOf(
+                navArgument("versionId") { type = NavType.StringType },
+                navArgument("record") { type = NavType.BoolType; defaultValue = false },
+            ),
         ) { backStackEntry ->
             com.promenar.infinity.ui.lab.LabVersionScreen(
                 versionId = backStackEntry.arguments?.getString("versionId").orEmpty(),
+                record = backStackEntry.arguments?.getBoolean("record") ?: false,
                 onNavigateBack = { navController.popBackStack() },
             )
         }

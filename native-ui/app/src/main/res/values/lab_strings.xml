@@ -59,4 +59,14 @@
     <string name="lab_v_fastfetch_desc">Alpine logo and system information</string>
     <string name="lab_v_apk_add">apk add fastfetch</string>
     <string name="lab_v_apk_add_desc">Package install output line by line</string>
+
+    <!-- 版本舞台控制条 -->
+    <string name="lab_ctrl_play">Play</string>
+    <string name="lab_ctrl_pause">Pause</string>
+    <string name="lab_ctrl_restart">Replay</string>
+    <string name="lab_ctrl_speed">%1$s×</string>
+    <string name="lab_ctrl_record">Record</string>
+    <string name="lab_ctrl_record_exit">Stop recording</string>
+    <string name="lab_ctrl_state">Still version</string>
+    <string name="lab_ctrl_hint">Two-finger tap to bring back the controls</string>
 </resources>

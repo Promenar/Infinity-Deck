@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -14,16 +15,24 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.lab.catalog.LabCatalog
 import com.promenar.infinity.ui.lab.catalog.LabVersionKind
+import com.promenar.infinity.ui.lab.stage.LabStage
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /**
- * 实验室版本的整页宿主。第一期先给出版本信息占位；第二波起按 [versionId] 接入真实组件与脚本时间轴。
+ * 实验室版本的整页宿主：已注册场景的版本进入 [LabStage]，用真实组件渲染脚本数据；
+ * 尚未接入场景的版本显示版本信息占位。
  */
 @Composable
 fun LabVersionScreen(
     versionId: String,
+    record: Boolean,
     onNavigateBack: () -> Unit,
 ) {
+    val scene = remember(versionId) { LabScenes.scene(versionId) }
+    if (scene != null) {
+        LabStage(scene = scene, record = record, onExit = onNavigateBack)
+        return
+    }
     val version = LabCatalog.version(versionId)
     InfinitySettingsPageLayout(
         title = version?.let { stringResource(it.title) } ?: stringResource(R.string.lab_title),

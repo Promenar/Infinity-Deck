@@ -147,6 +147,7 @@ open class MainActivity : ComponentActivity() {
         stageShareIntent(intent, ShareDelivery.of(savedInstanceState != null, intent?.flags ?: 0))
         routeOpenGenerationIntent(intent)
         routeOpenSshRemoteIntent(intent)
+        routeOpenLabIntent(intent)
         val app = application as InfinityApplication
         setContent {
             val themePreferences by app.themePreferenceStore.state.collectAsStateWithLifecycle()
@@ -242,6 +243,14 @@ open class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        // 视觉实验室深链：启动就绪后直接打开版本页。
+                        val labRequested by openLabRequest.collectAsStateWithLifecycle()
+                        LaunchedEffect(labRequested, startupState) {
+                            val request = labRequested ?: return@LaunchedEffect
+                            if (startupState != BackupStartupState.Ready) return@LaunchedEffect
+                            openLabRequest.value = null
+                            navController.navigate(NavDestinations.labVersion(request.versionId, request.record)) { launchSingleTop = true }
+                        }
                         // SSH 连接通知的“打开远程”：启动就绪后打开 SSH 设置页（活动连接与终端入口）。
                         val sshRemoteRequested by openSshRemoteRequest.collectAsStateWithLifecycle()
                         LaunchedEffect(sshRemoteRequested, startupState) {
@@ -307,7 +316,7 @@ open class MainActivity : ComponentActivity() {
         if (ShareIntentQueue.isShareIntent(intent)) {
             setIntent(intent)
             stageShareIntent(intent, ShareDelivery.of(restoredInstanceState = false, intentFlags = intent.flags))
-        } else if (!routeOpenSshRemoteIntent(intent) && !routeOpenGenerationIntent(intent) && currentShareSubmissionId == null) {
+        } else if (!routeOpenSshRemoteIntent(intent) && !routeOpenLabIntent(intent) && !routeOpenGenerationIntent(intent) && currentShareSubmissionId == null) {
             setIntent(intent)
         }
     }
@@ -379,6 +388,22 @@ open class MainActivity : ComponentActivity() {
         return true
     }
 
+    /** 视觉实验室深链 [EXTRA_LAB_VERSION]：只在开发者模式开启且版本存在时生效，否则当作普通启动。 */
+    private val openLabRequest = kotlinx.coroutines.flow.MutableStateFlow<com.promenar.infinity.ui.lab.LabDeepLink?>(null)
+
+    private fun routeOpenLabIntent(candidate: Intent?): Boolean {
+        val versionId = candidate?.getStringExtra(EXTRA_LAB_VERSION) ?: return false
+        val enabled = com.promenar.infinity.ui.developer.DeveloperModeStore.get(this).enabled.value
+        val request = com.promenar.infinity.ui.lab.LabDeepLink.resolve(
+            versionId = versionId,
+            record = candidate.getBooleanExtra(EXTRA_LAB_RECORD, false),
+            developerModeEnabled = enabled,
+        )
+        setIntent(cleanMainIntent())
+        if (request != null) openLabRequest.value = request
+        return true
+    }
+
     private fun routeOpenGenerationIntent(candidate: Intent?): Boolean {
         if (candidate?.action == AppIntentRouter.ACTION_OPEN_SESSION) {
             val sessionIntent = Intent(candidate)
@@ -434,6 +459,10 @@ open class MainActivity : ComponentActivity() {
     internal fun shareImportStateForTesting(): ShareImportUiState = shareImportViewModel.state.value
 
     companion object {
+        /** 视觉实验室深链：值为版本 id，例如 `chat.workflow.ade-json`。 */
+        const val EXTRA_LAB_VERSION = "com.promenar.infinity.extra.LAB_VERSION"
+        /** 与 [EXTRA_LAB_VERSION] 一起传 true 时以录制模式打开。 */
+        const val EXTRA_LAB_RECORD = "com.promenar.infinity.extra.LAB_RECORD"
         @VisibleForTesting
         internal const val EXTRA_ONBOARDING_EMPTY_MODELS_FOR_TESTING =
             "com.promenar.infinity.extra.ONBOARDING_EMPTY_MODELS_FOR_TESTING"

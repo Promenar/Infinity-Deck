@@ -57,4 +57,14 @@
     <string name="lab_v_fastfetch_desc">Alpine 标志与系统信息</string>
     <string name="lab_v_apk_add">apk add fastfetch</string>
     <string name="lab_v_apk_add_desc">安装输出逐行出现</string>
+
+    <!-- 版本舞台控制条 -->
+    <string name="lab_ctrl_play">播放</string>
+    <string name="lab_ctrl_pause">暂停</string>
+    <string name="lab_ctrl_restart">重播</string>
+    <string name="lab_ctrl_speed">%1$s×</string>
+    <string name="lab_ctrl_record">录制</string>
+    <string name="lab_ctrl_record_exit">退出录制</string>
+    <string name="lab_ctrl_state">静态版本</string>
+    <string name="lab_ctrl_hint">双指轻点可再次唤出控制条</string>
 </resources>
