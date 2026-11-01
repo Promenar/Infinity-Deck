@@ -70,6 +70,9 @@ data class TokenUsage(
     /** 本条消息对应模型轮次的时间点；旧消息与未发出请求的消息为 null。 */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val timing: GenerationTimingRecord? = null,
+    /** [cacheWriteInput] 中长 TTL（1 小时或 12 小时）档的写入部分。 */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val cacheWriteLongTtlInput: Int? = null,
 )
 
 /** 一轮模型生成的时间点（epoch 毫秒），未知时间点为 null 且不写入 JSON。 */

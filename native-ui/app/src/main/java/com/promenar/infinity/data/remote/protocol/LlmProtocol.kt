@@ -106,6 +106,8 @@ data class ProtocolUsage(
     val cacheWriteInput: Int? = null,
     /** [output] 中的推理 Token；null 表示服务商未报告。 */
     val reasoningOutput: Int? = null,
+    /** [cacheWriteInput] 中长 TTL 档的写入部分；null 表示服务商未报告。 */
+    val cacheWriteLongTtlInput: Int? = null,
 )
 
 /** 是否允许模型在本次回复中调用已声明的工具；NONE 时仍声明工具以保持历史中的调用可被解析。 */

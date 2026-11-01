@@ -3,6 +3,8 @@ package com.promenar.infinity.data.subagent
 import com.promenar.infinity.data.exec.ToolLiveOutputStore
 import com.promenar.infinity.data.generation.ApproximateTokenEstimator
 import com.promenar.infinity.data.generation.ContextCompactionPipeline
+import com.promenar.infinity.data.model.cacheUsageAggregate
+import com.promenar.infinity.domain.repository.plus
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.ToolCall
 import com.promenar.infinity.data.model.params.ReasoningEffort
@@ -175,13 +177,31 @@ class SubagentRunner(
                 update(run.copy(status = if (state.wrapUpAfterStep != null) SubagentStatus.WRAPPING_UP else SubagentStatus.RUNNING, step = round, currentTool = null, liveOutputKey = null), persist = false)
                 val roundInput = state.inputTokens
                 val roundOutput = state.outputTokens
-                val response = streamRound(preparedModel.client, modelSessionId, preparedModel.modelId, ReasoningEffort.fromWireName(run.reasoningEffort), request.messages, roundTools, request.maxOutputTokens) { input, output, estimated, force ->
+                val roundRead = run.cacheReadInput
+                val roundWrite = run.cacheWriteInput
+                val roundLongWrite = run.cacheWriteLongTtlInput
+                val roundCache = run.cache
+                val previousCacheRequests = run.cacheRequests
+                val cacheRequestId = java.util.UUID.randomUUID().toString()
+                val cacheRequestDay = java.time.Instant.ofEpochMilli(clock()).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
+                // 首帧用量之前重置也须识别在途请求；空快照不算有用量记录。
+                update(run.copy(cacheRequests = previousCacheRequests + SubagentCacheRequestUsage(cacheRequestId, cacheRequestDay)))
+                val response = streamRound(preparedModel.client, modelSessionId, preparedModel.modelId, ReasoningEffort.fromWireName(run.reasoningEffort), request.messages, roundTools, request.maxOutputTokens) { input, output, estimated, read, write, longWrite, force ->
                     // 流内用量立即更新内存，每秒保存检查点；步骤结束或取消时强制结算。
                     state = state.copy(inputTokens = roundInput + input, outputTokens = roundOutput + output, tokensEstimated = state.tokensEstimated || estimated)
                     withContext(NonCancellable) {
                         val now = clock()
                         val checkpoint = force || (lastUsageCheckpoint?.let { now - it >= 1_000L } ?: true)
-                        update(run.copy(inputTokens = state.inputTokens.clamp(), outputTokens = state.outputTokens.clamp(), totalTokens = (state.inputTokens + state.outputTokens).clamp(), tokensEstimated = state.tokensEstimated), persist = checkpoint)
+                        update(run.copy(inputTokens = state.inputTokens.clamp(), outputTokens = state.outputTokens.clamp(), totalTokens = (state.inputTokens + state.outputTokens).clamp(), tokensEstimated = state.tokensEstimated,
+                            cacheReadInput = sumReported(roundRead, read), cacheWriteInput = sumReported(roundWrite, write),
+                            cacheWriteLongTtlInput = sumReported(roundLongWrite, longWrite),
+                            cache = roundCache + com.promenar.infinity.data.model.TokenUsage(
+                                input = input.clamp(), cacheReadInput = read, cacheWriteInput = write, cacheWriteLongTtlInput = longWrite,
+                            ).cacheUsageAggregate(),
+                            cacheRequests = previousCacheRequests + SubagentCacheRequestUsage(cacheRequestId, cacheRequestDay,
+                                com.promenar.infinity.data.model.TokenUsage(input = input.clamp(), cacheReadInput = read,
+                                    cacheWriteInput = write, cacheWriteLongTtlInput = longWrite)),
+                        ), persist = checkpoint)
                         if (checkpoint) { saveState(); lastUsageCheckpoint = now }
                     }
                 }
@@ -488,7 +508,7 @@ class SubagentRunner(
         messages: List<ProtocolMessage>,
         tools: List<ProtocolTool>,
         maxOutputTokens: Int,
-        onUsage: suspend (Long, Long, Boolean, Boolean) -> Unit,
+        onUsage: suspend (Long, Long, Boolean, Int?, Int?, Int?, Boolean) -> Unit,
     ): RoundResponse {
         val content = StringBuilder()
         val reasoning = StringBuilder()
@@ -497,6 +517,9 @@ class SubagentRunner(
         var input = 0
         var output = 0
         var total = 0
+        var cacheRead: Int? = null
+        var cacheWrite: Int? = null
+        var cacheLongWrite: Int? = null
         var observedAtUsage = 0L
         var completed = false
         var failure: String? = null
@@ -524,8 +547,11 @@ class SubagentRunner(
                         input = maxOf(input, chunk.usage.input)
                         output = maxOf(output, chunk.usage.output)
                         total = maxOf(total, chunk.usage.total, input + output)
+                        cacheRead = maxReported(cacheRead, chunk.usage.cacheReadInput)
+                        cacheWrite = maxReported(cacheWrite, chunk.usage.cacheWriteInput)
+                        cacheLongWrite = maxReported(cacheLongWrite, chunk.usage.cacheWriteLongTtlInput)
                         observedAtUsage = observedOutput()
-                        onUsage(maxOf(input, total - output).toLong(), output.toLong(), false, false)
+                        onUsage(maxOf(input, total - output).toLong(), output.toLong(), false, cacheRead, cacheWrite, cacheLongWrite, false)
                     }
                     is StreamChunk.ReasoningState -> replay = chunk.replay
                     is StreamChunk.Error -> if (failure == null) failure = "模型请求失败（${chunk.code.name}）"
@@ -536,7 +562,7 @@ class SubagentRunner(
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
                 val (inputTokens, outputTokens, estimated) = snapshot()
-                onUsage(inputTokens, outputTokens, estimated, true)
+                onUsage(inputTokens, outputTokens, estimated, cacheRead, cacheWrite, cacheLongWrite, true)
             }
             throw cancelled
         } catch (error: Exception) {
@@ -546,7 +572,7 @@ class SubagentRunner(
         if (failure == null && !completed) failure = "模型输出意外中断"
         val toolCalls = calls.map { (id, value) -> ProtocolToolCall(id, value.first, value.second.toString().ifBlank { "{}" }) }
         val (inputTokens, outputTokens, estimated) = snapshot()
-        withContext(NonCancellable) { onUsage(inputTokens, outputTokens, estimated, true) }
+        withContext(NonCancellable) { onUsage(inputTokens, outputTokens, estimated, cacheRead, cacheWrite, cacheLongWrite, true) }
         return RoundResponse(content.toString(), reasoning.toString(), toolCalls, replay, inputTokens, outputTokens, estimated, failure)
     }
 
@@ -588,4 +614,13 @@ class SubagentRunner(
         private const val WRAP_UP_PROMPT = "停止当前工作，交回阶段结论。请只进行必要收尾，说明已经完成与尚未完成的事项。"
         private const val WRAP_UP_FINAL_PROMPT = "收尾步数已用完。请停止调用工具，立即交回阶段结论并说明未完成事项。"
     }
+}
+
+private fun sumReported(a: Int?, b: Int?): Int? = if (a == null && b == null) null else
+    ((a ?: 0).toLong() + (b ?: 0)).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+
+private fun maxReported(a: Int?, b: Int?): Int? = when {
+    b == null -> a
+    a == null -> b.coerceAtLeast(0)
+    else -> maxOf(a, b.coerceAtLeast(0))
 }

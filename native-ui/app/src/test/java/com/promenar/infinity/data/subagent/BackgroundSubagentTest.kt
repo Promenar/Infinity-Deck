@@ -18,6 +18,7 @@ import org.junit.Test
 class BackgroundSubagentTest {
     private class Fixture(val scope: TestScope, val model: SubagentModelClient) {
         val root = Files.createTempDirectory("bg-subagent-test").toFile()
+        var clockOffset = 0L
         val store = SubagentRunStore(root, UnconfinedTestDispatcher(scope.testScheduler))
         val notices = mutableListOf<SystemTurnRequest>()
         var onNotice: suspend (SystemTurnRequest) -> SystemTurnOutcome = { SystemTurnOutcome.Completed }
@@ -27,15 +28,15 @@ class BackgroundSubagentTest {
         var writer: suspend (Session, SubagentRun, String) -> String = { _, _, _ -> "/subagent-results/result.md" }
         val runtime = create(store)
         fun create(storage: SubagentRunStore = store) = SubagentLauncher(
-            SubagentRunner(model, NoTools, SubagentApprovalBroker(), clock = { scope.testScheduler.currentTime }), storage, { id -> Session(id = id, agentId = "a", executionMode = "full_access") }, { "model" },
-            applicationScope = scope.backgroundScope, dispatcher = { dispatcher }, clock = { scope.testScheduler.currentTime },
+            SubagentRunner(model, NoTools, SubagentApprovalBroker(), clock = { clockOffset + scope.testScheduler.currentTime }), storage, { id -> Session(id = id, agentId = "a", executionMode = "full_access") }, { "model" },
+            applicationScope = scope.backgroundScope, dispatcher = { dispatcher }, clock = { clockOffset + scope.testScheduler.currentTime },
             contextWindow = { 32768 }, writeResult = { session, run, text -> writer(session, run, text) },
         )
     }
-    private fun answer(gate: CompletableDeferred<Unit>? = null) = SubagentModelClient { _, messages, _, _, _, _ -> flow {
+    private fun answer(gate: CompletableDeferred<Unit>? = null, reported: ProtocolUsage = ProtocolUsage(10, 5, 15)) = SubagentModelClient { _, messages, _, _, _, _ -> flow {
         gate?.await()
         emit(StreamChunk.TextDelta("结论：${messages.last().content}"))
-        emit(StreamChunk.Usage(ProtocolUsage(10, 5, 15)))
+        emit(StreamChunk.Usage(reported))
         emit(StreamChunk.Completed(CompletionReason.END_TURN))
     } }
     private fun parent(id: String = "parent") = object : SkillExecutionContext {
@@ -45,6 +46,136 @@ class BackgroundSubagentTest {
         override val workspaceRootUuid = "root"
     }
     private fun spec(prompt: String = "任务") = SubagentSpec(prompt, prompt, null, SubagentToolProfile.INHERIT)
+
+    @Test fun `usage 检查点中断能恢复缓存且运行中重置不会结算旧请求`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val f = Fixture(this, SubagentModelClient { _, _, _, _, _, _ -> flow {
+            emit(StreamChunk.TextDelta("完成"))
+            emit(StreamChunk.Usage(ProtocolUsage(100, 2, 102, cacheReadInput = 80, cacheWriteInput = 20, cacheWriteLongTtlInput = 10)))
+            gate.await()
+            emit(StreamChunk.Completed(CompletionReason.END_TURN))
+        } })
+        f.runtime.launch(parent(), "inflight", listOf(spec())); runCurrent()
+        val expected = com.promenar.infinity.domain.repository.CacheUsageAggregate(1, 1, 100, 80, 20, 10)
+        val reopened = SubagentRunStore(f.root, UnconfinedTestDispatcher(testScheduler)).load("parent", "inflight")!!.runs.single()
+        assertThat(reopened.status).isEqualTo(SubagentStatus.INTERRUPTED)
+        assertThat(reopened.cache).isEqualTo(expected)
+        val stats = SubagentTokenStatsRepository(EmptyStats, f.store)
+        assertThat(stats.getTotalUsage().cache).isEqualTo(expected)
+        stats.resetStats()
+        gate.complete(Unit); runCurrent()
+        assertThat(stats.getTotalUsage().inputTokens).isEqualTo(0)
+        assertThat(stats.getTotalUsage().cache).isEqualTo(com.promenar.infinity.domain.repository.CacheUsageAggregate())
+    }
+
+    @Test fun `跨日已报告后未报告的请求不伪造每日缓存零值`() = runTest {
+        var calls = 0
+        val f = Fixture(this, SubagentModelClient { _, _, _, _, _, _ -> flow {
+            emit(StreamChunk.TextDelta("完成"))
+            emit(StreamChunk.Usage(if (++calls == 1) ProtocolUsage(100, 2, 102, cacheReadInput = 80, cacheWriteInput = 20, cacheWriteLongTtlInput = 10)
+                else ProtocolUsage(100, 2, 102)))
+            emit(StreamChunk.Completed(CompletionReason.END_TURN))
+        } })
+        val run = f.runtime.launch(parent(), "days", listOf(spec())).single(); runCurrent()
+        f.clockOffset = 86_400_000L
+        f.runtime.send("parent", run.id, "后续任务"); runCurrent()
+        val day2 = f.runtime.read("parent", run.id).dailyUsage.getValue("1970-01-02")
+        assertThat(day2.cacheReadInput).isNull()
+        assertThat(day2.cacheWriteInput).isNull()
+        assertThat(day2.cacheWriteLongTtlInput).isNull()
+    }
+
+    @Test fun `请求发出后首帧用量前重置也排除在途请求`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val entered = CompletableDeferred<Unit>()
+        val f = Fixture(this, SubagentModelClient { _, _, _, _, _, _ -> flow {
+            entered.complete(Unit)
+            gate.await()
+            emit(StreamChunk.TextDelta("完成"))
+            emit(StreamChunk.Usage(ProtocolUsage(100, 2, 102, cacheReadInput = 80)))
+            emit(StreamChunk.Completed(CompletionReason.END_TURN))
+        } })
+        f.runtime.launch(parent(), "before-usage", listOf(spec())); runCurrent()
+        assertThat(entered.isCompleted).isTrue()
+        val stats = SubagentTokenStatsRepository(EmptyStats, f.store)
+        assertThat(stats.getTotalUsage().cache.requests).isEqualTo(0)
+        stats.resetStats()
+        gate.complete(Unit); runCurrent()
+        assertThat(stats.getTotalUsage().inputTokens).isEqualTo(100)
+        assertThat(stats.getTotalUsage().cache).isEqualTo(com.promenar.infinity.domain.repository.CacheUsageAggregate())
+    }
+
+    @Test fun `运行中重置排除后来首次报告的缓存且连续重置保持一致`() = runTest {
+        for (firstRead in listOf<Int?>(null, 80)) {
+            val gate = CompletableDeferred<Unit>()
+            val f = Fixture(this, SubagentModelClient { _, _, _, _, _, _ -> flow {
+                emit(StreamChunk.TextDelta("完成"))
+                emit(StreamChunk.Usage(ProtocolUsage(50, 2, 52, cacheReadInput = firstRead)))
+                gate.await()
+                emit(StreamChunk.Usage(ProtocolUsage(100, 2, 102, cacheReadInput = 80)))
+                emit(StreamChunk.Completed(CompletionReason.END_TURN))
+            } })
+            val run = f.runtime.launch(parent(), "late-report", listOf(spec())).single(); runCurrent()
+            val stats = SubagentTokenStatsRepository(EmptyStats, f.store)
+            stats.resetStats(); stats.resetStats()
+            gate.complete(Unit); runCurrent()
+            assertThat(stats.getTotalUsage().inputTokens).isEqualTo(50)
+            assertThat(stats.getTotalUsage().cache).isEqualTo(com.promenar.infinity.domain.repository.CacheUsageAggregate())
+            f.runtime.send("parent", run.id, "新请求"); runCurrent()
+            val cache = stats.getTotalUsage().cache
+            assertThat(cache.requests).isEqualTo(1)
+            assertThat(cache.reportedRequests).isEqualTo(1)
+            assertThat(cache.reportedInputTokens).isEqualTo(100)
+            assertThat(cache.anomalousRequests).isEqualTo(0)
+        }
+    }
+
+    @Test fun `请求跨日首次报告保留缓存起始日且不丢失每日聚合`() = runTest {
+        lateinit var f: Fixture
+        f = Fixture(this, SubagentModelClient { _, _, _, _, _, _ -> flow {
+            f.clockOffset = 86_400_000L
+            emit(StreamChunk.TextDelta("完成"))
+            emit(StreamChunk.Usage(ProtocolUsage(100, 2, 102, cacheReadInput = 80)))
+            emit(StreamChunk.Completed(CompletionReason.END_TURN))
+        } })
+        f.runtime.launch(parent(), "overnight", listOf(spec())); runCurrent()
+        val daily = SubagentTokenStatsRepository(EmptyStats, f.store).getDailyTrend(30_000)
+        assertThat(daily.single { it.day == "1970-01-01" }.cache.reportedInputTokens).isEqualTo(100)
+        assertThat(daily.single { it.day == "1970-01-02" }.inputTokens).isEqualTo(100)
+        assertThat(daily.single { it.day == "1970-01-02" }.cache.requests).isEqualTo(0)
+    }
+
+    @Test fun `缓存每日累计重启与重置水位保持报告口径`() = runTest {
+        val reported = ProtocolUsage(10, 5, 15, cacheReadInput = 0, cacheWriteInput = 4, cacheWriteLongTtlInput = 2)
+        val f = Fixture(this, answer(reported = reported))
+        val run = f.runtime.launch(parent(), "cache", listOf(spec())).single(); runCurrent()
+        val stats = SubagentTokenStatsRepository(EmptyStats, f.store)
+        val expected = com.promenar.infinity.domain.repository.CacheUsageAggregate(1, 1, 10, 0, 4, 2)
+        val stored = f.runtime.read("parent", run.id)
+        assertThat(stored.cacheReadInput).isEqualTo(0)
+        assertThat(stored.dailyUsage.values.single().cacheWriteLongTtlInput).isEqualTo(2)
+        assertThat(stored.dailyCacheUsage.values.single()).isEqualTo(expected)
+        assertThat(stats.getTotalUsage().cache).isEqualTo(expected)
+        assertThat(stats.getDailyTrend(30_000).single().cache).isEqualTo(expected)
+        assertThat(stats.getUsageByModel().single().usage.cache).isEqualTo(expected)
+        assertThat(stats.getUsageByCategory().single { it.category == "subagent" }.usage.cache).isEqualTo(expected)
+        val reopened = SubagentTokenStatsRepository(EmptyStats, SubagentRunStore(f.root, UnconfinedTestDispatcher(testScheduler)))
+        assertThat(reopened.getTotalUsage().cache).isEqualTo(expected)
+        stats.resetStats()
+        assertThat(stats.getTotalUsage().cache).isEqualTo(com.promenar.infinity.domain.repository.CacheUsageAggregate())
+        assertThat(stats.getDailyTrend(30_000).single().cache.requests).isEqualTo(0)
+        f.runtime.send("parent", run.id, "后续任务"); runCurrent()
+        assertThat(stats.getTotalUsage().cache).isEqualTo(expected)
+        assertThat(stats.getDailyTrend(30_000).single().cache).isEqualTo(expected)
+    }
+
+    @Test fun `旧子代理水位缺少缓存数据仍能解码`() = runTest {
+        val f = Fixture(this, answer())
+        f.root.resolve("usage-watermarks.json").writeText("""{"old":{"input":10,"output":5,"total":15,"estimated":false}}""")
+        val old = f.store.usageWatermarks().getValue("old")
+        assertThat(old.input).isEqualTo(10)
+        assertThat(old.cache.requests).isEqualTo(0)
+    }
 
     @Test fun `后台立即返回全局地址且父轮取消后完成只通知一次`() = runTest {
         val gate = CompletableDeferred<Unit>()

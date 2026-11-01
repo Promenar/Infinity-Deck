@@ -72,6 +72,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
+import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -81,6 +83,8 @@ import kotlinx.serialization.decodeFromString
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Ignore
+import kotlinx.serialization.encodeToString
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -117,7 +121,7 @@ class P0RuntimeIntegrationTest {
         fixture.rounds = { index ->
             if (index == 1) listOf(
                 StreamChunk.ToolCallDelta("call-1", "write_file", """{"path":"/a.md"}""", 0),
-                StreamChunk.Usage(ProtocolUsage(500, 20, 520, cacheReadInput = 400, cacheWriteInput = 50)),
+                StreamChunk.Usage(ProtocolUsage(500, 20, 520, cacheReadInput = 400, cacheWriteInput = 50, cacheWriteLongTtlInput = 20)),
                 StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("call-1")),
             ) else listOf(
                 StreamChunk.TextDelta("任务完成"),
@@ -133,6 +137,7 @@ class P0RuntimeIntegrationTest {
         assertThat(first.input).isEqualTo(500)
         assertThat(first.cacheReadInput).isEqualTo(400)
         assertThat(first.cacheWriteInput).isEqualTo(50)
+        assertThat(first.cacheWriteLongTtlInput).isEqualTo(20)
         assertThat(first.reasoningOutput).isNull()
         val firstTiming = requireNotNull(first.timing)
         assertThat(firstTiming.firstOutputAt).isAtLeast(firstTiming.requestStartedAt!!)
@@ -140,6 +145,7 @@ class P0RuntimeIntegrationTest {
         val second = requireNotNull(assistants.single { it.id != "assistant" }.tokens)
         assertThat(second.reasoningOutput).isEqualTo(12)
         assertThat(second.cacheReadInput).isNull()
+        assertThat(second.cacheWriteLongTtlInput).isNull()
         assertThat(requireNotNull(second.timing).requestStartedAt).isAtLeast(firstTiming.endedAt!!)
         val raw = requireNotNull(fixture.database.messageDao().getById("assistant")!!.tokens)
         assertThat(raw).contains("\"cacheReadInput\":400")
@@ -440,6 +446,156 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.executedCalls).isEmpty()
     }
 
+    @Test
+    fun `SSE 多次 usage 快照经协议和运行时只持久化本轮最大值`() = runTest {
+        val fixture = fixture()
+        val body = """
+            data: {"choices":[{"delta":{"content":"完成"},"finish_reason":null}]}
+
+            data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"prompt_tokens_details":{"cached_tokens":80,"cache_write_tokens":20,"cache_write_tokens_details":{"ttl_12h_tokens":12}}}}
+
+            data: {"choices":[],"usage":{"prompt_tokens":90,"completion_tokens":10,"total_tokens":100,"prompt_tokens_details":{"cached_tokens":60,"cache_write_tokens":10,"cache_write_tokens_details":{"ttl_12h_tokens":4}}}}
+
+            data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+        """.trimIndent() + "\n"
+        val client = io.ktor.client.HttpClient(io.ktor.client.engine.mock.MockEngine {
+            respond(body, io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(io.ktor.http.HttpHeaders.ContentType, "text/event-stream"))
+        })
+        try {
+            val protocol = com.promenar.infinity.data.remote.protocol.OpenAIProtocol("https://fixture.invalid/v1/chat/completions", "", "fixture", client)
+            val chunks = protocol.sendPrompt(PromptRequest(listOf(com.promenar.infinity.data.remote.protocol.ProtocolMessage("user", "合成输入")), "fixture"))
+                .toList()
+            assertThat(chunks.filterIsInstance<StreamChunk.Usage>()).hasSize(2)
+            fixture.rounds = { chunks }
+            ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+            val usage = fixture.messageRepository.getById("assistant")!!.tokens!!
+            assertThat(usage.input).isEqualTo(100)
+            assertThat(usage.cacheReadInput).isEqualTo(80)
+            assertThat(usage.cacheWriteInput).isEqualTo(20)
+            assertThat(usage.cacheWriteLongTtlInput).isEqualTo(12)
+        } finally { client.close() }
+    }
+
+    @Test
+    fun `前缀基础_同一轮两次工具继续保持完整前缀`() = runTest {
+        val fixture = prefixFixture()
+        fixture.rounds = { index -> if (index <= 2) listOf(
+            StreamChunk.ToolCallDelta("prefix-$index", "write_file", """{"path":"/$index.md"}""", 0),
+            StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("prefix-$index")),
+        ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        assertThat(fixture.prompts).hasSize(3)
+        assertPrefix(fixture.prompts[0], fixture.prompts[1])
+        assertPrefix(fixture.prompts[1], fixture.prompts[2])
+    }
+
+    @Test
+    fun `前缀基础_相邻用户轮保持完整前缀`() = runTest {
+        val fixture = prefixFixture()
+        adjacentTurns(fixture)
+        assertPrefix(fixture.prompts[0], fixture.prompts[1])
+    }
+
+    @Ignore("P1 前缀稳定改造后启用")
+    @Test
+    fun `前缀P1_时间跨分钟`() = runTest {
+        val fixture = prefixFixture()
+        fixture.sessions.updateSessionOptions("session", fixture.store.getSession("session")!!.options.copy(enableTimeInjection = true))
+        var now = 1_800_000_000_000L
+        io.mockk.mockkConstructor(java.util.Date::class)
+        try {
+            every { anyConstructed<java.util.Date>().time } answers { now }
+            fixture.onPrompt = { index, _ -> if (index == 1) now += 60_000 }
+            ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+            assertThat(fixture.prompts).hasSize(2)
+            assertThat(fixture.prompts[0].messages.first().content).contains("System Time")
+            assertPrefix(fixture.prompts[0], fixture.prompts[1])
+        } finally { io.mockk.unmockkConstructor(java.util.Date::class) }
+    }
+
+    @Ignore("P1 前缀稳定改造后启用")
+    @Test
+    fun `前缀P1_轮内更新任务计划`() = runTest {
+        val fixture = prefixFixture()
+        var plan = com.promenar.infinity.data.model.TaskState("plan", "目标", status = "in-progress",
+            steps = listOf(com.promenar.infinity.data.model.TaskStep(id = "step", title = "步骤", status = "pending")))
+        val tasks = mockk<com.promenar.infinity.domain.repository.ITaskRepository>()
+        coEvery { tasks.getPlan("session") } answers { plan }
+        fixture.realContextBuilder = ContextBuilder(taskRepository = tasks)
+        fixture.onPrompt = { index, _ -> if (index == 1) plan = plan.copy(steps = plan.steps.map { it.copy(status = "completed") }) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        assertThat(fixture.prompts).hasSize(2)
+        assertThat(fixture.prompts[0].messages.first().content).contains("目标")
+        assertPrefix(fixture.prompts[0], fixture.prompts[1])
+    }
+
+    @Ignore("P1 前缀稳定改造后启用")
+    @Test
+    fun `前缀P1_轮内更新状态板`() = runTest {
+        val fixture = prefixFixture()
+        val states = com.promenar.infinity.data.repository.StateBoardRepository(fixture.database)
+        states.define("session", "assistant", "状态", listOf(com.promenar.infinity.data.state.StateField(
+            "progress", "进度", "number", kotlinx.serialization.json.JsonPrimitive(0),
+        )))
+        fixture.realContextBuilder = ContextBuilder(stateBoardRepository = states)
+        fixture.onPrompt = { index, _ -> if (index == 1) states.update("session", "assistant", listOf(
+            com.promenar.infinity.data.state.StateOperation("progress", "set", kotlinx.serialization.json.JsonPrimitive(1)),
+        )) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        assertThat(fixture.prompts).hasSize(2)
+        assertThat(fixture.prompts[0].messages.first().content).contains("会话状态面板")
+        assertPrefix(fixture.prompts[0], fixture.prompts[1])
+    }
+
+    @Ignore("P1 前缀稳定改造后启用")
+    @Test
+    fun `前缀P1_本条消息点名技能`() = runTest {
+        val fixture = prefixFixture()
+        val skill = com.promenar.infinity.data.skills.DiscoveredSkill(
+            "user:demo", com.promenar.infinity.data.skills.SkillScope.USER, "demo", "演示技能", null, null,
+            "/skills/demo", emptyList(), com.promenar.infinity.data.skills.SkillStatus.ENABLED, false, true, null, null,
+        )
+        fixture.skillCatalog = mockk<com.promenar.infinity.data.skills.SkillCatalog>().also { catalog ->
+            coEvery { catalog.scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, listOf(skill))
+            coEvery { catalog.readDocument(skill) } returns com.promenar.infinity.data.skills.ParsedSkillDocument(
+                com.promenar.infinity.data.skills.AgentSkillMetadata("demo", "演示技能"), "只使用合成夹具",
+            )
+        }
+        adjacentTurns(fixture, secondContent = "/demo 后续任务")
+        assertThat(fixture.prompts[1].messages.first().content).contains("Requested Skill")
+        assertPrefix(fixture.prompts[0], fixture.prompts[1])
+    }
+
+    private suspend fun TestScope.prefixFixture(): Fixture = fixture().also {
+        it.realContextBuilder = ContextBuilder()
+        it.sessions.updateSessionOptions("session", it.store.getSession("session")!!.options.copy(enableTimeInjection = false))
+    }
+
+    private suspend fun adjacentTurns(fixture: Fixture, secondContent: String = "后续任务") {
+        fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        fixture.messages.addMessage("session", Message("user-next", MessageRole.USER, secondContent))
+        fixture.messages.addMessage("session", Message("assistant-next", MessageRole.ASSISTANT, "", parentMessageId = "user-next"))
+        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
+            userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = secondContent,
+        )) {}
+        assertThat(fixture.prompts).hasSize(2)
+    }
+
+    private fun assertPrefix(before: PromptRequest, after: PromptRequest) {
+        fun system(request: PromptRequest) = json.encodeToString(request.messages.filter { it.role == "system" }).toByteArray(Charsets.UTF_8)
+        fun tools(request: PromptRequest) = json.encodeToString(request.tools.orEmpty()).toByteArray(Charsets.UTF_8)
+        fun history(request: PromptRequest) = request.messages.filter { it.role != "system" }.map { json.encodeToString(it) }
+        com.google.common.truth.Truth.assertWithMessage("工具定义字节必须一致").that(tools(after)).isEqualTo(tools(before))
+        com.google.common.truth.Truth.assertWithMessage("系统提示字节必须一致").that(system(after)).isEqualTo(system(before))
+        val previousHistory = history(before)
+        com.google.common.truth.Truth.assertWithMessage("前一次消息序列必须是后一次的前缀")
+            .that(history(after).take(previousHistory.size)).containsExactlyElementsIn(previousHistory).inOrder()
+    }
+
     private suspend fun TestScope.fixture(
         mode: String = "auto",
         confirmed: Boolean = true,
@@ -508,6 +664,7 @@ class P0RuntimeIntegrationTest {
         var providerProtocolType: ProtocolType = ProtocolType.Local
         var providerUnavailable = false
         var skillCatalog: com.promenar.infinity.data.skills.SkillCatalog? = null
+        var realContextBuilder: ContextBuilder? = null
         var summaryResponse = PromptResponse("")
         var toolResult = "完整工具结果"
         var onPrompt: suspend (Int, PromptRequest) -> Unit = { _, _ -> }
@@ -608,7 +765,7 @@ class P0RuntimeIntegrationTest {
                 agentRepository = mockk<IAgentRepository> { coEvery { getById(any()) } returns null },
                 configResolver = AgentConfigResolver(preferences),
                 routeGate = ChatProviderRouteGate(router, UnconfinedTestDispatcher(scope.testScheduler)),
-                contextBuilder = builder, messageManager = messages,
+                contextBuilder = realContextBuilder ?: builder, messageManager = messages,
                 localProviderFactory = { provider }, provider = provider, toolLedger = ledger, toolExecutor = executor,
                 postProcessor = mockk<com.promenar.infinity.ui.chat.manager.PostProcessor>(relaxed = true) {
                     coEvery { archiveMessagesToRag(any(), any(), any(), any()) } coAnswers { postEvents += "archive" }

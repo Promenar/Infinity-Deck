@@ -17,6 +17,29 @@ import org.junit.Test
 import java.io.File
 
 class ModelSpecsTest {
+    @org.junit.Test
+    fun `未核实模型后缀不能继承家族缓存价`() {
+        for (model in listOf("gpt-5.4-mini", "gpt-5.5-pro", "gemini-2.5-flash-lite")) {
+            org.junit.Assert.assertNull(model, findModelPricing(model)!!.cacheReadPerMillion)
+        }
+        org.junit.Assert.assertEquals(0.10, findModelPricing("provider::gpt-4.1-mini-2025-04-14")!!.cacheReadPerMillion!!, 0.000001)
+    }
+
+    @org.junit.Test
+    fun `缓存价格采用具体模型且未核实档位保持未知`() {
+        org.junit.Assert.assertEquals(0.10, findModelPricing("gpt-4.1-mini")!!.cacheReadPerMillion!!, 0.000001)
+        org.junit.Assert.assertEquals(0.025, findModelPricing("gemini-3.1-flash-lite")!!.cacheReadPerMillion!!, 0.000001)
+        org.junit.Assert.assertEquals(6.0, findModelPricing("claude-sonnet-4-6")!!.cacheWriteLongTtlPerMillion!!, 0.000001)
+        org.junit.Assert.assertNull(findModelPricing("qwen-flash")!!.cacheReadPerMillion)
+        org.junit.Assert.assertNull(findModelPricing("gpt-5-pro")!!.cacheReadPerMillion)
+    }
+
+    @org.junit.Test
+    fun `价格按具体模型匹配而非宽泛家族`() {
+        org.junit.Assert.assertEquals(0.40, findModelPricing("gpt-4.1-mini")!!.inputPerMillion, 0.000001)
+        org.junit.Assert.assertEquals(10.0, findModelPricing("o3-pro")!!.inputPerMillion, 0.000001)
+    }
+
     @Test
     fun `实际目录资产保持可加载且额度非负`() {
         val catalog = com.promenar.infinity.data.model.catalog.BundledModelCatalog.fromJson(bundledCatalogFile().readText())

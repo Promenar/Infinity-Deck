@@ -120,11 +120,13 @@ class ChatGenerationRunnerTimingTest {
             flow {
                 now = 1_100
                 emit(GenerationChunk.Text("丢弃"))
+                emit(GenerationChunk.Usage(100, 1, 101, cacheReadInput = 90, cacheWriteInput = 5, cacheWriteLongTtlInput = 3))
                 emit(GenerationChunk.Failure(GenerationFailure(GenerationFailureCode.NETWORK, retryable = true)))
             },
             flow {
                 now = 3_400
                 emit(GenerationChunk.Text("重来"))
+                emit(GenerationChunk.Usage(120, 1, 121, cacheReadInput = 0, cacheWriteInput = 20, cacheWriteLongTtlInput = 0))
                 now = 3_600
                 emit(GenerationChunk.Completed(CompletionReason.END_TURN))
             },
@@ -135,13 +137,17 @@ class ChatGenerationRunnerTimingTest {
         ChatGenerationRunner(runtime) { now }.run(request()) {}
 
         assertThat(runtime.recorded.single().timing).isEqualTo(GenerationTiming(1_000, 3_400, 3_600))
+        assertThat(runtime.recorded.single().cacheReadInputTokens).isEqualTo(0)
+        assertThat(runtime.recorded.single().cacheWriteInputTokens).isEqualTo(20)
+        assertThat(runtime.recorded.single().cacheWriteLongTtlInputTokens).isEqualTo(0)
     }
 
     @Test
     fun `缓存与推理用量取本轮已报告的最大值且未报告保持 null`() = runTest {
         val runtime = TimingRuntime(listOf(flow {
             emit(GenerationChunk.Text("x"))
-            emit(GenerationChunk.Usage(100, 1, 101, cacheReadInput = 80, reasoningOutput = 0))
+            emit(GenerationChunk.Usage(100, 1, 101, cacheReadInput = 80, cacheWriteInput = 20, cacheWriteLongTtlInput = 12, reasoningOutput = 0))
+            emit(GenerationChunk.Usage(90, 1, 91, cacheReadInput = 60, cacheWriteInput = 10, cacheWriteLongTtlInput = 4))
             emit(GenerationChunk.Usage(100, 20, 120))
             emit(GenerationChunk.Completed(CompletionReason.END_TURN))
         }))
@@ -151,7 +157,8 @@ class ChatGenerationRunnerTimingTest {
         val snapshot = runtime.recorded.single()
         assertThat(snapshot.cacheReadInputTokens).isEqualTo(80)
         assertThat(snapshot.reasoningOutputTokens).isEqualTo(0)
-        assertThat(snapshot.cacheWriteInputTokens).isNull()
+        assertThat(snapshot.cacheWriteInputTokens).isEqualTo(20)
+        assertThat(snapshot.cacheWriteLongTtlInputTokens).isEqualTo(12)
         assertThat(snapshot.outputTokens).isEqualTo(20)
     }
 

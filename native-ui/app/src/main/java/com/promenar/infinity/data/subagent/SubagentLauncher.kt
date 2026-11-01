@@ -1,5 +1,8 @@
 package com.promenar.infinity.data.subagent
 
+import com.promenar.infinity.domain.repository.plus
+import com.promenar.infinity.domain.repository.minus
+import com.promenar.infinity.domain.repository.sumCacheUsage
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.domain.trigger.*
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
@@ -366,7 +369,8 @@ class SubagentLauncher(
                     if (work.sessionId in deleted) return@withState
                     val current = findLocked(work.sessionId, work.id).second
                     val merged = if (current.status == SubagentStatus.STOPPED) current.copy(
-                        inputTokens = maxOf(current.inputTokens, run.inputTokens), outputTokens = maxOf(current.outputTokens, run.outputTokens), totalTokens = maxOf(current.totalTokens, run.totalTokens))
+                        inputTokens = maxOf(current.inputTokens, run.inputTokens), outputTokens = maxOf(current.outputTokens, run.outputTokens), totalTokens = maxOf(current.totalTokens, run.totalTokens),
+                        cacheReadInput = run.cacheReadInput, cacheWriteInput = run.cacheWriteInput, cacheWriteLongTtlInput = run.cacheWriteLongTtlInput, cache = run.cache, cacheRequests = run.cacheRequests)
                     else run.copy(events = mergeEvents(current.events, run.events),
                         completionSequence = current.completionSequence, deliveredSequence = current.deliveredSequence,
                         pendingNotices = current.pendingNotices, dailyUsage = current.dailyUsage,
@@ -568,8 +572,31 @@ class SubagentLauncher(
         val output = (run.outputTokens - current.outputTokens).coerceAtLeast(0)
         val day = java.time.Instant.ofEpochMilli(clock()).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
         val old = current.dailyUsage[day] ?: com.promenar.infinity.data.model.TokenUsage()
-        val next = run.copy(dailyUsage = if (input + output == 0) current.dailyUsage else current.dailyUsage +
-            (day to old.copy(input = old.input + input, output = old.output + output, total = old.total + input + output, estimated = old.estimated || run.tokensEstimated)))
+        val requestDays = run.cacheRequests.filter { it.usage != null }.groupBy { it.day }
+        val dailyCache = (current.dailyCacheUsage.keys + requestDays.keys).associateWith { requestDay ->
+            current.legacyCache(requestDay) + requestDays[requestDay].orEmpty().map { it.cache }.sumCacheUsage()
+        }
+        val dailyUsage = current.dailyUsage.toMutableMap()
+        if (input + output > 0) dailyUsage[day] = old.copy(
+            input = old.input + input, output = old.output + output, total = old.total + input + output,
+            estimated = old.estimated || run.tokensEstimated,
+        )
+        // 字段是否报告由该日实际请求决定；累计总值不变不能被解释为这一天报告了零。
+        requestDays.forEach { (requestDay, requests) ->
+            val usage = dailyUsage[requestDay] ?: com.promenar.infinity.data.model.TokenUsage()
+            fun reported(selector: (com.promenar.infinity.data.model.TokenUsage) -> Int?): Int? {
+                val stored = current.dailyUsage[requestDay]?.let(selector)
+                val tracked = current.cacheRequests.filter { it.day == requestDay }.map { it.usage?.let(selector) }.sumReportedCache()
+                val legacy = stored?.takeIf { tracked == null || it > tracked }?.let { it - (tracked ?: 0) }
+                return (listOf(legacy) + requests.map { it.usage?.let(selector) }).sumReportedCache()
+            }
+            dailyUsage[requestDay] = usage.copy(
+                cacheReadInput = reported { it.cacheReadInput },
+                cacheWriteInput = reported { it.cacheWriteInput },
+                cacheWriteLongTtlInput = reported { it.cacheWriteLongTtlInput },
+            )
+        }
+        val next = run.copy(dailyCacheUsage = dailyCache, dailyUsage = dailyUsage)
         putLocked(batch.copy(runs = batch.runs.map { if (it.id == run.id) next else it }), persist)
     }
     private fun putLocked(batch: SubagentBatch, persist: Boolean = true) {

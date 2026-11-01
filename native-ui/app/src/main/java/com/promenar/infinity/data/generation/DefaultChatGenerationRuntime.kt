@@ -692,6 +692,7 @@ internal class DefaultChatGenerationRuntime(
         if (!route.useLocalProvider) {
             awaitTailnet(route)?.let { failure -> return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(failure)) }
         }
+        InfinityLogger.log(mainPromptPrefixTracker.observe(request.sessionId, prompt))
         val source = if (route.useLocalProvider) {
             localProviderFactory(prompt.model).sendPrompt(prompt)
         } else {
@@ -832,6 +833,7 @@ internal class DefaultChatGenerationRuntime(
             estimated = snapshot.tokensEstimated || existing.summaryEstimated,
             cacheReadInput = snapshot.cacheReadInputTokens,
             cacheWriteInput = snapshot.cacheWriteInputTokens,
+            cacheWriteLongTtlInput = snapshot.cacheWriteLongTtlInputTokens,
             reasoningOutput = snapshot.reasoningOutputTokens,
             timing = snapshot.timing?.let {
                 com.promenar.infinity.data.model.GenerationTimingRecord(it.requestStartedAt, it.firstOutputAt, it.endedAt)
@@ -1506,6 +1508,7 @@ internal class DefaultChatGenerationRuntime(
             total = chunk.usage.total,
             cacheReadInput = chunk.usage.cacheReadInput,
             cacheWriteInput = chunk.usage.cacheWriteInput,
+            cacheWriteLongTtlInput = chunk.usage.cacheWriteLongTtlInput,
             reasoningOutput = chunk.usage.reasoningOutput,
         )
         is StreamChunk.Citations -> GenerationChunk.Citations(

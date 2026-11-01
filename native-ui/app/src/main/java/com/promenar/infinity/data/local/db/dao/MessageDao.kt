@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.local.db.dao
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -9,6 +10,18 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.promenar.infinity.data.local.db.entity.MessageEntity
 import kotlinx.coroutines.flow.Flow
+import com.promenar.infinity.domain.repository.CacheUsageAggregate
+
+/** 缓存统计仅包含助手主模型请求；总输入输出保留原有口径。 */
+private const val CACHE_USAGE_COLUMNS = """
+    COALESCE(SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END), 0) AS cache_requests,
+    COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheReadInput') = 'integer' AND json_extract(tokens, '$.cacheReadInput') >= 0 AND json_extract(tokens, '$.cacheReadInput') <= (COALESCE(CAST(json_extract(tokens, '$.input') AS INTEGER), 0) - COALESCE(CAST(json_extract(tokens, '$.summaryInput') AS INTEGER), 0)) THEN 1 ELSE 0 END), 0) AS cache_reportedRequests,
+    COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheReadInput') = 'integer' AND json_extract(tokens, '$.cacheReadInput') >= 0 AND json_extract(tokens, '$.cacheReadInput') <= (COALESCE(CAST(json_extract(tokens, '$.input') AS INTEGER), 0) - COALESCE(CAST(json_extract(tokens, '$.summaryInput') AS INTEGER), 0)) THEN (COALESCE(CAST(json_extract(tokens, '$.input') AS INTEGER), 0) - COALESCE(CAST(json_extract(tokens, '$.summaryInput') AS INTEGER), 0)) ELSE 0 END), 0) AS cache_reportedInputTokens,
+    COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheReadInput') = 'integer' AND json_extract(tokens, '$.cacheReadInput') >= 0 AND json_extract(tokens, '$.cacheReadInput') <= (COALESCE(CAST(json_extract(tokens, '$.input') AS INTEGER), 0) - COALESCE(CAST(json_extract(tokens, '$.summaryInput') AS INTEGER), 0)) THEN json_extract(tokens, '$.cacheReadInput') ELSE 0 END), 0) AS cache_cacheReadTokens,
+    COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheWriteInput') = 'integer' THEN MAX(0, json_extract(tokens, '$.cacheWriteInput')) ELSE 0 END), 0) AS cache_cacheWriteTokens,
+    COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheWriteLongTtlInput') = 'integer' THEN MAX(0, json_extract(tokens, '$.cacheWriteLongTtlInput')) ELSE 0 END), 0) AS cache_cacheWriteLongTtlTokens,
+    COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheReadInput') = 'integer' AND json_extract(tokens, '$.cacheReadInput') > (COALESCE(CAST(json_extract(tokens, '$.input') AS INTEGER), 0) - COALESCE(CAST(json_extract(tokens, '$.summaryInput') AS INTEGER), 0)) THEN 1 ELSE 0 END), 0) AS cache_anomalousRequests
+"""
 
 @Dao
 interface MessageDao {
@@ -229,7 +242,8 @@ interface MessageDao {
 
     @Query("""
         SELECT COALESCE(SUM(CAST(json_extract(tokens, '$.input') AS INTEGER)), 0) as total_input,
-               COALESCE(SUM(CAST(json_extract(tokens, '$.output') AS INTEGER)), 0) as total_output
+               COALESCE(SUM(CAST(json_extract(tokens, '$.output') AS INTEGER)), 0) as total_output,
+        """ + CACHE_USAGE_COLUMNS + """
         FROM messages
         WHERE tokens IS NOT NULL
     """)
@@ -238,7 +252,8 @@ interface MessageDao {
     @Query("""
         SELECT COALESCE(model_id, 'unknown') as model_id,
                COALESCE(SUM(CAST(json_extract(tokens, '$.input') AS INTEGER)), 0) as total_input,
-               COALESCE(SUM(CAST(json_extract(tokens, '$.output') AS INTEGER)), 0) as total_output
+               COALESCE(SUM(CAST(json_extract(tokens, '$.output') AS INTEGER)), 0) as total_output,
+        """ + CACHE_USAGE_COLUMNS + """
         FROM messages
         WHERE tokens IS NOT NULL
         GROUP BY model_id
@@ -262,7 +277,8 @@ interface MessageDao {
     @Query("""
         SELECT date(m.created_at / 1000, 'unixepoch') as day,
                COALESCE(SUM(CAST(json_extract(m.tokens, '$.input') AS INTEGER)), 0) as total_input,
-               COALESCE(SUM(CAST(json_extract(m.tokens, '$.output') AS INTEGER)), 0) as total_output
+               COALESCE(SUM(CAST(json_extract(m.tokens, '$.output') AS INTEGER)), 0) as total_output,
+        """ + CACHE_USAGE_COLUMNS + """
         FROM messages m
         WHERE m.tokens IS NOT NULL AND m.created_at >= :sinceTimestamp
         GROUP BY day
@@ -285,13 +301,15 @@ data class MessageTimeRow(
 
 data class TokenTotalRow(
     val total_input: Long,
-    val total_output: Long
+    val total_output: Long,
+    @Embedded(prefix = "cache_") val cache: CacheUsageAggregate = CacheUsageAggregate(),
 )
 
 data class ModelTokenRow(
     val model_id: String,
     val total_input: Long,
-    val total_output: Long
+    val total_output: Long,
+    @Embedded(prefix = "cache_") val cache: CacheUsageAggregate = CacheUsageAggregate(),
 )
 
 data class SessionTokenRow(
@@ -304,5 +322,6 @@ data class SessionTokenRow(
 data class DailyTokenRow(
     val day: String?,
     val total_input: Long,
-    val total_output: Long
+    val total_output: Long,
+    @Embedded(prefix = "cache_") val cache: CacheUsageAggregate = CacheUsageAggregate(),
 )
