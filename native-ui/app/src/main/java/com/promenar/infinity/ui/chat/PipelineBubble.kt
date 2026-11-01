@@ -206,6 +206,10 @@ fun PipelineBubble(
     turnGraphStates: Map<String, com.promenar.infinity.data.rag.TurnGraphState> = emptyMap(),
     /** 最新一轮的失败入口；只传给最后一组，历史失败不提供操作。 */
     failureActions: GenerationFailureActions? = null,
+    /** 本组当前唯一的进行中元素；会话页按生成阶段判定后只传给最后一组，预览按消息内容推断。 */
+    liveStep: LiveStep? = previewLiveStep(group, isGenerating, streamingContent),
+    /** 等待模型超过 30 秒时的“停止并重试”；为 null 时不显示按钮。 */
+    onStopAndRetry: (() -> Unit)? = null,
     ragContent: @Composable () -> Unit = {},
 ) {
     if (group.isNotice) {
@@ -250,6 +254,7 @@ fun PipelineBubble(
         )
     }
     val allSteps = renderPlan.steps
+    val finalAssistantId = group.messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id
     val collapsePlan = remember(allSteps, group.messages, isGenerating, hasPendingApproval, interruptedByError, collapseFinishedTurn) {
         buildCollapsedTurnPlan(
             messages = group.messages,
@@ -292,7 +297,6 @@ fun PipelineBubble(
         }
         // 单步渲染：间距与“组内末步”按步骤在所属列表中的位置判定，平铺与收起两种布局共用。
         val renderStep: @Composable (Int, PipelineStep, List<PipelineStep>) -> Unit = { index, step, steps ->
-            val isLastInGroup = index == steps.lastIndex
             val followsContent = steps.getOrNull(index - 1) is PipelineStep.Content
             if ((index > 0 && (step is PipelineStep.Content || followsContent)) ||
                 (index == 0 && (hasRagContent || collapsePlan != null) && step is PipelineStep.Content)
@@ -309,9 +313,10 @@ fun PipelineBubble(
                 when (step) {
                     is PipelineStep.Thinking -> ThinkingTrace(
                         reasoning = step.reasoning,
-                        isGenerating = isGenerating && isLastInGroup && streamingContent.isEmpty(),
+                        isGenerating = liveStep?.kind == LiveStepKind.THINKING && liveStep.targetId == step.messageId,
                         fontSize = fontSize,
                         clockKey = step.messageId,
+                        livePhase = liveStep?.motionPhase,
                     )
                     is PipelineStep.ToolExec -> Column {
                         // 已答的提问以摘要卡呈现，其余调用照常显示为工具行；待回答时提问卡在会话流底部，这里不重复。
@@ -323,6 +328,7 @@ fun PipelineBubble(
                         if (toolSteps.isNotEmpty()) InlineToolRow(
                             steps = toolSteps, isExecuting = step.isExecuting, fontSize = fontSize, turnActive = step.isTurnActive,
                             commandOutputTarget = { callStepId -> commandOutputTarget(group.messages, callStepId) },
+                            live = liveStep?.takeIf { live -> live.kind == LiveStepKind.TOOL && toolSteps.any { it.id == live.targetId } },
                         )
                         asks.answered.forEach { AskUserAnsweredCard(it) }
                         branches.resolved.forEach { BranchPlanResolvedView(it) }
@@ -330,13 +336,15 @@ fun PipelineBubble(
                         if (isGenerating) CanvasInvocationCards(step.steps, inline = true)
                     }
                     is PipelineStep.Content -> {
-                        val displayContent = if (isLastInGroup && isGenerating) {
+                        // 流式正文属于本组最后一条助手消息；它之后可能还有本条消息发起的工具行，不能按“组内末步”判断。
+                        val streamingTarget = isGenerating && step.messageId == finalAssistantId
+                        val displayContent = if (streamingTarget) {
                             streamingContent.ifEmpty { step.content }
                         } else step.content
                         val sourceMessage = pipelineContentOwner(group.messages, step)
                         ContentSegment(
                             content = displayContent,
-                            isStreaming = isLastInGroup && isGenerating,
+                            isStreaming = streamingTarget,
                             showStreamingCursor = renderPlan.showContentCursor,
                             fontSize = fontSize,
                             sourceMessageId = sourceMessage?.id ?: group.messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id,
@@ -359,7 +367,11 @@ fun PipelineBubble(
             }
             renderStep(expandedSteps.lastIndex, collapsePlan.finalContent, expandedSteps)
         }
-        if (renderPlan.showStandaloneCursor) GenerationIndicator()
+        // 进行中元素在流末尾：正文流式时动画紧跟正文，等待模型或准备工具调用时单独一行。
+        liveStep?.let { live ->
+            if (live.kind == LiveStepKind.CONTENT) GenerationIndicator(live.motionPhase)
+            else if (live.isTailRow) LiveWaitingRow(live, onStopAndRetry)
+        }
         if (!isGenerating) CanvasInvocationCards(
             allSteps.filterIsInstance<PipelineStep.ToolExec>().flatMap { it.steps },
             messageIds = remember(group.messages) { group.messages.map { it.id }.toSet() },
@@ -588,7 +600,6 @@ internal fun pipelineContentOwner(messages: List<Message>, content: PipelineStep
 
 internal data class PipelineRenderPlan(
     val steps: List<PipelineStep>,
-    val showStandaloneCursor: Boolean,
     val showContentCursor: Boolean
 )
 
@@ -599,7 +610,9 @@ internal fun buildPipelineRenderPlan(
     hasPendingApproval: Boolean = false,
 ): PipelineRenderPlan {
     val finalAssistant = messages.lastOrNull { it.role == MessageRole.ASSISTANT }
-    val steps = buildPipelineSteps(messages).map { step ->
+    // 正文已开始流式到达但尚未落盘时，为最后一条助手消息在正文位置补一个占位，排在它发起的工具之前。
+    val streamingPlaceholderId = finalAssistant?.takeIf { isGenerating && hasStreamingContent && it.content.isBlank() }?.id
+    val steps = buildPipelineSteps(messages, streamingPlaceholderId).map { step ->
         if (step is PipelineStep.ToolExec) step.copy(
             isExecuting = isGenerating && finalAssistant != null && toolInvocations(step.steps).any { invocation ->
                 !invocation.complete && (invocation.call?.timestamp ?: 0) > 0 &&
@@ -608,20 +621,19 @@ internal fun buildPipelineRenderPlan(
             // 审批通过后的调用在生成任务外执行，审批请求清除前本轮仍算进行中。
             isTurnActive = isGenerating || hasPendingApproval,
         ) else step
-    }.toMutableList()
-    val finalAssistantIsPlaceholder = finalAssistant != null && finalAssistant.content.isBlank()
-
-    if (isGenerating && hasStreamingContent && finalAssistantIsPlaceholder) {
-        steps.add(PipelineStep.Content(content = "", messageId = requireNotNull(finalAssistant).id))
     }
 
+    // 生成指示挂在哪一步由进行中元素（见 resolveLiveStep）决定。
     return PipelineRenderPlan(
         steps = steps,
-        // 生成指示贯穿整轮：首字前单独占位，开始输出后跟在已有步骤与正文末尾，直到本轮结束。
-        showStandaloneCursor = isGenerating,
         showContentCursor = false
     )
 }
+
+/** 预览与测试未提供会话阶段时，按本组消息内容推断进行中元素。 */
+internal fun previewLiveStep(group: PipelineGroup, isGenerating: Boolean, streamingContent: String): LiveStep? =
+    if (!isGenerating || group.isUser || group.isNotice) null
+    else resolveLiveStep(group.messages, LiveTurnSignals(phase = null, isGenerating = true, hasStreamingContent = streamingContent.isNotEmpty()))
 
 // ── 工具内容嗅探：覆盖 JSON 代码块、裸 JSON、分隔符文本、XML 四种格式 ──
 // 只认工具信封字段；name、query 等普通数据字段很常见，按它们嗅探会把正文里的 JSON 删掉并虚构出成批未完成调用。
@@ -713,7 +725,11 @@ private fun scopedToolSteps(messageId: String, steps: List<ExecutionStep>): List
         }
     }
 
-private fun buildPipelineSteps(messages: List<Message>): List<PipelineStep> {
+/**
+ * 同一条助手消息按“思考 → 正文 → 工具”排列：模型先说明再发起调用，正在运行的工具出现在那句话下方。
+ * [streamingPlaceholderId] 为正文尚未落盘的流式目标消息，在其正文位置放一个空占位。
+ */
+private fun buildPipelineSteps(messages: List<Message>, streamingPlaceholderId: String? = null): List<PipelineStep> {
     val steps = mutableListOf<PipelineStep>()
     for ((messageIndex, msg) in messages.withIndex()) {
         val followingTools = messages.subList(messageIndex + 1, messages.size)
@@ -738,18 +754,7 @@ private fun buildPipelineSteps(messages: List<Message>): List<PipelineStep> {
                 steps.add(PipelineStep.Thinking(reasoning = msg.reasoning!!, messageId = msg.id))
             }
 
-            // 2. 工具执行 → ToolExec step
-            val executionSteps = msg.executionSteps.orEmpty() + askUserSyntheticSteps(msg, followingTools)
-            if (executionSteps.isNotEmpty()) {
-                val namedSteps = executionSteps.map { execution ->
-                    execution.copy(toolName = execution.toolName?.takeIf(String::isNotBlank)
-                        ?: knownToolNames[execution.toolCallId] ?: inferredToolName(execution))
-                }
-                val scoped = scopedToolSteps(msg.id, namedSteps)
-                if (scoped.isNotEmpty()) steps.add(PipelineStep.ToolExec(steps = scoped, isExecuting = false))
-            }
-
-            // 3. 正文 → Content step（含工具内容嗅探）
+            // 2. 正文 → Content step（含工具内容嗅探）
             if (msg.content.isNotBlank()) {
                 // 渲染层最后防线：对 content 做工具特征检测
                 if (hasInlineToolData(msg.content)) {
@@ -772,6 +777,19 @@ private fun buildPipelineSteps(messages: List<Message>): List<PipelineStep> {
                 } else {
                     steps.add(PipelineStep.Content(content = msg.content, messageId = msg.id))
                 }
+            } else if (msg.id == streamingPlaceholderId) {
+                steps.add(PipelineStep.Content(content = "", messageId = msg.id))
+            }
+
+            // 3. 工具执行 → ToolExec step
+            val executionSteps = msg.executionSteps.orEmpty() + askUserSyntheticSteps(msg, followingTools)
+            if (executionSteps.isNotEmpty()) {
+                val namedSteps = executionSteps.map { execution ->
+                    execution.copy(toolName = execution.toolName?.takeIf(String::isNotBlank)
+                        ?: knownToolNames[execution.toolCallId] ?: inferredToolName(execution))
+                }
+                val scoped = scopedToolSteps(msg.id, namedSteps)
+                if (scoped.isNotEmpty()) steps.add(PipelineStep.ToolExec(steps = scoped, isExecuting = false))
             }
         }
         // TOOL 消息的内容已经在 executionSteps 中展示，此处跳过
@@ -827,6 +845,8 @@ internal fun ThinkingTrace(
     initiallyExpanded: Boolean = false,
     /** 计时按此键（消息 id）记在进程内，离开会话再回来不从零开始；为空时只按本次组合计时。 */
     clockKey: String? = null,
+    /** 思考进行中时标题前动画的阶段；为 null 时按流式。 */
+    livePhase: com.promenar.infinity.ui.common.motion.GenerationMotionPhase? = null,
 ) {
     var internalExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
     var measuredElapsed by remember(clockKey) { mutableStateOf(clockKey?.let(ThinkingClock.shared::duration)) }
@@ -838,9 +858,11 @@ internal fun ThinkingTrace(
             sawThinking = true
             val start = clockKey?.let { ThinkingClock.shared.start(it, now()) } ?: now()
             try {
+                // 标题只显示到秒：按整秒边界每秒刷新一次。
                 while (true) {
-                    measuredElapsed = now() - start
-                    delay(200L)
+                    val elapsed = now() - start
+                    measuredElapsed = elapsed
+                    delay(1_000L - elapsed.mod(1_000L))
                 }
             } finally {
                 measuredElapsed = now() - start
@@ -852,7 +874,7 @@ internal fun ThinkingTrace(
     }
     val seconds = (elapsedMs ?: measuredElapsed)?.coerceAtLeast(0)?.div(1_000)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
     val summary = when {
-        isGenerating -> pluralStringResource(R.plurals.chat_step_thinking, seconds ?: 0, seconds ?: 0)
+        isGenerating -> stringResource(R.string.live_step_thinking_elapsed, liveClockText((seconds ?: 0).toLong()))
         seconds != null -> pluralStringResource(R.plurals.chat_step_thought_duration, seconds, seconds)
         else -> stringResource(R.string.chat_step_thought)
     }
@@ -870,6 +892,8 @@ internal fun ThinkingTrace(
             onClick = { internalExpanded = !internalExpanded },
             shimmerSpeed = { thinkingShimmerSpeed(previewRate.value) },
             preview = if (isGenerating) {{ ThinkingPreview(reasoning, previewRate) }} else null,
+            // 思考行本身就是进行中的一步：生成动画挂在标题前。
+            leading = if (isGenerating) {{ LiveStepLeading(livePhase ?: com.promenar.infinity.ui.common.motion.GenerationMotionPhase.STREAM) }} else null,
         )
         AnimatedVisibility(
             visible = internalExpanded && reasoning.isNotBlank(),
@@ -1202,6 +1226,8 @@ internal fun InlineToolRow(
     commandOutputTarget: (callStepId: String) -> Pair<String, String>? = { null },
     /** 本轮是否仍在进行；为 false 时未完成的调用显示为已中断而不是等待处理。 */
     turnActive: Boolean = true,
+    /** 本行持有本轮唯一的进行中元素时非 null：标题前显示工具阶段的生成动画，标题后显示从调用起算的计时。 */
+    live: LiveStep? = null,
 ) {
     var isExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
     val linuxNavigation = com.promenar.infinity.ui.linux.LocalLinuxNavigation.current
@@ -1246,7 +1272,10 @@ internal fun InlineToolRow(
     openedChange?.let { change ->
         com.promenar.infinity.ui.chat.diff.FileChangeDiffSheet(change, onDismissRequest = { openedChange = null })
     }
+    val liveStartedAt = live?.startedAt
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 逐条显示的工具没有标题行，进行中时在上方单独显示动画与计时。
+        if (live != null && (memoryOnly || browserOnly || knowledgeOnly)) LiveToolTicker(live)
         if (memoryOnly) MemoryChangeRows(memoryChanges) else if (browserOnly) BrowserStepRows(browserSteps, fontSize)
         else if (knowledgeOnly) KnowledgeSearchStepRows(knowledgeSteps, fontSize) else CompactStepRow(
             segments = segments,
@@ -1259,6 +1288,8 @@ internal fun InlineToolRow(
             tag = if (stateOnly) com.promenar.infinity.ui.testing.UiTags.CHAT_STATE_SUMMARY else "CHAT_TOOL_TOGGLE",
             failureText = if (summary.failedCount > 0) pluralStringResource(R.plurals.chat_step_failed_count, summary.failedCount, summary.failedCount) else null,
             onClick = { isExpanded = !isExpanded },
+            leading = if (live != null) {{ LiveStepLeading(live.motionPhase) }} else null,
+            trailing = if (liveStartedAt != null) {{ LiveStepTrailing(liveStartedAt) }} else null,
         )
         // 关键数据变化不随详情折叠，避免用户错过。
         if (runtimeChanges.isNotEmpty()) RuntimeChangesNotice(runtimeChanges)
@@ -1423,7 +1454,11 @@ private fun JobWaitProgress(limitSeconds: Int, startedAt: Long?, running: Boolea
     val text = if (elapsedSeconds >= 0) {
         stringResource(R.string.chat_step_job_wait_elapsed, clockText(elapsedSeconds), clockText(limitSeconds.toLong()))
     } else limit
-    Text(text, style = InfinityTypography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // 等待中挂工具阶段的生成动画，结束后只留最长等待时间。
+        if (elapsedSeconds >= 0) LiveStepDots(com.promenar.infinity.ui.common.motion.GenerationMotionPhase.TOOL, Modifier.padding(end = 6.dp))
+        Text(text, style = InfinityTypography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 private fun clockText(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
@@ -1806,16 +1841,16 @@ private fun formatMessageDocumentBytes(bytes: Long): String = when {
 // ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun GenerationIndicator() {
+private fun GenerationIndicator(phase: com.promenar.infinity.ui.common.motion.GenerationMotionPhase) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 32.dp) // 确保在首字生成前有足够的占位高度
+            .heightIn(min = 32.dp)
             .padding(vertical = 4.dp)
             .testTag(UiTags.CHAT_GENERATING_INDICATOR),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        GenerationDots()
+        LiveStepDots(phase, dotSize = 6.dp)
     }
 }
 

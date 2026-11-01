@@ -169,6 +169,8 @@ internal fun CompactStepRow(
     failureText: String? = null,
     /** 摘要前的状态图标，例如检索进行中的放大镜；默认不显示图标。 */
     leading: (@Composable RowScope.() -> Unit)? = null,
+    /** 紧跟摘要之后、不随摘要截断的附加内容，例如进行中步骤的计时。 */
+    trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val style = InfinityTypography.labelLarge.copy(
         fontSize = 13.sp,
@@ -227,6 +229,7 @@ internal fun CompactStepRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false).stepShimmer(active, shimmerSpeed).testTag("CHAT_STEP_SUMMARY"),
                     )
+                    trailing?.invoke(this)
                     if (!failureText.isNullOrBlank()) {
                         Text(
                             text = " $InfinityMetaSeparator $failureText",
@@ -247,6 +250,7 @@ internal fun CompactStepRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = summaryMaxWidth).stepShimmer(active, shimmerSpeed).testTag("CHAT_STEP_SUMMARY"),
                 )
+                trailing?.invoke(this)
             }
             if (preview != null) {
                 Spacer(Modifier.width(12.dp))

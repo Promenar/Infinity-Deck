@@ -63,10 +63,10 @@ class TurnCollapseTest {
 
         assertThat(plan.finalContent.messageId).isEqualTo("final")
         assertThat(plan.finalContent.content).isEqualTo("最终结论：已经修改完成。")
-        // 过程按原顺序保留思考、工具与中间正文，最终正文不在过程中重复。
+        // 过程按原顺序保留思考、中间正文与工具（同一条消息先正文后工具，相邻工具合为一行），最终正文不在过程中重复。
         assertThat(plan.processSteps).isEqualTo(allSteps.dropLast(1))
         assertThat(plan.processSteps.map { it::class }).containsExactly(
-            PipelineStep.Thinking::class, PipelineStep.ToolExec::class, PipelineStep.Content::class, PipelineStep.ToolExec::class,
+            PipelineStep.Thinking::class, PipelineStep.Content::class, PipelineStep.ToolExec::class,
         ).inOrder()
         assertThat(plan.processSteps).doesNotContain(plan.finalContent)
         assertThat(plan.summary).isEqualTo(
@@ -204,5 +204,20 @@ class TurnCollapseTest {
         assertThat(turnDurationParts(300)).isEqualTo(TurnDurationParts(0, 0, 1))
         assertThat(turnDurationParts(59_600)).isEqualTo(TurnDurationParts(0, 1, 0))
         assertThat(turnDurationParts(3_725_000)).isEqualTo(TurnDurationParts(1, 2, 5))
+    }
+
+    @Test
+    fun `最后一条消息正文之后的已完成工具并入过程，正文仍留在最下方`() {
+        val messages = listOf(
+            Message("only", MessageRole.ASSISTANT, "已清理完成", reasoning = "检查目录", executionSteps = toolCall("t1", "shell_exec", 1_000)),
+        )
+        val allSteps = buildPipelineRenderPlan(messages, false, false).steps
+        assertThat(allSteps.map { it::class }).containsExactly(
+            PipelineStep.Thinking::class, PipelineStep.Content::class, PipelineStep.ToolExec::class,
+        ).inOrder()
+        val plan = requireNotNull(plan(messages))
+        assertThat(plan.finalContent.content).isEqualTo("已清理完成")
+        assertThat(plan.processSteps.map { it::class }).containsExactly(PipelineStep.Thinking::class, PipelineStep.ToolExec::class).inOrder()
+        assertThat(plan.summary.toolStepCount).isEqualTo(1)
     }
 }

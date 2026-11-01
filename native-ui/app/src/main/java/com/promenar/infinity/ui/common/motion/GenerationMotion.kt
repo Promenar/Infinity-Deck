@@ -223,14 +223,19 @@ internal class MotionPhaseController {
 
 /**
  * 一个会话界面共用的生成动效状态：显示阶段与各阶段权重、出字速率与重试倒计时，以及点阵屏读数（首字等待秒数、
- * 工具轮次）。字段只在绘制阶段读取，推进时不触发重组。三种来源：
+ * 工具轮次）。字段只在绘制阶段读取，推进时不触发重组。四种来源：
  * - 实时：由 [rememberGenerationMotion] 按生成任务推进；
  * - 演示：设置页预览按固定脚本轮播五个阶段，流式之前有一段思考；
- * - 环境：没有提供方时（首页会话列表、静态预览）固定为流式，速率取噪声。
+ * - 环境：没有提供方时（首页会话列表、静态预览）固定为流式，速率取噪声；
+ * - 固定：会话流中挂在某一步上的指示，阶段固定为该步的阶段，出字速率等读数取自 [delegate]。
  */
 @Stable
-class GenerationMotion internal constructor(private val source: Source) {
-    internal enum class Source { LIVE, DEMO, AMBIENT }
+class GenerationMotion internal constructor(
+    private val source: Source,
+    private val pinned: GenerationMotionPhase? = null,
+    private val delegate: GenerationMotion? = null,
+) {
+    internal enum class Source { LIVE, DEMO, AMBIENT, PINNED }
 
     private val controller = MotionPhaseController()
     private val meter = OutputRateMeter()
@@ -249,13 +254,20 @@ class GenerationMotion internal constructor(private val source: Source) {
     private var heldRateClock = 0f
 
     /** 真实阶段（已叠加重试倒计时）；没有进行中的生成时为 null。值相同时写入不触发重组，组合中可以读取。 */
-    var actual: GenerationMotionPhase? by mutableStateOf(if (source == Source.AMBIENT) GenerationMotionPhase.STREAM else null)
+    var actual: GenerationMotionPhase? by mutableStateOf(
+        when (source) {
+            Source.AMBIENT -> GenerationMotionPhase.STREAM
+            Source.PINNED -> pinned
+            else -> null
+        },
+    )
         private set
 
     init {
         // 演示从脚本里的思考段开始，系统关闭动画时停在流式。
         if (source == Source.DEMO) clock = DemoStreamStart
-        if (source != Source.LIVE) controller.snap(GenerationMotionPhase.STREAM)
+        // 固定来源不推进，阶段权重停在快照上。
+        if (source == Source.PINNED) controller.snap(requireNotNull(pinned)) else if (source != Source.LIVE) controller.snap(GenerationMotionPhase.STREAM)
     }
 
     /** [phase] 在当前画面中的权重，0..1；各阶段之和为 1。还没有显示过任何阶段时按流式显示。 */
@@ -280,31 +292,42 @@ class GenerationMotion internal constructor(private val source: Source) {
         Source.LIVE -> meter.act
         Source.DEMO -> meter.act
         Source.AMBIENT -> clamp01(0.3f + 0.45f * valueNoise(time * 0.5f + 3f))
+        Source.PINNED -> requireNotNull(delegate).act(time)
     }
 
     /**
      * 点阵波形屏第 [back] 列（0 为最新）的柱高 0..1；时间槽 [slot] 只用于环境来源合成柱高。
      */
     fun historyLevel(back: Int, slot: Float): Float = when (source) {
+        Source.PINNED -> requireNotNull(delegate).historyLevel(back, slot)
         Source.AMBIENT -> clamp01(0.2f + 0.65f * valueNoise(slot * 0.19f) + (motionHash(slot, 1.3f) - 0.5f) * 0.35f)
         else -> clamp01(meter.historyAt(back) / (GenerationMotionFullRate * 1.15f))
     }
 
     /** 本轮累计到达的字数（正文加思考），扫光点阵的写入头按它前进；环境来源按 [time] 匀速合成。 */
     fun writtenChars(time: Float): Float = when (source) {
+        Source.PINNED -> requireNotNull(delegate).writtenChars(time)
         Source.LIVE -> meter.total.toFloat()
         Source.DEMO -> demoChars
         Source.AMBIENT -> time * 20f
     }
 
     /** 点阵屏显示的每秒字数：每 [ScopeReadoutHoldSeconds] 取一次速率，数字不逐帧跳动。 */
-    val readoutRate: Float get() = if (source == Source.AMBIENT) 32f else heldRate
+    val readoutRate: Float get() = when (source) {
+        Source.AMBIENT -> 32f
+        Source.PINNED -> requireNotNull(delegate).readoutRate
+        else -> heldRate
+    }
 
     /** 首字前已等待的整秒数，从进入首字前起逐秒递增。 */
-    val waitSeconds: Int get() = if (source == Source.AMBIENT) 0 else floor(clock - waitStartedAt).toInt().coerceAtLeast(0)
+    val waitSeconds: Int get() = when (source) {
+        Source.AMBIENT -> 0
+        Source.PINNED -> requireNotNull(delegate).waitSeconds
+        else -> floor(clock - waitStartedAt).toInt().coerceAtLeast(0)
+    }
 
     /** 本轮第几次进入工具执行，从 1 起；还没执行过工具时为 0。 */
-    val toolRound: Int get() = toolRounds
+    val toolRound: Int get() = if (source == Source.PINNED) requireNotNull(delegate).toolRound else toolRounds
 
     /** 重试倒计时剩余比例 1→0。 */
     val retryLeft: Float
@@ -444,6 +467,10 @@ class GenerationMotion internal constructor(private val source: Source) {
         private val DemoScriptSeconds = DemoScript.sumOf { it.seconds.toDouble() }.toFloat()
 
         val Ambient = GenerationMotion(Source.AMBIENT)
+
+        /** 阶段固定为 [phase] 的指示状态；出字速率、点阵读数取自 [delegate]（通常是会话的实时状态）。 */
+        fun pinned(phase: GenerationMotionPhase, delegate: GenerationMotion): GenerationMotion =
+            GenerationMotion(Source.PINNED, pinned = phase, delegate = delegate)
     }
 }
 
