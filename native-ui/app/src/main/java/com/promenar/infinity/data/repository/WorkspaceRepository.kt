@@ -94,6 +94,39 @@ class WorkspaceRepository(
         }
     }
 
+    /** 已认领根的命令目录解析只核验根身份，不等待索引扫描持有的写锁。 */
+    suspend fun sessionRootForCommand(sessionId: String): FileEntry = withSessionAdmission(sessionId) {
+        withContext(Dispatchers.IO) {
+            val session = dao.getSessionForRoot(sessionId) ?: throw NoSuchElementException("会话不存在")
+            val root = session.workspaceRootUuid?.let { requireRoot(it) }
+            if (root == null || root.hash.isBlank()) return@withContext ensureSessionRoot(sessionId)
+            val path = File(session.workspacePath?.takeIf(String::isNotBlank) ?: root.physicalRootPath).absoluteFile.toPath().normalize()
+            if (java.nio.file.Files.isSymbolicLink(path)) throw SecurityException("会话根目录不能为符号链接")
+            val physical = path.toFile().canonicalFile
+            validateClaimedRoot(root, physical)
+            if (dao.countOtherSessionsForPhysicalRoot(physical.path, sessionId) != 0 || dao.countOtherSessionsForRoot(root.uuid, sessionId) != 0) {
+                throw SecurityException("工作区根被多个会话共享")
+            }
+            fileOps.ensureRoot(physical.toPath(), initializeIdentity = false, expectedIdentity = root.hash)
+            root
+        }
+    }
+
+    /** 活跃命令使旧扫描失效；根身份恢复完成后才允许索引提交。 */
+    suspend fun beginSessionCommand(sessionId: String): suspend () -> Unit {
+        val root = sessionRootForCommand(sessionId)
+        val path = File(root.physicalRootPath).toPath()
+        val finish = WorkspaceExternalMutationCoordinator.begin(path)
+        val identity = try { WorkspaceRootIdentityGuard.capture(path, fileOps.captureRootIdentityRestorer(path)) }
+        catch (failure: Throwable) { withContext(NonCancellable) { finish() }; throw failure }
+        val closed = java.util.concurrent.atomic.AtomicBoolean()
+        return {
+            if (closed.compareAndSet(false, true)) withContext(NonCancellable + Dispatchers.IO) {
+                try { identity.restoreIfChanged() } finally { finish() }
+            }
+        }
+    }
+
     override suspend fun ensureSessionRoot(
         sessionId: String,
         physicalRootPath: String,
@@ -972,7 +1005,7 @@ class WorkspaceRepository(
         val reconciled = withContext(NonCancellable) {
             runCatching {
                 val identityRestored = identity.restoreIfChanged()
-                reconcileCommandLocked(root, before, sessionId).let { report ->
+                reconcileCommandLocked(root, before, sessionId, externalCommitHeld = true).let { report ->
                     if (identityRestored) {
                         report.copy(reservedChanges = (report.reservedChanges + "/${WORKSPACE_ROOT_IDENTITY_MARKER}").distinct().sorted())
                     } else report
@@ -997,9 +1030,13 @@ class WorkspaceRepository(
 
     /** 终端与 Linux 直接绑定写入后，以磁盘实际内容收敛私有空间索引。 */
     suspend fun reconcileSessionWorkspace(workspaceRootUuid: String, sessionId: String?): WorkspaceChangeReport =
-        withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
-            reconcileCommandLocked(root, before = null, sessionId = sessionId)
-        } }
+        withContext(Dispatchers.IO) {
+            val path = File(requireRoot(workspaceRootUuid).physicalRootPath).toPath()
+            WorkspaceExternalMutationCoordinator.awaitIdle(path)
+            withRootMutation(workspaceRootUuid, indexScan = true) { root ->
+                reconcileCommandLocked(root, before = null, sessionId = sessionId)
+            }
+        }
 
     /** 后台命令使用独立副本；复制与基线采集期间只占用一次根锁。 */
     suspend fun prepareBackgroundWorkspace(
@@ -1021,24 +1058,25 @@ class WorkspaceRepository(
         staging: File,
         finished: Boolean,
         interrupted: Boolean = false,
+        reconcileIndex: Boolean = true,
     ): String? = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
         val background = BackgroundWorkspace(fileOps)
         val warnings = background.synchronize(
             File(root.physicalRootPath), workspaceRootUuid, sessionId, jobId, staging, finished, interrupted,
         )
-        // 后台子进程只接触副本，真实树在根锁下静止，可以完整按磁盘收敛索引。
-        reconcileCommandLocked(root, before = null, sessionId = sessionId)
+        // 合入与冲突结果在根锁内确定；应用层可将全量索引扫描交给合并调度器。
+        if (reconcileIndex) reconcileCommandLocked(root, before = null, sessionId = sessionId, externalCommitHeld = true)
         if (finished || interrupted) background.complete(File(root.physicalRootPath), jobId)
         warnings
     } }
 
     /** 上次命令未完成对账（进程被杀或崩溃）时，下一次修改工作区前先按磁盘收敛索引。 */
-    private suspend fun recoverInterruptedCommandLocked(root: FileEntry) {
+    private suspend fun recoverInterruptedCommandLocked(root: FileEntry, externalCommitHeld: Boolean) {
         val rootPath = File(root.physicalRootPath).toPath()
         if (!fileOps.exists(rootPath, listOf(COMMAND_PENDING_MARKER))) return
         try {
             withContext(NonCancellable) {
-                reconcileCommandLocked(root, before = null, sessionId = null)
+                reconcileCommandLocked(root, before = null, sessionId = null, externalCommitHeld = externalCommitHeld)
                 fileOps.delete(rootPath, listOf(COMMAND_PENDING_MARKER))
             }
         } catch (failure: Exception) {
@@ -1050,8 +1088,10 @@ class WorkspaceRepository(
         root: FileEntry,
         before: WorkspaceTreeSnapshot?,
         sessionId: String?,
+        externalCommitHeld: Boolean = false,
     ): WorkspaceChangeReport {
         val rootPath = File(root.physicalRootPath).toPath()
+        val scanEpoch = if (externalCommitHeld) 0L else WorkspaceExternalMutationCoordinator.scanEpoch(rootPath)
         val after = treeScanner.scan(rootPath)
         val active = dao.getAllStatesByWorkspaceRootForCleanup(root.uuid).filter { entry ->
             !entry.inRecycleBin && entry.uuid != root.uuid && entry.parentUuid != null &&
@@ -1075,8 +1115,11 @@ class WorkspaceRepository(
             runCatching { fileOps.inspect(rootPath, relative(path)) }.getOrNull()
                 ?.takeIf { it.kind == "file" }?.sha256
         }
-        if (!plan.isEmpty) applyCommandReconcile(root, plan, byUuid, sessionId)
-        return WorkspaceChangeReport.from(plan)
+        val apply: suspend () -> WorkspaceChangeReport = {
+            if (!plan.isEmpty) applyCommandReconcile(root, plan, byUuid, sessionId)
+            WorkspaceChangeReport.from(plan)
+        }
+        return if (externalCommitHeld) apply() else WorkspaceExternalMutationCoordinator.commit(rootPath, scanEpoch, apply)
     }
 
     private suspend fun applyCommandReconcile(
@@ -1204,32 +1247,40 @@ class WorkspaceRepository(
 
     private suspend fun <T> withRootMutation(
         workspaceRootUuid: String,
+        indexScan: Boolean = false,
         block: suspend (FileEntry) -> T,
     ): T {
         com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(rootId = workspaceRootUuid)
         val gate = executionGate
         return if (gate == null) {
-            withAdmittedRootMutation(workspaceRootUuid, block)
+            withAdmittedRootMutation(workspaceRootUuid, indexScan, block)
         } else {
             gate.withWorkspaceAdmission(workspaceRootUuid) {
-                withAdmittedRootMutation(workspaceRootUuid, block)
+                withAdmittedRootMutation(workspaceRootUuid, indexScan, block)
             }
         }
     }
 
     private suspend fun <T> withAdmittedRootMutation(
         workspaceRootUuid: String,
+        indexScan: Boolean,
         block: suspend (FileEntry) -> T,
     ): T {
         val initial = requireRoot(workspaceRootUuid)
-        return WorkspaceMutationCoordinator.withBoundRoot(
-            File(initial.physicalRootPath).toPath(), initial.hash,
-        ) {
+        val prepare: suspend () -> Unit = {
             val currentRoot = requireRoot(workspaceRootUuid)
             fileOps.migrateInternalStorage(File(currentRoot.physicalRootPath).toPath())
             recoverPendingTombstonesLocked(currentRoot)
             cleanupCompletedOwnersBeforeMutation(currentRoot)
-            recoverInterruptedCommandLocked(currentRoot)
+            recoverInterruptedCommandLocked(currentRoot, externalCommitHeld = true)
+        }
+        val path = File(initial.physicalRootPath).toPath()
+        return if (indexScan) WorkspaceMutationCoordinator.withBoundRoot(path, initial.hash) {
+            // 前置恢复会修改物理元数据，必须与命令启动互斥；全树扫描不持此门。
+            WorkspaceExternalMutationCoordinator.indexedMutation(path, prepare)
+            block(requireRoot(workspaceRootUuid))
+        } else WorkspaceMutationCoordinator.withIndexedMutation(path, initial.hash) {
+            prepare()
             block(requireRoot(workspaceRootUuid))
         }
     }

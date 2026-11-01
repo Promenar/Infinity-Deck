@@ -132,7 +132,7 @@ internal class BackgroundWorkspace(
         return state.warnings.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
-    /** 只在物理合入及数据库对账都成功后清理，失败时保留恢复证据。 */
+    /** 物理合入完成且索引同步已有恢复保障后清理，失败时保留恢复证据。 */
     fun complete(root: File, jobId: String) {
         if (fileOps.exists(root.toPath(), listOf(marker(jobId)))) fileOps.delete(root.toPath(), listOf(marker(jobId)))
     }

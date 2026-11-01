@@ -230,7 +230,8 @@ class LinuxExecIntegrationTest {
 
     private fun service(provenance: LinuxPackageProvenance? = null, mounts: List<ExternalMount> = emptyList(), host: WorkspaceCommandHost? = null, selected: com.promenar.infinity.data.workspace.SessionWorkspace = com.promenar.infinity.data.workspace.SessionWorkspace.Private,
         resolveSelected: suspend () -> com.promenar.infinity.data.workspace.SessionWorkspace = { selected },
-        wakeInbox: suspend (String) -> File? = { null }, gitRemote: GitRemoteSessions = GitRemoteSessions.None, vault: SessionSecretVault? = null) = BuiltinExecService(
+        beginMutation: suspend (String) -> (suspend () -> Unit) = { {} },
+        requestReconcile: (String) -> Unit = {}, wakeInbox: suspend (String) -> File? = { null }, gitRemote: GitRemoteSessions = GitRemoteSessions.None, vault: SessionSecretVault? = null) = BuiltinExecService(
         workspace = host ?: object : WorkspaceCommandHost {
             override suspend fun <T> runCommandInWorkspace(workspaceRootUuid: String, sessionId: String?, block: suspend (File) -> T): WorkspaceCommandOutcome<T> {
                 val result = block(workspace)
@@ -242,12 +243,46 @@ class LinuxExecIntegrationTest {
         environment = BuiltinExecEnvironment(PackagedPython(File(root, "absent")), File(root, "home"), File(root, "tmp"), { null }, inherited = mapOf("PATH" to "/usr/bin:/bin")),
         shell = "/bin/sh", keepAlive = keepAlive, linuxRuntime = runtime, linuxProvenance = provenance, sessionWorkspace = { resolveSelected() },
         visibleMounts = { assertThat(it).isEqualTo("s"); mounts }, sessionTitle = { "会话标题" }, sessionMode = { mode }, sessionHome = { homeResolutions++; workspace },
-        wakeInbox = wakeInbox, gitRemote = gitRemote, vault = vault, redactor = vault?.let(::SecretOutputRedactor),
+        beginSessionMutation = beginMutation, requestSessionHomeReconcile = requestReconcile, wakeInbox = wakeInbox, gitRemote = gitRemote, vault = vault, redactor = vault?.let(::SecretOutputRedactor),
     )
 
     private suspend fun shell(service: BuiltinExecService, command: String, timeout: Int = 3, live: ToolLiveOutputSink = ToolLiveOutputSink.None) =
         service.runShell("root", "s", command, null, timeout, live)
 
+
+    @Test fun `Linux私有工作区命令不进入同步对账宿主`() = runBlocking<Unit> {
+        val blockingHost = object : WorkspaceCommandHost {
+            override suspend fun <T> runCommandInWorkspace(workspaceRootUuid: String, sessionId: String?, block: suspend (File) -> T): WorkspaceCommandOutcome<T> {
+                awaitCancellation()
+            }
+        }
+        val result = withTimeout(2_000) { shell(service(host = blockingHost), "echo fast") }
+        assertThat(result.stdout.trim()).isEqualTo("fast")
+        assertThat(result.toJson()["workspace_changes"]).isEqualTo(JsonNull)
+    }
+
+    @Test fun `Linux前台命令立即返回且慢对账随后完成`() = runBlocking<Unit> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO).also { scopes += it }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val reconciler = com.promenar.infinity.data.repository.SessionWorkspaceReconciler(scope) { entered.complete(Unit); release.await() }
+        try {
+            val result = withTimeout(2_000) { shell(service(requestReconcile = reconciler::request), "echo fast") }
+            assertThat(result.stdout.trim()).isEqualTo("fast")
+            withTimeout(2_000) { entered.await() }
+            assertThat(reconciler.sessions.value).containsExactly("s")
+            release.complete(Unit)
+            withTimeout(2_000) { reconciler.awaitSettled("s") }
+        } finally { release.complete(Unit) }
+    }
+
+    @Test fun `身份恢复失败仍派发索引请求且释放命令租约`() = runBlocking<Unit> {
+        var requested = false
+        val result = shell(service(beginMutation = { { error("身份恢复失败") } }, requestReconcile = { requested = true }), "true")
+        assertThat(result.errorCode).isEqualTo("EXEC_WORKSPACE_UNAVAILABLE")
+        assertThat(requested).isTrue()
+        withTimeout(1_000) { com.promenar.infinity.data.repository.WorkspaceExternalMutationCoordinator.awaitIdle(workspace.toPath()) }
+    }
 
     @Test fun `Linux自选工作区前台后台命令与环境变量使用登记目录`() = runBlocking<Unit> {
         val identity = com.promenar.infinity.data.repository.PersistentFileIdentity.encode("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "ino=1")
@@ -284,7 +319,7 @@ class LinuxExecIntegrationTest {
         assertThat(runtime.specs).isEmpty()
     }
 
-    @Test fun `前台让出保留进程和对账直到输入完成且拒绝跨会话输入`() = runBlocking<Unit> {
+    @Test fun `前台让出保留进程直到输入完成且拒绝跨会话输入`() = runBlocking<Unit> {
         val exec = service()
         val jobs = manager(exec)
         val store = ToolLiveOutputStore()
@@ -318,8 +353,8 @@ class LinuxExecIntegrationTest {
         assertThat(input.tail.text).contains("回答=yes")
         val ended = jobs.waitFor("s", id, 5)
         assertThat(ended.record.state).isEqualTo("EXITED")
-        assertThat(ended.record.commandResult?.get("workspace_changes")).isNotNull()
-        assertThat(reconciles).isEqualTo(1)
+        assertThat(ended.record.commandResult?.get("workspace_changes")).isEqualTo(JsonNull)
+        assertThat(reconciles).isEqualTo(0)
         assertThat(File(workspace, "done").exists()).isTrue()
         withTimeout(5_000) { while (store.snapshot("step") != null) delay(10) }
         assertThat((runCatching { jobs.input("s", id, "bad") }.exceptionOrNull() as? JobAccessException)?.code).isEqualTo("JOB_NOT_RUNNING")
@@ -359,21 +394,15 @@ class LinuxExecIntegrationTest {
         withTimeout(2_000) { jobs.stopSession("s") }
     }
 
-    @Test fun `等待原工作区锁时取消新调用不等待已有任务结束`() = runBlocking<Unit> {
-        val mutex = kotlinx.coroutines.sync.Mutex()
-        val exec = service(host = object : WorkspaceCommandHost {
-            override suspend fun <T> runCommandInWorkspace(workspaceRootUuid: String, sessionId: String?, block: suspend (File) -> T): WorkspaceCommandOutcome<T> {
-                mutex.lock()
-                try { return WorkspaceCommandOutcome(block(workspace), null) } finally { mutex.unlock() }
-            }
-        })
+    @Test fun `取消并行Linux调用只停止本次进程`() = runBlocking<Unit> {
+        val exec = service()
         val jobs = manager(exec)
         suspend fun run(command: String) = jobs.runLinuxForeground("s", "root", command, 1, 120, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { attachment, live ->
             exec.runShell("root", "s", command, null, 30, live, attachment = attachment)
         }
         val first = run("sleep 30")
         val id = first.toJson().getValue("job_id").jsonPrimitive.content
-        val waiting = launch { run("touch should_not_run") }
+        val waiting = launch { run("sleep 30; touch should_not_run") }
         withTimeout(5_000) { while (jobs.list("s").count { it.running } < 2) delay(10) }
         delay(100)
         withTimeout(2_000) { waiting.cancelAndJoin() }
@@ -410,7 +439,7 @@ class LinuxExecIntegrationTest {
         }
         assertThat(result.errorCode).isEqualTo("EXEC_TIMEOUT")
         assertThat(result.toJson()).doesNotContainKey("job_id")
-        assertThat(reconciles).isEqualTo(1)
+        assertThat(reconciles).isEqualTo(0)
     }
 
     @Test fun `隔离工作目录的前后台Linux命令均在生成启动规格前拒绝`() = runBlocking {
@@ -468,16 +497,16 @@ class LinuxExecIntegrationTest {
         assertThat(spec.argv).containsExactly("/bin/sh", "-c", "printf '%s' \"\$INFINITY_WORKSPACE\"; echo ok > out.txt").inOrder()
         assertThat(spec.workspace).isEqualTo(workspace)
         assertThat(spec.sessionHome).isEqualTo(workspace)
-        assertThat(homeResolutions).isEqualTo(0)
+        assertThat(homeResolutions).isEqualTo(1)
         assertThat(spec.mounts.map { it.guestPath }).containsExactly("/mnt/资料", "/mnt/skills")
         assertThat(spec.mounts.first().host).isEqualTo(mount)
         assertThat(spec.environment).containsEntry("INFINITY_SKILLS", "/mnt/skills")
         assertThat(spec.environment).doesNotContainKey("INFINITY_PYTHON")
         assertThat(result.stdout).isEqualTo("/workspace")
         assertThat(result.toJson()["runtime"]?.jsonPrimitive?.content).isEqualTo("linux")
-        assertThat(result.toJson()["workspace_changes"]?.jsonObject?.get("added")?.jsonArray).contains(JsonPrimitive("/out.txt"))
+        assertThat(result.toJson()["workspace_changes"]).isEqualTo(JsonNull)
         assertThat(keepKinds).containsExactly(ExecRunKind.LINUX)
-        assertThat(reconciles).isEqualTo(1)
+        assertThat(reconciles).isEqualTo(0)
     }
 
     @Test fun `Linux 会话启动前不可用时明确失败且不会执行系统 shell`() = runBlocking<Unit> {
@@ -594,12 +623,14 @@ class LinuxExecIntegrationTest {
         assertThat(attributions).isEqualTo(0)
     }
 
-    @Test fun `超时和用户停止仍对账并执行结束快照`() = runBlocking<Unit> {
+    @Test fun `超时和用户停止执行结束快照且不等待索引对账`() = runBlocking<Unit> {
         val provenance = RecordingProvenance(workspace)
         val result = shell(service(provenance), "touch installed; sleep 30", timeout = 1)
         assertThat(result.errorCode).isEqualTo("EXEC_TIMEOUT")
+        assertThat(result.guidance).contains("已安排后台整理")
+        assertThat(result.guidance).doesNotContain("已按当前磁盘状态对账")
         assertThat(provenance.events).containsExactly("before", "after", "attribute").inOrder()
-        assertThat(reconciles).isEqualTo(1)
+        assertThat(reconciles).isEqualTo(0)
         val stopped = shell(service(), "sleep 30", live = object : ToolLiveOutputSink by ToolLiveOutputSink.None {
             override fun emit(stream: ToolOutputStream, text: String) = Unit
             override fun onStop(stop: () -> Unit) = stop()

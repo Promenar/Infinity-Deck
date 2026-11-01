@@ -135,24 +135,65 @@ class BackgroundJobManagerTest {
             withTimeout(5000){while(held.get()>0)delay(10)}
         } finally{release.complete(Unit);scope.cancel();root.deleteRecursively()}
     }
-    @Test fun `状态查询的冲突警告不会复活已经结束的任务`() = runBlocking<Unit> {
-        val root=Files.createTempDirectory("job-status-race").toFile()
-        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
-        val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
-        val intercept=java.util.concurrent.atomic.AtomicBoolean(false)
-        val m=manager(root,scope,BackgroundJobStore(File(root,"store")),reconcile={_,finished,_->if(!finished && intercept.compareAndSet(true,false)){entered.complete(Unit);release.await();"日志冲突"}else null})
+    @Test fun `查询状态日志和等待终态不调用慢对账`() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("job-read-only").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val calls = java.util.concurrent.atomic.AtomicInteger()
         try {
-            val job=m.startBuiltin("s","root",BackgroundJobRunner.SHELL,"while [ ! -f go ]; do sleep 0.05; done",null,1,BackgroundJobExitAction.NONE)
-            intercept.set(true)
-            val query=async{m.status("s",job.id)}
-            withTimeout(5000){entered.await()}
-            File(root,"go").createNewFile()
-            withTimeout(5000){while(m.list("s").single().running)delay(10)}
-            release.complete(Unit)
-            assertThat(query.await().record.state).isEqualTo("EXITED")
-            assertThat(m.list("s").single().state).isEqualTo("EXITED")
-        } finally{release.complete(Unit);scope.cancel();root.deleteRecursively()}
+            val store = BackgroundJobStore(File(root, "store"))
+            val run = File(root, "runs/job-a").apply { mkdirs() }
+            File(run, "output.log").writeText("ready")
+            store.put(sample().copy(state = "EXITED", runDirectory = run.path))
+            val m = manager(root, scope, store, reconcile = { _, _, _ -> calls.incrementAndGet(); awaitCancellation() })
+            m.initialize()
+            withTimeout(1_000) {
+                assertThat(m.status("s", "job-a").record.state).isEqualTo("EXITED")
+                assertThat(m.readLog("s", BackgroundJobLogs.reference("job-a")).text).contains("ready")
+                assertThat(m.waitFor("s", "job-a", 1).timedOut).isFalse()
+            }
+            assertThat(calls.get()).isEqualTo(0)
+        } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
     }
+
+    @Test fun `后台启动和直接任务完成不等待对账`() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("job-start-reconcile").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val notified = CompletableDeferred<BackgroundJobRecord>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val m = manager(root, scope, BackgroundJobStore(File(root, "store")),
+                reconcile = { _, finished, _ -> if (finished) null else { calls.incrementAndGet(); awaitCancellation() } },
+                completion = BackgroundJobCompletion { notified.complete(it) })
+            val job = withTimeout(2_000) { m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "echo done", null, 1, BackgroundJobExitAction.NOTIFY) }
+            withTimeout(2_000) { notified.await() }
+            assertThat(m.status("s", job.id).record.state).isEqualTo("EXITED")
+            assertThat(calls.get()).isEqualTo(0)
+        } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
+    }
+
+    @Test fun `终态发布通知后才请求索引且隔离合入警告进入通知`() = runBlocking<Unit> {
+        for (isolated in listOf(false, true)) {
+            val root = Files.createTempDirectory("job-completion-order").toFile()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val events = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val requested = CompletableDeferred<Unit>()
+            val store = BackgroundJobStore(File(root, "store"))
+            try {
+                val m = manager(root, scope, store, isolated = isolated,
+                    reconcile = { _, finished, _ -> check(isolated && finished); events += "merge"; "合入冲突：/output.txt（前台版本已保留）" },
+                    completion = BackgroundJobCompletion { record ->
+                        assertThat(store.all().single().state).isEqualTo("EXITED")
+                        assertThat(record.guidance?.contains("合入冲突")).isEqualTo(if (isolated) true else null)
+                        events += "notify"
+                    },
+                    requestReconcile = { events += "request"; requested.complete(Unit) })
+                m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "echo done", null, 1, BackgroundJobExitAction.NOTIFY)
+                withTimeout(2_000) { requested.await() }
+                assertThat(events.toList()).containsExactlyElementsIn(if (isolated) listOf("merge", "notify", "request") else listOf("notify", "request")).inOrder()
+            } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
+        }
+    }
+
     @Test fun `Termux启动回包晚于状态终态时仍唤醒一次并保活`() = runBlocking<Unit> {
         val root=Files.createTempDirectory("job-termux-race").toFile()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
@@ -327,11 +368,12 @@ class BackgroundJobManagerTest {
         reconcile:suspend(BackgroundJobRecord,Boolean,Boolean)->String?={_,_,_->null},
         completion:BackgroundJobCompletion=BackgroundJobCompletion(),keepAlive:ExecKeepAlive=NoExecKeepAlive,
         termux:com.promenar.infinity.data.termux.TermuxBackgroundJobs?=null,
-        vault:SessionSecretVault?=null, live:ToolLiveOutputStore=ToolLiveOutputStore())=BackgroundJobManager(
+        vault:SessionSecretVault?=null, live:ToolLiveOutputStore=ToolLiveOutputStore(),
+        isolated: Boolean = false, requestReconcile: (BackgroundJobRecord) -> Unit = {})=BackgroundJobManager(
         scope,store,File(root,"runs"),
         BuiltinCommandRunner(listOf("/usr/bin/perl","-e","setpgrp(0, 0); exec @ARGV or exit 127"),"/bin/sh",ProcessGroupSignaller {pid,signal->ProcessBuilder("/bin/kill","-$signal","-$pid").start().waitFor()}, {File(root,"scratch")},killGraceMillis=100),
-        prepareWorkspace={ BackgroundJobLocation(root,root,false,false) },
-        reconcile=reconcile,completion=completion,keepAlive=keepAlive,termux=termux,vault=vault,redactor=vault?.let(::SecretOutputRedactor),liveOutput=live,
+        prepareWorkspace={ BackgroundJobLocation(root,root,isolated,false) },
+        reconcile=reconcile,requestReconcile=requestReconcile,completion=completion,keepAlive=keepAlive,termux=termux,vault=vault,redactor=vault?.let(::SecretOutputRedactor),liveOutput=live,
         prepareCommand={_,source,stdin,location,minutes -> PreparedBackgroundCommand(BuiltinCommandRequest(listOf("/bin/sh","-c",source),location.commandDirectory,mapOf("PATH" to "/usr/bin:/bin"),stdin,minutes*60)) },
     )
 }

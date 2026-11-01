@@ -36,7 +36,7 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * 内置执行后端：命令以 Infinity Workbench uid 直接在会话工作区物理根内运行。私有工作区期间持有工作区写锁，结束后对账索引；
+ * 内置执行后端：命令以 Infinity Workbench uid 直接在会话工作区物理根内运行。内置模式的私有工作区期间持有工作区写锁，结束后对账索引；Linux 模式在结束后合并调度私有根对账；
  * 自选目录工作区不进 Room，直接在该目录运行，不持锁、不对账，结果不含 `workspace_changes`。
  * 命令可读写应用私有目录并访问网络，不构成隔离；调用方按执行模式审批。
  * 运行期间经 [keepAlive] 持有唤醒锁与前台服务通知，通知的停止按钮结束整个进程组并返回 `EXEC_STOPPED`。
@@ -60,7 +60,8 @@ class BuiltinExecService(
     private val sessionTitle: suspend (String) -> String? = { null },
     private val sessionMode: suspend (String?) -> SessionRunMode? = { SessionRunMode.BUILTIN },
     private val sessionHome: suspend (String) -> File? = { null },
-    private val reconcileSessionHome: suspend (String) -> Unit = {},
+    private val requestSessionHomeReconcile: (String) -> Unit = {},
+    private val beginSessionMutation: suspend (String) -> (suspend () -> Unit) = { {} },
     private val messages: RunModeMessages = RunModeMessages(),
     /** 分支保留创建 worktree 时的父挂载；解析失败须抛出异常，null 只表示普通会话。 */
     private val linuxLaunchBinding: suspend (sessionId: String) -> com.promenar.infinity.data.branch.BranchLinuxCommandWorkspace? = { null },
@@ -78,7 +79,7 @@ class BuiltinExecService(
     private suspend fun linuxRequest(root: File, kind: String, sessionId: String?, source: String, stdin: String?, seconds: Int, expectedWorkspace: SessionWorkspace? = null,
                                      gitEnvironment: Map<String, String> = emptyMap()): BuiltinCommandRequest = withContext(Dispatchers.IO) {
         val system = environment.forWorkspace(root, kind)
-        // 私有主工作区已持有根写锁，直接复用当前根，避免回调重新申请同一把锁。
+        // 私有主工作区直接复用已解析的根；Linux 命令不等待全量索引扫描。
         val home = if (kind == SessionWorkspaceResolver.KIND_PRIVATE) root else sessionId?.let { sessionHome(it) }
             ?: throw IllegalStateException("会话专用空间不可用")
         val launchBinding = sessionId?.let { linuxLaunchBinding(it) }
@@ -192,9 +193,12 @@ class BuiltinExecService(
                 val request = linuxRequest(root, workspaceKind, resolvedSessionId, launchSource, stdin, minutes * 60, gitEnvironment = gitEnvironment)
                 val title = titleOrNull(resolvedSessionId)
                 val before = packageProvenance.before()
+                val finishMutation = resolvedSessionId?.let { beginSessionMutation(it) }
+                val finishWorkspace = try { com.promenar.infinity.data.repository.WorkspaceExternalMutationCoordinator.begin(root.toPath()) }
+                catch (failure: Throwable) { withContext(kotlinx.coroutines.NonCancellable) { finishMutation?.invoke() }; throw failure }
                 return com.promenar.infinity.data.jobs.PreparedBackgroundCommand(
                     request.copy(environment = request.environment + lease.environment + gitEnvironment + secrets), lease::close,
-                    afterRun = { packageProvenance.after(before, resolvedSessionId, title) },
+                    afterRun = { try { packageProvenance.after(before, resolvedSessionId, title) } finally { try { finishMutation?.invoke() } finally { finishWorkspace() } } },
                 )
             }
             val python = kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON
@@ -270,6 +274,10 @@ class BuiltinExecService(
             val title = if (linux) titleOrNull(sessionId) else null
             val packagesBefore = if (linux) packageProvenance.before() else null
             var before: RuntimeDataMonitor.Snapshot? = null
+            val finishMutation = if (linux && sessionId != null) beginSessionMutation(sessionId) else null
+            val finishWorkspace = try {
+                if (linux) com.promenar.infinity.data.repository.WorkspaceExternalMutationCoordinator.begin(root.toPath()) else null
+            } catch (failure: Throwable) { withContext(kotlinx.coroutines.NonCancellable) { finishMutation?.invoke() }; throw failure }
             try {
                 before = runtimeDataMonitor?.capture()
                 if (linux && commandRequest.terminal) return runner.runTerminal(commandRequest, control,
@@ -280,8 +288,16 @@ class BuiltinExecService(
                 return try { runner.run(commandRequest, control, tee::accept) } finally { tee.finish() }
             } finally {
                 if (linux) {
-                    packageProvenance.after(packagesBefore, sessionId, title)
-                    if (directory != null && sessionId != null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { reconcileSessionHome(sessionId) }
+                    try { packageProvenance.after(packagesBefore, sessionId, title) }
+                    finally {
+                        try {
+                            withContext(kotlinx.coroutines.NonCancellable) {
+                                try { finishMutation?.invoke() } finally { finishWorkspace?.invoke() }
+                            }
+                        } finally {
+                            if (sessionId != null && attachment == null) requestSessionHomeReconcile(sessionId)
+                        }
+                    }
                 }
                 val snapshot = before
                 if (snapshot != null && runtimeDataMonitor != null) runtimeFields = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
@@ -291,9 +307,11 @@ class BuiltinExecService(
         }
         val held = try {
             keepAlive.hold(run, control::requestStop) {
-                if (directory != null) {
-                    physicalRoot = directory.root
-                    val output = try { runCommand(directory.root) } catch (_: IOException) { null }
+                if (directory != null || kind == ExecRunKind.LINUX) {
+                    val root = directory?.root ?: sessionId?.let { sessionHome(it) }
+                        ?: throw IllegalStateException("会话专用空间不可用")
+                    physicalRoot = root
+                    val output = try { runCommand(root) } catch (_: IOException) { null }
                     WorkspaceCommandOutcome(output, changes = null)
                 } else workspace.runCommandInWorkspace(workspaceRootUuid, sessionId) { root ->
                     physicalRoot = root
@@ -331,7 +349,7 @@ class BuiltinExecService(
             backendFields = fields,
         )
         val root = checkNotNull(physicalRoot)
-        val settled = if (directory != null) "自选工作区不做对账，可用 git status 查看改动。" else "工作区已按当前磁盘状态对账。"
+        val settled = if (kind == ExecRunKind.LINUX) "会话私有索引已安排后台整理。" else if (directory != null) "自选工作区不做对账，可用 git status 查看改动。" else "工作区已按当前磁盘状态对账。"
         val (errorCode, guidance) = when {
             output.stoppedByUser -> "EXEC_STOPPED" to
                 "命令已被停止（job_stop、通知栏或聊天界面的停止），已结束整个进程组；${settled}若不是你调用 job_stop 停止的，不要自动重试，先询问用户。"

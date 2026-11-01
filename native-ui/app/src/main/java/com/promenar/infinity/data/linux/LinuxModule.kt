@@ -69,8 +69,10 @@ class LinuxHostServices(
     val keepAlive: ExecKeepAlive,
     /** 会话私有目录，独立于会话选中的主工作区。 */
     val sessionHome: suspend (sessionId: String) -> File? = { null },
-    /** 将终端写入的会话私有空间收敛到 Room；启动前也执行以恢复上次意外退出。 */
+    /** 终端启动与结束时请求整理会话私有索引，不等待全量扫描。 */
     val reconcileSession: suspend (sessionId: String) -> Unit = {},
+    /** 登记活跃写入，返回在终端退出后归还的租约。 */
+    val beginSessionMutation: suspend (sessionId: String) -> (suspend () -> Unit) = { {} },
     /** 准备会话收件箱并开始监听；维护终端不调用。 */
     val wakeInbox: suspend (sessionId: String) -> File? = { null },
     /** 会话工作区的宿主根目录，不持工作区写锁；会话工作区不可用时为 null。 */

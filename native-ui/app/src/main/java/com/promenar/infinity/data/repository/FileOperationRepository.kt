@@ -63,7 +63,7 @@ class FileOperationRepository(
         val initial = dao.getActiveByUuid(workspaceRootUuid, uuid)
             ?: return@withContext WriteResult.NotFound
         val root = bindRoot(workspaceRootUuid)
-        WorkspaceMutationCoordinator.withBoundRoot(File(initial.physicalRootPath).toPath(), root.hash) {
+        WorkspaceMutationCoordinator.withIndexedMutation(File(initial.physicalRootPath).toPath(), root.hash) withBoundRoot@{
             val entry = dao.getActiveByUuid(workspaceRootUuid, uuid)
                 ?: return@withBoundRoot WriteResult.NotFound
             if (entry.isDirectory) return@withBoundRoot WriteResult.NotFound
@@ -164,7 +164,7 @@ class FileOperationRepository(
         val initial = dao.getActiveByUuid(workspaceRootUuid, uuid)
             ?: return@withContext fileFailure("FILE_NOT_FOUND", "文件不存在: $uuid", uuid)
         val root = bindRoot(workspaceRootUuid)
-        WorkspaceMutationCoordinator.withBoundRoot(File(initial.physicalRootPath).toPath(), root.hash) {
+        WorkspaceMutationCoordinator.withIndexedMutation(File(initial.physicalRootPath).toPath(), root.hash) withBoundRoot@{
             val entry = dao.getActiveByUuid(workspaceRootUuid, uuid)
                 ?: return@withBoundRoot fileFailure("FILE_NOT_FOUND", "文件不存在: $uuid", uuid)
             if (entry.isDirectory) return@withBoundRoot fileFailure("FILE_NOT_FOUND", "文件不存在: $uuid", uuid)

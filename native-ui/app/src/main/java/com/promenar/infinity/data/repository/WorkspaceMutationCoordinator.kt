@@ -18,6 +18,21 @@ object WorkspaceMutationCoordinator {
         return use(key, lock, block)
     }
 
+    internal suspend fun <T> withIndexedMutation(root: Path, identity: String, block: suspend () -> T): T {
+        if (identity.isBlank()) throw SecurityException("工作区根缺少数据库身份绑定")
+        while (true) {
+            WorkspaceExternalMutationCoordinator.awaitIdle(root)
+            val key = root.toFile().canonicalPath
+            val lock = acquire(key, identity)
+            try {
+                return use(key, lock) { WorkspaceExternalMutationCoordinator.indexedMutation(root, block) }
+            } catch (_: WorkspaceScanInvalidatedException) {
+                // 命令可能在等待根锁期间启动，释放根锁后重新等候，不能阻塞它的退出清理。
+            }
+        }
+    }
+
+    /** 扫描和只读句柄使用根锁；扫描仅在应用计划时取得外部命令提交门。 */
     suspend fun <T> withBoundRoot(root: Path, identity: String, block: suspend () -> T): T {
         if (identity.isBlank()) throw SecurityException("工作区根缺少数据库身份绑定")
         val key = root.toFile().canonicalPath

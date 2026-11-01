@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- Linux 命令与后台任务查询不再同步扫描会话私有工作区；索引对账按会话在后台合并执行，完成状态与通知及时返回，隔离副本仍先合入并保留冲突结果。
+
 ## [0.9.3-beta] - 2026-11-01
 
 ### 修复

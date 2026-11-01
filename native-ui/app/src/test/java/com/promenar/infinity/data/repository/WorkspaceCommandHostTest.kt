@@ -13,6 +13,7 @@ import com.promenar.infinity.infra.util.Sha256Utils
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -72,6 +73,176 @@ class WorkspaceCommandHostTest {
         created.delete()
         repo.reconcileSessionWorkspace(root.uuid, "s")
         assertThat(repo.getByUuid(root.uuid, indexed.uuid)).isNull()
+    }
+
+    @Test
+    fun `后台扫描与文件创建修改移动删除及版本快照串行且索引不丢失`() = runBlocking<Unit> {
+        val root = root()
+        val original = repo.createFileInWorkspace(root.uuid, "edit", "edit.txt", "before", root.uuid, "/edit.txt")
+        repo.confirmCreatedEntry(root.uuid, original.uuid)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val scans = java.util.concurrent.atomic.AtomicInteger()
+        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = TestWorkspaceFileOps(),
+            deleteCommitter = WorkspaceDeletionTransaction(db)::delete,
+            treeScanner = WorkspaceTreeScanner { path ->
+                if (scans.incrementAndGet() == 1) {
+                    entered.countDown()
+                    check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                }
+                PathWorkspaceTreeScanner.scan(path)
+            })
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+        val reconciler = SessionWorkspaceReconciler(scope) { repo.reconcileSessionWorkspace(root.uuid, "s") }
+        val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao(), fileOps = TestWorkspaceFileOps())
+        try {
+            reconciler.request("s")
+            withContextIo { check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            // 命令目录解析也不能因为另一个扫描持有根锁而排队。
+            assertThat(withTimeout(1_000) { repo.sessionRootForCommand("s").uuid }).isEqualTo(root.uuid)
+            val writer = async(Dispatchers.IO) {
+                val created = repo.createFileInWorkspace(root.uuid, "new", "new.txt", "new", root.uuid, "/new.txt")
+                repo.confirmCreatedEntry(root.uuid, created.uuid)
+                assertThat(files.writeFileAtomic(root.uuid, original.uuid, "after", "s", original.hash))
+                    .isInstanceOf(com.promenar.infinity.domain.repository.WriteResult.Success::class.java)
+                repo.rename(root.uuid, created.uuid, "moved.txt", null)
+                val removed = repo.createFileInWorkspace(root.uuid, "gone", "gone.txt", "gone", root.uuid, "/gone.txt")
+                repo.confirmCreatedEntry(root.uuid, removed.uuid)
+                repo.moveToRecycleBin(root.uuid, removed.uuid)
+            }
+            delay(50)
+            assertThat(writer.isCompleted).isFalse()
+            // 扫描进行期间的请求只能追加一个待跑标记。
+            repeat(10) { reconciler.request("s") }
+            release.countDown()
+            withTimeout(5_000) { writer.await(); reconciler.awaitSettled("s") }
+            assertThat(scans.get()).isEqualTo(2)
+            assertThat(repo.getByMaterializedPath(root.uuid, "/edit.txt")?.hash).isEqualTo(Sha256Utils.hash("after"))
+            assertThat(repo.getByMaterializedPath(root.uuid, "/moved.txt")?.hash).isEqualTo(Sha256Utils.hash("new"))
+            assertThat(repo.getByMaterializedPath(root.uuid, "/new.txt")).isNull()
+            assertThat(repo.getByMaterializedPath(root.uuid, "/gone.txt")).isNull()
+            assertThat(File(workspace, "edit.txt").readText()).isEqualTo("after")
+            assertThat(File(workspace, "moved.txt").readText()).isEqualTo("new")
+            val version = checkNotNull(db.fileVersionDao().getByHash(root.uuid, original.uuid, original.hash))
+            assertThat(File(version.contentPath).readText()).isEqualTo("before")
+        } finally {
+            release.countDown()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+        }
+    }
+
+    private suspend fun <T> withContextIo(block: () -> T): T = kotlinx.coroutines.withContext(Dispatchers.IO) { block() }
+
+    @Test
+    fun `扫描前置恢复与Linux命令启动串行`() = runBlocking<Unit> {
+        val root = root()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val ops = object : WorkspaceFileOps by TestWorkspaceFileOps() {
+            override fun migrateInternalStorage(path: java.nio.file.Path) {
+                entered.countDown()
+                check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+        }
+        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = ops,
+            treeScanner = PathWorkspaceTreeScanner)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+        val reconciler = SessionWorkspaceReconciler(scope) { repo.reconcileSessionWorkspace(root.uuid, "s") }
+        var finish: (suspend () -> Unit)? = null
+        try {
+            reconciler.request("s")
+            withContextIo { check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            val command = async(Dispatchers.IO) { repo.beginSessionCommand("s") }
+            delay(100)
+            val startedDuringRecovery = command.isCompleted
+            release.countDown()
+            finish = withTimeout(5_000) { command.await() }
+            finish.invoke()
+            withTimeout(5_000) { reconciler.awaitSettled("s") }
+            assertThat(startedDuringRecovery).isFalse()
+        } finally {
+            release.countDown()
+            finish?.invoke()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun `Linux命令在扫描期间临时移动目录不会误删条目和版本`() = runBlocking<Unit> {
+        val root = root()
+        val dir = repo.createDirectoryInWorkspace(root.uuid, "dir", "dir", root.uuid, "/dir")
+        repo.confirmCreatedEntry(root.uuid, dir.uuid)
+        val entry = repo.createFileInWorkspace(root.uuid, "file", "a.txt", "old", dir.uuid, "/dir/a.txt")
+        repo.confirmCreatedEntry(root.uuid, entry.uuid)
+        val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao(), fileOps = TestWorkspaceFileOps())
+        files.writeFileAtomic(root.uuid, entry.uuid, "current", "s", entry.hash)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val scan = java.util.concurrent.CountDownLatch(1)
+        val captured = java.util.concurrent.CountDownLatch(1)
+        val scans = java.util.concurrent.atomic.AtomicInteger()
+        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = TestWorkspaceFileOps(),
+            deleteCommitter = WorkspaceDeletionTransaction(db)::delete,
+            treeScanner = WorkspaceTreeScanner { path ->
+                if (scans.incrementAndGet() == 1) { entered.countDown(); check(scan.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+                PathWorkspaceTreeScanner.scan(path).also { captured.countDown() }
+            })
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+        val reconciler = SessionWorkspaceReconciler(scope) { repo.reconcileSessionWorkspace(root.uuid, "s") }
+        var finish: (suspend () -> Unit)? = null
+        try {
+            reconciler.request("s")
+            withContextIo { check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            finish = withTimeout(1_000) { repo.beginSessionCommand("s") }
+            check(File(workspace, "dir").renameTo(File(workspace, "temporary")))
+            scan.countDown()
+            withContextIo { check(captured.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            delay(50)
+            assertThat(repo.getByUuid(root.uuid, entry.uuid)).isNotNull()
+            assertThat(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash)).isNotNull()
+            check(File(workspace, "temporary").renameTo(File(workspace, "dir")))
+            finish.invoke(); finish = null
+            withTimeout(5_000) { reconciler.awaitSettled("s") }
+            assertThat(repo.getByMaterializedPath(root.uuid, "/dir/a.txt")?.uuid).isEqualTo(entry.uuid)
+            val version = checkNotNull(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash))
+            assertThat(File(version.contentPath).readText()).isEqualTo("old")
+            assertThat(scans.get()).isAtLeast(2)
+        } finally {
+            scan.countDown()
+            File(workspace, "temporary").takeIf { it.exists() }?.renameTo(File(workspace, "dir"))
+            finish?.invoke()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun `Linux命令结束以常数级身份保护恢复根标记`() = runBlocking<Unit> {
+        val root = root()
+        val marker = File(workspace, WORKSPACE_ROOT_IDENTITY_MARKER)
+        val original = marker.readText()
+        val finish = repo.beginSessionCommand("s")
+        check(marker.delete())
+        finish()
+        finish()
+        assertThat(marker.readText()).isEqualTo(original)
+        assertThat(repo.sessionRootForCommand("s").uuid).isEqualTo(root.uuid)
+    }
+
+    @Test
+    fun `文件写入等待活跃Linux命令且不会覆盖其新版本`() = runBlocking<Unit> {
+        val root = root()
+        val entry = repo.createFileInWorkspace(root.uuid, "file", "a.txt", "before", root.uuid, "/a.txt")
+        repo.confirmCreatedEntry(root.uuid, entry.uuid)
+        val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao(), fileOps = TestWorkspaceFileOps())
+        val finish = repo.beginSessionCommand("s")
+        val writer = async(Dispatchers.IO) { runCatching { files.writeFileAtomic(root.uuid, entry.uuid, "tool", "s", entry.hash) } }
+        try {
+            delay(50)
+            assertThat(writer.isCompleted).isFalse()
+            File(workspace, "a.txt").writeText("linux")
+            finish()
+            assertThat(withTimeout(2_000) { writer.await() }.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java)
+            assertThat(File(workspace, "a.txt").readText()).isEqualTo("linux")
+        } finally { finish(); writer.cancelAndJoin() }
     }
 
     @Test

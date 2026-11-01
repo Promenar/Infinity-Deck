@@ -86,6 +86,8 @@ class BackgroundJobManager(
     private val messages: RunModeMessages = RunModeMessages(),
     private val vault: SessionSecretVault? = null,
     redactor: SecretOutputRedactor? = null,
+    private val requestReconcile: (BackgroundJobRecord) -> Unit = {},
+    private val reconcileWarning: (BackgroundJobRecord) -> String? = { null },
 ) : BackgroundJobController {
     private val redactor = redactor ?: vault?.let(::SecretOutputRedactor)
     private class Active(val control: BuiltinCommandControl = BuiltinCommandControl()) {
@@ -149,6 +151,7 @@ class BackgroundJobManager(
             val reconcileWarning = try { reconcile(record, false, true) } catch (_: Exception) { "工作区恢复失败；任务副本和日志已保留。" }
             val warning=listOfNotNull(secretWarning,reconcileWarning,if(cleaned)null else "应用重启后无法核验旧进程组身份，未发送信号；请确认旧命令已停止。").joinToString(" ").ifEmpty{null}
             store.put(record.copy(state="INTERRUPTED",endedAtMillis=now(),guidance=warning,logMigrationDeferred=!cleaned))
+            requestReconcile(record)
         }
         for (record in store.all()) {
             try {
@@ -212,7 +215,6 @@ class BackgroundJobManager(
                         store.put(current)
                         val log=logFile(current)
                         log.parentFile?.mkdirs(); if(!log.exists()) log.createNewFile()
-                        reconcile(current,false,false)
                         val environment = try { vault?.environment(sessionId, source).orEmpty() }
                         catch (_: IllegalStateException) { throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁或不能作为环境变量，任务未执行。") }
                         environment.values.forEach { value ->
@@ -320,11 +322,13 @@ class BackgroundJobManager(
                             if (yielded.get() && sessionAllowed(record) && !handle.suppressCompletion) {
                                 try { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
                             }
+                            requestReconcile(terminal)
                         }
                     } catch (failure: Throwable) {
                         withContext(NonCancellable) {
                             store.put(record.copy(workspaceDirectory = directory?.path, state = if (handle.control.stopRequested) "STOPPED" else if (failure is CancellationException) "INTERRUPTED" else "FAILED", endedAtMillis = now(), guidance = "命令执行失败（${failure.javaClass.simpleName}）。"))
                             publish(); result.completeExceptionally(failure)
+                            requestReconcile(record)
                         }
                     } finally {
                         handle.terminal.complete(Unit); redactor?.clearJob(record.sessionId, record.id); active.remove(record.id, handle)
@@ -788,7 +792,7 @@ class BackgroundJobManager(
     private suspend fun finish(record:BackgroundJobRecord,handle:Active) {
         var settled=record
         var reconciled=false
-        val warning=try { (if (record.directWorkspace) null else reconcile(record,true,false)).also { reconciled=true }} catch(_:Exception){"工作区合入或日志发布失败，临时副本已保留；请检查工作区后处理任务产物。"}
+        val warning=try { (if (hasIsolatedWorkspace(record)) reconcile(record,true,false) else null).also { reconciled=true }} catch(_:Exception){"工作区合入或日志发布失败，临时副本已保留；请检查工作区后处理任务产物。"}
         if(reconciled && record.isolatedWorkspace) {
             // 完成状态与日志仍可查询，完整工作区副本不再长期保留。
             val directory=File(runRoot,record.id)
@@ -797,18 +801,21 @@ class BackgroundJobManager(
         if(warning!=null) settled=settled.copy(guidance=listOfNotNull(settled.guidance,warning).joinToString(" "))
         settled = redactedRecord(settled)
         store.put(settled);publish();handle.terminal.complete(Unit)
-        if(sessionAllowed(record)) {
-            try { completion.dispatch(settled, readJobLogTail(logFile(settled)).let { it.copy(text = redactor?.redact(record.sessionId, it.text) ?: it.text) }) }
-            catch(cancelled:CancellationException) { throw cancelled }
-            catch(_:Exception) { /* 完成通知失败不能改写真实进程终态。 */ }
-        }
+        try {
+            if(sessionAllowed(record)) {
+                try { completion.dispatch(settled, readJobLogTail(logFile(settled)).let { it.copy(text = redactor?.redact(record.sessionId, it.text) ?: it.text) }) }
+                catch(cancelled:CancellationException) { throw cancelled }
+                catch(_:Exception) { /* 完成通知失败不能改写真实进程终态。 */ }
+            }
+        } finally { requestReconcile(settled) }
     }
+    private fun hasIsolatedWorkspace(record: BackgroundJobRecord) =
+        !record.directWorkspace && (record.isolatedWorkspace || File(record.runDirectory, "baseline.json").isFile)
     private fun runInfo(record:BackgroundJobRecord)=ExecRunInfo(record.id,execRunKind(record.runnerKind),record.summary,record.maxRuntimeMinutes*60,record.startedAtMillis,background=true,host=record.remoteHost)
     private fun logFile(record:BackgroundJobRecord):File =
-        if (record.logMigrationDeferred) BackgroundJobLogs.legacyFile(record) ?: BackgroundJobLogs.file(record, runRoot)
-        else BackgroundJobLogs.file(record, runRoot)
-    private suspend fun owned(sessionId:String,id:String):BackgroundJobRecord {
-        initialize()
+        BackgroundJobLogs.legacyFile(record) ?: BackgroundJobLogs.file(record, runRoot)
+    private suspend fun owned(sessionId:String,id:String, initializeStore: Boolean = true):BackgroundJobRecord {
+        if (initializeStore) initialize()
         return store.all().find{it.id==id && it.sessionId==sessionId && sessionId !in deletedSessions}
             ?: throw JobAccessException("JOB_NOT_FOUND","本会话找不到该任务，请用 job_list 获取当前会话的任务号。")
     }
@@ -828,26 +835,23 @@ class BackgroundJobManager(
             })
     }
     suspend fun status(sessionId:String,id:String):BackgroundJobStatus = withContext(Dispatchers.IO) {
-        var record=owned(sessionId,id)
-        var warning: String? = null
+        var record=owned(sessionId,id, initializeStore = false)
+        val warning = reconcileWarning(record)
         val tail=if(record.runnerKind==BackgroundJobRunner.TERMUX) refreshTermux(record) else {
-            warning=if (record.directWorkspace || record.runnerKind == BackgroundJobRunner.SSH) null else reconcile(record,false,false)
-            val migration = if (record.logMigrationDeferred) null else runCatching { BackgroundJobLogs.migrate(record, runRoot) }.exceptionOrNull()
-            if (migration != null) warning = listOfNotNull(warning, "日志迁移未完成（${migration::class.java.simpleName}），旧日志已保留。").joinToString(" ")
             val snapshot = active[id]?.control?.outputSnapshot
             val raw = snapshot?.let { JobLogTail(it.stdout.takeLast(8_000), it.stdoutTruncated || it.stdout.length > 8_000) } ?: readJobLogTail(logFile(record))
             val directory = record.workspaceDirectory?.let(::File)
             if (directory == null) raw else raw.copy(text = BuiltinExecService.virtualize(raw.text, directory))
         }
-        record=owned(sessionId,id)
+        record=owned(sessionId,id, initializeStore = false)
         BackgroundJobStatus(redactedRecord(record.copy(guidance=listOfNotNull(record.guidance,warning).distinct().joinToString(" ").ifEmpty { null })),
             tail.copy(text = redactor?.redact(sessionId, tail.text) ?: tail.text))
     }
     suspend fun waitFor(sessionId:String,id:String,timeoutSeconds:Int):BackgroundJobStatus {
         require(timeoutSeconds in 1..600){"timeout_seconds 必须为 1–600"}
-        owned(sessionId,id)
+        owned(sessionId,id, initializeStore = false)
         val ended=withTimeoutOrNull(timeoutSeconds*1_000L) {
-            while(owned(sessionId,id).running) {
+            while(owned(sessionId,id, initializeStore = false).running) {
                 delay(100)
             }
             true

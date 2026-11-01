@@ -55,6 +55,7 @@ internal class LinuxTerminalSessionsImpl(
         var stopping = false
         var visible = false
         var discarded = false
+        var finishMutation: suspend () -> Unit = {}
     }
 
     private val lock = Any()
@@ -83,36 +84,48 @@ internal class LinuxTerminalSessionsImpl(
         scope.coroutineContext.ensureActive()
         require(initialCommand?.contains('\u0000') != true) { "Terminal command contains NUL" }
         val epoch = synchronized(lock) { requireReady(); environmentEpoch }
-        val launch = withContext(ioDispatcher) {
-            val spec = when (location) {
-                is LinuxTerminalLocation.SessionWorkspace -> {
-                    com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = location.sessionId)
-                    val home = sessionHome(location.sessionId)
-                        ?: error("Session home is unavailable for session ${location.sessionId}")
-                    val workspace = try {
-                        host.sessionWorkspaceRoot(location.sessionId)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        throw IllegalStateException("Cannot resolve workspace for session ${location.sessionId}", error)
-                    } ?: error("Workspace is unavailable for session ${location.sessionId}")
-                    com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = location.sessionId, path = workspace.canonicalPath)
-                    com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = location.sessionId, path = home.canonicalPath)
-                    reconcileSession(location.sessionId)
-                    LinuxLaunchSpec(emptyList(), workspace, workingDirectory = "/workspace", sessionHome = home,
-                        wakeInbox = wakeInbox(location.sessionId))
-                }
-                is LinuxTerminalLocation.Directory -> {
-                    require(location.path.startsWith('/') && '\u0000' !in location.path) { "Terminal directory must be absolute" }
-                    val directory = LinuxFilePaths(runtime.paths.rootfs).resolve(location.path)
-                    com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(path = directory.toString())
-                    LinuxLaunchSpec(emptyList(), workingDirectory = location.path)
-                }
-            }
-            runtime.prepareLaunch(spec)
-        }
+        var finishMutation: suspend () -> Unit = {}
+        var mutationStarted = false
         var opened: Entry? = null
         try {
+            val launch = withContext(ioDispatcher) {
+                val spec = when (location) {
+                    is LinuxTerminalLocation.SessionWorkspace -> {
+                        com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = location.sessionId)
+                        val home = sessionHome(location.sessionId)
+                            ?: error("Session home is unavailable for session ${location.sessionId}")
+                        val workspace = try {
+                            host.sessionWorkspaceRoot(location.sessionId)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            throw IllegalStateException("Cannot resolve workspace for session ${location.sessionId}", error)
+                        } ?: error("Workspace is unavailable for session ${location.sessionId}")
+                        com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = location.sessionId, path = workspace.canonicalPath)
+                        com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = location.sessionId, path = home.canonicalPath)
+                        val finishHome = host.beginSessionMutation(location.sessionId)
+                        val finishWorkspace = try { com.promenar.infinity.data.repository.WorkspaceExternalMutationCoordinator.begin(workspace.toPath()) }
+                        catch (failure: Throwable) { withContext(NonCancellable) { finishHome() }; throw failure }
+                        val closed = java.util.concurrent.atomic.AtomicBoolean()
+                        finishMutation = {
+                            if (closed.compareAndSet(false, true)) {
+                                try { finishHome() } finally { finishWorkspace() }
+                            }
+                        }
+                        mutationStarted = true
+                        reconcileSession(location.sessionId)
+                        LinuxLaunchSpec(emptyList(), workspace, workingDirectory = "/workspace", sessionHome = home,
+                            wakeInbox = wakeInbox(location.sessionId))
+                    }
+                    is LinuxTerminalLocation.Directory -> {
+                        require(location.path.startsWith('/') && '\u0000' !in location.path) { "Terminal directory must be absolute" }
+                        val directory = LinuxFilePaths(runtime.paths.rootfs).resolve(location.path)
+                        com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(path = directory.toString())
+                        LinuxLaunchSpec(emptyList(), workingDirectory = location.path)
+                    }
+                }
+                runtime.prepareLaunch(spec)
+            }
             return withContext(mainDispatcher) {
                 val entry = synchronized(lock) {
                     requireReady(epoch)
@@ -120,6 +133,7 @@ internal class LinuxTerminalSessionsImpl(
                     nextOrdinal = Math.incrementExact(nextOrdinal)
                     Entry(LinuxTerminalInfo(UUID.randomUUID().toString(), ordinal, null, location, now(), true), initialCommand)
                 }
+                entry.finishMutation = finishMutation
                 entry.client = LinuxTerminalClient({ onTitle(entry) }, { finished(entry) })
                 entry.pty = factory.create(launch, entry.client)
                 opened = entry
@@ -166,6 +180,11 @@ internal class LinuxTerminalSessionsImpl(
             }
         } catch (error: Throwable) {
             opened?.let { discard(it) }
+            if (opened == null && mutationStarted) withContext(NonCancellable + ioDispatcher) {
+                try { finishMutation() } finally {
+                    (location as? LinuxTerminalLocation.SessionWorkspace)?.let { reconcileSession(it.sessionId) }
+                }
+            }
             throw error
         }
     }
@@ -231,7 +250,7 @@ internal class LinuxTerminalSessionsImpl(
         }
         (entry.infoAtStart.location as? LinuxTerminalLocation.SessionWorkspace)?.let { location ->
             scope.launch(NonCancellable + ioDispatcher) {
-                try { reconcileSession(location.sessionId) }
+                try { try { entry.finishMutation() } finally { reconcileSession(location.sessionId) } }
                 catch (failure: Exception) { InfinityLogger.logError("LinuxTerminal.reconcile", failure) }
             }
         }

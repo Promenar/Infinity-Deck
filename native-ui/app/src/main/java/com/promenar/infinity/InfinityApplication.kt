@@ -403,9 +403,68 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         return com.promenar.infinity.domain.generation.GenerationFailure(code)
     }
 
+    val workspaceIndexReconciliation: com.promenar.infinity.data.repository.SessionWorkspaceReconciler by lazy {
+        com.promenar.infinity.data.repository.SessionWorkspaceReconciler(
+            generationScope, File(noBackupFilesDir, "workspace-reconcile-pending"),
+            reconcileSharedRoot = { rootUuid ->
+                if (workspaceRepository.getByUuid(rootUuid, rootUuid) != null) {
+                    (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(rootUuid, null)
+                }
+            },
+        ) { sessionId ->
+            // 已删除会话没有待维护的索引，不能为恢复请求重建会话根。
+            val row = database.sessionDao().getById(sessionId)
+            if (row != null) {
+                val sharedSource = row.workspaceId?.let { database.workspaceDao().getById(it) }
+                    ?.takeIf { it.kind == "branch_shared" }
+                sharedSource?.let { workspaceIndexReconciliation.requestSharedRoot(it.location) }
+                val root = row.workspaceRootUuid?.let { workspaceRepository.getByUuid(it, it) }
+                    ?: workspaceRepository.ensureSessionRoot(sessionId)
+                if (database.workspaceDao().getByLocation("branch_shared", root.uuid) != null) {
+                    workspaceIndexReconciliation.requestSharedRoot(root.uuid)
+                    workspaceIndexReconciliation.awaitSharedRootSettled(root.uuid)
+                } else (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(root.uuid, sessionId)
+                sharedSource?.let { workspaceIndexReconciliation.awaitSharedRootSettled(it.location) }
+            }
+        }
+    }
+
+    private fun requestSessionHomeReconcile(sessionId: String) { workspaceIndexReconciliation.request(sessionId) }
+
     private suspend fun reconcileSessionHome(sessionId: String) {
-        val root = workspaceRepository.ensureSessionRoot(sessionId)
-        (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(root.uuid, sessionId)
+        requestSessionHomeReconcile(sessionId)
+        workspaceIndexReconciliation.awaitSettled(sessionId)
+    }
+
+    private suspend fun sessionCommandHome(sessionId: String): File {
+        val root = (workspaceRepository as WorkspaceRepository).sessionRootForCommand(sessionId)
+        return File(root.physicalRootPath)
+    }
+
+    private suspend fun beginSessionMutation(sessionId: String): suspend () -> Unit {
+        val row = database.sessionDao().getById(sessionId)
+        val sharedRootUuid = row?.workspaceId?.let { database.workspaceDao().getById(it) }
+            ?.takeIf { it.kind == "branch_shared" }?.location
+        val finish = (workspaceRepository as WorkspaceRepository).beginSessionCommand(sessionId)
+        var homeMarked = false
+        try {
+            workspaceIndexReconciliation.markDirty(sessionId)
+            homeMarked = true
+            sharedRootUuid?.let(workspaceIndexReconciliation::markSharedRootDirty)
+        } catch (failure: Throwable) {
+            if (homeMarked) workspaceIndexReconciliation.mutationFinished(sessionId)
+            finish()
+            throw failure
+        }
+        val closed = java.util.concurrent.atomic.AtomicBoolean()
+        return {
+            if (closed.compareAndSet(false, true)) {
+                try { finish() } finally {
+                    workspaceIndexReconciliation.mutationFinished(sessionId)
+                    sharedRootUuid?.let(workspaceIndexReconciliation::sharedRootMutationFinished)
+                }
+            }
+        }
     }
 
     val toolAllowlistStore by lazy {
@@ -659,7 +718,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     }
                 }
             },
-            deleteDatabaseOnly = transaction::deleteWithoutWorkspace,
+            deleteDatabaseOnly = { sessionId ->
+                val rootUuid = database.sessionDao().getById(sessionId)?.workspaceRootUuid
+                val shared = rootUuid?.let { database.workspaceDao().getByLocation("branch_shared", it) }
+                if (shared != null && database.workspaceDao().countSessionReferences(shared.id) > 0) {
+                    // 先持久交接保留根；删除会话不能丢弃尚未执行的索引请求。
+                    workspaceIndexReconciliation.requestSharedRoot(checkNotNull(rootUuid))
+                }
+                transaction.deleteWithoutWorkspace(sessionId)
+            },
             cancelAndJoinGeneration = { sessionId ->
                 generationCoordinator.cancelAndJoinSession(sessionId)
                 generationCoordinator.release(sessionId, discardTerminal = true)
@@ -887,9 +954,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             { workspaceRepository.ensureSessionRoot(it); Unit }, branchWorktrees, sessionMailbox, sessionExecutionGate,
             { generationForegroundController.track(it) }, { getString(R.string.branch_worktree_failed, it) },
             subagentTitle = { parent, id -> subagentLauncher.read(parent, id).description },
-            reconcileSharedSource = { rootUuid, sessionId ->
-                (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(rootUuid, sessionId)
-                Unit
+            reconcileSharedSource = { rootUuid, _ ->
+                workspaceIndexReconciliation.requestSharedRoot(rootUuid)
             })
     }
     val branchControls: com.promenar.infinity.domain.branch.BranchControls get() = branchService
@@ -1287,15 +1353,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             CoroutineScope(SupervisorJob() + Dispatchers.IO),
             com.promenar.infinity.data.linux.LinuxHostServices(
                 keepAlive = commandKeepAlive,
-                sessionHome = { sessionId -> File(workspaceRepository.ensureSessionRoot(sessionId).physicalRootPath) },
-                reconcileSession = ::reconcileSessionHome,
+                sessionHome = ::sessionCommandHome,
+                reconcileSession = ::requestSessionHomeReconcile,
+                beginSessionMutation = ::beginSessionMutation,
                 wakeInbox = { linuxWakeInbox.prepare(it) },
                 sessionWorkspaceRoot = { sessionId ->
                     when (val workspace = sessionWorkspaceResolver.resolve(sessionId)) {
                         is com.promenar.infinity.data.workspace.SessionWorkspace.Directory -> workspace.root
                         is com.promenar.infinity.data.workspace.SessionWorkspace.Unavailable -> null
-                        com.promenar.infinity.data.workspace.SessionWorkspace.Private ->
-                            File(workspaceRepository.ensureSessionRoot(sessionId).physicalRootPath)
+                        com.promenar.infinity.data.workspace.SessionWorkspace.Private -> sessionCommandHome(sessionId)
                     }
                 },
             ),
@@ -1345,7 +1411,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                         target.kind == com.promenar.infinity.data.local.db.entity.WorkspaceEntity.KIND_SHARED)
                     com.promenar.infinity.data.workspace.SessionWorkspace.Private -> {
                         if (record.runner == "LINUX") {
-                            val root = File(workspaceRepository.ensureSessionRoot(record.sessionId).physicalRootPath)
+                            val root = sessionCommandHome(record.sessionId)
                             com.promenar.infinity.data.jobs.BackgroundJobLocation(root, root, false, false, workspaceKindOverride = "private")
                         } else if (record.runner == "TERMUX") {
                             // Termux 不能访问应用私有根，不复制整个工作区。
@@ -1360,11 +1426,21 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             },
             prepareCommand = { kind, source, stdin, location, minutes -> builtinExecService.prepareBackgroundCommand(kind, source, stdin, location, minutes, location.sessionId) },
             reconcile = { record, finished, interrupted ->
-                if (record.isolatedWorkspace || File(record.runDirectory, "baseline.json").isFile) (workspaceRepository as WorkspaceRepository).reconcileBackgroundWorkspace(
-                    record.workspaceRootUuid, record.sessionId, record.id, File(record.runDirectory, "workspace"), finished, interrupted)
-                else if (record.runner == "LINUX") { reconcileSessionHome(record.sessionId); null }
-                else null
+                if (record.isolatedWorkspace || File(record.runDirectory, "baseline.json").isFile) {
+                    workspaceIndexReconciliation.markDirty(record.sessionId)
+                    try {
+                        (workspaceRepository as WorkspaceRepository).reconcileBackgroundWorkspace(
+                            record.workspaceRootUuid, record.sessionId, record.id, File(record.runDirectory, "workspace"), finished, interrupted,
+                            reconcileIndex = false)
+                    } finally { workspaceIndexReconciliation.mutationFinished(record.sessionId) }
+                } else null
             },
+            requestReconcile = { record ->
+                if (record.runner == "LINUX" || record.isolatedWorkspace || File(record.runDirectory, "baseline.json").isFile) {
+                    requestSessionHomeReconcile(record.sessionId)
+                }
+            },
+            reconcileWarning = { record -> workspaceIndexReconciliation.failures.value[record.sessionId] },
             termux = com.promenar.infinity.data.termux.TermuxBackgroundJobs(termuxRuntime::executeRequest),
             keepAlive = commandKeepAlive, liveOutput = toolLiveOutputStore,
             completion = com.promenar.infinity.data.jobs.BackgroundJobCompletion({ systemTurnDispatcher }, notifications::notify),
@@ -1393,8 +1469,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             visibleMounts = externalFolderManager::visible,
             sessionTitle = { database.sessionDao().getById(it)?.title },
             sessionMode = { id -> id?.let { sessionRunModes.modeFor(it) } },
-            sessionHome = { id -> File(workspaceRepository.ensureSessionRoot(id).physicalRootPath) },
-            reconcileSessionHome = ::reconcileSessionHome,
+            sessionHome = ::sessionCommandHome,
+            requestSessionHomeReconcile = ::requestSessionHomeReconcile,
+            beginSessionMutation = ::beginSessionMutation,
             wakeInbox = { linuxWakeInbox.prepare(it) },
             messages = runModeMessages,
             vault = sessionSecretVault, redactor = secretOutputRedactor,
@@ -2099,7 +2176,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     ?.takeIf { it.skippedGitRepositories.isNotEmpty() || it.skippedSymbolicLinks > 0 }
                     ?.let { _skillRestoreNotice.value = it }
                 if (runtime.restoreNotApplied.value) _restoreNotAppliedNotice.value = true
-                startupIssueManager.recover(StartupStep.BACKGROUND_JOBS, StartupIssueScope.subsystem(StartupSubsystem.BACKGROUND_JOBS)) { backgroundJobs.initialize() }
+                startupIssueManager.recover(StartupStep.BACKGROUND_JOBS, StartupIssueScope.subsystem(StartupSubsystem.BACKGROUND_JOBS)) {
+                    backgroundJobs.initialize()
+                    workspaceIndexReconciliation.resumePending()
+                }
                 startupIssueManager.recover(StartupStep.HEADLESS_INTERACTIONS, StartupIssueScope.subsystem(StartupSubsystem.HEADLESS_INTERACTIONS)) {
                     generationInteractions.restoreHeadless { sessionId ->
                         withContext(Dispatchers.IO) { database.sessionDao().getById(sessionId) != null }
