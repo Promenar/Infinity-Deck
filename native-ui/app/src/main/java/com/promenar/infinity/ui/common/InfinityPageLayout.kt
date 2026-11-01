@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.widthIn
@@ -89,7 +91,8 @@ fun InfinityPageLayout(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
                 scrollBehavior = scrollBehavior,
-                windowInsets = insets,
+                // 顶栏只吃顶部与左右的系统栏；整组 systemBars 会把底部导航条的高度也垫进顶栏下方。
+                windowInsets = insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
             )
         },
         contentWindowInsets = insets,
