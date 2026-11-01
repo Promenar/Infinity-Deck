@@ -160,7 +160,10 @@ class GenerationApplicationRemoteTest {
                 val user = json.getValue("messages").jsonArray.last {
                     it.jsonObject["role"]?.jsonPrimitive?.content == "user"
                 }.jsonObject.getValue("content").jsonPrimitive.content
-                responseGates[user]?.let { gate ->
+                // 出站纯文本可能带冻结上下文；以完整问题及协议分隔符定位各会话的闸门。
+                responseGates.entries.singleOrNull { (question, _) ->
+                    user == question || user.endsWith("\n\n$question")
+                }?.value?.let { gate ->
                     gate.arrived.complete(Unit)
                     try { gate.release.await() }
                     finally { if (!currentCoroutineContext().isActive) gate.cancelled.complete(Unit) }

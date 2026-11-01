@@ -354,21 +354,23 @@ class ChatViewModelTest {
 
     @Test fun `回答续跑持久化失败后重新打开会话可以重试且不循环`() = runTest {
         val question = seedAskUser()
-        failQuestionMessageUpdate = true
+        failQuestionResultUpdate = true
         fakeStreamChunks = listOf(StreamChunk.TextDelta("回答已收到"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
         assertThat(viewModel.answerQuestion(question, com.promenar.infinity.domain.ask.AskUserAnswer(skipped = true))).isTrue()
         awaitReal { generationCoordinator.observe(question.sessionId).value?.phase == com.promenar.infinity.domain.generation.GenerationPhase.PERSISTENCE_FAILED }
         assertThat(generationCoordinator.observe(question.sessionId).value?.phase)
             .isEqualTo(com.promenar.infinity.domain.generation.GenerationPhase.PERSISTENCE_FAILED)
         assertThat(protocolRequestCount).isEqualTo(1)
+        assertThat(lastPromptRequest!!.messages.first { it.role == "user" }.turnContext).isNull()
 
-        failQuestionMessageUpdate = false
+        failQuestionResultUpdate = false
         seedSession("other-session")
         advanceUntilIdle()
         viewModel.loadSession(question.sessionId)
         awaitReal { protocolRequestCount == 2 && generationCoordinator.active.value == null }
 
         assertThat(protocolRequestCount).isEqualTo(2)
+        assertThat(lastPromptRequest!!.messages.first { it.role == "user" }.turnContext).isNull()
         val app = ApplicationProvider.getApplicationContext<InfinityApplication>()
         assertThat(app.askUserLedger.resumption(question.sessionId)).isNull()
         assertThat(app.database.messageDao().getBySession(question.sessionId).count { it.role == "tool" && it.toolCallId == question.toolCallId }).isEqualTo(1)
@@ -534,7 +536,7 @@ class ChatViewModelTest {
     private val deletedMessages = mutableListOf<String>()
     private var failScopedDelete = false
     private var failSessionUpdate: Throwable? = null
-    private var failQuestionMessageUpdate = false
+    private var failQuestionResultUpdate = false
     private var afterInsert: suspend (Message, String) -> Unit = { _, _ -> }
     private val sshLeases = linkedSetOf<String>()
     private val pausedSshOwners = linkedSetOf<String>()
@@ -606,7 +608,10 @@ class ChatViewModelTest {
         }
 
         override suspend fun updatePartial(messageId: String, updates: Map<String, Any?>) {
-            if (failQuestionMessageUpdate && messageId.startsWith("ask_resume_")) throw java.io.IOException("test write failure")
+            // 仅拒绝回答结果，允许请求指令与模型身份在发送前落库。
+            if (failQuestionResultUpdate && messageId.startsWith("ask_resume_") && "content" in updates) {
+                throw java.io.IOException("test write failure")
+            }
             val index = savedMessages.indexOfFirst { it.first.id == messageId }
             if (index != -1) {
                 val (msg, sid) = savedMessages[index]
@@ -1022,7 +1027,7 @@ class ChatViewModelTest {
         fakeStreamChunks = emptyList()
         failScopedDelete = false
         failSessionUpdate = null
-        failQuestionMessageUpdate = false
+        failQuestionResultUpdate = false
         holdDraftUpdates = null
         beforeDraftUpdate = { _, _ -> }
         afterInsert = { _, _ -> }
@@ -2721,7 +2726,10 @@ class ChatViewModelTest {
         streamGate = gate
         fakeStreamChunks = listOf(StreamChunk.TextDelta("首轮"))
         viewModel.sendMessage("first"); advanceUntilIdle()
-        assertThat(lastPromptRequest!!.messages.first().content).doesNotContain("## Requested Skill")
+        val firstMessages = lastPromptRequest!!.messages
+        val firstSystem = firstMessages.first { it.role == "system" }.content
+        val firstContext = firstMessages.last { it.role == "user" }.turnContext
+        assertThat(firstContext).doesNotContain("## Requested Skill")
         viewModel.sendMessage("/demo 整理本周进展"); advanceUntilIdle()
         assertThat(viewModel.composerQueue.value.items.map { it.text }).containsExactly("/demo 整理本周进展")
         streamGate = null
@@ -2731,10 +2739,15 @@ class ChatViewModelTest {
         assertThat(protocolRequestCount).isEqualTo(2)
         val messages = lastPromptRequest!!.messages
         val system = messages.first { it.role == "system" }.content
-        assertThat(system).contains("## Requested Skill")
-        assertThat(system).contains("`/demo`")
-        assertThat(system).contains("Body of demo")
-        assertThat(messages.last { it.role == "user" }.content).contains("/demo 整理本周进展")
+        assertThat(system).isEqualTo(firstSystem)
+        assertThat(system).doesNotContain("## Requested Skill")
+        assertThat(system).doesNotContain("Body of demo")
+        val queuedUser = messages.last { it.role == "user" }
+        assertThat(queuedUser.turnContext).contains("## Requested Skill")
+        assertThat(queuedUser.turnContext).contains("# Skill: demo")
+        assertThat(queuedUser.turnContext).contains("Body of demo")
+        assertThat(queuedUser.content).isEqualTo("/demo 整理本周进展")
+        assertThat(messages.first { it.role == "user" }.turnContext).isEqualTo(firstContext)
         assertThat(savedMessages.filter { it.first.role == MessageRole.USER }.map { it.first.content })
             .containsExactly("first", "/demo 整理本周进展").inOrder()
     }

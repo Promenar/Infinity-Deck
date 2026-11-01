@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.generation.DefaultChatGenerationContentStrategy
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity
@@ -170,11 +171,11 @@ class RagImportRetrievalPipelineTest {
         assertThat(reference.documentId).isEqualTo(fileId)
         assertThat(reference.source).isEqualTo("文档: $fileName")
         assertThat(reference.content).contains(uniqueFact)
-        assertThat(context.finalSystemPrompt).contains(uniqueFact)
-        assertThat(context.finalSystemPrompt.windowed(uniqueFact.length).count { it == uniqueFact })
-            .isEqualTo(1)
-
         val messages = MessageRepository(database.messageDao())
+        messages.insert(
+            Message("user-rag", MessageRole.USER, query, turnContext = context.turnContext),
+            sessionId,
+        )
         messages.insert(
             Message(
                 id = "assistant-rag",
@@ -185,8 +186,24 @@ class RagImportRetrievalPipelineTest {
             sessionId,
         )
 
-        assertThat(messages.getById("assistant-rag")!!.ragReferences)
-            .containsExactly(reference)
+        val restoredUser = messages.getById("user-rag")!!
+        val restoredAnswer = messages.getById("assistant-rag")!!
+        assertThat(restoredAnswer.ragReferences).containsExactly(reference)
+        val application = ApplicationProvider.getApplicationContext<Context>()
+        val protocol = DefaultChatGenerationContentStrategy(
+            application.getSharedPreferences("rag-pipeline", Context.MODE_PRIVATE), null,
+        ).buildProtocolMessages(
+            Session(sessionId, "test-agent", messages = listOf(restoredUser, restoredAnswer)),
+            context.finalSystemPrompt,
+            restoredUser.id,
+        )
+        assertThat(protocol.first { it.role == "system" }.content).doesNotContain(uniqueFact)
+        val sentUser = protocol.single { it.role == "user" }
+        assertThat(sentUser.content).isEqualTo(query)
+        assertThat(sentUser.turnContext).isEqualTo(context.turnContext)
+        val sentContext = requireNotNull(sentUser.turnContext)
+        assertThat(sentContext).contains(uniqueFact)
+        assertThat(sentContext.windowed(uniqueFact.length).count { it == uniqueFact }).isEqualTo(1)
     }
 
     private suspend fun seedSession(sessionId: String) {

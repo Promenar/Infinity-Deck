@@ -5,19 +5,21 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.generation.DefaultChatGenerationContentStrategy
+import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.ui.chat.manager.ContextBuilder
 import com.promenar.infinity.ui.chat.manager.ContextBuilderParams
 import com.promenar.infinity.ui.chat.buildPipelineGroups
+import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** 工作区切换提示只在聊天流中可见：独立成组，不进入协议消息，系统提示词改为提醒历史路径可能失效。 */
+/** 工作区切换提示只在聊天流中可见；模型始终获得当前工作区与历史路径重验说明。 */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [33])
 class WorkspaceSwitchNoticeTest {
@@ -49,12 +51,24 @@ class WorkspaceSwitchNoticeTest {
         val protocol = strategy.buildProtocolMessages(session, "系统", "u2")
         assertThat(protocol.map { it.content }).containsExactly("系统", "第一问", "第一答", "第二问").inOrder()
 
-        suspend fun prompt(session: Session) = ContextBuilder().buildContext(
-            ContextBuilderParams("s1", "第二问", assistantMsgId = "m", session = session, availableToolNames = setOf("read_file")),
+        suspend fun prompt(session: Session, workspace: SessionWorkspace = SessionWorkspace.Private) = ContextBuilder().buildContext(
+            ContextBuilderParams("s1", "第二问", assistantMsgId = "m", session = session,
+                availableToolNames = setOf("read_file"), workspace = workspace),
         ).finalSystemPrompt
-        val switched = prompt(session)
-        assertThat(switched).contains("### Current Workspace")
-        assertThat(switched).contains("switched this conversation's workspace")
-        assertThat(prompt(session.copy(messages = messages - notice))).doesNotContain("switched this conversation's workspace")
+        val privatePrompt = prompt(session)
+        val revalidation = "Paths, uuids and hashes are scoped to the current workspace. After switching workspaces, list or read files again before reusing earlier values."
+        assertThat(privatePrompt).contains("This conversation has a private workspace.")
+        assertThat(privatePrompt).contains(revalidation)
+        assertThat(prompt(session.copy(messages = messages - notice))).isEqualTo(privatePrompt)
+
+        val directory = SessionWorkspace.Directory(
+            WorkspaceEntity("demo", WorkspaceEntity.KIND_PROJECT, "演示项目", "demo", 0),
+            File(context.filesDir, "demo"),
+        )
+        val selectedPrompt = prompt(session, directory)
+        assertThat(selectedPrompt).contains("### Current Workspace")
+        assertThat(selectedPrompt).contains("user-selected workspace \"演示项目\"")
+        assertThat(selectedPrompt).contains(revalidation)
+        assertThat(prompt(session.copy(messages = messages - notice), directory)).isEqualTo(selectedPrompt)
     }
 }
