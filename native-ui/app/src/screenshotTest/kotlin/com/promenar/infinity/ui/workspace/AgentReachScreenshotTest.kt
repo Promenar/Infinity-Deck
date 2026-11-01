@@ -78,7 +78,7 @@ private fun AgentReachPreview(dark: Boolean, shared: Boolean, runMode: SessionRu
                     onOpenTailscale = {},
                     onOpenNetworkAccess = {},
                     onOpenLinux = {},
-                    workspaceSwitch = AgentReachWorkspaceSwitch(busy = shared, failed = false, onChoose = {}),
+                    workspaceSwitch = AgentReachWorkspaceSwitch(busy = shared, failed = false, onChoose = {}, onStopGeneration = {}),
                 ),
                 modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal),
                 runMode = runMode,

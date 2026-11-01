@@ -88,7 +88,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.semantics.contentDescription
 import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.ui.theme.InfinityMonospace
-import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityMetaSeparator
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.semantics.clearAndSetSemantics
 
 enum class RunDetailTab { PLAN, BACKGROUND, STATE }
 
@@ -224,8 +227,10 @@ internal fun RunDetailContent(
 private enum class RunStatus { RUNNING, DONE, PAUSED }
 
 /**
- * 状态卡：左上状态标签、右上大号用时，下面是标题与一行摘要（计划步数、后台任务运行中与已结束数），
- * 有计划时底部是进度条；隐藏或清除计划收在右上角菜单。
+ * 状态卡，固定两行：
+ * - 第一行：状态标签、标题（单行省略）、更多菜单（隐藏或清除计划）；
+ * - 第二行：摘要（第 N / M 步 · 后台任务数 · 用时）与同行右侧的细进度条。
+ * 没有状态、菜单或进度时对应部分直接省略，不留空位。
  */
 @Composable
 private fun RunDetailHeader(
@@ -245,86 +250,144 @@ private fun RunDetailHeader(
     val jobs = activity?.jobs.orEmpty()
     val groups = backgroundJobGroups(jobs)
     val summary = listOfNotNull(
-        plan?.let {
-            if (it.isCompleted) stringResource(R.string.run_detail_steps_done, it.doneCount, it.totalCount)
-            else stringResource(R.string.run_detail_step_of, (it.doneCount + 1).coerceAtMost(it.totalCount), it.totalCount)
+        plan?.let { runPlanStepSummary(it) }?.let {
+            when (it) {
+                is RunPlanStepSummary.AtStep -> stringResource(R.string.run_detail_step_of, it.position, it.total)
+                is RunPlanStepSummary.Finished -> stringResource(R.string.run_card_steps_completed, it.done, it.total)
+            }
         },
         groups.running.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.run_detail_jobs_running, it, it) },
         groups.finished.size.takeIf { it > 0 }?.let { stringResource(R.string.run_detail_jobs_finished, it) },
     )
+    val progress = plan?.takeIf { it.totalCount > 0 }?.let { it.doneCount.toFloat() / it.totalCount }
+    val hasMenu = onHidePlan != null || onClearPlan != null
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp).testTag(UiTags.CHAT_RUN_STATUS_CARD),
     ) {
-        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 14.dp)) {
-            // 只有后台任务时没有状态、计时与菜单：不留空行和标题上方的间距，否则顶部留白比左右多出一截。
-            val headerShown = status != null || elapsedMillis != null || onHidePlan != null || onClearPlan != null
-            if (headerShown) Row(verticalAlignment = Alignment.CenterVertically) {
+        // 有菜单时第一行由 48dp 按钮撑高，上下内边距收窄；没有菜单时按文字行高留出对称留白。
+        Column(
+            Modifier.padding(start = 14.dp, end = if (hasMenu) 4.dp else 14.dp, top = if (hasMenu) 2.dp else 10.dp, bottom = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 status?.let { RunStatusPill(it) }
-                Spacer(Modifier.weight(1f))
-                elapsedMillis?.let {
-                    val spoken = runElapsedText(it)
-                    Text(
-                        runClockText(it),
-                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = InfinityMonospace, fontFeatureSettings = "tnum"),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .padding(end = if (onHidePlan != null || onClearPlan != null) 0.dp else 12.dp)
-                            .semantics { contentDescription = spoken },
-                    )
-                }
-                if (onHidePlan != null || onClearPlan != null) {
-                    var menu by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag(UiTags.CHAT_RUN_SHEET_MENU)) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.run_detail_more))
-                        }
-                        InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            onHidePlan?.let { hide ->
-                                InfinityMenuItem(
-                                    text = { Text(stringResource(R.string.chat_task_hide)) },
-                                    onClick = { menu = false; hide() },
-                                    modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_CLOSE),
-                                )
-                            }
-                            onClearPlan?.let { clear ->
-                                InfinityMenuItem(
-                                    text = { Text(stringResource(R.string.chat_task_clear_completed)) },
-                                    onClick = { menu = false; clear() },
-                                    modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_CLOSE),
-                                )
-                            }
-                        }
-                    }
-                }
+                Text(
+                    text = plan?.title?.takeIf(String::isNotBlank) ?: stringResource(R.string.run_detail_title_default),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (hasMenu) RunDetailMenu(onHidePlan, onClearPlan)
             }
-            Text(
-                text = plan?.title?.takeIf(String::isNotBlank) ?: stringResource(R.string.run_detail_title_default),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = if (headerShown) 10.dp else 0.dp, end = 12.dp),
-            )
-            if (summary.isNotEmpty()) {
-                InfinityMetaLine(
-                    summary,
-                    style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp, end = 12.dp),
+            val clock = elapsedMillis?.let { runClockText(it) }
+            val spokenClock = elapsedMillis?.let { runElapsedText(it) }
+            if (summary.isNotEmpty() || clock != null || progress != null) {
+                RunCardMetaRow(
+                    summary = summary.joinToString(" $InfinityMetaSeparator ").takeIf(String::isNotEmpty),
+                    clock = clock,
+                    spokenClock = spokenClock,
+                    progress = progress,
+                    modifier = Modifier.padding(top = if (hasMenu) 0.dp else 6.dp, end = if (hasMenu) 10.dp else 0.dp),
                 )
             }
-            plan?.takeIf { it.totalCount > 0 }?.let {
+        }
+    }
+}
+
+@Composable
+private fun RunDetailMenu(onHidePlan: (() -> Unit)?, onClearPlan: (() -> Unit)?) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag(UiTags.CHAT_RUN_SHEET_MENU)) {
+            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.run_detail_more))
+        }
+        InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            onHidePlan?.let { hide ->
+                InfinityMenuItem(
+                    text = { Text(stringResource(R.string.chat_task_hide)) },
+                    onClick = { menu = false; hide() },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_CLOSE),
+                )
+            }
+            onClearPlan?.let { clear ->
+                InfinityMenuItem(
+                    text = { Text(stringResource(R.string.chat_task_clear_completed)) },
+                    onClick = { menu = false; clear() },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_CLOSE),
+                )
+            }
+        }
+    }
+}
+
+private val RunCardBarGap = 10.dp
+private val RunCardBarMinWidth = 32.dp
+private val RunCardBarHeight = 3.dp
+
+/**
+ * 状态卡第二行：左侧摘要与等宽用时，右侧进度条占满剩余宽度。摘要过长时先省略摘要，
+ * 进度条至少保留 [RunCardBarMinWidth]；用时朗读为“用时 N 分 M 秒”，分隔符不朗读。
+ */
+@Composable
+private fun RunCardMetaRow(
+    summary: String?,
+    clock: String?,
+    spokenClock: String?,
+    progress: Float?,
+    modifier: Modifier = Modifier,
+) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum")
+    Layout(
+        modifier = modifier.fillMaxWidth(),
+        content = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                summary?.let {
+                    Text(it, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                }
+                if (summary != null && clock != null) {
+                    Text(" $InfinityMetaSeparator ", style = style, color = color, maxLines = 1, softWrap = false, modifier = Modifier.clearAndSetSemantics { })
+                }
+                clock?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium.copy(fontFamily = InfinityMonospace, fontFeatureSettings = "tnum"),
+                        color = color,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.semantics { spokenClock?.let { spoken -> contentDescription = spoken } },
+                    )
+                }
+            }
+            progress?.let { value ->
                 LinearProgressIndicator(
-                    progress = { it.doneCount.toFloat() / it.totalCount },
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp, end = 12.dp).height(4.dp),
+                    progress = { value },
                     strokeCap = StrokeCap.Round,
                     gapSize = 0.dp,
                     drawStopIndicator = {},
                     trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
                 )
             }
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val bar = measurables.getOrNull(1)
+        val gap = RunCardBarGap.roundToPx()
+        val textMax = if (bar != null) (width - gap - RunCardBarMinWidth.roundToPx()).coerceAtLeast(0) else width
+        val text = measurables[0].measure(Constraints(maxWidth = textMax))
+        val barPlaceable = bar?.measure(
+            Constraints.fixed(
+                width = (width - (if (text.width > 0) text.width + gap else 0)).coerceAtLeast(0),
+                height = RunCardBarHeight.roundToPx(),
+            ),
+        )
+        val height = maxOf(text.height, barPlaceable?.height ?: 0)
+        layout(width, height) {
+            text.place(0, (height - text.height) / 2)
+            barPlaceable?.place(width - barPlaceable.width, (height - barPlaceable.height) / 2)
         }
     }
 }
@@ -354,7 +417,7 @@ private fun RunStatusPill(status: RunStatus) {
     }
 }
 
-/** 状态卡大号用时：不足一小时为“分:秒”，否则“时:分:秒”。 */
+/** 状态卡用时：不足一小时为“分:秒”，否则“时:分:秒”。 */
 internal fun runClockText(millis: Long): String {
     val total = (millis / 1_000).coerceAtLeast(0)
     val hours = total / 3_600
@@ -468,6 +531,8 @@ private fun RunPlanTab(
     onComplete: () -> Unit,
 ) {
     val groups = remember(plan.steps) { runPlanGroups(plan.steps) }
+    // 与状态卡“第 N / M 步”同一来源，避免清单的“当前”与卡片步数各说各话。
+    val currentStepId = runPlanCurrentStepId(plan)
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f).testTag(UiTags.CHAT_TASK_STEP_LIST),
@@ -479,7 +544,7 @@ private fun RunPlanTab(
                 }
                 if (!group.collapsed) {
                     items(group.steps.filter { !(it.isGroup && it.depth == 0) }, key = { it.id }) { step ->
-                        RunPlanStepRow(step, current = step.id == plan.currentStepId && !plan.isCompleted, pulsing = plan.shouldPulse)
+                        RunPlanStepRow(step, current = step.id == currentStepId, pulsing = plan.shouldPulse)
                     }
                 }
             }

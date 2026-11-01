@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 侧栏运行状态卡：计划全部完成或放弃时的步数摘要。 -->
+    <string name="run_card_steps_completed">%1$d / %2$d 步已完成</string>
+    <!-- 检视器底栏放不下全部页签时的溢出菜单入口。 -->
+    <string name="chat_inspector_more_tabs">更多页签</string>
+    <!-- 可达范围面板：生成进行中时工作区切换停用的说明条。 -->
+    <string name="agent_reach_switch_busy_hint">本轮生成进行中，结束后才能切换工作区</string>
+    <string name="agent_reach_stop_generation">停止生成</string>
+</resources>

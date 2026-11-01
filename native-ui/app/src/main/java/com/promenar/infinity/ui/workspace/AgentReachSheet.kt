@@ -4,6 +4,15 @@ import android.app.Application
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,12 +100,32 @@ internal data class AgentReachActions(
     val onOpenToolSettings: (() -> Unit)? = null,
 )
 
-/** 摘要卡内的工作区切换：生成进行中或有待审批时停用，切换失败时在工作区下方提示。 */
+/**
+ * 摘要卡内的工作区切换：生成进行中或有待审批时停用，切换失败时在工作区下方提示。
+ * [onStopGeneration] 非 null 时，停用说明条右侧提供“停止生成”，停止当前会话的生成。
+ */
 internal data class AgentReachWorkspaceSwitch(
     val busy: Boolean,
     val failed: Boolean,
     val onChoose: () -> Unit,
+    val onStopGeneration: (() -> Unit)? = null,
 )
+
+/** 工作区切换下方说明条的内容：切换失败优先于生成中停用。 */
+internal enum class ReachSwitchHintKind { BUSY, FAILED }
+
+internal data class ReachSwitchHint(val kind: ReachSwitchHintKind, val showStop: Boolean)
+
+/** 说明条：切换失败时显示错误；生成中停用时说明原因，取得停止生成入口时带“停止生成”；其余情况不显示。 */
+internal fun reachSwitchHint(switch: AgentReachWorkspaceSwitch?): ReachSwitchHint? = when {
+    switch == null -> null
+    switch.failed -> ReachSwitchHint(ReachSwitchHintKind.FAILED, showStop = false)
+    switch.busy -> ReachSwitchHint(ReachSwitchHintKind.BUSY, showStop = switch.onStopGeneration != null)
+    else -> null
+}
+
+private const val REACH_SWITCH_HINT_TAG = "agent_reach_workspace_switch_hint"
+private const val REACH_STOP_GENERATION_TAG = "agent_reach_stop_generation"
 
 /**
  * 会话的工作区与“Agent 可达范围”面板，从顶栏状态行的工作区打开；[executionMode] 为会话保存的执行模式原值。
@@ -180,6 +209,7 @@ internal fun SessionRunMode.toNetworkRunMode(): NetworkRunMode = when (this) {
 @Composable
 private fun SummaryCard(state: AgentReachState, mode: SessionRunMode, switch: AgentReachWorkspaceSwitch?) {
     val workspace = state.workspace
+    val hint = reachSwitchHint(switch)
     InfinitySettingsGroup {
         Column(
             modifier = Modifier
@@ -244,11 +274,17 @@ private fun SummaryCard(state: AgentReachState, mode: SessionRunMode, switch: Ag
                 }
                 if (switch != null) {
                     val label = stringResource(R.string.agent_reach_workspace_switch)
+                    // 停用或失败时把说明条的文字挂到按钮的状态描述上，读屏聚焦按钮即可听到原因。
+                    val reason = hint?.let { reachSwitchHintText(it.kind) }
                     TextButton(
                         onClick = switch.onChoose,
                         enabled = !switch.busy && workspace != SessionWorkspaceUi.Loading,
                         modifier = Modifier
-                            .semantics { contentDescription = label }
+                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .semantics {
+                                contentDescription = label
+                                if (reason != null) stateDescription = reason
+                            }
                             .testTag("agent_reach_workspace_switch"),
                     ) {
                         Text(
@@ -260,12 +296,57 @@ private fun SummaryCard(state: AgentReachState, mode: SessionRunMode, switch: Ag
                     }
                 }
             }
-            if (switch != null && (switch.busy || switch.failed)) {
-                Text(
-                    text = stringResource(if (switch.failed) R.string.workspace_switch_failed else R.string.workspace_session_busy),
-                    style = MaterialTheme.typography.bodySmall.forReading(),
-                    color = if (switch.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            hint?.let { ReachSwitchHintStrip(it, onStop = switch?.onStopGeneration) }
+        }
+    }
+}
+
+@Composable
+private fun reachSwitchHintText(kind: ReachSwitchHintKind): String = stringResource(
+    when (kind) {
+        ReachSwitchHintKind.BUSY -> R.string.agent_reach_switch_busy_hint
+        ReachSwitchHintKind.FAILED -> R.string.workspace_switch_failed
+    },
+)
+
+/**
+ * 工作区切换下方的说明条：圆角浅色容器，左侧图标、中间说明，生成中停用时右侧可带“停止生成”。
+ * 切换失败用错误色并立即播报，生成中停用礼貌播报。
+ */
+@Composable
+private fun ReachSwitchHintStrip(hint: ReachSwitchHint, onStop: (() -> Unit)?) {
+    val failed = hint.kind == ReachSwitchHintKind.FAILED
+    val accent = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.infinityDomainColors.info
+    val container = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.infinityDomainColors.infoContainer
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(container.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .padding(start = 12.dp, end = if (hint.showStop && onStop != null) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp)
+            .semantics { liveRegion = if (failed) LiveRegionMode.Assertive else LiveRegionMode.Polite }
+            .testTag(REACH_SWITCH_HINT_TAG),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            if (failed) Icons.Rounded.ErrorOutline else Icons.Rounded.Schedule,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = reachSwitchHintText(hint.kind),
+            style = MaterialTheme.typography.bodySmall.forReading(),
+            color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (hint.showStop && onStop != null) {
+            TextButton(
+                onClick = onStop,
+                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(REACH_STOP_GENERATION_TAG),
+            ) {
+                Text(stringResource(R.string.agent_reach_stop_generation), fontWeight = FontWeight.SemiBold)
             }
         }
     }
