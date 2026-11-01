@@ -24,6 +24,8 @@
   <img src="https://img.shields.io/badge/version-0.11.1--beta-6366F1.svg" alt="版本 0.11.1-beta">
 </p>
 
+https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
+
 <p align="center">
   <img src="assets/screenshots/zh/hero.webp" alt="展开：会话旁边的 Git 面板列出提交记录；合上：外屏继续查看 502 排障报告" width="860">
 </p>
@@ -46,7 +48,7 @@
 <table>
   <tr>
     <td width="50%"><img src="assets/screenshots/zh/ade-subagents.webp" alt="两个子代理并行梳理代码与测试缺口，主会话等待汇总"></td>
-    <td width="50%"><img src="assets/screenshots/zh/ade-background.webp" alt="完整测试在后台运行，同时分支会话也在生成"></td>
+    <td width="50%"><img src="assets/screenshots/zh/ade-background.webp" alt="21 个测试通过后，400 万行的完整测试套件转入后台任务，对话继续进行"></td>
   </tr>
   <tr>
     <td align="center">子代理并行梳理代码</td>
@@ -68,12 +70,12 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/zh/ops-diagnosis.webp" alt="Agent 定位 502 根因：配置把数据库指向不存在的 /srv 目录；修复命令等待批准"></td>
-    <td width="50%"><img src="assets/screenshots/zh/ops-detail.webp" alt="应用内 SSH 终端：systemd 显示两个服务运行中，接口返回 HTTP 200"></td>
+    <td width="50%"><img src="assets/screenshots/zh/ops-diagnosis.webp" alt="web-01 上的远程命令排队等待批准：可逐条批准或拒绝，共 3 项"></td>
+    <td width="50%"><img src="assets/screenshots/zh/ops-detail.webp" alt="修复报告：config.toml 把数据库指向从未创建的目录，已恢复路径并重启 api"></td>
   </tr>
   <tr>
-    <td align="center">先查根因，每条命令由你批准</td>
-    <td align="center">在真实终端里亲自复核</td>
+    <td align="center">每条远程命令由你批准</td>
+    <td align="center">根因、修复与验证写进一份报告</td>
   </tr>
 </table>
 
@@ -83,7 +85,7 @@
 
 <table>
   <tr>
-    <td colspan="3"><img src="assets/screenshots/zh/fold-inspector.webp" alt="展开：会话旁边的 Git 检查器列出提交记录"></td>
+    <td colspan="3"><img src="assets/screenshots/zh/fold-inspector.webp" alt="展开：会话旁边的计划检查器列出已完成步骤、子代理与后台任务"></td>
   </tr>
   <tr>
     <td width="33%"><img src="assets/screenshots/zh/outer-chat.webp" alt="外屏：502 排障报告"></td>

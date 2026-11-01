@@ -24,8 +24,10 @@
   <img src="https://img.shields.io/badge/version-0.11.1--beta-6366F1.svg" alt="Version 0.11.1-beta">
 </p>
 
+https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
+
 <p align="center">
-  <img src="assets/screenshots/en/hero.webp" alt="Unfolded: an agent's 502 fix report beside a live SSH terminal on the server. Folded: the same chat continues on the cover screen" width="860">
+  <img src="assets/screenshots/en/hero.webp" alt="Unfolded: the chat beside the Git panel listing commits. Folded: the 502 fix report continues on the cover screen" width="860">
 </p>
 
 ## A real Linux in your pocket
@@ -46,7 +48,7 @@ Ask for a change and the agent works the way you would at a desk: it writes a pl
 <table>
   <tr>
     <td width="50%"><img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agents surveying code and test gaps in parallel while the main chat waits"></td>
-    <td width="50%"><img src="assets/screenshots/en/ade-background.webp" alt="Approval card for a full test suite that runs in the background for up to 40 minutes"></td>
+    <td width="50%"><img src="assets/screenshots/en/ade-background.webp" alt="All 21 tests pass and the 4-million-line full suite moves to a background job while the chat keeps going"></td>
   </tr>
   <tr>
     <td align="center">Sub-agents survey the code in parallel</td>
@@ -68,12 +70,12 @@ Save a host once and let the agent investigate: it reads unit status and logs, f
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/en/ops-diagnosis.webp" alt="The agent explains a 502: the API config points at a database path that does not exist; the next remote command waits for approval"></td>
-    <td width="50%"><img src="assets/screenshots/en/ops-detail.webp" alt="The fix report with a verification table: both services active, health checks return 200"></td>
+    <td width="50%"><img src="assets/screenshots/en/ops-diagnosis.webp" alt="Remote commands on web-01 wait in line: approve or reject each one, three pending"></td>
+    <td width="50%"><img src="assets/screenshots/en/ops-detail.webp" alt="The fix report: config.toml pointed the database at a directory that was never created; the path is restored and the API restarted"></td>
   </tr>
   <tr>
-    <td align="center">Root cause first, each command approved</td>
-    <td align="center">Fixed and verified end to end</td>
+    <td align="center">Every remote command waits for you</td>
+    <td align="center">Root cause, fix and verification in one report</td>
   </tr>
 </table>
 

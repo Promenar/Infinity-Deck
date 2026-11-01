@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 文档
+
+- 中英文 README 顶部加入 88 秒宣传片（GitHub 内嵌播放），截图全部换成视觉实验室的中英文界面静帧；运维截图不再露出本机路径。
+
 ### 修复
 
 - SSH 终端清空缓冲（断开后重连）时把光标移回左上角，新连接的输出不再从旧提示符的位置接着写。
