@@ -53,6 +53,14 @@
     <string name="lab_v_git_worktrees_desc">各 worktree 对应到使用它的会话</string>
     <string name="lab_v_inspector_plan">计划与后台任务</string>
     <string name="lab_v_inspector_plan_desc">已完成步骤、子代理与后台任务</string>
+    <string name="lab_v_ops_approval">502 修复待批准</string>
+    <string name="lab_v_ops_approval_desc">根因已查明，备份并恢复配置的命令等待批准</string>
+    <string name="lab_v_ops_report">502 排障报告</string>
+    <string name="lab_v_ops_report_desc">修复与验证的总结，适合外屏</string>
+    <string name="lab_v_git_commits">Git：提交记录</string>
+    <string name="lab_v_git_commits_desc">starlog 最近六次提交；外屏为整页</string>
+    <string name="lab_v_ssh_web01">web-01 SSH 终端</string>
+    <string name="lab_v_ssh_web01_desc">两个服务运行中，接口返回 200</string>
     <string name="lab_v_fastfetch">fastfetch</string>
     <string name="lab_v_fastfetch_desc">Alpine 标志与系统信息</string>
     <string name="lab_v_apk_add">apk add fastfetch</string>

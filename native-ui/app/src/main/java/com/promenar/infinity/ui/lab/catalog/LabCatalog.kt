@@ -53,13 +53,16 @@ object LabCatalog {
                             LabVersion("subagents", "chat.state.subagents", R.string.lab_v_subagents, R.string.lab_v_subagents_desc, LabVersionKind.STATE),
                             LabVersion("background-job", "chat.state.background-job", R.string.lab_v_background_job, R.string.lab_v_background_job_desc, LabVersionKind.STATE),
                             LabVersion("branch-plan", "chat.state.branch-plan", R.string.lab_v_branch_plan, R.string.lab_v_branch_plan_desc, LabVersionKind.STATE),
+                            LabVersion("ops-approval", "chat.state.ops-approval", R.string.lab_v_ops_approval, R.string.lab_v_ops_approval_desc, LabVersionKind.STATE),
+                            LabVersion("ops-report", "chat.state.ops-report", R.string.lab_v_ops_report, R.string.lab_v_ops_report_desc, LabVersionKind.STATE),
                         ),
                     ),
                     LabNode(
                         segment = "inspector",
                         title = R.string.lab_node_inspector,
                         children = listOf(
-                            LabVersion("git-worktrees", "inspector.state.git-worktrees", R.string.lab_v_git_worktrees, R.string.lab_v_git_worktrees_desc, LabVersionKind.STATE, LabScreenFit.INNER),
+                            LabVersion("git-worktrees", "inspector.state.git-worktrees", R.string.lab_v_git_worktrees, R.string.lab_v_git_worktrees_desc, LabVersionKind.STATE),
+                            LabVersion("git-commits", "inspector.state.git-commits", R.string.lab_v_git_commits, R.string.lab_v_git_commits_desc, LabVersionKind.STATE),
                             LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE, LabScreenFit.INNER),
                         ),
                     ),
@@ -71,6 +74,7 @@ object LabCatalog {
                 children = listOf(
                     LabVersion("fastfetch", "terminal.state.fastfetch", R.string.lab_v_fastfetch, R.string.lab_v_fastfetch_desc, LabVersionKind.STATE),
                     LabVersion("apk-add", "terminal.workflow.apk-add", R.string.lab_v_apk_add, R.string.lab_v_apk_add_desc, LabVersionKind.WORKFLOW),
+                    LabVersion("ssh-web01", "terminal.state.ssh-web01", R.string.lab_v_ssh_web01, R.string.lab_v_ssh_web01_desc, LabVersionKind.STATE),
                 ),
             ),
         ),

@@ -55,6 +55,14 @@
     <string name="lab_v_git_worktrees_desc">Each worktree mapped to the chat that uses it</string>
     <string name="lab_v_inspector_plan">Plan and background jobs</string>
     <string name="lab_v_inspector_plan_desc">Finished steps, sub-agents and background jobs</string>
+    <string name="lab_v_ops_approval">502 fix awaiting approval</string>
+    <string name="lab_v_ops_approval_desc">Root cause found; the back-up-and-restore command waits for approval</string>
+    <string name="lab_v_ops_report">502 incident report</string>
+    <string name="lab_v_ops_report_desc">Summary of the fix and verification, suited to the cover screen</string>
+    <string name="lab_v_git_commits">Git: commit history</string>
+    <string name="lab_v_git_commits_desc">The last six starlog commits; full page on the cover screen</string>
+    <string name="lab_v_ssh_web01">web-01 SSH terminal</string>
+    <string name="lab_v_ssh_web01_desc">Both services running, endpoints return 200</string>
     <string name="lab_v_fastfetch">fastfetch</string>
     <string name="lab_v_fastfetch_desc">Alpine logo and system information</string>
     <string name="lab_v_apk_add">apk add fastfetch</string>

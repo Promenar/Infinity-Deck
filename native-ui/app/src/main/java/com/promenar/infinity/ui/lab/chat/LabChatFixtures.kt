@@ -4,6 +4,7 @@ import android.content.res.Resources
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import com.promenar.infinity.data.model.ExecutionStep
 import com.promenar.infinity.data.model.FileChangeSummary
 import com.promenar.infinity.data.model.Message
@@ -117,15 +118,26 @@ internal fun <S> LabTimelineBuilder<S>.streamOver(at: Long, durationMs: Long, te
  * 会话页场景的统一出口：把脚本快照平移到墙钟后交给 [LabChatHost]。
  * [nowScriptMs] 是画面所处的脚本时刻：工作流传 0（锚点已随播放位置移动），静态版本传定格时刻。
  * 返回键总是接到版本页出口，[actions] 的其它操作由场景决定（检视器页签等），默认全部空操作。
+ * [hub] 给出时，内屏按真实首页三列排出导航栏与会话列表（[expanded] 为 true 时以展开态开始）。
  */
 @Composable
 internal fun LabSceneScope.LabChatScene(
     frame: LabChatFrame,
     nowScriptMs: Long = 0,
     actions: ChatScreenActions = ChatScreenActions(),
+    hub: LabHubStory? = null,
+    expanded: Boolean = false,
     inspectorPageContent: @Composable BoxScope.() -> Unit = {},
 ) {
     val anchor = anchorMs - nowScriptMs
     val shifted = remember(frame, anchor) { frame.atWallClock(anchor) }
-    LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent)
+    if (hub == null) {
+        LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent)
+        return
+    }
+    val zh = isChinese(LocalContext.current.resources)
+    val list = remember(hub, shifted, zh) { labHubList(hub, shifted, zh) }
+    LabHubFrame(list, initialExpanded = expanded) {
+        LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent)
+    }
 }

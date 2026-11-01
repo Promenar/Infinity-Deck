@@ -125,6 +125,7 @@ internal object LabSourceIsolation {
      */
     private val GIT_VALUE_TYPES = setOf(
         "GitStatus", "GitBranch", "GitBranchList", "GitChangeList", "GitTracking", "GitFileChange", "GitChangeKind", "GitChangeGroup",
+        "GitCommitLog", "GitCommitSummary",
     )
     private val GIT_VALUE_IMPORT = Regex("^\\s*import\\s+com\\.promenar\\.infinity\\.data\\.git\\.(\\w+)\\s*$")
     /** 会话顶栏的 Git 摘要 `GitEntrySummary.Repository` 是界面数据类，带限定名时不按持久化类型处理。 */

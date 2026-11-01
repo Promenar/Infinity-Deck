@@ -157,8 +157,25 @@ class LabTerminalScriptsTest {
     }
 
     @Test
-    fun `两个终端版本已登记为对应的场景类型`() {
+    fun `web-01 复核显示两个服务运行中、四颗星与 200，且不含家目录与地址`() {
+        val now = java.time.ZonedDateTime.of(2026, 11, 1, 20, 41, 43, 0, java.time.ZoneId.of("Asia/Shanghai"))
+        val lines = LabSshWeb01.lines(now.minusMinutes(2).minusSeconds(4), now).map(::ansiVisible)
+        assertThat(lines.count { it.contains("active (running)") }).isEqualTo(2)
+        assertThat(lines.first { it.contains("starlog-api.service -") }).startsWith("● ")
+        assertThat(lines.single { it.contains("Sirius") }).contains("Vega")
+        assertThat(lines).contains("HTTP 200")
+        assertThat(lines.first { it.contains("Active:") }).endsWith("2min 4s ago")
+        assertThat(lines.last()).isEqualTo("deploy@web-01:~$ ")
+        val text = LabSshWeb01.script(now.minusMinutes(2), now)
+        assertThat(text).doesNotContain("promenar")
+        assertThat(text).doesNotContain("/home/")
+        assertThat(ipAddress.containsMatchIn(ansiVisible(text))).isFalse()
+    }
+
+    @Test
+    fun `终端版本已登记为对应的场景类型`() {
         assertThat(LabScenes.scene("terminal.state.fastfetch")).isInstanceOf(LabStateScene::class.java)
+        assertThat(LabScenes.scene("terminal.state.ssh-web01")).isInstanceOf(LabStateScene::class.java)
         assertThat(LabScenes.scene("terminal.workflow.apk-add")).isInstanceOf(LabWorkflowScene::class.java)
     }
 }

@@ -30,10 +30,10 @@ class LabCatalogTest {
     @Test
     fun `版本数含子目录，按 id 能找回版本与其目录`() {
         assertThat(LabCatalog.versionCount(LabCatalog.root)).isEqualTo(LabCatalog.versionsWithPath().size)
-        assertThat(LabCatalog.versionCount(LabCatalog.node("chat")!!)).isEqualTo(7)
+        assertThat(LabCatalog.versionCount(LabCatalog.node("chat")!!)).isEqualTo(10)
         val (path, version) = LabCatalog.versionsWithPath().first { it.second.id == "inspector.state.git-worktrees" }
         assertThat(path).isEqualTo("chat/inspector")
-        assertThat(version.fit).isEqualTo(LabScreenFit.INNER)
+        assertThat(version.fit).isEqualTo(LabScreenFit.ANY)
         assertThat(LabCatalog.version("chat.workflow.ops-502")?.kind).isEqualTo(LabVersionKind.WORKFLOW)
         assertThat(LabCatalog.version("nope")).isNull()
     }

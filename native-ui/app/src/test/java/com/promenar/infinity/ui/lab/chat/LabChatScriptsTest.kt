@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.lab.chat
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.ui.hub.HubSessionActivity
 import com.promenar.infinity.ui.lab.LabScenes
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.lab.stage.LabWorkflowScene
@@ -124,6 +125,45 @@ class LabChatScriptsTest {
         assertThat(movedRun.endedAt).isEqualTo(run.endedAt!! + 1_000_000)
     }
 
+    // ── 首页列表与 Git 提交 ──
+
+    @Test
+    fun `ADE 列表在派发后才出现嵌在主会话下的分支，生成中与分支都标为生成中`() {
+        val text = LabAdeText(true)
+        val before = labHubList(LabHubStory.ADE, adeFrame(AdeState(text, stage = ADE_BRANCH)), zh = true)
+        assertThat(before.sessions.map { it.title }).containsExactly(text.sessionTitle)
+        assertThat(before.activity.getValue(before.selectedSessionId)).isEqualTo(HubSessionActivity.GENERATING)
+        val after = labHubList(LabHubStory.ADE, adeFrame(AdeState(text, stage = ADE_DISPATCHED)), zh = true)
+        val branch = after.sessions.single { it.parentSessionId != null }
+        assertThat(branch.title).isEqualTo(text.branchTitle)
+        assertThat(branch.parentSessionId).isEqualTo(after.selectedSessionId)
+        assertThat(after.activity.getValue(branch.id)).isEqualTo(HubSessionActivity.GENERATING)
+        val done = labHubList(LabHubStory.ADE, adeFrame(AdeState(text, stage = ADE_DONE)), zh = true)
+        assertThat(done.activity).doesNotContainKey(done.selectedSessionId)
+    }
+
+    @Test
+    fun `排障列表把当前会话排在开发会话之前，待批准时标为等待批准`() = languages.forEach { zh ->
+        val ops = LabOpsText(zh)
+        val list = labHubList(LabHubStory.OPS, opsFrame(OpsState(ops, stage = OPS_APPROVE3)).atWallClock(1_000_000_000), zh)
+        assertThat(list.sessions.maxBy { it.updatedAt }.id).isEqualTo(list.selectedSessionId)
+        assertThat(list.sessions.map { it.title }).containsExactly(ops.sessionTitle, LabAdeText(zh).sessionTitle, LabAdeText(zh).branchTitle)
+        assertThat(list.activity.getValue(list.selectedSessionId)).isEqualTo(HubSessionActivity.AWAITING_APPROVAL)
+    }
+
+    @Test
+    fun `提交记录六条、从新到旧且父提交首尾相接`() {
+        val now = 1_793_000_000_000L
+        val commits = adeCommitLog(now).commits
+        assertThat(commits).hasSize(6)
+        assertThat(commits.first().shortSha).isEqualTo("4831233")
+        assertThat(commits.map { it.authorTimeSeconds }).isInStrictOrder(Comparator.reverseOrder<Long>())
+        assertThat(commits.first().authorTimeSeconds).isAtMost(now / 1000)
+        commits.zipWithNext().forEach { (child, parent) -> assertThat(child.parents).containsExactly(parent.sha) }
+        assertThat(commits.last().parents).isEmpty()
+        assertThat(commits.map { it.authorName }.toSet()).containsExactly("Starlog Demo")
+    }
+
     // ── 隐私与登记 ──
 
     @Test
@@ -143,7 +183,10 @@ class LabChatScriptsTest {
     @Test
     fun `会话与检查器场景都已登记`() {
         val workflows = listOf("chat.workflow.ade-json", "chat.workflow.ops-502")
-        val states = listOf("chat.state.subagents", "chat.state.background-job", "chat.state.branch-plan", "inspector.state.plan", "inspector.state.git-worktrees")
+        val states = listOf(
+            "chat.state.subagents", "chat.state.background-job", "chat.state.branch-plan", "chat.state.ops-approval", "chat.state.ops-report",
+            "inspector.state.plan", "inspector.state.git-worktrees", "inspector.state.git-commits",
+        )
         workflows.forEach { assertThat(LabScenes.scene(it)).isInstanceOf(LabWorkflowScene::class.java) }
         states.forEach { assertThat(LabScenes.scene(it)).isInstanceOf(LabStateScene::class.java) }
     }

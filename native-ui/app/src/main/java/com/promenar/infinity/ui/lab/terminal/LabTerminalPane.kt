@@ -18,6 +18,9 @@ import com.promenar.infinity.ui.linux.terminal.TerminalTab
 import com.promenar.infinity.ui.linux.terminal.TerminalThemeApplier
 import com.promenar.infinity.ui.linux.terminal.TerminalThemeColors
 import com.promenar.infinity.ui.ssh.RemoteTerminalBuffer
+import com.promenar.infinity.ui.ssh.SSH_TERMINAL_MINE_TAB
+import com.promenar.infinity.ui.ssh.SshTerminalContent
+import com.promenar.infinity.ui.ssh.SshTerminalUiState
 import com.promenar.infinity.ui.ssh.SshTerminalView
 import com.promenar.infinity.ui.ssh.TerminalGrid
 
@@ -51,6 +54,36 @@ internal fun LabTerminalShell(onExit: () -> Unit, script: (columns: Int) -> Stri
         onToggleKeyboard = {},
         onScrollToBottom = {},
         shellPane = { _, modifier -> LabTerminalPane(script, modifier) },
+        imeVisible = false,
+    )
+}
+
+/**
+ * 真实的 SSH 终端页外壳：标题为主机别名，副标题只写“已连接”（不给主机配置，因此不显示账号与地址）。
+ * 终端区与 [LabTerminalShell] 相同，由 [script] 按列数给出整屏文本；断开、按键等操作都是空操作。
+ */
+@Composable
+internal fun LabSshShell(alias: String, onExit: () -> Unit, script: (columns: Int) -> String) {
+    // 只用来让页面进入“已有终端缓冲”的形态，实际渲染由 LabTerminalPane 自己的缓冲完成。
+    val placeholder = remember { RemoteTerminalBuffer() }
+    SshTerminalContent(
+        alias = alias,
+        state = SshTerminalUiState(connecting = false, buffer = placeholder),
+        readOnlyTabs = emptyList(),
+        selectedTab = SSH_TERMINAL_MINE_TAB,
+        atBottom = true,
+        onSelectTab = {},
+        onBack = onExit,
+        onDisconnect = {},
+        onReconnect = {},
+        onKey = {},
+        onToggleCtrl = {},
+        onToggleAlt = {},
+        onToggleKeyboard = {},
+        onScrollToBottom = {},
+        onStopExec = {},
+        shellPane = { modifier -> LabTerminalPane(script, modifier) },
+        readOnlyPane = { _, _, _, _, _ -> },
         imeVisible = false,
     )
 }
