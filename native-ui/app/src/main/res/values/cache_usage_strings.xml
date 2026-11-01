@@ -8,4 +8,15 @@
     <string name="cache_segment_item">%1$s %2$s</string>
     <string name="cache_segment_separator">, </string>
     <string name="generation_stats_cache_coverage">%1$d of %2$d rounds reported</string>
+    <string name="token_cache_title">Input cache</string>
+    <string name="token_cache_coverage">Covers %1$s of requests</string>
+    <plurals name="token_cache_unreported_requests">
+        <item quantity="one">%1$d request didn\'t report cache and isn\'t counted</item>
+        <item quantity="other">%1$d requests didn\'t report cache and aren\'t counted</item>
+    </plurals>
+    <string name="token_cache_none_reported">Your providers haven\'t reported cache data yet</string>
+    <string name="token_cache_hit_short">Cache hit %1$s</string>
+    <string name="token_cost_no_cache_discount">excludes cache discount</string>
+    <string name="token_cost_partial_cache_discount">Some models exclude cache discount</string>
+    <string name="token_trend_cache_read">Cache read</string>
 </resources>

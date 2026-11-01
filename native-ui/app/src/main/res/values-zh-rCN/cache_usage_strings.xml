@@ -8,4 +8,14 @@
     <string name="cache_segment_item">%1$s %2$s</string>
     <string name="cache_segment_separator">，</string>
     <string name="generation_stats_cache_coverage">%1$d/%2$d 轮已报告</string>
+    <string name="token_cache_title">输入缓存</string>
+    <string name="token_cache_coverage">覆盖 %1$s 的请求</string>
+    <plurals name="token_cache_unreported_requests">
+        <item quantity="other">%1$d 次请求未报告缓存，未计入命中率</item>
+    </plurals>
+    <string name="token_cache_none_reported">所用服务商还没有报告缓存数据</string>
+    <string name="token_cache_hit_short">缓存命中 %1$s</string>
+    <string name="token_cost_no_cache_discount">未计缓存折扣</string>
+    <string name="token_cost_partial_cache_discount">部分模型未计缓存折扣</string>
+    <string name="token_trend_cache_read">其中缓存读取</string>
 </resources>

@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.model.estimateTokenCost
 import com.promenar.infinity.data.model.findModelPricing
 import com.promenar.infinity.data.model.findModelSpec
+import com.promenar.infinity.domain.repository.CacheUsageAggregate
 import com.promenar.infinity.domain.repository.DailyTokenStats
 import com.promenar.infinity.domain.repository.CategoryTokenStats
 import com.promenar.infinity.domain.repository.ITokenStatsRepository
@@ -25,7 +27,10 @@ data class ModelCostInfo(
     val inputTokens: Long,
     val outputTokens: Long,
     val costUSD: Double,
-    val pricingAvailable: Boolean
+    val pricingAvailable: Boolean,
+    val cache: CacheUsageAggregate = CacheUsageAggregate(),
+    /** 有缓存读写但缺缓存价，费用按普通输入价计。 */
+    val cacheDiscountMissing: Boolean = false,
 )
 
 enum class TokenStatsErrorCode { LOAD_FAILED, CLEAR_FAILED }
@@ -36,6 +41,9 @@ data class TokenStatsState(
     val globalOutput: Long = 0,
     val globalCostUSD: Double = 0.0,
     val globalHasEstimated: Boolean = false,
+    /** 主模型输入缓存汇总。 */
+    val globalCache: CacheUsageAggregate = CacheUsageAggregate(),
+    val globalCacheDiscountMissing: Boolean = false,
     val modelBreakdown: List<ModelCostInfo> = emptyList(),
     val topSessions: List<SessionTokenUsage> = emptyList(),
     val dailyTrend: List<DailyTokenStats> = emptyList(),
@@ -71,30 +79,29 @@ class TokenUsageViewModel(
                 val dailyTrend = tokenStatsRepository.getDailyTrend(7)
                 val categories = tokenStatsRepository.getUsageByCategory()
 
-                var globalCost = 0.0
                 val modelBreakdown = byModel.map { stats ->
                     val spec = findModelSpec(stats.modelId)
                     val pricing = findModelPricing(stats.modelId)
-                    val cost = if (pricing != null) {
-                        (stats.usage.inputTokens / 1_000_000.0) * pricing.inputPerMillion +
-                        (stats.usage.outputTokens / 1_000_000.0) * pricing.outputPerMillion
-                    } else 0.0
-                    globalCost += cost
+                    val estimate = pricing?.let { estimateTokenCost(it, stats.usage) }
                     ModelCostInfo(
                         name = spec?.note ?: stats.modelId,
                         modelId = stats.modelId,
                         inputTokens = stats.usage.inputTokens,
                         outputTokens = stats.usage.outputTokens,
-                        costUSD = cost,
-                        pricingAvailable = pricing != null
+                        costUSD = estimate?.total ?: 0.0,
+                        pricingAvailable = pricing != null,
+                        cache = stats.usage.cache,
+                        cacheDiscountMissing = estimate?.cacheDiscountMissing == true,
                     )
                 }
 
                 _state.value = TokenStatsState(
                     globalInput = totalUsage.inputTokens,
                     globalOutput = totalUsage.outputTokens,
-                    globalCostUSD = globalCost,
+                    globalCostUSD = modelBreakdown.sumOf { it.costUSD },
                     globalHasEstimated = totalUsage.estimated,
+                    globalCache = totalUsage.cache,
+                    globalCacheDiscountMissing = modelBreakdown.any { it.cacheDiscountMissing },
                     modelBreakdown = modelBreakdown,
                     topSessions = topSessions,
                     dailyTrend = dailyTrend,

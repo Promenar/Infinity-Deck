@@ -2,7 +2,10 @@ package com.promenar.infinity.ui.settings
 
 import android.app.Application
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.domain.repository.CacheUsageAggregate
 import com.promenar.infinity.domain.repository.ITokenStatsRepository
+import com.promenar.infinity.domain.repository.ModelTokenStats
+import com.promenar.infinity.domain.repository.plus
 import com.promenar.infinity.domain.repository.TokenUsageAggregate
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -116,6 +119,32 @@ class TokenUsageViewModelTest {
 
         assertThat(viewModel.state.value.globalInput).isEqualTo(0)
         assertThat(viewModel.state.value.error).isNull()
+    }
+
+    @Test
+    fun `cache aggregate flows into state and cost uses cache prices with missing-discount flag`() = runTest {
+        val repository = successfulRepository()
+        val gptCache = CacheUsageAggregate(requests = 2, reportedRequests = 2, reportedInputTokens = 1_000_000, cacheReadTokens = 800_000)
+        val deepSeekCache = CacheUsageAggregate(requests = 1, reportedRequests = 1, reportedInputTokens = 100_000, cacheReadTokens = 50_000)
+        coEvery { repository.getTotalUsage() } returns TokenUsageAggregate(inputTokens = 1_100_000, cache = gptCache + deepSeekCache)
+        coEvery { repository.getUsageByModel() } returns listOf(
+            ModelTokenStats("gpt-4.1", TokenUsageAggregate(inputTokens = 1_000_000, cache = gptCache)),
+            ModelTokenStats("deepseek-chat", TokenUsageAggregate(inputTokens = 100_000, cache = deepSeekCache)),
+        )
+        val viewModel = TokenUsageViewModel(mockk<Application>(relaxed = true), repository)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertThat(state.globalCache.hitRate).isWithin(1e-9).of(850_000.0 / 1_100_000)
+        val gpt = state.modelBreakdown.single { it.modelId == "gpt-4.1" }
+        // 20 万普通输入 × $2 + 80 万缓存读取 × $0.5
+        assertThat(gpt.costUSD).isWithin(1e-9).of(0.8)
+        assertThat(gpt.cacheDiscountMissing).isFalse()
+        assertThat(gpt.cache).isEqualTo(gptCache)
+        val deepSeek = state.modelBreakdown.single { it.modelId == "deepseek-chat" }
+        assertThat(deepSeek.cacheDiscountMissing).isTrue()
+        assertThat(state.globalCacheDiscountMissing).isTrue()
+        assertThat(state.globalCostUSD).isWithin(1e-9).of(gpt.costUSD + deepSeek.costUSD)
     }
 
     private fun successfulRepository(): ITokenStatsRepository = mockk(relaxed = true) {

@@ -19,6 +19,9 @@ import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.ssh.SshHost
 import com.promenar.infinity.data.termux.TermuxAvailability
 import com.promenar.infinity.data.termux.TermuxCommandResult
+import com.promenar.infinity.domain.repository.CacheUsageAggregate
+import com.promenar.infinity.domain.repository.DailyTokenStats
+import com.promenar.infinity.domain.repository.plus
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.hub.UserSettingsHomeScreenActions
@@ -213,6 +216,50 @@ fun backupPageBatch1() = Batch1PagesTheme {
 @Composable
 fun tokenUsageBatch1() = Batch1PagesTheme {
     TokenUsageScreenContent(TokenStatsState())
+}
+
+private fun cachedTokenStatsState(): TokenStatsState {
+    val claudeCache = CacheUsageAggregate(requests = 18, reportedRequests = 18, reportedInputTokens = 1_240_000, cacheReadTokens = 1_010_000, cacheWriteTokens = 96_000)
+    val deepSeekCache = CacheUsageAggregate(requests = 9, reportedRequests = 7, reportedInputTokens = 410_000, cacheReadTokens = 288_000)
+    val cache = claudeCache + deepSeekCache
+    val days = listOf(
+        "2026-10-27" to 0.62, "2026-10-28" to 0.71, "2026-10-29" to 0.0, "2026-10-30" to 0.78,
+        "2026-10-31" to 0.83, "2026-11-01" to 0.80, "2026-11-02" to 0.86,
+    ).mapIndexed { index, (day, rate) ->
+        val input = 160_000L + index * 30_000L
+        DailyTokenStats(
+            day, input, input / 12,
+            if (rate == 0.0) CacheUsageAggregate(requests = 2) else CacheUsageAggregate(requests = 4, reportedRequests = 4, reportedInputTokens = input, cacheReadTokens = (input * rate).toLong()),
+        )
+    }
+    return TokenStatsState(
+        globalInput = 1_650_000,
+        globalOutput = 142_000,
+        globalCostUSD = 1.42,
+        globalCache = cache,
+        globalCacheDiscountMissing = true,
+        modelBreakdown = listOf(
+            ModelCostInfo("Claude Sonnet 4.6", "claude-sonnet-4-6", 1_240_000, 98_000, 1.07, true, claudeCache),
+            ModelCostInfo("DeepSeek Chat", "deepseek-chat", 410_000, 44_000, 0.35, true, deepSeekCache, cacheDiscountMissing = true),
+        ),
+        dailyTrend = days,
+    )
+}
+
+@PreviewTest
+@Preview(name = "用量缓存 深色中文 411", widthDp = 411, heightDp = 1400, locale = "zh-rCN")
+@Preview(name = "用量缓存 深色中文 360", widthDp = 360, heightDp = 1400, locale = "zh-rCN")
+@Preview(name = "用量缓存 深色英文 360 大字号", widthDp = 360, heightDp = 1600, locale = "en", fontScale = 1.3f)
+@Composable
+fun tokenUsageCacheBatch1() = Batch1PagesTheme {
+    TokenUsageScreenContent(cachedTokenStatsState())
+}
+
+@PreviewTest
+@Preview(name = "用量缓存 浅色中文 411", widthDp = 411, heightDp = 1400, locale = "zh-rCN")
+@Composable
+fun tokenUsageCacheLightBatch1() = Batch1PagesTheme(dark = false) {
+    TokenUsageScreenContent(cachedTokenStatsState())
 }
 
 @PreviewTest

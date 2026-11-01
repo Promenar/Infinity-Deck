@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +55,16 @@ import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.SettingsSectionHeader
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.pluralStringResource
+import com.promenar.infinity.ui.common.CacheSegmentBar
+import com.promenar.infinity.ui.common.formatCacheHitRate
+import com.promenar.infinity.domain.repository.CacheUsageAggregate
 
 @Composable
 fun TokenUsageScreen(
@@ -136,6 +147,11 @@ internal fun TokenUsageScreenContent(
             }
         } else {
             GlobalStatsCard(state)
+
+            if (state.globalCache.requests > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+                CacheUsageCard(state.globalCache)
+            }
 
             if (state.categoryBreakdown.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
@@ -302,6 +318,76 @@ private fun GlobalStatsCard(state: TokenStatsState) {
                     ),
                     color = MaterialTheme.colorScheme.tertiary
                 )
+                if (state.globalCacheDiscountMissing) {
+                    Text(
+                        text = stringResource(R.string.token_cost_partial_cache_discount),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 主模型输入缓存：命中率、读取 / 写入 / 未缓存分段条与报告覆盖情况。 */
+@Composable
+private fun CacheUsageCard(cache: CacheUsageAggregate) {
+    val colors = MaterialTheme.colorScheme
+    val locale = LocalConfiguration.current.locales[0] ?: java.util.Locale.ROOT
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag(TOKEN_USAGE_CACHE_CARD_TAG),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.token_cache_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+                val coverage = cache.coverage
+                if (coverage != null && cache.reportedRequests in 1 until cache.requests) {
+                    Text(
+                        text = stringResource(R.string.token_cache_coverage, java.text.NumberFormat.getPercentInstance(locale).format(coverage)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+            }
+            val rate = cache.hitRate
+            if (rate == null) {
+                Text(
+                    text = stringResource(R.string.token_cache_none_reported),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+                return@Column
+            }
+            val rateText = formatCacheHitRate(rate, locale)
+            val rateDescription = stringResource(R.string.token_cache_hit_short, rateText)
+            Text(
+                text = rateText,
+                style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum", fontWeight = FontWeight.Bold),
+                color = colors.primary,
+                modifier = Modifier.clearAndSetSemantics { contentDescription = rateDescription },
+            )
+            CacheSegmentBar(
+                readTokens = cache.cacheReadTokens,
+                writeTokens = cache.cacheWriteTokens,
+                uncachedTokens = (cache.reportedInputTokens - cache.cacheReadTokens - cache.cacheWriteTokens).coerceAtLeast(0),
+                formatCount = ::formatTokenCount,
+            )
+            val unreported = (cache.requests - cache.reportedRequests).coerceAtLeast(0)
+            if (unreported > 0) {
+                Text(
+                    text = pluralStringResource(R.plurals.token_cache_unreported_requests, unreported.toInt(), unreported.toInt()),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                )
             }
         }
     }
@@ -333,6 +419,10 @@ private fun TrendChart(dailyTrend: List<DailyTokenStats>) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val tertiaryColor = MaterialTheme.colorScheme.tertiary
     val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val cacheColor = com.promenar.infinity.ui.common.CacheSegmentColors.read()
+    val hasCache = dailyTrend.any { it.cache.reportedRequests > 0 }
+    val locale = LocalConfiguration.current.locales[0] ?: java.util.Locale.ROOT
+    val hitLabels = dailyTrend.map { day -> day.cache.hitRate?.let { java.text.NumberFormat.getPercentInstance(locale).format(it) } }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -378,6 +468,37 @@ private fun TrendChart(dailyTrend: List<DailyTokenStats>) {
                     }
                 }
 
+                // 缓存读取与输入同一刻度，画成输入线下方的面积；只连接报告了缓存的日子。
+                if (hasCache) {
+                    // 未报告缓存的日子断开面积，避免画成“缓存为 0”。
+                    var run = mutableListOf<Offset>()
+                    fun flush() {
+                        if (run.isNotEmpty()) {
+                            val path = Path().apply {
+                                moveTo(run.first().x, chartHeight)
+                                run.forEach { lineTo(it.x, it.y) }
+                                lineTo(run.last().x, chartHeight)
+                                close()
+                            }
+                            if (run.size == 1) {
+                                drawLine(cacheColor.copy(alpha = 0.4f), Offset(run[0].x, chartHeight), run[0], strokeWidth = 4.dp.toPx())
+                            } else {
+                                drawPath(path = path, color = cacheColor.copy(alpha = 0.22f))
+                            }
+                        }
+                        run = mutableListOf()
+                    }
+                    dailyTrend.forEachIndexed { index, stats ->
+                        if (stats.cache.reportedRequests == 0L) {
+                            flush()
+                        } else {
+                            val x = if (dailyTrend.size > 1) index * stepX else chartWidth / 2f
+                            run.add(Offset(x, chartHeight - (stats.cache.cacheReadTokens.toFloat() / maxTokens * chartHeight)))
+                        }
+                    }
+                    flush()
+                }
+
                 drawPath(
                     path = outputPath,
                     color = tertiaryColor.copy(alpha = 0.6f),
@@ -400,19 +521,25 @@ private fun TrendChart(dailyTrend: List<DailyTokenStats>) {
                 }
 
                 drawContext.canvas.nativeCanvas.apply {
-                    val paint = android.graphics.Paint().apply {
-                        color = onSurfaceVariantColor.copy(alpha = 0.5f).value.toLong().toInt()
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = onSurfaceVariantColor.copy(alpha = 0.7f).toArgb()
                         textSize = 10.dp.toPx()
                         textAlign = android.graphics.Paint.Align.CENTER
                     }
+                    val hitPaint = android.graphics.Paint(paint).apply { color = primaryColor.toArgb() }
                     dailyTrend.forEachIndexed { index, stats ->
                         val x = if (dailyTrend.size > 1) index * stepX else chartWidth / 2f
-                        drawText(
-                            stats.day.takeLast(5),
-                            x,
-                            size.height,
-                            paint
-                        )
+                        val day = stats.day.takeLast(5)
+                        val half = paint.measureText(day) / 2
+                        drawText(day, x.coerceIn(half, chartWidth - half), size.height, paint)
+                    }
+                    // 当日命中率标在输入点上方。
+                    dailyTrend.forEachIndexed { index, stats ->
+                        val label = hitLabels[index] ?: return@forEachIndexed
+                        val x = if (dailyTrend.size > 1) index * stepX else chartWidth / 2f
+                        val inputY = chartHeight - (stats.inputTokens.toFloat() / maxTokens * chartHeight)
+                        val labelX = x.coerceIn(hitPaint.measureText(label) / 2, chartWidth - hitPaint.measureText(label) / 2)
+                        drawText(label, labelX, (inputY - 6.dp.toPx()).coerceAtLeast(10.dp.toPx()), hitPaint)
                     }
                 }
             }
@@ -449,6 +576,21 @@ private fun TrendChart(dailyTrend: List<DailyTokenStats>) {
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
                     color = onSurfaceVariantColor
                 )
+                if (hasCache) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(cacheColor.copy(alpha = 0.4f))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.token_trend_cache_read),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
+                        color = onSurfaceVariantColor
+                    )
+                }
             }
         }
     }
@@ -460,13 +602,17 @@ private fun ModelBreakdownRow(model: ModelCostInfo) {
         model.pricingAvailable && model.costUSD > 0.0 -> "$%.4f".format(model.costUSD)
         !model.pricingAvailable -> stringResource(R.string.token_pricing_unavailable)
         else -> null
-    }
+    }?.let { if (model.cacheDiscountMissing) it + " " + stringResource(R.string.token_cost_no_cache_discount) else it }
+    val locale = LocalConfiguration.current.locales[0] ?: java.util.Locale.ROOT
+    val cacheHit = model.cache.hitRate?.let { stringResource(R.string.token_cache_hit_short, formatCacheHitRate(it, locale)) }
     InfinitySettingsRowLayout(
         title = if (model.modelId == com.promenar.infinity.data.rag.KgUsageStore.OTHER_MODEL_ID) stringResource(R.string.kg_usage_other_models) else model.name,
         subtitle = listOfNotNull(
             stringResource(R.string.token_in_out, formatTokenCount(model.inputTokens), formatTokenCount(model.outputTokens)),
+            cacheHit,
             cost,
-        ).joinToString(" · "),  // wrap-check: allow 单行省略
+        ).joinToString(" · "),
+        subtitleMaxLines = 3,
         trailingContent = {
             Text(
                 text = formatTokenCount(model.inputTokens + model.outputTokens),
@@ -476,6 +622,8 @@ private fun ModelBreakdownRow(model: ModelCostInfo) {
         },
     )
 }
+
+internal const val TOKEN_USAGE_CACHE_CARD_TAG = "TOKEN_USAGE_CACHE_CARD"
 
 private fun formatTokenCount(count: Long): String {
     return when {
