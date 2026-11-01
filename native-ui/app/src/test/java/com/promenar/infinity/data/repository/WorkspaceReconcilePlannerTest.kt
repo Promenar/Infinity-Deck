@@ -92,15 +92,79 @@ class WorkspaceReconcilePlannerTest {
     }
 
     @Test
-    fun `inode 相同但内容变化时按删除加新增处理`() {
+    fun `inode 相同且改名后内容变化时保留身份并更新哈希`() {
         val before = snapshot("/a.txt" to file(5, 7, "11"))
         val after = snapshot("/b.txt" to file(6, 8, "11"))
         val plan = WorkspaceReconcilePlanner.plan(
             listOf(indexed("a", "/a.txt", 5, "h")), before, after, Hasher(mapOf("/b.txt" to "nb")),
         )
+        assertThat(plan.moves).containsExactly(PlannedWorkspaceMove("a", "/a.txt", "/b.txt"))
+        assertThat(plan.updates).containsExactly(PlannedWorkspaceUpdate("a", "/b.txt", 6, "nb"))
+        assertThat(plan.deletes).isEmpty()
+        assertThat(plan.inserts).isEmpty()
+    }
+
+    @Test
+    fun `改名后原路径新建同名文件时旧身份跟随inode`() {
+        val before = snapshot("/a.txt" to file(3, 1, "old"))
+        val after = snapshot("/a.txt" to file(3, 2, "new"), "/b.txt" to file(3, 1, "old"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("a", "/a.txt", 3, "old-hash")), before, after,
+            Hasher(mapOf("/a.txt" to "new-hash")),
+        )
+        assertThat(plan.moves).containsExactly(PlannedWorkspaceMove("a", "/a.txt", "/b.txt"))
+        assertThat(plan.inserts).containsExactly(PlannedWorkspaceInsert("/a.txt", false, 3, "new-hash"))
+        assertThat(plan.updates).isEmpty()
+        assertThat(plan.deletes).isEmpty()
+    }
+
+    @Test
+    fun `跨目录移动后修改内容仍保留身份`() {
+        val before = snapshot("/a" to dir("d1"), "/b" to dir("d2"), "/a/f" to file(1, 1, "f"))
+        val after = snapshot("/a" to dir("d1"), "/b" to dir("d2"), "/b/f" to file(2, 2, "f"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("d1", "/a", directory = true), indexed("d2", "/b", directory = true),
+                indexed("f", "/a/f", 1, "old", parent = "d1")), before, after, Hasher(mapOf("/b/f" to "new")),
+        )
+        assertThat(plan.moves).containsExactly(PlannedWorkspaceMove("f", "/a/f", "/b/f"))
+        assertThat(plan.updates).containsExactly(PlannedWorkspaceUpdate("f", "/b/f", 2, "new"))
+        assertThat(plan.deletes).isEmpty()
+        assertThat(plan.inserts).isEmpty()
+    }
+
+    @Test
+    fun `已索引的历史mnt目录和子项保持身份`() {
+        val tree = snapshot("/mnt" to dir("d"), "/mnt/a.txt" to file(1, 1, "f"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("d", "/mnt", directory = true), indexed("f", "/mnt/a.txt", 1, "h", parent = "d")),
+            tree, tree, Hasher(emptyMap()),
+        )
+        assertThat(plan.isEmpty).isTrue()
+    }
+
+    @Test
+    fun `路径交换时两个UUID跟随各自inode`() {
+        val before = snapshot("/a" to file(1, 1, "a"), "/b" to file(1, 1, "b"))
+        val after = snapshot("/a" to file(1, 1, "b"), "/b" to file(1, 1, "a"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("a", "/a", 1, "ha"), indexed("b", "/b", 1, "hb")), before, after, Hasher(emptyMap()),
+        )
+        assertThat(plan.moves).containsExactly(PlannedWorkspaceMove("a", "/a", "/b"), PlannedWorkspaceMove("b", "/b", "/a"))
+        assertThat(plan.inserts).isEmpty()
+        assertThat(plan.deletes).isEmpty()
+    }
+
+    @Test
+    fun `硬链接身份有歧义时不猜测移动来源`() {
+        val before = snapshot("/a" to file(1, 1, "shared"), "/b" to file(1, 1, "shared"))
+        val after = snapshot("/c" to file(1, 1, "shared"), "/d" to file(1, 1, "shared"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("a", "/a", 1, "h"), indexed("b", "/b", 1, "h")), before, after,
+            Hasher(mapOf("/c" to "h", "/d" to "h")),
+        )
         assertThat(plan.moves).isEmpty()
-        assertThat(plan.deletes.map { it.uuid }).containsExactly("a")
-        assertThat(plan.inserts).containsExactly(PlannedWorkspaceInsert("/b.txt", false, 6, "nb"))
+        assertThat(plan.deletes.map { it.uuid }).containsExactly("a", "b")
+        assertThat(plan.inserts.map { it.path }).containsExactly("/c", "/d")
     }
 
     @Test

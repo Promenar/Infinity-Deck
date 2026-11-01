@@ -1295,6 +1295,12 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         ), subagentRunStore, title = { sessionId -> sessionRepository.getById(sessionId)?.title })
     }
 
+    private val workspaceIdentityBaselines by lazy {
+        com.promenar.infinity.data.repository.WorkspaceIdentityBaselineStore(
+            File(noBackupFilesDir, "workspace-identity-baselines"),
+        )
+    }
+
     val workspaceRepository: com.promenar.infinity.domain.repository.IWorkspaceRepository by lazy {
         val lifecycle = com.promenar.infinity.data.repository.WorkspaceLifecycleTransaction(database)
         WorkspaceRepository(
@@ -1302,6 +1308,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             database.workspaceSeqDao(),
             File(filesDir, "session_workspaces"),
             fileOps = privateWorkspaceFileOps,
+            identityBaselines = workspaceIdentityBaselines,
             deleteCommitter = com.promenar.infinity.data.repository.WorkspaceDeletionTransaction(database)::delete,
             beforeDeleteCommitted = { workspaceRootUuid, ids ->
                 awaitVectorizationQueue().acquireDeleteBarrier(workspaceRootUuid, ids)
@@ -1632,6 +1639,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             database.fileEntryDao(),
             database.fileVersionDao(),
             fileOps = privateWorkspaceFileOps,
+            identityBaselines = workspaceIdentityBaselines,
             indexEventSink = pendingDocumentIndexCoordinator,
             executionGate = sessionExecutionGate,
         )
@@ -2231,6 +2239,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             LegacyWorkspaceRootAdoptionCoordinator(filesDir, File(filesDir, "session_workspaces"),
                 database.sessionDao(), database.fileEntryDao(), workspaceRepository),
             WorkspaceRepository(database.fileEntryDao(), database.workspaceSeqDao(),
+                identityBaselines = workspaceIdentityBaselines,
                 deleteCommitter = com.promenar.infinity.data.repository.WorkspaceDeletionTransaction(database)::delete),
         ).recover()
     }

@@ -19,8 +19,8 @@ import java.util.concurrent.TimeUnit
 /**
  * 命令直接改动工作区物理目录后的索引对账。
  *
- * 命令运行前后各遍历一次物理树，以数据库索引为准计算新增、修改、删除与移动：
- * 只对 size、mtime、inode 有变化或缺少前快照的文件重算 SHA-256；同一 inode 换路径且内容未变视为移动，保留条目身份。
+ * 以前快照或上次成功对账的持久身份基线计算新增、修改、删除与移动。
+ * 只对 size、mtime、inode 有变化或缺少基线的文件重算 SHA-256；唯一 fileKey 换路径时保留条目身份。
  * 保留路径（`.infinity*`、`.recycle_bin`、未入索引的顶层 `mnt`）、符号链接与特殊文件不写入索引，只作为警告返回。
  */
 enum class WorkspaceScanKind { FILE, DIRECTORY, UNSUPPORTED }
@@ -40,6 +40,10 @@ data class WorkspaceTreeSnapshot(
 
 fun interface WorkspaceTreeScanner {
     fun scan(root: Path): WorkspaceTreeSnapshot
+
+    /** 事务完成后仅刷新索引涉及的路径，不遍历整棵树。 */
+    fun scanPaths(root: Path, paths: List<String>): Map<String, WorkspaceScanNode> =
+        scan(root).nodes.filterKeys { it in paths }
 }
 
 internal fun isReservedWorkspaceName(name: String): Boolean =
@@ -69,6 +73,42 @@ object SecureWorkspaceTreeScanner : WorkspaceTreeScanner {
         val reserved = LinkedHashMap<String, WorkspaceScanNode>()
         secure.use { walk(it, "", inReserved = false, nodes, reserved) }
         return WorkspaceTreeSnapshot(nodes, reserved)
+    }
+
+    override fun scanPaths(root: Path, paths: List<String>): Map<String, WorkspaceScanNode> {
+        val stream = Files.newDirectoryStream(root)
+        val secure = stream as? SecureDirectoryStream<Path> ?: run {
+            stream.close()
+            throw SecurityException("当前文件系统不支持安全路径属性读取")
+        }
+        return secure.use { directory ->
+            paths.associateWith { path -> readPath(directory, root, path.trim('/').split('/'), 0) }
+        }
+    }
+
+    private fun readPath(
+        directory: SecureDirectoryStream<Path>, root: Path, parts: List<String>, offset: Int,
+    ): WorkspaceScanNode {
+        val text = parts[offset]
+        require(isIndexableWorkspaceName(text) && !isReservedWorkspaceName(text))
+        val name = root.fileSystem.getPath(text)
+        if (offset < parts.lastIndex) {
+            return directory.newDirectoryStream(name, LinkOption.NOFOLLOW_LINKS).use { child ->
+                readPath(child, root, parts, offset + 1)
+            }
+        }
+        return scanNode(directory.getFileAttributeView(name, BasicFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS).readAttributes())
+    }
+
+    private fun scanNode(attributes: BasicFileAttributes): WorkspaceScanNode {
+        val kind = when {
+            attributes.isSymbolicLink || attributes.isOther -> WorkspaceScanKind.UNSUPPORTED
+            attributes.isDirectory -> WorkspaceScanKind.DIRECTORY
+            attributes.isRegularFile -> WorkspaceScanKind.FILE
+            else -> WorkspaceScanKind.UNSUPPORTED
+        }
+        return WorkspaceScanNode(kind, if (kind == WorkspaceScanKind.FILE) attributes.size() else 0L,
+            attributes.lastModifiedTime().to(TimeUnit.NANOSECONDS), attributes.fileKey()?.toString())
     }
 
     private fun walk(
@@ -145,7 +185,7 @@ data class WorkspaceReconcilePlan(
 
 object WorkspaceReconcilePlanner {
     /**
-     * @param before 命令前快照；崩溃恢复时为 null，此时全部文件重算哈希且不识别移动。
+     * @param before 命令前快照或有效持久基线；缺失时全部文件重算哈希且不识别移动。
      * @param hash 读取当前文件的 SHA-256；文件已消失时返回 null。
      */
     fun plan(
@@ -154,63 +194,59 @@ object WorkspaceReconcilePlanner {
         after: WorkspaceTreeSnapshot,
         hash: (String) -> String?,
     ): WorkspaceReconcilePlan {
-        val removed = mutableListOf<IndexedWorkspaceNode>()
-        val kept = HashSet<String>()
-        val updates = mutableListOf<PlannedWorkspaceUpdate>()
-        for (entry in indexed.sortedBy { it.path }) {
-            val node = after.nodes[entry.path]
-            val sameKind = node != null && node.kind != WorkspaceScanKind.UNSUPPORTED &&
-                (node.kind == WorkspaceScanKind.DIRECTORY) == entry.isDirectory
-            if (!sameKind) {
-                removed += entry
-                continue
-            }
-            kept += entry.path
-            if (entry.isDirectory) continue
-            if (before?.nodes?.get(entry.path) == node && node.sizeBytes == entry.sizeBytes) continue
-            val current = hash(entry.path)
-            if (current == null) {
-                kept -= entry.path
-                removed += entry
-            } else if (current != entry.hash || node.sizeBytes != entry.sizeBytes) {
-                updates += PlannedWorkspaceUpdate(entry.uuid, entry.path, node.sizeBytes, current)
+        val reserved = sortedSetOf<String>()
+        val indexedPaths = indexed.mapTo(HashSet()) { it.path }
+        fun allowed(path: String): Boolean = path in indexedPaths ||
+            (path != "/mnt" && !path.startsWith("/mnt/") && path != "/skills" && !path.startsWith("/skills/"))
+        val available = after.nodes.filter { (path, node) ->
+            if (!allowed(path)) reserved += path
+            node.kind != WorkspaceScanKind.UNSUPPORTED && allowed(path)
+        }
+        fun uniqueKeys(nodes: Map<String, WorkspaceScanNode>) = nodes.entries
+            .filter { it.value.fileKey != null && it.value.kind != WorkspaceScanKind.UNSUPPORTED }
+            .groupBy { it.value.fileKey!! }.filterValues { it.size == 1 }.mapValues { it.value.single().key }
+        val priorByKey = uniqueKeys(before?.nodes.orEmpty())
+        val currentByKey = uniqueKeys(after.nodes)
+        val destinations = mutableMapOf<String, String>()
+        val claimed = mutableSetOf<String>()
+        // 先按身份分配全部目标，再按原路径兜底；原名重建和路径互换不会抢走移动条目的 UUID。
+        for (entry in indexed) {
+            val prior = before?.nodes?.get(entry.path) ?: continue
+            val key = prior.fileKey ?: continue
+            val target = currentByKey[key]?.takeIf { priorByKey[key] == entry.path } ?: continue
+            val node = available[target] ?: continue
+            if ((prior.kind == WorkspaceScanKind.DIRECTORY) != entry.isDirectory ||
+                (node.kind == WorkspaceScanKind.DIRECTORY) != entry.isDirectory) continue
+            if (claimed.add(target)) destinations[entry.uuid] = target
+        }
+        for (entry in indexed) {
+            if (entry.uuid in destinations) continue
+            val node = available[entry.path] ?: continue
+            if ((node.kind == WorkspaceScanKind.DIRECTORY) == entry.isDirectory && claimed.add(entry.path)) {
+                destinations[entry.uuid] = entry.path
             }
         }
-
-        val reserved = sortedSetOf<String>()
-        val candidates = after.nodes.filter { (path, node) ->
-            node.kind != WorkspaceScanKind.UNSUPPORTED && path !in kept
-        }.keys.filter { path ->
-            // 保留虚拟根会遮蔽同名物理目录；命令新建的条目不进入虚拟工作区索引。
-            val mountNamespace = path == "/mnt" || path.startsWith("/mnt/") || path == "/skills" || path.startsWith("/skills/")
-            if (mountNamespace) reserved += path
-            !mountNamespace
-        }.sortedWith(compareBy({ it.count { char -> char == '/' } }, { it }))
-
-        val removedByKey = removed.mapNotNull { entry ->
-            val prior = before?.nodes?.get(entry.path) ?: return@mapNotNull null
-            val key = prior.fileKey ?: return@mapNotNull null
-            if ((prior.kind == WorkspaceScanKind.DIRECTORY) != entry.isDirectory) return@mapNotNull null
-            key to entry
-        }.groupBy({ it.first }, { it.second }).filterValues { it.size == 1 }.mapValues { it.value.single() }
-        val moved = HashSet<String>()
+        val kept = mutableSetOf<String>()
+        val removed = mutableListOf<IndexedWorkspaceNode>()
         val moves = mutableListOf<PlannedWorkspaceMove>()
+        val updates = mutableListOf<PlannedWorkspaceUpdate>()
+        for (entry in indexed.sortedBy { it.path }) {
+            val path = destinations[entry.uuid]
+            val node = path?.let(available::get)
+            if (node == null) { removed += entry; continue }
+            if (!entry.isDirectory && (before?.nodes?.get(entry.path) != node || node.sizeBytes != entry.sizeBytes)) {
+                val current = hash(path)
+                if (current == null) { removed += entry; continue }
+                if (current != entry.hash || node.sizeBytes != entry.sizeBytes) {
+                    updates += PlannedWorkspaceUpdate(entry.uuid, path, node.sizeBytes, current)
+                }
+            }
+            kept += path
+            if (entry.path != path) moves += PlannedWorkspaceMove(entry.uuid, entry.path, path)
+        }
         val inserts = mutableListOf<PlannedWorkspaceInsert>()
-        for (path in candidates) {
-            val node = after.nodes.getValue(path)
-            val source = node.fileKey?.let(removedByKey::get)?.takeIf {
-                it.uuid !in moved && it.isDirectory == (node.kind == WorkspaceScanKind.DIRECTORY)
-            }
-            val pureMove = source != null && (source.isDirectory || run {
-                val prior = before?.nodes?.get(source.path)
-                prior != null && prior.sizeBytes == node.sizeBytes && prior.modifiedNanos == node.modifiedNanos &&
-                    source.sizeBytes == node.sizeBytes
-            })
-            if (source != null && pureMove) {
-                moved += source.uuid
-                moves += PlannedWorkspaceMove(source.uuid, source.path, path)
-                continue
-            }
+        for (path in available.keys.filter { it !in kept }.sortedWith(compareBy({ it.count { char -> char == '/' } }, { it }))) {
+            val node = available.getValue(path)
             if (node.kind == WorkspaceScanKind.DIRECTORY) {
                 inserts += PlannedWorkspaceInsert(path, isDirectory = true, sizeBytes = 0L, hash = "")
             } else {
@@ -231,7 +267,7 @@ object WorkspaceReconcilePlanner {
             inserts = inserts,
             updates = updates,
             moves = moves,
-            deletes = removed.filter { it.uuid !in moved },
+            deletes = removed,
             reservedChanges = reserved.toList(),
             unsupported = unsupported,
         )

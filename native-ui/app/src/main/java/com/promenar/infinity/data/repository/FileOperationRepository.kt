@@ -33,6 +33,7 @@ class FileOperationRepository(
     private val clock: () -> Long = System::currentTimeMillis,
     private val executionGate: SessionExecutionGate? = null,
     private val textPolicy: WorkspaceTextContentPolicy = WorkspaceTextContentPolicy(),
+    private val identityBaselines: WorkspaceIdentityBaselineStore? = null,
 ) : IFileOperationRepository {
 
     override suspend fun writeFileAtomicExact(
@@ -252,6 +253,19 @@ class FileOperationRepository(
         newContent: String,
         sessionId: String?,
         budget: WorkspaceTextBudget = WorkspaceTextContentPolicy.budgetFor(WorkspaceTextOperation.WRITE),
+    ): CommittedIndexTarget? {
+        val baselines = identityBaselines
+        return if (baselines == null) commitContentChangeTracked(entry, newContent, sessionId, budget)
+        else baselines.trackMutation(bindRoot(entry.workspaceRootUuid), dao, entry.uuid) {
+            commitContentChangeTracked(entry, newContent, sessionId, budget)
+        }
+    }
+
+    private suspend fun commitContentChangeTracked(
+        entry: FileEntry,
+        newContent: String,
+        sessionId: String?,
+        budget: WorkspaceTextBudget,
     ): CommittedIndexTarget? {
         val root = File(entry.physicalRootPath).toPath()
         val old = readRawText(entry, WorkspaceTextOperation.WRITE, budget)

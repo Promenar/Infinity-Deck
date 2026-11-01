@@ -15,6 +15,17 @@ object PathWorkspaceTreeScanner : WorkspaceTreeScanner {
         return WorkspaceTreeSnapshot(nodes, reserved)
     }
 
+    override fun scanPaths(root: Path, paths: List<String>): Map<String, WorkspaceScanNode> = paths.associateWith { path ->
+        val attributes = Files.readAttributes(root.resolve(path.trimStart('/')), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        val kind = when {
+            attributes.isSymbolicLink || attributes.isOther -> WorkspaceScanKind.UNSUPPORTED
+            attributes.isDirectory -> WorkspaceScanKind.DIRECTORY
+            else -> WorkspaceScanKind.FILE
+        }
+        WorkspaceScanNode(kind, if (kind == WorkspaceScanKind.FILE) attributes.size() else 0L,
+            attributes.lastModifiedTime().to(TimeUnit.NANOSECONDS), attributes.fileKey()?.toString())
+    }
+
     private fun walk(
         directory: Path,
         prefix: String,

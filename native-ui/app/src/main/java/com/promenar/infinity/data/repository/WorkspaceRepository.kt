@@ -73,6 +73,7 @@ class WorkspaceRepository(
     private val mutationJournal: WorkspaceFileMutationJournal? = null,
     private val treeScanner: WorkspaceTreeScanner = SecureWorkspaceTreeScanner,
     private val indexEventSink: FileIndexEventSink = FileIndexEventSink.None,
+    private val identityBaselines: WorkspaceIdentityBaselineStore? = null,
 ) : IWorkspaceRepository, WorkspaceCommandHost {
     @Volatile
     private var defaultParentIdentity: String? = null
@@ -326,7 +327,7 @@ class WorkspaceRepository(
         content: String,
         parentUuid: String?,
         materializedPath: String,
-    ): FileEntry = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
+    ): FileEntry = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) { root ->
         val parent = requireParent(root, parentUuid)
         validateName(name)
         val normalizedPath = validateMaterializedPath(root, materializedPath)
@@ -390,7 +391,7 @@ class WorkspaceRepository(
         materializedPath: String,
         maxBytes: Long,
         writer: (OutputStream) -> Unit,
-    ): FileEntry = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
+    ): FileEntry = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) { root ->
         require(maxBytes > 0) { "maxBytes 必须大于 0" }
         val parent = requireParent(root, parentUuid)
         validateName(name)
@@ -455,7 +456,7 @@ class WorkspaceRepository(
         name: String,
         parentUuid: String?,
         materializedPath: String,
-    ): FileEntry = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
+    ): FileEntry = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) { root ->
         val parent = requireParent(root, parentUuid)
         validateName(name)
         val normalizedPath = validateMaterializedPath(root, materializedPath)
@@ -516,7 +517,7 @@ class WorkspaceRepository(
     override suspend fun moveEmptyDirectoryToRecycleBin(workspaceRootUuid: String, uuid: String) =
         recycleIfHash(workspaceRootUuid, uuid, null, emptyOnly = true)
 
-    private suspend fun recycleIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String?, emptyOnly: Boolean = false) = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
+    private suspend fun recycleIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String?, emptyOnly: Boolean = false) = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) { root ->
         val entry = dao.getAnyStateByUuidForLifecycle(workspaceRootUuid, uuid) ?: return@withRootMutation
         if (entry.uuid == workspaceRootUuid) throw SecurityException("工作区根目录不可回收")
         if (entry.inRecycleBin) return@withRootMutation
@@ -563,7 +564,7 @@ class WorkspaceRepository(
         commitRecycleMove(entry, originalPath, recyclePath, updates)
     } }
 
-    override suspend fun restoreFromRecycleBin(workspaceRootUuid: String, uuid: String) = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) {
+    override suspend fun restoreFromRecycleBin(workspaceRootUuid: String, uuid: String) = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) {
         val entry = dao.getAnyStateByUuidForLifecycle(workspaceRootUuid, uuid) ?: return@withRootMutation
         if (!entry.inRecycleBin) return@withRootMutation
         val originalPath = entry.originalMaterializedPath
@@ -659,12 +660,12 @@ class WorkspaceRepository(
         commitRestoreMove(entry, entry.materializedPath, originalPath, updates)
     } }
 
-    override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String) = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) {
+    override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String) = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) {
         permanentDeleteLocked(workspaceRootUuid, uuid)
     } }
 
     override suspend fun rollbackCreatedEntry(workspaceRootUuid: String, uuid: String) = withContext(Dispatchers.IO) {
-        withRootMutation(workspaceRootUuid) {
+        withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) {
             val key = creationRollbackKey(workspaceRootUuid, uuid)
             if (!creationRollbackAuthorizations.remove(key)) {
                 throw WorkspaceLifecycleException(
@@ -802,7 +803,7 @@ class WorkspaceRepository(
     }
 
     suspend fun cleanupPendingTombstones(workspaceRootUuid: String) = withContext(Dispatchers.IO) {
-        withRootMutation(workspaceRootUuid) { root ->
+        withRootMutation(workspaceRootUuid, preserveBaseline = true) { root ->
             recoverPendingTombstonesLocked(root)
         }
     }
@@ -822,7 +823,7 @@ class WorkspaceRepository(
     }
 
     override suspend fun updateParent(workspaceRootUuid: String, uuid: String, newParentUuid: String) =
-        withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) {
+        withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) {
             val entry = dao.getActiveByUuid(workspaceRootUuid, uuid) ?: return@withRootMutation
             val parent = dao.getActiveByUuid(workspaceRootUuid, newParentUuid)
                 ?: throw SecurityException("目标父目录不属于当前工作区")
@@ -856,7 +857,7 @@ class WorkspaceRepository(
         newName: String,
         expectedName: String?,
     ): RenameResult = withContext(Dispatchers.IO) {
-        withRootMutation(workspaceRootUuid) {
+        withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) {
                     validateName(newName)
                     val entry = dao.getActiveByUuid(workspaceRootUuid, uuid)
                         ?: return@withRootMutation RenameResult.NotFound
@@ -935,7 +936,7 @@ class WorkspaceRepository(
         expectedName: String?,
         expectedHash: String?,
     ): RenameResult = withContext(Dispatchers.IO) {
-        withRootMutation(workspaceRootUuid) {
+        withRootMutation(workspaceRootUuid, baselineEntryUuid = uuid) {
             validateName(newName)
             val entry = dao.getActiveByUuid(workspaceRootUuid, uuid) ?: return@withRootMutation RenameResult.NotFound
             val parent = dao.getActiveByUuid(workspaceRootUuid, newParentUuid)
@@ -1044,7 +1045,7 @@ class WorkspaceRepository(
         sessionId: String?,
         jobId: String,
         staging: File,
-    ): File = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid) { root ->
+    ): File = withContext(Dispatchers.IO) { withRootMutation(workspaceRootUuid, preserveBaseline = true) { root ->
         val physical = File(root.physicalRootPath)
         BackgroundWorkspace(fileOps).prepare(physical, workspaceRootUuid, sessionId, jobId, staging)
         physical
@@ -1092,6 +1093,7 @@ class WorkspaceRepository(
     ): WorkspaceChangeReport {
         val rootPath = File(root.physicalRootPath).toPath()
         val scanEpoch = if (externalCommitHeld) 0L else WorkspaceExternalMutationCoordinator.scanEpoch(rootPath)
+        val effectiveBefore = before ?: identityBaselines?.load(root)
         val after = treeScanner.scan(rootPath)
         val active = dao.getAllStatesByWorkspaceRootForCleanup(root.uuid).filter { entry ->
             !entry.inRecycleBin && entry.uuid != root.uuid && entry.parentUuid != null &&
@@ -1109,17 +1111,25 @@ class WorkspaceRepository(
                     hash = entry.hash,
                 )
             },
-            before = before,
+            before = effectiveBefore,
             after = after,
         ) { path ->
             runCatching { fileOps.inspect(rootPath, relative(path)) }.getOrNull()
                 ?.takeIf { it.kind == "file" }?.sha256
         }
+        val stagedBaseline = identityBaselines?.stage(root, after)
         val apply: suspend () -> WorkspaceChangeReport = {
+            // 任何部分提交或进程中断都不能让旧身份映射跨越索引事务。
+            identityBaselines?.invalidate(root)
             if (!plan.isEmpty) applyCommandReconcile(root, plan, byUuid, sessionId)
+            stagedBaseline?.publish()
             WorkspaceChangeReport.from(plan)
         }
-        return if (externalCommitHeld) apply() else WorkspaceExternalMutationCoordinator.commit(rootPath, scanEpoch, apply)
+        return try {
+            if (externalCommitHeld) apply() else WorkspaceExternalMutationCoordinator.commit(rootPath, scanEpoch, apply)
+        } finally {
+            stagedBaseline?.close()
+        }
     }
 
     private suspend fun applyCommandReconcile(
@@ -1157,10 +1167,8 @@ class WorkspaceRepository(
         val pathToUuid = HashMap<String, String>()
         pathToUuid["/"] = root.uuid
         byUuid.values.filter { it.uuid !in deleted }.forEach { pathToUuid[normalizeMaterializedPath(it.materializedPath)] = it.uuid }
-        plan.moves.forEach { move ->
-            pathToUuid.remove(move.from)
-            pathToUuid[move.to] = move.uuid
-        }
+        plan.moves.forEach { pathToUuid.remove(it.from) }
+        plan.moves.forEach { pathToUuid[it.to] = it.uuid }
         val insertedIds = plan.inserts.associate { it.path to UUID.randomUUID().toString() }
         pathToUuid.putAll(insertedIds)
         fun parentOf(path: String): String = pathToUuid[parentPath(path)]
@@ -1248,15 +1256,17 @@ class WorkspaceRepository(
     private suspend fun <T> withRootMutation(
         workspaceRootUuid: String,
         indexScan: Boolean = false,
+        baselineEntryUuid: String? = null,
+        preserveBaseline: Boolean = false,
         block: suspend (FileEntry) -> T,
     ): T {
         com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(rootId = workspaceRootUuid)
         val gate = executionGate
         return if (gate == null) {
-            withAdmittedRootMutation(workspaceRootUuid, indexScan, block)
+            withAdmittedRootMutation(workspaceRootUuid, indexScan, baselineEntryUuid, preserveBaseline, block)
         } else {
             gate.withWorkspaceAdmission(workspaceRootUuid) {
-                withAdmittedRootMutation(workspaceRootUuid, indexScan, block)
+                withAdmittedRootMutation(workspaceRootUuid, indexScan, baselineEntryUuid, preserveBaseline, block)
             }
         }
     }
@@ -1264,6 +1274,8 @@ class WorkspaceRepository(
     private suspend fun <T> withAdmittedRootMutation(
         workspaceRootUuid: String,
         indexScan: Boolean,
+        baselineEntryUuid: String?,
+        preserveBaseline: Boolean,
         block: suspend (FileEntry) -> T,
     ): T {
         val initial = requireRoot(workspaceRootUuid)
@@ -1281,7 +1293,10 @@ class WorkspaceRepository(
             block(requireRoot(workspaceRootUuid))
         } else WorkspaceMutationCoordinator.withIndexedMutation(path, initial.hash) {
             prepare()
-            block(requireRoot(workspaceRootUuid))
+            val root = requireRoot(workspaceRootUuid)
+            val baselines = identityBaselines
+            if (baselines == null || preserveBaseline) block(root)
+            else baselines.trackMutation(root, dao, baselineEntryUuid) { block(root) }
         }
     }
 

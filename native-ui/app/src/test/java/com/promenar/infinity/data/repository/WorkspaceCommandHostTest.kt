@@ -37,20 +37,21 @@ class WorkspaceCommandHostTest {
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java).allowMainThreadQueries().build()
+        workspace = Files.createTempDirectory(java.nio.file.Path.of(System.getProperty("user.dir")), ".infinity-workspace-cmd").toFile()
         repo = WorkspaceRepository(
             db.fileEntryDao(), db.workspaceSeqDao(), fileOps = TestWorkspaceFileOps(),
             deleteCommitter = WorkspaceDeletionTransaction(db)::delete,
             treeScanner = PathWorkspaceTreeScanner,
+            identityBaselines = WorkspaceIdentityBaselineStore(File(workspace.parentFile, workspace.name + "-baselines"), PathWorkspaceTreeScanner),
             indexEventSink = FileIndexEventSink { synchronized(events) { events += it } },
         )
-        val projectRoot = java.nio.file.Path.of(System.getProperty("user.dir"))
-        workspace = Files.createTempDirectory(projectRoot, ".infinity-workspace-cmd").toFile()
     }
 
     @After
     fun tearDown() {
         db.close()
         workspace.deleteRecursively()
+        File(workspace.parentFile, workspace.name + "-baselines").deleteRecursively()
     }
 
     private suspend fun root(): com.promenar.infinity.data.local.db.entity.FileEntry {
@@ -73,6 +74,49 @@ class WorkspaceCommandHostTest {
         created.delete()
         repo.reconcileSessionWorkspace(root.uuid, "s")
         assertThat(repo.getByUuid(root.uuid, indexed.uuid)).isNull()
+    }
+
+    @Test
+    fun `Linux命令mv文件后保留UUID版本目录和派生关联`() = runBlocking<Unit> {
+        val root = root()
+        val entry = repo.createFileInWorkspace(root.uuid, "mv-file", "a.txt", "old", root.uuid, "/a.txt")
+        repo.confirmCreatedEntry(root.uuid, entry.uuid)
+        val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao(), fileOps = TestWorkspaceFileOps())
+        files.writeFileAtomic(root.uuid, entry.uuid, "current", "s", entry.hash)
+        repo.reconcileSessionWorkspace(root.uuid, "s")
+        val prior = checkNotNull(repo.getByUuid(root.uuid, entry.uuid))
+        db.fileEntryDao().update(prior.copy(vectorizedAt = prior.updatedAt, kgExtractedAt = prior.updatedAt))
+        val version = checkNotNull(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash))
+        val finish = repo.beginSessionCommand("s")
+        try { check(File(workspace, "a.txt").renameTo(File(workspace, "b.txt"))) } finally { finish() }
+        repo.reconcileSessionWorkspace(root.uuid, "s")
+        val moved = checkNotNull(repo.getByMaterializedPath(root.uuid, "/b.txt"))
+        assertThat(moved.uuid).isEqualTo(entry.uuid)
+        assertThat(moved.vectorizedAt).isEqualTo(prior.updatedAt)
+        assertThat(moved.kgExtractedAt).isEqualTo(prior.updatedAt)
+        assertThat(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash)).isEqualTo(version)
+        assertThat(File(version.contentPath).readText()).isEqualTo("old")
+    }
+
+    @Test
+    fun `Linux命令mv目录后保留子项UUID和版本目录`() = runBlocking<Unit> {
+        val root = root()
+        val dir = repo.createDirectoryInWorkspace(root.uuid, "mv-dir", "dir", root.uuid, "/dir")
+        val entry = repo.createFileInWorkspace(root.uuid, "mv-child", "a.txt", "old", dir.uuid, "/dir/a.txt")
+        repo.confirmCreatedEntry(root.uuid, dir.uuid); repo.confirmCreatedEntry(root.uuid, entry.uuid)
+        val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao(), fileOps = TestWorkspaceFileOps())
+        files.writeFileAtomic(root.uuid, entry.uuid, "current", "s", entry.hash)
+        repo.reconcileSessionWorkspace(root.uuid, "s")
+        val version = checkNotNull(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash))
+        val finish = repo.beginSessionCommand("s")
+        try { check(File(workspace, "dir").renameTo(File(workspace, "renamed"))) } finally { finish() }
+        repo.reconcileSessionWorkspace(root.uuid, "s")
+        assertThat(repo.getByMaterializedPath(root.uuid, "/renamed")?.uuid).isEqualTo(dir.uuid)
+        val moved = checkNotNull(repo.getByMaterializedPath(root.uuid, "/renamed/a.txt"))
+        assertThat(moved.uuid).isEqualTo(entry.uuid)
+        assertThat(moved.parentUuid).isEqualTo(dir.uuid)
+        assertThat(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash)).isEqualTo(version)
+        assertThat(File(version.contentPath).readText()).isEqualTo("old")
     }
 
     @Test
