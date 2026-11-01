@@ -21,6 +21,9 @@ import com.promenar.infinity.data.security.SecretStore
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.ui.settings.persistVerifiedProviderConnection
 import com.promenar.infinity.ui.settings.requiresLegacyCredentialMigration
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -51,6 +54,7 @@ class ProviderManagerTest {
     }
     private lateinit var app: Application
     private lateinit var manager: ProviderManager
+    private lateinit var secrets: TestSecretStore
 
     @Before
     fun setUp() {
@@ -58,7 +62,8 @@ class ProviderManagerTest {
         listOf("infinity_provider", "infinity_settings", "infinity_provider_status").forEach {
             app.getSharedPreferences(it, 0).edit().clear().commit()
         }
-        manager = ProviderManager.createForTest(app, TestSecretStore())
+        secrets = TestSecretStore()
+        manager = ProviderManager.createForTest(app, secrets)
         manager.updateMainProvider(
             ProtocolType.OpenAI_ChatCompletions,
             "https://provider.invalid",
@@ -80,7 +85,6 @@ class ProviderManagerTest {
         assertThat(manager.providerStatuses.value["extra-a"]?.lastModelSyncAtMillis).isNotNull()
 
         manager.deleteProvider("extra-a")
-        manager.deleteProvider("default")
 
         assertThat(manager.providerStatuses.value.keys).containsExactly("default")
         val restored = ProviderManager.createForTest(app, TestSecretStore())
@@ -91,7 +95,7 @@ class ProviderManagerTest {
     }
 
     @Test
-    fun `重载提供商清理孤儿且保留不支持协议和default的状态`() {
+    fun `重载提供商只保留已保存提供商的状态`() {
         val prefs = app.getSharedPreferences("infinity_settings", 0)
         prefs.edit()
             .putInt("extra_providers_count", 1)
@@ -108,8 +112,8 @@ class ProviderManagerTest {
         app.getSharedPreferences("infinity_provider", 0).edit().clear().commit()
         isolated.loadProviders()
 
-        assertThat(isolated.providerStatuses.value.keys).containsExactly("default")
-        assertThat(statusStore.statuses.value.keys).containsExactly("default")
+        assertThat(isolated.providerStatuses.value).isEmpty()
+        assertThat(statusStore.statuses.value).isEmpty()
     }
 
     @Test
@@ -474,12 +478,108 @@ class ProviderManagerTest {
     }
 
     @Test
-    fun `default provider cannot be deleted or lose its credential`() {
+    fun `删除主槽位清理凭证模型元数据预设状态并允许重新写入`() {
+        addExtraProviderWithModel()
+        val mainModelId = "default::remote-model"
+        val settings = app.getSharedPreferences("infinity_settings", 0)
+        val providerPrefs = app.getSharedPreferences("infinity_provider", 0)
+        secrets.put(SecretCatalog.vertexServiceAccount("default"), "fake-vertex".toByteArray())
+        settings.edit()
+            .putString("model_info_${mainModelId}_display_name", "主模型")
+            .putString("default_model", mainModelId)
+            .commit()
+        providerPrefs.edit().putString("embedding_base_url", "https://independent.invalid").commit()
+        listOf("summary", "image", "embedding", "rerank").forEach { manager.setPresetModel(it, mainModelId) }
+        manager.recordProviderConnectionTest("default", ProviderConnectionProbeResult.Success)
+        manager.recordProviderModelSync("extra-a")
+        val extraConfig = manager.getProviderConfig("extra-a")
+        val extraModels = manager.providerModels.value.filter { it.providerId == "extra-a" }
+        val extraStatus = manager.providerStatuses.value["extra-a"]
+
         manager.deleteProvider("default")
 
-        assertThat(manager.providers.value.map { it.id }).contains("default")
-        assertThat(manager.getMainProviderConfig()?.apiKey).isEqualTo("test-key")
-        assertThat(manager.providerModels.value.map { it.id }).contains("default::remote-model")
+        assertThat(manager.getMainProviderConfig()).isNull()
+        assertThat(manager.getProviderSummary("default")).isNull()
+        assertThat(manager.getMainConfiguredModelId()).isNull()
+        assertThat(manager.currentModelSummary.value).isEmpty()
+        assertThat(settings.contains("default_model")).isFalse()
+        assertThat(providerPrefs.getString("embedding_base_url", null)).isEqualTo("https://independent.invalid")
+        assertThat(manager.providers.value.map { it.id }).containsExactly("extra-a")
+        assertThat(secrets.contains(SecretCatalog.providerApiKey("default"))).isFalse()
+        assertThat(secrets.contains(SecretCatalog.vertexServiceAccount("default"))).isFalse()
+        assertThat(providerPrefs.all.keys).containsNoneOf("protocol_id", "protocol_id_name", "base_url", "model", "provider_name")
+        assertThat(manager.providerModels.value).containsExactlyElementsIn(extraModels)
+        assertThat(settings.all.keys.any { it.startsWith("model_info_${mainModelId}_") }).isFalse()
+        assertThat(manager.summaryModelId.value).isEmpty()
+        assertThat(manager.imageModelId.value).isEmpty()
+        assertThat(manager.embeddingModelId.value).isEmpty()
+        assertThat(manager.rerankModelId.value).isEmpty()
+        assertThat(manager.providerStatuses.value.keys).containsExactly("extra-a")
+        assertThat(manager.providerStatuses.value["extra-a"]).isEqualTo(extraStatus)
+        assertThat(manager.getProviderConfig("extra-a")).isEqualTo(extraConfig)
+        val restored = ProviderManager.createForTest(app, secrets)
+        restored.refreshAll()
+        assertThat(restored.getMainProviderConfig()).isNull()
+        assertThat(restored.providerModels.value.map { it.id })
+            .containsExactlyElementsIn(extraModels.map { it.id })
+        assertThat(restored.getProviderConfig("extra-a")).isEqualTo(extraConfig)
+        assertThat(restored.summaryModelId.value).isEmpty()
+        assertThat(restored.imageModelId.value).isEmpty()
+        assertThat(restored.embeddingModelId.value).isEmpty()
+        assertThat(restored.rerankModelId.value).isEmpty()
+        assertThat(restored.providerStatuses.value.keys).containsExactly("extra-a")
+
+        restored.updateMainProvider(ProtocolType.OpenAI_ChatCompletions, "https://new.invalid", CredentialUpdate.Replace("fake-new"), "new-model")
+
+        assertThat(restored.providers.value.map { it.id }).containsExactly("default", "extra-a")
+        assertThat(restored.getMainConfiguredModelId()).isEqualTo("default::new-model")
+        assertThat(restored.getMainProviderConfig()?.apiKey).isEqualTo("fake-new")
+        assertThat(restored.getProviderConfig("extra-a")).isEqualTo(extraConfig)
+    }
+
+    @Test
+    fun `删除主槽位发布刷新通知且旧模型路由失效`() = runTest {
+        val router = DefaultProviderRequestRouter(manager)
+        val modelId = "default::remote-model"
+        assertThat(router.resolve(modelId)).isInstanceOf(ProviderResolution.Success::class.java)
+        val beforeRevision = ProviderConfigurationRevision.current()
+        val notification = async(start = CoroutineStart.UNDISPATCHED) { manager.configurationChanges.first() }
+
+        manager.deleteProvider("default")
+
+        notification.await()
+        assertThat(ProviderConfigurationRevision.current()).isGreaterThan(beforeRevision)
+        assertThat(ProviderConfigurationRevision.current() % 2L).isEqualTo(0L)
+        assertThat((router.resolve(modelId) as ProviderResolution.Failure).reason)
+            .isEqualTo(ProviderResolutionError.MODEL_NOT_FOUND)
+    }
+
+    @Test
+    fun `删除主槽位保留额外提供商的预设与当前选择`() {
+        addExtraProviderWithModel()
+        val extraModelId = "extra-a::extra-model"
+        listOf("summary", "image", "embedding", "rerank").forEach { manager.setPresetModel(it, extraModelId) }
+        val settings = app.getSharedPreferences("infinity_settings", 0)
+        settings.edit().putString("default_model", extraModelId).commit()
+
+        manager.deleteProvider("default")
+
+        assertThat(manager.currentModelSummary.value).isEqualTo(extraModelId)
+        assertThat(manager.summaryModelId.value).isEqualTo(extraModelId)
+        assertThat(manager.imageModelId.value).isEqualTo(extraModelId)
+        assertThat(manager.embeddingModelId.value).isEqualTo(extraModelId)
+        assertThat(manager.rerankModelId.value).isEqualTo(extraModelId)
+        assertThat(settings.getString("default_model", null)).isEqualTo(extraModelId)
+        val restored = ProviderManager.createForTest(app, secrets)
+        assertThat(restored.currentModelSummary.value).isEqualTo(extraModelId)
+        restored.refreshAll()
+        assertThat(restored.currentModelSummary.value).isEqualTo(extraModelId)
+    }
+
+    @Test
+    fun `未选预设时删除主槽位清空当前模型摘要`() {
+        manager.deleteProvider("default")
+        assertThat(manager.currentModelSummary.value).isEmpty()
     }
 
     @Test

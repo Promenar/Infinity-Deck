@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 不生效即灰显：原因写在副标题，说明怎样才会生效 -->
-    <string name="ux2_unavailable_provider_builtin_delete">内置提供商不可删除</string>
     <string name="ux2_unavailable_text_scale_off">开启自定义文字大小后可调</string>
     <string name="ux2_unavailable_pure_black_mode">仅在深色模式下生效</string>
     <string name="ux2_unavailable_ssh_public_key">仅密钥认证的主机可用</string>

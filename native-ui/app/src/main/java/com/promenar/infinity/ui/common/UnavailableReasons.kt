@@ -12,29 +12,18 @@ import com.promenar.infinity.ui.theme.InfinityThemeMode
  * 本文件只做判定，不触及提供给模型的工具清单。
  */
 internal object UnavailableReasons {
-    /** 内置提供商的固定 ID；它不可删除。 */
-    const val BUILTIN_PROVIDER_ID = "default"
-
     /** 提供商表单底部“删除”行的显示方式。 */
     enum class ProviderDeleteEntry {
         /** 尚未保存的新提供商没有可删除的对象，整行不出现。 */
         HIDDEN,
 
-        /** 内置提供商：保留该行，灰显并说明原因。 */
-        DISABLED_BUILTIN,
         ENABLED,
     }
 
     fun providerDeleteEntry(providerId: String?): ProviderDeleteEntry = when (providerId) {
         null -> ProviderDeleteEntry.HIDDEN
-        BUILTIN_PROVIDER_ID -> ProviderDeleteEntry.DISABLED_BUILTIN
         else -> ProviderDeleteEntry.ENABLED
     }
-
-    /** 提供商列表行菜单里“删除”项的不可用原因。 */
-    @StringRes
-    fun providerDelete(providerId: String): Int? =
-        if (providerId == BUILTIN_PROVIDER_ID) R.string.ux2_unavailable_provider_builtin_delete else null
 
     /** 自定义文字大小关闭时，具体比例不起作用。 */
     @StringRes

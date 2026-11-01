@@ -713,14 +713,11 @@ internal fun ProviderFormContent(
                 }
                 if (state.deleteEntry != UnavailableReasons.ProviderDeleteEntry.HIDDEN) {
                     animatedFormItem("delete") {
-                        val deleteEnabled = state.deleteEntry == UnavailableReasons.ProviderDeleteEntry.ENABLED
                         InfinitySettingsGroup {
                             InfinitySettingsItem(
                                 title = stringResource(R.string.provider_form_delete),
-                                subtitle = if (deleteEnabled) null else stringResource(R.string.ux2_unavailable_provider_builtin_delete),
                                 icon = Icons.Rounded.Delete,
                                 titleColor = MaterialTheme.colorScheme.error,
-                                enabled = deleteEnabled,
                                 onClick = actions.onDelete,
                                 modifier = Modifier.testTag(UiTags.PROVIDER_FORM_DELETE),
                             )

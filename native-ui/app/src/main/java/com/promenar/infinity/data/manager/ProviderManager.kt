@@ -282,6 +282,7 @@ class ProviderManager private constructor(
         val items = mutableListOf<ProviderListItem>()
         val unsupportedItems = mutableListOf<UnsupportedProviderListItem>()
         val config = getMainProviderConfig()
+        _currentModelSummary.value = _summaryModelId.value.ifBlank { config?.model.orEmpty() }
         if (config != null) {
             val typeName = config.protocolType.displayName
             items.add(
@@ -296,7 +297,6 @@ class ProviderManager private constructor(
                     hasVertexCredentials = config.vertexServiceAccountJson.isNotBlank(),
                 )
             )
-            _currentModelSummary.value = config.model
         } else {
             getUnsupportedProviderSummary("default")?.let { unsupported ->
                 unsupportedItems += UnsupportedProviderListItem(
@@ -347,7 +347,7 @@ class ProviderManager private constructor(
         _providers.value = items
         _unsupportedProviders.value = unsupportedItems
         providerStatusStore.retainOnly(
-            items.mapTo(mutableSetOf("default")) { it.id } + unsupportedItems.map { it.id },
+            items.mapTo(mutableSetOf()) { it.id } + unsupportedItems.map { it.id },
         )
     }
 
@@ -406,8 +406,17 @@ class ProviderManager private constructor(
 
     @Synchronized
     fun deleteProvider(providerId: String) {
-        if (providerId == "default") return
         ProviderConfigurationRevision.publishMutation(afterProviderConfigurationWriteStarted) {
+            if (providerId == "default") {
+                // 主槽位与独立的 Embedding 配置共用偏好文件，只清理该提供商的键。
+                providerPrefs.edit()
+                    .remove("protocol_id")
+                    .remove("protocol_id_name")
+                    .remove("base_url")
+                    .remove("model")
+                    .remove("provider_name")
+                    .apply()
+            }
             val removedModelIds = _providerModels.value
                 .filter { model ->
                     model.providerId == providerId ||
@@ -437,6 +446,9 @@ class ProviderManager private constructor(
         if (_imageModelId.value in removedModelIds) setPresetModel("image", "")
         if (_embeddingModelId.value in removedModelIds) setPresetModel("embedding", "")
         if (_rerankModelId.value in removedModelIds) setPresetModel("rerank", "")
+        if (settingsPrefs.getString("default_model", null) in removedModelIds) {
+            settingsPrefs.edit().remove("default_model").apply()
+        }
     }
 
     private fun clearProviderModelSuppression(providerId: String) {
@@ -1232,6 +1244,9 @@ class ProviderManager private constructor(
         _imageModelId.value = settingsPrefs.getString("preset_image_model", "") ?: ""
         _embeddingModelId.value = settingsPrefs.getString("preset_embedding_model", "") ?: ""
         _rerankModelId.value = settingsPrefs.getString("preset_rerank_model", "") ?: ""
+        _currentModelSummary.value = _summaryModelId.value.ifBlank {
+            getProviderSummary("default")?.model.orEmpty()
+        }
     }
 
     fun setPresetModel(type: String, modelId: String) {

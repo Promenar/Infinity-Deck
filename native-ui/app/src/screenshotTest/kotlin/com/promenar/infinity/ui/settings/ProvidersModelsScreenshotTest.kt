@@ -180,9 +180,9 @@ fun providerFormProvidersModels() = ProvidersModelsTheme(dark = true) {
 }
 
 @PreviewTest
-@Preview(name = "内置提供商编辑 删除行灰显 深色中文 411", widthDp = 411, heightDp = 1100, locale = "zh-rCN")
+@Preview(name = "主槽位提供商编辑 可删除 深色中文 411", widthDp = 411, heightDp = 1100, locale = "zh-rCN")
 @Composable
-fun providerFormBuiltinDeleteGreyedProvidersModels() = ProvidersModelsTheme(dark = true) {
+fun providerFormMainProviderDeleteProvidersModels() = ProvidersModelsTheme(dark = true) {
     ProviderFormContent(
         state = ProviderFormUiState(
             isEditing = true,
@@ -198,7 +198,7 @@ fun providerFormBuiltinDeleteGreyedProvidersModels() = ProvidersModelsTheme(dark
                 hint = null,
                 builtIn = BuiltInTailscaleStatus.CONNECTED,
             ),
-            deleteEntry = UnavailableReasons.ProviderDeleteEntry.DISABLED_BUILTIN,
+            deleteEntry = UnavailableReasons.ProviderDeleteEntry.ENABLED,
         ),
         actions = ProviderFormActions(),
     )

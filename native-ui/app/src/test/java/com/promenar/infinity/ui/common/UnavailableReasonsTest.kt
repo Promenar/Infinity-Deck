@@ -18,12 +18,10 @@ class UnavailableReasonsTest {
             .toSet()
 
     @Test
-    fun `内置提供商的删除行保留并灰显，新建时不出现，其余可删`() {
+    fun `所有已保存提供商均可删除且新建时隐藏删除行`() {
         assertThat(UnavailableReasons.providerDeleteEntry(null)).isEqualTo(ProviderDeleteEntry.HIDDEN)
-        assertThat(UnavailableReasons.providerDeleteEntry("default")).isEqualTo(ProviderDeleteEntry.DISABLED_BUILTIN)
+        assertThat(UnavailableReasons.providerDeleteEntry("default")).isEqualTo(ProviderDeleteEntry.ENABLED)
         assertThat(UnavailableReasons.providerDeleteEntry("custom-1")).isEqualTo(ProviderDeleteEntry.ENABLED)
-        assertThat(UnavailableReasons.providerDelete("default")).isEqualTo(R.string.ux2_unavailable_provider_builtin_delete)
-        assertThat(UnavailableReasons.providerDelete("custom-1")).isNull()
     }
 
     @Test

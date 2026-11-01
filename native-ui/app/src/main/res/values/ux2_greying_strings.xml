@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 不生效即灰显：原因写在副标题，说明怎样才会生效 -->
-    <string name="ux2_unavailable_provider_builtin_delete">The built-in provider can\'t be deleted</string>
     <string name="ux2_unavailable_text_scale_off">Turn on custom text size to adjust</string>
     <string name="ux2_unavailable_pure_black_mode">Only applies in dark mode</string>
     <string name="ux2_unavailable_ssh_public_key">Only available for hosts using key authentication</string>
