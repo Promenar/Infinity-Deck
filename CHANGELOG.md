@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0-beta] - 2026-11-01
+
 ### 改进
 
 - 计划工具调用展开后显示计划清单并标出刚完成与当前步骤；后台任务查看卡显示状态、时长与日志末尾，可打开完整日志或停止任务；其它工具的 JSON 参数与结果按字段列出，不再直接展示原始 JSON。
@@ -3379,6 +3381,8 @@ All notable changes to this project will be documented in this file.
 - 移除占位用的“工作台”功能。
 
 ## [Unreleased]
+
+## [0.10.0-beta] - 2026-11-01
 
 ### 新增
 - **智能上下文管理**:
