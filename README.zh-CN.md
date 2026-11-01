@@ -9,7 +9,7 @@
 
 <p align="center">
   开源、自带密钥（BYOK）的 Android AI 工作台。<br>
-  接入你选择的模型，让 Agent 在内置 Linux 中执行真实命令，数据留在自己的设备上。
+  口袋里的真 Linux、桌面级 Agent 开发环境与 SSH 运维，释放折叠屏手机的真实生产力。
 </p>
 
 <p align="center">
@@ -21,47 +21,87 @@
   <img src="https://img.shields.io/badge/platform-Android%2012%2B-green.svg" alt="平台 Android 12+">
   <img src="https://img.shields.io/badge/Kotlin-2.2-7F52FF.svg" alt="Kotlin 2.2">
   <img src="https://img.shields.io/badge/Jetpack_Compose-Material3-4285F4.svg" alt="Jetpack Compose Material 3">
-  <img src="https://img.shields.io/badge/version-0.7.0--beta-6366F1.svg" alt="版本 0.7.0-beta">
+  <img src="https://img.shields.io/badge/version-0.10.0--beta-6366F1.svg" alt="版本 0.10.0-beta">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/zh/hero.webp" alt="折叠屏内屏：左侧会话列表，右侧新会话显示点阵 INFINITY 字标" width="760">
+  <img src="assets/screenshots/zh/hero.webp" alt="展开：会话旁边的 Git 面板列出提交记录；合上：外屏继续查看 502 排障报告" width="860">
 </p>
 
-## 亮点
+## 口袋里的真 Linux
 
-- **自选模型，自带密钥**：支持 OpenAI（Chat Completions 与 Responses）、Anthropic、Google Gemini、Vertex AI、DeepSeek、GLM、Kimi 及任意 OpenAI 兼容接口，流式输出、图片输入，会话内可切换模型。
-- **能干活的 Agent**：联网搜索、文件编辑、脚本、生图、任务规划和应用内浏览器；可把工作交给后台子代理或提议分支会话，最多 4 个会话同时生成。
-- **手机里的真 Linux**：侧载版一键安装 Alpine Linux（proot，无需 root 或 Termux），可用 git 与 Python；另有 SSH、Termux 接入与内置 Tailscale 节点。
-- **执行由你批准**：每个会话单独设置审批策略，命令先以卡片呈现，批准后才执行。
-- **画布**：Agent 生成可交互的 HTML 页面，支持实时预览与版本记录，并作为文件保存在会话工作区。
-- **资料库：RAG 与知识图谱**：导入 TXT、Markdown、PDF、Word、HTML，向量与全文混合检索、重排、引用追踪和持久知识图谱。
-- **工作区与 Git**：会话专用空间、内置文件系统、外部文件夹挂载，Git 凭据不进入模型上下文。
-- **保密输入与输出**：AI 需要密码或令牌时弹出保密输入卡，值直接写入凭据去向；命令产生的保密值经保密输出卡在设备验证后交给你，值不进入对话、日志与模型上下文。
-- **后台持续运行**：切到后台仍继续生成；长命令作为后台任务运行；Agent 可创建单次、间隔或 cron 定时任务，每项都需你批准。
-- **富内容与自适应布局**：Markdown、LaTeX、Mermaid、ECharts，表格按内容排版；折叠屏和平板为三栏布局。
-- **默认保护隐私**：密钥由 Android Keystore 保护；会话、文档和配置保存在本机，模型请求直连你配置的服务商。
-
-## 截图
+侧载版一键安装 Alpine Linux：proot 运行，无需 root，也不依赖 Termux。可以 `apk add` 安装软件，git、Python 和项目需要的工具都能用。Agent 执行命令的环境就是你在终端里打开的同一套系统，路径完全一致。
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/zh/chat.webp" alt="Agent 用表格汇总 Linux 环境信息"></td>
-    <td width="50%"><img src="assets/screenshots/zh/approval.webp" alt="等待批准的 Linux 命令卡片"></td>
-  </tr>
-  <tr>
-    <td align="center">Agent 结果以表格呈现</td>
-    <td align="center">命令执行前由你批准</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/zh/canvas.webp" alt="Agent 生成的番茄钟画布"></td>
-    <td width="50%"><img src="assets/screenshots/zh/settings.webp" alt="外观设置：强调色与生成动效"></td>
-  </tr>
-  <tr>
-    <td align="center">画布：Agent 生成的交互页面</td>
-    <td align="center">主题、强调色与生成动效</td>
+    <td width="66%"><img src="assets/screenshots/zh/linux-terminal.webp" alt="内置终端运行 fastfetch：Alpine Linux v3.24 aarch64，Oryon CPU"></td>
+    <td width="34%"><img src="assets/screenshots/zh/outer-terminal.webp" alt="外屏终端运行 fastfetch"></td>
   </tr>
 </table>
+
+## 桌面级 Agent 开发环境
+
+提一个改动需求，Agent 会像你坐在电脑前那样推进：先列计划，派只读子代理并行梳理代码和测试缺口，再动手实现；慢的完整测试放到后台任务跑，全绿后提交。顺带的工作可以提成分支会话，在独立的 git worktree 里进行；Git 面板标明每个 worktree 由哪个会话使用。
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/zh/ade-subagents.webp" alt="两个子代理并行梳理代码与测试缺口，主会话等待汇总"></td>
+    <td width="50%"><img src="assets/screenshots/zh/ade-background.webp" alt="完整测试在后台运行，同时分支会话也在生成"></td>
+  </tr>
+  <tr>
+    <td align="center">子代理并行梳理代码</td>
+    <td align="center">慢命令转为后台任务</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/zh/ade-branch.webp" alt="工作方案提议新建 worktree 的分支会话，可选在此执行或派发到分支"></td>
+    <td width="50%"><img src="assets/screenshots/zh/ade-git.webp" alt="Git 面板列出分支，以及各 worktree 由哪个会话使用"></td>
+  </tr>
+  <tr>
+    <td align="center">顺带工作提成分支会话，独立 worktree</td>
+    <td align="center">分支与 worktree 对应到会话</td>
+  </tr>
+</table>
+
+## 让 Agent 替你 SSH 运维
+
+保存一次主机，就可以把排障交给 Agent：它查看服务状态和日志，定位根因，先备份再修改，修复后做端到端验证。Agent 只能看到主机别名，看不到密码和密钥；每条远程命令都要等你批准。你也可以随时打开真实的 SSH 终端亲自接手。
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/zh/ops-diagnosis.webp" alt="Agent 定位 502 根因：配置把数据库指向不存在的 /srv 目录；修复命令等待批准"></td>
+    <td width="50%"><img src="assets/screenshots/zh/ops-detail.webp" alt="应用内 SSH 终端：systemd 显示两个服务运行中，接口返回 HTTP 200"></td>
+  </tr>
+  <tr>
+    <td align="center">先查根因，每条命令由你批准</td>
+    <td align="center">在真实终端里亲自复核</td>
+  </tr>
+</table>
+
+## 为折叠屏打造
+
+展开时，会话与检查器并排显示，任务、文件、Git、产物和远程终端都能在旁边打开，Agent 一边汇报你一边核对。合上手机，同一个会话在外屏以单栏布局继续。
+
+<table>
+  <tr>
+    <td colspan="3"><img src="assets/screenshots/zh/fold-inspector.webp" alt="展开：会话旁边的 Git 检查器列出提交记录"></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="assets/screenshots/zh/outer-chat.webp" alt="外屏：502 排障报告"></td>
+    <td width="33%"><img src="assets/screenshots/zh/outer-git.webp" alt="外屏：分支与 worktree"></td>
+    <td width="33%"><img src="assets/screenshots/zh/outer-terminal.webp" alt="外屏：Linux 终端"></td>
+  </tr>
+</table>
+
+## 更多能力
+
+- **自选模型，自带密钥**：支持 OpenAI（Chat Completions 与 Responses）、Anthropic、Google Gemini、Vertex AI、DeepSeek、GLM、Kimi 及任意 OpenAI 兼容接口，流式输出、图片输入，会话内可切换模型；最多 4 个会话同时生成。
+- **执行由你批准**：每个会话单独设置审批策略，命令先以卡片呈现，批准后才执行。
+- **画布**：Agent 生成可交互的 HTML 页面，支持实时预览与版本记录，保存在会话工作区。
+- **资料库：RAG 与知识图谱**：导入 TXT、Markdown、PDF、Word、HTML，向量与全文混合检索、重排和引用追踪。
+- **保密输入与输出**：密码和令牌经专用卡片直达去向，不进入对话、日志与模型上下文。
+- **后台与定时**：切到后台仍继续生成；Agent 可创建单次、间隔或 cron 定时任务，每项都需你批准。
+- **富内容**：Markdown、LaTeX、Mermaid、ECharts，表格按内容排版。
+- **默认保护隐私**：密钥由 Android Keystore 保护；会话、文档和配置保存在本机，模型请求直连你配置的服务商。需要时还可接入 Termux 与内置 Tailscale 节点。
 
 ## 开始使用
 
@@ -71,7 +111,7 @@
 
 **安装**：从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 与对应 `.sha256` 文件，核对 SHA-256 后安装。公开发布可能落后于源码；不要安装 CI 临时制品、Debug APK 或来源不明的重打包版本。
 
-当前源码版本为 `v0.8.0-beta`（versionCode `27`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.10.0-beta`（versionCode `33`），变更见[更新日志](CHANGELOG.md)。
 
 ## 从源码构建
 

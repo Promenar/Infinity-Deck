@@ -9,7 +9,7 @@
 
 <p align="center">
   An open-source, bring-your-own-key AI workbench for Android.<br>
-  Chat with the models you choose, let agents run real commands in a built-in Linux, and keep your data on your device.
+  A real Linux, a desktop-class agent workbench and SSH server ops in your pocket, built to make the most of a foldable.
 </p>
 
 <p align="center">
@@ -25,43 +25,83 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/en/hero.webp" alt="Infinity Workbench on a foldable: chat list beside a new chat with the dot-matrix INFINITY wordmark" width="760">
+  <img src="assets/screenshots/en/hero.webp" alt="Unfolded: an agent's 502 fix report beside a live SSH terminal on the server. Folded: the same chat continues on the cover screen" width="860">
 </p>
 
-## Highlights
+## A real Linux in your pocket
 
-- **Your models, your keys.** OpenAI (Chat Completions and Responses), Anthropic, Google Gemini, Vertex AI, DeepSeek, GLM, Kimi and any OpenAI-compatible endpoint. Streaming, image input and per-chat model switching.
-- **Agents that get work done.** Web search, file editing, scripts, image generation, task planning and an in-app browser. Agents can hand work to background sub-agents or propose a branch chat, and up to four chats can generate at the same time.
-- **A real Linux on your phone.** The sideload build installs Alpine Linux in one tap (proot, no root, no Termux) with git and Python available. SSH hosts, Termux and a built-in Tailscale node are there when you need more.
-- **You decide what runs.** Each chat has its own approval policy. Commands appear as cards you approve or reject before anything executes.
-- **Canvas.** Agents build interactive HTML pages with live preview and version history, saved as files in the chat's workspace.
-- **Library with RAG and a knowledge graph.** Import TXT, Markdown, PDF, Word and HTML. Hybrid vector and full-text retrieval, reranking, citations and a persistent knowledge graph.
-- **Workspaces and Git.** Per-chat folders, a built-in file system, mounted external folders and Git with credentials kept out of the model's reach.
-- **Secret input and output.** When an agent needs a password or token, a secret input card writes the value straight to its destination; secrets a command produces reach you through a secret output card after device unlock. Neither passes through the chat, logs or the model.
-- **Runs in the background.** Generation continues when you leave the app; long commands run as background tasks; agents can schedule one-off, interval or cron jobs, each with your approval.
-- **Rich output and adaptive layout.** Markdown, LaTeX, Mermaid, ECharts and content-sized tables. Three panes on foldables and tablets.
-- **Private by default.** Keys live in Android Keystore. Chats, documents and settings stay on the device, and model calls go straight to the provider you configured.
-
-## Screenshots
+The sideload build installs Alpine Linux in one tap: proot, no root, no Termux. `apk add` works, and so do git, Python and anything else your project needs. Agents run their commands in the same system you open in the terminal, with the same paths.
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/en/chat.webp" alt="An agent summarizes the Linux environment in a table"></td>
-    <td width="50%"><img src="assets/screenshots/en/approval.webp" alt="A Linux command waiting for approval"></td>
-  </tr>
-  <tr>
-    <td align="center">Agent results rendered as tables</td>
-    <td align="center">Approve commands before they run</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/en/canvas.webp" alt="A pomodoro timer canvas built by an agent"></td>
-    <td width="50%"><img src="assets/screenshots/en/settings.webp" alt="Appearance settings with accent colors and generation effects"></td>
-  </tr>
-  <tr>
-    <td align="center">Canvas: interactive pages built by agents</td>
-    <td align="center">Themes, accent colors and generation effects</td>
+    <td width="66%"><img src="assets/screenshots/en/linux-terminal.webp" alt="fastfetch in the built-in terminal: Alpine Linux v3.24 aarch64 on an Oryon CPU"></td>
+    <td width="34%"><img src="assets/screenshots/en/outer-terminal.webp" alt="fastfetch on the cover screen"></td>
   </tr>
 </table>
+
+## A desktop-class agent workbench
+
+Ask for a change and the agent works the way you would at a desk: it writes a plan, sends read-only sub-agents to survey the code and the tests in parallel, implements, runs the slow test suite as a background job and commits when the suite is green. Side work can become a branch chat in its own git worktree, and the Git panel shows which chat uses which worktree.
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agents surveying code and test gaps in parallel while the main chat waits"></td>
+    <td width="50%"><img src="assets/screenshots/en/ade-background.webp" alt="Approval card for a full test suite that runs in the background for up to 40 minutes"></td>
+  </tr>
+  <tr>
+    <td align="center">Sub-agents survey the code in parallel</td>
+    <td align="center">Slow commands run as background jobs</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/en/ade-branch.webp" alt="Work plan proposing a branch chat in a new worktree, with Run here and Dispatch buttons"></td>
+    <td width="50%"><img src="assets/screenshots/en/ade-git.webp" alt="Git panel listing branches and the worktrees used by each chat"></td>
+  </tr>
+  <tr>
+    <td align="center">Side work becomes a branch chat in its own worktree</td>
+    <td align="center">Branches and worktrees, mapped to chats</td>
+  </tr>
+</table>
+
+## Server ops over SSH, with you in control
+
+Save a host once and let the agent investigate: it reads unit status and logs, finds the root cause, backs up what it changes, applies the fix and verifies it end to end. The agent sees host aliases only, never passwords or keys, and every remote command waits for your approval. You can take over in a real SSH terminal at any point.
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/en/ops-diagnosis.webp" alt="The agent explains a 502: the API config points at a database path that does not exist; the next remote command waits for approval"></td>
+    <td width="50%"><img src="assets/screenshots/en/ops-detail.webp" alt="The fix report with a verification table: both services active, health checks return 200"></td>
+  </tr>
+  <tr>
+    <td align="center">Root cause first, each command approved</td>
+    <td align="center">Fixed and verified end to end</td>
+  </tr>
+</table>
+
+## Built for foldables
+
+Unfold and the chat shares the screen with an inspector for tasks, files, Git, artifacts and remote terminals, so you can review the agent's work while it talks. Fold the phone and the same chat continues on the cover screen in a single-pane layout.
+
+<table>
+  <tr>
+    <td colspan="3"><img src="assets/screenshots/en/fold-inspector.webp" alt="Unfolded: the chat beside the plan inspector showing finished steps, sub-agents and background jobs"></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen: the fix report"></td>
+    <td width="33%"><img src="assets/screenshots/en/outer-git.webp" alt="Cover screen: branches and worktrees"></td>
+    <td width="33%"><img src="assets/screenshots/en/outer-terminal.webp" alt="Cover screen: the Linux terminal"></td>
+  </tr>
+</table>
+
+## Also included
+
+- **Your models, your keys.** OpenAI (Chat Completions and Responses), Anthropic, Google Gemini, Vertex AI, DeepSeek, GLM, Kimi and any OpenAI-compatible endpoint, with streaming, image input and per-chat model switching. Up to four chats can generate at the same time.
+- **You decide what runs.** Each chat has its own approval policy, and commands appear as cards you approve or reject before anything executes.
+- **Canvas.** Agents build interactive HTML pages with live preview and version history, saved in the chat's workspace.
+- **Library with RAG and a knowledge graph.** Import TXT, Markdown, PDF, Word and HTML, with hybrid vector and full-text retrieval, reranking and citations.
+- **Secret input and output.** Passwords and tokens go straight to their destination through dedicated cards, never through the chat, logs or the model.
+- **Runs in the background and on a schedule.** Generation continues when you leave the app, and agents can schedule one-off, interval or cron jobs with your approval.
+- **Rich output.** Markdown, LaTeX, Mermaid, ECharts and content-sized tables.
+- **Private by default.** Keys live in Android Keystore. Chats, documents and settings stay on the device, and model calls go straight to the provider you configured. Termux and a built-in Tailscale node are available when you need them.
 
 ## Get started
 
