@@ -8,6 +8,7 @@
     <string name="token_usage_categories">用量分类</string>
     <string name="token_usage_kg">知识图谱抽取</string>
     <string name="token_usage_chat">聊天</string>
+    <string name="token_usage_subagent">子代理</string>
     <string name="token_category_counts">输入 %1$s · 输出 %2$s</string>
     <string name="kg_usage_calls">%1$d 次调用</string>
     <string name="kg_usage_other_models">其它历史 KG 模型</string>

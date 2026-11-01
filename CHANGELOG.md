@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 用量页“用量分类”中的子代理用量误标为“聊天”，现单独显示为“子代理”。
+
 ## [0.12.0-beta] - 2026-11-02
 
 ### 新功能

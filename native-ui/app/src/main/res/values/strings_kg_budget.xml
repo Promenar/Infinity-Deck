@@ -8,6 +8,7 @@
     <string name="token_usage_categories">Usage categories</string>
     <string name="token_usage_kg">Knowledge graph extraction</string>
     <string name="token_usage_chat">Chat</string>
+    <string name="token_usage_subagent">Subagents</string>
     <string name="token_category_counts">Input %1$s · Output %2$s</string>
     <string name="kg_usage_calls">%1$d requests</string>
     <string name="kg_usage_other_models">Other historical KG models</string>

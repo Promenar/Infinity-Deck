@@ -161,7 +161,13 @@ internal fun TokenUsageScreenContent(
                 ) {
                     state.categoryBreakdown.forEach { category ->
                         InfinitySettingsRowLayout(
-                            title = stringResource(if (category.category == "kg") R.string.token_usage_kg else R.string.token_usage_chat),
+                            title = stringResource(
+                                when (category.category) {
+                                    "kg" -> R.string.token_usage_kg
+                                    "subagent" -> R.string.token_usage_subagent
+                                    else -> R.string.token_usage_chat
+                                },
+                            ),
                             subtitle = stringResource(R.string.token_category_counts,
                                 formatTokenCount(category.usage.inputTokens), formatTokenCount(category.usage.outputTokens)),
                                                         trailingContent = {
