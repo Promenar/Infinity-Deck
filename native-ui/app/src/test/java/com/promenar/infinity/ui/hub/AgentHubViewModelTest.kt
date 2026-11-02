@@ -135,7 +135,7 @@ class AgentHubViewModelTest {
     }
 
     @Test
-    fun `togglePin flips pinned state and delegates to repository`() = runTest {
+    fun `togglePin 只写置顶一列`() = runTest {
         val agent = Agent(id = "a1", name = "Agent1", isPinned = false, executionMode = ExecutionMode.WORKSPACE)
         val repo: AgentRepository = mockk(relaxed = true)
         every { repo.observeAll() } returns flowOf(listOf(agent))
@@ -143,7 +143,7 @@ class AgentHubViewModelTest {
         val vm = AgentHubViewModel(repo, CreateAgentUseCase(repo), emptyList())
         vm.togglePin("a1")
 
-        coVerify { repo.update(match { it.isPinned && it.id == "a1" }) }
+        coVerify { repo.updateFields("a1", setOf(com.promenar.infinity.domain.model.AgentField.IS_PINNED), match { it.isPinned }, any(), any()) }
     }
 
     @Test
@@ -155,7 +155,7 @@ class AgentHubViewModelTest {
         val vm = AgentHubViewModel(repo, CreateAgentUseCase(repo), emptyList())
         vm.togglePin("a1")
 
-        coVerify { repo.update(match { !it.isPinned && it.id == "a1" }) }
+        coVerify { repo.updateFields("a1", setOf(com.promenar.infinity.domain.model.AgentField.IS_PINNED), match { !it.isPinned }, any(), any()) }
     }
 
     @Test

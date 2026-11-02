@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.repository
 
+import androidx.room.RoomDatabase
+import androidx.room.withTransaction
 import com.promenar.infinity.data.local.db.dao.MessageDao
 import com.promenar.infinity.data.local.db.dao.SessionDao
 import com.promenar.infinity.data.local.db.dao.SessionContextSnapshot
@@ -30,6 +32,7 @@ open class SessionRepository(
     private val messageDao: MessageDao,
     private val newSessionRunMode: () -> SessionRunMode = { SessionRunMode.BUILTIN },
     private val onSessionCreated: suspend (Session) -> Unit = {},
+    private val database: RoomDatabase? = null,
 ) : ISessionRepository,
     com.promenar.infinity.domain.repository.ISessionRepository {
 
@@ -57,6 +60,11 @@ open class SessionRepository(
     }
 
     override suspend fun updatePartial(id: String, updates: Map<String, Any?>) {
+        if (database != null) database.withTransaction { updatePartialInTransaction(id, updates) }
+        else updatePartialInTransaction(id, updates)
+    }
+
+    private suspend fun updatePartialInTransaction(id: String, updates: Map<String, Any?>) {
         val existing = sessionDao.getById(id) ?: return
         // updatedAt 是首页排序与显示的最近消息时间：只随新消息推进，草稿、置顶、运行状态等元数据不改它。
         val touched = if ("lastMessage" in updates) existing.copy(updatedAt = System.currentTimeMillis()) else existing
@@ -87,6 +95,13 @@ open class SessionRepository(
     override suspend fun getById(id: String): Session? {
         return sessionDao.getContextSnapshot(id)?.toSession()
     }
+
+    /** 配置工具不加载消息、草稿或上下文摘要。 */
+    suspend fun getConfigurationById(id: String): Session? = sessionDao.getById(id)?.toDomain()?.configurationOnly()
+
+    suspend fun getAllConfigurations(): List<Session> = sessionDao.getAll().map { it.toDomain().configurationOnly() }
+
+    private fun Session.configurationOnly() = copy(messages = emptyList(), draft = null, summary = null, lastMessage = null)
 
     override suspend fun getAll(): List<Session> {
         return sessionDao.getAll().mapNotNull { entity ->

@@ -68,6 +68,7 @@ data class ContextBuilderParams(
     val onRagProgress: ((stage: String, percentage: Int, subStage: String?) -> Unit)? = null,
     val agentSystemPrompt: String? = null,
     val sessionCustomPrompt: String? = null,
+    internal val turnConfiguration: TurnConfigurationSnapshot? = null,
     val retrievalMode: AgentRetrievalMode = AgentRetrievalMode.AUTO,
     val knowledgeCatalog: String = "",
     /** 助手的记忆权限；会话档位超出上限时按上限执行。 */
@@ -203,7 +204,13 @@ class ContextBuilder(
                 ""
             }
         } else ""
-        val systemPrompt = buildSystemPrompt(params)
+        val savedConfiguration = turnContextMetadata(frozen)?.configuration
+        val promptParams = if (savedConfiguration == null) params else params.copy(
+            agentSystemPrompt = savedConfiguration.agentSystemPrompt,
+            sessionCustomPrompt = savedConfiguration.sessionCustomPrompt,
+            session = params.session.copy(customPrompt = savedConfiguration.sessionCustomPrompt),
+        )
+        val systemPrompt = buildSystemPrompt(promptParams)
         val turnContext = frozen ?: buildTurnContext(params, retrieval, activePlan, memoryContext,
             stateBoardContext(stateSnapshot?.board,
                 params.session.options.toolsEnabled && (params.availableToolNames == null || "state_update" in params.availableToolNames)),
@@ -541,7 +548,8 @@ class ContextBuilder(
                 append(com.promenar.infinity.ui.chat.manager.skills.SlashSkillActivation.promptSection(it))
             }
         }
-        return "<turn_context>\n<snapshot_metadata>${json.encodeToString(TurnContextMetadata(stateRevision, params.assistantMsgId))}</snapshot_metadata>\n$body</turn_context>"
+        return "<turn_context>\n<snapshot_metadata>${json.encodeToString(TurnContextMetadata(stateRevision, params.assistantMsgId,
+            params.turnConfiguration ?: TurnConfigurationSnapshot(params.agentSystemPrompt, params.sessionCustomPrompt ?: params.session.customPrompt)))}</snapshot_metadata>\n$body</turn_context>"
     }
 
     /** 已完成步骤仅保留标题，当前与未完成步骤保留完整说明。 */

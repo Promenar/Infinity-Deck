@@ -98,6 +98,7 @@ Unfold and the chat shares the screen with an inspector for tasks, files, Git, a
 
 - **Your models, your keys.** OpenAI (Chat Completions and Responses), Anthropic, Google Gemini, Vertex AI, DeepSeek, GLM, Kimi and any OpenAI-compatible endpoint, with streaming, image input and per-chat model switching. Up to four chats can generate at the same time.
 - **You decide what runs.** Each chat has its own approval policy, and commands appear as cards you approve or reject before anything executes.
+- **Agents that manage agents.** An agent can read and adjust agent and chat settings, for example creating a translation assistant or rewriting a prompt. Every change needs your approval, and the card shows each changed field and a diff of the prompt. Agent prompts keep their last 20 versions, so you can restore any of them.
 - **Canvas.** Agents build interactive HTML pages with live preview and version history, saved in the chat's workspace.
 - **Library with RAG and a knowledge graph.** Import TXT, Markdown, PDF, Word and HTML, with hybrid vector and full-text retrieval, reranking and citations.
 - **Secret input and output.** Passwords and tokens go straight to their destination through dedicated cards, never through the chat, logs or the model.

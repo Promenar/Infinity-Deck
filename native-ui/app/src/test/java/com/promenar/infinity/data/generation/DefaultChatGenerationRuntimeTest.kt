@@ -127,8 +127,8 @@ class DefaultChatGenerationRuntimeTest {
         val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
             coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
         }
-        val fixture = skillsFixture(catalog, localProvider = local)
         for (model in listOf("skills", "switched-model")) {
+            val fixture = skillsFixture(catalog, localProvider = local)
             fixture.store.updateSession("skills-session") { it.copy(modelId = "local::$model") }
             assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
             fixture.runtime.stream(fixture.request, 0).toList()
@@ -238,6 +238,123 @@ class DefaultChatGenerationRuntimeTest {
             emptyList(), com.promenar.infinity.data.skills.SkillStatus.ENABLED, false, true, null, null,
         )
 
+    @Test fun `配置校验失败不创建审批卡并直接交给工具返回错误`() = runTest {
+        val service = mockk<com.promenar.infinity.data.agentconfig.AgentConfigService>()
+        coEvery { service.preflight(any(), any()) } returns com.promenar.infinity.data.agentconfig.AgentConfigPreflight(error = "该字段只能由用户在界面修改")
+        val ledger = mockk<ToolExecutionLedger>(relaxed = true)
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val fixture = skillsFixture(catalog, toolNames = listOf("agents_write"), toolLedger = ledger, agentConfigService = service)
+        fixture.runtime.buildContext(fixture.request)
+        val decision = fixture.runtime.handleTools(fixture.request, listOf(GenerationToolCall(
+            "invalid", "agents_write", """{"op":"update_agent","fields":{"executionMode":"full_access"},"reason":"配置"}""",
+        )))
+        assertThat(decision).isEqualTo(GenerationToolDecision.CONTINUE)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest).isNull()
+        coVerify(exactly = 0) { ledger.createToolApproval(any(), any(), any(), any(), any()) }
+        coVerify { fixture.executor.executeTools(any(), any(), any(), match { "invalid" in it }, any(), any(), any()) }
+    }
+
+    @Test fun `配置写入即使已有同类限时授权仍创建逐次审批`() = runTest {
+        val service = mockk<com.promenar.infinity.data.agentconfig.AgentConfigService>()
+        coEvery { service.preflight(any(), any()) } returns com.promenar.infinity.data.agentconfig.AgentConfigPreflight(target = "agent-config:update_session:skills-session:digest")
+        val ledger = mockk<ToolExecutionLedger>(relaxed = true)
+        val grants = mockk<com.promenar.infinity.data.approval.TimedApprovalGrantStore>(relaxed = true) {
+            every { isValid(any(), any()) } returns true
+        }
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val fixture = skillsFixture(catalog, toolNames = listOf("agents_write"), toolLedger = ledger, timedGrants = grants, agentConfigService = service)
+        fixture.runtime.buildContext(fixture.request)
+        val decision = fixture.runtime.handleTools(fixture.request, listOf(GenerationToolCall(
+            "write", "agents_write", """{"op":"update_session","fields":{"customPrompt":"提示"},"reason":"配置"}""",
+        )))
+        assertThat(decision).isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        val call = fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single()
+        assertThat(call.toolCallId).isEqualTo("write")
+        assertThat(call.grantCategory).isNull()
+    }
+
+    @Test fun `agents_write修改会话提示后本轮请求保持原提示且下一轮包含新提示`() = runTest {
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val fixture = skillsFixture(catalog, initialCustomPrompt = "原会话指令")
+        fixture.runtime.buildContext(fixture.request)
+        val initial = fixture.prompts.last()
+        assertThat(initial).contains("原会话指令")
+        val agents = mockk<com.promenar.infinity.data.repository.AgentRepository> {
+            coEvery { getById("agent") } returns com.promenar.infinity.domain.model.Agent("agent", "助手")
+        }
+        val sessions = mockk<com.promenar.infinity.data.repository.SessionRepository> {
+            coEvery { getConfigurationById("skills-session") } answers { fixture.store.getSession("skills-session") }
+            coEvery { updatePartial("skills-session", any()) } coAnswers {
+                val updates = secondArg<Map<String, Any?>>()
+                fixture.store.updateSession("skills-session") { it.copy(customPrompt = updates["customPrompt"] as String) }
+            }
+        }
+        val service = com.promenar.infinity.data.agentconfig.AgentConfigService(agents, sessions,
+            { com.promenar.infinity.data.agentconfig.AgentConfigCatalog() }, { null })
+        val raw = """{"op":"update_session","fields":{"customPrompt":"新会话指令"},"reason":"回答规则"}"""
+        val target = service.preflight(fixture.store.getSession("skills-session")!!, raw).target
+        val context = object : com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext {
+            override val sessionId = "skills-session"
+            override val agentId = "agent"
+            override val workspaceRootUuid = "root"
+            override val workspacePath: String? = null
+            override val approvedExecutionTarget = target
+            override val isApprovalBoundExecution = true
+        }
+        val result = com.promenar.infinity.data.agentconfig.AgentsWriteTool { service }.execute(
+            kotlinx.serialization.json.Json.parseToJsonElement(raw) as kotlinx.serialization.json.JsonObject, context)
+        assertThat(result.status).isEqualTo("success")
+        fixture.runtime.buildContext(fixture.request)
+        assertThat(fixture.prompts.last()).contains("原会话指令")
+        assertThat(fixture.prompts.last()).doesNotContain("新会话指令")
+        val resumed = skillsFixture(catalog, initialCustomPrompt = "新会话指令",
+            initialTurnContext = fixture.store.getSession("skills-session")!!.messages.first().turnContext)
+        resumed.runtime.buildContext(resumed.request)
+        assertThat(resumed.prompts.last()).contains("原会话指令")
+        assertThat(resumed.prompts.last()).doesNotContain("新会话指令")
+        val next = skillsFixture(catalog, initialCustomPrompt = fixture.store.getSession("skills-session")!!.customPrompt)
+        next.runtime.buildContext(next.request)
+        assertThat(next.prompts.last()).contains("新会话指令")
+        assertThat(next.prompts.last()).doesNotContain("原会话指令")
+    }
+
+    @Test fun `本轮模型推理参数和MCP快照固定且权限段反映实时收紧`() = runTest {
+        val requests = mutableListOf<PromptRequest>()
+        val local = mockk<LlmProvider> {
+            coEvery { sendPrompt(any()) } answers {
+                requests += firstArg<PromptRequest>()
+                kotlinx.coroutines.flow.flowOf(StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+            }
+        }
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val fixture = skillsFixture(catalog, localProvider = local)
+        fixture.store.updateSession("skills-session") { it.copy(executionMode = "full_access") }
+        fixture.runtime.buildContext(fixture.request)
+        fixture.runtime.stream(fixture.request, 0).toList()
+        fixture.store.updateSession("skills-session") { it.copy(modelId = "local::changed", inferenceParams = InferenceParams(maxTokens = 99),
+            activeMcpServerIds = listOf("new-server"), executionMode = "workspace") }
+        fixture.runtime.buildContext(fixture.request)
+        fixture.runtime.stream(fixture.request, 1).toList()
+        assertThat(requests.map { it.model }).containsExactly("skills", "skills").inOrder()
+        assertThat(requests.map { it.maxTokens }).containsExactly(16, 16).inOrder()
+        assertThat(requests.last().messages.first().content).contains("权限档：工作区")
+        assertThat(fixture.toolSessions.last().activeMcpServerIds).isEmpty()
+        val next = skillsFixture(catalog, localProvider = local)
+        next.store.updateSession("skills-session") { it.copy(modelId = "local::changed", inferenceParams = InferenceParams(maxTokens = 99)) }
+        next.runtime.buildContext(next.request)
+        next.runtime.stream(next.request, 0).toList()
+        assertThat(requests.last().model).isEqualTo("changed")
+        assertThat(requests.last().maxTokens).isEqualTo(99)
+    }
+
     private data class SkillsFixture(
         val runtime: DefaultChatGenerationRuntime,
         val request: GenerationRequest,
@@ -245,6 +362,7 @@ class DefaultChatGenerationRuntimeTest {
         val toolThreads: List<Thread> = emptyList(),
         val executor: ToolExecutor,
         val store: ChatStore,
+        val toolSessions: List<Session>,
     )
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -266,6 +384,9 @@ class DefaultChatGenerationRuntimeTest {
         localProvider: LlmProvider? = null,
         timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
         linuxFiles: com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess? = null,
+        initialCustomPrompt: String? = null,
+        initialTurnContext: String? = null,
+        agentConfigService: com.promenar.infinity.data.agentconfig.AgentConfigService? = null,
     ): SkillsFixture {
         val settings = mockk<SharedPreferences> {
             every { getInt(any(), any()) } answers { secondArg() }
@@ -274,9 +395,9 @@ class DefaultChatGenerationRuntimeTest {
             every { getStringSet(any(), any()) } returns emptySet()
             every { getFloat(any(), any()) } answers { secondArg() }
         }
-        val session = Session("skills-session", "agent", modelId = "local::skills", inferenceParams = InferenceParams(maxTokens = 16),
+        val session = Session("skills-session", "agent", customPrompt = initialCustomPrompt, modelId = "local::skills", inferenceParams = InferenceParams(maxTokens = 16),
             options = SessionOptions(enableTimeInjection = false),
-            messages = listOf(Message("user", MessageRole.USER, content), Message("assistant", MessageRole.ASSISTANT, "")))
+            messages = listOf(Message("user", MessageRole.USER, content, turnContext = initialTurnContext), Message("assistant", MessageRole.ASSISTANT, "")))
         val store = ChatStore().apply { update { ChatState(sessions = listOf(session)) } }
         val router = mockk<ProviderRequestRouter> {
             every { resolve(any()) } answers {
@@ -289,9 +410,11 @@ class DefaultChatGenerationRuntimeTest {
         }
         val prompts = mutableListOf<String>()
         val toolThreads = mutableListOf<Thread>()
+        val toolSessions = mutableListOf<Session>()
         val strategy = mockk<ChatGenerationContentStrategy> {
             every { buildTools(any()) } answers {
                 toolThreads += Thread.currentThread()
+                toolSessions += firstArg<Session>()
                 toolNames.map { ProtocolTool(function = ProtocolToolFunction(it, "", "{}"), runtimeToolId = it) }
             }
             every { buildProtocolMessages(any(), any(), any(), any(), any()) } answers {
@@ -302,6 +425,13 @@ class DefaultChatGenerationRuntimeTest {
         }
         val executor = mockk<ToolExecutor>(relaxed = true)
         val messageManager = mockk<MessageManager>(relaxed = true)
+        coEvery { messageManager.persistModelInputs(any(), any(), any()) } coAnswers {
+            val id = arg<String>(1)
+            val updates = arg<Map<String, String?>>(2)
+            if ("turnContext" in updates) store.updateSession(firstArg()) { current -> current.copy(messages = current.messages.map {
+                if (it.id == id) it.copy(turnContext = updates["turnContext"]) else it
+            }) }
+        }
         if (subagentCompletions != null) {
             coEvery { messageManager.addMessage(any(), any()) } coAnswers {
                 val sessionId = firstArg<String>()
@@ -320,8 +450,9 @@ class DefaultChatGenerationRuntimeTest {
             subagentCompletions = subagentCompletions,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgePlanner, knowledgeTurns = knowledgeTurns,
             timedGrants = timedGrants, linuxFiles = linuxFiles,
+            agentConfigService = agentConfigService?.let { service -> { service } },
         )
-        return SkillsFixture(runtime, GenerationRequest("skills-session", "assistant", "user", content, emptyList(), GenerationRuntimePolicy.BACKGROUND_ALLOWED), prompts, toolThreads, executor, store)
+        return SkillsFixture(runtime, GenerationRequest("skills-session", "assistant", "user", content, emptyList(), GenerationRuntimePolicy.BACKGROUND_ALLOWED), prompts, toolThreads, executor, store, toolSessions)
     }
 
     @Test fun `主会话技能授权有效时直接执行且到期异类异会话仍审批`() = runTest {

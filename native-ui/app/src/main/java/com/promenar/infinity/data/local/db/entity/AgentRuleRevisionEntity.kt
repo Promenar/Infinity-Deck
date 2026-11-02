@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Agent 用户规则的历史版本。不对 agents 建外键：Agent 以 REPLACE 写入时外键级联会误删历史，
+ * Agent 提示词的历史版本。不对 agents 建外键：Agent 以 REPLACE 写入时外键级联会误删历史，
  * 删除 Agent 时由 [com.promenar.infinity.data.local.db.dao.AgentDao.deleteWithRuleRevisions] 一并清理。
  * 与文件版本缓存一样不进入可移植备份。
  */

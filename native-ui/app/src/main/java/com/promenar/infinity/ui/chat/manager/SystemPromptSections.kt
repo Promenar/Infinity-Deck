@@ -89,6 +89,7 @@ object SystemPromptSections {
             appendLine("- shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download and job_input run without per-command approval.")
         }
         appendLine("- In both scopes, schedule_create, request_knowledge_access, resolve_startup_issue, skill-directory mutations and SSH host configuration require approval for every call. session_read/session_list require approval when accessing other sessions outside the permitted family. Linux rootfs mutations require approval in workspace scope. Other tools do not require execution approval.")
+        appendLine("- agents_write 每次都需用户审批，不可限时免审批；配置修改从下一轮生效。")
         appendLine("- Critical runtime data includes databases/ (including infinity_v2.db), shared_prefs/, no_backup/, and diagnostic logs (files/infinity_diagnostics.jsonl, files/infinity_logs.txt, files/diag-keep). In either scope, before modifying any of these, explain the purpose and impact in your reply and obtain the user's explicit written consent. Tool approval alone does not replace that consent.")
         appendLine("- files/agent_skills/ is the user skill directory. Create, edit or delete user skills with the file tools under the user skill path; each call is confirmed on the approval card and needs no separate written consent. Do not modify it with commands to bypass that approval.")
         appendLine("- Installing pip packages into files/python-user is normal use.")

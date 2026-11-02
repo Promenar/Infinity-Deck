@@ -159,7 +159,7 @@ class DefaultChatGenerationContentStrategy(
                             MessageQuoteFormatter.formatUserContent(message.content, message.quotes),
                             message.userDocuments.orEmpty(),
                         ),
-                        turnContext = message.turnContext,
+                        turnContext = com.promenar.infinity.ui.chat.manager.turnContextForModel(message.turnContext),
                         imageUrls = message.userImages?.map { dataUrl ->
                             val base64Index = dataUrl.indexOf("base64,")
                             val mimeEnd = dataUrl.indexOf(';')

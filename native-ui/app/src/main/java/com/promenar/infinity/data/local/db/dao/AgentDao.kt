@@ -45,16 +45,6 @@ interface AgentDao {
     @Query("DELETE FROM agent_rule_revisions WHERE agent_id = :agentId")
     suspend fun deleteRuleRevisions(agentId: String): Int
 
-    /**
-     * 编辑页等调用方从界面状态重建整个 Agent 后整行写入；用户规则由专用单列更新维护，
-     * 这里沿用数据库中的现值，避免较早加载的副本覆盖 Agent 工具刚写入的规则。
-     */
-    @Transaction
-    suspend fun updatePreservingUserRules(agent: AgentEntity) {
-        val current = getUserRules(agent.id) ?: return
-        update(agent.copy(userRules = current))
-    }
-
     @Transaction
     suspend fun deleteWithRuleRevisions(agentId: String) {
         deleteRuleRevisions(agentId)

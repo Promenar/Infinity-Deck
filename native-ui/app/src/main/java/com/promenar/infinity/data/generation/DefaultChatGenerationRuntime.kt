@@ -196,6 +196,7 @@ internal class DefaultChatGenerationRuntime(
     private val knowledgeTurns: com.promenar.infinity.data.knowledge.KnowledgeTurnState? = null,
     private val toolProgressReminder: ToolProgressReminder = ToolProgressReminder(),
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
+    private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
@@ -544,9 +545,15 @@ internal class DefaultChatGenerationRuntime(
         }
         if (reusedRetrieval == null) ui.replaceRagPhases(defaultRagPhases())
         var session = store.getSession(request.sessionId) ?: error("生成会话不存在")
+        val savedConfiguration = com.promenar.infinity.ui.chat.manager.turnContextMetadata(savedTurnContext)?.configuration
         val agent = agentRepository.getById(session.agentId)
         val agentConfig = configResolver.resolve(agent)
-        val model = session.modelId?.takeIf(String::isNotBlank)
+        val inference = savedConfiguration?.inferenceParams ?: session.inferenceParams.withDefaults(agentConfig.inferenceDefaults())
+        val toolSession = if (savedConfiguration == null) session else session.copy(
+            activeSkillIds = savedConfiguration.activeSkillIds ?: session.activeSkillIds,
+            activeMcpServerIds = savedConfiguration.activeMcpServerIds ?: session.activeMcpServerIds,
+        )
+        val model = savedConfiguration?.modelId ?: session.modelId?.takeIf(String::isNotBlank)
             ?: agentConfig.modelId.takeIf(String::isNotBlank)
             ?: ProviderManager.getInstance().getMainConfiguredModelId().orEmpty()
         val effectiveRagOptions = session.ragOptions ?: RagOptions()
@@ -567,6 +574,9 @@ internal class DefaultChatGenerationRuntime(
             },
             agentSystemPrompt = agentConfig.systemPrompt.takeIf(String::isNotBlank),
             sessionCustomPrompt = session.customPrompt,
+            turnConfiguration = savedConfiguration ?: com.promenar.infinity.ui.chat.manager.TurnConfigurationSnapshot(
+                agentConfig.systemPrompt.takeIf(String::isNotBlank), session.customPrompt, model, inference, session.activeSkillIds, session.activeMcpServerIds,
+            ),
             retrievalMode = com.promenar.infinity.data.rag.effectiveRetrievalMode(agent?.retrievalConfig, session.options.toolsEnabled),
             knowledgeCatalog = if (savedTurnContext == null && com.promenar.infinity.data.rag.effectiveRetrievalMode(agent?.retrievalConfig, session.options.toolsEnabled) != com.promenar.infinity.data.agent.AgentRetrievalMode.AUTO) {
                 knowledgeCatalog?.snapshot(session, com.promenar.infinity.data.rag.resolveEffectiveRagOptions(session.ragOptions, memoryPolicy = agentConfig.memoryPolicy))
@@ -585,7 +595,7 @@ internal class DefaultChatGenerationRuntime(
         val preparation = try {
             routeGate.prepareWithRoute(model) { route ->
                 // Vertex 的多轮函数调用要求 thought signature 原样回传；夹具闭环前保持能力关闭。
-                routeTools = if (route.supportsToolCalls) buildToolsOffMain(session, route.modelId) else emptyList()
+                routeTools = if (route.supportsToolCalls) buildToolsOffMain(toolSession, route.modelId) else emptyList()
                 val toolNames = routeTools.mapTo(linkedSetOf()) { it.function.name }
                 val skills = scanSkills(params.workspace)
                 val contextParams = params.copy(
@@ -639,7 +649,6 @@ internal class DefaultChatGenerationRuntime(
             knowledgeTurns?.seed(session, turnId, context.ragReferences)
         }
         val tools = routeTools
-        val inference = session.inferenceParams.withDefaults(agentConfig.inferenceDefaults())
         preparedRoute = route
         preparedContext = context
         observedStateRevision = maxOf(observedStateRevision, context.stateBoardRevision, observedStateRevision(session, request))
@@ -1038,9 +1047,15 @@ internal class DefaultChatGenerationRuntime(
             return GenerationToolDecision.CONTINUE
         }
         val preparedByName = preparedTools.groupBy { it.function.name }
+        val configPreflights = calls.filter { it.name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE }
+            .associate { call -> call.id to (agentConfigService?.invoke()?.preflight(session, call.arguments)
+                ?: com.promenar.infinity.data.agentconfig.AgentConfigPreflight(error = "配置工具不可用")) }
+        val invalidConfigCalls = configPreflights.filterValues { it.error != null }.keys
         val targets = calls.associate { call ->
             val tool = preparedByName[call.name]?.singleOrNull()
-            call.id to tool?.let { if (call.name == "request_knowledge_access") {
+            call.id to tool?.let { if (call.name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE) {
+                configPreflights[call.id]?.target
+            } else if (call.name == "request_knowledge_access") {
                 val args = (com.promenar.infinity.domain.tool.ToolArgumentsValidator().validate(call.arguments) as? com.promenar.infinity.domain.tool.ToolArgumentsValidation.Valid)?.arguments
                 val base = (args?.get("knowledge_base") as? kotlinx.serialization.json.JsonPrimitive)?.content
                 knowledgeAccessPlanner?.preview(session.id, base)?.let { com.promenar.infinity.data.model.json.encodeToString(it) }
@@ -1060,7 +1075,7 @@ internal class DefaultChatGenerationRuntime(
             grantCategories[call.id]?.let { timedGrants?.isValid(session.id, it) } == true
         }.associate { it.id to targets[it.id] }
         val requestedPendingIds = calls.filter { call ->
-            call.id !in timedGrantTargets &&
+            call.id !in invalidConfigCalls && call.id !in timedGrantTargets &&
             !(call.name == "request_knowledge_access" && knowledgeTurns?.isDenied(session.id, turnId) == true) &&
             com.promenar.infinity.domain.tool.ToolExecutionPolicy.requiresApproval(
                 mode, call.name, preparedByName[call.name]?.singleOrNull()?.risk ?: contentStrategy.riskForTool(call.name),

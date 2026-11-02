@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.local.db.dao
 
+import kotlinx.coroutines.flow.Flow
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
@@ -8,6 +9,12 @@ import com.promenar.infinity.data.local.db.entity.AgentRuleRevisionEntity
 
 @Dao
 interface AgentRuleRevisionDao {
+    @Query("SELECT * FROM agent_rule_revisions WHERE agent_id = :agentId ORDER BY created_at DESC, id DESC")
+    fun observeForAgent(agentId: String): Flow<List<AgentRuleRevisionEntity>>
+
+    @Query("SELECT * FROM agent_rule_revisions WHERE agent_id = :agentId ORDER BY created_at DESC, id DESC LIMIT 1")
+    suspend fun latestForAgent(agentId: String): AgentRuleRevisionEntity?
+
     @Query("SELECT * FROM agent_rule_revisions WHERE agent_id = :agentId ORDER BY created_at DESC, id DESC")
     suspend fun listForAgent(agentId: String): List<AgentRuleRevisionEntity>
 

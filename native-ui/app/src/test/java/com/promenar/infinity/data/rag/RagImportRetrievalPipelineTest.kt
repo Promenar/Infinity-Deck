@@ -200,7 +200,7 @@ class RagImportRetrievalPipelineTest {
         assertThat(protocol.first { it.role == "system" }.content).doesNotContain(uniqueFact)
         val sentUser = protocol.single { it.role == "user" }
         assertThat(sentUser.content).isEqualTo(query)
-        assertThat(sentUser.turnContext).isEqualTo(context.turnContext)
+        assertThat(sentUser.turnContext).isEqualTo(com.promenar.infinity.ui.chat.manager.turnContextForModel(context.turnContext))
         val sentContext = requireNotNull(sentUser.turnContext)
         assertThat(sentContext).contains(uniqueFact)
         assertThat(sentContext.windowed(uniqueFact.length).count { it == uniqueFact }).isEqualTo(1)

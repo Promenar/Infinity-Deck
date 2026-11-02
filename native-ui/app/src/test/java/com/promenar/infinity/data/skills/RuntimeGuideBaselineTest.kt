@@ -14,6 +14,15 @@ class RuntimeGuideBaselineTest {
         assertThat(prompt.lines().size).isAtMost(16)
     }
 
+    @Test fun `权限固定段在所有运行模式与权限档声明配置写入逐次审批`() {
+        for (mode in com.promenar.infinity.domain.model.ExecutionMode.entries)
+            for (runMode in com.promenar.infinity.domain.model.SessionRunMode.entries) {
+                val prompt = SystemPromptSections.permissions(mode, runMode = runMode)
+                assertThat(prompt).contains("agents_write 每次都需用户审批")
+                assertThat(prompt).contains("从下一轮生效")
+            }
+    }
+
     @Test fun `技能来源包含内置只读作用域`() {
         assertThat(SkillScope.entries.map { it.name }).contains("BUILTIN")
     }

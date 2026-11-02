@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -48,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -152,6 +154,20 @@ internal class PromptSaveGate {
 /**
  * 将普通异常收敛为可展示的保存失败，同时保持协程取消的结构化并发语义。
  */
+/** 保存时发现内容已被他人修改；编辑器不显示通用失败，由调用方的提示条说明。 */
+open class PromptSaveConflictException(message: String) : IllegalStateException(message)
+
+/** 提示条操作编辑器内容的入口：读取当前草稿、替换内容（同时作为未修改基线）与关闭编辑器。 */
+class PromptEditorHandle internal constructor(
+    private val state: TextFieldState,
+    private val onReplace: (String) -> Unit,
+    private val onClose: () -> Unit,
+) {
+    val text: String get() = state.text.toString()
+    fun replace(text: String) = onReplace(text)
+    fun close() = onClose()
+}
+
 internal suspend fun runPromptSave(
     text: String,
     persist: suspend (String) -> Result<Unit>,
@@ -211,11 +227,17 @@ fun UnifiedPromptEditor(
     fontSize: Int = 15,
     /** 为 false 时只保留编辑页，不显示 Markdown 预览（例如编辑脚本与配置文件）。 */
     showPreviewTab: Boolean = true,
+    /** 顶栏下方的提示条（如“智能体刚修改了提示词”）；可读取与替换草稿。 */
+    banner: (@Composable (PromptEditorHandle) -> Unit)? = null,
+    /** 顶栏下方、提示条上方的次要入口；为空时不占位。 */
+    secondaryAction: (@Composable () -> Unit)? = null,
 ) {
     if (!show) return
 
     val textFieldState = rememberTextFieldState(initialText)
     val text = textFieldState.text.toString()
+    // 未修改基线：提示条用新内容替换草稿时一并更新，避免把已保存的内容当成未保存改动。
+    var baseline by remember(initialText) { mutableStateOf(initialText) }
     var chosenView by rememberSaveable { mutableStateOf<PromptEditorView?>(null) }
     var showDiscardConfirmation by remember(initialText) { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
@@ -225,7 +247,7 @@ fun UnifiedPromptEditor(
     val coroutineScope = rememberCoroutineScope()
 
     val statistics = remember(text) { promptTextStatistics(text) }
-    val dirty = hasUnsavedPromptChanges(initialText, text)
+    val dirty = hasUnsavedPromptChanges(baseline, text)
     val resolvedTitle = title.ifBlank { stringResource(R.string.prompt_editor_default_title) }
     val resolvedPlaceholder = placeholder.ifBlank { stringResource(R.string.prompt_editor_default_placeholder) }
     val requestDismiss = {
@@ -244,7 +266,9 @@ fun UnifiedPromptEditor(
             saveFailed = false
             saveJob = coroutineScope.launch {
                 try {
-                    if (runPromptSave(text, onSave).isSuccess) onDismiss() else saveFailed = true
+                    val result = runPromptSave(text, onSave)
+                    if (result.isSuccess) onDismiss()
+                    else if (result.exceptionOrNull() !is PromptSaveConflictException) saveFailed = true
                 } finally {
                     saveGate.finish()
                     isSaving = false
@@ -303,6 +327,21 @@ fun UnifiedPromptEditor(
                         )
                     }
                     HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    secondaryAction?.invoke()
+                    banner?.let { content ->
+                        val dismiss by rememberUpdatedState(onDismiss)
+                        val handle = remember(textFieldState) {
+                            PromptEditorHandle(
+                                state = textFieldState,
+                                onReplace = { replacement ->
+                                    textFieldState.setTextAndPlaceCursorAtEnd(replacement)
+                                    baseline = replacement
+                                },
+                                onClose = { dismiss() },
+                            )
+                        }
+                        content(handle)
+                    }
                     // 视图按页签左右顺序做共享 X 轴切换；文本状态在外层，切换不丢内容与撤销记录。
                     AnimatedContent(
                         targetState = view,

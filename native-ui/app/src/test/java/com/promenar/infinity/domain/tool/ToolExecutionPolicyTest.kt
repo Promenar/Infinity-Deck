@@ -22,7 +22,7 @@ class ToolExecutionPolicyTest {
                     .isEqualTo(mode == ExecutionMode.WORKSPACE)
             }
             ToolRisk.entries.forEach { risk ->
-                assertThat(ToolExecutionPolicy.requiresApproval(mode, "other", risk)).isEqualTo(risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT))
+                assertThat(ToolExecutionPolicy.requiresApproval(mode, "other", risk)).isEqualTo(risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT, ToolRisk.AGENT_CONFIG))
             }
             listOf("ssh_session_read", "write_file", "delete_file", "exec_js", "run_script", "python_sandbox", "mcp_demo", "web_fetch", "update_plan").forEach { tool ->
                 assertThat(CommandToolClassification.backendFor(tool)).isNull()

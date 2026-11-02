@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- agents_write approval card -->
+    <string name="chat_approval_risk_agent_config">Config change</string>
+    <string name="agent_config_where">Agents and chats</string>
+    <string name="agent_config_title_generic">Change an agent or chat</string>
+    <string name="agent_config_title_create_agent">New agent · %1$s</string>
+    <string name="agent_config_title_update_agent">Edit agent · %1$s</string>
+    <string name="agent_config_title_create_session">New chat · in %1$s</string>
+    <string name="agent_config_title_update_current_session">Edit chat · this chat</string>
+    <string name="agent_config_title_update_session">Edit chat · %1$s</string>
+    <string name="agent_config_prompt_diff">Prompt changes</string>
+    <string name="agent_config_session_prompt_diff">Chat prompt changes</string>
+    <string name="agent_config_value_default">Default</string>
+    <string name="agent_config_value_on">On</string>
+    <string name="agent_config_value_off">Off</string>
+    <string name="agent_config_untitled_session">New chat</string>
+    <string name="agent_config_field_name">Name</string>
+    <string name="agent_config_field_description">Description</string>
+    <string name="agent_config_field_default_model">Default model</string>
+    <string name="agent_config_field_model">Model</string>
+    <string name="agent_config_field_temperature">Temperature</string>
+    <string name="agent_config_field_top_p">Top P</string>
+    <string name="agent_config_field_max_tokens">Max output</string>
+    <string name="agent_config_field_top_k">Top K</string>
+    <string name="agent_config_field_frequency_penalty">Frequency penalty</string>
+    <string name="agent_config_field_presence_penalty">Presence penalty</string>
+    <string name="agent_config_field_repetition_penalty">Repetition penalty</string>
+    <string name="agent_config_field_reasoning_effort">Reasoning effort</string>
+    <string name="agent_config_field_default_mcp">Default MCP</string>
+    <string name="agent_config_field_default_workspace">Default workspace</string>
+    <string name="agent_config_field_tools_default">Tools on by default</string>
+    <string name="agent_config_field_execution_mode">Approvals</string>
+    <string name="agent_config_field_title">Title</string>
+    <string name="agent_config_field_skills">Enabled skills</string>
+    <string name="agent_config_field_mcp">Enabled MCP</string>
+    <plurals name="agent_config_impact_agent_prompt">
+        <item quantity="one">Affects the %2$d chat of “%1$s” from its next turn. The previous prompt is kept as a version you can restore from the edit page.</item>
+        <item quantity="other">Affects all %2$d chats of “%1$s” from each chat\'s next turn. The previous prompt is kept as a version you can restore from the edit page.</item>
+    </plurals>
+    <plurals name="agent_config_impact_agent_fields">
+        <item quantity="one">Affects the %2$d chat of “%1$s” from its next turn; new-chat defaults only apply to chats created later.</item>
+        <item quantity="other">Affects all %2$d chats of “%1$s” from each chat\'s next turn; new-chat defaults only apply to chats created later.</item>
+    </plurals>
+    <string name="agent_config_impact_new_agent">Only creates the agent; no conversation starts. Approvals are set to “Ask for commands” and can be changed on the edit page.</string>
+    <string name="agent_config_impact_new_session">Only creates the chat; no conversation starts and you stay in this chat.</string>
+    <string name="agent_config_impact_current_session">Applies to this chat from the next turn; other chats are unaffected.</string>
+    <string name="agent_config_impact_other_session">Applies to that chat from its next turn; this chat is unaffected.</string>
+    <string name="agent_config_approve_once">Approve once</string>
+    <string name="agent_config_approve_once_hint">Agent and chat changes need approval every time; they can\'t be skipped for 10 minutes.</string>
+    <!-- Edit page: conflicts with agent tool writes -->
+    <string name="agent_edit_conflict_field">The agent just changed %1$s, which you also edited. Choose which one to keep:</string>
+    <string name="agent_edit_conflict_prompt">The agent just changed the prompt while you were editing it. Choose which one to keep:</string>
+    <string name="agent_edit_conflict_mine">Yours: %1$s</string>
+    <string name="agent_edit_conflict_theirs">Agent\'s: %1$s</string>
+    <string name="agent_edit_conflict_local_value">Your unsaved change</string>
+    <string name="agent_edit_conflict_other_setting">Other settings</string>
+    <string name="agent_edit_conflict_view_diff">View diff</string>
+    <string name="agent_edit_conflict_hide_diff">Hide diff</string>
+    <string name="agent_edit_conflict_adopt">Use theirs</string>
+    <string name="agent_edit_conflict_keep">Keep mine</string>
+    <string name="agent_edit_conflict_diff_caption">Your draft → the agent\'s version. Whichever you drop is saved as a version in history.</string>
+    <string name="agent_edit_notice_adopted_prompt">Using the agent\'s version. Your unsaved draft was saved as a version in history.</string>
+    <string name="agent_edit_notice_kept_prompt">Kept and saved your version. The agent\'s version is in history and can be restored.</string>
+    <string name="agent_edit_notice_adopted">Using the agent\'s change.</string>
+    <string name="agent_edit_notice_kept">Kept and saved your change.</string>
+    <string name="agent_edit_notice_restored">Version restored. Takes effect from the next turn in each chat.</string>
+
+    <!-- Prompt version history -->
+    <string name="agent_prompt_history_row">Version history</string>
+    <string name="agent_prompt_history_row_empty">No versions yet</string>
+    <plurals name="agent_prompt_history_row_count">
+        <item quantity="one">%1$d version</item>
+        <item quantity="other">%1$d versions</item>
+    </plurals>
+    <string name="agent_prompt_history_title">Prompt history</string>
+    <string name="agent_prompt_history_caption">Keeps the last 20 versions. Agent changes, saves on this page and restores each add a version.</string>
+    <string name="agent_prompt_history_empty">No versions yet. They appear here after the prompt is saved or changed.</string>
+    <string name="agent_prompt_history_empty_content">(Empty prompt)</string>
+    <string name="agent_prompt_history_current">Current</string>
+    <plurals name="agent_prompt_history_chars">
+        <item quantity="one">%1$d char</item>
+        <item quantity="other">%1$d chars</item>
+    </plurals>
+    <string name="agent_prompt_history_source_user">Me</string>
+    <string name="agent_prompt_history_source_agent">Agent</string>
+    <string name="agent_prompt_history_source_rollback">Restore</string>
+    <string name="agent_prompt_history_is_current">This is the version in use.</string>
+    <string name="agent_prompt_history_diff_caption">Current → this version</string>
+    <string name="agent_prompt_history_close">Close</string>
+    <string name="agent_prompt_history_restore">Restore</string>
+    <string name="agent_prompt_history_restore_caption">Takes effect from the next turn in each chat. The current prompt stays in history.</string>
+</resources>

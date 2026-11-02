@@ -98,6 +98,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 - **自选模型，自带密钥**：支持 OpenAI（Chat Completions 与 Responses）、Anthropic、Google Gemini、Vertex AI、DeepSeek、GLM、Kimi 及任意 OpenAI 兼容接口，流式输出、图片输入，会话内可切换模型；最多 4 个会话同时生成。
 - **执行由你批准**：每个会话单独设置审批策略，命令先以卡片呈现，批准后才执行。
+- **智能体管理智能体**：Agent 可以读取并调整智能体与会话的配置，例如新建一个翻译助手、改写提示词；每次写入都需你批准，审批卡列出字段变化与提示词差异。提示词保留最近 20 个历史版本，可随时恢复。
 - **画布**：Agent 生成可交互的 HTML 页面，支持实时预览与版本记录，保存在会话工作区。
 - **资料库：RAG 与知识图谱**：导入 TXT、Markdown、PDF、Word、HTML，向量与全文混合检索、重排和引用追踪。
 - **保密输入与输出**：密码和令牌经专用卡片直达去向，不进入对话、日志与模型上下文。

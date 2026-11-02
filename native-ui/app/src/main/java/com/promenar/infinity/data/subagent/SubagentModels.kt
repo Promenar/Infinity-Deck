@@ -183,11 +183,11 @@ object SubagentLimits {
     const val APPROVAL_TIMEOUT_MS = 10 * 60_000L
     const val TOOL_NAME = "agent_task"
     /** 子代理只交回文本，看不到媒体，排除查看媒体的工具以免据此编造内容。 */
-    private val EXCLUDED_TOOLS = setOf(TOOL_NAME, "view_media", com.promenar.infinity.domain.ask.AskUserLimits.TOOL_NAME)
+    private val EXCLUDED_TOOLS = setOf(TOOL_NAME, "view_media", "agents_read", "agents_write", com.promenar.infinity.domain.ask.AskUserLimits.TOOL_NAME)
 
     /** 子代理不能再派生子代理，也不能改动父会话的计划等内部状态。 */
     fun toolset(parentTools: List<ProtocolTool>, profile: SubagentToolProfile): List<ProtocolTool> = parentTools.filter { tool ->
-        tool.function.name !in EXCLUDED_TOOLS && tool.runtimeToolId !in EXCLUDED_TOOLS && tool.risk != ToolRisk.SESSION_STATE && tool.risk != ToolRisk.ACCESS_GRANT &&
+        tool.function.name !in EXCLUDED_TOOLS && tool.runtimeToolId !in EXCLUDED_TOOLS && tool.risk != ToolRisk.SESSION_STATE && tool.risk != ToolRisk.ACCESS_GRANT && tool.risk != ToolRisk.AGENT_CONFIG &&
             (profile == SubagentToolProfile.INHERIT || tool.risk == ToolRisk.SAFE_READ)
     }
 

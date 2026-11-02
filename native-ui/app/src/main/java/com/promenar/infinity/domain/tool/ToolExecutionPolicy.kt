@@ -10,6 +10,8 @@ enum class ToolRisk {
     SCHEDULE,
     /** 授予智能体新的数据访问权限，所有模式均需用户批准。 */
     ACCESS_GRANT,
+    /** 修改智能体或会话配置，所有模式逐次审批，不可限时免审批。 */
+    AGENT_CONFIG,
     FILE_WRITE,
     PATCH,
     DELETE,
@@ -54,7 +56,7 @@ object ToolExecutionPolicy {
     }
 
     private fun requiresNonGrantableApproval(toolName: String, risk: ToolRisk, resolvedTarget: String?): Boolean =
-        risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT) ||
+        risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT, ToolRisk.AGENT_CONFIG) ||
             toolName in setOf("schedule_create", "request_knowledge_access") ||
             ToolArgumentApprovalRules.requiresNonGrantableApproval(toolName, resolvedTarget)
 

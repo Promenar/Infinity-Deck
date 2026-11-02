@@ -29,6 +29,9 @@ class DefaultSessionToolResolver(
         val canView = capabilities.vision || capabilities.audioInput || capabilities.videoUnderstanding
         return allTools.filter { tool ->
             if (!SessionToolAvailability.allows(session, tool)) return@filter false
+            if (tool.sourceId == "builtin" &&
+                (tool.function.name in setOf("agents_read", "agents_write") || tool.runtimeToolId in setOf("agents_read", "agents_write")) &&
+                !com.promenar.infinity.data.agentconfig.AgentConfigService.isMainSession(session)) return@filter false
             if (tool.sourceId == "builtin" && tool.runtimeToolId.ifBlank { tool.function.name } == "knowledge_search" && !knowledgeSearchAllowed(session)) return@filter false
             if (tool.sourceId == "builtin" && tool.runtimeToolId.ifBlank { tool.function.name } == "request_knowledge_access" && !knowledgeAccessAllowed(session)) return@filter false
             if (tool.sourceId == "builtin" && tool.runtimeToolId.ifBlank { tool.function.name } == "copy_knowledge_to_linux" &&
