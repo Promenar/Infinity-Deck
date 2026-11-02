@@ -232,6 +232,60 @@ class SharedStorageFileToolsDeviceTest {
         assertEquals("original", File(directory, "target").readText())
     }
 
+    @Test fun injectedErrorAfterDirectoryUnlinkConfirmsMoveWithRealFd() = runBlocking {
+        File(directory, "source/nested").mkdirs()
+        File(directory, "source/nested/child").writeText("original")
+        val fs = InjectedSharedFileSystem().apply {
+            afterDelete = { name -> if (name == "source") throw IOException("源目录已解除链接后返回错误") }
+        }
+        RealPathExternalFolderBackend(directory, emptySet(), { true }, fs).move("/source", "/target")
+        assertFalse(File(directory, "source").exists())
+        assertEquals("original", File(directory, "target/nested/child").readText())
+    }
+
+    @Test fun injectedErrorAfterSourceUnlinkPreservesRecreatedSourceAndCopy() = runBlocking {
+        val source = File(directory, "source").apply { writeText("original") }
+        val fs = InjectedSharedFileSystem().apply {
+            afterDelete = { name ->
+                if (name == "source") {
+                    source.writeText("external")
+                    throw IOException("源已被同名文件占用")
+                }
+            }
+        }
+        expectCode("RECOVERY_REQUIRED") {
+            RealPathExternalFolderBackend(directory, emptySet(), { true }, fs).move("/source", "/target")
+        }
+        assertEquals("external", source.readText())
+        assertEquals("original", File(directory, "target").readText())
+    }
+
+    @Test fun injectedErrorAfterSourceUnlinkRejectsChangedOrReplacedTarget() = runBlocking {
+        for ((replace, content) in listOf(false to "external", true to "original")) {
+            val source = File(directory, "source").apply { writeText("original") }
+            val target = File(directory, "target")
+            val saved = File(directory, "saved-target")
+            val fs = InjectedSharedFileSystem().apply {
+                afterDelete = { name ->
+                    if (name == "source") {
+                        if (replace) assertTrue(target.renameTo(saved))
+                        target.writeText(content)
+                        throw IOException("源已解除链接后目标发生变化")
+                    }
+                }
+            }
+            expectCode("RECOVERY_REQUIRED") {
+                RealPathExternalFolderBackend(directory, emptySet(), { true }, fs).move("/source", "/target")
+            }
+            assertEquals(content, target.readText())
+            if (source.exists()) assertEquals("original", source.readText())
+            if (replace) assertEquals("original", saved.readText())
+            source.delete()
+            target.delete()
+            saved.delete()
+        }
+    }
+
     /** 只注入平台差异，读写、身份与清理仍使用应用 UID 的真实共享卷句柄。 */
     private class InjectedSharedFileSystem(private val afterRead: (String) -> Unit = {}) : RealPathFileSystem {
         var afterDelete: (String) -> Unit = {}
@@ -268,6 +322,10 @@ class SharedStorageFileToolsDeviceTest {
             }
             override fun deleteFile(name: String) {
                 delegate.deleteFile(name)
+                afterDelete(name)
+            }
+            override fun deleteDirectory(name: String) {
+                delegate.deleteDirectory(name)
                 afterDelete(name)
             }
         }

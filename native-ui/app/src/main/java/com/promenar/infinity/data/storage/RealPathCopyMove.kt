@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 
 /** 仅在 rename 明确未提交时使用；创建回执与补偿均固定在原有目录句柄内。 */
 internal object RealPathCopyMove {
+    private enum class Deletion { NONE, CONFIRMED, FD_UNAVAILABLE, SOURCE_REPLACED }
     private class Node(val name: String, var source: RealPathFileState) {
         var sha256: String? = null
         var writtenSize = 0L
@@ -21,7 +22,8 @@ internal object RealPathCopyMove {
         val children = mutableListOf<Node>()
         var target: RealPathFileState? = null
         var creationAttempted = false
-        var deleted = false
+        var deletion = Deletion.NONE
+        val deleted get() = deletion == Deletion.CONFIRMED
     }
     private class Size { var bytes = 0L }
 
@@ -43,12 +45,15 @@ internal object RealPathCopyMove {
             deletingSource = true
             removeSource(source, sourceName, node, target, targetName)
             verify(target, targetName, node, target = true)
+            if (source.stat(sourceName) != null) realPathReadConflict("identity=recreated-after-delete")
         } catch (failure: Throwable) {
             withContext(NonCancellable) {
                 try {
-                    if (node.deleted && source.stat(sourceName) == null && failure !is CancellationException) {
+                    if ((node.deleted || node.deletion == Deletion.FD_UNAVAILABLE) &&
+                        source.stat(sourceName) == null && failure !is CancellationException) {
                         try {
                             verify(target, targetName, node, target = true)
+                            if (source.stat(sourceName) != null) realPathReadConflict("identity=recreated-after-delete")
                             return@withContext
                         } catch (changed: Throwable) { failure.addSuppressed(changed) }
                     }
@@ -189,9 +194,10 @@ internal object RealPathCopyMove {
                 verify(target, targetName, node, target = true)
                 checkIdentity(node.source, parent.stat(name))
                 val links = directory.state().linkCount
-                try { parent.deleteDirectory(name); node.deleted = true }
+                try { parent.deleteDirectory(name); node.deletion = Deletion.CONFIRMED }
                 catch (failure: Throwable) {
-                    node.deleted = parent.stat(name) == null && directory.state().linkCount < links
+                    try { recordFailedDelete(parent, name, node, links, directory::state) }
+                    catch (observation: Throwable) { failure.addSuppressed(observation) }
                     throw failure
                 }
             }
@@ -208,10 +214,10 @@ internal object RealPathCopyMove {
                 checkRealPathReadState(node.target!!, target.stat(targetName))
                 val links = held.state().linkCount
                 try {
-                    try { parent.deleteFile(name); node.deleted = true }
+                    try { parent.deleteFile(name); node.deletion = Deletion.CONFIRMED }
                     catch (failure: Throwable) {
-                        // 路径消失也可能是外部改名；原 FD 链接数下降才证明原对象已解除链接。
-                        node.deleted = parent.stat(name) == null && held.state().linkCount < links
+                        try { recordFailedDelete(parent, name, node, links, held::state) }
+                        catch (observation: Throwable) { failure.addSuppressed(observation) }
                         throw failure
                     }
                     verify(target, targetName, node, target = true)
@@ -250,7 +256,26 @@ internal object RealPathCopyMove {
         realPathReadConflict("mtime/ctime=unstable")
     }
 
-    private fun hasDeleted(node: Node): Boolean = node.deleted || node.children.any(::hasDeleted)
+    private fun recordFailedDelete(parent: BoundRealPathDirectory, name: String, node: Node,
+        links: Long, heldState: () -> RealPathFileState) {
+        val current = parent.stat(name)
+        if (current != null) {
+            // 删除后出现不同身份时必须保留目标副本，不能按“删除未发生”回滚它。
+            node.deletion = Deletion.SOURCE_REPLACED
+            checkIdentity(node.source, current)
+            node.deletion = Deletion.NONE
+            return
+        }
+        try {
+            if (heldState().linkCount < links) node.deletion = Deletion.CONFIRMED
+        } catch (failure: ErrnoException) {
+            if (failure.errno != OsConstants.ENOENT) throw failure
+            // 共享卷可能拒绝对已解除链接的 FD 做 fstat；仅记录不可读，不能据此恢复或删除数据。
+            node.deletion = Deletion.FD_UNAVAILABLE
+        }
+    }
+
+    private fun hasDeleted(node: Node): Boolean = node.deletion != Deletion.NONE || node.children.any(::hasDeleted)
 
     private suspend fun restoreMissing(parent: BoundRealPathDirectory, name: String, node: Node,
         target: BoundRealPathDirectory, targetName: String) {
@@ -265,7 +290,7 @@ internal object RealPathCopyMove {
                 }
                 if (read.sha256 != node.sha256) realPathReadConflict("sha256(restore)")
             }
-        } else if (node.deleted) {
+        } else if (node.deletion != Deletion.NONE) {
             realPathReadConflict("identity=recreated-after-delete")
         }
         checkIdentity(node.source, parent.stat(name))
@@ -277,7 +302,7 @@ internal object RealPathCopyMove {
             }
         }
         verify(parent, name, node, target = false)
-        node.deleted = false
+        node.deletion = Deletion.NONE
     }
 
     private suspend fun restoreFile(parent: BoundRealPathDirectory, name: String, node: Node, input: InputStream) {
@@ -297,7 +322,7 @@ internal object RealPathCopyMove {
         }
         if (count != node.writtenSize || digest.digest().hex() != expectedHash) realPathReadConflict("sha256(restore)")
         verify(parent, name, node, target = false)
-        node.deleted = false
+        node.deletion = Deletion.NONE
     }
 
     private suspend fun rollback(parent: BoundRealPathDirectory, name: String, node: Node) {
