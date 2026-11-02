@@ -421,19 +421,7 @@ fun RunModeCheckpointContent(
             is RunModeCheckpointStage.Unavailable -> {
                 Heading(R.string.run_mode_unavailable_title,
                     stringResource(R.string.run_mode_unavailable_body, stringResource(stage.reason.textRes())))
-                val primary = when (stage.reason) {
-                    RunModeUnavailableReason.NOT_INSTALLED -> R.string.run_mode_action_install
-                    RunModeUnavailableReason.UNSUPPORTED, RunModeUnavailableReason.BUSY -> null
-                    else -> R.string.run_mode_action_repair
-                }
-                RunModeActions(
-                    alternatives = listOfNotNull(
-                        RunModeAction(R.string.run_mode_action_builtin, RunModeTags.BUILTIN, onClick = actions.onUseBuiltin),
-                        if (canExport) RunModeAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport) else null,
-                    ),
-                    dismiss = RunModeAction(R.string.run_mode_action_later, null, onClick = actions.onLater),
-                    primary = primary?.let { RunModeAction(it, RunModeTags.PRIMARY, onClick = actions.onRepair) },
-                )
+                RunModeActions(runModeCheckpointActions(stage, canExport), actions)
             }
             is RunModeCheckpointStage.Working -> {
                 Heading(workingTitle(stage), stage.step?.let { stringResource(it) }.orEmpty())
@@ -450,31 +438,15 @@ fun RunModeCheckpointContent(
                     Text(stringResource(linuxFailureText(failure.code)), style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 if (stage.canReset) stage.loss?.let { LossSummary(it) }
-                RunModeActions(
-                    alternatives = listOfNotNull(
-                        if (canExport) RunModeAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport) else null,
-                        RunModeAction(R.string.run_mode_action_builtin, RunModeTags.BUILTIN, onClick = actions.onUseBuiltin),
-                    ),
-                    dismiss = RunModeAction(R.string.run_mode_action_later, null, onClick = actions.onLater),
-                    primary = if (stage.canReset) {
-                        RunModeAction(R.string.run_mode_action_reset, RunModeTags.RESET, destructive = true, onClick = actions.onReset)
-                    } else null,
-                )
+                RunModeActions(runModeCheckpointActions(stage, canExport), actions)
             }
             RunModeCheckpointStage.ExportChoice -> {
                 Heading(R.string.run_mode_action_export, "")
-                RunModeActions(
-                    alternatives = listOf(RunModeAction(R.string.run_mode_export_external, null, onClick = actions.onExportExternal)),
-                    dismiss = RunModeAction(R.string.common_btn_cancel, null, onClick = actions.onBack),
-                    primary = RunModeAction(R.string.run_mode_export_private, RunModeTags.PRIMARY, onClick = actions.onExportPrivate),
-                )
+                RunModeActions(runModeCheckpointActions(stage, canExport), actions)
             }
             RunModeCheckpointStage.ExportOffer -> {
                 Heading(R.string.run_mode_export_offer_title, stringResource(R.string.run_mode_export_offer_body))
-                RunModeActions(
-                    dismiss = RunModeAction(R.string.run_mode_action_later, null, onClick = actions.onLater),
-                    primary = RunModeAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport),
-                )
+                RunModeActions(runModeCheckpointActions(stage, canExport), actions)
             }
             is RunModeCheckpointStage.Exported -> {
                 val report = stage.report
@@ -495,7 +467,7 @@ fun RunModeCheckpointContent(
                         if (report.failures.size > MAX_FAILURES_SHOWN) Text("…", style = InfinityTypography.bodySmall)
                     }
                 }
-                RunModeActions(primary = RunModeAction(R.string.run_mode_done, RunModeTags.PRIMARY, onClick = actions.onDone))
+                RunModeActions(runModeCheckpointActions(stage, canExport), actions)
             }
         }
         message?.let { Text(it, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.error) }
@@ -548,40 +520,113 @@ private fun LossSummary(loss: LinuxResetLossSummary) {
     }
 }
 
-private data class RunModeAction(
-    @StringRes val text: Int,
-    val tag: String?,
-    val destructive: Boolean = false,
-    val onClick: () -> Unit,
+/** 检查点操作区里的单个操作；重置是唯一的危险操作。 */
+internal enum class RunModeCheckpointAction {
+    INSTALL, REPAIR, USE_BUILTIN, EXPORT, LATER, RESET, EXPORT_PRIVATE, EXPORT_EXTERNAL, CANCEL, DONE,
+}
+
+/** [alternatives] 为上组替代方案，[dismiss] 为“稍后/取消”，[primary] 为主操作；选择与进行中阶段三者皆空。 */
+internal data class RunModeCheckpointActionSet(
+    val alternatives: List<RunModeCheckpointAction> = emptyList(),
+    val dismiss: RunModeCheckpointAction? = null,
+    val primary: RunModeCheckpointAction? = null,
 )
+
+/** 各阶段操作区的按钮：除选择、进行中与已导出外都能“稍后/取消”离开；重置只在仍可重置时出现。 */
+internal fun runModeCheckpointActions(stage: RunModeCheckpointStage, canExport: Boolean): RunModeCheckpointActionSet {
+    val export = RunModeCheckpointAction.EXPORT.takeIf { canExport }
+    return when (stage) {
+        is RunModeCheckpointStage.Select, is RunModeCheckpointStage.Working -> RunModeCheckpointActionSet()
+        is RunModeCheckpointStage.Unavailable -> RunModeCheckpointActionSet(
+            alternatives = listOfNotNull(RunModeCheckpointAction.USE_BUILTIN, export),
+            dismiss = RunModeCheckpointAction.LATER,
+            primary = when (stage.reason) {
+                RunModeUnavailableReason.NOT_INSTALLED -> RunModeCheckpointAction.INSTALL
+                RunModeUnavailableReason.UNSUPPORTED, RunModeUnavailableReason.BUSY -> null
+                RunModeUnavailableReason.INTERRUPTED, RunModeUnavailableReason.BROKEN -> RunModeCheckpointAction.REPAIR
+            },
+        )
+        is RunModeCheckpointStage.RepairFailed -> RunModeCheckpointActionSet(
+            alternatives = listOfNotNull(export, RunModeCheckpointAction.USE_BUILTIN),
+            dismiss = RunModeCheckpointAction.LATER,
+            primary = RunModeCheckpointAction.RESET.takeIf { stage.canReset },
+        )
+        RunModeCheckpointStage.ExportChoice -> RunModeCheckpointActionSet(
+            alternatives = listOf(RunModeCheckpointAction.EXPORT_EXTERNAL),
+            dismiss = RunModeCheckpointAction.CANCEL,
+            primary = RunModeCheckpointAction.EXPORT_PRIVATE,
+        )
+        RunModeCheckpointStage.ExportOffer -> RunModeCheckpointActionSet(
+            dismiss = RunModeCheckpointAction.LATER,
+            primary = RunModeCheckpointAction.EXPORT,
+        )
+        is RunModeCheckpointStage.Exported -> RunModeCheckpointActionSet(primary = RunModeCheckpointAction.DONE)
+    }
+}
+
+@StringRes
+private fun RunModeCheckpointAction.textRes(): Int = when (this) {
+    RunModeCheckpointAction.INSTALL -> R.string.run_mode_action_install
+    RunModeCheckpointAction.REPAIR -> R.string.run_mode_action_repair
+    RunModeCheckpointAction.USE_BUILTIN -> R.string.run_mode_action_builtin
+    RunModeCheckpointAction.EXPORT -> R.string.run_mode_action_export
+    RunModeCheckpointAction.LATER -> R.string.run_mode_action_later
+    RunModeCheckpointAction.RESET -> R.string.run_mode_action_reset
+    RunModeCheckpointAction.EXPORT_PRIVATE -> R.string.run_mode_export_private
+    RunModeCheckpointAction.EXPORT_EXTERNAL -> R.string.run_mode_export_external
+    RunModeCheckpointAction.CANCEL -> R.string.common_btn_cancel
+    RunModeCheckpointAction.DONE -> R.string.run_mode_done
+}
+
+private fun RunModeCheckpointAction.tag(): String? = when (this) {
+    RunModeCheckpointAction.INSTALL, RunModeCheckpointAction.REPAIR,
+    RunModeCheckpointAction.EXPORT_PRIVATE, RunModeCheckpointAction.DONE -> RunModeTags.PRIMARY
+    RunModeCheckpointAction.USE_BUILTIN -> RunModeTags.BUILTIN
+    RunModeCheckpointAction.EXPORT -> RunModeTags.EXPORT
+    RunModeCheckpointAction.RESET -> RunModeTags.RESET
+    RunModeCheckpointAction.LATER, RunModeCheckpointAction.EXPORT_EXTERNAL, RunModeCheckpointAction.CANCEL -> null
+}
+
+private fun RunModeCheckpointAction.onClick(actions: RunModeCheckpointActions): () -> Unit = when (this) {
+    RunModeCheckpointAction.INSTALL, RunModeCheckpointAction.REPAIR -> actions.onRepair
+    RunModeCheckpointAction.USE_BUILTIN -> actions.onUseBuiltin
+    RunModeCheckpointAction.EXPORT -> actions.onExport
+    RunModeCheckpointAction.LATER -> actions.onLater
+    RunModeCheckpointAction.RESET -> actions.onReset
+    RunModeCheckpointAction.EXPORT_PRIVATE -> actions.onExportPrivate
+    RunModeCheckpointAction.EXPORT_EXTERNAL -> actions.onExportExternal
+    RunModeCheckpointAction.CANCEL -> actions.onBack
+    RunModeCheckpointAction.DONE -> actions.onDone
+}
 
 /**
  * 操作区分两组：上组是替代方案（中性胶囊），下组是“稍后/取消”与主操作，主操作在右。
  * 每组能以单行文字等分并排时并排，否则竖排各占满宽；按钮文字不折行。
  */
 @Composable
-private fun RunModeActions(
-    alternatives: List<RunModeAction> = emptyList(),
-    dismiss: RunModeAction? = null,
-    primary: RunModeAction? = null,
-) {
+private fun RunModeActions(set: RunModeCheckpointActionSet, actions: RunModeCheckpointActions) {
     @Composable
-    fun Pill(action: RunModeAction, tone: InfinityPillTone) = InfinityPillButton(
-        text = stringResource(action.text),
-        onClick = action.onClick,
-        tone = tone,
-        modifier = if (action.tag != null) Modifier.testTag(action.tag) else Modifier,
-    )
+    fun Pill(action: RunModeCheckpointAction, tone: InfinityPillTone) {
+        val tag = action.tag()
+        InfinityPillButton(
+            text = stringResource(action.textRes()),
+            onClick = action.onClick(actions),
+            tone = tone,
+            modifier = if (tag != null) Modifier.testTag(tag) else Modifier,
+        )
+    }
     Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-        if (alternatives.isNotEmpty()) {
+        if (set.alternatives.isNotEmpty()) {
             InfinityPillRow(Modifier.fillMaxWidth(), reverseWhenStacked = false) {
-                alternatives.forEach { Pill(it, InfinityPillTone.NEUTRAL) }
+                set.alternatives.forEach { Pill(it, InfinityPillTone.NEUTRAL) }
             }
         }
-        if (dismiss != null || primary != null) {
+        if (set.dismiss != null || set.primary != null) {
             InfinityPillRow(Modifier.fillMaxWidth()) {
-                dismiss?.let { Pill(it, InfinityPillTone.NEUTRAL) }
-                primary?.let { Pill(it, if (it.destructive) InfinityPillTone.DESTRUCTIVE else InfinityPillTone.PRIMARY) }
+                set.dismiss?.let { Pill(it, InfinityPillTone.NEUTRAL) }
+                set.primary?.let {
+                    Pill(it, if (it == RunModeCheckpointAction.RESET) InfinityPillTone.DESTRUCTIVE else InfinityPillTone.PRIMARY)
+                }
             }
         }
     }
