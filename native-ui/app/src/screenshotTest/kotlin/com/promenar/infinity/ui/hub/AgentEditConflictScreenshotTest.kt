@@ -62,7 +62,7 @@ private fun AgentEditConflictPage(mode: InfinityThemeMode) {
 
 @PreviewTest
 @Preview(name = "智能体编辑 冲突 浅中390", widthDp = 390, heightDp = 700, locale = "zh-rCN")
-@Preview(name = "智能体编辑 冲突 深英360 大字", widthDp = 360, heightDp = 1000, locale = "en", fontScale = 1.3f)
+@Preview(name = "智能体编辑 冲突 浅英360 大字", widthDp = 360, heightDp = 1000, locale = "en", fontScale = 1.3f)
 @Composable
 fun agentEditConflictPreview() = AgentEditConflictPage(InfinityThemeMode.LIGHT)
 
@@ -85,7 +85,7 @@ private fun AgentPromptHistoryPage(mode: InfinityThemeMode, revisions: List<Agen
 
 @PreviewTest
 @Preview(name = "提示词历史 深中390", widthDp = 390, heightDp = 760, locale = "zh-rCN")
-@Preview(name = "提示词历史 浅英360 大字", widthDp = 360, heightDp = 1000, locale = "en", fontScale = 1.3f)
+@Preview(name = "提示词历史 深英360 大字", widthDp = 360, heightDp = 1000, locale = "en", fontScale = 1.3f)
 @Composable
 fun agentPromptHistoryPreview() = AgentPromptHistoryPage(InfinityThemeMode.DARK, PreviewRevisions)
 

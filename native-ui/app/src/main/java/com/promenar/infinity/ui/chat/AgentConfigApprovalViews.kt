@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.chat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -24,12 +25,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -159,18 +162,27 @@ private fun AgentConfigFieldRow(field: FieldChange, op: AgentConfigOp) {
         }
         withStyle(SpanStyle(color = scheme.onSurface, fontWeight = FontWeight.Medium)) { append(field.newValue ?: unset) }
     }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Text(
-            text = agentConfigFieldLabel(field.key, op),
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-            modifier = Modifier.weight(0.36f),
-        )
-        Text(text = value, style = MaterialTheme.typography.bodySmall.forReading(), modifier = Modifier.weight(0.64f))
+    val label = agentConfigFieldLabel(field.key, op)
+    val labelStyle = MaterialTheme.typography.bodySmall
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
+        val gap = 10.dp
+        val labelColumn = (maxWidth - gap) * 0.36f
+        // 标题里最长的单词放不进标题列时改为上下排列，避免单词被拆到两行。
+        val longestWord = with(LocalDensity.current) {
+            label.split(' ').maxOf { word -> measurer.measure(word, labelStyle).size.width }.toDp()
+        }
+        if (longestWord <= labelColumn) {
+            Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.Top) {
+                Text(text = label, style = labelStyle, color = scheme.onSurfaceVariant, modifier = Modifier.weight(0.36f))
+                Text(text = value, style = MaterialTheme.typography.bodySmall.forReading(), modifier = Modifier.weight(0.64f))
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(text = label, style = labelStyle, color = scheme.onSurfaceVariant)
+                Text(text = value, style = MaterialTheme.typography.bodySmall.forReading())
+            }
+        }
     }
 }
 

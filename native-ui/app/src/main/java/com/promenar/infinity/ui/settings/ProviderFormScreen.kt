@@ -8,9 +8,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +37,7 @@ import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.UnavailableReasons
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinityStatusKind
+import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityStatusStrip
 import com.promenar.infinity.ui.testing.UiTags
 import androidx.compose.material3.CircularProgressIndicator
@@ -998,18 +997,14 @@ private fun ProviderFormActionsSection(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        // 文字单行；窄屏大字号并排放不下时整组竖排，保存在上。
+        InfinityPillRow(modifier = Modifier.fillMaxWidth(), spacing = 12.dp) {
             FilledTonalButton(
                 onClick = actions.onTestConnection,
                 enabled = !testing && !state.isSaving && state.endpointValid &&
                     !state.protocolUnsupported && !state.legacyMigrationBlocked &&
                     !state.credentialKindMismatch && state.sessionHeaderNameValid,
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
                     .heightIn(min = 48.dp)
                     .semantics {
                         connectionStatusDescription?.let { stateDescription = it }
@@ -1023,6 +1018,8 @@ private fun ProviderFormActionsSection(
                         if (testing) R.string.provider_form_testing else R.string.provider_form_btn_test,
                     ),
                     modifier = if (testing) Modifier.padding(start = 8.dp) else Modifier,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
             Button(
@@ -1030,7 +1027,7 @@ private fun ProviderFormActionsSection(
                 enabled = state.endpointValid && !state.protocolUnsupported &&
                     !state.legacyMigrationBlocked && !state.credentialKindMismatch && state.sessionHeaderNameValid && !state.isSaving &&
                     state.connectionTestState != ProviderConnectionTestState.Testing,
-                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 if (state.isSaving) {
                     CircularProgressIndicator(
@@ -1046,6 +1043,8 @@ private fun ProviderFormActionsSection(
                         if (state.isSaving) R.string.provider_form_saving else R.string.provider_form_btn_save,
                     ),
                     modifier = Modifier.padding(start = 8.dp),
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
         }
