@@ -531,7 +531,6 @@ class UserSettingsAccessibilityTest {
             ProviderListItem(
                 id = "provider-alpha",
                 name = "Alpha Provider",
-                typeName = ProtocolType.Generic_OpenAI_Compat.displayName,
                 baseUrl = "https://api.alpha.example.com/v1",
                 protocolType = ProtocolType.Generic_OpenAI_Compat,
                 hasApiKey = true,
@@ -540,7 +539,6 @@ class UserSettingsAccessibilityTest {
             ProviderListItem(
                 id = "provider-beta",
                 name = "Beta Provider",
-                typeName = ProtocolType.Anthropic_Messages.displayName,
                 baseUrl = "https://api.beta.example.com/v1",
                 protocolType = ProtocolType.Anthropic_Messages,
                 hasApiKey = false,
@@ -723,7 +721,6 @@ class UserSettingsAccessibilityTest {
                                     ProviderListItem(
                                         id = "provider-vertex-configured",
                                         name = "Vertex Configured",
-                                        typeName = ProtocolType.Google_VertexAI.displayName,
                                         baseUrl = "https://vertex.example.com/v1",
                                         protocolType = ProtocolType.Google_VertexAI,
                                         hasVertexCredentials = true,
@@ -732,7 +729,6 @@ class UserSettingsAccessibilityTest {
                                     ProviderListItem(
                                         id = "provider-vertex-missing",
                                         name = "Vertex Missing",
-                                        typeName = ProtocolType.Google_VertexAI.displayName,
                                         baseUrl = "https://vertex-missing.example.com/v1",
                                         protocolType = ProtocolType.Google_VertexAI,
                                         hasVertexCredentials = false,
@@ -789,7 +785,6 @@ class UserSettingsAccessibilityTest {
                             ProviderListItem(
                                 id = "provider-local",
                                 name = "Local Inference",
-                                typeName = ProtocolType.Local.displayName,
                                 protocolType = ProtocolType.Local,
                                 hasApiKey = true,
                                 hasVertexCredentials = true,
@@ -841,7 +836,6 @@ class UserSettingsAccessibilityTest {
                             ProviderListItem(
                                 id = providerId,
                                 name = "Actions Provider",
-                                typeName = ProtocolType.Generic_OpenAI_Compat.displayName,
                                 baseUrl = "https://api.example.com/v1",
                             ),
                         ),
@@ -889,7 +883,6 @@ class UserSettingsAccessibilityTest {
                             ProviderListItem(
                                 id = providerId,
                                 name = "Delete Provider",
-                                typeName = ProtocolType.Anthropic_Messages.displayName,
                                 baseUrl = "https://api.example.com/v1",
                             ),
                         ),
@@ -933,7 +926,6 @@ class UserSettingsAccessibilityTest {
                                     ProviderListItem(
                                         id = "provider-long-name",
                                         name = longName,
-                                        typeName = ProtocolType.Generic_OpenAI_Compat.displayName,
                                         baseUrl = "https://internal.example.com/v1",
                                     ),
                                 ),

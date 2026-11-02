@@ -146,7 +146,8 @@ class ProviderFormInteractionTest {
                 ProviderFormContent(
                     state = validCloudState(
                         selectedPreset = ProviderPreset(
-                            name = ProtocolType.Cohere_Chat.displayName,
+                            name = ProtocolType.Cohere_Chat.persistedId,
+                            labelRes = ProtocolType.Cohere_Chat.labelRes,
                             protocolType = ProtocolType.Cohere_Chat,
                             defaultBaseUrl = ProtocolType.Cohere_Chat.defaultBaseUrl,
                         ),
@@ -266,7 +267,7 @@ class ProviderFormInteractionTest {
             )
         }
         rule.onNodeWithTag("provider_protocol_picker").performScrollTo().performClick()
-        rule.onNodeWithText(ProtocolType.OpenAI_Responses.displayName).performClick()
+        rule.onNodeWithText(rule.activity.getString(ProtocolType.OpenAI_Responses.labelRes)).performClick()
         assertThat(selectedProtocol.get()).isEqualTo(ProtocolType.OpenAI_Responses)
     }
 

@@ -32,7 +32,7 @@ sealed interface ProviderEndpointTarget {
 class UnsupportedProviderProtocolException(
     val protocol: ProtocolType,
 ) : UnsupportedOperationException("Provider protocol is not supported") {
-    override fun toString(): String = "UnsupportedProviderProtocolException(protocol=${protocol.displayName})"
+    override fun toString(): String = "UnsupportedProviderProtocolException(protocol=${protocol.persistedId})"
 }
 
 class UnsupportedProviderOperationException(
@@ -40,7 +40,7 @@ class UnsupportedProviderOperationException(
     val operation: ProviderEndpointOperation,
 ) : UnsupportedOperationException("Provider operation is not supported") {
     override fun toString(): String =
-        "UnsupportedProviderOperationException(protocol=${protocol.displayName}, operation=$operation)"
+        "UnsupportedProviderOperationException(protocol=${protocol.persistedId}, operation=$operation)"
 }
 
 /**

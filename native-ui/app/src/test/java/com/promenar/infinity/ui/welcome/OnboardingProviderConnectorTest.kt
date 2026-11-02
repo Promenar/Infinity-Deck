@@ -24,7 +24,7 @@ class OnboardingProviderConnectorTest {
         suspend fun save(existing: String?, protocol: ProtocolType, baseUrl: String, credential: CredentialUpdate, model: String, name: String?): String {
             saved += Triple(existing, protocol, credential)
             val id = existing ?: "default"
-            summaries[id] = ProviderSummary(id, name ?: protocol.displayName, protocol, baseUrl, model,
+            summaries[id] = ProviderSummary(id, name ?: protocol.legacyDisplayName, protocol, baseUrl, model,
                 hasApiKey = credential is CredentialUpdate.Replace && protocol !is ProtocolType.Google_VertexAI,
                 hasVertexCredentials = credential is CredentialUpdate.Replace && protocol is ProtocolType.Google_VertexAI)
             return id

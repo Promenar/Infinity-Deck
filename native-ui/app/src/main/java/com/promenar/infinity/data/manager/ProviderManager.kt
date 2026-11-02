@@ -152,7 +152,7 @@ class ProviderManager private constructor(
             validateCredentialTransition(existingType, protocolType, credentialUpdate)
             providerPrefs.edit()
                 .putString("protocol_id", protocolType.persistedId)
-                .putString("protocol_id_name", protocolType.displayName)
+                .putString("protocol_id_name", protocolType.legacyDisplayName)
                 .putString("base_url", baseUrl)
                 .putString("model", model)
                 .apply()
@@ -163,7 +163,7 @@ class ProviderManager private constructor(
             // 重建提供商列表
             loadProviders()
             clearProviderModelSuppression("default")
-            ensureConfiguredModel("default", name ?: protocolType.displayName, model)
+            ensureConfiguredModel("default", name ?: protocolType.legacyDisplayName, model)
         }
     }
 
@@ -284,12 +284,10 @@ class ProviderManager private constructor(
         val config = getMainProviderConfig()
         _currentModelSummary.value = _summaryModelId.value.ifBlank { config?.model.orEmpty() }
         if (config != null) {
-            val typeName = config.protocolType.displayName
             items.add(
                 ProviderListItem(
                     id = "default",
-                    name = config.name ?: typeName,
-                    typeName = typeName,
+                    name = config.name ?: config.protocolType.legacyDisplayName,
                     baseUrl = config.baseUrl,
                     model = config.model,
                     protocolType = config.protocolType,
@@ -334,7 +332,6 @@ class ProviderManager private constructor(
                 ProviderListItem(
                     id = realId,
                     name = name,
-                    typeName = protocolType.displayName,
                     baseUrl = settingsPrefs.getString("${prefix}_base_url", "") ?: "",
                     model = settingsPrefs.getString("${prefix}_model", "") ?: "",
                     protocolType = protocolType,
@@ -556,7 +553,7 @@ class ProviderManager private constructor(
         }
         return ProviderSummary(
             id = providerId,
-            name = name ?: protocolType.displayName,
+            name = name ?: protocolType.legacyDisplayName,
             protocolType = protocolType,
             baseUrl = baseUrl,
             model = model,

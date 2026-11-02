@@ -170,7 +170,6 @@ class TextWrappingDeviceTest {
         ProviderListItem(
             id = "openai",
             name = "OpenAI",
-            typeName = ProtocolType.Generic_OpenAI_Compat.displayName,
             baseUrl = "https://api.promenar.com/v1",
             protocolType = ProtocolType.Generic_OpenAI_Compat,
             hasApiKey = true,
@@ -179,7 +178,6 @@ class TextWrappingDeviceTest {
         ProviderListItem(
             id = "anthropic",
             name = "Anthropic 官方接口（企业账号，海外线路）",
-            typeName = ProtocolType.Anthropic_Messages.displayName,
             baseUrl = "https://api.anthropic.example.com/v1/messages",
             protocolType = ProtocolType.Anthropic_Messages,
             hasApiKey = false,

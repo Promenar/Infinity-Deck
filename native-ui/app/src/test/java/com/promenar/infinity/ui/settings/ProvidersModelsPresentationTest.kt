@@ -28,7 +28,6 @@ class ProvidersModelsPresentationTest {
     private fun provider(id: String, enabled: Boolean) = ProviderListItem(
         id = id,
         name = id,
-        typeName = "OpenAI",
         baseUrl = "https://api.example.com",
         model = "",
         protocolType = ProtocolType.OpenAI_ChatCompletions,

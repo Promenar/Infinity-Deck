@@ -44,7 +44,6 @@ private val PreviewProviders = listOf(
     ProviderListItem(
         id = "deepseek",
         name = "DeepSeek",
-        typeName = "DeepSeek",
         baseUrl = "https://api.deepseek.com",
         protocolType = ProtocolType.DeepSeek,
         hasApiKey = true,
@@ -52,15 +51,28 @@ private val PreviewProviders = listOf(
     ProviderListItem(
         id = "gpu-box",
         name = "GPU Box",
-        typeName = "OpenAI Compatible",
         baseUrl = "https://gpu-box.tail3f9c.ts.net:8443/v1",
         protocolType = ProtocolType.Generic_OpenAI_Compat,
         hasApiKey = false,
     ),
+    // 旧版本未命名提供商：名称为空或存成协议的历史中文名，界面按当前语言显示协议名。
+    ProviderListItem(
+        id = "qwen",
+        name = "",
+        baseUrl = "https://dashscope.aliyuncs.com/compatible-mode",
+        protocolType = ProtocolType.Qwen_DashScope,
+        hasApiKey = true,
+    ),
+    ProviderListItem(
+        id = "legacy-generic",
+        name = ProtocolType.Generic_OpenAI_Compat.legacyDisplayName,
+        baseUrl = "https://gateway.example.com/v1",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        hasApiKey = true,
+    ),
     ProviderListItem(
         id = "anthropic",
         name = "Anthropic",
-        typeName = "Anthropic",
         baseUrl = "https://api.anthropic.com",
         protocolType = ProtocolType.Anthropic_Messages,
         hasApiKey = true,
@@ -174,6 +186,29 @@ fun providerFormProvidersModels() = ProvidersModelsTheme(dark = true) {
                 builtIn = BuiltInTailscaleStatus.CONNECTED,
             ),
             deleteEntry = UnavailableReasons.ProviderDeleteEntry.ENABLED,
+        ),
+        actions = ProviderFormActions(),
+    )
+}
+
+@PreviewTest
+@Preview(name = "提供商编辑 自定义协议 深色中文 411", widthDp = 411, heightDp = 1100, locale = "zh-rCN")
+@Preview(name = "提供商编辑 自定义协议 英文 360", widthDp = 360, heightDp = 1100, locale = "en")
+@Preview(name = "提供商编辑 自定义协议 英文 大字 360", widthDp = 360, heightDp = 1400, locale = "en", fontScale = 1.3f)
+@Composable
+fun providerFormCustomProtocolProvidersModels() = ProvidersModelsTheme(dark = true) {
+    ProviderFormContent(
+        state = ProviderFormUiState(
+            isEditing = false,
+            selectedPreset = PROVIDER_PRESETS.first { it.name == "Custom" },
+            baseUrl = "https://gateway.example.com/v1",
+            localProtocol = ProtocolType.Generic_OpenAI_Compat,
+            apiSource = ProviderApiSourceState(
+                selected = ProviderApiSource.PUBLIC,
+                detected = ProviderApiSource.PUBLIC,
+                hint = null,
+                builtIn = BuiltInTailscaleStatus.CONNECTED,
+            ),
         ),
         actions = ProviderFormActions(),
     )

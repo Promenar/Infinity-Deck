@@ -59,7 +59,6 @@ class ProviderRepositorySecretTest {
             ProviderListItem(
                 id = "existing-extra",
                 name = "Existing",
-                typeName = ProtocolType.OpenAI_ChatCompletions.displayName,
                 baseUrl = "https://openai.invalid",
                 model = "model-a",
                 protocolType = ProtocolType.OpenAI_ChatCompletions,
@@ -97,7 +96,6 @@ class ProviderRepositorySecretTest {
             ProviderListItem(
                 id = "qwen-provider",
                 name = "Qwen",
-                typeName = ProtocolType.Qwen_DashScope.displayName,
                 baseUrl = ProtocolType.Qwen_DashScope.defaultBaseUrl,
                 model = "qwen-model",
                 protocolType = ProtocolType.Qwen_DashScope,
@@ -129,7 +127,6 @@ class ProviderRepositorySecretTest {
             ProviderListItem(
                 id = "cancel-probe",
                 name = "Cancel",
-                typeName = ProtocolType.OpenAI_ChatCompletions.displayName,
                 baseUrl = "https://api.openai.com",
                 model = "model",
                 protocolType = ProtocolType.OpenAI_ChatCompletions,
@@ -158,7 +155,6 @@ class ProviderRepositorySecretTest {
             ProviderListItem(
                 id = "cancel-models",
                 name = "Cancel",
-                typeName = ProtocolType.OpenAI_ChatCompletions.displayName,
                 baseUrl = "https://api.openai.com",
                 model = "model",
                 protocolType = ProtocolType.OpenAI_ChatCompletions,

@@ -827,7 +827,6 @@ fun providerListChineseNarrowReleasePreview() {
                     com.promenar.infinity.data.model.ProviderListItem(
                         id = "openai",
                         name = "OpenAI",
-                        typeName = com.promenar.infinity.data.remote.protocol.ProtocolType.Generic_OpenAI_Compat.displayName,
                         baseUrl = "https://api.promenar.com/v1",
                         protocolType = com.promenar.infinity.data.remote.protocol.ProtocolType.Generic_OpenAI_Compat,
                         hasApiKey = true,
@@ -836,7 +835,6 @@ fun providerListChineseNarrowReleasePreview() {
                     com.promenar.infinity.data.model.ProviderListItem(
                         id = "anthropic",
                         name = "Anthropic 官方接口（企业账号）",
-                        typeName = com.promenar.infinity.data.remote.protocol.ProtocolType.Anthropic_Messages.displayName,
                         baseUrl = "https://api.anthropic-enterprise-gateway.example.com/v1/messages",
                         protocolType = com.promenar.infinity.data.remote.protocol.ProtocolType.Anthropic_Messages,
                         hasApiKey = false,
@@ -2884,7 +2882,6 @@ fun userSettingsProviderLargeFontReleasePreview() {
                     ProviderListItem(
                         id = "provider-openai-internal",
                         name = "OpenAI Compatible Internal Aggregator with very long enterprise label",
-                        typeName = ProtocolType.Generic_OpenAI_Compat.displayName,
                         baseUrl = "https://internal-aggregator.openai-proxy.example.com/api/v1/openai/compatible",
                         protocolType = ProtocolType.Generic_OpenAI_Compat,
                         hasApiKey = true,
@@ -2893,7 +2890,6 @@ fun userSettingsProviderLargeFontReleasePreview() {
                     ProviderListItem(
                         id = "provider-vertex-production",
                         name = "Google Vertex AI Production Workspace for regional deployments",
-                        typeName = ProtocolType.Google_VertexAI.displayName,
                         baseUrl = "https://generativelanguage.googleapis.com/v1beta/projects/infinity-production",
                         protocolType = ProtocolType.Google_VertexAI,
                         hasVertexCredentials = false,

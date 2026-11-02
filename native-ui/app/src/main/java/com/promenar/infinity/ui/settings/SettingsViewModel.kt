@@ -490,7 +490,7 @@ class SettingsViewModel(
                     _modelSyncNotice.value = ModelSyncNotice.providerNotFound()
                     return@launch
                 }
-                val providerName = pm.providers.value.find { it.id == providerId }?.name ?: "Provider"
+                val providerName = pm.providers.value.find { it.id == providerId }?.name.orEmpty()
 
                 // 步骤 1: 尝试远程拉取模型列表
                 var fetchedModels: List<com.promenar.infinity.data.remote.protocol.RemoteModelDescriptor> = emptyList()

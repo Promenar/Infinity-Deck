@@ -417,8 +417,6 @@
     <string name="settings_about_infinity_desc">版本、开源许可与项目信息</string>
     <string name="settings_version">版本 %1$s</string>
     <string name="settings_provider_empty">暂无提供商配置\n点击上方按钮添加</string>
-    <string name="settings_provider_type_generic_openai">OpenAI 兼容（通用）</string>
-    <string name="settings_provider_type_local">本地推理</string>
     <string name="settings_add_provider">添加提供商</string>
     <string name="settings_delete_provider_title">删除提供商</string>
     <string name="settings_delete_provider_message">确定要删除此提供商吗？此操作无法撤销。</string>

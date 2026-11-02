@@ -79,7 +79,7 @@ fun ModelSelectionListItem(
     val metaText = buildList {
         contextSummary?.let { add(it) }
         addAll(capabilitySummary)
-        add(model.providerName)
+        add(providerDisplayName(model.providerName, protocol = null))
     }.joinToString(" · ") // wrap-check: allow 单行省略显示，不会折行
 
     Row(

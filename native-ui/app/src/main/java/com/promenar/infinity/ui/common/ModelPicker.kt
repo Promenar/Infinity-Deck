@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,14 +64,15 @@ fun ModelPicker(
         debouncedQuery = searchQuery
     }
 
-    val filteredModels = remember(debouncedQuery, models, filterTag) {
+    val resources = LocalResources.current
+    val filteredModels = remember(debouncedQuery, models, filterTag, resources) {
         val baseList = if (filterTag == null) models
         else models.filter { item -> item.matchesModelPickerFilter(filterTag) }
 
         if (debouncedQuery.isBlank()) baseList
         else baseList.filter {
             it.displayName.contains(debouncedQuery, ignoreCase = true) ||
-                    it.providerName.contains(debouncedQuery, ignoreCase = true)
+                    providerDisplayName(it.providerName, protocol = null, resources).contains(debouncedQuery, ignoreCase = true)
         }
     }
 

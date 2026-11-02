@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.welcome
 
+import com.promenar.infinity.ui.settings.label
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -86,6 +87,7 @@ import com.promenar.infinity.ui.common.SecretField
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.data.remote.protocol.ProtocolType
+import com.promenar.infinity.ui.common.label as protocolLabel
 import com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.settings.CUSTOM_PROTOCOL_OPTIONS
@@ -122,7 +124,7 @@ internal fun onboardingServiceGroups(localAvailable: Boolean): List<Pair<Int, Li
 private fun ProviderPreset.displayName(): String = when (name) {
     PRESET_CUSTOM -> stringResource(R.string.onboarding_provider_custom)
     PRESET_LOCAL -> stringResource(R.string.onboarding_provider_local)
-    else -> name
+    else -> label()
 }
 
 @Composable
@@ -403,8 +405,18 @@ private fun ServiceTile(
     }
 }
 
+/** 四段等分放不下完整协议名，分段控件用短名称保持单行。 */
 @Composable
-private fun CustomProtocolPicker(selectedIndex: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
+private fun ProtocolType.shortLabel(): String = when (this) {
+    ProtocolType.Generic_OpenAI_Compat -> stringResource(R.string.provider_protocol_short_generic_openai)
+    ProtocolType.Anthropic_Messages -> stringResource(R.string.provider_protocol_short_anthropic)
+    ProtocolType.OpenAI_Responses -> stringResource(R.string.provider_protocol_short_openai_responses)
+    ProtocolType.Google_Gemini -> stringResource(R.string.provider_protocol_short_gemini)
+    else -> protocolLabel()
+}
+
+@Composable
+internal fun CustomProtocolPicker(selectedIndex: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
         Text(
             stringResource(R.string.provider_form_protocol_type),
@@ -412,7 +424,7 @@ private fun CustomProtocolPicker(selectedIndex: Int, enabled: Boolean, onSelect:
             color = onboardingFaintText,
         )
         InfinitySegmentedControl(
-            segments = CUSTOM_PROTOCOL_OPTIONS.mapIndexed { index, protocol -> InfinitySegment(index, protocol.displayName) },
+            segments = CUSTOM_PROTOCOL_OPTIONS.mapIndexed { index, protocol -> InfinitySegment(index, protocol.shortLabel()) },
             selected = selectedIndex,
             onSelect = onSelect,
             enabled = enabled,

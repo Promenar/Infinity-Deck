@@ -237,3 +237,15 @@ fun onboardingLinuxSheetFailurePreview() {
         }
     }
 }
+
+@PreviewTest
+@Preview(name = "Onboarding custom protocol English large font", widthDp = PHONE_WIDTH_DP, heightDp = 200, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "Onboarding custom protocol Chinese large font", widthDp = PHONE_WIDTH_DP, heightDp = 200, locale = "zh-rCN", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun onboardingCustomProtocolPickerPreview() {
+    OnboardingPreviewSurface {
+        Box(Modifier.padding(horizontal = 24.dp, vertical = 24.dp)) {
+            CustomProtocolPicker(selectedIndex = 0, enabled = true, onSelect = {})
+        }
+    }
+}

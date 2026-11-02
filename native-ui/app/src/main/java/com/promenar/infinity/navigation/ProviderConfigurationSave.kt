@@ -31,8 +31,7 @@ internal suspend fun saveProviderConfiguration(
     }
     fun listItem(id: String) = ProviderListItem(
         id = id,
-        name = name ?: protocolType.displayName,
-        typeName = protocolType.displayName,
+        name = name ?: protocolType.legacyDisplayName,
         baseUrl = baseUrl,
         model = model,
         protocolType = protocolType,

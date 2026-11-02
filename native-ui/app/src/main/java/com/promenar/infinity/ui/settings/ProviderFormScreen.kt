@@ -1,6 +1,8 @@
 package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.ui.theme.InfinityMotion
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Box
@@ -30,6 +32,8 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.ui.Alignment
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.isDefaultProviderName
+import com.promenar.infinity.ui.common.label
 import com.promenar.infinity.ui.common.InfinityFieldRow
 import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.UnavailableReasons
@@ -90,12 +94,20 @@ import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.infinityPopoverAnchor
 import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
 
+/** [name] 是稳定键（分支判断、testTag），界面名称取 [label]。 */
 data class ProviderPreset(
     val name: String,
     val protocolType: ProtocolType,
     val defaultBaseUrl: String,
     val iconRes: Int? = null,
+    /** 需要翻译的预设名；为空时品牌名 [name] 直接显示。 */
+    @StringRes val labelRes: Int? = null,
 )
+
+fun ProviderPreset.label(resources: Resources): String = labelRes?.let(resources::getString) ?: name
+
+@Composable
+fun ProviderPreset.label(): String = labelRes?.let { stringResource(it) } ?: name
 
 internal enum class ProviderConnectionTestState { Idle, Testing, Success, Unavailable, Error }
 
@@ -193,13 +205,13 @@ val PROVIDER_PRESETS = listOf(
     ProviderPreset("Gemini", ProtocolType.Google_Gemini, "https://generativelanguage.googleapis.com", R.drawable.ic_provider_gemini),
     ProviderPreset("Vertex AI", ProtocolType.Google_VertexAI, "https://us-central1-aiplatform.googleapis.com", R.drawable.ic_provider_gemini),
     ProviderPreset("Kimi", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.drawable.ic_provider_kimi),
-    ProviderPreset("通义千问", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.drawable.ic_provider_qwen),
-    ProviderPreset("智谱", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.drawable.ic_provider_zhipu),
-    ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao),
-    ProviderPreset("百川", ProtocolType.Baichuan, "https://api.baichuan-ai.com", R.drawable.ic_provider_baichuan),
+    ProviderPreset("通义千问", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.drawable.ic_provider_qwen, R.string.provider_preset_qwen),
+    ProviderPreset("智谱", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.drawable.ic_provider_zhipu, R.string.provider_preset_zhipu),
+    ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_doubao),
+    ProviderPreset("百川", ProtocolType.Baichuan, "https://api.baichuan-ai.com", R.drawable.ic_provider_baichuan, R.string.provider_preset_baichuan),
     ProviderPreset("Mistral", ProtocolType.Mistral_Chat, "https://api.mistral.ai", R.drawable.ic_provider_mistral),
-    ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local),
-    ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom),
+    ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local, R.string.provider_preset_local),
+    ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom, R.string.provider_preset_custom),
 )
 
 internal val CUSTOM_PROTOCOL_OPTIONS = listOf(
@@ -269,7 +281,7 @@ fun ProviderFormScreen(
             if (config != null) {
                 unavailableLocalConfiguration =
                     config.protocolType is ProtocolType.Local && !app.localInferenceRuntimeGate.isAvailable
-                name = config.name
+                name = config.name.takeUnless(::isDefaultProviderName).orEmpty()
                 baseUrl = config.baseUrl
                 hasCredential = config.hasApiKey || config.hasVertexCredentials
                 originalUsesVertex = config.hasVertexCredentials
@@ -281,10 +293,11 @@ fun ProviderFormScreen(
                 selectedPreset = when {
                     matched != null -> matched
                     legacyUnsupportedProtocol != null -> ProviderPreset(
-                        name = config.protocolType.displayName,
+                        name = config.protocolType.persistedId,
                         protocolType = config.protocolType,
                         defaultBaseUrl = config.baseUrl,
                         iconRes = config.protocolType.iconRes,
+                        labelRes = config.protocolType.labelRes,
                     )
                     else -> availableProviderPresets.last()
                 }
@@ -297,7 +310,7 @@ fun ProviderFormScreen(
             } else {
                 viewModel.getUnsupportedProviderSummary(providerId)?.let { unsupported ->
                     recoveringUnknownProtocol = true
-                    name = unsupported.name
+                    name = unsupported.name.takeUnless(::isDefaultProviderName).orEmpty()
                     baseUrl = unsupported.baseUrl
                     hasCredential = unsupported.hasApiKey || unsupported.hasVertexCredentials
                     originalUsesVertex = when {
@@ -506,7 +519,7 @@ fun ProviderFormScreen(
                         "",
                         CredentialUpdate.Preserve,
                         "",
-                        "本地模型",
+                        null,
                     )
                     onNavigateToLocalModels()
                 } catch (cancelled: CancellationException) {
@@ -561,7 +574,7 @@ fun ProviderFormScreen(
             onPresetSelected = { preset ->
                 selectedPreset = preset
                 if (preset.name != "Custom" && preset.name != "Local") {
-                    name = preset.name
+                    name = preset.label(resources)
                     baseUrl = preset.defaultBaseUrl
                 }
                 manualApiSource = null
@@ -753,7 +766,7 @@ private fun ProviderProtocolSelector(state: ProviderFormUiState, actions: Provid
     val anchor = rememberInfinityPopoverAnchor()
     InfinityValueRow(
         title = stringResource(R.string.provider_form_protocol_type),
-        value = state.localProtocol.displayName,
+        value = state.localProtocol.label(),
         onClick = { if (!anchor.consumeRecentDismiss()) actions.onProtocolMenuExpandedChange(true) },
         modifier = Modifier.infinityPopoverAnchor(anchor).testTag("provider_protocol_picker"),
     )
@@ -767,7 +780,7 @@ private fun ProviderProtocolSelector(state: ProviderFormUiState, actions: Provid
         CUSTOM_PROTOCOL_OPTIONS.forEach { protocol ->
             InfinitySettingsItem(
                 horizontalPadding = 0.dp,
-                title = protocol.displayName,
+                title = protocol.label(),
                 subtitle = protocol.defaultPath.takeIf(String::isNotEmpty),
                 subtitleIsIdentifier = true,
                 onClick = {
@@ -789,6 +802,7 @@ private fun ProviderProtocolSelector(state: ProviderFormUiState, actions: Provid
 private fun ProviderPresetSelector(state: ProviderFormUiState, actions: ProviderFormActions) {
     val anchor = rememberInfinityPopoverAnchor()
     val title = stringResource(R.string.provider_form_preset_title)
+    val selectedLabel = state.selectedPreset.label()
     InfinitySettingsItem(
         title = title,
         leadingContent = { ProviderPresetIcon(state.selectedPreset, selected = false) },
@@ -796,11 +810,11 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
         modifier = Modifier
             .infinityPopoverAnchor(anchor)
             .testTag(UiTags.PROVIDER_FORM_PRESET_PICKER)
-            .semantics { stateDescription = state.selectedPreset.name },
+            .semantics { stateDescription = selectedLabel },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    state.selectedPreset.name,
+                    selectedLabel,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -825,7 +839,7 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
             val selected = preset == state.selectedPreset
             InfinitySettingsItem(
                 horizontalPadding = 0.dp,
-                title = preset.name,
+                title = preset.label(),
                 leadingContent = { ProviderPresetIcon(preset, selected) },
                 onClick = { actions.onPresetSelected(preset) },
                 role = Role.RadioButton,
