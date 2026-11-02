@@ -38,6 +38,7 @@ import com.promenar.infinity.domain.model.AgentPromptRevision
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityFullscreenDialog
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
@@ -146,8 +147,8 @@ private fun AgentPromptRevisionRow(revision: AgentPromptRevision, isCurrent: Boo
         modifier = Modifier.fillMaxWidth().testTag("agent_prompt_revision_${revision.id}"),
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = revisionMeta(revision, isCurrent),
+            InfinityMetaLine(
+                segments = revisionMeta(revision, isCurrent),
                 style = MaterialTheme.typography.labelMedium,
                 color = scheme.onSurfaceVariant,
             )
@@ -163,17 +164,15 @@ private fun AgentPromptRevisionRow(revision: AgentPromptRevision, isCurrent: Boo
     }
 }
 
-/** “时间 · 来源 · 字数 · 当前”。 */
+/** 元数据分段：时间、来源、字数、当前。 */
 @Composable
-private fun revisionMeta(revision: AgentPromptRevision, isCurrent: Boolean): String {
-    val parts = buildList {
+private fun revisionMeta(revision: AgentPromptRevision, isCurrent: Boolean): List<String> =
+    buildList {
         add(revisionTime(revision.createdAt))
         add(revisionSource(revision.source))
         add(pluralStringResource(R.plurals.agent_prompt_history_chars, revision.content.length, revision.content.length))
         if (isCurrent) add(stringResource(R.string.agent_prompt_history_current))
     }
-    return parts.joinToString(" · ")
-}
 
 @Composable
 internal fun revisionSource(source: AgentPromptRevision.Source): String = stringResource(
@@ -208,7 +207,7 @@ internal fun AgentPromptRevisionSheet(
     InfinityBottomSheet(
         show = revision != null,
         onDismiss = onDismiss,
-        title = revision?.let { "${revisionTime(it.createdAt)} · ${revisionSource(it.source)}" },
+        title = revision?.let { stringResource(R.string.agent_prompt_history_sheet_title, revisionTime(it.createdAt), revisionSource(it.source)) },
     ) {
         val shown = revision ?: return@InfinityBottomSheet
         Column(

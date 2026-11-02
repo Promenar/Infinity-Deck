@@ -282,7 +282,7 @@ internal class AppAgentConfigPreviewSources(
         val model = com.promenar.infinity.data.manager.ProviderManager.getInstance().providerModels.value
             .firstOrNull { it.id == modelId } ?: return modelId
         val resolved = model.toModelSelectionUiModel()
-        return "${resolved.providerName} · ${resolved.displayName}"
+        return "${resolved.displayName} (${resolved.providerName})"
     }
 
     override suspend fun mcpName(id: String): String =

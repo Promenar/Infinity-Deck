@@ -75,6 +75,7 @@
     <string name="agent_prompt_history_empty">还没有历史版本。保存或修改提示词后会出现在这里。</string>
     <string name="agent_prompt_history_empty_content">（空提示词）</string>
     <string name="agent_prompt_history_current">当前</string>
+    <string name="agent_prompt_history_sheet_title">%1$s（%2$s）</string>
     <plurals name="agent_prompt_history_chars">
         <item quantity="other">%1$d 字</item>
     </plurals>

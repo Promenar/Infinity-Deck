@@ -78,6 +78,7 @@
     <string name="agent_prompt_history_empty">No versions yet. They appear here after the prompt is saved or changed.</string>
     <string name="agent_prompt_history_empty_content">(Empty prompt)</string>
     <string name="agent_prompt_history_current">Current</string>
+    <string name="agent_prompt_history_sheet_title">%1$s (%2$s)</string>
     <plurals name="agent_prompt_history_chars">
         <item quantity="one">%1$d char</item>
         <item quantity="other">%1$d chars</item>
