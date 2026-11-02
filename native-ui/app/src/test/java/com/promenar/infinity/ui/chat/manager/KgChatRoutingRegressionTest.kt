@@ -50,7 +50,7 @@ class KgChatRoutingRegressionTest {
         assertThat(protocol.first { it.role == "system" }.content).doesNotContain(rendered)
         val sentUser = protocol.single { it.role == "user" }
         assertThat(sentUser.content).isEqualTo("甲")
-        assertThat(sentUser.turnContext).isEqualTo(result.turnContext)
+        assertThat(sentUser.turnContext).isEqualTo(turnContextForModel(result.turnContext))
         assertThat(sentUser.turnContext).contains(rendered)
         assertThat(protocol.joinToString { it.content + it.turnContext.orEmpty() }).doesNotContain("不应注入的独立文字")
     }

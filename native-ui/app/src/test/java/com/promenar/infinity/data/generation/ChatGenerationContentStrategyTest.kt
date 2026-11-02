@@ -20,6 +20,19 @@ import io.mockk.mockk
 import org.junit.Test
 
 class ChatGenerationContentStrategyTest {
+    @Test fun `内部配置快照保留在持久消息且不进入模型历史`() {
+        val snapshot = """<turn_context>
+<snapshot_metadata>{"stateRevision":1,"assistantMessageId":"a","configuration":{"agentSystemPrompt":"私有旧Agent提示","sessionCustomPrompt":"私有旧会话提示"}}</snapshot_metadata>
+资料正文
+</turn_context>"""
+        val message = Message("u", MessageRole.USER, "问题", turnContext = snapshot)
+        val protocol = strategy().buildProtocolMessages(Session("s", "agent", messages = listOf(message)), "系统").last()
+        assertThat(protocol.turnContext).contains("资料正文")
+        assertThat(protocol.turnContext).doesNotContain("私有旧")
+        assertThat(protocol.turnContext).doesNotContain("configuration")
+        assertThat(message.turnContext).isEqualTo(snapshot)
+    }
+
     @Test
     fun `引用批注在正文和完整文档之前且文档不被重复序列化`() {
         val document = MessageDocumentAttachment("doc", "source.md", "text/markdown", "完整文档正文", 24, "hash", 6)

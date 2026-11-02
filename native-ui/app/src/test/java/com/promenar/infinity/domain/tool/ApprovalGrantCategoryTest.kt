@@ -39,12 +39,12 @@ class ApprovalGrantCategoryTest {
 
     @Test fun `不可授权原因单独或叠加技能路径及命令均不可授权`() {
         for (mode in ExecutionMode.entries) {
-            for (tool in listOf("schedule_create", "request_knowledge_access", "resolve_startup_issue", "ssh_host_save", "ssh_host_delete", "ssh_host_install_key", "session_read", "session_list")) {
+            for (tool in listOf("agents_write", "schedule_create", "request_knowledge_access", "resolve_startup_issue", "ssh_host_save", "ssh_host_delete", "ssh_host_install_key", "session_read", "session_list")) {
                 val target = if (tool.startsWith("session_")) "session-approval:other" else null
                 checkCategory(null, mode, tool, ToolRisk.UNKNOWN, target = target)
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, tool, ToolRisk.UNKNOWN, resolvedTarget = target)).isTrue()
             }
-            for (risk in listOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT)) {
+            for (risk in listOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT, ToolRisk.AGENT_CONFIG)) {
                 for (tool in listOf("write_file", "shell_exec")) {
                     checkCategory(null, mode, tool, risk, """{"path":"/skills/demo/SKILL.md"}""")
                     assertThat(ToolExecutionPolicy.requiresApproval(mode, tool, risk)).isTrue()

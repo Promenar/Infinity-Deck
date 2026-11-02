@@ -15,5 +15,5 @@ object ToolArgumentApprovalRules {
         )
     internal fun requiresNonGrantableApproval(toolName: String, resolvedTarget: String?): Boolean =
         (toolName in setOf("session_read", "session_list") && resolvedTarget?.startsWith("session-approval:") == true) ||
-            toolName == "resolve_startup_issue" || toolName in SSH_HOST_CONFIG_TOOLS
+            toolName == "agents_write" || toolName == "resolve_startup_issue" || toolName in SSH_HOST_CONFIG_TOOLS
 }

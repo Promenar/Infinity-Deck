@@ -112,18 +112,18 @@ class WorkspaceBindingDaoTest {
     }
 
     @Test
-    fun `整行更新Agent保留数据库中的用户规则`(): Unit = runBlocking {
+    fun `整行更新Agent写入调用方提供的停用列`(): Unit = runBlocking {
         val agentDao = db.agentDao()
         agentDao.insert(AgentEntity("agent", "Agent", createdAt = 1))
         val staleCopy = agentDao.getById("agent")!!
         assertThat(agentDao.updateUserRules("agent", "新规则")).isEqualTo(1)
 
-        agentDao.updatePreservingUserRules(staleCopy.copy(name = "改名", defaultWorkspaceId = "ws-1"))
+        agentDao.update(staleCopy.copy(name = "改名", defaultWorkspaceId = "ws-1"))
 
         val saved = agentDao.getById("agent")!!
         assertThat(saved.name).isEqualTo("改名")
         assertThat(saved.defaultWorkspaceId).isEqualTo("ws-1")
-        assertThat(saved.userRules).isEqualTo("新规则")
+        assertThat(saved.userRules).isEqualTo("")
     }
 
     @Test
@@ -142,7 +142,7 @@ class WorkspaceBindingDaoTest {
         val saved = db.agentDao().getById("agent")!!
         assertThat(saved.name).isEqualTo("改名")
         assertThat(saved.defaultWorkspaceId).isEqualTo("ws-1")
-        assertThat(saved.userRules).isEqualTo("规则")
+        assertThat(saved.userRules).isEqualTo("界面旧副本")
 
         repository.delete("agent")
         assertThat(db.agentDao().getById("agent")).isNull()

@@ -81,7 +81,7 @@ class AgentRepositoryTest {
     }
 
     @Test
-    fun `update preserves user rules owned by the database`() = runTest {
+    fun `update writes the supplied user rules column`() = runTest {
         val dao: AgentDao = mockk(relaxed = true)
         val repo = AgentRepository(dao)
         val agent = com.promenar.infinity.domain.model.Agent(
@@ -90,7 +90,7 @@ class AgentRepositoryTest {
 
         repo.update(agent)
 
-        coVerify { dao.updatePreservingUserRules(match { it.id == "update-me" && it.name == "Updated" }) }
+        coVerify { dao.update(match { it.id == "update-me" && it.name == "Updated" }) }
     }
 
     @Test

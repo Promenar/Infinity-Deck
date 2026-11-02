@@ -68,10 +68,10 @@ class RuntimeGuideToolContractTest {
             val cells = line.split('|').map(String::trim)
             cells[1].trim('`') to cells.drop(2).take(5)
         }
-        // 表中只列需要审批或有参数条件的工具；未列出的工具按四种配置均为自由、无参数条件核对。
+        // 配置读取显式列出；其它工具按审批级别与参数条件核对。
         assertThat(tools.map { it.name }).containsAtLeastElementsIn(rows.keys)
         rows.forEach { (name, cells) ->
-            assertWithMessage("$name 四种配置均为自由且无参数条件，不应列入表格").that(cells.take(4).all { it == "自由" } && cells[4] == "无").isFalse()
+            if (name != "agents_read") assertWithMessage("$name 四种配置均为自由且无参数条件，不应列入表格").that(cells.take(4).all { it == "自由" } && cells[4] == "无").isFalse()
         }
         val targets = mapOf(
             "普通" to null,
@@ -101,6 +101,15 @@ class RuntimeGuideToolContractTest {
                 assertWithMessage("${tool.name} / $scenario").that(actual).containsExactlyElementsIn(expectedByScenario.getValue(scenario)).inOrder()
             }
 
+        }
+    }
+
+    @Test fun `配置工具审批级别和限时授权与指南一致`() {
+        val tools = tools().filter { it.name in setOf("agents_read", "agents_write") }
+        assertThat(tools.map { it.name }).containsExactly("agents_read", "agents_write")
+        for (mode in ExecutionMode.entries) for (tool in tools) {
+            assertThat(ToolExecutionPolicy.requiresApproval(mode, tool.name, tool.risk)).isEqualTo(tool.name == "agents_write")
+            assertThat(ToolExecutionPolicy.grantCategory(mode, tool.name, tool.risk)).isNull()
         }
     }
 

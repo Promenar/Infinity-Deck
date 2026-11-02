@@ -569,12 +569,15 @@ class P0RuntimeIntegrationTest {
     }
 
     @Test
-    fun `本轮块在首请求前持久化且重建运行时跨轮按数据库原文重放`() = runTest {
+    fun `本轮快照先持久化且重建运行时按模型投影重放资料`() = runTest {
         val fixture = prefixFixture()
         fixture.sessions.updateSessionOptions("session", fixture.store.getSession("session")!!.options.copy(enableTimeInjection = true))
         fixture.onPrompt = { _, prompt ->
             val sent = prompt.messages.first { it.role == "user" }.turnContext
-            assertThat(fixture.database.messageDao().getById("user")!!.turnContext).isEqualTo(sent)
+            val stored = fixture.database.messageDao().getById("user")!!.turnContext
+            assertThat(com.promenar.infinity.ui.chat.manager.turnContextForModel(stored)).isEqualTo(sent)
+            assertThat(stored).contains("configuration")
+            assertThat(sent).doesNotContain("configuration")
         }
         fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
         ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
@@ -587,7 +590,7 @@ class P0RuntimeIntegrationTest {
             userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = "新的问题",
         )) {}
         assertThat(fixture.prompts[1].messages.first { it.role == "user" }.turnContext!!.toByteArray())
-            .isEqualTo(saved!!.toByteArray())
+            .isEqualTo(com.promenar.infinity.ui.chat.manager.turnContextForModel(saved)!!.toByteArray())
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
     }
 
@@ -633,12 +636,13 @@ class P0RuntimeIntegrationTest {
         val regenerated = fixture.messageRepository.getById("user")!!.turnContext
         assertThat(regenerated).contains("新的目标")
         assertThat(regenerated).isNotEqualTo(original)
-        assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext).isEqualTo(regenerated)
+        assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext)
+            .isEqualTo(com.promenar.infinity.ui.chat.manager.turnContextForModel(regenerated))
         coVerify(exactly = 2) { tasks.getPlan("session") }
     }
 
     @Test
-    fun `自动重试发送前立即采用最新权限模型路由与工具开关但不重采样用户块`() = runTest {
+    fun `自动重试沿用本轮模型并重验最新权限和工具开关且复用用户块`() = runTest {
         val fixture = prefixFixture()
         fixture.preferences.edit().putInt("stream_retry_limit", 1).commit()
         fixture.onPrompt = { index, _ -> if (index == 1) {
@@ -653,8 +657,8 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.prompts.first().tools).isNotEmpty()
         assertThat(fixture.prompts.last().tools).isNull()
         assertThat(fixture.prompts.last().messages.first().content).contains("权限档：工作区")
-        assertThat(fixture.resolvedModels.last()).isEqualTo("local::changed-model")
-        assertThat(fixture.messageRepository.getById("assistant")!!.modelId).isEqualTo("local::changed-model")
+        assertThat(fixture.resolvedModels.last()).isEqualTo("local::p0-integration-model")
+        assertThat(fixture.messageRepository.getById("assistant")!!.modelId).isEqualTo("local::p0-integration-model")
         assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext)
             .isEqualTo(fixture.prompts.first().messages.first { it.role == "user" }.turnContext)
     }

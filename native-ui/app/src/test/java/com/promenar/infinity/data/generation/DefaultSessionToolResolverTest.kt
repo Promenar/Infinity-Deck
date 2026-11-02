@@ -13,6 +13,22 @@ import org.junit.Before
 import org.junit.Test
 
 class DefaultSessionToolResolverTest {
+    @Test fun `配置工具只在主会话广告且子代理工具集排除`() {
+        val tools = listOf("agents_read", "agents_write").map { name -> safeReadTool.copy(
+            function = ProtocolToolFunction(name, "配置", "{}"), runtimeToolId = name,
+            risk = if (name == "agents_write") ToolRisk.AGENT_CONFIG else ToolRisk.SAFE_READ,
+        ) }
+        every { skillRegistry.getAllTools(null) } returns tools
+        every { settings.getStringSet(BuiltinToolPreferences.ENABLED_KEY, null) } returns null
+        val resolver = DefaultSessionToolResolver(settings, skillRegistry)
+        val main = Session("s", "a")
+        assertThat(resolver.resolve(main).map { it.function.name }).containsExactly("agents_read", "agents_write")
+        for (session in listOf(main.copy(parentSessionId = "parent"), main.copy(branchPlanJson = "{}"),
+            main.copy(parentSessionDeleted = true), main.copy(id = "sa_child"))) assertThat(resolver.resolve(session)).isEmpty()
+        for (profile in com.promenar.infinity.data.subagent.SubagentToolProfile.entries)
+            assertThat(com.promenar.infinity.data.subagent.SubagentLimits.toolset(tools, profile)).isEmpty()
+    }
+
     @Test
     fun `没有媒体能力的模型不广告查看工具`() {
         val view = safeReadTool.copy(

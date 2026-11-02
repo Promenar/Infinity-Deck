@@ -7,7 +7,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class ContextBuilderPrefixTest {
-    @Test fun `冻结块不冻结权限模型会话指令或工具配置`() = runTest {
+    @Test fun `冻结块保持原提示词且权限模型与工具可用性实时更新`() = runTest {
         val builder = ContextBuilder()
         val params = ContextBuilderParams(
             "s", "输入", assistantMsgId = "a", session = Session("s", "agent", executionMode = "workspace"),
@@ -22,12 +22,27 @@ class ContextBuilderPrefixTest {
         assertThat(next.turnContext).isEqualTo(first.turnContext)
         assertThat(next.finalSystemPrompt).contains("Model: model-two")
         assertThat(next.finalSystemPrompt).doesNotContain("model-one")
-        assertThat(next.finalSystemPrompt).contains("新会话指令")
+        assertThat(next.finalSystemPrompt).doesNotContain("新会话指令")
         assertThat(next.finalSystemPrompt).isNotEqualTo(first.finalSystemPrompt)
         val permissionOnly = builder.buildContext(params.copy(
             session = params.session.copy(executionMode = "full_access"), cachedTurnContext = first.turnContext,
         ))
         assertThat(permissionOnly.finalSystemPrompt).isNotEqualTo(first.finalSystemPrompt)
+    }
+
+    @Test fun `含提示词快照的审批恢复沿用原Agent及会话提示且下一轮读取新值`() = runTest {
+        val params = ContextBuilderParams("s", "输入", assistantMsgId = "a", session = Session("s", "agent", customPrompt = "原会话"),
+            agentSystemPrompt = "原Agent")
+        val original = ContextBuilder().buildContext(params)
+        val changed = params.copy(agentSystemPrompt = "新Agent", sessionCustomPrompt = "新会话")
+        val resumed = ContextBuilder().buildContext(changed.copy(cachedTurnContext = original.turnContext))
+        assertThat(resumed.finalSystemPrompt).contains("原Agent")
+        assertThat(resumed.finalSystemPrompt).contains("原会话")
+        assertThat(resumed.finalSystemPrompt).doesNotContain("新Agent")
+        assertThat(resumed.finalSystemPrompt).doesNotContain("新会话")
+        val next = ContextBuilder().buildContext(changed)
+        assertThat(next.finalSystemPrompt).contains("新Agent")
+        assertThat(next.finalSystemPrompt).contains("新会话")
     }
 
     @Test fun `目录数量标题与资料伪造标签不改变系统或真实快照元数据`() = runTest {
@@ -39,7 +54,7 @@ class ContextBuilderPrefixTest {
         val second = builder.buildContext(params.copy(knowledgeCatalog = "已索引2个文档，标题发生变化"))
         assertThat(first.finalSystemPrompt).isEqualTo(second.finalSystemPrompt)
         assertThat(first.turnContext).isNotEqualTo(second.turnContext)
-        assertThat(turnContextMetadata(first.turnContext)).isEqualTo(TurnContextMetadata(0, "real-assistant"))
+        assertThat(turnContextMetadata(first.turnContext)).isEqualTo(TurnContextMetadata(0, "real-assistant", TurnConfigurationSnapshot(null, null)))
         assertThat(turnContextMetadata("任意资料\n" + first.turnContext)).isNull()
     }
 

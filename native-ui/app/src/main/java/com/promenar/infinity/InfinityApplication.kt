@@ -359,7 +359,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     }
 
     val agentRepository: com.promenar.infinity.data.repository.AgentRepository by lazy {
-        com.promenar.infinity.data.repository.AgentRepository(database.agentDao())
+        com.promenar.infinity.data.repository.AgentRepository(database.agentDao(), database.agentRuleRevisionDao(), database)
     }
 
     val parameterSchemeRepository: com.promenar.infinity.data.repository.ParameterSchemeRepository by lazy {
@@ -380,9 +380,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.domain.usecase.DeleteAgentUseCase(agentRepository, sessionRepository)
     }
 
-    val sessionRepository: ISessionRepository by lazy {
+    val sessionRepository: SessionRepository by lazy {
         SessionRepository(database.sessionDao(), database.messageDao(), newSessionRunMode = sessionRunModes::newSessionMode,
-            onSessionCreated = { session -> knowledgeAccessPlanner.mountIfAlways(session) })
+            onSessionCreated = { session -> knowledgeAccessPlanner.mountIfAlways(session) }, database = database)
     }
 
     val sessionRunModes by lazy {
@@ -963,10 +963,44 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 workspaceIndexReconciliation.requestSharedRoot(rootUuid)
             })
     }
+    private val agentConfigService: com.promenar.infinity.data.agentconfig.AgentConfigService by lazy {
+        com.promenar.infinity.data.agentconfig.AgentConfigService(
+            agentRepository, sessionRepository,
+            catalog = { session ->
+                val providers = ProviderManager.getInstance()
+                val configured = providers.providers.value.mapTo(hashSetOf()) { it.id }
+                val directory = sessionWorkspaceResolver.resolve(session.id) as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory
+                val fileSkills = skillCatalog.scan(directory?.let { com.promenar.infinity.data.skills.SkillWorkspace(it.workspace.id, it.root) }).skills
+                com.promenar.infinity.data.agentconfig.AgentConfigCatalog(
+                    models = providers.providerModels.value.filter { it.providerId in configured }.associate { it.id to it.name },
+                    skills = skillRepository.getAllCustomSkills().first().associate { it.id to it.name } + fileSkills.associate { it.id to (it.displayName ?: it.name) },
+                    mcpServers = skillRepository.getAllMcpServers().first().associate { it.id to it.name },
+                )
+            },
+            workspaceName = { id -> database.workspaceDao().getById(id)?.takeUnless { it.kind == "branch_shared" }?.displayName },
+            ragConfig = { ragConfigPersistence.loadFullConfig() },
+            fallbackModelId = { ProviderManager.getInstance().getMainConfiguredModelId() },
+            database = database,
+            onSessionSaved = { saved, created, fields ->
+                if (created) chatStore.upsertSession(saved) else chatStore.updateSession(saved.id) { current ->
+                    current.copy(
+                        title = if ("title" in fields) saved.title else current.title,
+                        customPrompt = if ("customPrompt" in fields) saved.customPrompt else current.customPrompt,
+                        modelId = if ("modelId" in fields) saved.modelId else current.modelId,
+                        inferenceParams = if ("inferenceParams" in fields) saved.inferenceParams else current.inferenceParams,
+                        activeSkillIds = if ("activeSkillIds" in fields) saved.activeSkillIds else current.activeSkillIds,
+                        activeMcpServerIds = if ("activeMcpServerIds" in fields) saved.activeMcpServerIds else current.activeMcpServerIds,
+                    )
+                }
+            },
+        )
+    }
     val branchControls: com.promenar.infinity.domain.branch.BranchControls get() = branchService
     suspend fun reconcileBranchWorkspace(sessionId: String): Unit = branchService.afterTools(sessionId)
     suspend fun sessionCommunicationApprovalTarget(session: com.promenar.infinity.data.model.Session, tool: String, arguments: String): String? =
-        branchService.approvalTarget(session, tool, arguments)
+        if (tool == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE)
+            agentConfigService.preflight(session, arguments).target
+        else branchService.approvalTarget(session, tool, arguments)
     private val subagentCompletions by lazy { com.promenar.infinity.data.trigger.SubagentCompletionSteering(generationScope) }
     private val subagentResultFiles by lazy {
         com.promenar.infinity.data.subagent.SubagentResultFiles(
@@ -1260,6 +1294,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             linuxFiles = linuxSessionFiles,
             askUserLedger = askUserLedger,
             secretInputLedger = secretInputLedger,
+            agentConfigService = { agentConfigService },
             branchService = { branchService }, branchPlans = branchPlans, sessionMailbox = sessionMailbox,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
         )
@@ -1741,6 +1776,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.RequestSecretSkill())
             register(com.promenar.infinity.ui.chat.manager.skills.ShowSecretSkill(sessionSecretVault))
             register(com.promenar.infinity.data.branch.SessionBranchTool())
+            register(com.promenar.infinity.data.agentconfig.AgentsReadTool { agentConfigService })
+            register(com.promenar.infinity.data.agentconfig.AgentsWriteTool { agentConfigService })
             register(com.promenar.infinity.data.branch.SessionListTool { branchService })
             register(com.promenar.infinity.ui.chat.manager.skills.TermuxExecSkill(termuxRuntime::executeRequest, backgroundJobs) {
                 com.promenar.infinity.data.termux.TermuxPreferences.isEnabled(getSharedPreferences("infinity_settings", MODE_PRIVATE))
