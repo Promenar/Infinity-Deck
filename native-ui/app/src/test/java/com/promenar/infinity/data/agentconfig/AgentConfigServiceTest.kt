@@ -12,6 +12,8 @@ import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.repository.AgentRepository
 import com.promenar.infinity.data.repository.SessionRepository
 import com.promenar.infinity.domain.model.*
+import com.promenar.infinity.data.model.Session
+import com.promenar.infinity.domain.model.Agent
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

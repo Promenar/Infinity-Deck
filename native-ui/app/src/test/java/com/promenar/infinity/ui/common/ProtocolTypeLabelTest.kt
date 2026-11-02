@@ -1,20 +1,14 @@
 package com.promenar.infinity.ui.common
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.ui.settings.PROVIDER_PRESETS
 import com.promenar.infinity.ui.settings.label
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
+import com.promenar.infinity.util.XmlStringResources
+import org.junit.jupiter.api.Test
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33], qualifiers = "en")
 class ProtocolTypeLabelTest {
-    private val resources get() = ApplicationProvider.getApplicationContext<Context>().resources
+    private val resources = XmlStringResources.resources()
 
     @Test
     fun `英文界面下所有协议名称不含中文`() {
@@ -37,8 +31,8 @@ class ProtocolTypeLabelTest {
     }
 
     @Test
-    @Config(qualifiers = "zh-rCN")
     fun `中文界面保留中文协议名与预设名`() {
+        val resources = XmlStringResources.resources("zh-rCN")
         assertThat(ProtocolType.Qwen_DashScope.label(resources)).isEqualTo("通义千问 (Qwen)")
         assertThat(ProtocolType.Generic_OpenAI_Compat.label(resources)).isEqualTo("OpenAI 兼容（通用）")
         assertThat(PROVIDER_PRESETS.first { it.name == "Custom" }.label(resources)).isEqualTo("自定义")

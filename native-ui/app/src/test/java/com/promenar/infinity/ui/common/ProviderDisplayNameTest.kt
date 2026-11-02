@@ -1,18 +1,12 @@
 package com.promenar.infinity.ui.common
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.remote.protocol.ProtocolType
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
+import com.promenar.infinity.util.XmlStringResources
+import org.junit.jupiter.api.Test
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33], qualifiers = "en")
 class ProviderDisplayNameTest {
-    private val resources get() = ApplicationProvider.getApplicationContext<Context>().resources
+    private val resources = XmlStringResources.resources()
 
     private fun display(name: String, protocol: ProtocolType?) = providerDisplayName(name, protocol, resources)
 

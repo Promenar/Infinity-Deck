@@ -147,12 +147,12 @@ false 表示不自动匹配调用，仍可由用户 `$my-skill` 或 `/my-skill` 
 
 `agents_write` 每次都需用户审批，不可限时免审批。先读现值，再提交 `op`、`fields` 与非空 `reason`；修改对象的 `id` 可省略为当前对象。可写范围如下：
 
-| op | fields |
+| 操作 | fields |
 |---|---|
-| `create_agent` | `name` 必填；可写 `description`、`systemPrompt`、`modelId`、`temperature`、`topP`、`maxTokens`、`topK`、`frequencyPenalty`、`presencePenalty`、`repetitionPenalty`、`reasoningEffort`、`mcpServerIds`、`defaultWorkspaceId`、`toolsEnabledByDefault` |
-| `update_agent` | 与 create_agent 相同的字段，按需提供；id 省略取当前智能体 |
-| `create_session` | `agentId`、`title`、`customPrompt`、`modelId`；agentId 省略取当前智能体，工作区继承该智能体默认值；只创建会话，不发起对话或切换界面 |
-| `update_session` | `title`、`customPrompt`、`modelId`、`inferenceParams`、`activeSkillIds`、`activeMcpServerIds`；id 省略取当前会话 |
+| 新建智能体（`op` 为 `create_agent`） | `name` 必填；可写 `description`、`systemPrompt`、`modelId`、`temperature`、`topP`、`maxTokens`、`topK`、`frequencyPenalty`、`presencePenalty`、`repetitionPenalty`、`reasoningEffort`、`mcpServerIds`、`defaultWorkspaceId`、`toolsEnabledByDefault` |
+| 修改智能体（`op` 为 `update_agent`） | 与 create_agent 相同的字段，按需提供；id 省略取当前智能体 |
+| 新建会话（`op` 为 `create_session`） | `agentId`、`title`、`customPrompt`、`modelId`；agentId 省略取当前智能体，工作区继承该智能体默认值；只创建会话，不发起对话或切换界面 |
+| 修改会话（`op` 为 `update_session`） | `title`、`customPrompt`、`modelId`、`inferenceParams`、`activeSkillIds`、`activeMcpServerIds`；id 省略取当前会话 |
 
 字符串使用 string，采样参数使用 number，maxTokens / topK 使用整数，技能与 MCP id 使用字符串数组，toolsEnabledByDefault 使用 boolean。可空字段可用 null 清空并恢复默认；inferenceParams 只允许上述采样参数与 reasoningEffort，按提供的子字段合并；传 null 只清空这些可写参数，保留上下文轮数等界面设置。reasoningEffort 使用模型支持的 wireName。模型、技能、MCP 与默认工作区必须已经登记；无效参数在审批前返回错误。审批绑定本次涉及字段的现值，批准后现值变化会拒绝写入，需要重新读取后再提交。
 
