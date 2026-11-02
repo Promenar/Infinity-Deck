@@ -82,7 +82,6 @@ class ProviderModelReleaseBlockersTest {
     @Test
     fun `shared settings fields and protocol choices use standard Material 3 controls`() {
         val input = source("ui/common/SettingsInput.kt")
-        val selector = source("ui/common/ProtocolSelector.kt")
 
         assertThat(input).contains("OutlinedTextField(")
         assertThat(input).contains("MaterialTheme.typography")
@@ -95,11 +94,8 @@ class ProviderModelReleaseBlockersTest {
         assertThat(protocol).contains("InfinityValueRow(")
         assertThat(protocol).contains("InfinityBottomSheet(")
         assertThat(protocol).contains("selected = protocol == state.localProtocol")
-        assertThat(selector).contains("RadioButton(")
-        assertThat(selector).contains("selectable(")
-        assertThat(selector).contains("Role.RadioButton")
-        assertThat(selector).doesNotContain("InfinityColors.")
-        assertThat(selector).doesNotContain(".border(")
+        assertThat(protocol).contains("RadioButton(")
+        assertThat(protocol).contains("Role.RadioButton")
     }
 
     @Test

@@ -24,7 +24,6 @@ fun String.toCredentialUpdate(): CredentialUpdate =
 data class ProviderListItem(
     val id: String = "",
     val name: String = "",
-    val typeName: String = "",
     val baseUrl: String = "",
     val model: String = "",
     val protocolType: ProtocolType = ProtocolType.Generic_OpenAI_Compat,

@@ -67,6 +67,8 @@ import com.promenar.infinity.data.local.ProviderStatus
 import com.promenar.infinity.data.model.ProviderListItem
 import com.promenar.infinity.data.model.UnsupportedProviderListItem
 import com.promenar.infinity.data.remote.protocol.ProtocolType
+import com.promenar.infinity.ui.common.label
+import com.promenar.infinity.ui.common.providerDisplayName
 import com.promenar.infinity.data.tailnet.TailnetEndpoints
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.BettboxListGroup
@@ -276,6 +278,7 @@ private fun UnsupportedProviderCard(
 ) {
     var menuExpanded by remember(provider.id) { mutableStateOf(false) }
     val unsupportedDescription = stringResource(R.string.settings_provider_protocol_unsupported)
+    val providerName = providerDisplayName(provider.name, protocol = null)
     val deleteDescription = stringResource(R.string.shared_btn_delete)
     ProviderRowFrame(
         modifier = Modifier
@@ -283,7 +286,7 @@ private fun UnsupportedProviderCard(
             .semantics { stateDescription = unsupportedDescription },
         onClick = onEdit,
         onClickLabel = stringResource(R.string.common_cd_edit),
-        leading = { Box(Modifier.alpha(0.55f)) { ProviderAvatar(provider.name, baseUrl = null) } },
+        leading = { Box(Modifier.alpha(0.55f)) { ProviderAvatar(providerName, baseUrl = null) } },
         trailing = {
             if (onDelete == null) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
@@ -298,7 +301,7 @@ private fun UnsupportedProviderCard(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = "${provider.name}: $deleteDescription",
+                        contentDescription = "$providerName: $deleteDescription",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -324,7 +327,7 @@ private fun UnsupportedProviderCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                provider.name,
+                providerName,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -442,14 +445,15 @@ private fun ProviderCard(
     onEdit: () -> Unit,
     onDelete: (() -> Unit)?,
 ) {
+    val providerName = providerDisplayName(provider.name, provider.protocolType)
     var menuExpanded by remember(provider.id) { mutableStateOf(false) }
     val manageDescription = stringResource(R.string.settings_manage_models)
     val editDescription = stringResource(R.string.shared_btn_edit)
     val deleteDescription = stringResource(R.string.shared_btn_delete)
     val actionsDescription = if (onDelete == null) {
-        "${provider.name}: $editDescription"
+        "$providerName: $editDescription"
     } else {
-        "${provider.name}: $editDescription / $deleteDescription"
+        "$providerName: $editDescription / $deleteDescription"
     }
     val enabledStatus = stringResource(
         if (provider.enabled) R.string.settings_provider_state_enabled else R.string.settings_provider_state_disabled,
@@ -460,13 +464,7 @@ private fun ProviderCard(
         enabledStatus,
         credentialStatus,
     )
-    val localizedTypeName = when (provider.typeName) {
-        ProtocolType.Generic_OpenAI_Compat.displayName ->
-            stringResource(R.string.settings_provider_type_generic_openai)
-        ProtocolType.Local.displayName ->
-            stringResource(R.string.settings_provider_type_local)
-        else -> provider.typeName
-    }
+    val protocolLabel = provider.protocolType.label()
     val host = remember(provider.baseUrl) { providerHostLabel(provider.baseUrl) }
     val missingCredential = providerCredentialMissing(provider)
     val scheme = MaterialTheme.colorScheme
@@ -490,7 +488,7 @@ private fun ProviderCard(
         onClick = onClick,
         onClickLabel = manageDescription,
         leading = {
-            Box(Modifier.alpha(if (provider.enabled) 1f else 0.55f)) { ProviderAvatar(provider.name, provider.baseUrl) }
+            Box(Modifier.alpha(if (provider.enabled) 1f else 0.55f)) { ProviderAvatar(providerName, provider.baseUrl) }
         },
         trailing = {
             Box {
@@ -553,7 +551,7 @@ private fun ProviderCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                provider.name,
+                providerName,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (provider.enabled) scheme.onSurface else scheme.onSurfaceVariant,
                 maxLines = 1,
@@ -567,7 +565,7 @@ private fun ProviderCard(
         }
         Text(
             text = buildAnnotatedString {
-                append(localizedTypeName)
+                append(protocolLabel)
                 if (host.isNotEmpty()) {
                     append(separator)
                     withStyle(SpanStyle(fontFamily = InfinityMonospace)) { append(host) }

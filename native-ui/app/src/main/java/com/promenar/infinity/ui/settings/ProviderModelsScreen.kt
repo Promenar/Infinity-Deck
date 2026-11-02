@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.settings
 
+import com.promenar.infinity.ui.common.providerDisplayName
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -176,9 +177,8 @@ fun ProviderModelsScreen(
             onNavigateBack()
         }
     }
-    val effectiveTitle = provider?.name
-        ?: providerName.takeIf { it.isNotBlank() }
-        ?: stringResource(R.string.provider_models_default_provider)
+    val effectiveTitle = provider?.let { providerDisplayName(it.name, it.protocolType) }
+        ?: providerDisplayName(providerName, protocol = null)
 
     // 归属只依据稳定 providerId，禁止用可重名的展示名称猜测。
     val scopedModels = remember(models, providerId) {

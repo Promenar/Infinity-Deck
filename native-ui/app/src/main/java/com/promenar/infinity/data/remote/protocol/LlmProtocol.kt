@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.remote.protocol
 
+import androidx.annotation.StringRes
 import kotlinx.coroutines.flow.Flow
 import com.promenar.infinity.R
 import com.promenar.infinity.data.remote.parser.NormalizedError
@@ -229,60 +230,65 @@ sealed class StreamChunk {
 sealed class ProtocolType(
     /** 与构建混淆无关的存储标识；发布后保持不变。 */
     val persistedId: String,
-    val displayName: String,
+    /**
+     * 历史存储匹配键：旧版本把它写入 `protocol_id_name` 与未命名提供商的名称。
+     * 取值冻结，只用于持久化与迁移匹配，界面名称一律取 [labelRes]。
+     */
+    val legacyDisplayName: String,
     val defaultBaseUrl: String,
     val defaultPath: String,
-    val iconRes: Int? = null
+    val iconRes: Int? = null,
+    @StringRes val labelRes: Int,
 ) {
     data object OpenAI_ChatCompletions : ProtocolType(
-        "OpenAI_ChatCompletions", "OpenAI Chat Completions", "https://api.openai.com", "/v1/chat/completions", R.drawable.ic_provider_openai
+        "OpenAI_ChatCompletions", "OpenAI Chat Completions", "https://api.openai.com", "/v1/chat/completions", R.drawable.ic_provider_openai, labelRes = R.string.provider_protocol_openai_chat_completions
     )
     data object OpenAI_Responses : ProtocolType(
-        "OpenAI_Responses", "OpenAI Responses", "https://api.openai.com", "/v1/responses", R.drawable.ic_provider_openai
+        "OpenAI_Responses", "OpenAI Responses", "https://api.openai.com", "/v1/responses", R.drawable.ic_provider_openai, labelRes = R.string.provider_protocol_openai_responses
     )
     data object Anthropic_Messages : ProtocolType(
-        "Anthropic_Messages", "Anthropic Messages", "https://api.anthropic.com", "/v1/messages", R.drawable.ic_provider_anthropic
+        "Anthropic_Messages", "Anthropic Messages", "https://api.anthropic.com", "/v1/messages", R.drawable.ic_provider_anthropic, labelRes = R.string.provider_protocol_anthropic_messages
     )
     data object Google_VertexAI : ProtocolType(
-        "Google_VertexAI", "Google Vertex AI", "https://us-central1-aiplatform.googleapis.com", "", R.drawable.ic_provider_gemini
+        "Google_VertexAI", "Google Vertex AI", "https://us-central1-aiplatform.googleapis.com", "", R.drawable.ic_provider_gemini, labelRes = R.string.provider_protocol_google_vertex_ai
     )
     data object Google_Gemini : ProtocolType(
-        "Google_Gemini", "Google Gemini API", "https://generativelanguage.googleapis.com", "/v1beta", R.drawable.ic_provider_gemini
+        "Google_Gemini", "Google Gemini API", "https://generativelanguage.googleapis.com", "/v1beta", R.drawable.ic_provider_gemini, labelRes = R.string.provider_protocol_google_gemini
     )
     data object Cohere_Chat : ProtocolType(
-        "Cohere_Chat", "Cohere Chat", "https://api.cohere.ai", "/v2/chat", R.drawable.ic_provider_cohere
+        "Cohere_Chat", "Cohere Chat", "https://api.cohere.ai", "/v2/chat", R.drawable.ic_provider_cohere, labelRes = R.string.provider_protocol_cohere_chat
     )
     data object Mistral_Chat : ProtocolType(
-        "Mistral_Chat", "Mistral Chat", "https://api.mistral.ai", "/v1/chat/completions", R.drawable.ic_provider_mistral
+        "Mistral_Chat", "Mistral Chat", "https://api.mistral.ai", "/v1/chat/completions", R.drawable.ic_provider_mistral, labelRes = R.string.provider_protocol_mistral_chat
     )
     data object DeepSeek : ProtocolType(
-        "DeepSeek", "DeepSeek", "https://api.deepseek.com", "/chat/completions", R.drawable.ic_provider_deepseek
+        "DeepSeek", "DeepSeek", "https://api.deepseek.com", "/chat/completions", R.drawable.ic_provider_deepseek, labelRes = R.string.provider_protocol_deepseek
     )
     data object Generic_OpenAI_Compat : ProtocolType(
-        "Generic_OpenAI_Compat", "OpenAI 兼容 (通用)", "", "/v1/chat/completions", R.drawable.ic_provider_custom
+        "Generic_OpenAI_Compat", "OpenAI 兼容 (通用)", "", "/v1/chat/completions", R.drawable.ic_provider_custom, labelRes = R.string.provider_protocol_generic_openai
     )
 
     // ── 国产提供商（均兼容 OpenAI Chat Completions 协议） ──
     data object Moonshot_Kimi : ProtocolType(
-        "Moonshot_Kimi", "Moonshot (Kimi)", "https://api.moonshot.cn", "/v1/chat/completions", R.drawable.ic_provider_kimi
+        "Moonshot_Kimi", "Moonshot (Kimi)", "https://api.moonshot.cn", "/v1/chat/completions", R.drawable.ic_provider_kimi, labelRes = R.string.provider_protocol_moonshot_kimi
     )
     data object Qwen_DashScope : ProtocolType(
-        "Qwen_DashScope", "通义千问 (Qwen)", "https://dashscope.aliyuncs.com/compatible-mode", "/v1/chat/completions", R.drawable.ic_provider_qwen
+        "Qwen_DashScope", "通义千问 (Qwen)", "https://dashscope.aliyuncs.com/compatible-mode", "/v1/chat/completions", R.drawable.ic_provider_qwen, labelRes = R.string.provider_protocol_qwen
     )
     data object Zhipu_GLM : ProtocolType(
-        "Zhipu_GLM", "智谱 (GLM)", "https://open.bigmodel.cn/api/paas", "/v4/chat/completions", R.drawable.ic_provider_zhipu
+        "Zhipu_GLM", "智谱 (GLM)", "https://open.bigmodel.cn/api/paas", "/v4/chat/completions", R.drawable.ic_provider_zhipu, labelRes = R.string.provider_protocol_zhipu
     )
     data object Doubao_ByteDance : ProtocolType(
-        "Doubao_ByteDance", "豆包 (Doubao)", "https://ark.cn-beijing.volces.com/api", "/v3/chat/completions", R.drawable.ic_provider_doubao
+        "Doubao_ByteDance", "豆包 (Doubao)", "https://ark.cn-beijing.volces.com/api", "/v3/chat/completions", R.drawable.ic_provider_doubao, labelRes = R.string.provider_protocol_doubao
     )
     data object Yi_ZeroOne : ProtocolType(
-        "Yi_ZeroOne", "零一万物 (Yi)", "https://api.lingyiwanwu.com", "/v1/chat/completions", R.drawable.ic_provider_yi
+        "Yi_ZeroOne", "零一万物 (Yi)", "https://api.lingyiwanwu.com", "/v1/chat/completions", R.drawable.ic_provider_yi, labelRes = R.string.provider_protocol_yi
     )
     data object Baichuan : ProtocolType(
-        "Baichuan", "百川 (Baichuan)", "https://api.baichuan-ai.com", "/v1/chat/completions", R.drawable.ic_provider_baichuan
+        "Baichuan", "百川 (Baichuan)", "https://api.baichuan-ai.com", "/v1/chat/completions", R.drawable.ic_provider_baichuan, labelRes = R.string.provider_protocol_baichuan
     )
 
-    data object Local : ProtocolType("Local", "本地推理", "", "", R.drawable.ic_provider_local)
+    data object Local : ProtocolType("Local", "本地推理", "", "", R.drawable.ic_provider_local, labelRes = R.string.provider_protocol_local)
 
     companion object {
         // ── 向后兼容别名 (旧 ProtocolId 枚举名) ──────────────────
@@ -316,7 +322,7 @@ sealed class ProtocolType(
             }
             known?.let { return it }
             val protocols = entries
-            protocols.firstOrNull { it.displayName == displayName }?.let { return it }
+            protocols.firstOrNull { it.legacyDisplayName == displayName }?.let { return it }
 
             val candidateIds = legacyObfuscatedIdsByRelease.mapNotNull { it[name] }.toSet()
             val candidates = protocols.filter { it.persistedId in candidateIds }
@@ -369,6 +375,9 @@ sealed class ProtocolType(
                 "rs4" to "Qwen_DashScope", "ss4" to "Yi_ZeroOne", "ts4" to "Zhipu_GLM",
             ),
         )
+
+        /** 按历史存储匹配键反查协议；用于识别旧版本写入的默认提供商名称。 */
+        fun fromLegacyDisplayName(name: String): ProtocolType? = entries.firstOrNull { it.legacyDisplayName == name }
 
         val entries: List<ProtocolType> get() = listOfNotNull(
             OpenAI_ChatCompletions, OpenAI_Responses, Anthropic_Messages,

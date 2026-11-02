@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.providerDisplayName
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -484,7 +485,7 @@ class ChatViewModel(
             SecretSaveTargets(
                 sshHosts = app.sshHostStore.observeHosts().first().map { SecretSaveTargets.Target(it.id, it.alias) },
                 providers = ProviderManager.getInstance().providers.value.map {
-                    SecretSaveTargets.Target(it.id, it.name.ifBlank { it.typeName })
+                    SecretSaveTargets.Target(it.id, providerDisplayName(it.name, it.protocolType, app.resources))
                 },
                 gitHosts = app.gitCredentialStore.credentials.value.map { it.host to it.username },
             )

@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.welcome
 
+import com.promenar.infinity.ui.common.providerDisplayName
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -87,7 +88,9 @@ internal fun OnboardingRoute(
     }
 
     val providerName by produceState<String?>(null, onboarding.providerId, onboarding.step) {
-        value = onboarding.providerId?.let { settings.getProviderSummary(it)?.name }
+        value = onboarding.providerId?.let { id ->
+            settings.getProviderSummary(id)?.let { providerDisplayName(it.name, it.protocolType, app.resources) }
+        }
     }
     val agentName by produceState<String?>(null, onboarding.agentId) {
         value = onboarding.agentId?.let { app.agentRepository.getById(it)?.name }

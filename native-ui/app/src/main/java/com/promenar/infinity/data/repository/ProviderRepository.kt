@@ -137,7 +137,6 @@ class ProviderRepository(
             val item = ProviderListItem(
                 id = config.id,
                 name = config.name,
-                typeName = dataProtocolType.displayName,
                 baseUrl = config.baseUrl,
                 model = config.defaultModel,
                 protocolType = dataProtocolType,

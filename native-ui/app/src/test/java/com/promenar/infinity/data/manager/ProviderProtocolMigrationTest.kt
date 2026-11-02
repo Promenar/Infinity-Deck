@@ -32,7 +32,7 @@ class ProviderProtocolMigrationTest {
 
     @Test
     fun `显示名恢复覆盖升级前的通用协议并写回稳定标识`() {
-        seedMain("is4", "https://gateway.invalid", ProtocolType.Generic_OpenAI_Compat.displayName)
+        seedMain("is4", "https://gateway.invalid", ProtocolType.Generic_OpenAI_Compat.legacyDisplayName)
         secrets.put(SecretCatalog.providerApiKey("default"), byteArrayOf(1, 2, 3))
 
         val manager = ProviderManager.createForTest(app, secrets)
@@ -134,7 +134,7 @@ class ProviderProtocolMigrationTest {
     @Test
     fun `运行时直接读取和凭证保留更新均使用带上下文的解析`() {
         val manager = ProviderManager.createForTest(app, secrets)
-        seedMain("is4", "https://gateway.invalid", ProtocolType.Generic_OpenAI_Compat.displayName)
+        seedMain("is4", "https://gateway.invalid", ProtocolType.Generic_OpenAI_Compat.legacyDisplayName)
         manager.updateMainProvider(
             ProtocolType.Generic_OpenAI_Compat, "https://gateway.invalid", CredentialUpdate.Preserve, "synthetic-model",
         )

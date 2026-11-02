@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 协议类型名称 -->
+    <string name="provider_protocol_openai_chat_completions">OpenAI Chat Completions</string>
+    <string name="provider_protocol_openai_responses">OpenAI Responses</string>
+    <string name="provider_protocol_anthropic_messages">Anthropic Messages</string>
+    <string name="provider_protocol_google_vertex_ai">Google Vertex AI</string>
+    <string name="provider_protocol_google_gemini">Google Gemini API</string>
+    <string name="provider_protocol_cohere_chat">Cohere Chat</string>
+    <string name="provider_protocol_mistral_chat">Mistral Chat</string>
+    <string name="provider_protocol_deepseek">DeepSeek</string>
+    <string name="provider_protocol_generic_openai">OpenAI Compatible (Generic)</string>
+    <string name="provider_protocol_moonshot_kimi">Moonshot (Kimi)</string>
+    <string name="provider_protocol_qwen">Qwen (DashScope)</string>
+    <string name="provider_protocol_zhipu">Zhipu (GLM)</string>
+    <string name="provider_protocol_doubao">Doubao (ByteDance)</string>
+    <string name="provider_protocol_yi">01.AI (Yi)</string>
+    <string name="provider_protocol_baichuan">Baichuan</string>
+    <string name="provider_protocol_local">Local inference</string>
+
+    <!-- 引导页四段协议选择的短名称 -->
+    <string name="provider_protocol_short_generic_openai">Compatible</string>
+    <string name="provider_protocol_short_anthropic">Anthropic</string>
+    <string name="provider_protocol_short_openai_responses">Responses</string>
+    <string name="provider_protocol_short_gemini">Gemini</string>
+
+    <!-- 预设提供商名称 -->
+    <string name="provider_preset_qwen">Qwen</string>
+    <string name="provider_preset_zhipu">Zhipu GLM</string>
+    <string name="provider_preset_doubao">Doubao</string>
+    <string name="provider_preset_baichuan">Baichuan</string>
+    <string name="provider_preset_custom">Custom</string>
+    <string name="provider_preset_local">On-device</string>
+</resources>

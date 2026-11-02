@@ -417,8 +417,6 @@
     <string name="settings_about_infinity_desc">Version, licenses, and project information</string>
     <string name="settings_version">Version %1$s</string>
     <string name="settings_provider_empty">No providers configured yet.\nTap the button above to add one.</string>
-    <string name="settings_provider_type_generic_openai">OpenAI Compatible (Generic)</string>
-    <string name="settings_provider_type_local">Local inference</string>
     <string name="settings_add_provider">Add Provider</string>
     <string name="settings_delete_provider_title">Delete Provider</string>
     <string name="settings_delete_provider_message">Are you sure you want to delete this provider? This action cannot be undone.</string>

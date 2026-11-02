@@ -275,7 +275,7 @@ fun providerListBatch1() = Batch1PagesTheme {
 @Preview(name = "提供商已配置 深色中文 360", widthDp = 360, heightDp = 914, locale = "zh-rCN")
 @Composable
 fun providerConfiguredBatch1() = Batch1PagesTheme {
-    ProviderListScreenContent(ProviderListScreenState(providers = listOf(ProviderListItem(id = "preview", name = "Infinity Workbench", typeName = "OpenAI", baseUrl = "https://api.example.com", protocolType = ProtocolType.OpenAI_ChatCompletions, hasApiKey = true))), ProviderListScreenActions())
+    ProviderListScreenContent(ProviderListScreenState(providers = listOf(ProviderListItem(id = "preview", name = "Infinity Workbench", baseUrl = "https://api.example.com", protocolType = ProtocolType.OpenAI_ChatCompletions, hasApiKey = true))), ProviderListScreenActions())
 }
 
 @PreviewTest
