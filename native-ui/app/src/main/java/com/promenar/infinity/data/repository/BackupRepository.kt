@@ -12,6 +12,7 @@ import com.promenar.infinity.data.backup.BackupContent
 import com.promenar.infinity.data.backup.BackupDataSource
 import com.promenar.infinity.data.backup.BackupExportOptions
 import com.promenar.infinity.data.backup.BackupExportResult
+import com.promenar.infinity.data.backup.BackupFailureReason
 import com.promenar.infinity.data.backup.SkillBackupSummary
 import com.promenar.infinity.data.backup.BackupOptions
 import com.promenar.infinity.data.backup.BackupPackageCodec
@@ -197,7 +198,7 @@ class BackupRepository internal constructor(
                 if (count < 0) break
                 if (count == 0) continue
                 if (output.size().toLong() + count > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
-                    throw BackupValidationException("本地备份包超过 16 MiB 安全限制")
+                    throw BackupValidationException("本地备份包超过 16 MiB 安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
                 }
                 output.write(buffer, 0, count)
             }
@@ -216,8 +217,9 @@ class BackupRepository internal constructor(
     }
 
     private fun requireBoundedPackage(bytes: ByteArray) {
-        if (bytes.isEmpty() || bytes.size.toLong() > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
-            throw BackupValidationException("备份包大小无效")
+        if (bytes.isEmpty()) throw BackupValidationException("备份包大小无效")
+        if (bytes.size.toLong() > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
+            throw BackupValidationException("备份包大小无效", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
     }
 

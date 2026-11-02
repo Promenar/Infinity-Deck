@@ -771,6 +771,9 @@
     <string name="backup_error_cleanup">取消恢复失败，为保护数据暂时不能修改数据。</string>
     <string name="backup_error_document_create">无法创建或写入所选备份文件。</string>
     <string name="backup_error_document_open">无法读取所选备份文件。</string>
+    <string name="backup_error_reason_capacity">备份内容超过 16 MiB 上限，无法生成备份。可删除较大的会话文件、技能或聊天记录后重试。</string>
+    <string name="backup_error_reason_workspace_mismatch">有会话文件已被删除或在应用外被修改，与记录不一致，无法生成备份。</string>
+    <string name="backup_error_reason_skill_content">技能目录含有无法备份的内容（特殊文件、含冒号或反斜杠的文件名，或总量超过 64 MiB），无法生成备份。</string>
 
     <!-- LocalModelsScreen -->
     <string name="local_models_title">本地模型</string>

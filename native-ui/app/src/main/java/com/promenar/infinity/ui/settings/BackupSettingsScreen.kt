@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
+import com.promenar.infinity.data.backup.BackupFailureReason
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.SettingsSectionHeader
 import com.promenar.infinity.ui.common.bettboxListGroup
@@ -601,8 +602,17 @@ private fun backupOperationText(operation: BackupOperation): String? = when (ope
         BackupSuccessCode.UPLOADED -> stringResource(R.string.backup_status_upload_success)
     }
     is BackupOperation.Blocked -> backupErrorText(operation.code)
-    is BackupOperation.Error -> backupErrorText(operation.code)
+    is BackupOperation.Error -> operation.reason?.let { backupFailureReasonText(it) } ?: backupErrorText(operation.code)
 }
+
+@Composable
+private fun backupFailureReasonText(reason: BackupFailureReason): String = stringResource(
+    when (reason) {
+        BackupFailureReason.CAPACITY_EXCEEDED -> R.string.backup_error_reason_capacity
+        BackupFailureReason.WORKSPACE_FILE_MISMATCH -> R.string.backup_error_reason_workspace_mismatch
+        BackupFailureReason.SKILL_CONTENT_UNSUPPORTED -> R.string.backup_error_reason_skill_content
+    },
+)
 
 @Composable
 private fun backupErrorText(code: BackupErrorCode): String = stringResource(

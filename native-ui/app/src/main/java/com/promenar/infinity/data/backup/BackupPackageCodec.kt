@@ -72,7 +72,7 @@ class DefaultBackupPackageCodec private constructor(
                 val manifestBytes = json.encodeToString(manifest).toByteArray()
                 try {
                     if (manifestBytes.size.toLong() > limits.maxManifestBytes) {
-                        throw BackupValidationException("manifest 超过允许大小")
+                        throw BackupValidationException("manifest 超过允许大小", reason = BackupFailureReason.CAPACITY_EXCEEDED)
                     }
                     createZip(manifestBytes, entries)
                 } finally {
@@ -153,7 +153,7 @@ class DefaultBackupPackageCodec private constructor(
                     result += "${SkillBackupPaths.PREFIX}$path" to bytes.copyOf()
                 }
                 if (result.size + skills.metadata.directories.size > limits.maxEntries) {
-                    throw BackupValidationException("技能分区与备份内容项总数超过上限")
+                    throw BackupValidationException("技能分区与备份内容项总数超过上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
                 }
             }
             if (options.includeSecrets && BackupContent.SECRETS in options.content) {
@@ -171,13 +171,13 @@ class DefaultBackupPackageCodec private constructor(
     }
 
     private fun validateEncodeEntries(entries: List<Pair<String, ByteArray>>, directoryCount: Int) {
-        if (entries.size + directoryCount > limits.maxEntries) throw BackupValidationException("备份内容项过多")
+        if (entries.size + directoryCount > limits.maxEntries) throw BackupValidationException("备份内容项过多", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         var contentTotal = 0L
         entries.forEach { (path, content) ->
             validateArchivePath(path)
             validateContentPath(path)
             if (content.size.toLong() > limits.maxEntryBytes) {
-                throw BackupValidationException("备份内容项超过允许大小")
+                throw BackupValidationException("备份内容项超过允许大小", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
             contentTotal = checkedTotal(contentTotal, content.size.toLong())
         }
@@ -331,7 +331,7 @@ class DefaultBackupPackageCodec private constructor(
         if (skills == null && skillEntries.isNotEmpty()) throw BackupValidationException("技能分区缺少清单元数据")
         if (skills != null) {
             if (manifest.entries.size + skills.directories.size > limits.maxEntries) {
-                throw BackupValidationException("技能分区与备份内容项总数超过上限")
+                throw BackupValidationException("技能分区与备份内容项总数超过上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
             SkillBackupPaths.validate(
                 skills,
@@ -439,7 +439,7 @@ class DefaultBackupPackageCodec private constructor(
 
     private fun checkedTotal(current: Long, addition: Long): Long {
         if (addition > limits.maxTotalBytes - current) {
-            throw BackupValidationException("备份内容超过允许总大小")
+            throw BackupValidationException("备份内容超过允许总大小", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
         return current + addition
     }

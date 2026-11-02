@@ -7,6 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.backup.BackupExportOptions
+import com.promenar.infinity.data.backup.BackupFailureReason
+import com.promenar.infinity.data.backup.BackupValidationException
+import com.promenar.infinity.data.backup.backupFailureReason
 import com.promenar.infinity.data.backup.PendingRestoreMetadata
 import com.promenar.infinity.data.backup.RestoreRelayActivity
 import com.promenar.infinity.data.remote.webdav.RemoteBackup
@@ -17,6 +20,7 @@ import com.promenar.infinity.data.security.SecretCatalog
 import com.promenar.infinity.data.security.SecretStore
 import com.promenar.infinity.data.security.WebDavAuthRecord
 import com.promenar.infinity.data.security.WebDavAuthRecordCodec
+import com.promenar.infinity.utils.InfinityLogger
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -77,7 +81,7 @@ sealed interface BackupOperation {
         val itemCount: Int = 0,
         val cleanupWarning: Boolean = false,
     ) : BackupOperation
-    data class Error(val code: BackupErrorCode) : BackupOperation
+    data class Error(val code: BackupErrorCode, val reason: BackupFailureReason? = null) : BackupOperation
 }
 
 enum class WebDavReadiness {
@@ -207,6 +211,7 @@ class BackupViewModel internal constructor(
     private val hooks: BackupViewModelHooks = BackupViewModelHooks.None,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val synchronousIoForTests: Boolean = false,
+    private val failureRecorder: (BackupOperation, Throwable) -> Unit = ::recordBackupFailureDiagnostic,
 ) : ViewModel() {
     private val generation = AtomicLong(0)
     private val configRevision = AtomicLong(0)
@@ -620,7 +625,11 @@ class BackupViewModel internal constructor(
         ) { token, options ->
             val bytes = operations.export(options)
             try {
-                output.write(bytes)
+                // SAF 文档可能由云盘等提供方承载，写入不得占用主线程。
+                withContext(ioDispatcher) {
+                    output.write(bytes)
+                    output.flush()
+                }
             } finally {
                 bytes.fill(0)
             }
@@ -881,8 +890,12 @@ class BackupViewModel internal constructor(
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
-                } catch (_: Exception) {
-                    fail(token, errorCodeFor(phase))
+                } catch (error: Exception) {
+                    reportFailure(token, phase, error)
+                } catch (error: Error) {
+                    // 导出与上传在内存中物化整包，内存耗尽等 Error 只让本次操作失败，不让应用崩溃。
+                    if (phase != BackupOperation.Exporting && phase != BackupOperation.Uploading) throw error
+                    reportFailure(token, phase, error)
                 } finally {
                     synchronized(operationLock) {
                         if (currentOperationToken == token) {
@@ -937,10 +950,22 @@ class BackupViewModel internal constructor(
         }
     }
 
-    private fun fail(token: Long, code: BackupErrorCode) {
+    private fun reportFailure(token: Long, phase: BackupOperation, error: Throwable) {
+        try {
+            failureRecorder(phase, error)
+        } catch (_: Exception) {
+            // 诊断写入失败不影响错误态发布。
+        }
+        val reason = if (phase == BackupOperation.Exporting || phase == BackupOperation.Uploading) {
+            error.backupFailureReason()
+        } else null
+        fail(token, errorCodeFor(phase), reason)
+    }
+
+    private fun fail(token: Long, code: BackupErrorCode, reason: BackupFailureReason? = null) {
         synchronized(operationLock) {
             if (!restoreBlocked && !webDavBlocked && isCurrentLocked(token, null)) {
-                _uiState.update { it.copy(operation = BackupOperation.Error(code)) }
+                _uiState.update { it.copy(operation = BackupOperation.Error(code, reason)) }
             }
         }
     }
@@ -1447,6 +1472,20 @@ class BackupViewModel internal constructor(
             override fun <T : ViewModel> create(modelClass: Class<T>): T = BackupViewModel(application) as T
         }
     }
+}
+
+/** 诊断只记录阶段、异常类型、分类与备份层固定文案；口令、密钥与文件内容不会出现在这些字段中。 */
+internal fun backupFailureDiagnosticFields(phase: BackupOperation, error: Throwable): Map<String, Any?> = mapOf(
+    "phase" to phase::class.simpleName,
+    "error" to error.javaClass.simpleName,
+    "reason" to error.backupFailureReason()?.name,
+    "detail" to generateSequence(error) { it.cause }.take(8)
+        .firstNotNullOfOrNull { it as? BackupValidationException }?.message,
+    "causes" to generateSequence(error.cause) { it.cause }.take(4).joinToString(">") { it.javaClass.simpleName },
+)
+
+private fun recordBackupFailureDiagnostic(phase: BackupOperation, error: Throwable) {
+    InfinityLogger.diagnostic("backup_operation_failed", backupFailureDiagnosticFields(phase, error))
 }
 
 internal fun BackupUiState.withKeysIncluded(include: Boolean): BackupUiState = copy(includeKeys = include)

@@ -146,8 +146,28 @@ object BackupPackageLimits {
     const val MAX_IN_MEMORY_BYTES: Long = 16L * 1024 * 1024
 }
 
-class BackupValidationException(message: String, cause: Throwable? = null) :
-    IllegalArgumentException(message, cause)
+/** 用户可以自行处理的备份失败分类；其它失败只显示通用文案。 */
+enum class BackupFailureReason {
+    /** 数据库、会话文件、技能与头像合计超过整包内存上限。 */
+    CAPACITY_EXCEEDED,
+    /** 会话文件缺失、被替换或与登记的大小、摘要不一致。 */
+    WORKSPACE_FILE_MISMATCH,
+    /** 技能目录含特殊文件、不支持的文件名或超过技能分区上限。 */
+    SKILL_CONTENT_UNSUPPORTED,
+}
+
+class BackupValidationException(
+    message: String,
+    cause: Throwable? = null,
+    val reason: BackupFailureReason? = null,
+) : IllegalArgumentException(message, cause)
+
+/** 沿原因链取第一个可归类的失败；内存耗尽按容量超限处理。 */
+fun Throwable.backupFailureReason(): BackupFailureReason? =
+    generateSequence(this) { it.cause }.take(8).firstNotNullOfOrNull { error ->
+        (error as? BackupValidationException)?.reason
+            ?: if (error is OutOfMemoryError) BackupFailureReason.CAPACITY_EXCEEDED else null
+    }
 
 interface BackupDataSource {
     suspend fun snapshot(content: Set<BackupContent>): BackupSnapshot

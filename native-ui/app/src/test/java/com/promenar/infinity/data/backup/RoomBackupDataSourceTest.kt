@@ -1369,6 +1369,27 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
+    fun `快照失败按会话文件不一致与容量超限分类`() {
+        runBlocking {
+            val seeded = seedCompleteGraph()
+            Files.write(seeded.filePath, "changed-outside-app".toByteArray())
+            val mismatch = assertFailsWith<BackupValidationException> { newDataSource().snapshot(CANONICAL_CONTENT) }
+            assertThat(mismatch.reason).isEqualTo(BackupFailureReason.WORKSPACE_FILE_MISMATCH)
+
+            Files.delete(seeded.filePath)
+            val missing = assertFailsWith<BackupValidationException> { newDataSource().snapshot(CANONICAL_CONTENT) }
+            assertThat(missing.reason).isEqualTo(BackupFailureReason.WORKSPACE_FILE_MISMATCH)
+
+            val overBudget = ByteArray(BackupPackageLimits.MAX_IN_MEMORY_BYTES.toInt())
+            Files.write(seeded.filePath, overBudget)
+            val file = db.fileEntryDao().getByUuid("root-1", "file-1")!!
+            db.fileEntryDao().update(file.copy(sizeBytes = overBudget.size.toLong(), hash = sha256(overBudget)))
+            val capacity = assertFailsWith<BackupValidationException> { newDataSource().snapshot(CANONICAL_CONTENT) }
+            assertThat(capacity.reason).isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
+        }
+    }
+
+    @Test
     fun `snapshot streams files within package limits and materializes an empty hash`() {
         runBlocking {
             seedCompleteGraph()
@@ -2929,6 +2950,16 @@ class RoomBackupDataSourceTest {
         val changedTables = JsonObject(tables + (table to transform(tables.getValue(table).jsonArray)))
         val changedRoot = JsonObject(root + ("tables" to changedTables))
         return validated(snapshot, database = changedRoot.toString().toByteArray())
+    }
+
+    private suspend inline fun <reified T : Throwable> assertFailsWith(block: () -> Unit): T {
+        try {
+            block()
+        } catch (error: Throwable) {
+            if (error is T) return error
+            throw error
+        }
+        throw AssertionError("预期抛出 ${T::class.java.simpleName}")
     }
 
     private suspend fun assertFails(block: suspend () -> Unit) {

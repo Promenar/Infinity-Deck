@@ -2,6 +2,8 @@ package com.promenar.infinity.ui.settings
 
 import androidx.lifecycle.ViewModelStore
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.backup.BackupFailureReason
+import com.promenar.infinity.data.backup.BackupValidationException
 import com.promenar.infinity.data.backup.BackupExportOptions
 import com.promenar.infinity.data.backup.PendingRestoreMetadata
 import com.promenar.infinity.data.backup.PendingRestorePhase
@@ -552,6 +554,104 @@ class BackupViewModelTest {
         store.clear()
         advanceUntilIdle()
         assertThat(clearedOutput.closeCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `导出因容量超限失败时显示容量原因并记录诊断`() = runTest(dispatcher) {
+        val recorded = mutableListOf<Pair<BackupOperation, Throwable>>()
+        val failure = BackupValidationException("snapshot 超过 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
+        val vm = newViewModel(operations = FakeOperations(exportError = failure), failureRecorder = { phase, error -> recorded += phase to error })
+
+        vm.export(TrackingOutputStream(), null, null); advanceUntilIdle()
+
+        assertThat(vm.uiState.value.operation)
+            .isEqualTo(BackupOperation.Error(BackupErrorCode.EXPORT_FAILED, BackupFailureReason.CAPACITY_EXCEEDED))
+        assertThat(recorded).containsExactly(BackupOperation.Exporting to failure)
+    }
+
+    @Test
+    fun `会话文件不一致与技能内容原因经原因链传到上传错误态`() = runTest(dispatcher) {
+        val wrapped = IllegalStateException("wrapper", BackupValidationException("备份源文件不存在", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH))
+        val vm = newViewModel(operations = FakeOperations(uploadError = wrapped))
+        vm.upload(null, null); advanceUntilIdle()
+        assertThat(vm.uiState.value.operation)
+            .isEqualTo(BackupOperation.Error(BackupErrorCode.UPLOAD_FAILED, BackupFailureReason.WORKSPACE_FILE_MISMATCH))
+
+        val skill = newViewModel(operations = FakeOperations(exportError = BackupValidationException("技能目录包含非普通文件", reason = BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)))
+        skill.export(TrackingOutputStream(), null, null); advanceUntilIdle()
+        assertThat(skill.uiState.value.operation)
+            .isEqualTo(BackupOperation.Error(BackupErrorCode.EXPORT_FAILED, BackupFailureReason.SKILL_CONTENT_UNSUPPORTED))
+    }
+
+    @Test
+    fun `未归类的导出失败仍显示通用错误且记录诊断`() = runTest(dispatcher) {
+        val recorded = mutableListOf<BackupOperation>()
+        val vm = newViewModel(operations = FakeOperations(exportFailure = true), failureRecorder = { phase, _ -> recorded += phase })
+        vm.export(TrackingOutputStream(), null, null); advanceUntilIdle()
+        assertThat(vm.uiState.value.operation).isEqualTo(BackupOperation.Error(BackupErrorCode.EXPORT_FAILED))
+        assertThat(recorded).containsExactly(BackupOperation.Exporting)
+    }
+
+    @Test
+    fun `导出与上传遇到 Error 时进入错误态而不让应用崩溃`() = runTest(dispatcher) {
+        val output = TrackingOutputStream()
+        val exportVm = newViewModel(operations = FakeOperations(exportError = OutOfMemoryError("synthetic")))
+        exportVm.export(output, null, null); advanceUntilIdle()
+        assertThat(exportVm.uiState.value.operation)
+            .isEqualTo(BackupOperation.Error(BackupErrorCode.EXPORT_FAILED, BackupFailureReason.CAPACITY_EXCEEDED))
+        assertThat(output.closeCount).isEqualTo(1)
+        assertThat(exportVm.uiState.value.canExecute).isTrue()
+
+        val uploadVm = newViewModel(operations = FakeOperations(uploadError = StackOverflowError("synthetic")))
+        uploadVm.upload(null, null); advanceUntilIdle()
+        assertThat(uploadVm.uiState.value.operation).isEqualTo(BackupOperation.Error(BackupErrorCode.UPLOAD_FAILED))
+        assertThat(uploadVm.testConnection()).isTrue()
+        uploadVm.cancelOperation()
+    }
+
+    @Test
+    fun `导出写入文档输出流在 IO 调度器上执行`() = runTest(dispatcher) {
+        val io = MarkingDispatcher(dispatcher)
+        val output = ThreadMarkingOutputStream(io)
+        val vm = newViewModel(ioDispatcher = io)
+        vm.export(output, null, null); advanceUntilIdle()
+        assertThat(vm.uiState.value.operation).isInstanceOf(BackupOperation.Success::class.java)
+        assertThat(output.writesOutsideIo).isEqualTo(0)
+        assertThat(output.writesOnIo).isGreaterThan(0)
+    }
+
+    @Test
+    fun `失败诊断只含阶段类型分类与备份层固定文案`() {
+        val error = IllegalStateException("synthetic-password", BackupValidationException("备份源文件不存在", java.io.IOException("/data/user/0/secret"), BackupFailureReason.WORKSPACE_FILE_MISMATCH))
+        val fields = backupFailureDiagnosticFields(BackupOperation.Exporting, error)
+        assertThat(fields).containsExactly(
+            "phase", "Exporting",
+            "error", "IllegalStateException",
+            "reason", "WORKSPACE_FILE_MISMATCH",
+            "detail", "备份源文件不存在",
+            "causes", "BackupValidationException>IOException",
+        )
+        assertThat(fields.values.joinToString()).doesNotContain("synthetic-password")
+        assertThat(fields.values.joinToString()).doesNotContain("/data/user/0")
+    }
+
+    private class MarkingDispatcher(private val delegate: kotlinx.coroutines.CoroutineDispatcher) : kotlinx.coroutines.CoroutineDispatcher() {
+        val active = ThreadLocal.withInitial { false }
+        override fun isDispatchNeeded(context: kotlin.coroutines.CoroutineContext) = true
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+            delegate.dispatch(context, Runnable {
+                active.set(true)
+                try { block.run() } finally { active.set(false) }
+            })
+        }
+    }
+
+    private class ThreadMarkingOutputStream(private val io: MarkingDispatcher) : OutputStream() {
+        var writesOnIo = 0
+        var writesOutsideIo = 0
+        private fun mark() { if (io.active.get()) writesOnIo++ else writesOutsideIo++ }
+        override fun write(value: Int) = mark()
+        override fun write(bytes: ByteArray, offset: Int, length: Int) = mark()
     }
 
     @Test
@@ -1269,6 +1369,7 @@ class BackupViewModelTest {
         hooks: BackupViewModelHooks = BackupViewModelHooks.None,
         synchronousIo: Boolean = true,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = dispatcher,
+        failureRecorder: (BackupOperation, Throwable) -> Unit = { _, _ -> },
     ): BackupViewModel {
         val completeSettings = settings ?: FakeSettings(
             webDavEnabled = true,
@@ -1287,6 +1388,7 @@ class BackupViewModelTest {
             hooks = hooks,
             ioDispatcher = ioDispatcher,
             synchronousIoForTests = synchronousIo,
+            failureRecorder = failureRecorder,
         )
     }
 
@@ -1480,6 +1582,8 @@ class BackupViewModelTest {
         private val listGate: CompletableDeferred<List<RemoteBackup>>? = null,
         private val exportGate: CompletableDeferred<Unit>? = null,
         private val exportFailure: Boolean = false,
+        private val exportError: Throwable? = null,
+        private val uploadError: Throwable? = null,
         private val remoteStageStarted: CompletableDeferred<Unit>? = null,
         private val remoteStageGate: CompletableDeferred<Unit>? = null,
         private val localStageStarted: CompletableDeferred<Unit>? = null,
@@ -1509,6 +1613,7 @@ class BackupViewModelTest {
             observedConfirmation = options.passwordConfirmation
             exportGate?.await()
             if (exportFailure) error("export failed")
+            exportError?.let { throw it }
             return byteArrayOf(1, 2, 3)
         }
         override suspend fun upload(config: WebDavConfig, options: BackupExportOptions): BackupUploadReceipt {
@@ -1516,6 +1621,7 @@ class BackupViewModelTest {
             lastOptions = options
             observedPassword = options.password
             observedConfirmation = options.passwordConfirmation
+            uploadError?.let { throw it }
             return BackupUploadReceipt("new.infinity", warning)
         }
         override suspend fun testRemote(config: WebDavConfig): Result<Unit> {
