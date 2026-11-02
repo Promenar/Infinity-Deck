@@ -14,6 +14,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 变更
+
+- 本机全量门禁的单次 Gradle 调用加入 `:app:testPlayDebugUnitTest`，Play 渠道专属源集与渠道构建开关分支的单测不再只靠手动运行。
+- JVM 单测统一关闭 Robolectric 的 Conscrypt 安全提供者（`robolectric.conscryptMode=OFF`），Linux 与 Apple Silicon 主机使用相同的 JDK TLS 实现；`AgentHttpRoutingTest` 的测试客户端固定 SunJSSE，测试代理不再有 5 秒等待连接上限。
+
+### 修复
+
+- 停止 SSH 本地端口转发后，监听端口在返回前即已释放：在 Linux 内核（含 Android）上，此前立即在同一端口重新开启转发可能短暂报端口已被占用。
+
 ## [0.15.0-beta] - 2026-11-02
 
 ### 新功能

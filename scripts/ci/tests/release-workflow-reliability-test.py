@@ -85,6 +85,25 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         self.assertIn("test-results/testSideloadDebugUnitTest", source)
         self.assertIn("if: always()", source)
 
+    def test_local_gate_documents_list_both_distribution_unit_tests(self) -> None:
+        # 发行流水线不跑单测，两个渠道的 JVM 单测只由本机门禁覆盖；门禁清单不能再次只列侧载。
+        agents_gate = next(
+            line for line in (ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines() if "日常使用" in line
+        )
+        distribution_gate = next(
+            line
+            for line in (ROOT / "docs/distribution-builds.md").read_text(encoding="utf-8").splitlines()
+            if "本机必跑" in line
+        )
+        for gate in (agents_gate, distribution_gate):
+            self.assertIn(":app:testSideloadDebugUnitTest", gate)
+            self.assertIn(":app:testPlayDebugUnitTest", gate)
+
+    def test_jvm_unit_tests_disable_robolectric_conscrypt(self) -> None:
+        # Robolectric 默认在非 Apple Silicon 主机把 Conscrypt 插到全局提供者首位，会让 Linux 与本机的 TLS 测试行为分叉。
+        test_block = braced_block_after(APP_BUILD, "tasks.withType<Test> {")
+        self.assertIn('systemProperty("robolectric.conscryptMode", "OFF")', test_block)
+
     def test_gradle_memory_diagnostics_is_manual_unsigned_and_bounded(self) -> None:
         source = (ROOT / ".github/workflows/gradle-memory-diagnostics.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", source)

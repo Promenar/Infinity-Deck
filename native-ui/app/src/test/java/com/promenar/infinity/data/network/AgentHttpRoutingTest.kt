@@ -73,7 +73,11 @@ class AgentHttpRoutingTest {
             val endpoint = AgentNetworkPolicy(tailnetRunning = { true }, resolver = { arrayOf(InetAddress.getByName("100.64.0.9")) })
                 .validate("https://origin.test/file")
             // 默认信任库不认识临时自签名证书，与真机访问 fnOS 自签名服务的情形一致。
-            val route = AgentHttpRouting.route(OkHttpClient(), endpoint, fixture.routing)
+            val defaultTrust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(null as KeyStore?) }
+                .trustManagers.filterIsInstance<X509TrustManager>().single()
+            val defaultContext = SSLContext.getInstance("TLS", "SunJSSE").apply { init(null, arrayOf(defaultTrust), null) }
+            val base = OkHttpClient.Builder().sslSocketFactory(defaultContext.socketFactory, defaultTrust).build()
+            val route = AgentHttpRouting.route(base, endpoint, fixture.routing)
             val error = assertThrows(java.io.IOException::class.java) {
                 route.client.newCall(route.request(Request.Builder().url(endpoint.uri.toString()).build())).execute().close()
             }
@@ -150,14 +154,15 @@ class AgentHttpRoutingTest {
         val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
             .trustManagers.filterIsInstance<X509TrustManager>().single()
         password.fill('\u0000')
-        val clientContext = SSLContext.getInstance("TLS").apply { init(keys.keyManagers, arrayOf(trust), null) }
-        // 服务端测试夹具需实现标准 SNI 匹配；客户端仍使用当前默认 TLS provider。
+        // 两端都固定 SunJSSE：全局提供者顺序会被同进程其它测试改写，不能决定本测试的握手实现。
+        val clientContext = SSLContext.getInstance("TLS", "SunJSSE").apply { init(keys.keyManagers, arrayOf(trust), null) }
         val serverContext = SSLContext.getInstance("TLS", "SunJSSE").apply { init(keys.keyManagers, arrayOf(trust), null) }
         return Identity(clientContext, serverContext, trust, store.getCertificate("origin") as X509Certificate)
     }
 
     private class TlsProxy(context: SSLContext) : AutoCloseable {
-        private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).apply { soTimeout = 5000 }
+        // 不设 accept 超时：负载高时测试可能晚于 5 秒才连接；监听由 close() 关闭以结束 worker。
+        private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         val connect = CompletableDeferred<String>()
         val host = CompletableDeferred<String>()
         val sni = CompletableDeferred<String>()

@@ -19,7 +19,7 @@ python3 ../scripts/ci/check-distribution-manifests.py
 python3 ../scripts/ci/check-native-page-alignment.py
 ```
 
-发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。本机必跑 `:app:testSideloadDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`、`:app:assemblePlayDebug` 及两个 Python 发行检查，并安装本机签名的侧载 Release 包完成真机验收。
+发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。本机必跑 `:app:testSideloadDebugUnitTest`、`:app:testPlayDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`、`:app:assemblePlayDebug` 及两个 Python 发行检查，并安装本机签名的侧载 Release 包完成真机验收。
 
 本机截图验证共用 `app/src/screenshotTestDebug/reference/`，不按渠道复制像素。独立的 `screenshot-validate.yml` 保留 Linux 分片验证能力：先校验 `reference-linux-overlay/manifest.json`，再将其中已审阅的跨平台差异合成为临时参考目录，检查各类的测试结果并保留报告；基准或覆盖文件变化时必须重新审阅，截图比较阈值保持不变。设备构建只生成 APK；设备脚本会连接并修改设备，需在已授权的专用本机 AVD 上另行执行。`mainactivity-e2e` 以 `missingDimensionStrategy` 固定匹配侧载应用，其任务名保持 `assembleDeviceTest`。黑盒夹具为独立应用，保持 `:blackbox-fixture:assembleDebug`。
 

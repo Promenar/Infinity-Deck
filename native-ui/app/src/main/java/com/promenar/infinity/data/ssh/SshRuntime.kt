@@ -851,7 +851,7 @@ class SshRuntime(
             if (host(alias) != host) { drop(connection); throw SshFailure("HOST_CONFIGURATION_CHANGED") }
             _forwards.value[alias]?.let { return@withLock it }
             try {
-                val bound = io({ connection.session.disconnect() }) { connection.session.setPortForwardingL("127.0.0.1", port, host.forwardHost, targetPort) }
+                val bound = io({ connection.session.disconnect() }) { connection.session.setPortForwardingL("127.0.0.1", port, host.forwardHost, targetPort, ForwardServerSocketFactory) }
                 _forwards.value = _forwards.value + (alias to bound)
                 publishPersistent()
                 bound
