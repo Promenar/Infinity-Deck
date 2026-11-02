@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 智能体编辑页的“历史版本”页面标题在深色主题下是黑字、看不见，现在正常显示。
+- `agents_read` 读取单个智能体时，用 `agentId` 指定目标也能读到该智能体；此前只认 `id`，给了 `agentId` 会静默返回当前会话的智能体。工具说明同时写明各目标用哪个参数。
+- `agents_write` 的 `fields` 里出现不支持的键（例如误放进去的 `reason`）时，提示改为“不是可写字段”并列出可写字段；此前一律说“只能由用户在界面修改”，会误导智能体。
+
 ## [0.16.0-beta] - 2026-11-02
 
 ### 新功能

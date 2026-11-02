@@ -84,6 +84,16 @@ class AgentConfigServiceTest {
         for (result in results.values) for (privateData in listOf("不可输出", "messages", "draft", "summary", "lastMessage")) assertThat(result).doesNotContain(privateData)
     }
 
+    @Test fun `读取单个智能体时agentId与id等价且不回落到当前智能体`(): Unit = runBlocking {
+        agents.create(Agent("b", "翻译", systemPrompt = "翻译提示"))
+        val tool = AgentsReadTool { service }
+        for (key in listOf("id", "agentId")) {
+            val result = tool.execute(args("""{"target":"agent","$key":"b"}"""), context())
+            assertThat(result.status).isEqualTo("success")
+            assertThat(Json.parseToJsonElement(result.content).jsonObject["id"]!!.jsonPrimitive.content).isEqualTo("b")
+        }
+    }
+
     @Test fun `用户专属字段和删除在审批前拒绝并且不写入`(): Unit = runBlocking {
         for ((op, field, value) in listOf(
             Triple("update_agent", "executionMode", "\"full_access\""), Triple("update_session", "runMode", "\"LINUX\""),
@@ -100,6 +110,17 @@ class AgentConfigServiceTest {
         assertThat(preview("""{"op":"delete_agent","fields":{"name":"a"},"reason":"删除"}""").target).isNull()
         assertThat(agents.getById("a")!!.executionMode).isEqualTo(ExecutionMode.WORKSPACE)
         assertThat(sessions.getConfigurationById("s")!!.workspaceId).isEqualTo("w")
+    }
+
+    @Test fun `未知字段说明可写字段而不指向界面入口`(): Unit = runBlocking {
+        val nested = preview("""{"op":"create_agent","fields":{"name":"T","reason":"建"},"reason":"建"}""")
+        assertThat(nested.target).isNull()
+        assertThat(nested.error).doesNotContain("只能由用户在界面修改")
+        assertThat(nested.error).contains("reason 应放在顶层参数")
+        assertThat(nested.error).contains("systemPrompt")
+        val unknown = preview("""{"op":"update_agent","fields":{"nickname":"x"},"reason":"改"}""")
+        assertThat(unknown.error).contains("nickname 不是可写字段")
+        assertThat(unknown.error).doesNotContain("reason 应放在顶层参数")
     }
 
     @Test fun `引用和类型错误均在审批前失败`(): Unit = runBlocking {

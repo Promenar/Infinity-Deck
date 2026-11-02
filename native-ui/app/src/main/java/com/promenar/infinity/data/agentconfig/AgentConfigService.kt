@@ -55,7 +55,8 @@ class AgentConfigService(
         val source = source(context.sessionId, context.agentId, context.sourceSubagentId)
         val target = requiredString(args, "target")
         val id = optionalString(args, "id")
-        val agentId = optionalString(args, "agentId") ?: source.agentId
+        val explicitAgentId = optionalString(args, "agentId")
+        val agentId = explicitAgentId ?: source.agentId
         val names = catalog(source)
         val result: JsonElement = when (target) {
             "agents" -> {
@@ -67,7 +68,8 @@ class AgentConfigService(
                 } })
             }
             "agent" -> {
-                val agent = requireNotNull(agents.getById(id ?: source.agentId)) { "智能体不存在" }
+                // 模型常把目标写成 agentId；与 id 等价，都没给时才读当前智能体，避免静默返回别的智能体。
+                val agent = requireNotNull(agents.getById(id ?: explicitAgentId ?: source.agentId)) { "智能体不存在" }
                 buildJsonObject {
                     put("id", agent.id)
                     AgentConfigValues.agent(agent).forEach { (key, value) -> put(key, value) }
@@ -182,7 +184,9 @@ class AgentConfigService(
             else -> null
         }
         fields.keys.firstOrNull { it !in allowed }?.let { key ->
-            throw IllegalArgumentException("$key：该字段只能由用户在界面修改；入口：${entryFor(key, agent?.name)}")
+            if (key in UI_ONLY_KEYS) throw IllegalArgumentException("$key：该字段只能由用户在界面修改；入口：${entryFor(key, agent?.name)}")
+            val hint = if (key == "reason") "reason 应放在顶层参数，不放进 fields；" else ""
+            throw IllegalArgumentException("$key 不是可写字段；${hint}可写字段：${allowed.joinToString("、")}")
         }
         fields.forEach { (key, value) -> AgentConfigValues.validate(key, value) }
         if (op == AgentConfigOp.CREATE_AGENT) require(fields["name"] != null) { "创建智能体必须提供 name" }
@@ -257,6 +261,11 @@ class AgentConfigService(
 
     companion object {
         const val CHANGED = "目标已变化，请重新读取后再提交"
+
+        /** 存在但只开放给界面的字段；其它不在可写清单里的键按未知字段处理，不指向界面入口。 */
+        private val UI_ONLY_KEYS = setOf(
+            "executionMode", "runMode", "workspaceId", "icon", "color", "avatarPath", "isPinned", "retrievalConfig", "skills", "delete",
+        )
         fun isMainSession(session: Session): Boolean = !session.id.startsWith("sa_") && session.parentSessionId == null &&
             session.branchPlanJson == null && !session.parentSessionDeleted
     }

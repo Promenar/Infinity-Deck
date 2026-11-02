@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.hub
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -64,13 +63,16 @@ internal fun AgentPromptHistoryDialog(
     if (!show) return
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     InfinityFullscreenDialog(onDismissRequest = onDismiss, systemBarColor = MaterialTheme.colorScheme.background) {
-        AgentPromptHistoryContent(
-            revisions = revisions,
-            currentPrompt = currentPrompt,
-            onBack = onDismiss,
-            onSelect = { selectedId = it.id },
-            modifier = Modifier.background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding(),
-        )
+        // 对话框窗口里没有外层 Surface，标题等未指定颜色的文字要靠这里提供内容色，否则在深色下是黑字。
+        Surface(color = MaterialTheme.colorScheme.background) {
+            AgentPromptHistoryContent(
+                revisions = revisions,
+                currentPrompt = currentPrompt,
+                onBack = onDismiss,
+                onSelect = { selectedId = it.id },
+                modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
+            )
+        }
     }
     AgentPromptRevisionSheet(
         revision = revisions.firstOrNull { it.id == selectedId },

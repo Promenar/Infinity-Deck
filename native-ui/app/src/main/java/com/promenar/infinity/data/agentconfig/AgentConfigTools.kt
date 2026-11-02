@@ -12,7 +12,7 @@ class AgentsReadTool(private val service: () -> AgentConfigService) : SkillDefin
     override val name = id
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
-    override val description = "只读智能体与主会话配置，不读取消息、草稿或摘要。target 为 agents、agent、sessions、session；id 与 agentId 省略时取当前对象。"
+    override val description = "只读智能体与主会话配置，不读取消息、草稿或摘要。target 为 agents、agent、sessions、session。agent 用 id（或 agentId）指定智能体，session 用 id 指定会话，sessions 用 agentId 指定所属智能体；省略时取当前对象。"
     override val parametersSchema = """{"type":"object","additionalProperties":false,"required":["target"],"properties":{"target":{"type":"string","enum":["agents","agent","sessions","session"]},"id":{"type":"string"},"agentId":{"type":"string"}}}"""
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = try {
         ToolResult(id, service().read(args, context), "success")
