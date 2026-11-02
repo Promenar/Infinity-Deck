@@ -92,6 +92,7 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillMenuButton
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.rounded.Settings
 import com.promenar.infinity.ui.common.InfinityPillTone
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -532,17 +533,43 @@ data class GenerationFailureActions(
     val onOpenTailscaleSettings: (() -> Unit)?,
 )
 
-@Composable
-private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: GenerationFailureActions) {
-    // 最多两个胶囊并排，主操作在右；其余处理方式收进行尾“⋯”，避免三个按钮竖排撑高失败气泡。
-    val fixAction = when (kind) {
-        TailnetFailureKind.DISABLED -> R.string.tailnet_failure_action_enable to UiTags.CHAT_TAILNET_FAILURE_ENABLE
-        TailnetFailureKind.NEEDS_LOGIN -> R.string.tailnet_failure_action_login to UiTags.CHAT_TAILNET_FAILURE_LOGIN
+/** 内网失败气泡下的处理方式。 */
+internal enum class TailnetFailureAction { RETRY, SWITCH_MODEL, ENABLE, LOGIN, SETTINGS }
+
+/** [row] 为操作行上的胶囊，从左到右排列、最后一个是主操作；[menu] 为行尾“⋯”菜单项，为空时不显示菜单。 */
+internal data class TailnetFailureActions(val row: List<TailnetFailureAction>, val menu: List<TailnetFailureAction>)
+
+/**
+ * 最多两个胶囊并排，主操作在右；其余处理方式收进行尾“⋯”，避免三个按钮竖排撑高失败气泡。
+ * 每种失败都同时提供重试与换用公网模型；有 Tailscale 设置入口时，开启、登录或设置也必须可达。
+ */
+internal fun tailnetFailureActions(kind: TailnetFailureKind, hasSettings: Boolean): TailnetFailureActions {
+    val fix = when (kind) {
+        TailnetFailureKind.DISABLED -> TailnetFailureAction.ENABLE
+        TailnetFailureKind.NEEDS_LOGIN -> TailnetFailureAction.LOGIN
         TailnetFailureKind.UNREACHABLE -> null
     }
+    return when {
+        fix != null && hasSettings -> TailnetFailureActions(
+            row = listOf(TailnetFailureAction.RETRY, fix),
+            menu = listOf(TailnetFailureAction.SWITCH_MODEL),
+        )
+        else -> TailnetFailureActions(
+            row = listOf(TailnetFailureAction.SWITCH_MODEL, TailnetFailureAction.RETRY),
+            menu = if (kind == TailnetFailureKind.UNREACHABLE && hasSettings) listOf(TailnetFailureAction.SETTINGS) else emptyList(),
+        )
+    }
+}
+
+@Composable
+private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: GenerationFailureActions) {
     val openSettings = actions.onOpenTailscaleSettings
-    val showFix = fixAction != null && openSettings != null
-    val settingsInMenu = kind == TailnetFailureKind.UNREACHABLE && openSettings != null
+    val layout = tailnetFailureActions(kind, hasSettings = openSettings != null)
+    fun onClickOf(action: TailnetFailureAction): () -> Unit = when (action) {
+        TailnetFailureAction.RETRY -> actions.onRetry
+        TailnetFailureAction.SWITCH_MODEL -> actions.onSwitchModel
+        TailnetFailureAction.ENABLE, TailnetFailureAction.LOGIN, TailnetFailureAction.SETTINGS -> openSettings ?: {}
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -552,52 +579,50 @@ private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: Generatio
         verticalAlignment = Alignment.CenterVertically,
     ) {
         InfinityPillRow(modifier = Modifier.weight(1f), spacing = 8.dp) {
-            if (showFix) {
+            layout.row.forEachIndexed { index, action ->
                 InfinityPillButton(
-                    text = stringResource(R.string.tailnet_failure_action_retry),
-                    onClick = actions.onRetry,
-                    modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_RETRY),
-                )
-                InfinityPillButton(
-                    text = stringResource(fixAction!!.first),
-                    onClick = openSettings!!,
-                    tone = InfinityPillTone.PRIMARY,
-                    modifier = Modifier.testTag(fixAction.second),
-                )
-            } else {
-                InfinityPillButton(
-                    text = stringResource(R.string.tailnet_failure_action_switch_model),
-                    onClick = actions.onSwitchModel,
-                    modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_SWITCH),
-                )
-                InfinityPillButton(
-                    text = stringResource(R.string.tailnet_failure_action_retry),
-                    onClick = actions.onRetry,
-                    tone = InfinityPillTone.PRIMARY,
-                    modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_RETRY),
+                    text = stringResource(action.labelRes()),
+                    onClick = onClickOf(action),
+                    tone = if (index == layout.row.lastIndex) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
+                    modifier = Modifier.testTag(action.testTag()),
                 )
             }
         }
-        if (showFix || settingsInMenu) {
+        if (layout.menu.isNotEmpty()) {
             InfinityPillMenuButton(contentDescription = stringResource(R.string.tailnet_failure_more_cd)) { dismiss ->
-                if (showFix) {
+                layout.menu.forEach { action ->
                     InfinityMenuItem(
-                        text = { Text(stringResource(R.string.tailnet_failure_action_switch_model)) },
-                        leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
-                        onClick = { dismiss(); actions.onSwitchModel() },
-                        modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_SWITCH),
-                    )
-                } else {
-                    InfinityMenuItem(
-                        text = { Text(stringResource(R.string.tailnet_failure_action_settings)) },
-                        leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
-                        onClick = { dismiss(); openSettings!!() },
-                        modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_SETTINGS),
+                        text = { Text(stringResource(action.labelRes())) },
+                        leadingIcon = { Icon(action.menuIcon(), contentDescription = null) },
+                        onClick = { dismiss(); onClickOf(action)() },
+                        modifier = Modifier.testTag(action.testTag()),
                     )
                 }
             }
         }
     }
+}
+
+private fun TailnetFailureAction.labelRes(): Int = when (this) {
+    TailnetFailureAction.RETRY -> R.string.tailnet_failure_action_retry
+    TailnetFailureAction.SWITCH_MODEL -> R.string.tailnet_failure_action_switch_model
+    TailnetFailureAction.ENABLE -> R.string.tailnet_failure_action_enable
+    TailnetFailureAction.LOGIN -> R.string.tailnet_failure_action_login
+    TailnetFailureAction.SETTINGS -> R.string.tailnet_failure_action_settings
+}
+
+private fun TailnetFailureAction.testTag(): String = when (this) {
+    TailnetFailureAction.RETRY -> UiTags.CHAT_TAILNET_FAILURE_RETRY
+    TailnetFailureAction.SWITCH_MODEL -> UiTags.CHAT_TAILNET_FAILURE_SWITCH
+    TailnetFailureAction.ENABLE -> UiTags.CHAT_TAILNET_FAILURE_ENABLE
+    TailnetFailureAction.LOGIN -> UiTags.CHAT_TAILNET_FAILURE_LOGIN
+    TailnetFailureAction.SETTINGS -> UiTags.CHAT_TAILNET_FAILURE_SETTINGS
+}
+
+private fun TailnetFailureAction.menuIcon(): ImageVector = when (this) {
+    TailnetFailureAction.RETRY -> Icons.Rounded.Refresh
+    TailnetFailureAction.SWITCH_MODEL -> Icons.Rounded.SwapHoriz
+    TailnetFailureAction.ENABLE, TailnetFailureAction.LOGIN, TailnetFailureAction.SETTINGS -> Icons.Rounded.Settings
 }
 
 // ─────────────────────────────────────────────────────────────────
