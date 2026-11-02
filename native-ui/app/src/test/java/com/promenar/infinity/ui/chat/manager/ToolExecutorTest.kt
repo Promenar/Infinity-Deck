@@ -868,6 +868,29 @@ class ToolExecutorTest {
         assertThat(store.getSession("s1")!!.messages.single { it.role == MessageRole.TOOL }.content).isEqualTo("written")
     }
 
+    @Test fun `限时授权按调用绑定目标且不改变台账免审批身份或其它调用上下文`() = testScope.runTest {
+        seedSessionWithAssistant()
+        val target = """["path","/skills/demo/SKILL.md"]"""
+        val contexts = mutableListOf<Pair<String?, Boolean>>()
+        val base = testSkill("write_file") { ToolResult("write", "written", status = "success") }
+        val skill = object : SkillDefinition by base {
+            override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
+                contexts += context.approvedExecutionTarget to context.isApprovalBoundExecution
+                return ToolResult("write", "written", status = "success")
+            }
+        }
+        val registry = singleSkillRegistry(skill)
+        val ledger = RecordingLedger()
+        val executor = ToolExecutor(store, messageManager, registry, testToolResolver(registry), ledger = ledger,
+            grantVerifier = { _, _, _, _ -> error("限时授权不得查询持久白名单") })
+        executor.executeTools("s1", "m1", listOf(ToolCall("write", "write_file", "{}"), ToolCall("ordinary", "write_file", "{}"), ToolCall("pending", "write_file", "{}")),
+            allowedToolCallIds = setOf("write", "ordinary"), preparedTools = registry.getAllTools(), timedGrantTargets = mapOf("write" to target))
+        assertThat(contexts).containsExactly(target to true, null to false).inOrder()
+        assertThat(ledger.invocationIdentity(ToolExecutionKey("s1", "m1", "write"))!!.requiresApproval).isFalse()
+        assertThat(ledger.state(ToolExecutionKey("s1", "m1", "write"))).isEqualTo(ToolLedgerState.SUCCEEDED)
+        assertThat(ledger.state(ToolExecutionKey("s1", "m1", "pending"))).isEqualTo(ToolLedgerState.PENDING_APPROVAL)
+    }
+
     @Test
     fun `持久授权目标原样传给技能执行上下文`() = testScope.runTest {
         seedSessionWithAssistant()

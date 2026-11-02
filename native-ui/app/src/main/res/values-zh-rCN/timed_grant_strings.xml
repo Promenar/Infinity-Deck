@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_approval_approve_timed">批准，10 分钟内同类免审批</string>
+    <string name="chat_approval_approve_timed_hint">本会话的%1$s直接执行，到期恢复逐次审批</string>
+    <string name="chat_approval_more_options_cd">更多批准方式</string>
+    <string name="chat_timed_grant_skills">技能目录变更</string>
+    <string name="chat_timed_grant_command">命令</string>
+    <string name="chat_timed_grant_linux_rootfs">Linux 系统目录写入</string>
+    <string name="chat_timed_grant_active">%1$s免审批 · 剩 %2$d 分钟</string>
+    <string name="chat_timed_grant_revoke">恢复逐次审批</string>
+    <string name="chat_execution_mode_timed_cd">%1$s，限时免审批生效中</string>
+</resources>

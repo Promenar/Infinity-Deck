@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_approval_approve_timed">Approve, skip similar approvals for 10 min</string>
+    <string name="chat_approval_approve_timed_hint">Applies to %1$s in this session until it expires</string>
+    <string name="chat_approval_more_options_cd">More ways to approve</string>
+    <string name="chat_timed_grant_skills">skill changes</string>
+    <string name="chat_timed_grant_command">commands</string>
+    <string name="chat_timed_grant_linux_rootfs">Linux system writes</string>
+    <string name="chat_timed_grant_active">No approval for %1$s · %2$d min left</string>
+    <string name="chat_timed_grant_revoke">Ask for each call again</string>
+    <string name="chat_execution_mode_timed_cd">%1$s, temporary approval skip active</string>
+</resources>

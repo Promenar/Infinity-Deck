@@ -307,6 +307,8 @@ data class ChatScreenState(
     val runMode: com.promenar.infinity.ui.chat.runmode.RunModeBadge? = null,
     /** 浮岛工具行的执行模式；会话关闭工具时为 null，不显示盾牌。 */
     val executionMode: com.promenar.infinity.ui.common.ExecutionMode? = null,
+    /** 本会话有效的限时免审批：类别 → 到期 epoch 毫秒。 */
+    val timedGrants: Map<com.promenar.infinity.domain.tool.ApprovalGrantCategory, Long> = emptyMap(),
     /** 顶栏状态行的会话工作区；解析完成前为 null，不显示。 */
     val workspace: com.promenar.infinity.ui.workspace.SessionWorkspaceUi? = null,
     /** 会话二级内容层级；宽窗口下其根即检视器当前页签，为空表示检视器收起。 */
@@ -364,6 +366,8 @@ data class ChatScreenActions(
     val onOpenTurnMemory: (String) -> Unit = {},
     val onApprove: (com.promenar.infinity.data.model.ApprovalRequest) -> Unit = {},
     val onApproveAll: (com.promenar.infinity.data.model.ApprovalRequest) -> Unit = {},
+    val onApproveTimed: (com.promenar.infinity.data.model.ApprovalRequest) -> Unit = {},
+    val onRevokeTimedGrants: () -> Unit = {},
     val onDecline: (com.promenar.infinity.data.model.ApprovalRequest) -> Unit = {},
     val onRemovePostProcessTask: (String) -> Unit = {},
     val onManualSummary: () -> Unit = {},
@@ -1202,6 +1206,7 @@ fun ChatScreenContent(
                                             riskLabel = approvalRiskLabel(call.risk),
                                             executionTarget = call.executionTarget,
                                             highRisk = call.risk in setOf("delete", "process"),
+                                            timedGrantLabel = call.grantCategory?.let { timedGrantLabel(it) },
                                             preview = remember(call, request.assistantMessageId, uiState.messages) {
                                                 ApprovalPreview.forCall(call, uiState.messages, request.assistantMessageId)
                                             },
@@ -1252,6 +1257,7 @@ fun ChatScreenContent(
                                     },
                                     onApprove = { actions.onApprove(request) },
                                     onApproveAll = { actions.onApproveAll(request) },
+                                    onApproveTimed = { actions.onApproveTimed(request) },
                                     onDecline = { actions.onDecline(request) },
                                 )
                             }
@@ -1459,6 +1465,10 @@ fun ChatScreenContent(
                             onReasoningChange = actions.onReasoningEffortChange,
                             executionMode = state.executionMode,
                             onExecutionModeChange = actions.onExecutionModeChange,
+                            timedGrants = state.timedGrants.entries.sortedBy { it.value }.map { (category, expiresAt) ->
+                                TimedGrantDisplay(timedGrantLabel(category), expiresAt)
+                            },
+                            onRevokeTimedGrants = actions.onRevokeTimedGrants,
                             attachmentContent = {
                                 ChatComposerAttachments(
                                     imageUris = selectedImageUris,
@@ -2922,6 +2932,8 @@ fun ChatInputBar(
     /** 工具行上的执行模式盾牌；会话关闭工具时为 null，不显示。 */
     executionMode: com.promenar.infinity.ui.common.ExecutionMode? = null,
     onExecutionModeChange: (com.promenar.infinity.ui.common.ExecutionMode) -> Unit = {},
+    timedGrants: List<TimedGrantDisplay> = emptyList(),
+    onRevokeTimedGrants: () -> Unit = {},
     attachmentContent: @Composable () -> Unit = {},
     /** 运行坞是否出现；出现时 [runDock] 作为浮岛顶层，与输入区共用底色、圆角与光效边框。 */
     runDockVisible: Boolean = false,
@@ -3082,7 +3094,7 @@ fun ChatInputBar(
                         modifier = Modifier.size(ComposerAddIconSize).rotate(attachmentIconRotation))
                 }
                 executionMode?.let { mode ->
-                    ExecutionModeButton(mode, onExecutionModeChange)
+                    ExecutionModeButton(mode, onExecutionModeChange, timedGrants = timedGrants, onRevokeTimedGrants = onRevokeTimedGrants)
                 }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     // 空间不足时推理强度胶囊只留灯泡，模型名优先显示。

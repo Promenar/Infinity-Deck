@@ -5,9 +5,8 @@ import java.io.File
 import org.junit.Test
 
 /**
- * 工具描述与系统提示词每轮都发给模型。助手与会话提示词为空时模型没有身份，
- * 这些文案一旦用应用名称描述运行身份（如“以 Infinity Workbench 身份运行”），模型就会自称 Infinity Workbench 助手。
- * 运行环境统一称“本应用 / the host app”；Python 沙箱的 infinity.* 接口名与 InfinityError 是代码标识，不受限。
+ * 宿主身份集中由 Runtime Environment 固定段通过 AppBrand 声明，工具文案不重复定义助手角色。
+ * 其它运行环境文案统一称“本应用 / the host app”；Python 沙箱的 infinity.* 接口名与 InfinityError 是代码标识，不受限。
  */
 class ModelVisibleHostNameTest {
     @Test

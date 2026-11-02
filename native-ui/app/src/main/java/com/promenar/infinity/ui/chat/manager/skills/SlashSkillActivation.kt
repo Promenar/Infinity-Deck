@@ -33,6 +33,10 @@ object SlashSkillActivation {
         appendLine(document.body.ifBlank { "(empty)" })
         appendLine()
         appendLine("## Bundled files")
+        if (skill.scope == SkillScope.BUILTIN) {
+            appendLine("内置技能只读，通过 activate_skill 或 read_skill_file 读取；虚拟路径不对应 shell 目录。")
+            return@buildString
+        }
         appendLine("Read as needed with read_skill_file(path=\"${skill.virtualDir}/<relative-file>\") or file tools.")
         if (skill.files.isEmpty()) appendLine("(none)")
         skill.files.forEach { appendLine("- $it") }

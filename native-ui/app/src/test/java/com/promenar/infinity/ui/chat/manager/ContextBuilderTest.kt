@@ -281,7 +281,7 @@ class ContextBuilderTest {
     }
 
     @Test
-    fun emptyAgentAndSessionPromptsSendNoIdentityOrStyleRules() = testScope.runTest {
+    fun emptyAgentAndSessionPromptsOnlyDeclareHostIdentityWithoutStyleRules() = testScope.runTest {
         val prompt = ContextBuilder().buildContext(
             ContextBuilderParams("s1", "hi", assistantMsgId = "m1", session = Session(id = "s1", agentId = "default"), availableToolNames = emptySet()),
         ).finalSystemPrompt
@@ -289,12 +289,13 @@ class ContextBuilderTest {
         assertThat(prompt).doesNotContain("Infinity Workbench,")
         assertThat(prompt).doesNotContain("You are")
         assertThat(prompt).doesNotContain("Be accurate")
-        assertThat(prompt).startsWith("## Runtime Environment\n- Environment: Infinity Workbench\n\n## Permissions and Runtime Data")
+        assertThat(prompt).startsWith("## Runtime Environment\n- Environment: Infinity Workbench\n")
+        assertThat(prompt).contains("你是 Infinity Workbench 的智能体，运行在 Android 应用内")
     }
 
     @Test
-    fun `Linux空提示词仅在环境事实段声明产品名而不定义身份`() = testScope.runTest {
-        // 运行环境只声明产品事实，不生成身份或角色要求。
+    fun `Linux空提示词包含应用宿主身份与运行事实`() = testScope.runTest {
+        // 固定段声明应用宿主身份，不替用户定义助手角色或风格。
         val project = com.promenar.infinity.data.local.db.entity.WorkspaceEntity("ws", "project", "仓库", "repo", 1)
         val prompt = ContextBuilder().buildContext(
             ContextBuilderParams(
@@ -307,7 +308,7 @@ class ContextBuilderTest {
 
         assertThat(prompt).contains("shell_exec")
         assertThat(prompt.lineSequence().filter { "Infinity Workbench" in it }.toList())
-            .containsExactly("- Environment: Infinity Workbench")
+            .containsExactly("- Environment: Infinity Workbench", "- 你是 Infinity Workbench 的智能体，运行在 Android 应用内。")
     }
 
     @Test

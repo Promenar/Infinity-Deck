@@ -115,7 +115,8 @@ class SubagentRunnerTest {
                 val modelId = "remote-child-${index + 1}"
                 assertThat(request.model).isEqualTo(modelId)
                 val prompt = request.messages.first().content
-                assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n- Model: $modelId\n")
+                assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+                assertThat(prompt).contains("- Model: $modelId\n")
                 assertThat(prompt).doesNotContain("provider::child-key")
                 assertThat(prompt).doesNotContain("parent-model")
                 assertThat(prompt.indexOf("## Runtime Environment")).isLessThan(prompt.indexOf("## Permissions and Runtime Data"))
@@ -146,8 +147,9 @@ class SubagentRunnerTest {
         val initial = run().copy(modelId = "child-model")
         val result = runner(models, FakeHost(emptyList())).run(parent(), session("auto"), "step", initial, null) { _, _ -> }
         assertThat(result.status).isEqualTo(SubagentStatus.COMPLETED)
-        assertThat(models.requests.single().messages.first().content)
-            .contains("## Runtime Environment\n- Environment: Infinity Workbench\n- Model: child-model\n")
+        val prompt = models.requests.single().messages.first().content
+        assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+        assertThat(prompt).contains("- Model: child-model\n")
     }
 
     @Test fun `流式用量只按时间节流检查点且结束强制保存最终用量`() = runTest {
@@ -763,8 +765,8 @@ class SubagentRunnerTest {
         runCurrent()
         assertThat(host.executed).hasSize(1)
         assertThat(broker.pending.value).hasSize(1)
-        assertThat(models.requests[0].messages.first().content).contains("Current scope: Full access")
-        assertThat(models.requests[1].messages.first().content).contains("Current scope: Workspace")
+        assertThat(models.requests[0].messages.first().content).contains("权限档：完全访问")
+        assertThat(models.requests[1].messages.first().content).contains("权限档：工作区")
         broker.resolve(broker.pending.value.single().id, approved = false)
         job.join()
         assertThat(host.executed).hasSize(1)

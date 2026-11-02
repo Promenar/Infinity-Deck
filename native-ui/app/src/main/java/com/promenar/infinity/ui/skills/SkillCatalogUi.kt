@@ -128,14 +128,17 @@ private fun SkillRow(
     // 开关先在本地翻转，避免目录重扫完成前的回弹。
     var checked by remember(skill.id, skill.status) { mutableStateOf(skill.status == SkillStatus.ENABLED) }
     InfinitySettingsItem(
-        icon = if (skill.scope == SkillScope.USER) Icons.Rounded.AutoAwesome else Icons.Rounded.FolderSpecial,
+        icon = if (skill.scope != SkillScope.PROJECT) Icons.Rounded.AutoAwesome else Icons.Rounded.FolderSpecial,
         title = title,
         subtitle = subtitle,
         subtitleMaxLines = 2,
         onClick = onOpen,
         modifier = Modifier.testTag("skill_row:${skill.id}"),
         trailingContent = {
-            when (skill.status) {
+            if (skill.scope == SkillScope.BUILTIN) {
+                Text(stringResource(R.string.runtime_guide_builtin_label), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else when (skill.status) {
                 SkillStatus.ENABLED, SkillStatus.DISABLED -> {
                     val label = stringResource(R.string.skills_runtime_toggle_cd, title)
                     InfinitySwitch(
@@ -161,6 +164,7 @@ private fun SkillRow(
 /** 需要用户注意的状态说明；普通的启用、停用状态由开关表达，不重复写出。 */
 @Composable
 private fun skillStatusNote(skill: DiscoveredSkill): String? = when {
+    skill.scope == SkillScope.BUILTIN -> stringResource(R.string.runtime_guide_builtin_readonly)
     skill.status == SkillStatus.BROKEN ->
         stringResource(R.string.skills_runtime_status_broken, skill.brokenReason.orEmpty())
     skill.status == SkillStatus.PENDING_TRUST -> stringResource(R.string.skills_runtime_status_pending)
@@ -240,7 +244,7 @@ private fun SkillDetailSheet(
                 if (onEdit != null && skill.scope == SkillScope.USER && skill.status != SkillStatus.BROKEN) {
                     OutlinedButton(onClick = { onDismiss(); onEdit(skill) }) { Text(stringResource(R.string.skills_runtime_edit)) }
                 }
-                OutlinedButton(
+                if (skill.scope != SkillScope.BUILTIN) OutlinedButton(
                     onClick = { confirmDelete = true },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) { Text(stringResource(R.string.shared_btn_delete)) }
@@ -319,9 +323,9 @@ fun SessionSkillsSections(state: SkillCatalogUiState, actions: SkillCatalogActio
     if (state.loading && snapshot == null) return
     Column(verticalArrangement = Arrangement.spacedBy(com.promenar.infinity.ui.theme.InfinitySpacing.Large)) {
         SkillScopeSection(
-            title = stringResource(R.string.skills_runtime_section_user),
+            title = stringResource(R.string.settings_ia_skills_title),
             footer = stringResource(R.string.skills_runtime_user_footer),
-            skills = snapshot?.user.orEmpty(),
+            skills = snapshot?.let { it.builtin + it.user }.orEmpty(),
             emptyMessage = stringResource(R.string.skills_runtime_user_empty),
             actions = actions,
         )

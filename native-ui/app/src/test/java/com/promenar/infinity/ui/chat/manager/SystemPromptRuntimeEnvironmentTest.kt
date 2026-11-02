@@ -6,17 +6,18 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class SystemPromptRuntimeEnvironmentTest {
-    @Test fun `环境元数据逐行仅包含标题环境和实际模型`() {
-        assertThat(SystemPromptSections.runtimeEnvironment("provider/model-id").lines()).containsExactly(
-            "## Runtime Environment", "- Environment: Infinity Workbench", "- Model: provider/model-id", "",
-        ).inOrder()
+    @Test fun `环境固定段包含宿主事实和实际模型`() {
+        val prompt = SystemPromptSections.runtimeEnvironment("provider/model-id")
+        assertThat(prompt.lines()).containsAtLeast("## Runtime Environment", "- Environment: Infinity Workbench", "- Model: provider/model-id")
+        assertThat(prompt).contains("你是 Infinity Workbench 的智能体，运行在 Android 应用内")
+        assertThat(prompt).contains("infinity-workbench")
     }
 
-    @Test fun `空模型不产生模型行或额外措辞`() {
+    @Test fun `空模型不产生模型行且保留固定环境事实`() {
         for (model in listOf(null, "", " ", "\t\n")) {
-            assertThat(SystemPromptSections.runtimeEnvironment(model).lines()).containsExactly(
-                "## Runtime Environment", "- Environment: Infinity Workbench", "",
-            ).inOrder()
+            val prompt = SystemPromptSections.runtimeEnvironment(model)
+            assertThat(prompt).doesNotContain("- Model:")
+            assertThat(prompt).contains("运行在 Android 应用内")
         }
     }
 

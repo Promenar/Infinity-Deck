@@ -20,6 +20,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
@@ -87,14 +88,15 @@ class ChatApprovalLayoutTest {
             )
         }
 
+        // 有“全部批准”时批准是分体按钮：箭头段与批准主体同为主色，属于同一个实心操作。
         val actions = listOf(
             rule.onNodeWithTag(UiTags.CHAT_APPROVAL_APPROVE),
             rule.onNodeWithTag(UiTags.CHAT_APPROVAL_DECLINE),
-            rule.onNodeWithTag(UiTags.CHAT_APPROVAL_APPROVE_ALL),
         )
         assertThat(actions.count { near(actionFill(it), primary) }).isEqualTo(1)
         assertThat(near(actionFill(actions[1]), neutralFill)).isTrue()
-        assertThat(near(actionFill(actions[2]), cardBackground)).isTrue()
+        assertThat(near(actionFill(rule.onNodeWithTag(UiTags.CHAT_APPROVAL_MORE)), primary)).isTrue()
+        rule.onAllNodesWithTag(UiTags.CHAT_APPROVAL_APPROVE_ALL).assertCountEquals(0)
 
         val pixels = rule.onNodeWithTag(UiTags.CHAT_APPROVAL_CARD).captureToImage().toPixelMap()
         var longestWarningRun = 0

@@ -14,6 +14,21 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionManagerTest {
+    @Test fun `删除会话撤销全部类别授权且删除失败保留授权`() = runTest {
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
+        val manager = SessionManager(ChatStore(), stubSessionRepo, timedGrants = grants)
+        grants.grant("deleted", com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        grants.grant("other", com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)
+        manager.deleteSession("deleted")
+        assertThat(grants.observe("deleted").value).isEmpty()
+        assertThat(grants.observe("other").value).isNotEmpty()
+        val failing = object : ISessionRepository by stubSessionRepo {
+            override suspend fun delete(id: String) { error("删除失败") }
+        }
+        runCatching { SessionManager(ChatStore(), failing, timedGrants = grants).deleteSession("other") }
+        assertThat(grants.observe("other").value).isNotEmpty()
+    }
+
     @Test
     fun `创建会话的内存状态使用仓库确定的运行模式`() = kotlinx.coroutines.test.runTest {
         val localStore = ChatStore()

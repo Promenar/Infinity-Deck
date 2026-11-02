@@ -27,10 +27,36 @@ object ToolExecutionPolicy {
         arguments: String = "{}",
         resolvedTarget: String? = null,
         usesLinux: Boolean = false,
-    ): Boolean = risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT) || toolName in setOf("schedule_create", "request_knowledge_access") ||
-        ToolArgumentApprovalRules.requiresExplicitApproval(toolName, arguments, resolvedTarget) ||
-        (mode == ExecutionMode.WORKSPACE && (CommandToolClassification.backendFor(toolName, usesLinux) != null ||
-            usesLinux && ToolExecutionTargets.isPathMutation(toolName) && isLinuxRootfsTarget(resolvedTarget)))
+    ): Boolean = requiresNonGrantableApproval(toolName, risk, resolvedTarget) ||
+        grantCategory(mode, toolName, risk, arguments, resolvedTarget, usesLinux) != null
+
+    fun grantCategory(
+        mode: ExecutionMode,
+        toolName: String,
+        risk: ToolRisk,
+        arguments: String = "{}",
+        resolvedTarget: String? = null,
+        usesLinux: Boolean = false,
+    ): ApprovalGrantCategory? {
+        if (requiresNonGrantableApproval(toolName, risk, resolvedTarget)) return null
+        val target = resolvedTarget ?: ToolExecutionTargets.extract(
+            com.promenar.infinity.data.remote.protocol.ProtocolTool(
+                function = com.promenar.infinity.data.remote.protocol.ProtocolToolFunction(toolName, "", "{}"),
+            ), arguments,
+        )
+        return when {
+            ToolExecutionTargets.requiresSkillsApproval(toolName, target) -> ApprovalGrantCategory.SKILLS
+            mode != ExecutionMode.WORKSPACE -> null
+            CommandToolClassification.backendFor(toolName, usesLinux) != null -> ApprovalGrantCategory.COMMAND
+            usesLinux && ToolExecutionTargets.isPathMutation(toolName) && isLinuxRootfsTarget(resolvedTarget) -> ApprovalGrantCategory.LINUX_ROOTFS
+            else -> null
+        }
+    }
+
+    private fun requiresNonGrantableApproval(toolName: String, risk: ToolRisk, resolvedTarget: String?): Boolean =
+        risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT) ||
+            toolName in setOf("schedule_create", "request_knowledge_access") ||
+            ToolArgumentApprovalRules.requiresNonGrantableApproval(toolName, resolvedTarget)
 
     private fun isLinuxRootfsTarget(target: String?): Boolean = runCatching {
         val parts = kotlinx.serialization.json.Json.parseToJsonElement(target ?: return false) as? kotlinx.serialization.json.JsonArray

@@ -414,7 +414,7 @@ class ContextBuilder(
         val sb = StringBuilder()
         val session = params.session
 
-        // 1. 身份只来自用户填写的助手提示词；为空时不补任何内置身份或行为要求。
+        // 1. 助手角色与风格来自用户提示词；应用宿主身份由固定运行环境段声明。
         params.agentSystemPrompt?.takeIf(String::isNotBlank)?.let { sb.appendLine(it.trim()) }
 
         // 2. 会话级指令
@@ -426,7 +426,12 @@ class ContextBuilder(
         }
 
         if (sb.isNotEmpty()) sb.appendLine()
-        sb.append(SystemPromptSections.runtimeEnvironment(params.runtimeModelId))
+        sb.append(SystemPromptSections.runtimeEnvironment(
+            params.runtimeModelId,
+            mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
+            runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
+            workspace = params.workspace,
+        ))
         sb.appendLine()
         sb.append(SystemPromptSections.permissions(
             com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
@@ -451,7 +456,7 @@ class ContextBuilder(
             sb.append(toolGuidance)
         }
 
-        // 3.1 两级技能目录：只在模型有读取入口时披露元数据，正文按需加载。
+        // 3.1 内置与文件技能目录：只在模型有读取入口时披露元数据，正文按需加载。
         if (SystemPromptSections.canReadSkills(params.availableToolNames)) {
             SystemPromptSections.skillCatalog(params.availableSkills, modelContextTokens = params.modelContextTokens)
                 .takeIf(String::isNotEmpty)?.let {

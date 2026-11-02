@@ -27,6 +27,13 @@ class LinuxSessionFileSkill(
     private val linux = MountedWorkspaceSkill(original, linuxFiles, workspace, files, indexEvents, captureFileChanges, linuxPaths = true)
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
+        if (com.promenar.infinity.domain.tool.ToolExecutionTargets.isPathMutation(original.id) &&
+            listOf("path", "parentPath", "newParentPath").any { key ->
+                (args[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(
+                    com.promenar.infinity.data.skills.BuiltinSkillCatalog::isVirtualPath,
+                ) == true
+            }
+        ) return@withContext ToolResult("builtin_skill_readonly", "内置技能只读，不能通过文件工具修改；请使用 activate_skill 或 read_skill_file 读取。", "error")
         val mode = modeFor(context.sessionId)
         if (context.runMode != null && context.runMode != mode) {
             return@withContext ToolResult("linux_files_error", "EXEC_MODE_CHANGED：会话运行模式已改变，请重新发起工具调用", "error")
