@@ -7,6 +7,7 @@ import com.promenar.infinity.data.skills.DiscoveredSkill
 import com.promenar.infinity.data.skills.SkillCatalog
 import com.promenar.infinity.data.skills.SkillSnapshot
 import com.promenar.infinity.data.skills.SkillStatus
+import com.promenar.infinity.data.skills.SkillScope
 import com.promenar.infinity.data.skills.SkillWorkspace
 import com.promenar.infinity.data.workspace.SessionWorkspace
 import com.promenar.infinity.domain.tool.ToolRisk
@@ -28,7 +29,15 @@ private class SkillToolAccess(
     private val workspaceResolver: (suspend (String) -> SessionWorkspace)?,
 ) {
     suspend fun scan(sessionId: String?): SkillSnapshot {
-        val workspace = sessionId?.let { workspaceResolver?.invoke(it) } as? SessionWorkspace.Directory
+        val workspace = try {
+            sessionId?.let { workspaceResolver?.invoke(it) } as? SessionWorkspace.Directory
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            InfinityLogger.log("[AgentSkills] 工作区解析失败，仅提供内置指南：${failure.javaClass.simpleName}")
+            val fallback = catalog.scan(null)
+            return SkillSnapshot(null, fallback.builtin)
+        }
         return catalog.scan(workspace?.let { SkillWorkspace(it.workspace.id, it.root) })
     }
 
@@ -38,7 +47,10 @@ private class SkillToolAccess(
         val matches = if (selector != null) {
             val directory = selector.trimEnd('/').removeSuffix("/SKILL.md")
             snapshot.skills.filter { it.virtualDir == directory && (skillName == null || it.name == skillName) }
-        } else if (skillName != null) snapshot.byName(skillName) else emptyList()
+        } else if (skillName != null) {
+            val named = snapshot.byName(skillName)
+            named.filter { it.scope == SkillScope.BUILTIN }.ifEmpty { named }
+        } else emptyList()
         if (matches.size > 1) {
             throw AgentSkillFormatException("技能名称 `$skillName` 对应多个来源，请用 path 指定：\n" +
                 matches.joinToString("\n") { "- ${it.virtualDir}/SKILL.md" })
@@ -70,7 +82,7 @@ class ActivateSkillTool(
     private val access = SkillToolAccess(catalog, workspaceResolver)
     override val id = "activate_skill"
     override val name = "activate_skill"
-    override val description = "读取已启用的用户级或当前工作区项目级技能的 SKILL.md。任务匹配描述或用户以 \$名称点名技能时先读取并遵循指令；同名技能须以 path 区分。附带脚本可通过 shell_exec/python_exec 运行，沿用执行工具的审批规则。"
+    override val description = "读取内置、已启用的用户级或当前工作区项目级技能的 SKILL.md。管理技能、规则或询问能力与权限时先读取 infinity-workbench。任务匹配描述或用户以 \$名称点名技能时先读取并遵循指令；同名时内置技能优先，其它来源以 path 区分。附带脚本沿用 shell_exec/python_exec 的审批规则。"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
     override val parametersSchema = """{"type":"object","description":"name 或 path 至少提供一个；同时提供时必须指向同一技能","properties":{"name":{"type":"string","description":"技能名称；两级同名时须用 path"},"path":{"type":"string","description":"技能目录或 SKILL.md 的虚拟路径，例如 /skills/demo/SKILL.md 或 /.agents/skills/demo"}}}"""

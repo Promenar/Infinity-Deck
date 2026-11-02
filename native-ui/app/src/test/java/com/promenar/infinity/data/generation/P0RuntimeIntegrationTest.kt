@@ -652,7 +652,7 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.prompts).hasSize(2)
         assertThat(fixture.prompts.first().tools).isNotEmpty()
         assertThat(fixture.prompts.last().tools).isNull()
-        assertThat(fixture.prompts.last().messages.first().content).contains("Current scope: Workspace")
+        assertThat(fixture.prompts.last().messages.first().content).contains("权限档：工作区")
         assertThat(fixture.resolvedModels.last()).isEqualTo("local::changed-model")
         assertThat(fixture.messageRepository.getById("assistant")!!.modelId).isEqualTo("local::changed-model")
         assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext)

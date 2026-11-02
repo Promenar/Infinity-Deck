@@ -31,13 +31,14 @@ object SkillSlashInvocation {
     }
 
     /**
-     * 按名称选取技能。同名时优先已启用的；都已启用时工作区（项目级）优先于全局（用户级），
+     * 按名称选取技能。同名时内置优先；其它来源优先已启用的，均启用时项目级优先于用户级，
      * 与“工作区内的约定覆盖个人默认”的直觉一致。
      */
     fun select(skills: List<DiscoveredSkill>, name: String): Selection {
         val matches = skills.filter { it.name == name }
         if (matches.isEmpty()) return Selection.NotFound
-        val preferred = compareByDescending<DiscoveredSkill> { it.scope == SkillScope.PROJECT }
+        val preferred = compareByDescending<DiscoveredSkill> { it.scope == SkillScope.BUILTIN }
+            .thenByDescending { it.scope == SkillScope.PROJECT }
         matches.filter { it.status == SkillStatus.ENABLED }.sortedWith(preferred).firstOrNull()
             ?.let { return Selection.Ready(it) }
         return Selection.Unavailable(matches.sortedWith(preferred).first())

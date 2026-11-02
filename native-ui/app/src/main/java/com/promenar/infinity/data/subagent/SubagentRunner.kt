@@ -578,7 +578,9 @@ class SubagentRunner(
 
     private fun systemPrompt(preset: SubagentPreset?, tools: List<ProtocolTool>, executionMode: String, runMode: com.promenar.infinity.domain.model.SessionRunMode?, modelId: String?): String = buildString {
         append(SYSTEM_PROMPT)
-        append("\n\n").append(SystemPromptSections.runtimeEnvironment(modelId))
+        append("\n\n").append(SystemPromptSections.runtimeEnvironment(modelId,
+            mode = ExecutionModeCodec.parseOrWorkspace(executionMode),
+            runMode = runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN))
         append("\n\n").append(com.promenar.infinity.ui.chat.manager.SystemPromptSections.permissions(ExecutionModeCodec.parseOrWorkspace(executionMode), runMode = runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN))
         preset?.let { append("\n\n").append(it.instruction) }
         if (tools.isEmpty()) append("\n\n本次没有可用工具，请直接根据任务内容作答。")

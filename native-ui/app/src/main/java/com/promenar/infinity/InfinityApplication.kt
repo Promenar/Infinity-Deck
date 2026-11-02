@@ -1839,13 +1839,13 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
-    /** 用户级与工作区项目级技能的文件目录入口。 */
+    /** 内置指令与用户级、工作区项目级技能的统一目录入口。 */
     val skillCatalog: com.promenar.infinity.data.skills.SkillCatalog by lazy {
-        com.promenar.infinity.data.skills.FileSkillCatalog(
+        com.promenar.infinity.data.skills.BuiltinSkillCatalog(com.promenar.infinity.data.skills.FileSkillCatalog(
             File(filesDir, "agent_skills"),
             getSharedPreferences("infinity_settings", MODE_PRIVATE),
             File(noBackupFilesDir, "skill_state"),
-        )
+        )) { path -> assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() } }
     }
 
     val skillRegistry: SkillRegistry by lazy { createSkillRegistry() }

@@ -4,7 +4,7 @@ import java.io.File
 import kotlinx.coroutines.flow.StateFlow
 
 /** 技能来源级别。 */
-enum class SkillScope { USER, PROJECT }
+enum class SkillScope { USER, PROJECT, BUILTIN }
 
 /** 技能当前对模型的可用状态。 */
 enum class SkillStatus {
@@ -32,7 +32,7 @@ data class SkillWorkspace(
 /**
  * 一次扫描发现的技能。
  *
- * [id] 在两级之间唯一且跨扫描稳定：用户级为 `user:<name>`，项目级为 `project:<workspaceKey>:<name>`。
+ * [id] 跨来源唯一且跨扫描稳定：内置为 `builtin:<name>`，用户级为 `user:<name>`，项目级为 `project:<workspaceKey>:<name>`。
  * [virtualDir] 是模型与文件工具使用的虚拟路径：用户级为 `/skills/<name>`，项目级为 `/.agents/skills/<name>`。
  */
 data class DiscoveredSkill(
@@ -59,11 +59,12 @@ data class DiscoveredSkill(
     val metadata: AgentSkillMetadata?,
 )
 
-/** 一次扫描的结果；[workspace] 为 null 时只含用户级技能。 */
+/** 一次扫描的结果；[workspace] 为 null 时没有项目级技能。 */
 data class SkillSnapshot(
     val workspace: SkillWorkspace?,
     val skills: List<DiscoveredSkill>,
 ) {
+    val builtin: List<DiscoveredSkill> get() = skills.filter { it.scope == SkillScope.BUILTIN }
     val user: List<DiscoveredSkill> get() = skills.filter { it.scope == SkillScope.USER }
     val project: List<DiscoveredSkill> get() = skills.filter { it.scope == SkillScope.PROJECT }
 
@@ -75,7 +76,7 @@ data class SkillSnapshot(
 }
 
 /**
- * 两级技能目录的统一入口。文件是唯一事实源；状态记录不写入技能目录本身。
+ * 技能目录的统一入口。用户与项目文件是事实源，内置指令来自应用资产；状态不写入技能目录。
  *
  * 所有方法可在任意线程调用，内部在 IO 上执行；扫描按文件修改时间与大小增量复用上次结果。
  */

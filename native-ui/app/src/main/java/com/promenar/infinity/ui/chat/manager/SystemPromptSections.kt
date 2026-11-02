@@ -9,14 +9,43 @@ import com.promenar.infinity.domain.tool.LinuxExecRouting
 import com.promenar.infinity.domain.model.SessionRunMode
 
 /**
- * System Prompt 的固定段落与运行环境说明；不含内置身份，身份与行为要求只来自用户填写的提示词。
+ * System Prompt 的固定段落与应用运行环境事实；助手角色与风格来自用户填写的提示词。
  * 段落内容只描述运行时真实提供的能力，新增或删除工具时必须同步这里的契约说明。
  */
 object SystemPromptSections {
-    fun runtimeEnvironment(modelId: String?): String = buildString {
+    fun runtimeEnvironment(
+        modelId: String?,
+        mode: com.promenar.infinity.domain.model.ExecutionMode = com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE,
+        runMode: SessionRunMode = SessionRunMode.BUILTIN,
+        linuxAvailable: Boolean = LinuxExecRouting.available,
+        workspace: com.promenar.infinity.data.workspace.SessionWorkspace? = null,
+    ): String = buildString {
+        val linux = runMode == SessionRunMode.LINUX
+        val configuredWorkspace = when (workspace) {
+            is com.promenar.infinity.data.workspace.SessionWorkspace.Directory -> workspace.workspace
+            is com.promenar.infinity.data.workspace.SessionWorkspace.Unavailable -> workspace.workspace
+            else -> null
+        }
+        val root = when {
+            !linux -> "/"
+            configuredWorkspace?.kind == com.promenar.infinity.data.branch.BranchWorktreeWorkspaceResolver.KIND -> configuredWorkspace.location
+            configuredWorkspace?.kind == com.promenar.infinity.data.local.db.entity.WorkspaceEntity.KIND_LINUX_HOME ->
+                com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.parse(configuredWorkspace.location)?.directory ?: "\$INFINITY_WORKSPACE"
+            configuredWorkspace != null -> "/workspace"
+            workspace == com.promenar.infinity.data.workspace.SessionWorkspace.Private -> "/workspace"
+            else -> "\$INFINITY_WORKSPACE"
+        }
         appendLine("## Runtime Environment")
         appendLine("- Environment: ${AppBrand.DISPLAY_NAME}")
+        appendLine("- 你是 ${AppBrand.DISPLAY_NAME} 的智能体，运行在 Android 应用内。")
         modelId?.takeIf(String::isNotBlank)?.let { appendLine("- Model: $it") }
+        appendLine("- 本会话运行模式：${if (linux) "Linux" else "内置"}；权限档：${if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) "工作区" else "完全访问"}；Linux：${if (linuxAvailable) "可用" else "不可用"}。")
+        appendLine("- 应用工作区：$root；" + if (linux) "私有会话另有 /home/session；命令起始目录以 INFINITY_WORKSPACE 为准。" else "文件工具以此为根；命令起始目录以 INFINITY_WORKSPACE 为准。")
+        appendLine("- 应用挂载：/mnt/<别名>；" + if (linux) "仅真实路径挂载可见，SAF 挂载不可见。" else "文件工具可访问已授权挂载，命令不能直接使用 SAF 路径。")
+        appendLine("- 用户技能：${if (linux) "/mnt/skills" else "/skills"}（命令中使用 INFINITY_SKILLS）；目录型工作区的项目技能：${root.trimEnd('/')}/.agents/skills；私有会话不扫描项目技能。")
+        appendLine("- 内置只读技能：${com.promenar.infinity.data.skills.BuiltinSkillCatalog.VIRTUAL_DIR}/SKILL.md，仅技能读取工具可读。")
+        appendLine("- Linux 中安装的 Codex CLI、Claude Code 等 CLI、~/.codex、~/.claude 及 /root 下的规则文件属于第三方工具，不是你的运行时；不要通过修改它们改变自身行为或配置。")
+        appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-workbench\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
     }
 
     const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl），使用 apk add 安装软件包；python3 与 pip 需安装对应可选包。" +
@@ -55,11 +84,11 @@ object SystemPromptSections {
         else appendLine("- File tools and isolated scripts can access only workspace paths, including explicitly exposed /mnt/<alias> mounts and /skills. Paths outside this virtual namespace are invisible to them.")
         appendLine("- Built-in shell_exec and python_exec run under the host app's Android user ID. They can access all app data and are not constrained to the workspace; Android does not provide a path-level process sandbox here. termux_exec runs as the Termux identity; SSH commands run on the remote host.")
         if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) {
-            appendLine("- Current scope: Workspace. Every shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send and job_input call requires user approval. If rejected, do not repeat the command.")
+            appendLine("- Every shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download and job_input call requires user approval. If rejected, do not repeat the command.")
         } else {
-            appendLine("- Current scope: Full access. shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send and job_input run without per-command approval.")
+            appendLine("- shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download and job_input run without per-command approval.")
         }
-        appendLine("- In both scopes, schedule_create, skill-directory mutations and SSH host configuration require approval for every call. Other tools do not require execution approval.")
+        appendLine("- In both scopes, schedule_create, request_knowledge_access, resolve_startup_issue, skill-directory mutations and SSH host configuration require approval for every call. session_read/session_list require approval when accessing other sessions outside the permitted family. Linux rootfs mutations require approval in workspace scope. Other tools do not require execution approval.")
         appendLine("- Critical runtime data includes databases/ (including infinity_v2.db), shared_prefs/, no_backup/, files/agent_skills/, and diagnostic logs (files/infinity_diagnostics.jsonl, files/infinity_logs.txt, files/diag-keep). In either scope, before modifying any of these, explain the purpose and impact in your reply and obtain the user's explicit written consent. Tool approval alone does not replace that consent.")
         appendLine("- Installing pip packages into files/python-user is normal use.")
         if (runMode == SessionRunMode.LINUX) appendLine("- 在 Linux 中安装软件包属于正常使用；Linux 主目录 /root 不进入备份。")
@@ -287,6 +316,16 @@ object SystemPromptSections {
         content: String = "",
         modelContextTokens: Int? = null,
     ): String {
+        val builtin = skills.filter { it.scope == com.promenar.infinity.data.skills.SkillScope.BUILTIN && it.status == SkillStatus.ENABLED }
+            .sortedBy { it.id }.distinctBy { it.id }
+        val pinned = builtin.joinToString("") { skill ->
+            "- ${skill.name}: ${skill.description.replace('\n', ' ').replace('\r', ' ')} [source=builtin; path=${skill.virtualDir}/SKILL.md]\n"
+        }
+        val ordinary = ordinarySkillCatalog(skills.filter { it.scope != com.promenar.infinity.data.skills.SkillScope.BUILTIN }, modelContextTokens, pinned.length)
+        return if (pinned.isEmpty()) ordinary else "## Skills\n" + pinned + ordinary.removePrefix("## Skills\n")
+    }
+
+    private fun ordinarySkillCatalog(skills: List<DiscoveredSkill>, modelContextTokens: Int?, reservedChars: Int): String {
         val available = skills.filter { it.status == SkillStatus.ENABLED }
             .sortedWith(compareBy<DiscoveredSkill> { it.name }.thenBy { it.scope.ordinal }.thenBy { it.id })
             .distinctBy { it.id }
@@ -294,7 +333,7 @@ object SystemPromptSections {
         // 英文提示沿用近似估算器的 ASCII 约 4 字符/token，使用 Long 避免大窗口溢出。
         val budget = modelContextTokens?.takeIf { it > 0 }?.let {
             minOf(MAX_SKILL_CATALOG_CHARS.toLong(), it.toLong() * 4 / 50).toInt()
-        } ?: MAX_SKILL_CATALOG_CHARS
+        }?.let { (it - reservedChars).coerceAtLeast(0) } ?: (MAX_SKILL_CATALOG_CHARS - reservedChars).coerceAtLeast(0)
         val header = "## Skills\n" +
             "For skills allowing implicit invocation, when a task matches the description, first read its SKILL.md using `activate_skill` or a file-reading tool and follow it. " +
             "You must use skills explicitly requested with \$name. Read bundled files as needed with `read_skill_file` or file tools. " +

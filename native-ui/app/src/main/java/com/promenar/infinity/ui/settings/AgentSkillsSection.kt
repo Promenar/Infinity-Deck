@@ -46,7 +46,7 @@ import com.promenar.infinity.ui.skills.SkillScopeSection
 import com.promenar.infinity.data.skills.SkillMarkdownParser
 import com.promenar.infinity.ui.theme.forInput
 
-/** 设置页“技能包”标签：用户级技能列表，末尾是导入与新建；无状态，便于截图与预览。 */
+/** 设置页“技能包”标签：内置与用户级技能列表，末尾是导入与新建；无状态，便于截图与预览。 */
 @Composable
 fun AgentSkillsSection(
     skills: List<DiscoveredSkill>,
@@ -55,7 +55,7 @@ fun AgentSkillsSection(
     onCreate: () -> Unit,
 ) {
     SkillScopeSection(
-        title = stringResource(R.string.skills_runtime_section_user),
+        title = stringResource(R.string.settings_ia_skills_title),
         footer = stringResource(R.string.skills_runtime_user_footer),
         skills = skills,
         emptyMessage = stringResource(R.string.agent_skills_empty),
