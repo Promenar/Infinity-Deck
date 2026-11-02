@@ -405,12 +405,8 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         self.assertEqual(
             commands,
             [
-                [
-                    "./gradlew",
-                    "--stacktrace",
-                    ":app:assembleSideloadRelease",
-                    ":app:assemblePlayRelease",
-                ],
+                ["./gradlew", "--stacktrace", ":app:assembleSideloadRelease"],
+                ["./gradlew", "--stacktrace", ":app:assemblePlayRelease"],
             ],
         )
         errexit = re.search(r"(?m)^\s*set -euo pipefail\s*$", build_step)
@@ -418,7 +414,7 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         assert errexit is not None
         self.assertLess(errexit.start(), build_step.index("./gradlew"))
         self.assertNotRegex(build_step, r"(?m)^\s*set\s+\+e\b")
-        self.assertEqual(len(continued_shell_commands(build_job, "./gradlew")), 1)
+        self.assertEqual(len(continued_shell_commands(build_job, "./gradlew")), 2)
         for removed in ("UnitTest", "lint", "assembleSideloadDebug", "assemblePlayDebug", "screenshotTest"):
             self.assertNotIn(removed, build_job)
         self.assertIn("python3 ../scripts/ci/check-distribution-manifests.py --build-type release", build_step)

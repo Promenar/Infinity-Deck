@@ -374,8 +374,9 @@ jobs:
             exit 1
           fi
           chmod +x gradlew
-          ./gradlew --stacktrace \
-            :app:assembleSideloadRelease :app:assemblePlayRelease
+          # 两个渠道的 Release 分两次调用：同一次调用并行编译两个变体的 Kotlin 会超出托管 runner 内存。
+          ./gradlew --stacktrace :app:assembleSideloadRelease
+          ./gradlew --stacktrace :app:assemblePlayRelease
           python3 ../scripts/ci/check-distribution-manifests.py --build-type release
           python3 ../scripts/ci/check-native-page-alignment.py --build-type release
 
