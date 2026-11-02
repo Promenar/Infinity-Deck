@@ -28,8 +28,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
@@ -193,7 +193,7 @@ class ResourceExplorerInteractionTest {
         }
 
         rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_IMPORT_RESULTS).assertIsDisplayed()
-        rule.onNodeWithText(resources.getString(R.string.resource_explorer_clear_results))
+        rule.onNodeWithContentDescription(resources.getString(R.string.resource_explorer_clear_results))
             .assertIsDisplayed()
         rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_CLEAR_RESULTS)
             .assertIsDisplayed()

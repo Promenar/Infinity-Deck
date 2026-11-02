@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.FitScreen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Add
@@ -44,7 +45,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -342,7 +342,9 @@ private fun PrototypeToolbar(
             IconButton(onClick = onZoomIn, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
                 Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.prototype_zoom_in))
             }
-            TextButton(onClick = onFit) { Text(stringResource(R.string.prototype_fit)) }
+            IconButton(onClick = onFit, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
+                Icon(Icons.Rounded.FitScreen, contentDescription = stringResource(R.string.prototype_fit))
+            }
             Button(
                 onClick = onPlay,
                 contentPadding = PaddingValues(start = InfinitySpacing.Medium, end = InfinitySpacing.Large),

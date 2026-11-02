@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
@@ -56,7 +55,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -101,6 +99,7 @@ import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityPanePresentation
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.diff.FileDiffModel
 import com.promenar.infinity.ui.common.diff.FileDiffView
@@ -1105,15 +1104,8 @@ private fun GitPanelStateMessage(
                 )
             }
             if (onRetry != null && problem != null && problem.kind != GitProblemKind.PYTHON_UNAVAILABLE) {
-                TextButton(
-                    onClick = onRetry,
-                    modifier = Modifier.defaultMinSize(
-                        minWidth = InfinitySpacing.MinimumTouchTarget,
-                        minHeight = InfinitySpacing.MinimumTouchTarget,
-                    ),
-                ) {
-                    Text(stringResource(R.string.shared_btn_retry))
-                }
+                Spacer(modifier = Modifier.height(InfinitySpacing.Medium))
+                InfinityRetryButton(onClick = onRetry)
             }
         }
     }

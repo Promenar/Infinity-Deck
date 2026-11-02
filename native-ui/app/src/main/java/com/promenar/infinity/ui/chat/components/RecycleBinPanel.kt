@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -37,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +65,9 @@ import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.ui.common.FileIndexStatus
 import com.promenar.infinity.ui.common.IndexStatusBadge
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTypography
 import java.text.SimpleDateFormat
@@ -334,67 +337,34 @@ private fun RecycleOperationNotice(
             }
 
             AnimatedVisibility(visible = !isRunning, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val stack = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.5f
-                    if (stack) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            if (hasFailure) {
-                                StatusActionButton(
-                                    label = stringResource(R.string.recycle_bin_operation_retry),
-                                    tag = UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_RETRY,
-                                    onClick = onRetry,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            StatusActionButton(
-                                label = stringResource(R.string.recycle_bin_operation_dismiss),
-                                tag = UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_CLEAR,
-                                onClick = onClear,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            if (hasFailure) {
-                                StatusActionButton(
-                                    label = stringResource(R.string.recycle_bin_operation_retry),
-                                    tag = UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_RETRY,
-                                    onClick = onRetry,
-                                    modifier = Modifier,
-                                )
-                            }
-                            StatusActionButton(
-                                label = stringResource(R.string.recycle_bin_operation_dismiss),
-                                tag = UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_CLEAR,
-                                onClick = onClear,
-                                modifier = Modifier,
-                            )
-                        }
+                val dismissLabel = stringResource(R.string.recycle_bin_operation_dismiss)
+                if (hasFailure) {
+                    // 并排放不下时整组竖排，重试在上。
+                    InfinityPillRow(modifier = Modifier.fillMaxWidth()) {
+                        InfinityPillButton(
+                            text = dismissLabel,
+                            onClick = onClear,
+                            modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_CLEAR),
+                        )
+                        InfinityPillButton(
+                            text = stringResource(R.string.recycle_bin_operation_retry),
+                            onClick = onRetry,
+                            tone = InfinityPillTone.PRIMARY,
+                            icon = Icons.Rounded.Refresh,
+                            modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_RETRY),
+                        )
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        InfinityPillButton(
+                            text = dismissLabel,
+                            onClick = onClear,
+                            modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RECYCLE_OPERATION_CLEAR),
+                        )
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusActionButton(
-    label: String,
-    tag: String,
-    onClick: () -> Unit,
-    modifier: Modifier,
-) {
-    TextButton(
-        onClick = onClick,
-        modifier = modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).testTag(tag),
-    ) {
-        Text(text = label, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

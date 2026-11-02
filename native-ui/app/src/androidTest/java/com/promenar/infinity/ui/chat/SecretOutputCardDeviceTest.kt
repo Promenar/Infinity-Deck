@@ -17,7 +17,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** 输出卡在值失效（销毁、同名新值替换）后收成一行记录，不再提供显示、复制、另存与销毁。 */
+/** 输出卡在值失效（销毁、同名新值替换）后收成一行记录，不再提供显示、复制与“更多”菜单里的另存、销毁。 */
 @RunWith(AndroidJUnit4::class)
 class SecretOutputCardDeviceTest {
     @get:Rule
@@ -47,6 +47,8 @@ class SecretOutputCardDeviceTest {
         showCards()
         rule.onNodeWithTag(UiTags.CHAT_SECRET_OUTPUT_REVEAL).assertExists()
 
+        // 另存与销毁收在“更多”菜单里，先打开菜单。
+        rule.onNodeWithTag(UiTags.CHAT_SECRET_OUTPUT_MORE).performClick()
         rule.onNodeWithTag(UiTags.CHAT_SECRET_OUTPUT_DESTROY).performClick()
         rule.onNodeWithTag(UiTags.CHAT_SECRET_OUTPUT_DESTROY_CONFIRM).performClick()
         rule.waitForIdle()
@@ -55,6 +57,7 @@ class SecretOutputCardDeviceTest {
         listOf(
             UiTags.CHAT_SECRET_OUTPUT_REVEAL,
             UiTags.CHAT_SECRET_OUTPUT_COPY,
+            UiTags.CHAT_SECRET_OUTPUT_MORE,
             UiTags.CHAT_SECRET_OUTPUT_SAVE_AS,
             UiTags.CHAT_SECRET_OUTPUT_DESTROY,
             UiTags.CHAT_SECRET_OUTPUT_VALUE,

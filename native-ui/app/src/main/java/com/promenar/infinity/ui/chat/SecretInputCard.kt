@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,13 +21,11 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.OpenInBrowser
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Warning
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,11 +54,13 @@ import com.promenar.infinity.domain.secret.SecretDestination
 import com.promenar.infinity.domain.secret.SecretExposure
 import com.promenar.infinity.domain.secret.SecretKind
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.SecretField
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMonospace
-import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.delay
 
@@ -254,46 +253,42 @@ internal fun SecretInputCard(
                 )
             }
             if (pending.offersGitHubBrowserLogin && onGitHubBrowserLogin != null) {
-                TextButton(
+                InfinityPillButton(
+                    text = stringResource(R.string.secret_input_github_browser),
                     onClick = onGitHubBrowserLogin,
                     enabled = !submitting,
-                    modifier = Modifier.padding(top = 2.dp).testTag(UiTags.CHAT_SECRET_INPUT_GITHUB_LOGIN),
-                ) {
-                    Icon(Icons.Rounded.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.secret_input_github_browser))
-                }
+                    icon = Icons.Rounded.OpenInBrowser,
+                    modifier = Modifier.padding(top = 8.dp).testTag(UiTags.CHAT_SECRET_INPUT_GITHUB_LOGIN),
+                )
             }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
+            InfinityPillRow(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), spacing = 8.dp) {
+                InfinityPillButton(
+                    text = stringResource(R.string.secret_input_cancel),
                     onClick = {
                         value = ""
                         onCancel()
                     },
                     enabled = !submitting,
                     modifier = Modifier.testTag(UiTags.CHAT_SECRET_INPUT_CANCEL),
-                ) { Text(stringResource(R.string.secret_input_cancel)) }
-                Spacer(Modifier.weight(1f))
-                Button(
+                )
+                InfinityPillButton(
+                    text = stringResource(
+                        when (style) {
+                            SecretInputStyle.CREDENTIAL -> R.string.secret_input_submit_credential
+                            SecretInputStyle.JOB -> R.string.secret_input_submit_job
+                            SecretInputStyle.SESSION_ENV -> R.string.secret_input_submit_env
+                        },
+                    ),
                     onClick = {
                         haptics.perform(InfinityHapticEvent.CONFIRM)
                         val chars = value.toCharArray()
                         value = ""
                         onSubmit(chars, username.takeIf { pending.needsUsername || it.isNotBlank() })
                     },
+                    tone = InfinityPillTone.PRIMARY,
                     enabled = !submitting && secretInputReady(value.length, pending.needsUsername, username),
-                    modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_INPUT_SUBMIT),
-                ) {
-                    Text(
-                        stringResource(
-                            when (style) {
-                                SecretInputStyle.CREDENTIAL -> R.string.secret_input_submit_credential
-                                SecretInputStyle.JOB -> R.string.secret_input_submit_job
-                                SecretInputStyle.SESSION_ENV -> R.string.secret_input_submit_env
-                            },
-                        ),
-                    )
-                }
+                    modifier = Modifier.testTag(UiTags.CHAT_SECRET_INPUT_SUBMIT),
+                )
             }
             if (style == SecretInputStyle.JOB) {
                 Text(

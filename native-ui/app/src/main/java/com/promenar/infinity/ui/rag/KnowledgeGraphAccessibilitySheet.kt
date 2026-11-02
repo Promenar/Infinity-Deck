@@ -12,7 +12,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -21,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
@@ -75,11 +75,13 @@ internal fun KnowledgeGraphAccessibilitySheet(
                     trailingContent = if (onExpandNode == null) null else {
                         {
                             val description = stringResource(R.string.kg_graph_expand_entity, node.label)
-                            TextButton(
+                            InfinityPillButton(
+                                text = stringResource(R.string.kg_graph_expand_neighbors),
                                 onClick = { onExpandNode(node.id) },
                                 enabled = canExpand,
+                                compact = true,
                                 modifier = Modifier.semantics { contentDescription = description },
-                            ) { Text(stringResource(R.string.kg_graph_expand_neighbors)) }
+                            )
                         }
                     },
                 )

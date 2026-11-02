@@ -19,8 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -131,14 +129,6 @@ internal fun OnboardingPrimaryButton(
         modifier = modifier.fillMaxWidth().height(OnboardingDimens.ButtonHeight),
         content = content,
     )
-}
-
-/** 次要文字按钮：高 42dp，主色文字。 */
-@Composable
-internal fun OnboardingTextButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    TextButton(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth().height(42.dp)) {
-        Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp))
-    }
 }
 
 /** 步骤进度：[count] 段、2dp 高；已完成的段为主色，当前段亮一半。 */

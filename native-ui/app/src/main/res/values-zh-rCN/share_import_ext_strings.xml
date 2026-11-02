@@ -36,4 +36,5 @@
     <string name="share_import_ext_picker_empty">没有子目录</string>
     <string name="share_import_ext_picker_error">无法打开这个目录</string>
     <string name="share_import_ext_picker_cancel">取消</string>
+    <string name="share_import_more_cd">更多操作</string>
 </resources>

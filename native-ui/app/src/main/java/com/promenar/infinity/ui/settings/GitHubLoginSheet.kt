@@ -1,22 +1,21 @@
 package com.promenar.infinity.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +39,9 @@ import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.git.remote.GitHubDeviceFailure
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -193,31 +195,47 @@ private fun Body(text: String) = Text(text, style = MaterialTheme.typography.bod
 private fun Note(text: String) =
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+/** 面板页脚：取消在左、主操作在最右；只有一个操作时靠右放单个胶囊，不铺满整行。 */
 @Composable
 private fun Buttons(
     cancel: (() -> Unit)? = null,
     secondary: Pair<String, () -> Unit>? = null,
     primary: Pair<String, () -> Unit>? = null,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (cancel != null) {
-            TextButton(onClick = cancel, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("github_login_cancel")) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        }
-        secondary?.let { (label, onClick) ->
-            TextButton(onClick = onClick, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("github_login_secondary")) {
-                Text(label)
-            }
-        }
-        primary?.let { (label, onClick) ->
-            Button(onClick = onClick, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("github_login_primary")) {
-                Text(label)
-            }
-        }
+    if (listOfNotNull(cancel, secondary, primary).size == 1) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { ButtonPills(cancel, secondary, primary) }
+    } else {
+        InfinityPillRow(Modifier.fillMaxWidth()) { ButtonPills(cancel, secondary, primary) }
+    }
+}
+
+@Composable
+private fun ButtonPills(
+    cancel: (() -> Unit)?,
+    secondary: Pair<String, () -> Unit>?,
+    primary: Pair<String, () -> Unit>?,
+) {
+    if (cancel != null) {
+        InfinityPillButton(
+            text = stringResource(R.string.common_cancel),
+            onClick = cancel,
+            modifier = Modifier.testTag("github_login_cancel"),
+        )
+    }
+    secondary?.let { (label, onClick) ->
+        InfinityPillButton(
+            text = label,
+            onClick = onClick,
+            icon = Icons.AutoMirrored.Rounded.OpenInNew,
+            modifier = Modifier.testTag("github_login_secondary"),
+        )
+    }
+    primary?.let { (label, onClick) ->
+        InfinityPillButton(
+            text = label,
+            onClick = onClick,
+            tone = InfinityPillTone.PRIMARY,
+            modifier = Modifier.testTag("github_login_primary"),
+        )
     }
 }

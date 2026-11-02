@@ -30,10 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +65,7 @@ import com.promenar.infinity.ui.common.AgentAvatarArt
 import com.promenar.infinity.ui.common.AvatarSymbolGlyph
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityChip
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityTabSwitcher
@@ -439,11 +438,13 @@ private fun GeneratedPane(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onShuffle, modifier = Modifier.testTag(UiTags.AGENT_AVATAR_PICKER_SHUFFLE)) {
-                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(stringResource(R.string.agent_avatar_shuffle))
-            }
+            InfinityPillButton(
+                text = stringResource(R.string.agent_avatar_shuffle),
+                onClick = onShuffle,
+                icon = Icons.Rounded.Refresh,
+                compact = true,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp).testTag(UiTags.AGENT_AVATAR_PICKER_SHUFFLE),
+            )
         }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(64.dp),

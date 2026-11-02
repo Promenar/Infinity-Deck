@@ -7,9 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AccountTree
@@ -32,15 +30,12 @@ import androidx.compose.material.icons.rounded.PauseCircle
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material.icons.rounded.VerifiedUser
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -77,6 +72,10 @@ import com.promenar.infinity.domain.model.ExecutionMode
 import com.promenar.infinity.domain.model.ExecutionModeCodec
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.common.InfinityDisclosureRow
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -195,7 +194,6 @@ internal fun branchPlanSteps(steps: List<com.promenar.infinity.data.model.Execut
  * 待处理的工作方案卡：工作方式、上下文、审批模式三项轻点切换，完整方案可展开；
  * [onResolve] 交回用户的选择与三项最终取值。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BranchPlanCard(
     pending: PendingBranchPlan,
@@ -329,51 +327,41 @@ internal fun BranchPlanCard(
                 val hasDetails = plan.steps.isNotEmpty() || plan.exclusions.isNotBlank() || plan.communication.isNotBlank()
                 if (hasDetails && expanded) BranchPlanDetails(plan)
                 if (hasDetails) {
-                    TextButton(
+                    InfinityDisclosureRow(
+                        text = stringResource(if (expanded) R.string.branch_plan_collapse else R.string.branch_plan_expand),
+                        expanded = expanded,
                         onClick = { expanded = !expanded },
-                        contentPadding = PaddingValues(horizontal = 0.dp),
                         modifier = Modifier.testTag("CHAT_BRANCH_PLAN_EXPAND"),
-                    ) {
-                        Text(stringResource(if (expanded) R.string.branch_plan_collapse else R.string.branch_plan_expand))
-                    }
+                    )
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // 派发是主操作，放最右；窄屏大字号放不下时整组竖排，派发在最上。
+            InfinityPillRow(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+                spacing = 8.dp,
             ) {
-                TextButton(
+                InfinityPillButton(
+                    text = stringResource(R.string.branch_plan_decline),
                     onClick = { onResolve(branchPlanAnswerOf(BranchDecision.DECLINE, choice)) },
                     enabled = enabled,
                     modifier = Modifier.testTag("CHAT_BRANCH_DECLINE"),
-                ) {
-                    Text(stringResource(R.string.branch_plan_decline), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                // 窄屏大字号时两个主按钮换行，仍靠右对齐；“不需要”固定在左侧。
-                FlowRow(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilledTonalButton(
-                        onClick = { onResolve(branchPlanAnswerOf(BranchDecision.HERE, choice)) },
-                        enabled = enabled,
-                        modifier = Modifier.heightIn(min = 40.dp).testTag("CHAT_BRANCH_HERE"),
-                    ) {
-                        Text(stringResource(R.string.branch_plan_here), maxLines = 1)
-                    }
-                    Button(
-                        onClick = {
-                            haptics.perform(InfinityHapticEvent.CONFIRM)
-                            onResolve(branchPlanAnswerOf(BranchDecision.DISPATCH, choice))
-                        },
-                        enabled = enabled,
-                        modifier = Modifier.heightIn(min = 40.dp).testTag("CHAT_BRANCH_DISPATCH"),
-                    ) {
-                        Text(stringResource(R.string.branch_plan_dispatch), maxLines = 1)
-                    }
-                }
+                )
+                InfinityPillButton(
+                    text = stringResource(R.string.branch_plan_here),
+                    onClick = { onResolve(branchPlanAnswerOf(BranchDecision.HERE, choice)) },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("CHAT_BRANCH_HERE"),
+                )
+                InfinityPillButton(
+                    text = stringResource(R.string.branch_plan_dispatch),
+                    onClick = {
+                        haptics.perform(InfinityHapticEvent.CONFIRM)
+                        onResolve(branchPlanAnswerOf(BranchDecision.DISPATCH, choice))
+                    },
+                    tone = InfinityPillTone.PRIMARY,
+                    enabled = enabled,
+                    modifier = Modifier.testTag("CHAT_BRANCH_DISPATCH"),
+                )
             }
         }
     }
@@ -684,17 +672,19 @@ internal fun SessionMessageRow(entry: SessionMessageEntry, modifier: Modifier = 
             }
             Text(entry.text.trim(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             if (onOpenPeer != null) {
-                TextButton(onClick = onOpenPeer, contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.testTag("CHAT_SESSION_MESSAGE_OPEN")) {
-                    Text(
-                        stringResource(
-                            when (entry.peerRelation) {
-                                SessionMessageEntry.PeerRelation.PARENT -> R.string.session_message_open_parent
-                                SessionMessageEntry.PeerRelation.BRANCH -> R.string.session_message_open_branch
-                                SessionMessageEntry.PeerRelation.SUBAGENT -> R.string.session_message_open_subagent
-                            },
-                        ),
-                    )
-                }
+                InfinityPillButton(
+                    text = stringResource(
+                        when (entry.peerRelation) {
+                            SessionMessageEntry.PeerRelation.PARENT -> R.string.session_message_open_parent
+                            SessionMessageEntry.PeerRelation.BRANCH -> R.string.session_message_open_branch
+                            SessionMessageEntry.PeerRelation.SUBAGENT -> R.string.session_message_open_subagent
+                        },
+                    ),
+                    onClick = onOpenPeer,
+                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                    compact = true,
+                    modifier = Modifier.testTag("CHAT_SESSION_MESSAGE_OPEN"),
+                )
             }
         }
     }

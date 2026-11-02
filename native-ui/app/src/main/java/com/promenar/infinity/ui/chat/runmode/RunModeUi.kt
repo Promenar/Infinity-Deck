@@ -17,14 +17,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +54,9 @@ import com.promenar.infinity.domain.linux.LinuxFailure
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
 import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.UnavailableReasons
@@ -427,10 +426,14 @@ fun RunModeCheckpointContent(
                     RunModeUnavailableReason.UNSUPPORTED, RunModeUnavailableReason.BUSY -> null
                     else -> R.string.run_mode_action_repair
                 }
-                primary?.let { PrimaryAction(it, onClick = actions.onRepair) }
-                SecondaryAction(R.string.run_mode_action_builtin, RunModeTags.BUILTIN, actions.onUseBuiltin)
-                if (canExport) SecondaryAction(R.string.run_mode_action_export, RunModeTags.EXPORT, actions.onExport)
-                LaterAction(actions.onLater)
+                RunModeActions(
+                    alternatives = listOfNotNull(
+                        RunModeAction(R.string.run_mode_action_builtin, RunModeTags.BUILTIN, onClick = actions.onUseBuiltin),
+                        if (canExport) RunModeAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport) else null,
+                    ),
+                    dismiss = RunModeAction(R.string.run_mode_action_later, null, onClick = actions.onLater),
+                    primary = primary?.let { RunModeAction(it, RunModeTags.PRIMARY, onClick = actions.onRepair) },
+                )
             }
             is RunModeCheckpointStage.Working -> {
                 Heading(workingTitle(stage), stage.step?.let { stringResource(it) }.orEmpty())
@@ -446,24 +449,32 @@ fun RunModeCheckpointContent(
                 stage.failure?.let { failure ->
                     Text(stringResource(linuxFailureText(failure.code)), style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
-                if (stage.canReset) {
-                    stage.loss?.let { LossSummary(it) }
-                    PrimaryAction(R.string.run_mode_action_reset, RunModeTags.RESET, destructive = true, onClick = actions.onReset)
-                }
-                if (canExport) SecondaryAction(R.string.run_mode_action_export, RunModeTags.EXPORT, actions.onExport)
-                SecondaryAction(R.string.run_mode_action_builtin, RunModeTags.BUILTIN, actions.onUseBuiltin)
-                LaterAction(actions.onLater)
+                if (stage.canReset) stage.loss?.let { LossSummary(it) }
+                RunModeActions(
+                    alternatives = listOfNotNull(
+                        if (canExport) RunModeAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport) else null,
+                        RunModeAction(R.string.run_mode_action_builtin, RunModeTags.BUILTIN, onClick = actions.onUseBuiltin),
+                    ),
+                    dismiss = RunModeAction(R.string.run_mode_action_later, null, onClick = actions.onLater),
+                    primary = if (stage.canReset) {
+                        RunModeAction(R.string.run_mode_action_reset, RunModeTags.RESET, destructive = true, onClick = actions.onReset)
+                    } else null,
+                )
             }
             RunModeCheckpointStage.ExportChoice -> {
                 Heading(R.string.run_mode_action_export, "")
-                PrimaryAction(R.string.run_mode_export_private, onClick = actions.onExportPrivate)
-                SecondaryAction(R.string.run_mode_export_external, null, actions.onExportExternal)
-                LaterAction(actions.onBack, R.string.common_btn_cancel)
+                RunModeActions(
+                    alternatives = listOf(RunModeAction(R.string.run_mode_export_external, null, onClick = actions.onExportExternal)),
+                    dismiss = RunModeAction(R.string.common_btn_cancel, null, onClick = actions.onBack),
+                    primary = RunModeAction(R.string.run_mode_export_private, RunModeTags.PRIMARY, onClick = actions.onExportPrivate),
+                )
             }
             RunModeCheckpointStage.ExportOffer -> {
                 Heading(R.string.run_mode_export_offer_title, stringResource(R.string.run_mode_export_offer_body))
-                PrimaryAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport)
-                LaterAction(actions.onLater)
+                RunModeActions(
+                    dismiss = RunModeAction(R.string.run_mode_action_later, null, onClick = actions.onLater),
+                    primary = RunModeAction(R.string.run_mode_action_export, RunModeTags.EXPORT, onClick = actions.onExport),
+                )
             }
             is RunModeCheckpointStage.Exported -> {
                 val report = stage.report
@@ -484,7 +495,7 @@ fun RunModeCheckpointContent(
                         if (report.failures.size > MAX_FAILURES_SHOWN) Text("…", style = InfinityTypography.bodySmall)
                     }
                 }
-                PrimaryAction(R.string.run_mode_done, onClick = actions.onDone)
+                RunModeActions(primary = RunModeAction(R.string.run_mode_done, RunModeTags.PRIMARY, onClick = actions.onDone))
             }
         }
         message?.let { Text(it, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.error) }
@@ -537,27 +548,41 @@ private fun LossSummary(loss: LinuxResetLossSummary) {
     }
 }
 
-@Composable
-private fun PrimaryAction(@StringRes text: Int, tag: String = RunModeTags.PRIMARY, destructive: Boolean = false, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        colors = if (destructive) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
-            contentColor = MaterialTheme.colorScheme.onError) else ButtonDefaults.buttonColors(),
-        modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(tag),
-    ) { Text(stringResource(text)) }
-}
+private data class RunModeAction(
+    @StringRes val text: Int,
+    val tag: String?,
+    val destructive: Boolean = false,
+    val onClick: () -> Unit,
+)
 
+/**
+ * 操作区分两组：上组是替代方案（中性胶囊），下组是“稍后/取消”与主操作，主操作在右。
+ * 每组能以单行文字等分并排时并排，否则竖排各占满宽；按钮文字不折行。
+ */
 @Composable
-private fun SecondaryAction(@StringRes text: Int, tag: String?, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).let { if (tag != null) it.testTag(tag) else it },
-    ) { Text(stringResource(text)) }
-}
-
-@Composable
-private fun LaterAction(onClick: () -> Unit, @StringRes text: Int = R.string.run_mode_action_later) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-        Text(stringResource(text))
+private fun RunModeActions(
+    alternatives: List<RunModeAction> = emptyList(),
+    dismiss: RunModeAction? = null,
+    primary: RunModeAction? = null,
+) {
+    @Composable
+    fun Pill(action: RunModeAction, tone: InfinityPillTone) = InfinityPillButton(
+        text = stringResource(action.text),
+        onClick = action.onClick,
+        tone = tone,
+        modifier = if (action.tag != null) Modifier.testTag(action.tag) else Modifier,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
+        if (alternatives.isNotEmpty()) {
+            InfinityPillRow(Modifier.fillMaxWidth(), reverseWhenStacked = false) {
+                alternatives.forEach { Pill(it, InfinityPillTone.NEUTRAL) }
+            }
+        }
+        if (dismiss != null || primary != null) {
+            InfinityPillRow(Modifier.fillMaxWidth()) {
+                dismiss?.let { Pill(it, InfinityPillTone.NEUTRAL) }
+                primary?.let { Pill(it, if (it.destructive) InfinityPillTone.DESTRUCTIVE else InfinityPillTone.PRIMARY) }
+            }
+        }
     }
 }

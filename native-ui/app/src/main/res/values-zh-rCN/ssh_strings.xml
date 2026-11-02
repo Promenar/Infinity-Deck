@@ -18,7 +18,7 @@
     <string name="ssh_auth_password">密码</string>
     <string name="ssh_password">密码</string>
     <string name="ssh_passphrase">私钥口令（可选）</string>
-    <string name="ssh_import_key">导入 OpenSSH 私钥</string>
+    <string name="ssh_import_key">导入私钥文件</string>
     <string name="ssh_key_import_help">选择 OpenSSH 私钥文件，或复制私钥全文后从剪贴板粘贴。</string>
     <string name="ssh_key_imported">私钥已临时载入内存。保存后将加密存储在当前设备。</string>
     <string name="ssh_generate_save_copy">生成密钥、保存并复制公钥</string>
@@ -71,6 +71,7 @@
     <string name="ssh_terminal_reconnect">重新连接</string>
     <!-- 主机编辑与操作的错误文案；代码映射见 SshErrorMessages。 -->
     <string name="ssh_paste_key">从剪贴板粘贴私钥</string>
+    <string name="ssh_key_more_cd">其他私钥来源</string>
     <string name="ssh_key_pasted">私钥已从剪贴板载入内存，剪贴板已清空。保存后将加密存储在当前设备。</string>
     <string name="ssh_error_alias_invalid">主机 ID 须以小写字母开头，只含小写字母、数字、_ 和 -，最多 48 个字符。留空并填写主机名可自动生成。</string>
     <string name="ssh_error_alias_taken">已有主机使用这个主机 ID，请换一个。</string>

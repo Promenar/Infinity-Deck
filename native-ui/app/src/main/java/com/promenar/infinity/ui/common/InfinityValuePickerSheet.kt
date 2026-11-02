@@ -125,9 +125,11 @@ fun InfinityValuePickerContent(
                 onSelect = { draft = it; onValueChange(draft) },
                 modifier = Modifier.padding(top = 8.dp),
             )
-            TextButton(onClick = { draft = spec.defaultValue; onValueChange(draft) }, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.numeric_restore_default))
-            }
+            InfinityPillButton(
+                text = stringResource(R.string.numeric_restore_default),
+                onClick = { draft = spec.defaultValue; onValueChange(draft) },
+                modifier = Modifier.align(Alignment.End).padding(top = 8.dp),
+            )
         }
     }
 }

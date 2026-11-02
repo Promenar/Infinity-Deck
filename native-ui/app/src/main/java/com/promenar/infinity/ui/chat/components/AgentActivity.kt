@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,7 +36,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +57,7 @@ import android.text.format.Formatter
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.domain.jobs.BackgroundJobRunner
 import com.promenar.infinity.domain.jobs.BackgroundJobState
@@ -222,13 +221,12 @@ private fun RunningJobCard(
                 Column(Modifier.padding(top = InfinitySpacing.Small, end = InfinitySpacing.XSmall)) {
                     liveOutput()
                     if (onOpenLog != null) {
-                        TextButton(
+                        InfinityPillButton(
+                            text = stringResource(R.string.agent_jobs_open_log),
                             onClick = onOpenLog,
-                            modifier = Modifier.align(Alignment.End).heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                        ) {
-                            Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(InfinitySpacing.RowIconSize))
-                            Text(stringResource(R.string.agent_jobs_open_log), modifier = Modifier.padding(start = InfinitySpacing.Small))
-                        }
+                            icon = Icons.Rounded.FolderOpen,
+                            modifier = Modifier.align(Alignment.End),
+                        )
                     }
                 }
             }
@@ -283,10 +281,11 @@ private fun FinishedJobRow(
             Column(Modifier.padding(start = 18.dp + InfinitySpacing.Medium, top = InfinitySpacing.XSmall)) {
                 InfinityMetaLine(jobMetaSegments(job, nowMillis), style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (onOpenLog != null) {
-                    TextButton(onClick = onOpenLog, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(InfinitySpacing.RowIconSize))
-                        Text(stringResource(R.string.agent_jobs_open_log), modifier = Modifier.padding(start = InfinitySpacing.Small))
-                    }
+                    InfinityPillButton(
+                        text = stringResource(R.string.agent_jobs_open_log),
+                        onClick = onOpenLog,
+                        icon = Icons.Rounded.FolderOpen,
+                    )
                 }
             }
         }
@@ -344,10 +343,11 @@ internal fun BackgroundJobRow(
             ) {
                 if (running) liveOutput()
                 if (onOpenLog != null) {
-                    TextButton(onClick = onOpenLog, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(InfinitySpacing.RowIconSize))
-                        Text(stringResource(R.string.agent_jobs_open_log), modifier = Modifier.padding(start = InfinitySpacing.Small))
-                    }
+                    InfinityPillButton(
+                        text = stringResource(R.string.agent_jobs_open_log),
+                        onClick = onOpenLog,
+                        icon = Icons.Rounded.FolderOpen,
+                    )
                 }
             }
         }

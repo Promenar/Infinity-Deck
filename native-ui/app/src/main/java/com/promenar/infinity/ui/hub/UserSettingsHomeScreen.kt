@@ -25,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Backup
@@ -77,6 +76,7 @@ import coil3.compose.AsyncImage
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.developer.DeveloperModeStore
 import com.promenar.infinity.ui.developer.DeveloperUnlockCounter
 import com.promenar.infinity.ui.developer.DeveloperUnlockResult
@@ -296,12 +296,10 @@ internal fun UserSettingsHomeScreenContent(
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal),
                         )
-                        TextButton(
+                        InfinityRetryButton(
                             onClick = actions.onRetryError,
-                            modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal),
-                        ) {
-                            Text(stringResource(R.string.common_retry))
-                        }
+                            modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.XSmall),
+                        )
                     }
                 }
             }

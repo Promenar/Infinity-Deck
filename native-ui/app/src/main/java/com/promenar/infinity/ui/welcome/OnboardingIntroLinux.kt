@@ -29,11 +29,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForwardIos
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +68,9 @@ import com.promenar.infinity.domain.linux.LinuxOptionalPackage
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
 import com.promenar.infinity.domain.linux.LinuxStepStatus
 import com.promenar.infinity.onboarding.OnboardingStep
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.linux.settings.LINUX_BUNDLED_ALPINE_VERSION
 import com.promenar.infinity.ui.linux.settings.LinuxFailureCard
@@ -218,11 +217,13 @@ internal fun OnboardingLinuxStep(status: OnboardingLinuxStatus, actions: Onboard
                 ) { Text(stringResource(R.string.onboarding_linux_install), style = OnboardingType.button()) }
             }
             RiseIn(7) {
-                OnboardingTextButton(
-                    stringResource(R.string.onboarding_linux_skip),
-                    onClick = actions.onSkipLinux,
-                    modifier = Modifier.testTag(OnboardingTags.LINUX_SKIP),
-                )
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.onboarding_linux_skip),
+                        onClick = actions.onSkipLinux,
+                        modifier = Modifier.testTag(OnboardingTags.LINUX_SKIP),
+                    )
+                }
             }
             RiseIn(8) {
                 Text(
@@ -475,22 +476,36 @@ internal fun OnboardingLinuxSheetContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-            val buttonModifier = Modifier.weight(1f).heightIn(min = 48.dp)
+        InfinityPillRow(Modifier.fillMaxWidth(), spacing = InfinitySpacing.Medium) {
             when (runtime) {
                 is LinuxRuntimeState.Installing -> {
-                    FilledTonalButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.linux_install_cancel),
                         onClick = onCancel,
-                        colors = ButtonDefaults.filledTonalButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        modifier = buttonModifier,
-                    ) { Text(stringResource(R.string.linux_install_cancel)) }
-                    Button(onClick = onClose, modifier = buttonModifier) { Text(stringResource(R.string.onboarding_linux_hide)) }
+                        tone = InfinityPillTone.DANGER,
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.onboarding_linux_hide),
+                        onClick = onClose,
+                        tone = InfinityPillTone.PRIMARY,
+                    )
                 }
                 is LinuxRuntimeState.InstallInterrupted -> {
-                    TextButton(onClick = onSkip, modifier = buttonModifier) { Text(stringResource(R.string.onboarding_linux_skip_install)) }
-                    Button(onClick = onRetry, modifier = buttonModifier) { Text(stringResource(R.string.onboarding_linux_retry)) }
+                    InfinityPillButton(
+                        text = stringResource(R.string.onboarding_linux_skip_install),
+                        onClick = onSkip,
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.onboarding_linux_retry),
+                        onClick = onRetry,
+                        tone = InfinityPillTone.PRIMARY,
+                    )
                 }
-                else -> Button(onClick = onClose, modifier = buttonModifier) { Text(stringResource(R.string.onboarding_linux_done)) }
+                else -> InfinityPillButton(
+                    text = stringResource(R.string.onboarding_linux_done),
+                    onClick = onClose,
+                    tone = InfinityPillTone.PRIMARY,
+                )
             }
         }
     }

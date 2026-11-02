@@ -13,7 +13,7 @@
     <string name="media_action_open_with">Open with another app</string>
     <string name="media_action_view">View</string>
     <string name="media_action_close">Close</string>
-    <string name="media_action_locate">Show in resource explorer</string>
+    <string name="media_action_locate">Locate in explorer</string>
     <string name="media_action_reset_zoom">Reset zoom</string>
     <string name="media_action_rotate">Rotate</string>
     <string name="media_unavailable_title">File unavailable</string>

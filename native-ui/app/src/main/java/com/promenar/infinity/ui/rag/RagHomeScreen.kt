@@ -103,7 +103,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -142,6 +141,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.LocalTextStyle
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.domain.model.Folder
@@ -1245,7 +1247,7 @@ internal fun RagHomeScreenContent(
 }
 
 @Composable
-private fun RagHomeSelectionBar(
+internal fun RagHomeSelectionBar(
     selectedCount: Int,
     operationsEnabled: Boolean,
     onClear: () -> Unit,
@@ -1283,55 +1285,42 @@ private fun RagHomeSelectionBar(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(
+                    // 清除选择是退出多选，用行尾关闭图标，不再占一个文字按钮。
+                    IconButton(
                         onClick = onClear,
                         enabled = operationsEnabled,
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .testTag(UiTags.RAG_HOME_CLEAR_SELECTION),
+                        modifier = Modifier.testTag(UiTags.RAG_HOME_CLEAR_SELECTION),
                     ) {
-                        Text(stringResource(R.string.rag_home_clear_all))
+                        Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.rag_home_clear_all))
                     }
                 }
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    TextButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.rag_home_move),
                         onClick = onMove,
                         enabled = operationsEnabled,
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .testTag(UiTags.RAG_HOME_MOVE_SELECTION),
-                    ) {
-                        Icon(Icons.Rounded.Folder, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text(stringResource(R.string.rag_home_move))
-                    }
-                    TextButton(
+                        icon = Icons.Rounded.Folder,
+                        modifier = Modifier.testTag(UiTags.RAG_HOME_MOVE_SELECTION),
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.rag_home_reindex),
                         onClick = onReindex,
                         enabled = operationsEnabled,
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .testTag(UiTags.RAG_HOME_REINDEX_SELECTION),
-                    ) {
-                        Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text(stringResource(R.string.rag_home_reindex))
-                    }
-                    TextButton(
+                        icon = Icons.Rounded.Refresh,
+                        modifier = Modifier.testTag(UiTags.RAG_HOME_REINDEX_SELECTION),
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.shared_btn_delete),
                         onClick = onDelete,
+                        tone = InfinityPillTone.DANGER,
                         enabled = operationsEnabled,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .testTag(UiTags.RAG_HOME_DELETE_SELECTION),
-                    ) {
-                        Icon(Icons.Rounded.Delete, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text(stringResource(R.string.shared_btn_delete))
-                    }
+                        icon = Icons.Rounded.Delete,
+                        modifier = Modifier.testTag(UiTags.RAG_HOME_DELETE_SELECTION),
+                    )
                 }
             }
         }
@@ -1612,25 +1601,32 @@ internal fun RagStatusFab(
                         }
 
                         if (isError) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically,
+                            // 有可重试的索引时重试为主操作，否则去设置为主操作；主操作放最后。
+                            InfinityPillRow(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                spacing = 8.dp,
                             ) {
-                                TextButton(
+                                InfinityPillButton(
+                                    text = stringResource(R.string.common_dismiss),
+                                    onClick = {
+                                        actions.onDismissQueueError()
+                                        expanded = false
+                                    },
+                                    enabled = !retrying,
+                                    compact = true,
+                                )
+                                InfinityPillButton(
+                                    text = stringResource(R.string.rag_status_go_to_settings),
                                     onClick = {
                                         expanded = false
                                         actions.onOpenConfig()
                                     },
-                                    modifier = Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 36.dp),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.rag_status_go_to_settings),
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                }
+                                    tone = if (showRetry) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
+                                    compact = true,
+                                )
                                 if (showRetry) {
-                                    TextButton(
+                                    InfinityPillButton(
+                                        text = stringResource(R.string.shared_btn_retry),
                                         onClick = {
                                             when (indexAction) {
                                                 RagHomeIndexAction.RetryFailed -> actions.onRetryLastFailedIndex()
@@ -1638,48 +1634,26 @@ internal fun RagStatusFab(
                                                 RagHomeIndexAction.None -> {}
                                             }
                                         },
+                                        tone = InfinityPillTone.PRIMARY,
                                         enabled = !retrying,
-                                        modifier = Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 36.dp),
-                                    ) {
-                                        Text(
-                                            stringResource(R.string.shared_btn_retry),
-                                            style = MaterialTheme.typography.labelMedium,
-                                        )
-                                    }
-                                }
-                                TextButton(
-                                    onClick = {
-                                        actions.onDismissQueueError()
-                                        expanded = false
-                                    },
-                                    enabled = !retrying,
-                                    modifier = Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 36.dp),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.common_dismiss),
-                                        style = MaterialTheme.typography.labelMedium,
+                                        compact = true,
                                     )
                                 }
                             }
                         } else if (isRunning) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                                 horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                TextButton(
+                                InfinityPillButton(
+                                    text = stringResource(R.string.common_cancel),
                                     onClick = {
                                         actions.onCancelIndexing()
                                         expanded = false
                                     },
-                                    modifier = Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 36.dp),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.common_cancel),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                }
+                                    tone = InfinityPillTone.DANGER,
+                                    compact = true,
+                                )
                             }
                         }
                     }

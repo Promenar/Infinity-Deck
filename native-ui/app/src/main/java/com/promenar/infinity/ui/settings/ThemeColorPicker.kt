@@ -23,11 +23,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +53,9 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import kotlin.math.max
 import kotlin.math.min
 import com.promenar.infinity.ui.theme.forInput
@@ -155,12 +156,14 @@ internal fun ThemeColorPickerSheet(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = { onApply(argb) }, modifier = Modifier.testTag("theme_custom_color_apply")) {
-                    Text(stringResource(R.string.theme_custom_color_apply))
-                }
+            InfinityPillRow(Modifier.fillMaxWidth()) {
+                InfinityPillButton(text = stringResource(R.string.common_cancel), onClick = onDismiss)
+                InfinityPillButton(
+                    text = stringResource(R.string.theme_custom_color_apply),
+                    onClick = { onApply(argb) },
+                    tone = InfinityPillTone.PRIMARY,
+                    modifier = Modifier.testTag("theme_custom_color_apply"),
+                )
             }
         }
     }

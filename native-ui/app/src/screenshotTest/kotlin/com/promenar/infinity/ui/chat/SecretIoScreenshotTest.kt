@@ -11,8 +11,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
+import com.promenar.infinity.ui.common.StaticMenuPanel
 import com.promenar.infinity.domain.secret.PendingSecretInput
 import com.promenar.infinity.domain.secret.SecretDestination
 import com.promenar.infinity.domain.secret.SecretExposure
@@ -159,6 +162,23 @@ fun secretOutputCardDarkPreview() = SecretFrame {
     SecretOutputSpentRow(GiteaCard, SecretSlotState.DESTROYED)
     SecretOutputSpentRow(ClearedCard, SecretSlotState.CLEARED)
     SecretOutputSpentRow(GiteaCard, SecretSlotState.REPLACED)
+}
+
+// 遮蔽状态：验证后显示为主色胶囊，复制为中性胶囊，保存为凭据与销毁收进行尾“更多”菜单（静态浮层示意展开）。
+@PreviewTest
+@Preview(name = "保密输出卡与令牌提醒 更多菜单 浅中360", widthDp = 360, heightDp = 1180, locale = "zh-rCN")
+@Composable
+fun secretOutputMenuLightPreview() = SecretFrame(dark = false) {
+    OutputCardPreview(GiteaCard)
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+        StaticMenuPanel(minWidth = 200.dp) {
+            SecretOutputMoreMenuItems(onSaveAs = {}, onDestroy = {})
+        }
+    }
+    ComposerSecretGuardContent(
+        text = GuardText, matches = detectComposerSecrets(GuardText), modelName = "Qwen3.8 Flash Next", defaultUsername = "",
+        saving = false, saveFailed = false, onSaveToGit = { _, _ -> }, onEdit = {}, onSendAnyway = {},
+    )
 }
 
 @PreviewTest

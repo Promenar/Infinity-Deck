@@ -21,15 +21,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
@@ -402,10 +404,9 @@ private fun EstimateBox(state: SessionExportSheetState, onCancel: () -> Unit) {
                     color = colors.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(
-                    onClick = onCancel,
-                    modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(SessionExportTags.CANCEL),
-                ) { Text(stringResource(R.string.session_export_cancel)) }
+                IconButton(onClick = onCancel, modifier = Modifier.testTag(SessionExportTags.CANCEL)) {
+                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.session_export_cancel), tint = colors.onSurfaceVariant)
+                }
             }
         } else {
             Text(

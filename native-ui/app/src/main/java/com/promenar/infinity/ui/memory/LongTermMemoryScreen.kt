@@ -23,7 +23,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.data.memory.LongTermMemory
 import com.promenar.infinity.data.memory.LongTermMemoryKind
 import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
@@ -318,15 +320,20 @@ internal fun LongTermMemoryEditForm(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = onDelete, modifier = Modifier.testTag(UiTags.LTM_EDIT_DELETE)) {
-                Text(stringResource(R.string.ltm_delete), color = MaterialTheme.colorScheme.error)
-            }
-            TextButton(
+        InfinityPillRow(modifier = Modifier.fillMaxWidth()) {
+            InfinityPillButton(
+                text = stringResource(R.string.ltm_delete),
+                onClick = onDelete,
+                tone = InfinityPillTone.DANGER,
+                modifier = Modifier.testTag(UiTags.LTM_EDIT_DELETE),
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.ltm_save),
                 onClick = { onSave(kind, title.trim(), content.trim()) },
+                tone = InfinityPillTone.PRIMARY,
                 enabled = valid && changed,
                 modifier = Modifier.testTag(UiTags.LTM_EDIT_SAVE),
-            ) { Text(stringResource(R.string.ltm_save)) }
+            )
         }
     }
 }

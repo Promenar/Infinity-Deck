@@ -4,6 +4,9 @@ import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
 import androidx.compose.animation.AnimatedVisibility
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,7 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -39,7 +40,6 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -261,38 +260,34 @@ internal fun BackupSettingsScreen(
                     },
                 )
 
-                TextButton(
-                    onClick = {
-                        val accepted = viewModel.saveAndTestWebDavConfig(
-                            tempWebdavUrl,
-                            tempWebdavUser,
-                            tempWebdavPass.takeIf { it.isNotEmpty() }?.toCharArray(),
-                        )
-                        if (accepted) tempWebdavPass = ""
-                    },
-                    enabled = uiState.canExecute,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Rounded.Link, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.backup_test_connection))
-                }
-
-                Button(
-                    onClick = {
-                        val accepted = viewModel.saveWebDavConfig(
-                            tempWebdavUrl,
-                            tempWebdavUser,
-                            tempWebdavPass.takeIf { it.isNotEmpty() }?.toCharArray(),
-                        )
-                        if (accepted) tempWebdavPass = ""
-                    },
-                    enabled = uiState.canExecute,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Rounded.CloudSync, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.backup_save_config))
+                InfinityPillRow(Modifier.fillMaxWidth()) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.backup_test_connection),
+                        onClick = {
+                            val accepted = viewModel.saveAndTestWebDavConfig(
+                                tempWebdavUrl,
+                                tempWebdavUser,
+                                tempWebdavPass.takeIf { it.isNotEmpty() }?.toCharArray(),
+                            )
+                            if (accepted) tempWebdavPass = ""
+                        },
+                        enabled = uiState.canExecute,
+                        icon = Icons.Rounded.Link,
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.backup_save_config),
+                        onClick = {
+                            val accepted = viewModel.saveWebDavConfig(
+                                tempWebdavUrl,
+                                tempWebdavUser,
+                                tempWebdavPass.takeIf { it.isNotEmpty() }?.toCharArray(),
+                            )
+                            if (accepted) tempWebdavPass = ""
+                        },
+                        enabled = uiState.canExecute,
+                        icon = Icons.Rounded.CloudSync,
+                        tone = InfinityPillTone.PRIMARY,
+                    )
                 }
 
                 backupOperationText(uiState.operation)?.let { status ->
@@ -437,7 +432,11 @@ internal fun BackupSettingsScreenContent(
                                 MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (uiState.operation.isCancellable) {
-                            TextButton(onClick = actions.onCancelOperation) { Text(stringResource(R.string.common_btn_cancel)) }
+                            InfinityPillButton(
+                                text = stringResource(R.string.common_btn_cancel),
+                                onClick = actions.onCancelOperation,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                         }
                     }
                 }

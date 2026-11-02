@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,7 +24,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +47,7 @@ import com.promenar.infinity.domain.repository.DailyTokenStats
 import com.promenar.infinity.domain.repository.SessionTokenUsage
 import com.promenar.infinity.ui.common.ConfirmDialog
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
@@ -124,12 +123,10 @@ internal fun TokenUsageScreenContent(
                 ),
                 color = MaterialTheme.colorScheme.error,
             )
-            TextButton(
+            InfinityRetryButton(
                 onClick = onRetry,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text(stringResource(R.string.common_retry))
-            }
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp),
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
 

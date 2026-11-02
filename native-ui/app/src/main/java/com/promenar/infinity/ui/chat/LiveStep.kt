@@ -3,18 +3,17 @@ package com.promenar.infinity.ui.chat
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
@@ -43,7 +42,6 @@ import com.promenar.infinity.ui.common.GenerationDots
 import com.promenar.infinity.ui.common.motion.GenerationMotion
 import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
 import com.promenar.infinity.ui.common.motion.LocalGenerationMotion
-import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.delay
@@ -337,7 +335,6 @@ internal fun LiveToolTicker(step: LiveStep) {
  * 流末尾的等待行：“等待模型响应”或“正在准备工具调用”，前为动画、后为计时。
  * 等待模型超过 30 秒仍无输出时文字改为警示色，下方说明可能原因，并提供 [onStopGeneration] 只停止本轮、不重跑已执行的工具。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, modifier: Modifier = Modifier) {
     val startedAt = step.startedAt
@@ -373,26 +370,24 @@ internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, mod
             }
         }
         if (stalled) {
-            // 说明与停止入口同一行，放不下时按钮换到下一行。
-            FlowRow(
+            // 说明在左，停止图标按钮在行尾；说明过长时自行换行，不挤压按钮。
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = stringResource(R.string.live_step_stalled_hint),
                     style = InfinityTypography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.testTag(LIVE_STEP_STALLED_HINT_TAG),
+                    modifier = Modifier.weight(1f).testTag(LIVE_STEP_STALLED_HINT_TAG),
                 )
                 if (onStopGeneration != null) {
-                    TextButton(
-                        onClick = onStopGeneration,
-                        colors = ButtonDefaults.textButtonColors(contentColor = warning),
-                        contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(LIVE_STEP_STOP_TAG),
-                    ) {
-                        Text(stringResource(R.string.live_step_stop), style = InfinityTypography.labelLarge)
+                    IconButton(onClick = onStopGeneration, modifier = Modifier.testTag(LIVE_STEP_STOP_TAG)) {
+                        Icon(
+                            Icons.Rounded.Stop,
+                            contentDescription = stringResource(R.string.live_step_stop),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }

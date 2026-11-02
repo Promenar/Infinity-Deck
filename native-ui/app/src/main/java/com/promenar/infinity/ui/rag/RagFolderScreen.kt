@@ -26,10 +26,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Deselect
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -82,6 +85,10 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import com.promenar.infinity.ui.common.InfinityMenuItem
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinityRetryButton
 
 internal enum class RagFolderContentState { Loading, Error, Empty, Content }
 
@@ -363,31 +370,42 @@ internal fun RagFolderScreenContent(
                                 stringResource(R.string.rag_home_selected_count, state.selectedIds.size),
                                 style = MaterialTheme.typography.titleSmall,
                             )
-                            TextButton(
+                            // 清除选择是退出多选，用行尾关闭图标，不再占一个文字按钮。
+                            IconButton(
                                 onClick = state.selectedIds::clear,
                                 enabled = operationsEnabled,
                                 modifier = Modifier.testTag(UiTags.RAG_FOLDER_CLEAR_SELECTION),
-                            ) { Text(stringResource(R.string.rag_home_clear_all)) }
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.rag_home_clear_all))
+                            }
                         }
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            TextButton(
+                            InfinityPillButton(
+                                text = stringResource(R.string.rag_home_move),
                                 onClick = { showMoveSheet = true },
                                 enabled = operationsEnabled,
+                                icon = Icons.Rounded.Folder,
                                 modifier = Modifier.testTag(UiTags.RAG_FOLDER_MOVE_SELECTION),
-                            ) { Text(stringResource(R.string.rag_home_move)) }
-                            TextButton(
+                            )
+                            InfinityPillButton(
+                                text = stringResource(R.string.rag_home_reindex),
                                 onClick = { actions.onReindex(state.selectedIds.toList()) },
                                 enabled = operationsEnabled,
+                                icon = Icons.Rounded.Refresh,
                                 modifier = Modifier.testTag(UiTags.RAG_FOLDER_REINDEX_SELECTION),
-                            ) { Text(stringResource(R.string.rag_home_reindex)) }
-                            TextButton(
+                            )
+                            InfinityPillButton(
+                                text = stringResource(R.string.shared_btn_delete),
                                 onClick = { showDeleteConfirm = true },
+                                tone = InfinityPillTone.DANGER,
                                 enabled = operationsEnabled,
+                                icon = Icons.Rounded.Delete,
                                 modifier = Modifier.testTag(UiTags.RAG_FOLDER_DELETE_SELECTION),
-                            ) { Text(stringResource(R.string.shared_btn_delete), color = MaterialTheme.colorScheme.error) }
+                            )
                         }
                     }
                 }
@@ -440,18 +458,27 @@ internal fun RagFolderScreenContent(
                             canRetryPendingIndex = state.canRetryPendingRenameIndex,
                         )
                     ) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            if (retryAction != null) {
-                                TextButton(
-                                    onClick = retryAction,
+                        if (retryAction != null) {
+                            InfinityPillRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                InfinityPillButton(
+                                    text = stringResource(R.string.common_dismiss),
+                                    onClick = actions.onDismissIndexNotice,
                                     enabled = !retrying,
-                                ) { Text(stringResource(R.string.shared_btn_retry)) }
+                                )
+                                InfinityPillButton(
+                                    text = stringResource(R.string.shared_btn_retry),
+                                    onClick = retryAction,
+                                    tone = InfinityPillTone.PRIMARY,
+                                    enabled = !retrying,
+                                )
                             }
-                            TextButton(
-                                onClick = actions.onDismissIndexNotice,
-                                enabled = !retrying,
-                            ) {
-                                Text(stringResource(R.string.common_dismiss))
+                        } else {
+                            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                                InfinityPillButton(
+                                    text = stringResource(R.string.common_dismiss),
+                                    onClick = actions.onDismissIndexNotice,
+                                    enabled = !retrying,
+                                )
                             }
                         }
                     }
@@ -610,9 +637,7 @@ private fun RagFolderLoadErrorState(onRetry: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(stringResource(R.string.common_cd_failed), color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onRetry, modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)) {
-                Text(stringResource(R.string.shared_btn_retry))
-            }
+            InfinityRetryButton(onClick = onRetry, modifier = Modifier.padding(top = 12.dp))
         }
     }
 }

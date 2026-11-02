@@ -25,21 +25,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.promenar.infinity.R
 import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -112,12 +109,12 @@ fun FolderEntriesList(
                     error = true,
                     modifier = Modifier.then(if (statusTag != null) Modifier.testTag(statusTag) else Modifier),
                 ) {
-                    if (onRetry != null) TextButton(
+                    if (onRetry != null) InfinityRetryButton(
                         onClick = onRetry,
                         modifier = Modifier
-                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .padding(top = InfinitySpacing.Small)
                             .then(if (retryTag != null) Modifier.testTag(retryTag) else Modifier),
-                    ) { Text(stringResource(R.string.shared_btn_retry)) }
+                    )
                 }
                 FolderListPhase.Empty -> FolderStatusMessage(
                     text = emptyText,

@@ -2,6 +2,13 @@ package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.common.InfinitySheetHeight
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinitySplitPillButton
+import androidx.compose.material.icons.rounded.UploadFile
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.Key
 import com.promenar.infinity.ui.common.UnavailableReasons
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
@@ -13,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -46,7 +54,6 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +62,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.DisposableEffect
@@ -120,6 +126,7 @@ import kotlinx.coroutines.withContext
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.TimerOff
 import androidx.compose.runtime.LaunchedEffect
 import com.promenar.infinity.data.ssh.SshTerminalIdlePolicy
@@ -1046,29 +1053,24 @@ internal fun SshHostEditorForm(
                     if (fields.authType == SshAuthType.PASSWORD) {
                         SshEditorField(fields.password, { fields.password = it }, R.string.ssh_password, secret = true, enabled = !busy, isError = errorCode == "SSH_PASSWORD_REQUIRED")
                     } else {
-                        TextButton(
+                        // 导入文件是主要来源；粘贴与生成收进相连的箭头段菜单，不再各占一整行。
+                        InfinitySplitPillButton(
+                            text = stringResource(R.string.ssh_import_key),
                             onClick = onImportKey,
+                            moreContentDescription = stringResource(R.string.ssh_key_more_cd),
                             enabled = !busy,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                        ) {
-                            Text(stringResource(R.string.ssh_import_key))
-                        }
-                        TextButton(
-                            onClick = onPasteKey,
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("ssh_editor_paste_key"),
-                        ) {
-                            Text(stringResource(R.string.ssh_paste_key))
+                            icon = Icons.Rounded.UploadFile,
+                            mainModifier = Modifier.testTag("ssh_editor_import_key"),
+                            moreModifier = Modifier.testTag("ssh_editor_key_more"),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { dismiss ->
+                            SshKeySourceMenuItems(
+                                onPasteKey = { dismiss(); onPasteKey() },
+                                onGenerate = { dismiss(); onGenerate() },
+                            )
                         }
                         if (keySource != null) {
                             SshEditorField(fields.passphrase, { fields.passphrase = it }, R.string.ssh_passphrase, secret = true, enabled = !busy)
-                        }
-                        TextButton(
-                            onClick = onGenerate,
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                        ) {
-                            Text(stringResource(R.string.ssh_generate_save_copy))
                         }
                     }
                 }
@@ -1105,26 +1107,40 @@ internal fun SshHostEditorForm(
         if (busy) {
             CircularProgressIndicator(modifier = Modifier.padding(top = InfinitySpacing.Small).size(InfinitySpacing.XLarge))
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = InfinitySpacing.Medium),
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        InfinityPillRow(
+            modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Large, top = InfinitySpacing.Medium, end = InfinitySpacing.Large),
+            spacing = InfinitySpacing.Small,
         ) {
-            TextButton(
+            InfinityPillButton(
+                text = stringResource(R.string.ssh_cancel),
                 onClick = onCancel,
                 enabled = !busy,
-                modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget),
-            ) {
-                Text(stringResource(R.string.ssh_cancel))
-            }
-            Button(
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.ssh_save),
                 onClick = onSave,
+                tone = InfinityPillTone.PRIMARY,
                 enabled = !busy,
-                modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget),
-            ) {
-                Text(stringResource(R.string.ssh_save))
-            }
+            )
         }
     }
+}
+
+/** 私钥来源分体按钮的菜单项；截图预览以静态浮层渲染同一内容。 */
+@Composable
+internal fun ColumnScope.SshKeySourceMenuItems(onPasteKey: () -> Unit, onGenerate: () -> Unit) {
+    InfinityMenuItem(
+        text = { Text(stringResource(R.string.ssh_paste_key), maxLines = 2) },
+        leadingIcon = { Icon(Icons.Rounded.ContentPaste, contentDescription = null) },
+        onClick = onPasteKey,
+        modifier = Modifier.testTag("ssh_editor_paste_key"),
+    )
+    InfinityMenuItem(
+        text = { Text(stringResource(R.string.ssh_generate_save_copy), maxLines = 2) },
+        leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
+        onClick = onGenerate,
+        modifier = Modifier.testTag("ssh_editor_generate_key"),
+    )
 }
 
 @Composable
@@ -1170,14 +1186,14 @@ private fun SshEditorField(
 /** 主机名输入框行尾的“Tailscale”：打开 tailnet 设备选择；未连接时灰显，原因写在输入框下方。 */
 @Composable
 private fun SshTailnetPickButton(enabled: Boolean, onClick: () -> Unit) {
-    TextButton(
+    InfinityPillButton(
+        text = stringResource(R.string.ssh_tailnet_pick_button),
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.padding(end = InfinitySpacing.XSmall).heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("ssh_editor_tailnet"),
-    ) {
-        Icon(Icons.Rounded.Hub, contentDescription = null, modifier = Modifier.size(InfinitySpacing.Large))
-        Text(stringResource(R.string.ssh_tailnet_pick_button), modifier = Modifier.padding(start = InfinitySpacing.XSmall))
-    }
+        icon = Icons.Rounded.Hub,
+        compact = true,
+        modifier = Modifier.padding(end = InfinitySpacing.XSmall).testTag("ssh_editor_tailnet"),
+    )
 }
 
 /** 选中的设备不在 Tailscale 设备白名单内：保存不受影响，但连接前需先加入白名单。 */
@@ -1186,10 +1202,12 @@ private fun SshTailnetBlockedNotice(name: String, onOpenAllowlist: (() -> Unit)?
     Column(Modifier.fillMaxWidth().testTag("ssh_editor_tailnet_blocked")) {
         InfinityStatusStrip(kind = InfinityStatusKind.Warning, message = stringResource(R.string.ssh_tailnet_blocked, name))
         if (onOpenAllowlist != null) {
-            TextButton(
+            InfinityPillButton(
+                text = stringResource(R.string.ssh_tailnet_open_allowlist),
                 onClick = onOpenAllowlist,
-                modifier = Modifier.align(Alignment.End).heightIn(min = InfinitySpacing.MinimumTouchTarget),
-            ) { Text(stringResource(R.string.ssh_tailnet_open_allowlist)) }
+                icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                modifier = Modifier.align(Alignment.End).padding(top = InfinitySpacing.XSmall),
+            )
         }
     }
 }

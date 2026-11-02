@@ -14,8 +14,6 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.compositeOver
@@ -43,7 +41,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -71,6 +68,9 @@ import com.promenar.infinity.startup.StartupStep
 import com.promenar.infinity.startup.diagnostics.AppDiagnostics
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -302,18 +302,19 @@ fun StartupIssuesSheetContent(
                 }
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.CenterHorizontally),
-        ) {
-            TextButton(onClick = onViewRecords, modifier = Modifier.heightIn(min = 48.dp).testTag(StartupIssuesTags.RECORDS)) {
-                Icon(Icons.AutoMirrored.Rounded.Article, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(stringResource(R.string.startup_issues_records), modifier = Modifier.padding(start = 6.dp))
-            }
-            TextButton(onClick = onExport, modifier = Modifier.heightIn(min = 48.dp).testTag(StartupIssuesTags.EXPORT)) {
-                Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(stringResource(R.string.startup_issues_export), modifier = Modifier.padding(start = 6.dp))
-            }
+        InfinityPillRow(modifier = Modifier.fillMaxWidth(), reverseWhenStacked = false) {
+            InfinityPillButton(
+                text = stringResource(R.string.startup_issues_records),
+                onClick = onViewRecords,
+                icon = Icons.AutoMirrored.Rounded.Article,
+                modifier = Modifier.testTag(StartupIssuesTags.RECORDS),
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.startup_issues_export),
+                onClick = onExport,
+                icon = Icons.Rounded.Download,
+                modifier = Modifier.testTag(StartupIssuesTags.EXPORT),
+            )
         }
     }
 }
@@ -369,24 +370,23 @@ private fun StartupIssueItem(
                 CircularProgressIndicator(Modifier.padding(end = InfinitySpacing.Medium).size(20.dp), strokeWidth = 2.dp)
             } else {
                 if (StartupIssueAction.ABANDON in issue.actions) {
-                    TextButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.startup_issues_abandon_short),
                         onClick = { onAction(issue, StartupIssueAction.ABANDON) },
-                        colors = ButtonDefaults.textButtonColors(contentColor = colors.onSurfaceVariant),
-                        modifier = Modifier.heightIn(min = 48.dp).testTag(StartupIssuesTags.action(issue.id, StartupIssueAction.ABANDON)),
-                    ) { Text(stringResource(R.string.startup_issues_abandon_short)) }
+                        tone = InfinityPillTone.DANGER,
+                        compact = true,
+                        modifier = Modifier.testTag(StartupIssuesTags.action(issue.id, StartupIssueAction.ABANDON)),
+                    )
                 }
                 if (StartupIssueAction.RETRY in issue.actions) {
-                    FilledTonalButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.startup_issues_retry),
                         onClick = { onAction(issue, StartupIssueAction.RETRY) },
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = colors.primary.copy(alpha = 0.14f),
-                            contentColor = colors.primary,
-                        ),
-                        modifier = Modifier.heightIn(min = 40.dp).testTag(StartupIssuesTags.action(issue.id, StartupIssueAction.RETRY)),
-                    ) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text(stringResource(R.string.startup_issues_retry), modifier = Modifier.padding(start = 6.dp))
-                    }
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.Refresh,
+                        compact = true,
+                        modifier = Modifier.testTag(StartupIssuesTags.action(issue.id, StartupIssueAction.RETRY)),
+                    )
                 }
             }
         }

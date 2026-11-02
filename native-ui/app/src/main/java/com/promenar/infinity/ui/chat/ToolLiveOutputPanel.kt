@@ -8,10 +8,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -68,12 +72,23 @@ internal fun ToolLiveOutputPanel(
                 modifier = Modifier.weight(1f),
             )
             if (showStop && snapshot.stoppable) {
-                TextButton(
-                    onClick = onStop,
-                    enabled = !snapshot.stopRequested,
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("CHAT_TOOL_LIVE_STOP"),
-                ) {
-                    Text(stringResource(if (snapshot.stopRequested) R.string.chat_tool_live_stopping else R.string.chat_tool_live_stop))
+                // 已请求停止时以文字说明进度，代替不可再点的图标按钮。
+                if (snapshot.stopRequested) {
+                    Text(
+                        text = stringResource(R.string.chat_tool_live_stopping),
+                        style = InfinityTypography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.heightIn(min = 48.dp).wrapContentHeight().padding(horizontal = 8.dp),
+                    )
+                } else {
+                    IconButton(onClick = onStop, modifier = Modifier.testTag("CHAT_TOOL_LIVE_STOP")) {
+                        Icon(
+                            Icons.Rounded.Stop,
+                            contentDescription = stringResource(R.string.chat_tool_live_stop),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
         }

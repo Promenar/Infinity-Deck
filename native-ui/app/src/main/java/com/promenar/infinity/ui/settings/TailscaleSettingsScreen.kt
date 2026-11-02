@@ -23,7 +23,6 @@ import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
@@ -31,6 +30,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.rounded.Add
 import com.promenar.infinity.data.ssh.SshHost
 import com.promenar.infinity.ui.common.InfinityIdentifierText
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.ssh.SshTailnetCandidate
 import com.promenar.infinity.ui.ssh.sshTailnetCandidates
 import androidx.compose.ui.semantics.stateDescription
@@ -43,7 +45,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -54,7 +55,6 @@ import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
@@ -450,14 +450,13 @@ private fun TailscalePeerSshAction(peer: TailnetPeer, existingAlias: String?, on
         return
     }
     val description = stringResource(R.string.ssh_tailnet_add_host_cd, peer.name)
-    TextButton(
+    InfinityPillButton(
+        text = stringResource(R.string.ssh_tailnet_add_host),
         onClick = onAdd,
-        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("tailscale_peer_add_ssh:${peer.name}")
-            .semantics { contentDescription = description },
-    ) {
-        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(InfinitySpacing.Large))
-        Text(stringResource(R.string.ssh_tailnet_add_host), modifier = Modifier.padding(start = InfinitySpacing.XSmall))
-    }
+        icon = Icons.Rounded.Add,
+        compact = true,
+        modifier = Modifier.testTag("tailscale_peer_add_ssh:${peer.name}").semantics { contentDescription = description },
+    )
 }
 
 /** 设备类别图标，右下角小点表示是否在线；提供商表单的设备面板复用。 */
@@ -556,19 +555,15 @@ private fun TailscaleEditorButtons(
     onSave: () -> Unit,
     saveTag: String,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = InfinitySpacing.Medium),
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-            Text(stringResource(R.string.common_cancel))
-        }
-        Button(
+    InfinityPillRow(Modifier.fillMaxWidth().padding(top = InfinitySpacing.Medium)) {
+        InfinityPillButton(text = stringResource(R.string.common_cancel), onClick = onCancel)
+        InfinityPillButton(
+            text = stringResource(R.string.shared_btn_save),
             onClick = onSave,
             enabled = saveEnabled,
-            modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(saveTag),
-        ) { Text(stringResource(R.string.shared_btn_save)) }
+            tone = InfinityPillTone.PRIMARY,
+            modifier = Modifier.testTag(saveTag),
+        )
     }
 }
 

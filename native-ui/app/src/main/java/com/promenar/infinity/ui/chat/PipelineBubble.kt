@@ -26,8 +26,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.horizontalScroll
@@ -53,7 +51,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -91,6 +88,13 @@ import com.promenar.infinity.ui.common.rememberInfinityMenuTouch
 import com.promenar.infinity.ui.common.infinityMenuTouch
 import com.promenar.infinity.ui.common.InfinityMenuTouch
 import com.promenar.infinity.ui.common.InfinityMenuDivider
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillMenuButton
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.Settings
+import com.promenar.infinity.ui.common.InfinityPillTone
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 
 // ─────────────────────────────────────────────────────────────────
 //  Pipeline 数据结构
@@ -528,42 +532,69 @@ data class GenerationFailureActions(
     val onOpenTailscaleSettings: (() -> Unit)?,
 )
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: GenerationFailureActions) {
-    val contentColor = MaterialTheme.colorScheme.onErrorContainer
-    val buttonColors = ButtonDefaults.textButtonColors(contentColor = contentColor)
-    FlowRow(
+    // 最多两个胶囊并排，主操作在右；其余处理方式收进行尾“⋯”，避免三个按钮竖排撑高失败气泡。
+    val fixAction = when (kind) {
+        TailnetFailureKind.DISABLED -> R.string.tailnet_failure_action_enable to UiTags.CHAT_TAILNET_FAILURE_ENABLE
+        TailnetFailureKind.NEEDS_LOGIN -> R.string.tailnet_failure_action_login to UiTags.CHAT_TAILNET_FAILURE_LOGIN
+        TailnetFailureKind.UNREACHABLE -> null
+    }
+    val openSettings = actions.onOpenTailscaleSettings
+    val showFix = fixAction != null && openSettings != null
+    val settingsInMenu = kind == TailnetFailureKind.UNREACHABLE && openSettings != null
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp)
+            .padding(top = 8.dp)
             .testTag(UiTags.CHAT_TAILNET_FAILURE_ACTIONS),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        @Composable
-        fun Action(label: Int, tag: String, onClick: () -> Unit) {
-            TextButton(
-                onClick = onClick,
-                colors = buttonColors,
-                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(tag),
-            ) { Text(stringResource(label), fontWeight = FontWeight.Medium) }
+        InfinityPillRow(modifier = Modifier.weight(1f), spacing = 8.dp) {
+            if (showFix) {
+                InfinityPillButton(
+                    text = stringResource(R.string.tailnet_failure_action_retry),
+                    onClick = actions.onRetry,
+                    modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_RETRY),
+                )
+                InfinityPillButton(
+                    text = stringResource(fixAction!!.first),
+                    onClick = openSettings!!,
+                    tone = InfinityPillTone.PRIMARY,
+                    modifier = Modifier.testTag(fixAction.second),
+                )
+            } else {
+                InfinityPillButton(
+                    text = stringResource(R.string.tailnet_failure_action_switch_model),
+                    onClick = actions.onSwitchModel,
+                    modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_SWITCH),
+                )
+                InfinityPillButton(
+                    text = stringResource(R.string.tailnet_failure_action_retry),
+                    onClick = actions.onRetry,
+                    tone = InfinityPillTone.PRIMARY,
+                    modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_RETRY),
+                )
+            }
         }
-        when (kind) {
-            // 开启或登录后回到会话，用“重试”重新发送这条消息。
-            TailnetFailureKind.DISABLED -> {
-                actions.onOpenTailscaleSettings?.let { Action(R.string.tailnet_failure_action_enable, UiTags.CHAT_TAILNET_FAILURE_ENABLE, it) }
-                Action(R.string.tailnet_failure_action_retry, UiTags.CHAT_TAILNET_FAILURE_RETRY, actions.onRetry)
-                Action(R.string.tailnet_failure_action_switch_model, UiTags.CHAT_TAILNET_FAILURE_SWITCH, actions.onSwitchModel)
-            }
-            TailnetFailureKind.NEEDS_LOGIN -> {
-                actions.onOpenTailscaleSettings?.let { Action(R.string.tailnet_failure_action_login, UiTags.CHAT_TAILNET_FAILURE_LOGIN, it) }
-                Action(R.string.tailnet_failure_action_retry, UiTags.CHAT_TAILNET_FAILURE_RETRY, actions.onRetry)
-                Action(R.string.tailnet_failure_action_switch_model, UiTags.CHAT_TAILNET_FAILURE_SWITCH, actions.onSwitchModel)
-            }
-            TailnetFailureKind.UNREACHABLE -> {
-                Action(R.string.tailnet_failure_action_retry, UiTags.CHAT_TAILNET_FAILURE_RETRY, actions.onRetry)
-                Action(R.string.tailnet_failure_action_switch_model, UiTags.CHAT_TAILNET_FAILURE_SWITCH, actions.onSwitchModel)
-                actions.onOpenTailscaleSettings?.let { Action(R.string.tailnet_failure_action_settings, UiTags.CHAT_TAILNET_FAILURE_SETTINGS, it) }
+        if (showFix || settingsInMenu) {
+            InfinityPillMenuButton(contentDescription = stringResource(R.string.tailnet_failure_more_cd)) { dismiss ->
+                if (showFix) {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.tailnet_failure_action_switch_model)) },
+                        leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
+                        onClick = { dismiss(); actions.onSwitchModel() },
+                        modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_SWITCH),
+                    )
+                } else {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.tailnet_failure_action_settings)) },
+                        leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                        onClick = { dismiss(); openSettings!!() },
+                        modifier = Modifier.testTag(UiTags.CHAT_TAILNET_FAILURE_SETTINGS),
+                    )
+                }
             }
         }
     }
@@ -1341,11 +1372,12 @@ internal fun InlineToolRow(
                                 invocation.call?.id?.takeIf { invocation.complete && invocation.isCommand }?.let(commandOutputTarget)
                             }
                             if (linuxNavigation != null && outputTarget != null) {
-                                TextButton(
+                                InfinityPillButton(
+                                    text = stringResource(R.string.chat_tool_full_output),
                                     onClick = { linuxNavigation.openCommandOutput(outputTarget.first, outputTarget.second) },
-                                    contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
-                                    modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_TOOL_FULL_OUTPUT),
-                                ) { Text(stringResource(R.string.chat_tool_full_output), style = InfinityTypography.labelLarge) }
+                                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                                    modifier = Modifier.testTag(UiTags.CHAT_TOOL_FULL_OUTPUT),
+                                )
                             }
                             val invocationChanges = remember(invocation) { invocation.fileChanges }
                             if (invocationChanges.isNotEmpty()) {
@@ -1556,6 +1588,7 @@ internal fun ExpandableToolText(
         if (overflows || expanded) {
             ChatExpandLink(
                 text = stringResource(if (expanded) R.string.chat_step_collapse_all else R.string.chat_step_expand_all),
+                expanded = expanded,
                 onClick = { expanded = !expanded }, modifier = Modifier.testTag("CHAT_TOOL_EXPAND_ALL"),
             )
         }

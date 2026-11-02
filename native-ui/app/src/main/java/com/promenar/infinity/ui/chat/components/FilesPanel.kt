@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -68,6 +69,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -76,7 +78,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -118,6 +119,10 @@ import com.promenar.infinity.ui.common.IndexStatusBadge
 import com.promenar.infinity.ui.common.KgStatus
 import com.promenar.infinity.ui.common.KgStatusIcon
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -429,7 +434,7 @@ internal fun FilesPanel(
     Box(modifier = if (useScroll) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
         Column(
             modifier = (if (useScroll) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
-                .padding(bottom = if (showBatchBar) 88.dp else 0.dp),
+                .padding(bottom = if (showBatchBar) 128.dp else 0.dp),
         ) {
             val bodyModifier = if (useScroll) Modifier.weight(1f) else Modifier.fillMaxWidth()
             externalFolderManager?.let { manager ->
@@ -461,16 +466,23 @@ internal fun FilesPanel(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     Text(failedLabel, style = InfinityTypography.labelMedium, color = MaterialTheme.colorScheme.error)
-                    TextButton(
+                    val failureActionColors = IconButtonDefaults.iconButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    IconButton(
                         onClick = { requestDelete(failure.failedIds) },
                         enabled = !isDeleting,
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                    ) { Text(stringResource(R.string.shared_btn_retry)) }
-                    TextButton(
+                        colors = failureActionColors,
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.shared_btn_retry))
+                    }
+                    IconButton(
                         onClick = { deleteFailure = null },
                         enabled = !isDeleting,
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                    ) { Text(stringResource(R.string.common_dismiss)) }
+                        colors = failureActionColors,
+                    ) {
+                        Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_dismiss))
+                    }
                 }
             }
             groupLabel?.let { label ->
@@ -602,50 +614,46 @@ private fun BatchActionBar(
             .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f))
             .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     stringResource(R.string.files_selected_count, selectedCount),
                     style = InfinityTypography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                TextButton(
-                    onClick = onClear,
-                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.files_cancel),
-                        style = InfinityTypography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                // 取消多选是退出选择，用行尾关闭图标。
+                IconButton(onClick = onClear) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.files_cancel),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (onReindexAll != null) {
-                    TextButton(
-                        onClick = onReindexAll,
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.files_reindex),
-                            style = InfinityTypography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+            if (onReindexAll != null || onDeleteAll != null) {
+                InfinityPillRow(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    reverseWhenStacked = false,
+                ) {
+                    if (onReindexAll != null) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.files_reindex),
+                            onClick = onReindexAll,
+                            icon = Icons.Rounded.Refresh,
                         )
                     }
-                }
-                if (onDeleteAll != null) {
-                    TextButton(
-                        onClick = onDeleteAll,
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.shared_btn_move_to_recycle_bin),
-                            style = InfinityTypography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
+                    if (onDeleteAll != null) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.shared_btn_move_to_recycle_bin),
+                            onClick = onDeleteAll,
+                            tone = InfinityPillTone.DANGER,
+                            icon = Icons.Rounded.DeleteOutline,
                         )
                     }
                 }
@@ -1355,12 +1363,8 @@ private fun FilesPanelErrorState(
             color = MaterialTheme.colorScheme.error,
         )
         onRetry?.let { retry ->
-            TextButton(
-                onClick = retry,
-                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-            ) {
-                Text(stringResource(R.string.shared_btn_retry))
-            }
+            Spacer(modifier = Modifier.height(12.dp))
+            InfinityRetryButton(onClick = retry)
         }
     }
 }

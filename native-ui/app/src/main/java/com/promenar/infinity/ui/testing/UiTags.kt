@@ -123,6 +123,7 @@ object UiTags {
     const val SHARE_IMPORT_CANCEL = "share_import_cancel"
     const val SHARE_IMPORT_ACTION = "share_import_action"
     const val SHARE_IMPORT_DONE = "share_import_done"
+    const val SHARE_IMPORT_MORE = "share_import_more"
 
     // ============ Agent Hub ==========
     const val HUB_ROOT = "hub_root"
@@ -676,6 +677,7 @@ object UiTags {
     const val CHAT_SECRET_OUTPUT_COPY = "chat_secret_output_copy"
     const val CHAT_SECRET_OUTPUT_SAVE_AS = "chat_secret_output_save_as"
     const val CHAT_SECRET_OUTPUT_DESTROY = "chat_secret_output_destroy"
+    const val CHAT_SECRET_OUTPUT_MORE = "chat_secret_output_more"
     const val CHAT_SECRET_OUTPUT_DESTROY_CONFIRM = "chat_secret_output_destroy_confirm"
     const val CHAT_SECRET_SAVE_AS_CONFIRM = "chat_secret_save_as_confirm"
     fun chatSecretSaveAsTarget(kind: String) = "chat_secret_save_as_target_$kind"

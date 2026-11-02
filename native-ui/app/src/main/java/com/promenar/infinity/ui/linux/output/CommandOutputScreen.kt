@@ -38,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityPageLayout
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.common.InfinitySnackbarData
 import com.promenar.infinity.ui.common.InfinitySnackbarHost
@@ -242,9 +242,7 @@ private fun OutputPlaceholder(phase: CommandOutputPhase, onRetry: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         if (phase == CommandOutputPhase.FAILED || phase == CommandOutputPhase.PENDING) {
-            TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                Text(stringResource(R.string.linux_output_retry))
-            }
+            InfinityRetryButton(onClick = onRetry, text = stringResource(R.string.linux_output_retry))
         }
     }
 }

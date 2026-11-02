@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -28,7 +27,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -67,6 +65,7 @@ import androidx.media3.ui.compose.material3.buttons.PlayPauseButton
 import androidx.media3.ui.compose.material3.indicator.PositionAndDurationText
 import androidx.media3.ui.compose.material3.indicator.ProgressSlider
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.domain.media.MediaSource
@@ -241,10 +240,7 @@ internal fun MediaPlaybackError(onRetry: () -> Unit, modifier: Modifier = Modifi
             color = contentColor,
             textAlign = TextAlign.Center,
         )
-        TextButton(onClick = onRetry) {
-            Icon(Icons.Rounded.Refresh, contentDescription = null)
-            Text(stringResource(R.string.media_action_retry), modifier = Modifier.padding(start = 6.dp))
-        }
+        InfinityRetryButton(onClick = onRetry, text = stringResource(R.string.media_action_retry))
     }
 }
 

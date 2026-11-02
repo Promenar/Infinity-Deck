@@ -18,6 +18,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinityPageSearch
@@ -32,7 +35,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -134,9 +136,9 @@ internal fun LinuxPackagesContent(state: LinuxPackagesUiState, actions: LinuxPac
     val installed = state.visibleInstalled
     Column(modifier.fillMaxSize()) {
         LinuxPackagesProgress(state.operation)
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = InfinitySpacing.Large, end = InfinitySpacing.Small),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         ) {
             Text(
                 state.operation?.let { linuxPackageOperationHead(it) }
@@ -146,16 +148,22 @@ internal fun LinuxPackagesContent(state: LinuxPackagesUiState, actions: LinuxPac
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
-            if (lastOperation != null) {
-                TextButton(onClick = { showOutput = true }) { Text(stringResource(R.string.linux_packages_view_output)) }
+            InfinityPillRow(Modifier.fillMaxWidth()) {
+                if (lastOperation != null) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.linux_packages_view_output),
+                        onClick = { showOutput = true },
+                    )
+                }
+                InfinityPillButton(
+                    text = stringResource(R.string.linux_packages_upgrade_all),
+                    onClick = actions.onUpgradeAll,
+                    enabled = state.updateCount > 0 && state.operation == null,
+                    tone = InfinityPillTone.PRIMARY,
+                    modifier = Modifier.testTag(UiTags.LINUX_PACKAGES_UPGRADE_ALL),
+                )
             }
-            FilledTonalButton(
-                onClick = actions.onUpgradeAll,
-                enabled = state.updateCount > 0 && state.operation == null,
-                modifier = Modifier.testTag(UiTags.LINUX_PACKAGES_UPGRADE_ALL),
-            ) { Text(stringResource(R.string.linux_packages_upgrade_all)) }
         }
         InfinitySegmentedControl(
             segments = LinuxPackageFilter.entries.map { InfinitySegment(it, filterLabel(it, state.updateCount)) },
