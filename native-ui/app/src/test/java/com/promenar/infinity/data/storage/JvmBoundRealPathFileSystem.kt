@@ -38,6 +38,7 @@ internal class JvmBoundRealPathFileSystem : RealPathFileSystem {
     var pathParentMismatch = false
     var availableSpace = Long.MAX_VALUE
     var emulateFuse = false
+    var unlinkedStateErrno: Int? = null
     private val unlinkedObjects = mutableSetOf<String>()
 
     fun backend(root: File, forbiddenRoots: Set<Path> = emptySet(), permissionCheck: () -> Boolean = { true }): RealPathExternalFolderBackend =
@@ -161,16 +162,22 @@ internal class JvmBoundRealPathFileSystem : RealPathFileSystem {
             afterOperation?.invoke("delete", openedPath.resolve(name))
         }
         override fun deleteDirectory(name: String) {
+            beforeOperation?.invoke("delete-directory", openedPath.resolve(name))
             val state = attributes(child(name))
             Files.delete(child(name))
             unlinkedObjects += state.objectId
+            afterOperation?.invoke("delete-directory", openedPath.resolve(name))
         }
         override fun close() = Unit
     }
 
-    private fun heldState(path: Path, opened: RealPathFileState): RealPathFileState =
-        if (Files.exists(path, NOFOLLOW_LINKS)) attributes(path)
-        else if (opened.objectId in unlinkedObjects) opened.copy(linkCount = 0) else opened
+    private fun heldState(path: Path, opened: RealPathFileState): RealPathFileState {
+        if (opened.objectId in unlinkedObjects) {
+            unlinkedStateErrno?.let { throw android.system.ErrnoException("fstat", it) }
+            return opened.copy(linkCount = 0)
+        }
+        return if (Files.exists(path, NOFOLLOW_LINKS)) attributes(path) else opened
+    }
 
     private fun attributes(path: Path): RealPathFileState {
         val value = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
