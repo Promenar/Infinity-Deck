@@ -14,13 +14,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -241,6 +246,7 @@ private fun JobLogBody(
                     message = stringResource(R.string.job_log_refresh_failed),
                     error = true,
                     actionLabel = stringResource(R.string.shared_btn_retry),
+                    actionIcon = Icons.Rounded.Refresh,
                     actionTag = TAG_JOB_LOG_RETRY,
                     onAction = onRetry,
                 )
@@ -254,6 +260,7 @@ private fun JobLogBody(
                 message = stringResource(R.string.job_log_reading_slow),
                 progress = true,
                 actionLabel = stringResource(R.string.common_btn_cancel),
+                actionIcon = Icons.Rounded.Close,
                 actionTag = TAG_JOB_LOG_CANCEL,
                 onAction = onCancel,
             )
@@ -263,6 +270,7 @@ private fun JobLogBody(
                 message = stringResource(if (phase == JobLogPhase.Failed) R.string.agent_jobs_log_failed else R.string.job_log_read_cancelled),
                 error = phase == JobLogPhase.Failed,
                 actionLabel = stringResource(R.string.shared_btn_retry),
+                actionIcon = Icons.Rounded.Refresh,
                 actionTag = TAG_JOB_LOG_RETRY,
                 onAction = onRetry,
             )
@@ -304,6 +312,7 @@ private fun JobLogStatusRow(
     error: Boolean = false,
     progress: Boolean = false,
     actionLabel: String? = null,
+    actionIcon: ImageVector? = null,
     actionTag: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
@@ -321,13 +330,14 @@ private fun JobLogStatusRow(
             color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
-        if (actionLabel != null && onAction != null) {
-            TextButton(
+        // 行尾动作用图标按钮，文案作为读屏说明。
+        if (actionLabel != null && actionIcon != null && onAction != null) {
+            IconButton(
                 onClick = onAction,
-                modifier = Modifier
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .then(if (actionTag != null) Modifier.testTag(actionTag) else Modifier),
-            ) { Text(actionLabel) }
+                modifier = if (actionTag != null) Modifier.testTag(actionTag) else Modifier,
+            ) {
+                Icon(actionIcon, contentDescription = actionLabel, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

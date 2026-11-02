@@ -59,7 +59,11 @@ class SshHostEditorDiagnosisContractTest {
         val passwordBranch = Regex("""if \((?:\w+\.)?authType == SshAuthType\.PASSWORD\) \{""").find(editor)
         assertThat(passwordBranch).isNotNull()
         val keyBranch = editor.substring(passwordBranch!!.range.last).substringBefore("InfinitySettingsSection(")
-        val hasPasteEntry = "privateKeyText" in keyBranch || "getPrimaryClip" in keyBranch || "LocalClipboard" in keyBranch ||
+        // 粘贴入口收在私钥分体按钮的菜单里：分支内挂菜单并传入粘贴回调，菜单项本身用粘贴文案。
+        val menuItems = editor.substringAfter("fun ColumnScope.SshKeySourceMenuItems(").substringBefore("\n}\n")
+        val pasteInMenu = "SshKeySourceMenuItems(" in keyBranch && "onPasteKey" in keyBranch &&
+            Regex("""R\.string\.ssh_[a-z_]*paste[a-z_]*""").containsMatchIn(menuItems)
+        val hasPasteEntry = pasteInMenu || "privateKeyText" in keyBranch || "getPrimaryClip" in keyBranch || "LocalClipboard" in keyBranch ||
             Regex("""R\.string\.ssh_[a-z_]*paste[a-z_]*""").containsMatchIn(keyBranch)
         assertWithMessage("密钥认证分支没有粘贴私钥的入口").that(hasPasteEntry).isTrue()
         assertWithMessage("从剪贴板载入私钥后应清空剪贴板").that(editor).contains("clearPrimaryClip()")

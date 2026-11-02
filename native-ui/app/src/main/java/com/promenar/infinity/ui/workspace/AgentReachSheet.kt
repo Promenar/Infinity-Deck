@@ -11,7 +11,6 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,13 +35,14 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +73,7 @@ import com.promenar.infinity.domain.model.ExecutionMode
 import com.promenar.infinity.domain.model.ExecutionModeCodec
 import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
@@ -276,24 +277,22 @@ private fun SummaryCard(state: AgentReachState, mode: SessionRunMode, switch: Ag
                     val label = stringResource(R.string.agent_reach_workspace_switch)
                     // 停用或失败时把说明条的文字挂到按钮的状态描述上，读屏聚焦按钮即可听到原因。
                     val reason = hint?.let { reachSwitchHintText(it.kind) }
-                    TextButton(
+                    InfinityPillButton(
+                        text = stringResource(
+                            if (workspace is SessionWorkspaceUi.Unavailable) R.string.workspace_session_reselect
+                            else R.string.workspace_bar_switch,
+                        ),
                         onClick = switch.onChoose,
                         enabled = !switch.busy && workspace != SessionWorkspaceUi.Loading,
+                        compact = true,
                         modifier = Modifier
-                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .padding(start = 8.dp)
                             .semantics {
                                 contentDescription = label
                                 if (reason != null) stateDescription = reason
                             }
                             .testTag("agent_reach_workspace_switch"),
-                    ) {
-                        Text(
-                            stringResource(
-                                if (workspace is SessionWorkspaceUi.Unavailable) R.string.workspace_session_reselect
-                                else R.string.workspace_bar_switch,
-                            ),
-                        )
-                    }
+                    )
                 }
             }
             hint?.let { ReachSwitchHintStrip(it, onStop = switch?.onStopGeneration) }
@@ -342,11 +341,12 @@ private fun ReachSwitchHintStrip(hint: ReachSwitchHint, onStop: (() -> Unit)?) {
             modifier = Modifier.weight(1f),
         )
         if (hint.showStop && onStop != null) {
-            TextButton(
-                onClick = onStop,
-                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(REACH_STOP_GENERATION_TAG),
-            ) {
-                Text(stringResource(R.string.agent_reach_stop_generation), fontWeight = FontWeight.SemiBold)
+            IconButton(onClick = onStop, modifier = Modifier.testTag(REACH_STOP_GENERATION_TAG)) {
+                Icon(
+                    Icons.Rounded.Stop,
+                    contentDescription = stringResource(R.string.agent_reach_stop_generation),
+                    tint = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
@@ -586,7 +586,7 @@ private fun RunnerSection(state: AgentReachState, mode: SessionRunMode, actions:
     }
 }
 
-/** 合并说明的一行：小号次要文字，可带右侧文字按钮。 */
+/** 合并说明的一行：小号次要文字，可带行尾紧凑胶囊按钮。 */
 @Composable
 private fun ReachNoteRow(text: String, modifier: Modifier = Modifier, action: Pair<String, () -> Unit>? = null) {
     Row(
@@ -602,7 +602,14 @@ private fun ReachNoteRow(text: String, modifier: Modifier = Modifier, action: Pa
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f).padding(vertical = InfinitySpacing.Small),
         )
-        if (action != null) TextButton(onClick = action.second) { Text(action.first) }
+        if (action != null) {
+            InfinityPillButton(
+                text = action.first,
+                onClick = action.second,
+                compact = true,
+                modifier = Modifier.padding(start = InfinitySpacing.Small, end = InfinitySpacing.Small),
+            )
+        }
     }
 }
 

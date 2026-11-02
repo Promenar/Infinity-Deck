@@ -18,7 +18,7 @@
     <string name="ssh_auth_password">Password</string>
     <string name="ssh_password">Password</string>
     <string name="ssh_passphrase">Private key passphrase (optional)</string>
-    <string name="ssh_import_key">Import OpenSSH private key</string>
+    <string name="ssh_import_key">Import key file</string>
     <string name="ssh_key_import_help">Choose an OpenSSH private key file, or copy the whole key and paste it from the clipboard.</string>
     <string name="ssh_key_imported">Private key loaded in memory. Save to store it securely on this device.</string>
     <string name="ssh_generate_save_copy">Generate key, save and copy public key</string>
@@ -71,6 +71,7 @@
     <string name="ssh_terminal_reconnect">Reconnect</string>
     <!-- 主机编辑与操作的错误文案；代码映射见 SshErrorMessages。 -->
     <string name="ssh_paste_key">Paste private key from clipboard</string>
+    <string name="ssh_key_more_cd">Other key sources</string>
     <string name="ssh_key_pasted">Private key loaded from the clipboard, and the clipboard was cleared. Save to store it securely on this device.</string>
     <string name="ssh_error_alias_invalid">The host ID must start with a lowercase letter and use only lowercase letters, digits, _ and -, up to 48 characters. Leave it empty and fill in the hostname to generate one.</string>
     <string name="ssh_error_alias_taken">Another host already uses this ID. Choose a different one.</string>

@@ -24,7 +24,6 @@ import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +46,7 @@ import com.promenar.infinity.data.tailnet.TailnetEndpoints
 import com.promenar.infinity.data.tailnet.TailnetPeer
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityGroupDivider
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.theme.InfinityMotion
@@ -191,10 +191,12 @@ private fun BuiltInTailscaleRow(
             }
         }
         action?.let {
-            TextButton(
+            InfinityPillButton(
+                text = stringResource(it),
                 onClick = onOpenTailscaleSettings,
-                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(PROVIDER_TAILNET_ACTION_TAG),
-            ) { Text(stringResource(it)) }
+                compact = true,
+                modifier = Modifier.testTag(PROVIDER_TAILNET_ACTION_TAG),
+            )
         }
     }
 }
@@ -248,16 +250,14 @@ internal fun ProviderAddressHint(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(
+                InfinityPillButton(
+                    text = stringResource(
+                        if (toTailnet) R.string.provider_address_hint_use_tailnet else R.string.provider_address_hint_use_public,
+                    ),
                     onClick = { onSourceSelected(if (toTailnet) ProviderApiSource.TAILNET else ProviderApiSource.PUBLIC) },
-                    modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(PROVIDER_ADDRESS_HINT_FIX_TAG),
-                ) {
-                    Text(
-                        stringResource(
-                            if (toTailnet) R.string.provider_address_hint_use_tailnet else R.string.provider_address_hint_use_public,
-                        ),
-                    )
-                }
+                    compact = true,
+                    modifier = Modifier.padding(end = 8.dp).testTag(PROVIDER_ADDRESS_HINT_FIX_TAG),
+                )
             }
         }
         ProviderApiSourceHint.TAILNET_NEEDS_HTTPS, null -> Unit

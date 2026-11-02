@@ -38,7 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,6 +70,7 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import kotlinx.coroutines.delay
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityPillButton
 
 /** 卡片所处位置：正文中的块级卡片，或工具步骤中沿用缩略图视觉的卡片。 */
 enum class MediaCardStyle { MARKDOWN, TOOL }
@@ -577,14 +577,12 @@ fun WorkspaceMediaUnavailable(
                 modifier = Modifier.padding(top = 4.dp),
             )
             if (onLocate != null) {
-                TextButton(onClick = onLocate, modifier = Modifier.padding(top = 2.dp)) {
-                    Icon(Icons.Rounded.TravelExplore, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = stringResource(R.string.media_action_locate),
-                        style = InfinityTypography.labelMedium,
-                        modifier = Modifier.padding(start = 6.dp),
-                    )
-                }
+                InfinityPillButton(
+                    text = stringResource(R.string.media_action_locate),
+                    onClick = onLocate,
+                    icon = Icons.Rounded.TravelExplore,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }

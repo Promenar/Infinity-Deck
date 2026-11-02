@@ -35,7 +35,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +62,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.generation.TailnetWaitState
 import com.promenar.infinity.data.tailnet.TailnetConnectProgress
 import com.promenar.infinity.data.tailnet.TailnetConnectStep
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -282,14 +282,11 @@ internal fun TailnetWaitingCard(
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(
+                InfinityPillButton(
+                    text = stringResource(R.string.tailnet_connect_cancel),
                     onClick = onCancel,
-                    modifier = Modifier
-                        .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                        .testTag(TAILNET_CONNECT_CANCEL_TAG),
-                ) {
-                    Text(stringResource(R.string.tailnet_connect_cancel))
-                }
+                    modifier = Modifier.testTag(TAILNET_CONNECT_CANCEL_TAG),
+                )
             }
         }
     }

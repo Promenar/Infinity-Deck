@@ -27,7 +27,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -36,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,6 +59,9 @@ import com.promenar.infinity.domain.ask.AskUserQuestion
 import com.promenar.infinity.domain.ask.AskUserRequest
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.serialization.json.Json
@@ -303,17 +304,17 @@ internal fun AskUserCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onSkip, enabled = enabled, modifier = Modifier.testTag(UiTags.CHAT_ASK_SKIP)) {
-                    Text(stringResource(R.string.ask_card_skip))
-                }
-                Spacer(Modifier.weight(1f))
-                // 未到最后一题时主按钮是“下一题”；到最后一题时提交，所有题都答了才可用。
-                val primaryEnabled = enabled && if (last) complete else selections[tab].isNotEmpty()
-                Button(
+            // 未到最后一题时主按钮是“下一题”；到最后一题时提交，所有题都答了才可用。
+            val primaryEnabled = enabled && if (last) complete else selections[tab].isNotEmpty()
+            InfinityPillRow(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), spacing = 8.dp) {
+                InfinityPillButton(
+                    text = stringResource(R.string.ask_card_skip),
+                    onClick = onSkip,
+                    enabled = enabled,
+                    modifier = Modifier.testTag(UiTags.CHAT_ASK_SKIP),
+                )
+                InfinityPillButton(
+                    text = stringResource(if (last) R.string.ask_card_submit else R.string.ask_card_next),
                     onClick = {
                         if (last) {
                             haptics.perform(InfinityHapticEvent.CONFIRM)
@@ -322,11 +323,10 @@ internal fun AskUserCard(
                             tab += 1
                         }
                     },
+                    tone = InfinityPillTone.PRIMARY,
                     enabled = primaryEnabled,
-                    modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_ASK_SUBMIT),
-                ) {
-                    Text(stringResource(if (last) R.string.ask_card_submit else R.string.ask_card_next))
-                }
+                    modifier = Modifier.testTag(UiTags.CHAT_ASK_SUBMIT),
+                )
             }
         }
     }

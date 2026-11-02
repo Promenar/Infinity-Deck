@@ -33,17 +33,24 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.foundation.layout.ColumnScope
+import com.promenar.infinity.ui.common.InfinityMenuItem
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillMenuButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -416,39 +423,57 @@ internal fun SecretOutputCardContent(
                     )
                 }
             }
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                if (revealedText == null) {
-                    Button(
+            if (revealedText == null) {
+                // 保存为凭据与销毁是低频操作，收进复制旁的“更多”菜单，不与主操作抢位置；竖排时复制与“更多”仍同行。
+                InfinityPillRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    spacing = 8.dp,
+                    reverseWhenStacked = false,
+                ) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.secret_output_reveal),
                         onClick = onReveal,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_OUTPUT_REVEAL),
-                    ) { Text(stringResource(R.string.secret_output_reveal)) }
-                    OutlinedButton(
-                        onClick = onCopy,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_OUTPUT_COPY),
-                    ) { Text(stringResource(R.string.secret_output_copy)) }
-                    TextButton(
-                        onClick = onSaveAs,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_OUTPUT_SAVE_AS),
-                    ) { Text(stringResource(R.string.secret_output_save_as)) }
-                    TextButton(
-                        onClick = onDestroy,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_OUTPUT_DESTROY),
-                    ) {
-                        Text(stringResource(R.string.secret_output_destroy), color = MaterialTheme.colorScheme.error)
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.Visibility,
+                        modifier = Modifier.testTag(UiTags.CHAT_SECRET_OUTPUT_REVEAL),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.secret_output_copy),
+                            onClick = onCopy,
+                            icon = Icons.Rounded.ContentCopy,
+                            modifier = Modifier.weight(1f).testTag(UiTags.CHAT_SECRET_OUTPUT_COPY),
+                        )
+                        InfinityPillMenuButton(
+                            contentDescription = stringResource(R.string.secret_output_more_cd),
+                            modifier = Modifier.testTag(UiTags.CHAT_SECRET_OUTPUT_MORE),
+                        ) { dismiss ->
+                            SecretOutputMoreMenuItems(
+                                onSaveAs = { dismiss(); onSaveAs() },
+                                onDestroy = { dismiss(); onDestroy() },
+                            )
+                        }
                     }
-                } else {
-                    FilledTonalButton(
+                }
+            } else {
+                InfinityPillRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    spacing = 8.dp,
+                    reverseWhenStacked = false,
+                ) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.secret_output_copy),
                         onClick = onCopy,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_OUTPUT_COPY),
-                    ) { Text(stringResource(R.string.secret_output_copy)) }
-                    OutlinedButton(
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.ContentCopy,
+                        modifier = Modifier.testTag(UiTags.CHAT_SECRET_OUTPUT_COPY),
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.secret_output_hide),
                         onClick = onHide,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CHAT_SECRET_OUTPUT_HIDE),
-                    ) { Text(stringResource(R.string.secret_output_hide)) }
+                        icon = Icons.Rounded.VisibilityOff,
+                        modifier = Modifier.testTag(UiTags.CHAT_SECRET_OUTPUT_HIDE),
+                    )
                 }
             }
             if (revealedText != null) {
@@ -728,5 +753,23 @@ private fun SecretEmptyNote(text: String) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 12.dp),
+    )
+}
+
+/** 保密输出卡“更多”菜单项；截图预览以静态浮层渲染同一内容。 */
+@Composable
+internal fun ColumnScope.SecretOutputMoreMenuItems(onSaveAs: () -> Unit, onDestroy: () -> Unit) {
+    InfinityMenuItem(
+        text = { Text(stringResource(R.string.secret_output_save_as)) },
+        leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
+        onClick = onSaveAs,
+        modifier = Modifier.testTag(UiTags.CHAT_SECRET_OUTPUT_SAVE_AS),
+    )
+    InfinityMenuItem(
+        text = { Text(stringResource(R.string.secret_output_destroy)) },
+        leadingIcon = { Icon(Icons.Rounded.DeleteForever, contentDescription = null) },
+        destructive = true,
+        onClick = onDestroy,
+        modifier = Modifier.testTag(UiTags.CHAT_SECRET_OUTPUT_DESTROY),
     )
 }

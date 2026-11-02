@@ -20,6 +20,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -28,7 +30,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -309,12 +310,9 @@ private fun ClosedBanner(error: String?, connecting: Boolean, onReconnect: () ->
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
-                onClick = onReconnect,
-                enabled = !connecting,
-                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(SshTerminalTags.RECONNECT),
-            ) {
-                Text(stringResource(R.string.ssh_terminal_reconnect))
+            // 横幅底色随错误状态切换，图标沿用横幅的内容色。
+            IconButton(onClick = onReconnect, enabled = !connecting, modifier = Modifier.testTag(SshTerminalTags.RECONNECT)) {
+                Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.ssh_terminal_reconnect))
             }
         }
     }
@@ -359,8 +357,8 @@ private fun ReadOnlyStatusLine(tab: SshReadOnlyTab, onStop: () -> Unit) {
             modifier = Modifier.weight(1f),
         )
         if (tab.kind == SshReadOnlyTab.Kind.EXEC) {
-            TextButton(onClick = onStop, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(SshTerminalTags.STOP)) {
-                Text(stringResource(R.string.ssh_term_stop), color = MaterialTheme.colorScheme.error)
+            IconButton(onClick = onStop, modifier = Modifier.testTag(SshTerminalTags.STOP)) {
+                Icon(Icons.Rounded.Stop, contentDescription = stringResource(R.string.ssh_term_stop), tint = MaterialTheme.colorScheme.error)
             }
         }
     }

@@ -3,11 +3,9 @@ package com.promenar.infinity.ui.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +21,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
@@ -38,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +44,10 @@ import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.jobs.BackgroundJobState
 import com.promenar.infinity.ui.chat.components.LocalAgentActivity
+import com.promenar.infinity.ui.common.InfinityDisclosureRow
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -136,13 +136,12 @@ internal fun PlanToolCard(model: PlanCardModel, arguments: String?, results: Lis
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
+            InfinityDisclosureRow(
+                text = stringResource(if (showRaw) R.string.tool_card_raw_hide else R.string.tool_card_raw_show),
+                expanded = showRaw,
                 onClick = { showRaw = !showRaw },
-                contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
-                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(PLAN_RAW_TOGGLE_TAG),
-            ) {
-                Text(stringResource(if (showRaw) R.string.tool_card_raw_hide else R.string.tool_card_raw_show), style = InfinityTypography.labelLarge)
-            }
+                modifier = Modifier.padding(start = InfinitySpacing.Small).testTag(PLAN_RAW_TOGGLE_TAG),
+            )
         }
         AnimatedVisibility(visible = showRaw) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = InfinitySpacing.XSmall)) {
@@ -317,25 +316,33 @@ internal fun JobToolCard(model: JobCardModel) {
         }
         val openLog = access?.onOpenLog?.takeIf { model.logReference != null }
         val canStop = liveRunning && jobId != null
-        if (openLog != null || canStop) {
-            Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-                if (openLog != null) {
-                    TextButton(
-                        onClick = { openLog(requireNotNull(model.logReference)) },
-                        contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(JOB_OPEN_LOG_TAG),
-                    ) { Text(stringResource(R.string.tool_card_job_open_log), style = InfinityTypography.labelLarge) }
-                }
-                if (canStop) {
-                    TextButton(
-                        onClick = { scope.launch { access?.jobs?.stop(requireNotNull(jobId)) } },
-                        contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(JOB_STOP_TAG),
-                    ) {
-                        Text(stringResource(R.string.tool_card_job_stop), style = InfinityTypography.labelLarge, color = MaterialTheme.colorScheme.error)
-                    }
-                }
+        val openLogButton: @Composable () -> Unit = {
+            InfinityPillButton(
+                text = stringResource(R.string.tool_card_job_open_log),
+                onClick = { openLog?.invoke(requireNotNull(model.logReference)) },
+                modifier = Modifier.testTag(JOB_OPEN_LOG_TAG),
+            )
+        }
+        val stopButton: @Composable () -> Unit = {
+            InfinityPillButton(
+                text = stringResource(R.string.tool_card_job_stop),
+                onClick = { scope.launch { access?.jobs?.stop(requireNotNull(jobId)) } },
+                tone = InfinityPillTone.DANGER,
+                modifier = Modifier.testTag(JOB_STOP_TAG),
+            )
+        }
+        when {
+            // 两个操作同级并排，放不下时按原顺序竖排；只有一个时不铺满整行。
+            openLog != null && canStop -> InfinityPillRow(
+                modifier = Modifier.fillMaxWidth(),
+                spacing = 8.dp,
+                reverseWhenStacked = false,
+            ) {
+                openLogButton()
+                stopButton()
             }
+            openLog != null -> openLogButton()
+            canStop -> stopButton()
         }
     }
 }
@@ -392,11 +399,8 @@ private fun ToolFieldRowView(row: ToolFieldRow) {
         if (!row.isHeader) {
             val valueStyle = InfinityTypography.bodySmall.copy(lineHeight = 18.sp)
             if (row.isLong) {
-                // 长值整块可点按展开，点按区域不小于 48dp。
-                Column(
-                    modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                        .clickable(role = Role.Button) { expanded = !expanded },
-                ) {
+                // 长值下方用折叠行切换展开，点按区域不小于 48dp。
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = row.value,
                         style = valueStyle,
@@ -404,11 +408,10 @@ private fun ToolFieldRowView(row: ToolFieldRow) {
                         maxLines = if (expanded) Int.MAX_VALUE else 3,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        stringResource(if (expanded) R.string.tool_card_fields_collapse else R.string.tool_card_fields_expand),
-                        style = InfinityTypography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 2.dp),
+                    InfinityDisclosureRow(
+                        text = stringResource(if (expanded) R.string.tool_card_fields_collapse else R.string.tool_card_fields_expand),
+                        expanded = expanded,
+                        onClick = { expanded = !expanded },
                     )
                 }
             } else {

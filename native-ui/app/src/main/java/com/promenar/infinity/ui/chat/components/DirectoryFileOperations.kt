@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -21,10 +20,10 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.RestoreFromTrash
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +57,9 @@ import com.promenar.infinity.domain.storage.IExternalFolderManager
 import com.promenar.infinity.domain.workspace.DirectoryFileOpCode
 import com.promenar.infinity.ui.common.FolderStatusMessage
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -195,9 +197,9 @@ internal fun DirectoryPasteBar(
     onPaste: () -> Unit,
     onCancel: () -> Unit,
 ) = Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = InfinitySpacing.Large, end = InfinitySpacing.Small, top = InfinitySpacing.Small, bottom = InfinitySpacing.Small),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
     ) {
         Text(
             pluralStringResource(
@@ -208,14 +210,21 @@ internal fun DirectoryPasteBar(
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = onCancel, enabled = !busy) { Text(stringResource(R.string.common_btn_cancel)) }
-        Spacer(Modifier.size(InfinitySpacing.XSmall))
-        Button(onClick = onPaste, enabled = canPaste && !busy, modifier = Modifier.testTag("directory_paste")) {
-            Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
-            Spacer(Modifier.size(InfinitySpacing.XSmall))
-            Text(stringResource(R.string.directory_paste_here))
+        InfinityPillRow(modifier = Modifier.fillMaxWidth()) {
+            InfinityPillButton(
+                text = stringResource(R.string.common_btn_cancel),
+                onClick = onCancel,
+                enabled = !busy,
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.directory_paste_here),
+                onClick = onPaste,
+                tone = InfinityPillTone.PRIMARY,
+                enabled = canPaste && !busy,
+                icon = Icons.Rounded.ContentPaste,
+                modifier = Modifier.testTag("directory_paste"),
+            )
         }
     }
 }
@@ -308,8 +317,11 @@ internal fun DirectoryRecycleList(
                             subtitleIsIdentifier = false,
                             icon = Icons.AutoMirrored.Rounded.InsertDriveFile,
                             trailingContent = {
-                                TextButton(
+                                IconButton(
                                     enabled = !busy,
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ),
                                     onClick = {
                                         busy = true
                                         failed = false
@@ -327,7 +339,9 @@ internal fun DirectoryRecycleList(
                                             }
                                         }
                                     },
-                                ) { Text(stringResource(R.string.mount_restore)) }
+                                ) {
+                                    Icon(Icons.Rounded.RestoreFromTrash, contentDescription = stringResource(R.string.mount_restore))
+                                }
                             },
                         )
                     }

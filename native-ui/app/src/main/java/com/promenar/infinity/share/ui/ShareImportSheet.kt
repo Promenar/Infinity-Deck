@@ -2,7 +2,6 @@ package com.promenar.infinity.share.ui
 
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,10 +20,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -57,7 +60,12 @@ import com.promenar.infinity.share.core.ShareRejectReason
 import com.promenar.infinity.share.core.ShareSessionChoice
 import com.promenar.infinity.share.core.ShareTargetKind
 import com.promenar.infinity.ui.common.InfinityFullscreenDialog
+import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillMenuButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.linux.files.LinuxDirectoryPicker
 import com.promenar.infinity.ui.linux.files.LinuxFilesScreen
 import com.promenar.infinity.ui.testing.UiTags
@@ -104,7 +112,7 @@ fun ShareImportSheet(
             text = { Text(stringResource(R.string.share_import_cancel_message)) },
             confirmButton = {
                 TextButton(onClick = { confirmCancel = false; onCancel() }) {
-                    Text(stringResource(R.string.share_import_cancel_confirm))
+                    Text(stringResource(R.string.share_import_cancel_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -210,59 +218,70 @@ internal fun ColumnScope.ShareImportSheetContent(
         // 全部导入成功后请求已确认，“稍后处理 / 取消导入”不再有意义，只留“完成”。
         val finished = shareImportFinished(state)
         Spacer(Modifier.height(InfinitySpacing.Medium))
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
-            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        ) {
-            if (!finished) {
-                TextButton(
+        if (finished) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                InfinityPillButton(
+                    text = stringResource(R.string.share_import_done),
                     onClick = onClose,
-                    enabled = !state.importing,
-                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_LATER).height(48.dp),
-                ) {
-                    Text(stringResource(R.string.share_import_later))
-                }
-                TextButton(
-                    onClick = onRequestCancel,
-                    enabled = !state.importing,
-                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_CANCEL).height(48.dp),
-                ) {
-                    Text(stringResource(R.string.share_import_cancel))
-                }
+                    tone = InfinityPillTone.PRIMARY,
+                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_DONE),
+                )
             }
-            if (state.error != null ||
+        } else {
+            val showRetry = state.error != null ||
                 state.items.any { it.status == ShareImportStatus.Rejected && it.reason?.retryable == true } ||
                 state.items.any { it.indexStatus in setOf(ShareIndexStatus.Failed, ShareIndexStatus.Partial) }
+            // “稍后处理 / 取消导入”低频且后者会删除暂存副本，收进“⋯”菜单；重试与导入留在操作行，主操作在最右。
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(
-                    onClick = onRetry,
-                    enabled = !state.importing && (
-                        state.canImportTo ||
-                            state.error in setOf(
-                                ShareImportErrorCode.PRESENT_FAILED,
-                                ShareImportErrorCode.POSTPONE_FAILED,
-                                ShareImportErrorCode.CANCEL_FAILED,
-                            )
-                        ),
-                    modifier = Modifier.height(48.dp),
-                ) { Text(stringResource(R.string.share_import_retry)) }
-            }
-            if (finished) {
-                Button(
-                    onClick = onClose,
-                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_DONE).height(48.dp),
-                ) { Text(stringResource(R.string.share_import_done)) }
-            } else {
-                Button(
-                    onClick = onImport,
-                    enabled = !state.importing && state.canImportTo &&
-                        state.items.any { it.status == ShareImportStatus.Pending },
-                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_ACTION).height(48.dp),
-                ) {
-                    Text(
-                        if (state.importing) stringResource(R.string.share_import_importing)
-                        else stringResource(R.string.share_import_action)
+                InfinityPillMenuButton(
+                    contentDescription = stringResource(R.string.share_import_more_cd),
+                    enabled = !state.importing,
+                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_MORE),
+                ) { dismiss ->
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.share_import_later)) },
+                        onClick = { dismiss(); onClose() },
+                        leadingIcon = { Icon(Icons.Rounded.Schedule, contentDescription = null) },
+                        modifier = Modifier.testTag(UiTags.SHARE_IMPORT_LATER),
+                    )
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.share_import_cancel)) },
+                        onClick = { dismiss(); onRequestCancel() },
+                        leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null) },
+                        destructive = true,
+                        modifier = Modifier.testTag(UiTags.SHARE_IMPORT_CANCEL),
+                    )
+                }
+                InfinityPillRow(modifier = Modifier.weight(1f)) {
+                    if (showRetry) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.share_import_retry),
+                            onClick = onRetry,
+                            enabled = !state.importing && (
+                                state.canImportTo ||
+                                    state.error in setOf(
+                                        ShareImportErrorCode.PRESENT_FAILED,
+                                        ShareImportErrorCode.POSTPONE_FAILED,
+                                        ShareImportErrorCode.CANCEL_FAILED,
+                                    )
+                                ),
+                        )
+                    }
+                    InfinityPillButton(
+                        text = if (state.importing) stringResource(R.string.share_import_importing)
+                        else stringResource(R.string.share_import_action),
+                        onClick = onImport,
+                        tone = InfinityPillTone.PRIMARY,
+                        enabled = !state.importing && state.canImportTo &&
+                            state.items.any { it.status == ShareImportStatus.Pending },
+                        modifier = Modifier.testTag(UiTags.SHARE_IMPORT_ACTION),
                     )
                 }
             }
@@ -332,14 +351,15 @@ private fun ShareImportTargets(
             tag = UiTags.SHARE_IMPORT_TARGET_LINUX,
         )
         if (options.linux == ShareLinuxAvailability.NeedsInstall) {
-            TextButton(
+            InfinityPillButton(
+                text = stringResource(R.string.share_import_ext_linux_install),
                 onClick = pickers.onInstallLinux,
                 enabled = enabled,
+                icon = Icons.Rounded.Download,
                 modifier = Modifier
                     .padding(start = 52.dp)
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
                     .testTag(UiTags.SHARE_IMPORT_LINUX_INSTALL),
-            ) { Text(stringResource(R.string.share_import_ext_linux_install)) }
+            )
         }
         if (state.selectedKind == ShareTargetKind.Linux && linuxReady) {
             SharePathBox(
@@ -429,13 +449,15 @@ private fun SharePathBox(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
+            InfinityPillButton(
+                text = action,
                 onClick = onAction,
                 enabled = enabled,
+                compact = true,
                 modifier = Modifier
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .padding(end = InfinitySpacing.XSmall)
                     .testTag(UiTags.SHARE_IMPORT_TARGET_CHANGE),
-            ) { Text(action) }
+            )
         }
     }
 }
@@ -520,13 +542,13 @@ private fun ShareSessionPickerSheet(picker: ShareSessionPickerState, pickers: Sh
                     }
                 }
             }
-            TextButton(
+            InfinityPillButton(
+                text = stringResource(R.string.share_import_ext_picker_cancel),
                 onClick = pickers.onDismissSessionPicker,
                 modifier = Modifier
                     .align(Alignment.End)
-                    .padding(horizontal = InfinitySpacing.Medium)
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget),
-            ) { Text(stringResource(R.string.share_import_ext_picker_cancel)) }
+                    .padding(horizontal = 20.dp, vertical = InfinitySpacing.Small),
+            )
         }
     }
 }
@@ -578,21 +600,20 @@ private fun ShareFolderPickerSheet(picker: ShareFolderPickerState, pickers: Shar
                     }
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
+            InfinityPillRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = InfinitySpacing.Small),
             ) {
-                TextButton(
+                InfinityPillButton(
+                    text = stringResource(R.string.share_import_ext_picker_cancel),
                     onClick = pickers.onDismissFolderPicker,
-                    modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                ) { Text(stringResource(R.string.share_import_ext_picker_cancel)) }
-                Button(
+                )
+                InfinityPillButton(
+                    text = stringResource(R.string.share_import_ext_picker_use),
                     onClick = pickers.onConfirmFolder,
+                    tone = InfinityPillTone.PRIMARY,
                     enabled = !picker.loading && !picker.failed,
-                    modifier = Modifier
-                        .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                        .testTag(UiTags.SHARE_IMPORT_FOLDER_CONFIRM),
-                ) { Text(stringResource(R.string.share_import_ext_picker_use)) }
+                    modifier = Modifier.testTag(UiTags.SHARE_IMPORT_FOLDER_CONFIRM),
+                )
             }
         }
     }

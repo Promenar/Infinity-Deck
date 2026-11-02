@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.common.InfinityDisclosureRow
 
 /** 紧凑图标按钮的可见与布局尺寸。 */
 internal val ChatCompactIconSize = 40.dp
@@ -69,13 +70,8 @@ internal fun ChatCompactApprovalButton(
     }
 }
 
-/** 文字链接的 48dp 命中范围不参与可见留白计算。 */
+/** 会话气泡里的展开/收起：统一用折叠行，[expanded] 决定箭头方向。 */
 @Composable
-internal fun ChatExpandLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(top = 4.dp).clickable(role = Role.Button, onClick = onClick),
-    )
+internal fun ChatExpandLink(text: String, expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    InfinityDisclosureRow(text = text, expanded = expanded, onClick = onClick, modifier = modifier)
 }

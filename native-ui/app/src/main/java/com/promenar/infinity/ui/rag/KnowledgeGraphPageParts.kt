@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Description
@@ -52,7 +53,6 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -69,7 +69,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -81,6 +80,8 @@ import com.promenar.infinity.data.rag.KgSessionOption
 import com.promenar.infinity.data.rag.KgSessionTurn
 import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.bettboxListGroup
 import com.promenar.infinity.ui.rag.canvas.KgEntityKind
@@ -259,9 +260,11 @@ internal fun KnowledgeGraphTurnStrip(
                     modifier = Modifier.weight(1f),
                 )
                 if (selected != null) {
-                    TextButton(onClick = { onSelectTurn(null) }) {
-                        Text(stringResource(R.string.kg_turn_show_all))
-                    }
+                    InfinityPillButton(
+                        text = stringResource(R.string.kg_turn_show_all),
+                        onClick = { onSelectTurn(null) },
+                        compact = true,
+                    )
                 }
             }
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -463,8 +466,12 @@ private fun KgEntitySourceRows(sources: KgEntitySources, onOpenSession: (String)
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { onOpenSession(sessionId) }) {
-                Text(stringResource(R.string.kg_entity_open_conversation))
+            IconButton(onClick = { onOpenSession(sessionId) }) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.OpenInNew,
+                    contentDescription = stringResource(R.string.kg_entity_open_conversation),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -583,9 +590,11 @@ internal fun KnowledgeGraphCanvasMessage(
             textAlign = TextAlign.Center,
         )
         if (actionLabel != null) {
-            TextButton(onClick = onAction, modifier = Modifier.padding(top = InfinitySpacing.Small)) {
-                Text(actionLabel, fontWeight = FontWeight.Medium)
-            }
+            InfinityPillButton(
+                text = actionLabel,
+                onClick = onAction,
+                modifier = Modifier.padding(top = InfinitySpacing.Small),
+            )
         }
     }
 }
@@ -619,9 +628,7 @@ internal fun KnowledgeGraphSessionOptionsContent(
                         color = MaterialTheme.colorScheme.error,
                     )
                     if (loadError.canRetry) {
-                        TextButton(onClick = onRetry, modifier = Modifier.sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)) {
-                            Text(stringResource(R.string.shared_btn_retry))
-                        }
+                        InfinityRetryButton(onClick = onRetry, modifier = Modifier.padding(top = InfinitySpacing.Small))
                     }
                 }
             }

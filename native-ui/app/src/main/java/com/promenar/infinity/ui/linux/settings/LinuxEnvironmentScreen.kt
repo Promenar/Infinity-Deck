@@ -37,7 +37,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,6 +69,9 @@ import com.promenar.infinity.domain.linux.LinuxStepStatus
 import com.promenar.infinity.domain.linux.LinuxUnavailableReason
 import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityDisclosureRow
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
@@ -286,9 +288,9 @@ private fun LinuxInstallGuideContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                TextButton(onClick = actions.onOpenTermux) { Text(stringResource(R.string.linux_open_termux)) }
-                TextButton(onClick = actions.onOpenSsh) { Text(stringResource(R.string.linux_open_ssh)) }
+            InfinityPillRow(Modifier.fillMaxWidth(), reverseWhenStacked = false) {
+                InfinityPillButton(text = stringResource(R.string.linux_open_termux), onClick = actions.onOpenTermux)
+                InfinityPillButton(text = stringResource(R.string.linux_open_ssh), onClick = actions.onOpenSsh)
             }
         },
     ) {
@@ -474,9 +476,11 @@ internal fun LinuxFailureCard(failure: LinuxFailure) {
             )
             val detail = failure.detail?.takeIf(String::isNotBlank)
             if (detail != null) {
-                TextButton(onClick = { expanded = !expanded }, contentPadding = ButtonDefaults.TextButtonContentPadding) {
-                    Text(stringResource(R.string.linux_failure_details), color = MaterialTheme.colorScheme.onErrorContainer)
-                }
+                InfinityDisclosureRow(
+                    text = stringResource(R.string.linux_failure_details),
+                    expanded = expanded,
+                    onClick = { expanded = !expanded },
+                )
                 if (expanded) {
                     SelectionContainer {
                         Text(

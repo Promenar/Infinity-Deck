@@ -101,6 +101,7 @@ internal fun ToolErrorBlock(content: String) {
         if (messageOverflows || detailsOverflow || expanded) {
             ChatExpandLink(
                 text = stringResource(if (expanded) R.string.chat_step_collapse_all else R.string.chat_step_expand_all),
+                expanded = expanded,
                 onClick = { expanded = !expanded },
                 modifier = Modifier.testTag("CHAT_TOOL_EXPAND_ALL"),
             )

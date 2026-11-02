@@ -1252,6 +1252,7 @@ internal fun ApprovalTextBlock(text: String, initiallyExpanded: Boolean = false,
             if (hasOverflow || expanded) {
                 ChatExpandLink(
                     text = stringResource(if (expanded) R.string.chat_inline_collapse else R.string.chat_inline_expand_all),
+                    expanded = expanded,
                     onClick = { expanded = !expanded },
                 )
             }

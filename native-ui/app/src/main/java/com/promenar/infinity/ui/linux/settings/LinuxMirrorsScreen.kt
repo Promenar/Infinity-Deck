@@ -47,6 +47,8 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.linux.LinuxMirrorChoice
 import com.promenar.infinity.domain.linux.LinuxMirrorId
 import com.promenar.infinity.domain.linux.LinuxMirrorSettings
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
@@ -205,10 +207,12 @@ internal fun LinuxMirrorsContent(
                             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = InfinityMonospace).forInput(),
                             modifier = Modifier.fillMaxWidth().testTag(UiTags.LINUX_MIRROR_CUSTOM_FIELD),
                         )
-                        TextButton(
+                        InfinityPillButton(
+                            text = stringResource(R.string.linux_mirror_custom_save),
                             onClick = { onSelect(LinuxMirrorChoice(LinuxMirrorId.CUSTOM, customDraft.trim())) },
                             enabled = isValidCustomMirror(customDraft),
-                        ) { Text(stringResource(R.string.linux_mirror_custom_save)) }
+                            tone = InfinityPillTone.PRIMARY,
+                        )
                     }
                 }
             }

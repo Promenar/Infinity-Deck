@@ -27,12 +27,10 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Web
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +58,8 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.artifact.ArtifactCandidate
 import com.promenar.infinity.data.artifact.ArtifactKind
 import com.promenar.infinity.data.artifact.ArtifactSummary
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.testing.UiTags
@@ -366,22 +366,25 @@ private fun CandidatesSection(
                         )
                     }
                     val ignoreLabel = stringResource(R.string.artifact_candidate_ignore_cd, candidate.fileName)
-                    TextButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.artifact_candidate_ignore),
                         onClick = { onIgnore(candidate) },
+                        compact = true,
                         modifier = Modifier
-                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
                             .semantics { contentDescription = ignoreLabel }
                             .testTag(UiTags.artifactIgnore(candidate.path)),
-                    ) { Text(stringResource(R.string.artifact_candidate_ignore)) }
+                    )
                     val claimLabel = stringResource(R.string.artifact_candidate_claim_cd, candidate.fileName)
-                    FilledTonalButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.artifact_candidate_claim),
                         onClick = { onClaim(candidate) },
-                        contentPadding = PaddingValues(horizontal = InfinitySpacing.Medium),
+                        tone = InfinityPillTone.PRIMARY,
+                        compact = true,
                         modifier = Modifier
-                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .padding(end = InfinitySpacing.XSmall)
                             .semantics { contentDescription = claimLabel }
                             .testTag(UiTags.artifactClaim(candidate.path)),
-                    ) { Text(stringResource(R.string.artifact_candidate_claim)) }
+                    )
                 }
             }
         }

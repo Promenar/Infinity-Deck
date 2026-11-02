@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
@@ -51,6 +52,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -59,7 +61,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
@@ -111,6 +112,7 @@ import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityNavigationHeader
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
@@ -893,14 +895,15 @@ internal fun ExternalMountFormContent(
                             .testTag("external_mount_real_path"),
                     )
                 } else {
-                    TextButton(
+                    InfinityPillButton(
+                        text = stringResource(R.string.mount_manual_path),
                         onClick = onShowManualPath,
                         enabled = !busy,
+                        icon = Icons.Rounded.Edit,
                         modifier = Modifier
-                            .padding(horizontal = InfinitySpacing.Small)
-                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .padding(horizontal = InfinitySpacing.Large)
                             .testTag("external_mount_manual_path"),
-                    ) { Text(stringResource(R.string.mount_manual_path)) }
+                    )
                 }
             }
             if (!isSaf && !realPathPermission) {
@@ -1249,9 +1252,11 @@ private fun ExternalMountRecyclePage(
                                         subtitle = Formatter.formatShortFileSize(context, entry.size),
                                         icon = Icons.AutoMirrored.Rounded.InsertDriveFile,
                                         trailingContent = {
-                                            TextButton(
-                                                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget),
+                                            IconButton(
                                                 enabled = !busy && !loading,
+                                                colors = IconButtonDefaults.iconButtonColors(
+                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                ),
                                                 onClick = {
                                                     busy = true
                                                     notice = null
@@ -1269,7 +1274,12 @@ private fun ExternalMountRecyclePage(
                                                         }
                                                     }
                                                 },
-                                            ) { Text(stringResource(R.string.mount_restore)) }
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.RestoreFromTrash,
+                                                    contentDescription = stringResource(R.string.mount_restore),
+                                                )
+                                            }
                                         },
                                     )
                                 }

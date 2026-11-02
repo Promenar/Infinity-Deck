@@ -9,15 +9,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -33,12 +30,12 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -341,6 +338,28 @@ private fun DirectoryFileView(
     val chooserTitle = stringResource(R.string.mount_open_external)
     var opening by remember(entry.path) { mutableStateOf(false) }
     var openNotice by remember(entry.path) { mutableStateOf<Int?>(null) }
+    val openExternal: () -> Unit = open@{
+        if (entry.size > EXTERNAL_OPEN_BYTES) {
+            openNotice = R.string.mount_open_limit
+            return@open
+        }
+        opening = true
+        openNotice = null
+        scope.launch {
+            try {
+                val intent = prepareExternalFileOpen(context, entry.name) { maxBytes -> readFile(entry.path, maxBytes) }
+                context.startActivity(
+                    Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                openNotice = R.string.mount_open_failed
+            } finally {
+                opening = false
+            }
+        }
+    }
     InfinityNavigationHeader(
         title = entry.name,
         onBack = onBack,
@@ -354,40 +373,18 @@ private fun DirectoryFileView(
                 maxLines = 2,
             )
         },
+        actions = {
+            // 用外部应用打开是文件页的唯一操作，放在页头行尾。
+            IconButton(
+                onClick = openExternal,
+                enabled = !opening,
+                colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_DIRECTORY_OPEN_EXTERNAL),
+            ) {
+                Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = chooserTitle)
+            }
+        },
     )
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-        TextButton(
-            enabled = !opening,
-            modifier = Modifier
-                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                .testTag(UiTags.RESOURCE_EXPLORER_DIRECTORY_OPEN_EXTERNAL),
-            onClick = {
-                if (entry.size > EXTERNAL_OPEN_BYTES) {
-                    openNotice = R.string.mount_open_limit
-                    return@TextButton
-                }
-                opening = true
-                openNotice = null
-                scope.launch {
-                    try {
-                        val intent = prepareExternalFileOpen(context, entry.name) { maxBytes -> readFile(entry.path, maxBytes) }
-                        context.startActivity(
-                            Intent.createChooser(intent, chooserTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        openNotice = R.string.mount_open_failed
-                    } finally {
-                        opening = false
-                    }
-                }
-            },
-        ) {
-            Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(chooserTitle, modifier = Modifier.padding(start = InfinitySpacing.XSmall))
-        }
-    }
     AnimatedVisibility(visible = opening, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.material3.Button
@@ -53,7 +54,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -94,6 +94,9 @@ import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySheetHeight
@@ -911,12 +914,12 @@ internal fun ModelSpecLibraryFailureNotice(
             Text(reason, style = MaterialTheme.typography.bodySmall, color = scheme.onSurface)
             Text(keptText, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
-        TextButton(
-            onClick = onRetry,
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag(UiTags.PROVIDER_MODELS_SPEC_RETRY),
-        ) {
-            Text(stringResource(R.string.model_spec_retry), style = MaterialTheme.typography.labelLarge)
+        IconButton(onClick = onRetry, modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_SPEC_RETRY)) {
+            Icon(
+                Icons.Rounded.Refresh,
+                contentDescription = stringResource(R.string.model_spec_retry),
+                tint = scheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -1011,30 +1014,37 @@ private fun ProviderModelsListMessage(
                     stateDescription = message
                 },
             )
-            if (primaryLabel != null && onPrimary != null || onAdd != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (primaryLabel != null && onPrimary != null) {
-                        FilledTonalButton(
-                            onClick = onPrimary,
-                            modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.PROVIDER_MODELS_EMPTY_SYNC),
-                        ) {
-                            Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(primaryLabel)
-                        }
-                    }
-                    if (onAdd != null) {
-                        TextButton(
-                            onClick = onAdd,
-                            modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.PROVIDER_MODELS_EMPTY_ADD),
-                        ) {
-                            Text(stringResource(R.string.provider_models_add_manually))
-                        }
-                    }
+            val syncAction = if (primaryLabel != null && onPrimary != null) primaryLabel to onPrimary else null
+            when {
+                syncAction != null && onAdd != null -> InfinityPillRow(Modifier.fillMaxWidth()) {
+                    ProviderModelsAddManuallyButton(onAdd)
+                    ProviderModelsEmptySyncButton(syncAction.first, syncAction.second)
                 }
+                syncAction != null -> ProviderModelsEmptySyncButton(syncAction.first, syncAction.second)
+                onAdd != null -> ProviderModelsAddManuallyButton(onAdd)
             }
         }
     }
+}
+
+@Composable
+private fun ProviderModelsAddManuallyButton(onClick: () -> Unit) {
+    InfinityPillButton(
+        text = stringResource(R.string.provider_models_add_manually),
+        onClick = onClick,
+        modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_EMPTY_ADD),
+    )
+}
+
+@Composable
+private fun ProviderModelsEmptySyncButton(label: String, onClick: () -> Unit) {
+    InfinityPillButton(
+        text = label,
+        onClick = onClick,
+        icon = Icons.Rounded.Sync,
+        tone = InfinityPillTone.PRIMARY,
+        modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_EMPTY_SYNC),
+    )
 }
 
 private fun NoticeSeverity.statusKind(): InfinityStatusKind = when (this) {

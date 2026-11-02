@@ -281,9 +281,10 @@ fun AgentEditScreen(
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        TextButton(onClick = viewModel::retryLastFailure) {
-                            Text(stringResource(R.string.common_retry))
-                        }
+                        InfinityRetryButton(
+                            onClick = viewModel::retryLastFailure,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
                     }
                 }
             }

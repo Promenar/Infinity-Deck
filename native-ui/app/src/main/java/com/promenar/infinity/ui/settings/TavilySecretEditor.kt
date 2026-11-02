@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.SecretField
 
 internal data class SearchSecretActions(
@@ -139,7 +139,7 @@ private fun SearchSecretEditor(
                     ),
                     color = MaterialTheme.colorScheme.error,
                 )
-                TextButton(
+                InfinityRetryButton(
                     onClick = {
                         actions.onRetry(
                             operation.code,
@@ -150,13 +150,8 @@ private fun SearchSecretEditor(
                             },
                         )
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .defaultMinSize(minHeight = 48.dp)
-                        .testTag("${tagPrefix}_secret_retry"),
-                ) {
-                    Text(stringResource(R.string.common_retry))
-                }
+                    modifier = Modifier.testTag("${tagPrefix}_secret_retry"),
+                )
             }
             SearchSecretOperation.Idle -> Unit
         }

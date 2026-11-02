@@ -1510,6 +1510,7 @@
     <string name="tailnet_failure_action_retry">重试</string>
     <string name="tailnet_failure_action_switch_model">换用公网模型</string>
     <string name="tailnet_failure_action_settings">Tailscale 设置</string>
+    <string name="tailnet_failure_more_cd">更多处理方式</string>
     <string name="tailnet_failure_action_login">去登录</string>
     <string name="tailnet_failure_action_enable">去开启</string>
     <string name="provider_api_source_title">API 源</string>

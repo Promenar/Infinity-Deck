@@ -8,12 +8,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -36,16 +35,17 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
 import com.promenar.infinity.ui.common.InfinityPageLayout
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,13 +53,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -475,14 +474,10 @@ private fun WorkspaceUnavailableState(
             style = InfinityTypography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        TextButton(
+        InfinityRetryButton(
             onClick = onRetry,
-            modifier = Modifier
-                .defaultMinSize(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
-                .testTag(UiTags.RESOURCE_EXPLORER_RETRY_LOAD),
-        ) {
-            Text(stringResource(R.string.shared_btn_retry))
-        }
+            modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RETRY_LOAD),
+        )
     }
 }
 
@@ -614,14 +609,11 @@ private fun ResourceExplorerSessionState(
             color = if (isLoading) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
         )
         if (!isLoading && onRetry != null) {
-            TextButton(
+            Spacer(modifier = Modifier.height(InfinitySpacing.Medium))
+            InfinityRetryButton(
                 onClick = onRetry,
-                modifier = Modifier
-                    .defaultMinSize(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
-                    .testTag(UiTags.RESOURCE_EXPLORER_RETRY_LOAD),
-            ) {
-                Text(stringResource(R.string.shared_btn_retry))
-            }
+                modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RETRY_LOAD),
+            )
         }
     }
 }
@@ -648,16 +640,13 @@ private fun ImportStatusList(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(
+                IconButton(
                     onClick = onClear,
                     enabled = !isImporting,
-                    modifier = Modifier
-                        .defaultMinSize(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
-                        .testTag(UiTags.RESOURCE_EXPLORER_CLEAR_RESULTS),
+                    colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                    modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_CLEAR_RESULTS),
                 ) {
-                    Text(
-                        stringResource(R.string.resource_explorer_clear_results),
-                    )
+                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.resource_explorer_clear_results))
                 }
             }
 
@@ -701,60 +690,44 @@ private fun ImportStatusRow(
         MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Small)) {
-        val stack = maxWidth < 420.dp || LocalDensity.current.fontScale >= 1.5f
-        val content: @Composable (Modifier) -> Unit = { modifier ->
-            Row(
-                modifier = modifier,
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-            ) {
-                Icon(
-                    imageVector = when (item.status) {
-                        ShareImportStatus.Pending, ShareImportStatus.Importing -> Icons.Rounded.HourglassTop
-                        ShareImportStatus.Created -> Icons.Rounded.CheckCircle
-                        ShareImportStatus.Rejected -> Icons.Rounded.ErrorOutline
-                    },
-                    contentDescription = null,
-                    tint = statusColor,
-                    modifier = Modifier.size(20.dp),
+    // 行尾重试是 48dp 图标，任何宽度与字号下都与状态并排，不再整行堆叠。
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+        ) {
+            Icon(
+                imageVector = when (item.status) {
+                    ShareImportStatus.Pending, ShareImportStatus.Importing -> Icons.Rounded.HourglassTop
+                    ShareImportStatus.Created -> Icons.Rounded.CheckCircle
+                    ShareImportStatus.Rejected -> Icons.Rounded.ErrorOutline
+                },
+                contentDescription = null,
+                tint = statusColor,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
+                InfinityIdentifierText(
+                    text = item.displayName,
+                    style = InfinityTypography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-                    InfinityIdentifierText(
-                        text = item.displayName,
-                        style = InfinityTypography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = statusText,
-                        style = InfinityTypography.bodySmall,
-                        color = statusColor,
-                        modifier = Modifier.testTag(
-                            UiTags.resourceExplorerImportStatus(item.uri.toString()),
-                        ),
-                    )
-                }
+                Text(
+                    text = statusText,
+                    style = InfinityTypography.bodySmall,
+                    color = statusColor,
+                    modifier = Modifier.testTag(
+                        UiTags.resourceExplorerImportStatus(item.uri.toString()),
+                    ),
+                )
             }
         }
-
-        if (stack) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-                content(Modifier.fillMaxWidth())
-                if (shouldOfferImportRetry(item)) {
-                    ImportRetryAction(item, isImporting, onRetry, Modifier.fillMaxWidth())
-                }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-            ) {
-                content(Modifier.weight(1f))
-                if (shouldOfferImportRetry(item)) {
-                    ImportRetryAction(item, isImporting, onRetry, Modifier)
-                }
-            }
+        if (shouldOfferImportRetry(item)) {
+            ImportRetryAction(item, isImporting, onRetry)
         }
     }
 }
@@ -764,31 +737,18 @@ private fun ImportRetryAction(
     item: ShareImportItem,
     isImporting: Boolean,
     onRetry: (android.net.Uri) -> Unit,
-    modifier: Modifier,
 ) {
     val actionLabel = stringResource(R.string.resource_explorer_retry_document, item.displayName)
-    Box(
-        modifier = modifier
-            .defaultMinSize(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
-            .clickable(
-                enabled = !isImporting,
-                onClickLabel = actionLabel,
-                role = Role.Button,
-                onClick = { onRetry(item.uri) },
-            )
-            .testTag(UiTags.resourceExplorerImportRetry(item.uri.toString()))
-            .padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Medium),
-        contentAlignment = Alignment.Center,
+    IconButton(
+        onClick = { onRetry(item.uri) },
+        enabled = !isImporting,
+        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+        // 点击语义带上文档名，读屏能分清是哪一项的重试。
+        modifier = Modifier
+            .semantics { onClick(label = actionLabel) { if (!isImporting) onRetry(item.uri); !isImporting } }
+            .testTag(UiTags.resourceExplorerImportRetry(item.uri.toString())),
     ) {
-        Text(
-            text = stringResource(R.string.shared_btn_retry),
-            style = InfinityTypography.labelLarge,
-            color = if (isImporting) {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
-        )
+        Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.shared_btn_retry))
     }
 }
 

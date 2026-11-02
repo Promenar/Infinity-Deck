@@ -27,17 +27,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.PriorityHigh
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,8 @@ import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
 import com.promenar.infinity.ui.common.CompactOutlinedTextField
 import com.promenar.infinity.ui.common.InfinityChip
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
@@ -95,18 +98,27 @@ internal fun OnboardingModelStep(state: OnboardingUiState, actions: OnboardingAc
                     Text(stringResource(R.string.onboarding_model_use), style = OnboardingType.button())
                 }
             }
-            OnboardingTextButton(
-                stringResource(R.string.onboarding_model_refresh),
-                onClick = actions.onRefreshModels,
-                enabled = !state.modelsLoading && !checking,
-                modifier = Modifier.testTag(OnboardingTags.MODEL_REFRESH),
-            )
-            if (state.models.isEmpty() && !state.modelsLoading) {
-                OnboardingTextButton(
-                    stringResource(R.string.onboarding_model_back_provider),
-                    onClick = actions.onBackToProvider,
-                    modifier = Modifier.testTag(OnboardingTags.MODEL_BACK_PROVIDER),
+            val refreshButton: @Composable () -> Unit = {
+                InfinityPillButton(
+                    text = stringResource(R.string.onboarding_model_refresh),
+                    onClick = actions.onRefreshModels,
+                    enabled = !state.modelsLoading && !checking,
+                    icon = Icons.Rounded.Refresh,
+                    modifier = Modifier.testTag(OnboardingTags.MODEL_REFRESH),
                 )
+            }
+            if (state.models.isEmpty() && !state.modelsLoading) {
+                // 没有可用模型时“返回连接提供商 / 刷新列表”是两条同级出路，并排放置。
+                InfinityPillRow(modifier = Modifier.fillMaxWidth(), reverseWhenStacked = false) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.onboarding_model_back_provider),
+                        onClick = actions.onBackToProvider,
+                        modifier = Modifier.testTag(OnboardingTags.MODEL_BACK_PROVIDER),
+                    )
+                    refreshButton()
+                }
+            } else {
+                Box(Modifier.align(Alignment.CenterHorizontally)) { refreshButton() }
             }
         },
     ) {
@@ -395,7 +407,13 @@ private fun LinuxReadyRow(linux: OnboardingLinuxStatus, onRetry: () -> Unit) {
             CheckRow(stringResource(R.string.onboarding_ready_linux_skipped), CheckState.OFF)
         } else {
             CheckRow(stringResource(R.string.onboarding_ready_linux_stopped), CheckState.WARNING) {
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.onboarding_ready_linux_retry)) }
+                IconButton(onClick = onRetry) {
+                    Icon(
+                        Icons.Rounded.Refresh,
+                        contentDescription = stringResource(R.string.onboarding_ready_linux_retry),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         else -> CheckRow(stringResource(R.string.onboarding_ready_linux_skipped), CheckState.OFF)

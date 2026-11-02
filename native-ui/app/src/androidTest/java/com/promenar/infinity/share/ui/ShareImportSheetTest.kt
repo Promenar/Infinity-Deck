@@ -169,15 +169,24 @@ class ShareImportSheetTest {
         val rootBounds = rule.onNodeWithTag(UiTags.SHARE_IMPORT_SHEET).fetchSemanticsNode().boundsInRoot
         val minButtonPx = with(rule.density) { 48.dp.toPx() }
 
-        listOf(laterLabel, cancelLabel, retryLabel, importLabel).forEach { label ->
-            val node = rule.onNodeWithText(label)
+        listOf(
+            rule.onNodeWithText(retryLabel),
+            rule.onNodeWithText(importLabel),
+            rule.onNodeWithTag(UiTags.SHARE_IMPORT_MORE),
+        ).forEach { node ->
             node.assertIsDisplayed().assertHasClickAction().assertHeightIsAtLeast(48.dp)
             val bounds = node.fetchSemanticsNode().boundsInRoot
             assertTrue(
-                "action $label should stay within sheet left/right bounds",
+                "action $bounds should stay within sheet left/right bounds",
                 bounds.left >= rootBounds.left && bounds.right <= rootBounds.right,
             )
-            assertTrue("action $label should keep min height", bounds.height >= minButtonPx)
+            assertTrue("action $bounds should keep min height", bounds.height >= minButtonPx)
+        }
+
+        // “稍后处理 / 取消导入”收在“⋯”菜单里，打开后仍可点。
+        rule.onNodeWithTag(UiTags.SHARE_IMPORT_MORE).performClick()
+        listOf(laterLabel, cancelLabel).forEach { label ->
+            rule.onNodeWithText(label).assertIsDisplayed().assertHasClickAction()
         }
 
         rule.runOnIdle {

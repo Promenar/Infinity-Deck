@@ -79,6 +79,7 @@ import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityNavigationHeader
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.UnifiedPromptEditor
 import com.promenar.infinity.ui.common.bettboxListGroup
@@ -216,9 +217,7 @@ internal fun LinuxFileContent(state: LinuxFileUiState, actions: LinuxFileActions
                 val error = state.error
                 if (error != null) {
                     FolderStatusMessage(text = stringResource(R.string.linux_file_load_failed, linuxErrorText(error)), error = true) {
-                        TextButton(onClick = actions.onReload, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                            Text(stringResource(R.string.shared_btn_retry))
-                        }
+                        InfinityRetryButton(onClick = actions.onReload)
                     }
                 } else if (state.entry != null) {
                     AnimatedContent(
@@ -300,9 +299,7 @@ private fun LinuxContentTab(state: LinuxFileUiState, actions: LinuxFileActions) 
         when {
             entry.type == LinuxFileType.DIRECTORY -> Unit
             textError != null -> FolderStatusMessage(text = stringResource(R.string.linux_file_load_failed, linuxErrorText(textError)), error = true) {
-                TextButton(onClick = actions.onReload, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                    Text(stringResource(R.string.shared_btn_retry))
-                }
+                InfinityRetryButton(onClick = actions.onReload)
             }
             text == null -> Unit
             text.isBinary -> FolderStatusMessage(text = stringResource(R.string.linux_file_binary), icon = Icons.Rounded.Memory)
@@ -433,9 +430,7 @@ private fun LinuxHexTab(state: LinuxFileUiState, actions: LinuxFileActions) {
         val hexError = state.hexError
         when {
             hexError != null -> FolderStatusMessage(text = stringResource(R.string.linux_file_load_failed, linuxErrorText(hexError)), error = true) {
-                TextButton(onClick = { actions.onHexPage(hex?.page ?: 0) }, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                    Text(stringResource(R.string.shared_btn_retry))
-                }
+                InfinityRetryButton(onClick = { actions.onHexPage(hex?.page ?: 0) })
             }
             hex == null -> Box(Modifier.weight(1f))
             hex.bytes.isEmpty() -> FolderStatusMessage(text = stringResource(R.string.linux_file_empty), icon = Icons.AutoMirrored.Rounded.InsertDriveFile)

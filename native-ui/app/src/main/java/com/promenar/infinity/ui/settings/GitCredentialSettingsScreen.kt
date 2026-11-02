@@ -11,7 +11,6 @@ import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -24,13 +23,11 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,7 +35,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -51,6 +47,9 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.data.git.remote.GitCredential
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySheetHeight
@@ -322,20 +321,16 @@ internal fun GitCredentialEditor(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         GitCredentialStatus(operation)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                Text(stringResource(R.string.common_cancel))
-            }
-            Button(
+        InfinityPillRow(Modifier.fillMaxWidth()) {
+            InfinityPillButton(text = stringResource(R.string.common_cancel), onClick = onCancel)
+            InfinityPillButton(
+                text = stringResource(R.string.shared_btn_save),
                 onClick = onSave,
                 enabled = host.isNotBlank() && username.isNotBlank() && token.isNotEmpty() &&
                     operation != GitCredentialOperation.Saving,
-                modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("git_credential_save"),
-            ) { Text(stringResource(R.string.shared_btn_save)) }
+                tone = InfinityPillTone.PRIMARY,
+                modifier = Modifier.testTag("git_credential_save"),
+            )
         }
     }
 }

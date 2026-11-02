@@ -28,7 +28,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +57,7 @@ import com.promenar.infinity.data.rag.KgDocumentOption
 import com.promenar.infinity.data.rag.MAX_GRAPH_NODE_LIMIT
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityPageSearch
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.bettboxListGroup
 import com.promenar.infinity.ui.rag.canvas.GraphPhysicsSimulator
@@ -272,11 +272,12 @@ fun KnowledgeGraphScreen(
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
-                        onClick = viewModel::retryLoad,
-                        modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                    ) {
-                        Text(stringResource(R.string.shared_btn_retry))
+                    IconButton(onClick = viewModel::retryLoad) {
+                        Icon(
+                            Icons.Rounded.Refresh,
+                            contentDescription = stringResource(R.string.shared_btn_retry),
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
                     }
                 }
             }
@@ -498,14 +499,12 @@ internal fun KnowledgeGraphDocumentOptionsContent(
                         color = MaterialTheme.colorScheme.error,
                     )
                     if (loadError.canRetry) {
-                        TextButton(
+                        InfinityRetryButton(
                             onClick = onRetry,
                             modifier = Modifier
-                                .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
+                                .padding(top = InfinitySpacing.Small)
                                 .testTag(UiTags.KG_DOCUMENT_OPTIONS_RETRY),
-                        ) {
-                            Text(stringResource(R.string.shared_btn_retry))
-                        }
+                        )
                     }
                 }
             }

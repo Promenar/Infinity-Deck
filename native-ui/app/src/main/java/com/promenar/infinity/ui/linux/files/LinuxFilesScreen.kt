@@ -101,6 +101,10 @@ import com.promenar.infinity.ui.common.FolderStatusMessage
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityPageSearch
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinitySearchTopBar
 import com.promenar.infinity.ui.common.bettboxListGroup
 import com.promenar.infinity.ui.testing.UiTags
@@ -585,9 +589,7 @@ private fun LinuxDirectoryListing(state: LinuxFilesUiState, actions: LinuxFilesA
             error = true,
             modifier = Modifier.testTag(UiTags.LINUX_FILES_STATUS),
         ) {
-            TextButton(onClick = actions.onRefresh, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                Text(stringResource(R.string.shared_btn_retry))
-            }
+            InfinityRetryButton(onClick = actions.onRefresh)
         }
         entries.isEmpty() -> Column {
             if (parent != null) LinuxUpRow(enabled = upEnabled) { actions.onNavigate(parent) }
@@ -758,21 +760,15 @@ private fun LinuxPickerBar(state: LinuxFilesUiState, picker: LinuxDirectoryPicke
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(top = InfinitySpacing.XSmall),
-        ) {
-            TextButton(onClick = actions.onBack, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                Text(stringResource(android.R.string.cancel))
-            }
-            Button(
+        InfinityPillRow(Modifier.fillMaxWidth().padding(top = InfinitySpacing.XSmall)) {
+            InfinityPillButton(text = stringResource(android.R.string.cancel), onClick = actions.onBack)
+            InfinityPillButton(
+                text = picker.confirmLabel,
                 onClick = { picker.onPick(state.path) },
                 enabled = !state.stale && !state.loading && state.error == null && !state.operating,
-                modifier = Modifier
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .testTag(UiTags.LINUX_FILES_PICKER_CONFIRM),
-            ) { Text(picker.confirmLabel) }
+                tone = InfinityPillTone.PRIMARY,
+                modifier = Modifier.testTag(UiTags.LINUX_FILES_PICKER_CONFIRM),
+            )
         }
     }
 }

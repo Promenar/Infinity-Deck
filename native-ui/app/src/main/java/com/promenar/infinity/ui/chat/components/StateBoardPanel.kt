@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.data.state.*
 import com.promenar.infinity.ui.chat.progress
 import com.promenar.infinity.ui.chat.stateValueText
@@ -388,7 +390,12 @@ private fun StateFieldEditor(snapshot: StateBoardSnapshot, field: StateField, on
                             }
                         }
                     }
-                    TextButton(enabled = !saving && items.size < StateBoardEngine.MAX_ITEMS, onClick = { items = items + "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.state_add_item)) }
+                    InfinityPillButton(
+                        text = stringResource(R.string.state_add_item),
+                        onClick = { items = items + "" },
+                        enabled = !saving && items.size < StateBoardEngine.MAX_ITEMS,
+                        icon = Icons.Rounded.Add,
+                    )
                 } else {
                     OutlinedTextField(text, { text = it.take(StateBoardEngine.MAX_TEXT) }, modifier = Modifier.testTag(UiTags.CHAT_STATE_VALUE), enabled = !saving,
                         label = { Text(stringResource(if (field.type == "meter") R.string.state_current else R.string.state_value)) },

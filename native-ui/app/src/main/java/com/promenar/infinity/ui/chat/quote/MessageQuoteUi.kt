@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +64,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.chat.queue.ComposerQuoteDraft
 import com.promenar.infinity.data.chat.queue.ComposerQuotes
 import com.promenar.infinity.data.model.MessageQuote
+import com.promenar.infinity.ui.common.InfinityDisclosureRow
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.forInput
@@ -206,15 +208,13 @@ internal fun ComposerQuoteArea(
                     }
                 }
                 if (collapsible) {
-                    Text(
+                    InfinityDisclosureRow(
                         text = stringResource(R.string.ux2_quote_collapse),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        expanded = true,
+                        onClick = { expanded = false },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .clickable(role = Role.Button) { expanded = false }
-                            .padding(start = 16.dp, top = 14.dp, bottom = 14.dp)
+                            .padding(horizontal = 16.dp)
                             .testTag(UiTags.CHAT_QUOTE_COLLAPSE),
                     )
                 }
@@ -228,9 +228,11 @@ internal fun ComposerQuoteArea(
     }
 }
 
+/** 折叠后的引用摘要：摘要文字后跟向下箭头，与折叠行同一视觉；“展开”作为点按说明供读屏使用。 */
 @Composable
 private fun QuoteCollapsedRow(total: Int, annotated: Int, onExpand: () -> Unit) {
     val expandLabel = stringResource(R.string.ux2_quote_expand)
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -239,16 +241,17 @@ private fun QuoteCollapsedRow(total: Int, annotated: Int, onExpand: () -> Unit) 
             .padding(start = 16.dp, end = 16.dp)
             .testTag(UiTags.CHAT_QUOTE_COLLAPSED),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
-            text = stringResource(R.string.ux2_quote_collapsed_summary, total, annotated) + " · ",  // wrap-check: allow 单行省略
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = stringResource(R.string.ux2_quote_collapsed_summary, total, annotated),
+            style = MaterialTheme.typography.labelLarge,
+            color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        Text(text = expandLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
     }
 }
 

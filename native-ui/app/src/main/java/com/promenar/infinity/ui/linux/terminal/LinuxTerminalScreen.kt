@@ -39,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +71,7 @@ import com.promenar.infinity.ui.common.ConfirmDialog
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinityPageLayout
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.linux.output.AnsiPalette
 import com.promenar.infinity.ui.linux.output.AnsiParser
 import com.promenar.infinity.ui.linux.output.OutputDocument
@@ -330,9 +330,11 @@ private fun OpeningOrFailed(opening: Boolean, failed: Boolean, onRetry: () -> Un
         if (failed && !opening) {
             Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
             Text(stringResource(R.string.linux_terminal_open_failed), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-            TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.LINUX_TERMINAL_RETRY)) {
-                Text(stringResource(R.string.linux_terminal_retry))
-            }
+            InfinityRetryButton(
+                onClick = onRetry,
+                text = stringResource(R.string.linux_terminal_retry),
+                modifier = Modifier.testTag(UiTags.LINUX_TERMINAL_RETRY),
+            )
         } else {
             CircularProgressIndicator(modifier = Modifier.size(InfinitySpacing.XLarge))
             Text(stringResource(R.string.linux_terminal_opening), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -404,8 +406,12 @@ private fun ExitedBanner(tab: TerminalTab.Shell, onClose: (String) -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { onClose(tab.key) }, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                Text(stringResource(R.string.linux_terminal_close_confirm))
+            IconButton(onClick = { onClose(tab.key) }) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.linux_terminal_close_confirm),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

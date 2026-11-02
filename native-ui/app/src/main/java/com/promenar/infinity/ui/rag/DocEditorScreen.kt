@@ -66,7 +66,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
@@ -1516,19 +1515,14 @@ private fun PendingIndexNotice(onRetry: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
-                onClick = onRetry,
-                modifier = Modifier
-                    .defaultMinSize(
-                        minWidth = InfinitySpacing.MinimumTouchTarget,
-                        minHeight = InfinitySpacing.MinimumTouchTarget,
-                    )
-                    // 明确这一个“重试”对应的是索引队列，而不是保存/加载重试。
-                    // TextButton 会合并内部 Text 的语义，因此该描述也是辅助功能与测试
-                    // 可以稳定定位的唯一可操作节点。
-                    .semantics { contentDescription = retryPendingIndexDescription },
-            ) {
-                Text(stringResource(R.string.shared_btn_retry))
+            IconButton(onClick = onRetry) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    // 明确这一个“重试”对应的是索引队列，而不是保存/加载重试；
+                    // 该描述也是辅助功能与测试稳定定位的唯一可操作节点。
+                    contentDescription = retryPendingIndexDescription,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

@@ -1,20 +1,18 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import com.promenar.infinity.ui.theme.forInput
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +25,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.testing.UiTags
@@ -246,42 +247,45 @@ internal fun ComposerSecretGuardContent(
                     modifier = Modifier.padding(top = 6.dp),
                 )
             }
-            Button(
+            InfinityPillButton(
+                text = stringResource(R.string.secret_guard_save_confirm),
                 onClick = { onSaveToGit(host.trim(), username.trim()) },
+                tone = InfinityPillTone.PRIMARY,
                 enabled = !saving && host.isNotBlank() && username.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .padding(top = 10.dp)
                     .testTag(UiTags.CHAT_SECRET_GUARD_SAVE_CONFIRM),
-            ) { Text(stringResource(R.string.secret_guard_save_confirm)) }
+            )
         } else if (offersGit) {
-            Button(
+            InfinityPillButton(
+                text = stringResource(R.string.secret_guard_save_git),
                 onClick = { savingForm = true },
+                tone = InfinityPillTone.PRIMARY,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp)
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .padding(top = 14.dp)
                     .testTag(UiTags.CHAT_SECRET_GUARD_SAVE_GIT),
-            ) { Text(stringResource(R.string.secret_guard_save_git)) }
+            )
         }
-        OutlinedButton(
-            onClick = onEdit,
-            enabled = !saving,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                .testTag(UiTags.CHAT_SECRET_GUARD_EDIT),
-        ) { Text(stringResource(R.string.secret_guard_edit)) }
-        TextButton(
-            onClick = onSendAnyway,
-            enabled = !saving,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp)
-                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                .testTag(UiTags.CHAT_SECRET_GUARD_SEND_ANYWAY),
-        ) { Text(stringResource(R.string.secret_guard_send_anyway), color = MaterialTheme.colorScheme.error) }
+        // 返回编辑与仍然发送并排：后者是有风险的选择，用错误色文字区分；放不下单行时按原顺序竖排。
+        InfinityPillRow(
+            modifier = Modifier.fillMaxWidth().padding(top = if (offersGit) 4.dp else 14.dp),
+            reverseWhenStacked = false,
+        ) {
+            InfinityPillButton(
+                text = stringResource(R.string.secret_guard_edit),
+                onClick = onEdit,
+                enabled = !saving,
+                modifier = Modifier.testTag(UiTags.CHAT_SECRET_GUARD_EDIT),
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.secret_guard_send_anyway),
+                onClick = onSendAnyway,
+                tone = InfinityPillTone.DANGER,
+                enabled = !saving,
+                modifier = Modifier.testTag(UiTags.CHAT_SECRET_GUARD_SEND_ANYWAY),
+            )
+        }
     }
 }

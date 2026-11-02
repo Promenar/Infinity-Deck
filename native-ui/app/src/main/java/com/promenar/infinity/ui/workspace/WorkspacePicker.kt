@@ -49,7 +49,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -85,6 +84,7 @@ import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.ui.common.FolderBreadcrumbsBar
 import com.promenar.infinity.ui.common.FolderCrumb
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.animation.AnimatedContent
@@ -786,9 +786,11 @@ private fun LazyListScope.folderItems(
                     style = MaterialTheme.typography.bodyMedium.forReading(),
                     color = MaterialTheme.colorScheme.error,
                 )
-                TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)) {
-                    Text(stringResource(R.string.common_retry))
-                }
+                InfinityRetryButton(
+                    onClick = onRetry,
+                    text = stringResource(R.string.common_retry),
+                    modifier = Modifier.padding(top = InfinitySpacing.Small),
+                )
             }
         }
         !state.loading && state.folders.isEmpty() -> item(key = "empty") {

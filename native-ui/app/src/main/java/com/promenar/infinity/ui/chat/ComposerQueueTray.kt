@@ -6,11 +6,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +30,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +49,8 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.common.InfinityDisclosureRow
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -99,19 +97,17 @@ internal fun ComposerQueueTray(
             )
         }
         if (items.size > CollapsedQueueItems) {
-            Text(
+            InfinityDisclosureRow(
                 text = if (expanded) {
                     stringResource(R.string.chat_queue_collapse)
                 } else {
                     stringResource(R.string.chat_queue_show_all, items.size)
                 },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
+                expanded = expanded,
+                onClick = { expanded = !expanded },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 40.dp)
-                    .clickable(role = Role.Button) { expanded = !expanded }
-                    .padding(start = 42.dp, top = 12.dp, bottom = 12.dp)
+                    .padding(start = 42.dp, end = 16.dp)
                     .testTag(UiTags.CHAT_QUEUE_EXPAND),
             )
         }
@@ -140,13 +136,15 @@ private fun QueuePausedHeader(reason: ComposerQueuePauseReason, onResume: () -> 
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        TextButton(
+        InfinityPillButton(
+            text = stringResource(R.string.chat_queue_resume),
             onClick = {
                 haptics.perform(InfinityHapticEvent.CONFIRM)
                 onResume()
             },
-            modifier = Modifier.testTag(UiTags.CHAT_QUEUE_RESUME),
-        ) { Text(stringResource(R.string.chat_queue_resume), style = MaterialTheme.typography.labelLarge) }
+            compact = true,
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp).testTag(UiTags.CHAT_QUEUE_RESUME),
+        )
     }
 }
 
@@ -222,16 +220,18 @@ private fun QueuedMessageRow(
                 )
             } else {
                 val steerDescription = stringResource(R.string.chat_queue_steer_cd)
-                TextButton(
+                InfinityPillButton(
+                    text = stringResource(R.string.chat_queue_steer),
                     onClick = {
                         haptics.perform(InfinityHapticEvent.CONFIRM)
                         onSteer()
                     },
+                    compact = true,
                     modifier = Modifier
+                        .padding(start = 8.dp, end = 4.dp)
                         .semantics { contentDescription = steerDescription }
                         .testTag(UiTags.CHAT_QUEUE_STEER),
-                    contentPadding = PaddingValues(horizontal = 10.dp),
-                ) { Text(stringResource(R.string.chat_queue_steer), style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+                )
             }
         }
         Box {

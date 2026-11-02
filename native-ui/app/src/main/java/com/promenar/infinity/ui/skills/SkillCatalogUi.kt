@@ -19,7 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +33,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.common.InfinitySwitch
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.data.skills.DiscoveredSkill
@@ -144,9 +144,11 @@ private fun SkillRow(
                         modifier = Modifier.semantics { contentDescription = label },
                     )
                 }
-                SkillStatus.PENDING_TRUST -> TextButton(onClick = onTrust) {
-                    Text(stringResource(R.string.skills_runtime_trust))
-                }
+                SkillStatus.PENDING_TRUST -> InfinityPillButton(
+                    text = stringResource(R.string.skills_runtime_trust),
+                    onClick = onTrust,
+                    compact = true,
+                )
                 SkillStatus.BROKEN -> Icon(
                     Icons.Rounded.ErrorOutline,
                     contentDescription = stringResource(R.string.skills_runtime_status_broken_short),

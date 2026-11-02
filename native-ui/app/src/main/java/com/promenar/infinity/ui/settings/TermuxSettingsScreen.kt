@@ -16,13 +16,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.horizontalScroll
@@ -32,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -41,7 +39,6 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +48,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +80,9 @@ import com.promenar.infinity.data.termux.TermuxAvailability
 import com.promenar.infinity.data.termux.TermuxCommandResult
 import com.promenar.infinity.data.termux.TermuxPreferences
 import com.promenar.infinity.ui.common.InfinityCommandBlock
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsItem
@@ -308,7 +307,6 @@ fun TermuxSettingsScreen(onBack: () -> Unit, onOpenSsh: () -> Unit) {
 }
 
 /** 无应用依赖的设置页内容，供截图测试与真实页面共用。 */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TermuxSettingsContent(
     state: TermuxSettingsUiState,
@@ -370,17 +368,20 @@ internal fun TermuxSettingsContent(
                         TermuxInlineNotice(message, if (state.noticeIsError) TermuxStepStatus.Error else TermuxStepStatus.Complete)
                     }
                     InfinityCommandBlock(command = stringResource(R.string.termux_command_diagnostic), enabled = !state.busy, onCopy = actions.onCopyCommand)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                        Button(
-                            enabled = visuals.canRunDiagnostic,
-                            modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("termux_diagnostic_test"),
-                            onClick = actions.onRunDiagnostic,
-                        ) { Text(stringResource(R.string.termux_run_diagnostic)) }
-                        TextButton(
+                    InfinityPillRow(Modifier.fillMaxWidth()) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.termux_refresh),
                             onClick = actions.onRefresh,
                             enabled = !state.busy && !state.refreshing,
-                            modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                        ) { Text(stringResource(R.string.termux_refresh)) }
+                            icon = Icons.Rounded.Refresh,
+                        )
+                        InfinityPillButton(
+                            text = stringResource(R.string.termux_run_diagnostic),
+                            onClick = actions.onRunDiagnostic,
+                            enabled = visuals.canRunDiagnostic,
+                            tone = InfinityPillTone.PRIMARY,
+                            modifier = Modifier.testTag("termux_diagnostic_test"),
+                        )
                     }
                     state.diagnostic?.let { TermuxDiagnosticResult(it) }
                 }

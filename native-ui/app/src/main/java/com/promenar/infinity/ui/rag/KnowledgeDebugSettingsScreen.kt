@@ -32,7 +32,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +53,7 @@ import com.promenar.infinity.data.manager.ProviderManager
 import com.promenar.infinity.data.rag.RagConfiguration
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityNumericSetting
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinitySettingsExpandableRow
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsItem
@@ -286,12 +286,12 @@ private fun ChunkChangedNotice(vectorCount: Int, onReindex: () -> Unit) {
                 )
             }
         }
-        TextButton(
+        InfinityPillButton(
+            text = stringResource(R.string.settings_ia_reindex_all),
             onClick = onReindex,
-            modifier = Modifier.align(Alignment.End).testTag("kb_debug_chunk_notice_reindex"),
-        ) {
-            Text(stringResource(R.string.settings_ia_reindex_all), color = colors.onWarningContainer)
-        }
+            icon = Icons.Rounded.Refresh,
+            modifier = Modifier.align(Alignment.End).padding(top = 8.dp).testTag("kb_debug_chunk_notice_reindex"),
+        )
     }
 }
 

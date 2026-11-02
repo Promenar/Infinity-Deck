@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityPillButton
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -43,7 +44,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -397,12 +397,14 @@ private fun ModelCard(
             },
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
+                    InfinityPillButton(
+                        text = stringResource(if (isLoadedInSlot) R.string.local_models_loaded else R.string.local_models_load),
                         onClick = {
-                if (engineEnabled) onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
-            },
+                            if (engineEnabled) onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
+                        },
                         enabled = engineEnabled,
-                    ) { Text(stringResource(if (isLoadedInSlot) R.string.local_models_loaded else R.string.local_models_load)) }
+                        compact = true,
+                    )
                     IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.local_models_cd_delete), tint = MaterialTheme.colorScheme.error)
                     }
