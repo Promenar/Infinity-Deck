@@ -551,7 +551,7 @@
     <string name="chat_approval_approve_current_a11y">批准当前工具 %1$s，风险 %2$s，后续等待 %3$d 项</string>
     <string name="chat_approval_decline_current_a11y">拒绝当前工具 %1$s，风险 %2$s，后续等待 %3$d 项</string>
     <string name="chat_approval_risk_safe_read">安全读取</string>
-    <string name="chat_approval_risk_session_state">任务计划</string>
+    <string name="chat_approval_risk_session_state">会话操作</string>
     <string name="chat_approval_risk_file_write">文件写入</string>
     <string name="chat_approval_risk_patch">补丁修改</string>
     <string name="chat_approval_risk_delete">删除</string>

@@ -143,3 +143,19 @@ private fun previewToolSteps(vararg names: String, failedIndex: Int = -1): List<
 fun chatBatch2FailureNarrowEnglishPreview() = PipelinePreviewFrame {
     InlineToolRow(previewToolSteps("ssh_exec", "read_file", failedIndex = 1), false, 15)
 }
+
+private val CommandResultSteps = listOf(
+    ExecutionStep("call-cmd", "tool_call", "shell_exec", """{"command":"which node npm; apk info nodejs | head -3","description":"检查 Node.js 是否已安装"}""", "call-cmd", timestamp = 1_000),
+    ExecutionStep(
+        "result-cmd", "tool_result", "shell_exec", toolCallId = "call-cmd", timestamp = 1_739,
+        content = """{"error_code":null,"guidance":null,"exit_code":1,"timed_out":false,"stderr":"","stdout":"--- apk installed check ---\nnodejs-24.22.1-r1 description:\nJavaScript runtime built on V8 engine - LTS version\n","stdout_original_length":96,"stderr_original_length":0,"length_unit":"UTF-16","stdout_truncated":false,"stderr_truncated":false,"truncated":false,"truncation":"none","runtime":"linux"}""",
+    ),
+)
+
+@PreviewTest
+@Preview(name = "Command result expanded 中文 411dp", widthDp = 411, heightDp = 560, locale = "zh-rCN")
+@Preview(name = "Command result expanded English 360dp font130", widthDp = 360, heightDp = 720, locale = "en", fontScale = 1.3f)
+@Composable
+fun chatBatch2CommandResultExpandedPreview() = PipelinePreviewFrame {
+    InlineToolRow(CommandResultSteps, false, 15, initiallyExpanded = true)
+}

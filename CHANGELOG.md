@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 展开命令类工具块（`shell_exec`、`ssh_exec` 等）时，结果改为在等宽卡片里只显示命令输出，退出码非零时另起一行标出；不再把整段 JSON 结果作为正文铺在卡片外。
+- 会话类工具的审批卡风险标签由“任务计划”改为“会话操作”：同一类别还包括读取其它会话、画布、产物与子代理控制，原标签只对任务计划成立。
+
 ## [0.14.2-beta] - 2026-11-02
 
 ### 修复

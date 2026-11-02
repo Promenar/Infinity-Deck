@@ -1427,7 +1427,12 @@ internal fun InlineToolRow(
                                     )
                                 }
                                 result.content?.takeIf(String::isNotBlank)?.let { content ->
+                                    // 命令结果只展示输出正文与非零退出码，不显示外层 JSON 信封。
+                                    val command = remember(content, invocation.name) {
+                                        if (result.type == "error") null else subagentCommandResult(invocation.name, content)
+                                    }
                                     if (result.type == "error") ToolErrorBlock(content)
+                                    else if (command != null) CommandResultPreview(command)
                                     else if (planCard == null && jobCard == null) {
                                         val fields = remember(content, fieldFallback) { if (fieldFallback) toolFieldRows(content) else null }
                                         if (fields != null) ToolFieldList(fields, arguments = false)
@@ -1564,6 +1569,8 @@ internal fun ExpandableToolText(
     text: String,
     collapsedLines: Int,
     arguments: Boolean = false,
+    /** 以等宽字体放进底色卡片；参数与命令输出使用。 */
+    code: Boolean = arguments,
 ) {
     var expanded by rememberSaveable(text) { mutableStateOf(false) }
     val explicitLineOverflow = remember(text, collapsedLines) {
@@ -1571,13 +1578,13 @@ internal fun ExpandableToolText(
     }
     var overflows by remember(text, collapsedLines) { mutableStateOf(explicitLineOverflow) }
     Column(
-        modifier = if (arguments) Modifier.fillMaxWidth()
+        modifier = if (code) Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(8.dp)).padding(10.dp)
         else Modifier.fillMaxWidth(),
     ) {
         Text(
             text = text,
-            style = if (arguments) InfinityTypography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 12.sp, lineHeight = 18.sp)
+            style = if (code) InfinityTypography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 12.sp, lineHeight = 18.sp)
                 else InfinityTypography.bodySmall.forReading(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = if (expanded) Int.MAX_VALUE else collapsedLines,
@@ -1592,6 +1599,23 @@ internal fun ExpandableToolText(
                 onClick = { expanded = !expanded }, modifier = Modifier.testTag("CHAT_TOOL_EXPAND_ALL"),
             )
         }
+    }
+}
+
+/** 命令输出：等宽卡片，可展开全文；没有输出时说明为空，退出码非零时另起一行标出。 */
+@Composable
+private fun CommandResultPreview(command: SubagentCommandResult) {
+    command.output?.let { ExpandableToolText(text = it, collapsedLines = 12, code = true) } ?: Text(
+        stringResource(R.string.linux_output_empty),
+        style = InfinityTypography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    command.exitCode?.takeIf { it != 0 }?.let {
+        Text(
+            stringResource(R.string.termux_exit_code, it.toString()),
+            style = InfinityTypography.labelMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }
 

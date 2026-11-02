@@ -552,7 +552,7 @@
     <string name="chat_approval_approve_current_a11y">Approve current %1$s, risk %2$s, %3$d remaining</string>
     <string name="chat_approval_decline_current_a11y">Reject current %1$s, risk %2$s, %3$d remaining</string>
     <string name="chat_approval_risk_safe_read">Safe read</string>
-    <string name="chat_approval_risk_session_state">Task plan</string>
+    <string name="chat_approval_risk_session_state">Session</string>
     <string name="chat_approval_risk_file_write">File write</string>
     <string name="chat_approval_risk_patch">Patch</string>
     <string name="chat_approval_risk_delete">Delete</string>
