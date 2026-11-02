@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.lab.catalog.LabCatalog
 import com.promenar.infinity.ui.lab.catalog.LabVersionKind
@@ -52,8 +53,8 @@ fun LabVersionScreen(
                 return@Column
             }
             val kind = stringResource(if (version.kind == LabVersionKind.WORKFLOW) R.string.lab_kind_workflow else R.string.lab_kind_state)
-            Text(
-                text = listOfNotNull(kind, fitLabel(version.fit)).joinToString(" · "),
+            InfinityMetaLine(
+                segments = listOfNotNull(kind, fitLabel(version.fit)),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )

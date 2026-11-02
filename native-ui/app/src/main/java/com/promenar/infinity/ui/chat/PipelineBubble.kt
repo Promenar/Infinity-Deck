@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.data.model.ExecutionStep
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.turnMemory
@@ -1316,8 +1317,8 @@ internal fun InlineToolRow(
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (heading != null) {
                                     // 有短标题或能认出所操作的任务时，标题占主位，工具名退为小字。
-                                    Text(heading, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    InfinityMetaLine(heading, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f), maxLines = 2)
                                     invocation.name?.let { name ->
                                         Text(name, style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontFamily = InfinityMonospace),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -1418,10 +1419,10 @@ private fun runningCommandText(step: CommandStepLabel): String? = when (step.kin
     else -> null
 }
 
-/** 明细标题：命令显示短标题；任务操作显示“动作 · 任务名”。没有可说的内容时返回 null，沿用工具通称。 */
+/** 明细标题分段：命令为短标题；任务操作为“动作、任务名”两段，由 [InfinityMetaLine] 排版。没有可说的内容时返回 null，沿用工具通称。 */
 @Composable
-private fun commandStepHeading(step: CommandStepLabel): String? = when (step.kind) {
-    CommandStepKind.RUN -> step.label
+private fun commandStepHeading(step: CommandStepLabel): List<String>? = when (step.kind) {
+    CommandStepKind.RUN -> step.label?.let(::listOf)
     else -> {
         val action = stringResource(when (step.kind) {
             CommandStepKind.WAIT -> R.string.chat_step_job_wait_name
@@ -1429,7 +1430,7 @@ private fun commandStepHeading(step: CommandStepLabel): String? = when (step.kin
             CommandStepKind.STOP -> R.string.chat_step_job_stop_name
             else -> R.string.chat_step_job_input_name
         })
-        "$action · ${commandJobName(step)}"
+        listOf(action, commandJobName(step))
     }
 }
 

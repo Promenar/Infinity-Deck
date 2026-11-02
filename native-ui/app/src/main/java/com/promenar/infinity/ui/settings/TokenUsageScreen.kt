@@ -613,11 +613,11 @@ private fun ModelBreakdownRow(model: ModelCostInfo) {
     val cacheHit = model.cache.hitRate?.let { stringResource(R.string.token_cache_hit_short, formatCacheHitRate(it, locale)) }
     InfinitySettingsRowLayout(
         title = if (model.modelId == com.promenar.infinity.data.rag.KgUsageStore.OTHER_MODEL_ID) stringResource(R.string.kg_usage_other_models) else model.name,
-        subtitle = listOfNotNull(
+        subtitleSegments = listOfNotNull(
             stringResource(R.string.token_in_out, formatTokenCount(model.inputTokens), formatTokenCount(model.outputTokens)),
             cacheHit,
             cost,
-        ).joinToString(" · "),
+        ),
         subtitleMaxLines = 3,
         trailingContent = {
             Text(
