@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0-beta] - 2026-11-02
+
 ### 新功能
 
 - 内置 Linux 的可选附加包新增 ripgrep（`rg`）、Node.js（含 npm）与 FFmpeg，与 git、Python 3 一样在首次引导和 Linux 安装页默认勾选，已安装的环境可在 Linux 管理页补装。全选约需 470 MB，其中 FFmpeg 连同编解码依赖约 160 MB，可取消。智能体的运行环境说明同步列出这些可选包，并提示使用前先确认已安装。
