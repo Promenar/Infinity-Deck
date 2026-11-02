@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.16.1-beta] - 2026-11-02
+
 ### 修复
 
 - 智能体编辑页的“历史版本”页面标题在深色主题下是黑字、看不见，现在正常显示。

@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/platform-Android%2012%2B-green.svg" alt="Platform: Android 12+">
   <img src="https://img.shields.io/badge/Kotlin-2.2-7F52FF.svg" alt="Kotlin 2.2">
   <img src="https://img.shields.io/badge/Jetpack_Compose-Material3-4285F4.svg" alt="Jetpack Compose Material 3">
-  <img src="https://img.shields.io/badge/version-0.16.0--beta-6366F1.svg" alt="Version 0.16.0-beta">
+  <img src="https://img.shields.io/badge/version-0.16.1--beta-6366F1.svg" alt="Version 0.16.1-beta">
 </p>
 
 https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
@@ -114,7 +114,7 @@ Unfold and the chat shares the screen with an inspector for tasks, files, Git, a
 
 **Install:** Download the APK and its `.sha256` file from [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases), check the SHA-256 and install it. Public releases can lag behind the source tree. Do not install CI artifacts, debug APKs or repackaged builds from other sources.
 
-The source tree is at `v0.16.0-beta` (versionCode `46`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.16.1-beta` (versionCode `47`). See the [changelog](CHANGELOG.md) for what changed.
 
 ## Build from source
 
