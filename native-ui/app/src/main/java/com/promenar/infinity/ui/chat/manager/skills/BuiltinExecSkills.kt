@@ -17,7 +17,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import java.util.UUID
 
-private fun workspaceNote(linux: Boolean = false): String = "命令以本应用的 Android 用户运行，可访问全部应用数据，不受工作区路径约束；工作区模式逐条审批，完全访问模式免审批，被拒后不要重复。修改 databases/、shared_prefs/、no_backup/、files/agent_skills/ 或诊断日志前，必须向用户说明目的与影响并取得明确书面同意；files/python-user 的 pip 安装属于正常使用。结果 runtime_changes 报告关键数据元数据变化，runtime_scan_notes 说明扫描跳过。" +
+private fun workspaceNote(linux: Boolean = false): String = "命令以本应用的 Android 用户运行，可访问全部应用数据，不受工作区路径约束；工作区模式逐条审批，完全访问模式免审批，被拒后不要重复。修改 databases/、shared_prefs/、no_backup/ 或诊断日志前，必须向用户说明目的与影响并取得明确书面同意；修改用户技能改用技能目录下的文件工具，由审批卡确认，不用命令改 files/agent_skills/；files/python-user 的 pip 安装属于正常使用。结果 runtime_changes 报告关键数据元数据变化，runtime_scan_notes 说明扫描跳过。" +
     "background:true 立即返回后台任务号，任务不随生成取消；检测结果在结束后的 job_status/job_wait 中提供。max_runtime_minutes 默认120、上限1440，后台不使用 timeout_seconds；on_exit 为 none/notify/wake，默认 notify，长任务优先 wake。私有根后台任务在快照中运行，结束合入，冲突保留到 jobs/；运行中日志通过状态查询发布。Play版只在应用前台保证运行。" +
     "命令直接读写会话工作区：删除或覆盖的文件不进回收站、无法恢复；结束后自动对账，结果的 workspace_changes 列出新增、修改、删除与移动的工作区路径。" +
     (if (linux) "工作目录为 /workspace（INFINITY_WORKSPACE=/workspace）；有真实路径的可用挂载位于 /mnt/<别名>，SAF 挂载只供文件工具访问。" else "工作目录即工作区根，命令中请用相对路径或 \$INFINITY_WORKSPACE；/mnt/<别名> 挂载对命令不可见，需要时先用文件工具复制到工作区。") +
