@@ -142,7 +142,10 @@ private fun LinuxRadioRow(title: String, subtitle: String, selected: Boolean, on
 
 internal fun linuxOptionalPackageTitle(item: LinuxOptionalPackage): Int = when (item) {
     LinuxOptionalPackage.GIT -> R.string.linux_run_mode_package_git_title
+    LinuxOptionalPackage.RIPGREP -> R.string.linux_run_mode_package_ripgrep_title
     LinuxOptionalPackage.PYTHON3 -> R.string.linux_run_mode_package_python_title
+    LinuxOptionalPackage.NODEJS -> R.string.linux_run_mode_package_nodejs_title
+    LinuxOptionalPackage.FFMPEG -> R.string.linux_run_mode_package_ffmpeg_title
 }
 
 @Composable
@@ -150,7 +153,10 @@ internal fun linuxOptionalPackageSubtitle(item: LinuxOptionalPackage): String {
     val bytes = linuxBytes(linuxOptionalPackageBytes(item))
     return when (item) {
         LinuxOptionalPackage.GIT -> stringResource(R.string.linux_run_mode_package_git_subtitle, bytes)
+        LinuxOptionalPackage.RIPGREP -> stringResource(R.string.linux_run_mode_package_ripgrep_subtitle, bytes)
         LinuxOptionalPackage.PYTHON3 -> stringResource(R.string.linux_run_mode_package_python_subtitle, bytes)
+        LinuxOptionalPackage.NODEJS -> stringResource(R.string.linux_run_mode_package_nodejs_subtitle, bytes)
+        LinuxOptionalPackage.FFMPEG -> stringResource(R.string.linux_run_mode_package_ffmpeg_subtitle, bytes)
     }
 }
 

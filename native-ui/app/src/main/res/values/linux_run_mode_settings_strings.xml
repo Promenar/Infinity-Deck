@@ -4,6 +4,12 @@
     <string name="linux_run_mode_install_base">Base: bash, curl, certificates</string>
     <string name="linux_run_mode_package_git_title">git</string>
     <string name="linux_run_mode_package_git_subtitle">Version control · needs about %1$s</string>
+    <string name="linux_run_mode_package_ripgrep_title">ripgrep (rg)</string>
+    <string name="linux_run_mode_package_ripgrep_subtitle">Fast code and text search · needs about %1$s</string>
+    <string name="linux_run_mode_package_nodejs_title">Node.js (with npm)</string>
+    <string name="linux_run_mode_package_nodejs_subtitle">Run JavaScript, install packages with npm · needs about %1$s</string>
+    <string name="linux_run_mode_package_ffmpeg_title">FFmpeg</string>
+    <string name="linux_run_mode_package_ffmpeg_subtitle">Convert and process audio and video · needs about %1$s</string>
     <string name="linux_run_mode_package_python_title">Python 3 (with pip)</string>
     <string name="linux_run_mode_package_python_subtitle">Run scripts, install libraries with pip · needs about %1$s</string>
     <string name="linux_run_mode_install_later_note">You can also add these later in Linux settings.</string>

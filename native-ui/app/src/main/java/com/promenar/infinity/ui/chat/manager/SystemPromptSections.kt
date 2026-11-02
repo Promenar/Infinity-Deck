@@ -48,7 +48,7 @@ object SystemPromptSections {
         appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-workbench\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
     }
 
-    const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl），使用 apk add 安装软件包；python3 与 pip 需安装对应可选包。" +
+    const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl），使用 apk add 安装软件包；git、ripgrep（rg）、python3 与 pip、nodejs 与 npm、ffmpeg 是安装时的可选包，用前确认已安装，缺少时 apk add 补装。" +
         "会话专用空间为 /home/session，基础工作区挂载为 /workspace。INFINITY_WORKSPACE 指向命令的起始工作目录，分支 worktree 使用其绑定目录；普通会话通常使用 /workspace。" +
         "真实路径挂载为 /mnt/<别名>，用户级技能为 /mnt/skills（INFINITY_SKILLS=/mnt/skills）；SAF 挂载不可见。" +
         "文件工具与命令使用相同的 Linux 路径，相对路径相对当前会话的起始工作目录；/root、/etc 等绝对路径指向 Linux rootfs。" +

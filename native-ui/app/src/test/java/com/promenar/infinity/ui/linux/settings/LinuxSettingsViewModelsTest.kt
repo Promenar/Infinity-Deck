@@ -161,13 +161,15 @@ class LinuxSettingsViewModelsTest {
         viewModel.install()
         viewModel.setInstallPackage(LinuxOptionalPackage.PYTHON3, false)
         viewModel.install()
+        val others = setOf(LinuxOptionalPackage.RIPGREP, LinuxOptionalPackage.NODEJS, LinuxOptionalPackage.FFMPEG)
         assertThat(runtime.installs).containsExactly(
-            LinuxInstallOptions(optionalPackages = setOf(LinuxOptionalPackage.PYTHON3)),
-            LinuxInstallOptions(optionalPackages = emptySet()),
+            LinuxInstallOptions(optionalPackages = others + LinuxOptionalPackage.PYTHON3),
+            LinuxInstallOptions(optionalPackages = others),
         ).inOrder()
-        assertThat(runtime.installs.last().packages).containsExactly("bash", "ca-certificates", "curl")
+        assertThat(runtime.installs.last().packages).containsExactly("bash", "ca-certificates", "curl", "ripgrep", "nodejs", "npm", "ffmpeg")
         assertThat(linuxInstallOptions(LinuxOptionalPackage.entries.toSet()).packages)
-            .containsExactly("bash", "ca-certificates", "curl", "git", "python3", "py3-pip")
+            .containsExactly("bash", "ca-certificates", "curl", "git", "ripgrep", "python3", "py3-pip", "nodejs", "npm", "ffmpeg")
+            .inOrder()
     }
 
     @Test
@@ -176,7 +178,10 @@ class LinuxSettingsViewModelsTest {
         assertThat(linuxRequiredBytes(emptySet())).isEqualTo(64 * mb)
         assertThat(linuxRequiredBytes(setOf(LinuxOptionalPackage.GIT))).isEqualTo(100 * mb)
         assertThat(linuxRequiredBytes(setOf(LinuxOptionalPackage.PYTHON3))).isEqualTo(164 * mb)
-        assertThat(linuxRequiredBytes(LinuxOptionalPackage.entries.toSet())).isEqualTo(200 * mb)
+        assertThat(linuxRequiredBytes(setOf(LinuxOptionalPackage.RIPGREP))).isEqualTo(72 * mb)
+        assertThat(linuxRequiredBytes(setOf(LinuxOptionalPackage.NODEJS))).isEqualTo(164 * mb)
+        assertThat(linuxRequiredBytes(setOf(LinuxOptionalPackage.FFMPEG))).isEqualTo(224 * mb)
+        assertThat(linuxRequiredBytes(LinuxOptionalPackage.entries.toSet())).isEqualTo(468 * mb)
     }
 
     @Test
@@ -221,6 +226,8 @@ class LinuxSettingsViewModelsTest {
         assertThat(installedOptionalPackages(listOf(pkg("git"), pkg("python3")))).containsExactly(LinuxOptionalPackage.GIT)
         assertThat(installedOptionalPackages(listOf(pkg("python3"), pkg("py3-pip"), pkg("git", installed = false))))
             .containsExactly(LinuxOptionalPackage.PYTHON3)
+        assertThat(installedOptionalPackages(listOf(pkg("nodejs"), pkg("ffmpeg"), pkg("ripgrep"))))
+            .containsExactly(LinuxOptionalPackage.FFMPEG, LinuxOptionalPackage.RIPGREP)
         assertThat(installedOptionalPackages(emptyList())).isEmpty()
     }
 
@@ -242,7 +249,7 @@ class LinuxSettingsViewModelsTest {
         viewModel.installOptionalPackages()
         advanceUntilIdle()
         assertThat(packages.installs).containsExactly(listOf("python3", "py3-pip") to LinuxPackageOrigin.Preset)
-        assertThat(viewModel.uiState.value.optionalInstalled).containsExactlyElementsIn(LinuxOptionalPackage.entries)
+        assertThat(viewModel.uiState.value.optionalInstalled).containsExactly(LinuxOptionalPackage.GIT, LinuxOptionalPackage.PYTHON3)
         assertThat(viewModel.uiState.value.optionalSelection).isEmpty()
         assertThat(viewModel.uiState.value.installingOptional).isFalse()
         assertThat(viewModel.uiState.value.notice).isNull()
@@ -269,7 +276,7 @@ class LinuxSettingsViewModelsTest {
         viewModel.installOptionalPackages()
         advanceUntilIdle()
         assertThat(packages.installs).hasSize(1)
-        assertThat(isOptionalPackageOperation(LinuxPackageOperation(LinuxPackageAction.INSTALL, listOf("nodejs"), null, null, null, null, ""))).isFalse()
+        assertThat(isOptionalPackageOperation(LinuxPackageOperation(LinuxPackageAction.INSTALL, listOf("htop"), null, null, null, null, ""))).isFalse()
     }
 
     @Test

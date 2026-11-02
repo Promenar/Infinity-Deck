@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新功能
+
+- 内置 Linux 的可选附加包新增 ripgrep（`rg`）、Node.js（含 npm）与 FFmpeg，与 git、Python 3 一样在首次引导和 Linux 安装页默认勾选，已安装的环境可在 Linux 管理页补装。全选约需 470 MB，其中 FFmpeg 连同编解码依赖约 160 MB，可取消。智能体的运行环境说明同步列出这些可选包，并提示使用前先确认已安装。
+
 ### 修复
 
 - 展开命令类工具块（`shell_exec`、`ssh_exec` 等）时，结果改为在等宽卡片里只显示命令输出，退出码非零时另起一行标出；不再把整段 JSON 结果作为正文铺在卡片外。

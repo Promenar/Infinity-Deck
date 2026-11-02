@@ -32,7 +32,7 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
 
 ## A real Linux in your pocket
 
-The sideload build installs Alpine Linux in one tap: proot, no root, no Termux. `apk add` works, and so do git, Python and anything else your project needs. Agents run their commands in the same system you open in the terminal, with the same paths.
+The sideload build installs Alpine Linux in one tap: proot, no root, no Termux. `apk add` works, and so do git, Python, Node.js, FFmpeg and anything else your project needs. Agents run their commands in the same system you open in the terminal, with the same paths.
 
 <table>
   <tr>
@@ -107,7 +107,7 @@ Unfold and the chat shares the screen with an inspector for tasks, files, Git, a
 
 ## Get started
 
-**Requirements:** Android 12 (API 31) or later. The built-in Linux needs the sideload build on an arm64-v8a device, about 64 MB for the base system and about 200 MB with git and Python.
+**Requirements:** Android 12 (API 31) or later. The built-in Linux needs the sideload build on an arm64-v8a device, about 64 MB for the base system and about 470 MB with the default git, ripgrep, Python, Node.js and FFmpeg (each can be unchecked).
 
 **Builds:** `sideload` includes the built-in Linux and device file access; `play` leaves both out. Both use the package name `com.promenar.infinity`, so they install alongside the old Nexara app.
 

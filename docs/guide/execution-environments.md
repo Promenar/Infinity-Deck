@@ -4,7 +4,7 @@
 
 ## 内置 Linux 环境
 
-仅侧载版、arm64-v8a 设备提供；Play 版不打包相关文件，入口不显示。安装包内含 Alpine 3.24.3 minirootfs（约 4 MB）与 proot，基础安装（bash、ca-certificates、curl）需约 64 MB 空间，附加包 git 与 Python 3（含 pip）默认勾选，全选约 200 MB，需联网下载（默认清华镜像，可在镜像源页切换或测速）；附加包也可以之后在管理页补装。首次引导会在选择语言后提供同样的安装（可跳过），安装在后台进行，引导可继续，失败可从中断处重试。安装在 `filesDir/linux/alpine`，不进备份；卸载 Infinity Workbench 时一并删除。
+仅侧载版、arm64-v8a 设备提供；Play 版不打包相关文件，入口不显示。安装包内含 Alpine 3.24.3 minirootfs（约 4 MB）与 proot，基础安装（bash、ca-certificates、curl）需约 64 MB 空间，附加包 git、ripgrep、Python 3（含 pip）、Node.js（含 npm）与 FFmpeg 默认勾选，全选约 470 MB（FFmpeg 连同编解码依赖约占 160 MB，可取消），需联网下载（默认清华镜像，可在镜像源页切换或测速）；附加包也可以之后在管理页补装。首次引导会在选择语言后提供同样的安装（可跳过），安装在后台进行，引导可继续，失败可从中断处重试。安装在 `filesDir/linux/alpine`，不进备份；卸载 Infinity Workbench 时一并删除。
 
 每个会话固定一种运行模式，顶栏标题旁显示，点标题下方状态行的运行模式手动切换；新会话使用 Linux 设置中的“新会话默认模式”（Linux 未就绪时为内置）。切换不搬动文件，Linux 环境失效时不会静默改用其它环境。
 

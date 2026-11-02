@@ -4,6 +4,12 @@
     <string name="linux_run_mode_install_base">基础：bash、curl、证书</string>
     <string name="linux_run_mode_package_git_title">git</string>
     <string name="linux_run_mode_package_git_subtitle">版本控制 · 约需 %1$s</string>
+    <string name="linux_run_mode_package_ripgrep_title">ripgrep（rg）</string>
+    <string name="linux_run_mode_package_ripgrep_subtitle">快速搜索代码与文本 · 约需 %1$s</string>
+    <string name="linux_run_mode_package_nodejs_title">Node.js（含 npm）</string>
+    <string name="linux_run_mode_package_nodejs_subtitle">运行 JavaScript，用 npm 安装包 · 约需 %1$s</string>
+    <string name="linux_run_mode_package_ffmpeg_title">FFmpeg</string>
+    <string name="linux_run_mode_package_ffmpeg_subtitle">音视频转码与处理 · 约需 %1$s</string>
     <string name="linux_run_mode_package_python_title">Python 3（含 pip）</string>
     <string name="linux_run_mode_package_python_subtitle">运行脚本，用 pip 安装库 · 约需 %1$s</string>
     <string name="linux_run_mode_install_later_note">以后也能在 Linux 设置里补装。</string>

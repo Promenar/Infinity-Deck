@@ -85,7 +85,10 @@ object LinuxPackagePresets {
 
 enum class LinuxOptionalPackage(val packages: List<String>) {
     GIT(listOf("git")),
+    RIPGREP(listOf("ripgrep")),
     PYTHON3(listOf("python3", "py3-pip")),
+    NODEJS(listOf("nodejs", "npm")),
+    FFMPEG(listOf("ffmpeg")),
 }
 
 /** 已安装环境补装勾选的附加包，沿用现有软件包操作、保活和来源记录。 */

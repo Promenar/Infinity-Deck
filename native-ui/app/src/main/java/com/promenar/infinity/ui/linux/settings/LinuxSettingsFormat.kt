@@ -89,13 +89,25 @@ internal const val LINUX_BASE_REQUIRED_BYTES = 64L * 1024 * 1024
 /** git 及其依赖安装后约 15 MB，按下载缓存与余量估算。 */
 internal const val LINUX_GIT_REQUIRED_BYTES = 36L * 1024 * 1024
 
-/** python3 与 py3-pip 安装后约 60 MB，按下载缓存与余量估算；与 git 合计后全选约 200 MB。 */
+/** python3 与 py3-pip 安装后约 60 MB，按下载缓存与余量估算。 */
 internal const val LINUX_PYTHON3_REQUIRED_BYTES = 100L * 1024 * 1024
+
+/** ripgrep 安装后约 3 MB（Alpine 3.24 aarch64，下载约 1.3 MB），加下载缓存与余量。 */
+internal const val LINUX_RIPGREP_REQUIRED_BYTES = 8L * 1024 * 1024
+
+/** nodejs 与 npm 在已装 git、Python 之上新增约 63 MB（下载约 23 MB），加下载缓存与余量。 */
+internal const val LINUX_NODEJS_REQUIRED_BYTES = 100L * 1024 * 1024
+
+/** ffmpeg 连同约百个编解码依赖新增约 99 MB（下载约 42 MB），加下载缓存与余量；全选约 470 MB。 */
+internal const val LINUX_FFMPEG_REQUIRED_BYTES = 160L * 1024 * 1024
 
 /** 单项附加包的空间估算。 */
 internal fun linuxOptionalPackageBytes(item: LinuxOptionalPackage): Long = when (item) {
     LinuxOptionalPackage.GIT -> LINUX_GIT_REQUIRED_BYTES
+    LinuxOptionalPackage.RIPGREP -> LINUX_RIPGREP_REQUIRED_BYTES
     LinuxOptionalPackage.PYTHON3 -> LINUX_PYTHON3_REQUIRED_BYTES
+    LinuxOptionalPackage.NODEJS -> LINUX_NODEJS_REQUIRED_BYTES
+    LinuxOptionalPackage.FFMPEG -> LINUX_FFMPEG_REQUIRED_BYTES
 }
 
 /** 安装前要求的最小剩余空间：基础系统加所勾选的附加包。 */

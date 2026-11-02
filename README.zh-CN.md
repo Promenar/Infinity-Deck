@@ -32,7 +32,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 ## 口袋里的真 Linux
 
-侧载版一键安装 Alpine Linux：proot 运行，无需 root，也不依赖 Termux。可以 `apk add` 安装软件，git、Python 和项目需要的工具都能用。Agent 执行命令的环境就是你在终端里打开的同一套系统，路径完全一致。
+侧载版一键安装 Alpine Linux：proot 运行，无需 root，也不依赖 Termux。可以 `apk add` 安装软件，git、Python、Node.js、FFmpeg 和项目需要的工具都能用。Agent 执行命令的环境就是你在终端里打开的同一套系统，路径完全一致。
 
 <table>
   <tr>
@@ -107,7 +107,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 ## 开始使用
 
-**运行要求**：Android 12（API 31）及以上。内置 Linux 需要侧载版和 arm64-v8a 设备，基础系统约占 64 MB，加装 git 与 Python 约 200 MB。
+**运行要求**：Android 12（API 31）及以上。内置 Linux 需要侧载版和 arm64-v8a 设备，基础系统约占 64 MB，默认加装 git、ripgrep、Python、Node.js 与 FFmpeg 共约 470 MB，可按需取消。
 
 **两个渠道**：`sideload` 包含内置 Linux 与设备文件访问，`play` 不含这两项。两者包名均为 `com.promenar.infinity`，可与旧版 Nexara 并存。
 
