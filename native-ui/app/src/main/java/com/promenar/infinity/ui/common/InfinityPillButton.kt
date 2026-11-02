@@ -167,6 +167,7 @@ fun InfinityPillMenuButton(
  * 胶囊操作行：每个按钮都能以单行文字放进等分宽度时并排等宽排列；任一按钮放不下就整组竖排、各占满宽，
  * 保证按钮文字永远不折行。并排时主操作放在最后（最右），[reverseWhenStacked] 为真时竖排倒序，让主操作在最上。
  * 没有主次之分的同级操作（如两个替代方案）传 false，竖排保持原顺序。
+ * 父布局剩余高度不足时，报告的高度截到约束以内、按钮仍从顶部排起，超出部分由父布局裁切，不会上移盖住前面的内容。
  */
 @Composable
 fun InfinityPillRow(
@@ -189,7 +190,7 @@ fun InfinityPillRow(
         if (singleLineWidths.all { it <= slot }) {
             val height = measurables.maxOf { it.maxIntrinsicHeight(slot) }
             val placeables = measurables.map { it.measure(Constraints.fixed(slot, height)) }
-            layout(width, height) {
+            layout(width, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
                 placeables.forEachIndexed { index, placeable -> placeable.placeRelative(index * (slot + gap), 0) }
             }
         } else {
@@ -197,7 +198,7 @@ fun InfinityPillRow(
                 .let { if (reverseWhenStacked) it.asReversed() else it }
             val stackedGap = stackedSpacing.roundToPx()
             val height = placeables.sumOf { it.height } + stackedGap * (placeables.size - 1)
-            layout(width, height) {
+            layout(width, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
                 var y = 0
                 placeables.forEach { placeable ->
                     placeable.placeRelative(0, y)

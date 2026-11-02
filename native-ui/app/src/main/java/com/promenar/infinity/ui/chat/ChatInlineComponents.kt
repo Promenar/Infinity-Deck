@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Shape
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityMenuItem
+import com.promenar.infinity.ui.common.InfinityPillRow
 import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.Citation
@@ -65,7 +66,6 @@ import com.promenar.infinity.domain.jobs.SftpTransferDirection
 import com.promenar.infinity.domain.tool.CommandToolBackend
 import com.promenar.infinity.domain.tool.CommandToolClassification
 import com.promenar.infinity.domain.tool.ToolExecutionTargets
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.promenar.infinity.ui.chat.components.RagDetailsSheet
 import com.promenar.infinity.ui.chat.components.ragScopeSegment
@@ -1372,7 +1372,7 @@ fun ApprovalCard(
 /**
  * 拒绝与批准等宽并排，批准是卡片里唯一的实心按钮。有“全部批准”或“10 分钟内同类免审批”时，
  * 批准变为分体按钮：主体批准当前调用，右侧相连的箭头段打开其余批准方式菜单，不另占行。
- * 大字号时按钮文字最多两行，按钮随之长高，触控高度始终不小于 48dp。
+ * 按钮文字始终单行；窄屏或大字号下并排放不下时整组竖排，批准在上。
  */
 @Composable
 internal fun ApprovalActionBar(
@@ -1393,13 +1393,13 @@ internal fun ApprovalActionBar(
     val confirm: (() -> Unit) -> () -> Unit = { action -> { haptics.perform(InfinityHapticEvent.CONFIRM); action() } }
     val timed = onApproveTimed?.takeIf { timedGrantLabel != null }
     val hasMore = onApproveAll != null || timed != null
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    InfinityPillRow(Modifier.fillMaxWidth().padding(top = 4.dp), stackedSpacing = 8.dp) {
         ApprovalPillButton(
             label = stringResource(if (remainingCount > 0) R.string.chat_inline_approval_reject_current else R.string.chat_inline_approval_reject),
             onClick = { haptics.perform(InfinityHapticEvent.REJECT); onDecline() },
             primary = false,
             enabled = enabled,
-            modifier = Modifier.weight(1f).semantics { contentDescription = declineA11y }.testTag(UiTags.CHAT_APPROVAL_DECLINE),
+            modifier = Modifier.semantics { contentDescription = declineA11y }.testTag(UiTags.CHAT_APPROVAL_DECLINE),
         )
         val approveText = approveLabel ?: stringResource(if (remainingCount > 0) R.string.chat_inline_approval_approve_current else R.string.chat_inline_approval_approve)
         if (!hasMore) {
@@ -1408,19 +1408,17 @@ internal fun ApprovalActionBar(
                 onClick = confirm(onApprove),
                 primary = true,
                 enabled = enabled,
-                modifier = Modifier.weight(1f).semantics { contentDescription = approveA11y }.testTag(UiTags.CHAT_APPROVAL_APPROVE),
+                modifier = Modifier.semantics { contentDescription = approveA11y }.testTag(UiTags.CHAT_APPROVAL_APPROVE),
             )
         } else {
             var menuExpanded by remember { mutableStateOf(initialMenuExpanded) }
-            // 箭头段占去 46dp，批准组略宽于拒绝，大字号英文时“Approve”仍能整词显示。
-            Row(Modifier.weight(1.3f).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 ApprovalPillButton(
                     label = approveText,
                     onClick = confirm(onApprove),
                     primary = true,
                     enabled = enabled,
                     shape = RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp, topEnd = 6.dp, bottomEnd = 6.dp),
-                    horizontalPadding = 8.dp,
                     modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = approveA11y }.testTag(UiTags.CHAT_APPROVAL_APPROVE),
                 )
                 val moreA11y = stringResource(R.string.chat_approval_more_options_cd)
@@ -1506,8 +1504,9 @@ private fun ApprovalPillButton(
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
             fontWeight = if (primary) FontWeight.Medium else FontWeight.Normal,
             color = textColor,
-            maxLines = 2,
-            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
