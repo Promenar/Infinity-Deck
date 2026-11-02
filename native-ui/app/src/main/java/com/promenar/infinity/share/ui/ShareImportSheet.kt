@@ -215,14 +215,26 @@ internal fun ColumnScope.ShareImportSheetContent(
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = InfinitySpacing.Small),
             )
         }
-        // 全部导入成功后请求已确认，“稍后处理 / 取消导入”不再有意义，只留“完成”。
-        val finished = shareImportFinished(state)
+        // 全部导入成功后请求已确认，“稍后处理 / 取消导入”不再有意义，只留“完成”（索引失败时另有“重试失败项”）。
+        val actions = shareImportActions(state)
+        val finished = ShareImportAction.DONE in actions
+        val retryButton: @Composable () -> Unit = {
+            InfinityPillButton(
+                text = stringResource(R.string.share_import_retry),
+                onClick = onRetry,
+                enabled = !state.importing && (
+                    state.canImportTo ||
+                        state.error in setOf(
+                            ShareImportErrorCode.PRESENT_FAILED,
+                            ShareImportErrorCode.POSTPONE_FAILED,
+                            ShareImportErrorCode.CANCEL_FAILED,
+                        )
+                    ),
+            )
+        }
         Spacer(Modifier.height(InfinitySpacing.Medium))
         if (finished) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
+            val doneButton: @Composable () -> Unit = {
                 InfinityPillButton(
                     text = stringResource(R.string.share_import_done),
                     onClick = onClose,
@@ -230,10 +242,20 @@ internal fun ColumnScope.ShareImportSheetContent(
                     modifier = Modifier.testTag(UiTags.SHARE_IMPORT_DONE),
                 )
             }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                if (ShareImportAction.RETRY in actions) {
+                    InfinityPillRow(modifier = Modifier.weight(1f)) {
+                        retryButton()
+                        doneButton()
+                    }
+                } else {
+                    doneButton()
+                }
+            }
         } else {
-            val showRetry = state.error != null ||
-                state.items.any { it.status == ShareImportStatus.Rejected && it.reason?.retryable == true } ||
-                state.items.any { it.indexStatus in setOf(ShareIndexStatus.Failed, ShareIndexStatus.Partial) }
             // “稍后处理 / 取消导入”低频且后者会删除暂存副本，收进“⋯”菜单；重试与导入留在操作行，主操作在最右。
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -260,20 +282,7 @@ internal fun ColumnScope.ShareImportSheetContent(
                     )
                 }
                 InfinityPillRow(modifier = Modifier.weight(1f)) {
-                    if (showRetry) {
-                        InfinityPillButton(
-                            text = stringResource(R.string.share_import_retry),
-                            onClick = onRetry,
-                            enabled = !state.importing && (
-                                state.canImportTo ||
-                                    state.error in setOf(
-                                        ShareImportErrorCode.PRESENT_FAILED,
-                                        ShareImportErrorCode.POSTPONE_FAILED,
-                                        ShareImportErrorCode.CANCEL_FAILED,
-                                    )
-                                ),
-                        )
-                    }
+                    if (ShareImportAction.RETRY in actions) retryButton()
                     InfinityPillButton(
                         text = if (state.importing) stringResource(R.string.share_import_importing)
                         else stringResource(R.string.share_import_action),
@@ -768,3 +777,15 @@ private fun formatShareBytes(bytes: Long): String = when {
 internal fun shareImportFinished(state: ShareImportUiState): Boolean =
     !state.importing && state.error == null && state.items.isNotEmpty() &&
         state.items.all { it.status == ShareImportStatus.Created }
+
+/** 分享导入面板底部操作行的按钮（“⋯”菜单除外），按从左到右排列，主操作在最右。 */
+internal enum class ShareImportAction { RETRY, IMPORT, DONE }
+
+/** 全部导入后若有文件索引失败，“重试失败项”仍须与“完成”并列，状态文案“可重试”才有入口。 */
+internal fun shareImportActions(state: ShareImportUiState): List<ShareImportAction> {
+    val showRetry = state.error != null ||
+        state.items.any { it.status == ShareImportStatus.Rejected && it.reason?.retryable == true } ||
+        state.items.any { it.indexStatus in setOf(ShareIndexStatus.Failed, ShareIndexStatus.Partial) }
+    val primary = if (shareImportFinished(state)) ShareImportAction.DONE else ShareImportAction.IMPORT
+    return listOfNotNull(ShareImportAction.RETRY.takeIf { showRetry }, primary)
+}

@@ -12,6 +12,7 @@ import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.share.core.ShareImportItem
 import com.promenar.infinity.share.core.ShareImportOptions
 import com.promenar.infinity.share.core.ShareImportStatus
+import com.promenar.infinity.share.core.ShareIndexStatus
 import com.promenar.infinity.share.core.ShareKnowledgeFolder
 import com.promenar.infinity.share.core.ShareLinuxAvailability
 import com.promenar.infinity.share.core.ShareSessionChoice
@@ -51,6 +52,12 @@ private val KnowledgeState = ShareImportUiState(
 
 private val DoneState = LinuxState.copy(items = Items.map { it.copy(status = ShareImportStatus.Created) })
 
+private val DoneIndexFailedState = KnowledgeState.copy(
+    items = Items.mapIndexed { index, item ->
+        item.copy(status = ShareImportStatus.Created, indexStatus = if (index == 0) ShareIndexStatus.Failed else null)
+    },
+)
+
 @Composable
 private fun Sheet(mode: InfinityThemeMode, state: ShareImportUiState) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
@@ -87,3 +94,9 @@ fun shareImportKnowledgePreview() = Sheet(InfinityThemeMode.LIGHT, KnowledgeStat
 @Preview(name = "分享导入 完成 深中411", widthDp = 411, heightDp = 900, locale = "zh-rCN")
 @Composable
 fun shareImportDonePreview() = Sheet(InfinityThemeMode.DARK, DoneState)
+
+@PreviewTest
+@Preview(name = "分享导入 完成含索引失败 浅中411", widthDp = 411, heightDp = 900, locale = "zh-rCN")
+@Preview(name = "分享导入 完成含索引失败 浅英360 大字", widthDp = 360, heightDp = 1200, locale = "en", fontScale = 1.3f)
+@Composable
+fun shareImportDoneIndexFailedPreview() = Sheet(InfinityThemeMode.LIGHT, DoneIndexFailedState)

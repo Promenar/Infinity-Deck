@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.2-beta] - 2026-11-02
+
+### 修复
+
+- 分享导入面板：文件已全部导入但有文件索引失败时，“重试失败项”重新与“完成”并列显示。0.14.0-beta 起这种情况只剩“完成”，状态写着“可重试”却没有重试入口。
+
 ## [0.14.1-beta] - 2026-11-02
 
 ### 修复
