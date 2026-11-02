@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.R
 import com.promenar.infinity.ShareRequest
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.rag.RagConfiguration
@@ -111,6 +112,8 @@ class RagViewModel(
                     baseRepo = workspaceRepository,
                     sessionDao = sessionDao,
                     fileEntryDao = fileEntryDao,
+                    sessionWorkspacesRootName = app.getString(R.string.files_session_workspaces_title),
+                    untitledSessionName = app.getString(R.string.hub_session_untitled),
                     onTransferToKnowledgeBaseCommitted = { transferredEntry ->
                         runCatching {
                             val rootUuid = _workspaceRootUuid.value
@@ -1066,7 +1069,7 @@ class RagViewModel(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
-                    failures += "${uri.lastPathSegment ?: "未知文件"} - ${failure.message?.take(80) ?: "未知错误"}"
+                    failures += "${uri.lastPathSegment ?: app.getString(R.string.rag_import_unknown_file)} - ${failure.message?.take(80) ?: app.getString(R.string.rag_import_unknown_error)}"
                 }
             }
 
@@ -1306,7 +1309,7 @@ class RagViewModel(
                 }
                 val content = fileOperationRepository.readFileRange(rootUuid, uuid).content
                 val newUuid = java.util.UUID.randomUUID().toString()
-                val newName = "${entry.name.substringBeforeLast('.')} - 副本.${entry.name.substringAfterLast('.', "")}"
+                val newName = duplicateFileName(entry.name) { base -> app.getString(R.string.rag_duplicate_file_name, base) }
                 val parentUuid = entry.parentUuid ?: rootUuid
                 val parentPath = repo.getByUuid(rootUuid, parentUuid)?.materializedPath ?: return@launch
                 repo.createFileInWorkspace(
@@ -1599,4 +1602,10 @@ class RagViewModel(
                 }
             }
     }
+}
+
+/** 副本名：在扩展名前插入当前语言的副本后缀；没有扩展名时不追加多余的点。 */
+internal fun duplicateFileName(name: String, copyOf: (String) -> String): String {
+    val dot = name.lastIndexOf('.')
+    return if (dot > 0) copyOf(name.substring(0, dot)) + name.substring(dot) else copyOf(name)
 }

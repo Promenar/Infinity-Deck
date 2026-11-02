@@ -109,6 +109,31 @@ class CompositeGlobalWorkspaceRepositoryTest {
     }
 
     @Test
+    fun `虚拟根目录与无标题会话使用传入的当前语言显示名`() = runTest {
+        val untitled = session1.copy(title = "  ")
+        every { baseRepo.observeChildren(ragRootUuid, ragRootUuid) } returns flowOf(emptyList())
+        every { sessionDao.observeAll() } returns flowOf(listOf(ragSession, untitled))
+        val englishRepo = CompositeGlobalWorkspaceRepository(
+            baseRepo = baseRepo,
+            sessionDao = sessionDao,
+            fileEntryDao = fileEntryDao,
+            sessionWorkspacesRootName = "Session Workspaces",
+            untitledSessionName = "Untitled session",
+        )
+
+        val root = englishRepo.observeChildren(ragRootUuid, ragRootUuid).first().single()
+        val sessionFolder = englishRepo.observeChildren(
+            ragRootUuid,
+            CompositeWorkspaceConstants.VIRTUAL_SESSION_WORKSPACES_ROOT_UUID,
+        ).first().single()
+
+        assertThat(root.name).isEqualTo("Session Workspaces")
+        assertThat(root.materializedPath).isEqualTo("/Session Workspaces")
+        assertThat(sessionFolder.name).isEqualTo("Untitled session session-")
+        assertThat(sessionFolder.materializedPath).isEqualTo("/Session Workspaces/Untitled session session-")
+    }
+
+    @Test
     fun `展开具体会话目录时代理至该会话真实工作区根`() = runTest {
         coEvery { sessionDao.getById("session-1") } returns session1
         val sessionFile = FileEntry(

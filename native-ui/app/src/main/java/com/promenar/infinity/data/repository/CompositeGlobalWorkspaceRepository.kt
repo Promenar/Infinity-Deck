@@ -45,6 +45,9 @@ class CompositeGlobalWorkspaceRepository(
     private val fileEntryDao: FileEntryDao,
     private val globalKnowledgeSessionId: String = CompositeWorkspaceConstants.GLOBAL_KNOWLEDGE_SESSION_ID,
     private val onTransferToKnowledgeBaseCommitted: (suspend (FileEntry) -> Unit)? = null,
+    /** 虚拟根目录与无标题会话的显示名由界面按当前语言传入；数据层不持有语言资源。 */
+    private val sessionWorkspacesRootName: String = "会话工作区",
+    private val untitledSessionName: String = "未命名会话",
 ) : IWorkspaceRepository {
 
     private fun createVirtualSessionWorkspacesRoot(workspaceRootUuid: String): FileEntry {
@@ -52,18 +55,18 @@ class CompositeGlobalWorkspaceRepository(
             uuid = CompositeWorkspaceConstants.VIRTUAL_SESSION_WORKSPACES_ROOT_UUID,
             workspaceRootUuid = workspaceRootUuid,
             parentUuid = workspaceRootUuid,
-            name = "会话工作区",
+            name = sessionWorkspacesRootName,
             hash = "virtual:session_workspaces_root",
             isDirectory = true,
             physicalRootPath = "",
-            materializedPath = "/会话工作区",
+            materializedPath = "/$sessionWorkspacesRootName",
             createdAt = 0L,
             updatedAt = 0L,
         )
     }
 
     private fun createVirtualSessionFolder(session: SessionEntity, workspaceRootUuid: String): FileEntry {
-        val title = session.title.trim().ifBlank { "会话 ${session.id.take(8)}" }
+        val title = session.title.trim().ifBlank { "$untitledSessionName ${session.id.take(8)}" }
         return FileEntry(
             uuid = CompositeWorkspaceConstants.virtualSessionFolderUuid(session.id),
             workspaceRootUuid = session.workspaceRootUuid ?: workspaceRootUuid,
@@ -72,7 +75,7 @@ class CompositeGlobalWorkspaceRepository(
             hash = "virtual:session:${session.id}",
             isDirectory = true,
             physicalRootPath = session.workspacePath ?: "",
-            materializedPath = "/会话工作区/$title",
+            materializedPath = "/$sessionWorkspacesRootName/$title",
             lastWriteSessionId = session.id,
             createdAt = session.createdAt,
             updatedAt = session.updatedAt,
