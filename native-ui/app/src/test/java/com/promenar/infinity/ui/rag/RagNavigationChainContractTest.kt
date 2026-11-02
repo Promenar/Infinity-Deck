@@ -18,7 +18,7 @@ class RagNavigationChainContractTest {
         )
 
         assertThat(filesPanel).contains("onFolderClick: ((String, String) -> Unit)? = null")
-        assertThat(filesPanel).contains("onFolderClick?.invoke(file.uuid, file.name)")
+        assertThat(filesPanel).contains("onFolderClick?.invoke(file.uuid, displayName)")
         assertThat(filesPanel).contains("onFolderClick = onFolderClick")
     }
 

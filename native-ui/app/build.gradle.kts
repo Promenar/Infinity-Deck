@@ -369,7 +369,7 @@ android {
         applicationId = "com.promenar.infinity"
         minSdk = 31
         targetSdk = 36
-        versionCode = 39
+        versionCode = 40
         versionName = "0.13.2-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

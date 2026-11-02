@@ -692,6 +692,7 @@ private fun FileTreeRow(
     val isVirtualRoot = CompositeWorkspaceConstants.isVirtualSessionWorkspacesRoot(file.uuid)
     val isVirtualSession = CompositeWorkspaceConstants.isVirtualSessionFolder(file.uuid)
     val isVirtualNode = isVirtualRoot || isVirtualSession
+    val displayName = fileDisplayName(file, isVirtualRoot)
     val supportsMultiSelect = supportsFileMultiSelect(
         hasReindex = onReindex != null,
         hasDelete = onDelete != null,
@@ -726,8 +727,8 @@ private fun FileTreeRow(
                         else -> selectedIds.add(file.uuid)
                     }
                 }
-                resolvedActivation == FileNodeActivation.NavigateFolder -> onFolderClick?.invoke(file.uuid, file.name)
-                isVirtualNode -> if (onFolderClick != null) onFolderClick.invoke(file.uuid, file.name) else onToggleExpanded()
+                resolvedActivation == FileNodeActivation.NavigateFolder -> onFolderClick?.invoke(file.uuid, displayName)
+                isVirtualNode -> if (onFolderClick != null) onFolderClick.invoke(file.uuid, displayName) else onToggleExpanded()
                 resolvedActivation == FileNodeActivation.ToggleExpansion -> onToggleExpanded()
                 resolvedActivation == FileNodeActivation.OpenFile -> onFileClick?.invoke(file.uuid)
             }
@@ -772,7 +773,7 @@ private fun FileTreeRow(
                 if (selectable) {
                     Modifier.combinedClickable(
                         role = Role.Button,
-                        onClickLabel = file.name.takeIf { handleActivate != null },
+                        onClickLabel = displayName.takeIf { handleActivate != null },
                         onLongClickLabel = selectLabel,
                         onLongClick = { onToggleSelection?.invoke(file) },
                         onClick = handleActivate ?: {},
@@ -780,7 +781,7 @@ private fun FileTreeRow(
                 } else if (handleActivate != null) {
                     Modifier.combinedClickable(
                         role = Role.Button,
-                        onClickLabel = file.name,
+                        onClickLabel = displayName,
                         onLongClickLabel = optionsLabel.takeIf { hasMenuActions },
                         onLongClick = if (hasMenuActions) ({ showMenu = true }) else null,
                         onClick = handleActivate,
@@ -1009,6 +1010,7 @@ private fun FileRow(
     }
     val isVirtualRoot = CompositeWorkspaceConstants.isVirtualSessionWorkspacesRoot(file.uuid)
     val isVirtualSession = CompositeWorkspaceConstants.isVirtualSessionFolder(file.uuid)
+    val displayName = fileDisplayName(file, isVirtualRoot)
     val isSessionFile = (file.workspaceRootUuid.isNotBlank() && file.workspaceRootUuid != workspaceRootUuid) ||
         CompositeWorkspaceConstants.isVirtualSessionFolder(file.parentUuid)
 
@@ -1026,7 +1028,7 @@ private fun FileRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     InfinityIdentifierText(
-                        text = file.name,
+                        text = displayName,
                         style = MaterialTheme.typography.bodyLarge,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1106,7 +1108,7 @@ private fun FileRow(
                         Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable(onClick = {
-                                if (onFolderClick != null) onFolderClick(file.uuid, file.name)
+                                if (onFolderClick != null) onFolderClick(file.uuid, displayName)
                                 else onToggleExpanded?.invoke()
                             })
                             .padding(4.dp)
@@ -1478,3 +1480,8 @@ private fun formatRelativeTime(timestamp: Long, nowMillis: Long): String {
         else -> SimpleDateFormat("MMM d", locale).format(Date(timestamp))
     }
 }
+
+/** 虚拟“会话工作区”根目录按当前界面语言显示；数据层生成的名称在运行中切换语言后不会更新。 */
+@Composable
+private fun fileDisplayName(file: FileEntry, isVirtualRoot: Boolean): String =
+    if (isVirtualRoot) stringResource(R.string.files_session_workspaces_title) else file.name
