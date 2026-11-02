@@ -99,7 +99,7 @@ class RoomBackupDataSource(
         val safePreferences = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES))
         var preferenceBytes = json.encodeToString(safePreferences).toByteArray(Charsets.UTF_8)
         if (preferenceBytes.size.toLong() > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
-            throw BackupValidationException("偏好数据超过内存安全限制")
+            throw BackupValidationException("偏好数据超过内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
         var files: Map<String, ByteArray> = emptyMap()
         var avatars: Map<String, ByteArray> = emptyMap()
@@ -123,7 +123,7 @@ class RoomBackupDataSource(
                 val remaining = BackupPackageLimits.MAX_IN_MEMORY_BYTES - preferenceBytes.size - secretBytes -
                     preliminaryDatabase.size - nonDirectoryCount * 64L
                 preliminaryDatabase.fill(0)
-                if (remaining < 0) throw BackupValidationException("数据库与偏好已超过内存安全限制")
+                if (remaining < 0) throw BackupValidationException("数据库与偏好已超过内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
                 val result = snapshotFiles(payload, remaining)
                 result.payload to result.files
             }
@@ -395,16 +395,16 @@ class RoomBackupDataSource(
     private fun snapshotFiles(payload: DatabaseBackupPayload, memoryBudget: Long): SnapshotFilesResult {
         val rows = payload.rows(FILE_TABLE)
         val fileRows = rows.filterNot { it.requiredBoolean("is_directory") }
-        if (fileRows.size > BackupPackageLimits.MAX_ENTRIES - 2) throw BackupValidationException("备份文件项过多")
+        if (fileRows.size > BackupPackageLimits.MAX_ENTRIES - 2) throw BackupValidationException("备份文件项过多", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         var declaredTotal = 0L
         fileRows.forEach { row ->
             val size = row.requiredLong("size_bytes")
             if (size < 0 || size > BackupPackageLimits.MAX_ENTRY_BYTES) {
-                throw BackupValidationException("文件声明大小超过备份限制")
+                throw BackupValidationException("文件声明大小超过备份限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
             declaredTotal = Math.addExact(declaredTotal, size)
             if (declaredTotal > BackupPackageLimits.MAX_TOTAL_BYTES || declaredTotal > memoryBudget) {
-                throw BackupValidationException("文件声明总大小超过备份或内存安全限制")
+                throw BackupValidationException("文件声明总大小超过备份或内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
         }
         val result = linkedMapOf<String, ByteArray>()
@@ -419,7 +419,7 @@ class RoomBackupDataSource(
                 val declaredHash = row.requiredString("hash")
                 if (declaredHash.isNotBlank() && !declaredHash.equals(actualHash, ignoreCase = true)) {
                     bytes.fill(0)
-                    throw BackupValidationException("文件摘要不一致")
+                    throw BackupValidationException("文件摘要不一致", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
                 }
                 result[id] = bytes
                 hashes[id] = actualHash
@@ -443,7 +443,7 @@ class RoomBackupDataSource(
             path, java.nio.file.attribute.BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS
         )
         if (!before.isRegularFile || before.isSymbolicLink || before.size() != declaredSize) {
-            throw BackupValidationException("文件读取前属性与声明不一致: $id")
+            throw BackupValidationException("文件读取前属性与声明不一致: $id", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
         val realBefore = path.toRealPath(LinkOption.NOFOLLOW_LINKS)
         val bytes = ByteArray(declaredSize.toInt())
@@ -459,7 +459,7 @@ class RoomBackupDataSource(
                     offset += count
                 }
                 if (offset != bytes.size || channel.read(java.nio.ByteBuffer.allocate(1)) != -1) {
-                    throw BackupValidationException("文件读取大小发生变化: $id")
+                    throw BackupValidationException("文件读取大小发生变化: $id", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
                 }
             }
             snapshotReadHook(path)
@@ -477,14 +477,14 @@ class RoomBackupDataSource(
                 before.lastModifiedTime() != after.lastModifiedTime() || realBefore != realAfter || hash != afterHash ||
                 after.fileKey() != finalAttributes.fileKey() || after.size() != finalAttributes.size() ||
                 after.lastModifiedTime() != finalAttributes.lastModifiedTime() || realAfter != finalReal
-            ) throw BackupValidationException("文件在 snapshot 期间发生变化: $id")
+            ) throw BackupValidationException("文件在 snapshot 期间发生变化: $id", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
             return bytes to hash
         } catch (error: BackupValidationException) {
             bytes.fill(0)
             throw error
         } catch (error: Exception) {
             bytes.fill(0)
-            throw BackupValidationException("无法稳定读取备份源文件: $id", error)
+            throw BackupValidationException("无法稳定读取备份源文件: $id", error, reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
     }
 
@@ -499,11 +499,11 @@ class RoomBackupDataSource(
                 if (count < 0) break
                 if (count == 0) continue
                 total += count
-                if (total > expectedSize) throw BackupValidationException("文件复核读取超过声明大小")
+                if (total > expectedSize) throw BackupValidationException("文件复核读取超过声明大小", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
                 digest.update(buffer.array(), 0, count)
             }
         }
-        if (total != expectedSize) throw BackupValidationException("文件复核读取大小变化")
+        if (total != expectedSize) throw BackupValidationException("文件复核读取大小变化", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
@@ -536,16 +536,16 @@ class RoomBackupDataSource(
         var current = root
         relative.forEach { segment ->
             current = current.resolve(segment)
-            if (Files.isSymbolicLink(current)) throw BackupValidationException("备份文件路径包含符号链接")
+            if (Files.isSymbolicLink(current)) throw BackupValidationException("备份文件路径包含符号链接", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
         val candidate = current.normalize()
         val real = try {
             candidate.toRealPath()
         } catch (error: Exception) {
-            throw BackupValidationException("备份源文件不存在", error)
+            throw BackupValidationException("备份源文件不存在", error, reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
         if (!real.startsWith(rootReal) || !Files.isRegularFile(real, LinkOption.NOFOLLOW_LINKS)) {
-            throw BackupValidationException("备份文件越出根目录或不是普通文件")
+            throw BackupValidationException("备份文件越出根目录或不是普通文件", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
         return real
     }
@@ -1061,7 +1061,7 @@ class RoomBackupDataSource(
         if (!Regex("[0-9a-fA-F]{64}").matches(expectedHash) ||
             !expectedHash.equals(sha256(bytes), ignoreCase = true)
         ) {
-            throw BackupValidationException("文件摘要不一致")
+            throw BackupValidationException("文件摘要不一致", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
     }
 
@@ -1283,17 +1283,17 @@ class RoomBackupDataSource(
             preferenceBytes.size.toLong() > BackupPackageLimits.MAX_ENTRY_BYTES ||
             files.size + avatars.size + 2 + (if (secretValues.isEmpty()) 0 else 1) +
                 (skills?.let { it.files.size + it.metadata.directories.size } ?: 0) > BackupPackageLimits.MAX_ENTRIES
-        ) throw BackupValidationException("snapshot 超过备份 entry 限制")
+        ) throw BackupValidationException("snapshot 超过备份 entry 限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         var total = databaseBytes.size.toLong() + preferenceBytes.size.toLong()
         (files.values + secretValues.values + skills?.files.orEmpty().values + avatars.values).forEach { bytes ->
             if (bytes.size.toLong() > BackupPackageLimits.MAX_ENTRY_BYTES) {
-                throw BackupValidationException("snapshot 内容项超过大小限制")
+                throw BackupValidationException("snapshot 内容项超过大小限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
             total = Math.addExact(total, bytes.size.toLong())
-            if (total > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("snapshot 超过总大小限制")
+            if (total > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("snapshot 超过总大小限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
         if (total > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
-            throw BackupValidationException("snapshot 超过 Android 内存安全限制")
+            throw BackupValidationException("snapshot 超过 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
     }
 
@@ -1749,7 +1749,7 @@ class RoomBackupDataSource(
         private var used = 0L
         fun consume(bytes: Long) {
             used = Math.addExact(used, bytes)
-            if (used > limit) throw BackupValidationException("数据库快照超过 Android 内存安全限制")
+            if (used > limit) throw BackupValidationException("数据库快照超过 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
     }
 

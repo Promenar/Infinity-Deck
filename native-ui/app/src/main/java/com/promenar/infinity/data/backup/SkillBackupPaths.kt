@@ -9,7 +9,7 @@ internal object SkillBackupPaths {
         val parts = path.split('/')
         if (path.isBlank() || path.startsWith('/') || '\\' in path || ':' in path || '\u0000' in path ||
             parts.any { it.isEmpty() || it == "." || it == ".." || com.promenar.infinity.domain.workspace.WorkspaceInternalPaths.hasInternalPrefix(it) }
-        ) throw BackupValidationException("技能分区包含不安全路径")
+        ) throw BackupValidationException("技能分区包含不安全路径", reason = BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
         return parts
     }
 

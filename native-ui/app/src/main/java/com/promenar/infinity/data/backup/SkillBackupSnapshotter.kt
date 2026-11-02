@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.backup
 
+import com.promenar.infinity.domain.workspace.WorkspaceInternalPaths
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.Channels
@@ -39,6 +40,8 @@ internal class SkillBackupSnapshotter(root: Path) {
             Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
                 override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
                     if (dir == root) return FileVisitResult.CONTINUE
+                    // 挂载后端在技能根下保留 .infinity 内部区（写入暂存、删除隔离），这类内部名称不属于技能内容。
+                    if (WorkspaceInternalPaths.hasInternalPrefix(dir.fileName.toString())) return FileVisitResult.SKIP_SUBTREE
                     val path = relative(dir)
                     if (dir.parent == root && SkillBackupPaths.isTemporaryDirectory(dir.fileName.toString())) {
                         return FileVisitResult.SKIP_SUBTREE
@@ -53,6 +56,7 @@ internal class SkillBackupSnapshotter(root: Path) {
                 }
 
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (WorkspaceInternalPaths.hasInternalPrefix(file.fileName.toString())) return FileVisitResult.CONTINUE
                     if (attrs.isSymbolicLink) {
                         skippedLinks++
                     } else if (attrs.isRegularFile) {
@@ -61,16 +65,16 @@ internal class SkillBackupSnapshotter(root: Path) {
                         SkillBackupPaths.parts(path)
                         files[path] = SourceFile(file, attrs)
                         total = Math.addExact(total, attrs.size())
-                    } else throw BackupValidationException("技能目录包含非普通文件")
+                    } else throw BackupValidationException("技能目录包含非普通文件", reason = BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
                     return checkLimits()
                 }
 
                 private fun checkLimits(): FileVisitResult {
                     if (!git && total > SkillBackupPaths.MAX_BYTES) {
-                        throw BackupValidationException("用户级技能文件超过 64 MiB，备份已取消")
+                        throw BackupValidationException("用户级技能文件超过 64 MiB，备份已取消", reason = BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
                     }
                     if (!git && directories.size + files.size > entryBudget) {
-                        throw BackupValidationException("用户级技能条目超过备份包上限")
+                        throw BackupValidationException("用户级技能条目超过备份包上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
                     }
                     if (git && (total > gitByteLimit || directories.size + files.size > gitEntryLimit)) {
                         complete = false
@@ -114,7 +118,7 @@ internal class SkillBackupSnapshotter(root: Path) {
             }
         }
         if (total > memoryBudget || files.size + directories.size > entryBudget) {
-            throw BackupValidationException("用户级技能超过备份包条目或 Android 内存安全限制")
+            throw BackupValidationException("用户级技能超过备份包条目或 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
         val result = linkedMapOf<String, ByteArray>()
         try {
@@ -128,7 +132,7 @@ internal class SkillBackupSnapshotter(root: Path) {
                 } else bytes
                 result[relative] = safeBytes
                 actualTotal += safeBytes.size
-                if (actualTotal > memoryBudget) throw BackupValidationException("用户级技能超过 Android 内存安全限制")
+                if (actualTotal > memoryBudget) throw BackupValidationException("用户级技能超过 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
             directories.forEach { (relative, before) ->
                 FileRestoreJournal.rejectSymlinkAncestors(root.resolve(relative))

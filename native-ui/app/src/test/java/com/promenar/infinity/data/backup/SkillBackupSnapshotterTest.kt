@@ -1,6 +1,8 @@
 package com.promenar.infinity.data.backup
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.storage.JvmBoundRealPathFileSystem
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.io.RandomAccessFile
@@ -219,6 +221,74 @@ class SkillBackupSnapshotterTest {
         val partition = snapshot(root)
         try { assertThat(partition.files.getValue("alpha/credentials/readme.md").toString(Charsets.UTF_8)).isEqualTo("说明") }
         finally { partition.wipe() }
+    }
+
+    @Test
+    fun `经技能挂载写入后留下的内部目录不进入备份且快照成功`() = withRoot { root ->
+        Files.createDirectories(root.resolve("alpha"))
+        val backend = JvmBoundRealPathFileSystem().backend(root.toFile().canonicalFile)
+        runBlocking { backend.write("/alpha/SKILL.md", "甲".toByteArray(), null, true) }
+        assertThat(Files.isDirectory(root.resolve(".infinity"))).isTrue()
+
+        val partition = snapshot(root)
+        try {
+            assertThat(partition.files.keys).containsExactly("alpha/SKILL.md")
+            assertThat(partition.metadata.directories).containsExactly("alpha")
+            assertThat(partition.metadata.summary.skillCount).isEqualTo(1)
+        } finally { partition.wipe() }
+    }
+
+    @Test
+    fun `任意深度的工作区内部名称被排除而普通隐藏文件保留`() = withRoot { root ->
+        write(root, "alpha/SKILL.md", "甲")
+        write(root, "alpha/.hidden", "hidden")
+        write(root, ".infinity/.gitignore", "*\n")
+        write(root, ".infinity/.infinity-write-0", "暂存")
+        write(root, ".nexara/tombstones/old", "旧")
+        write(root, ".INFINITY_versions/v1", "版本")
+        write(root, "alpha/.infinity_root_identity", "标记")
+        write(root, "alpha/nested/.nexara/x", "旧")
+        val partition = snapshot(root)
+        try {
+            assertThat(partition.files.keys).containsExactly("alpha/SKILL.md", "alpha/.hidden")
+            assertThat(partition.metadata.directories).containsExactly("alpha", "alpha/nested")
+        } finally { partition.wipe() }
+    }
+
+    @Test
+    fun `技能根含内部目录时整包编码与解码往返成功`() = withRoot { root ->
+        write(root, "alpha/SKILL.md", "甲")
+        write(root, ".infinity/.gitignore", "*\n")
+        val partition = snapshot(root)
+        val codec = DefaultBackupPackageCodec()
+        val bytes = codec.encode(
+            BackupSnapshot(database = "{}".toByteArray(), preferences = "{}".toByteArray(), databaseSchemaVersion = 1, appVersion = "test", skills = partition),
+            BackupOptions(content = setOf(BackupContent.DATABASE, BackupContent.PREFERENCES, BackupContent.FILES)),
+        )
+        try {
+            codec.decode(bytes, null).use { decoded ->
+                assertThat(decoded.skills!!.files.keys).containsExactly("alpha/SKILL.md")
+            }
+        } finally {
+            bytes.fill(0)
+            partition.wipe()
+        }
+    }
+
+    @Test
+    fun `技能失败按可处理原因分类`() = withRoot { root ->
+        write(root, "alpha/SKILL.md", "1234")
+        assertThat(assertThrows<BackupValidationException> { SkillBackupSnapshotter(root).snapshot(3, 100) }.reason)
+            .isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
+        assertThat(assertThrows<BackupValidationException> { SkillBackupSnapshotter(root).snapshot(100, 1) }.reason)
+            .isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
+        RandomAccessFile(root.resolve("large").toFile(), "rw").use { it.setLength(64L * 1024 * 1024 + 1) }
+        assertThat(assertThrows<BackupValidationException> { snapshot(root) }.reason)
+            .isEqualTo(BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
+        Files.delete(root.resolve("large"))
+        write(root, "alpha/a:b.txt", "冒号")
+        assertThat(assertThrows<BackupValidationException> { snapshot(root) }.reason)
+            .isEqualTo(BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
     }
 
     private fun writeUtf8(path: Path, value: String) = Files.write(path, value.toByteArray(Charsets.UTF_8))
