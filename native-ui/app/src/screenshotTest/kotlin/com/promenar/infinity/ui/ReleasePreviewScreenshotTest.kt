@@ -879,6 +879,18 @@ fun agentSkillPacksReleasePreview() {
                 actions = com.promenar.infinity.ui.skills.SkillCatalogActions(),
                 onImport = {},
                 onCreate = {},
+                builtinSkills = listOf(
+                    releasePreviewSkill(
+                        "infinity-workbench",
+                        "管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限时，先读取本指南。",
+                        files = emptyList(),
+                        status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
+                    ).copy(
+                        id = "builtin:infinity-workbench",
+                        scope = com.promenar.infinity.data.skills.SkillScope.BUILTIN,
+                        virtualDir = "/.infinity/builtin-skills/infinity-workbench",
+                    ),
+                ),
             )
         }
     }

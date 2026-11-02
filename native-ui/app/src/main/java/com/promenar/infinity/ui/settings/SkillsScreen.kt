@@ -202,7 +202,8 @@ fun SkillsScreen(
                         onConfigureSearch = { showSearchConfig = true },
                     )
                     AgentRuntimeSection.SkillPacks -> AgentSkillsSection(
-                        skills = skillCatalogState.snapshot?.let { it.builtin + it.user }.orEmpty(),
+                        skills = skillCatalogState.snapshot?.user.orEmpty(),
+                        builtinSkills = skillCatalogState.snapshot?.builtin.orEmpty(),
                         actions = com.promenar.infinity.ui.skills.SkillCatalogActions(
                             onToggle = { skill, enabled -> skillCatalogViewModel.setEnabled(skill, enabled) },
                             onAcknowledge = skillCatalogViewModel::acknowledgeModified,

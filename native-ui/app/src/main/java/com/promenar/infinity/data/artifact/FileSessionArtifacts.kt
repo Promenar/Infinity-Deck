@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.artifact
 
+import com.promenar.infinity.data.workspace.LinuxSessionPaths
 import com.promenar.infinity.data.canvas.CanvasStore
 import com.promenar.infinity.domain.media.*
 import java.io.File
@@ -127,10 +128,10 @@ class FileSessionArtifacts(
         val candidates = mutableMapOf<String, ArtifactCandidate>()
         val seen = mutableSetOf<String>()
         for (change in changes.asReversed()) {
-            if (!seen.add(change.path)) continue
+            if (!seen.add(change.path) || isSkillPath(change.path)) continue
             val result = resolver.resolve(sessionId, change.path) as? MediaResolution.Available ?: continue
             val path = result.ref.path
-            if (path != change.path && !seen.add(path)) continue
+            if (path != change.path && (!seen.add(path) || isSkillPath(path))) continue
             val parts = path.split('/').filter { it.isNotEmpty() }
             val name = parts.lastOrNull() ?: continue
             if (path in published || path in ignored || result.ref.sizeBytes > limit || parts.any { it.startsWith('.') || it == "node_modules" || it == "__pycache__" || it == "canvas" } || name.substringAfterLast('.', "").lowercase() in setOf("log", "tmp", "pyc", "o", "class", "lock")) continue
@@ -139,6 +140,10 @@ class FileSessionArtifacts(
         }
         candidates.values.sortedByDescending { it.changedAt }.take(50)
     }
+    /** 用户技能目录（内置模式 `/skills`，Linux 模式 `/mnt/skills`；`skills` 是保留挂载别名）由审批卡管理，不是工作区产物。 */
+    private fun isSkillPath(path: String): Boolean =
+        listOf("/skills", LinuxSessionPaths.SKILLS_ROOT).any { root -> path == root || path.startsWith("$root/") }
+
     override suspend fun ignoreCandidate(sessionId: String, path: String) = locked {
         active(sessionId)
         com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = sessionId)

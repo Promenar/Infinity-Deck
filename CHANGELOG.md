@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.1-beta] - 2026-11-02
+
+### 修复
+
+- 技能包页与会话面板的技能列表把内置技能 `infinity-workbench` 单独列为“内置技能”一组，不再与用户技能混在“技能包”分组里、同一行重复显示两次“内置”；用户技能组的说明只描述 `/skills`。
+- 智能体在 Linux 会话中写入用户技能目录（`/mnt/skills`，内置模式为 `/skills`）后，回复下方不再误报“工作区另有 1 个新文件未收录为产物”。
+- 执行档位菜单里的“恢复逐次审批”补上图标，与上方的档位和限时免审批状态行左对齐。
+
 ## [0.14.0-beta] - 2026-11-02
 
 ### 新功能

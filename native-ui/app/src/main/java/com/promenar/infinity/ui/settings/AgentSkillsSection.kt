@@ -43,39 +43,45 @@ import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.data.skills.DiscoveredSkill
 import com.promenar.infinity.ui.skills.SkillCatalogActions
 import com.promenar.infinity.ui.skills.SkillScopeSection
+import com.promenar.infinity.ui.skills.BuiltinSkillsSection
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.data.skills.SkillMarkdownParser
 import com.promenar.infinity.ui.theme.forInput
 
-/** 设置页“技能包”标签：内置与用户级技能列表，末尾是导入与新建；无状态，便于截图与预览。 */
+/** 设置页“技能包”标签：内置技能一组，用户级技能一组且末尾是导入与新建；无状态，便于截图与预览。 */
 @Composable
 fun AgentSkillsSection(
     skills: List<DiscoveredSkill>,
     actions: SkillCatalogActions,
     onImport: () -> Unit,
     onCreate: () -> Unit,
+    builtinSkills: List<DiscoveredSkill> = emptyList(),
 ) {
-    SkillScopeSection(
-        title = stringResource(R.string.settings_ia_skills_title),
-        footer = stringResource(R.string.skills_runtime_user_footer),
-        skills = skills,
-        emptyMessage = stringResource(R.string.agent_skills_empty),
-        actions = actions,
-        trailingRows = {
-            // 导入与新建作为分组末尾的操作行，和 MCP 的“添加服务器”保持同一形态。
-            InfinitySettingsItem(
-                icon = Icons.Rounded.FileOpen,
-                title = stringResource(R.string.tools_skill_import_row),
-                titleColor = MaterialTheme.colorScheme.primary,
-                onClick = onImport,
-            )
-            InfinitySettingsItem(
-                icon = Icons.Rounded.Add,
-                title = stringResource(R.string.agent_skills_create),
-                titleColor = MaterialTheme.colorScheme.primary,
-                onClick = onCreate,
-            )
-        },
-    )
+    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+        BuiltinSkillsSection(builtinSkills, actions)
+        SkillScopeSection(
+            title = stringResource(R.string.skills_runtime_section_user),
+            footer = stringResource(R.string.skills_runtime_user_footer),
+            skills = skills,
+            emptyMessage = stringResource(R.string.agent_skills_empty),
+            actions = actions,
+            trailingRows = {
+                // 导入与新建作为分组末尾的操作行，和 MCP 的“添加服务器”保持同一形态。
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.FileOpen,
+                    title = stringResource(R.string.tools_skill_import_row),
+                    titleColor = MaterialTheme.colorScheme.primary,
+                    onClick = onImport,
+                )
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.Add,
+                    title = stringResource(R.string.agent_skills_create),
+                    titleColor = MaterialTheme.colorScheme.primary,
+                    onClick = onCreate,
+                )
+            },
+        )
+    }
 }
 
 /** 新建或编辑技能；名称校验与 SKILL.md 规则一致。 */

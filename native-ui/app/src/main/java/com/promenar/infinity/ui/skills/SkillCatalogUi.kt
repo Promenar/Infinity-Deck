@@ -135,10 +135,8 @@ private fun SkillRow(
         onClick = onOpen,
         modifier = Modifier.testTag("skill_row:${skill.id}"),
         trailingContent = {
-            if (skill.scope == SkillScope.BUILTIN) {
-                Text(stringResource(R.string.runtime_guide_builtin_label), style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else when (skill.status) {
+            // 内置技能单独成组、不可停用，行尾不放开关。
+            if (skill.scope != SkillScope.BUILTIN) when (skill.status) {
                 SkillStatus.ENABLED, SkillStatus.DISABLED -> {
                     val label = stringResource(R.string.skills_runtime_toggle_cd, title)
                     InfinitySwitch(
@@ -166,7 +164,8 @@ private fun SkillRow(
 /** 需要用户注意的状态说明；普通的启用、停用状态由开关表达，不重复写出。 */
 @Composable
 private fun skillStatusNote(skill: DiscoveredSkill): String? = when {
-    skill.scope == SkillScope.BUILTIN -> stringResource(R.string.runtime_guide_builtin_readonly)
+    // 内置技能所在分组的说明已写明只读，行内不再重复。
+    skill.scope == SkillScope.BUILTIN -> null
     skill.status == SkillStatus.BROKEN ->
         stringResource(R.string.skills_runtime_status_broken, skill.brokenReason.orEmpty())
     skill.status == SkillStatus.PENDING_TRUST -> stringResource(R.string.skills_runtime_status_pending)
@@ -318,16 +317,17 @@ private fun SkillDetailLine(label: String, value: String, monospace: Boolean = f
     }
 }
 
-/** 会话面板“工具”标签中的技能视图：用户级一组，目录型工作区另有项目级一组。 */
+/** 会话面板“工具”标签中的技能视图：内置、用户级各一组，目录型工作区另有项目级一组。 */
 @Composable
 fun SessionSkillsSections(state: SkillCatalogUiState, actions: SkillCatalogActions) {
     val snapshot = state.snapshot
     if (state.loading && snapshot == null) return
     Column(verticalArrangement = Arrangement.spacedBy(com.promenar.infinity.ui.theme.InfinitySpacing.Large)) {
+        BuiltinSkillsSection(snapshot?.builtin.orEmpty(), actions)
         SkillScopeSection(
-            title = stringResource(R.string.settings_ia_skills_title),
+            title = stringResource(R.string.skills_runtime_section_user),
             footer = stringResource(R.string.skills_runtime_user_footer),
-            skills = snapshot?.let { it.builtin + it.user }.orEmpty(),
+            skills = snapshot?.user.orEmpty(),
             emptyMessage = stringResource(R.string.skills_runtime_user_empty),
             actions = actions,
         )
@@ -341,4 +341,18 @@ fun SessionSkillsSections(state: SkillCatalogUiState, actions: SkillCatalogActio
             )
         }
     }
+}
+
+/** 随应用提供的只读技能；没有内置技能时不显示该组。 */
+@Composable
+fun BuiltinSkillsSection(skills: List<DiscoveredSkill>, actions: SkillCatalogActions, modifier: Modifier = Modifier) {
+    if (skills.isEmpty()) return
+    SkillScopeSection(
+        title = stringResource(R.string.runtime_guide_section_builtin),
+        footer = stringResource(R.string.runtime_guide_builtin_footer),
+        skills = skills,
+        emptyMessage = "",
+        actions = actions,
+        modifier = modifier,
+    )
 }

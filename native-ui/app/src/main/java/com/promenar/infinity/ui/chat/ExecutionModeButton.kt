@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.TimerOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GppGood
@@ -126,10 +127,11 @@ internal fun ExecutionModeButton(
                     // 状态行不可点，不用菜单项，避免禁用态把文字压暗。
                     Row(
                         Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        // 图标尺寸与间距同菜单项（24dp + 14dp），文字与上下菜单项左对齐。
+                        Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         Text(
                             stringResource(R.string.chat_timed_grant_active, grant.label, minutes),
                             style = InfinityTypography.bodySmall,
@@ -140,6 +142,7 @@ internal fun ExecutionModeButton(
                 }
                 InfinityMenuItem(
                     text = { Text(stringResource(R.string.chat_timed_grant_revoke), style = InfinityTypography.labelLarge, maxLines = 1) },
+                    leadingIcon = { Icon(Icons.Rounded.TimerOff, contentDescription = null) },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     haptic = InfinityHapticEvent.SELECTION,
                     onClick = {

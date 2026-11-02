@@ -88,6 +88,15 @@ class FileSessionArtifactRepositoryTest {
         assertThat(candidates.none { it.path in excluded }).isTrue()
     }
 
+    @Test fun `技能目录写入不算工作区候选产物`() = runTest {
+        val store = FileSessionArtifacts(File(folder.root, "artifacts"), FileCanvasStore(File(folder.root, "canvas")), resolver)
+        val skillFiles = listOf("/skills/hello-demo/SKILL.md", "/mnt/skills/hello-demo/SKILL.md")
+        skillFiles.forEach { files[it] = byteArrayOf(1) }
+        files["/mnt/docs/report.md"] = byteArrayOf(1)
+        val changes = (skillFiles + "/mnt/docs/report.md").map { WorkspaceChangedFile(it, "m", 0) }
+        assertThat(store.candidates("s", changes).map { it.path }).containsExactly("/mnt/docs/report.md")
+    }
+
     @Test fun `画布流失败前仍发出已保存的文件并向下游报告异常`() = runTest {
         val base = FileCanvasStore(File(folder.root, "canvas"))
         val failing = object : com.promenar.infinity.data.canvas.CanvasStore by base {
