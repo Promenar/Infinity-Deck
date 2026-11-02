@@ -39,6 +39,40 @@ sealed interface ApprovalDiffPreview {
 
     /** 删除文件：只给出将删除的行数。 */
     data class Deletion(val lines: Int) : ApprovalDiffPreview
+
+    /**
+     * `agents_write`：操作与对象、有变化的字段（旧值 → 新值）、提示词差异与影响说明。
+     * [targetName] 为 Agent 名称或会话标题；新建会话时 [ownerAgentName] 为归属 Agent。
+     * [promptDiff] 为空表示提示词未改；[sessionPrompt] 区分会话提示词与 Agent 提示词。
+     */
+    data class AgentConfig(
+        val op: com.promenar.infinity.domain.agentconfig.AgentConfigOp,
+        val targetName: String,
+        val ownerAgentName: String? = null,
+        val isCurrentTarget: Boolean = false,
+        val fields: List<FieldChange> = emptyList(),
+        val promptDiff: FileDiffModel? = null,
+        val sessionPrompt: Boolean = false,
+        val impact: AgentConfigImpact,
+        val reason: String = "",
+    ) : ApprovalDiffPreview
+}
+
+/** 审批卡字段表的一行；[key] 为工具字段键，[oldValue]/[newValue] 已格式化为显示文本，旧值为空表示新建。 */
+@Immutable
+data class FieldChange(val key: String, val oldValue: String?, val newValue: String?)
+
+/** 审批卡的影响说明。 */
+@Immutable
+sealed interface AgentConfigImpact {
+    /** 修改 Agent 提示词：影响全部 [sessionCount] 个会话，修改前的内容可在编辑页恢复。 */
+    data class AgentPrompt(val agentName: String, val sessionCount: Int) : AgentConfigImpact
+    /** 修改 Agent 其它字段：影响之后的轮次与新建会话的默认值。 */
+    data class AgentFields(val agentName: String, val sessionCount: Int) : AgentConfigImpact
+    data object NewAgent : AgentConfigImpact
+    data object NewSession : AgentConfigImpact
+    data object CurrentSession : AgentConfigImpact
+    data object OtherSession : AgentConfigImpact
 }
 
 /**
