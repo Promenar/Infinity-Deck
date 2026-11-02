@@ -81,6 +81,11 @@ fun AgentEditScreen(
     val mcpServerIds by viewModel.mcpServerIds.collectAsState()
     val mcpServers by viewModel.mcpServers.collectAsState()
     val sessionCount by viewModel.sessionCount.collectAsState()
+    val conflict by viewModel.conflict.collectAsState()
+    val promptConflict by viewModel.promptConflict.collectAsState()
+    val refreshedFields by viewModel.refreshedFields.collectAsState()
+    val notice by viewModel.notice.collectAsState()
+    val promptRevisions by viewModel.promptRevisions.collectAsState()
     val app = context.applicationContext as? com.promenar.infinity.InfinityApplication
     val mcpSettings = app?.mcpConnectionSettings
     val mcpConnectionRevision = mcpSettings?.revision?.collectAsStateWithLifecycle()?.value
@@ -122,6 +127,9 @@ fun AgentEditScreen(
     } else null
 
     var showSystemPromptEditor by remember { mutableStateOf(false) }
+    // 编辑器打开时的内容；编辑期间智能体改了提示词不会替换草稿，改由提示条处理。
+    var promptEditorText by remember { mutableStateOf("") }
+    var showPromptHistory by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showModelPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
@@ -166,12 +174,33 @@ fun AgentEditScreen(
 
     UnifiedPromptEditor(
         show = showSystemPromptEditor,
-        onDismiss = { showSystemPromptEditor = false },
+        onDismiss = {
+            showSystemPromptEditor = false
+            viewModel.endPromptEdit()
+        },
         onSave = viewModel::saveSystemPrompt,
         title = stringResource(R.string.agent_edit_prompt_label),
-        initialText = systemPrompt,
+        initialText = promptEditorText,
         placeholder = stringResource(R.string.agent_edit_prompt_placeholder),
-        mode = EditorMode.DIALOG
+        mode = EditorMode.DIALOG,
+        banner = { handle ->
+            AgentPromptConflictBanner(
+                conflict = promptConflict,
+                notice = notice,
+                handle = handle,
+                onAdopt = viewModel::adoptRemotePrompt,
+                onKeep = viewModel::keepMyPrompt,
+                onNoticeShown = viewModel::consumeNotice,
+            )
+        },
+    )
+
+    AgentPromptHistoryDialog(
+        show = showPromptHistory,
+        revisions = promptRevisions,
+        currentPrompt = systemPrompt,
+        onRestore = { viewModel.restorePromptRevision(it.id) },
+        onDismiss = { showPromptHistory = false },
     )
 
     ConfirmDialog(
@@ -289,6 +318,31 @@ fun AgentEditScreen(
                 }
             }
 
+            // 冲突处理与恢复后的说明；提示词编辑器打开时由编辑器内显示。
+            notice?.takeUnless { showSystemPromptEditor }?.let { current ->
+                item(key = "agent_edit_notice") {
+                    AgentEditNoticeLine(current, viewModel::consumeNotice, Modifier.padding(bottom = 8.dp))
+                }
+            }
+            conflict?.let { current ->
+                item(key = "agent_edit_conflict") {
+                    val localValue = stringResource(R.string.agent_edit_conflict_local_value)
+                    AgentFieldConflictBanner(
+                        conflict = current,
+                        local = { field ->
+                            when (field) {
+                                com.promenar.infinity.domain.model.AgentField.NAME -> name
+                                com.promenar.infinity.domain.model.AgentField.DESCRIPTION -> description
+                                else -> localValue
+                            }
+                        },
+                        onAdopt = viewModel::adoptRemoteConflict,
+                        onKeep = viewModel::keepMineConflict,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+            }
+
             // ─── 1. Hero 角色舞台：大头像 + 柔和光晕 + 实时身份预览 ───
             item {
                 Column(
@@ -375,6 +429,12 @@ fun AgentEditScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(
+                                agentRefreshHighlight(
+                                    com.promenar.infinity.domain.model.AgentField.NAME in refreshedFields ||
+                                        com.promenar.infinity.domain.model.AgentField.DESCRIPTION in refreshedFields,
+                                ),
+                            )
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                         InCardInputField(
@@ -430,7 +490,9 @@ fun AgentEditScreen(
                         subtitle = currentModelDisplayName.ifBlank { stringResource(R.string.settings_not_set) },
                         onClick = { showModelPicker = true },
                         showChevron = true,
-                        modifier = Modifier.testTag("agent_edit_model"),
+                        modifier = Modifier
+                            .background(agentRefreshHighlight(com.promenar.infinity.domain.model.AgentField.MODEL_ID in refreshedFields))
+                            .testTag("agent_edit_model"),
                     )
                     InfinitySettingsItem(
                         icon = Icons.Rounded.Tune,
@@ -452,9 +514,24 @@ fun AgentEditScreen(
                         title = stringResource(R.string.agent_edit_prompt_label),
                         subtitle = systemPromptPreview(systemPrompt) ?: stringResource(R.string.agent_edit_prompt_not_set),
                         subtitleMaxLines = 2,
-                        modifier = Modifier.testTag("agent_edit_prompt"),
-                        onClick = { showSystemPromptEditor = true },
+                        modifier = Modifier
+                            .background(agentRefreshHighlight(com.promenar.infinity.domain.model.AgentField.SYSTEM_PROMPT in refreshedFields))
+                            .testTag("agent_edit_prompt"),
+                        onClick = {
+                            promptEditorText = viewModel.beginPromptEdit()
+                            showSystemPromptEditor = true
+                        },
                         showChevron = true,
+                    )
+                    // 智能体修改、编辑页保存与恢复都会记一版，可对比并恢复。
+                    InfinitySettingsItem(
+                        icon = Icons.Rounded.History,
+                        title = stringResource(R.string.agent_prompt_history_row),
+                        subtitle = if (promptRevisions.isEmpty()) stringResource(R.string.agent_prompt_history_row_empty)
+                            else pluralStringResource(R.plurals.agent_prompt_history_row_count, promptRevisions.size, promptRevisions.size),
+                        onClick = { showPromptHistory = true },
+                        showChevron = true,
+                        modifier = Modifier.testTag("agent_edit_prompt_history"),
                     )
                 }
             }
@@ -577,3 +654,10 @@ internal fun systemPromptPreview(prompt: String): String? {
 }
 
 private const val PROMPT_PREVIEW_LENGTH = 120
+
+/** 智能体静默刷新某字段后的短暂高亮底色。 */
+@Composable
+private fun agentRefreshHighlight(active: Boolean): Color {
+    val target = if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent
+    return androidx.compose.animation.animateColorAsState(target, label = "agent_refresh_highlight").value
+}

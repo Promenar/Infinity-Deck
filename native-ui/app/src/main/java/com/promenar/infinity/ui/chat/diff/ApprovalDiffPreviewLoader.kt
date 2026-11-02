@@ -181,12 +181,35 @@ internal fun rememberApprovalDiffPreview(
     val arguments = remember(call, messages, assistantMessageId) {
         ApprovalPreview.arguments(call, messages, assistantMessageId)
     }
+    val agentConfigLabels = rememberAgentConfigValueLabels()
     val preview by produceState<ApprovalDiffPreview?>(null, loader, call.toolName, arguments, sessionId, privateWorkspaceRootUuid) {
-        value = if (loader == null || arguments == null || sessionId == null) {
-            null
-        } else {
-            loader.load(call.toolName, arguments, sessionId, privateWorkspaceRootUuid)
+        value = when {
+            loader == null || application == null || arguments == null || sessionId == null -> null
+            call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> try {
+                com.promenar.infinity.domain.agentconfig.AgentsWriteRequest.parse(arguments)?.let { request ->
+                    AgentConfigPreviewBuilder.build(request, sessionId, AppAgentConfigPreviewSources(application), agentConfigLabels)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            else -> loader.load(call.toolName, arguments, sessionId, privateWorkspaceRootUuid)
         }
     }
     return preview
+}
+
+@Composable
+private fun rememberAgentConfigValueLabels(): AgentConfigValueLabels {
+    val on = androidx.compose.ui.res.stringResource(com.promenar.infinity.R.string.agent_config_value_on)
+    val off = androidx.compose.ui.res.stringResource(com.promenar.infinity.R.string.agent_config_value_off)
+    val workspace = androidx.compose.ui.res.stringResource(com.promenar.infinity.R.string.common_mode_workspace)
+    val untitled = androidx.compose.ui.res.stringResource(com.promenar.infinity.R.string.agent_config_untitled_session)
+    val efforts = com.promenar.infinity.data.model.params.ReasoningEffort.entries.associate {
+        it.wireName to com.promenar.infinity.ui.chat.reasoningEffortLabel(it)
+    }
+    return remember(on, off, workspace, untitled, efforts) {
+        AgentConfigValueLabels(on, off, workspace, untitled) { wire -> efforts[wire] ?: wire }
+    }
 }

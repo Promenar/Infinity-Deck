@@ -86,7 +86,8 @@ class AgentHubViewModel(
         viewModelScope.launch {
             val current = _dbAgents.value.find { it.id == agentId } ?: return@launch
             val updated = current.copy(isPinned = !current.isPinned)
-            agentRepository.update(updated)
+            // 只写置顶一列，不用列表里的旧副本覆盖智能体或编辑页刚写入的字段。
+            agentRepository.updateFields(agentId, setOf(com.promenar.infinity.domain.model.AgentField.IS_PINNED), updated)
             _dbAgents.update { list ->
                 list.map { a -> if (a.id == agentId) updated else a }
             }

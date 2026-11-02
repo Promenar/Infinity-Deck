@@ -8,6 +8,8 @@ import com.promenar.infinity.data.agent.AgentSubagentModelPolicy
 import com.promenar.infinity.data.agent.KnowledgeFileAccess
 import com.promenar.infinity.data.repository.AgentRepository
 import com.promenar.infinity.domain.model.Agent
+import com.promenar.infinity.domain.model.AgentField
+import com.promenar.infinity.domain.model.AgentFieldUpdate
 import com.promenar.infinity.domain.model.ExecutionMode
 import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
@@ -20,6 +22,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -38,10 +41,30 @@ class AgentEditViewModelTest {
 
     private lateinit var repo: AgentRepository
 
+    /** 字段级写入后的“数据库”内容；未写过的智能体按 observeById 的首个值读取。 */
+    private val stored = mutableMapOf<String, Agent>()
+
     @BeforeEach
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repo = mockk(relaxed = true)
+        stored.clear()
+        coEvery { repo.getById(any()) } coAnswers { stored[firstArg()] ?: repo.observeById(firstArg()).first() }
+        stubFieldWrites()
+    }
+
+    private fun stubFieldWrites() {
+        coEvery { repo.updateFields(any(), any(), any(), any(), any()) } coAnswers {
+            applyFieldWrite(firstArg(), secondArg(), thirdArg())
+        }
+    }
+
+    /** 按仓库契约只写给出的字段。 */
+    private suspend fun applyFieldWrite(id: String, fields: Set<AgentField>, values: Agent): AgentFieldUpdate {
+        val current = stored[id] ?: repo.observeById(id).first() ?: return AgentFieldUpdate.NotFound
+        val written = fields.fold(current) { agent, field -> field.copy(agent, values) }
+        stored[id] = written
+        return AgentFieldUpdate.Updated(written)
     }
 
     @AfterEach
@@ -167,7 +190,7 @@ class AgentEditViewModelTest {
 
         assertThat(vm.avatarPath.value).isEqualTo("/avatar/original.png")
         assertThat(vm.saveError.value).isEqualTo(AgentEditErrorCode.AVATAR_IMPORT_FAILED)
-        coVerify(exactly = 0) { repo.update(any()) }
+        coVerify(exactly = 0) { repo.updateFields(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -183,7 +206,7 @@ class AgentEditViewModelTest {
         vm.importAvatar(mockk(relaxed = true))
 
         coVerify(exactly = 1) {
-            repo.update(match { it.id == "a1" && it.avatarPath == "/avatar/replacement.png" })
+            repo.updateFields(any(), any(), match { it.id == "a1" && it.avatarPath == "/avatar/replacement.png" }, any(), any())
         }
         assertThat(vm.avatarPath.value).isEqualTo("/avatar/replacement.png")
     }
@@ -199,7 +222,7 @@ class AgentEditViewModelTest {
         advanceTimeBy(1_001)
         runCurrent()
 
-        coVerify(exactly = 1) { repo.update(match { it.name == "Persisted" }) }
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match { it.name == "Persisted" }, any(), any()) }
     }
 
     @Test
@@ -217,9 +240,9 @@ class AgentEditViewModelTest {
         advanceTimeBy(1_001)
         runCurrent()
 
-        coVerify(exactly = 1) { repo.update(match {
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match {
             it.name == "新名称" && it.useInheritedConfig && it.retrievalConfig == config
-        }) }
+        }, any(), any()) }
     }
 
     @Test
@@ -234,18 +257,18 @@ class AgentEditViewModelTest {
 
         vm.setRetrievalMode(AgentRetrievalMode.TOOL)
         runCurrent()
-        coVerify(exactly = 1) { repo.update(match {
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match {
             it.retrievalConfig?.retrievalMode == AgentRetrievalMode.TOOL &&
                 it.retrievalConfig?.knowledgeFileAccess == KnowledgeFileAccess.OFF &&
                 it.retrievalConfig?.memoryLimit == 11 && it.ragConfig == legacyRag && !it.useInheritedConfig
-        }) }
+        }, any(), any()) }
 
         vm.setKnowledgeFileAccess(KnowledgeFileAccess.ALWAYS)
         runCurrent()
-        coVerify(exactly = 1) { repo.update(match {
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match {
             it.retrievalConfig?.retrievalMode == AgentRetrievalMode.TOOL &&
                 it.retrievalConfig?.knowledgeFileAccess == KnowledgeFileAccess.ALWAYS
-        }) }
+        }, any(), any()) }
         assertThat(vm.retrievalConfig.value.knowledgeFileAccess).isEqualTo(KnowledgeFileAccess.ALWAYS)
     }
 
@@ -260,9 +283,9 @@ class AgentEditViewModelTest {
 
         vm.setExecutionMode(ExecutionMode.FULL_ACCESS)
         runCurrent()
-        coVerify(exactly = 1) { repo.update(match {
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match {
             it.executionMode == ExecutionMode.FULL_ACCESS && it.skills == listOf("skill-a") && it.mcpServerIds == listOf("m1")
-        }) }
+        }, any(), any()) }
 
         vm.setMcpServerEnabled("m2", true)
         vm.setMcpServerEnabled("m2", true)
@@ -270,7 +293,7 @@ class AgentEditViewModelTest {
         assertThat(vm.mcpServerIds.value).containsExactly("m1", "m2").inOrder()
         vm.setMcpServerEnabled("m1", false)
         runCurrent()
-        coVerify { repo.update(match { it.mcpServerIds == listOf("m2") && it.executionMode == ExecutionMode.FULL_ACCESS }) }
+        coVerify { repo.updateFields(any(), any(), match { it.mcpServerIds == listOf("m2") && it.executionMode == ExecutionMode.FULL_ACCESS }, any(), any()) }
     }
 
     @Test
@@ -286,23 +309,23 @@ class AgentEditViewModelTest {
 
         vm.updateSubagentModels { it.copy(defaultModelId = "p::cheap") }
         runCurrent()
-        coVerify(exactly = 1) { repo.update(match {
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match {
             it.subagentModelPolicy == AgentSubagentModelPolicy(defaultModelId = "p::cheap") &&
                 it.memoryPolicy == policy && it.retrievalConfig?.memoryLimit == 11
-        }) }
+        }, any(), any()) }
 
         vm.updateSubagentModels { it.copy(allowPerTaskModel = true, selectableModelIds = listOf("p::a", "p::b", "p::a")) }
         runCurrent()
         assertThat(vm.subagentModels.value.selectableModelIds).containsExactly("p::a", "p::b").inOrder()
-        coVerify { repo.update(match {
+        coVerify { repo.updateFields(any(), any(), match {
             it.subagentModelPolicy == AgentSubagentModelPolicy("p::cheap", true, listOf("p::a", "p::b"))
-        }) }
+        }, any(), any()) }
         // 明确提交后基线随之更新，不留下未保存提示。
         assertThat(vm.hasChanges.value).isFalse()
 
         vm.updateSubagentModels { it.copy(defaultModelId = null) }
         runCurrent()
-        coVerify { repo.update(match { it.subagentModelPolicy.defaultModelId == null && it.subagentModelPolicy.allowPerTaskModel }) }
+        coVerify { repo.updateFields(any(), any(), match { it.subagentModelPolicy.defaultModelId == null && it.subagentModelPolicy.allowPerTaskModel }, any(), any()) }
     }
 
     @Test
@@ -312,7 +335,7 @@ class AgentEditViewModelTest {
         vm.loadAgent("a1")
         vm.setExecutionMode(ExecutionMode.FULL_ACCESS)
         runCurrent()
-        coVerify(exactly = 1) { repo.update(match { it.retrievalConfig == null && it.subagentModelPolicy == AgentSubagentModelPolicy() }) }
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match { it.retrievalConfig == null && it.subagentModelPolicy == AgentSubagentModelPolicy() }, any(), any()) }
     }
 
     @Test
@@ -374,7 +397,7 @@ class AgentEditViewModelTest {
 
         assertThat(vm.retrievalConfig.value.retrievalMode).isEqualTo(AgentRetrievalMode.AUTO)
         assertThat(vm.retrievalConfig.value.knowledgeFileAccess).isEqualTo(KnowledgeFileAccess.ON_REQUEST)
-        coVerify(exactly = 1) { repo.update(match { it.id == "legacy" && it.retrievalConfig == null }) }
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match { it.id == "legacy" && it.retrievalConfig == null }, any(), any()) }
     }
 
     @Test
@@ -393,14 +416,14 @@ class AgentEditViewModelTest {
         vm.saveAgent("a1")
 
         coVerify {
-            repo.update(match { saved ->
+            repo.updateFields(any(), any(), match { saved ->
                 saved.id == "a1" &&
                 saved.name == "Updated" &&
                 saved.modelId == "old" &&
                 saved.executionMode == ExecutionMode.WORKSPACE &&
                 saved.skills == listOf("s1") &&
                 saved.createdAt == 100L
-            })
+            }, any(), any())
         }
     }
 
@@ -463,7 +486,7 @@ class AgentEditViewModelTest {
         assertThat(vm.selectedIcon.value).isEqualTo("🧪")
         assertThat(vm.avatarPath.value).isNull()
         coVerify(exactly = 1) {
-            repo.update(match { it.id == "a1" && it.icon == "🧪" && it.avatarPath == null })
+            repo.updateFields(any(), any(), match { it.id == "a1" && it.icon == "🧪" && it.avatarPath == null }, any(), any())
         }
     }
 
@@ -508,7 +531,7 @@ class AgentEditViewModelTest {
         vm.setName("My Coder")
         vm.saveAgent("coder")
 
-        coVerify { repo.update(match { it.name == "My Coder" && it.nameCustomized }) }
+        coVerify { repo.updateFields(any(), any(), match { it.name == "My Coder" && it.nameCustomized }, any(), any()) }
     }
 
     @Test
@@ -520,7 +543,7 @@ class AgentEditViewModelTest {
         vm.setName("Renamed")
         vm.saveAgent("user-1")
 
-        coVerify { repo.update(match { it.name == "Renamed" }) }
+        coVerify { repo.updateFields(any(), any(), match { it.name == "Renamed" }, any(), any()) }
     }
 
     @Test
@@ -542,12 +565,12 @@ class AgentEditViewModelTest {
         assertThat(vm.name.value).isEqualTo("编程专家")
         assertThat(vm.description.value).isEqualTo("本地化描述")
         coVerify {
-            repo.update(match {
+            repo.updateFields(any(), any(), match {
                 it.modelId == "provider::new" &&
                     it.name == "Coding Expert" &&
                     it.description == "Stable fallback" &&
                     !it.nameCustomized && !it.descriptionCustomized
-            })
+            }, any(), any())
         }
     }
 
@@ -583,10 +606,10 @@ class AgentEditViewModelTest {
         vm.saveAgent("coder")
 
         coVerify {
-            repo.update(match {
+            repo.updateFields(any(), any(), match {
                 it.name == "我的编程助手" && it.description == "Stable fallback" &&
                     it.nameCustomized && !it.descriptionCustomized
-            })
+            }, any(), any())
         }
     }
 
@@ -606,10 +629,10 @@ class AgentEditViewModelTest {
         vm.saveAgent("coder")
 
         coVerify {
-            repo.update(match {
+            repo.updateFields(any(), any(), match {
                 it.name == "Coding Expert" && it.description == "我的专属描述" &&
                     !it.nameCustomized && it.descriptionCustomized
-            })
+            }, any(), any())
         }
     }
 
@@ -617,7 +640,7 @@ class AgentEditViewModelTest {
     fun `room update failure leaves text and customization flags uncommitted`() = runTest {
         val agent = Agent(id = "coder", name = "Coding Expert", executionMode = ExecutionMode.WORKSPACE)
         every { repo.observeById("coder") } returns flowOf(agent)
-        coEvery { repo.update(any()) } throws IllegalStateException("room failed")
+        coEvery { repo.updateFields(any(), any(), any(), any(), any()) } throws IllegalStateException("room failed")
         val vm = AgentEditViewModel(repo)
 
         vm.loadAgent("coder", "编程专家", "本地化描述")
@@ -626,17 +649,17 @@ class AgentEditViewModelTest {
 
         assertThat(vm.saveError.value).isEqualTo(AgentEditErrorCode.SAVE_FAILED)
         coVerify(exactly = 1) {
-            repo.update(match { it.name == "用户文本" && it.nameCustomized })
+            repo.updateFields(any(), any(), match { it.name == "用户文本" && it.nameCustomized }, any(), any())
         }
         assertThat(agent.name).isEqualTo("Coding Expert")
         assertThat(agent.nameCustomized).isFalse()
 
-        coEvery { repo.update(any()) } returns Unit
+        stubFieldWrites()
         vm.retryLastFailure()
 
         assertThat(vm.saveError.value).isNull()
         coVerify(exactly = 2) {
-            repo.update(match { it.name == "用户文本" && it.nameCustomized })
+            repo.updateFields(any(), any(), match { it.name == "用户文本" && it.nameCustomized }, any(), any())
         }
     }
 
@@ -645,7 +668,10 @@ class AgentEditViewModelTest {
         val agent = Agent(id = "a1", name = "Agent", systemPrompt = "before")
         every { repo.observeById("a1") } returns flowOf(agent)
         val release = CompletableDeferred<Unit>()
-        coEvery { repo.update(any()) } coAnswers { release.await() }
+        coEvery { repo.updateFields(any(), any(), any(), any(), any()) } coAnswers {
+            release.await()
+            applyFieldWrite(firstArg(), secondArg(), thirdArg())
+        }
         val vm = AgentEditViewModel(repo)
         vm.loadAgent("a1")
 
@@ -656,14 +682,14 @@ class AgentEditViewModelTest {
         release.complete(Unit)
         assertThat(saving.await().isSuccess).isTrue()
         assertThat(vm.systemPrompt.value).isEqualTo("after")
-        coVerify(exactly = 1) { repo.update(match { it.systemPrompt == "after" }) }
+        coVerify(exactly = 1) { repo.updateFields(any(), any(), match { it.systemPrompt == "after" }, any(), any()) }
     }
 
     @Test
     fun `saveSystemPrompt repository failure keeps previous persisted state`() = runTest {
         val agent = Agent(id = "a1", name = "Agent", systemPrompt = "before")
         every { repo.observeById("a1") } returns flowOf(agent)
-        coEvery { repo.update(any()) } throws IllegalStateException("room failed")
+        coEvery { repo.updateFields(any(), any(), any(), any(), any()) } throws IllegalStateException("room failed")
         val vm = AgentEditViewModel(repo)
         vm.loadAgent("a1")
 
@@ -677,7 +703,7 @@ class AgentEditViewModelTest {
     fun `saveSystemPrompt cancellation propagates`() = runTest {
         val agent = Agent(id = "a1", name = "Agent", systemPrompt = "before")
         every { repo.observeById("a1") } returns flowOf(agent)
-        coEvery { repo.update(any()) } throws CancellationException("cancelled")
+        coEvery { repo.updateFields(any(), any(), any(), any(), any()) } throws CancellationException("cancelled")
         val vm = AgentEditViewModel(repo)
         vm.loadAgent("a1")
 
@@ -703,11 +729,11 @@ class AgentEditViewModelTest {
         advanceTimeBy(1_001)
         runCurrent()
         coVerify(exactly = 1) {
-            repo.update(match { it.name == "Renamed" && it.defaultWorkspaceId == "ws-1" && it.userRules == "只用中文回答" })
+            repo.updateFields(any(), any(), match { it.name == "Renamed" && it.defaultWorkspaceId == "ws-1" && it.userRules == "只用中文回答" }, any(), any())
         }
         assertThat(vm.saveSystemPrompt("新提示词").isSuccess).isTrue()
         coVerify {
-            repo.update(match { it.systemPrompt == "新提示词" && it.defaultWorkspaceId == "ws-1" && it.userRules == "只用中文回答" })
+            repo.updateFields(any(), any(), match { it.systemPrompt == "新提示词" && it.defaultWorkspaceId == "ws-1" && it.userRules == "只用中文回答" }, any(), any())
         }
     }
 
@@ -725,12 +751,12 @@ class AgentEditViewModelTest {
             vm.setDefaultWorkspace("ws-2")
             runCurrent()
             assertThat(awaitItem()).isEqualTo(workspace)
-            coVerify(exactly = 1) { repo.update(match { it.defaultWorkspaceId == "ws-2" && it.userRules == "规则" }) }
+            coVerify(exactly = 1) { repo.updateFields(any(), any(), match { it.defaultWorkspaceId == "ws-2" && it.userRules == "规则" }, any(), any()) }
 
             vm.setDefaultWorkspace(null)
             runCurrent()
             assertThat(awaitItem()).isNull()
-            coVerify(exactly = 1) { repo.update(match { it.defaultWorkspaceId == null && it.userRules == "规则" }) }
+            coVerify(exactly = 1) { repo.updateFields(any(), any(), match { it.defaultWorkspaceId == null && it.userRules == "规则" }, any(), any()) }
         }
     }
 
@@ -762,6 +788,135 @@ class AgentEditViewModelTest {
 
         advanceTimeBy(2_000)
         runCurrent()
-        coVerify { repo.update(match { it.topK == 20 && it.temperature == null }) }
+        coVerify { repo.updateFields(any(), any(), match { it.topK == 20 && it.temperature == null }, any(), any()) }
+    }
+
+    @Test
+    fun `智能体修改本地没在编辑的字段时静默刷新，之后只写本地改过的字段`() = runTest {
+        val remote = kotlinx.coroutines.flow.MutableStateFlow<Agent?>(Agent("a1", "写作助手", description = "旧描述"))
+        every { repo.observeById("a1") } returns remote
+        val vm = AgentEditViewModel(repo)
+        vm.loadAgent("a1")
+
+        remote.value = remote.value!!.copy(description = "智能体写的描述")
+        runCurrent()
+
+        assertThat(vm.description.value).isEqualTo("智能体写的描述")
+        assertThat(vm.refreshedFields.value).containsExactly(AgentField.DESCRIPTION)
+        assertThat(vm.conflict.value).isNull()
+        vm.hasChanges.test { assertThat(awaitItem()).isFalse() }
+
+        vm.setName("新名字")
+        advanceTimeBy(1_001)
+        runCurrent()
+        coVerify(exactly = 1) { repo.updateFields("a1", setOf(AgentField.NAME), any(), any(), any()) }
+        coVerify(exactly = 0) { repo.updateFields(any(), match { AgentField.DESCRIPTION in it }, any(), any(), any()) }
+    }
+
+    @Test
+    fun `两边都改同一字段时不覆盖，保留我的才写入`() = runTest {
+        val remote = kotlinx.coroutines.flow.MutableStateFlow<Agent?>(Agent("a1", "写作助手", description = "旧描述"))
+        every { repo.observeById("a1") } returns remote
+        val vm = AgentEditViewModel(repo)
+        vm.loadAgent("a1")
+
+        vm.setDescription("我的描述")
+        remote.value = remote.value!!.copy(description = "智能体写的描述")
+        runCurrent()
+        assertThat(vm.conflict.value?.fields).containsExactly(AgentField.DESCRIPTION)
+
+        advanceTimeBy(1_001)
+        runCurrent()
+        coVerify(exactly = 0) { repo.updateFields(any(), match { AgentField.DESCRIPTION in it }, any(), any(), any()) }
+        assertThat(vm.description.value).isEqualTo("我的描述")
+
+        vm.keepMineConflict()
+        runCurrent()
+        coVerify(exactly = 1) {
+            repo.updateFields("a1", setOf(AgentField.DESCRIPTION), match { it.description == "我的描述" }, any(), any())
+        }
+        assertThat(vm.conflict.value).isNull()
+        assertThat(vm.notice.value).isEqualTo(AgentEditNotice.KEPT_MINE)
+    }
+
+    @Test
+    fun `冲突时采用新内容替换本地值且不写入`() = runTest {
+        val remote = kotlinx.coroutines.flow.MutableStateFlow<Agent?>(Agent("a1", "写作助手", description = "旧描述"))
+        every { repo.observeById("a1") } returns remote
+        val vm = AgentEditViewModel(repo)
+        vm.loadAgent("a1")
+
+        vm.setDescription("我的描述")
+        remote.value = remote.value!!.copy(description = "智能体写的描述")
+        runCurrent()
+        vm.adoptRemoteConflict()
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertThat(vm.description.value).isEqualTo("智能体写的描述")
+        assertThat(vm.conflict.value).isNull()
+        coVerify(exactly = 0) { repo.updateFields(any(), any(), any(), any(), any()) }
+        vm.hasChanges.test { assertThat(awaitItem()).isFalse() }
+    }
+
+    @Test
+    fun `编辑提示词期间智能体改了提示词，保存改为提示冲突，保留我的会写入并补记对方版本`() = runTest {
+        val remote = kotlinx.coroutines.flow.MutableStateFlow<Agent?>(Agent("a1", "写作助手", systemPrompt = "P0"))
+        every { repo.observeById("a1") } returns remote
+        val vm = AgentEditViewModel(repo)
+        vm.loadAgent("a1")
+        assertThat(vm.beginPromptEdit()).isEqualTo("P0")
+
+        remote.value = remote.value!!.copy(systemPrompt = "P-agent")
+        runCurrent()
+        assertThat(vm.promptConflict.value).isEqualTo(AgentPromptConflict("P-agent"))
+
+        val blocked = vm.saveSystemPrompt("P-mine")
+        assertThat(blocked.exceptionOrNull()).isInstanceOf(AgentPromptSaveConflictException::class.java)
+        coVerify(exactly = 0) { repo.updateFields(any(), setOf(AgentField.SYSTEM_PROMPT), any(), any(), any()) }
+
+        assertThat(vm.keepMyPrompt("P-mine").isSuccess).isTrue()
+        coVerify { repo.recordPromptRevision("a1", "P-agent", com.promenar.infinity.domain.model.AgentPromptRevision.Source.AGENT) }
+        coVerify(exactly = 1) {
+            repo.updateFields("a1", setOf(AgentField.SYSTEM_PROMPT), match { it.systemPrompt == "P-mine" }, any(), any())
+        }
+        assertThat(vm.systemPrompt.value).isEqualTo("P-mine")
+        assertThat(vm.promptConflict.value).isNull()
+        assertThat(vm.notice.value).isEqualTo(AgentEditNotice.KEPT_MY_PROMPT)
+    }
+
+    @Test
+    fun `编辑提示词冲突时采用新内容，草稿存为历史版本，之后按新内容继续编辑`() = runTest {
+        val remote = kotlinx.coroutines.flow.MutableStateFlow<Agent?>(Agent("a1", "写作助手", systemPrompt = "P0"))
+        every { repo.observeById("a1") } returns remote
+        val vm = AgentEditViewModel(repo)
+        vm.loadAgent("a1")
+        vm.beginPromptEdit()
+        remote.value = remote.value!!.copy(systemPrompt = "P-agent")
+        runCurrent()
+
+        assertThat(vm.adoptRemotePrompt("P-draft")).isEqualTo("P-agent")
+        coVerify { repo.recordPromptRevision("a1", "P-draft", com.promenar.infinity.domain.model.AgentPromptRevision.Source.USER) }
+        assertThat(vm.promptConflict.value).isNull()
+        assertThat(vm.notice.value).isEqualTo(AgentEditNotice.ADOPTED_REMOTE_PROMPT)
+
+        assertThat(vm.saveSystemPrompt("P-agent 加一句").isSuccess).isTrue()
+        assertThat(vm.systemPrompt.value).isEqualTo("P-agent 加一句")
+    }
+
+    @Test
+    fun `恢复历史版本后界面显示恢复的内容`() = runTest {
+        val agent = Agent("a1", "写作助手", systemPrompt = "当前")
+        every { repo.observeById("a1") } returns flowOf(agent)
+        coEvery { repo.restorePromptRevision("a1", "r1") } returns AgentFieldUpdate.Updated(agent.copy(systemPrompt = "旧版"))
+        val vm = AgentEditViewModel(repo)
+        vm.loadAgent("a1")
+
+        vm.restorePromptRevision("r1")
+        runCurrent()
+
+        assertThat(vm.systemPrompt.value).isEqualTo("旧版")
+        assertThat(vm.notice.value).isEqualTo(AgentEditNotice.RESTORED)
+        vm.hasChanges.test { assertThat(awaitItem()).isFalse() }
     }
 }

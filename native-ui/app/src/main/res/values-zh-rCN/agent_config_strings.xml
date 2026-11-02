@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- agents_write 审批卡 -->
+    <string name="chat_approval_risk_agent_config">配置变更</string>
+    <string name="agent_config_where">智能体与会话</string>
+    <string name="agent_config_title_generic">修改智能体或会话</string>
+    <string name="agent_config_title_create_agent">新建智能体 · %1$s</string>
+    <string name="agent_config_title_update_agent">修改智能体 · %1$s</string>
+    <string name="agent_config_title_create_session">新建会话 · 归属 %1$s</string>
+    <string name="agent_config_title_update_current_session">修改会话 · 本会话</string>
+    <string name="agent_config_title_update_session">修改会话 · %1$s</string>
+    <string name="agent_config_prompt_diff">提示词差异</string>
+    <string name="agent_config_session_prompt_diff">会话提示词差异</string>
+    <string name="agent_config_value_default">默认</string>
+    <string name="agent_config_value_on">开启</string>
+    <string name="agent_config_value_off">关闭</string>
+    <string name="agent_config_untitled_session">新会话</string>
+    <string name="agent_config_field_name">名称</string>
+    <string name="agent_config_field_description">描述</string>
+    <string name="agent_config_field_default_model">默认模型</string>
+    <string name="agent_config_field_model">模型</string>
+    <string name="agent_config_field_temperature">温度</string>
+    <string name="agent_config_field_top_p">Top P</string>
+    <string name="agent_config_field_max_tokens">最大输出</string>
+    <string name="agent_config_field_top_k">Top K</string>
+    <string name="agent_config_field_frequency_penalty">频率惩罚</string>
+    <string name="agent_config_field_presence_penalty">存在惩罚</string>
+    <string name="agent_config_field_repetition_penalty">重复惩罚</string>
+    <string name="agent_config_field_reasoning_effort">推理强度</string>
+    <string name="agent_config_field_default_mcp">默认 MCP</string>
+    <string name="agent_config_field_default_workspace">默认工作区</string>
+    <string name="agent_config_field_tools_default">默认开启工具</string>
+    <string name="agent_config_field_execution_mode">审批</string>
+    <string name="agent_config_field_title">标题</string>
+    <string name="agent_config_field_skills">启用的技能</string>
+    <string name="agent_config_field_mcp">启用的 MCP</string>
+    <plurals name="agent_config_impact_agent_prompt">
+        <item quantity="other">影响“%1$s”的全部 %2$d 个会话，从各会话下一轮生效。修改前的内容会存为历史版本，可在编辑页恢复。</item>
+    </plurals>
+    <plurals name="agent_config_impact_agent_fields">
+        <item quantity="other">影响“%1$s”的全部 %2$d 个会话，从各会话下一轮生效；新会话默认值只影响之后新建的会话。</item>
+    </plurals>
+    <string name="agent_config_impact_new_agent">只新建智能体，不会发起对话。审批方式为“命令需批准”，可在编辑页修改。</string>
+    <string name="agent_config_impact_new_session">只新建会话，不会发起对话，也不会切换到该会话。</string>
+    <string name="agent_config_impact_current_session">本会话从下一轮生效；其它会话不受影响。</string>
+    <string name="agent_config_impact_other_session">该会话从下一轮生效；本会话不受影响。</string>
+    <string name="agent_config_approve_once">仅批准这一次</string>
+    <string name="agent_config_approve_once_hint">修改智能体与会话每次都需批准，不提供“10 分钟内同类免审批”。</string>
+    <!-- 编辑页：与智能体工具写入的冲突处理 -->
+    <string name="agent_edit_conflict_field">智能体刚修改了%1$s，而你也改了这里。选择要保留哪一份：</string>
+    <string name="agent_edit_conflict_prompt">智能体刚修改了提示词，而你也在编辑这里。选择要保留哪一份：</string>
+    <string name="agent_edit_conflict_mine">你的：%1$s</string>
+    <string name="agent_edit_conflict_theirs">智能体的：%1$s</string>
+    <string name="agent_edit_conflict_local_value">你的未保存修改</string>
+    <string name="agent_edit_conflict_other_setting">其它设置</string>
+    <string name="agent_edit_conflict_view_diff">查看差异</string>
+    <string name="agent_edit_conflict_hide_diff">收起差异</string>
+    <string name="agent_edit_conflict_adopt">采用新内容</string>
+    <string name="agent_edit_conflict_keep">保留我的</string>
+    <string name="agent_edit_conflict_diff_caption">你的草稿 → 智能体的版本。无论选哪一份，被放弃的那份都存为历史版本。</string>
+    <string name="agent_edit_notice_adopted_prompt">已采用智能体的版本；你的未保存内容存为一个历史版本。</string>
+    <string name="agent_edit_notice_kept_prompt">已保留你的版本并保存；智能体的版本存为历史版本，可随时恢复。</string>
+    <string name="agent_edit_notice_adopted">已采用智能体的修改。</string>
+    <string name="agent_edit_notice_kept">已保留你的修改并保存。</string>
+    <string name="agent_edit_notice_restored">已恢复所选版本，从各会话下一轮生效。</string>
+
+    <!-- 提示词历史版本 -->
+    <string name="agent_prompt_history_row">历史版本</string>
+    <string name="agent_prompt_history_row_empty">还没有历史版本</string>
+    <plurals name="agent_prompt_history_row_count">
+        <item quantity="other">%1$d 个版本</item>
+    </plurals>
+    <string name="agent_prompt_history_title">提示词历史版本</string>
+    <string name="agent_prompt_history_caption">保留最近 20 版。智能体修改、你在编辑页保存、恢复操作都会记一版。</string>
+    <string name="agent_prompt_history_empty">还没有历史版本。保存或修改提示词后会出现在这里。</string>
+    <string name="agent_prompt_history_empty_content">（空提示词）</string>
+    <string name="agent_prompt_history_current">当前</string>
+    <plurals name="agent_prompt_history_chars">
+        <item quantity="other">%1$d 字</item>
+    </plurals>
+    <string name="agent_prompt_history_source_user">我</string>
+    <string name="agent_prompt_history_source_agent">智能体</string>
+    <string name="agent_prompt_history_source_rollback">恢复</string>
+    <string name="agent_prompt_history_is_current">这是当前使用的版本。</string>
+    <string name="agent_prompt_history_diff_caption">当前内容 → 此版本</string>
+    <string name="agent_prompt_history_close">关闭</string>
+    <string name="agent_prompt_history_restore">恢复此版本</string>
+    <string name="agent_prompt_history_restore_caption">恢复后从各会话下一轮生效；当前内容仍保留在历史中。</string>
+</resources>

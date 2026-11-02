@@ -1206,6 +1206,7 @@ fun ChatScreenContent(
                                             executionTarget = call.executionTarget,
                                             highRisk = call.risk in setOf("delete", "process"),
                                             timedGrantLabel = call.grantCategory?.let { timedGrantLabel(it) },
+                                            oneShotOnly = call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE,
                                             preview = remember(call, request.assistantMessageId, uiState.messages) {
                                                 ApprovalPreview.forCall(call, uiState.messages, request.assistantMessageId)
                                             },
@@ -1765,6 +1766,7 @@ internal fun approvalRiskLabel(risk: String): String = stringResource(
         "external_write" -> R.string.chat_approval_risk_external_write
         "schedule" -> R.string.schedule_approval_risk
         "access_grant" -> R.string.chat_approval_risk_access_grant
+        "agent_config" -> R.string.chat_approval_risk_agent_config
         else -> R.string.chat_approval_risk_unknown
     },
 )

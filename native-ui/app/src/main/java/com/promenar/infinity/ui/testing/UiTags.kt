@@ -109,6 +109,7 @@ object UiTags {
     const val CHAT_APPROVAL_APPROVE = "chat_approval_approve"
     const val CHAT_APPROVAL_APPROVE_ALL = "chat_approval_approve_all"
     const val CHAT_APPROVAL_APPROVE_TIMED = "chat_approval_approve_timed"
+    const val CHAT_APPROVAL_APPROVE_ONCE = "chat_approval_approve_once"
     const val CHAT_APPROVAL_MORE = "chat_approval_more"
     const val CHAT_TIMED_GRANT_REVOKE = "chat_timed_grant_revoke"
     const val CHAT_APPROVAL_DECLINE = "chat_approval_decline"

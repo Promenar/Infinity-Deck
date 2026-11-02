@@ -819,6 +819,8 @@ data class ApprovalDisplayCall(
     val transfer: SftpTransferApprovalPreview? = null,
     /** 可限时免审批的类别名称（如“技能目录变更”）；为空时卡片不提供 10 分钟免审批。 */
     val timedGrantLabel: String? = null,
+    /** 每次都需批准、不可限时免审批的调用（如 `agents_write`）：菜单只有“仅批准这一次”与说明。 */
+    val oneShotOnly: Boolean = false,
 )
 
 @Composable
@@ -891,6 +893,7 @@ internal fun approvalToolTitle(name: String): String = when {
     name == "ssh_host_install_key" -> stringResource(R.string.chat_approval_title_ssh_install_key)
     name.startsWith("mcp__") -> stringResource(R.string.chat_approval_title_mcp)
     name == REQUEST_KNOWLEDGE_ACCESS_TOOL -> stringResource(R.string.chat_approval_title_knowledge_access)
+    name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> stringResource(R.string.agent_config_title_generic)
     else -> toolFriendlyName(name)
 }
 
@@ -1084,6 +1087,10 @@ private fun ApprovalReason(description: String) {
 private fun approvalCallWhere(call: ApprovalDisplayCall): String? {
     // 授权目标是挂载预览 JSON，不作为位置显示；类别条写“访问授权”。
     if (call.knowledgeAccess != null) return call.riskLabel
+    // 智能体配置的授权目标含字段摘要，不作为位置显示。
+    if (call.name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE ||
+        com.promenar.infinity.domain.agentconfig.AgentConfigTools.isWriteTarget(call.executionTarget)
+    ) return stringResource(R.string.agent_config_where)
     val preview = call.preview
     val target = call.executionTarget?.let(ToolExecutionTargets::display)
         ?: preview?.target?.takeIf(String::isNotBlank)
@@ -1108,6 +1115,10 @@ private fun ApprovalCallBody(call: ApprovalDisplayCall, description: String, pen
             ApprovalCallTitle(call.name, pending)
             KnowledgeAccessApprovalBody(access)
         }
+        return
+    }
+    (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.AgentConfig)?.let { agentConfig ->
+        AgentConfigApprovalBody(agentConfig, call.name, pending)
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1362,6 +1373,7 @@ fun ApprovalCard(
                         onApproveAll = onApproveAll?.takeIf { remainingCount > 0 },
                         timedGrantLabel = currentCall?.timedGrantLabel,
                         onApproveTimed = onApproveTimed?.takeIf { currentCall?.timedGrantLabel != null },
+                        oneShotOnly = currentCall?.oneShotOnly == true,
                     )
                 }
             }
@@ -1388,11 +1400,13 @@ internal fun ApprovalActionBar(
     timedGrantLabel: String? = null,
     onApproveTimed: (() -> Unit)? = null,
     initialMenuExpanded: Boolean = false,
+    /** 每次都需批准的调用：保留分体按钮，菜单只有“仅批准这一次”与不提供限时免审批的说明。 */
+    oneShotOnly: Boolean = false,
 ) {
     val haptics = LocalInfinityHaptics.current
     val confirm: (() -> Unit) -> () -> Unit = { action -> { haptics.perform(InfinityHapticEvent.CONFIRM); action() } }
-    val timed = onApproveTimed?.takeIf { timedGrantLabel != null }
-    val hasMore = onApproveAll != null || timed != null
+    val timed = onApproveTimed?.takeIf { timedGrantLabel != null && !oneShotOnly }
+    val hasMore = onApproveAll != null || timed != null || oneShotOnly
     InfinityPillRow(Modifier.fillMaxWidth().padding(top = 4.dp), stackedSpacing = 8.dp) {
         ApprovalPillButton(
             label = stringResource(if (remainingCount > 0) R.string.chat_inline_approval_reject_current else R.string.chat_inline_approval_reject),
@@ -1439,6 +1453,7 @@ internal fun ApprovalActionBar(
                             timedGrantLabel = timedGrantLabel,
                             onApproveAll = onApproveAll?.let { handler -> { menuExpanded = false; confirm(handler)() } },
                             onApproveTimed = timed?.let { handler -> { menuExpanded = false; confirm(handler)() } },
+                            onApproveOnce = if (oneShotOnly) { { menuExpanded = false; confirm(onApprove)() } } else null,
                         )
                     }
                 }
@@ -1454,7 +1469,27 @@ internal fun ColumnScope.ApprovalMoreMenuItems(
     timedGrantLabel: String?,
     onApproveAll: (() -> Unit)?,
     onApproveTimed: (() -> Unit)?,
+    onApproveOnce: (() -> Unit)? = null,
 ) {
+    onApproveOnce?.let { handler ->
+        InfinityMenuItem(
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.agent_config_approve_once), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(
+                        stringResource(R.string.agent_config_approve_once_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            leadingIcon = { Icon(Icons.Rounded.Done, contentDescription = null) },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            haptic = null,
+            onClick = handler,
+            modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_ONCE),
+        )
+    }
     onApproveAll?.let { handler ->
         InfinityMenuItem(
             text = { Text(stringResource(R.string.chat_approval_approve_all, totalCount), style = MaterialTheme.typography.labelLarge, maxLines = 2) },
