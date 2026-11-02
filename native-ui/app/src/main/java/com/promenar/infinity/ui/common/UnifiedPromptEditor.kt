@@ -229,7 +229,7 @@ fun UnifiedPromptEditor(
     showPreviewTab: Boolean = true,
     /** 顶栏下方的提示条（如“智能体刚修改了提示词”）；可读取与替换草稿。 */
     banner: (@Composable (PromptEditorHandle) -> Unit)? = null,
-    /** 顶栏下方的次要入口（如提示词历史版本）；只在窄窗口编辑视图之外也保持可见。 */
+    /** 顶栏下方、提示条上方的次要入口；为空时不占位。 */
     secondaryAction: (@Composable () -> Unit)? = null,
 ) {
     if (!show) return
