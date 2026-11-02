@@ -185,6 +185,30 @@ class SshCancellationIntegrationTest {
         }
     }
 
+    @Test(timeout = 30_000)
+    fun `停止转发后立即在同一端口重启不会遇到端口占用`() = runBlocking {
+        EchoServer().use { echo ->
+            val localPort = availableLoopbackPort()
+            Harness(localForwardPort = localPort, remoteForwardPort = echo.port).use { fixture ->
+                fixture.start()
+                fixture.trust()
+                repeat(10) { round ->
+                    assertThat(fixture.runtime.startForward(ALIAS)).isEqualTo(localPort)
+                    Socket().use { socket ->
+                        socket.connect(InetSocketAddress(LOOPBACK, localPort), 2_000)
+                        socket.soTimeout = 2_000
+                        assertEcho(socket, "round-$round")
+                        fixture.runtime.stopForward(ALIAS)
+                        assertClosedSocket(socket)
+                    }
+                    // stopForward 返回即代表监听已释放，不需要等待内核回收。
+                    assertCannotConnect(LOOPBACK, localPort)
+                }
+                assertThat(fixture.runtime.forwardStates.value).isEmpty()
+            }
+        }
+    }
+
     private class BlockingPoint {
         private val reached = CountDownLatch(1)
         private val released = CountDownLatch(1)

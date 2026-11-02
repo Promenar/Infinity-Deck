@@ -735,6 +735,9 @@ tasks.withType<Test> {
     }
     // MINA 的 NIO SPI 由 JDK 加载；保持同一加载器，避免污染 Robolectric 原生 SQLite 初始化。
     systemProperty("org.robolectric.packagesToNotAcquire", "org.apache.sshd.")
+    // Robolectric 默认把 Conscrypt 插到 JVM 全局安全提供者首位且不还原（仅 Apple Silicon 例外），
+    // 会让同进程后续普通 JUnit 测试的 TLS 实现随类分配变化；统一关闭，各主机一致使用 JDK 提供者。
+    systemProperty("robolectric.conscryptMode", "OFF")
 }
 
 

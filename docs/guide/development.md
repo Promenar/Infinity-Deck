@@ -19,7 +19,7 @@ python3 ../scripts/ci/check-distribution-manifests.py
 python3 ../scripts/ci/check-native-page-alignment.py
 ```
 
-发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。完成上述单测、lint、两个渠道 Debug 构建、侧载截图与两个 Python 检查后，须在真机安装本机签名的侧载 Release 包验收。
+发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。完成两个渠道的 Debug 单测、lint、两个渠道 Debug 构建、侧载截图与两个 Python 检查后，须在真机安装本机签名的侧载 Release 包验收。
 
 `release.yml` 保留静态契约与版本输入校验，设备覆盖为 API 31 / `minimum` deviceTest 和 API 36 Release 等价 R8 minifiedTest 黑盒。签名构建在静态检查及版本输入校验通过后与设备作业并行，依次用两次 Gradle 调用分别构建两个渠道的 Release（合并为一次调用会使 Kotlin 编译超出托管 runner 内存），再执行两个 Python 检查的 `--build-type release` 模式。实际签名 APK 冷安装覆盖侧载 / API 31、侧载 / API 36、Play / API 36；版本输入校验、冷安装与两类设备作业全部通过才可发布。Linux 截图验证保留独立工作流入口。
 
