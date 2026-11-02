@@ -44,6 +44,7 @@ assert_not_contains() {
 }
 
 RELEASE_WORKFLOW="${REPO_ROOT}/.github/workflows/release.yml"
+REGRESSION_WORKFLOW="${REPO_ROOT}/.github/workflows/device-regression.yml"
 
 # 先锁定 white-box 脚本边界，确保旧 minified instrumentation 架构给出直接 RED。
 assert_not_contains "${DEVICE_SCRIPT}" 'INFINITY_DEVICE_E2E_BUILD_TYPE'
@@ -53,11 +54,15 @@ assert_not_contains "${DEVICE_SCRIPT}" 'minifiedTest'
 assert_contains "${RELEASE_WORKFLOW}" 'INFINITY_DEVICE_E2E_SCOPE: ${{ matrix.e2e-scope }}'
 assert_contains "${RELEASE_WORKFLOW}" 'artifacts/android-device-api-${{ matrix.api-level }}-x86_64/'
 assert_count "${RELEASE_WORKFLOW}" "e2e-scope: minimum" 1
-assert_count "${RELEASE_WORKFLOW}" "e2e-scope: full" 2
+assert_not_contains "${RELEASE_WORKFLOW}" "e2e-scope: full"
+assert_count "${REGRESSION_WORKFLOW}" "e2e-scope: full" 2
+assert_contains "${REGRESSION_WORKFLOW}" 'script: scripts/ci/android-device-core-e2e.sh'
 
-assert_count "${RELEASE_WORKFLOW}" "- api-level: 31" 1
-assert_count "${RELEASE_WORKFLOW}" "- api-level: 35" 4
-assert_count "${RELEASE_WORKFLOW}" "- api-level: 36" 4
+assert_count "${RELEASE_WORKFLOW}" "- api-level: 31" 2
+assert_not_contains "${RELEASE_WORKFLOW}" "- api-level: 35"
+assert_count "${RELEASE_WORKFLOW}" "- api-level: 36" 3
+assert_count "${REGRESSION_WORKFLOW}" "- api-level: 35" 1
+assert_count "${REGRESSION_WORKFLOW}" "- api-level: 36" 1
 assert_contains "${RELEASE_WORKFLOW}" "签名 R8 APK 无密钥冷安装 smoke"
 
 assert_contains "${DEVICE_SCRIPT}" 'INFINITY_DEVICE_E2E_SCOPE:-full'

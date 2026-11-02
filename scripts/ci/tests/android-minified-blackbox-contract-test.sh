@@ -425,7 +425,8 @@ assert_contains "${RELEASE_WORKFLOW}" 'Release 等价 minifiedTest 黑盒回归'
 assert_contains "${RELEASE_WORKFLOW}" 'scripts/ci/android-minified-blackbox-smoke.sh'
 assert_contains "${RELEASE_WORKFLOW}" 'release-minified-blackbox-api-${{ matrix.api-level }}-${{ github.run_attempt }}'
 assert_contains "${RELEASE_WORKFLOW}" 'artifacts/android-minified-blackbox-api-${{ matrix.api-level }}-x86_64/'
-assert_contains "${RELEASE_WORKFLOW}" 'needs: [validate-release-inputs, static-checks, device-e2e, minified-blackbox, screenshot-gate]'
+assert_contains "${RELEASE_WORKFLOW}" 'needs: [validate-release-inputs, static-checks]'
+assert_contains "${RELEASE_WORKFLOW}" 'needs: [validate-release-inputs, signed-apk-smoke, device-e2e, minified-blackbox]'
 assert_not_contains "${RELEASE_WORKFLOW}" 'INFINITY_DEVICE_E2E_BUILD_TYPE: minifiedTest'
 
 echo "minified release-equivalent black-box 架构契约通过。"

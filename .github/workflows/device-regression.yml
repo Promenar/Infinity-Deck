@@ -1,0 +1,107 @@
+name: Android 完整设备回归
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: device-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  device-e2e:
+    name: 未混淆 deviceTest 完整业务回归（API ${{ matrix.api-level }} / ${{ matrix.coverage-label }} / x86_64）
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: 35
+            e2e-scope: full
+            coverage-label: 完整业务回归
+          - api-level: 36
+            e2e-scope: full
+            coverage-label: 完整业务回归
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 配置 Python 3.14（预编译打包 Python 字节码）
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.14"
+
+      - name: 验证构建输入下载重试
+        run: python3 scripts/ci/tests/verified-download-retry-test.py
+
+      - name: 配置 Go 1.27.1（编译内置 Tailscale）
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: native-ui/app/tailnet/go.sum
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: >-
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            cmake;3.22.1
+
+      - name: 配置 Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6
+        with:
+          dependency-graph: disabled
+
+      - name: 启用 KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: 运行核心设备 E2E
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        env:
+          INFINITY_DEVICE_E2E_SCOPE: ${{ matrix.e2e-scope }}
+          # 托管模拟器无法完成 Tailscale 公网控制面的交互登录。
+          INFINITY_E2E_TAILNET_CONTROL_PLANE: skip
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: default
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: >-
+            -no-window
+            -gpu swiftshader_indirect
+            -no-snapshot
+            -noaudio
+            -no-boot-anim
+            -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: scripts/ci/android-device-core-e2e.sh
+
+      - name: 上传设备 E2E 证据
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: device-regression-api-${{ matrix.api-level }}-${{ github.run_attempt }}
+          path: artifacts/android-device-api-${{ matrix.api-level }}-x86_64/
+          if-no-files-found: warn
+          retention-days: 14
+

@@ -27,6 +27,8 @@
 
 当前 Android 任务显式指定 `distribution` 风味：日常使用 `:app:testSideloadDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`；另构建 `:app:assemblePlayDebug` 并执行 `python3 scripts/ci/check-distribution-manifests.py` 与 `python3 scripts/ci/check-native-page-alignment.py`。Gradle 在 `native-ui/` 运行，Python 检查在仓库根运行。两个渠道的 APK、mapping 与设备构建入口见 [docs/distribution-builds.md](docs/distribution-builds.md)。
 
+发行前须在本机跑完全量门禁，并安装本机签名的侧载 Release 包完成真机验收；发行流水线只验证本机不覆盖的环境。`release.yml` 保留静态契约、版本输入校验、API 31 / `minimum` deviceTest、API 36 minifiedTest 黑盒及侧载 API 31/36、Play API 36 的签名 APK 冷安装；签名构建只依赖静态检查和版本输入校验，同一次 Gradle 调用构建两个渠道 Release 后执行两个 Python 发行检查。发布等待冷安装与两类设备作业全部通过。API 35/36 的 `full` deviceTest 由仅手动触发的 `device-regression.yml` 按需执行。
+
 - **Markdown 渲染排障分层**：遇到“Markdown 标记存在但排版堆成一坨”时，必须先区分两类根因：
   - 文本中已有换行，但渲染库按 CommonMark 软换行规则吞掉换行；
   - 上游模型原始输出已经缺少真实换行，只剩标题、列表、表格等 Markdown 标记压在同一行。
@@ -63,4 +65,4 @@
 - 对外发布：版本提交推送 `main` 后，经用户授权推送注释标签 `v<versionName>`，由 `.github/workflows/release.yml` 构建、验签并发布 GitHub Release；发布说明取自 `CHANGELOG.md` 对应版本小节。流程见 [docs/distribution-builds.md](docs/distribution-builds.md)。
 
 ---
-*规范更新于 2026-10-31。请每次开启新会话时首先阅读本文件，并检查 `.agent/handover.md` 的 Next Steps！*
+*规范更新于 2026-11-02。请每次开启新会话时首先阅读本文件，并检查 `.agent/handover.md` 的 Next Steps！*

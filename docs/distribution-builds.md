@@ -19,11 +19,13 @@ python3 ../scripts/ci/check-distribution-manifests.py
 python3 ../scripts/ci/check-native-page-alignment.py
 ```
 
-本机截图验证共用 `app/src/screenshotTestDebug/reference/`，不按渠道复制像素。Linux 发行截图验证先校验 `reference-linux-overlay/manifest.json`，再将其中已审阅的跨平台差异合成为临时参考目录；基准或覆盖文件变化时必须重新审阅，不能静默使用过期参考图。发行截图按源文件分片，检查各类的测试结果并保留报告，所有分片通过后才能进入签名构建；截图比较阈值保持不变。设备构建只生成 APK；设备脚本会连接并修改设备，需在已授权的专用本机 AVD 上另行执行。`mainactivity-e2e` 以 `missingDimensionStrategy` 固定匹配侧载应用，其任务名保持 `assembleDeviceTest`。黑盒夹具为独立应用，保持 `:blackbox-fixture:assembleDebug`。
+发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。本机必跑 `:app:testSideloadDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`、`:app:assemblePlayDebug` 及两个 Python 发行检查，并安装本机签名的侧载 Release 包完成真机验收。
+
+本机截图验证共用 `app/src/screenshotTestDebug/reference/`，不按渠道复制像素。独立的 `screenshot-validate.yml` 保留 Linux 分片验证能力：先校验 `reference-linux-overlay/manifest.json`，再将其中已审阅的跨平台差异合成为临时参考目录，检查各类的测试结果并保留报告；基准或覆盖文件变化时必须重新审阅，截图比较阈值保持不变。设备构建只生成 APK；设备脚本会连接并修改设备，需在已授权的专用本机 AVD 上另行执行。`mainactivity-e2e` 以 `missingDimensionStrategy` 固定匹配侧载应用，其任务名保持 `assembleDeviceTest`。黑盒夹具为独立应用，保持 `:blackbox-fixture:assembleDebug`。
 
 需要排查托管 Linux 的截图差异时，可手动运行 GitHub Actions 的“Android 截图诊断”。该工作流使用截图验证任务，默认检查空会话预览，也可通过 `preview_filter` 指定其他预览；产物包含参考图、渲染结果与报告。它不使用发行签名材料，也不替代全量截图或发行候选验证。
 
-“Android 截图 Linux 参考图候选”可手动分片生成 Linux 渲染结果，并将每个分片的原参考图、候选及源文件清单作为 Actions 产物保留，供逐项比较和审阅；生成操作只发生在临时 runner，不自动提交、更改仓库或替代发行截图门禁。全部分片成功且清单覆盖所有截图源文件后，候选才具备完整性。
+“Android 截图 Linux 参考图候选”可手动分片生成 Linux 渲染结果，并将每个分片的原参考图、候选及源文件清单作为 Actions 产物保留，供逐项比较和审阅；生成操作只发生在临时 runner，不自动提交或更改仓库。本机全量截图门禁仍须独立完成。全部分片成功且清单覆盖所有截图源文件后，候选才具备完整性。
 
 排查发行构建的 JVM 内存不足时，可手动运行“Android Gradle 编译内存诊断”。它不使用签名材料，可对比组合与分阶段任务，也可单独诊断分阶段变体编译，并保留 Gradle、Kotlin 进程的堆和宿主内存采样；该诊断不生成或发布签名包，也不替代发行门禁。
 
@@ -31,7 +33,7 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 侧载与 Play 的 Debug JVM 单测按测试类分到多个进程并行，每个进程配置 1 GiB 堆；默认进程数取 CPU 核心数的一半且不超过 4，内存紧张时可用 `-Pinfinity.unitTestForks=<n>` 下调（传 1 即恢复单进程）。Gradle 和 Kotlin 守护进程继续使用各自的内存配置。
 
-发行工作流按侧载 Debug、Play Debug、侧载 Release、Play Release 分阶段执行完整门禁与构建，继续复用 Gradle 守护进程和缓存。各阶段顺序执行，任一阶段失败即停止签名发布。
+发行签名构建在版本输入校验与静态检查通过后启动，与设备作业并行；同一次 Gradle 调用执行 `:app:assembleSideloadRelease :app:assemblePlayRelease`，复用守护进程和缓存，随后执行两个 Python 检查的 `--build-type release` 模式。发行构建失败时保留 Gradle problems、清单合并日志及 R8 输出供诊断。
 
 依赖 Android 文件描述符与目录身份实现的工作区安全测试在设备回归中执行，覆盖根目录替换、符号链接竞争、回滚和旧回收目录恢复；不依赖 Android 桥接的协调逻辑仍由 JVM 单测覆盖。排查设备测试时可手动运行“Android 工作区设备诊断”，检查七项测试及执行日志，该诊断不替代完整设备门禁。
 
@@ -49,7 +51,13 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 本机签名构建入口为 `python3 scripts/release/build-signed-local.py --sha <提交> [--play]`：它在仓库同级的长期发行工作树 `Nexara-release` 中切换到目标提交，复用 Gradle 增量编译、守护进程与构建缓存，并从 `secure_env/` 向 Gradle 子进程注入签名变量；默认只构建侧载渠道并检查 16KB 对齐，`--play` 同时构建 Play 渠道并检查发行清单。Release 构建需要安全注入既有四个 `INFINITY_*` 签名变量，在获得签名构建授权的主控会话执行 `:app:assembleSideloadRelease :app:assemblePlayRelease`，随后执行 `python3 ../scripts/ci/check-distribution-manifests.py --build-type release` 与 `python3 ../scripts/ci/check-native-page-alignment.py --build-type release`。不把秘密写入命令、文档或报告。
 
-Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`，检查内置模型目录、文本换行和工作流脚本契约；该入口也由发行工作流执行。发行工作流 `.github/workflows/release.yml` 只在推送 `v*` 注释标签（或在 `main` 上手动触发候选验证）时运行，日常推送不会构建 APK。`scripts/ci/release-metadata.py` 从 `native-ui/app/build.gradle.kts` 读取 versionName 与 versionCode，要求标签等于 `v<versionName>`、指向 `main` 历史中的提交，并从 `CHANGELOG.md` 的 `## [<versionName>]` 小节生成发布说明；该小节缺失或为空时拒绝发布。静态检查、设备回归与 minifiedTest 黑盒均通过后，工作流使用 release 环境的 `NEXARA_*` 签名机密执行全门禁并构建两个渠道，整理侧载主资产 `dist/infinity-v<版本>.apk` 和 Play 资产 `dist/infinity-v<版本>-play.apk`，二者各有 `.sha256`；R8 证据分别进入 `dist/r8/sideload/` 与 `dist/r8/play/`，只作为保留 3 天的 Actions 制品。冷安装冒烟覆盖每个渠道的 API 35/36，校验对应哈希、包名、版本与发行证书，通过后才以 draft 上传资产、逐个回读哈希，再公开 Release；版本名带 `-` 后缀时标为 prerelease。手动触发只做候选验证，不发布。`scripts/ci/android-release-upgrade-smoke.sh` 依赖已下线的 v0.1 公开基线，目前不在工作流中运行，可在本机用同签名旧包手动执行。发行不代表 Play 商店审核通过。
+Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`，检查内置模型目录、文本换行和工作流脚本契约；该入口也由发行工作流执行。发行工作流 `.github/workflows/release.yml` 只在推送 `v*` 注释标签（或在 `main` 上手动触发候选验证）时运行，日常推送不会构建 APK。`scripts/ci/release-metadata.py` 从 `native-ui/app/build.gradle.kts` 读取 versionName 与 versionCode，要求标签等于 `v<versionName>`、指向 `main` 历史中的提交，并从 `CHANGELOG.md` 的 `## [<versionName>]` 小节生成发布说明；该小节缺失或为空时拒绝发布。
+
+发行流水线的设备覆盖为 API 31 / `minimum` 的未混淆 deviceTest 核心可达性，以及 API 36 的 Release 等价 R8 minifiedTest 黑盒。签名构建使用 release 环境的 `NEXARA_*` 签名机密，整理侧载主资产 `dist/infinity-v<版本>.apk` 和 Play 资产 `dist/infinity-v<版本>-play.apk`，二者各有 `.sha256`；R8 证据分别进入 `dist/r8/sideload/` 与 `dist/r8/play/`，只作为保留 3 天的 Actions 制品。实际签名 APK 冷安装覆盖侧载 / API 31、侧载 / API 36、Play / API 36，校验对应哈希、包名、版本与发行证书。`publish` 等待版本输入校验、全部冷安装、API 31 deviceTest 及 API 36 minifiedTest 黑盒通过，再以 draft 上传资产、逐个回读哈希，最后公开 Release；版本名带 `-` 后缀时标为 prerelease。手动触发只做候选验证，不发布。
+
+改动设备相关功能时，维护者可通过 `device-regression.yml` 的 `workflow_dispatch` 运行 API 35/36 的 `full` deviceTest 完整业务回归。该工作流复用 `scripts/ci/android-device-core-e2e.sh`、工具链与证据上传步骤，使用独立并发组，不阻断发行；沿用托管模拟器的覆盖边界：跳过 Tailscale 控制面交互登录，未配置 SSH 会话时跳过 SSH 设备用例。
+
+`scripts/ci/android-release-upgrade-smoke.sh` 依赖已下线的 v0.1 公开基线，目前不在工作流中运行，可在本机用同签名旧包手动执行。发行不代表 Play 商店审核通过。
 
 发布步骤：完成版本提交并推送 `main` 后，在用户授权下执行 `git tag -a v<版本> -m "Infinity Workbench v<版本>"` 与 `git push origin v<版本>`。
 

@@ -14,9 +14,16 @@ Android 开发调试与设备验收使用本机启动的专用 AVD；执行位�
 cd native-ui
 ./gradlew :app:assembleSideloadDebug :app:assemblePlayDebug
 ./gradlew :app:testSideloadDebugUnitTest :app:testPlayDebugUnitTest :app:lintSideloadDebug
+./gradlew :app:validateSideloadDebugScreenshotTest
 python3 ../scripts/ci/check-distribution-manifests.py
 python3 ../scripts/ci/check-native-page-alignment.py
 ```
+
+发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。完成上述单测、lint、两个渠道 Debug 构建、侧载截图与两个 Python 检查后，须在真机安装本机签名的侧载 Release 包验收。
+
+`release.yml` 保留静态契约与版本输入校验，设备覆盖为 API 31 / `minimum` deviceTest 和 API 36 Release 等价 R8 minifiedTest 黑盒。签名构建在静态检查及版本输入校验通过后与设备作业并行，同一次 Gradle 调用只构建两个渠道的 Release，再执行两个 Python 检查的 `--build-type release` 模式。实际签名 APK 冷安装覆盖侧载 / API 31、侧载 / API 36、Play / API 36；版本输入校验、冷安装与两类设备作业全部通过才可发布。Linux 截图验证保留独立工作流入口。
+
+设备相关功能可按需手动触发 `device-regression.yml`，运行 API 35/36 的 `full` deviceTest 完整业务回归；它不阻断发行，沿用托管环境的 Tailscale 控制面登录与 SSH 会话覆盖边界，详见[发行渠道构建说明](../distribution-builds.md)。合并到 `main` 后可用 `gh workflow run release.yml --ref main` 验证候选；该入口构建并冷安装签名产物，不发布 Release。
 
 首次构建会从 python.org 下载官方 CPython Android 包（每个 ABI 约 23 MB）并按 SHA-256 校验，之后使用 Gradle 缓存。构建期需要 PATH 中有 `python3.14`，用它预编译打包 Python 的字节码（也可用 `-Pinfinity.hostPython=<路径>` 指定）。离线方式与打包结构见[打包 Python](../distribution-builds.md#打包-python)。Debug 构建不需要发行签名变量。Release 构建必须通过进程环境提供 `INFINITY_KEYSTORE_PATH`、`INFINITY_STORE_PASSWORD`、`INFINITY_KEY_ALIAS` 和 `INFINITY_KEY_PASSWORD`；仓库不保存 keystore 或密码。
 

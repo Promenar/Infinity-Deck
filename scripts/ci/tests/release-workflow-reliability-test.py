@@ -38,10 +38,10 @@ def braced_block_after(source: str, marker: str) -> str:
     raise AssertionError(f"unclosed block after {marker}")
 
 
-def workflow_job(name: str) -> str:
+def workflow_job(name: str, source: str = RELEASE) -> str:
     match = re.search(
         rf"^  {re.escape(name)}:\n(?P<body>.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",
-        RELEASE,
+        source,
         flags=re.MULTILINE | re.DOTALL,
     )
     if match is None:
@@ -114,6 +114,7 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
     def test_android_ci_builds_reuse_gradle_daemon_and_cache(self) -> None:
         paths = (
             ".github/workflows/release.yml",
+            ".github/workflows/device-regression.yml",
             ".github/workflows/screenshot-validate.yml",
             ".github/workflows/screenshot-diagnostics.yml",
             ".github/workflows/screenshot-reference-candidate.yml",
@@ -339,11 +340,11 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
             with self.subTest(job=job_name):
                 self.assertIsNone(job_level_value(workflow_job(job_name), "if"))
         signed_job = workflow_job("signed-apk-smoke")
-        self.assertIn("- api-level: 35", signed_job)
+        self.assertIn("- api-level: 31", signed_job)
         self.assertIn("- api-level: 36", signed_job)
         self.assertEqual(
             job_level_value(workflow_job("publish"), "needs"),
-            "[validate-release-inputs, signed-apk-smoke]",
+            "[validate-release-inputs, signed-apk-smoke, device-e2e, minified-blackbox]",
         )
 
     def test_upgrade_smoke_script_keeps_install_r_only_path(self) -> None:
@@ -372,15 +373,20 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         self.assertIn("artifacts/android-minified-blackbox-api-${{ matrix.api-level }}-x86_64/", RELEASE)
         self.assertNotIn("INFINITY_DEVICE_E2E_BUILD_TYPE: minifiedTest", RELEASE)
         self.assertIn("build-release:", RELEASE)
-        for dependency in ("validate-release-inputs", "static-checks", "device-e2e", "minified-blackbox", "screenshot-gate"):
-            self.assertIn(dependency, job_level_value(workflow_job("build-release"), "needs"))
+        self.assertEqual(
+            job_level_value(workflow_job("build-release"), "needs"),
+            "[validate-release-inputs, static-checks]",
+        )
+        self.assertEqual(
+            re.findall(r"^          - api-level: (\d+)$", workflow_job("minified-blackbox"), re.MULTILINE),
+            ["36"],
+        )
 
-    def test_screenshot_gate_validates_every_shard_with_linux_baseline(self) -> None:
-        job = workflow_job("screenshot-gate")
+    def test_screenshot_validation_remains_available_outside_release(self) -> None:
+        self.assertNotIn("screenshot-gate", RELEASE)
+        self.assertNotIn("screenshot-validate.yml", RELEASE)
+        self.assertNotIn("matrix.shard", RELEASE)
         source = (ROOT / ".github/workflows/screenshot-validate.yml").read_text(encoding="utf-8")
-        self.assertIn("fail-fast: false", job)
-        self.assertIn("shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]", job)
-        self.assertIn("screenshot-validate.yml", job)
         self.assertIn("screenshot-baseline.py", source)
         self.assertIn("screenshot-shards.py", source)
         self.assertIn("screenshot-results.py", source)
@@ -391,9 +397,9 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         self.assertIn("set -euo pipefail", source)
         self.assertNotIn(":app:updateSideloadDebugScreenshotTest", source)
 
-    def test_build_release_reuses_gradle_cache_and_runs_full_build(self) -> None:
+    def test_build_release_reuses_gradle_cache_and_only_builds_release_once(self) -> None:
         build_job = workflow_job("build-release")
-        build_step = build_job.split("- name: 执行全门禁并构建签名 APK", 1)[1]
+        build_step = build_job.split("        working-directory: native-ui\n", 1)[1]
         build_step = build_step.split("- name: 删除临时 keystore", 1)[0]
         commands = continued_shell_commands(build_step, "./gradlew")
         self.assertEqual(
@@ -402,24 +408,7 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
                 [
                     "./gradlew",
                     "--stacktrace",
-                    ":app:testSideloadDebugUnitTest",
-                    ":app:lintSideloadDebug",
-                    ":app:assembleSideloadDebug",
-                ],
-                [
-                    "./gradlew",
-                    "--stacktrace",
-                    ":app:assemblePlayDebug",
-                    ":app:testPlayDebugUnitTest",
-                ],
-                [
-                    "./gradlew",
-                    "--stacktrace",
                     ":app:assembleSideloadRelease",
-                ],
-                [
-                    "./gradlew",
-                    "--stacktrace",
                     ":app:assemblePlayRelease",
                 ],
             ],
@@ -429,6 +418,11 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         assert errexit is not None
         self.assertLess(errexit.start(), build_step.index("./gradlew"))
         self.assertNotRegex(build_step, r"(?m)^\s*set\s+\+e\b")
+        self.assertEqual(len(continued_shell_commands(build_job, "./gradlew")), 1)
+        for removed in ("UnitTest", "lint", "assembleSideloadDebug", "assemblePlayDebug", "screenshotTest"):
+            self.assertNotIn(removed, build_job)
+        self.assertIn("python3 ../scripts/ci/check-distribution-manifests.py --build-type release", build_step)
+        self.assertIn("python3 ../scripts/ci/check-native-page-alignment.py --build-type release", build_step)
 
     def test_r8_evidence_and_download_integrity_are_mandatory(self) -> None:
         self.assertIn('outputs/mapping/${distribution}Release', RELEASE)
@@ -438,11 +432,16 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
             self.assertIn(filename, RELEASE)
         self.assertGreaterEqual(RELEASE.count("sha256sum -c"), 2)
 
-    def test_signed_minified_apk_is_cold_installed_on_api_35(self) -> None:
+    def test_signed_minified_apk_is_cold_installed_on_minimum_and_latest_sdk(self) -> None:
         signed_job = RELEASE.split("  signed-apk-smoke:", 1)[1].split("\n  publish:", 1)[0]
         self.assertIn("冷安装 smoke", signed_job)
-        self.assertIn("- api-level: 35", signed_job)
-        self.assertIn("- api-level: 36", signed_job)
+        self.assertEqual(
+            re.findall(
+                r'^          - api-level: (\d+)\n            distribution: (\w+)\n            apk-suffix: "([^"]*)"$',
+                signed_job, re.MULTILINE,
+            ),
+            [("31", "sideload", ""), ("36", "sideload", ""), ("36", "play", "-play")],
+        )
         self.assertIn("android-release-apk-smoke.sh", signed_job)
         self.assertNotIn("android-device-core-e2e.sh", signed_job)
 
@@ -693,7 +692,8 @@ is_expected_resumed_activity "$2"
 
     def test_actions_are_sha_pinned_and_permissions_are_minimal(self) -> None:
         screenshot_workflow = (ROOT / ".github/workflows/screenshot-validate.yml").read_text(encoding="utf-8")
-        for workflow in (ANDROID_CI, RELEASE, screenshot_workflow):
+        regression = (ROOT / ".github/workflows/device-regression.yml").read_text(encoding="utf-8")
+        for workflow in (ANDROID_CI, RELEASE, screenshot_workflow, regression):
             for action_ref in re.findall(r"uses:\s+([^\s#]+)", workflow):
                 if action_ref == "./.github/workflows/screenshot-validate.yml":
                     continue
@@ -706,7 +706,8 @@ is_expected_resumed_activity "$2"
     def test_every_gradle_job_installs_registered_go_for_tailnet(self) -> None:
         version = re.search(r'val tailnetGoVersion = "([0-9.]+)"', APP_BUILD)
         self.assertIsNotNone(version)
-        for workflow in (RELEASE,):
+        regression = (ROOT / ".github/workflows/device-regression.yml").read_text(encoding="utf-8")
+        for workflow in (RELEASE, regression):
             jobs = re.findall(r"^  [a-z][a-z0-9-]*:\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)", workflow, flags=re.MULTILINE | re.DOTALL)
             gradle_jobs = [job for job in jobs if "actions/setup-java@" in job]
             self.assertTrue(gradle_jobs)
@@ -715,10 +716,34 @@ is_expected_resumed_activity "$2"
                 self.assertIn(f'go-version: "{version.group(1)}"', job)
                 self.assertIn("cache-dependency-path: native-ui/app/tailnet/go.sum", job)
 
-    def test_release_workflow_api35_api36_matrix_includes_minified_blackbox(self) -> None:
-        self.assertEqual(RELEASE.count("- api-level: 31"), 1)
-        self.assertEqual(RELEASE.count("- api-level: 35"), 4)
-        self.assertEqual(RELEASE.count("- api-level: 36"), 4)
+    def test_release_device_e2e_only_runs_minimum_sdk(self) -> None:
+        job = workflow_job("device-e2e")
+        self.assertEqual(re.findall(r"^          - api-level: (\d+)$", job, re.MULTILINE), ["31"])
+        self.assertEqual(re.findall(r"^            e2e-scope: (\w+)$", job, re.MULTILINE), ["minimum"])
+
+    def test_full_device_regression_is_manual_unsigned_and_reuses_e2e_steps(self) -> None:
+        workflow = ROOT / ".github/workflows/device-regression.yml"
+        self.assertTrue(workflow.is_file(), "完整设备回归必须有独立手动入口")
+        source = workflow.read_text(encoding="utf-8")
+        trigger = source.split("\npermissions:", 1)[0]
+        self.assertEqual(re.findall(r"^  ([a-z][a-z_-]*):", trigger, re.MULTILINE), ["workflow_dispatch"])
+        self.assertIn("permissions:\n  contents: read", source)
+        self.assertNotIn("secrets.", source)
+        self.assertNotIn("environment: release", source)
+        self.assertNotIn("device-regression.yml", RELEASE)
+        job = workflow_job("device-e2e", source)
+        self.assertIsNone(job_level_value(job, "needs"))
+        self.assertIsNone(job_level_value(job, "if"))
+        self.assertEqual(re.findall(r"^          - api-level: (\d+)$", job, re.MULTILINE), ["35", "36"])
+        self.assertEqual(re.findall(r"^            e2e-scope: (\w+)$", job, re.MULTILINE), ["full", "full"])
+        self.assertIn("fail-fast: false", job)
+        self.assertEqual(job_level_value(job, "timeout-minutes"), "150")
+        self.assertEqual(
+            job.split("    steps:\n", 1)[1],
+            workflow_job("device-e2e").split("    steps:\n", 1)[1].replace(
+                "name: release-device-e2e-api-", "name: device-regression-api-",
+            ),
+        )
 
 
 if __name__ == "__main__":

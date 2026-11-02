@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 开发流程
+
+- 发行前在本机完成全量门禁与签名包真机验收；发行流水线保留 API 31 核心设备回归、API 36 R8 黑盒及侧载 API 31/36、Play API 36 签名产物冷安装，两个渠道 Release 并行于设备作业构建。API 35/36 完整设备回归提供独立手动工作流。
+
 ## [0.13.3-beta] - 2026-11-02
 
 0.13.0-beta 至 0.13.2-beta 未发布 GitHub Release，各自的变更见 CHANGELOG.md 对应小节。

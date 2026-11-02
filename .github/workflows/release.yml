@@ -114,12 +114,6 @@ jobs:
           - api-level: 31
             e2e-scope: minimum
             coverage-label: 最低 SDK 核心可达性
-          - api-level: 35
-            e2e-scope: full
-            coverage-label: 完整业务回归
-          - api-level: 36
-            e2e-scope: full
-            coverage-label: 完整业务回归
 
     steps:
       - name: 检出源码
@@ -209,7 +203,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - api-level: 35
           - api-level: 36
 
     steps:
@@ -286,20 +279,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  screenshot-gate:
-    name: 发行前截图回归（分片 ${{ matrix.shard }}）
-    needs: validate-release-inputs
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-    uses: ./.github/workflows/screenshot-validate.yml
-    with:
-      shard: ${{ matrix.shard }}
-
   build-release:
-    name: 全门禁并构建签名 APK（侧载 + Play）
-    needs: [validate-release-inputs, static-checks, device-e2e, minified-blackbox, screenshot-gate]
+    name: 构建签名 APK（侧载 + Play）
+    needs: [validate-release-inputs, static-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: release
@@ -377,7 +359,7 @@ jobs:
               raise SystemExit("keystore 解码结果为空")
           PY
 
-      - name: 执行全门禁并构建签名 APK
+      - name: 构建签名 APK
         working-directory: native-ui
         env:
           INFINITY_KEYSTORE_PATH: ${{ runner.temp }}/infinity-release.jks
@@ -393,16 +375,7 @@ jobs:
           fi
           chmod +x gradlew
           ./gradlew --stacktrace \
-            :app:testSideloadDebugUnitTest \
-            :app:lintSideloadDebug \
-            :app:assembleSideloadDebug
-          ./gradlew --stacktrace \
-            :app:assemblePlayDebug \
-            :app:testPlayDebugUnitTest
-          ./gradlew --stacktrace \
-            :app:assembleSideloadRelease
-          ./gradlew --stacktrace \
-            :app:assemblePlayRelease
+            :app:assembleSideloadRelease :app:assemblePlayRelease
           python3 ../scripts/ci/check-distribution-manifests.py --build-type release
           python3 ../scripts/ci/check-native-page-alignment.py --build-type release
 
@@ -417,15 +390,9 @@ jobs:
         with:
           name: release-gate-reports-${{ github.run_attempt }}
           path: |
-            native-ui/app/build/reports/tests/testSideloadDebugUnitTest/
-            native-ui/app/build/test-results/testSideloadDebugUnitTest/
-            native-ui/app/build/reports/tests/testPlayDebugUnitTest/
-            native-ui/app/build/test-results/testPlayDebugUnitTest/
-            native-ui/app/build/reports/lint-results-sideloadDebug.html
-            native-ui/app/build/reports/lint-results-sideloadDebug.xml
-            native-ui/app/build/reports/lint-results-sideloadDebug.txt
-            native-ui/app/build/reports/screenshotTest/preview/debug/sideload/
-            native-ui/app/build/outputs/screenshotTest-results/preview/debug/sideload/
+            native-ui/build/reports/problems/
+            native-ui/app/build/outputs/logs/
+            native-ui/app/build/outputs/mapping/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -489,15 +456,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - api-level: 35
+          - api-level: 31
             distribution: sideload
             apk-suffix: ""
           - api-level: 36
             distribution: sideload
             apk-suffix: ""
-          - api-level: 35
-            distribution: play
-            apk-suffix: "-play"
           - api-level: 36
             distribution: play
             apk-suffix: "-play"
@@ -589,7 +553,7 @@ jobs:
 
   publish:
     name: 发布 GitHub Release
-    needs: [validate-release-inputs, signed-apk-smoke]
+    needs: [validate-release-inputs, signed-apk-smoke, device-e2e, minified-blackbox]
     if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
