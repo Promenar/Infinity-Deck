@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.chat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -126,15 +128,15 @@ private fun KnowledgeAccessApprovalPage(mode: InfinityThemeMode) {
 @Composable
 fun approvalCardKnowledgeAccessPreview() = KnowledgeAccessApprovalPage(InfinityThemeMode.DARK)
 
-// 批量修改技能：当前调用属于“技能目录变更”，操作区上方依次是“全部批准（3 项）”与
-// “批准，10 分钟内技能目录变更免审批”；下方输入栏盾牌图标带主色圆点表示限时免审批生效中。
+// 批量修改技能：批准为分体按钮，主体“批准当前”，右侧相连箭头段打开“全部批准（3 项）”与
+// “批准，10 分钟内同类免审批”菜单（下方以静态浮层示意展开状态）；输入栏盾牌在授权期间带主色圆点。
 @Composable
 private fun TimedGrantApprovalPage(mode: InfinityThemeMode) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
         Surface(color = MaterialTheme.colorScheme.background) {
             Column(
                 Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 val label = timedGrantLabel(com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
                 val risk = approvalRiskLabel("file_write")
@@ -150,13 +152,24 @@ private fun TimedGrantApprovalPage(mode: InfinityThemeMode) {
                     toolName = "create_file",
                     description = "",
                     calls = listOf(
-                        call("create_file", ApprovalPreview.Action.CREATE_FILE, "/skills/hello-demo/SKILL.md", "---\nname: hello-demo\ndescription: 用户打招呼时用中文问候\n---\n\n收到 hi 时回复“你好！”"),
-                        call("create_directory", ApprovalPreview.Action.CREATE_DIRECTORY, "/skills/hello-demo/agents", ""),
+                        call("create_file", ApprovalPreview.Action.CREATE_FILE, "/skills/hello-demo/SKILL.md", "---\nname: hello-demo\ndescription: 用户打招呼时用中文问候\n---"),
                         call("create_file", ApprovalPreview.Action.CREATE_FILE, "/skills/hello-demo/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true"),
                     ),
                     onApproveAll = {},
                     onApproveTimed = {},
                 )
+                val menuColors = com.promenar.infinity.ui.common.infinityMenuColors()
+                Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    color = menuColors.container,
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, menuColors.edge),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.End),
+                ) {
+                    Column(Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max).widthIn(min = 240.dp, max = 300.dp).padding(6.dp)) {
+                        ApprovalMoreMenuItems(totalCount = 2, timedGrantLabel = label, onApproveAll = {}, onApproveTimed = {})
+                    }
+                }
                 androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ExecutionModeButton(com.promenar.infinity.ui.common.ExecutionMode.WORKSPACE, onSelect = {})
                     ExecutionModeButton(

@@ -42,7 +42,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.testTag as semanticsTestTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Shape
+import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityMenuItem
 import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.Citation
@@ -1365,7 +1369,8 @@ fun ApprovalCard(
 }
 
 /**
- * 拒绝与批准等宽并排，批准是卡片里唯一的实心按钮；“全部批准”与“10 分钟内同类免审批”作为次要文字操作放在上方。
+ * 拒绝与批准等宽并排，批准是卡片里唯一的实心按钮。有“全部批准”或“10 分钟内同类免审批”时，
+ * 批准变为分体按钮：主体批准当前调用，右侧相连的箭头段打开其余批准方式菜单，不另占行。
  * 大字号时按钮文字最多两行，按钮随之长高，触控高度始终不小于 48dp。
  */
 @Composable
@@ -1381,68 +1386,120 @@ internal fun ApprovalActionBar(
     approveLabel: String? = null,
     timedGrantLabel: String? = null,
     onApproveTimed: (() -> Unit)? = null,
+    initialMenuExpanded: Boolean = false,
 ) {
     val haptics = LocalInfinityHaptics.current
     val confirm: (() -> Unit) -> () -> Unit = { action -> { haptics.perform(InfinityHapticEvent.CONFIRM); action() } }
-    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        onApproveAll?.let { handler ->
-            ApprovalSecondaryAction(
-                label = stringResource(R.string.chat_approval_approve_all, totalCount),
-                onClick = confirm(handler),
-                enabled = enabled,
-                modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_ALL),
-            )
-        }
-        if (timedGrantLabel != null && onApproveTimed != null) {
-            ApprovalSecondaryAction(
-                label = stringResource(R.string.chat_approval_approve_timed, timedGrantLabel),
-                onClick = confirm(onApproveTimed),
-                enabled = enabled,
-                modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_TIMED),
-            )
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    val timed = onApproveTimed?.takeIf { timedGrantLabel != null }
+    val hasMore = onApproveAll != null || timed != null
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        ApprovalPillButton(
+            label = stringResource(if (remainingCount > 0) R.string.chat_inline_approval_reject_current else R.string.chat_inline_approval_reject),
+            onClick = { haptics.perform(InfinityHapticEvent.REJECT); onDecline() },
+            primary = false,
+            enabled = enabled,
+            modifier = Modifier.weight(1f).semantics { contentDescription = declineA11y }.testTag(UiTags.CHAT_APPROVAL_DECLINE),
+        )
+        val approveText = approveLabel ?: stringResource(if (remainingCount > 0) R.string.chat_inline_approval_approve_current else R.string.chat_inline_approval_approve)
+        if (!hasMore) {
             ApprovalPillButton(
-                label = stringResource(if (remainingCount > 0) R.string.chat_inline_approval_reject_current else R.string.chat_inline_approval_reject),
-                onClick = { haptics.perform(InfinityHapticEvent.REJECT); onDecline() },
-                primary = false,
-                enabled = enabled,
-                modifier = Modifier.weight(1f).semantics { contentDescription = declineA11y }.testTag(UiTags.CHAT_APPROVAL_DECLINE),
-            )
-            ApprovalPillButton(
-                label = approveLabel ?: stringResource(if (remainingCount > 0) R.string.chat_inline_approval_approve_current else R.string.chat_inline_approval_approve),
+                label = approveText,
                 onClick = confirm(onApprove),
                 primary = true,
                 enabled = enabled,
                 modifier = Modifier.weight(1f).semantics { contentDescription = approveA11y }.testTag(UiTags.CHAT_APPROVAL_APPROVE),
             )
+        } else {
+            var menuExpanded by remember { mutableStateOf(initialMenuExpanded) }
+            // 箭头段占去 46dp，批准组略宽于拒绝，大字号英文时“Approve”仍能整词显示。
+            Row(Modifier.weight(1.3f).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                ApprovalPillButton(
+                    label = approveText,
+                    onClick = confirm(onApprove),
+                    primary = true,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp, topEnd = 6.dp, bottomEnd = 6.dp),
+                    horizontalPadding = 8.dp,
+                    modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = approveA11y }.testTag(UiTags.CHAT_APPROVAL_APPROVE),
+                )
+                val moreA11y = stringResource(R.string.chat_approval_more_options_cd)
+                Box {
+                    ApprovalPillSurface(
+                        onClick = { haptics.perform(InfinityHapticEvent.SELECTION); menuExpanded = true },
+                        primary = true,
+                        enabled = enabled,
+                        shape = RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 22.dp, bottomEnd = 22.dp),
+                        modifier = Modifier.width(44.dp).fillMaxHeight().semantics { contentDescription = moreA11y }.testTag(UiTags.CHAT_APPROVAL_MORE),
+                        horizontalPadding = 0.dp,
+                    ) { tint ->
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                    }
+                    InfinityDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, minWidth = 240.dp) {
+                        ApprovalMoreMenuItems(
+                            totalCount = totalCount,
+                            timedGrantLabel = timedGrantLabel,
+                            onApproveAll = onApproveAll?.let { handler -> { menuExpanded = false; confirm(handler)() } },
+                            onApproveTimed = timed?.let { handler -> { menuExpanded = false; confirm(handler)() } },
+                        )
+                    }
+                }
+            }
         }
+    }
+}
+
+/** 分体批准按钮的菜单项；截图预览以静态浮层渲染同一内容。 */
+@Composable
+internal fun ColumnScope.ApprovalMoreMenuItems(
+    totalCount: Int,
+    timedGrantLabel: String?,
+    onApproveAll: (() -> Unit)?,
+    onApproveTimed: (() -> Unit)?,
+) {
+    onApproveAll?.let { handler ->
+        InfinityMenuItem(
+            text = { Text(stringResource(R.string.chat_approval_approve_all, totalCount), style = MaterialTheme.typography.labelLarge, maxLines = 2) },
+            leadingIcon = { Icon(Icons.Rounded.DoneAll, contentDescription = null) },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            haptic = null,
+            onClick = handler,
+            modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_ALL),
+        )
+    }
+    if (timedGrantLabel != null && onApproveTimed != null) {
+        InfinityMenuItem(
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.chat_approval_approve_timed), style = MaterialTheme.typography.labelLarge, maxLines = 2)
+                    Text(
+                        stringResource(R.string.chat_approval_approve_timed_hint, timedGrantLabel),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                }
+            },
+            leadingIcon = { Icon(Icons.Rounded.Timer, contentDescription = null) },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            haptic = null,
+            onClick = onApproveTimed,
+            modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_TIMED),
+        )
     }
 }
 
 /** 审批胶囊按钮：可见高度 44dp；主按钮为主色实心，次按钮为中性色块。 */
 @Composable
-private fun ApprovalPillButton(label: String, onClick: () -> Unit, primary: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    val fill = when {
-        !enabled -> colors.onSurface.copy(alpha = 0.12f)
-        primary -> colors.primary
-        else -> colors.surfaceContainerHighest
-    }
-    val textColor = when {
-        !enabled -> colors.onSurface.copy(alpha = 0.38f)
-        primary -> colors.onPrimary
-        else -> colors.onSurface
-    }
-    Box(
-        modifier = modifier
-            .heightIn(min = 44.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(fill)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center,
-    ) {
+private fun ApprovalPillButton(
+    label: String,
+    onClick: () -> Unit,
+    primary: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(22.dp),
+    horizontalPadding: Dp = 12.dp,
+) {
+    ApprovalPillSurface(onClick, primary, enabled, shape, modifier, horizontalPadding) { textColor ->
         Text(
             label,
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
@@ -1454,15 +1511,36 @@ private fun ApprovalPillButton(label: String, onClick: () -> Unit, primary: Bool
     }
 }
 
-/** 次要操作的文字与卡片内容左缘对齐：按钮内边距向左让出，触控范围仍为 48dp。 */
 @Composable
-private fun ApprovalSecondaryAction(label: String, onClick: () -> Unit, enabled: Boolean, modifier: Modifier = Modifier) {
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-        modifier = modifier.offset(x = (-12).dp).heightIn(min = 40.dp),
+private fun ApprovalPillSurface(
+    onClick: () -> Unit,
+    primary: Boolean,
+    enabled: Boolean,
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 12.dp,
+    content: @Composable (contentColor: Color) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val fill = when {
+        !enabled -> colors.onSurface.copy(alpha = 0.12f)
+        primary -> colors.primary
+        else -> colors.surfaceContainerHighest
+    }
+    val contentColor = when {
+        !enabled -> colors.onSurface.copy(alpha = 0.38f)
+        primary -> colors.onPrimary
+        else -> colors.onSurface
+    }
+    Box(
+        modifier = modifier
+            .heightIn(min = 44.dp)
+            .clip(shape)
+            .background(fill)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = horizontalPadding, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 2)
+        content(contentColor)
     }
 }
