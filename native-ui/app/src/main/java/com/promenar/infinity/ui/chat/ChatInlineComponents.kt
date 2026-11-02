@@ -813,6 +813,8 @@ data class ApprovalDisplayCall(
     val knowledgeAccess: KnowledgeAccessApproval? = null,
     /** sftp_upload / sftp_download 的方向与两端路径；存在时替代参数文本。 */
     val transfer: SftpTransferApprovalPreview? = null,
+    /** 可限时免审批的类别名称（如“技能目录变更”）；为空时卡片不提供 10 分钟免审批。 */
+    val timedGrantLabel: String? = null,
 )
 
 @Composable
@@ -1270,6 +1272,7 @@ fun ApprovalCard(
     onApprove: () -> Unit = {},
     onDecline: () -> Unit = {},
     onApproveAll: (() -> Unit)? = null,
+    onApproveTimed: (() -> Unit)? = null,
 ) {
     val currentCall = calls.firstOrNull()
     val remainingCount = (calls.size - 1).coerceAtLeast(0)
@@ -1352,6 +1355,8 @@ fun ApprovalCard(
                         onApprove = onApprove,
                         onDecline = onDecline,
                         onApproveAll = onApproveAll?.takeIf { remainingCount > 0 },
+                        timedGrantLabel = currentCall?.timedGrantLabel,
+                        onApproveTimed = onApproveTimed?.takeIf { currentCall?.timedGrantLabel != null },
                     )
                 }
             }
@@ -1360,7 +1365,7 @@ fun ApprovalCard(
 }
 
 /**
- * 拒绝与批准等宽并排，批准是卡片里唯一的实心按钮；“全部批准”作为次要文字操作放在上方。
+ * 拒绝与批准等宽并排，批准是卡片里唯一的实心按钮；“全部批准”与“10 分钟内同类免审批”作为次要文字操作放在上方。
  * 大字号时按钮文字最多两行，按钮随之长高，触控高度始终不小于 48dp。
  */
 @Composable
@@ -1374,6 +1379,8 @@ internal fun ApprovalActionBar(
     onDecline: () -> Unit,
     onApproveAll: (() -> Unit)?,
     approveLabel: String? = null,
+    timedGrantLabel: String? = null,
+    onApproveTimed: (() -> Unit)? = null,
 ) {
     val haptics = LocalInfinityHaptics.current
     val confirm: (() -> Unit) -> () -> Unit = { action -> { haptics.perform(InfinityHapticEvent.CONFIRM); action() } }
@@ -1384,6 +1391,14 @@ internal fun ApprovalActionBar(
                 onClick = confirm(handler),
                 enabled = enabled,
                 modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_ALL),
+            )
+        }
+        if (timedGrantLabel != null && onApproveTimed != null) {
+            ApprovalSecondaryAction(
+                label = stringResource(R.string.chat_approval_approve_timed, timedGrantLabel),
+                onClick = confirm(onApproveTimed),
+                enabled = enabled,
+                modifier = Modifier.testTag(UiTags.CHAT_APPROVAL_APPROVE_TIMED),
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

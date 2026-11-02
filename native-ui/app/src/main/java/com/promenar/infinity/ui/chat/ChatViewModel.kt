@@ -431,6 +431,7 @@ class ChatViewModel(
             )
         },
         resolveAllowlistScope = (application as InfinityApplication)::resolveToolAllowlistScope,
+        timedGrants = (application as InfinityApplication).timedApprovalGrants,
     )
 
     private val _inputText = MutableStateFlow("")
@@ -451,6 +452,16 @@ class ChatViewModel(
     val isImportingDocument: StateFlow<Boolean> = _isImportingDocument
 
     private val _currentSessionId = MutableStateFlow<String?>(null)
+    private val timedApprovalGrants = (application as InfinityApplication).timedApprovalGrants
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val activeTimedGrants: StateFlow<Map<com.promenar.infinity.domain.tool.ApprovalGrantCategory, Long>> = _currentSessionId
+        .flatMapLatest { sessionId -> if (sessionId == null) flowOf(emptyMap()) else timedApprovalGrants.observe(sessionId) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    fun revokeTimedGrants() {
+        _currentSessionId.value?.let(timedApprovalGrants::revokeAll)
+    }
+
     private val askUserLedger = (application as InfinityApplication).askUserLedger
     private val questionSubmissionLock = Any()
     private val questionSubmissions = mutableSetOf<com.promenar.infinity.domain.ask.PendingQuestion>()
@@ -2479,6 +2490,15 @@ class ChatViewModel(
      * 新一轮生成产生的审批（属于其它助手消息）不在本次批准范围内。
      */
     fun approveAllRequests(expectedRequest: ApprovalRequest) {
+        submitBatchApproval(expectedRequest, timed = false)
+    }
+
+    fun approveWithTimedGrant(request: ApprovalRequest) {
+        if (request.calls.firstOrNull()?.grantCategory == null) return
+        submitBatchApproval(request, timed = true)
+    }
+
+    private fun submitBatchApproval(expectedRequest: ApprovalRequest, timed: Boolean) {
         val sessionId = _currentSessionId.value ?: return
         val approvalLock = approvalSubmissionMutex(sessionId)
         if (!approvalLock.tryLock()) return
@@ -2486,7 +2506,8 @@ class ChatViewModel(
         val expectedTaskId = generationCoordinator.observe(sessionId).value?.taskId
         approvalJobs[sessionId] = viewModelScope.launch {
             try {
-                approvalManager.approveAll(sessionId, expectedRequest)
+                if (timed) approvalManager.approveWithTimedGrant(sessionId, expectedRequest)
+                else approvalManager.approveAll(sessionId, expectedRequest)
             } finally {
                 try {
                     sendPreparationMutex(sessionId).withLock {

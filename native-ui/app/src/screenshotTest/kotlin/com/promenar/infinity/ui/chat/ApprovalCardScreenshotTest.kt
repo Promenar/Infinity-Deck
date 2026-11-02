@@ -125,3 +125,57 @@ private fun KnowledgeAccessApprovalPage(mode: InfinityThemeMode) {
 @Preview(name = "审批卡 知识库访问 浅英360 大字", widthDp = 360, heightDp = 900, locale = "en", fontScale = 1.3f)
 @Composable
 fun approvalCardKnowledgeAccessPreview() = KnowledgeAccessApprovalPage(InfinityThemeMode.DARK)
+
+// 批量修改技能：当前调用属于“技能目录变更”，操作区上方依次是“全部批准（3 项）”与
+// “批准，10 分钟内技能目录变更免审批”；下方输入栏盾牌图标带主色圆点表示限时免审批生效中。
+@Composable
+private fun TimedGrantApprovalPage(mode: InfinityThemeMode) {
+    InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Column(
+                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val label = timedGrantLabel(com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+                val risk = approvalRiskLabel("file_write")
+                fun call(name: String, action: ApprovalPreview.Action, path: String, detail: String) = ApprovalDisplayCall(
+                    name = name,
+                    argumentsSummary = "{}",
+                    riskLabel = risk,
+                    preview = ApprovalPreview.Preview(action = action, target = path, detail = detail),
+                    executionTarget = "[\"path\",\"$path\"]",
+                    timedGrantLabel = label,
+                )
+                ApprovalCard(
+                    toolName = "create_file",
+                    description = "",
+                    calls = listOf(
+                        call("create_file", ApprovalPreview.Action.CREATE_FILE, "/skills/hello-demo/SKILL.md", "---\nname: hello-demo\ndescription: 用户打招呼时用中文问候\n---\n\n收到 hi 时回复“你好！”"),
+                        call("create_directory", ApprovalPreview.Action.CREATE_DIRECTORY, "/skills/hello-demo/agents", ""),
+                        call("create_file", ApprovalPreview.Action.CREATE_FILE, "/skills/hello-demo/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true"),
+                    ),
+                    onApproveAll = {},
+                    onApproveTimed = {},
+                )
+                androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExecutionModeButton(com.promenar.infinity.ui.common.ExecutionMode.WORKSPACE, onSelect = {})
+                    ExecutionModeButton(
+                        com.promenar.infinity.ui.common.ExecutionMode.WORKSPACE,
+                        onSelect = {},
+                        timedGrants = listOf(TimedGrantDisplay(label, Long.MAX_VALUE)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "审批卡 限时免审批 浅中390", widthDp = 390, heightDp = 1200, locale = "zh-rCN")
+@Composable
+fun approvalCardTimedGrantLightChinesePreview() = TimedGrantApprovalPage(InfinityThemeMode.LIGHT)
+
+@PreviewTest
+@Preview(name = "审批卡 限时免审批 深英360 大字", widthDp = 360, heightDp = 1500, locale = "en", fontScale = 1.3f)
+@Composable
+fun approvalCardTimedGrantDarkEnglishLargePreview() = TimedGrantApprovalPage(InfinityThemeMode.DARK)

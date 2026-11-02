@@ -16,7 +16,14 @@ class SessionManager(
     private val store: ChatStore,
     private val sessionRepository: ISessionRepository,
     private val coordinatedDelete: (suspend (String, Boolean) -> SessionDeletionResult)? = null,
+    private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
 ) {
+    constructor(
+        store: ChatStore,
+        sessionRepository: ISessionRepository,
+        coordinatedDelete: suspend (String, Boolean) -> SessionDeletionResult,
+    ) : this(store, sessionRepository, coordinatedDelete, null)
+
     constructor(
         store: ChatStore,
         sessionRepository: ISessionRepository,
@@ -93,6 +100,7 @@ class SessionManager(
             is SessionDeletionResult.Failed -> throw SessionDeletionFailedException(result.error)
         }
 
+        timedGrants?.revokeAll(id)
         store.removeSession(id)
         return result
     }

@@ -72,6 +72,22 @@ private const val BACKGROUND_SERVICE_STOPPED_MESSAGE = "background service stopp
 @RunWith(RobolectricTestRunner::class)
 @Config(application = TestInfinityApplication::class, sdk = [33])
 class ChatViewModelTest {
+    @Test fun `当前会话限时授权流随切页切换且撤销只影响当前会话`() = runTest {
+        val app = ApplicationProvider.getApplicationContext<InfinityApplication>()
+        app.timedApprovalGrants.grant("timed-a", com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        app.timedApprovalGrants.grant("timed-b", com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)
+        seedSession("timed-a"); advanceUntilIdle()
+        assertThat(viewModel.activeTimedGrants.value.keys).containsExactly(com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        seedSession("timed-b"); advanceUntilIdle()
+        assertThat(viewModel.activeTimedGrants.value.keys).containsExactly(com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)
+        viewModel.revokeTimedGrants(); advanceUntilIdle()
+        assertThat(viewModel.activeTimedGrants.value).isEmpty()
+        assertThat(app.timedApprovalGrants.observe("timed-a").value).isNotEmpty()
+        viewModel.approveWithTimedGrant(ApprovalRequest())
+        advanceUntilIdle()
+        assertThat(viewModel.activeTimedGrants.value).isEmpty()
+    }
+
     @Test fun `已受理的回答续跑快照不会重复派发账本查询`() = runTest {
         val question = seedAskUser("active-question")
         seedSession("active-question-idle")

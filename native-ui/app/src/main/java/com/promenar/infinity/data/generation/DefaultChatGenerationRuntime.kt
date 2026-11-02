@@ -195,6 +195,7 @@ internal class DefaultChatGenerationRuntime(
     private val knowledgeAccessPlanner: com.promenar.infinity.data.knowledge.KnowledgeAccessPlanner? = null,
     private val knowledgeTurns: com.promenar.infinity.data.knowledge.KnowledgeTurnState? = null,
     private val toolProgressReminder: ToolProgressReminder = ToolProgressReminder(),
+    private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
@@ -1048,7 +1049,18 @@ internal class DefaultChatGenerationRuntime(
         val mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode)
         val turnId = request.userMessageId ?: com.promenar.infinity.data.knowledge.knowledgeTurnId(session, assistantMessageId(request))
         knowledgeTurns?.seed(session, turnId)
+        val grantCategories = calls.associate { call ->
+            call.id to com.promenar.infinity.domain.tool.ToolExecutionPolicy.grantCategory(
+                mode, call.name, preparedByName[call.name]?.singleOrNull()?.risk ?: contentStrategy.riskForTool(call.name),
+                call.arguments, targets[call.id], usesLinux = session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
+            )
+        }
+        // 授权在本轮判定时取快照，执行中到期不改变已经准入的调用。
+        val timedGrantTargets = calls.filter { call ->
+            grantCategories[call.id]?.let { timedGrants?.isValid(session.id, it) } == true
+        }.associate { it.id to targets[it.id] }
         val requestedPendingIds = calls.filter { call ->
+            call.id !in timedGrantTargets &&
             !(call.name == "request_knowledge_access" && knowledgeTurns?.isDenied(session.id, turnId) == true) &&
             com.promenar.infinity.domain.tool.ToolExecutionPolicy.requiresApproval(
                 mode, call.name, preparedByName[call.name]?.singleOrNull()?.risk ?: contentStrategy.riskForTool(call.name),
@@ -1080,6 +1092,7 @@ internal class DefaultChatGenerationRuntime(
                 allowedIds,
                 preparedTools,
                 expectedGrantTargets = grantTargets,
+                timedGrantTargets = timedGrantTargets,
             )
         } finally {
             // 停止本轮时子代理已消耗的用量同样计入本轮，不留给下一轮。
@@ -1089,7 +1102,7 @@ internal class DefaultChatGenerationRuntime(
             val approval = ToolApprovalRequestFactory.create(
                 assistantMessageId = assistantMessageId(request),
                 candidates = validInvocations.filter { it.first.id in pendingIds }.map { (call, tool, identity) ->
-                    ApprovalCallCandidate(call, tool.risk, identity, executionTarget = targets[call.id])
+                    ApprovalCallCandidate(call, tool.risk, identity, executionTarget = targets[call.id], grantCategory = grantCategories[call.id])
                 },
                 reason = "Execution mode: ${session.executionMode.ifEmpty { "workspace" }}",
             )

@@ -69,12 +69,14 @@ class ToolExecutor internal constructor(
         allowedToolCallIds: Set<String> = toolCalls.mapTo(mutableSetOf()) { it.id },
         preparedTools: List<ProtocolTool>? = null,
         expectedGrantTargets: Map<String, String> = emptyMap(),
+        timedGrantTargets: Map<String, String?> = emptyMap(),
     ) {
         val grantTargets = expectedGrantTargets.toMap()
+        val timedTargets = timedGrantTargets.filterKeys { it in allowedToolCallIds }.toMap()
         val gate = executionGate
         suspend fun executeAndReconcile() {
             try {
-                executeToolsAdmitted(sessionId, assistantMessageId, toolCalls, allowedToolCallIds, preparedTools, grantTargets)
+                executeToolsAdmitted(sessionId, assistantMessageId, toolCalls, allowedToolCallIds, preparedTools, grantTargets, timedTargets)
             } finally {
                 withContext(NonCancellable + kotlinx.coroutines.Dispatchers.IO) { afterTools(sessionId) }
             }
@@ -128,6 +130,7 @@ class ToolExecutor internal constructor(
         allowedToolCallIds: Set<String> = toolCalls.mapTo(mutableSetOf()) { it.id },
         preparedTools: List<ProtocolTool>? = null,
         expectedGrantTargets: Map<String, String> = emptyMap(),
+        timedGrantTargets: Map<String, String?> = emptyMap(),
     ) {
         val session = store.getSession(sessionId) ?: return
         val targetMsgId = assistantMessageId
@@ -201,6 +204,7 @@ class ToolExecutor internal constructor(
                     expectedIdentity = expectedIdentity,
                     activeLedger = activeLedger,
                     expectedGrantTargets = expectedGrantTargets,
+                    timedGrantTargets = timedGrantTargets,
                 )
             } catch (cancelled: CancellationException) {
                 terminalizeInvocationCancellation(
@@ -253,6 +257,7 @@ class ToolExecutor internal constructor(
         expectedIdentity: ToolInvocationIdentity,
         activeLedger: ToolExecutionLedger,
         expectedGrantTargets: Map<String, String>,
+        timedGrantTargets: Map<String, String?>,
     ) {
         val currentSession = store.getSession(sessionId)
         val currentResolvedTool = currentSession?.let { toolResolver.resolveForExecution(it) }
@@ -332,8 +337,10 @@ class ToolExecutor internal constructor(
                 it.toolCallId == call.id && it.runtimeToolId == expectedIdentity.runtimeToolId &&
                     it.argumentsDigest == expectedIdentity.argumentsDigest && it.definitionDigest == expectedIdentity.definitionDigest
             }
-        val approvedTarget = expectedGrantTargets[call.id] ?: approvedCall?.executionTarget
-        val approvalBound = call.id in expectedGrantTargets || expectedIdentity.requiresApproval || approvedCall != null
+        // 限时授权只携带主会话本轮判定的调用目标，不使用持久白名单验证器。
+        val timedGrant = call.id in timedGrantTargets
+        val approvedTarget = if (timedGrant) timedGrantTargets[call.id] else expectedGrantTargets[call.id] ?: approvedCall?.executionTarget
+        val approvalBound = timedGrant || call.id in expectedGrantTargets || expectedIdentity.requiresApproval || approvedCall != null
         val result = executeSkill(currentSkill, arguments, call, currentSession, approvedTarget, approvalBound, stepId, targetMsgId)
         hooks.afterSkillExecution()
         val failed = result.status != "success"

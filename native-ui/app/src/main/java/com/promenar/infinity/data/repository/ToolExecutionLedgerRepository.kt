@@ -63,6 +63,7 @@ data class ApprovalCallCandidate(
     val risk: ToolRisk,
     val identity: ToolInvocationIdentity,
     val executionTarget: String? = null,
+    val grantCategory: com.promenar.infinity.domain.tool.ApprovalGrantCategory? = null,
 )
 
 object ToolApprovalRequestFactory {
@@ -91,6 +92,7 @@ object ToolApprovalRequestFactory {
                 argumentsSummary = summarizeArguments(candidate.call.arguments),
                 risk = candidate.risk.name.lowercase(),
                 executionTarget = candidate.executionTarget,
+                grantCategory = candidate.grantCategory,
             )
         }
         return createFromIdentities(assistantMessageId, identities, reason)
@@ -142,6 +144,16 @@ object ToolApprovalRequestFactory {
                     JsonArray(listOf(
                         JsonPrimitive(call.toolCallId),
                         call.executionTarget?.let(::JsonPrimitive) ?: JsonNull,
+                    ))
+                }))
+            }
+            if (request.calls.any { it.grantCategory != null }) {
+                // 无类别的历史请求保持原摘要；新类别绑定调用，防止持久化请求被换类或移除类别。
+                append('\u0000').append("grant_categories_v1").append('\u0000')
+                append(JsonArray(request.calls.map { call ->
+                    JsonArray(listOf(
+                        JsonPrimitive(call.toolCallId),
+                        call.grantCategory?.name?.let(::JsonPrimitive) ?: JsonNull,
                     ))
                 }))
             }

@@ -134,7 +134,8 @@ class DefaultChatGenerationRuntimeTest {
             fixture.runtime.stream(fixture.request, 0).toList()
             assertThat(requests.last().model).isEqualTo(model)
             val prompt = requests.last().messages.first().content
-            assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n- Model: $model\n")
+            assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+            assertThat(prompt).contains("\n- Model: $model\n")
             assertThat(prompt).doesNotContain("local::")
         }
         assertThat(requests.last().messages.first().content).doesNotContain("- Model: skills\n")
@@ -263,6 +264,8 @@ class DefaultChatGenerationRuntimeTest {
         knowledgeTurns: com.promenar.infinity.data.knowledge.KnowledgeTurnState? = null,
         toolLedger: com.promenar.infinity.data.repository.ToolExecutionLedger = mockk(relaxed = true),
         localProvider: LlmProvider? = null,
+        timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
+        linuxFiles: com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess? = null,
     ): SkillsFixture {
         val settings = mockk<SharedPreferences> {
             every { getInt(any(), any()) } answers { secondArg() }
@@ -316,8 +319,96 @@ class DefaultChatGenerationRuntimeTest {
             askUserLedger = askLedger,
             subagentCompletions = subagentCompletions,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgePlanner, knowledgeTurns = knowledgeTurns,
+            timedGrants = timedGrants, linuxFiles = linuxFiles,
         )
         return SkillsFixture(runtime, GenerationRequest("skills-session", "assistant", "user", content, emptyList(), GenerationRuntimePolicy.BACKGROUND_ALLOWED), prompts, toolThreads, executor, store)
+    }
+
+    @Test fun `主会话技能授权有效时直接执行且到期异类异会话仍审批`() = runTest {
+        var now = 1_000L
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { now }
+        grants.grant("skills-session", com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        grants.grant("another-session", com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)
+        val skills = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val ledger = mockk<ToolExecutionLedger>(relaxed = true) {
+            coEvery { createToolApproval(any(), any(), any(), any(), any()) } returns com.promenar.infinity.data.repository.ToolApprovalCreation.CREATED
+        }
+        val fixture = skillsFixture(skills, toolNames = listOf("write_file", "shell_exec", "request_knowledge_access"), toolLedger = ledger, timedGrants = grants)
+        assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        val call = GenerationToolCall("write", "write_file", """{"path":"/skills/demo/SKILL.md"}""")
+        assertThat(fixture.runtime.handleTools(fixture.request, listOf(call))).isEqualTo(GenerationToolDecision.CONTINUE)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest).isNull()
+        coVerify(exactly = 0) { ledger.createToolApproval(any(), any(), any(), any(), any()) }
+        coVerify { fixture.executor.executeTools(any(), any(), any(), match { "write" in it }, any(), any(), match { "write" in it }) }
+        assertThat(fixture.runtime.handleTools(fixture.request, listOf(GenerationToolCall("command", "shell_exec", "{}"))))
+            .isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory)
+            .isEqualTo(com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)
+        fixture.store.updateSession("skills-session") { it.copy(approvalRequest = null) }
+        now += 600_000
+        assertThat(fixture.runtime.handleTools(fixture.request, listOf(call.copy(id = "expired"))))
+            .isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory)
+            .isEqualTo(com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        grants.grant("skills-session", com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)
+        assertThat(fixture.runtime.handleTools(fixture.request, listOf(GenerationToolCall("knowledge", "request_knowledge_access", "{}"))))
+            .isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory).isNull()
+    }
+
+    @Test fun `同轮判定后到期或撤销不撤回已准入调用而下一轮重新审批`() = runTest {
+        for (revoke in listOf(false, true)) {
+            var now = 1_000L
+            val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { now }
+            grants.grant("skills-session", com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+            val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+                coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+            }
+            val fixture = skillsFixture(catalog, toolNames = listOf("write_file"), timedGrants = grants)
+            val admitted = mutableListOf<Set<String>>()
+            coEvery { fixture.executor.executeTools(any(), any(), any(), any(), any(), any(), any()) } coAnswers {
+                admitted += arg<Set<String>>(3)
+                if (revoke) grants.revokeAll("skills-session") else now += 600_000
+                assertThat(arg<Map<String, String?>>(6).keys).containsExactlyElementsIn(arg<Set<String>>(3))
+            }
+            assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+            val calls = listOf("one", "two").map { GenerationToolCall(it, "write_file", """{"path":"/skills/demo/$it.md"}""") }
+            assertThat(fixture.runtime.handleTools(fixture.request, calls)).isEqualTo(GenerationToolDecision.CONTINUE)
+            assertThat(admitted.single()).containsExactly("one", "two")
+            assertThat(fixture.runtime.handleTools(fixture.request, listOf(calls.first().copy(id = "next"))))
+                .isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+            assertThat(admitted.last()).isEmpty()
+        }
+    }
+
+    @Test fun `有效命令与Linux系统路径授权分别免批且不互相替代`() = runTest {
+        for (category in listOf(com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND, com.promenar.infinity.domain.tool.ApprovalGrantCategory.LINUX_ROOTFS)) {
+            val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
+            val target = """["path","/etc/profile",{"linuxRootfs":true,"linuxMode":true,"oneShot":true}]"""
+            val files = mockk<com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess> {
+                coEvery { executionTarget(any(), any(), any()) } returns target
+            }
+            val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+                coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+            }
+            val fixture = skillsFixture(catalog, toolNames = listOf("write_file", "shell_exec"), timedGrants = grants, linuxFiles = files)
+            fixture.store.updateSession("skills-session") { it.copy(runMode = com.promenar.infinity.domain.model.SessionRunMode.LINUX) }
+            assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+            grants.grant("skills-session", category)
+            val command = GenerationToolCall("command", "shell_exec", """{"command":"pwd"}""")
+            val file = GenerationToolCall("rootfs", "write_file", """{"path":"/etc/profile"}""")
+            val allowed = if (category == com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND) command else file
+            val decision = fixture.runtime.handleTools(fixture.request, listOf(allowed))
+            com.google.common.truth.Truth.assertWithMessage("授权类别：$category")
+                .that(decision).isEqualTo(GenerationToolDecision.CONTINUE)
+            coVerify { fixture.executor.executeTools(any(), any(), any(), setOf(allowed.id), any(), any(), match { allowed.id in it }) }
+            val pending = if (allowed == command) file else command
+            assertThat(fixture.runtime.handleTools(fixture.request, listOf(pending))).isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+            assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory)
+                .isEqualTo(if (pending == command) com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND else com.promenar.infinity.domain.tool.ApprovalGrantCategory.LINUX_ROOTFS)
+        }
     }
 
     @Test fun `实际运行时读取智能体工具模式目录并播种自动引用`() = runTest {

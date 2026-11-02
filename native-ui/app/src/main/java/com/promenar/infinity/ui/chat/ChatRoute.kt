@@ -281,6 +281,7 @@ fun ChatRoute(
     }
     val turnGraphStates by chatViewModel.turnGraphStates.collectAsStateWithLifecycle()
     val composerQueue by chatViewModel.composerQueue.collectAsStateWithLifecycle()
+    val timedGrants by chatViewModel.activeTimedGrants.collectAsStateWithLifecycle()
     val interaction by application.generationInteractions.pending.collectAsStateWithLifecycle()
     val generationProgress by remember(sessionId) {
         application.generationCoordinator.observe(sessionId)
@@ -918,6 +919,7 @@ fun ChatRoute(
                         com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode).name,
                     )
                 },
+                timedGrants = timedGrants,
                 inspectorPages = chatPages,
                 browser = browserState,
                 remote = remoteDotState,
@@ -1009,6 +1011,8 @@ fun ChatRoute(
                 },
                 onApprove = { request -> chatViewModel.approveRequest(request) },
                 onApproveAll = chatViewModel::approveAllRequests,
+                onApproveTimed = chatViewModel::approveWithTimedGrant,
+                onRevokeTimedGrants = chatViewModel::revokeTimedGrants,
                 onDecline = chatViewModel::rejectRequest,
                 onRemovePostProcessTask = chatViewModel::removePostProcessTask,
                 onManualSummary = chatViewModel::compactNow,

@@ -402,6 +402,7 @@ data class ApprovalCallIdentity(
     val argumentsSummary: String,
     val risk: String,
     val executionTarget: String? = null,
+    val grantCategory: com.promenar.infinity.domain.tool.ApprovalGrantCategory? = null,
 )
 
 @Serializable

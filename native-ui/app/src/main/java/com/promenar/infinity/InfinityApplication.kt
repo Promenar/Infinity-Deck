@@ -467,6 +467,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         }
     }
 
+    val timedApprovalGrants by lazy {
+        com.promenar.infinity.data.approval.TimedApprovalGrantStore(generationScope)
+    }
     val toolAllowlistStore by lazy {
         com.promenar.infinity.data.repository.ToolAllowlistStore(java.io.File(noBackupFilesDir, "tool-allowlist"))
     }
@@ -769,6 +772,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 )
             },
             cleanupSessionData = { sessionId ->
+                timedApprovalGrants.revokeAll(sessionId)
                 sessionSecretVault.clearSession(sessionId)
                 secretOutputRedactor.clearSession(sessionId)
                 com.promenar.infinity.data.session.cleanupSessionRuntimeData(
@@ -805,6 +809,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.session.SessionDeletionResult = try {
         withContext(Dispatchers.IO) {
             val result = sessionDeletionCoordinator.delete(sessionId, keepFiles)
+            if (result !is com.promenar.infinity.data.session.SessionDeletionResult.Failed) timedApprovalGrants.revokeAll(sessionId)
             database.sessionDao().getAll().filter { it.parentSessionDeleted }.forEach { row ->
                 chatStore.updateSession(row.id) { it.copy(parentSessionId = row.parentSessionId, parentSessionDeleted = true) }
             }
@@ -1234,6 +1239,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             presentationStore = generationPresentationStore,
             skillCatalog = skillCatalog,
             toolAllowlistStore = toolAllowlistStore,
+            timedGrants = timedApprovalGrants,
             workspaceRepository = workspaceRepository,
             outputStore = toolOutputStore,
             externalFolders = externalFolderManager,

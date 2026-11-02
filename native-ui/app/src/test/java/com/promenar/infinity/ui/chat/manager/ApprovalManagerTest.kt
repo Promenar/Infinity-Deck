@@ -770,6 +770,106 @@ class ApprovalManagerTest {
     }
 
     @Test
+    fun `限时授权顺序执行同类前缀异类或空类别保留待审批且不提前续跑`() = testScope.runTest {
+        for (nextCategory in listOf(com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND, null)) {
+            val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
+            approvalManager = ApprovalManager(store, ledger, messageManager, stubSessionRepo, timedGrants = grants)
+            val seeded = seedExactApproval(listOf("w1", "w2", "other", "w3").map { ToolCall(it, "write_file", "{}") })
+            val request = ToolApprovalRequestFactory.createFromIdentities("m1", seeded.calls.mapIndexed { index, call ->
+                call.copy(grantCategory = if (index == 2) nextCategory else com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+            })
+            approvalManager.setApprovalRequest("s1", request)
+            val executed = mutableListOf<String>()
+            var resumed = 0
+            approvalManager.setCallbacks({ _, _, _ -> resumed++ }) { session, message, ids ->
+                ids.forEach { id -> executed += id; ledger.states[ToolExecutionKey(session, message, id)] = ToolLedgerState.SUCCEEDED }
+            }
+            approvalManager.approveWithTimedGrant("s1", request)
+            assertThat(executed).containsExactly("w1", "w2").inOrder()
+            assertThat(store.getSession("s1")!!.approvalRequest!!.calls.map { it.toolCallId }).containsExactly("other", "w3").inOrder()
+            assertThat(grants.isValid("s1", com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)).isTrue()
+            assertThat(resumed).isEqualTo(0)
+            ledger = ApprovalLedger()
+        }
+    }
+
+    @Test
+    fun `全批同类授权只续跑一次且过时卡片与空类别不授予权限`() = testScope.runTest {
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
+        approvalManager = ApprovalManager(store, ledger, messageManager, stubSessionRepo, timedGrants = grants)
+        val seeded = seedExactApproval(listOf("w1", "w2").map { ToolCall(it, "write_file", "{}") })
+        approvalManager.approveWithTimedGrant("s1", seeded)
+        assertThat(grants.observe("s1").value).isEmpty()
+        assertThat(ledger.state(ToolExecutionKey("s1", "m1", "w1"))).isEqualTo(ToolLedgerState.PENDING_APPROVAL)
+        val request = ToolApprovalRequestFactory.createFromIdentities("m1", seeded.calls.map {
+            it.copy(grantCategory = com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        })
+        approvalManager.approveWithTimedGrant("s1", request)
+        assertThat(grants.observe("s1").value).isEmpty()
+        approvalManager.setApprovalRequest("s1", request)
+        var resumed = 0
+        approvalManager.setCallbacks({ _, _, _ -> resumed++ }) { session, message, ids ->
+            ids.forEach { ledger.states[ToolExecutionKey(session, message, it)] = ToolLedgerState.SUCCEEDED }
+        }
+        approvalManager.approveWithTimedGrant("s1", request)
+        assertThat(resumed).isEqualTo(1)
+        assertThat(store.getSession("s1")!!.approvalRequest).isNull()
+        grants.revokeAll("s1")
+        approvalManager.approveWithTimedGrant("s1", request)
+        assertThat(grants.observe("s1").value).isEmpty()
+        assertThat(resumed).isEqualTo(1)
+    }
+
+    @Test fun `执行目标变化或执行回调缺失时不创建限时授权`() = testScope.runTest {
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
+        approvalManager = ApprovalManager(store, ledger, messageManager, stubSessionRepo, timedGrants = grants,
+            resolveExecutionTarget = { _, _, _ -> "changed" })
+        val seeded = seedExactApproval(executionTarget = "original")
+        val request = ToolApprovalRequestFactory.createFromIdentities("m1", seeded.calls.map {
+            it.copy(grantCategory = com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        })
+        approvalManager.setApprovalRequest("s1", request)
+        approvalManager.approveWithTimedGrant("s1", request)
+        assertThat(grants.observe("s1").value).isEmpty()
+        assertThat(store.getSession("s1")!!.approvalRequest).isEqualTo(request)
+        approvalManager.setCallbacks(null) { _, _, _ -> error("目标变化不能执行") }
+        approvalManager.approveWithTimedGrant("s1", request)
+        assertThat(grants.observe("s1").value).isEmpty()
+        assertThat(store.getSession("s1")!!.approvalRequest).isNull()
+    }
+
+    @Test fun `并发点击同一卡片不重复执行不延长授权且只续跑一次`() = testScope.runTest {
+        var now = 1_000L
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { now }
+        approvalManager = ApprovalManager(store, ledger, messageManager, stubSessionRepo, timedGrants = grants)
+        val seeded = seedExactApproval()
+        val request = ToolApprovalRequestFactory.createFromIdentities("m1", seeded.calls.map {
+            it.copy(grantCategory = com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
+        })
+        approvalManager.setApprovalRequest("s1", request)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var executed = 0
+        var resumed = 0
+        approvalManager.setCallbacks({ _, _, _ -> resumed++ }) { session, message, ids ->
+            executed++
+            entered.complete(Unit)
+            release.await()
+            ids.forEach { ledger.states[ToolExecutionKey(session, message, it)] = ToolLedgerState.SUCCEEDED }
+        }
+        val first = launch { approvalManager.approveWithTimedGrant("s1", request) }
+        entered.await()
+        now += 1_000
+        val duplicate = launch { approvalManager.approveWithTimedGrant("s1", request) }
+        yield()
+        release.complete(Unit)
+        joinAll(first, duplicate)
+        assertThat(executed).isEqualTo(1)
+        assertThat(resumed).isEqualTo(1)
+        assertThat(grants.observe("s1").value).containsExactly(com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS, 601_000L)
+    }
+
+    @Test
     fun approveAllExecutesEveryCallInBatchAndResumesOnce() = testScope.runTest {
         val calls = listOf(ToolCall("w1", "write_file", "{}"), ToolCall("w2", "write_file", "{}"))
         val request = seedExactApproval(calls)

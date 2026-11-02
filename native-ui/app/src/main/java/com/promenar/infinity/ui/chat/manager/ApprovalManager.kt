@@ -39,6 +39,7 @@ class ApprovalManager(
     private val resolveAllowlistScope: suspend (String, String) -> ToolAllowlistScope? = { id, target ->
         ToolAllowlistScopes.resolveForSession(id, target)
     },
+    private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
 ) {
     private val approvalLocks = ConcurrentHashMap<String, Mutex>()
     private var onGenerateMessage: (suspend (sessionId: String, content: String, isResumption: Boolean) -> Unit)? = null
@@ -111,12 +112,43 @@ class ApprovalManager(
         }
     }
 
+    /** 只批准当前批次连续的同类调用；下一张异类卡片保留待审批。 */
+    suspend fun approveWithTimedGrant(sessionId: String, expectedRequest: ApprovalRequest) {
+        val grants = timedGrants ?: return
+        val category = expectedRequest.calls.firstOrNull()?.grantCategory ?: return
+        val assistantMessageId = expectedRequest.assistantMessageId ?: return
+        val action: suspend () -> Unit = {
+            store.turnAdmission.withLock(sessionId) {
+                approvalLock(sessionId).withLock {
+                    var request = expectedRequest
+                    var remaining = expectedRequest.calls.size
+                    var granted = false
+                    while (remaining-- > 0 && request.calls.firstOrNull()?.grantCategory == category) {
+                        val current = request
+                        resumeGenerationLocked(sessionId, current, true, null, false) {
+                            if (!granted) {
+                                grants.grant(sessionId, category)
+                                granted = true
+                            }
+                        }
+                        request = store.getSession(sessionId)?.approvalRequest?.takeIf {
+                            it.assistantMessageId == assistantMessageId && it != current
+                        } ?: break
+                    }
+                }
+            }
+        }
+        val gate = executionGate
+        if (gate == null) action() else gate.withNewSessionAdmission(sessionId, action)
+    }
+
     private suspend fun resumeGenerationLocked(
         sessionId: String,
         expectedRequest: ApprovalRequest?,
         approved: Boolean,
         intervention: String?,
         rememberTarget: Boolean,
+        onApproved: (() -> Unit)? = null,
     ) {
         val session = store.getSession(sessionId) ?: return
         val approvalRequest = session.approvalRequest ?: return
@@ -131,7 +163,7 @@ class ApprovalManager(
         }
         val exact = expectedRequest ?: return
         if (approvalRequest != exact || !ToolApprovalRequestFactory.isValid(exact)) return
-        resumeExactToolApproval(sessionId, session, exact, approved, intervention, rememberTarget)
+        resumeExactToolApproval(sessionId, session, exact, approved, intervention, rememberTarget, onApproved)
     }
 
     private suspend fun resumeExactToolApproval(
@@ -141,6 +173,7 @@ class ApprovalManager(
         approved: Boolean,
         intervention: String?,
         rememberTarget: Boolean,
+        onApproved: (() -> Unit)? = null,
     ) {
         if (approved && onExecuteTools == null) return
         val assistantMessageId = request.assistantMessageId ?: return
@@ -166,6 +199,7 @@ class ApprovalManager(
         }
         val decision = ledger.decideExactToolApproval(sessionId, request, approved)
         if (decision !is ExactToolApprovalDecision.Decided) return
+        if (approved) onApproved?.invoke()
 
         val decisionStep = ExecutionStep(
             id = "dec_${System.currentTimeMillis()}",
