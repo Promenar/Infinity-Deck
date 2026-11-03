@@ -31,6 +31,49 @@ import kotlinx.coroutines.test.TestScope
 import org.junit.Test
 
 class DefaultGenerationCoordinatorTest {
+    @Test fun `审批创建窗口插队续跑保持并发槽且可取消`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val resumed = CompletableDeferred<Unit>()
+        val runtime = object : ChatGenerationRuntime {
+            override suspend fun prepare(request: GenerationRequest) = Unit
+            override suspend fun buildContext(request: GenerationRequest) = com.promenar.infinity.domain.generation.GenerationPreparationOutcome.Ready
+            override suspend fun stream(request: GenerationRequest, attempt: Int): kotlinx.coroutines.flow.Flow<com.promenar.infinity.domain.generation.GenerationChunk> =
+                if (attempt == 0) kotlinx.coroutines.flow.flowOf(
+                    com.promenar.infinity.domain.generation.GenerationChunk.ToolCall("call", "write", "{}"),
+                    com.promenar.infinity.domain.generation.GenerationChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.TOOL_CALLS, listOf("call")))
+                else kotlinx.coroutines.flow.flow { resumed.complete(Unit); awaitCancellation() }
+            override suspend fun persist(request: GenerationRequest, snapshot: GenerationSnapshot) = Unit
+            override suspend fun handleTools(request: GenerationRequest, toolCalls: List<com.promenar.infinity.domain.generation.GenerationToolCall>): com.promenar.infinity.domain.generation.GenerationToolDecision {
+                queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                    com.promenar.infinity.data.chat.queue.QueuedMessage("q", "插队", createdAt = 0, steering = true)))
+                return com.promenar.infinity.domain.generation.GenerationToolDecision.WAIT_FOR_APPROVAL
+            }
+            override suspend fun steeringContext(request: GenerationRequest) = com.promenar.infinity.data.exec.SteeringContext(queue)
+            override suspend fun interruptPendingTools(request: GenerationRequest, toolCalls: List<com.promenar.infinity.domain.generation.GenerationToolCall>) = true
+            override suspend fun injectQueuedAtBoundary(request: GenerationRequest): GenerationRequest? {
+                queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState()
+                return request.copy(userMessageId = "queued-user", userContent = "插队")
+            }
+            override suspend fun postProcess(request: GenerationRequest, snapshot: GenerationSnapshot) = Unit
+            override suspend fun flush(request: GenerationRequest) = Unit
+            override fun cancelProvider() = Unit
+        }
+        val coordinator = DefaultGenerationCoordinator(applicationScope = backgroundScope,
+            taskIdFactory = { "slot-${nextTaskId.incrementAndGet()}" },
+            runnerFactory = GenerationRunnerFactory { request, _ ->
+                if (request.sessionId == "steering") ChatGenerationRunner(runtime) else GenerationRunner { _, _ -> awaitCancellation() }
+            })
+        val first = coordinator.start(request("steering", "a")) as StartGenerationResult.Started
+        resumed.await()
+        repeat(com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS - 1) { coordinator.start(request("other-$it", "a-$it")) }
+        coordinator.start(request("overflow", "a-overflow"))
+        runCurrent()
+        assertThat(coordinator.observe("overflow").value!!.phase).isEqualTo(GenerationPhase.QUEUED)
+        assertThat(coordinator.cancel(first.taskId, CancellationReason.USER)).isTrue()
+        runCurrent()
+        assertThat(coordinator.observe("overflow").value!!.phase).isNotEqualTo(GenerationPhase.QUEUED)
+    }
+
     @Test
     fun `确认成功终态后awaitSessionIdle仍等待资源收尾`() = runTest {
         val terminal = CompletableDeferred<Unit>()

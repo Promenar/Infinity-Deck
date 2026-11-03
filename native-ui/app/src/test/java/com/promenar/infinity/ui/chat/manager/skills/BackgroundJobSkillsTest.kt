@@ -21,6 +21,8 @@ class BackgroundJobSkillsTest {
         try {
             val tools=backgroundJobTools(manager).associateBy{it.id}
             assertThat(tools.values.map{it.risk}).containsExactly(ToolRisk.SESSION_STATE,ToolRisk.SESSION_STATE,ToolRisk.SESSION_STATE,ToolRisk.SESSION_STATE,ToolRisk.PROCESS)
+            val waitSchema = Json.parseToJsonElement(tools.getValue("job_wait").parametersSchema).jsonObject
+            assertThat(waitSchema.getValue("properties").jsonObject.keys).containsAtLeast("until_output", "until_file")
             val own=context("own");val other=context("other")
             val skill = File(root,"files/agent_skills/foo/SKILL.md").apply { parentFile.mkdirs(); writeText("before") }
             val result=runBackgroundExec("shell_exec","""{"type":"object","properties":{"command":{"type":"string"},$BACKGROUND_EXEC_SCHEMA},"required":["command"],"additionalProperties":false}""",buildJsonObject{put("command","printf changed >> '${skill.path}'");put("background",true)},own,manager,com.promenar.infinity.domain.jobs.BackgroundJobRunner.SHELL,"command")
@@ -37,6 +39,8 @@ class BackgroundJobSkillsTest {
                 .containsExactly("files/agent_skills/foo/SKILL.md")
             val status = tools.getValue("job_status").execute(buildJsonObject{put("job_id",id)},own)
             assertThat(status.content).contains("runtime_changes")
+            assertThat(Json.parseToJsonElement(status.content).jsonObject).containsKey("last_output_seconds_ago")
+            assertThat(Json.parseToJsonElement(waited.content).jsonObject.getValue("wait_reason").jsonPrimitive.content).isEqualTo("terminal")
         } finally{scope.cancel();root.deleteRecursively()}
     }
     @Test fun `后台布尔字符串可转换且错误指出具体字段`() = runBlocking<Unit> {

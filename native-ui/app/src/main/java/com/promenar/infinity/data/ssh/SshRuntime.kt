@@ -362,10 +362,12 @@ class SshRuntime(
     suspend fun capture(
         owner: String, alias: String, command: String, timeoutSeconds: Int,
         sessionId: String, capture: com.promenar.infinity.data.secret.SecretCapture,
+        control: SshExecControl? = null,
     ): com.promenar.infinity.domain.tool.CommandToolResult {
         val secrets = vault ?: return com.promenar.infinity.domain.tool.CommandToolResult(errorCode = "SECRET_VAULT_UNAVAILABLE", guidance = "本会话保密库不可用，命令未执行。")
         val result = exec(owner, alias, command, timeoutSeconds,
-            com.promenar.infinity.domain.secret.SecretIoLimits.MAX_SECRET_BYTES + 1, secretSessionId = sessionId, captureRaw = true).commandResult(timeoutSeconds)
+            com.promenar.infinity.domain.secret.SecretIoLimits.MAX_SECRET_BYTES + 1, control = control,
+            secretSessionId = sessionId, captureRaw = true).commandResult(timeoutSeconds)
         return capture.complete(sessionId, secrets, result) { path ->
             readSecretFile(owner, alias, path)
         }.redacted(sessionId, redactor)

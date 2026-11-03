@@ -29,7 +29,8 @@ class PreparedBackgroundCommand(
     val close: () -> Unit = {},
     val afterRun: suspend () -> Unit = {},
 )
-data class BackgroundJobStatus(val record: BackgroundJobRecord, val tail: JobLogTail, val timedOut: Boolean = false)
+data class BackgroundJobStatus(val record: BackgroundJobRecord, val tail: JobLogTail, val timedOut: Boolean = false,
+    val waitReason: String? = null, val matchedLine: String? = null, val lastOutputSecondsAgo: Long? = null)
 
 /** 唤醒的整个挂起区间由调用者的保活登记覆盖。 */
 class BackgroundJobCompletion(
@@ -96,7 +97,10 @@ class BackgroundJobManager(
         val inputGate = Mutex()
         val completion = CompletableDeferred<Pair<BackgroundJobRecord, JobLogTail>>()
         var sink: ToolLiveOutputSink = ToolLiveOutputSink.None
+        @Volatile var lastOutputAtMillis: Long? = null
+        var lastLogBytes: Long? = null
         var lastTail: String = ""
+        var lastSafeTail: String = ""
         var termuxOutput: ToolLiveOutputSink? = null
         var termuxOutputFinished: Boolean = false
         @Volatile var suppressCompletion: Boolean = false
@@ -186,7 +190,7 @@ class BackgroundJobManager(
         val secretNames = try { vault?.environment(sessionId,source)?.keys?.sorted().orEmpty() }
         catch (_: IllegalStateException) { throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁或不能作为环境变量，任务未启动。") }
         BackgroundJobRecord(id,sessionId,root,kind.name,ExecRunInfo.summarize(source),startedAtMillis=now(),maxRuntimeMinutes=minutes,onExit=action.wireName,logWorkspacePath=BackgroundJobLogs.reference(id),runDirectory=File(runRoot,id).path,directWorkspace=kind==BackgroundJobRunner.SSH,remoteHost=remoteHost,transfer=transfer,secretNames=secretNames,title=title).also {
-            store.put(it); active[id]=Active().also { handle -> handle.sshControl = sshControl }; publish()
+            store.put(it); active[id]=Active().also { handle -> handle.sshControl = sshControl; handle.control.logStartedAtMillis = it.startedAtMillis }; publish()
         }
     }
     suspend fun startBuiltin(sessionId:String, workspaceRootUuid:String, kind:BackgroundJobRunner, source:String, stdin:String?, minutes:Int, action:BackgroundJobExitAction, expectedMode: com.promenar.infinity.domain.model.SessionRunMode? = null, title:String? = null):BackgroundJobRecord = scope.async(Dispatchers.IO) { admitted(sessionId) {
@@ -203,7 +207,11 @@ class BackgroundJobManager(
         val handle=active.getValue(record.id)
         val started=CompletableDeferred<BackgroundJobRecord>()
         handle.worker=scope.launch(Dispatchers.IO) {
-            val sink=liveOutput.open("job:${record.id}")
+            val sink=liveOutput.open("job:${record.id}", inferOutputEvents = false)
+            handle.control.outputEvents = { _, text ->
+                if (text.isNotEmpty()) handle.lastOutputAtMillis = now()
+                liveOutput.publishOutput("job:${record.id}", text)
+            }
             sink.onStop(handle.control::requestStop)
             try {
                 keepAlive.hold(runInfo(record), handle.control::requestStop) {
@@ -274,7 +282,15 @@ class BackgroundJobManager(
         action: BackgroundJobExitAction, live: ToolLiveOutputSink,
         title: String? = null,
         block: suspend (LinuxExecAttachment, ToolLiveOutputSink) -> com.promenar.infinity.domain.tool.CommandToolResult,
+    ): com.promenar.infinity.domain.tool.CommandToolResult = runForeground(sessionId, root, source, yieldSeconds, minutes, action, live, title, BackgroundJobRunner.LINUX, block)
+
+    suspend fun runForeground(
+        sessionId: String, root: String, source: String, yieldSeconds: Int, minutes: Int,
+        action: BackgroundJobExitAction, live: ToolLiveOutputSink, title: String? = null,
+        kind: BackgroundJobRunner = BackgroundJobRunner.LINUX,
+        block: suspend (LinuxExecAttachment, ToolLiveOutputSink) -> com.promenar.infinity.domain.tool.CommandToolResult,
     ): com.promenar.infinity.domain.tool.CommandToolResult {
+        require(kind in setOf(BackgroundJobRunner.LINUX, BackgroundJobRunner.SHELL, BackgroundJobRunner.PYTHON))
         val result = CompletableDeferred<com.promenar.infinity.domain.tool.CommandToolResult>()
         val yielded = java.util.concurrent.atomic.AtomicBoolean(false)
         var ownedHandle: Active? = null
@@ -283,7 +299,7 @@ class BackgroundJobManager(
         try {
             withContext(NonCancellable) {
                 initialize()
-                val record = admitted(sessionId) { reserve(sessionId, root, BackgroundJobRunner.LINUX, source, minutes, action, title = title) }
+                val record = admitted(sessionId) { reserve(sessionId, root, kind, source, minutes, action, title = title) }
                     .copy(directWorkspace = true)
                 ownedRecord = record
                 val handle = active.getValue(record.id)
@@ -292,7 +308,11 @@ class BackgroundJobManager(
                 handle.control.yieldedTimeoutSeconds = minutes * 60
                 store.put(record)
                 val release = live.retain()
-                val sink = liveOutput.open("job:${record.id}")
+                val sink = liveOutput.open("job:${record.id}", inferOutputEvents = false)
+                handle.control.outputEvents = { _, text ->
+                if (text.isNotEmpty()) handle.lastOutputAtMillis = now()
+                liveOutput.publishOutput("job:${record.id}", text)
+            }
                 sink.onStop(handle.control::requestStop)
                 val tee = object : ToolLiveOutputSink by live {
                     override fun emit(stream: ToolOutputStream, text: String) { live.emit(stream, text); sink.emit(stream, text) }
@@ -302,11 +322,14 @@ class BackgroundJobManager(
                     var runtimeRemoved = false
                     try {
                         val value = coroutineScope {
-                            val watcher = linuxRuntime?.let { runtime -> launch {
+                            val watcher = linuxRuntime?.takeIf { kind == BackgroundJobRunner.LINUX }?.let { runtime -> launch {
                                 runtime.state.first { it !is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready }
                                 runtimeRemoved = true; handle.control.requestStop()
                             } }
-                            try { block(LinuxExecAttachment(handle.control, File(record.runDirectory, "pgid"), logFile(record)) { directory = it }, tee) }
+                            try { block(LinuxExecAttachment(handle.control, File(record.runDirectory, "pgid"), logFile(record)) { ready ->
+                                directory = ready
+                                store.updateIfPresent(record.id) { latest -> if (latest.running) latest.copy(workspaceDirectory = ready.path) else latest }
+                            }, tee) }
                             finally { withContext(NonCancellable) { watcher?.cancelAndJoin() } }
                         }
                         withContext(NonCancellable) {
@@ -314,7 +337,7 @@ class BackgroundJobManager(
                             val terminal = record.copy(
                                 workspaceDirectory = directory?.path,
                                 state = when { runtimeRemoved -> "FAILED"; value.errorCode == "EXEC_STOPPED" -> "STOPPED"; value.timedOut -> "TIMED_OUT"; value.errorCode != null -> "FAILED"; else -> "EXITED" },
-                                exitCode = value.exitCode, endedAtMillis = now(), commandResult = safeValue.toJson(),
+                                exitCode = value.exitCode, endedAtMillis = now(), commandResult = safeValue.toJson(), lastOutputAtMillis = handle.lastOutputAtMillis,
                                 guidance = if (runtimeRemoved) messages(RunModeMessage.LINUX_UNAVAILABLE) else safeValue.guidance,
                             )
                             store.put(terminal); publish(); handle.terminal.complete(Unit)
@@ -326,7 +349,7 @@ class BackgroundJobManager(
                         }
                     } catch (failure: Throwable) {
                         withContext(NonCancellable) {
-                            store.put(record.copy(workspaceDirectory = directory?.path, state = if (handle.control.stopRequested) "STOPPED" else if (failure is CancellationException) "INTERRUPTED" else "FAILED", endedAtMillis = now(), guidance = "命令执行失败（${failure.javaClass.simpleName}）。"))
+                            store.put(record.copy(workspaceDirectory = directory?.path, lastOutputAtMillis = handle.lastOutputAtMillis, state = if (handle.control.stopRequested) "STOPPED" else if (failure is CancellationException) "INTERRUPTED" else "FAILED", endedAtMillis = now(), guidance = "命令执行失败（${failure.javaClass.simpleName}）。"))
                             publish(); result.completeExceptionally(failure)
                             requestReconcile(record)
                         }
@@ -339,11 +362,20 @@ class BackgroundJobManager(
             currentCoroutineContext().ensureActive()
             val record = checkNotNull(ownedRecord)
             val handle = checkNotNull(ownedHandle)
-            // 环境准备与写锁等待不消耗前台运行阈值。
-            kotlinx.coroutines.selects.select<Unit> { result.onAwait { }; handle.control.started.onAwait { } }
-            val completed = if (yieldSeconds == 0) result.await() else kotlinx.coroutines.selects.select<com.promenar.infinity.domain.tool.CommandToolResult?> {
-                result.onAwait { it }
-                handle.control.yielded.onAwait { null }
+            val steering = currentCoroutineContext()[SteeringContext]
+            val completed = ToolExecutionControls.controlled(ToolExecutionControls.Kind.FOREGROUND, background = handle.control::requestYield) {
+                coroutineScope {
+                    val insertion = steering?.let { launch(start = CoroutineStart.UNDISPATCHED) {
+                        it.await()
+                        handle.control.requestYield()
+                    } }
+                    try {
+                        kotlinx.coroutines.selects.select<com.promenar.infinity.domain.tool.CommandToolResult?> {
+                            result.onAwait { it }
+                            handle.control.yielded.onAwait { null }
+                        }
+                    } finally { insertion?.cancel() }
+                }
             }
             currentCoroutineContext().ensureActive()
             if (completed != null) return completed
@@ -352,17 +384,19 @@ class BackgroundJobManager(
             withContext(NonCancellable) { store.updateIfPresent(record.id) { it.copy(workspaceDirectory = directory?.path) } }
             if (result.isCompleted) return result.await()
             val output = handle.control.outputSnapshot
+            val rawTail = if (output == null) withContext(Dispatchers.IO) { readJobLogTail(logFile(record)) } else null
             val fields = kotlinx.serialization.json.buildJsonObject {
-                put("runtime", kotlinx.serialization.json.JsonPrimitive("linux")); put("stderr_merged", kotlinx.serialization.json.JsonPrimitive(true))
+                put("runtime", kotlinx.serialization.json.JsonPrimitive(if (kind == BackgroundJobRunner.LINUX) "linux" else "system"))
+                put("stderr_merged", kotlinx.serialization.json.JsonPrimitive(true))
                 put("state", kotlinx.serialization.json.JsonPrimitive("running")); put("job_id", kotlinx.serialization.json.JsonPrimitive(record.id))
-                put("yielded_after_seconds", kotlinx.serialization.json.JsonPrimitive(yieldSeconds))
+                put("yielded_after_seconds", kotlinx.serialization.json.JsonPrimitive(((now() - record.startedAtMillis).coerceAtLeast(0) / 1000)))
                 put("workspace_mode", kotlinx.serialization.json.JsonPrimitive("direct_reconcile_on_exit"))
             }
             return com.promenar.infinity.domain.tool.CommandToolResult(
                 guidance = "命令仍在运行；用 job_status/job_wait 查看，用 job_input 回答提示，用 job_stop 结束。",
-                stdout = output?.stdout.orEmpty().let { text -> directory?.let { BuiltinExecService.virtualize(text, it) } ?: text },
-                stderr = output?.stderr.orEmpty(), stdoutOriginalLength = output?.stdoutOriginalLength ?: 0,
-                stderrOriginalLength = output?.stderrOriginalLength ?: 0, stdoutTruncated = output?.stdoutTruncated ?: false,
+                stdout = (output?.stdout ?: rawTail?.text.orEmpty()).let { text -> directory?.let { BuiltinExecService.virtualize(text, it) } ?: text },
+                stderr = output?.stderr.orEmpty(), stdoutOriginalLength = output?.stdoutOriginalLength ?: rawTail?.takeUnless { it.truncated }?.text?.length?.toLong(),
+                stderrOriginalLength = output?.stderrOriginalLength ?: 0, stdoutTruncated = output?.stdoutTruncated ?: rawTail?.truncated ?: false,
                 stderrTruncated = output?.stderrTruncated ?: false, backendFields = fields,
             )
         } catch (failure: Throwable) {
@@ -406,6 +440,7 @@ class BackgroundJobManager(
         minutes: Int, action: BackgroundJobExitAction, live: ToolLiveOutputSink,
         transfer: SftpTransfer? = null,
         title: String? = null,
+        capture: com.promenar.infinity.data.secret.SecretCapture? = null,
         executeTransfer: (suspend (String, SshExecControl, suspend (Long, Long, Long?) -> Unit) -> com.promenar.infinity.domain.tool.CommandToolResult)? = null,
     ): SshJobRunResult = runSshOnIo(transfer) { trace ->
         require(timeoutSeconds in 1..600 && minutes in 1..1440 && yieldSeconds in 0..(if (transfer == null) timeoutSeconds else minutes * 60))
@@ -427,7 +462,7 @@ class BackgroundJobManager(
                 ownedHandle = handle
                 handle.sshControl = control
                 control.cancelPending = { if (!control.started.isCompleted) handle.worker?.cancel() }
-                if (background || transfer != null) runtime.registerJob(record.id, sessionId, snapshot.alias, control::requestStop, control::requestTimeLimit)
+                if (background || transfer != null || capture != null) runtime.registerJob(record.id, sessionId, snapshot.alias, control::requestStop, control::requestTimeLimit)
                 val release = live.retain()
                 val sink = liveOutput.open("job:${record.id}")
                 handle.sink = sink
@@ -438,7 +473,7 @@ class BackgroundJobManager(
                         val environment = try { vault?.environment(sessionId, source).orEmpty() }
                         catch (_: IllegalStateException) { throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁，任务未执行。") }
                         if (!environment.keys.containsAll(record.secretNames)) throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁，任务未执行。")
-                        val value = RotatingJobLog(logFile(record)).use { log ->
+                        val value = RotatingJobLog(logFile(record), startedAtMillis = record.startedAtMillis, now = now).use { log ->
                             val rawTee = object : ToolLiveOutputSink by live {
                                 override fun emit(stream: ToolOutputStream, text: String) {
                                     log.write(text.toByteArray(Charsets.UTF_8))
@@ -459,7 +494,9 @@ class BackgroundJobManager(
                                             publish()
                                             val text = sftpProgressText(total, done, speed)
                                             tee.emit(ToolOutputStream.STDOUT, text)
-                                        } else runtime.exec(if (background) "job:${record.id}" else "agent:$sessionId", snapshot.alias, source,
+                                        } else if (capture != null) runtime.capture("job:${record.id}", snapshot.alias, source,
+                                            timeoutSeconds, sessionId, capture, control)
+                                        else runtime.exec(if (background) "job:${record.id}" else "agent:$sessionId", snapshot.alias, source,
                                             timeoutSeconds, maxOutputChars, tee, control, secretSessionId = sessionId).commandResult(if (control.background) control.maxRuntimeSeconds else timeoutSeconds)
                                     }
                                 }.let { output ->
@@ -550,21 +587,50 @@ class BackgroundJobManager(
                 ownership.complete(true)
                 return@runSshOnIo SshJobRunResult(job = record)
             }
-            // 建连与等待连接锁不消耗让出阈值；执行超时仍由 SSH 运行时约束。
-            kotlinx.coroutines.selects.select<Unit> { result.onAwait { }; control.started.onAwait { } }
-            val completed = if (yieldSeconds == 0) result.await() else withTimeoutOrNull(yieldSeconds * 1_000L) { result.await() }
+            val steering = currentCoroutineContext()[SteeringContext]
+            var interruptedBeforeStart = false
+            val completed = ToolExecutionControls.controlled(ToolExecutionControls.Kind.FOREGROUND, releaseToBackground = true) { release ->
+                coroutineScope {
+                    val insertion = steering?.let { async(start = CoroutineStart.UNDISPATCHED) { it.await() } }
+                    try {
+                        // 自动阈值从连接就绪后计时；插队和手动让出在准备期间也可唤醒。
+                        val automatic = if (yieldSeconds > 0) async {
+                            kotlinx.coroutines.selects.select<Unit> { result.onAwait { }; control.started.onAwait { } }
+                            delay(yieldSeconds * 1_000L)
+                        } else null
+                        try {
+                            kotlinx.coroutines.selects.select<com.promenar.infinity.domain.tool.CommandToolResult?> {
+                                result.onAwait { it }
+                                release.onAwait { null }
+                                insertion?.onAwait { null }
+                                automatic?.onAwait { null }
+                            }
+                        } finally { automatic?.cancel() }
+                    } finally { insertion?.cancel() }
+                }
+            }
             if (completed != null) {
                 ownership.complete(false)
                 return@runSshOnIo SshJobRunResult(command = completed)
             }
             currentCoroutineContext().ensureActive()
             val promoted = withContext(NonCancellable) {
-                checkNotNull(control.promote).invoke(record.id, sessionId).also { transferred ->
+                val promote = control.promote
+                if (promote == null) {
+                    // 连接尚未建立，没有已启动的远端命令；取消准备并配对中断结果。
+                    interruptedBeforeStart = true
+                    ownership.complete(false)
+                    control.requestStop()
+                    ownedHandle?.worker?.cancelAndJoin()
+                    false
+                } else promote.invoke(record.id, sessionId).also { transferred ->
                     if (transferred) { detached = true; ownership.complete(true) }
                 }
             }
             if (!promoted) {
                 ownership.complete(false)
+                if (interruptedBeforeStart) return@runSshOnIo SshJobRunResult(command = com.promenar.infinity.domain.tool.CommandToolResult(
+                    errorCode = "EXEC_INTERRUPTED", guidance = "用户插队，SSH 连接准备已中断，命令未执行。"))
                 return@runSshOnIo SshJobRunResult(command = result.await())
             }
             // 与取消清理串行交接；一旦归属已转移，调用者取消不再终止任务。
@@ -652,7 +718,7 @@ class BackgroundJobManager(
         }
     }
 
-    suspend fun startTermux(sessionId:String, workspaceRootUuid:String, source:String, workdir:String?, stdin:String?, minutes:Int, action:BackgroundJobExitAction, title:String? = null):BackgroundJobRecord = scope.async(Dispatchers.IO) { admitted(sessionId) {
+    suspend fun startTermux(sessionId:String, workspaceRootUuid:String, source:String, workdir:String?, stdin:String?, minutes:Int, action:BackgroundJobExitAction, title:String? = null, waitForStart: Boolean = true):BackgroundJobRecord = scope.async(Dispatchers.IO) { admitted(sessionId) {
         initialize()
         TermuxCommandRequest(source,workdir,stdin=stdin)
         val backend=termux ?: throw JobAccessException("JOB_TERMUX_UNAVAILABLE","Termux 后台接入不可用，请检查工具设置。")
@@ -661,7 +727,7 @@ class BackgroundJobManager(
         val started=CompletableDeferred<BackgroundJobRecord>()
         handle.worker=scope.launch(Dispatchers.IO) {
             val sink=liveOutput.open("job:${record.id}")
-            handle.sink=sink
+            handle.sink=termuxLogSink(record, handle, sink)
             sink.onStop {scope.launch{stop(record.id)}}
             var requested=false
             try {
@@ -701,20 +767,34 @@ class BackgroundJobManager(
                 liveOutput.close("job:${record.id}",sink)
             }
         }
-        started.await()
+        if (waitForStart) started.await() else record
     } }.await()
     private fun monitorTermux(record:BackgroundJobRecord) {
         val handle=Active()
         if(active.putIfAbsent(record.id,handle)!=null) return
         handle.worker=scope.launch(Dispatchers.IO) {
             val sink=liveOutput.open("job:${record.id}")
-            handle.sink=sink
+            handle.sink=termuxLogSink(record, handle, sink)
             sink.onStop {scope.launch{stop(record.id)}}
             try {
                 keepAlive.hold(runInfo(record),{scope.launch{stop(record.id)}}) { monitorTermuxLoop(record,handle) }
             } finally {handle.termuxOutput?.let { redactor?.finish(it) };handle.terminal.complete(Unit);active.remove(record.id,handle);liveOutput.close("job:${record.id}",sink)}
         }
     }
+    private fun termuxLogSink(record: BackgroundJobRecord, handle: Active, live: ToolLiveOutputSink) = object : ToolLiveOutputSink by live {
+        private fun append(text: String) {
+            if (text.isNotEmpty()) RotatingJobLog(logFile(record), startedAtMillis = record.startedAtMillis, now = now).use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        }
+        override fun emit(stream: ToolOutputStream, text: String) { append(text); live.emit(stream, text) }
+        override fun replace(stream: ToolOutputStream, text: String) {
+            // 此入口只接收遮蔽器发布的安全快照，未确认的秘密短尾不会落盘。
+            val delta = newOutputSuffix(handle.lastSafeTail, text)
+            append(delta)
+            handle.lastSafeTail = text
+            live.replace(stream, text)
+        }
+    }
+
     private suspend fun monitorTermuxLoop(record:BackgroundJobRecord,handle:Active) {
         while(currentCoroutineContext().isActive) {
             if(!sessionAllowed(record)) {delay(100);continue}
@@ -764,17 +844,19 @@ class BackgroundJobManager(
         // 原位置保持可恢复，应用只发布经过遮蔽的状态与实时文本。
         val safeTail = redactor?.redact(current.sessionId, result.logTail) ?: result.logTail
         active[record.id]?.let { running ->
+            val delta = newJobOutput(running.lastTail, running.lastLogBytes, result.logTail, result.logBytes)
             if (redactor != null) {
                 if (!running.termuxOutputFinished) {
                     val sink = running.termuxOutput ?: redactor.sink(current.sessionId, running.sink).also { running.termuxOutput = it }
-                    sink.replace(ToolOutputStream.STDOUT, result.logTail)
+                    if (result.logBytes != null) sink.emit(ToolOutputStream.STDOUT, delta)
+                    else sink.replace(ToolOutputStream.STDOUT, result.logTail)
                     if (!result.alive) { redactor.finish(sink); running.termuxOutputFinished = true }
                 }
-            } else if (result.logTail != running.lastTail) {
-                val text = if (result.logTail.startsWith(running.lastTail)) result.logTail.drop(running.lastTail.length) else result.logTail
-                running.sink.emit(ToolOutputStream.STDOUT, text)
+            } else if (delta.isNotEmpty()) {
+                running.sink.emit(ToolOutputStream.STDOUT, delta)
             }
-            running.lastTail=result.logTail
+            running.lastTail = result.logTail
+            running.lastLogBytes = result.logBytes
         }
         val tail=JobLogTail(safeTail.takeLast(8_000),result.truncated || safeTail.length>8_000)
         if(current.running && !result.alive) {
@@ -790,7 +872,7 @@ class BackgroundJobManager(
         tail
     }
     private suspend fun finish(record:BackgroundJobRecord,handle:Active) {
-        var settled=record
+        var settled=record.copy(lastOutputAtMillis = handle.lastOutputAtMillis ?: record.lastOutputAtMillis)
         var reconciled=false
         val warning=try { (if (hasIsolatedWorkspace(record)) reconcile(record,true,false) else null).also { reconciled=true }} catch(_:Exception){"工作区合入或日志发布失败，临时副本已保留；请检查工作区后处理任务产物。"}
         if(reconciled && record.isolatedWorkspace) {
@@ -822,8 +904,12 @@ class BackgroundJobManager(
     override suspend fun readLog(sessionId: String, reference: String): com.promenar.infinity.domain.jobs.BackgroundJobLog {
         val id = BackgroundJobLogs.jobId(reference)
             ?: throw JobAccessException("JOB_NOT_FOUND", "任务日志引用无效。")
-        val tail = status(sessionId, id).tail
-        return com.promenar.infinity.domain.jobs.BackgroundJobLog(tail.text, tail.truncated)
+        val status = status(sessionId, id)
+        val record = owned(sessionId, id, initializeStore = false)
+        val tail = withContext(Dispatchers.IO) {
+            if (logFile(record).isFile) readJobLogTail(logFile(record), stripTimestamps = false) else status.tail
+        }
+        return com.promenar.infinity.domain.jobs.BackgroundJobLog(redactor?.redact(sessionId, tail.text) ?: tail.text, tail.truncated)
     }
     suspend fun list(sessionId:String):List<BackgroundJobRecord> { initialize(); return store.all().filter{it.sessionId==sessionId && sessionId !in deletedSessions}.map(::redactedRecord).sortedByDescending{it.startedAtMillis} }
     private fun redactedRecord(record: BackgroundJobRecord): BackgroundJobRecord {
@@ -834,29 +920,79 @@ class BackgroundJobManager(
                 redactCommandJson(record.sessionId, value, redact)
             })
     }
-    suspend fun status(sessionId:String,id:String):BackgroundJobStatus = withContext(Dispatchers.IO) {
+    suspend fun status(sessionId:String,id:String, refreshRemote: Boolean = true):BackgroundJobStatus = withContext(Dispatchers.IO) {
         var record=owned(sessionId,id, initializeStore = false)
         val warning = reconcileWarning(record)
-        val tail=if(record.runnerKind==BackgroundJobRunner.TERMUX) refreshTermux(record) else {
+        val tail=if(record.runnerKind==BackgroundJobRunner.TERMUX && refreshRemote) refreshTermux(record) else {
             val snapshot = active[id]?.control?.outputSnapshot
             val raw = snapshot?.let { JobLogTail(it.stdout.takeLast(8_000), it.stdoutTruncated || it.stdout.length > 8_000) } ?: readJobLogTail(logFile(record))
             val directory = record.workspaceDirectory?.let(::File)
             if (directory == null) raw else raw.copy(text = BuiltinExecService.virtualize(raw.text, directory))
         }
         record=owned(sessionId,id, initializeStore = false)
+        val lastOutputAt = active[id]?.lastOutputAtMillis ?: record.lastOutputAtMillis
+            ?: logFile(record).takeIf { it.isFile && it.length() > 0 }?.lastModified()
         BackgroundJobStatus(redactedRecord(record.copy(guidance=listOfNotNull(record.guidance,warning).distinct().joinToString(" ").ifEmpty { null })),
-            tail.copy(text = redactor?.redact(sessionId, tail.text) ?: tail.text))
+            tail.copy(text = redactor?.redact(sessionId, tail.text) ?: tail.text),
+            lastOutputSecondsAgo = lastOutputAt?.let { ((now() - it).coerceAtLeast(0)) / 1000 })
     }
-    suspend fun waitFor(sessionId:String,id:String,timeoutSeconds:Int):BackgroundJobStatus {
-        require(timeoutSeconds in 1..600){"timeout_seconds 必须为 1–600"}
-        owned(sessionId,id, initializeStore = false)
-        val ended=withTimeoutOrNull(timeoutSeconds*1_000L) {
-            while(owned(sessionId,id, initializeStore = false).running) {
-                delay(100)
+    suspend fun waitFor(sessionId: String, id: String, timeoutSeconds: Int, untilOutput: String? = null, untilFile: String? = null, foreground: Boolean = false): BackgroundJobStatus {
+        require(timeoutSeconds in 1..600) { "timeout_seconds 必须为 1–600" }
+        initialize()
+        val record = owned(sessionId, id, initializeStore = false)
+        val pattern = untilOutput?.let { require(it.length <= 2_000) { "until_output 正则过长" }; Regex(it) }
+        val root = untilFile?.let {
+            // SSH 任务没有本机执行工作区，不能把远端路径映射到本机。
+            require(record.runnerKind != BackgroundJobRunner.SSH) { "SSH 任务不支持 until_file" }
+            val directory = record.workspaceDirectory?.let(::File) ?: throw IllegalArgumentException("任务工作区尚未就绪，不能使用 until_file")
+            jobWaitFile(directory, it)
+            directory
+        }
+        val steering = currentCoroutineContext()[SteeringContext]
+        var unsubscribe: (() -> Unit)? = null
+        try {
+            val outcome = ToolExecutionControls.controlled(if (foreground) ToolExecutionControls.Kind.FOREGROUND else ToolExecutionControls.Kind.WAITING,
+                releaseToBackground = foreground) { release ->
+                coroutineScope {
+                    val operation = async {
+                        // 远端基线查询也属于可释放等待；查询取消不会停止原任务。
+                        if (pattern != null && record.runnerKind == BackgroundJobRunner.TERMUX) refreshTermux(record)
+                        val condition = pattern?.let(::JobOutputCondition)
+                        unsubscribe = condition?.let { liveOutput.listenOutput("job:$id", it::accept) }
+                        coroutineScope {
+                            val terminal = async(start = CoroutineStart.UNDISPATCHED) {
+                                if (record.running) {
+                                    val handle = active[id]
+                                    if (handle != null) handle.terminal.await()
+                                    else state.first { jobs -> jobs.none { it.id == id && it.state == BackgroundJobState.RUNNING } }
+                                }
+                            }
+                            val file = root?.let { directory -> async { awaitJobFile(directory, checkNotNull(untilFile)) } }
+                            try {
+                                kotlinx.coroutines.selects.select<JobWaitOutcome> {
+                                    terminal.onAwait { JobWaitOutcome(JobWaitReason.TERMINAL) }
+                                    condition?.matched?.onAwait { JobWaitOutcome(JobWaitReason.OUTPUT, it) }
+                                    file?.onAwait { JobWaitOutcome(JobWaitReason.FILE) }
+                                }
+                            } finally { terminal.cancel(); file?.cancel() }
+                        }
+                    }
+                    val insertion = steering?.let { async(start = CoroutineStart.UNDISPATCHED) { it.await() } }
+                    try {
+                        withTimeoutOrNull(timeoutSeconds * 1_000L) {
+                            kotlinx.coroutines.selects.select<JobWaitOutcome> {
+                                operation.onAwait { it }
+                                release.onAwait { JobWaitOutcome(JobWaitReason.RELEASED) }
+                                insertion?.onAwait { JobWaitOutcome(JobWaitReason.STEERING) }
+                            }
+                        } ?: JobWaitOutcome(JobWaitReason.TIMEOUT)
+                    } finally { withContext(NonCancellable) { operation.cancelAndJoin(); insertion?.cancelAndJoin() } }
+                }
             }
-            true
-        } ?: false
-        return status(sessionId,id).copy(timedOut=!ended)
+            // 唤醒后直接回传已落盘快照，避免新的 Termux 广播查询延迟插队或手动释放。
+            return status(sessionId, id, refreshRemote = false).copy(timedOut = outcome.reason == JobWaitReason.TIMEOUT,
+                waitReason = outcome.reason.name.lowercase(), matchedLine = outcome.matchedLine?.let { redactor?.redact(sessionId, it) ?: it })
+        } finally { unsubscribe?.invoke() }
     }
     override suspend fun stop(jobId:String):Boolean = withContext(Dispatchers.IO) {
         initialize()

@@ -19,6 +19,22 @@ class TermuxExecSkillTest {
     }
     private fun args(json: String) = Json.parseToJsonElement(json) as JsonObject
 
+    @Test fun `前台托管结果保留尾部截断超时与错误状态`() {
+        val record = com.promenar.infinity.data.jobs.BackgroundJobRecord("job", "s", "root", "TERMUX", "command",
+            startedAtMillis = 0, maxRuntimeMinutes = 1, onExit = "none", logWorkspacePath = "jobs/job.log", runDirectory = "")
+        val tail = com.promenar.infinity.data.jobs.JobLogTail("最后输出", true)
+        val running = termuxForegroundResult(com.promenar.infinity.data.jobs.BackgroundJobStatus(record, tail))
+        assertThat(running.stdoutTruncated).isTrue()
+        assertThat(running.stdoutOriginalLength).isNull()
+        assertThat(running.toolStatus).isEqualTo("success")
+        val timeout = termuxForegroundResult(com.promenar.infinity.data.jobs.BackgroundJobStatus(record.copy(state = "TIMED_OUT"), tail))
+        assertThat(timeout.timedOut).isTrue()
+        assertThat(timeout.errorCode).isEqualTo("TERMUX_TIMEOUT")
+        assertThat(timeout.toolStatus).isEqualTo("error")
+        val failed = termuxForegroundResult(com.promenar.infinity.data.jobs.BackgroundJobStatus(record.copy(state = "EXITED", exitCode = 7), tail))
+        assertThat(failed.toolStatus).isEqualTo("error")
+    }
+
     @Test fun `工具为PROCESS且参数保留stdin默认超时并回传结构化结果`() = runTest {
         var captured: TermuxCommandRequest? = null
         val skill = TermuxExecSkill({ captured = it; TermuxCommandResult(stdout = "done", exitCode = 0) }, { true })

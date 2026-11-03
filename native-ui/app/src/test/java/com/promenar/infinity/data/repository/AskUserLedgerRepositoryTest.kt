@@ -42,6 +42,17 @@ class AskUserLedgerRepositoryTest {
 
     private suspend fun pending(): PendingQuestion = repository.pending("s")!!
 
+    @Test fun `插队关闭提问并持久化工具结果原因且不会重复关闭`() = runBlocking {
+        create()
+        val reason = "用户插队打断了本步，调用未执行。"
+        val cancelled = repository.cancel("s", interruptionReason = reason)
+        assertThat(cancelled.single().toolCallId).isEqualTo("question")
+        assertThat(cancelled.single().content).isEqualTo(reason)
+        assertThat(db.messageDao().getById(cancelled.single().id)!!.content).isEqualTo(reason)
+        assertThat(repository.pending("s")).isNull()
+        assertThat(repository.cancel("s", interruptionReason = reason)).isEmpty()
+    }
+
     @Test fun `用户回答清零自动唤醒计数并解除自动处理暂停`() = runBlocking {
         create()
         val latest = db.sessionDao().getById("s")!!

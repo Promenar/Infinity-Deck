@@ -366,6 +366,17 @@ class ToolExecutionLedgerRepositoryTest {
             .hasSize(1)
     }
 
+    @Test fun `插队取消待审批调用时结果保留原因且不会重复落盘`() = runBlocking {
+        val pending = key("steering-pending")
+        repository.register(pending, "write_file", requiresApproval = true)
+        val reason = "用户插队打断了本步，调用未执行。"
+        val request = ToolTerminalRequest(pending, "write_file", interruptionReason = reason)
+        val messages = repository.terminalizeWithResults(setOf(request), ToolLedgerState.CANCELLED)
+        assertThat(messages.single().content).isEqualTo(reason)
+        assertThat(database.messageDao().getById(messages.single().id)!!.content).isEqualTo(reason)
+        assertThat(repository.terminalizeWithResults(setOf(request), ToolLedgerState.CANCELLED)).isEmpty()
+    }
+
     @Test
     fun interruptedRunningEntriesBecomeFailedWithoutReplayingSideEffects() = runBlocking {
         val running = key("running")

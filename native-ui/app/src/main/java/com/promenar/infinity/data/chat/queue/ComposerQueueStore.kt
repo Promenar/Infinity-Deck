@@ -27,6 +27,10 @@ data class ComposerQueueState(
     /** 出队到生成接受之间的恢复副本；不在托盘展示。 */
     val sending: QueuedMessage? = null,
     val sendingUserMessageId: String? = null,
+    /** 当前生成循环持有的注入租约，涵盖普通排队和插队。 */
+    val sendingInLoop: Boolean = false,
+    /** 编辑中的队首暂不参与插队唤醒；草稿租约不跨进程恢复。 */
+    @kotlinx.serialization.Transient val editingId: String? = null,
 )
 
 interface ComposerQueueStore {
@@ -38,6 +42,10 @@ interface ComposerQueueStore {
     suspend fun steer(sessionId: String, id: String): Boolean
     suspend fun pause(sessionId: String, reason: QueuePauseReason?)
     suspend fun claimNext(sessionId: String): QueuedMessage?
+    /** 仅认领插队项；回执和恢复与普通发送使用同一持久租约。 */
+    suspend fun claimSteering(sessionId: String): QueuedMessage? = null
+    /** 完整步骤结束时只认领队首一条。 */
+    suspend fun claimBoundary(sessionId: String): QueuedMessage? = null
     suspend fun bindSending(sessionId: String, id: String, userMessageId: String)
     suspend fun acceptForUser(sessionId: String, userMessageId: String?) {
         val state = snapshot(sessionId)

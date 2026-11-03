@@ -28,6 +28,8 @@ enum class GenerationFailureCode {
     TAILNET_UNAVAILABLE,
     RUN_MODE_REQUIRED,
     LINUX_UNAVAILABLE,
+    /** 工具轮次后的空回复已经提醒重试，仍未获得正文。 */
+    EMPTY_REPLY,
     UNKNOWN,
 }
 

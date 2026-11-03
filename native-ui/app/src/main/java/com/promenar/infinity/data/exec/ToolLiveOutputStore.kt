@@ -36,6 +36,17 @@ class ToolLiveOutputStore(
     )
 
     private val entries = ConcurrentHashMap<String, Entry>()
+    private val outputListeners = ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<(String) -> Unit>>()
+    fun listenOutput(key: String, listener: (String) -> Unit): () -> Unit {
+        outputListeners.compute(key) { _, existing ->
+            (existing ?: java.util.concurrent.CopyOnWriteArrayList()).also { it.add(listener) }
+        }
+        return { outputListeners.computeIfPresent(key) { _, existing -> existing.apply { remove(listener) }.takeIf { it.isNotEmpty() } }; Unit }
+    }
+    internal fun publishOutput(key: String, text: String) = output(key, text)
+    private fun output(key: String, text: String) {
+        if (text.isNotEmpty()) outputListeners[key]?.forEach { it(text) }
+    }
     private val version = MutableStateFlow(0L)
     private val _activeKeys = MutableStateFlow<Set<String>>(emptySet())
 
@@ -46,7 +57,7 @@ class ToolLiveOutputStore(
     val activeKeys: StateFlow<Set<String>> = _activeKeys.asStateFlow()
 
     /** 为一次工具调用打开通道；同一 key 再次打开时替换旧通道。 */
-    fun open(key: String): ToolLiveOutputSink = Entry(key).also {
+    fun open(key: String, inferOutputEvents: Boolean = true): ToolLiveOutputSink = Entry(key, inferOutputEvents).also {
         entries[key] = it
         _activeKeys.update { keys -> keys - key }
         bump()
@@ -79,9 +90,11 @@ class ToolLiveOutputStore(
 
     private fun bump() = version.update { it + 1 }
 
-    private inner class Entry(private val key: String) : ToolLiveOutputSink {
+    private inner class Entry(private val key: String, private val inferOutputEvents: Boolean) : ToolLiveOutputSink {
         private val buffer = StringBuilder()
         private var dropped = false
+        // 增量游标独立于界面的 16 KiB 尾部；终端快照可保留更多文字。
+        private var sourceSnapshot = ""
         private var retainCount = 0
         private var closePending = false
         @Synchronized fun deferClose(): Boolean {
@@ -102,6 +115,11 @@ class ToolLiveOutputStore(
         override fun replace(stream: ToolOutputStream, text: String) {
             synchronized(this) {
                 markActive()
+                if (inferOutputEvents) {
+                    val delta = newOutputSuffix(sourceSnapshot, text)
+                    sourceSnapshot = text
+                    output(key, delta)
+                }
                 buffer.clear()
                 val start = (text.length - limit).coerceAtLeast(0).let { if (it < text.length && text[it].isLowSurrogate()) it + 1 else it }
                 buffer.append(text.substring(start))
@@ -120,6 +138,8 @@ class ToolLiveOutputStore(
             if (text.isEmpty()) return
             synchronized(this) {
                 markActive()
+                if (inferOutputEvents) output(key, text)
+                if (inferOutputEvents) sourceSnapshot = (sourceSnapshot + text).takeLast(32_000)
                 buffer.append(text)
                 if (buffer.length > limit) {
                     var start = buffer.length - limit
@@ -167,4 +187,23 @@ class ToolLiveOutputStore(
         const val LIMIT_CHARS = 16 * 1024
         const val THROTTLE_MILLIS = 100L
     }
+}
+
+/** 快照裁尾后寻找旧尾与新首的最长重叠，已展示的文本不重新作为新输出。 */
+internal fun newOutputSuffix(previous: String, current: String): String {
+    if (current.startsWith(previous)) return current.drop(previous.length)
+    if (previous.isEmpty() || current.isEmpty()) return current
+    val prefix = IntArray(current.length)
+    for (index in 1 until current.length) {
+        var count = prefix[index - 1]
+        while (count > 0 && current[index] != current[count]) count = prefix[count - 1]
+        if (current[index] == current[count]) count++
+        prefix[index] = count
+    }
+    var overlap = 0
+    for (char in previous) {
+        while (overlap > 0 && (overlap == current.length || current[overlap] != char)) overlap = prefix[overlap - 1]
+        if (overlap < current.length && current[overlap] == char) overlap++
+    }
+    return current.drop(overlap)
 }

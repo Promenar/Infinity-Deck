@@ -49,6 +49,21 @@ class TermuxBackgroundJobsTest {
         if (::root.isInitialized) root.deleteRecursively()
     }
 
+    @Test fun `字节计数之后追加日志时快照仍返回对应固定范围`() = runBlocking {
+        val handle = jobs.start("snapshot-race", "printf before", null, null, 120, null).also(handles::add)
+        awaitFinished(handle)
+        val log = File(jobs.logPath(handle))
+        val quoted = "'" + log.path.replace("'", "'\\''") + "'"
+        File(bin, "wc").apply {
+            writeText("#!/bin/bash\n/usr/bin/wc \"\$@\"\nprintf after >> $quoted\n")
+            setExecutable(true)
+        }
+        val snapshot = jobs.inspect(handle)
+        assertThat(snapshot.logBytes).isEqualTo(6)
+        assertThat(snapshot.logTail).isEqualTo("before")
+        assertThat(log.readText()).isEqualTo("beforeafter")
+    }
+
     @Test fun `更名前私有日志目录中的任务可恢复且不会重建相同任务号`() = runBlocking {
         val handle = jobs.start("legacy", "printf legacy-output", null, null, 120, null).also(handles::add)
         awaitFinished(handle)

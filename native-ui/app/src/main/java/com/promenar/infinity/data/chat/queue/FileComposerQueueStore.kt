@@ -51,7 +51,8 @@ class FileComposerQueueStore(
             try {
                 val saved = json.decodeFromString<ComposerQueueState>(raw)
                 val accepted = saved.sendingUserMessageId?.let { isUserPersisted(sessionId, it) } == true
-                val items = listOfNotNull(saved.sending.takeUnless { accepted }) + saved.items
+                val recovered = saved.sending.takeUnless { accepted }?.let { if (saved.items.any { item -> item.steering }) it.copy(steering = false) else it }
+                val items = listOfNotNull(recovered) + saved.items
                 require(items.map { it.id }.distinct().size == items.size)
                 require(items.count { it.steering } <= 1)
                 require(items.all { item -> item.imagePaths.all { path ->
@@ -59,7 +60,7 @@ class FileComposerQueueStore(
                 } })
                 if (accepted) deleteImages(saved.sending)
                 restored = true
-                saved.copy(items = items, sending = null, sendingUserMessageId = null, pauseReason = QueuePauseReason.RESTORED.takeIf { items.isNotEmpty() })
+                saved.copy(items = items, sending = null, sendingUserMessageId = null, sendingInLoop = false, pauseReason = QueuePauseReason.RESTORED.takeIf { items.isNotEmpty() })
             } catch (_: IllegalArgumentException) {
                 discardCorrupt(dir)
             } catch (_: SerializationException) {
@@ -103,7 +104,17 @@ class FileComposerQueueStore(
         write(sessionId, next)
         flow.value = next
     }
-    override suspend fun observe(sessionId: String): StateFlow<ComposerQueueState> = locked { load(sessionId) }
+    /** 回执写盘失败后，绑定消息可在同一进程里恢复确认，不重新发送已落盘的用户消息。 */
+    private suspend fun reconcileSending(sessionId: String) {
+        val state = load(sessionId).value
+        val sending = state.sending ?: return
+        if (!state.sendingInLoop) return
+        val userId = state.sendingUserMessageId ?: return
+        if (!isUserPersisted(sessionId, userId)) return
+        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null, sendingInLoop = false) }
+        deleteImages(sending)
+    }
+    override suspend fun observe(sessionId: String): StateFlow<ComposerQueueState> = locked { reconcileSending(sessionId); load(sessionId) }
 
     override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>): QueuedMessage = locked {
         check(sessionId !in deletedSessions) { "会话已删除" }
@@ -156,25 +167,39 @@ class FileComposerQueueStore(
         update(sessionId) { if (it.items.isEmpty() && it.sending == null) it else it.copy(pauseReason = reason) }
     }
     override suspend fun claimNext(sessionId: String): QueuedMessage? = locked {
+        reconcileSending(sessionId)
         val state = load(sessionId).value
         if (state.pauseReason != null || state.sending != null || sessionId in deletedSessions) return@locked null
         val available = state.items.filterNot { it.id == preparedEdits[sessionId]?.id }
         val item = available.firstOrNull { it.steering } ?: available.firstOrNull() ?: return@locked null
-        update(sessionId) { it.copy(items = it.items.filterNot { queued -> queued.id == item.id }, sending = item.copy(steering = false), sendingUserMessageId = null) }
+        update(sessionId) { it.copy(items = it.items.filterNot { queued -> queued.id == item.id }, sending = item.copy(steering = false), sendingUserMessageId = null, sendingInLoop = false) }
         item.copy(steering = false)
+    }
+    override suspend fun claimSteering(sessionId: String): QueuedMessage? = claimForLoop(sessionId, true)
+    override suspend fun claimBoundary(sessionId: String): QueuedMessage? = claimForLoop(sessionId, false)
+    private suspend fun claimForLoop(sessionId: String, steeringOnly: Boolean): QueuedMessage? = locked {
+        reconcileSending(sessionId)
+        val state = load(sessionId).value
+        if (state.pauseReason != null || state.sending != null || sessionId in deletedSessions) return@locked null
+        val item = if (steeringOnly) state.items.firstOrNull { it.steering } else state.items.firstOrNull()
+        if (item == null || item.id == preparedEdits[sessionId]?.id) return@locked null
+        update(sessionId) { it.copy(items = it.items.filterNot { queued -> queued.id == item.id }, sending = item,
+            sendingUserMessageId = null, sendingInLoop = true) }
+        item
     }
     override suspend fun bindSending(sessionId: String, id: String, userMessageId: String) = locked {
         update(sessionId) { if (it.sending?.id == id) it.copy(sendingUserMessageId = userMessageId) else it }
     }
     override suspend fun accept(sessionId: String, id: String) = locked {
         val sending = load(sessionId).value.sending?.takeIf { it.id == id } ?: return@locked
-        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null) }
+        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null, sendingInLoop = false) }
         deleteImages(sending)
     }
     override suspend fun rollback(sessionId: String, id: String, reason: QueuePauseReason) = locked {
+        reconcileSending(sessionId)
         update(sessionId) { state -> state.sending?.takeIf { it.id == id }?.let { item ->
             val items = state.items.map { if (item.steering) it.copy(steering = false) else it }
-            state.copy(items = listOf(item) + items, sending = null, sendingUserMessageId = null, pauseReason = reason)
+            state.copy(items = listOf(item) + items, sending = null, sendingUserMessageId = null, sendingInLoop = false, pauseReason = reason)
         } ?: state }
     }
     override suspend fun prepareEdit(sessionId: String, id: String): QueuedMessage? = locked {
@@ -186,7 +211,10 @@ class FileComposerQueueStore(
                 check(draftDir.isDirectory || draftDir.mkdirs())
                 File(path).copyTo(File(draftDir, "$index.image")).absolutePath
             }
-            item.copy(imagePaths = paths).also { preparedEdits[sessionId] = it }
+            item.copy(imagePaths = paths).also { draft ->
+                update(sessionId) { it.copy(editingId = id) }
+                preparedEdits[sessionId] = draft
+            }
         } catch (failure: Throwable) {
             draftDir.deleteRecursively()
             throw failure
@@ -195,7 +223,7 @@ class FileComposerQueueStore(
     override suspend fun completeEdit(sessionId: String, draft: QueuedMessage): Boolean = locked {
         if (preparedEdits[sessionId] != draft) return@locked false
         val original = load(sessionId).value.items.find { it.id == draft.id } ?: return@locked false
-        update(sessionId) { it.copy(items = it.items.filterNot { queued -> queued.id == draft.id }) }
+        update(sessionId) { it.copy(items = it.items.filterNot { queued -> queued.id == draft.id }, editingId = null) }
         preparedEdits.remove(sessionId)
         // 已提交的草稿副本不能因原图片清理失败而丢失。
         runCatching { deleteImages(original) }.onFailure {
@@ -204,7 +232,10 @@ class FileComposerQueueStore(
         true
     }
     override suspend fun cancelEdit(sessionId: String, draft: QueuedMessage) = locked {
-        if (preparedEdits[sessionId] == draft) preparedEdits.remove(sessionId)
+        if (preparedEdits[sessionId] == draft) {
+            update(sessionId) { it.copy(editingId = null) }
+            preparedEdits.remove(sessionId)
+        }
         deleteImages(draft)
     }
     override suspend fun releaseDraftImages(sessionId: String, paths: List<String>) = locked {

@@ -525,6 +525,65 @@ class SshRuntimeIntegrationTest {
         assertThat(Json.parseToJsonElement(status.content).jsonObject.getValue("exit_code")).isEqualTo(JsonNull)
     }
 
+    @Test fun `SSH零自动阈值时插队接管运行命令且关闭轮次不结束任务`() = sshJobs { jobs ->
+        val exec = sshTools(runtime, jobs).single { it.name == "ssh_exec" }
+        val queue = MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val result = async(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+            exec.execute(Json.parseToJsonElement("""{"host":"termux","command":"sleep","yield_after_seconds":0,"on_exit":"none"}""").jsonObject, sshContext())
+        }
+        withTimeout(5_000) { while (startedCommands.get() < 1) delay(10) }
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("q", "插队", createdAt = 0, steering = true)))
+        val response = withTimeout(5_000) { result.await() }
+        val id = Json.parseToJsonElement(response.content).jsonObject.getValue("job_id").jsonPrimitive.content
+        runtime.closeOwner("agent:chat")
+        assertThat(jobs.status("chat", id).record.running).isTrue()
+        assertThat(commands.get()).isEqualTo(1)
+        jobs.stop("chat", id)
+    }
+
+    @Test fun `SSH文件捕获被插队后由任务所有者完成且日志不包含捕获值`() = sshJobs { jobs ->
+        runtime.close()
+        val vault = com.promenar.infinity.data.secret.SessionSecretVault()
+        runtime = SshRuntime(hostStore, vault = vault, redactor = com.promenar.infinity.data.secret.SecretOutputRedactor(vault))
+        Files.writeString(root.resolve("capture.txt"), "fixture-captured-value")
+        val exec = sshTools(runtime, jobs).single { it.name == "ssh_exec" }
+        val queue = MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val result = async(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+            exec.execute(Json.parseToJsonElement("""{"host":"termux","command":"delayed-zero","on_exit":"none","capture_secret":{"name":"TOKEN","label":"测试槽位","from":"file","path":"/capture.txt"}}""").jsonObject, sshContext())
+        }
+        withTimeout(5_000) { while (commands.get() < 1) delay(10) }
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("q", "插队", createdAt = 0, steering = true)))
+        val response = withTimeout(5_000) { result.await() }
+        val id = Json.parseToJsonElement(response.content).jsonObject.getValue("job_id").jsonPrimitive.content
+        runtime.closeOwner("agent:chat")
+        val ended = jobs.waitFor("chat", id, 5)
+        assertThat(ended.record.state).isEqualTo("EXITED")
+        assertThat(vault.revealBytes("chat", "TOKEN")!!.toString(Charsets.UTF_8)).isEqualTo("fixture-captured-value")
+        assertThat(ended.record.commandResult.toString()).doesNotContain("fixture-captured-value")
+        assertThat(ended.tail.text).doesNotContain("fixture-captured-value")
+    }
+
+    @Test fun `SSH连接锁等待期间插队配对中断且原命令继续`() = sshJobs { jobs ->
+        val first = async(Dispatchers.IO) { runtime.exec("agent:chat", "termux", "sleep") }
+        try {
+            withTimeout(5_000) { while (startedCommands.get() < 1) delay(10) }
+            val queue = MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+            val exec = sshTools(runtime, jobs).single { it.name == "ssh_exec" }
+            val waiting = async(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+                exec.execute(Json.parseToJsonElement("""{"host":"termux","command":"zero","yield_after_seconds":0,"on_exit":"none"}""").jsonObject, sshContext())
+            }
+            withTimeout(5_000) { while (jobs.list("chat").isEmpty()) delay(10) }
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("q", "插队", createdAt = 0, steering = true)))
+            val response = withTimeout(5_000) { waiting.await() }
+            assertThat(response.content).contains("EXEC_INTERRUPTED")
+            assertThat(startedCommands.get()).isEqualTo(1)
+            assertThat(first.isCompleted).isFalse()
+        } finally { first.cancelAndJoin() }
+    }
+
     @Test fun `让出完成保留同会话的AgentPTY`() = sshJobs { jobs ->
         val pty = runtime.openSession("agent:chat", "termux")
         val exec = sshTools(runtime, jobs).single { it.name == "ssh_exec" }

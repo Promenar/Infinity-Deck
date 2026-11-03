@@ -7,5 +7,5 @@ class LinuxExecAttachment(
     val control: BuiltinCommandControl,
     val processGroupFile: File,
     val logFile: File,
-    val onDirectory: (File) -> Unit = {},
+    val onDirectory: suspend (File) -> Unit = {},
 )

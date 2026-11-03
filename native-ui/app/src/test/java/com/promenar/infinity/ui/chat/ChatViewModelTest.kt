@@ -638,6 +638,9 @@ class ChatViewModelTest {
                 if (updates.containsKey("reasoning")) {
                     updatedMsg = updatedMsg.copy(reasoning = updates["reasoning"] as String?)
                 }
+                if (updates.containsKey("status")) {
+                    updatedMsg = updatedMsg.copy(status = updates["status"] as String?)
+                }
                 if (updates.containsKey("tokens")) {
                     updatedMsg = updatedMsg.copy(tokens = updates["tokens"] as TokenUsage)
                 }
@@ -2877,7 +2880,7 @@ class ChatViewModelTest {
 
 
     @Test
-    fun `生成中插队在工具边界让出并用工具结果开始新轮`() = runTest {
+    fun `生成中插队立即取消Provider流且原队列按步骤边界注入`() = runTest {
         seedSession(); advanceUntilIdle()
         val gate = CompletableDeferred<List<StreamChunk>>()
         streamGate = gate
@@ -2886,28 +2889,29 @@ class ChatViewModelTest {
         viewModel.sendMessage("普通队列"); advanceUntilIdle()
         viewModel.sendMessage("优先指令"); advanceUntilIdle()
         val id = viewModel.composerQueue.value.items.last().id
-        viewModel.steerQueuedMessage(id); advanceUntilIdle()
-        assertThat(viewModel.composerQueue.value.items.first().steering).isTrue()
         streamGate = null
         fakeStreamChunks = listOf(StreamChunk.TextDelta("done"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
-        gate.complete(listOf(StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.TOOL_CALLS, listOf("yield-call"))))
+        viewModel.steerQueuedMessage(id)
         awaitReal { protocolRequestCount >= 3 && viewModel.composerQueue.value.items.isEmpty() }
         assertThat(savedMessages.filter { it.first.role == MessageRole.USER }.map { it.first.content }).containsExactly("first", "优先指令", "普通队列").inOrder()
         val history = savedMessages.map { it.first }
         assertThat(history.first { it.role == MessageRole.TOOL }.toolCallId).isEqualTo("yield-call")
+        assertThat(history.first { it.role == MessageRole.ASSISTANT }.status).isEqualTo("interrupted")
+        assertThat(gate.isCompleted).isFalse()
         assertThat(history.count { it.role == MessageRole.ASSISTANT }).isEqualTo(3)
     }
 
     @Test
-    fun `生成中插队发送把草稿排到队首并标记当前步骤后发送`() = runTest {
+    fun `生成中插队发送立即注入且普通队列等待当前步骤`() = runTest {
         seedSession(); advanceUntilIdle()
         holdStreamOpen = true; fakeStreamChunks = listOf(StreamChunk.TextDelta("partial"))
         viewModel.sendMessage("first"); advanceUntilIdle()
         viewModel.sendMessage("普通队列"); advanceUntilIdle()
-        viewModel.sendMessageSteering("优先指令"); advanceUntilIdle()
+        viewModel.sendMessageSteering("优先指令")
+        awaitReal { protocolRequestCount == 2 && savedMessages.any { it.first.role == MessageRole.USER && it.first.content == "优先指令" } }
         val items = viewModel.composerQueue.value.items
-        assertThat(items.map { it.text }).containsExactly("优先指令", "普通队列").inOrder()
-        assertThat(items.first().steering).isTrue()
+        assertThat(items.map { it.text }).containsExactly("普通队列")
+        assertThat(savedMessages.count { it.first.role == MessageRole.USER && it.first.content == "优先指令" }).isEqualTo(1)
         assertThat(viewModel.inputText.value).isEmpty()
     }
 
@@ -2919,7 +2923,13 @@ class ChatViewModelTest {
         viewModel.sendMessage("普通队列"); advanceUntilIdle()
         holdStreamOpen = false
         fakeStreamChunks = listOf(StreamChunk.TextDelta("done"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+        val enqueue = CompletableDeferred<Unit>()
+        queueEnqueueGate = enqueue
         viewModel.stopAndSendNow("立即发送")
+        advanceUntilIdle()
+        assertThat(protocolRequestCount).isEqualTo(1)
+        assertThat(savedMessages.first { it.first.role == MessageRole.ASSISTANT }.first.status).isEqualTo("cancelled")
+        enqueue.complete(Unit)
         awaitReal { viewModel.composerQueue.value.items.isEmpty() && savedMessages.count { it.first.role == MessageRole.USER } >= 3 }
         assertThat(savedMessages.filter { it.first.role == MessageRole.USER }.map { it.first.content })
             .containsExactly("first", "立即发送", "普通队列").inOrder()

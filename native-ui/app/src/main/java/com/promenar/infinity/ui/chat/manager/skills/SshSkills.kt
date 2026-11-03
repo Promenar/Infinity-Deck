@@ -91,12 +91,12 @@ private class SshSkill(private val runtime: SshRuntime, private val jobs: Backgr
                     val action = BackgroundJobExitAction.fromWire((args["on_exit"] as? JsonPrimitive)?.content ?: "notify")
                         ?: throw SshFailure("INVALID_ARGUMENTS")
                     val command: CommandToolResult
-                    if (capture != null) {
+                    if (capture != null && jobs == null) {
                         command = runtime.capture(owner, args.text("host"), args.text("command"), timeout, context.sessionId, capture)
-                    } else if (jobs != null && (args.backgroundRequested() || threshold > 0)) {
+                    } else if (jobs != null) {
                         val run = jobs.runSsh(runtime, requireNotNull(snapshot), context.sessionId, context.workspaceRootUuid,
-                            args.text("command"), timeout, args.integer("max_output_chars", 32_000), threshold,
-                            args.backgroundRequested(), minutes, action, context.liveOutput, title = ExecToolArguments.title(args))
+                            args.text("command"), timeout, args.integer("max_output_chars", 32_000), if (capture != null) 0 else threshold,
+                            args.backgroundRequested(), minutes, action, context.liveOutput, title = ExecToolArguments.title(args), capture = capture)
                         val job = run.job
                         if (job != null) {
                             val started = backgroundStartJson(job)

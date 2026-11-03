@@ -90,9 +90,10 @@ class BuiltinExecServiceTest {
         gitRemote: GitRemoteSessions = GitRemoteSessions.None,
         monitor: RuntimeDataMonitor? = null,
         vault: SessionSecretVault? = null,
+        commandRunner: BuiltinCommandRunner? = null,
     ) = BuiltinExecService(
         workspace = host,
-        runner = BuiltinCommandRunner(
+        runner = commandRunner ?: BuiltinCommandRunner(
             groupLauncher = listOf("/usr/bin/perl", "-e", "setpgrp(0, 0); exec @ARGV or exit 127"),
             shell = "/bin/sh",
             signaller = { group, signal -> ProcessBuilder("/bin/kill", "-$signal", "-$group").start().waitFor() },
@@ -116,6 +117,64 @@ class BuiltinExecServiceTest {
         vault = vault,
         redactor = vault?.let(::SecretOutputRedactor),
     )
+
+    @Test fun `系统shell插队转后台后原进程完成且日志身份可恢复`() = verifyForegroundTransfer(python = false)
+    @Test fun `Python插队转后台后持久身份可停止原进程`() = verifyForegroundTransfer(python = true)
+
+    private fun verifyForegroundTransfer(python: Boolean) = runBlocking<Unit> {
+        val pythonBinary = listOf("/usr/bin/python3", "/opt/homebrew/bin/python3").firstOrNull { File(it).canExecute() }
+        if (python) assumeTrue("需要宿主 Python 验证托管进程", pythonBinary != null)
+        val packaged = File(work, "transfer-python").apply { mkdirs() }
+        File(packaged, PackagedPython.STDLIB).writeText("")
+        File(packaged, PackagedPython.LAUNCHER).apply {
+            writeText("#!/bin/sh\nunset PYTHONHOME PYTHONPATH\nexec '$pythonBinary' \"\$@\"\n")
+            setExecutable(true)
+        }
+        val runner = BuiltinCommandRunner(listOf("/usr/bin/perl", "-e", "setpgrp(0, 0); exec @ARGV or exit 127"),
+            "/bin/sh", { group, signal -> ProcessBuilder("/bin/kill", "-$signal", "-$group").start().waitFor() },
+            { File(work, "transfer-scratch") }, killGraceMillis = 100,
+            processIdentity = { pid ->
+                if (File("/proc/self/stat").isFile) runCatching { File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ')[19] }.getOrNull()
+                else "fixture-$pid"
+            })
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val jobs = com.promenar.infinity.data.jobs.BackgroundJobManager(scope,
+            com.promenar.infinity.data.jobs.BackgroundJobStore(File(work, "transfer-store")), File(work, "transfer-runs"), runner,
+            prepareWorkspace = { com.promenar.infinity.data.jobs.BackgroundJobLocation(workspace, workspace, false, false) },
+            prepareCommand = { _, _, _, _, _ -> error("前台托管保留原命令") })
+        try {
+            val exec = service(pythonDir = packaged, commandRunner = runner)
+            val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+            val skill = if (python) PythonExecSkill(exec, jobs) else ShellExecSkill(exec, jobs)
+            val input = if (python) args("code" to "from pathlib import Path; import time; Path('ready').touch(); print('ready', flush=True);\nwhile not Path('release').exists(): time.sleep(.02)\nPath('done').touch()")
+                else args("command" to "touch ready; echo ready; echo warning >&2; while [ ! -f release ]; do sleep 0.02; done; touch done; echo done")
+            val operation = async(SteeringContext(queue) + ToolCallControlContext("session", "transfer", "step")) { skill.execute(input, context) }
+            withTimeout(5_000) { while (!File(workspace, "ready").exists()) delay(10) }
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("normal", "排队", createdAt = 0)))
+            delay(50)
+            assertThat(operation.isCompleted).isFalse()
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "插队", createdAt = 0, steering = true)))
+            val response = withTimeout(5_000) { operation.await() }
+            val id = json(response.content).getValue("job_id").jsonPrimitive.content
+            val current = jobs.status("session", id)
+            assertThat(current.record.running).isTrue()
+            val processGroup = File(current.record.runDirectory, "pgid")
+            assertThat(File(processGroup.path + ".identity").isFile).isTrue()
+            if (python) assertThat(runner.interruptBackground(processGroup)).isTrue()
+            else File(workspace, "release").createNewFile()
+            val ended = jobs.waitFor("session", id, 5)
+            assertThat(ended.record.running).isFalse()
+            assertThat(File(workspace, "done").exists()).isEqualTo(!python)
+            if (!python) {
+                assertThat(ended.tail.text).contains("done")
+                assertThat(ended.tail.text).doesNotContain("[+")
+                assertThat(File(current.record.runDirectory, "output.log").readText()).contains("[+")
+                assertThat(ended.record.commandResult!!.getValue("stderr").jsonPrimitive.content).contains("warning")
+            }
+        } finally { scope.coroutineContext[kotlinx.coroutines.Job]?.let { it.cancel(); it.join() } }
+    }
 
     @Test
     fun `捕获完整stdout不进入实时面板且失败不返回原文`() = runBlocking<Unit> {

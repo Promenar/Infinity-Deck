@@ -31,6 +31,7 @@ import com.promenar.infinity.ui.workspace.*
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.*
 import org.junit.After
@@ -483,6 +484,80 @@ class LinuxExecIntegrationTest {
         assertThat(inputs).containsExactly("" to true)
         slow = true
         assertThat((runCatching { jobs.input("s", id, "a") }.exceptionOrNull() as? JobAccessException)?.code).isEqualTo("JOB_INPUT_TIMEOUT")
+        jobs.stop("s", id)
+    }
+
+    @Test fun `后台终端窗口填满重复输出后等待仍能识别下一行`() = runBlocking<Unit> {
+        val exec = service()
+        val jobs = manager(exec)
+        val command = "i=0; while [ \"\$i\" -lt 7000 ]; do printf 'tick\\n'; i=\$((i + 1)); done; touch filled; while [ ! -f release ]; do sleep 0.05; done; printf 'tick\\n'; sleep 30"
+        val running = async(ToolCallControlContext("s", "repeat-command", "repeat-step")) {
+            jobs.runLinuxForeground("s", "root", command, 0, 120, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { attachment, live ->
+                exec.runShell("root", "s", command, null, 30, live, attachment = attachment)
+            }
+        }
+        withTimeout(5_000) { ToolExecutionControls.observe("s", "repeat-command").first { it != null } }
+        ToolExecutionControls.moveToBackground("s", "repeat-command")
+        val id = running.await().toJson().getValue("job_id").jsonPrimitive.content
+        withTimeout(5_000) { while (!File(workspace, "filled").exists()) delay(10) }
+        val waiting = async(ToolCallControlContext("s", "repeat-wait", "repeat-wait-step")) { jobs.waitFor("s", id, 5, untilOutput = "^tick$") }
+        withTimeout(5_000) { ToolExecutionControls.observe("s", "repeat-wait").first { it != null } }
+        File(workspace, "release").createNewFile()
+        assertThat(waiting.await().waitReason).isEqualTo("output")
+        jobs.stop("s", id)
+    }
+
+    @Test fun `目录准备前转后台后运行记录在目录就绪时及时更新`() = runBlocking<Unit> {
+        val exec = service()
+        val jobs = manager(exec)
+        val prepare = CompletableDeferred<Unit>()
+        val published = CompletableDeferred<Unit>()
+        val result = async(ToolCallControlContext("s", "prepare-call", "prepare-step")) {
+            jobs.runLinuxForeground("s", "root", "preparing", 0, 120, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { attachment, _ ->
+                prepare.await()
+                attachment.onDirectory(workspace)
+                published.complete(Unit)
+                while (!attachment.control.stopRequested) delay(10)
+                CommandToolResult(exitCode = 0)
+            }
+        }
+        withTimeout(5_000) { ToolExecutionControls.observe("s", "prepare-call").first { it != null } }
+        ToolExecutionControls.moveToBackground("s", "prepare-call")
+        val id = withTimeout(5_000) { result.await() }.toJson().getValue("job_id").jsonPrimitive.content
+        prepare.complete(Unit)
+        withTimeout(5_000) { published.await() }
+        assertThat(jobs.status("s", id).record.workspaceDirectory).isEqualTo(workspace.path)
+        jobs.stop("s", id)
+    }
+
+    @Test fun `零自动让出时用户可转后台并保留命令进程`() = runBlocking<Unit> {
+        val exec = service()
+        val jobs = manager(exec)
+        val result = async(ToolCallControlContext("s", "manual-call", "step-manual")) {
+            jobs.runLinuxForeground("s", "root", "sleep 30", 0, 120, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { attachment, live ->
+                exec.runShell("root", "s", "sleep 30", null, 30, live, attachment = attachment)
+            }
+        }
+        withTimeout(5_000) { ToolExecutionControls.observe("s", "manual-call").first { it != null } }
+        assertThat(ToolExecutionControls.moveToBackground("s", "manual-call")).isTrue()
+        val id = withTimeout(5_000) { result.await() }.toJson().getValue("job_id").jsonPrimitive.content
+        assertThat(jobs.status("s", id).record.running).isTrue()
+        jobs.stop("s", id)
+    }
+
+    @Test fun `插队在自动阈值之前让出前台命令`() = runBlocking<Unit> {
+        val exec = service()
+        val jobs = manager(exec)
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val result = async(SteeringContext(queue)) {
+            jobs.runLinuxForeground("s", "root", "sleep 30", 0, 120, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { attachment, live ->
+                exec.runShell("root", "s", "sleep 30", null, 30, live, attachment = attachment)
+            }
+        }
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("q", "steer", createdAt = 0, steering = true)))
+        val id = withTimeout(5_000) { result.await() }.toJson().getValue("job_id").jsonPrimitive.content
+        assertThat(jobs.status("s", id).record.running).isTrue()
         jobs.stop("s", id)
     }
 

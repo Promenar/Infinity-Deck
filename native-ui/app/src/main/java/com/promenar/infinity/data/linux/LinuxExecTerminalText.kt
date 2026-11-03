@@ -20,8 +20,12 @@ class LinuxExecTerminalText(private val limit: Int, private val rows: Int = 40, 
     private var carriage = false
     private var escape = 0
 
-    @Synchronized fun accept(text: String): String {
+    fun accept(text: String): String = accept(text, null)
+
+    /** 规范化的增量事件独立于有界快照，重复输出也会逐段发布。 */
+    @Synchronized fun accept(text: String, onOutput: ((String) -> Unit)?): String {
         val complete = StringBuilder()
+        val events = if (onOutput != null) StringBuilder() else null
         for (c in text) {
             if (escape != 0) {
                 if (sequence.length < MAX_SEQUENCE) sequence.append(c)
@@ -39,19 +43,22 @@ class LinuxExecTerminalText(private val limit: Int, private val rows: Int = 40, 
             if (c == '\u009b') { escape = 2; sequence.clear().append('['); continue }
             if (c == '\u009d') { escape = 3; sequence.clear().append(']'); continue }
             when (c) {
-                '\r' -> carriage = true
+                '\r' -> { carriage = true; events?.append(c) }
                 '\n' -> {
+                    events?.append(c)
                     val value = line.toString() + "\n"
                     complete.append(value); history.append(value); trim(history)
                     committed += lineLength + 1; line.clear(); lineLength = 0; carriage = false; lines++
                 }
-                '\b' -> if (line.isNotEmpty()) { line.deleteCharAt(line.lastIndex); lineLength = (lineLength - 1).coerceAtLeast(0) }
+                '\b' -> if (line.isNotEmpty()) { events?.append(c); line.deleteCharAt(line.lastIndex); lineLength = (lineLength - 1).coerceAtLeast(0) }
                 else -> if (c == '\t' || !c.isISOControl()) {
                     if (carriage) { line.clear(); lineLength = 0; carriage = false }
+                    events?.append(c)
                     line.append(c); lineLength++; trim(line)
                 }
             }
         }
+        events?.takeIf { it.isNotEmpty() }?.let { onOutput?.invoke(it.toString()) }
         return complete.toString()
     }
     @Synchronized fun snapshot(): BuiltinCommandOutput {

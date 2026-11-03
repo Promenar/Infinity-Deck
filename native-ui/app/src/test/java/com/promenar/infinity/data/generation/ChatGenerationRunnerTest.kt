@@ -32,7 +32,7 @@ import org.junit.Test
 
 class ChatGenerationRunnerTest {
     @Test
-    fun `工具结果提交后插队让出为成功且不创建续写占位`() = runTest {
+    fun `工具结果提交后排队注入同一循环并继续生成`() = runTest {
         val runtime = FakeRuntime(listOf(flowOf(
             GenerationChunk.ToolCall("call", "search", "{}"),
             GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("call")),
@@ -41,22 +41,92 @@ class ChatGenerationRunnerTest {
         runtime.yieldAtBoundary = true
         val events = mutableListOf<GenerationEvent>()
         ChatGenerationRunner(runtime).run(request(), events::add)
-        assertThat(runtime.streamAttempts).isEqualTo(1)
+        assertThat(runtime.streamAttempts).isEqualTo(2)
         assertThat(runtime.handledToolRounds).isEqualTo(1)
         assertThat(runtime.nextAssistantId).isEqualTo("assistant-next")
-        assertThat(runtime.persisted.last().toolCalls.single().id).isEqualTo("call")
+        assertThat(runtime.persisted.last().content).isEqualTo("不应续写")
         assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
-        assertThat(runtime.yieldChecks).isEqualTo(1)
+        assertThat(runtime.yieldChecks).isEqualTo(2)
         assertThat(events.phases().last()).isEqualTo(GenerationPhase.COMPLETED)
     }
 
     @Test
-    fun `纯文字完成不查询插队边界`() = runTest {
-        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Text("完成"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+    fun `纯文字结束边界同样注入排队`() = runTest {
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Text("完成"), GenerationChunk.Completed(CompletionReason.END_TURN)),
+            flowOf(GenerationChunk.Text("新指令回复"), GenerationChunk.Completed(CompletionReason.END_TURN))))
         runtime.yieldAtBoundary = true
         ChatGenerationRunner(runtime).run(request()) {}
-        assertThat(runtime.yieldChecks).isEqualTo(0)
+        assertThat(runtime.yieldChecks).isEqualTo(2)
+        assertThat(runtime.streamAttempts).isEqualTo(2)
+        assertThat(runtime.persisted.last().content).isEqualTo("新指令回复")
         assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+    }
+
+    @Test fun `普通排队在工具批末和END_TURN各送队首一条`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("one", "第一条", createdAt = 0),
+            com.promenar.infinity.data.chat.queue.QueuedMessage("two", "第二条", createdAt = 1))))
+        val runtime = FakeRuntime(listOf(flowOf(
+            GenerationChunk.ToolCall("a", "search", "{}"), GenerationChunk.ToolCall("b", "search", "{}"),
+            GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("a", "b"))),
+            flowOf(GenerationChunk.Text("第一条答复"), GenerationChunk.Completed(CompletionReason.END_TURN)),
+            flowOf(GenerationChunk.Text("第二条答复"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+        runtime.pendingQueue = queue
+        runtime.toolDecisions += GenerationToolDecision.CONTINUE
+        runtime.onTools = { assertThat(queue.value.items.map { it.id }).containsExactly("one", "two").inOrder() }
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(runtime.handledCalls).containsExactly("a", "b").inOrder()
+        assertThat(runtime.streamRequests.map { it.userMessageId }).containsExactly("user", "one", "two").inOrder()
+        assertThat(queue.value.items).isEmpty()
+        assertThat(runtime.interrupted).isEmpty()
+    }
+
+    @Test fun `插队取消未结束Provider流并保留正文思考和调用配对`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var streamClosed = false
+        val runtime = FakeRuntime(listOf(flow {
+            try {
+                emit(GenerationChunk.Text("部分正文"))
+                emit(GenerationChunk.Thinking("部分思考"))
+                emit(GenerationChunk.ToolCall("unfinished", "search", "{\"query\":"))
+                started.complete(Unit)
+                awaitCancellation()
+            } finally { streamClosed = true }
+        }, flowOf(GenerationChunk.Text("新指令答复"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+        runtime.pendingQueue = queue
+        val running = launch { ChatGenerationRunner(runtime).run(request()) {} }
+        started.await()
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "新指令", createdAt = 0, steering = true)))
+        running.join()
+        assertThat(running.isCancelled).isFalse()
+        assertThat(streamClosed).isTrue()
+        assertThat(runtime.interrupted.single().content).isEqualTo("部分正文")
+        assertThat(runtime.interrupted.single().reasoning).isEqualTo("部分思考")
+        assertThat(runtime.interrupted.single().toolCalls.single().arguments).isEqualTo("{}")
+        assertThat(runtime.rejectedCalls).containsExactly("unfinished")
+        assertThat(runtime.handledCalls).isEmpty()
+        assertThat(runtime.streamRequests.map { it.userMessageId }).containsExactly("user", "urgent").inOrder()
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+    }
+
+    @Test fun `插队到达审批创建窗口时先关闭等待再注入`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.ToolCall("approval", "write", "{}"),
+            GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("approval"))),
+            flowOf(GenerationChunk.Text("新答复"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+        runtime.pendingQueue = queue
+        runtime.toolDecisions += GenerationToolDecision.WAIT_FOR_APPROVAL
+        runtime.onTools = { queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "新指令", createdAt = 0, steering = true))) }
+        val events = mutableListOf<GenerationEvent>()
+        ChatGenerationRunner(runtime).run(request(), events::add)
+        assertThat(events.phases()).doesNotContain(GenerationPhase.WAITING_APPROVAL)
+        assertThat(events.phases()).doesNotContain(GenerationPhase.WAITING_INPUT)
+        assertThat(runtime.closedPending).containsExactly("approval")
+        assertThat(runtime.streamRequests.map { it.userMessageId }).containsExactly("user", "urgent").inOrder()
+        assertThat(runtime.resourceReleases).containsExactly(false)
     }
 
     @Test
@@ -628,10 +698,11 @@ class ChatGenerationRunnerTest {
             toolDecisions += GenerationToolDecision.CONTINUE
             replyReminderSupported = true
         }
-        ChatGenerationRunner(twice).run(request()) {}
+        val failed = runCatching { ChatGenerationRunner(twice).run(request()) {} }.exceptionOrNull()
+        assertThat((failed as GenerationFailedException).failure.code).isEqualTo(GenerationFailureCode.EMPTY_REPLY)
         assertThat(twice.streamAttempts).isEqualTo(3)
         assertThat(twice.replyReminders).isEqualTo(1)
-        assertThat(twice.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+        assertThat(twice.terminals).containsExactly(GenerationTerminalStatus.ERROR)
 
         val unsupported = FakeRuntime(listOf(toolRound, empty())).apply { toolDecisions += GenerationToolDecision.CONTINUE }
         ChatGenerationRunner(unsupported).run(request()) {}
@@ -793,10 +864,30 @@ class ChatGenerationRunnerTest {
         val toolDecisions = ArrayDeque<GenerationToolDecision>()
         var yieldAtBoundary = false
         var yieldChecks = 0
-        override suspend fun shouldYieldAtRoundBoundary(request: GenerationRequest): Boolean {
+        var pendingQueue: kotlinx.coroutines.flow.MutableStateFlow<com.promenar.infinity.data.chat.queue.ComposerQueueState>? = null
+        val interrupted = mutableListOf<GenerationSnapshot>()
+        val streamRequests = mutableListOf<GenerationRequest>()
+        val handledCalls = mutableListOf<String>()
+        val closedPending = mutableListOf<String>()
+        var onTools: suspend () -> Unit = {}
+        override suspend fun steeringContext(request: GenerationRequest) = pendingQueue?.let { com.promenar.infinity.data.exec.SteeringContext(it) }
+        override suspend fun markStepInterrupted(request: GenerationRequest, snapshot: GenerationSnapshot) { interrupted += snapshot }
+        override suspend fun interruptPendingTools(request: GenerationRequest, toolCalls: List<GenerationToolCall>): Boolean {
+            closedPending += toolCalls.map { it.id }
+            return true
+        }
+        override suspend fun injectSteering(request: GenerationRequest) = inject(request, true)
+        override suspend fun injectQueuedAtBoundary(request: GenerationRequest) = inject(request, false)
+        private fun inject(request: GenerationRequest, steeringOnly: Boolean): GenerationRequest? {
             yieldChecks++
-            check(flushCount > 0)
-            return yieldAtBoundary
+            pendingQueue?.let { queue ->
+                val item = queue.value.items.firstOrNull { !steeringOnly || it.steering } ?: return null
+                queue.value = queue.value.copy(items = queue.value.items.filterNot { it.id == item.id })
+                return request.copy(userMessageId = item.id, userContent = item.text)
+            }
+            if (!yieldAtBoundary) return null
+            yieldAtBoundary = false
+            return request.copy(userMessageId = "steered-user", userContent = "新指令")
         }
         var streamAttempts = 0
         var flushCount = 0
@@ -850,6 +941,7 @@ class ChatGenerationRunnerTest {
             preparationOutcomes.removeFirstOrNull() ?: preparationOutcome
         override suspend fun stream(request: GenerationRequest, attempt: Int): Flow<GenerationChunk> {
             streamAttempts++
+            streamRequests += request
             return streams[attempt]
         }
         override suspend fun persist(request: GenerationRequest, snapshot: GenerationSnapshot) {
@@ -862,6 +954,8 @@ class ChatGenerationRunnerTest {
             toolCalls: List<GenerationToolCall>,
         ): GenerationToolDecision {
             handledToolRounds++
+            handledCalls += toolCalls.map { it.id }
+            onTools()
             return toolDecisions.removeFirstOrNull() ?: GenerationToolDecision.COMPLETE
         }
         override suspend fun prepareContinuation(request: GenerationRequest): String? =
