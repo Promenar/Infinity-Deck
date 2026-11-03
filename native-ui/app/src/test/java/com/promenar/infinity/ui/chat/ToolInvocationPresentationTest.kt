@@ -198,6 +198,26 @@ class ToolInvocationPresentationTest {
         assertThat(summary.count).isEqualTo(3)
     }
 
+    @Test
+    fun `失败的媒体调用不计入产出数量，只计入失败`() {
+        fun ref(path: String) = MediaRef(path, "image/png", MediaKind.IMAGE, 1)
+        fun error(id: String, callId: String, time: Long) =
+            ExecutionStep(id, "error", toolCallId = callId, content = "HTTP 400 unknown_parameter", timestamp = time)
+        val failedOnly = toolGroupSummary(toolInvocations(listOf(call("g", "gen", "generate_image", 1000), error("g-r", "gen", 1400))))
+        assertThat(failedOnly.parts).containsExactly(ToolSummaryPart(ToolSummaryAction.IMAGE, 0))
+        assertThat(failedOnly.failedCount).isEqualTo(1)
+
+        val mixed = toolGroupSummary(toolInvocations(listOf(
+            call("g", "gen", "generate_image", 1000), error("g-r", "gen", 1400),
+            call("g2", "gen2", "generate_image", 1500), result("g2-r", "gen2", 1900).copy(media = listOf(ref("/media/a.png"))),
+            call("v", "view", "view_media", 2000), error("v-r", "view", 2100),
+        )))
+        assertThat(mixed.parts).containsExactly(
+            ToolSummaryPart(ToolSummaryAction.IMAGE, 1), ToolSummaryPart(ToolSummaryAction.MEDIA_VIEW, 0),
+        ).inOrder()
+        assertThat(mixed.failedCount).isEqualTo(2)
+    }
+
     private fun completedInvocations(vararg names: String) = toolInvocations(names.flatMapIndexed { index, name ->
         val start = 1_000L + index * 500L
         listOf(call("c$index", "$index", name, start), result("r$index", "$index", start + 400))

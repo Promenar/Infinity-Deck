@@ -1191,6 +1191,8 @@ private class StatsAnchorHolder {
 
 @Composable
 private fun toolSummaryCompletedText(part: ToolSummaryPart): String {
+    // 媒体调用全部失败时没有产出，只写动作名，失败数由后缀给出。
+    if (part.count == 0) return stringResource(toolActionNameRes(part.action))
     val resId = when (part.action) {
         ToolSummaryAction.COMMAND -> R.plurals.chat_step_command_done
         ToolSummaryAction.WEB_SEARCH -> if (part.count == 1) R.plurals.chat_step_web_search_once else R.plurals.chat_step_web_search_done
@@ -1218,7 +1220,9 @@ private fun toolSummaryCompletedText(part: ToolSummaryPart): String {
 }
 
 @Composable
-internal fun toolFriendlyName(toolName: String?): String = stringResource(when (toolSummaryAction(toolName)) {
+internal fun toolFriendlyName(toolName: String?): String = stringResource(toolActionNameRes(toolSummaryAction(toolName)))
+
+private fun toolActionNameRes(action: ToolSummaryAction): Int = when (action) {
     ToolSummaryAction.COMMAND -> R.string.chat_step_command_name
     ToolSummaryAction.WEB_SEARCH -> R.string.chat_step_web_search_name
     ToolSummaryAction.WEB_READ -> R.string.chat_step_web_read_name
@@ -1240,7 +1244,7 @@ internal fun toolFriendlyName(toolName: String?): String = stringResource(when (
     ToolSummaryAction.SUBAGENT -> R.string.chat_step_subagent_name
     ToolSummaryAction.SECRET -> R.string.chat_step_secret_name
     ToolSummaryAction.OTHER -> R.string.chat_step_other_name
-})
+}
 
 @Composable
 internal fun toolGroupSummaryText(summary: ToolGroupSummary): String {

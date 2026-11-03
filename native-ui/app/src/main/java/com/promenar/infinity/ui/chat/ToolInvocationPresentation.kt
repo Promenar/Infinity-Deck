@@ -214,11 +214,12 @@ internal fun toolSummaryAction(name: String?): ToolSummaryAction = when (name) {
 
 /**
  * 摘要中一次调用计入的数量：生图按成功结果中的图片张数，查看与下载按媒体个数；
- * 没有结构化媒体的旧结果按一次调用计。
+ * 没有结构化媒体的旧结果按一次调用计，失败的调用没有产出，计 0，只计入失败数。
  */
 internal fun toolSummaryWeight(action: ToolSummaryAction, invocation: ToolInvocationPresentation): Int {
     if (action == ToolSummaryAction.SUBAGENT) return subagentTaskCount(invocation.call?.toolArgs)
     if (action != ToolSummaryAction.IMAGE && action != ToolSummaryAction.MEDIA_VIEW && action != ToolSummaryAction.MEDIA_FETCH) return 1
+    if (invocation.failed) return 0
     val media = invocation.results.filter { it.type == "tool_result" }.flatMap { it.media.orEmpty() }
     val counted = if (action == ToolSummaryAction.IMAGE) media.count { it.kind == com.promenar.infinity.domain.media.MediaKind.IMAGE } else media.size
     return counted.takeIf { it > 0 } ?: 1

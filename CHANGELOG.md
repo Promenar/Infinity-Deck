@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 生图、查看媒体与下载媒体调用失败时，步骤摘要不再显示“生成了 1 张图片”等产出数量，只写动作名与失败数，例如“生成图片 · 1 个失败”。
+
 ## [0.20.0-beta] - 2026-11-04
 
 ### 新增
