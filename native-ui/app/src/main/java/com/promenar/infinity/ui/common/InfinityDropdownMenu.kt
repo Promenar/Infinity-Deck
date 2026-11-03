@@ -159,6 +159,22 @@ class InfinityMenuTouch {
 @Composable
 fun rememberInfinityMenuTouch(): InfinityMenuTouch = remember { InfinityMenuTouch() }
 
+/**
+ * 菜单这一轮打开时的按住点：只在从关到开的那一刻取，开着时再按别处不跟着走；
+ * 关闭后沿用，退场动画在原位播完。若关闭时丢掉按住点，位置会退回贴锚点的算法，
+ * 整行宽的列表行会让菜单右对齐到行尾，退场那一瞬闪到列表右侧。
+ */
+internal class InfinityMenuOpenPoint {
+    private var open = false
+    private var point: IntOffset? = null
+
+    fun resolve(expanded: Boolean, current: IntOffset?): IntOffset? {
+        if (expanded && !open) point = current
+        open = expanded
+        return point
+    }
+}
+
 fun Modifier.infinityMenuTouch(touch: InfinityMenuTouch): Modifier = this
     .onGloballyPositioned { touch.coordinates = it }
     .pointerInput(touch) {
@@ -237,8 +253,8 @@ fun InfinityDropdownMenu(
     )
     val shift = with(density) { IntOffset(offset.x.roundToPx(), offset.y.roundToPx()) }
     var origin by remember { mutableStateOf(TransformOrigin(0f, 0f)) }
-    // 只在打开时取按住点，菜单开着时再按别处不会让它跳走。
-    val touchPoint = remember(expanded) { touch?.windowPoint?.takeIf { expanded } }
+    val openPoint = remember { InfinityMenuOpenPoint() }
+    val touchPoint = openPoint.resolve(expanded, touch?.windowPoint)
     val provider = remember(limits, shift, touchPoint, stagger) {
         object : PopupPositionProvider {
             override fun calculatePosition(

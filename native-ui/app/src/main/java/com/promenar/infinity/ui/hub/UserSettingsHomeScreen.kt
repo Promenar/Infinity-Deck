@@ -11,13 +11,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,12 +67,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.promenar.infinity.ui.chat.trackWordmarkPointer
-import com.promenar.infinity.ui.chat.WordmarkPointer
 import com.promenar.infinity.ui.chat.LedMorphWordmark
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Edit
@@ -212,6 +207,12 @@ fun UserSettingsHomeScreen(
 
     if (showProfileMenu) {
         ProfileMenuSheet(
+            hasAvatar = state.userAvatar != null,
+            showsBrand = state.profileShowsBrand,
+            onToggleDisplay = {
+                showProfileMenu = false
+                actions.onToggleProfileDisplay()
+            },
             onSetAvatar = {
                 showProfileMenu = false
                 actions.onChangeAvatar()
@@ -319,9 +320,6 @@ internal fun UserSettingsHomeScreenContent(
                         userName = state.userName,
                         avatarUri = state.userAvatar,
                         showsBrand = state.profileShowsBrand,
-                        onEditName = actions.onEditName,
-                        onChangeAvatar = actions.onChangeAvatar,
-                        onToggleDisplay = actions.onToggleProfileDisplay,
                         onOpenMenu = actions.onOpenProfileMenu,
                     )
                     state.error?.let { error ->
@@ -576,96 +574,60 @@ private fun UserSettingsNavigationItem(
 }
 
 /**
- * 设置页顶部的个人区：没有头像或用户选择品牌时显示灯珠变形字标，否则显示个人名片。
- * 有头像时右上角的按钮在两者之间切换；没有头像时点字标打开个人资料菜单。
+ * 设置页顶部的个人区：没有头像或用户选择品牌时显示灯珠变形字标，否则显示头像与名字。
+ * 两种形态都只有一个点按目标，点它弹出个人资料面板，在面板里切换显示、换头像或改名。
  */
 @Composable
 private fun UserProfileHeader(
     userName: String,
     avatarUri: String?,
     showsBrand: Boolean,
-    onEditName: () -> Unit,
-    onChangeAvatar: () -> Unit,
-    onToggleDisplay: () -> Unit,
     onOpenMenu: () -> Unit,
 ) {
-    Box(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (showsBrand) {
-                ProfileBrandMark(onClick = if (avatarUri == null) onOpenMenu else null)
-            } else {
-                UserProfileCard(userName, avatarUri, onEditName, onChangeAvatar)
-            }
-        }
-        if (avatarUri != null) {
-            FilledTonalIconButton(
-                onClick = onToggleDisplay,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .testTag(UiTags.SETTINGS_PROFILE_DISPLAY_TOGGLE),
-            ) {
-                Icon(
-                    imageVector = if (showsBrand) Icons.Rounded.Person else Icons.Rounded.AllInclusive,
-                    contentDescription = stringResource(
-                        if (showsBrand) R.string.settings_profile_show_avatar else R.string.settings_profile_show_brand,
-                    ),
-                )
-            }
-        }
-    }
-}
-
-/** 与首次引导同一个灯珠变形字标，灯珠数不缩减。可点时打开个人资料菜单，否则点按跳到下一段变形。 */
-@Composable
-private fun ProfileBrandMark(onClick: (() -> Unit)?) {
-    val modifier = Modifier
-        .fillMaxWidth()
-        .height(170.dp)
-        .testTag(UiTags.SETTINGS_PROFILE_BRAND)
-    if (onClick != null) {
-        val menuLabel = stringResource(R.string.settings_profile_menu)
-        LedMorphWordmark(
-            modifier = modifier
-                .semantics { contentDescription = menuLabel }
-                .clickable(role = Role.Button, onClickLabel = menuLabel, onClick = onClick),
-            centerFraction = 0.5f,
-        )
+    if (showsBrand) {
+        ProfileBrandMark(onClick = onOpenMenu)
     } else {
-        val pointer = remember { WordmarkPointer() }
-        LedMorphWordmark(
-            modifier = modifier.trackWordmarkPointer(pointer),
-            pointer = pointer,
-            centerFraction = 0.5f,
-        )
+        UserProfileCard(userName, avatarUri, onClick = onOpenMenu)
     }
 }
 
-/** 个人名片：头像与名字居中，点头像换图，点名字改名。 */
+/** 与首次引导同一个灯珠变形字标，灯珠数不缩减；点按打开个人资料面板。 */
+@Composable
+private fun ProfileBrandMark(onClick: () -> Unit) {
+    val menuLabel = stringResource(R.string.settings_profile_menu)
+    LedMorphWordmark(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(170.dp)
+            .testTag(UiTags.SETTINGS_PROFILE_BRAND)
+            .semantics { contentDescription = menuLabel }
+            .clickable(role = Role.Button, onClickLabel = menuLabel, onClick = onClick),
+        centerFraction = 0.5f,
+    )
+}
+
+/** 头像与名字居中，整体是一个点按目标，点按打开个人资料面板。 */
 @Composable
 private fun UserProfileCard(
     userName: String,
     avatarUri: String?,
-    onEditName: () -> Unit,
-    onChangeAvatar: () -> Unit
+    onClick: () -> Unit,
 ) {
-    val editAvatarDescription = stringResource(R.string.settings_edit_avatar)
-    val editNameDescription = stringResource(R.string.settings_edit_name)
-
-    Box(
+    val menuLabel = stringResource(R.string.settings_profile_menu)
+    Column(
         modifier = Modifier
-            .size(96.dp)
-            .testTag(UiTags.SETTINGS_USER_AVATAR)
-            .clickable(
-                role = Role.Button,
-                onClickLabel = editAvatarDescription,
-                onClick = onChangeAvatar,
-            ),
+            .clip(MaterialTheme.shapes.large)
+            .testTag(UiTags.SETTINGS_PROFILE_CARD)
+            .clickable(role = Role.Button, onClickLabel = menuLabel, onClick = onClick)
+            .padding(InfinitySpacing.Small),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .size(96.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .testTag(UiTags.SETTINGS_USER_AVATAR),
             contentAlignment = Alignment.Center,
         ) {
             if (avatarUri != null) {
@@ -683,38 +645,7 @@ private fun UserProfileCard(
                 )
             }
         }
-        // 相机角标外圈取页面背景色，把角标从头像边缘切出来。
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .size(32.dp)
-                .background(MaterialTheme.colorScheme.background, CircleShape)
-                .padding(3.dp)
-                .background(MaterialTheme.colorScheme.primary, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.PhotoCamera,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(15.dp),
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(InfinitySpacing.Small))
-    Row(
-        modifier = Modifier
-            .defaultMinSize(minHeight = 48.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .testTag(UiTags.SETTINGS_USER_NAME)
-            .clickable(
-                role = Role.Button,
-                onClickLabel = editNameDescription,
-                onClick = onEditName,
-            )
-            .padding(horizontal = InfinitySpacing.Small),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+        Spacer(modifier = Modifier.height(InfinitySpacing.Small))
         Text(
             text = userName,
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -722,22 +653,9 @@ private fun UserProfileCard(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Spacer(modifier = Modifier.width(InfinitySpacing.XSmall))
-        Icon(
-            imageVector = Icons.Rounded.Edit,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.testTag(UiTags.SETTINGS_USER_NAME),
         )
     }
-    Text(
-        text = stringResource(R.string.settings_profile_local_hint),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
 }
 
 /** 渠道显示名：侧载版或 Play 版。 */
@@ -926,9 +844,12 @@ internal fun LanguageSelectorSheet(
     }
 }
 
-/** 未设头像时点品牌字标弹出：设置头像或修改名字。 */
+/** 点个人区弹出：有头像时可在头像与品牌动画间切换，另可换头像、改名字。 */
 @Composable
 private fun ProfileMenuSheet(
+    hasAvatar: Boolean,
+    showsBrand: Boolean,
+    onToggleDisplay: () -> Unit,
     onSetAvatar: () -> Unit,
     onEditName: () -> Unit,
     onDismiss: () -> Unit,
@@ -938,9 +859,18 @@ private fun ProfileMenuSheet(
         onDismiss = onDismiss,
         title = stringResource(R.string.settings_profile_menu),
     ) {
+        if (hasAvatar) {
+            InfinitySettingsItem(
+                icon = if (showsBrand) Icons.Rounded.Person else Icons.Rounded.AllInclusive,
+                title = stringResource(if (showsBrand) R.string.settings_profile_show_avatar else R.string.settings_profile_show_brand),
+                onClick = onToggleDisplay,
+                modifier = Modifier.testTag(UiTags.SETTINGS_PROFILE_DISPLAY_TOGGLE),
+                horizontalPadding = 0.dp,
+            )
+        }
         InfinitySettingsItem(
             icon = Icons.Rounded.PhotoCamera,
-            title = stringResource(R.string.settings_profile_set_avatar),
+            title = stringResource(if (hasAvatar) R.string.settings_profile_change_avatar else R.string.settings_profile_set_avatar),
             onClick = onSetAvatar,
             horizontalPadding = 0.dp,
         )

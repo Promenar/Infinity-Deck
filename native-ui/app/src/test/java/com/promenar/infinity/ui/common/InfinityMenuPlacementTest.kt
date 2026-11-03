@@ -58,4 +58,27 @@ class InfinityMenuPlacementTest {
         assertThat(p.offset.y).isEqualTo(100)
         assertThat(p.offset.x).isAtLeast(16)
     }
+    @Test fun `点菜单项关闭时沿用打开时的按住点，退场不跳回贴锚点位置`() {
+        val open = InfinityMenuOpenPoint()
+        val pressed = IntOffset(120, 640)
+        assertThat(open.resolve(expanded = true, current = pressed)).isEqualTo(pressed)
+        // 菜单开着时再按别处，位置不跟着走。
+        assertThat(open.resolve(expanded = true, current = IntOffset(800, 900))).isEqualTo(pressed)
+        // 点“删除”等菜单项后 expanded 变 false、按住点可能已被清掉，退场仍在原位。
+        assertThat(open.resolve(expanded = false, current = null)).isEqualTo(pressed)
+        // 整行宽的锚点若退回贴锚点算法会右对齐到行尾，这正是闪到右侧的那一帧。
+        val row = IntRect(0, 600, 1000, 680)
+        val atTouch = place(row, touch = open.resolve(expanded = false, current = null))
+        assertThat(atTouch.offset.x).isEqualTo(120)
+        assertThat(place(row).offset.x).isEqualTo(1000 - 300 - 16)
+    }
+
+    @Test fun `下一次打开取新的按住点，无障碍打开没有按住点时贴锚点`() {
+        val open = InfinityMenuOpenPoint()
+        open.resolve(expanded = true, current = IntOffset(120, 640))
+        open.resolve(expanded = false, current = null)
+        assertThat(open.resolve(expanded = true, current = IntOffset(300, 200))).isEqualTo(IntOffset(300, 200))
+        open.resolve(expanded = false, current = null)
+        assertThat(open.resolve(expanded = true, current = null)).isNull()
+    }
 }

@@ -114,7 +114,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 **安装**：从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 与对应 `.sha256` 文件，核对 SHA-256 后安装。公开发布可能落后于源码；不要安装 CI 临时制品、Debug APK 或来源不明的重打包版本。
 
-当前源码版本为 `v0.18.0-beta`（versionCode `50`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.18.0-beta`（versionCode `51`），变更见[更新日志](CHANGELOG.md)。
 
 ## 从源码构建
 

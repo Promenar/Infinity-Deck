@@ -435,11 +435,11 @@
     <string name="settings_btn_cancel">取消</string>
     <string name="settings_btn_delete">删除</string>
     <string name="settings_edit_avatar">编辑头像</string>
-    <string name="settings_profile_local_hint">只保存在这台设备上</string>
-    <string name="settings_profile_show_brand">显示品牌标识</string>
+    <string name="settings_profile_show_brand">显示品牌动画</string>
     <string name="settings_profile_show_avatar">显示我的头像</string>
     <string name="settings_profile_menu">个人资料</string>
     <string name="settings_profile_set_avatar">设置头像</string>
+    <string name="settings_profile_change_avatar">更换头像</string>
 
     <!-- ============ Chat ============ -->
     <!-- ChatScreen -->

@@ -165,6 +165,7 @@ object UiTags {
     const val SETTINGS_USER_AVATAR = "settings_user_avatar"
     const val SETTINGS_USER_NAME = "settings_user_name"
     const val SETTINGS_PROFILE_BRAND = "settings_profile_brand"
+    const val SETTINGS_PROFILE_CARD = "settings_profile_card"
     const val SETTINGS_PROFILE_DISPLAY_TOGGLE = "settings_profile_display_toggle"
     private const val SETTINGS_PROVIDER_CARD_PREFIX = "settings_provider_card:"
 

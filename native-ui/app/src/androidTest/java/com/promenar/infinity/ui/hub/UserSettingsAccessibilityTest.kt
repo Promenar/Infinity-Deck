@@ -108,7 +108,8 @@ class UserSettingsAccessibilityTest {
                     // 否则同列的助手头像只剩 0 高度，测到的是测试布局而非产品触控目标。
                     Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
                         UserSettingsHomeScreenContent(
-                            state = UserSettingsHomeScreenState(userName = "Infinity Workbench"),
+                            // 设了头像才显示名片；没有头像时整块是品牌字标。
+                            state = UserSettingsHomeScreenState(userName = "Infinity Workbench", userAvatar = "/preview/user-avatar.img"),
                             actions = UserSettingsHomeScreenActions(),
                         )
                     }
@@ -125,14 +126,10 @@ class UserSettingsAccessibilityTest {
             }
         }
 
-        rule.onNodeWithTag(UiTags.SETTINGS_USER_AVATAR)
+        rule.onNodeWithTag(UiTags.SETTINGS_PROFILE_CARD)
             .assertHasClickAction()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
             .assertWidthIsAtLeast(48.dp)
-            .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithTag(UiTags.SETTINGS_USER_NAME)
-            .assertHasClickAction()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
             .assertHeightIsAtLeast(48.dp)
         rule.onNodeWithTag(UiTags.AGENT_AVATAR_ACTION)
             .assertHasClickAction()

@@ -37,6 +37,13 @@ class InfinityDropdownMenuContractTest {
     }
 
     @Test
+    fun `长按菜单关闭时按住点不随 expanded 重算，退场停在原位`() {
+        val menu = commonSource("InfinityDropdownMenu").substringAfter("fun InfinityDropdownMenu(")
+        assertThat(menu).contains("openPoint.resolve(expanded, touch?.windowPoint)")
+        assertThat(menu).doesNotContain("takeIf { expanded }")
+    }
+
+    @Test
     fun `FilesPanel 悬浮菜单在 trailingContent 局域 Box 中锚定且使用 InfinityDropdownMenu`() {
         val source = screenSource("chat/components/FilesPanel")
         // 验证 FileRow 的 trailingContent 包含包裹 IconButton 与 menuContent 的 Box

@@ -159,7 +159,7 @@ class UserSettingsHomeScreenContractTest {
     @Test
     fun `个人区是页面顶部居中名片而非列表行`() {
         val profile = screenSource.substringAfter("private fun UserProfileHeader(")
-            .substringBefore("internal fun GitHubProjectFooter(")
+            .substringBefore("private fun channelLabel(")
         val header = screenSource.substringAfter("fun UserSettingsHomeScreenContent(")
             .substringBefore("settings_section_general")
         // 名片不放进列表卡片，整体水平居中。
@@ -167,14 +167,17 @@ class UserSettingsHomeScreenContractTest {
         assertThat(header).contains("horizontalAlignment = Alignment.CenterHorizontally")
         assertThat(header).doesNotContain("BettboxListGroup(")
         assertThat(profile).contains("size(96.dp)")
-        assertThat(profile).contains("Icons.Rounded.PhotoCamera")
-        assertThat(profile).contains("Icons.Rounded.Edit")
         assertThat(profile).contains("MaterialTheme.typography.titleLarge")
         assertThat(profile).contains("maxLines = 2")
-        assertThat(profile).contains("settings_profile_local_hint")
-        assertThat(profile).contains("onClick = onEditName")
-        assertThat(profile).contains("onClick = onChangeAvatar")
-        assertThat(profile).contains("minHeight = 48.dp")
+        // 名片上只有头像与名字：不放提示语、改名铅笔、相机角标或切换按钮，整体一个点按目标打开面板。
+        assertThat(profile).doesNotContain("settings_profile_local_hint")
+        assertThat(profile).doesNotContain("Icons.Rounded.Edit")
+        assertThat(profile).doesNotContain("Icons.Rounded.PhotoCamera")
+        assertThat(profile).doesNotContain("IconButton(")
+        assertThat(profile).doesNotContain("onEditName")
+        assertThat(profile).doesNotContain("onChangeAvatar")
+        assertThat(profile).contains("SETTINGS_PROFILE_CARD")
+        assertThat(profile).contains("UserProfileCard(userName, avatarUri, onClick = onOpenMenu)")
         assertThat(screenSource).contains("GitHubProjectFooter")
     }
 
@@ -195,10 +198,22 @@ class UserSettingsHomeScreenContractTest {
         assertThat(brand).contains("height(170.dp)")
         val header = screenSource.substringAfter("private fun UserProfileHeader(")
             .substringBefore("private fun ProfileBrandMark(")
-        // 切换按钮只在有头像时出现；没有头像时点字标打开个人资料菜单。
-        assertThat(header).contains("if (avatarUri != null)")
-        assertThat(header).contains("onClick = if (avatarUri == null) onOpenMenu else null")
-        assertThat(header).contains("SETTINGS_PROFILE_DISPLAY_TOGGLE")
+        // 不论有无头像，点字标都打开个人资料面板。
+        assertThat(header).contains("ProfileBrandMark(onClick = onOpenMenu)")
+    }
+
+    @Test
+    fun `个人资料面板有头像时才提供切换，并按有无头像区分设置与更换`() {
+        val sheet = screenSource.substringAfter("private fun ProfileMenuSheet(")
+            .substringBefore("internal fun LanguageOption(")
+        assertThat(sheet).contains("if (hasAvatar)")
+        assertThat(sheet).contains("SETTINGS_PROFILE_DISPLAY_TOGGLE")
+        assertThat(sheet).contains("if (showsBrand) R.string.settings_profile_show_avatar else R.string.settings_profile_show_brand")
+        assertThat(sheet).contains("if (hasAvatar) R.string.settings_profile_change_avatar else R.string.settings_profile_set_avatar")
+        assertThat(sheet).contains("R.string.settings_edit_name")
+        val route = screenSource.substringAfter("ProfileMenuSheet(\n            hasAvatar")
+            .substringBefore("onSetAvatar")
+        assertThat(route).contains("actions.onToggleProfileDisplay()")
     }
 
     @Test
