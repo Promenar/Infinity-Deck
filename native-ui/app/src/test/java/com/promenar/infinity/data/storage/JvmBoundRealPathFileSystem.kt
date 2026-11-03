@@ -24,7 +24,12 @@ import java.util.concurrent.TimeUnit
  * 此替身验证后端的句柄使用契约，不替代 Android 内核 fd 与 procfs 的设备验证。
  */
 internal class JvmBoundRealPathFileSystem : RealPathFileSystem {
-    val movedDirectories = mutableMapOf<Path, Path>()
+    val movedDirectories: MutableMap<Path, Path> = object : LinkedHashMap<Path, Path>() {
+        override fun put(key: Path, value: Path): Path? = super.put(mappingPath(key), mappingPath(value))
+        override fun putAll(from: Map<out Path, Path>) {
+            from.forEach { (key, value) -> put(key, value) }
+        }
+    }
     val reads = mutableListOf<Path>()
     var beforeOperation: ((String, Path) -> Unit)? = null
     var afterOperation: ((String, Path) -> Unit)? = null
@@ -59,6 +64,13 @@ internal class JvmBoundRealPathFileSystem : RealPathFileSystem {
         afterOperation?.invoke("path-move", source)
     }
     override fun openFileSystemRoot(): BoundRealPathDirectory = Directory(Path.of("/"))
+
+    private fun mappingPath(path: Path): Path {
+        val absolute = path.toAbsolutePath().normalize()
+        // 登记时统一父目录别名（如 macOS /var）；末段可能已换成链接，必须保留其原名称。
+        // 已打开句柄的寻址不能在换链后重新 realpath，否则会跟随替换节点。
+        return absolute.parent?.toFile()?.canonicalFile?.toPath()?.resolve(absolute.fileName) ?: absolute
+    }
 
     private fun bound(path: Path): Path {
         val mapping = movedDirectories.entries.filter { path.startsWith(it.key) }.maxByOrNull { it.key.nameCount }
