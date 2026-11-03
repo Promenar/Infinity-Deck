@@ -140,7 +140,7 @@ class ProjectRulesReaderTest {
             agentSystemPrompt = "## 项目规则\n用户自定义提示")
         val result = ContextBuilder().buildContext(params)
         assertThat(result.systemPromptSections.joinToString("") { it.content }).isEqualTo(result.finalSystemPrompt)
-        assertThat(result.systemPromptSections.first().id).isEqualTo("instructions")
+        assertThat(result.systemPromptSections.first().id).isEqualTo("assistant_prompt")
         assertThat(result.systemPromptSections.first().content).contains("用户自定义提示")
         val normalized = result.systemPromptSections.map { section ->
             if (section.id == "history_summary") section.copy(content = com.promenar.infinity.data.generation.replaceHistorySummary(section.content, "历史摘要", "历史摘要")) else section

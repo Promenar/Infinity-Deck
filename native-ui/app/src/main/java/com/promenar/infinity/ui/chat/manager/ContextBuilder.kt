@@ -434,6 +434,7 @@ class ContextBuilder(
 
         // 1. 助手角色与风格来自用户提示词；应用宿主身份由固定运行环境段声明。
         params.agentSystemPrompt?.takeIf(String::isNotBlank)?.let { sb.appendLine(it.trim()) }
+        finish("assistant_prompt")
 
         // 2. 会话级指令
         val customPrompt = params.sessionCustomPrompt ?: session.customPrompt
@@ -442,7 +443,7 @@ class ContextBuilder(
             sb.appendLine("## Session Instructions")
             sb.appendLine(customPrompt.trim())
         }
-        finish("instructions")
+        finish("session_instructions")
 
         SystemPromptSections.projectRules(projectRulesReader.read(params.workspace)).takeIf(String::isNotEmpty)?.let {
             if (sb.isNotEmpty()) sb.appendLine()
@@ -457,12 +458,13 @@ class ContextBuilder(
             runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
             workspace = params.workspace,
         ))
+        finish("runtime")
         sb.appendLine()
         sb.append(SystemPromptSections.permissions(
             com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
             runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
         ))
-        finish("runtime_permissions")
+        finish("permissions")
 
         // 3. 工具与工作区运行时契约
         val toolGuidance = when (val names = params.availableToolNames) {
