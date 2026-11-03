@@ -12,12 +12,20 @@ import com.promenar.infinity.data.skills.AgentSkillMetadata
 import com.promenar.infinity.data.skills.AgentSkillStore
 import com.promenar.infinity.data.skills.InstalledAgentSkill
 import com.promenar.infinity.data.skills.ParsedSkillDocument
+import com.promenar.infinity.data.skills.SkillCatalog
+import com.promenar.infinity.data.skills.SkillWorkspace
+import com.promenar.infinity.data.skills.SkillScope
+import com.promenar.infinity.data.skills.SkillSourceGroup
+import com.promenar.infinity.data.skills.SkillBatchResult
+import com.promenar.infinity.data.skills.sourceGroups
+import com.promenar.infinity.data.skills.setGroupEnabled
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -35,11 +43,58 @@ class AgentSkillsViewModel(
     private val store: AgentSkillStore,
     private val openInput: (Uri) -> InputStream?,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val catalog: SkillCatalog? = null,
 ) : ViewModel() {
     val skills: StateFlow<List<InstalledAgentSkill>> = store.skills
 
     private val _event = MutableStateFlow<AgentSkillEvent?>(null)
     val event: StateFlow<AgentSkillEvent?> = _event.asStateFlow()
+
+    private var workspace: SkillWorkspace? = null
+    private val _groups = MutableStateFlow<List<SkillSourceGroup>>(emptyList())
+    val groups: StateFlow<List<SkillSourceGroup>> = _groups.asStateFlow()
+    private val _batchResult = MutableStateFlow<SkillBatchResult?>(null)
+    val batchResult: StateFlow<SkillBatchResult?> = _batchResult.asStateFlow()
+
+    init {
+        if (catalog != null) viewModelScope.launch {
+            catalog.revision.collect {
+                try {
+                    refreshGroupsInternal()
+                    withContext(ioDispatcher) { store.refresh() }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    _event.value = AgentSkillEvent.Failed(failure.message?.take(160) ?: "技能列表刷新失败")
+                }
+            }
+        }
+    }
+
+    /** 设置页传 null；会话或项目入口可传入已解析的当前工作区。 */
+    fun bindWorkspace(workspace: SkillWorkspace?): Job {
+        this.workspace = workspace
+        return refreshGroups()
+    }
+
+    fun refreshGroups(): Job = launchMutation { refreshGroupsInternal() }
+
+    fun setGroupEnabled(scope: SkillScope, enabled: Boolean): Job = setManyEnabled(scope, enabled)
+
+    fun setAllEnabled(enabled: Boolean): Job = setManyEnabled(null, enabled)
+
+    fun consumeBatchResult() { _batchResult.value = null }
+
+    private fun setManyEnabled(scope: SkillScope?, enabled: Boolean): Job = launchMutation {
+        val currentCatalog = checkNotNull(catalog) { "未配置统一技能目录" }
+        _batchResult.value = currentCatalog.setGroupEnabled(currentCatalog.scan(workspace), scope, enabled)
+        refreshGroupsInternal()
+    }
+
+    private suspend fun refreshGroupsInternal() {
+        val currentCatalog = catalog ?: return
+        _groups.value = currentCatalog.scan(workspace).sourceGroups()
+    }
 
     fun consumeEvent() {
         _event.value = null
@@ -83,11 +138,13 @@ class AgentSkillsViewModel(
     }
 
     fun setEnabled(name: String, enabled: Boolean): Job = launchMutation {
-        withContext(ioDispatcher) { store.setEnabled(name, enabled) }
+        if (catalog == null) withContext(ioDispatcher) { store.setEnabled(name, enabled) }
+        else catalog.setEnabled(catalog.scan(null).user.single { it.name == name }, enabled)
     }
 
     fun delete(name: String): Job = launchMutation {
-        withContext(ioDispatcher) { store.delete(name) }
+        if (catalog == null) withContext(ioDispatcher) { store.delete(name) }
+        else catalog.delete(catalog.scan(null).user.single { it.name == name })
     }
 
     suspend fun loadDocument(name: String): ParsedSkillDocument? = withContext(ioDispatcher) { store.readDocument(name) }
@@ -110,6 +167,15 @@ class AgentSkillsViewModel(
             _event.value = AgentSkillEvent.Failed(format.message.orEmpty())
         } catch (failure: Exception) {
             _event.value = AgentSkillEvent.Failed(failure.message?.take(160) ?: failure::class.simpleName.orEmpty())
+        } finally {
+            try {
+                refreshGroupsInternal()
+                withContext(ioDispatcher) { store.refresh() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _event.value = AgentSkillEvent.Failed(failure.message?.take(160) ?: "技能列表刷新失败")
+            }
         }
     }
 
@@ -129,10 +195,14 @@ class AgentSkillsViewModel(
 
         fun factory(application: Application): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = AgentSkillsViewModel(
-                store = (application as InfinityApplication).agentSkillStore,
-                openInput = { uri -> application.contentResolver.openInputStream(uri) },
-            ) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                val app = application as InfinityApplication
+                return AgentSkillsViewModel(
+                    store = app.agentSkillStore,
+                    openInput = { uri -> app.contentResolver.openInputStream(uri) },
+                    catalog = app.skillCatalog,
+                ) as T
+            }
         }
     }
 }

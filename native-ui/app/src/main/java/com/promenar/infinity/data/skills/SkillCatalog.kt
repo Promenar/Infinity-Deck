@@ -106,4 +106,8 @@ interface SkillCatalog {
 
     /** 删除技能目录，移入回收区；同时清除其状态记录。 */
     suspend fun delete(skill: DiscoveredSkill)
+
+    /** 安装经逐次审批绑定的完整文件快照；调用方必须核验审批，扫描本身不授予安装权限。 */
+    suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean = false): DiscoveredSkill =
+        throw UnsupportedOperationException("此技能来源不支持安装")
 }

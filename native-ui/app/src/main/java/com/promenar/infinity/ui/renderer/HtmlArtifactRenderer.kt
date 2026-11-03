@@ -94,7 +94,7 @@ fun HtmlArtifactCard(
         )
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            RichContentWebView(
+            WorkspaceHtmlWebView(
                 html = htmlCode,
                 fontSize = fontSize,
                 modifier = Modifier.fillMaxWidth(),
@@ -164,7 +164,7 @@ fun HtmlArtifactsPopup(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    RichContentWebView(
+                    WorkspaceHtmlWebView(
                         html = htmlCode,
                         fontSize = fontSize,
                         modifier = Modifier.fillMaxWidth(),

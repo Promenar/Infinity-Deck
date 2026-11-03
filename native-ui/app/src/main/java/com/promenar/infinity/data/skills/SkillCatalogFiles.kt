@@ -70,6 +70,10 @@ internal open class SkillCatalogFiles(private val fileSystem: RealPathFileSystem
 
     open fun rename(source: File, target: File): Boolean = source.renameTo(target)
 
+    fun <T> installTree(userRoot: File, stateRoot: File, name: String, entries: Map<String, ByteArray>, overwrite: Boolean,
+        validate: (File) -> Unit, commit: (Boolean) -> T): T =
+        SkillInstallationFiles(fileSystem).install(userRoot, stateRoot, name, entries, overwrite, validate, commit)
+
     /** 允许合并已有目录，以便删除失败后恢复已移除的源文件。 */
     open fun copyTree(source: File, target: File) {
         val sourcePath = source.toPath()

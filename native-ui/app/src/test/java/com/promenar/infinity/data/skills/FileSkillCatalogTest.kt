@@ -2,6 +2,8 @@ package com.promenar.infinity.data.skills
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.storage.JvmBoundRealPathFileSystem
+import com.promenar.infinity.data.storage.RealPathFileSystem
+import com.promenar.infinity.data.storage.BoundRealPathDirectory
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -35,6 +37,18 @@ class FileSkillCatalogTest {
 
     private fun enable(vararg names: String) {
         prefs.edit().putStringSet(AgentSkillStore.ENABLED_KEY, names.toMutableSet()).commit()
+    }
+
+    private fun legacyHash(dir: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        dir.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(dir).invariantSeparatorsPath }.forEach {
+            val path = it.relativeTo(dir).invariantSeparatorsPath.toByteArray()
+            digest.update(java.nio.ByteBuffer.allocate(4).putInt(path.size).array())
+            digest.update(path)
+            digest.update(java.nio.ByteBuffer.allocate(8).putLong(it.length()).array())
+            digest.update(it.readBytes())
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private suspend fun skill(catalog: SkillCatalog, name: String, scope: SkillScope = SkillScope.USER): DiscoveredSkill =
@@ -637,6 +651,206 @@ class FileSkillCatalogTest {
         override fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
             if (file.name != "catalog.json") reads++
             return super.stream(file, limit, anchor, sink)
+        }
+    }
+
+    @Test fun `批准的完整包自动启用且保留手动停用并绑定安装时哈希`() = runTest {
+        val catalog = catalog()
+        fun payload(body: String) = mapOf("SKILL.md" to
+            "---\nname: approved\ndescription: 安装测试\n---\n$body".toByteArray())
+        val installed = catalog.installApproved(payload("批准内容"))
+        assertThat(installed.status).isEqualTo(SkillStatus.ENABLED)
+        assertThat(skill(catalog(), "approved").modifiedSinceConfirmed).isFalse()
+        userRoot.resolve("approved/SKILL.md").appendText("后续变化")
+        assertThat(skill(catalog(), "approved").modifiedSinceConfirmed).isTrue()
+        catalog.setEnabled(installed, false)
+        catalog.installApproved(payload("重新批准的内容"), overwrite = true)
+        assertThat(skill(catalog(), "approved").status).isEqualTo(SkillStatus.DISABLED)
+        repeat(2) { assertThat(skill(catalog, "approved").status).isEqualTo(SkillStatus.DISABLED) }
+    }
+
+    @Test fun `缓存生成修改与删除不影响确认哈希或revision`() = runTest {
+        val dir = install(userRoot, "cached-python")
+        val catalog = catalog()
+        catalog.setEnabled(skill(catalog, "cached-python"), true)
+        val before = skill(catalog, "cached-python")
+        val revision = catalog.revision.value
+        dir.resolve("scripts/nested/__pycache__/run.cpython.pyc").apply { parentFile.mkdirs(); writeText("缓存") }
+        dir.resolve("standalone.pyc").writeText("缓存")
+        assertThat(skill(catalog, "cached-python")).isEqualTo(before)
+        assertThat(catalog.revision.value).isEqualTo(revision)
+        dir.resolve("scripts/nested/__pycache__/run.cpython.pyc").writeText("缓存变化")
+        dir.resolve("standalone.pyc").delete()
+        assertThat(skill(catalog(), "cached-python").modifiedSinceConfirmed).isFalse()
+        dir.resolve("scripts/run.py").writeText("实际脚本")
+        assertThat(skill(catalog(), "cached-python").modifiedSinceConfirmed).isTrue()
+    }
+
+    @Test fun `旧确认仅在完整旧摘要匹配时迁移且迁移后缓存变化可忽略`() = runTest {
+        val dir = install(userRoot, "legacy-python")
+        val cacheFile = dir.resolve("scripts/__pycache__/run.pyc").apply { parentFile.mkdirs(); writeText("旧缓存") }
+        enable("legacy-python")
+        val states = SkillCatalogStateStore(stateRoot, SkillCatalogFiles(JvmBoundRealPathFileSystem()))
+        states.write(SkillCatalogState(userConfirmed = mapOf("legacy-python" to legacyHash(dir))))
+        assertThat(skill(catalog(), "legacy-python").modifiedSinceConfirmed).isFalse()
+        cacheFile.writeText("新缓存")
+        assertThat(skill(catalog(), "legacy-python").modifiedSinceConfirmed).isFalse()
+        dir.resolve("SKILL.md").appendText("真实内容变化")
+        assertThat(skill(catalog(), "legacy-python").modifiedSinceConfirmed).isTrue()
+    }
+
+    @Test fun `安装拒绝越界冲突和超限且失败不改变原包`() = runTest {
+        val catalog = catalog()
+        val payload = mapOf("SKILL.md" to "---\nname: safe-install\ndescription: 测试\n---\n正文".toByteArray())
+        catalog.installApproved(payload)
+        fails<AgentSkillConflictException> { catalog.installApproved(payload) }
+        fails<AgentSkillFormatException> { catalog.installApproved(payload + ("../escape" to byteArrayOf(1)), true) }
+        fails<AgentSkillFormatException> { catalog.installApproved(payload + ("large" to ByteArray(AgentSkillStore.MAX_FILE_BYTES + 1)), true) }
+        assertThat(skill(catalog(), "safe-install").modifiedSinceConfirmed).isFalse()
+    }
+
+    @Test fun `安装暂存被替换为未批准内容时拒绝发布`() = runTest {
+        val files = object : SkillCatalogFiles(JvmBoundRealPathFileSystem()) {
+            override fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
+                if (file.name == "SKILL.md" && file.path.contains(".approved-")) {
+                    file.writeText(file.readText().replace("批准正文", "篡改正文"))
+                }
+                return super.stream(file, limit, anchor, sink)
+            }
+        }
+        val catalog = catalog(files)
+        fails<IllegalStateException> {
+            catalog.installApproved(mapOf("SKILL.md" to "---\nname: tampered-install\ndescription: 测试\n---\n批准正文".toByteArray()))
+        }
+        assertThat(userRoot.resolve("tampered-install").exists()).isFalse()
+        assertThat(catalog.scan(null).user).isEmpty()
+    }
+
+    @Test fun `项目旧确认迁移保留停用且真实脚本变化仍撤销信任`() = runTest {
+        val dir = project("project-python")
+        dir.resolve("__pycache__/run.pyc").apply { parentFile.mkdirs(); writeText("缓存") }
+        val key = ProjectSkillKey(workspace.key, "project-python")
+        val hash = legacyHash(dir)
+        SkillCatalogStateStore(stateRoot, SkillCatalogFiles(JvmBoundRealPathFileSystem())).write(
+            SkillCatalogState(projectTrusted = mapOf(key to hash), projectDisabled = setOf(key)))
+        assertThat(skill(catalog(), "project-python", SkillScope.PROJECT).status).isEqualTo(SkillStatus.DISABLED)
+        dir.resolve("__pycache__/run.pyc").delete()
+        assertThat(skill(catalog(), "project-python", SkillScope.PROJECT).status).isEqualTo(SkillStatus.DISABLED)
+        dir.resolve("run.py").writeText("实际脚本")
+        assertThat(skill(catalog(), "project-python", SkillScope.PROJECT).status).isEqualTo(SkillStatus.PENDING_TRUST)
+    }
+
+    @Test fun `迁移不能把两次读取间交换的未批准内容确认为可信`() = runTest {
+        val dir = install(userRoot, "migration-race", "批准内容A")
+        dir.resolve("0.pyc").writeText("缓存")
+        val original = dir.resolve("SKILL.md").readText()
+        val oldHash = legacyHash(dir)
+        val markdown = dir.resolve("SKILL.md")
+        val timestamp = Files.getLastModifiedTime(markdown.toPath())
+        markdown.writeText(original.replace("批准内容A", "篡改内容B"))
+        Files.setLastModifiedTime(markdown.toPath(), timestamp)
+        enable("migration-race")
+        SkillCatalogStateStore(stateRoot, SkillCatalogFiles(JvmBoundRealPathFileSystem())).write(
+            SkillCatalogState(userConfirmed = mapOf("migration-race" to oldHash)))
+        val files = object : SkillCatalogFiles(JvmBoundRealPathFileSystem()) {
+            override fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
+                if (file.name == "0.pyc") {
+                    markdown.writeText(original)
+                    Files.setLastModifiedTime(markdown.toPath(), timestamp)
+                }
+                return super.stream(file, limit, anchor, sink)
+            }
+        }
+        assertThat(skill(catalog(files), "migration-race").modifiedSinceConfirmed).isTrue()
+        assertThat(SkillCatalogStateStore(stateRoot, files).read().userConfirmed["migration-race"]).isEqualTo(oldHash)
+    }
+
+    @Test fun `安装发布失败恢复原目录确认与停用状态`() = runTest {
+        val fileSystem = JvmBoundRealPathFileSystem()
+        var failPublish = false
+        fileSystem.beforeOperation = { operation, path ->
+            if (failPublish && operation == "move" && path.parent.fileName.toString().startsWith(".approved-")) {
+                throw IOException("模拟发布失败")
+            }
+        }
+        val catalog = catalog(SkillCatalogFiles(fileSystem))
+        fun payload(body: String) = mapOf("SKILL.md" to "---\nname: rollback-install\ndescription: 测试\n---\n$body".toByteArray())
+        val installed = catalog.installApproved(payload("原始正文"))
+        catalog.setEnabled(installed, false)
+        failPublish = true
+        fails<IOException> { catalog.installApproved(payload("批准新正文"), true) }
+        assertThat(userRoot.resolve("rollback-install/SKILL.md").readText()).contains("原始正文")
+        assertThat(skill(catalog(), "rollback-install").status).isEqualTo(SkillStatus.DISABLED)
+        catalog.setEnabled(skill(catalog, "rollback-install"), true)
+        assertThat(skill(catalog(), "rollback-install").modifiedSinceConfirmed).isFalse()
+    }
+
+    @Test fun `覆盖旧存储未确认且已停用的技能不会重新启用`() = runTest {
+        install(userRoot, "legacy-stopped")
+        val catalog = catalog()
+        val installed = catalog.installApproved(mapOf("SKILL.md" to
+            "---\nname: legacy-stopped\ndescription: 测试\n---\n批准的新正文".toByteArray()), true)
+        assertThat(installed.status).isEqualTo(SkillStatus.DISABLED)
+        assertThat(skill(catalog(), "legacy-stopped").status).isEqualTo(SkillStatus.DISABLED)
+    }
+
+    @Test fun `发布期间根目录换为链接不会移动删除或覆盖外部技能`() = runTest {
+        install(userRoot, "root-race", "原始正文")
+        val outside = temporary.newFolder("install-outside")
+        install(outside, "root-race", "外部正文")
+        val held = temporary.root.resolve("held-users")
+        val fileSystem = JvmBoundRealPathFileSystem()
+        var attacked = false
+        fileSystem.beforeOperation = { operation, path ->
+            if (!attacked && operation == "move" && path.fileName.toString() == "root-race") {
+                attacked = true
+                assertThat(userRoot.renameTo(held)).isTrue()
+                fileSystem.movedDirectories[userRoot.toPath()] = held.toPath()
+                Files.createSymbolicLink(userRoot.toPath(), outside.toPath())
+            }
+        }
+        val catalog = catalog(SkillCatalogFiles(fileSystem))
+        fails<Exception> {
+            catalog.installApproved(mapOf("SKILL.md" to
+                "---\nname: root-race\ndescription: 测试\n---\n批准新正文".toByteArray()), true)
+        }
+        assertThat(outside.resolve("root-race/SKILL.md").readText()).contains("外部正文")
+        assertThat(held.resolve("root-race/SKILL.md").readText()).contains("原始正文")
+    }
+
+    @Test fun `备份或发布移动完成后同步失败仍恢复原技能与状态`() = runTest {
+        val base = JvmBoundRealPathFileSystem()
+        var phase: String? = null
+        val fileSystem = object : RealPathFileSystem by base {
+            override fun openFileSystemRoot(): BoundRealPathDirectory = AfterMoveDirectory(base.openFileSystemRoot()) { source, target ->
+                val failed = source == "sync-failure" && when (phase) {
+                    "backup" -> target.startsWith(".replaced-")
+                    "publish" -> target == "sync-failure"
+                    else -> false
+                }
+                if (failed) { phase = null; throw IOException("模拟移动后同步失败") }
+            }
+        }
+        val catalog = catalog(SkillCatalogFiles(fileSystem))
+        fun payload(body: String) = mapOf("SKILL.md" to "---\nname: sync-failure\ndescription: 测试\n---\n$body".toByteArray())
+        catalog.installApproved(payload("原始正文"))
+        for (failurePhase in listOf("backup", "publish")) {
+            phase = failurePhase
+            fails<IOException> { catalog.installApproved(payload("批准新正文"), true) }
+            assertThat(userRoot.resolve("sync-failure/SKILL.md").readText()).contains("原始正文")
+            assertThat(skill(catalog(), "sync-failure").status).isEqualTo(SkillStatus.ENABLED)
+            assertThat(skill(catalog(), "sync-failure").modifiedSinceConfirmed).isFalse()
+        }
+    }
+
+    private class AfterMoveDirectory(
+        private val delegate: BoundRealPathDirectory,
+        private val afterMove: (String, String) -> Unit,
+    ) : BoundRealPathDirectory by delegate {
+        override fun openDirectory(name: String): BoundRealPathDirectory = AfterMoveDirectory(delegate.openDirectory(name), afterMove)
+        override fun moveNew(source: String, targetDirectory: BoundRealPathDirectory, target: String) {
+            delegate.moveNew(source, (targetDirectory as AfterMoveDirectory).delegate, target)
+            afterMove(source, target)
         }
     }
 }

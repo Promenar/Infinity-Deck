@@ -14,6 +14,8 @@ internal object RichContentRequestPolicy {
         val uri = parse(url) ?: return Kind.BLOCKED
         val parsed = url.toHttpUrlOrNull() ?: return Kind.BLOCKED
         val host = parsed.host.trimEnd('.')
+        // 虚拟媒体来源只由绑定会话的专用处理器响应，任何未绑定客户端均不得落到网络。
+        if (host == HtmlWorkspaceMediaSource.HOST) return Kind.BLOCKED
         if (host == ASSET_HOST) return if (assetPath(url) != null) Kind.LOCAL_ASSET else Kind.BLOCKED
         if (!host.contains('.') && !host.contains(':')) return Kind.BLOCKED
         if (listOf("localhost", "local", "internal", "lan", "home", "invalid", "test").any {

@@ -15,6 +15,7 @@ internal data class SkillCatalogState(
     val userConfirmed: Map<String, String> = emptyMap(),
     val projectTrusted: Map<ProjectSkillKey, String> = emptyMap(),
     val projectDisabled: Set<ProjectSkillKey> = emptySet(),
+    val userDisabled: Set<String> = emptySet(),
 )
 
 /** 私有状态整份校验，损坏或未知版本不产生任何信任。 */
@@ -38,7 +39,8 @@ internal class SkillCatalogStateStore(private val root: File, private val files:
             ProjectSkillKey(record.workspace, record.name)
         }
         check(trusted.map { it.first }.distinct().size == trusted.size && disabled.distinct().size == disabled.size)
-        SkillCatalogState(document.userConfirmed, trusted.toMap(), disabled.toSet())
+        document.userDisabled.forEach(SkillMarkdownParser::validateName)
+        SkillCatalogState(document.userConfirmed, trusted.toMap(), disabled.toSet(), document.userDisabled)
     }.getOrElse { SkillCatalogState() }
 
     fun write(state: SkillCatalogState) {
@@ -47,6 +49,7 @@ internal class SkillCatalogStateStore(private val root: File, private val files:
         val document = StateDocument(
             version = 1,
             userConfirmed = state.userConfirmed.toSortedMap(),
+            userDisabled = state.userDisabled.toSortedSet(),
             projectTrusted = state.projectTrusted.keys.sortedWith(order).map {
                 TrustedRecord(it.workspace, it.name, state.projectTrusted.getValue(it))
             },
@@ -75,6 +78,7 @@ internal class SkillCatalogStateStore(private val root: File, private val files:
         val userConfirmed: Map<String, String>,
         val projectTrusted: List<TrustedRecord>,
         val projectDisabled: List<DisabledRecord>,
+        val userDisabled: Set<String> = emptySet(),
     )
     @Serializable private data class TrustedRecord(val workspace: String, val name: String, val hash: String)
     @Serializable private data class DisabledRecord(val workspace: String, val name: String)

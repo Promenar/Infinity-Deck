@@ -12,6 +12,7 @@ import java.net.URLConnection
 
 /** 测高等回调可由渲染器扩展；请求和导航门禁不能被覆盖。 */
 internal open class RichContentWebViewClient(context: Context) : WebViewClient() {
+    @Volatile var workspaceMediaSource: HtmlWorkspaceMediaSource? = null
     private val assets = context.applicationContext.assets
     private val documents = RichContentDocumentSession()
 
@@ -27,6 +28,15 @@ internal open class RichContentWebViewClient(context: Context) : WebViewClient()
     final override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
 
     final override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse {
+        val mediaUrl = request.url.toString()
+        if (HtmlWorkspaceMediaSource.isOrigin(mediaUrl)) {
+            if (request.isForMainFrame) return denied()
+            val source = workspaceMediaSource ?: return denied()
+            val response = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                source.respond(mediaUrl, request.method, request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value)
+            }
+            return WebResourceResponse(response.mime, null, response.status, response.reason, response.headers, response.body)
+        }
         if (request.method != "GET") return denied()
         val url = request.url.toString()
         documents.contentFor(url, request.isForMainFrame)?.let { html ->

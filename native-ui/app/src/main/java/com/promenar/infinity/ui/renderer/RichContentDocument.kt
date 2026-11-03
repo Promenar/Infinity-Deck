@@ -6,6 +6,7 @@ import org.jsoup.Jsoup
 internal const val RICH_CONTENT_CSP = "default-src 'none'; " +
     "script-src https: 'unsafe-inline' 'unsafe-eval'; style-src https: 'unsafe-inline'; " +
     "img-src https: data:; font-src https: data:; connect-src https:; " +
+    "media-src https://workspace-media.infinity.invalid; " +
     "frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'"
 
 internal fun secureRichContentDocument(html: String): String {

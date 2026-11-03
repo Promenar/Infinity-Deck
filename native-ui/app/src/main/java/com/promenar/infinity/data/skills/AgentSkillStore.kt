@@ -46,6 +46,9 @@ class AgentSkillStore(
         return _skills.value
     }
 
+    /** 统一目录操作或 Agent 安装后同步旧设置页使用的索引。 */
+    fun refresh() = synchronized(lock) { reload() }
+
     fun enabledSkills(): List<AgentSkillMetadata> = list().filter { it.enabled }.map { it.metadata }
 
     /** 按名称查找前先从磁盘重载：技能目录也会被 Agent 与技能目录视图直接修改。 */
