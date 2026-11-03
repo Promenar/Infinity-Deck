@@ -82,41 +82,49 @@ class AgentSkillStore(
 
     fun installMarkdown(text: String, overwrite: Boolean = false): AgentSkillMetadata {
         val bytes = text.toByteArray(Charsets.UTF_8)
-        if (bytes.size > MAX_FILE_BYTES) throw AgentSkillFormatException("SKILL.md 超过 ${MAX_FILE_BYTES / 1024} KiB")
-        return install(mapOf(SKILL_FILE to bytes), overwrite, previousName = null)
+        if (bytes.size > MAX_FILE_BYTES) throw AgentSkillFormatException("SKILL.md 超过 ${MAX_FILE_BYTES / 1024 / 1024} MiB")
+        return install(overwrite, previousName = null) { staging -> File(staging, SKILL_FILE).writeBytes(bytes) }
     }
 
-    fun installZip(input: InputStream, overwrite: Boolean = false): AgentSkillMetadata {
-        val entries = linkedMapOf<String, ByteArray>()
-        var total = 0L
-        ZipInputStream(input).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (entry.isDirectory) continue
-                val rawName = entry.name.replace('\\', '/')
-                if (rawName.startsWith("__MACOSX/") || rawName.substringAfterLast('/') == ".DS_Store") continue
-                val path = normalizeRelativePath(rawName)
-                if (entries.size >= MAX_FILES) throw AgentSkillFormatException("技能包文件数超过 $MAX_FILES")
-                val bytes = readBounded(zip, MAX_FILE_BYTES) ?: throw AgentSkillFormatException(
-                    "文件超过 ${MAX_FILE_BYTES / 1024} KiB：$path",
-                )
-                total += bytes.size
-                if (total > MAX_TOTAL_BYTES) throw AgentSkillFormatException("技能包解压后超过 ${MAX_TOTAL_BYTES / 1024 / 1024} MiB")
-                if (entries.put(path, bytes) != null) throw AgentSkillFormatException("技能包包含重复路径：$path")
+    /** 边解压边写入暂存目录并累计校验上限，不把整个压缩包读入内存。 */
+    fun installZip(input: InputStream, overwrite: Boolean = false): AgentSkillMetadata =
+        install(overwrite, previousName = null) { staging ->
+            var count = 0
+            var total = 0L
+            ZipInputStream(input).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (entry.isDirectory) continue
+                    val rawName = entry.name.replace('\\', '/')
+                    if (rawName.startsWith("__MACOSX/") || rawName.substringAfterLast('/') == ".DS_Store") continue
+                    val path = normalizeRelativePath(rawName)
+                    if (count >= MAX_FILES) throw AgentSkillFormatException("技能包文件数超过 $MAX_FILES")
+                    val out = File(staging, path)
+                    if (out.exists()) throw AgentSkillFormatException("技能包包含重复路径：$path")
+                    out.parentFile?.mkdirs()
+                    val written = copyBounded(zip, out, MAX_FILE_BYTES.toLong())
+                        ?: throw AgentSkillFormatException("文件超过 ${MAX_FILE_BYTES / 1024 / 1024} MiB：$path")
+                    count++
+                    total += written
+                    if (total > MAX_TOTAL_BYTES) throw AgentSkillFormatException("技能包解压后超过 ${MAX_TOTAL_BYTES / 1024 / 1024} MiB")
+                }
             }
+            hoistSingleTopLevelDirectory(staging)
         }
-        return install(stripSingleTopLevelDirectory(entries), overwrite, previousName = null)
-    }
 
     /** 应用内新建或编辑；改名时保留原技能的附带文件。 */
     fun save(previousName: String?, metadata: AgentSkillMetadata, body: String): AgentSkillMetadata {
         val text = SkillMarkdownParser.render(metadata, body)
-        val files = linkedMapOf(SKILL_FILE to text.toByteArray(Charsets.UTF_8))
-        if (previousName != null) {
-            val existing = find(previousName) ?: throw AgentSkillFormatException("技能不存在：$previousName")
-            existing.files.forEach { relative -> files[relative] = File(skillDir(previousName), relative).readBytes() }
+        val existing = previousName?.let { find(it) ?: throw AgentSkillFormatException("技能不存在：$it") }
+        return install(overwrite = previousName == metadata.name, previousName = previousName) { staging ->
+            // 附带文件逐个流式复制，改名或编辑大技能时不整体读入内存。
+            existing?.files?.forEach { relative ->
+                val out = File(staging, normalizeRelativePath(relative))
+                out.parentFile?.mkdirs()
+                File(skillDir(previousName!!), relative).inputStream().use { source -> out.outputStream().use(source::copyTo) }
+            }
+            File(staging, SKILL_FILE).writeBytes(text.toByteArray(Charsets.UTF_8))
         }
-        return install(files, overwrite = previousName == metadata.name, previousName = previousName)
     }
 
     fun delete(name: String) = synchronized(lock) {
@@ -130,26 +138,27 @@ class AgentSkillStore(
         reload()
     }
 
+    /** [populate] 把技能全部文件写入暂存目录；随后校验 SKILL.md 并以目录重命名切换。 */
     private fun install(
-        files: Map<String, ByteArray>,
         overwrite: Boolean,
         previousName: String?,
+        populate: (staging: File) -> Unit,
     ): AgentSkillMetadata = synchronized(lock) {
-        val skillBytes = files[SKILL_FILE] ?: throw AgentSkillFormatException("技能包缺少 SKILL.md")
-        val text = decodeText(skillBytes) ?: throw AgentSkillFormatException("SKILL.md 不是 UTF-8 文本")
-        val metadata = SkillMarkdownParser.parse(text).metadata
-        val target = skillDir(metadata.name)
-        val renaming = previousName != null && previousName != metadata.name
-        if (target.exists() && !overwrite) throw AgentSkillConflictException(metadata.name)
-
         rootDir.mkdirs()
         val staging = File(rootDir, ".staging-${UUID.randomUUID()}")
+        val metadata: AgentSkillMetadata
+        val renaming: Boolean
         try {
-            files.forEach { (relative, bytes) ->
-                val out = File(staging, normalizeRelativePath(relative))
-                out.parentFile?.mkdirs()
-                out.writeBytes(bytes)
-            }
+            staging.mkdirs()
+            populate(staging)
+            val skillFile = File(staging, SKILL_FILE)
+            if (!skillFile.isFile) throw AgentSkillFormatException("技能包缺少 SKILL.md")
+            if (skillFile.length() > MAX_FILE_BYTES) throw AgentSkillFormatException("SKILL.md 超过 ${MAX_FILE_BYTES / 1024 / 1024} MiB")
+            val text = decodeText(skillFile.readBytes()) ?: throw AgentSkillFormatException("SKILL.md 不是 UTF-8 文本")
+            metadata = SkillMarkdownParser.parse(text).metadata
+            val target = skillDir(metadata.name)
+            renaming = previousName != null && previousName != metadata.name
+            if (target.exists() && !overwrite) throw AgentSkillConflictException(metadata.name)
             var replaced: File? = null
             if (target.exists()) {
                 replaced = File(rootDir, ".trash-${UUID.randomUUID()}")
@@ -162,6 +171,7 @@ class AgentSkillStore(
             replaced?.deleteRecursively()
         } finally {
             if (staging.exists()) staging.deleteRecursively()
+            File(rootDir, "${staging.name}-lift").takeIf { it.exists() }?.deleteRecursively()
         }
 
         val enabled = enabledNames().toMutableSet()
@@ -216,9 +226,9 @@ class AgentSkillStore(
     companion object {
         const val ENABLED_KEY = "agent_skills_enabled"
         const val SKILL_FILE = "SKILL.md"
-        const val MAX_FILES = 200
-        const val MAX_FILE_BYTES = 1024 * 1024
-        const val MAX_TOTAL_BYTES = 5L * 1024 * 1024
+        const val MAX_FILES = 1000
+        const val MAX_FILE_BYTES = 8 * 1024 * 1024
+        const val MAX_TOTAL_BYTES = 32L * 1024 * 1024
         const val MAX_READ_BYTES = 256L * 1024
 
         /** 归一化包内相对路径并拒绝越界、绝对路径与保留名。 */
@@ -234,14 +244,19 @@ class AgentSkillStore(
             return segments.joinToString("/")
         }
 
-        internal fun stripSingleTopLevelDirectory(entries: Map<String, ByteArray>): Map<String, ByteArray> {
-            if (SKILL_FILE in entries) return entries
-            val tops = entries.keys.map { it.substringBefore('/') }.toSet()
-            val top = tops.singleOrNull()
-            if (top == null || "$top/$SKILL_FILE" !in entries) {
+        /** 压缩包根部没有 SKILL.md 时，把唯一顶层目录中的内容提到暂存根部。 */
+        private fun hoistSingleTopLevelDirectory(staging: File) {
+            if (File(staging, SKILL_FILE).isFile) return
+            val top = staging.listFiles().orEmpty().singleOrNull()
+            if (top == null || !top.isDirectory || !File(top, SKILL_FILE).isFile) {
                 throw AgentSkillFormatException("SKILL.md 必须位于压缩包根部或唯一的顶层目录中")
             }
-            return entries.mapKeys { (path, _) -> path.removePrefix("$top/") }
+            val lifted = File(staging.parentFile, "${staging.name}-lift")
+            if (!top.renameTo(lifted)) throw IllegalStateException("无法整理技能包目录")
+            lifted.listFiles().orEmpty().forEach { child ->
+                if (!child.renameTo(File(staging, child.name))) throw IllegalStateException("无法整理技能包目录")
+            }
+            lifted.delete()
         }
 
         fun decodeText(bytes: ByteArray): String? {
@@ -256,16 +271,24 @@ class AgentSkillStore(
             }.getOrNull()
         }
 
-        private fun readBounded(input: InputStream, limit: Int): ByteArray? {
-            val buffer = java.io.ByteArrayOutputStream()
-            val chunk = ByteArray(8192)
-            while (true) {
-                val read = input.read(chunk)
-                if (read < 0) break
-                if (buffer.size() + read > limit) return null
-                buffer.write(chunk, 0, read)
+        /** 复制不超过 [limit] 字节，超出时删除半个文件并返回 null。 */
+        private fun copyBounded(input: InputStream, out: File, limit: Long): Long? {
+            var total = 0L
+            val chunk = ByteArray(64 * 1024)
+            out.outputStream().use { output ->
+                while (true) {
+                    val read = input.read(chunk)
+                    if (read < 0) break
+                    total += read
+                    if (total > limit) break
+                    output.write(chunk, 0, read)
+                }
             }
-            return buffer.toByteArray()
+            if (total > limit) {
+                out.delete()
+                return null
+            }
+            return total
         }
     }
 }

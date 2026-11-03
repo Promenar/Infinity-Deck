@@ -114,16 +114,40 @@ class FileSkillCatalogTest {
 
     @Test fun `文件数单文件与总大小超限均损坏`() = runTest {
         val count = install(userRoot, "count")
-        repeat(200) { count.resolve("$it.txt").writeText("x") }
-        install(userRoot, "large").resolve("large.bin").writeBytes(ByteArray(1024 * 1024 + 1))
+        repeat(AgentSkillStore.MAX_FILES) { count.resolve("$it.txt").writeText("x") }
+        sparse(install(userRoot, "large").resolve("large.bin"), AgentSkillStore.MAX_FILE_BYTES + 1L)
         val total = install(userRoot, "total")
-        repeat(5) { total.resolve("$it.bin").writeBytes(ByteArray(1024 * 1024)) }
+        val each = AgentSkillStore.MAX_FILE_BYTES.toLong()
+        repeat((AgentSkillStore.MAX_TOTAL_BYTES / each).toInt() + 1) { sparse(total.resolve("$it.bin"), each) }
 
         val skills = catalog().scan(null).skills.associateBy { it.name }
         assertThat(skills["count"]!!.brokenReason).contains("文件数")
-        assertThat(skills["large"]!!.brokenReason).contains("KiB")
-        assertThat(skills["total"]!!.brokenReason).contains("MiB")
+        assertThat(skills["large"]!!.brokenReason).contains("MiB")
+        assertThat(skills["total"]!!.brokenReason).contains("总量")
         assertThat(skills.values.all { it.status == SkillStatus.BROKEN }).isTrue()
+    }
+
+    @Test fun `桌面规模的技能在新上限内可用且摘要随内容变化`() = runTest {
+        // 桌面技能实测：最多 317 个文件、最大单文件约 1.9 MiB、最大单技能约 6 MiB。
+        val dir = install(userRoot, "desktop")
+        repeat(320) { dir.resolve("refs/$it.md").apply { parentFile.mkdirs() }.writeText("参考 $it") }
+        dir.resolve("assets/card.png").apply { parentFile.mkdirs() }.writeBytes(ByteArray(2 * 1024 * 1024) { (it % 251).toByte() })
+        dir.resolve("assets/fonts.css").writeBytes(ByteArray(4 * 1024 * 1024) { 'a'.code.toByte() })
+        val catalog = catalog()
+        val first = skill(catalog, "desktop")
+        assertThat(first.brokenReason).isNull()
+        catalog.setEnabled(first, true)
+        assertThat(skill(catalog, "desktop").status).isEqualTo(SkillStatus.ENABLED)
+        assertThat(skill(catalog, "desktop").modifiedSinceConfirmed).isFalse()
+
+        dir.resolve("assets/card.png").writeBytes(ByteArray(2 * 1024 * 1024) { (it % 241).toByte() })
+        val changed = skill(catalog(), "desktop")
+        assertThat(changed.brokenReason).isNull()
+        assertThat(changed.modifiedSinceConfirmed).isTrue()
+    }
+
+    private fun sparse(file: File, size: Long) {
+        java.io.RandomAccessFile(file, "rw").use { it.setLength(size) }
     }
 
     @Test fun `技能目录文件和中间目录符号链接均拒绝且不跟随`() = runTest {
@@ -414,12 +438,12 @@ class FileSkillCatalogTest {
         val dir = project("concurrent")
         val files = object : SkillCatalogFiles(JvmBoundRealPathFileSystem()) {
             var removeOnce = true
-            override fun read(file: File, limit: Int, anchor: File): ByteArray {
+            override fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
                 if (removeOnce && file.name == "SKILL.md") {
                     removeOnce = false
                     file.delete()
                 }
-                return super.read(file, limit, anchor)
+                return super.stream(file, limit, anchor, sink)
             }
         }
         val catalog = catalog(files)
@@ -475,12 +499,12 @@ class FileSkillCatalogTest {
         val held = dir.resolve("refs-hold")
         val access = object : SkillCatalogFiles(JvmBoundRealPathFileSystem()) {
             var attack = false
-            override fun read(file: File, limit: Int, anchor: File): ByteArray {
-                if (!attack || file != refs.resolve("info.txt")) return super.read(file, limit, anchor)
+            override fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
+                if (!attack || file != refs.resolve("info.txt")) return super.stream(file, limit, anchor, sink)
                 assertThat(refs.renameTo(held)).isTrue()
                 Files.createSymbolicLink(refs.toPath(), outside.toPath())
                 try {
-                    return super.read(file, limit, anchor)
+                    return super.stream(file, limit, anchor, sink)
                 } finally {
                     Files.delete(refs.toPath())
                     assertThat(held.renameTo(refs)).isTrue()
@@ -610,9 +634,9 @@ class FileSkillCatalogTest {
 
     private class CountingFiles : SkillCatalogFiles(JvmBoundRealPathFileSystem()) {
         var reads = 0
-        override fun read(file: File, limit: Int, anchor: File): ByteArray {
+        override fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
             if (file.name != "catalog.json") reads++
-            return super.read(file, limit, anchor)
+            return super.stream(file, limit, anchor, sink)
         }
     }
 }

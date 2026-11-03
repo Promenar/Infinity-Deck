@@ -92,6 +92,46 @@ class AgentSkillStoreTest {
         assertThat(store.list()).isEmpty()
     }
 
+    private fun binaryZip(vararg entries: Pair<String, ByteArray>): ByteArrayInputStream {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            entries.forEach { (name, content) ->
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(content)
+                zip.closeEntry()
+            }
+        }
+        return ByteArrayInputStream(out.toByteArray())
+    }
+
+    @Test
+    fun `desktop scale zip with many files and a large asset installs`() {
+        val refs = (0 until 320).map { "big/refs/$it.md" to "参考 $it".toByteArray() }.toTypedArray()
+        store.installZip(
+            binaryZip(
+                "big/SKILL.md" to skillMd("big").toByteArray(),
+                "big/assets/card.png" to ByteArray(2 * 1024 * 1024) { (it % 251).toByte() },
+                *refs,
+            ),
+        )
+
+        val installed = store.find("big")!!
+        assertThat(installed.files).hasSize(321)
+        assertThat(java.io.File(root, "big/assets/card.png").length()).isEqualTo(2L * 1024 * 1024)
+    }
+
+    @Test
+    fun `zip over the total limit is rejected without residue`() {
+        val each = AgentSkillStore.MAX_FILE_BYTES
+        val parts = (0..(AgentSkillStore.MAX_TOTAL_BYTES / each).toInt()).map { "part$it.bin" to ByteArray(each) }.toTypedArray()
+
+        assertThrows(AgentSkillFormatException::class.java) {
+            store.installZip(binaryZip("SKILL.md" to skillMd("huge").toByteArray(), *parts))
+        }
+        assertThat(store.list()).isEmpty()
+        assertThat(root.listFiles().orEmpty().filter { it.name.startsWith(".staging") }).isEmpty()
+    }
+
     @Test
     fun `same name requires explicit overwrite`() {
         store.installMarkdown(skillMd("dup", body = "v1"))

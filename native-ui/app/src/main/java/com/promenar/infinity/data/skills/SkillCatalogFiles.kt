@@ -17,6 +17,16 @@ import java.nio.file.attribute.BasicFileAttributes
 /** 文件访问边界；复制、清理与读取均不跟随符号链接。 */
 internal open class SkillCatalogFiles(private val fileSystem: RealPathFileSystem = AndroidRealPathFileSystem) {
     open fun read(file: File, limit: Int, anchor: File): ByteArray {
+        val output = ByteArrayOutputStream(minOf(limit, 8192))
+        stream(file, limit.toLong(), anchor) { chunk, count -> output.write(chunk, 0, count) }
+        return output.toByteArray()
+    }
+
+    /**
+     * 逐块读取不超过 [limit] 字节的文件交给 [sink]，返回总字节数；读取结束时文件版本变化则失败。
+     * 技能扫描用它计算摘要，大文件不必整体读入内存。
+     */
+    open fun stream(file: File, limit: Long, anchor: File, sink: (ByteArray, Int) -> Unit): Long {
         val root = anchor.absoluteFile.normalize().toPath()
         val target = file.absoluteFile.normalize().toPath()
         require(target.startsWith(root) && target != root) { "文件不在技能读取根目录内" }
@@ -34,25 +44,29 @@ internal open class SkillCatalogFiles(private val fileSystem: RealPathFileSystem
             directory.openRead(absolute.fileName.toString()).use { source ->
                 val before = source.state()
                 if (!before.isRegularFile || before.isSymbolicLink) throw AgentSkillFormatException("不是普通文件：${file.name}")
-                if (before.size > limit) throw AgentSkillFormatException("文件超过 ${limit / 1024} KiB 读取上限：${file.name}")
-                val output = ByteArrayOutputStream(minOf(limit, 8192))
-                val chunk = ByteArray(8192)
+                if (before.size > limit) throw AgentSkillFormatException("文件超过 ${limitLabel(limit)} 读取上限：${file.name}")
+                val chunk = ByteArray(64 * 1024)
+                var total = 0L
                 while (true) {
                     val count = source.input.read(chunk)
                     if (count < 0) {
                         if (source.state().revision != before.revision) throw IOException("读取期间文件发生变化：${file.name}")
-                        return output.toByteArray()
+                        return total
                     }
-                    if (count > limit - output.size()) {
-                        throw AgentSkillFormatException("文件超过 ${limit / 1024} KiB 读取上限：${file.name}")
+                    if (count > limit - total) {
+                        throw AgentSkillFormatException("文件超过 ${limitLabel(limit)} 读取上限：${file.name}")
                     }
-                    output.write(chunk, 0, count)
+                    total += count
+                    sink(chunk, count)
                 }
             }
         } finally {
             directories.asReversed().forEach { directory -> runCatching { directory.close() } }
         }
     }
+
+    private fun limitLabel(limit: Long): String =
+        if (limit >= 1024 * 1024 && limit % (1024 * 1024) == 0L) "${limit / 1024 / 1024} MiB" else "${limit / 1024} KiB"
 
     open fun rename(source: File, target: File): Boolean = source.renameTo(target)
 

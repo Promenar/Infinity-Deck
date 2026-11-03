@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.skills
 
 import android.content.SharedPreferences
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -255,16 +256,21 @@ class FileSkillCatalog internal constructor(
             var yaml: ByteArray? = null
             signature.forEach { entry ->
                 val file = safeFile(location, entry.path)
-                val bytes = files.read(file, AgentSkillStore.MAX_FILE_BYTES, location.workspace?.root ?: userRoot)
-                if (bytes.size.toLong() != entry.size) throw IOException("扫描期间文件发生变化：${entry.path}")
                 val path = entry.path.toByteArray(Charsets.UTF_8)
                 // 长度前缀隔开路径、字节边界，避免不同文件组合产生相同输入序列。
                 digest.update(ByteBuffer.allocate(4).putInt(path.size).array())
                 digest.update(path)
-                digest.update(ByteBuffer.allocate(8).putLong(bytes.size.toLong()).array())
-                digest.update(bytes)
-                if (entry.path == AgentSkillStore.SKILL_FILE) markdown = bytes
-                if (entry.path == "agents/openai.yaml") yaml = bytes
+                digest.update(ByteBuffer.allocate(8).putLong(entry.size).array())
+                // 只有 SKILL.md 与 openai.yaml 需要解析，其余文件流式进入摘要，不整体读入内存。
+                val keep = entry.path == AgentSkillStore.SKILL_FILE || entry.path == "agents/openai.yaml"
+                val kept = if (keep) ByteArrayOutputStream() else null
+                val read = files.stream(file, AgentSkillStore.MAX_FILE_BYTES.toLong(), location.workspace?.root ?: userRoot) { chunk, count ->
+                    digest.update(chunk, 0, count)
+                    kept?.write(chunk, 0, count)
+                }
+                if (read != entry.size) throw IOException("扫描期间文件发生变化：${entry.path}")
+                if (entry.path == AgentSkillStore.SKILL_FILE) markdown = kept!!.toByteArray()
+                if (entry.path == "agents/openai.yaml") yaml = kept!!.toByteArray()
             }
             if (signature != inventory(location)) throw IOException("扫描期间技能目录发生变化")
             val bytes = markdown ?: throw AgentSkillFormatException("技能包缺少 SKILL.md")
@@ -303,7 +309,7 @@ class FileSkillCatalog internal constructor(
                 if (!attrs.isRegularFile) throw AgentSkillFormatException("不是普通文件：$relative")
                 if (signature.size >= AgentSkillStore.MAX_FILES) throw AgentSkillFormatException("技能包文件数超过 ${AgentSkillStore.MAX_FILES}")
                 if (attrs.size() > AgentSkillStore.MAX_FILE_BYTES) {
-                    throw AgentSkillFormatException("文件超过 ${AgentSkillStore.MAX_FILE_BYTES / 1024} KiB：$relative")
+                    throw AgentSkillFormatException("文件超过 ${AgentSkillStore.MAX_FILE_BYTES / 1024 / 1024} MiB：$relative")
                 }
                 total += attrs.size()
                 if (total > AgentSkillStore.MAX_TOTAL_BYTES) throw AgentSkillFormatException("技能包总量超过 ${AgentSkillStore.MAX_TOTAL_BYTES / 1024 / 1024} MiB")
