@@ -38,6 +38,7 @@ import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.SettingsToggle
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.skills.SkillRestoreNoticeContent
 
 /** 层的显示名：资料、会话与密钥沿用原备份内容文案。 */
@@ -227,16 +228,21 @@ internal fun BackupExportResultContent(summary: BackupResultSummary, onDismiss: 
 
 /** 重启恢复后首次进入应用时弹出：替换了哪些层，以及需要用户处理的降级引用、跳过项与技能仓库。 */
 @Composable
-fun BackupRestoreResultDialog(result: BackupRestoreResult, onDismiss: () -> Unit) {
+fun BackupRestoreResultDialog(result: BackupRestoreResult, onDismiss: () -> Unit, onFillKeys: (() -> Unit)? = null) {
     val summary = result.summary
     val skills = result.skills?.takeIf { it.skippedGitRepositories.isNotEmpty() || it.skippedSymbolicLinks > 0 }
+    val keysMissing = restoreResultMissingKeys(summary)
+    val fillKeys = onFillKeys?.takeIf { keysMissing }
     InfinityConfirmDialog(
         onDismissRequest = onDismiss,
         title = stringResource(R.string.backup_restore_result_title),
         message = "",
-        confirmText = stringResource(R.string.backup_result_done),
-        cancelText = null,
-        onConfirm = onDismiss,
+        confirmText = stringResource(if (fillKeys != null) R.string.onboarding_restore_result_fill_keys else R.string.backup_result_done),
+        cancelText = if (fillKeys != null) stringResource(R.string.onboarding_restore_result_later) else null,
+        onConfirm = {
+            onDismiss()
+            fillKeys?.invoke()
+        },
         onCancel = onDismiss,
         content = {
             SelectionContainer {
@@ -252,9 +258,20 @@ fun BackupRestoreResultDialog(result: BackupRestoreResult, onDismiss: () -> Unit
                         summary.degraded.filter { it.count > 0 }.forEach { Text(degradedText(it), style = MaterialTheme.typography.bodyMedium) }
                         if (summary.skipped.isNotEmpty()) SkippedItems(summary.skipped)
                     }
+                    if (keysMissing) {
+                        Text(
+                            stringResource(R.string.onboarding_restore_result_keys_missing),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.infinityDomainColors.warning,
+                        )
+                    }
                     skills?.let { SkillRestoreNoticeContent(it) }
                 }
             }
         },
     )
 }
+
+/** 分层备份没有密钥层时，恢复只保留本机已有的密钥，结果弹窗需要提示重新填写。旧版不分层的包不判断。 */
+internal fun restoreResultMissingKeys(summary: BackupResultSummary): Boolean =
+    summary.layers.isNotEmpty() && BackupLayer.SECRETS !in summary.layers

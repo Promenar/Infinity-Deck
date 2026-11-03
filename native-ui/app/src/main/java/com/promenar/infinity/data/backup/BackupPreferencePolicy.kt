@@ -80,8 +80,9 @@ internal object BackupPreferencePolicy {
             "rolled_back_summary_usage_v1", "embedding_setup_hint_shown",
         ),
         "generation_notification_permission" to setOf("post_notifications_asked"),
+        // restore_tx_id 是向导发起恢复的本机标记，只在下次启动结算引导时读取。
         "onboarding" to setOf(
-            "step", "language", "provider_id", "model_id", "agent_id", "session_id",
+            "step", "language", "provider_id", "model_id", "agent_id", "session_id", "restore_tx_id",
         ),
         "catalog_update_schedule" to setOf("checkedat"),
         "kg_usage" to setOf("kg_usage_ledger_v1"),

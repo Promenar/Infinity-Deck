@@ -576,8 +576,9 @@ internal fun BackupSettingsScreenContent(
     }
 }
 
+/** 设置页与引导恢复面板共用的操作状态与错误文案。 */
 @Composable
-private fun backupOperationText(operation: BackupOperation): String? = when (operation) {
+internal fun backupOperationText(operation: BackupOperation): String? = when (operation) {
     BackupOperation.Idle -> null
     BackupOperation.Initializing -> stringResource(R.string.backup_status_initializing)
     BackupOperation.SavingConfig -> stringResource(R.string.backup_status_saving_config)

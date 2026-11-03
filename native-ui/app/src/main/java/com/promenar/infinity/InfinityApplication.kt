@@ -2183,6 +2183,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     InfinityLogger.logError("PresetAgentAvatarUpgrade", failure)
                 }
                 val runtime = backupRuntime
+                // 向导发起的恢复在界面出现前结算：提交成功则引导记为完成，启动后直接进入主界面。
+                withContext(Dispatchers.IO) { settleOnboardingRestoreAtStartup(committed = runtime.restoreResult.value != null) }
                 PostBackupStartupRecoverySequence(
                     recoverWorkspaceJournal = { recoverStartupWorkspaces() },
                     recoverToolLedger = {
@@ -2464,6 +2466,19 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         val processObserver: DefaultLifecycleObserver?,
         val jobs: MutableList<Job> = mutableListOf(),
     )
+
+    /** 结算失败只记录日志、不阻断启动，引导停在原步骤。 */
+    private fun settleOnboardingRestoreAtStartup(committed: Boolean) {
+        try {
+            com.promenar.infinity.onboarding.settleOnboardingRestore(
+                store = com.promenar.infinity.onboarding.OnboardingStateStore(this),
+                committed = committed,
+                persistLanguage = { com.promenar.infinity.util.LocaleController.persistLanguage(this, it) },
+            )
+        } catch (failure: Exception) {
+            InfinityLogger.logError("OnboardingRestoreSettlement", failure)
+        }
+    }
 
     /** 仅供测试应用替换 AndroidKeyStore/真实文件系统依赖；生产始终使用安全 runtime。 */
     protected open fun createBackupRuntime(): BackupRuntime =

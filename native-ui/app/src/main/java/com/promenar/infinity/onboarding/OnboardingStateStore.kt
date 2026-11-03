@@ -115,6 +115,46 @@ class OnboardingStateStore private constructor(
         return advanced
     }
 
+    /** 向导发起、已暂存待重启提交的备份恢复事务号；没有则为 null。 */
+    val stagedRestoreTxId: String?
+        get() = preferences.getString(KEY_RESTORE_TX, null)
+
+    /**
+     * 记下从向导发起并已暂存的备份恢复。只在引导尚未完成时接受；
+     * 写入失败时调用方应放弃本次恢复，避免提交后仍回到向导。
+     */
+    fun recordRestoreStaged(txId: String): Boolean = synchronized(lock) {
+        if (txId.isBlank() || _state.value.step == OnboardingStep.COMPLETED) return@synchronized false
+        preferences.edit().putString(KEY_RESTORE_TX, txId).commit()
+    }
+
+    /** 暂存的恢复已被丢弃（取消或清理），撤销标记。 */
+    fun clearRestoreStaged(): Boolean = synchronized(lock) {
+        preferences.getString(KEY_RESTORE_TX, null) == null || preferences.edit().remove(KEY_RESTORE_TX).commit()
+    }
+
+    /**
+     * 启动期备份恢复收敛后调用：存在向导恢复标记时，[committed] 为 true 表示这次启动提交了恢复，
+     * 引导记为完成并保留已选语言；否则只撤销标记，引导停在原步骤。
+     * 没有标记时什么也不做，所以设置页发起的恢复与普通启动不受影响。返回引导是否因此完成。
+     */
+    fun settleRestore(committed: Boolean): Boolean = synchronized(lock) {
+        if (preferences.getString(KEY_RESTORE_TX, null) == null) return@synchronized false
+        val current = _state.value
+        if (!committed || current.step == OnboardingStep.COMPLETED) {
+            preferences.edit().remove(KEY_RESTORE_TX).commit()
+            return@synchronized false
+        }
+        // 备份已替换提供商、智能体与会话，向导里填过的检查点不再有效，只保留语言。
+        val completed = OnboardingState(step = OnboardingStep.COMPLETED, languageCode = current.languageCode)
+        val editor = preferences.edit()
+        editor.writeState(completed)
+        if (!editor.remove(KEY_RESTORE_TX).commit()) return@synchronized false
+        _state.value = completed
+        legacyPreferences?.edit()?.putBoolean(LEGACY_COMPLETED_KEY, true)?.commit()
+        true
+    }
+
     private fun transition(
         expected: OnboardingStep,
         transform: (OnboardingState) -> OnboardingState?,
@@ -152,14 +192,16 @@ class OnboardingStateStore private constructor(
         return if (step == OnboardingStep.LINUX && !linuxOffered) OnboardingStep.PROVIDER else step
     }
 
-    private fun persist(state: OnboardingState): Boolean = preferences.edit().apply {
+    private fun persist(state: OnboardingState): Boolean = preferences.edit().apply { writeState(state) }.commit()
+
+    private fun SharedPreferences.Editor.writeState(state: OnboardingState) {
         putString(KEY_STEP, state.step.name)
         putNullable(KEY_LANGUAGE, state.languageCode)
         putNullable(KEY_PROVIDER, state.providerId)
         putNullable(KEY_MODEL, state.modelId)
         putNullable(KEY_AGENT, state.agentId)
         putNullable(KEY_SESSION, state.sessionId)
-    }.commit()
+    }
 
     private fun SharedPreferences.Editor.putNullable(key: String, value: String?) {
         if (value == null) remove(key) else putString(key, value)
@@ -176,6 +218,8 @@ class OnboardingStateStore private constructor(
         private const val KEY_MODEL = "model_id"
         private const val KEY_AGENT = "agent_id"
         private const val KEY_SESSION = "session_id"
+        // 本文件不在备份偏好命名空间内，恢复事务不会改写这个标记。
+        private const val KEY_RESTORE_TX = "restore_tx_id"
         private val SUPPORTED_LANGUAGES = setOf("en", "zh")
     }
 }

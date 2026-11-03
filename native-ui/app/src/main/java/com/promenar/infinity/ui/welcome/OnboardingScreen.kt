@@ -138,6 +138,7 @@ internal fun OnboardingScreen(
                 onDismiss = { linuxSheetOpen = false },
             )
         }
+        state.restore?.let { OnboardingRestoreSheet(it, actions.restore) }
     }
 }
 

@@ -71,6 +71,7 @@ internal fun OnboardingRoute(
     var failedModelIds by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var linuxHidden by rememberSaveable { mutableStateOf(false) }
+    val restore = rememberOnboardingRestore(store)
     val actionFailed = stringResource(R.string.onboarding_action_failed)
     val modelFailed = stringResource(R.string.onboarding_model_probe_failed)
 
@@ -236,6 +237,8 @@ internal fun OnboardingRoute(
         onStartChat = {
             onboarding.sessionId?.let { openOnboardingFirstChat(navController, it) }
         },
+        onOpenRestore = restore.open,
+        restore = restore.actions,
     )
 
     OnboardingScreen(
@@ -254,6 +257,8 @@ internal fun OnboardingRoute(
             agentName = agentName,
             busy = busy,
             errorMessage = errorMessage,
+            // 恢复入口只在第一个配置步骤；离开该步骤时面板随之关闭。
+            restore = restore.state?.takeIf { onboarding.step == onboardingRestoreStep(store.linuxOffered) },
         ),
         actions = actions,
     )
