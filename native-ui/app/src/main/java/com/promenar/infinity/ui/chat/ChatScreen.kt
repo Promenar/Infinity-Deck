@@ -52,8 +52,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -100,6 +102,8 @@ import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.MoreVert
@@ -188,6 +192,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.LocalTextStyle
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -267,6 +272,8 @@ data class ChatScreenState(
     val tailnetWait: com.promenar.infinity.data.generation.TailnetWaitState? = null,
     val selectedImageUris: List<android.net.Uri> = emptyList(),
     val draftDocuments: List<MessageDocumentAttachment> = emptyList(),
+    /** 草稿文档的上下文预算；预算按最新草稿重算期间为 null。 */
+    val draftDocumentBudget: com.promenar.infinity.data.generation.DraftDocumentBudget? = null,
     /** 输入区上方的引用卡。 */
     val draftQuotes: List<com.promenar.infinity.data.chat.queue.ComposerQuoteDraft> = emptyList(),
     val isImportingDocument: Boolean = false,
@@ -384,6 +391,8 @@ data class ChatScreenActions(
     val onPickDocuments: () -> Unit = {},
     val onRemoveImage: (Int) -> Unit = {},
     val onRemoveDocument: (String) -> Unit = {},
+    /** 把一份草稿文档转存到会话工作区，转存后以路径引用发送；为 null 时不显示该出路。 */
+    val onSaveDraftDocumentToWorkspace: (suspend (String) -> com.promenar.infinity.data.document.DocumentWorkspaceSaveResult)? = null,
     /** 选字工具条的“引用”：来源消息 ID 与选中文字。 */
     val onQuote: (String, String) -> Unit = { _, _ -> },
     val onQuoteAnnotationChange: (String, String) -> Unit = { _, _ -> },
@@ -1331,8 +1340,15 @@ fun ChatScreenContent(
                 )
                     // 三种发送方式共用：纯附件时补默认提示词。
                     // 只有写了批注的引用时正文留空，引用本身就是这条消息。
+                    // 预算重算期间沿用上一次结果，避免每次输入都让提示闪没。
+                    var lastDraftBudget by remember { mutableStateOf(state.draftDocumentBudget) }
+                    if (state.draftDocumentBudget != null || draftDocuments.isEmpty()) lastDraftBudget = state.draftDocumentBudget
+                    val budgetNotice = remember(lastDraftBudget, draftDocuments) { draftBudgetNotice(lastDraftBudget, draftDocuments) }
+                    var budgetNoticeFlashes by remember { mutableIntStateOf(0) }
                     val submitDraft: ((String, List<android.net.Uri>) -> Unit) -> Unit = { send ->
-                        if (ComposerQuotes.hasSendableDraft(inputText, selectedImageUris.isNotEmpty(), draftDocuments.isNotEmpty(), draftQuotes)) {
+                        if (budgetNotice?.blocksSend == true) {
+                            budgetNoticeFlashes++
+                        } else if (ComposerQuotes.hasSendableDraft(inputText, selectedImageUris.isNotEmpty(), draftDocuments.isNotEmpty(), draftQuotes)) {
                             val fallback = when {
                                 draftDocuments.isNotEmpty() -> documentOnlyPrompt
                                 selectedImageUris.isNotEmpty() -> describeImagePrompt
@@ -1480,6 +1496,10 @@ fun ChatScreenContent(
                                     isImporting = state.isImportingDocument,
                                     onRemoveImage = actions.onRemoveImage,
                                     onRemoveDocument = actions.onRemoveDocument,
+                                    budgetNotice = budgetNotice,
+                                    budgetNoticeFlashes = budgetNoticeFlashes,
+                                    onSaveDocument = actions.onSaveDraftDocumentToWorkspace,
+                                    onSwitchModel = actions.onOpenModelPicker ?: actions.onOpenSettings,
                                 )
                             },
                         )
@@ -2964,14 +2984,21 @@ internal fun ChatComposerAttachments(
     isImporting: Boolean,
     onRemoveImage: (Int) -> Unit = {},
     onRemoveDocument: (String) -> Unit = {},
+    budgetNotice: DraftBudgetNotice? = null,
+    /** 被拦下的发送次数，每次增加时提示条闪一次。 */
+    budgetNoticeFlashes: Int = 0,
+    onSaveDocument: (suspend (String) -> com.promenar.infinity.data.document.DocumentWorkspaceSaveResult)? = null,
+    onSwitchModel: () -> Unit = {},
 ) {
     if (imageUris.isEmpty() && documents.isEmpty() && !isImporting) return
     val removeDescription = stringResource(R.string.chat_cd_remove_document)
+    val domainColors = MaterialTheme.infinityDomainColors
     // 同一张图可能被选两次，按出现次序区分，保证删除一张时其余缩略图平滑补位。
     val imageKeys = remember(imageUris) {
         val seen = HashMap<String, Int>()
         imageUris.map { uri -> uri.toString().let { "image:$it#" + seen.merge(it, 1, Int::plus) } }
     }
+    Column(Modifier.fillMaxWidth()) {
     LazyRow(
         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
             .then(if (documents.isNotEmpty() || isImporting) Modifier.testTag(UiTags.CHAT_DOCUMENT_CHIPS) else Modifier),
@@ -2992,14 +3019,39 @@ internal fun ChatComposerAttachments(
             }
         }
         items(documents, key = MessageDocumentAttachment::id) { document ->
+            val flagged = budgetNotice?.flaggedDocumentIds?.contains(document.id) == true
+            val inWorkspace = document.workspaceReference != null
             Box(
                 modifier = Modifier.animateItem().size(56.dp).clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .then(if (flagged) Modifier.border(1.5.dp, domainColors.warning, RoundedCornerShape(12.dp)) else Modifier)
                     .clickable(role = Role.Button, onClickLabel = removeDescription) { onRemoveDocument(document.id) }
                     .testTag(UiTags.chatDocumentChip(document.id)),
             ) {
+                if (inWorkspace) {
+                    // 角标压在瓦片顶边一条，不与中部的移除键重叠。
+                    Text(
+                        stringResource(R.string.chat_document_workspace_badge),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 2.dp)
+                            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp)
+                            .testTag(UiTags.chatDocumentWorkspaceBadge(document.id)),
+                    )
+                }
                 Column(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Bottom) {
-                    Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        when {
+                            flagged -> Icons.Rounded.Warning
+                            inWorkspace -> Icons.Rounded.Folder
+                            else -> Icons.Rounded.Description
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = if (flagged) domainColors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text(document.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 IconButton(
@@ -3016,6 +3068,120 @@ internal fun ChatComposerAttachments(
             }
         }
     }
+    if (budgetNotice != null) {
+        DraftBudgetNoticeBar(budgetNotice, budgetNoticeFlashes, onSaveDocument, onSwitchModel)
+    }
+    }
+}
+
+/** 附件超限提示：一行说明加“存入工作区 / 换模型”两个出路。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DraftBudgetNoticeBar(
+    notice: DraftBudgetNotice,
+    flashes: Int,
+    onSaveDocument: (suspend (String) -> com.promenar.infinity.data.document.DocumentWorkspaceSaveResult)?,
+    onSwitchModel: () -> Unit,
+) {
+    val domainColors = MaterialTheme.infinityDomainColors
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var saveFailure by remember { mutableStateOf<com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure?>(null) }
+    // 发送被拦下时提示条底色闪一次，提醒出路就在这里。
+    val flash = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(flashes) {
+        if (flashes > 0) {
+            flash.snapTo(1f)
+            flash.animateTo(0f, tween(600))
+        }
+    }
+    val estimated = ChatViewModel.formatTokenCount(notice.estimatedTokens)
+    val budget = notice.budgetTokens?.let { ChatViewModel.formatTokenCount(it.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }.orEmpty()
+    val message = when (notice.kind) {
+        DraftBudgetNoticeKind.EXCEEDED -> stringResource(R.string.chat_draft_budget_exceeded, estimated, budget)
+        DraftBudgetNoticeKind.COMBINED -> stringResource(R.string.chat_draft_budget_combined, estimated, budget)
+        DraftBudgetNoticeKind.COMPACTABLE -> stringResource(R.string.chat_draft_budget_compactable, estimated, budget)
+        DraftBudgetNoticeKind.UNKNOWN_WINDOW -> stringResource(R.string.chat_draft_budget_unknown_window)
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag(UiTags.CHAT_DRAFT_BUDGET_NOTICE),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .background(
+                    androidx.compose.ui.graphics.lerp(domainColors.warningContainer, domainColors.warning, flash.value * 0.35f),
+                    RoundedCornerShape(12.dp),
+                )
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (notice.kind == DraftBudgetNoticeKind.UNKNOWN_WINDOW) Icons.AutoMirrored.Rounded.HelpOutline else Icons.Rounded.Warning,
+                contentDescription = null,
+                tint = domainColors.onWarningContainer,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = domainColors.onWarningContainer,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        saveFailure?.let { failure ->
+            Text(
+                stringResource(draftDocumentSaveFailureText(failure)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag(UiTags.CHAT_DRAFT_BUDGET_SAVE_ERROR),
+            )
+        }
+        // 放不下一行时第二个按钮整体换到下一行，按钮文字保持单行。
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (onSaveDocument != null) {
+                Button(
+                    onClick = {
+                        if (saving) return@Button
+                        saving = true
+                        saveFailure = null
+                        scope.launch {
+                            try {
+                                for (id in notice.flaggedDocumentIds) {
+                                    val result = onSaveDocument(id)
+                                    if (result is com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Failure) {
+                                        saveFailure = result.reason
+                                        break
+                                    }
+                                }
+                            } finally {
+                                saving = false
+                            }
+                        }
+                    },
+                    enabled = !saving,
+                    modifier = Modifier.testTag(UiTags.CHAT_DRAFT_BUDGET_SAVE),
+                ) {
+                    if (saving) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(stringResource(R.string.chat_draft_budget_save), maxLines = 1)
+                }
+            }
+            FilledTonalButton(onClick = onSwitchModel, modifier = Modifier.testTag(UiTags.CHAT_DRAFT_BUDGET_SWITCH_MODEL)) {
+                Text(stringResource(R.string.chat_draft_budget_switch_model), maxLines = 1)
+            }
+        }
+    }
+}
+
+internal fun draftDocumentSaveFailureText(failure: com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure): Int = when (failure) {
+    com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.WorkspaceUnavailable -> R.string.chat_draft_save_failed_unavailable
+    com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.ReadOnly -> R.string.chat_draft_save_failed_read_only
+    com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.NameConflict -> R.string.chat_draft_save_failed_conflict
+    else -> R.string.chat_draft_save_failed
 }
 
 @Composable

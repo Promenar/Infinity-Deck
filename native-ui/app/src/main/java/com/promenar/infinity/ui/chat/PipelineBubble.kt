@@ -1923,10 +1923,18 @@ private fun MessageDocumentSummary(documents: List<MessageDocumentAttachment>) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                val reference = document.workspaceReference
+                Icon(if (reference != null) Icons.Rounded.Folder else Icons.Rounded.Description, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 Column(modifier = Modifier.widthIn(max = 220.dp)) {
                     Text(document.name, style = InfinityTypography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(formatMessageDocumentBytes(document.sizeBytes), style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // 已存入工作区的文档给出工作区内路径，与 Agent 用 read_file 读到的位置一致。
+                    Text(
+                        reference?.let { com.promenar.infinity.data.workspace.workspaceFileRelativePath(it.path).removePrefix("/") }
+                            ?: formatMessageDocumentBytes(document.sizeBytes),
+                        style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
+                    )
                 }
             }
         }

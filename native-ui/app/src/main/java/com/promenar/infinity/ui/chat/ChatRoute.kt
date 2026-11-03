@@ -327,6 +327,7 @@ fun ChatRoute(
     val generationPhase by chatViewModel.generationPhase.collectAsStateWithLifecycle()
     val tailnetWait by chatViewModel.tailnetWait.collectAsStateWithLifecycle()
     val draftDocuments by chatViewModel.draftDocuments.collectAsStateWithLifecycle()
+    val draftDocumentBudget by chatViewModel.draftDocumentBudget.collectAsStateWithLifecycle()
     val draftQuotes by chatViewModel.draftQuotes.collectAsStateWithLifecycle()
     val themePreferences by application.themePreferenceStore.state.collectAsStateWithLifecycle()
     val isImportingDocument by chatViewModel.isImportingDocument.collectAsStateWithLifecycle()
@@ -895,6 +896,7 @@ fun ChatRoute(
                 tailnetWait = tailnetWait,
                 selectedImageUris = selectedImageUris,
                 draftDocuments = draftDocuments,
+                draftDocumentBudget = draftDocumentBudget,
                 draftQuotes = draftQuotes,
                 isImportingDocument = isImportingDocument,
                 modelDisplayNames = modelDisplayNames,
@@ -1031,6 +1033,7 @@ fun ChatRoute(
                     )
                 },
                 onRemoveDocument = chatViewModel::removeDraftDocument,
+                onSaveDraftDocumentToWorkspace = { id -> chatViewModel.saveDraftDocumentToWorkspace(id) },
                 onQuote = chatViewModel::addQuote,
                 onQuoteAnnotationChange = chatViewModel::updateQuoteAnnotation,
                 onRemoveQuote = chatViewModel::removeQuote,

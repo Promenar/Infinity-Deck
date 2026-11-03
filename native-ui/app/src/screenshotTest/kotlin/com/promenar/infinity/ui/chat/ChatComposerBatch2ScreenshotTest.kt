@@ -164,6 +164,64 @@ private fun ComposerFrame(
     }
 }
 
+private fun budgetDocument(id: String, name: String, inWorkspace: Boolean = false) = MessageDocumentAttachment(
+    id = id, name = name, mimeType = "text/markdown", content = "", sizeBytes = 900_000, sha256 = id, estimatedTokens = 1,
+    workspaceReference = if (inWorkspace) WorkspaceDocumentReference("/session/attachments/2026-11-03/$name", 18_000, 312_000) else null,
+)
+
+@Composable
+private fun BudgetComposerFrame(text: String, documents: List<MessageDocumentAttachment>, notice: DraftBudgetNotice?) {
+    ChatBatch2Frame {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            ChatInputBar(
+                text = text, placeholder = "向 Infinity Workbench 提问…", onTextChange = {}, onSend = {},
+                modelName = "Gemini 2.5 Flash", modelId = "google::gemini-2.5-flash",
+                tokenState = ChatViewModel.TokenIndicatorState(used = 44800, max = 128000),
+                hasDocuments = true,
+                attachmentContent = {
+                    ChatComposerAttachments(
+                        imageUris = emptyList(), documents = documents, isImporting = false,
+                        budgetNotice = notice,
+                        onSaveDocument = { com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Failure(com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.SaveFailed) },
+                    )
+                },
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "附件单份超限 深中411", widthDp = 411, heightDp = 300, locale = "zh-rCN")
+@Preview(name = "附件单份超限 深英360 大字", widthDp = 360, heightDp = 440, locale = "en", fontScale = 1.3f)
+@Composable
+fun chatComposerBudgetExceededBatch2Preview() = BudgetComposerFrame(
+    "", listOf(budgetDocument("annual", "年报全文.md"), budgetDocument("outline", "提纲.md")),
+    DraftBudgetNotice(DraftBudgetNoticeKind.EXCEEDED, setOf("annual"), 312_400, 118_000),
+)
+
+@PreviewTest
+@Preview(name = "附件合计超限 深中360", widthDp = 360, heightDp = 300, locale = "zh-rCN")
+@Composable
+fun chatComposerBudgetCombinedBatch2Preview() = BudgetComposerFrame(
+    "", listOf(budgetDocument("a", "上半年.md"), budgetDocument("b", "下半年.md")),
+    DraftBudgetNotice(DraftBudgetNoticeKind.COMBINED, setOf("a", "b"), 136_000, 118_000),
+)
+
+@PreviewTest
+@Preview(name = "附件已存入工作区 深中411", widthDp = 411, heightDp = 220, locale = "zh-rCN")
+@Composable
+fun chatComposerBudgetSavedBatch2Preview() = BudgetComposerFrame(
+    "总结第三章的营收变化", listOf(budgetDocument("annual", "年报全文.md", inWorkspace = true), budgetDocument("outline", "提纲.md")), null,
+)
+
+@PreviewTest
+@Preview(name = "附件窗口未知 深中411", widthDp = 411, heightDp = 300, locale = "zh-rCN")
+@Composable
+fun chatComposerBudgetUnknownWindowBatch2Preview() = BudgetComposerFrame(
+    "", listOf(budgetDocument("log", "日志.txt")),
+    DraftBudgetNotice(DraftBudgetNoticeKind.UNKNOWN_WINDOW, setOf("log"), 52_000, null),
+)
+
 @PreviewTest
 @Preview(name = "会话完整 深中411", widthDp = 411, heightDp = 892, locale = "zh-rCN")
 @Composable

@@ -75,6 +75,10 @@ object UiTags {
     const val CHAT_ATTACH_MENU_DOCUMENT = "chat_attach_menu_document"
     const val CHAT_DOCUMENT_CHIPS = "chat_document_chips"
     const val CHAT_DOCUMENT_IMPORTING = "chat_document_importing"
+    const val CHAT_DRAFT_BUDGET_NOTICE = "chat_draft_budget_notice"
+    const val CHAT_DRAFT_BUDGET_SAVE = "chat_draft_budget_save"
+    const val CHAT_DRAFT_BUDGET_SWITCH_MODEL = "chat_draft_budget_switch_model"
+    const val CHAT_DRAFT_BUDGET_SAVE_ERROR = "chat_draft_budget_save_error"
     const val CHAT_MESSAGE_DOCUMENTS = "chat_message_documents"
     const val CHAT_LEGACY_ATTACHMENTS = "chat_legacy_attachments"
     const val CHAT_LEGACY_ATTACHMENT_ENTRY = "chat_legacy_attachment_entry"
@@ -86,6 +90,7 @@ object UiTags {
 
     fun chatDocumentChip(documentId: String): String = CHAT_DOCUMENT_CHIP_PREFIX + documentId
     fun chatDocumentRemove(documentId: String): String = CHAT_DOCUMENT_REMOVE_PREFIX + documentId
+    fun chatDocumentWorkspaceBadge(documentId: String): String = "chat_document_workspace_badge:$documentId"
     const val PROMPT_EDITOR_INPUT = "prompt_editor_input"
     const val PROMPT_EDITOR_SAVE = "prompt_editor_save"
     const val CHAT_MODEL_SELECTOR = "chat_model_selector"

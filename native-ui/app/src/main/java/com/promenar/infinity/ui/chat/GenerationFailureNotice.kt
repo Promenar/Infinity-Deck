@@ -25,6 +25,10 @@ object GenerationFailureNotice {
     private const val CODE_INVALID_REQUEST = "generation.failure.invalid_request"
     private const val CODE_CONTEXT_LIMIT = "generation.failure.context_limit"
     private const val CODE_CONTEXT_LIMIT_CONVERSATION = "generation.failure.context_limit_conversation"
+    private const val CODE_CONTEXT_LIMIT_TURN = "generation.failure.context_limit_turn"
+    private const val CODE_CONTEXT_LIMIT_TURN_DOCUMENTS = "generation.failure.context_limit_turn_documents"
+    private const val CODE_CONTEXT_LIMIT_UNKNOWN_WINDOW = "generation.failure.context_limit_unknown_window"
+    private const val CODE_CONTEXT_LIMIT_UPSTREAM = "generation.failure.context_limit_upstream"
     private const val CODE_OUTPUT_LIMIT = "generation.failure.output_limit"
     private const val CODE_CONTENT_FILTERED = "generation.failure.content_filtered"
     private const val CODE_SERVER = "generation.failure.server"
@@ -50,12 +54,16 @@ object GenerationFailureNotice {
             GenerationFailureCode.QUOTA -> CODE_QUOTA
             GenerationFailureCode.TIMEOUT -> CODE_TIMEOUT
             GenerationFailureCode.INVALID_REQUEST -> CODE_INVALID_REQUEST
-            GenerationFailureCode.CONTEXT_LIMIT ->
-                if (failure.formatArgs[GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS] == "false") {
-                    CODE_CONTEXT_LIMIT_CONVERSATION
-                } else {
-                    CODE_CONTEXT_LIMIT
+            GenerationFailureCode.CONTEXT_LIMIT -> {
+                val documents = failure.formatArgs[GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS] != "false"
+                when (failure.formatArgs[GenerationFailure.KEY_CONTEXT_LIMIT_REASON]) {
+                    // 当前轮本身放不下：压缩历史无济于事，出路是转存附件或换模型。
+                    "CURRENT_TURN" -> if (documents) CODE_CONTEXT_LIMIT_TURN_DOCUMENTS else CODE_CONTEXT_LIMIT_TURN
+                    "UNKNOWN_WINDOW" -> CODE_CONTEXT_LIMIT_UNKNOWN_WINDOW
+                    "UPSTREAM" -> CODE_CONTEXT_LIMIT_UPSTREAM
+                    else -> if (documents) CODE_CONTEXT_LIMIT else CODE_CONTEXT_LIMIT_CONVERSATION
                 }
+            }
             GenerationFailureCode.OUTPUT_LIMIT -> CODE_OUTPUT_LIMIT
             GenerationFailureCode.CONTENT_FILTERED -> CODE_CONTENT_FILTERED
             GenerationFailureCode.SERVER -> CODE_SERVER
@@ -78,10 +86,14 @@ object GenerationFailureNotice {
             code = code,
             formatArgs = when (failure.code) {
                 GenerationFailureCode.RATE_LIMIT -> retryAfterSeconds?.let(::listOf).orEmpty()
-                GenerationFailureCode.CONTEXT_LIMIT -> listOfNotNull(
-                    failure.formatArgs[GenerationFailure.KEY_REQUIRED_TOKENS]?.toLongOrNull(),
-                    failure.formatArgs[GenerationFailure.KEY_AVAILABLE_TOKENS]?.toLongOrNull(),
-                ).takeIf { it.size == 2 }.orEmpty()
+                GenerationFailureCode.CONTEXT_LIMIT -> if (code == CODE_CONTEXT_LIMIT_UNKNOWN_WINDOW || code == CODE_CONTEXT_LIMIT_UPSTREAM) {
+                    emptyList()
+                } else {
+                    listOfNotNull(
+                        failure.formatArgs[GenerationFailure.KEY_REQUIRED_TOKENS]?.toLongOrNull(),
+                        failure.formatArgs[GenerationFailure.KEY_AVAILABLE_TOKENS]?.toLongOrNull(),
+                    ).takeIf { it.size == 2 }.orEmpty()
+                }
                 else -> emptyList()
             },
             technical = failure.technical,
@@ -130,6 +142,18 @@ object GenerationFailureNotice {
         } else {
             ResolvedStatus(R.string.chat_document_error_invalid_estimate)
         }
+        CODE_CONTEXT_LIMIT_TURN_DOCUMENTS -> if (notice.formatArgs.size == 2) {
+            ResolvedStatus(R.string.chat_context_error_turn_documents, notice.formatArgs)
+        } else {
+            ResolvedStatus(R.string.chat_document_error_invalid_estimate)
+        }
+        CODE_CONTEXT_LIMIT_TURN -> if (notice.formatArgs.size == 2) {
+            ResolvedStatus(R.string.chat_context_error_turn, notice.formatArgs)
+        } else {
+            ResolvedStatus(R.string.chat_document_error_invalid_estimate)
+        }
+        CODE_CONTEXT_LIMIT_UNKNOWN_WINDOW -> ResolvedStatus(R.string.chat_document_error_unknown_capacity)
+        CODE_CONTEXT_LIMIT_UPSTREAM -> ResolvedStatus(R.string.chat_context_error_upstream)
         CODE_OUTPUT_LIMIT -> ResolvedStatus(R.string.generation_failure_output_limit)
         CODE_CONTENT_FILTERED -> ResolvedStatus(R.string.generation_failure_content_filtered)
         CODE_SERVER -> ResolvedStatus(R.string.generation_failure_server)

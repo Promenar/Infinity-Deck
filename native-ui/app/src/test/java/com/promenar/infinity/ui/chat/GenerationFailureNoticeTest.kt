@@ -83,6 +83,33 @@ class GenerationFailureNoticeTest {
     }
 
     @Test
+    fun `上下文超限按原因区分当前轮、窗口未知与上游超限`() {
+        fun resolve(reason: String, documents: String = "true") = GenerationFailureNotice.template(
+            GenerationFailureNotice.from(
+                GenerationFailure(
+                    GenerationFailureCode.CONTEXT_LIMIT,
+                    mapOf(
+                        GenerationFailure.KEY_CONTEXT_LIMIT_REASON to reason,
+                        GenerationFailure.KEY_REQUIRED_TOKENS to "312000",
+                        GenerationFailure.KEY_AVAILABLE_TOKENS to "118000",
+                        GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to documents,
+                    ),
+                ),
+            ),
+        )
+
+        val turnDocuments = resolve("CURRENT_TURN")
+        assertThat(turnDocuments.resourceId).isEqualTo(R.string.chat_context_error_turn_documents)
+        assertThat(turnDocuments.args).containsExactly(312000L, 118000L).inOrder()
+        assertThat(resolve("CURRENT_TURN", "false").resourceId).isEqualTo(R.string.chat_context_error_turn)
+        assertThat(resolve("UNKNOWN_WINDOW").resourceId).isEqualTo(R.string.chat_document_error_unknown_capacity)
+        assertThat(resolve("UNKNOWN_WINDOW").args).isEmpty()
+        assertThat(resolve("UPSTREAM").resourceId).isEqualTo(R.string.chat_context_error_upstream)
+        assertThat(resolve("TOTAL_INPUT").resourceId).isEqualTo(R.string.chat_document_error_over_capacity)
+        assertThat(resolve("TOTAL_INPUT", "false").resourceId).isEqualTo(R.string.chat_context_error_over_capacity)
+    }
+
+    @Test
     fun `限流只在正数重试秒数存在时使用带参数资源`() {
         val withRetry = GenerationFailureNotice.template(
             GenerationFailureNotice.from(GenerationFailure.rateLimited(37)),
