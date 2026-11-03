@@ -2730,7 +2730,7 @@ class ChatViewModelTest {
         streamGate = null
         fakeStreamChunks = listOf(StreamChunk.TextDelta("次轮"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
         gate.complete(listOf(StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN)))
-        advanceUntilIdle()
+        awaitReal { protocolRequestCount == 2 && viewModel.composerQueue.value.items.isEmpty() && !viewModel.uiState.value.isGenerating }
         assertThat(protocolRequestCount).isEqualTo(2)
         assertThat(viewModel.composerQueue.value.items).isEmpty()
         assertThat(viewModel.inputText.value).isEqualTo("待编辑")
@@ -2754,7 +2754,7 @@ class ChatViewModelTest {
         streamGate = null
         fakeStreamChunks = listOf(StreamChunk.TextDelta("次轮"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
         gate.complete(listOf(StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN)))
-        advanceUntilIdle()
+        awaitReal { protocolRequestCount == 2 && viewModel.composerQueue.value.items.isEmpty() && !viewModel.uiState.value.isGenerating }
         assertThat(protocolRequestCount).isEqualTo(2)
         val messages = lastPromptRequest!!.messages
         val system = messages.first { it.role == "system" }.content

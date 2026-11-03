@@ -2299,21 +2299,39 @@ class DefaultChatGenerationRuntimeTest {
         val directory = java.nio.file.Files.createTempDirectory("steering-cancel").toFile()
         try {
             val fileQueue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(directory, { null }, UnconfinedTestDispatcher(testScheduler))
+            lateinit var operation: kotlinx.coroutines.Job
+            var claims = 0
+            var boundaryClaims = 0
+            var prompts = 0
             val queue = object : com.promenar.infinity.data.chat.queue.ComposerQueueStore by fileQueue {
                 override suspend fun claimSteering(sessionId: String): com.promenar.infinity.data.chat.queue.QueuedMessage? {
+                    claims++
                     val item = fileQueue.claimSteering(sessionId)
-                    if (item != null) kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]?.cancel()
+                    if (item != null) {
+                        val owner = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                        assertThat(owner).isSameInstanceAs(operation)
+                        owner!!.cancel()
+                    }
                     return item
+                }
+                override suspend fun claimBoundary(sessionId: String): com.promenar.infinity.data.chat.queue.QueuedMessage? {
+                    boundaryClaims++
+                    return fileQueue.claimBoundary(sessionId)
                 }
             }
             val writes = mutableListOf<String>()
-            val operation = launch {
+            operation = launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                 runThreeRoundToolScenario(toolRoundCount = 0, composerQueue = queue,
-                    onPrompt = { val item = queue.enqueue("s1", "cancelled-steer"); queue.steer("s1", item.id) },
+                    onPrompt = { check(++prompts == 1) { "认领取消后不得再次请求 Provider" } },
+                    onPartialStream = { val item = queue.enqueue("s1", "cancelled-steer"); queue.steer("s1", item.id) },
                     onPersist = { writes += it })
             }
+            operation.start()
             operation.join()
             assertThat(operation.isCancelled).isTrue()
+            assertThat(claims).isEqualTo(1)
+            assertThat(boundaryClaims).isEqualTo(0)
+            assertThat(prompts).isEqualTo(1)
             assertThat(fileQueue.snapshot("s1").items.single().text).isEqualTo("cancelled-steer")
             assertThat(fileQueue.snapshot("s1").sending).isNull()
             assertThat(writes).doesNotContain("cancelled-steer")
@@ -2601,7 +2619,8 @@ class DefaultChatGenerationRuntimeTest {
                     val name = if (round == 1) "search" else "read_file"
                     repeat(toolCallsPerRound) { index ->
                         val id = if (toolCallsPerRound == 1) "call-$round" else "call-$round-$index"
-                        emit(StreamChunk.ToolCallDelta(id, name, """{"round":$round}""", index))
+                        val arguments = if (toolCallsPerRound == 1) """{"round":$round}""" else """{"round":$round,"index":$index}"""
+                        emit(StreamChunk.ToolCallDelta(id, name, arguments, index))
                     }
                 } else if (round > toolRoundCount + emptyFinalRounds) emit(StreamChunk.TextDelta("final"))
                 completedRounds++

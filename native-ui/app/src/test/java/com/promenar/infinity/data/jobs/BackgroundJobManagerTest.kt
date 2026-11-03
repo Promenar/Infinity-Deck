@@ -26,13 +26,56 @@ class BackgroundJobManagerTest {
             val store = BackgroundJobStore(File(root, "store"))
             store.put(sample().copy(runner = "TERMUX", runDirectory = File(root, "runs/job-a").path,
                 termuxDirectory = "/termux/jobs/job-a", termuxPid = 123))
-            val manager = manager(root, scope, store, termux = backend)
+            val listening = CompletableDeferred<Unit>()
+            val live = io.mockk.spyk(ToolLiveOutputStore())
+            io.mockk.every { live.listenOutput("job:job-a", any()) } answers {
+                callOriginal<() -> Unit>().also { listening.complete(Unit) }
+            }
+            val manager = manager(root, scope, store, termux = backend, live = live)
             manager.initialize()
-            val waiting = async(ToolCallControlContext("s", "termux-wait", "termux-step")) { manager.waitFor("s", "job-a", 5, untilOutput = "ready") }
-            withTimeout(5_000) { ToolExecutionControls.observe("s", "termux-wait").first { it != null } }
+            val waiting = async(ToolCallControlContext("s", "termux-wait", "termux-step")) { manager.waitFor("s", "job-a", 5, untilOutput = "^ready$") }
+            // 控制租约覆盖基线查询；输出观察窗口从真实订阅完成后开始。
+            withTimeout(5_000) { listening.await() }
             assertThat(waiting.isCompleted).isFalse()
             bytes.set(10)
-            assertThat(waiting.await().waitReason).isEqualTo("output")
+            val returned = waiting.await()
+            assertThat(returned.waitReason).isEqualTo("output")
+            assertThat(returned.matchedLine).isEqualTo("ready")
+            assertThat(returned.tail.text).doesNotContain("[+")
+        } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
+    }
+
+    @Test fun `Termux基线完成与输出订阅之间的并发刷新不能丢增量`() = runBlocking {
+        val root = Files.createTempDirectory("job-termux-subscribe-race").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val bytes = java.util.concurrent.atomic.AtomicLong(5)
+            val encoded = java.util.Base64.getEncoder().encodeToString("ready".toByteArray())
+            val backend = com.promenar.infinity.data.termux.TermuxBackgroundJobs {
+                com.promenar.infinity.data.termux.TermuxCommandResult(stdout = "INFINITY_JOB_V1\n-\n1\n0\n0\n${bytes.get()}\n$encoded\n", exitCode = 0)
+            }
+            val store = BackgroundJobStore(File(root, "store"))
+            store.put(sample().copy(runner = "TERMUX", runDirectory = File(root, "runs/job-a").path,
+                termuxDirectory = "/termux/jobs/job-a", termuxPid = 123))
+            lateinit var jobManager: BackgroundJobManager
+            val live = io.mockk.spyk(ToolLiveOutputStore())
+            val refreshFinished = java.util.concurrent.CountDownLatch(1)
+            io.mockk.every { live.listenOutput("job:job-a", any()) } answers {
+                // 停在真实订阅前，让另一个查询尝试推进字节游标；基线锁必须覆盖这个窗口。
+                bytes.set(10)
+                scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    try { jobManager.status("s", "job-a") } finally { refreshFinished.countDown() }
+                }
+                assertThat(refreshFinished.await(1, java.util.concurrent.TimeUnit.SECONDS)).isFalse()
+                callOriginal<() -> Unit>()
+            }
+            jobManager = manager(root, scope, store, termux = backend, live = live)
+            jobManager.initialize()
+            val returned = withTimeout(5_000) {
+                withContext(Dispatchers.IO) { jobManager.waitFor("s", "job-a", 4, untilOutput = "^ready$") }
+            }
+            assertThat(returned.waitReason).isEqualTo("output")
+            assertThat(returned.matchedLine).isEqualTo("ready")
         } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
     }
 

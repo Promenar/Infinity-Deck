@@ -811,11 +811,16 @@ class BackgroundJobManager(
     }
     private fun sessionAllowed(record:BackgroundJobRecord)=record.sessionId !in deletedSessions
     private fun termuxHandle(record:BackgroundJobRecord)=TermuxJobHandle(checkNotNull(record.termuxDirectory),checkNotNull(record.termuxPid))
-    private suspend fun refreshTermux(record:BackgroundJobRecord):JobLogTail = refreshGate.withLock {
-        var current=store.all().find{it.id==record.id} ?: return@withLock JobLogTail("",false)
+    private suspend fun refreshTermux(record: BackgroundJobRecord, onRefreshed: (() -> Unit)? = null): JobLogTail = refreshGate.withLock {
+        refreshTermuxLocked(record).also { onRefreshed?.invoke() }
+    }
+
+    /** 刷新游标与新监听登记共用临界区，监控查询不能从两者之间穿过。 */
+    private suspend fun refreshTermuxLocked(record: BackgroundJobRecord): JobLogTail {
+        var current=store.all().find{it.id==record.id} ?: return JobLogTail("",false)
         if(current.termuxPid==null) {
             val restored=checkNotNull(termux).recover(current.id,current.workspaceDirectory?.let(::File))
-                ?: return@withLock JobLogTail("启动结果尚未确认；可用 job_stop 撤销，避免重复执行。",false)
+                ?: return JobLogTail("启动结果尚未确认；可用 job_stop 撤销，避免重复执行。",false)
             current=current.copy(termuxDirectory=restored.directory,termuxPid=restored.pid,guidance=null)
             store.put(current)
         }
@@ -869,7 +874,7 @@ class BackgroundJobManager(
                 publish()
             }
         }
-        tail
+        return tail
     }
     private suspend fun finish(record:BackgroundJobRecord,handle:Active) {
         var settled=record.copy(lastOutputAtMillis = handle.lastOutputAtMillis ?: record.lastOutputAtMillis)
@@ -956,9 +961,10 @@ class BackgroundJobManager(
                 coroutineScope {
                     val operation = async {
                         // 远端基线查询也属于可释放等待；查询取消不会停止原任务。
-                        if (pattern != null && record.runnerKind == BackgroundJobRunner.TERMUX) refreshTermux(record)
                         val condition = pattern?.let(::JobOutputCondition)
-                        unsubscribe = condition?.let { liveOutput.listenOutput("job:$id", it::accept) }
+                        val subscribe = { unsubscribe = condition?.let { liveOutput.listenOutput("job:$id", it::accept) } }
+                        if (pattern != null && record.runnerKind == BackgroundJobRunner.TERMUX) refreshTermux(record, subscribe)
+                        else subscribe()
                         coroutineScope {
                             val terminal = async(start = CoroutineStart.UNDISPATCHED) {
                                 if (record.running) {

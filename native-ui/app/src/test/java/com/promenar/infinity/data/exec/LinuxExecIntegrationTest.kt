@@ -176,7 +176,8 @@ class LinuxExecIntegrationTest {
     @Test fun `Linux捕获关闭PTY保持stdout与stderr独立并忽略让出阈值`() = runBlocking<Unit> {
         val vault = SessionSecretVault()
         val exec = service(vault = vault)
-        val skill = ShellExecSkill(exec, manager(exec))
+        val jobs = manager(exec)
+        val skill = ShellExecSkill(exec, jobs)
         val args = Json.parseToJsonElement("""{"command":"printf fixture-linux-secret; printf diagnostic >&2","yield_after_seconds":1,"capture_secret":{"name":"TOKEN","label":"令牌","from":"stdout"}}""").jsonObject
         val result = Json.parseToJsonElement(skill.execute(args, object : SkillExecutionContext {
             override val sessionId = "s"
@@ -188,7 +189,33 @@ class LinuxExecIntegrationTest {
         assertThat(result["stderr"]?.jsonPrimitive?.content).isEqualTo("diagnostic")
         assertThat(result["stderr_merged"]?.jsonPrimitive?.boolean).isFalse()
         assertThat(vault.revealBytes("s", "TOKEN")?.toString(Charsets.UTF_8)).isEqualTo("fixture-linux-secret")
-        assertThat(File(root, "store/records.json").exists()).isFalse()
+        assertThat(result).doesNotContainKey("job_id")
+        val record = jobs.list("s").single()
+        assertThat(record.state).isEqualTo("EXITED")
+        assertThat(jobs.readLog("s", record.logWorkspacePath!!).text).doesNotContain("fixture-linux-secret")
+        assertThat(record.commandResult.toString()).doesNotContain("fixture-linux-secret")
+    }
+
+    @Test fun `Linux捕获跨过自动让出阈值仍完整返回且保留原文隔离`() = runBlocking<Unit> {
+        val vault = SessionSecretVault()
+        val exec = service(vault = vault)
+        val jobs = manager(exec)
+        val result = ShellExecSkill(exec, jobs).execute(Json.parseToJsonElement("""{"command":"sleep 2; printf fixture-linux-secret; printf diagnostic >&2","timeout_seconds":5,"yield_after_seconds":1,"on_exit":"none","capture_secret":{"name":"TOKEN","label":"令牌","from":"stdout"}}""").jsonObject,
+            object : SkillExecutionContext {
+                override val sessionId = "s"
+                override val agentId = "a"
+                override val workspacePath: String? = null
+                override val workspaceRootUuid = "root"
+            })
+        val value = Json.parseToJsonElement(result.content).jsonObject
+        assertThat(result.status).isEqualTo("success")
+        assertThat(value).doesNotContainKey("job_id")
+        assertThat(value["stdout"]?.jsonPrimitive?.content).isEqualTo("‹已捕获为 TOKEN · 20 字节›")
+        assertThat(value["stderr"]?.jsonPrimitive?.content).isEqualTo("diagnostic")
+        assertThat(vault.revealBytes("s", "TOKEN")?.toString(Charsets.UTF_8)).isEqualTo("fixture-linux-secret")
+        val record = jobs.list("s").single()
+        assertThat(record.state).isEqualTo("EXITED")
+        assertThat(jobs.readLog("s", record.logWorkspacePath!!).text).doesNotContain("fixture-linux-secret")
     }
 
     @Test fun `Linux文件捕获沿用guest工作目录且保留文件`() = runBlocking<Unit> {

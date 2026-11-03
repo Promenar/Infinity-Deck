@@ -43,7 +43,9 @@ class ChatGenerationRunnerTest {
         ChatGenerationRunner(runtime).run(request(), events::add)
         assertThat(runtime.streamAttempts).isEqualTo(2)
         assertThat(runtime.handledToolRounds).isEqualTo(1)
-        assertThat(runtime.nextAssistantId).isEqualTo("assistant-next")
+        assertThat(events.filterIsInstance<GenerationEvent.TargetChanged>().map { it.assistantMessageId })
+            .containsExactly("assistant-next")
+        assertThat(runtime.streamRequests.last().userMessageId).isEqualTo("steered-user")
         assertThat(runtime.persisted.last().content).isEqualTo("不应续写")
         assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
         assertThat(runtime.yieldChecks).isEqualTo(2)
@@ -109,6 +111,70 @@ class ChatGenerationRunnerTest {
         assertThat(runtime.handledCalls).isEmpty()
         assertThat(runtime.streamRequests.map { it.userMessageId }).containsExactly("user", "urgent").inOrder()
         assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+    }
+
+    @Test fun `插队打断后认领为空立即取消且不重新请求旧输入`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val runtime = FakeRuntime(listOf(flow {
+            emit(GenerationChunk.Text("部分正文"))
+            emit(GenerationChunk.Thinking("部分思考"))
+            started.complete(Unit)
+            awaitCancellation()
+        }))
+        runtime.pendingQueue = queue
+        runtime.rejectSteeringClaim = true
+        val events = mutableListOf<GenerationEvent>()
+        var failure: Throwable? = null
+        val operation = launch { failure = runCatching { ChatGenerationRunner(runtime).run(request(), events::add) }.exceptionOrNull() }
+        started.await()
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "插队", createdAt = 0, steering = true)))
+        operation.join()
+        assertThat(failure).isInstanceOf(CancellationException::class.java)
+        assertThat(runtime.streamAttempts).isEqualTo(1)
+        assertThat(runtime.steeringClaims).isEqualTo(1)
+        assertThat(runtime.boundaryClaims).isEqualTo(0)
+        assertThat(events.filterIsInstance<GenerationEvent.TargetChanged>()).isEmpty()
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.CANCELLED)
+        assertThat(runtime.resourceReleases).containsExactly(false)
+        assertThat(runtime.persisted.last().content).isEqualTo("部分正文")
+        assertThat(runtime.persisted.last().reasoning).isEqualTo("部分思考")
+        assertThat(queue.value.items.single().id).isEqualTo("urgent")
+    }
+
+    @Test fun `同步END_TURN与插队同时就绪时认领插队入口`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val runtime = FakeRuntime(listOf(flow {
+            emit(GenerationChunk.Text("本步正文"))
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "插队", createdAt = 0, steering = true)))
+            emit(GenerationChunk.Completed(CompletionReason.END_TURN))
+        }, flowOf(GenerationChunk.Text("新指令答复"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+        runtime.pendingQueue = queue
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(runtime.steeringClaims).isEqualTo(1)
+        assertThat(runtime.boundaryClaims).isEqualTo(1)
+        assertThat(runtime.streamRequests.map { it.userMessageId }).containsExactly("user", "urgent").inOrder()
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+    }
+
+    @Test fun `工具批末插队认领为空也结束而不重发旧请求`() = runTest {
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.ToolCall("call", "search", "{}"),
+            GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("call")))))
+        runtime.pendingQueue = queue
+        runtime.rejectSteeringClaim = true
+        runtime.toolDecisions += GenerationToolDecision.CONTINUE
+        runtime.onTools = { queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "插队", createdAt = 0, steering = true))) }
+        val events = mutableListOf<GenerationEvent>()
+        val failure = runCatching { ChatGenerationRunner(runtime).run(request(), events::add) }.exceptionOrNull()
+        assertThat(failure).isInstanceOf(CancellationException::class.java)
+        assertThat(runtime.streamAttempts).isEqualTo(1)
+        assertThat(runtime.steeringClaims).isEqualTo(1)
+        assertThat(events.filterIsInstance<GenerationEvent.TargetChanged>()).isEmpty()
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.CANCELLED)
     }
 
     @Test fun `插队到达审批创建窗口时先关闭等待再注入`() = runTest {
@@ -876,8 +942,21 @@ class ChatGenerationRunnerTest {
             closedPending += toolCalls.map { it.id }
             return true
         }
-        override suspend fun injectSteering(request: GenerationRequest) = inject(request, true)
-        override suspend fun injectQueuedAtBoundary(request: GenerationRequest) = inject(request, false)
+        var rejectSteeringClaim = false
+        var steeringClaims = 0
+        var boundaryClaims = 0
+        override suspend fun injectSteering(request: GenerationRequest): GenerationRequest? {
+            steeringClaims++
+            if (rejectSteeringClaim) {
+                check(steeringClaims == 1) { "空认领后不得再次认领或重发旧请求" }
+                return null
+            }
+            return inject(request, true)
+        }
+        override suspend fun injectQueuedAtBoundary(request: GenerationRequest): GenerationRequest? {
+            boundaryClaims++
+            return inject(request, false)
+        }
         private fun inject(request: GenerationRequest, steeringOnly: Boolean): GenerationRequest? {
             yieldChecks++
             pendingQueue?.let { queue ->

@@ -50,7 +50,7 @@ class DefaultGenerationCoordinatorTest {
             }
             override suspend fun steeringContext(request: GenerationRequest) = com.promenar.infinity.data.exec.SteeringContext(queue)
             override suspend fun interruptPendingTools(request: GenerationRequest, toolCalls: List<com.promenar.infinity.domain.generation.GenerationToolCall>) = true
-            override suspend fun injectQueuedAtBoundary(request: GenerationRequest): GenerationRequest? {
+            override suspend fun injectSteering(request: GenerationRequest): GenerationRequest? {
                 queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState()
                 return request.copy(userMessageId = "queued-user", userContent = "插队")
             }

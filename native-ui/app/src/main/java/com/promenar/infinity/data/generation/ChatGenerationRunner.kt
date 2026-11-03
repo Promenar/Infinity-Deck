@@ -456,9 +456,14 @@ class ChatGenerationRunner(
                 progress()
                 if (streamInterrupted) runtime.markStepInterrupted(request, snapshot)
                 if (terminal.reason == CompletionReason.END_TURN) {
-                    val delivered = if (streamInterrupted) runtime.injectSteering(request) else runtime.injectQueuedAtBoundary(request)
-                    if (delivered != null || streamInterrupted) {
-                        if (delivered != null) request = delivered
+                    // 同步完成可能先于信号协程恢复；认领前重查，插队始终使用同一取消与回执入口。
+                    val steeringRequested = streamInterrupted || steering?.pending() == true
+                    val delivered = if (steeringRequested) runtime.injectSteering(request) else runtime.injectQueuedAtBoundary(request)
+                    currentCoroutineContext().ensureActive()
+                    // 中断后只允许新 USER 驱动续跑；空认领直接走取消收口，不重发旧输入。
+                    if (steeringRequested && delivered == null) throw CancellationException("插队消息未能认领，当前生成已停止")
+                    if (delivered != null) {
+                        request = delivered
                         emptyReplyRetried = false
                         attempt++
                         runtime.prepareContinuation(request)?.let { safeEmit(GenerationEvent.TargetChanged(it)) }
@@ -545,9 +550,13 @@ class ChatGenerationRunner(
                     GenerationToolDecision.CONTINUE -> {
                         attempt++
                         if (!flushRoundBoundaryWithRetry()) return
-                        if (steering?.pending() == true) runtime.markStepInterrupted(request, snapshot)
-                        runtime.injectQueuedAtBoundary(request)?.let {
-                            request = it
+                        val steeringRequested = steering?.pending() == true
+                        if (steeringRequested) runtime.markStepInterrupted(request, snapshot)
+                        val delivered = if (steeringRequested) runtime.injectSteering(request) else runtime.injectQueuedAtBoundary(request)
+                        currentCoroutineContext().ensureActive()
+                        if (steeringRequested && delivered == null) throw CancellationException("插队消息未能认领，当前生成已停止")
+                        if (delivered != null) {
+                            request = delivered
                             emptyReplyRetried = false
                         }
                         runtime.prepareContinuation(request)?.let { assistantMessageId ->

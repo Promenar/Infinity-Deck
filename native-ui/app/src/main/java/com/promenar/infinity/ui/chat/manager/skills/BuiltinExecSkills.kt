@@ -59,7 +59,7 @@ class ShellExecSkill(private val service: BuiltinExecService, private val jobs: 
                 val minutes = ExecToolArguments.integer(values, "max_runtime_minutes", 120, 1..1440)
                 val action = com.promenar.infinity.domain.jobs.BackgroundJobExitAction.fromWire((values["on_exit"] as? JsonPrimitive)?.content ?: "notify")!!
                 jobs.runForeground(context.sessionId, context.workspaceRootUuid, command,
-                    if (mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX) threshold else 0,
+                    if (mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX && capture == null) threshold else 0,
                     minutes, action, context.liveOutput, ExecToolArguments.title(values),
                     if (mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX) com.promenar.infinity.domain.jobs.BackgroundJobRunner.LINUX else com.promenar.infinity.domain.jobs.BackgroundJobRunner.SHELL) { attachment, live ->
                     service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, live, expectedMode = mode, attachment = attachment, capture = capture)
