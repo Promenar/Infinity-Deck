@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/platform-Android%2012%2B-green.svg" alt="平台 Android 12+">
   <img src="https://img.shields.io/badge/Kotlin-2.2-7F52FF.svg" alt="Kotlin 2.2">
   <img src="https://img.shields.io/badge/Jetpack_Compose-Material3-4285F4.svg" alt="Jetpack Compose Material 3">
-  <img src="https://img.shields.io/badge/version-0.17.0--beta-6366F1.svg" alt="版本 0.17.0-beta">
+  <img src="https://img.shields.io/badge/version-0.17.1--beta-6366F1.svg" alt="版本 0.17.1-beta">
 </p>
 
 https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
@@ -114,7 +114,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 **安装**：从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 与对应 `.sha256` 文件，核对 SHA-256 后安装。公开发布可能落后于源码；不要安装 CI 临时制品、Debug APK 或来源不明的重打包版本。
 
-当前源码版本为 `v0.17.0-beta`（versionCode `48`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.17.1-beta`（versionCode `49`），变更见[更新日志](CHANGELOG.md)。
 
 ## 从源码构建
 
