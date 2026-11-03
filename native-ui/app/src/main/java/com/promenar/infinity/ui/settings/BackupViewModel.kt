@@ -6,6 +6,10 @@ import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.backup.BackupLayer
+import com.promenar.infinity.data.backup.BackupLayerStats
+import com.promenar.infinity.data.backup.BackupResultSummary
+import com.promenar.infinity.data.backup.BackupFailureDetail
 import com.promenar.infinity.data.backup.BackupExportOptions
 import com.promenar.infinity.data.backup.BackupFailureReason
 import com.promenar.infinity.data.backup.BackupValidationException
@@ -107,6 +111,13 @@ data class BackupUiState(
     val selectedRemote: RemoteBackup? = null,
     val remoteConfigRevision: Long? = null,
     val operation: BackupOperation = BackupOperation.Idle,
+    val selectedLayers: Set<BackupLayer> = BackupLayer.DEFAULT,
+    val layerEstimates: Map<BackupLayer, BackupLayerStats> = emptyMap(),
+    val estimating: Boolean = false,
+    val estimateFailed: Boolean = false,
+    val exportSummary: BackupResultSummary? = null,
+    val restoreSummary: BackupResultSummary? = null,
+    val failureDetail: BackupFailureDetail? = null,
 ) {
     val keysChecked: Boolean get() = includeKeys
     val isExporting: Boolean get() = operation is BackupOperation.Exporting || operation is BackupOperation.Uploading
@@ -138,6 +149,12 @@ interface BackupSettingsStore {
 
 interface BackupOperations {
     suspend fun export(options: BackupExportOptions): ByteArray
+    suspend fun exportTo(output: OutputStream, options: BackupExportOptions): BackupResultSummary {
+        val bytes = export(options)
+        try { output.write(bytes); output.flush() } finally { bytes.fill(0) }
+        return BackupResultSummary()
+    }
+    suspend fun estimate(): Map<BackupLayer, BackupLayerStats> = emptyMap()
     suspend fun upload(config: WebDavConfig, options: BackupExportOptions): BackupUploadReceipt
     suspend fun testRemote(config: WebDavConfig): Result<Unit>
     suspend fun listRemote(config: WebDavConfig): List<RemoteBackup>
@@ -241,7 +258,9 @@ class BackupViewModel internal constructor(
         ),
         secrets = (application as InfinityApplication).secretStore,
         restartRequester = BackupRestartRequester { RestoreRelayActivity.requestRestart(application) },
-    )
+    ) {
+        (application as InfinityApplication).backupRestoreResult.value?.summary?.let(::publishRestoreSummary)
+    }
 
     init {
         if (synchronousIoForTests) {
@@ -282,11 +301,38 @@ class BackupViewModel internal constructor(
         }
     }
 
+    val optionalLayers: Set<BackupLayer> get() = BackupLayer.OPTIONAL
+    val defaultLayers: Set<BackupLayer> get() = BackupLayer.DEFAULT
+    private var estimateJob: Job? = null
+
+    fun setSelectedLayers(layers: Set<BackupLayer>): Boolean = synchronized(operationLock) {
+        if (!initialized || isBusyLocked()) return false
+        val selected = layers + BackupLayer.CORE
+        _uiState.update { it.copy(selectedLayers = selected, includeKeys = BackupLayer.SECRETS in selected,
+            encryptBackup = it.encryptBackup || BackupLayer.SECRETS in selected) }
+        true
+    }
+
+    fun refreshEstimates(): Boolean = synchronized(operationLock) {
+        if (!initialized || isBusyLocked() || estimateJob?.isActive == true) return false
+        _uiState.update { it.copy(estimating = true, estimateFailed = false) }
+        estimateJob = operationScope.launch {
+            try {
+                val estimate = withContext(ioDispatcher) { operations.estimate() }
+                _uiState.update { it.copy(layerEstimates = estimate, estimating = false) }
+            } catch (error: CancellationException) { _uiState.update { it.copy(estimating = false) }; throw error }
+            catch (_: Exception) { _uiState.update { it.copy(estimating = false, estimateFailed = true) } }
+        }
+        true
+    }
+
+    fun publishRestoreSummary(summary: BackupResultSummary) { _uiState.update { it.copy(restoreSummary = summary) } }
+
     fun setIncludeKeys(include: Boolean) {
         synchronized(operationLock) {
             if (!initialized || restoreControl?.restartAuthorized == true || restoreBlocked || cleared) return
         }
-        _uiState.update { it.copy(includeKeys = include, encryptBackup = it.encryptBackup || include) }
+        _uiState.update { it.copy(includeKeys = include, encryptBackup = it.encryptBackup || include, selectedLayers = if (include) it.selectedLayers + BackupLayer.SECRETS else it.selectedLayers - BackupLayer.SECRETS) }
     }
 
     fun setEncryptBackup(encrypt: Boolean) {
@@ -623,16 +669,8 @@ class BackupViewModel internal constructor(
             confirmation,
             externalCleanup = { output.close() },
         ) { token, options ->
-            val bytes = operations.export(options)
-            try {
-                // SAF 文档可能由云盘等提供方承载，写入不得占用主线程。
-                withContext(ioDispatcher) {
-                    output.write(bytes)
-                    output.flush()
-                }
-            } finally {
-                bytes.fill(0)
-            }
+            val summary = withContext(ioDispatcher) { operations.exportTo(output, options) }
+            synchronized(operationLock) { if (isCurrentLocked(token, null)) _uiState.update { it.copy(exportSummary = summary) } }
             hooks.beforeStateCommit(BackupOperation.Exporting)
             recordBackupSuccess(token, BackupSuccessCode.EXPORTED)
         }
@@ -653,6 +691,7 @@ class BackupViewModel internal constructor(
         ) { token, options ->
             val bound = readBoundWebDavConfig(revision)
             val receipt = operations.upload(bound.config, options)
+            synchronized(operationLock) { if (isCurrentLocked(token, bound.revision)) _uiState.update { it.copy(exportSummary = receipt.summary) } }
             hooks.beforeStateCommit(BackupOperation.Uploading)
             recordBackupSuccess(
                 token,
@@ -741,6 +780,7 @@ class BackupViewModel internal constructor(
             cancelOperation()
         } finally {
             configToCancel?.cancel()
+            estimateJob?.cancel()
             synchronized(operationLock) {
                 if (currentJob == null && configJob == null) operationScope.cancel()
             }
@@ -767,7 +807,8 @@ class BackupViewModel internal constructor(
             restoreOperationId = operationId,
         ) { token ->
             try {
-                stage(operationId, owned)
+                val staged = stage(operationId, owned)
+                synchronized(operationLock) { if (isCurrentLocked(token, webDavRevision)) _uiState.update { it.copy(restoreSummary = staged.summary) } }
                 hooks.beforeStateCommit(BackupOperation.StagingRestore)
                 if (authorizeRestart(token, webDavRevision, operationId)) {
                     try {
@@ -818,8 +859,10 @@ class BackupViewModel internal constructor(
             externalCleanup()
             return false
         }
-        val include = _uiState.value.includeKeys
-        val encrypt = _uiState.value.encryptBackup || include
+        val exportState = _uiState.value
+        val include = exportState.includeKeys
+        val encrypt = exportState.encryptBackup || include
+        val selectedLayers = exportState.selectedLayers.toSet()
         val ownedPassword = password?.copyOf()
         val ownedConfirmation = confirmation?.copyOf()
         password?.fill('\u0000')
@@ -855,6 +898,7 @@ class BackupViewModel internal constructor(
                     password = if (encrypt) ownedPassword else null,
                     passwordConfirmation = if (encrypt) ownedConfirmation else null,
                     encryptPackage = encrypt,
+                    layers = selectedLayers,
                 ),
             )
         }
@@ -959,6 +1003,9 @@ class BackupViewModel internal constructor(
         val reason = if (phase == BackupOperation.Exporting || phase == BackupOperation.Uploading) {
             error.backupFailureReason()
         } else null
+        synchronized(operationLock) {
+            if (isCurrentLocked(token, null)) _uiState.update { it.copy(failureDetail = generateSequence(error) { cause -> cause.cause }.take(8).filterIsInstance<BackupValidationException>().firstNotNullOfOrNull { cause -> cause.detail }) }
+        }
         fail(token, errorCodeFor(phase), reason)
     }
 
@@ -1488,7 +1535,7 @@ private fun recordBackupFailureDiagnostic(phase: BackupOperation, error: Throwab
     InfinityLogger.diagnostic("backup_operation_failed", backupFailureDiagnosticFields(phase, error))
 }
 
-internal fun BackupUiState.withKeysIncluded(include: Boolean): BackupUiState = copy(includeKeys = include)
+internal fun BackupUiState.withKeysIncluded(include: Boolean): BackupUiState = copy(includeKeys = include, selectedLayers = if (include) selectedLayers + BackupLayer.SECRETS else selectedLayers - BackupLayer.SECRETS)
 
 internal class LazyBackupOperations(
     private val factoryDispatcher: CoroutineDispatcher,
@@ -1504,6 +1551,8 @@ internal class LazyBackupOperations(
     override suspend fun export(options: BackupExportOptions) = withContext(factoryDispatcher) {
         delegate().export(options)
     }
+    override suspend fun exportTo(output: OutputStream, options: BackupExportOptions) = withContext(factoryDispatcher) { delegate().exportTo(output, options) }
+    override suspend fun estimate() = withContext(factoryDispatcher) { delegate().estimate() }
     override suspend fun upload(config: WebDavConfig, options: BackupExportOptions) = withContext(factoryDispatcher) {
         delegate().upload(config, options)
     }
@@ -1535,6 +1584,8 @@ internal class LazyBackupOperations(
 
 private class RepositoryBackupOperations(private val repository: BackupRepository) : BackupOperations {
     override suspend fun export(options: BackupExportOptions) = repository.export(options)
+    override suspend fun exportTo(output: OutputStream, options: BackupExportOptions) = repository.exportTo(output, options)
+    override suspend fun estimate() = repository.estimate()
     override suspend fun upload(config: WebDavConfig, options: BackupExportOptions) = repository.upload(config, options)
     override suspend fun testRemote(config: WebDavConfig) = repository.testRemote(config)
     override suspend fun listRemote(config: WebDavConfig) = repository.listRemote(config)

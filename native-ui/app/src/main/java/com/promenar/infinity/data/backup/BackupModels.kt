@@ -14,6 +14,29 @@ enum class BackupContent {
     SECRETS,
 }
 
+@Serializable
+enum class BackupLayer {
+    CORE, KNOWLEDGE, SESSIONS, WORKSPACE_FILES, SECRETS;
+    companion object {
+        val DEFAULT = setOf(CORE, KNOWLEDGE, SESSIONS)
+        val OPTIONAL = setOf(KNOWLEDGE, SESSIONS, WORKSPACE_FILES, SECRETS)
+    }
+}
+
+@Serializable
+data class BackupLayerStats(val entryCount: Int = 0, val sizeBytes: Long = 0)
+@Serializable
+data class BackupSkippedItem(val layer: BackupLayer, val name: String, val reason: String)
+@Serializable
+data class BackupDegradedReference(val category: String, val count: Int)
+@Serializable
+data class BackupResultSummary(
+    val layers: Map<BackupLayer, BackupLayerStats> = emptyMap(),
+    val skipped: List<BackupSkippedItem> = emptyList(),
+    val degraded: List<BackupDegradedReference> = emptyList(),
+    val skills: SkillBackupSummary? = null,
+)
+
 data class BackupOptions(
     val content: Set<BackupContent>,
     val includeSecrets: Boolean = false,
@@ -27,6 +50,7 @@ data class BackupExportOptions(
     val password: CharArray? = null,
     val passwordConfirmation: CharArray? = null,
     val encryptPackage: Boolean = false,
+    val layers: Set<BackupLayer> = BackupLayer.DEFAULT,
 )
 
 data class BackupSnapshot(
@@ -39,6 +63,10 @@ data class BackupSnapshot(
     val createdAt: Long = System.currentTimeMillis(),
     val skills: SkillBackupPartition? = null,
     val avatars: Map<String, ByteArray> = emptyMap(),
+    val layers: Set<BackupLayer>? = null,
+    val streamEntries: List<BackupSourceEntry> = emptyList(),
+    val skipped: List<BackupSkippedItem> = emptyList(),
+    val ownedDirectory: java.nio.file.Path? = null,
 )
 
 class ValidatedBackup(
@@ -49,9 +77,16 @@ class ValidatedBackup(
     val secrets: Map<SecretId, ByteArray> = emptyMap(),
     val skills: SkillBackupPartition? = null,
     val avatars: Map<String, ByteArray> = emptyMap(),
+    val blobs: Map<String, BackupBlob> = emptyMap(),
+    val ownedDirectory: java.nio.file.Path? = null,
 ) : AutoCloseable {
     private val consumed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    internal var restoreSummary = BackupResultSummary(manifest.layers.orEmpty(), manifest.skipped, skills = manifest.skills?.summary)
+
+    internal fun fileBlobs() = files.mapValues { BackupBlob.Bytes(it.value) } + blobs.filterKeys { it.startsWith("files/") }.mapKeys { it.key.removePrefix("files/") }
+    internal fun avatarBlobs() = avatars.mapValues { BackupBlob.Bytes(it.value) } + blobs.filterKeys { it.startsWith("avatars/") }.mapKeys { it.key.removePrefix("avatars/") }
 
     internal fun beginConsumption() {
         if (!consumed.compareAndSet(false, true)) throw BackupValidationException("ValidatedBackup 已被消费")
@@ -65,6 +100,7 @@ class ValidatedBackup(
         secrets.values.forEach { it.fill(0) }
         skills?.wipe()
         avatars.values.forEach { it.fill(0) }
+        ownedDirectory?.let(BackupStreams::deleteTree)
     }
 }
 
@@ -79,12 +115,16 @@ data class BackupManifest(
     val containsSecrets: Boolean,
     val kdf: BackupKdfMetadata? = null,
     val skills: SkillBackupMetadata? = null,
+    val layers: Map<BackupLayer, BackupLayerStats>? = null,
+    val skipped: List<BackupSkippedItem> = emptyList(),
 )
 
 data class SkillBackupPartition(
     val files: Map<String, ByteArray>,
     val metadata: SkillBackupMetadata,
+    val blobs: Map<String, BackupBlob> = emptyMap(),
 ) {
+    internal fun allBlobs(): Map<String, BackupBlob> = files.mapValues { BackupBlob.Bytes(it.value) } + blobs
     internal fun wipe() = files.values.forEach { it.fill(0) }
 }
 
@@ -112,14 +152,15 @@ data class SkippedSkillGitRepository(
 @Serializable
 data class SkillGitRemote(val name: String, val url: String, val push: Boolean = false)
 
-data class BackupExportResult(val packageBytes: ByteArray, val skills: SkillBackupSummary?)
-data class BackupRestoreResult(val skills: SkillBackupSummary?)
+data class BackupExportResult(val packageBytes: ByteArray, val skills: SkillBackupSummary?, val summary: BackupResultSummary = BackupResultSummary(skills = skills))
+data class BackupRestoreResult(val skills: SkillBackupSummary?, val summary: BackupResultSummary = BackupResultSummary(skills = skills))
 
 @Serializable
 data class BackupManifestEntry(
     val path: String,
     val sizeBytes: Long,
     val sha256: String,
+    val layer: BackupLayer? = null,
 )
 
 @Serializable
@@ -141,14 +182,13 @@ object BackupPackageLimits {
     const val MAX_ENTRY_BYTES: Long = 128L * 1024 * 1024
     const val MAX_ENTRIES: Int = 10_000
     internal const val MAX_MANIFEST_BYTES: Long = 4L * 1024 * 1024
-    // ByteArray 初版按 16 MiB 限制内容物化；已考虑加密输入、解密 ZIP、JSON/文件结果等多副本峰值。
-    // 512 MiB 只保留为归档协议上限；未来支持更大包时必须升级为流式 spool，不能放宽此常量硬扛。
+    // 旧版整包接口保留物化预算；应用路径通过磁盘暂存和固定缓冲处理 v3。
     const val MAX_IN_MEMORY_BYTES: Long = 16L * 1024 * 1024
 }
 
 /** 用户可以自行处理的备份失败分类；其它失败只显示通用文案。 */
 enum class BackupFailureReason {
-    /** 数据库、会话文件、技能与头像合计超过整包内存上限。 */
+    /** 内容超过协议容量或旧版物化接口的预算。 */
     CAPACITY_EXCEEDED,
     /** 会话文件缺失、被替换或与登记的大小、摘要不一致。 */
     WORKSPACE_FILE_MISMATCH,
@@ -156,10 +196,13 @@ enum class BackupFailureReason {
     SKILL_CONTENT_UNSUPPORTED,
 }
 
+enum class BackupFailureDetail { INSUFFICIENT_STORAGE, CORE_CONTENT_UNREADABLE }
+
 class BackupValidationException(
     message: String,
     cause: Throwable? = null,
     val reason: BackupFailureReason? = null,
+    val detail: BackupFailureDetail? = null,
 ) : IllegalArgumentException(message, cause)
 
 /** 沿原因链取第一个可归类的失败；内存耗尽按容量超限处理。 */
@@ -171,6 +214,11 @@ fun Throwable.backupFailureReason(): BackupFailureReason? =
 
 interface BackupDataSource {
     suspend fun snapshot(content: Set<BackupContent>): BackupSnapshot
+    suspend fun estimate(): Map<BackupLayer, BackupLayerStats> = emptyMap()
+    suspend fun snapshotTo(layers: Set<BackupLayer>, directory: java.nio.file.Path): BackupSnapshot =
+        snapshot(setOf(BackupContent.DATABASE, BackupContent.PREFERENCES, BackupContent.FILES) +
+            if (BackupLayer.SECRETS in layers) setOf(BackupContent.SECRETS) else emptySet())
+    suspend fun validateStaged(validated: ValidatedBackup) = Unit
     suspend fun restore(validated: ValidatedBackup)
     suspend fun restore(validated: ValidatedBackup, operationId: String) = restore(validated)
     suspend fun restoreWithResult(validated: ValidatedBackup, operationId: String): BackupRestoreResult {
@@ -179,6 +227,7 @@ interface BackupDataSource {
         return result
     }
     suspend fun hasCompletedRestore(operationId: String): Boolean = false
+    suspend fun completedRestoreSummary(operationId: String): BackupResultSummary? = null
     /**
      * 失败的 restore 是否已确定未改动现有数据：没有残留 restore journal，且该 operationId 没有完成回执。
      * 只有能证明此事实的实现才可返回 true；默认 false 让调用方保持 fail closed。
@@ -194,6 +243,7 @@ internal fun BackupSnapshot.wipe() {
     secrets.values.forEach { it.fill(0) }
     skills?.wipe()
     avatars.values.forEach { it.fill(0) }
+    ownedDirectory?.let(BackupStreams::deleteTree)
 }
 
 @Serializable

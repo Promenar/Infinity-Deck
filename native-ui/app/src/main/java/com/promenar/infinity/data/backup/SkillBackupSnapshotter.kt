@@ -18,7 +18,7 @@ internal class SkillBackupSnapshotter(root: Path) {
     private val root = parent.resolve(root.fileName)
     private data class SourceFile(val path: Path, val attributes: BasicFileAttributes)
 
-    fun snapshot(memoryBudget: Long, entryBudget: Int): SkillBackupPartition {
+    fun snapshot(memoryBudget: Long, entryBudget: Int, directory: Path? = null): SkillBackupPartition {
         if (!Files.exists(root, NOFOLLOW_LINKS)) return SkillBackupPartition(emptyMap(), SkillBackupMetadata())
         if (Files.isSymbolicLink(root)) {
             return SkillBackupPartition(emptyMap(), SkillBackupMetadata(summary = SkillBackupSummary(skippedSymbolicLinks = 1)))
@@ -30,7 +30,7 @@ internal class SkillBackupSnapshotter(root: Path) {
         val gitRoots = mutableListOf<Path>()
         var skippedLinks = 0
         var total = 0L
-        // .git 是可选内容：超出 64 MiB、4000 项或本次备份剩余的内存与条目预算时一律跳过，不让它导致整个备份失败。
+        // .git 使用整包剩余字节与条目预算，超限时记录仓库信息。
         val gitByteLimit = minOf(SkillBackupPaths.MAX_BYTES, memoryBudget)
         val gitEntryLimit = minOf(SkillBackupPaths.MAX_GIT_ENTRIES, entryBudget)
 
@@ -71,7 +71,7 @@ internal class SkillBackupSnapshotter(root: Path) {
 
                 private fun checkLimits(): FileVisitResult {
                     if (!git && total > SkillBackupPaths.MAX_BYTES) {
-                        throw BackupValidationException("用户级技能文件超过 64 MiB，备份已取消", reason = BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
+                        throw BackupValidationException("用户级技能文件超过整包容量，备份已取消", reason = BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
                     }
                     if (!git && directories.size + files.size > entryBudget) {
                         throw BackupValidationException("用户级技能条目超过备份包上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
@@ -121,16 +121,30 @@ internal class SkillBackupSnapshotter(root: Path) {
             throw BackupValidationException("用户级技能超过备份包条目或 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         }
         val result = linkedMapOf<String, ByteArray>()
+        val diskFiles = linkedMapOf<String, BackupBlob>()
         try {
             var actualTotal = 0L
             files.toSortedMap().forEach { (relative, source) ->
-                val bytes = readStable(source.path, source.attributes, minOf(memoryBudget, BackupPackageLimits.MAX_ENTRY_BYTES))
+                if (directory != null && !SkillGitMetadata.isConfigPath(relative)) {
+                    val target = Files.createTempFile(directory, "skill-", ".bin")
+                    diskFiles[relative] = BackupStreams.stableCopy(source.path, target, source.attributes.size())
+                    actualTotal += source.attributes.size()
+                    if (actualTotal > memoryBudget) throw BackupValidationException("技能内容超过整包容量", reason = BackupFailureReason.CAPACITY_EXCEEDED)
+                    return@forEach
+                }
+                val bytes = readStable(source.path, source.attributes, minOf(memoryBudget, if (SkillGitMetadata.isConfigPath(relative)) BackupPackageLimits.MAX_MANIFEST_BYTES else BackupPackageLimits.MAX_ENTRY_BYTES))
                 val isConfig = SkillGitMetadata.isConfigPath(relative)
                 val safeBytes = if (isConfig) {
                     try { SkillGitMetadata.sanitizeConfig(bytes.toString(Charsets.UTF_8)).toByteArray() }
                     finally { bytes.fill(0) }
                 } else bytes
-                result[relative] = safeBytes
+                if (directory == null) result[relative] = safeBytes else {
+                    try {
+                        val target = Files.createTempFile(directory, "git-config-", ".bin")
+                        Files.write(target, safeBytes)
+                        diskFiles[relative] = BackupBlob.File(target)
+                    } finally { safeBytes.fill(0) }
+                }
                 actualTotal += safeBytes.size
                 if (actualTotal > memoryBudget) throw BackupValidationException("用户级技能超过 Android 内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
@@ -149,7 +163,7 @@ internal class SkillBackupSnapshotter(root: Path) {
             val metadata = SkillBackupMetadata(
                 directories = directories.keys.sorted(),
                 summary = SkillBackupSummary(
-                    skillCount = result.keys.count { path ->
+                    skillCount = (result.keys + diskFiles.keys).count { path ->
                         val parts = path.split('/')
                         parts.size == 2 && parts.last() == "SKILL.md" && parts.first() != ".git"
                     },
@@ -157,8 +171,8 @@ internal class SkillBackupSnapshotter(root: Path) {
                     skippedGitRepositories = skippedRepositories,
                 ),
             )
-            SkillBackupPaths.validate(metadata, result.keys, actualTotal)
-            return SkillBackupPartition(result, metadata)
+            SkillBackupPaths.validate(metadata, result.keys + diskFiles.keys, actualTotal)
+            return SkillBackupPartition(result, metadata, diskFiles)
         } catch (error: Throwable) {
             result.values.forEach { it.fill(0) }
             throw error

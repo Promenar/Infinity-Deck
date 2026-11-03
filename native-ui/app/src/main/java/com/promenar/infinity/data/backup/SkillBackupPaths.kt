@@ -2,8 +2,8 @@ package com.promenar.infinity.data.backup
 
 internal object SkillBackupPaths {
     const val PREFIX = "skills/"
-    const val MAX_BYTES = 64L * 1024 * 1024
-    const val MAX_GIT_ENTRIES = 4000
+    const val MAX_BYTES = BackupPackageLimits.MAX_TOTAL_BYTES
+    const val MAX_GIT_ENTRIES = BackupPackageLimits.MAX_ENTRIES
 
     fun parts(path: String): List<String> {
         val parts = path.split('/')

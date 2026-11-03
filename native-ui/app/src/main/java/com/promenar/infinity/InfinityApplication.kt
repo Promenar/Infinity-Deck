@@ -239,6 +239,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private val _startupState = MutableStateFlow<BackupStartupState>(BackupStartupState.Recovering)
     val startupState: StateFlow<BackupStartupState> = _startupState.asStateFlow()
 
+    /** 启动期已提交的备份恢复摘要，供设置页展示各层结果。 */
+    private val _backupRestoreResult = MutableStateFlow<com.promenar.infinity.data.backup.BackupRestoreResult?>(null)
+    val backupRestoreResult: StateFlow<com.promenar.infinity.data.backup.BackupRestoreResult?> = _backupRestoreResult.asStateFlow()
+
     /** 启动时完成的备份恢复中需要用户处理的技能事项；界面展示后清除。 */
     private val _skillRestoreNotice = MutableStateFlow<com.promenar.infinity.data.backup.SkillBackupSummary?>(null)
     val skillRestoreNotice: StateFlow<com.promenar.infinity.data.backup.SkillBackupSummary?> = _skillRestoreNotice.asStateFlow()
@@ -2225,6 +2229,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                         }
                     },
                 ).runOrThrow()
+                _backupRestoreResult.value = runtime.restoreResult.value
                 runtime.restoreResult.value?.skills
                     ?.takeIf { it.skippedGitRepositories.isNotEmpty() || it.skippedSymbolicLinks > 0 }
                     ?.let { _skillRestoreNotice.value = it }

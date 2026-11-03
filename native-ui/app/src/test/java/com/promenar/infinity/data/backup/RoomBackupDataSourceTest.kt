@@ -87,6 +87,249 @@ import kotlinx.serialization.json.jsonPrimitive
 @Config(sdk = [33])
 class RoomBackupDataSourceTest {
     @Test
+    fun `未选密钥层时核心导出恢复不读取或准备密钥事务`() = runBlocking {
+        emptyWorkspaceBackup().wipe()
+        val cache = Files.createTempDirectory(sourceBase, "unselected-secrets")
+        val id = SecretCatalog.providerApiKey("p1")
+        val before = secrets.get(id)!!
+        secrets.failSnapshot = true
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            val file = cache.resolve("core.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
+            assertThat(secrets.get(id)).isEqualTo(before)
+            assertThat(secrets.receivedPlaintextRefs).isEmpty()
+        } finally { before.fill(0); secrets.failSnapshot = false; BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `可选文件超过单项协议上限时明确失败`() = runBlocking {
+        val graph = seedCompleteGraph()
+        val size = BackupPackageLimits.MAX_ENTRY_BYTES + 1
+        java.io.RandomAccessFile(graph.filePath.toFile(), "rw").use { it.setLength(size) }
+        db.openHelper.writableDatabase.execSQL("UPDATE workspace_files SET size_bytes = ?,hash = '' WHERE uuid = 'file-1'", arrayOf<Any?>(size))
+        val cache = Files.createTempDirectory(sourceBase, "entry-overflow")
+        try {
+            val error = try { newDataSource().snapshotTo(setOf(BackupLayer.CORE, BackupLayer.WORKSPACE_FILES), cache); null }
+                catch (error: BackupValidationException) { error }
+            assertThat(error?.reason).isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `仅恢复工作区文件时保留会话Artifact路径同步且文件可达`() = runBlocking {
+        seedCompleteGraph()
+        val cache = Files.createTempDirectory(sourceBase, "retained-artifact")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.WORKSPACE_FILES), cache)
+            val file = cache.resolve("files.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
+            val root = db.sessionDao().getById("session-1")!!.workspacePath!!
+            db.openHelper.writableDatabase.query("SELECT workspace_path FROM artifacts WHERE id = 'artifact-1'").use { cursor ->
+                assertThat(cursor.moveToFirst()).isTrue()
+                val path = Path.of(cursor.getString(0))
+                assertThat(path.startsWith(Path.of(root))).isTrue()
+                assertThat(Files.exists(path)).isTrue()
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `核心恢复保留未选源的向量图谱与完成标记`() = runBlocking {
+        seedCompleteGraph()
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,content,embedding,created_at,stale,version) VALUES(?,?,?,?,?,?,?)", arrayOf<Any?>("retained-vector", "file-1", "索引", byteArrayOf(1, 2), 100L, 0, 1))
+        sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at) VALUES('retained-node','节点','concept','节点',100)")
+        sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('retained-evidence','retained-node','document','file-1','hash','fixture',100,1)")
+        val cache = Files.createTempDirectory(sourceBase, "retained-index")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            val file = cache.resolve("core.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
+            assertThat(rowCount("vectors")).isEqualTo(1)
+            assertThat(rowCount("kg_evidence")).isEqualTo(1)
+            sqlite.query("SELECT vectorized_at,kg_extracted_at FROM workspace_files WHERE uuid = 'file-1'").use { cursor ->
+                assertThat(cursor.moveToFirst()).isTrue()
+                assertThat(cursor.getLong(0)).isEqualTo(100)
+                assertThat(cursor.getLong(1)).isEqualTo(100)
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `核心恢复保留缺失的未选文件登记与会话工具账本`() = runBlocking {
+        val graph = seedCompleteGraph()
+        val cache = Files.createTempDirectory(sourceBase, "retained-files")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            val file = cache.resolve("core.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.delete(graph.filePath)
+            db.openHelper.writableDatabase.execSQL("INSERT INTO tool_execution_ledger(session_id,assistant_message_id,tool_call_id,tool_name,requires_approval,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                arrayOf<Any?>("session-1", "message-1", "waiting", "ask_user", 0, "WAITING_INPUT", 100L, 100L))
+            Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
+            assertThat(rowCount("tool_execution_ledger")).isEqualTo(1)
+            assertThat(rowCount("workspace_files")).isEqualTo(2)
+            assertThat(db.sessionDao().getById("session-1")!!.workspaceRootUuid).isEqualTo("root-1")
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `遗漏文件层只对实际缺失引用计数且摘要进入完成回执`() = runBlocking {
+        seedCompleteGraph()
+        db.openHelper.writableDatabase.execSQL("UPDATE messages SET rag_references = ? WHERE id = ?", arrayOf<Any?>("[{\"documentId\":\"missing-knowledge\"}]", "message-1"))
+        val cache = Files.createTempDirectory(sourceBase, "degraded-summary")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.SESSIONS), cache)
+            val file = cache.resolve("session.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            db.clearAllTables()
+            val result = Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restoreWithResult(it, "degraded-op") } }
+            assertThat(result.summary.degraded).contains(BackupDegradedReference("session_workspace_unavailable", 1))
+            assertThat(result.summary.degraded).contains(BackupDegradedReference("knowledge_document_unavailable", 1))
+            assertThat(source.completedRestoreSummary("degraded-op")).isEqualTo(result.summary)
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `现有编码器产生的v2全量包可以经流式入口恢复`() = runBlocking {
+        val snapshot = emptyWorkspaceBackup()
+        val codec = DefaultBackupPackageCodec()
+        val encoded = codec.encode(snapshot, BackupOptions(CANONICAL_CONTENT))
+        val root = Files.createTempDirectory(sourceBase, "legacy-v2")
+        val file = root.resolve("legacy.iwb")
+        try {
+            java.util.zip.ZipInputStream(encoded.inputStream()).use { source ->
+                java.util.zip.ZipOutputStream(Files.newOutputStream(file)).use { zip ->
+                    while (true) {
+                        val entry = source.nextEntry ?: break
+                        val bytes = source.readBytes()
+                        try {
+                            val value = if (entry.name == "manifest.json") bytes.toString(Charsets.UTF_8).replace("\"formatVersion\":3", "\"formatVersion\":2").toByteArray() else bytes
+                            try { zip.putNextEntry(java.util.zip.ZipEntry(entry.name)); zip.write(value); zip.closeEntry() }
+                            finally { if (value !== bytes) value.fill(0) }
+                        } finally { bytes.fill(0) }
+                    }
+                }
+            }
+            db.clearAllTables()
+            Files.newInputStream(file).use { input -> codec.decodeFrom(input, null, root).use { backup ->
+                assertThat(backup.manifest.formatVersion).isEqualTo(2)
+                newDataSource().restore(backup)
+            } }
+            assertThat(db.agentDao().getAll().single().id).isEqualTo("agent-empty")
+        } finally { snapshot.wipe(); encoded.fill(0); BackupStreams.deleteTree(root) }
+    }
+
+    @Test
+    fun `全部层组合的物理外键完整且未包含的会话保持`() = runBlocking {
+        val cache = Files.createTempDirectory(sourceBase, "layer-matrix")
+        try {
+            for (mask in 0 until 16) {
+                db.clearAllTables()
+                BackupStreams.deleteTree(sourceRoot); Files.createDirectory(sourceRoot)
+                seedCompleteGraph()
+                db.messageDao().insert(MessageEntity("child-message", "session-1", "assistant", "父子链回归", parentMessageId = "message-1", createdAt = 101L))
+                val optional = listOf(BackupLayer.KNOWLEDGE, BackupLayer.SESSIONS, BackupLayer.WORKSPACE_FILES, BackupLayer.SECRETS)
+                val layers = setOf(BackupLayer.CORE) + optional.filterIndexed { index, _ -> mask and (1 shl index) != 0 }
+                val hasSecrets = BackupLayer.SECRETS in layers
+                val password = if (hasSecrets) "matrix".toCharArray() else null
+                val source = newDataSource()
+                val snapshot = source.snapshotTo(layers, cache)
+                val file = cache.resolve("matrix.iwb")
+                val codec = DefaultBackupPackageCodec()
+                try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT + if (hasSecrets) setOf(BackupContent.SECRETS) else emptySet(), hasSecrets, password), it) } }
+                finally { snapshot.wipe() }
+                db.sessionDao().insert(SessionEntity("retained", "agent-1", createdAt = 1, updatedAt = 1))
+                val restored = Files.newInputStream(file).use { input -> codec.decodeFrom(input, password, cache).use { source.restoreWithResult(it, "matrix-$mask") } }
+                assertThat(db.sessionDao().getById("retained") != null).isEqualTo(BackupLayer.SESSIONS !in layers)
+                db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertThat(it.moveToFirst()).isFalse() }
+                assertThat(restored.summary.layers.keys).containsExactlyElementsIn(layers)
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `工作区文件缺失导出列出跳过项且核心头像缺失失败`() = runBlocking {
+        val graph = seedCompleteGraph()
+        Files.delete(graph.filePath)
+        val cache = Files.createTempDirectory(sourceBase, "skipped-export")
+        val avatar = Files.createDirectory(sourceBase.resolve("avatars"))
+        try {
+            val source = newDataSource(avatarRoot = avatar)
+            val snapshot = source.snapshotTo(BackupLayer.DEFAULT + BackupLayer.WORKSPACE_FILES, cache)
+            assertThat(snapshot.skipped.single().layer).isEqualTo(BackupLayer.WORKSPACE_FILES)
+            assertThat(snapshot.streamEntries.none { it.path == "files/file-1" }).isTrue()
+            snapshot.wipe()
+            val agent = db.agentDao().getAll().single()
+            db.agentDao().update(agent.copy(avatarPath = avatar.resolve("missing.img").toString()))
+            val error = try { source.snapshotTo(setOf(BackupLayer.CORE), cache); null } catch (error: BackupValidationException) { error }
+            assertThat(error?.detail).isEqualTo(BackupFailureDetail.CORE_CONTENT_UNREADABLE)
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `流式恢复提交前失败与提交中断均按主journal回滚`() = runBlocking {
+        emptyWorkspaceBackup().wipe()
+        val cache = Files.createTempDirectory(sourceBase, "stream-journal")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            val file = cache.resolve("core.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } } finally { snapshot.wipe() }
+            val agent = db.agentDao().getAll().single()
+            db.agentDao().update(agent.copy(name = "本机保留"))
+            Files.newInputStream(file).use { input ->
+                val validated = codec.decodeFrom(input, null, cache)
+                try { newDataSource(crashPoint = RestoreCrashPoint.JOURNAL_PREPARED).restore(validated, "stream-crash") }
+                catch (_: SimulatedRestoreProcessDeath) { }
+            }
+            source.recoverInterruptedRestore()
+            assertThat(db.agentDao().getAll().single().name).isEqualTo("本机保留")
+            assertThat(source.hasCompletedRestore("stream-crash")).isFalse()
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `只恢复核心层保留本机会话`() = runBlocking {
+        emptyWorkspaceBackup()
+        val cache = Files.createTempDirectory(sourceBase, "backup-core")
+        val source = newDataSource()
+        try {
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            try {
+                val file = cache.resolve("core.iwb")
+                val codec = DefaultBackupPackageCodec()
+                Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) }
+                db.sessionDao().insert(SessionEntity("local-session", "agent-empty", createdAt = 1, updatedAt = 1))
+                Files.newInputStream(file).use { input ->
+                    codec.decodeFrom(input, null, cache).use { source.restore(it) }
+                }
+                assertThat(db.sessionDao().getById("local-session")).isNotNull()
+            } finally { snapshot.wipe() }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
     fun `轮次上下文备份恢复保持完整原文字节且正文独立`() = runBlocking {
         emptyWorkspaceBackup()
         db.sessionDao().insert(SessionEntity("context-session", "agent-empty", createdAt = 1, updatedAt = 1))
@@ -2379,7 +2622,7 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `头像缺失越界链接超限和不稳定源逐项跳过`() = runBlocking {
+    fun `核心头像缺失越界链接超限和不稳定源明确失败`() = runBlocking {
         emptyWorkspaceBackup().wipe()
         db.clearAllTables()
         val root = Files.createDirectory(sourceBase.resolve("avatars"))
@@ -2390,19 +2633,17 @@ class RoomBackupDataSourceTest {
         val unstable = Files.write(root.resolve("unstable.img"), byteArrayOf(1))
         listOf(root.resolve("missing.img"), outside, link, big, unstable).forEachIndexed { i, path ->
             db.agentDao().insert(AgentEntity("avatar-$i", "照片", avatarPath = path.toString(), createdAt = i.toLong()))
+            assertFails {
+                newDataSource(avatarRoot = root, snapshotReadHook = { current ->
+                    if (current == unstable) Files.write(current, byteArrayOf(2))
+                }).snapshot(CANONICAL_CONTENT)
+            }
+            db.openHelper.writableDatabase.execSQL("DELETE FROM agents")
         }
-        val snapshot = newDataSource(avatarRoot = root, snapshotReadHook = { path ->
-            if (path == unstable) Files.write(path, byteArrayOf(2))
-        }).snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.avatars).isEmpty()
-        val rows = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
-            .getValue("tables").jsonObject.getValue("agents").jsonArray
-        rows.forEach { assertThat(it.jsonObject["avatar_path"]).isEqualTo(JsonNull) }
-        snapshot.wipe()
     }
 
     @Test
-    fun `头像总量超限时只收录预算内照片`() = runBlocking {
+    fun `核心头像总量超过整包上限时明确失败`() = runBlocking {
         emptyWorkspaceBackup().wipe()
         db.clearAllTables()
         val root = Files.createDirectory(sourceBase.resolve("avatars"))
@@ -2411,10 +2652,12 @@ class RoomBackupDataSourceTest {
             java.io.RandomAccessFile(file.toFile(), "rw").use { it.setLength(AvatarBackupFiles.MAX_FILE_BYTES) }
             db.agentDao().insert(AgentEntity("photo-$index", "照片", avatarPath = file.toString(), createdAt = index.toLong()))
         }
-        val snapshot = newDataSource(avatarRoot = root).snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.avatars.size).isEqualTo(4)
-        assertThat(snapshot.avatars.values.sumOf { it.size.toLong() }).isEqualTo(AvatarBackupFiles.MAX_TOTAL_BYTES)
-        snapshot.wipe()
+        val cache = Files.createTempDirectory(sourceBase, "avatar-overflow")
+        try {
+            val error = try { newDataSource(avatarRoot = root).snapshotTo(setOf(BackupLayer.CORE), cache); null }
+                catch (error: BackupValidationException) { error }
+            assertThat(error?.reason).isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
+        } finally { BackupStreams.deleteTree(cache) }
     }
 
     @Test
@@ -2535,21 +2778,32 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `头像只使用技能快照后的余量且不会挤占既有备份`() = runBlocking {
+    fun `三十MiB技能与多个核心头像完整流式恢复`() = runBlocking {
         emptyWorkspaceBackup().wipe()
         db.clearAllTables()
         val root = Files.createDirectory(sourceBase.resolve("avatars"))
         val skills = Files.createDirectory(sourceBase.resolve("agent_skills"))
-        java.io.RandomAccessFile(skills.resolve("data.bin").toFile(), "rw").use { it.setLength(9L * 1024 * 1024) }
+        java.io.RandomAccessFile(skills.resolve("data.bin").toFile(), "rw").use { it.setLength(30L * 1024 * 1024) }
+        val expected = BackupStreams.digest(BackupBlob.File(skills.resolve("data.bin")))
         repeat(4) { index ->
             val path = root.resolve("$index.img")
-            java.io.RandomAccessFile(path.toFile(), "rw").use { it.setLength(AvatarBackupFiles.MAX_FILE_BYTES) }
+            Files.newOutputStream(path).use { it.write(ByteArray(1024 * 1024) { index.toByte() }) }
             db.agentDao().insert(AgentEntity("photo-$index", "照片", avatarPath = path.toString(), createdAt = index.toLong()))
         }
-        val snapshot = newDataSource(userSkillsRoot = skills, avatarRoot = root).snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.skills!!.files.getValue("data.bin").size).isEqualTo(9 * 1024 * 1024)
-        assertThat(snapshot.avatars.size).isEqualTo(3)
-        snapshot.wipe()
+        val cache = Files.createTempDirectory(sourceBase, "large-export")
+        try {
+            val source = newDataSource(userSkillsRoot = skills, avatarRoot = root)
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            val file = cache.resolve("large.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.write(skills.resolve("data.bin"), byteArrayOf(1))
+            Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
+            assertThat(BackupStreams.digest(BackupBlob.File(skills.resolve("data.bin")))).isEqualTo(expected)
+            assertThat(db.agentDao().getAll().map { it.avatarPath }.filterNotNull()).hasSize(4)
+            db.agentDao().getAll().forEach { agent -> assertThat(Files.size(Path.of(agent.avatarPath!!))).isEqualTo(1024L * 1024) }
+        } finally { BackupStreams.deleteTree(cache) }
     }
 
     private fun newDataSource(
@@ -3096,7 +3350,10 @@ private class FakeSecretStore private constructor(private val state: State) : Tr
 
     fun get(id: SecretId): ByteArray? = values[id]?.copyOf()
 
+    var failSnapshot = false
+
     override suspend fun snapshot(ids: Set<SecretId>, maxTotalBytes: Long): Map<SecretId, ByteArray> {
+        if (failSnapshot) throw BackupValidationException("合成测试：密钥不可用")
         val result = values.filterKeys { it in ids }.mapValues { it.value.copyOf() }
         if (result.values.sumOf { it.size.toLong() } > maxTotalBytes) {
             result.values.forEach { it.fill(0) }
@@ -3180,6 +3437,13 @@ internal class TestRestoreFileOperations : RestoreFileOperations {
         ).use { channel ->
             channel.write(java.nio.ByteBuffer.wrap(bytes))
             channel.force(true)
+        }
+    }
+
+    override fun writeStream(root: Path, relative: List<String>, blob: BackupBlob) {
+        val target = relative.fold(root) { current, segment -> current.resolve(segment) }
+        Files.newOutputStream(target, java.nio.file.StandardOpenOption.CREATE_NEW, java.nio.file.StandardOpenOption.WRITE).use { output ->
+            blob.open().use { input -> BackupStreams.copy(input, output, blob.size) }
         }
     }
 

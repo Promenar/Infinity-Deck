@@ -50,6 +50,31 @@ class BackupViewModelTest {
     @AfterEach fun tearDown() = Dispatchers.resetMain()
 
     @Test
+    fun `层选择强制核心且默认不包含工作区文件和密钥`() = runTest(dispatcher) {
+        val operations = FakeOperations()
+        val vm = newViewModel(operations = operations)
+        assertThat(vm.uiState.value.selectedLayers).containsExactlyElementsIn(com.promenar.infinity.data.backup.BackupLayer.DEFAULT)
+        vm.setSelectedLayers(setOf(com.promenar.infinity.data.backup.BackupLayer.SESSIONS))
+        vm.export(ByteArrayOutputStream(), null, null)
+        advanceUntilIdle()
+        assertThat(operations.lastOptions!!.layers).containsExactly(com.promenar.infinity.data.backup.BackupLayer.CORE, com.promenar.infinity.data.backup.BackupLayer.SESSIONS)
+        assertThat(vm.uiState.value.exportSummary).isNotNull()
+    }
+
+    @Test
+    fun `每层估算刷新为独立状态且密钥勾选同步层选择`() = runTest(dispatcher) {
+        val vm = newViewModel()
+        vm.setIncludeKeys(true)
+        assertThat(vm.uiState.value.selectedLayers).contains(com.promenar.infinity.data.backup.BackupLayer.SECRETS)
+        vm.setIncludeKeys(false)
+        assertThat(vm.uiState.value.selectedLayers).doesNotContain(com.promenar.infinity.data.backup.BackupLayer.SECRETS)
+        assertThat(vm.refreshEstimates()).isTrue()
+        advanceUntilIdle()
+        assertThat(vm.uiState.value.estimating).isFalse()
+        assertThat(vm.uiState.value.estimateFailed).isFalse()
+    }
+
+    @Test
     fun `backup actions stack at accessibility font scales`() {
         assertThat(shouldStackBackupActions(1.0f)).isFalse()
         assertThat(shouldStackBackupActions(1.49f)).isFalse()

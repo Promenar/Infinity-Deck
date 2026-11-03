@@ -33,6 +33,23 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 class BackupRepositoryTypedTest {
     @Test
+    fun `缓存根或祖先为链接时拒绝且不清理链接目标`() = runBlocking {
+        val root = java.nio.file.Files.createTempDirectory("backup-spool-link")
+        try {
+            val victim = java.nio.file.Files.createDirectory(root.resolve("victim"))
+            val sentinel = java.nio.file.Files.write(victim.resolve("preserved.txt"), "保留".toByteArray())
+            val link = java.nio.file.Files.createSymbolicLink(root.resolve("linked"), victim)
+            listOf(link, link.resolve("nested")).forEach { path ->
+                val repository = BackupRepository(RecordingSource(), RecordingCodec(), FakeWebDav(), FakePendingStore(), cacheDirectory = path)
+                var rejected = false
+                try { repository.exportTo(java.io.ByteArrayOutputStream()) } catch (_: Exception) { rejected = true }
+                assertThat(rejected).isTrue()
+                assertThat(java.nio.file.Files.readAllBytes(sentinel).toString(Charsets.UTF_8)).isEqualTo("保留")
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test
     fun `export is canonical and secrets are disabled by default`() = runBlocking {
         val source = RecordingSource()
         val codec = RecordingCodec()

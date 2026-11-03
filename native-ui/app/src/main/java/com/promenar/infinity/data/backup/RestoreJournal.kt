@@ -28,6 +28,8 @@ data class RestoreJournalRecord(
     val phase: RestoreJournalPhase,
     val skills: SkillRestoreJournalRecord? = null,
     val avatars: SkillRestoreJournalRecord? = null,
+    val summary: BackupResultSummary? = null,
+    val secretsIncluded: Boolean = true,
 )
 
 /** 可替换分区根与暂存目录使用相同的持久身份格式。 */
@@ -104,6 +106,7 @@ internal class FileRestoreJournal(
             )
         ).toByteArray(Charsets.UTF_8)
         try {
+            if (bytes.size > MAX_JOURNAL_BYTES) throw BackupValidationException("恢复journal超过安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             FileChannel.open(
                 temporary,
                 StandardOpenOption.CREATE_NEW,
@@ -225,7 +228,7 @@ internal class FileRestoreJournal(
 
     companion object {
         const val FILE_NAME = ".restore-journal.json"
-        private const val MAX_JOURNAL_BYTES = 2L * 1024 * 1024
+        private const val MAX_JOURNAL_BYTES = 8L * 1024 * 1024
         private const val MAX_OLD_ROOT_IDENTITY_BYTES = 1024 * 1024
         private const val MAX_MANAGED_ROOTS = 1024
         private val TX_ID = Regex("[A-Za-z0-9-]{1,64}")
