@@ -11,6 +11,7 @@ import com.promenar.infinity.data.memory.LongTermMemoryValidation
 import com.promenar.infinity.data.repository.PersistentFileIdentity
 import com.promenar.infinity.data.security.SecretCatalog
 import com.promenar.infinity.data.security.SecretId
+import com.promenar.infinity.domain.workspace.WorkspaceInternalPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -1751,14 +1752,15 @@ class RoomBackupDataSource(
         return groups.entries.filter { (managed, _) -> retained.none { row ->
             Paths.get(row.requiredString("physical_root_path")).toAbsolutePath().normalize().startsWith(managed.path)
         } }.joinToString(",") { (managed, managedRows) ->
-            val expected = expectedManagedInventory(managed, managedRows)
             val actual = restoreFileOperations.inventory(managed.path.parent, managed.path.fileName.toString())
+            val expected = expectedManagedInventory(managed, managedRows, actual)
             if (actual != expected) throw BackupValidationException(
                 "旧 managed root 包含未登记、缺失或异常内容；missing=${expected - actual}；unexpected=${actual - expected}",
             )
             val encodedKey = java.util.Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(PersistentFileIdentity.read(managed.path).toByteArray())
-            "${managed.baseIndex}:$encodedKey:${inventoryToken(expected)}"
+            // 完整实际清单包含内部条目，提交复核与 journal 清理继续核验同一份路径及类型。
+            "${managed.baseIndex}:$encodedKey:${inventoryToken(actual)}"
         }
     }
 
@@ -1964,6 +1966,7 @@ class RoomBackupDataSource(
     private fun expectedManagedInventory(
         managed: ManagedContainer,
         rows: List<JsonObject>,
+        actual: Set<RestoreTreeEntry>,
     ): Set<RestoreTreeEntry> = buildSet {
         if (managed.baseIndex == RESTORE_BASE_INDEX) add(RestoreTreeEntry(OWNER_MARKER, false))
         rows.forEach { row ->
@@ -1971,17 +1974,21 @@ class RoomBackupDataSource(
             val prefix = if (physicalRoot == managed.path) emptyList() else listOf(physicalRoot.fileName.toString())
             val relative = prefix + normalizeMaterializedPath(row.requiredString("materialized_path"))
             val isDirectory = row.requiredBoolean("is_directory")
-            if (row.requiredString("uuid") == row.requiredString("workspace_root_uuid") &&
-                row.optionalString("parent_uuid") == null &&
-                PersistentFileIdentity.isValid(row.requiredString("hash"))
-            ) {
-                add(RestoreTreeEntry((prefix + ".infinity_root_identity").joinToString("/"), false))
-            }
             val ancestorLimit = if (isDirectory) relative.size else relative.size - 1
             (1..ancestorLimit.coerceAtLeast(0)).forEach { depth ->
                 add(RestoreTreeEntry(relative.take(depth).joinToString("/"), true))
             }
             if (!isDirectory) add(RestoreTreeEntry(relative.joinToString("/"), false))
+        }
+        // 身份可保存在扩展属性中；内部目录与身份文件只纳入实际存在的普通节点。
+        val internalDirectoryNames = WorkspaceInternalPaths.directories +
+            WorkspaceInternalPaths.tombstoneDirectories.filter { it.size == 1 }.map { it.single() }
+        val internalDirectories = actual.filter {
+            it.directory && it.path.substringAfterLast('/') in internalDirectoryNames
+        }.map { it.path }
+        actual.filterTo(this) { entry ->
+            (!entry.directory && entry.path.substringAfterLast('/') in WorkspaceInternalPaths.rootIdentityNames) ||
+                internalDirectories.any { entry.path == it || entry.path.startsWith("$it/") }
         }
     }
 

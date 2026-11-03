@@ -61,6 +61,7 @@ import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import com.promenar.infinity.ui.chat.manager.registry.SkillRegistry
 import com.promenar.infinity.ui.chat.manager.registry.toProtocolTool
 import com.promenar.infinity.domain.repository.WriteResult
+import com.promenar.infinity.domain.workspace.WorkspaceInternalPaths
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
@@ -289,6 +290,219 @@ class RoomBackupDataSourceTest {
             assertThat(db.sessionDao().getById("__infinity_rag_workspace__")?.agentId).isEqualTo(BackupLayerPolicy.KNOWLEDGE_AGENT)
             assertThat(db.agentDao().getAll().map { it.id }).containsExactly("agent-1")
             Unit
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `会话旧根只有属性身份和内部目录时分层恢复可提交并再次恢复`() = runBlocking {
+        val bases = seedSessionWorkspaceRoots()
+        val cache = Files.createTempDirectory(sourceBase, "session-roots")
+        try {
+            val source = newDataSource(trustedBases = bases)
+            val file = writeLayeredWorkspaceBackup(source, cache)
+            Files.writeString(sourceRoot.resolve("docs/a.txt"), "本机旧文件")
+            val siblingIgnore = bases.last().resolve(".infinity/.gitignore")
+
+            Files.newInputStream(file).use { input ->
+                DefaultBackupPackageCodec().decodeFrom(input, null, cache).use {
+                    source.validateStaged(it)
+                    source.restore(it, "session-roots-first")
+                }
+            }
+
+            assertThat(Files.exists(sourceRoot)).isFalse()
+            assertThat(readUtf8(siblingIgnore)).isEqualTo("*\n")
+            assertThat(source.hasCompletedRestore("session-roots-first")).isTrue()
+            assertRestoredSessionWorkspaceFiles()
+
+            // 第二次恢复清理的是带所有者标记的 restore 容器，覆盖 baseIndex=-1 的清点。
+            val restored = Path.of(db.sessionDao().getById("session-1")!!.workspacePath!!)
+            Files.createDirectories(restored.resolve(".infinity"))
+            Files.writeString(restored.resolve(".infinity/.gitignore"), "*\n")
+            Files.newInputStream(file).use { input ->
+                DefaultBackupPackageCodec().decodeFrom(input, null, cache).use { source.restore(it, "session-roots-second") }
+            }
+            assertThat(Files.exists(restored.parent)).isFalse()
+            assertThat(source.hasCompletedRestore("session-roots-second")).isTrue()
+            assertRestoredSessionWorkspaceFiles()
+            assertThat(FileRestoreJournal(restoreParent, TestRestoreJournalAuthenticator).read()).isNull()
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `会话旧根未登记用户文件在准备前或提交前出现均拒绝且保全原数据`() = runBlocking {
+        val bases = seedSessionWorkspaceRoots()
+        val cache = Files.createTempDirectory(sourceBase, "session-unmanaged")
+        try {
+            val file = writeLayeredWorkspaceBackup(newDataSource(trustedBases = bases), cache)
+            Files.writeString(sourceRoot.resolve("docs/a.txt"), "本机旧文件")
+            val beforePreferences = preferences.snapshot
+            val beforeSession = db.sessionDao().getById("session-1")
+            val beforeRoot = db.fileEntryDao().getByUuid("root-1", "root-1")
+            for (beforePrepare in listOf(true, false)) {
+                val sentinel = sourceRoot.resolve(if (beforePrepare) "用户笔记.txt" else ".infinity-notes.txt")
+                if (beforePrepare) Files.writeString(sentinel, "用户未登记内容")
+                val operations = TestRestoreFileOperations()
+                val injectingOperations = object : RestoreFileOperations by operations {
+                    override fun verifyAndSync(root: Path, expected: Set<RestoreTreeEntry>) {
+                        operations.verifyAndSync(root, expected)
+                        if (!beforePrepare && root.fileName.toString().startsWith("restore-")) {
+                            Files.writeString(sentinel, "用户未登记内容")
+                        }
+                    }
+                }
+                val source = newDataSource(fileOperations = injectingOperations, trustedBases = bases)
+                val failure = runCatching {
+                    Files.newInputStream(file).use { input ->
+                        DefaultBackupPackageCodec().decodeFrom(input, null, cache).use {
+                            source.validateStaged(it)
+                            source.restore(it, "session-unmanaged-$beforePrepare")
+                        }
+                    }
+                }.exceptionOrNull()
+
+                assertThat(failure).isInstanceOf(BackupValidationException::class.java)
+                assertThat(failure?.message).contains("未登记、缺失或异常内容")
+                assertThat(readUtf8(sentinel)).isEqualTo("用户未登记内容")
+                assertThat(readUtf8(sourceRoot.resolve("docs/a.txt"))).isEqualTo("本机旧文件")
+                assertThat(db.sessionDao().getById("session-1")).isEqualTo(beforeSession)
+                assertThat(db.fileEntryDao().getByUuid("root-1", "root-1")).isEqualTo(beforeRoot)
+                assertThat(preferences.snapshot).isEqualTo(beforePreferences)
+                assertThat(Files.list(restoreParent).use { it.count() }).isEqualTo(0)
+                Files.delete(sentinel)
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `会话旧根的新旧内部目录与实际存在的身份文件均可随根清理`() = runBlocking {
+        val bases = seedSessionWorkspaceRoots()
+        val legacy = Files.createDirectories(sourceRoot.resolve("docs/.nexara/cache"))
+        Files.writeString(legacy.resolve("state"), "内部状态")
+        WorkspaceInternalPaths.tombstoneDirectories.forEach { directory ->
+            val tombstone = directory.fold(sourceRoot) { current, segment -> current.resolve(segment) }.resolve("c".repeat(24))
+            Files.createDirectories(tombstone)
+            Files.writeString(tombstone.resolve("deleted.txt"), "内部删除暂存")
+        }
+        val key = Files.readAttributes(sourceRoot, java.nio.file.attribute.BasicFileAttributes::class.java).fileKey()
+        val marker = PersistentFileIdentity.marker(PersistentFileIdentity.nonce(PersistentFileIdentity.read(sourceRoot)), key)
+        WorkspaceInternalPaths.rootIdentityNames.forEach { Files.writeString(sourceRoot.resolve(it), marker) }
+        val cache = Files.createTempDirectory(sourceBase, "session-internal-markers")
+        try {
+            val source = newDataSource(trustedBases = bases)
+            val file = writeLayeredWorkspaceBackup(source, cache)
+            Files.newInputStream(file).use { input ->
+                DefaultBackupPackageCodec().decodeFrom(input, null, cache).use { source.restore(it) }
+            }
+            assertThat(Files.exists(sourceRoot)).isFalse()
+            assertRestoredSessionWorkspaceFiles()
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `会话旧根内部目录类型错误和内部子树符号链接均失败关闭`() = runBlocking {
+        val bases = seedSessionWorkspaceRoots()
+        val cache = Files.createTempDirectory(sourceBase, "session-internal-invalid")
+        try {
+            val source = newDataSource(trustedBases = bases)
+            val file = writeLayeredWorkspaceBackup(source, cache)
+            val internal = sourceRoot.resolve(".infinity")
+            Files.delete(internal.resolve(".gitignore"))
+            Files.delete(internal)
+            Files.writeString(internal, "目录被替换成文件")
+            val marker = sourceRoot.resolve(".infinity_root_identity")
+            for (kind in listOf("directory-as-file", "marker-as-directory", "internal-symlink")) {
+                when (kind) {
+                    "marker-as-directory" -> {
+                        Files.delete(internal)
+                        Files.createDirectory(internal)
+                        Files.createDirectory(marker)
+                    }
+                    "internal-symlink" -> {
+                        Files.delete(marker)
+                        Files.createSymbolicLink(internal.resolve("link"), sourceRoot.resolve("docs/a.txt"))
+                    }
+                }
+                val failure = runCatching {
+                    Files.newInputStream(file).use { input ->
+                        DefaultBackupPackageCodec().decodeFrom(input, null, cache).use { source.restore(it) }
+                    }
+                }.exceptionOrNull()
+                assertThat(failure).isInstanceOf(BackupValidationException::class.java)
+                assertThat(readUtf8(sourceRoot.resolve("docs/a.txt"))).isEqualTo("complete-graph")
+                assertThat(Files.list(restoreParent).use { it.count() }).isEqualTo(0)
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `会话旧根登记文件缺失或类型异常时内部目录不能掩盖不一致`() = runBlocking {
+        val bases = seedSessionWorkspaceRoots()
+        val cache = Files.createTempDirectory(sourceBase, "session-missing")
+        try {
+            val source = newDataSource(trustedBases = bases)
+            val file = writeLayeredWorkspaceBackup(source, cache)
+            val registered = sourceRoot.resolve("docs/a.txt")
+            Files.delete(registered)
+            for (directoryInstead in listOf(false, true)) {
+                if (directoryInstead) Files.createDirectory(registered)
+                val failure = runCatching {
+                    Files.newInputStream(file).use { input ->
+                        DefaultBackupPackageCodec().decodeFrom(input, null, cache).use { source.restore(it) }
+                    }
+                }.exceptionOrNull()
+                assertThat(failure).isInstanceOf(BackupValidationException::class.java)
+                assertThat(failure?.message).contains("未登记、缺失或异常内容")
+                assertThat(db.sessionDao().getById("session-1")!!.workspacePath).isEqualTo(sourceRoot.toString())
+                assertThat(Files.exists(sourceRoot.resolve(".infinity/.gitignore"))).isTrue()
+                assertThat(Files.list(restoreParent).use { it.count() }).isEqualTo(0)
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `会话旧根内部条目随journal在中断后回滚或重放且清理可续跑`() = runBlocking {
+        val bases = seedSessionWorkspaceRoots()
+        val cache = Files.createTempDirectory(sourceBase, "session-journal")
+        try {
+            val file = writeLayeredWorkspaceBackup(newDataSource(trustedBases = bases), cache)
+            Files.writeString(sourceRoot.resolve("docs/a.txt"), "本机旧文件")
+            val journal = FileRestoreJournal(restoreParent, TestRestoreJournalAuthenticator)
+            val points = listOf(RestoreCrashPoint.FILES_MOVED, RestoreCrashPoint.EXTERNAL_COMMITTED, RestoreCrashPoint.ROOM_COMMITTED)
+            for (point in points) {
+                val operationId = "session-journal-${point.name}"
+                val failure = runCatching {
+                    Files.newInputStream(file).use { input ->
+                        DefaultBackupPackageCodec().decodeFrom(input, null, cache).use {
+                            newDataSource(point, trustedBases = bases).restore(it, operationId)
+                        }
+                    }
+                }.exceptionOrNull()
+                assertThat(failure).isInstanceOf(SimulatedRestoreProcessDeath::class.java)
+                val record = journal.read()!!
+                // 会话目录追加为第四个受信 base，持久身份格式与索引语义保持兼容。
+                assertThat(record.oldRootIdentity.split(',').all { it.startsWith("3:") }).isTrue()
+                preferences = preferences.reopen()
+                secrets = secrets.reopen()
+                if (point == RestoreCrashPoint.ROOM_COMMITTED) {
+                    val operations = TestRestoreFileOperations().apply { failDeleteAt = 1 }
+                    assertFails { newDataSource(fileOperations = operations, trustedBases = bases).recoverInterruptedRestore() }
+                    assertThat(journal.read()).isNotNull()
+                    operations.clearDeleteFailure()
+                    newDataSource(fileOperations = operations, trustedBases = bases).recoverInterruptedRestore()
+                    assertThat(Files.exists(sourceRoot)).isFalse()
+                    assertRestoredSessionWorkspaceFiles()
+                    assertThat(newDataSource(trustedBases = bases).hasCompletedRestore(operationId)).isTrue()
+                } else {
+                    newDataSource(trustedBases = bases).recoverInterruptedRestore()
+                    assertThat(readUtf8(sourceRoot.resolve("docs/a.txt"))).isEqualTo("本机旧文件")
+                    assertThat(readUtf8(sourceRoot.resolve(".infinity/.gitignore"))).isEqualTo("*\n")
+                    assertThat(db.sessionDao().getById("session-1")!!.workspacePath).isEqualTo(sourceRoot.toString())
+                    assertThat(Files.exists(restoreParent.resolve(record.newRootIdentity))).isFalse()
+                }
+                newDataSource(trustedBases = bases).recoverInterruptedRestore()
+                assertThat(journal.read()).isNull()
+            }
         } finally { BackupStreams.deleteTree(cache) }
     }
 
@@ -2870,11 +3084,12 @@ class RoomBackupDataSourceTest {
         configurationRevision: () -> Long = { 0L },
         userSkillsRoot: Path? = null,
         avatarRoot: Path? = null,
+        trustedBases: Set<Path> = setOf(sourceBase),
     ): RoomBackupDataSource = RoomBackupDataSource(
         database = db,
         preferences = preferenceStore,
         secrets = secretStore,
-        trustedSourceBases = setOf(sourceBase),
+        trustedSourceBases = trustedBases,
         trustedRestoreBase = restoreParent,
         appVersion = "test",
         crashHook = RestoreCrashHook { point ->
@@ -3164,6 +3379,56 @@ class RoomBackupDataSourceTest {
         db.workspaceSeqDao().getNextSeqForDate("20260712")
         db.parameterSchemeDao().upsert(ParameterSchemeEntity("scheme-1", "provider::model", "写代码", "{\"temperature\":0.2}", now, now))
         return SeededGraph(filePath)
+    }
+
+    private suspend fun seedSessionWorkspaceRoots(): Set<Path> {
+        val sessionBase = Files.createDirectory(sourceBase.resolve("session_workspaces"))
+        sourceRoot = Files.move(sourceRoot, sessionBase.resolve("a".repeat(64)))
+        seedCompleteGraph()
+        val identity = PersistentFileIdentity.read(sourceRoot)
+        db.openHelper.writableDatabase.execSQL("UPDATE workspace_files SET hash = ? WHERE uuid = 'root-1'", arrayOf<Any?>(identity))
+        Files.createDirectory(sourceRoot.resolve(".infinity"))
+        Files.writeString(sourceRoot.resolve(".infinity/.gitignore"), "*\n")
+        Files.createDirectory(sessionBase.resolve(".infinity"))
+        Files.writeString(sessionBase.resolve(".infinity/.gitignore"), "*\n")
+
+        // 知识库系统会话使用同一父目录中的空根，身份同样只保存在扩展属性中。
+        val knowledgeRoot = Files.createDirectory(sessionBase.resolve("b".repeat(64)))
+        db.sessionDao().insert(SessionEntity(
+            "__infinity_rag_workspace__", BackupLayerPolicy.KNOWLEDGE_AGENT,
+            workspacePath = knowledgeRoot.toString(), workspaceRootUuid = "knowledge-root", createdAt = 100, updatedAt = 100,
+        ))
+        db.fileEntryDao().insert(FileEntry(
+            uuid = "knowledge-root", workspaceRootUuid = "knowledge-root", parentUuid = null, name = "知识库",
+            hash = PersistentFileIdentity.read(knowledgeRoot), isDirectory = true,
+            physicalRootPath = knowledgeRoot.toString(), materializedPath = "/", createdAt = 100, updatedAt = 100,
+        ))
+        for (root in listOf(sourceRoot, knowledgeRoot)) {
+            assertThat(PersistentFileIdentity.isValid(PersistentFileIdentity.read(root))).isTrue()
+            WorkspaceInternalPaths.rootIdentityNames.forEach { assertThat(Files.exists(root.resolve(it))).isFalse() }
+        }
+        return linkedSetOf(sourceBase,
+            Files.createDirectory(sourceBase.resolve("legacy-workspaces")),
+            Files.createDirectory(sourceBase.resolve("legacy-rag")), sessionBase)
+    }
+
+    private suspend fun writeLayeredWorkspaceBackup(source: RoomBackupDataSource, cache: Path): Path {
+        val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.KNOWLEDGE, BackupLayer.WORKSPACE_FILES), cache)
+        val file = cache.resolve("session-roots.iwb")
+        try {
+            assertThat(snapshot.streamEntries.any { it.path == "files/file-1" }).isTrue()
+            Files.newOutputStream(file).use { DefaultBackupPackageCodec().encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) }
+        } finally { snapshot.wipe() }
+        return file
+    }
+
+    private suspend fun assertRestoredSessionWorkspaceFiles() {
+        val session = db.sessionDao().getById("session-1")!!
+        val root = Path.of(session.workspacePath!!)
+        assertThat(readUtf8(root.resolve("docs/a.txt"))).isEqualTo("complete-graph")
+        assertThat(PersistentFileIdentity.isValid(db.fileEntryDao().getByUuid("root-1", "root-1")!!.hash)).isTrue()
+        assertThat(db.sessionDao().getById("__infinity_rag_workspace__")!!.agentId).isEqualTo(BackupLayerPolicy.KNOWLEDGE_AGENT)
+        db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertThat(it.moveToFirst()).isFalse() }
     }
 
     private suspend fun insertPreparedWorkspaceMutation(operationId: String) {
