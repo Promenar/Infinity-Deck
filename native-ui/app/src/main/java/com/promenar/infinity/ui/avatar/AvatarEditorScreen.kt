@@ -47,6 +47,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -118,50 +119,53 @@ internal fun AvatarEditorContent(
     initiallyDragging: Boolean = false,
 ) {
     val ready = image != null && !saving
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            EditorTopBar(saving = saving, doneEnabled = ready, onClose = actions.onClose, onDone = actions.onDone)
-            Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    val side = if (maxWidth < ViewportMaxSide) maxWidth else ViewportMaxSide
-                    CropViewport(
-                        image = image,
-                        state = state,
-                        enabled = ready,
-                        onChange = actions.onChange,
-                        initiallyDragging = initiallyDragging,
-                        modifier = Modifier.size(side).align(Alignment.Center),
+    // 用 Surface 提供内容色；只铺背景色时图标与标题沿用默认黑色，深色主题下看不见。
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                EditorTopBar(saving = saving, doneEnabled = ready, onClose = actions.onClose, onDone = actions.onDone)
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        val side = if (maxWidth < ViewportMaxSide) maxWidth else ViewportMaxSide
+                        CropViewport(
+                            image = image,
+                            state = state,
+                            enabled = ready,
+                            onChange = actions.onChange,
+                            initiallyDragging = initiallyDragging,
+                            modifier = Modifier.size(side).align(Alignment.Center),
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.avatar_editor_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp),
                     )
+                    Spacer(Modifier.size(16.dp))
+                    PreviewRow(image = image, state = state)
+                    Spacer(Modifier.size(12.dp))
+                    ZoomRow(image = image, state = state, enabled = ready, onChange = actions.onChange)
                 }
-                Text(
-                    text = stringResource(R.string.avatar_editor_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp),
+                ToolRow(
+                    enabled = ready,
+                    onChange = actions.onChange,
+                    onReplace = actions.onReplace,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
                 )
-                Spacer(Modifier.size(16.dp))
-                PreviewRow(image = image, state = state)
-                Spacer(Modifier.size(12.dp))
-                ZoomRow(image = image, state = state, enabled = ready, onChange = actions.onChange)
             }
-            ToolRow(
-                enabled = ready,
-                onChange = actions.onChange,
-                onReplace = actions.onReplace,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(bottom = 96.dp),
             )
         }
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(bottom = 96.dp),
-        )
     }
 }
 

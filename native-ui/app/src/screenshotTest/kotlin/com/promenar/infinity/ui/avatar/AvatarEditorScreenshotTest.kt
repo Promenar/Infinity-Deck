@@ -33,7 +33,7 @@ fun avatarEditorLightEnglishPreview() = AvatarEditorPreview(InfinityThemeMode.LI
 
 @PreviewTest
 @Preview(name = "Avatar editor light EN 360 font130", widthDp = 360, heightDp = 800, locale = "en", fontScale = 1.3f)
-@Preview(name = "头像编辑器 深色中文 360 大字号200", widthDp = 360, heightDp = 1000, locale = "zh-rCN", fontScale = 2f)
+@Preview(name = "头像编辑器 浅色中文 360 大字号200", widthDp = 360, heightDp = 1000, locale = "zh-rCN", fontScale = 2f)
 @Composable
 fun avatarEditorLargeFontPreview() = AvatarEditorPreview(InfinityThemeMode.LIGHT) { it.initialState() }
 

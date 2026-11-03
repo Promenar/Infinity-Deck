@@ -470,7 +470,7 @@ class RoomBackupDataSourceTest {
             val journal = FileRestoreJournal(restoreParent, TestRestoreJournalAuthenticator)
             val points = listOf(RestoreCrashPoint.FILES_MOVED, RestoreCrashPoint.EXTERNAL_COMMITTED, RestoreCrashPoint.ROOM_COMMITTED)
             for (point in points) {
-                val operationId = "session-journal-${point.name}"
+                val operationId = "session-journal-${point.name.lowercase().replace('_', '-')}"
                 val failure = runCatching {
                     Files.newInputStream(file).use { input ->
                         DefaultBackupPackageCodec().decodeFrom(input, null, cache).use {

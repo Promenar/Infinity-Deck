@@ -80,6 +80,9 @@ class BackupRuntime internal constructor(
         if (!isWriterGateOpen) throw BackupStartupException()
     }
 
+    /** 查询持久化的恢复完成回执；与本次启动是否刚提交无关。 */
+    suspend fun hasCompletedRestore(txId: String): Boolean = dataSource.hasCompletedRestore(txId)
+
     private suspend fun recoverAll() {
         cacheDirectory?.let(BackupStreams::cleanCache)
         // journal 始终优先；它可能是 pending 对应 restore 在上次崩溃后留下的事务。

@@ -2184,7 +2184,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 }
                 val runtime = backupRuntime
                 // 向导发起的恢复在界面出现前结算：提交成功则引导记为完成，启动后直接进入主界面。
-                withContext(Dispatchers.IO) { settleOnboardingRestoreAtStartup(committed = runtime.restoreResult.value != null) }
+                withContext(Dispatchers.IO) { settleOnboardingRestoreAtStartup(runtime) }
                 PostBackupStartupRecoverySequence(
                     recoverWorkspaceJournal = { recoverStartupWorkspaces() },
                     recoverToolLedger = {
@@ -2468,13 +2468,18 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     )
 
     /** 结算失败只记录日志、不阻断启动，引导停在原步骤。 */
-    private fun settleOnboardingRestoreAtStartup(committed: Boolean) {
+    private suspend fun settleOnboardingRestoreAtStartup(runtime: BackupRuntime) {
         try {
+            val store = com.promenar.infinity.onboarding.OnboardingStateStore(this)
+            val txId = store.stagedRestoreTxId ?: return
+            // 以数据库里的恢复完成回执判定；提交后、结算前进程中断时，下次启动仍能认出这次恢复。
             com.promenar.infinity.onboarding.settleOnboardingRestore(
-                store = com.promenar.infinity.onboarding.OnboardingStateStore(this),
-                committed = committed,
+                store = store,
+                committed = runtime.hasCompletedRestore(txId),
                 persistLanguage = { com.promenar.infinity.util.LocaleController.persistLanguage(this, it) },
             )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (failure: Exception) {
             InfinityLogger.logError("OnboardingRestoreSettlement", failure)
         }

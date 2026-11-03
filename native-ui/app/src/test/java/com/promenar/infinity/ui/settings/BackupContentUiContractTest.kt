@@ -93,7 +93,7 @@ class BackupContentUiContractTest {
             Charsets.UTF_8,
         )
 
-        assertThat(source).contains("operations = LazyBackupOperations(Dispatchers.IO)")
+        assertThat(source).contains("operations = decorateOperations(LazyBackupOperations(Dispatchers.IO)")
         assertThat(source).contains("RepositoryBackupOperations(BackupRepository(application))")
         assertThat(source).doesNotContain("operations = RepositoryBackupOperations(BackupRepository(application))")
     }
