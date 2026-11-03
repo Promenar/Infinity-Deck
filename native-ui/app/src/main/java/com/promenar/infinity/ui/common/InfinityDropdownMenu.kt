@@ -38,8 +38,12 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.toRect
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -53,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -201,9 +206,13 @@ fun Modifier.infinityMenuHost(active: Boolean): Modifier {
         label = "menu_host_tint",
     )
     val maxCorner = LocalInfinityPressCorner.current
-    return this.drawBehind {
-        if (tint.alpha > 0f) drawRoundRect(tint, cornerRadius = CornerRadius(indicationCornerRadius(size, maxCorner.toPx())))
+    val shape = remember(maxCorner) {
+        object : Shape {
+            override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+                Outline.Rounded(RoundRect(size.toRect(), CornerRadius(indicationCornerRadius(size, with(density) { maxCorner.toPx() }))))
+        }
     }
+    return this.background(tint, shape)
 }
 
 /**

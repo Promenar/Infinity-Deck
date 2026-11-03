@@ -538,6 +538,7 @@ data class MessageDocumentEnvelope(
     val viewedMedia: List<com.promenar.infinity.domain.media.ViewedMedia>? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val legacyFilesPayload: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val userImageReferences: List<WorkspaceDocumentReference?>? = null,
 ) {
     companion object {

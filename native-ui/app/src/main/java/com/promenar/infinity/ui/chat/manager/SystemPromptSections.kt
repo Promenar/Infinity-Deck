@@ -235,7 +235,11 @@ object SystemPromptSections {
         if (toolNames.any { it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS || it in MEDIA_TOOLS }) {
             appendLine()
             appendLine("### Media")
-            appendLine("- 已保存到工作区的历史用户图片和文档以工作区路径提供；需要重新查看时，使用 `view_media` 查看图片、使用 `read_file` 读取文档。")
+            val rereadTools = buildList {
+                if ("view_media" in toolNames) add("使用 `view_media` 查看图片")
+                if ("read_file" in toolNames) add("使用 `read_file` 读取文档")
+            }
+            appendLine("- 已保存到工作区的历史用户图片和文档以工作区路径提供" + if (rereadTools.isEmpty()) "。" else "；需要重新查看时，${rereadTools.joinToString("、")}。")
             appendLine("- 图片、视频和音频遵循运行环境段的成果文件落点，展示前保存；项目规则未指定目录时使用 media/<yyyy-MM-dd>/。脚本、命令生成或网络下载的媒体同样适用。")
             appendLine("- Present workspace media in your reply with `![brief description](workspace path)`. A regular link `[name](workspace path)` appears as a file card. Use the virtual paths returned by file tools, never local absolute filesystem paths or inline base64.")
             appendLine("- Media already shown in tool steps can still be referenced in your reply when useful.")

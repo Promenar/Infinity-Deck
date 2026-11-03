@@ -313,7 +313,7 @@ class SummaryBudgetRollbackIntegrationTest {
                 }
                 override suspend fun sendPromptSync(request: PromptRequest): PromptResponse {
                     summaryPrompts += request
-                    return PromptResponse("工具结果已经读取并核实。", usage = ProtocolUsage(37, 11, 48))
+                    return PromptResponse("工具结果已经读取并核实。".repeat(SUMMARY_REPEAT), usage = ProtocolUsage(37, 11, 48))
                 }
                 override fun cancel() = Unit
             }
@@ -327,7 +327,7 @@ class SummaryBudgetRollbackIntegrationTest {
             }
             val contextBuilder = mockk<ContextBuilder>()
             coEvery { contextBuilder.buildContext(any()) } returns ContextBuilderResult(
-                "", "", emptyList(), emptyList(), null, "超出预算的系统上下文".repeat(300),
+                "", "", emptyList(), emptyList(), null, "超出预算的系统上下文".repeat(SYSTEM_REPEAT),
             )
             return DefaultChatGenerationRuntime(
                 settings = settings, applicationScope = scope, store = store,
@@ -343,3 +343,7 @@ class SummaryBudgetRollbackIntegrationTest {
         }
     }
 }
+
+// 系统上下文与当前轮放得下，不触发当前轮下限；压缩后的长摘要叠加系统上下文仍超出总预算。
+private const val SYSTEM_REPEAT = 20
+private const val SUMMARY_REPEAT = 200

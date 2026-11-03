@@ -43,6 +43,7 @@ All notable changes to this project will be documented in this file.
 ### 修复
 
 - 媒体矩阵第 4 格叠加“+N”时不再同时显示视频播放图标。
+- 会话未开放 `view_media` 或 `read_file` 时，系统提示不再要求模型用对应工具重新查看历史附件。
 
 ## [0.19.0-beta] - 2026-11-03
 

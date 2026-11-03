@@ -14,7 +14,8 @@ class BackgroundCommandTest {
             val runner = runner(root)
             val log = File(root, "out.log")
             val out = runner.runBackground(request(root, "printf a; printf b >&2; printf c; exit 7"), BuiltinCommandControl(), log, File(root, "pgid"))
-            assertThat(log.readText()).isEqualTo("abc")
+            assertThat(log.readText()).matches("""\[\+\d{2}:\d{2}\.\d] abc""")
+            assertThat(readJobLogTail(log, 64, stripTimestamps = true).text).isEqualTo("abc")
             assertThat(out.exitCode).isEqualTo(7)
             assertThat(out.stdout).isEmpty()
         } finally { root.deleteRecursively() }

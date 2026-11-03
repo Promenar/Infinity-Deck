@@ -96,15 +96,20 @@ class SessionManager(
             sessionRepository.commitContextCompaction(sessionId, summary, ids, source)
 
             val archivedIds = ids.toSet()
+            // 摘要、归档与基线失效在同一次状态更新中发布；没有基线时不改写统计。
+            val hadBaseline = store.getSession(sessionId)?.stats?.contextUsageBaseline != null
             store.updateSession(sessionId) { session ->
                 session.copy(
                     summary = summary,
                     messages = session.messages.map { message ->
                         if (message.id in archivedIds) message.copy(isArchived = true) else message
                     },
+                    stats = session.stats?.copy(contextUsageBaseline = null),
                 )
             }
-            updateContextUsageBaseline(sessionId, null)
+            if (hadBaseline) {
+                store.getSession(sessionId)?.stats?.let { sessionRepository.updatePartial(sessionId, mapOf("stats" to it)) }
+            }
         }
 
     suspend fun deleteSession(id: String, keepFiles: Boolean = false): SessionDeletionResult {
