@@ -29,7 +29,7 @@ class BackgroundJobManagerTest {
             val listening = CompletableDeferred<Unit>()
             val live = io.mockk.spyk(ToolLiveOutputStore())
             io.mockk.every { live.listenOutput("job:job-a", any()) } answers {
-                callOriginal<() -> Unit>().also { listening.complete(Unit) }
+                callOriginal().also { listening.complete(Unit) }
             }
             val manager = manager(root, scope, store, termux = backend, live = live)
             manager.initialize()
@@ -67,7 +67,7 @@ class BackgroundJobManagerTest {
                     try { jobManager.status("s", "job-a") } finally { refreshFinished.countDown() }
                 }
                 assertThat(refreshFinished.await(1, java.util.concurrent.TimeUnit.SECONDS)).isFalse()
-                callOriginal<() -> Unit>()
+                callOriginal()
             }
             jobManager = manager(root, scope, store, termux = backend, live = live)
             jobManager.initialize()

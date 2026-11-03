@@ -2813,7 +2813,9 @@ class ChatViewModelTest {
         queueStore.pause("s1", com.promenar.infinity.data.chat.queue.QueuePauseReason.FAILED)
         advanceUntilIdle()
         fakeStreamChunks = listOf(StreamChunk.TextDelta("done"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
-        viewModel.steerQueuedMessage(steer.id); advanceUntilIdle()
+        viewModel.steerQueuedMessage(steer.id)
+        // 剩余队首在同一生成循环的边界经真实 IO 注入，需等待其完成。
+        awaitReal { viewModel.composerQueue.value.items.isEmpty() && !viewModel.uiState.value.isGenerating }
         assertThat(savedMessages.filter { it.first.role == MessageRole.USER }.map { it.first.content }).containsExactly("steer", "first").inOrder()
         assertThat(viewModel.composerQueue.value.items).isEmpty()
     }
