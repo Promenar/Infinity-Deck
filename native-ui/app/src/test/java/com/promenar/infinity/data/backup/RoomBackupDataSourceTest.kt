@@ -285,9 +285,11 @@ class RoomBackupDataSourceTest {
             db.clearAllTables()
             db.agentDao().insert(AgentEntity("fresh-agent", "新设备智能体", createdAt = 3))
             db.sessionDao().insert(SessionEntity("__infinity_rag_workspace__", BackupLayerPolicy.KNOWLEDGE_AGENT, title = "RAG Workspace", createdAt = 3, updatedAt = 3))
-            Files.newInputStream(file).use { input -> codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "knowledge-system") } }
+            val result = Files.newInputStream(file).use { input -> codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "knowledge-system") } }
 
             assertThat(db.sessionDao().getById("__infinity_rag_workspace__")?.agentId).isEqualTo(BackupLayerPolicy.KNOWLEDGE_AGENT)
+            // 虚拟智能体不是丢失的智能体，恢复结果不能提示“会话的智能体不可用”。
+            assertThat(result.summary.degraded.map { it.category }).doesNotContain("session_agent_unavailable")
             assertThat(db.agentDao().getAll().map { it.id }).containsExactly("agent-1")
             Unit
         } finally { BackupStreams.deleteTree(cache) }

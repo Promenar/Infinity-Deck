@@ -846,7 +846,9 @@ class RoomBackupDataSource(
         tables.getValue("document_tags").forEach { if (it.requiredString("doc_id") !in fileIds) record("document_tag_file_unavailable") }
         val sessionsBefore = tables.getValue("sessions")
         sessionsBefore.forEach { row ->
-            if (row.requiredString("agent_id") !in agentIds) record("session_agent_unavailable")
+            // 知识库系统会话归属虚拟智能体，agents 表中本就没有对应行。
+            val agentId = row.requiredString("agent_id")
+            if (agentId != BackupLayerPolicy.KNOWLEDGE_AGENT && agentId !in agentIds) record("session_agent_unavailable")
             if (row.optionalString("workspace_id")?.let { it !in workspaceIds } == true) record("directory_workspace_unavailable")
             if (row.optionalString("workspace_root_uuid")?.let { it !in fileIds } == true) record("session_workspace_unavailable")
         }
