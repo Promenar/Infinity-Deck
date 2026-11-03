@@ -70,6 +70,18 @@ class FileSkillCatalog internal constructor(
             ) {
                 state = state.copy(userConfirmed = state.userConfirmed + (location.name to inspection.hash))
             }
+            val confirmed = if (location.scope == SkillScope.USER) state.userConfirmed[location.name]
+                else state.projectTrusted[location.projectKey!!]
+            // 只有当前完整旧摘要仍匹配时才能证明变化仅来自摘要规则，随后保存排除缓存的新摘要。
+            if (inspection.hash != null && confirmed != null && confirmed != inspection.hash &&
+                runCatching { migrationHashes(location) }.getOrNull()?.let {
+                    it.first == confirmed && it.second == inspection.hash
+                } == true
+            ) {
+                state = if (location.scope == SkillScope.USER) {
+                    state.copy(userConfirmed = state.userConfirmed + (location.name to inspection.hash))
+                } else state.copy(projectTrusted = state.projectTrusted + (location.projectKey!! to inspection.hash))
+            }
         }
         if (state != previousState) states.write(state)
         val snapshot = SkillSnapshot(workspace, inspected.map { (location, inspection) ->
@@ -119,7 +131,10 @@ class FileSkillCatalog internal constructor(
         val current = asDiscovered(location, inspection, state, previousEnabled)
         check(current.status != SkillStatus.PENDING_TRUST) { "项目技能内容需要先确认信任" }
         if (location.scope == SkillScope.USER) {
-            val next = if (enabled) state.copy(userConfirmed = state.userConfirmed + (location.name to inspection.hash!!)) else state
+            val next = state.copy(
+                userConfirmed = if (enabled) state.userConfirmed + (location.name to inspection.hash!!) else state.userConfirmed,
+                userDisabled = if (enabled) state.userDisabled - location.name else state.userDisabled + location.name,
+            )
             val enabledNames = if (enabled) previousEnabled + location.name else previousEnabled - location.name
             updateState(state, next)
             if (enabledNames != previousEnabled) {
@@ -154,7 +169,9 @@ class FileSkillCatalog internal constructor(
         checkParents(location)
         val previous = states.read()
         val enabled = enabledNames()
-        val next = if (location.scope == SkillScope.USER) previous.copy(userConfirmed = previous.userConfirmed - location.name) else {
+        val next = if (location.scope == SkillScope.USER) previous.copy(
+            userConfirmed = previous.userConfirmed - location.name, userDisabled = previous.userDisabled - location.name,
+        ) else {
             val key = location.projectKey!!
             previous.copy(projectTrusted = previous.projectTrusted - key, projectDisabled = previous.projectDisabled - key)
         }
@@ -181,6 +198,70 @@ class FileSkillCatalog internal constructor(
     }
 
     private suspend fun <T> locked(block: () -> T): T = withContext(ioDispatcher) { mutex.withLock { block() } }
+
+    override suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean): DiscoveredSkill = locked {
+        if (files.isEmpty() || files.size > AgentSkillStore.MAX_FILES) throw AgentSkillFormatException("技能包文件数无效")
+        val payload = linkedMapOf<String, ByteArray>()
+        var total = 0L
+        files.forEach { (raw, bytes) ->
+            val path = AgentSkillStore.normalizeRelativePath(raw)
+            if (path.split('/').any { it == ".git" || it == "__pycache__" } || path.endsWith(".pyc")) {
+                throw AgentSkillFormatException("安装快照不能包含运行缓存或 Git 内部文件")
+            }
+            if (bytes.size > AgentSkillStore.MAX_FILE_BYTES || bytes.size.toLong() > AgentSkillStore.MAX_TOTAL_BYTES - total) {
+                throw AgentSkillFormatException("技能包超出大小限制")
+            }
+            total += bytes.size
+            if (payload.put(path, bytes.copyOf()) != null) throw AgentSkillFormatException("技能包包含重复路径：$path")
+        }
+        val markdown = payload[AgentSkillStore.SKILL_FILE]?.let(AgentSkillStore::decodeText)
+            ?: throw AgentSkillFormatException("技能包缺少 UTF-8 SKILL.md")
+        val name = SkillMarkdownParser.parse(markdown).metadata.name
+        val approvedDigest = MessageDigest.getInstance("SHA-256")
+        payload.toSortedMap().forEach { (relative, bytes) ->
+            val path = relative.toByteArray(Charsets.UTF_8)
+            approvedDigest.update(ByteBuffer.allocate(4).putInt(path.size).array())
+            approvedDigest.update(path)
+            approvedDigest.update(ByteBuffer.allocate(8).putLong(bytes.size.toLong()).array())
+            approvedDigest.update(bytes)
+        }
+        val approvedHash = approvedDigest.digest().joinToString("") { "%02x".format(it) }
+        check(userRoot.isDirectory || userRoot.mkdirs()) { "无法创建技能目录" }
+        requireDirectory(userRoot.toPath())
+        check(stateDir.isDirectory || stateDir.mkdirs()) { "无法创建技能状态目录" }
+        requireDirectory(stateDir.toPath())
+        val state = states.read()
+        val enabled = enabledNames()
+        var stateAttempted = false
+        var inspected: Inspection? = null
+        try {
+            this.files.installTree(userRoot, stateDir, name, payload, overwrite, validate = { staging ->
+                inspected = requireCurrent(Location(SkillScope.USER, name, staging, null))
+                check(inspected!!.hash == approvedHash) { "安装暂存内容与批准的文件快照不一致" }
+            }) { existed ->
+                val next = state.copy(userConfirmed = state.userConfirmed + (name to approvedHash))
+                stateAttempted = true
+                states.write(next)
+                // 旧版只有启用名单的停用选择，也按覆盖前目录存在且未启用来保留。
+                val preserveDisabled = name in state.userDisabled || (existed || name in state.userConfirmed) && name !in enabled
+                val nextEnabled = if (preserveDisabled) enabled - name else enabled + name
+                writeEnabled(nextEnabled)
+                val location = Location(SkillScope.USER, name, userRoot, null)
+                locations[location.id] = location
+                cache.remove(location)
+                changes.value++
+                asDiscovered(location, inspected!!, next, nextEnabled)
+            }
+        } catch (failure: Exception) {
+            if (stateAttempted) {
+                runCatching { states.write(state) }.exceptionOrNull()?.let(failure::addSuppressed)
+                runCatching { writeEnabled(enabled) }.exceptionOrNull()?.let(failure::addSuppressed)
+            }
+            throw failure
+        } finally {
+            cache.keys.removeAll { it.root.parentFile == stateDir && it.root.name.startsWith(".approved-") }
+        }
+    }
 
     private fun enabledNames(): Set<String> = settings.getStringSet(AgentSkillStore.ENABLED_KEY, null)?.toSet().orEmpty()
 
@@ -264,7 +345,7 @@ class FileSkillCatalog internal constructor(
                 // 只有 SKILL.md 与 openai.yaml 需要解析，其余文件流式进入摘要，不整体读入内存。
                 val keep = entry.path == AgentSkillStore.SKILL_FILE || entry.path == "agents/openai.yaml"
                 val kept = if (keep) ByteArrayOutputStream() else null
-                val read = files.stream(file, AgentSkillStore.MAX_FILE_BYTES.toLong(), location.workspace?.root ?: userRoot) { chunk, count ->
+                val read = files.stream(file, AgentSkillStore.MAX_FILE_BYTES.toLong(), location.workspace?.root ?: location.root) { chunk, count ->
                     digest.update(chunk, 0, count)
                     kept?.write(chunk, 0, count)
                 }
@@ -293,7 +374,34 @@ class FileSkillCatalog internal constructor(
         }
     }
 
-    private fun inventory(location: Location): List<FileStamp> {
+    private fun migrationHashes(location: Location): Pair<String, String> {
+        val signature = inventory(location, includePythonCache = true)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val normalized = MessageDigest.getInstance("SHA-256")
+        signature.forEach { entry ->
+            val path = entry.path.toByteArray(Charsets.UTF_8)
+            val included = !isPythonCache(entry.path)
+            if (included) {
+                normalized.update(ByteBuffer.allocate(4).putInt(path.size).array())
+                normalized.update(path)
+                normalized.update(ByteBuffer.allocate(8).putLong(entry.size).array())
+            }
+            digest.update(ByteBuffer.allocate(4).putInt(path.size).array())
+            digest.update(path)
+            digest.update(ByteBuffer.allocate(8).putLong(entry.size).array())
+            val read = files.stream(safeFile(location, entry.path), AgentSkillStore.MAX_FILE_BYTES.toLong(), location.workspace?.root ?: location.root) { bytes, count ->
+                digest.update(bytes, 0, count)
+                if (included) normalized.update(bytes, 0, count)
+            }
+            check(read == entry.size) { "迁移期间技能文件变化" }
+        }
+        check(signature == inventory(location, includePythonCache = true)) { "迁移期间技能目录变化" }
+        return digest.digest().joinToString("") { "%02x".format(it) } to normalized.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun isPythonCache(path: String): Boolean = path.split('/').any { it == "__pycache__" } || path.endsWith(".pyc")
+
+    private fun inventory(location: Location, includePythonCache: Boolean = false): List<FileStamp> {
         checkParents(location)
         requireDirectory(location.dir.toPath())
         val signature = mutableListOf<FileStamp>()
@@ -301,10 +409,14 @@ class FileSkillCatalog internal constructor(
         val root = location.dir.toPath()
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                if (dir != root && dir.fileName.toString() == ".git") FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+                if (dir != root && (dir.fileName.toString() == ".git" ||
+                        !includePythonCache && dir.fileName.toString() == "__pycache__")) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                 val relative = root.relativize(file).toString().replace(File.separatorChar, '/')
+                if (!includePythonCache && isPythonCache(relative)) {
+                    return FileVisitResult.CONTINUE
+                }
                 if (attrs.isSymbolicLink) throw AgentSkillFormatException("不允许符号链接：$relative")
                 if (!attrs.isRegularFile) throw AgentSkillFormatException("不是普通文件：$relative")
                 if (signature.size >= AgentSkillStore.MAX_FILES) throw AgentSkillFormatException("技能包文件数超过 ${AgentSkillStore.MAX_FILES}")
@@ -323,7 +435,7 @@ class FileSkillCatalog internal constructor(
     private fun readText(location: Location, relative: String, limit: Int): String {
         val file = safeFile(location, relative)
         if (attributes(file.toPath()).size() > limit) throw AgentSkillFormatException("文件超过 ${limit / 1024} KiB 读取上限：$relative")
-        val bytes = files.read(file, limit, location.workspace?.root ?: userRoot)
+        val bytes = files.read(file, limit, location.workspace?.root ?: location.root)
         safeFile(location, relative)
         return AgentSkillStore.decodeText(bytes) ?: throw AgentSkillFormatException("不是 UTF-8 文本文件：$relative")
     }

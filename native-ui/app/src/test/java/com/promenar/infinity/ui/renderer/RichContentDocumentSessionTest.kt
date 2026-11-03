@@ -28,6 +28,7 @@ class RichContentDocumentSessionTest {
         val meta = document.selectFirst("meta[http-equiv=Content-Security-Policy]")!!
         assertThat(meta.attr("content")).contains("worker-src 'none'")
         assertThat(meta.attr("content")).contains("frame-src 'none'")
+        assertThat(meta.attr("content")).contains("media-src https://workspace-media.infinity.invalid;")
         assertThat(html.indexOf("Content-Security-Policy")).isLessThan(html.indexOf("<script>"))
         assertThat(document.selectFirst("script")!!.data()).isEqualTo("window.ready = 1;")
         assertThat(document.selectFirst("style")!!.data()).isEqualTo("p { color:red; }")
