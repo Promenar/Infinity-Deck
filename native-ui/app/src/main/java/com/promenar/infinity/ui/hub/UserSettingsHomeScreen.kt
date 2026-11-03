@@ -1,5 +1,9 @@
 package com.promenar.infinity.ui.hub
 
+import com.promenar.infinity.ui.theme.InfinityMotion
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.activity.compose.LocalActivity
 import android.content.Intent
 import androidx.core.content.FileProvider
@@ -576,6 +580,7 @@ private fun UserSettingsNavigationItem(
 /**
  * 设置页顶部的个人区：没有头像或用户选择品牌时显示灯珠变形字标，否则显示头像与名字。
  * 两种形态都只有一个点按目标，点它弹出个人资料面板，在面板里切换显示、换头像或改名。
+ * 两种形态同占 [ProfileHeaderHeight]，切换时下面的列表不跳；名字两行或大字号让名片更高时，高度变化走动画。
  */
 @Composable
 private fun UserProfileHeader(
@@ -584,12 +589,23 @@ private fun UserProfileHeader(
     showsBrand: Boolean,
     onOpenMenu: () -> Unit,
 ) {
-    if (showsBrand) {
-        ProfileBrandMark(onClick = onOpenMenu)
-    } else {
-        UserProfileCard(userName, avatarUri, onClick = onOpenMenu)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = ProfileHeaderHeight)
+            .animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (showsBrand) {
+            ProfileBrandMark(onClick = onOpenMenu)
+        } else {
+            UserProfileCard(userName, avatarUri, onClick = onOpenMenu)
+        }
     }
 }
+
+/** 个人区高度：与首次引导的灯珠字标同高，头像名片在其中垂直居中。 */
+private val ProfileHeaderHeight = 170.dp
 
 /** 与首次引导同一个灯珠变形字标，灯珠数不缩减；点按打开个人资料面板。 */
 @Composable
@@ -598,7 +614,7 @@ private fun ProfileBrandMark(onClick: () -> Unit) {
     LedMorphWordmark(
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp)
+            .height(ProfileHeaderHeight)
             .testTag(UiTags.SETTINGS_PROFILE_BRAND)
             .semantics { contentDescription = menuLabel }
             .clickable(role = Role.Button, onClickLabel = menuLabel, onClick = onClick),

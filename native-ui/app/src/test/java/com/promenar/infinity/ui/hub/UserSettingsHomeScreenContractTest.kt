@@ -195,11 +195,16 @@ class UserSettingsHomeScreenContractTest {
             .substringBefore("private fun UserProfileCard(")
         assertThat(brand).contains("LedMorphWordmark(")
         assertThat(brand).doesNotContain("particleScale")
-        assertThat(brand).contains("height(170.dp)")
+        assertThat(brand).contains("height(ProfileHeaderHeight)")
+        assertThat(screenSource).contains("private val ProfileHeaderHeight = 170.dp")
         val header = screenSource.substringAfter("private fun UserProfileHeader(")
             .substringBefore("private fun ProfileBrandMark(")
         // 不论有无头像，点字标都打开个人资料面板。
         assertThat(header).contains("ProfileBrandMark(onClick = onOpenMenu)")
+        // 品牌与名片同占一个最小高度，切换时下面的设置列表不跳；超出时高度变化走动画。
+        assertThat(header).contains(".heightIn(min = ProfileHeaderHeight)")
+        assertThat(header).contains(".animateContentSize(")
+        assertThat(header).contains("contentAlignment = Alignment.Center")
     }
 
     @Test
