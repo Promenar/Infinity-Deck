@@ -53,17 +53,36 @@ class SessionManager(
     }
 
     suspend fun updateSession(id: String, updates: Map<String, Any?>) {
+        val current = store.getSession(id)
+        val invalidates = ("modelId" in updates && updates["modelId"] != current?.modelId) ||
+            ("summary" in updates && updates["summary"] != current?.summary)
+        val effective = if (invalidates && current?.stats?.contextUsageBaseline != null)
+            updates + ("stats" to current.stats.copy(contextUsageBaseline = null)) else updates
+        val preserveCurrentStats = invalidates && "stats" !in updates
         if ("summary" in updates) {
-            withContextMutation(id) { persistSessionUpdates(id, updates) }
+            withContextMutation(id) { persistSessionUpdates(id, effective, preserveCurrentStats) }
         } else {
-            persistSessionUpdates(id, updates)
+            persistSessionUpdates(id, effective, preserveCurrentStats)
         }
     }
 
-    private suspend fun persistSessionUpdates(id: String, updates: Map<String, Any?>) {
+    suspend fun updateContextUsageBaseline(id: String, baseline: com.promenar.infinity.data.model.PromptUsageBaseline?) {
+        // 先原子合并基线；数据库挂起期间的新计费不能被整份旧统计回写覆盖。
+        store.updateSession(id) { session -> session.copy(stats =
+            (session.stats ?: com.promenar.infinity.data.model.SessionStats()).copy(contextUsageBaseline = baseline)) }
+        val stats = store.getSession(id)?.stats ?: return
+        sessionRepository.updatePartial(id, mapOf("stats" to stats))
+    }
+
+    private suspend fun persistSessionUpdates(id: String, updates: Map<String, Any?>, preserveCurrentStats: Boolean = false) {
         sessionRepository.updatePartial(id, updates)
 
-        store.updateSession(id) { s -> applyUpdatesToSession(s, updates) }
+        store.updateSession(id) { s ->
+            if (!preserveCurrentStats) applyUpdatesToSession(s, updates) else {
+                val updated = applyUpdatesToSession(s, updates - "stats")
+                updated.copy(stats = updated.stats?.copy(contextUsageBaseline = null))
+            }
+        }
     }
 
     suspend fun commitContextCompaction(
@@ -85,6 +104,7 @@ class SessionManager(
                     },
                 )
             }
+            updateContextUsageBaseline(sessionId, null)
         }
 
     suspend fun deleteSession(id: String, keepFiles: Boolean = false): SessionDeletionResult {

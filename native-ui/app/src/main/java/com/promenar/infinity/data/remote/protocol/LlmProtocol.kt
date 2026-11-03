@@ -113,6 +113,8 @@ data class ProtocolUsage(
     val reasoningOutput: Int? = null,
     /** [cacheWriteInput] 中长 TTL 档的写入部分；null 表示服务商未报告。 */
     val cacheWriteLongTtlInput: Int? = null,
+    /** 服务商已报告可用于校准的完整输入计数；显式零值有效，缺失字段时为 false。 */
+    val inputReported: Boolean = input > 0,
 )
 
 /** 是否允许模型在本次回复中调用已声明的工具；NONE 时仍声明工具以保持历史中的调用可被解析。 */

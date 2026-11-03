@@ -62,7 +62,8 @@ class PostProcessorTest {
         val postProcessor = PostProcessor(store, sessionManager, messageManager)
 
         val agent = Agent(id = "a1", name = "Test Agent")
-        val session = Session(id = "s1", agentId = "a1", title = "New Chat")
+        val baseline = PromptUsageBaseline("s1", "model-key", "summary-hash", "tool-hash", 500, emptyList())
+        val session = Session(id = "s1", agentId = "a1", title = "New Chat", stats = SessionStats(contextUsageBaseline = baseline))
         sessionManager.addSession(session)
         testScope.advanceUntilIdle()
 
@@ -87,6 +88,7 @@ class PostProcessorTest {
         assertThat(updatedSession.stats!!.billing.chatInput.count).isEqualTo(50)
         assertThat(updatedSession.stats!!.billing.chatOutput.count).isEqualTo(30)
         assertThat(updatedSession.stats!!.billing.total).isEqualTo(80)
+        assertThat(updatedSession.stats!!.contextUsageBaseline).isEqualTo(baseline)
     }
 
     @Test

@@ -454,7 +454,7 @@ class AnthropicProtocol(
         return body.toString()
     }
 
-    /** message_start 携带的 usage（未缓存输入与缓存读写），与 message_delta 合并后上报。 */
+    /** 单次请求最新的累计 usage；后续分片只覆盖已报告字段。 */
     private var startUsage: JsonObject? = null
 
     private suspend fun SendChannel<StreamChunk>.processSseEvent(event: String, data: String): Boolean {
@@ -555,6 +555,18 @@ class AnthropicProtocol(
     }
 
     private suspend fun SendChannel<StreamChunk>.processMessageDelta(eventData: JsonObject) {
+        val usage = eventData["usage"] as? JsonObject
+        if (usage != null) {
+            val merged = ProtocolUsageParsers.anthropic(startUsage, usage)
+            val reported = usage.filterValues { it !is JsonNull }.toMutableMap()
+            val previousCreation = startUsage?.get("cache_creation") as? JsonObject
+            val reportedCreation = reported["cache_creation"] as? JsonObject
+            if (previousCreation != null && reportedCreation != null) {
+                reported["cache_creation"] = JsonObject(previousCreation + reportedCreation.filterValues { it !is JsonNull })
+            }
+            startUsage = JsonObject(startUsage.orEmpty() + reported)
+            send(StreamChunk.Usage(merged))
+        }
         val stopReason = (eventData["delta"] as? JsonObject)?.stringField("stop_reason").orEmpty()
         if (stopReason.isNotEmpty()) {
             if (pendingStopReason != null) throw IllegalStateException("Duplicate Anthropic stop_reason")
@@ -565,17 +577,11 @@ class AnthropicProtocol(
                     ?: IllegalStateException("Unknown Anthropic stop_reason: $stopReason")
             }
         }
-        val usage = eventData["usage"] as? JsonObject
-        if (usage != null) {
-            val merged = ProtocolUsageParsers.anthropic(startUsage, usage)
-            if (merged.output > 0 && merged.input > 0) {
-                send(StreamChunk.Usage(merged))
-            }
-        }
     }
 
-    private fun processMessageStart(eventData: JsonObject) {
+    private suspend fun SendChannel<StreamChunk>.processMessageStart(eventData: JsonObject) {
         startUsage = (eventData["message"] as? JsonObject)?.get("usage") as? JsonObject
+        startUsage?.let { send(StreamChunk.Usage(ProtocolUsageParsers.anthropic(it))) }
     }
 
     private suspend fun SendChannel<StreamChunk>.processContentBlockStart(eventData: JsonObject) {

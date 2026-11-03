@@ -6,6 +6,8 @@ import com.promenar.infinity.data.repository.ISessionRepository
 import com.promenar.infinity.ui.chat.ChatStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -14,6 +16,51 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionManagerTest {
+    @Test fun `基线写入与模型失效不覆盖数据库挂起期间的新计费`() = runTest {
+        for (invalidate in listOf(false, true)) {
+            val localStore = ChatStore()
+            val baseline = PromptUsageBaseline("usage-session", "model-key", "summary-hash", "tool-hash", 500, emptyList())
+            localStore.upsertSession(Session("usage-session", "agent", modelId = "model", stats = SessionStats(10,
+                contextUsageBaseline = if (invalidate) baseline else null)))
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val repository = object : ISessionRepository by stubSessionRepo {
+                override suspend fun updatePartial(id: String, updates: Map<String, Any?>) { entered.complete(Unit); release.await() }
+            }
+            val manager = SessionManager(localStore, repository)
+            val job = launch {
+                if (invalidate) manager.updateSessionModel("usage-session", "next-model")
+                else manager.updateContextUsageBaseline("usage-session", baseline)
+            }
+            entered.await()
+            localStore.updateSession("usage-session") { it.copy(stats = it.stats!!.copy(totalTokens = 20)) }
+            release.complete(Unit)
+            job.join()
+            assertThat(localStore.getSession("usage-session")!!.stats!!.totalTokens).isEqualTo(20)
+            assertThat(localStore.getSession("usage-session")!!.stats!!.contextUsageBaseline)
+                .isEqualTo(if (invalidate) null else baseline)
+        }
+    }
+
+    @Test fun `单次请求基线持久化且模型或摘要变更清除基线`() = runTest {
+        val localStore = ChatStore()
+        val saved = mutableListOf<Map<String, Any?>>()
+        val repository = object : ISessionRepository by stubSessionRepo {
+            override suspend fun updatePartial(id: String, updates: Map<String, Any?>) { saved += updates }
+        }
+        val manager = SessionManager(localStore, repository)
+        localStore.upsertSession(Session("usage-session", "agent", modelId = "model"))
+        val baseline = PromptUsageBaseline("usage-session", "model-key", "summary-hash", "tool-hash", 500, emptyList())
+        manager.updateContextUsageBaseline("usage-session", baseline)
+        assertThat((saved.last()["stats"] as SessionStats).contextUsageBaseline).isEqualTo(baseline)
+        manager.updateSessionModel("usage-session", "another-model")
+        assertThat(manager.getSession("usage-session")!!.stats!!.contextUsageBaseline).isNull()
+        assertThat((saved.last()["stats"] as SessionStats).contextUsageBaseline).isNull()
+        manager.updateContextUsageBaseline("usage-session", baseline)
+        manager.updateSession("usage-session", mapOf("summary" to "新摘要"))
+        assertThat(manager.getSession("usage-session")!!.stats!!.contextUsageBaseline).isNull()
+    }
+
     @Test fun `删除会话撤销全部类别授权且删除失败保留授权`() = runTest {
         val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
         val manager = SessionManager(ChatStore(), stubSessionRepo, timedGrants = grants)

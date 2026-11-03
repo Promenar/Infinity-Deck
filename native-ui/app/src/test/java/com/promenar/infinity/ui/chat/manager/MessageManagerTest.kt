@@ -20,6 +20,14 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MessageManagerTest {
+    @Test fun `消息计费更新保留独立的上下文用量基线`() = testScope.runTest {
+        val baseline = PromptUsageBaseline("usage-session", "model-key", "summary-hash", "tool-hash", 500, emptyList())
+        store.upsertSession(Session("usage-session", "agent", messages = listOf(Message("assistant", MessageRole.ASSISTANT, "")),
+            stats = SessionStats(contextUsageBaseline = baseline)))
+        messageManager.updateMessageContent("usage-session", "assistant", "回复", UpdateMessageOptions(tokens = TokenUsage(10, 5, 15)))
+        advanceUntilIdle()
+        assertThat(store.getSession("usage-session")!!.stats!!.contextUsageBaseline).isEqualTo(baseline)
+    }
 
     @Test
     fun `删除用户消息覆盖同轮旧数据中缺少父ID的助手与工具消息`() {

@@ -143,7 +143,7 @@ class ContextUsageBreakdownTest {
             "s", "输入", assistantMsgId = "a",
             session = com.promenar.infinity.data.model.Session("s", "agent", customPrompt = "会话指令", summary = "历史摘要",
                 options = com.promenar.infinity.data.model.SessionOptions(enableTimeInjection = true)),
-            agentSystemPrompt = "助手提示词", availableToolNames = setOf("read_file"),
+            agentSystemPrompt = "助手提示词", availableToolNames = setOf("read_file", "knowledge_search"),
             retrievalMode = com.promenar.infinity.data.agent.AgentRetrievalMode.TOOL,
             knowledgeCatalog = "资料目录",
             requestedSkills = listOf(RequestedSkill.Loaded("demo", "技能正文")),

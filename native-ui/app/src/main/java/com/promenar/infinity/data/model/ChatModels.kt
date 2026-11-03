@@ -497,7 +497,9 @@ data class SessionOptions(
 @Serializable
 data class SessionStats(
     val totalTokens: Int = 0,
-    val billing: BillingUsage = BillingUsage()
+    val billing: BillingUsage = BillingUsage(),
+    /** 最近单次主模型请求的实际输入基线，与计费用量独立持久化。 */
+    val contextUsageBaseline: PromptUsageBaseline? = null,
 )
 
 @Serializable
