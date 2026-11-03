@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 变更
+
+- 移动工作流能力测试方案改为四类真实工作流的通过性测试：先还原资料仓库技能并检查适配性，再依次执行平面设计（Codex CLI 生图与 SVG 制作稿）、ComfyUI 调用（Qwen Image 2.1 与 H3）、文档处理（PDF、PPT、Word、Excel）与视频剪辑（HyperFrames）；原分层基础能力条目、端到端任务与故障变体不再作为测试批次。
+
 ## [0.16.1-beta] - 2026-11-02
 
 ### 修复
