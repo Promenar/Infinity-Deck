@@ -768,9 +768,9 @@
     <string name="backup_error_cleanup">Couldn\'t cancel the restore. Changes are blocked to protect your data.</string>
     <string name="backup_error_document_create">The selected backup document could not be created or opened for writing.</string>
     <string name="backup_error_document_open">The selected backup document could not be opened for reading.</string>
-    <string name="backup_error_reason_capacity">Backup content exceeds the 16 MiB limit, so the backup could not be created. Delete large session files, skills, or chats and try again.</string>
+    <string name="backup_error_reason_capacity">The backup exceeds the 512 MiB limit or there isn\'t enough free storage, so it could not be created. Turn off large layers such as workspace files, or free up storage, and try again.</string>
     <string name="backup_error_reason_workspace_mismatch">Some session files were deleted or changed outside the app and no longer match their records, so the backup could not be created.</string>
-    <string name="backup_error_reason_skill_content">The skills folder contains content that cannot be backed up (special files, file names with colons or backslashes, or more than 64 MiB in total), so the backup could not be created.</string>
+    <string name="backup_error_reason_skill_content">The skills folder contains content that cannot be backed up (special files, file names with colons or backslashes, or more than 512 MiB in total), so the backup could not be created.</string>
 
     <!-- LocalModelsScreen -->
     <string name="local_models_title">Local Models</string>

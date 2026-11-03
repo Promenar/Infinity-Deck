@@ -264,8 +264,8 @@ fi
 "${AAPT2}" dump xmltree "${TARGET_APK}" --file AndroidManifest.xml \
     > "${ARTIFACT_DIR}/target-manifest.txt"
 MANIFEST_DUMP="${ARTIFACT_DIR}/target-manifest.txt"
-grep -Fq 'usesCleartextTraffic(0x010104ec)=false' "${MANIFEST_DUMP}" || {
-    echo "目标 APK 未显式禁止明文流量" >&2
+grep -Fq 'usesCleartextTraffic(0x010104ec)=true' "${MANIFEST_DUMP}" || {
+    echo "目标 APK 未声明允许明文流量" >&2
     exit 1
 }
 if grep -Fq 'debuggable(0x0101000f)=true' "${MANIFEST_DUMP}"; then

@@ -28,26 +28,26 @@ class ManifestSecurityPolicyTest {
             .isEqualTo("@xml/backup_rules")
         assertThat(application.attributes.getNamedItemNS(androidNamespace, "dataExtractionRules").nodeValue)
             .isEqualTo("@xml/data_extraction_rules")
+        // 应用允许明文 HTTP（局域网与自建服务），由地址输入框的“未加密”提示提醒用户。
         assertThat(application.attributes.getNamedItemNS(androidNamespace, "usesCleartextTraffic").nodeValue)
-            .isEqualTo("false")
+            .isEqualTo("true")
     }
 
     @Test
-    fun `network security config rejects cleartext traffic`() {
+    fun `network security config permits cleartext traffic`() {
         val baseConfig = parse("app/src/main/res/xml/network_security_config.xml")
             .getElementsByTagName("base-config")
             .item(0)
 
         assertThat(baseConfig.attributes.getNamedItem("cleartextTrafficPermitted").nodeValue)
-            .isEqualTo("false")
+            .isEqualTo("true")
     }
 
     @Test
-    fun `runtime application info disables backup and cleartext flags`() {
+    fun `runtime application info disables backup`() {
         val applicationInfo = ApplicationProvider.getApplicationContext<Context>().applicationInfo
 
         assertThat(applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP).isEqualTo(0)
-        assertThat(applicationInfo.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC).isEqualTo(0)
     }
 
     @Test

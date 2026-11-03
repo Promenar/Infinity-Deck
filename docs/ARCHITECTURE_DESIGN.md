@@ -617,7 +617,7 @@ Step 4: 数据层迁移
 - 普通 SharedPreferences 只保存格式版本、随机 IV 和密文，不保存明文凭据。
 - UI 持久状态只保存“是否已配置”。输入框默认显示 `****`；完整值仅在当前页面经用户显式操作短暂进入可清零缓冲区，失焦或离开页面后重新隐藏。
 - `SecretCatalog` 为 Provider API Key、Vertex service account、Tavily、Embedding、WebDAV 等凭据分配稳定标识；路由层只在请求开始时解析当前 Provider 的凭据。
-- 备份默认不包含凭据，但用户可以独立加密核心数据包；显式启用完整密钥备份时强制设置密码，使用 PBKDF2-HMAC-SHA256 与 AES-256-GCM 加密。个人与 Agent 头像路径是设备本地数据，跨设备导出时剥离；WebDAV 只提供用户触发的上传、列表与恢复，不声明后台同步。
+- 备份按层选择，密钥层默认不选，不含密钥的备份也可单独加密；选中密钥层时强制设置密码。加密使用 PBKDF2-HMAC-SHA256（600,000 次）派生 AES-256 密钥，按 1 MiB 分块 AES-GCM 加密并认证块序号与末块标记。个人与 Agent 头像以随机 ID 引用随核心层打包，不携带源设备路径；WebDAV 只提供用户触发的流式上传、列表与恢复，不声明后台同步。
 
 ### 6.2 数据所有权
 
@@ -629,7 +629,7 @@ Step 4: 数据层迁移
 
 ### 6.3 Release 网络与日志边界
 
-- `v0.2.1-beta` Release 的云端 Provider、MCP 与 WebDAV 只允许 HTTPS；私网 HTTP 只允许显式 Debug/Integration 测试，不得通过 Release Manifest 放宽。
+- Release 与 Debug 的网络安全配置 base-config 均允许明文 HTTP（Manifest `usesCleartextTraffic=true`），提供商、MCP、WebDAV 与 Linux 自定义镜像可使用 http 地址；地址输入框对离开本机且不经 tailnet 的 http 地址显示“未加密”提示。
 - Debug 日志统一经 `InfinityLogger` 与 `SensitiveDataRedactor`；Release 输出入口受编译期门禁并由 R8 剥离。
 - Release APK 验证器对包身份、单一签名者、证书指纹、ZIP 边界、GGUF/llama/ggml 制品、常见密钥/Authorization/私钥/本机路径和 SHA-256 执行 fail-closed 检查。
 
