@@ -859,36 +859,50 @@ fun providerListChineseNarrowReleasePreview() {
 fun agentSkillPacksReleasePreview() {
     ReleasePreviewSurface {
         Box(modifier = Modifier.padding(16.dp)) {
+            // 与视图模型输出一致：固定顺序的内置、用户、项目三组，项目组在设置页为空且不渲染。
             com.promenar.infinity.ui.settings.AgentSkillsSection(
-                skills = listOf(
-                    releasePreviewSkill(
-                        "release-notes",
-                        "根据提交记录与变更文件撰写结构化发行说明，适用于版本发布前整理。",
-                        files = listOf("templates/notes.md", "reference/style.md"),
-                        status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
+                groups = listOf(
+                    com.promenar.infinity.data.skills.SkillSourceGroup(
+                        com.promenar.infinity.data.skills.SkillScope.BUILTIN,
+                        listOf(
+                            releasePreviewSkill(
+                                "infinity-workbench",
+                                "管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限时，先读取本指南。",
+                                files = emptyList(),
+                                status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
+                            ).copy(
+                                id = "builtin:infinity-workbench",
+                                scope = com.promenar.infinity.data.skills.SkillScope.BUILTIN,
+                                virtualDir = "/.infinity/builtin-skills/infinity-workbench",
+                            ),
+                        ),
                     ),
-                    releasePreviewSkill(
-                        "weekly-report",
-                        "把工作区中的会议记录整理成周报。",
-                        files = emptyList(),
-                        status = com.promenar.infinity.data.skills.SkillStatus.DISABLED,
+                    com.promenar.infinity.data.skills.SkillSourceGroup(
+                        com.promenar.infinity.data.skills.SkillScope.USER,
+                        listOf(
+                            releasePreviewSkill(
+                                "release-notes",
+                                "根据提交记录与变更文件撰写结构化发行说明，适用于版本发布前整理。",
+                                files = listOf("templates/notes.md", "reference/style.md"),
+                                status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
+                            ),
+                            releasePreviewSkill(
+                                "weekly-report",
+                                "把工作区中的会议记录整理成周报。",
+                                files = emptyList(),
+                                status = com.promenar.infinity.data.skills.SkillStatus.DISABLED,
+                            ),
+                        ),
+                    ),
+                    com.promenar.infinity.data.skills.SkillSourceGroup(
+                        com.promenar.infinity.data.skills.SkillScope.PROJECT,
+                        emptyList(),
                     ),
                 ),
                 actions = com.promenar.infinity.ui.skills.SkillCatalogActions(),
+                onSetGroupEnabled = { _, _ -> },
                 onImport = {},
                 onCreate = {},
-                builtinSkills = listOf(
-                    releasePreviewSkill(
-                        "infinity-workbench",
-                        "管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限时，先读取本指南。",
-                        files = emptyList(),
-                        status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
-                    ).copy(
-                        id = "builtin:infinity-workbench",
-                        scope = com.promenar.infinity.data.skills.SkillScope.BUILTIN,
-                        virtualDir = "/.infinity/builtin-skills/infinity-workbench",
-                    ),
-                ),
             )
         }
     }

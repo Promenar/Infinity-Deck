@@ -39,4 +39,15 @@
         <item quantity="other">%d symbolic links were skipped during backup.</item>
     </plurals>
     <string name="skills_restore_notice_dismiss">Got it</string>
+    <!-- Settings skill packs grouped by source; the group name and count are laid out as InfinityMetaLine segments. -->
+    <string name="skills_group_builtin">Built-in</string>
+    <string name="skills_group_user">User</string>
+    <string name="skills_group_enabled_count">%1$d/%2$d enabled</string>
+    <string name="skills_group_always_on">Always on</string>
+    <string name="skills_group_enable_all">Enable all</string>
+    <string name="skills_group_disable_all">Disable all</string>
+    <plurals name="skills_group_batch_failed">
+        <item quantity="one">%d skill couldn\'t be switched</item>
+        <item quantity="other">%d skills couldn\'t be switched</item>
+    </plurals>
 </resources>

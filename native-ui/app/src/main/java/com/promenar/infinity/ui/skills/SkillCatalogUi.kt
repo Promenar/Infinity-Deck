@@ -31,7 +31,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.common.InfinitySwitch
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.R
@@ -41,6 +43,7 @@ import com.promenar.infinity.data.skills.SkillScope
 import com.promenar.infinity.data.skills.SkillStatus
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySettingsItem
+import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.theme.forReading
@@ -59,6 +62,9 @@ class SkillCatalogActions(
 /**
  * 一个来源级别的技能分组：每行显示名称、描述与需要用户处理的状态。
  * 点按打开详情；行尾为启用开关，待信任技能为“信任”按钮，损坏技能为错误图标。
+ *
+ * [header] 非 null 时代替纯文字的 [title] 作为组标题（例如带计数与批量操作的标题行），间距与普通分组标题一致；
+ * [builtinTrailingLabel] 非 null 时内置技能行尾显示这段单行文字（例如“始终启用”），否则内置行尾留空。
  */
 @Composable
 fun SkillScopeSection(
@@ -68,24 +74,41 @@ fun SkillScopeSection(
     emptyMessage: String,
     actions: SkillCatalogActions,
     modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
+    builtinTrailingLabel: String? = null,
     trailingRows: @Composable () -> Unit = {},
 ) {
     var opened by remember { mutableStateOf<DiscoveredSkill?>(null) }
     var pendingTrust by remember { mutableStateOf<DiscoveredSkill?>(null) }
-    InfinitySettingsSection(
-        title = title,
-        footer = if (skills.isEmpty()) emptyMessage else footer,
-        modifier = modifier,
-    ) {
+    val sectionFooter = if (skills.isEmpty()) emptyMessage else footer
+    val rows: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
         skills.forEach { skill ->
             SkillRow(
                 skill = skill,
                 onOpen = { opened = skill },
                 onToggle = { actions.onToggle(skill, it) },
                 onTrust = { pendingTrust = skill },
+                builtinTrailingLabel = builtinTrailingLabel,
             )
         }
         trailingRows()
+    }
+    if (header == null) {
+        InfinitySettingsSection(title = title, footer = sectionFooter, modifier = modifier, content = rows)
+    } else {
+        // 与 InfinitySettingsSection 相同的标题内边距与分组面，只把标题换成调用方提供的内容。
+        Column(modifier = modifier.fillMaxWidth()) {
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = InfinitySpacing.RowHorizontal,
+                        end = InfinitySpacing.RowHorizontal,
+                        bottom = InfinitySpacing.SectionHeaderBottom,
+                    ),
+            ) { header() }
+            InfinitySettingsGroup(footer = sectionFooter, content = rows)
+        }
     }
 
     opened?.let { skill ->
@@ -120,6 +143,7 @@ private fun SkillRow(
     onOpen: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onTrust: () -> Unit,
+    builtinTrailingLabel: String? = null,
 ) {
     val title = skill.displayName ?: skill.name
     val description = (skill.shortDescription ?: skill.description).replace('\n', ' ').trim()
@@ -135,8 +159,17 @@ private fun SkillRow(
         onClick = onOpen,
         modifier = Modifier.testTag("skill_row:${skill.id}"),
         trailingContent = {
-            // 内置技能单独成组、不可停用，行尾不放开关。
-            if (skill.scope != SkillScope.BUILTIN) when (skill.status) {
+            // 内置技能单独成组、不可停用，行尾不放开关；调用方给出说明文字时以单行文字表达常开。
+            if (skill.scope == SkillScope.BUILTIN) {
+                if (builtinTrailingLabel != null) Text(
+                    builtinTrailingLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                )
+            } else when (skill.status) {
                 SkillStatus.ENABLED, SkillStatus.DISABLED -> {
                     val label = stringResource(R.string.skills_runtime_toggle_cd, title)
                     InfinitySwitch(
