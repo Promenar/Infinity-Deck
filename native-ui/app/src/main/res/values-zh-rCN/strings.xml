@@ -960,7 +960,7 @@
     <string name="skill_create_tool">创建工具</string>
     <string name="skill_create_tool_desc">通过元工具创建新的自定义技能</string>
     <string name="skill_image_generation">图像生成</string>
-    <string name="skill_image_generation_desc">根据文本描述生成 AI 图像</string>
+    <string name="skill_image_generation_desc">根据提示词生成图像，或编辑工作区图片</string>
     <string name="skill_file_read">文件读取</string>
     <string name="skill_file_read_desc">读取文件</string>
     <string name="skill_file_write">文件写入</string>

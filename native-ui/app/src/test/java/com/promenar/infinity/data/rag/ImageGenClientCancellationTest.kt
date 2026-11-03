@@ -12,6 +12,28 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class ImageGenClientCancellationTest {
+    @Test fun `编辑成功响应读取取消保持原始异常`() = runTest {
+        val cancellation = CancellationException("image-edit-response-cancelled")
+        val http = HttpClient(MockEngine { respond("""{"data":[]}""") })
+        try {
+            val client = ImageGenClient("https://images.example.test", "test-key", "gpt-image-2", http,
+                responseBodyReader = { throw cancellation })
+            assertThat(runCatching { client.edit("调整光照", listOf(ImageGenInput(byteArrayOf(1), "image/png", "a.png"))) }.exceptionOrNull())
+                .isSameInstanceAs(cancellation)
+        } finally { http.close() }
+    }
+
+    @Test fun `编辑错误体取消保持原始异常`() = runTest {
+        val cancellation = CancellationException("image-edit-cancelled")
+        val http = HttpClient(MockEngine { respond("", HttpStatusCode.BadRequest) })
+        try {
+            val client = ImageGenClient("https://images.example.test", "test-key", "gpt-image-2", http,
+                responseBodyReader = { throw cancellation })
+            val caught = runCatching { client.edit("调整光照", listOf(ImageGenInput(byteArrayOf(1), "image/png", "a.png"))) }.exceptionOrNull()
+            assertThat(caught).isSameInstanceAs(cancellation)
+        } finally { http.close() }
+    }
+
     @Test
     fun `error response body cancellation keeps original exception`() = runTest {
         val cancellation = CancellationException("image-error-body-cancelled")

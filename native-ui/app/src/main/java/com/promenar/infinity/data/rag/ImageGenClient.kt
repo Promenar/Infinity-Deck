@@ -5,22 +5,23 @@ import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
 import com.promenar.infinity.data.remote.withModelTimeoutSupport
 import io.ktor.client.*
-import io.ktor.client.call.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.*
 
 /**
  * 图像生成 API 客户端。
- * 兼容 OpenAI Images API (`POST /v1/images/generations`) 及兼容端点。
+ * 兼容 OpenAI Images API 的 JSON 生成与 multipart 编辑端点。
  *
  * @param baseUrl  API 基础地址（如 https://api.openai.com）
  * @param apiKey   API 密钥
- * @param model    图像生成模型 ID（如 dall-e-3、stable-diffusion-xl 等）
+ * @param model    提供商的远端图像模型 ID
  */
 class ImageGenClient(
     private val baseUrl: String,
@@ -41,49 +42,83 @@ class ImageGenClient(
     private val httpClient = httpClient.withModelTimeoutSupport()
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * 生成图像。
-     *
-     * @param prompt      图像描述提示词
-     * @param size        输出尺寸（如 "1024x1024", "1792x1024"），默认 "1024x1024"
-     * @param quality     质量（"standard" / "hd"），默认 "standard"
-     * @param style       风格（"vivid" / "natural"），默认 null（不指定）
-     * @param n           生成数量，默认 1
-     * @return [ImageGenResult] 包含生成图像列表
-     */
+    /** 可选参数只发送调用方显式给出的值，兼容拒绝未知字段的聚合网关。 */
     suspend fun generate(
         prompt: String,
         size: String? = null,
         quality: String? = null,
-        style: String? = null,
-        n: Int = 1
+        background: String? = null,
+        outputFormat: String? = null,
+        outputCompression: Int? = null,
+        n: Int? = null,
     ): ImageGenResult {
-        require(baseUrl.isNotBlank()) { "Image generation base URL not configured" }
-        require(apiKey.isNotBlank()) { "Image generation API key not configured" }
-        require(prompt.isNotBlank()) { "Prompt must not be blank" }
-
-        val cleanBase = baseUrl.trimEnd('/')
-        val endpoint = if (cleanBase.endsWith("/v1")) "$cleanBase/images/generations"
-        else "$cleanBase/v1/images/generations"
-
-        // 审计缺陷 P0-4：部分聚合网关对 DALL-E 专有参数（quality/style/response_format）返回 400，
-        // 只发送调用方显式给出的参数；服务端默认返回 b64_json，客户端两种格式均可解析。
-        val requestBody = buildJsonObject {
-            put("model", model)
-            put("prompt", prompt)
-            put("n", n)
-            size?.let { put("size", it) }
-            quality?.let { put("quality", it) }
-            style?.let { put("style", it) }
-        }
-
-        val response: HttpResponse = httpClient.post(endpoint) {
+        val requestBody = parameters(prompt, size, quality, background, outputFormat, outputCompression, n)
+        val response = httpClient.post(endpoint("generations")) {
             applyModelTimeout(ModelTimeoutKind.IMAGE)
             contentType(ContentType.Application.Json)
             header("Authorization", "Bearer $apiKey")
             setBody(json.encodeToString(JsonObject.serializer(), requestBody))
         }
 
+        return readResponse(response)
+    }
+
+    suspend fun edit(
+        prompt: String,
+        images: List<ImageGenInput>,
+        mask: ImageGenInput? = null,
+        inputFidelity: String? = null,
+        size: String? = null,
+        quality: String? = null,
+        background: String? = null,
+        outputFormat: String? = null,
+        outputCompression: Int? = null,
+        n: Int? = null,
+    ): ImageGenResult {
+        val fields = parameters(prompt, size, quality, background, outputFormat, outputCompression, n)
+        val body = MultiPartFormDataContent(formData {
+            fields.forEach { (key, value) -> append(key, value.jsonPrimitive.content) }
+            // 官方指南以重复的 image[] 字段传多图；单图沿用相同字段。
+            fun imagePart(key: String, input: ImageGenInput) {
+                append(key, input.bytes, Headers.build {
+                    append(HttpHeaders.ContentType, input.mimeType)
+                    append(HttpHeaders.ContentDisposition, "filename=\"${input.fileName}\"")
+                })
+            }
+            images.forEach { imagePart("image[]", it) }
+            mask?.let { imagePart("mask", it) }
+            inputFidelity?.let { append("input_fidelity", it) }
+        })
+        val response = httpClient.post(endpoint("edits")) {
+            applyModelTimeout(ModelTimeoutKind.IMAGE)
+            header("Authorization", "Bearer $apiKey")
+            setBody(body)
+        }
+        return readResponse(response)
+    }
+
+    private fun parameters(prompt: String, size: String?, quality: String?, background: String?, outputFormat: String?, outputCompression: Int?, n: Int?): JsonObject {
+        require(baseUrl.isNotBlank()) { "Image generation base URL not configured" }
+        require(apiKey.isNotBlank()) { "Image generation API key not configured" }
+        require(prompt.isNotBlank()) { "Prompt must not be blank" }
+        return buildJsonObject {
+            put("model", model)
+            put("prompt", prompt)
+            size?.let { put("size", it) }
+            quality?.let { put("quality", it) }
+            background?.let { put("background", it) }
+            outputFormat?.let { put("output_format", it) }
+            outputCompression?.let { put("output_compression", it) }
+            n?.let { put("n", it) }
+        }
+    }
+
+    private fun endpoint(action: String): String {
+        val cleanBase = baseUrl.trimEnd('/')
+        return if (cleanBase.endsWith("/v1")) "$cleanBase/images/$action" else "$cleanBase/v1/images/$action"
+    }
+
+    private suspend fun readResponse(response: HttpResponse): ImageGenResult {
         if (!response.status.isSuccess()) {
             val errorBody = try {
                 responseBodyReader(response)
@@ -106,9 +141,9 @@ class ImageGenClient(
 
         val images = dataArray.map { item ->
             val obj = item.jsonObject
-            val url = obj["url"]?.jsonPrimitive?.content
-            val b64 = obj["b64_json"]?.jsonPrimitive?.content
-            val revisedPrompt = obj["revised_prompt"]?.jsonPrimitive?.content
+            val url = obj["url"]?.jsonPrimitive?.contentOrNull
+            val b64 = obj["b64_json"]?.jsonPrimitive?.contentOrNull
+            val revisedPrompt = obj["revised_prompt"]?.jsonPrimitive?.contentOrNull
             GeneratedImage(
                 url = url,
                 b64Json = b64,
@@ -116,7 +151,15 @@ class ImageGenClient(
             )
         }
 
-        return ImageGenResult(images = images)
+        return ImageGenResult(
+            images = images,
+            created = jsonResponse["created"]?.jsonPrimitive?.longOrNull,
+            size = jsonResponse["size"]?.jsonPrimitive?.contentOrNull,
+            quality = jsonResponse["quality"]?.jsonPrimitive?.contentOrNull,
+            background = jsonResponse["background"]?.jsonPrimitive?.contentOrNull,
+            outputFormat = jsonResponse["output_format"]?.jsonPrimitive?.contentOrNull,
+            usage = jsonResponse["usage"]?.takeUnless { it is JsonNull }?.let { json.decodeFromJsonElement(ImageGenUsage.serializer(), it) },
+        )
     }
 }
 
@@ -138,5 +181,22 @@ data class GeneratedImage(
  */
 @Serializable
 data class ImageGenResult(
-    val images: List<GeneratedImage>
+    val images: List<GeneratedImage>,
+    val created: Long? = null,
+    val size: String? = null,
+    val quality: String? = null,
+    val background: String? = null,
+    val outputFormat: String? = null,
+    val usage: ImageGenUsage? = null,
+)
+
+data class ImageGenInput(val bytes: ByteArray, val mimeType: String, val fileName: String)
+
+@Serializable
+data class ImageGenUsage(
+    @SerialName("input_tokens") val inputTokens: Long? = null,
+    @SerialName("output_tokens") val outputTokens: Long? = null,
+    @SerialName("total_tokens") val totalTokens: Long? = null,
+    @SerialName("input_tokens_details") val inputTokensDetails: JsonObject? = null,
+    @SerialName("output_tokens_details") val outputTokensDetails: JsonObject? = null,
 )

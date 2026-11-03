@@ -1,94 +1,72 @@
-# ADR-003: 图像生成工具设计
+# ADR-003：图像生成工具
 
-**日期**: 2026-05-14  
-**状态**: 已采纳  
-**决策者**: AI Agent (全链路审计 + 实现)
+**日期**：2026-05-14
 
----
+**更新日期**：2026-11-04
 
-## 背景
+**状态**：已采纳
 
-需要为 Infinity Workbench 接入图像生成能力，LLM 可通过工具调用生成图片并在对话界面中内联展示。
+## 目标与调用链
 
-核心挑战：
-1. LLM 聊天模型与图像生成模型可能调用**不同端点**（如 OpenAI 聊天 + Stability AI 生图）
-2. 图像生成结果需**持久化**到本地存储（API 返回的 URL 可能有时效）
-3. 前端需具备**内联图片渲染**能力（而非仅显示链接）
+`generate_image` 实现为 `SkillDefinition`，通过 ToolExecutor 的工具调用管道生成或编辑图片，保存到会话当前工作区。未选择图像模型时，工具从模型可用列表中隐藏，设置页保留登记。
 
----
+图像模型由 `ProviderManager.imageModelId` 独立选择。执行时经 `ProviderRequestRouter.requireModelRoute(...).requireOpenAiModelRoute()` 一次性解析提供商地址、凭据和远端模型 ID，再创建 `ImageGenClient`；路由错误返回明确说明。
 
-## 决策
+## 参数与校验
 
-### 1. 以 Skill 模式实现（而非内置指令）
+工具使用 GPT 图像模型的参数语义，所有可选字段只在调用方明确提供时发送。服务端默认值不写入请求。
 
-**选择**: 实现为 `SkillDefinition`，注册到 `DefaultSkillRegistry`。
-
-**理由**:
-- 复用现有 ToolExecutor → LLM 递归生成管道
-- LLM 自主决定何时调用（用户说"画一张..."时自动触发）
-- 参数通过 JSON Schema 声明，LLM 自然理解
-- 与其他 Skill（Calculator、WebSearch）架构一致
-
-**替代方案**: 内置到 ChatViewModel 的生成管道中 → 拒绝，与工具统一架构冲突。
-
-### 2. 图像模型独立于聊天模型选择
-
-**选择**: 图像模型通过 `ProviderManager.preset_image_model` 独立选择，API 端点复用主 LLM Provider 的 `base_url`。
-
-**理由**:
-- 用户可能使用 OpenAI 聊天 + LocalAI 图像生成，或反之
-- 但大多数兼容 API 共用同一 `base_url`（如 `https://api.openai.com`）
-- 端点路径不同：LLM → `/v1/chat/completions`，Image → `/v1/images/generations`
-
-**替代方案**: 独立配置图像生成的 `image_base_url`/`image_api_key` → 拒绝，过度复杂化，用户配置负担重。
-
-### 3. 图片下载到本地存储
-
-**选择**: 生成后立即从 URL 下载或从 b64_json 解码，保存到 `app/files/generated_images/`。
-
-**理由**:
-- API 返回的 URL 可能有时效（通常 1 小时）
-- 用户回看历史对话时需要图片仍可见
-- 文件管理简单（应用卸载时自动清理）
-
-**替代方案**: 仅存储 URL → 拒绝，时效性问题。
-
-### 4. 图片通过 `Message.images` 字段传递
-
-**选择**: ToolResult.data → Message.images（JSON 序列化的 `List<GeneratedImageData>`）。
-
-**理由**:
-- `Message.images` 字段已存在于数据模型（预设计）
-- ChatBubble 可直接解析渲染
-- 与 Message 生命周期一致（持久化到 Room DB）
-
-### 5. ImageGenClient 按需创建
-
-**选择**: 每次 Skill 执行时创建新的 `ImageGenClient` 实例。
-
-**理由**:
-- 图像生成请求频率低（非高频调用）
-- 模型/端点可能运行时切换（ProviderManager 实时读取）
-- 避免长时间持有 HTTP 连接池
-
-**替代方案**: 在 InfinityApplication 中创建全局单例 → 拒绝，配置变更时无法自动刷新。
-
----
-
-## 影响
-
-- **新增 3 个文件**: `ImageGenClient.kt`, `ImageGenerationSkill.kt`, `GeneratedImageData`
-- **修改 4 个文件**: `InfinityApplication.kt`（注册），`ChatScreen.kt`（渲染），`ToolExecutor.kt`（数据传递），`ARCHITECTURE.md`（文档）
-- **无数据库迁移**: 复用现有 `Message.images` 字段
-- **无 API 变更**: 使用标准 OpenAI Images API 格式
-
----
-
-## 技术栈
-
-| 组件 | 技术 |
+| 参数 | 行为与本地约束 |
 |---|---|
-| HTTP 客户端 | Ktor + OkHttp Engine |
-| 图片加载 | Coil 3.x (`AsyncImage`) |
-| 序列化 | kotlinx.serialization |
-| 存储 | 应用内部 files 目录 |
+| `prompt` | 必填非空字符串，最多 32000 字符 |
+| `size` | 字符串，默认 `auto`；标准值为 `1024x1024`、`1536x1024`、`1024x1536`；自定义 `WIDTHxHEIGHT` 的宽高为正的 16 倍数，宽高比 1:3–3:1，最长边 3840，总像素最多 3840×2160。自定义尺寸支持依模型而定，超过 2560×1440 属实验性 |
+| `quality` | `auto` / `low` / `medium` / `high` / `xhigh` / `max`；默认 `auto`，`xhigh` 与 `max` 仅部分模型支持 |
+| `background` | `transparent` / `opaque` / `auto`；默认 `auto`，透明背景要求 PNG 或 WebP |
+| `output_format` | `png` / `jpeg` / `webp`；默认 PNG |
+| `output_compression` | 0–100 的整数，须同时显式指定 JPEG 或 WebP 输出 |
+| `n` | 1–4 的整数；移动端每次最多 4 张，服务端默认 1 |
+| `images` | 1–16 个工作区路径；提供时调用编辑接口；PNG/WebP/JPEG，每张小于 50 MiB |
+| `mask` | 仅与 `images` 同用；工作区 PNG 路径，小于 4 MiB，作用于第一张图片；元数据提供尺寸时检查二者相同 |
+| `input_fidelity` | 仅编辑可用，`high` / `low`，默认省略；仅部分模型支持，`gpt-image-2` 应省略 |
+
+参数枚举、类型、尺寸格式、数量、格式组合和文件限制在发请求前校验，失败返回 `status="error"` 及允许值。模型对具体尺寸、质量和保真度的支持由服务商进一步校验。
+
+## HTTP 协议
+
+- 文本生成：`POST {base}/v1/images/generations`，JSON。
+- 图片编辑：`POST {base}/v1/images/edits`，`multipart/form-data`。每张图片使用重复的 `image[]` 部分；蒙版部分名为 `mask`，保真度为 `input_fidelity`。其它显式参数作为文本部分，图片部分携带由内容识别的 MIME 与对应扩展名。
+- `{base}` 已以 `/v1` 结尾时直接追加 `/images/...`。
+- 两种请求共用 `applyModelTimeout(ModelTimeoutKind.IMAGE)`、取消传播、HTTP 错误摘要和响应解析。
+- 响应读取 `data[].b64_json`，同时兼容历史服务商返回的 `url` 与 `revised_prompt`；保留顶层 `created`、`size`、`quality`、`background`、`output_format`，以及 `usage` 的三项 token 计数与输入／输出 token 详情对象。
+
+官方多图字段名以 [OpenAI 图像生成指南](https://developers.openai.com/api/docs/guides/image-generation#edit-images) 的 curl 示例核对；参数来源为 [生成接口参考](https://developers.openai.com/api/reference/resources/images/methods/generate) 与 [编辑接口参考](https://developers.openai.com/api/reference/resources/images/methods/edit)。
+
+## 输入读取与输出存储
+
+`ImageGenerationInputReader` 复用 `view_media` 的 `WorkspaceMediaResolver.resolve/open`，沿用工作区路径、挂载授权、符号链接及来源身份检查。解析失败时不打开字节流，不发送 HTTP 请求。读取后按文件头识别 PNG/WebP/JPEG，读取过程再次检查大小并响应取消，防止文件元数据陈旧导致越过上限。
+
+生成图片经 `WorkspaceMediaStore` 保存，默认目录为 `media/<yyyy-MM-dd>/`。Base64 图片的 MIME 提示按响应 `output_format`、请求格式、字节魔数的顺序选择。存储层使用文件头复核 MIME，按实际 MIME 生成扩展名；URL 结果沿用媒体下载器与相同存储流程。
+
+`ToolResult.media` 保存 `MediaRef` 引用（工作区路径、MIME、类型、字节数、哈希及像素尺寸）。`content` 每张成功图片一行，只给一次 Markdown 引用写法，逐项说明保存失败与修订提示词。
+
+## 界面数据契约
+
+`data/model/ImageGenerationResultData.kt` 定义 `@Serializable` 结构，`ImageGenerationResultData.decode(result.data)` 在内容损坏、缺少版本标记或版本未知时返回 null。`encode()` 省略所有 null 字段。
+
+| 字段 | 含义 |
+|---|---|
+| `schema` | 固定 `infinity-image-generation-v1` |
+| `mode` / `model` | `generate` 或 `edit`；路由解析后的远端模型 ID |
+| `requested` | 调用方显式提供的 `size`、`quality`、`background`、`outputFormat`、`outputCompression`、`n` |
+| `actual` | 服务端回显的 `size`、`quality`、`background`、`outputFormat` |
+| `inputImages` / `mask` | 解析后的工作区输入路径和可选蒙版路径 |
+| `usage` | 可选 `inputTokens`、`outputTokens`、`totalTokens` |
+| `revisedPrompts` / `failedCount` | 去重的修订提示词、保存失败数；空图片响应计为一次失败 |
+
+新数据的字段名避开历史图片解析器识别的 `localPath`、`url`、`b64Json`。图片展示继续使用 `media`，卡片可独立读取结构化参数和回显信息。数据库沿用已有工具结果载荷。
+
+## 验收入口与边界
+
+协议与校验测试位于 `ImageGenClientProtocolTest`、`ImageGenerationRequestTest`、`ImageGenerationInputReaderTest`、`ImageGenerationResultDataTest`，工作区集成与取消行为位于 `ImageGenerationWorkspaceTest` 和 `ImageGenClientCancellationTest`。主控统一执行编译、单元测试与设备验收。
+
+编辑请求将输入图片字节保存在内存中，大量接近上限的参考图会提高峰值内存；不同兼容网关的 multipart 支持、模型参数支持和真实出图需要各自验证。
