@@ -85,8 +85,8 @@ class RoomBackupDataSource(
     private val avatarRestore = avatarRoot?.let { SkillRestoreTransaction(it, restoreFileOperations, crashHook, "avatars") }
 
     private fun backupTables(): List<String> = INSERT_ORDER + if (database.openHelper.writableDatabase.query(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_prompt_revisions'",
-    ).use { it.moveToFirst() }) listOf("agent_prompt_revisions") else emptyList()
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_rule_revisions'",
+    ).use { it.moveToFirst() }) listOf("agent_rule_revisions") else emptyList()
 
     override suspend fun estimate(): Map<BackupLayer, BackupLayerStats> = estimateFor(BackupLayer.entries.toSet())
 
@@ -106,7 +106,7 @@ class RoomBackupDataSource(
             bytes[BackupLayer.CORE] = bytes.getValue(BackupLayer.CORE) + json.encodeToString(pref).toByteArray().size
             val avatarReferences = payload.rows("agents").asSequence().mapNotNull { BackupLayerPolicy.string(it, "avatar_path") }.filter(String::isNotBlank).toSet() +
                 pref.entries.filter { it.namespace == "settings" && it.key == "user_avatar" }.map { it.value }.filter(String::isNotBlank)
-            avatarReferences.forEach { raw ->
+            avatarReferences.filterNot { AvatarBackupFiles.isDangling(avatarRoot, it) }.forEach { raw ->
                 try {
                     val path = Paths.get(raw).toAbsolutePath().normalize()
                     val trusted = avatarRoot?.toAbsolutePath()?.normalize() ?: throw BackupValidationException("头像目录未配置")
@@ -245,6 +245,7 @@ class RoomBackupDataSource(
             payload = payload.copy(tables = payload.tables + (FILE_TABLE to fileRows))
             val avatar = AvatarBackupFiles.snapshotTo(payload, prefs, avatarRoot, root)
             payload = avatar.payload; prefs = avatar.preferences
+            skipped += avatar.skipped
             avatar.blobs.forEach { (id, blob) -> entries += BackupSourceEntry("avatars/$id", BackupLayer.CORE, blob) }
             val fileIds = fileRows.map { it.requiredString("uuid") }.toSet()
             payload.tables.forEach { (table, rows) ->
@@ -795,8 +796,8 @@ class RoomBackupDataSource(
     private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload {
         if (validated.manifest.layers == null) {
             val parsed = parseDatabase(validated.database)
-            return if ("agent_prompt_revisions" in backupTables() && "agent_prompt_revisions" !in parsed.tables)
-                parsed.copy(tables = parsed.tables + ("agent_prompt_revisions" to emptyList())) else parsed
+            return if ("agent_rule_revisions" in backupTables() && "agent_rule_revisions" !in parsed.tables)
+                parsed.copy(tables = parsed.tables + ("agent_rule_revisions" to emptyList())) else parsed
         }
         if (validated.manifest.databaseSchemaVersion != DATABASE_SCHEMA_VERSION) throw BackupValidationException("数据库备份版本不兼容")
         val tableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
@@ -904,7 +905,6 @@ class RoomBackupDataSource(
             sqlite.execSQL("DELETE FROM kg_evidence WHERE session_id = ?", arrayOf<Any?>(id))
         }
         deletions.getValue("messages").keys.forEach { id -> sqlite.execSQL("DELETE FROM kg_evidence WHERE message_id = ?", arrayOf<Any?>(id.single())) }
-        sqlite.execSQL("DELETE FROM agent_rule_revisions")
         sqlite.execSQL("DELETE FROM mcp_tool_snapshots")
         backupTables().reversed().forEach { table ->
             val deletion = deletions.getValue(table)
@@ -2172,7 +2172,7 @@ class RoomBackupDataSource(
         // tool_execution_ledger/file_versions，它们均为可重建派生数据、运行态账本或版本缓存。
         // external_mounts/external_snapshots 依赖本机目录授权，不进入可移植备份。
         // workspaces 只是目录登记：恢复后目录不存在时由使用方显示不可用，不随备份携带目录内容。
-        // agent_rule_revisions 与 file_versions 一样是版本缓存，不进入备份，恢复时清空。
+        // agent_rule_revisions（提示词历史）不在本表中，由 backupTables() 归入核心层；旧包缺这张表时按空表恢复。
         val INSERT_ORDER = listOf(
             WORKSPACE_TABLE,
             "agents",
@@ -2194,7 +2194,6 @@ class RoomBackupDataSource(
         )
         val DELETE_ORDER = INSERT_ORDER.reversed()
         val DERIVED_DELETE_ORDER = listOf(
-            "agent_rule_revisions",
             "external_snapshots",
             "mcp_tool_snapshots", "workspace_mutations", "tool_execution_ledger", "file_versions", "vectorization_tasks",
             "kg_evidence", "kg_jit_cache_sources", "kg_edges", "kg_nodes", "kg_jit_cache", "vectors_fts", "vectors", "audit_logs",

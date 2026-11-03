@@ -61,6 +61,7 @@ import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import com.promenar.infinity.ui.chat.manager.registry.SkillRegistry
 import com.promenar.infinity.ui.chat.manager.registry.toProtocolTool
 import com.promenar.infinity.domain.repository.WriteResult
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -268,7 +269,7 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `工作区文件缺失导出列出跳过项且核心头像缺失失败`() = runBlocking {
+    fun `工作区文件缺失与悬空头像引用都列为跳过项`() = runBlocking {
         val graph = seedCompleteGraph()
         Files.delete(graph.filePath)
         val cache = Files.createTempDirectory(sourceBase, "skipped-export")
@@ -281,8 +282,11 @@ class RoomBackupDataSourceTest {
             snapshot.wipe()
             val agent = db.agentDao().getAll().single()
             db.agentDao().update(agent.copy(avatarPath = avatar.resolve("missing.img").toString()))
-            val error = try { source.snapshotTo(setOf(BackupLayer.CORE), cache); null } catch (error: BackupValidationException) { error }
-            assertThat(error?.detail).isEqualTo(BackupFailureDetail.CORE_CONTENT_UNREADABLE)
+            val core = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+            try {
+                assertThat(core.skipped).containsExactly(BackupSkippedItem(BackupLayer.CORE, "missing.img", AvatarBackupFiles.DANGLING_REASON))
+                assertThat(core.streamEntries.none { it.path.startsWith("avatars/") }).isTrue()
+            } finally { core.wipe() }
         } finally { BackupStreams.deleteTree(cache) }
     }
 
@@ -1382,12 +1386,12 @@ class RoomBackupDataSourceTest {
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
                 "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
-                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories",
+                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(
                 "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "kg_jit_cache_sources",
                 "vectorization_tasks", "audit_logs", "tool_execution_ledger", "file_versions",
-                "workspace_mutations", "mcp_tool_snapshots", "agent_rule_revisions",
+                "workspace_mutations", "mcp_tool_snapshots",
             ).forEach { assertThat(text).doesNotContain("\"$it\"") }
 
             db.clearAllTables()
@@ -1566,9 +1570,28 @@ class RoomBackupDataSourceTest {
             listOf(
                 "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "kg_jit_cache_sources",
                 "vectorization_tasks", "tool_execution_ledger", "file_versions", "workspace_mutations",
-                "mcp_tool_snapshots", "agent_rule_revisions",
+                "mcp_tool_snapshots",
             ).forEach { table -> assertThat(rowCount(table)).isEqualTo(0) }
+            // 提示词历史属于核心层：恢复为备份时的状态，备份之后新增的版本不保留。
+            assertThat(rowCount("agent_rule_revisions")).isEqualTo(0)
             assertThat(rowCount("audit_logs")).isEqualTo(1)
+        }
+    }
+
+    @Test
+    fun `prompt revisions travel with the core layer`() {
+        runBlocking {
+            seedCompleteGraph()
+            db.agentRuleRevisionDao().record(AgentRuleRevisionEntity("revision-1", "agent-1", "第一版规则", "1".repeat(64), "user", 1))
+            db.agentRuleRevisionDao().record(AgentRuleRevisionEntity("revision-2", "agent-1", "第二版规则", "2".repeat(64), "agent", 2))
+            val backup = newDataSource().snapshot(CANONICAL_CONTENT)
+
+            db.clearAllTables()
+            newDataSource().restore(validated(backup))
+
+            val restored = db.agentRuleRevisionDao().observeForAgent("agent-1").first()
+            assertThat(restored.map { it.id to it.content }).containsExactly("revision-2" to "第二版规则", "revision-1" to "第一版规则").inOrder()
+            assertThat(restored.first().source).isEqualTo("agent")
         }
     }
 
@@ -2622,7 +2645,7 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `核心头像缺失越界链接超限和不稳定源明确失败`() = runBlocking {
+    fun `悬空头像引用被清除而链接超限和不稳定源明确失败`() = runBlocking {
         emptyWorkspaceBackup().wipe()
         db.clearAllTables()
         val root = Files.createDirectory(sourceBase.resolve("avatars"))
@@ -2631,7 +2654,15 @@ class RoomBackupDataSourceTest {
         val big = root.resolve("big.img")
         java.io.RandomAccessFile(big.toFile(), "rw").use { it.setLength(AvatarBackupFiles.MAX_FILE_BYTES + 1) }
         val unstable = Files.write(root.resolve("unstable.img"), byteArrayOf(1))
-        listOf(root.resolve("missing.img"), outside, link, big, unstable).forEachIndexed { i, path ->
+        listOf(root.resolve("missing.img"), outside).forEachIndexed { i, path ->
+            db.agentDao().insert(AgentEntity("dangling-$i", "照片", avatarPath = path.toString(), createdAt = i.toLong()))
+            val snapshot = newDataSource(avatarRoot = root).snapshot(CANONICAL_CONTENT)
+            val agent = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+                .getValue("tables").jsonObject.getValue("agents").jsonArray.single().jsonObject
+            assertThat(agent.getValue("avatar_path")).isEqualTo(JsonNull)
+            db.openHelper.writableDatabase.execSQL("DELETE FROM agents")
+        }
+        listOf(link, big, unstable).forEachIndexed { i, path ->
             db.agentDao().insert(AgentEntity("avatar-$i", "照片", avatarPath = path.toString(), createdAt = i.toLong()))
             assertFails {
                 newDataSource(avatarRoot = root, snapshotReadHook = { current ->

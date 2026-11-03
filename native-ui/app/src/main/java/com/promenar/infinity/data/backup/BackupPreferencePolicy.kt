@@ -94,7 +94,9 @@ internal object BackupPreferencePolicy {
     // 只为读取旧备份时识别并丢弃；不得继续导出或写回设备。
     private val exactRetired = mapOf(
         "backup" to setOf("auto_backup"),
-        "settings" to setOf("tool_context_ratio_percent", "tool_context_keep_rounds", "script_lan_hosts", "mcp_allow_loopback_http", "tailnet_allowed_peers"),
+        "settings" to setOf("tool_context_ratio_percent", "tool_context_keep_rounds", "script_lan_hosts", "mcp_allow_loopback_http"),
+        // Tailscale 设备白名单已删除；该键原在本机独立的 infinity_tailnet 文件中，启动时清除。
+        "infinity_tailnet" to setOf("tailnet_allowed_peers"),
         "rag" to setOf(
             "jit_max_chunks",
             "kg_domain_auto",

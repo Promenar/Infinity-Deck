@@ -8,7 +8,7 @@ import kotlinx.serialization.json.contentOrNull
 /** 知识库使用 __system__ 所属会话；workspaces.kind 描述用户选择目录的后端。 */
 internal object BackupLayerPolicy {
     const val KNOWLEDGE_AGENT = "__system__"
-    val CORE_TABLES = setOf("workspaces", "agents", "agent_prompt_revisions", "long_term_memories", "parameter_schemes", "mcp_servers", "custom_skills", "workspace_seq")
+    val CORE_TABLES = setOf("workspaces", "agents", "agent_rule_revisions", "long_term_memories", "parameter_schemes", "mcp_servers", "custom_skills", "workspace_seq")
     val SESSION_TABLES = setOf("sessions", "messages", "attachments", "artifacts", "context_summaries", "task_nodes", "state_board_versions")
     fun tableLayer(table: String, declared: BackupLayer? = null): BackupLayer? = when (table) {
         in CORE_TABLES -> BackupLayer.CORE

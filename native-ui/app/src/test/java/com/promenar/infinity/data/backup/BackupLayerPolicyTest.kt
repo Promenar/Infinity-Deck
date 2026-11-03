@@ -17,6 +17,6 @@ class BackupLayerPolicyTest {
         assertEquals(BackupLayer.WORKSPACE_FILES, policy.layer("workspace_files", row("workspace_root_uuid" to "chat-root")))
         assertEquals(BackupLayer.KNOWLEDGE, policy.layer("attachments", row("message_id" to "km")))
         assertEquals(BackupLayer.CORE, policy.layer("workspaces", row("kind" to "shared")))
-        assertEquals(BackupLayer.CORE, policy.layer("agent_prompt_revisions", row("id" to "revision")))
+        assertEquals(BackupLayer.CORE, policy.layer("agent_rule_revisions", row("id" to "revision")))
     }
 }

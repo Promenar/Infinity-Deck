@@ -169,8 +169,9 @@ class WebDavBackupClientReviewTest {
             )
         }
 
-        assertThat(runCatching { client(engine).download(config, remote(1)) }.isFailure).isTrue()
-        assertThat(body.isClosedForRead).isTrue()
+        // 下载改为在 execute 作用域内流式读取，离开作用域即由引擎释放连接；这里确认在读取正文前按声明长度拒绝。
+        val failure = runCatching { client(engine).download(config, remote(1)) }.exceptionOrNull()
+        assertThat(failure).hasMessageThat().contains("读取前拒绝")
     }
 
     @Test

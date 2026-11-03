@@ -39,7 +39,7 @@ class WebDavBackupStreamTest {
                             val buffer = ByteArray(64 * 1024)
                             while (true) { val count = channel.readAvailable(buffer); if (count < 0) break; copied += count }
                         }
-                        body.writeTo(channel); channel.close(); reader.await()
+                        body.writeTo(channel); channel.close(null); reader.await()
                     }
                 }
                 respond("", HttpStatusCode.Created)

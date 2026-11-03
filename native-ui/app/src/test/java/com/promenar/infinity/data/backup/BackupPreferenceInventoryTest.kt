@@ -9,9 +9,9 @@ import java.nio.file.Path
 class BackupPreferenceInventoryTest {
     @Test
     fun `废弃网络限制键仅作为旧包识别项且不参与导出`() {
-        listOf("script_lan_hosts", "mcp_allow_loopback_http", "tailnet_allowed_peers").forEach { key ->
-            assertThat(BackupPreferencePolicy.isRetired("settings", key)).isTrue()
-            assertThat(BackupPreferencePolicy.isAllowed("settings", key)).isFalse()
+        listOf("settings" to "script_lan_hosts", "settings" to "mcp_allow_loopback_http", "infinity_tailnet" to "tailnet_allowed_peers").forEach { (namespace, key) ->
+            assertThat(BackupPreferencePolicy.isRetired(namespace, key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed(namespace, key)).isFalse()
         }
     }
 

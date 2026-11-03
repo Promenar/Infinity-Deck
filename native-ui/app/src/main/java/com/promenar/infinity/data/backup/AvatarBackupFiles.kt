@@ -39,13 +39,35 @@ internal object AvatarBackupFiles {
         }
     }
 
-    data class StreamSnapshot(val payload: DatabaseBackupPayload, val preferences: BackupPreferenceSnapshot, val blobs: Map<String, BackupBlob>)
+    data class StreamSnapshot(
+        val payload: DatabaseBackupPayload,
+        val preferences: BackupPreferenceSnapshot,
+        val blobs: Map<String, BackupBlob>,
+        val skipped: List<BackupSkippedItem> = emptyList(),
+    )
+
+    const val DANGLING_REASON = "头像文件不存在或不在头像目录中，已清除该引用"
+
+    /**
+     * 悬空引用：头像目录未配置、路径不在头像目录内，或文件已不存在。这类引用没有可备份的内容，
+     * 清除引用并列为跳过项；目录内真实存在却无法稳定读取的头像仍让核心层失败。
+     */
+    fun isDangling(root: Path?, raw: String): Boolean {
+        val trusted = root?.toAbsolutePath()?.normalize() ?: return true
+        val path = Paths.get(raw).toAbsolutePath().normalize()
+        return path == trusted || !path.startsWith(trusted) || !Files.exists(path, NOFOLLOW_LINKS)
+    }
 
     fun snapshotTo(payload: DatabaseBackupPayload, preferences: BackupPreferenceSnapshot, root: Path?, directory: Path): StreamSnapshot {
         val blobs = linkedMapOf<String, BackupBlob>()
         val references = mutableMapOf<Path, String>()
+        val skipped = linkedMapOf<String, BackupSkippedItem>()
         fun capture(raw: String?): String? {
             if (raw.isNullOrBlank()) return null
+            if (isDangling(root, raw)) {
+                skipped.getOrPut(raw) { BackupSkippedItem(BackupLayer.CORE, Paths.get(raw).fileName?.toString() ?: raw, DANGLING_REASON) }
+                return null
+            }
             try {
                 val trusted = root?.let(FileRestoreJournal::requireTrustedDirectory)
                     ?: throw BackupValidationException("头像根目录未配置")
@@ -65,7 +87,7 @@ internal object AvatarBackupFiles {
         payload.tables["agents"].orEmpty().forEach { row -> capture(row["avatar_path"]?.takeIf { it != JsonNull }?.jsonPrimitive?.contentOrNull) }
         val rewrittenPreferences = mapPreferences(preferences, ::capture)
         val rewritten = mapPayload(payload, { raw -> raw?.takeIf { it.isNotBlank() }?.let { references[Paths.get(it).toAbsolutePath().normalize()] } }, lazy = true)
-        return StreamSnapshot(rewritten, rewrittenPreferences, blobs)
+        return StreamSnapshot(rewritten, rewrittenPreferences, blobs, skipped.values.toList())
     }
 
     fun snapshot(
@@ -80,7 +102,7 @@ internal object AvatarBackupFiles {
         val references = mutableMapOf<Path, String>()
         var remaining = minOf(memoryBudget.coerceAtLeast(0), MAX_TOTAL_BYTES)
         fun capture(raw: String?): String? {
-            if (raw.isNullOrBlank()) return null
+            if (raw.isNullOrBlank() || isDangling(root, raw)) return null
             if (root == null) throw BackupValidationException("核心层头像根目录未配置", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH, detail = BackupFailureDetail.CORE_CONTENT_UNREADABLE)
             return try {
                 val trustedRoot = FileRestoreJournal.requireTrustedDirectory(root)
