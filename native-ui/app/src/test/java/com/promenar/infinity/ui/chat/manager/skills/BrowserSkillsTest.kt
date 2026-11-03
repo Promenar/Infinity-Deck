@@ -71,9 +71,10 @@ class BrowserSkillsTest {
         val result = tool(BROWSER_OPEN, controller, lan).execute(args("""{"url":"https://router.test"}"""), context)
         assertThat(result.status).isEqualTo("success")
         assertThat(controller.calls).containsExactly("open chat-1 https://router.test")
-        val js = tool(BROWSER_OPEN, controller).execute(args("""{"url":"javascript:alert(1)"}"""), context)
+        val jsController = FakeBrowserController()
+        val js = tool(BROWSER_OPEN, jsController).execute(args("""{"url":"javascript:alert(1)"}"""), context)
         assertThat(js.content).startsWith("INVALID_ARGUMENTS")
-        assertThat(controller.calls).isEmpty()
+        assertThat(jsController.calls).isEmpty()
     }
 
     @Test fun `点击结果首行带元素名称供步骤行显示`() = runTest {

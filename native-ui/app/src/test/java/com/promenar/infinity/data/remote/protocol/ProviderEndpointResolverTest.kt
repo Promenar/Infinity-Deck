@@ -234,7 +234,7 @@ class ProviderEndpointResolverTest {
     }
 
     @Test
-    fun `Vertex inference 只接受 location 对应的官方 HTTP/HTTPS origin`() {
+    fun `Vertex inference 只接受 location 对应的官方 HTTP 或 HTTPS origin`() {
         listOf(
             "https://attacker.example.invalid",
             "https://europe-west1-aiplatform.googleapis.com",

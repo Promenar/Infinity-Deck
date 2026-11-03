@@ -36,7 +36,7 @@ class ImageGenerationWorkspaceTest {
     private val downloader = WorkspaceMediaDownloader(OkHttpClient.Builder().addInterceptor {
         Response.Builder().request(it.request()).protocol(Protocol.HTTP_1_1).code(200).message("ok")
             .header("Content-Type", "image/png").body(mediaTestPng.toResponseBody()).build()
-    }.build(), MediaFetchUrlPolicy { false }, { false }, { false },
+    }.build(), MediaFetchUrlPolicy { false }, { false },
         AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName("93.184.216.34")) }))
 
     private suspend fun generate(vararg images: JsonObject): com.promenar.infinity.data.model.ToolResult {

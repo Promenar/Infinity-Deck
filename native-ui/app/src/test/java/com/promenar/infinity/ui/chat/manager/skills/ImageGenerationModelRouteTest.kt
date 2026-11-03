@@ -125,7 +125,7 @@ class ImageGenerationModelRouteTest {
         val original = configs.getValue("default")
         configs["default"] = original.copy(apiKey = "")
         assertThat(generate(id).content).contains("API_KEY_MISSING")
-        configs["default"] = original.copy(baseUrl = "http://unsafe.test")
+        configs["default"] = original.copy(baseUrl = "ftp://unsafe.test")
         assertThat(generate(id).content).contains("BASE_URL_INVALID")
         configs["default"] = original.copy(protocolType = ProtocolType.Anthropic_Messages)
         assertThat(generate(id).content).contains("PROTOCOL_MISMATCH")

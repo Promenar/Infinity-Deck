@@ -149,10 +149,12 @@ class MediaFetchSkillTest {
         assertThat(bodyClosed).isTrue()
     }
 
-    @Test fun `逐跳验证重定向并拒绝降级及userinfo`() = runTest {
-        val client = downloader { request -> response(request, code = 302, location = "http://example.test/blocked") }
-        assertThat(execute(client).status).isEqualTo("error")
-        assertThat(requests).hasSize(1)
+    @Test fun `逐跳验证重定向并允许跳转明文但拒绝userinfo`() = runTest {
+        val client = downloader { request ->
+            if (request.url.isHttps) response(request, code = 302, location = "http://example.test/plain") else response(request)
+        }
+        assertThat(execute(client).status).isEqualTo("success")
+        assertThat(requests).containsExactly("https://example.test/image", "http://example.test/plain").inOrder()
         requests.clear()
         assertThat(execute(downloader { response(it, code = 302, location = "https://user:password@example.test/a") }).status).isEqualTo("error")
         assertThat(requests).hasSize(1)
