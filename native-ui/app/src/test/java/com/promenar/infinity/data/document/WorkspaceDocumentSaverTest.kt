@@ -190,6 +190,7 @@ class WorkspaceDocumentSaverTest {
             DocumentWorkspaceSaveResult.Failure(DocumentWorkspaceSaveFailure.InvalidPath),
         )
         assertThat(entries.keys).containsExactly("/")
+        Unit
     }
 
     @Test fun `Builtin和Linux私有与目录引用路径均按运行模式配对`() = runBlocking {

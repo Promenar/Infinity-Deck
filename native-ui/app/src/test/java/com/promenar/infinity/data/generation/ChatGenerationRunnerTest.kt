@@ -41,9 +41,10 @@ class ChatGenerationRunnerTest {
                 return true
             }
         }
-        ChatGenerationRunner(runtime).run(request()) {}
+        val thrown = runCatching { ChatGenerationRunner(runtime).run(request()) {} }.exceptionOrNull()
+        assertThat((thrown as GenerationFailedException).failure.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
         assertThat(base.streamAttempts).isEqualTo(2)
-        assertThat(base.terminals).containsExactly(GenerationTerminalStatus.FAILED)
+        assertThat(base.terminals).containsExactly(GenerationTerminalStatus.ERROR)
     }
     @Test fun `上游超限先回退部分输出再唯一补救且重试正文不重复`() = runTest {
         var requests = 0
@@ -72,10 +73,11 @@ class ChatGenerationRunnerTest {
         val failure = GenerationFailure(GenerationFailureCode.CONTEXT_LIMIT,
             mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"))
         val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Failure(failure)))).apply { contextRecoveryEnabled = true }
-        ChatGenerationRunner(runtime).run(request()) {}
+        val thrown = runCatching { ChatGenerationRunner(runtime).run(request()) {} }.exceptionOrNull()
+        assertThat((thrown as GenerationFailedException).failure.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
         assertThat(runtime.streamAttempts).isEqualTo(2)
         assertThat(runtime.contextRecoveries).isEqualTo(1)
-        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.FAILED)
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.ERROR)
         assertThat(runtime.persisted.last().failure?.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
     }
 
@@ -86,10 +88,11 @@ class ChatGenerationRunnerTest {
             contextRecoveryEnabled = true
             contextRecoveryFailure = java.io.IOException("补救持久化失败")
         }
-        ChatGenerationRunner(runtime).run(request()) {}
+        val thrown = runCatching { ChatGenerationRunner(runtime).run(request()) {} }.exceptionOrNull()
+        assertThat((thrown as GenerationFailedException).failure.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
         assertThat(runtime.contextRecoveries).isEqualTo(1)
         assertThat(runtime.persisted.last().content).isEqualTo("部分回复")
-        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.FAILED)
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.ERROR)
     }
 
     @Test fun `未达补救预算且恢复写入失败时仍保留原输出与上下文原因`() = runTest {
@@ -100,10 +103,12 @@ class ChatGenerationRunnerTest {
             contextRecoverySucceeds = false
             failFailureSnapshotRestore = true
         }
-        ChatGenerationRunner(runtime).run(request()) {}
+        val thrown = runCatching { ChatGenerationRunner(runtime).run(request()) {} }.exceptionOrNull()
+        assertThat((thrown as GenerationFailedException).failure.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
         assertThat(runtime.streamAttempts).isEqualTo(1)
-        assertThat(runtime.persisted.last().content).isEqualTo("已收到的回复")
-        assertThat(runtime.persisted.last().failure?.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
+        // 失败快照回写失败时，内存快照已回到失败现场，由终态写入保留原输出与原因。
+        assertThat(runtime.terminalSnapshots.last().content).isEqualTo("已收到的回复")
+        assertThat(runtime.terminalSnapshots.last().failure?.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
     }
 
     @Test
@@ -1007,6 +1012,7 @@ class ChatGenerationRunnerTest {
         var contextRecoveryFailure: Throwable? = null
         var contextRecoverySucceeds = true
         var failFailureSnapshotRestore = false
+        val terminalSnapshots = mutableListOf<GenerationSnapshot>()
         override suspend fun restoreContextSnapshot(request: GenerationRequest, snapshot: GenerationSnapshot) {
             if (snapshot.failure != null && failFailureSnapshotRestore) throw java.io.IOException("恢复写入失败")
             persist(request, snapshot)
@@ -1143,6 +1149,7 @@ class ChatGenerationRunnerTest {
             cause: Throwable?,
         ) {
             terminals += status
+            terminalSnapshots += snapshot
             trace += "terminal:$status"
             terminalFailure?.let { throw it }
         }
