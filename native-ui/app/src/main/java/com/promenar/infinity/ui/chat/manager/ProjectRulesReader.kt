@@ -32,8 +32,13 @@ class ProjectRulesReader(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Path, Cached>?): Boolean = size > 32
     }
 
-    suspend fun read(workspace: SessionWorkspace?): List<ProjectRulesFile> = withContext(Dispatchers.IO) {
-        val root = (workspace as? SessionWorkspace.Directory)?.root?.toPath() ?: return@withContext emptyList()
+    suspend fun read(workspace: SessionWorkspace?): List<ProjectRulesFile> {
+        // 私有空间与无工作区不读文件，也不切换线程。
+        val root = (workspace as? SessionWorkspace.Directory)?.root?.toPath() ?: return emptyList()
+        return withContext(Dispatchers.IO) { readRoot(root) }
+    }
+
+    private fun readRoot(root: Path): List<ProjectRulesFile> =
         synchronized(cache) {
             var remaining = MAX_BYTES
             listOf("AGENTS.md", "CLAUDE.md").mapNotNull { name ->
@@ -68,7 +73,6 @@ class ProjectRulesReader(
                 }
             }
         }
-    }
 
     private fun checkRoot(root: Path) {
         check(root.isAbsolute && root == root.normalize())

@@ -1,9 +1,11 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.data.generation.ContextUsageCategory
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -93,7 +95,7 @@ private fun SessionContextManagementPreview(dark: Boolean) = ContextCompactionTh
 private fun ContextUsagePreview(dark: Boolean) = ContextCompactionTheme(dark) {
     Box(Modifier.fillMaxSize().padding(InfinitySpacing.Large), contentAlignment = Alignment.TopCenter) {
         Surface(
-            modifier = Modifier.width(300.dp),
+            modifier = Modifier.width(300.dp).heightIn(max = 480.dp),
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
@@ -108,8 +110,12 @@ private fun ContextUsagePreview(dark: Boolean) = ContextCompactionTheme(dark) {
                     foldedToolResults = 7,
                     autoCompactionThreshold = 0.8,
                     keepRecentTurns = 5,
+                    categories = previewContextCategories(),
+                    mcpServerNames = mapOf("gh" to "GitHub"),
                 ),
                 onManualSummary = {},
+                // 两个分区展开，验证列表在构成条以下滚动、按钮固定在底部。
+                expandedSections = setOf("system_prompt", "conversation"),
             )
         }
     }
@@ -127,4 +133,16 @@ private fun QuickModelPreview(dark: Boolean) = ContextCompactionTheme(dark) {
             )
         }
     }
+}
+
+private fun previewContextCategories(): List<ContextUsageCategory> {
+    fun section(id: String, vararg leaves: Pair<String, Int>) =
+        ContextUsageCategory(id, leaves.sumOf { it.second }, leaves.map { ContextUsageCategory(it.first, it.second) })
+    return listOf(
+        section("system_prompt", "assistant_prompt" to 1_200, "session_instructions" to 300, "project_rules" to 2_800, "runtime" to 1_100,
+            "permissions" to 900, "tool_guidance" to 2_400, "skill_catalog" to 1_900, "knowledge_catalog" to 0, "history_summary" to 8_500),
+        section("tool_definitions", "builtin" to 6_100, "mcp:gh" to 1_800),
+        section("conversation", "user_body" to 2_200, "assistant_body" to 14_600, "reasoning" to 9_100, "tool_calls" to 3_400,
+            "tool_results" to 26_900, "media" to 4_000, "memory" to 600, "retrieval" to 4_300, "system_time" to 100),
+    )
 }

@@ -574,6 +574,8 @@ class ChatViewModel(
         val keepRecentTurns: Int = 5,
         /** 系统提示、工具定义、对话三个分区及其叶子类别，供上下文面板平铺显示。 */
         val categories: List<com.promenar.infinity.data.generation.ContextUsageCategory> = emptyList(),
+        /** MCP 服务器 id 到名称，面板据此给工具定义的各服务器行命名。 */
+        val mcpServerNames: Map<String, String> = emptyMap(),
     )
     private val _tokenIndicatorState = MutableStateFlow(TokenIndicatorState())
     val tokenIndicatorState: StateFlow<TokenIndicatorState> = _tokenIndicatorState
@@ -3546,6 +3548,7 @@ class ChatViewModel(
                     activeTokens = estimate.conversationTokens, ragTokens = estimate.ragTokens,
                     foldedToolResults = estimate.foldedToolResults,
                     categories = estimate.categories,
+                    mcpServerNames = availableSessionMcpServers.value.associate { it.id to it.name },
                     autoCompactionThreshold = session.inferenceParams?.autoSummaryThreshold ?: 0.8,
                     isGenerating = isGenerating,
                     keepRecentTurns = com.promenar.infinity.domain.usecase.resolveKeepRecentTurns(

@@ -43,6 +43,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -1983,6 +1984,8 @@ private fun TokenIndicator(
     isCompressing: Boolean,
 ) {
     var showPanel by remember { mutableStateOf(false) }
+    // 面板里展开的分区在本页面内保留，再次打开面板时沿用。
+    var expandedSections by remember { mutableStateOf(emptySet<String>()) }
     val anchor = rememberInfinityPopoverAnchor()
     val haptics = LocalInfinityHaptics.current
 
@@ -2037,6 +2040,8 @@ private fun TokenIndicator(
         ContextUsagePanel(
             state = state,
             isCompressing = isCompressing,
+            expandedSections = expandedSections,
+            onToggleSection = { id -> expandedSections = if (id in expandedSections) expandedSections - id else expandedSections + id },
             onManualSummary = {
                 haptics.perform(InfinityHapticEvent.CONFIRM)
                 onManualSummary()
@@ -2049,9 +2054,13 @@ private fun TokenIndicator(
 /** 上下文构成的一段：名称、Token 数与在构成条上的颜色。 */
 private data class ContextSegment(val label: String, val tokens: Int, val color: Color)
 
+/** 构成面板的一级分区：系统提示、工具定义、对话；[leaves] 只含非零的叶子类别。 */
+private data class ContextSection(val id: String, val segment: ContextSegment, val leaves: List<ContextSegment>)
+
 /**
  * 上下文用量面板：左侧环形总览（带自动压缩阈值刻度），右侧写清已用、上限与剩余；
- * 下方一条分色构成条与图例列出系统指令、历史摘要、对话与知识增强，最后是立即压缩。
+ * 下方是三个分区的分色构成条，再下面是可折叠的分区列表，展开后逐行列出叶子类别。
+ * 列表超出可用高度时在构成条以下滚动，立即压缩按钮固定在底部。
  */
 @Composable
 internal fun ContextUsagePanel(
@@ -2059,6 +2068,8 @@ internal fun ContextUsagePanel(
     onManualSummary: () -> Unit,
     modifier: Modifier = Modifier,
     isCompressing: Boolean = false,
+    expandedSections: Set<String> = emptySet(),
+    onToggleSection: (String) -> Unit = {},
 ) {
     val progress = (state.used.toFloat() / state.max.coerceAtLeast(1)).coerceIn(0f, 1f)
     val threshold = state.autoCompactionThreshold.toFloat().coerceIn(0.5f, 0.95f)
@@ -2066,12 +2077,16 @@ internal fun ContextUsagePanel(
     val usageLabel = stringResource(R.string.chat_context_usage_percent, (progress * 100).toInt())
     val scheme = MaterialTheme.colorScheme
     val progressColor = if (progress > threshold) scheme.tertiary else scheme.primary
-    val segments = listOf(
-        ContextSegment(stringResource(R.string.chat_context_label_system), state.systemTokens, scheme.secondary),
-        ContextSegment(stringResource(R.string.chat_context_label_summary), state.summaryTokens, scheme.tertiary),
-        ContextSegment(stringResource(R.string.chat_context_label_active), state.activeTokens, scheme.primary),
-        ContextSegment(stringResource(R.string.chat_context_label_rag), state.ragTokens, MaterialTheme.infinityDomainColors.success),
-    )
+    val sectionColors = mapOf("system_prompt" to scheme.secondary, "tool_definitions" to scheme.tertiary, "conversation" to scheme.primary)
+    val sections = state.categories.filter { it.id in sectionColors && it.tokens > 0 }.map { category ->
+        ContextSection(
+            id = category.id,
+            segment = ContextSegment(contextSectionLabel(category.id), category.tokens, sectionColors.getValue(category.id)),
+            leaves = category.children.filter { it.tokens > 0 }.map { leaf ->
+                ContextSegment(contextLeafLabel(leaf.id, state.mcpServerNames), leaf.tokens, sectionColors.getValue(category.id))
+            },
+        )
+    }
     val compressionUnavailableReason = when {
         isCompressing -> stringResource(R.string.chat_context_compress_unavailable_running)
         state.isGenerating -> stringResource(R.string.chat_context_compress_unavailable_generating)
@@ -2118,12 +2133,18 @@ internal fun ContextUsagePanel(
                 Text(text = thresholdLabel, style = InfinityTypography.bodySmall, color = scheme.onSurfaceVariant)
             }
         }
-        ContextCompositionBar(segments = segments, max = state.max)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            segments.chunked(2).forEach { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-                    pair.forEach { segment -> ContextLegendItem(segment, Modifier.weight(1f)) }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+        ContextCompositionBar(segments = sections.map { it.segment }, max = state.max)
+        if (sections.isNotEmpty()) {
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).testTag("context_usage_sections"),
+            ) {
+                sections.forEach { section ->
+                    ContextSectionHeader(section, expanded = section.id in expandedSections, onToggle = { onToggleSection(section.id) })
+                    AnimatedVisibility(visible = section.id in expandedSections) {
+                        Column(Modifier.padding(start = 14.dp, bottom = 4.dp)) {
+                            section.leaves.forEach { leaf -> ContextLeafRow(leaf, total = state.used) }
+                        }
+                    }
                 }
             }
         }
@@ -2157,6 +2178,112 @@ internal fun ContextUsagePanel(
         }
     }
 }
+
+/** 分区标题行：色块、名称、合计与展开箭头，整行可点。 */
+@Composable
+private fun ContextSectionHeader(section: ContextSection, expanded: Boolean, onToggle: () -> Unit) {
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "context_section_chevron")
+    val state = stringResource(if (expanded) R.string.chat_context_section_expanded else R.string.chat_context_section_collapsed)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = section.leaves.isNotEmpty(), role = Role.Button, onClick = onToggle)
+            .semantics { stateDescription = state }
+            .testTag("context_section_${section.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(section.segment.color))
+        Text(section.segment.label, style = InfinityTypography.labelLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
+        Text(
+            ChatViewModel.formatTokenCount(section.segment.tokens),
+            style = InfinityTypography.labelLarge.copy(fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+        Icon(
+            Icons.Rounded.ExpandMore,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp).rotate(rotation),
+        )
+    }
+}
+
+/** 叶子类别一行：短名称、Token 数与按占已用总量比例的短条。 */
+@Composable
+private fun ContextLeafRow(leaf: ContextSegment, total: Int) {
+    val track = MaterialTheme.colorScheme.surfaceContainerHighest
+    val share = (leaf.tokens.toFloat() / total.coerceAtLeast(1)).coerceIn(0f, 1f)
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 28.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(leaf.label, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            ChatViewModel.formatTokenCount(leaf.tokens),
+            style = InfinityTypography.bodySmall.copy(fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+        Canvas(Modifier.width(48.dp).height(6.dp).clip(CircleShape)) {
+            drawRect(track)
+            // 非零的类别至少画出一小段，避免看起来像没有占用。
+            drawRect(leaf.color, size = androidx.compose.ui.geometry.Size(maxOf(size.width * share, size.height), size.height))
+        }
+    }
+}
+
+@Composable
+private fun contextSectionLabel(id: String): String = stringResource(
+    when (id) {
+        "system_prompt" -> R.string.chat_context_section_system
+        "tool_definitions" -> R.string.chat_context_section_tools
+        else -> R.string.chat_context_section_conversation
+    },
+)
+
+/** 叶子类别的短名称；MCP 服务器用服务器名，查不到时用其 id。 */
+@Composable
+private fun contextLeafLabel(id: String, mcpServerNames: Map<String, String>): String {
+    if (id.startsWith("mcp:")) {
+        val serverId = id.removePrefix("mcp:")
+        return stringResource(R.string.chat_context_leaf_mcp, mcpServerNames[serverId] ?: serverId)
+    }
+    val res = ContextLeafLabels[id] ?: return id
+    return stringResource(res)
+}
+
+private val ContextLeafLabels = mapOf(
+    "assistant_prompt" to R.string.chat_context_leaf_assistant_prompt,
+    "session_instructions" to R.string.chat_context_leaf_session_instructions,
+    "project_rules" to R.string.chat_context_leaf_project_rules,
+    "runtime" to R.string.chat_context_leaf_runtime,
+    "permissions" to R.string.chat_context_leaf_permissions,
+    "tool_guidance" to R.string.chat_context_leaf_tool_guidance,
+    "skill_catalog" to R.string.chat_context_leaf_skill_catalog,
+    "knowledge_catalog" to R.string.chat_context_leaf_knowledge_catalog,
+    "history_summary" to R.string.chat_context_leaf_history_summary,
+    "builtin" to R.string.chat_context_leaf_builtin,
+    "user_body" to R.string.chat_context_leaf_user_body,
+    "assistant_body" to R.string.chat_context_leaf_assistant_body,
+    "reasoning" to R.string.chat_context_leaf_reasoning,
+    "tool_calls" to R.string.chat_context_leaf_tool_calls,
+    "tool_results" to R.string.chat_context_leaf_tool_results,
+    "media" to R.string.chat_context_leaf_media,
+    "memory" to R.string.chat_context_leaf_memory,
+    "retrieval" to R.string.chat_context_leaf_retrieval,
+    "knowledge_graph" to R.string.chat_context_leaf_knowledge_graph,
+    "system_time" to R.string.chat_context_leaf_system_time,
+    "snapshot" to R.string.chat_context_leaf_snapshot,
+    "web_search" to R.string.chat_context_leaf_web_search,
+    "task_plan" to R.string.chat_context_leaf_task_plan,
+    "status_board" to R.string.chat_context_leaf_status_board,
+    "skill_body" to R.string.chat_context_leaf_skill_body,
+)
 
 /** 环形总览：底环、用量弧与一道自动压缩阈值刻度，中间写百分比。 */
 @Composable
@@ -2198,19 +2325,6 @@ private fun ContextCompositionBar(segments: List<ContextSegment>, max: Int) {
                 x += width
             }
         }
-    }
-}
-
-@Composable
-private fun ContextLegendItem(segment: ContextSegment, modifier: Modifier = Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(segment.color))
-        Text(segment.label, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
-        Text(
-            ChatViewModel.formatTokenCount(segment.tokens),
-            style = InfinityTypography.bodySmall.copy(fontFeatureSettings = "tnum"),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }
 
