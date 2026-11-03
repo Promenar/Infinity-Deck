@@ -277,7 +277,7 @@ internal fun JobToolCard(model: JobCardModel, onOpenFull: (() -> Unit)? = null, 
         output = model.logLines.takeIf { it.isNotEmpty() }?.joinToString("\n"),
         emptyText = stringResource(R.string.tool_card_job_log_empty),
         note = if (model.logTruncated && model.logLines.isNotEmpty()) stringResource(R.string.tool_card_job_log_truncated) else null,
-        footerStart = listOfNotNull(elapsed, waitLimit).joinToString(" · ").ifEmpty { null },
+        footerStart = listOfNotNull(elapsed, waitLimit).joinToString(" · ").ifEmpty { null }, // wrap-check: allow 单行页脚
         footerEnd = model.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) }
             ?: started?.let { stringResource(R.string.tool_card_run_started, it) },
         footerEndColor = if (model.exitCode != null && model.exitCode != 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -322,7 +322,7 @@ internal fun CommandRunCard(
         Row(modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(6.dp).background(statusColor, CircleShape))
             Text(status, style = meta, color = statusColor, maxLines = 1, modifier = Modifier.padding(start = 6.dp).testTag(COMMAND_STATUS_TAG))
-            note?.let { Text(" · $it", style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            note?.let { Text(" · $it", style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) } // wrap-check: allow 单行省略号状态
             Spacer(Modifier.weight(1f))
             onOpenFull?.let { open ->
                 Row(

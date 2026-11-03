@@ -112,7 +112,7 @@ fun BrowserPage(sessionId: String, onBack: (() -> Unit)?) {
         onPageBack = { session?.goBack() },
         onPageForward = { session?.goForward() },
         onUpdateWebView = { openWebViewStore(context) },
-        onNavigate = { target: String -> host.openByUser(sessionId, target) }.takeIf { host.availability() is BrowserAvailability.Supported },
+        onNavigate = { target: String -> host.openByUser(sessionId, target); Unit }.takeIf { host.availability() is BrowserAvailability.Supported },
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)

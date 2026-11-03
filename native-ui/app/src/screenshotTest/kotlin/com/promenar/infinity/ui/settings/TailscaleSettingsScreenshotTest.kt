@@ -193,15 +193,15 @@ private fun TailscalePathCardsPreview(dark: Boolean) {
                 modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
             ) {
-                BettboxListGroup { TailscalePathCard(peer, TailscalePingRun("workstation", listOf(derp, derp.copy(latencyMs = 88.0))), null, {}, {}) }
+                // 中转数次后打通直连，中间一次超时；仍在检测。
+                val upgrading = List(6) { derp.copy(latencyMs = 86.0 + it * 3 % 7) } + timeout + List(33) { direct.copy(latencyMs = 36.0 + it * 7 % 9) }
+                BettboxListGroup { TailscalePathCard(peer, TailscalePingRun("workstation", upgrading, sent = upgrading.size), null, {}, {}) }
+                // 窗口已满并暂停，总次数多于窗口。
+                val steady = List(TAILSCALE_PING_WINDOW) { if (it % 23 == 11) timeout else direct.copy(latencyMs = 14.0 + it * 5 % 11) }
+                BettboxListGroup { TailscalePathCard(peer, TailscalePingRun("workstation", steady, sent = 128, finish = TailscalePingFinish.STOPPED), null, {}, {}) }
                 BettboxListGroup {
-                    TailscalePathCard(
-                        peer,
-                        TailscalePingRun("workstation", listOf(derp, derp.copy(latencyMs = 88.0), direct, direct.copy(latencyMs = 37.9)), TailscalePingFinish.DIRECT),
-                        null, {}, {},
-                    )
+                    TailscalePathCard(peer, TailscalePingRun("workstation", List(3) { timeout }, finish = TailscalePingFinish.UNAVAILABLE), null, {}, {})
                 }
-                BettboxListGroup { TailscalePathCard(peer, TailscalePingRun("workstation", List(3) { timeout }, TailscalePingFinish.UNREACHABLE), null, {}, {}) }
             }
         }
     }

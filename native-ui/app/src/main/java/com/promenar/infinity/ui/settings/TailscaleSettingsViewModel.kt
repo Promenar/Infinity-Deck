@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.tailnet.TailnetController
-import com.promenar.infinity.data.tailnet.TailnetPaths
 import com.promenar.infinity.data.tailnet.TailnetPeer
 import com.promenar.infinity.data.tailnet.TailnetPingResult
 import com.promenar.infinity.data.tailnet.TailnetSettings
@@ -36,41 +35,35 @@ enum class TailscaleNotice {
     OPERATION_FAILED,
 }
 
-/** 一次路径检测为何结束。 */
+/** 持续检测为何停下；面板开着时检测不会自己结束。 */
 enum class TailscalePingFinish {
-    /** 连续两次直连，路径已稳定。 */
-    DIRECT,
-    /** 发满 [TAILSCALE_PING_MAX_ATTEMPTS] 次仍未直连。 */
-    EXHAUSTED,
-    /** 连续 [TAILSCALE_PING_MAX_FAILURES] 次超时或失败。 */
-    UNREACHABLE,
     /** Tailscale 未运行或设备已无地址，无法检测。 */
     UNAVAILABLE,
-    /** 用户中途停止。 */
+    /** 用户暂停；可以继续。 */
     STOPPED,
 }
 
-/** 设备面板里对 [peerName] 的一轮检测：逐次结果按发送顺序排列。 */
+/** 设备面板里对 [peerName] 的持续检测：[samples] 是最近 [TAILSCALE_PING_WINDOW] 次结果，按发送顺序排列。 */
 data class TailscalePingRun(
     val peerName: String,
     val samples: List<TailnetPingResult> = emptyList(),
+    /** 本次打开面板以来发出的总次数，包括已滑出窗口的。 */
+    val sent: Int = samples.size,
     val finish: TailscalePingFinish? = null,
 ) {
     val running: Boolean get() = finish == null
 }
 
-internal const val TAILSCALE_PING_MAX_ATTEMPTS = 10
-internal const val TAILSCALE_PING_MAX_FAILURES = 3
-internal const val TAILSCALE_PING_INTERVAL_MS = 400L
+/** 和官方客户端一样每秒一次；单次超时由子进程限制在 5 秒内。 */
+internal const val TAILSCALE_PING_INTERVAL_MS = 1_000L
+internal const val TAILSCALE_PING_WINDOW = 60
 
-/** 与桌面端 tailscale ping 相同：打通直连即停，否则最多发 [TAILSCALE_PING_MAX_ATTEMPTS] 次；仍在进行时返回 null。 */
-internal fun tailscalePingFinish(samples: List<TailnetPingResult>): TailscalePingFinish? {
-    if (samples.size >= 2 && samples.takeLast(2).all { it.path == TailnetPaths.DIRECT }) return TailscalePingFinish.DIRECT
-    if (samples.size >= TAILSCALE_PING_MAX_FAILURES && samples.takeLast(TAILSCALE_PING_MAX_FAILURES).all { it.path == null }) {
-        return TailscalePingFinish.UNREACHABLE
-    }
-    return if (samples.size >= TAILSCALE_PING_MAX_ATTEMPTS) TailscalePingFinish.EXHAUSTED else null
-}
+/** 窗口内连续这么多次都没有回应时，面板标题改为“无响应”。 */
+internal const val TAILSCALE_PING_SILENT_STREAK = 3
+
+/** 最近 [TAILSCALE_PING_SILENT_STREAK] 次全部没有回应。 */
+internal fun TailscalePingRun.silent(): Boolean =
+    samples.size >= TAILSCALE_PING_SILENT_STREAK && samples.takeLast(TAILSCALE_PING_SILENT_STREAK).all { it.path == null }
 
 data class TailscaleSettingsUiState(
     val available: Boolean,
@@ -178,12 +171,17 @@ class TailscaleSettingsViewModel(private val controller: TailnetController) : Vi
         }
     }
 
-    /** 打开设备面板时调用：取消上一轮，从头检测 [peer] 的连接路径。 */
+    /**
+     * 打开设备面板或点“继续”时调用：持续检测 [peer] 的连接路径，直到暂停或关闭面板。
+     * 继续同一台设备时沿用已有曲线；换设备时从头开始。
+     */
     fun startPing(peer: TailnetPeer) {
         pingJob?.cancel()
-        local.update { it.copy(ping = TailscalePingRun(peer.name)) }
+        val previous = local.value.ping?.takeIf { it.peerName == peer.name }
+        var samples = previous?.samples.orEmpty()
+        var sent = previous?.sent ?: 0
+        local.update { it.copy(ping = TailscalePingRun(peer.name, samples, sent)) }
         pingJob = viewModelScope.launch {
-            var samples = emptyList<TailnetPingResult>()
             while (true) {
                 val result = try {
                     controller.ping(peer)
@@ -193,32 +191,32 @@ class TailscaleSettingsViewModel(private val controller: TailnetController) : Vi
                     null
                 }
                 if (result == null) {
-                    finishPing(peer.name, samples, TailscalePingFinish.UNAVAILABLE)
+                    finishPing(peer.name, TailscalePingFinish.UNAVAILABLE)
                     return@launch
                 }
-                samples = samples + result
-                val finish = tailscalePingFinish(samples)
+                val pathChanged = result.path != null && result.path != samples.lastOrNull { it.path != null }?.path
+                samples = (samples + result).takeLast(TAILSCALE_PING_WINDOW)
+                sent++
                 local.update { state ->
                     val run = state.ping?.takeIf { it.peerName == peer.name } ?: return@update state
                     state.copy(
-                        ping = run.copy(samples = samples, finish = finish),
+                        ping = run.copy(samples = samples, sent = sent),
                         lastPing = if (result.path != null) state.lastPing + (peer.name to result) else state.lastPing,
                     )
                 }
-                if (finish != null) break
+                // 检测会让 Tailscale 建立或升级路径；路径变化时刷新列表里的被动路径。
+                if (pathChanged) refresh()
                 delay(TAILSCALE_PING_INTERVAL_MS)
             }
-            // 检测会让 Tailscale 建立或升级路径，结束后刷新列表里的被动路径。
-            refresh()
         }
     }
 
-    /** 面板内“停止”：保留已有结果。 */
+    /** 面板内“暂停”：保留曲线，可以继续。 */
     fun stopPing() {
         val run = local.value.ping ?: return
         if (!run.running) return
         pingJob?.cancel()
-        finishPing(run.peerName, run.samples, TailscalePingFinish.STOPPED)
+        finishPing(run.peerName, TailscalePingFinish.STOPPED)
     }
 
     /** 关闭设备面板：停止检测并清空面板状态，最近结果仍留给列表行。 */
@@ -228,9 +226,9 @@ class TailscaleSettingsViewModel(private val controller: TailnetController) : Vi
         local.update { it.copy(ping = null) }
     }
 
-    private fun finishPing(peerName: String, samples: List<TailnetPingResult>, finish: TailscalePingFinish) = local.update { state ->
+    private fun finishPing(peerName: String, finish: TailscalePingFinish) = local.update { state ->
         val run = state.ping?.takeIf { it.peerName == peerName } ?: return@update state
-        state.copy(ping = run.copy(samples = samples, finish = finish))
+        state.copy(ping = run.copy(finish = finish))
     }
 
     private fun notice(value: TailscaleNotice) = local.update { it.copy(notice = value) }

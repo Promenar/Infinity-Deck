@@ -15,7 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -166,44 +166,47 @@ class TailscaleSettingsViewModelTest {
     private fun direct(ms: Double) = TailnetPingResult(path = TailnetPaths.DIRECT, directLan = true, latencyMs = ms)
 
     @Test
-    fun `先中转后打通：连续两次直连即停，并记下最近结果供列表显示`() = runTest(dispatcher) {
+    fun `持续检测：打通直连后不停，路径变化时刷新列表，窗口只留最近结果`() = runTest(dispatcher) {
         controller.pingReplies.addAll(listOf(derp(92.0), derp(88.0), direct(3.1), direct(2.4), direct(2.2)))
         viewModel.startPing(workstation)
         assertThat(viewModel.uiState.value.ping?.running).isTrue()
-        advanceUntilIdle()
+        advanceTimeBy(TAILSCALE_PING_INTERVAL_MS * 4 + 1)
         val run = viewModel.uiState.value.ping!!
-        assertThat(run.finish).isEqualTo(TailscalePingFinish.DIRECT)
+        assertThat(run.running).isTrue()
         assertThat(run.samples.map { it.path })
-            .containsExactly(TailnetPaths.DERP, TailnetPaths.DERP, TailnetPaths.DIRECT, TailnetPaths.DIRECT).inOrder()
-        assertThat(controller.pings).isEqualTo(4)
-        assertThat(viewModel.uiState.value.lastPing["workstation"]?.latencyMs).isEqualTo(2.4)
-        // 检测结束后刷新列表里的被动路径。
-        assertThat(controller.refreshes).isAtLeast(1)
+            .containsExactly(TailnetPaths.DERP, TailnetPaths.DERP, TailnetPaths.DIRECT, TailnetPaths.DIRECT, TailnetPaths.DIRECT)
+            .inOrder()
+        assertThat(viewModel.uiState.value.lastPing["workstation"]?.latencyMs).isEqualTo(2.2)
+        // 首次拿到路径与中转升为直连各刷新一次。
+        assertThat(controller.refreshes).isEqualTo(2)
+
+        controller.pingFallback = direct(2.0)
+        advanceTimeBy(TAILSCALE_PING_INTERVAL_MS * 70)
+        val later = viewModel.uiState.value.ping!!
+        assertThat(later.samples).hasSize(TAILSCALE_PING_WINDOW)
+        assertThat(later.sent).isEqualTo(controller.pings)
+        assertThat(later.sent).isGreaterThan(TAILSCALE_PING_WINDOW)
+        viewModel.dismissPing()
     }
 
     @Test
-    fun `始终中转发满上限，连续超时提前判为无响应`() = runTest(dispatcher) {
-        controller.pingFallback = derp(86.0)
-        viewModel.startPing(workstation)
-        advanceUntilIdle()
-        assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.EXHAUSTED)
-        assertThat(controller.pings).isEqualTo(TAILSCALE_PING_MAX_ATTEMPTS)
-
-        controller.pings = 0
+    fun `连续超时标为无响应，且不覆盖列表上次有路径的结果`() = runTest(dispatcher) {
+        controller.pingReplies.add(derp(86.0))
         controller.pingFallback = TailnetPingResult(timedOut = true)
         viewModel.startPing(workstation)
-        advanceUntilIdle()
-        assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.UNREACHABLE)
-        assertThat(controller.pings).isEqualTo(TAILSCALE_PING_MAX_FAILURES)
-        // 超时不覆盖列表上次有路径的结果。
+        advanceTimeBy(TAILSCALE_PING_INTERVAL_MS * 2 + 1)
+        assertThat(viewModel.uiState.value.ping!!.silent()).isFalse()
+        advanceTimeBy(TAILSCALE_PING_INTERVAL_MS)
+        assertThat(viewModel.uiState.value.ping!!.silent()).isTrue()
+        assertThat(viewModel.uiState.value.ping!!.running).isTrue()
         assertThat(viewModel.uiState.value.lastPing["workstation"]?.path).isEqualTo(TailnetPaths.DERP)
+        viewModel.dismissPing()
     }
 
     @Test
-    fun `未运行时结束为不可用，停止保留已有结果，关闭面板清空检测`() = runTest(dispatcher) {
+    fun `未运行时结束为不可用；暂停保留曲线，继续接着测；关闭面板清空检测`() = runTest(dispatcher) {
         controller.pingReplies.add(null)
         viewModel.startPing(workstation)
-        advanceUntilIdle()
         assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.UNAVAILABLE)
         assertThat(viewModel.uiState.value.ping?.samples).isEmpty()
 
@@ -211,10 +214,16 @@ class TailscaleSettingsViewModelTest {
         viewModel.startPing(workstation)
         assertThat(viewModel.uiState.value.ping?.samples).hasSize(1)
         viewModel.stopPing()
-        advanceUntilIdle()
+        advanceTimeBy(TAILSCALE_PING_INTERVAL_MS * 3)
         assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.STOPPED)
         assertThat(viewModel.uiState.value.ping?.samples).hasSize(1)
         assertThat(controller.pings).isEqualTo(2)
+
+        viewModel.startPing(workstation)
+        val resumed = viewModel.uiState.value.ping!!
+        assertThat(resumed.running).isTrue()
+        assertThat(resumed.samples).hasSize(2)
+        assertThat(resumed.sent).isEqualTo(2)
 
         viewModel.dismissPing()
         assertThat(viewModel.uiState.value.ping).isNull()
@@ -222,14 +231,11 @@ class TailscaleSettingsViewModelTest {
     }
 
     @Test
-    fun `结束判定`() {
-        assertThat(tailscalePingFinish(listOf(derp(90.0)))).isNull()
-        assertThat(tailscalePingFinish(listOf(direct(2.0)))).isNull()
-        assertThat(tailscalePingFinish(listOf(derp(90.0), direct(2.0), direct(2.0)))).isEqualTo(TailscalePingFinish.DIRECT)
-        assertThat(tailscalePingFinish(listOf(direct(2.0), derp(90.0)))).isNull()
+    fun `无响应判定只看最近几次`() {
         val timeout = TailnetPingResult(timedOut = true)
-        assertThat(tailscalePingFinish(listOf(derp(90.0), timeout, timeout))).isNull()
-        assertThat(tailscalePingFinish(listOf(timeout, timeout, timeout))).isEqualTo(TailscalePingFinish.UNREACHABLE)
-        assertThat(tailscalePingFinish(List(TAILSCALE_PING_MAX_ATTEMPTS) { derp(90.0) })).isEqualTo(TailscalePingFinish.EXHAUSTED)
+        assertThat(TailscalePingRun("w", listOf(timeout, timeout)).silent()).isFalse()
+        assertThat(TailscalePingRun("w", listOf(derp(90.0), timeout, timeout)).silent()).isFalse()
+        assertThat(TailscalePingRun("w", listOf(derp(90.0), timeout, timeout, timeout)).silent()).isTrue()
+        assertThat(TailscalePingRun("w", listOf(timeout, timeout, timeout, direct(2.0))).silent()).isFalse()
     }
 }
