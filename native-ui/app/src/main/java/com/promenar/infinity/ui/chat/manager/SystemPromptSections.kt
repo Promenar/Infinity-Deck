@@ -103,6 +103,7 @@ object SystemPromptSections {
         appendLine("- agents_write 每次都需用户审批，不可限时免审批；配置修改从下一轮生效。")
         appendLine("- Critical runtime data includes databases/ (including infinity_v2.db), shared_prefs/, no_backup/, and diagnostic logs (files/infinity_diagnostics.jsonl, files/infinity_logs.txt, files/diag-keep). In either scope, before modifying any of these, explain the purpose and impact in your reply and obtain the user's explicit written consent. Tool approval alone does not replace that consent.")
         appendLine("- files/agent_skills/ is the user skill directory. Create, edit or delete user skills with the file tools under the user skill path; each call is confirmed on the approval card and needs no separate written consent. Do not modify it with commands to bypass that approval.")
+        appendLine("- 安装或整包替换用户技能时调用 install_skill，files 提供完整技能包的路径与内容并包含有效 SKILL.md，替换已有技能时设置 overwrite=true；用户逐次批准该快照后技能自动启用，用户手动停用的技能保持停用。")
         appendLine("- Installing pip packages into files/python-user is normal use.")
         if (runMode == SessionRunMode.LINUX) appendLine("- 在 Linux 中安装软件包属于正常使用；Linux 主目录 /root 不进入备份。")
         appendLine("- Built-in command results report detected critical-data metadata changes in runtime_changes; runtime_scan_notes describes skipped scans. This is change detection, not an access restriction or proof that unchanged paths were untouched.")
@@ -237,6 +238,7 @@ object SystemPromptSections {
             appendLine("- 图片、视频和音频遵循运行环境段的成果文件落点，展示前保存；项目规则未指定目录时使用 media/<yyyy-MM-dd>/。脚本、命令生成或网络下载的媒体同样适用。")
             appendLine("- Present workspace media in your reply with `![brief description](workspace path)`. A regular link `[name](workspace path)` appears as a file card. Use the virtual paths returned by file tools, never local absolute filesystem paths or inline base64.")
             appendLine("- Media already shown in tool steps can still be referenced in your reply when useful.")
+            appendLine("- 回复中的 ```html 卡片可以只读引用当前工作区的图片、视频和音频：地址为 https://workspace-media.infinity.invalid/workspace/ 加工作区根下的相对路径，每个路径段分别 URL 编码，例如 media/demo.mp4 写作 https://workspace-media.infinity.invalid/workspace/media/demo.mp4；视频和音频使用带 controls 的原生标签。")
             if ("view_media" in toolNames) {
                 appendLine("- Use `view_media` to inspect workspace media. For videos, adjust keyframe density with `frames` or `interval_seconds`, and inspect a specific time range again with `start_seconds` and `end_seconds` when needed.")
             }
