@@ -69,14 +69,11 @@ class DefaultProviderRequestRouter(
     private val clientFactory: (UnifiedProviderConfig) -> UnifiedLlmClient = { config ->
         UnifiedLlmClient(providerConfigResolver = { config }, sessionIdentifier = sessionIdentifier)
     },
-    /** 仅可调试构建开启：允许回环地址上的明文 HTTP，用于本机网关联调；正式版始终只接受 HTTPS。 */
-    private val allowLoopbackHttp: Boolean = false,
 ) : ProviderRequestRouter {
 
     constructor(
         providerManager: ProviderManager,
         middlewares: List<LlmMiddleware> = emptyList(),
-        allowLoopbackHttp: Boolean = false,
         sessionIdentifier: suspend (String) -> String? = { null },
         sessionHeaderPreferences: com.promenar.infinity.data.local.SessionHeaderPreferences? = null,
     ) : this(
@@ -92,7 +89,6 @@ class DefaultProviderRequestRouter(
         unsupportedPersistedProtocolResolver = providerManager::isPersistedProtocolUnsupported,
         sessionIdentifier = sessionIdentifier,
         clientFactory = { config -> UnifiedLlmClient({ config }, middlewares, sessionIdentifier = sessionIdentifier) },
-        allowLoopbackHttp = allowLoopbackHttp,
     )
 
     override fun resolve(modelId: String): ProviderResolution {
@@ -126,7 +122,7 @@ class DefaultProviderRequestRouter(
         if (raw.protocolType is ProtocolType.Local && !localInferenceAvailable()) {
             return failure(ProviderResolutionError.LOCAL_INFERENCE_UNAVAILABLE, modelId, providerId)
         }
-        if (raw.protocolType !is ProtocolType.Local && !isSecureCloudEndpoint(raw.baseUrl)) {
+        if (raw.protocolType !is ProtocolType.Local && !isHttpEndpoint(raw.baseUrl)) {
             return failure(ProviderResolutionError.BASE_URL_INVALID, modelId, providerId)
         }
         val credentialMissing = when (raw.protocolType) {
@@ -209,15 +205,11 @@ class DefaultProviderRequestRouter(
         providerId: String? = null,
     ) = ProviderResolution.Failure(reason, modelId, providerId)
 
-    private fun isSecureCloudEndpoint(value: String): Boolean = runCatching {
+    private fun isHttpEndpoint(value: String): Boolean = runCatching {
         val uri = URI(value)
         if (uri.host.isNullOrBlank()) return@runCatching false
-        uri.scheme.equals("https", ignoreCase = true) ||
-            allowLoopbackHttp && uri.scheme.equals("http", ignoreCase = true) && uri.host in LOOPBACK_HOSTS
+        uri.rawUserInfo == null && uri.port in -1..65535 && uri.port != 0 &&
+            (uri.scheme.equals("https", ignoreCase = true) || uri.scheme.equals("http", ignoreCase = true))
     }.getOrDefault(false)
-
-    private companion object {
-        val LOOPBACK_HOSTS = setOf("127.0.0.1", "localhost", "::1", "[::1]")
-    }
 
 }

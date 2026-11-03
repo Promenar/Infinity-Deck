@@ -109,12 +109,12 @@ class ProviderFormInteractionTest {
     }
 
     @Test
-    fun invalidHttpsAndCredentialMismatchExposeErrorsAndDisableBothActions() {
+    fun invalidUrlAndCredentialMismatchExposeErrorsAndDisableBothActions() {
         rule.setContent {
             InfinityTheme {
                 ProviderFormContent(
                     state = validCloudState(
-                        baseUrl = "http://plain.example",
+                        baseUrl = "ftp://invalid.example",
                         endpointValid = false,
                         credentialKindMismatch = true,
                     ),
@@ -123,7 +123,7 @@ class ProviderFormInteractionTest {
             }
         }
 
-        rule.onNodeWithText(resources.getString(R.string.provider_form_https_required))
+        rule.onNodeWithText(resources.getString(R.string.provider_form_http_url_required))
             .performScrollTo()
             .assertIsDisplayed()
         rule.onNodeWithText(resources.getString(R.string.provider_form_credential_kind_changed))

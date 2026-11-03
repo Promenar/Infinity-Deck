@@ -37,7 +37,7 @@ class WebFetchSkill(
     private val networkPolicy = networkPolicy ?: AgentNetworkPolicy(resolver = addressResolver)
     override val id = "web_fetch"
     override val name = "web_fetch"
-    override val description = "获取网页并提取正文，适合阅读搜索结果或指定网页。支持公网；局域网与本机目标需在“设置 → 网络访问”中加入白名单；tailnet 需在 Tailscale 设置中启用并连接内置 Tailscale。"
+    override val description = "获取网页并提取正文，适合阅读搜索结果或指定网页。支持 HTTP/HTTPS，公网、局域网与本机直连，tailnet 经已连接的内置 Tailscale。"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
 
@@ -215,7 +215,7 @@ class WebFetchSkill(
                 if (reference == null || reference.rawUserInfo != null || location.startsWith("///")) throw NetworkAccessDenied("URL_POLICY", "重定向 URL 无效或包含用户信息")
                 url = url.toHttpUrl().resolve(location)?.toString() ?: throw NetworkAccessDenied("URL_POLICY", "重定向 URL 无效")
             } else {
-                // 非 200 是站点响应而非策略拦截，交给通用错误输出，避免模型误判为需要改白名单。
+                // 由通用错误输出报告站点返回的 HTTP 状态。
                 if (result.first != 200) throw java.io.IOException("HTTP ${result.first}")
                 return@withContext url to result.third
             }

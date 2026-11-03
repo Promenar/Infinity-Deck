@@ -6,16 +6,16 @@ import org.junit.Test
 
 class TailscalePeerPresentationTest {
     @Test
-    fun `在线设备在前，不在白名单的排最后，同组按名称排序`() {
+    fun `在线设备在前，同组按名称排序`() {
         val peers = listOf(
             TailnetPeer("rog-ally", online = false),
-            TailnetPeer("laptop", online = true, allowed = false),
+            TailnetPeer("laptop", online = true),
             TailnetPeer("Muse", online = true),
             TailnetPeer("desktop", online = true),
             TailnetPeer("archive", online = false),
         )
         assertThat(peers.sortedForDisplay().map { it.name })
-            .containsExactly("desktop", "Muse", "archive", "rog-ally", "laptop").inOrder()
+            .containsExactly("desktop", "laptop", "Muse", "archive", "rog-ally").inOrder()
     }
 
     @Test

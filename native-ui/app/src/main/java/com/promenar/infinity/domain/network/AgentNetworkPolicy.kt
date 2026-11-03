@@ -18,16 +18,13 @@ data class AgentNetworkEndpoint(val uri: URI, val destination: AgentNetworkTarge
     val addresses: List<InetAddress> get() = destination.addresses
 }
 
-/** 三类 App 内联网工具共用的分类与授权；路由名称先于系统 DNS 判定。 */
+/** App 内联网工具共用的目标分类与选路；路由名称先于系统 DNS 判定。 */
 class AgentNetworkPolicy(
     private val isTailnetHost: (String) -> Boolean = { false },
-    private val allowedLanHosts: () -> Set<String> = { emptySet() },
     private val tailnetRunning: () -> Boolean = { false },
     private val resolver: suspend (String) -> Array<InetAddress> = { host ->
         withContext(Dispatchers.IO) { InetAddress.getAllByName(host) }
     },
-    /** Android 网络安全配置对该主机是否允许明文；发行配置只放行 127.0.0.1。 */
-    private val cleartextPermitted: (String) -> Boolean = { true },
 ) {
     suspend fun classify(rawHost: String): AgentNetworkTarget {
         val host = normalizeHost(rawHost)
@@ -52,19 +49,8 @@ class AgentNetworkPolicy(
         if (raw.length > 4096 || scheme !in setOf("http", "https") || uri.rawUserInfo != null || uri.host.isNullOrBlank() ||
             uri.port < -1 || uri.port == 0 || uri.port > 65535) denied("URL_POLICY", "仅支持不含凭据、主机与端口有效的 HTTP/HTTPS URL")
         val destination = classify(uri.host)
-        // 先于白名单判定：系统会拒绝的明文请求，加入白名单也无法访问。
-        if (scheme == "http" && destination.target != NetworkTargetClass.TAILNET && !cleartextPermitted(destination.host)) {
-            denied("CLEARTEXT_BLOCKED", "Android 系统策略只允许明文 http 访问本机 127.0.0.1；请改用 https，或用内置命令 shell_exec / python_exec 访问")
-        }
-        when (stateFor(tool, destination.target)) {
-            NetworkAccessState.ALLOWLIST_ONLY -> if (destination.host !in allowedLanHosts()) {
-                denied("LAN_HOST_NOT_ALLOWED", "局域网与本机目标需要精确主机授权，请在“设置 → 网络访问”中添加主机白名单")
-            }
-            NetworkAccessState.TAILNET_REQUIRED -> {
-                if (!tailnetRunning()) denied("TAILNET_OFFLINE", TAILNET_GUIDANCE)
-                if (scheme == "http") denied("TAILNET_CLEARTEXT", "不支持 tailnet 明文 http，请改用 https，或用内置命令 python_exec / shell_exec 经内置代理访问")
-            }
-            else -> Unit
+        if (stateFor(tool, destination.target) == NetworkAccessState.TAILNET_REQUIRED && !tailnetRunning()) {
+            denied("TAILNET_OFFLINE", TAILNET_GUIDANCE)
         }
         return AgentNetworkEndpoint(uri, destination)
     }
@@ -78,20 +64,9 @@ class AgentNetworkPolicy(
             TailnetHosts.parseAddressLiteral(host)?.let(TailnetHosts::isTailnetAddress) == true || routing(host) ||
                 TailnetHosts.isTailnetHost(host, null, emptySet())
 
-        fun parseAllowlist(text: String): Set<String> = text.split(Regex("[\\s,]+"))
-            .filter(String::isNotBlank).map { raw ->
-                val host = normalizeHost(raw)
-                val valid = runCatching { URI("https://" + if (':' in host) "[$host]" else host).host }.getOrNull()
-                require(host.length <= 253 && valid != null && '/' !in host && '*' !in host && '@' !in host && '?' !in host && '#' !in host && !host.endsWith('.')) {
-                    "白名单只能填写精确主机名或 IP，不含协议、端口与路径"
-                }
-                host
-            }.toSet().also { require(it.size <= 64) { "白名单最多 64 个主机" } }
-
         fun stateFor(tool: AgentNetworkTool, target: NetworkTargetClass): NetworkAccessState = when (tool) {
             AgentNetworkTool.WEB_FETCH, AgentNetworkTool.MEDIA_FETCH, AgentNetworkTool.SCRIPT -> when (target) {
-                NetworkTargetClass.PUBLIC -> NetworkAccessState.ALLOWED
-                NetworkTargetClass.LAN, NetworkTargetClass.LOOPBACK -> NetworkAccessState.ALLOWLIST_ONLY
+                NetworkTargetClass.PUBLIC, NetworkTargetClass.LAN, NetworkTargetClass.LOOPBACK -> NetworkAccessState.ALLOWED
                 NetworkTargetClass.TAILNET -> NetworkAccessState.TAILNET_REQUIRED
             }
             AgentNetworkTool.MCP, AgentNetworkTool.SSH -> NetworkAccessState.CONFIGURED_ONLY

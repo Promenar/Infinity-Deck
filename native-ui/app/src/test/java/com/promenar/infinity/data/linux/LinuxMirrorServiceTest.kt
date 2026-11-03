@@ -30,6 +30,12 @@ class LinuxMirrorServiceTest {
         }
     }
 
+    @Test fun customHttpMirrorWritesRepositories(): Unit = runBlocking {
+        service().select(LinuxMirrorChoice(LinuxMirrorId.CUSTOM, "http://192.168.1.2/alpine"))
+        assertEquals("http://192.168.1.2/alpine/v3.24/main\nhttp://192.168.1.2/alpine/v3.24/community\n",
+            File(runtime.paths.rootfs, "etc/apk/repositories").readText())
+    }
+
     @Test fun customRootNormalizesAlpinePrefixAndRejectsUnsafeUrls(): Unit = runBlocking {
         val service = service()
         for (url in listOf("https://mirror.example", "https://mirror.example/alpine/")) {
@@ -37,7 +43,7 @@ class LinuxMirrorServiceTest {
             assertEquals("https://mirror.example/alpine/v3.24/main\nhttps://mirror.example/alpine/v3.24/community\n",
                 File(runtime.paths.rootfs, "etc/apk/repositories").readText())
         }
-        for (url in listOf("http://mirror.example", "https://u:p@mirror.example", "https://mirror.example/?x=1", "https://mirror.example/#frag", "https://mirror.example/\nhttps://evil", "https://mirror.example/%0aevil", "https://mirror.example:0", "file:///tmp/mirror")) {
+        for (url in listOf("ftp://mirror.example", "https://u:p@mirror.example", "https://mirror.example/?x=1", "https://mirror.example/#frag", "https://mirror.example/\nhttps://evil", "https://mirror.example/%0aevil", "https://mirror.example:0", "file:///tmp/mirror")) {
             try { service.select(LinuxMirrorChoice(LinuxMirrorId.CUSTOM, url)); fail(url) } catch (_: IllegalArgumentException) { }
         }
         assertEquals(LinuxMirrorId.CUSTOM, service.selected.value.id)

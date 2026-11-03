@@ -138,7 +138,7 @@ class ProviderConnectionProbe(
             config.baseUrl,
             ProviderEndpointOperation.CONNECTION_PROBE,
         )
-        requireHttps(endpoint)
+        requireHttpEndpoint(endpoint)
         val response = httpClient.get(endpoint) {
             when (config.protocolType) {
                 ProtocolType.Anthropic_Messages -> {
@@ -233,14 +233,14 @@ class ProviderConnectionProbe(
         false
     }
 
-    private fun requireHttps(endpoint: String) {
+    private fun requireHttpEndpoint(endpoint: String) {
         val uri = try {
             URI(endpoint)
         } catch (_: Exception) {
             throw IllegalArgumentException("Provider endpoint 无效")
         }
-        require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
-            "Provider endpoint 必须使用 HTTPS"
+        require((uri.scheme.equals("https", ignoreCase = true) || uri.scheme.equals("http", ignoreCase = true)) && !uri.host.isNullOrBlank()) {
+            "Provider endpoint 必须使用 HTTP 或 HTTPS"
         }
     }
 }

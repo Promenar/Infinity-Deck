@@ -104,7 +104,7 @@ interface LinuxMirrorSettings {
     /** 最近一次测速结果（毫秒）；未测或失败为 null。 */
     val latencies: StateFlow<Map<LinuxMirrorId, Long?>>
 
-    /** 写入 `/etc/apk/repositories`；自定义地址必须是 https。 */
+    /** 写入 `/etc/apk/repositories`；自定义地址支持 HTTP/HTTPS。 */
     suspend fun select(choice: LinuxMirrorChoice)
 
     /** 依次测速并逐个发出结果，同时更新 [latencies]。 */

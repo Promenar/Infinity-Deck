@@ -22,14 +22,14 @@ import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
 @PreviewTest
-@Preview(name = "网络访问 白名单已设置 浅色", widthDp = 412, heightDp = 2200, locale = "en")
-@Preview(name = "网络访问 白名单已设置 浅色 大字号130", widthDp = 360, heightDp = 3000, locale = "en", fontScale = 1.3f)
+@Preview(name = "网络访问 Tailscale 已连接 浅色", widthDp = 412, heightDp = 2200, locale = "en")
+@Preview(name = "网络访问 Tailscale 已连接 浅色 大字号130", widthDp = 360, heightDp = 3000, locale = "en", fontScale = 1.3f)
 @Composable
 fun networkAccessConfiguredLightPreview() = NetworkAccessPreview(dark = false, configured = true)
 
 @PreviewTest
-@Preview(name = "网络访问 未设置 深色", widthDp = 412, heightDp = 2200, locale = "zh-rCN")
-@Preview(name = "网络访问 未设置 深色 大字号130", widthDp = 360, heightDp = 3000, locale = "zh-rCN", fontScale = 1.3f)
+@Preview(name = "网络访问 Tailscale 未启用 深色", widthDp = 412, heightDp = 2200, locale = "zh-rCN")
+@Preview(name = "网络访问 Tailscale 未启用 深色 大字号130", widthDp = 360, heightDp = 3000, locale = "zh-rCN", fontScale = 1.3f)
 @Composable
 fun networkAccessEmptyDarkPreview() = NetworkAccessPreview(dark = true, configured = false)
 
@@ -45,7 +45,6 @@ private fun NetworkAccessPreview(dark: Boolean, configured: Boolean) {
             InfinitySettingsPageLayout(title = stringResource(R.string.network_access_title), onBack = {}) { padding ->
                 NetworkAccessSettingsContent(
                     snapshot = previewNetworkSnapshot(configured),
-                    onEditHosts = {},
                     onOpenTailscale = {},
                     modifier = Modifier.padding(padding),
                 )
@@ -54,18 +53,16 @@ private fun NetworkAccessPreview(dark: Boolean, configured: Boolean) {
     }
 }
 
-/** 与总表规则一致的预览数据；[configured] 为 true 时白名单有两项且 tailnet 已连接。 */
+/** 与总表规则一致的预览数据；[configured] 为 true 时 tailnet 已连接。 */
 internal fun previewNetworkSnapshot(configured: Boolean): AgentNetworkSnapshot {
     fun row(tool: AgentNetworkTool, vararg states: NetworkAccessState) =
         NetworkAccessRow(tool, NetworkTargetClass.entries.zip(states.toList()) { target, state -> NetworkAccessCell(target, state) })
-    val guarded = arrayOf(NetworkAccessState.ALLOWED, NetworkAccessState.ALLOWLIST_ONLY, NetworkAccessState.ALLOWLIST_ONLY, NetworkAccessState.TAILNET_REQUIRED)
+    val guarded = arrayOf(NetworkAccessState.ALLOWED, NetworkAccessState.ALLOWED, NetworkAccessState.ALLOWED, NetworkAccessState.TAILNET_REQUIRED)
     val configuredOnly = Array(4) { NetworkAccessState.CONFIGURED_ONLY }
     return AgentNetworkSnapshot(
-        lanHosts = if (configured) listOf("nas.local", "127.0.0.1") else emptyList(),
         tailnetAvailable = true,
         tailnetEnabled = configured,
         tailnetRunning = configured,
-        tailnetPeerAllowlist = if (configured) listOf("100.64.0.7") else emptyList(),
         rows = listOf(
             row(AgentNetworkTool.WEB_FETCH, *guarded),
             row(AgentNetworkTool.MEDIA_FETCH, *guarded),

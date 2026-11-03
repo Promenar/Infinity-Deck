@@ -174,32 +174,12 @@ class AgentReachModelsTest {
         assertThat(reachPaths(SessionRunMode.LINUX, linuxHome, emptyList()).first().path).isEqualTo("/root/demo")
     }
 
-    @Test
-    fun `局域网说明按模式列出受白名单约束的工具，白名单为空时写明不可访问`() {
+    @Test fun `网络单元格显示直连与Tailscale路径状态`() {
         val empty = snapshot()
-        assertThat(reachLanLines(SessionRunMode.LINUX, empty)).isEqualTo(
-            ReachLanLines(R.string.agent_reach_lan_allowlist_empty, 0, R.string.agent_reach_lan_linux_commands),
-        )
-        assertThat(reachLanLines(SessionRunMode.BUILTIN, empty)).isEqualTo(
-            ReachLanLines(R.string.agent_reach_lan_allowlist_empty_scripts, 0, R.string.agent_reach_lan_builtin_commands),
-        )
-        val hosts = snapshot(lanHosts = listOf("nas.local", "127.0.0.1", "printer.lan"))
-        assertThat(reachLanLines(SessionRunMode.LINUX, hosts)).isEqualTo(
-            ReachLanLines(R.plurals.agent_reach_lan_allowlist, 3, R.string.agent_reach_lan_linux_commands),
-        )
-        assertThat(reachLanLines(SessionRunMode.BUILTIN, hosts)).isEqualTo(
-            ReachLanLines(R.plurals.agent_reach_lan_allowlist_scripts, 3, R.string.agent_reach_lan_builtin_commands),
-        )
-    }
-
-    @Test
-    fun `network cells reflect the current allowlist and tailnet state`() {
-        val empty = snapshot()
-        assertThat(networkCell(NetworkTargetClass.LAN, NetworkAccessState.ALLOWLIST_ONLY, empty).meaning).isEqualTo(NetworkCellMeaning.ALLOWLIST_EMPTY)
-        assertThat(networkCell(NetworkTargetClass.LAN, NetworkAccessState.ALLOWLIST_ONLY, empty).tone).isEqualTo(NetworkCellTone.CLOSED)
-        val hosts = snapshot(lanHosts = listOf("nas.local", "127.0.0.1"))
-        assertThat(networkCell(NetworkTargetClass.LAN, NetworkAccessState.ALLOWLIST_ONLY, hosts).count).isEqualTo(2)
-        assertThat(networkCell(NetworkTargetClass.LAN, NetworkAccessState.ALLOWLIST_ONLY, hosts).tone).isEqualTo(NetworkCellTone.LIMITED)
+        for (target in listOf(NetworkTargetClass.PUBLIC, NetworkTargetClass.LAN, NetworkTargetClass.LOOPBACK)) {
+            assertThat(networkCell(target, NetworkAccessState.ALLOWED, empty).meaning).isEqualTo(NetworkCellMeaning.ALLOWED)
+            assertThat(networkCell(target, NetworkAccessState.ALLOWED, empty).tone).isEqualTo(NetworkCellTone.OPEN)
+        }
 
         val tailnet = NetworkTargetClass.TAILNET
         assertThat(networkCell(tailnet, NetworkAccessState.TAILNET_REQUIRED, snapshot(available = false)).meaning).isEqualTo(NetworkCellMeaning.TAILNET_MISSING)
@@ -217,11 +197,10 @@ class AgentReachModelsTest {
     private val readyLinux = LinuxRuntimeState.Ready(LinuxEnvironmentInfo("Alpine", "3.24.3", "aarch64", "test", 1, null))
 
     private fun snapshot(
-        lanHosts: List<String> = emptyList(),
         available: Boolean = true,
         enabled: Boolean = false,
         running: Boolean = false,
-    ) = AgentNetworkSnapshot(lanHosts, available, enabled, running, emptyList(), emptyList())
+    ) = AgentNetworkSnapshot(available, enabled, running, emptyList())
 
     @Test
     fun `工作区切换说明条：失败优先，生成中停用时有入口才给停止生成`() {

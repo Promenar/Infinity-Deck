@@ -130,11 +130,11 @@ class SecureSecretUiContractTest {
     }
 
     @Test
-    fun `provider cloud endpoint accepts only absolute HTTPS`() {
-        assertThat(isSecureProviderEndpoint("https://api.example.com/v1")).isTrue()
-        assertThat(isSecureProviderEndpoint("HTTP://api.example.com/v1")).isFalse()
-        assertThat(isSecureProviderEndpoint("https:///missing-host")).isFalse()
-        assertThat(isSecureProviderEndpoint("not-a-url")).isFalse()
+    fun `提供商端点支持HTTP与HTTPS`() {
+        assertThat(isHttpProviderEndpoint("https://api.example.com/v1")).isTrue()
+        assertThat(isHttpProviderEndpoint("HTTP://api.example.com/v1")).isTrue()
+        assertThat(isHttpProviderEndpoint("https:///missing-host")).isFalse()
+        assertThat(isHttpProviderEndpoint("not-a-url")).isFalse()
     }
 
     @Test

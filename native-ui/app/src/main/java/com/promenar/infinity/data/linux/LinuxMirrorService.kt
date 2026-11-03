@@ -99,9 +99,9 @@ internal class LinuxMirrorService(
             val uri = try { URI(raw) } catch (_: Exception) { throw IllegalArgumentException("镜像地址无效") }
             require(raw.length <= 2048 && raw.none { it.isWhitespace() || it.isISOControl() } &&
                 !Regex("%(?:0[0-9a-f]|1[0-9a-f]|20|7f)", RegexOption.IGNORE_CASE).containsMatchIn(raw) &&
-                uri.scheme.equals("https", true) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
+                (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
                 uri.rawQuery == null && uri.rawFragment == null && (uri.port == -1 || uri.port in 1..65535) &&
-                uri.path.split('/').none { it == ".." || it == "." }) { "镜像必须是无凭据、查询参数或片段的有效 HTTPS 地址" }
+                uri.path.split('/').none { it == ".." || it == "." }) { "镜像必须是无凭据、查询参数或片段的有效 HTTP/HTTPS 地址" }
             val base = raw.trimEnd('/')
             return if (base.endsWith("/alpine")) base else "$base/alpine"
         }

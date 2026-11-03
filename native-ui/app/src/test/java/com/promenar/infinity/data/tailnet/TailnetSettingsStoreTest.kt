@@ -15,12 +15,10 @@ class TailnetSettingsStoreTest {
         store.setEnabled(true)
         store.setEphemeral(true)
         assertThat(store.setControlUrl(" https://hs.example.org:8443/ ")).isTrue()
-        assertThat(store.setAllowedPeers(listOf("NAS", "nas", "100.64.0.3"))).isTrue()
         val reloaded = TailnetSettingsStore(preferences, secrets).current
         assertThat(reloaded.enabled).isTrue()
         assertThat(reloaded.ephemeral).isTrue()
         assertThat(reloaded.controlUrl).isEqualTo("https://hs.example.org:8443")
-        assertThat(reloaded.allowedPeers).containsExactly("nas", "100.64.0.3").inOrder()
     }
 
     @Test
@@ -48,7 +46,6 @@ class TailnetSettingsStoreTest {
             TailnetSettingsStore.KEY_ENABLED,
             TailnetSettingsStore.KEY_CONTROL_URL,
             TailnetSettingsStore.KEY_EPHEMERAL,
-            TailnetSettingsStore.KEY_ALLOWED_PEERS,
         )) {
             assertThat(BackupPreferencePolicy.isAllowed(TailnetSettingsStore.PREFERENCES_NAME, key)).isFalse()
             assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isFalse()
@@ -68,18 +65,10 @@ class TailnetSettingsStoreTest {
         assertThat(store.current.controlUrl).isEmpty()
     }
 
-    @Test
-    fun `白名单只接受节点名、MagicDNS 名称与 tailnet IP`() {
-        assertThat(TailnetSettingsPolicy.parseAllowedPeers(listOf("nas", "nas.tail1.ts.net", "100.64.0.3", "fd7a:115c:a1e0::3")))
-            .containsExactly("nas", "nas.tail1.ts.net", "100.64.0.3", "fd7a:115c:a1e0::3").inOrder()
-        for (invalid in listOf("192.168.1.1", "-bad", "a_b", "nas..ts.net", "x".repeat(64))) {
-            assertThat(TailnetSettingsPolicy.parseAllowedPeers(listOf(invalid))).isNull()
-        }
-        assertThat(TailnetSettingsPolicy.problemForPeers("")).isNull()
-        assertThat(TailnetSettingsPolicy.problemForPeers("nas laptop\n100.64.0.9,")).isNull()
-        assertThat(TailnetSettingsPolicy.problemForPeers("8.8.8.8")).isEqualTo(TailnetSettingsProblem.PEER_INVALID)
-        assertThat(TailnetSettingsPolicy.problemForPeers((0..64).joinToString(",") { "n$it" })).isEqualTo(TailnetSettingsProblem.TOO_MANY_PEERS)
-        assertThat(store.setAllowedPeers(listOf("8.8.8.8"))).isFalse()
-        assertThat(store.current.allowedPeers).isEmpty()
+    @Test fun `启动清除设备白名单旧键并保留连接设置`() {
+        preferences.edit().putString("tailnet_allowed_peers", "nas").putBoolean(TailnetSettingsStore.KEY_ENABLED, true).apply()
+        val reloaded = TailnetSettingsStore(preferences, secrets)
+        assertThat(preferences.contains("tailnet_allowed_peers")).isFalse()
+        assertThat(reloaded.current.enabled).isTrue()
     }
 }

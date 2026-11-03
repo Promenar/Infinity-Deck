@@ -25,7 +25,7 @@ class TailnetStatusSkill(private val controller: TailnetController) : SkillDefin
     override val name = "tailnet_status"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
-    override val description = "查询内置 Tailscale：本机节点名、tailnet IP、是否在线，以及 tailnet 节点（名称、IP、系统、在线、是否在设备白名单内）。" +
+    override val description = "查询内置 Tailscale：本机节点名、tailnet IP、是否在线，以及 tailnet 节点（名称、IP、系统、在线状态）。" +
         "在线时 tailnet IP 与 MagicDNS 名称可直接用于 SSH 主机、shell_exec/python_exec 中的 git 与 HTTP(S)；web_fetch 只访问公网。"
     override val parametersSchema = """{"type":"object","properties":{},"additionalProperties":false}"""
 
@@ -72,7 +72,6 @@ class TailnetStatusSkill(private val controller: TailnetController) : SkillDefin
                                 put("ips", JsonArray(peer.ips.map(::JsonPrimitive)))
                                 peer.os?.takeIf { it.isNotBlank() }?.let { put("os", it) }
                                 put("online", peer.online)
-                                put("allowed", peer.allowed)
                             }
                         },
                     ),
@@ -93,7 +92,7 @@ class TailnetStatusSkill(private val controller: TailnetController) : SkillDefin
                 else -> "内置 Tailscale 启动失败；请用户在「设置 > Tailscale」查看原因并重试（检查控制服务器地址与网络）。"
             }
             TailnetPhase.RUNNING -> "已在线。tailnet IP 或 MagicDNS 名称可直接用于 SSH 主机、shell_exec/python_exec 中的 git 与 HTTP(S)；" +
-                "只能访问 allowed=true 的节点（设备白名单由用户设置）。"
+                "设备访问范围由 Tailscale 管理后台的 ACL 决定。"
         }
     }
 }

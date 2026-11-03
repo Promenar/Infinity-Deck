@@ -6,10 +6,10 @@ import java.util.Locale
 /** 设备行图标对应的设备类别。 */
 internal enum class TailscalePeerKind { DESKTOP, LAPTOP, PHONE, SERVER, OTHER }
 
-/** 设备列表顺序：白名单内在线、白名单内离线、不在白名单；同组按名称（忽略大小写）排序。 */
+/** 设备列表顺序：在线、离线；同组按名称（忽略大小写）排序。 */
 internal fun List<TailnetPeer>.sortedForDisplay(): List<TailnetPeer> = sortedWith(
     compareBy<TailnetPeer>(
-        { if (!it.allowed) 2 else if (it.online) 0 else 1 },
+        { if (it.online) 0 else 1 },
         { it.name.lowercase(Locale.ROOT) },
     ),
 )

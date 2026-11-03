@@ -26,6 +26,23 @@ import org.junit.jupiter.api.io.TempDir
 class AgentHttpRoutingTest {
     @TempDir lateinit var directory: File
 
+    @Test fun `tailnetHTTP经内置代理且DNS派生目标保留原始Host`(): Unit = runBlocking {
+        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 34567))
+        val routing = object : TailnetRouting by DisabledTailnetRouting {
+            override fun agentProxy() = proxy
+        }
+        for (port in listOf("", ":8080")) {
+            val endpoint = AgentNetworkPolicy(tailnetRunning = { true }, resolver = { arrayOf(InetAddress.getByName("100.64.0.9")) })
+                .validate("http://origin.test$port/file")
+            val route = AgentHttpRouting.route(OkHttpClient(), endpoint, routing)
+            val request = route.request(Request.Builder().url(endpoint.uri.toString()).build())
+            assertThat(route.client.proxy).isEqualTo(proxy)
+            assertThat(request.url.host).isEqualTo("100.64.0.9")
+            assertThat(request.header("Host")).isEqualTo("origin.test$port")
+            assertThat(request.header("X-Infinity-Origin-Host")).isEqualTo("origin.test$port")
+        }
+    }
+
     @Test fun `DNS派生tailnet固定CONNECT的IP并保留原始SNI证书与Host身份`(): Unit = runBlocking {
         val identity = identity()
         TlsProxy(identity.serverContext).use { fixture ->
@@ -96,7 +113,7 @@ class AgentHttpRoutingTest {
     }
 
     @Test fun `回环优先的混合地址不能在失败重试时直连tailnet`(): Unit = runBlocking {
-        val endpoint = AgentNetworkPolicy(allowedLanHosts = { setOf("mixed.test") }, resolver = {
+        val endpoint = AgentNetworkPolicy(resolver = {
             arrayOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("100.64.0.9"))
         }).validate("https://mixed.test/a")
         val route = AgentHttpRouting.route(OkHttpClient(), endpoint, DisabledTailnetRouting)
@@ -104,13 +121,13 @@ class AgentHttpRoutingTest {
         assertThat(route.client.dns.lookup("mixed.test")).containsExactly(InetAddress.getByName("127.0.0.1"))
     }
 
-    @Test fun `混合公网与回环或局域网只拨号选定类别地址`(): Unit = runBlocking {
+    @Test fun `混合公网与局域网保留所有已解析的直连地址`(): Unit = runBlocking {
         for (local in listOf("127.0.0.1", "192.168.1.2")) {
-            val endpoint = AgentNetworkPolicy(allowedLanHosts = { setOf("mixed.test") }, resolver = {
+            val endpoint = AgentNetworkPolicy(resolver = {
                 arrayOf(InetAddress.getByName("93.184.216.34"), InetAddress.getByName(local))
             }).validate("https://mixed.test/a")
             val route = AgentHttpRouting.route(OkHttpClient(), endpoint, DisabledTailnetRouting)
-            assertThat(route.client.dns.lookup("mixed.test")).containsExactly(InetAddress.getByName(local))
+            assertThat(route.client.dns.lookup("mixed.test")).containsExactly(InetAddress.getByName("93.184.216.34"), InetAddress.getByName(local))
         }
     }
 

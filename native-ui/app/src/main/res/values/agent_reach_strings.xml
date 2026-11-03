@@ -29,7 +29,7 @@
     <string name="agent_reach_section_backends">Running code</string>
     <string name="agent_reach_backends_footer">Files deleted by commands skip the recycle bin.</string>
     <string name="agent_reach_runner_linux">Linux commands</string>
-    <string name="agent_reach_runner_linux_scope">Run in Alpine with every path above; LAN access isn\'t limited by the allowlist</string>
+    <string name="agent_reach_runner_linux_scope">Run in Alpine with every path above</string>
     <string name="agent_reach_runner_builtin">Built-in commands</string>
     <string name="agent_reach_backend_builtin_scope">Run with this app\'s permissions, can read and write all app data, not limited to the workspace</string>
     <string name="agent_reach_runner_sandbox">Sandboxed scripts</string>
@@ -57,25 +57,13 @@
     <string name="agent_reach_approval_footer">Scheduled tasks, skill-folder changes and SSH host setup always ask.</string>
 
     <string name="agent_reach_section_network">Where it can connect</string>
-    <string name="agent_reach_network_public">Every tool can reach it</string>
+    <string name="agent_reach_network_public">Direct network access</string>
     <string name="agent_reach_network_lan">LAN and this device</string>
-    <plurals name="agent_reach_lan_allowlist">
-        <item quantity="one">Web and media fetch: allowlist only, %1$d host</item>
-        <item quantity="other">Web and media fetch: allowlist only, %1$d hosts</item>
-    </plurals>
-    <plurals name="agent_reach_lan_allowlist_scripts">
-        <item quantity="one">Web fetch, media fetch and scripts: allowlist only, %1$d host</item>
-        <item quantity="other">Web fetch, media fetch and scripts: allowlist only, %1$d hosts</item>
-    </plurals>
-    <string name="agent_reach_lan_allowlist_empty">Web and media fetch: allowlist is empty, so nothing is reachable</string>
-    <string name="agent_reach_lan_allowlist_empty_scripts">Web fetch, media fetch and scripts: allowlist is empty, so nothing is reachable</string>
-    <string name="agent_reach_lan_linux_commands">Linux commands: not limited by the allowlist</string>
-    <string name="agent_reach_lan_builtin_commands">Built-in commands: not limited by the allowlist</string>
-    <string name="agent_reach_network_change">Change</string>
     <string name="agent_reach_network_configured">MCP and SSH</string>
     <string name="agent_reach_network_configured_desc">Only the addresses and hosts you added</string>
     <string name="agent_reach_network_details">Per-tool details</string>
 
     <string name="agent_reach_mount_command_visible">Commands can access</string>
     <string name="agent_reach_mount_files_only">File tools only</string>
+    <string name="agent_reach_network_direct">Direct access over HTTP or HTTPS</string>
 </resources>

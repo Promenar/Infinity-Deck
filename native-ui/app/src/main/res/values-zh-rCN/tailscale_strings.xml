@@ -3,7 +3,4 @@
     <plurals name="tailscale_peers_summary">
         <item quantity="other">%1$d 台在线，共 %2$d 台</item>
     </plurals>
-    <plurals name="tailscale_allowlist_count">
-        <item quantity="other">%1$d 项</item>
-    </plurals>
 </resources>

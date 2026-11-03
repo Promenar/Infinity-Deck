@@ -38,7 +38,7 @@ fun agentReachSharedDarkPreview() = AgentReachPreview(dark = true, shared = true
 fun agentReachSharedBuiltinLightPreview() = AgentReachPreview(dark = false, shared = true, runMode = SessionRunMode.BUILTIN)
 
 /**
- * 私有工作区：无挂载、无 Python、Termux 未启用、无 SSH 主机，白名单为空，“各工具明细”折叠；
+ * 私有工作区：无挂载、无 Python、Termux 未启用、无 SSH 主机，“各工具明细”折叠；
  * 共享工作区：带挂载、全部后端可用、tailnet 已连接，“各工具明细”展开。Linux 环境均已就绪，运行模式以会话保存的为准。
  */
 @Composable
@@ -76,7 +76,6 @@ private fun AgentReachPreview(dark: Boolean, shared: Boolean, runMode: SessionRu
                 // 从顶栏打开时工作区一行带切换；共享工作区预览为生成进行中，切换停用并提示。
                 actions = AgentReachActions(
                     onOpenTailscale = {},
-                    onOpenNetworkAccess = {},
                     onOpenLinux = {},
                     workspaceSwitch = AgentReachWorkspaceSwitch(busy = shared, failed = false, onChoose = {}, onStopGeneration = {}),
                 ),

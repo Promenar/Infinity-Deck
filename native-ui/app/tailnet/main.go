@@ -35,7 +35,7 @@ type Backend interface {
 	Directory
 	Start(ctx context.Context, emit func(StatusSummary)) error
 	Summary(ctx context.Context) (StatusSummary, error)
-	PeerList(ctx context.Context, allow *Allowlist) []PeerInfo
+	PeerList(ctx context.Context) []PeerInfo
 	Login(ctx context.Context) error
 	Logout(ctx context.Context) error
 	Dial(ctx context.Context, network, address string) (net.Conn, error)
@@ -54,7 +54,6 @@ type Server struct {
 	mu      sync.Mutex
 	backend Backend
 	proxy   *Proxy
-	allow   *Allowlist
 	done    chan struct{}
 	once    sync.Once
 }
@@ -109,16 +108,16 @@ func (s *Server) dispatch(req *Request) {
 		return
 	}
 	s.mu.Lock()
-	backend, allow := s.backend, s.allow
+	backend := s.backend
 	s.mu.Unlock()
 	if backend == nil {
 		s.out.Fail(req.ID, ErrNotStarted, "尚未启动")
 		return
 	}
-	go s.handle(req, backend, allow)
+	go s.handle(req, backend)
 }
 
-func (s *Server) handle(req *Request, backend Backend, allow *Allowlist) {
+func (s *Server) handle(req *Request, backend Backend) {
 	switch req.Op {
 	case OpStatus:
 		ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
@@ -132,7 +131,7 @@ func (s *Server) handle(req *Request, backend Backend, allow *Allowlist) {
 	case OpPeers:
 		ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 		defer cancel()
-		s.out.Reply(req.ID, PeersResult{Peers: backend.PeerList(ctx, allow)})
+		s.out.Reply(req.ID, PeersResult{Peers: backend.PeerList(ctx)})
 	case OpLogin:
 		ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
 		defer cancel()
@@ -148,9 +147,6 @@ func (s *Server) handle(req *Request, backend Backend, allow *Allowlist) {
 			s.out.Fail(req.ID, ErrInternal, err.Error())
 			return
 		}
-		s.out.Reply(req.ID, struct{}{})
-	case OpAllowedPeers:
-		allow.Set(req.AllowedPeers)
 		s.out.Reply(req.ID, struct{}{})
 	default:
 		s.out.Fail(req.ID, ErrUnsupported, "不支持的命令")
@@ -198,16 +194,15 @@ func (s *Server) start(req *Request) {
 		s.out.Fail(req.ID, ErrStartFailed, "无法创建状态目录")
 		return
 	}
-	allow := NewAllowlist(opts.AllowedPeers)
 	backend := s.newBackend(&opts)
-	router := &Router{Directory: backend, Allowlist: allow, Tailnet: backend.Dial, Direct: s.direct}
+	router := &Router{Directory: backend, Tailnet: backend.Dial, Direct: s.direct}
 	proxy := &Proxy{Credentials: Credentials{User: opts.ProxyUser, Password: opts.ProxyPassword}, Dial: router.Dial}
 	port, err := proxy.Listen()
 	if err != nil {
 		s.out.Fail(req.ID, ErrStartFailed, "无法监听本机代理端口")
 		return
 	}
-	s.backend, s.proxy, s.allow = backend, proxy, allow
+	s.backend, s.proxy = backend, proxy
 	s.out.Reply(req.ID, StartResult{ProxyPort: port})
 	go func() {
 		if err := backend.Start(s.ctx, s.out.State); err != nil {

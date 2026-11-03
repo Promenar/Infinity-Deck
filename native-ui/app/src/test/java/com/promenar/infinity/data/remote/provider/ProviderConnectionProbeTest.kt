@@ -16,6 +16,17 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class ProviderConnectionProbeTest {
+    @Test fun `HTTP提供商可使用模型目录探测端点`() = runTest {
+        var requested: String? = null
+        val probe = ProviderConnectionProbe(HttpClient(MockEngine { request ->
+            requested = request.url.toString()
+            respond("""{"data":[]}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }))
+        val result = probe.probe(UnifiedProviderConfig(ProtocolType.OpenAI_ChatCompletions, "http://192.168.1.2/v1", "test-key", "model"))
+        assertThat(result).isEqualTo(ProviderConnectionProbeResult.Success)
+        assertThat(requested).isEqualTo("http://192.168.1.2/v1/models")
+    }
+
     @Test
     fun `Anthropic empty models response is a successful no inference probe`() = runTest {
         var capturedMethod: HttpMethod? = null

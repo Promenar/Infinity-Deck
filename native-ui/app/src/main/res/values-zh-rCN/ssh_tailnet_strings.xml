@@ -4,11 +4,9 @@
     <string name="ssh_tailnet_pick_title">从 Tailscale 选择</string>
     <string name="ssh_tailnet_pick_count">其它设备 %1$d 台</string>
     <string name="ssh_tailnet_pick_empty">tailnet 中没有带地址的其它设备。</string>
-    <string name="ssh_tailnet_pick_footer">填入设备的 tailnet IP。离线设备也可添加，连接时需在线；不在设备白名单内的设备需先加入白名单。</string>
+    <string name="ssh_tailnet_pick_footer">填入设备的 tailnet IP；可添加离线设备，设备在线后即可连接。访问范围由 tailnet ACL 决定。</string>
     <string name="ssh_tailnet_added_as">已添加为 %1$s</string>
     <string name="ssh_tailnet_disconnected">内置 Tailscale 未连接，连接后可从 tailnet 选择设备。</string>
-    <string name="ssh_tailnet_blocked">%1$s 不在设备白名单内，需要先加入设备白名单才能连接。</string>
-    <string name="ssh_tailnet_open_allowlist">设置设备白名单</string>
     <string name="ssh_tailnet_add_host">SSH</string>
     <string name="ssh_tailnet_add_host_cd">添加 %1$s 为 SSH 主机</string>
     <string name="ssh_tailnet_add_host_hint">点“SSH”把设备添加为 SSH 主机。</string>

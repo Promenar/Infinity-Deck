@@ -84,7 +84,7 @@ class McpSkillRegistry(
         val server = repository.getMcpServer(serverId)
             ?: return McpSyncResult.Failure("MCP_SERVER_NOT_FOUND")
         if (!isSupported(server.id, server.type, server.url)) {
-            return McpSyncResult.Failure(unsupportedCode(server.url))
+            return McpSyncResult.Failure(unsupportedCode())
         }
         if (!server.enabled) return McpSyncResult.Failure("MCP_SERVER_DISABLED")
         val connectionRevision = connectionSettings?.revision?.value
@@ -156,7 +156,7 @@ class McpSkillRegistry(
 
     private fun publishedSkill(row: McpDiscoveryRow): PublishedSkill {
         if (!isSupported(row.serverId, row.serverType, row.serverUrl)) {
-            throw IllegalArgumentException(unsupportedCode(row.serverUrl))
+            throw IllegalArgumentException(unsupportedCode())
         }
         val schema = McpInputSchemaPolicy.parse(row.inputSchemaJson)
         return PublishedSkill(
@@ -208,12 +208,7 @@ class McpSkillRegistry(
     private fun isSupported(serverId: String, type: String, url: String): Boolean =
         connectionSettings?.isAllowed(serverId, type, url) ?: McpEndpointPolicy.isAllowed(type, url)
 
-    private fun unsupportedCode(url: String): String =
-        if (McpEndpointPolicy.kind(url) == McpEndpointPolicy.Kind.LOOPBACK_HTTP) {
-            "MCP_LOOPBACK_DISABLED_OR_TOKEN_REQUIRED"
-        } else {
-            "MCP_LEGACY_TRANSPORT_UNSUPPORTED"
-        }
+    private fun unsupportedCode(): String = "MCP_LEGACY_TRANSPORT_UNSUPPORTED"
 
     companion object {
         fun runtimeToolId(serverId: String, remoteToolName: String): String =

@@ -44,7 +44,7 @@ func TestIsTailnetAddr(t *testing.T) {
 
 func TestResolveRoutes(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "tail1234.ts.net", peers: samplePeers()}
-	r := &Router{Directory: dir, Allowlist: NewAllowlist(nil)}
+	r := &Router{Directory: dir}
 	cases := []struct {
 		host    string
 		tailnet bool
@@ -82,7 +82,7 @@ func TestCustomControlServerSuffix(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "home.example.org", peers: []Peer{
 		{ShortName: "box", DNSName: "box.home.example.org", IPs: []netip.Addr{netip.MustParseAddr("100.70.0.2")}},
 	}}
-	r := &Router{Directory: dir, Allowlist: NewAllowlist(nil)}
+	r := &Router{Directory: dir}
 	if route := r.Resolve(context.Background(), "box.home.example.org"); !route.Tailnet || route.Addr.String() != "100.70.0.2" {
 		t.Fatalf("Headscale 后缀应经 tailnet：%+v", route)
 	}
@@ -91,30 +91,6 @@ func TestCustomControlServerSuffix(t *testing.T) {
 	}
 	if route := r.Resolve(context.Background(), "www.example.org"); route.Tailnet {
 		t.Fatalf("同一注册域下的公网名称应直连：%+v", route)
-	}
-}
-
-func TestAllowlist(t *testing.T) {
-	peers := samplePeers()
-	nas, laptop := &peers[0], &peers[1]
-	if !NewAllowlist(nil).Allows(nas, netip.Addr{}) {
-		t.Fatal("空白名单应允许全部节点")
-	}
-	for _, entry := range []string{"nas", "NAS.tail1234.ts.net.", "synology", "100.101.102.103", "fd7a:115c:a1e0::1"} {
-		a := NewAllowlist([]string{entry})
-		if !a.Allows(nas, netip.Addr{}) {
-			t.Errorf("白名单 %q 应允许 nas", entry)
-		}
-		if a.Allows(laptop, netip.Addr{}) {
-			t.Errorf("白名单 %q 不应允许 laptop", entry)
-		}
-	}
-	a := NewAllowlist([]string{"nas"})
-	if a.Allows(nil, netip.MustParseAddr("100.99.0.1")) {
-		t.Error("未知地址不在白名单时应拒绝")
-	}
-	if !NewAllowlist([]string{"100.99.0.1"}).Allows(nil, netip.MustParseAddr("100.99.0.1")) {
-		t.Error("白名单中的地址即使不属于已知节点也应允许")
 	}
 }
 
@@ -132,7 +108,7 @@ func (d *recordingDial) dial(ctx context.Context, network, address string) (net.
 func TestDialSplitsTraffic(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "tail1234.ts.net", peers: samplePeers()}
 	tail, direct := &recordingDial{}, &recordingDial{}
-	r := &Router{Directory: dir, Allowlist: NewAllowlist([]string{"nas"}), Tailnet: tail.dial, Direct: direct.dial}
+	r := &Router{Directory: dir, Tailnet: tail.dial, Direct: direct.dial}
 
 	if _, err := r.Dial(context.Background(), "tcp", "nas:5666"); err != nil {
 		t.Fatal(err)
@@ -146,8 +122,8 @@ func TestDialSplitsTraffic(t *testing.T) {
 	if direct.addr != "example.com:443" {
 		t.Fatalf("公网域名应原样直连，交给系统 DNS 解析，得到 %q", direct.addr)
 	}
-	if _, err := r.Dial(context.Background(), "tcp", "laptop:22"); !errors.Is(err, errPeerNotAllowed) {
-		t.Fatalf("白名单外节点应拒绝，得到 %v", err)
+	if _, err := r.Dial(context.Background(), "tcp", "laptop:22"); err != nil {
+		t.Fatalf("tailnet 节点应经内置代理连接：%v", err)
 	}
 	if _, err := r.Dial(context.Background(), "udp", "nas:53"); !errors.Is(err, errUnsupportedNet) {
 		t.Fatalf("UDP 应拒绝，得到 %v", err)
@@ -167,7 +143,7 @@ func TestDialSplitsTraffic(t *testing.T) {
 
 func TestShortNameMissRefreshesPeersOnce(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "tail1234.ts.net", peers: samplePeers()}
-	r := &Router{Directory: dir, Allowlist: NewAllowlist(nil)}
+	r := &Router{Directory: dir}
 	r.Resolve(context.Background(), "printer")
 	if dir.reads != 2 {
 		t.Fatalf("短名未命中时应刷新一次节点列表，读取 %d 次", dir.reads)

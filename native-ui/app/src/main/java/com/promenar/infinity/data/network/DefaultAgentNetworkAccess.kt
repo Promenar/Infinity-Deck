@@ -12,22 +12,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 class DefaultAgentNetworkAccess(
-    private val settings: AgentNetworkSettings,
     private val tailnet: TailnetController,
     scope: CoroutineScope,
 ) : AgentNetworkAccess {
-    override val snapshot: StateFlow<AgentNetworkSnapshot> = combine(settings.hosts, tailnet.state, tailnet.settings) { hosts, state, options ->
-        snapshot(hosts, state, options)
-    }.stateIn(scope, SharingStarted.Eagerly, snapshot(settings.lanHosts, tailnet.state.value, tailnet.settings.value))
+    override val snapshot: StateFlow<AgentNetworkSnapshot> = combine(tailnet.state, tailnet.settings) { state, options ->
+        snapshot(state, options)
+    }.stateIn(scope, SharingStarted.Eagerly, snapshot(tailnet.state.value, tailnet.settings.value))
 
-    override fun setLanHosts(text: String) { settings.lanHostsText = text }
-
-    private fun snapshot(hosts: Set<String>, state: TailnetState, options: TailnetSettings) = AgentNetworkSnapshot(
-        lanHosts = hosts.sorted(),
+    private fun snapshot(state: TailnetState, options: TailnetSettings) = AgentNetworkSnapshot(
         tailnetAvailable = tailnet.available,
         tailnetEnabled = options.enabled,
         tailnetRunning = state.phase == TailnetPhase.RUNNING,
-        tailnetPeerAllowlist = options.allowedPeers.toList(),
         rows = AgentNetworkPolicy.rows,
     )
 }

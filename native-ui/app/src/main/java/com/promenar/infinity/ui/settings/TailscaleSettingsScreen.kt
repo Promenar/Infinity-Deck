@@ -19,7 +19,6 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LaptopMac
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,7 +78,6 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.tailnet.TailnetFailure
 import com.promenar.infinity.data.tailnet.TailnetPeer
 import com.promenar.infinity.data.tailnet.TailnetPhase
-import com.promenar.infinity.data.tailnet.TailnetSettingsProblem
 import com.promenar.infinity.data.tailnet.TailnetState
 import com.promenar.infinity.data.tailnet.TailnetStatusSummary
 import com.promenar.infinity.ui.common.InfinitySettingsItem
@@ -104,8 +102,6 @@ internal data class TailscaleSettingsActions(
     val onSaveControlUrl: (String) -> Unit = {},
     val onControlUrlEdited: () -> Unit = {},
     val onEphemeralChange: (Boolean) -> Unit = {},
-    val onSaveAllowedPeers: (String) -> Unit = {},
-    val onAllowedPeersEdited: () -> Unit = {},
     val onAuthKeyEdited: () -> Unit = {},
 )
 
@@ -164,8 +160,6 @@ fun TailscaleSettingsScreen(
                     onSaveControlUrl = viewModel::saveControlUrl,
                     onControlUrlEdited = viewModel::clearControlUrlError,
                     onEphemeralChange = viewModel::setEphemeral,
-                    onSaveAllowedPeers = viewModel::saveAllowedPeers,
-                    onAllowedPeersEdited = viewModel::clearPeersError,
                     onAuthKeyEdited = viewModel::clearAuthKeyError,
                 ),
                 contentPadding = contentPadding,
@@ -186,7 +180,6 @@ private fun tailscaleNoticeText(notice: TailscaleNotice): Int = when (notice) {
     TailscaleNotice.AUTH_KEY_SAVED -> R.string.tailscale_notice_auth_key_saved
     TailscaleNotice.AUTH_KEY_CLEARED -> R.string.tailscale_notice_auth_key_cleared
     TailscaleNotice.CONTROL_URL_SAVED -> R.string.tailscale_notice_control_saved
-    TailscaleNotice.PEERS_SAVED -> R.string.tailscale_notice_peers_saved
     TailscaleNotice.LOGIN_UNAVAILABLE -> R.string.tailscale_notice_login_unavailable
     TailscaleNotice.LOGGED_OUT -> R.string.tailscale_notice_logged_out
     TailscaleNotice.LOGOUT_FAILED -> R.string.tailscale_notice_logout_failed
@@ -209,7 +202,7 @@ internal fun tailscalePhaseText(state: TailnetState): Int = when (state.phase) {
 }
 
 /** 设置页里可打开的编辑面板。 */
-internal enum class TailscaleEditor { AUTH_KEY, CONTROL_URL, ALLOWLIST }
+internal enum class TailscaleEditor { AUTH_KEY, CONTROL_URL }
 
 /** 无应用依赖的设置页内容，供截图测试与真实页面共用。 */
 @Composable
@@ -233,7 +226,6 @@ internal fun TailscaleSettingsContent(
         val closes = when (state.notice) {
             TailscaleNotice.AUTH_KEY_SAVED, TailscaleNotice.AUTH_KEY_CLEARED -> TailscaleEditor.AUTH_KEY
             TailscaleNotice.CONTROL_URL_SAVED -> TailscaleEditor.CONTROL_URL
-            TailscaleNotice.PEERS_SAVED -> TailscaleEditor.ALLOWLIST
             else -> null
         }
         if (closes != null && editor == closes) editor = null
@@ -303,25 +295,7 @@ internal fun TailscaleSettingsContent(
                 )
             }
         }
-        item {
-            InfinitySettingsSection(
-                title = stringResource(R.string.tailscale_section_allowlist),
-                footer = stringResource(R.string.tailscale_allowlist_desc),
-            ) {
-                InfinityValueRow(
-                    title = stringResource(R.string.tailscale_allowlist_label),
-                    value = if (settings.allowedPeers.isEmpty()) {
-                        stringResource(R.string.tailscale_allowlist_all)
-                    } else {
-                        pluralStringResource(R.plurals.tailscale_allowlist_count, settings.allowedPeers.size, settings.allowedPeers.size)
-                    },
-                    onClick = { editor = TailscaleEditor.ALLOWLIST },
-                    icon = Icons.Rounded.VerifiedUser,
-                    enabled = state.available,
-                    modifier = Modifier.testTag("tailscale_allowlist"),
-                )
-            }
-        }
+
     }
     val dismiss = { editor = null }
     when (editor) {
@@ -330,9 +304,6 @@ internal fun TailscaleSettingsContent(
         }
         TailscaleEditor.CONTROL_URL -> TailscaleEditorSheet(stringResource(R.string.tailscale_control_url), dismiss) {
             TailscaleControlUrlEditor(state, actions, onCancel = dismiss)
-        }
-        TailscaleEditor.ALLOWLIST -> TailscaleEditorSheet(stringResource(R.string.tailscale_allowlist_label), dismiss) {
-            TailscaleAllowlistEditor(state, actions, onCancel = dismiss)
         }
         null -> Unit
     }
@@ -419,17 +390,15 @@ private fun TailscalePeersSection(peers: List<TailnetPeer>, sshHosts: List<SshHo
 @Composable
 private fun TailscalePeerRow(peer: TailnetPeer, candidate: SshTailnetCandidate? = null, onAddSshHost: ((TailnetPeer) -> Unit)? = null) {
     val onlineText = stringResource(if (peer.online) R.string.tailscale_peer_online else R.string.tailscale_peer_offline)
-    // 在线状态由图标角标表达，离线与不在白名单另在副标题写明；读屏通过 stateDescription 读出在线状态。
+    // 在线状态由图标角标表达，离线时在副标题写明；读屏通过 stateDescription 读出在线状态。
     val subtitle = listOfNotNull(
         (peer.ips.firstOrNull() ?: peer.dnsName)?.takeIf { it.isNotBlank() },
         tailscaleOsLabel(peer.os),
         if (!peer.online) onlineText else null,
-        if (!peer.allowed) stringResource(R.string.tailscale_peer_blocked) else null,
     ).joinToString(" · ").ifEmpty { null }  // wrap-check: allow 单行省略
     InfinitySettingsRowLayout(
         title = peer.name,
         subtitle = subtitle,
-        enabled = peer.allowed,
         titleColor = if (peer.online) null else MaterialTheme.colorScheme.onSurfaceVariant,
         leadingContent = { TailscalePeerIcon(peer) },
         modifier = Modifier.semantics(mergeDescendants = candidate == null) { stateDescription = onlineText },
@@ -629,48 +598,6 @@ internal fun TailscaleControlUrlEditor(
         onCancel = onCancel,
         onSave = { actions.onSaveControlUrl(draft) },
         saveTag = "tailscale_control_url_save",
-    )
-}
-
-@Composable
-internal fun TailscaleAllowlistEditor(
-    state: TailscaleSettingsUiState,
-    actions: TailscaleSettingsActions,
-    onCancel: () -> Unit = {},
-) {
-    val stored = state.settings.allowedPeers.joinToString("\n")
-    var draft by remember(stored) { mutableStateOf(stored) }
-    OutlinedTextField(
-        value = draft,
-        onValueChange = {
-            draft = it
-            actions.onAllowedPeersEdited()
-        },
-        modifier = Modifier.fillMaxWidth().testTag("tailscale_allowlist_field"),
-        placeholder = { Text("nas\nlaptop") },
-        supportingText = {
-            Text(
-                stringResource(
-                    when (state.peersProblem) {
-                        TailnetSettingsProblem.TOO_MANY_PEERS -> R.string.tailscale_allowlist_too_many
-                        null -> R.string.tailscale_allowlist_format
-                        else -> R.string.tailscale_allowlist_invalid
-                    },
-                ),
-            )
-        },
-        isError = state.peersProblem != null,
-        textStyle = MaterialTheme.typography.bodyMedium.forInput(),
-        shape = MaterialTheme.shapes.small,
-        minLines = 3,
-        maxLines = 8,
-        enabled = state.available,
-    )
-    TailscaleEditorButtons(
-        saveEnabled = draft != stored && state.available && !state.busy,
-        onCancel = onCancel,
-        onSave = { actions.onSaveAllowedPeers(draft) },
-        saveTag = "tailscale_allowlist_save",
     )
 }
 

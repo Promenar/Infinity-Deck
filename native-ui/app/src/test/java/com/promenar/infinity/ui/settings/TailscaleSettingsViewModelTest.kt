@@ -53,11 +53,7 @@ class TailscaleSettingsViewModelTest {
             settings.value = settings.value.copy(controlUrl = value)
             return true
         }
-        override suspend fun setAllowedPeers(raw: String): TailnetSettingsProblem? {
-            TailnetSettingsPolicy.problemForPeers(raw)?.let { return it }
-            settings.value = settings.value.copy(allowedPeers = TailnetSettingsPolicy.parseAllowedPeers(TailnetSettingsPolicy.splitPeers(raw))!!)
-            return null
-        }
+
         override suspend fun setAuthKey(raw: CharArray): Boolean {
             val value = String(raw)
             raw.fill('\u0000')
@@ -106,7 +102,7 @@ class TailscaleSettingsViewModelTest {
     }
 
     @Test
-    fun `控制服务器与白名单校验失败时标记错误`() = runTest(dispatcher) {
+    fun `控制服务器校验失败时标记错误`() = runTest(dispatcher) {
         viewModel.saveControlUrl("https://user:pass@hs.example.org")
         assertThat(viewModel.uiState.value.controlUrlInvalid).isTrue()
         viewModel.clearControlUrlError()
@@ -115,13 +111,7 @@ class TailscaleSettingsViewModelTest {
         assertThat(viewModel.uiState.value.settings.controlUrl).isEqualTo("https://hs.example.org")
         assertThat(viewModel.uiState.value.notice).isEqualTo(TailscaleNotice.CONTROL_URL_SAVED)
 
-        viewModel.saveAllowedPeers("nas, 192.168.1.1")
-        assertThat(viewModel.uiState.value.peersProblem).isEqualTo(TailnetSettingsProblem.PEER_INVALID)
-        viewModel.saveAllowedPeers((1..65).joinToString("\n") { "node$it" })
-        assertThat(viewModel.uiState.value.peersProblem).isEqualTo(TailnetSettingsProblem.TOO_MANY_PEERS)
-        viewModel.saveAllowedPeers("NAS\nlaptop.tail1.ts.net, 100.64.0.3")
-        assertThat(viewModel.uiState.value.peersProblem).isNull()
-        assertThat(viewModel.uiState.value.settings.allowedPeers).containsExactly("nas", "laptop.tail1.ts.net", "100.64.0.3").inOrder()
+
     }
 
     @Test

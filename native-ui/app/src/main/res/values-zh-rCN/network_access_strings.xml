@@ -2,45 +2,27 @@
 <!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
 <resources>
     <string name="network_access_title">网络访问</string>
-    <string name="network_access_entry_empty">局域网白名单未设置</string>
-    <plurals name="network_access_entry_count">
-        <item quantity="other">局域网白名单 %1$d 个主机</item>
-    </plurals>
 
     <string name="network_section_controls">可调整的范围</string>
-    <string name="network_section_controls_footer">白名单作用于网页读取、媒体下载与脚本联网；tailnet 设备另受 Tailscale 设备白名单约束。明文 http 只能访问 127.0.0.1。</string>
-    <string name="network_section_matrix">各工具的访问范围</string>
+    <string name="network_section_controls_footer">公网、局域网与本机直连；tailnet 经已连接的内置 Tailscale，访问范围由 tailnet ACL 决定。支持 HTTP 与 HTTPS。</string>
+    <string name="network_section_matrix">各工具联网路径</string>
     <string name="network_section_matrix_footer">内置命令与 Termux 的网络由系统决定；SSH 只连已登记的主机。</string>
 
-    <string name="network_lan_hosts_title">局域网与本机白名单</string>
-    <string name="network_lan_hosts_desc">每行一个主机名或 IP，不含协议、端口和路径。局域网服务需 https，明文 http 仅限 127.0.0.1。</string>
-    <string name="network_lan_hosts_save">保存白名单</string>
-    <string name="network_lan_hosts_invalid">最多填写 64 个精确主机名或 IP，不含协议、端口、路径或通配符。</string>
-    <string name="network_lan_hosts_empty">未设置，局域网与本机均不可达</string>
-    <plurals name="network_lan_hosts_count">
-        <item quantity="other">%1$d 个主机</item>
-    </plurals>
 
     <string name="network_tailnet_title">tailnet</string>
     <string name="network_tailnet_missing">安装包未包含内置 Tailscale</string>
     <string name="network_tailnet_disabled">内置 Tailscale 未启用</string>
     <string name="network_tailnet_offline">内置 Tailscale 未连接</string>
     <string name="network_tailnet_running">内置 Tailscale 已连接</string>
-    <string name="network_tailnet_peers_all">允许全部设备</string>
-    <plurals name="network_tailnet_peers_count">
-        <item quantity="other">设备白名单 %1$d 台</item>
-    </plurals>
 
     <string name="network_target_public">公网</string>
     <string name="network_target_lan">局域网</string>
     <string name="network_target_loopback">本机</string>
     <string name="network_target_tailnet">tailnet</string>
 
-    <string name="network_cell_allowed">允许</string>
-    <string name="network_cell_unrestricted">不限</string>
-    <string name="network_cell_allowlist">白名单 %1$d</string>
-    <string name="network_cell_allowlist_empty">白名单为空</string>
-    <string name="network_cell_configured">仅已配置</string>
+    <string name="network_cell_allowed">直连</string>
+    <string name="network_cell_unrestricted">系统网络</string>
+    <string name="network_cell_configured">已配置的服务器</string>
     <string name="network_cell_tailnet_ready">经 Tailscale</string>
     <string name="network_cell_tailnet_offline">未连接</string>
     <string name="network_cell_tailnet_disabled">未启用</string>
@@ -50,11 +32,11 @@
     <string name="network_tool_web_fetch">网页读取 web_fetch</string>
     <string name="network_tool_web_fetch_hint">读取网页正文</string>
     <string name="network_tool_media_fetch">媒体下载 media_fetch</string>
-    <string name="network_tool_media_fetch_hint">下载图片、音视频到工作区；tailnet 只支持 https</string>
+    <string name="network_tool_media_fetch_hint">经 HTTP 或 HTTPS 保存图片、音频和视频到工作区</string>
     <string name="network_tool_script">脚本联网 exec_js · python_sandbox</string>
     <string name="network_tool_script_hint">每次调用还需声明 allow_network</string>
     <string name="network_tool_mcp">MCP 服务器</string>
-    <string name="network_tool_mcp_hint">只连接已添加的 HTTPS 地址，或开启后的本机 127.0.0.1</string>
+    <string name="network_tool_mcp_hint">仅连接已添加的 HTTP 或 HTTPS 服务器</string>
     <string name="network_tool_builtin">内置命令 shell_exec · python_exec · git</string>
     <string name="network_tool_builtin_hint">由系统网络决定；tailnet 经内置 Tailscale 代理</string>
     <string name="network_tool_termux">Termux</string>
@@ -63,4 +45,5 @@
     <string name="network_tool_ssh_hint">只连设置中登记的主机；tailnet 主机经内置 Tailscale</string>
     <string name="network_tool_linux">Linux 命令 shell_exec</string>
     <string name="network_tool_linux_hint">在 Alpine 中运行，由系统网络决定；tailnet 经内置 Tailscale 代理</string>
+    <string name="network_access_entry_routes">直连与内置 Tailscale 路径</string>
 </resources>

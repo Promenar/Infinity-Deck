@@ -201,7 +201,7 @@ private fun BuiltInTailscaleRow(
     }
 }
 
-/** 接口地址下方的提示；[ProviderApiSourceHint.TAILNET_NEEDS_HTTPS] 作为输入框错误显示，不在这里。 */
+/** 接口地址下方的访问路径提示。 */
 @Composable
 internal fun ProviderAddressHint(
     hint: ProviderApiSourceHint?,
@@ -260,13 +260,13 @@ internal fun ProviderAddressHint(
                 )
             }
         }
-        ProviderApiSourceHint.TAILNET_NEEDS_HTTPS, null -> Unit
+        null -> Unit
     }
 }
 
-/** 可填入的 tailnet 设备：在白名单内且有 MagicDNS 全名（否则签不出 HTTPS 证书），在线的排在前面。 */
+/** 可填入的 tailnet 设备：有 MagicDNS 全名（否则签不出 HTTPS 证书），在线的排在前面。 */
 internal fun selectableTailnetPeers(peers: List<TailnetPeer>): List<TailnetPeer> =
-    peers.filter { it.allowed && TailnetEndpoints.peerHost(it) != null }.sortedForDisplay()
+    peers.filter { TailnetEndpoints.peerHost(it) != null }.sortedForDisplay()
 
 /**
  * “tailnet 设备”选择行：显示接口地址当前对应的设备；点按打开底部面板选择设备，

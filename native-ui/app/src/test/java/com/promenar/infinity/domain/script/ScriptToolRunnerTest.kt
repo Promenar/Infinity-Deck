@@ -90,6 +90,6 @@ class ScriptToolRunnerTest {
 
     private fun runner(mounts: ExternalWorkspaceAccess, directory: java.io.File, runtime: ScriptRuntime) = AndroidScriptToolRunner(
         runtime, mockk<IWorkspaceRepository>(), mounts, mockk<IFileOperationRepository>(), FileIndexEventSink.None,
-        ScriptFileApprovalBroker(), ScriptSettings(mockk<SharedPreferences>(relaxed = true)),
+        ScriptFileApprovalBroker(),
     )
 }

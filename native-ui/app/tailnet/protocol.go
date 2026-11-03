@@ -17,33 +17,30 @@ const maxLineBytes = 64 * 1024
 
 // Request 是父进程发来的一条命令。
 type Request struct {
-	ID           int64         `json:"id"`
-	Op           string        `json:"op"`
-	Start        *StartOptions `json:"start,omitempty"`
-	AllowedPeers []string      `json:"allowedPeers,omitempty"`
+	ID    int64         `json:"id"`
+	Op    string        `json:"op"`
+	Start *StartOptions `json:"start,omitempty"`
 }
 
 // StartOptions 是 start 命令的参数；只能发送一次。
 type StartOptions struct {
-	StateDir      string   `json:"stateDir"`
-	Hostname      string   `json:"hostname"`
-	ControlURL    string   `json:"controlUrl,omitempty"`
-	AuthKey       string   `json:"authKey,omitempty"`
-	Ephemeral     bool     `json:"ephemeral,omitempty"`
-	ProxyUser     string   `json:"proxyUser"`
-	ProxyPassword string   `json:"proxyPassword"`
-	AllowedPeers  []string `json:"allowedPeers,omitempty"`
+	StateDir      string `json:"stateDir"`
+	Hostname      string `json:"hostname"`
+	ControlURL    string `json:"controlUrl,omitempty"`
+	AuthKey       string `json:"authKey,omitempty"`
+	Ephemeral     bool   `json:"ephemeral,omitempty"`
+	ProxyUser     string `json:"proxyUser"`
+	ProxyPassword string `json:"proxyPassword"`
 }
 
 // 命令名。
 const (
-	OpStart        = "start"
-	OpStatus       = "status"
-	OpPeers        = "peers"
-	OpLogin        = "login"
-	OpLogout       = "logout"
-	OpAllowedPeers = "allowedPeers"
-	OpShutdown     = "shutdown"
+	OpStart    = "start"
+	OpStatus   = "status"
+	OpPeers    = "peers"
+	OpLogin    = "login"
+	OpLogout   = "logout"
+	OpShutdown = "shutdown"
 )
 
 // 错误码；父进程按错误码而不是消息文本处理。
@@ -98,7 +95,6 @@ type PeerInfo struct {
 	IPs     []string `json:"ips"`
 	OS      string   `json:"os,omitempty"`
 	Online  bool     `json:"online"`
-	Allowed bool     `json:"allowed"`
 }
 
 // PeersResult 是 peers 的应答。

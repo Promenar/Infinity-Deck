@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net"
-	"net/netip"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -29,11 +28,11 @@ func (f *fakeBackend) Summary(ctx context.Context) (StatusSummary, error) {
 	return StatusSummary{BackendState: "Running", SelfName: "phone", SelfIPs: []string{"100.64.0.1"}, Online: true}, nil
 }
 
-func (f *fakeBackend) PeerList(ctx context.Context, allow *Allowlist) []PeerInfo {
+func (f *fakeBackend) PeerList(ctx context.Context) []PeerInfo {
 	var out []PeerInfo
 	for _, p := range f.peers {
 		p := p
-		out = append(out, PeerInfo{Name: p.ShortName, IPs: []string{p.IPs[0].String()}, Online: p.Online, Allowed: allow.Allows(&p, netip.Addr{})})
+		out = append(out, PeerInfo{Name: p.ShortName, IPs: []string{p.IPs[0].String()}, Online: p.Online})
 	}
 	return out
 }
@@ -115,7 +114,7 @@ func (h *harness) event() map[string]any {
 	}
 }
 
-const validStart = `{"id":1,"op":"start","start":{"stateDir":"%s","hostname":"infinity-test","authKey":"tskey-auth-SECRETVALUE","proxyUser":"` + testUser + `","proxyPassword":"` + testPassword + `","allowedPeers":["nas"]}}`
+const validStart = `{"id":1,"op":"start","start":{"stateDir":"%s","hostname":"infinity-test","authKey":"tskey-auth-SECRETVALUE","proxyUser":"` + testUser + `","proxyPassword":"` + testPassword + `"}}`
 
 func TestProtocolLifecycle(t *testing.T) {
 	h := newHarness(t)
@@ -155,21 +154,8 @@ func TestProtocolLifecycle(t *testing.T) {
 	}
 	h.send(`{"id":4,"op":"peers"}`)
 	peers := h.response(4)["result"].(map[string]any)["peers"].([]any)
-	allowed := map[string]bool{}
-	for _, p := range peers {
-		m := p.(map[string]any)
-		allowed[m["name"].(string)] = m["allowed"].(bool)
-	}
-	if !allowed["nas"] || allowed["laptop"] {
-		t.Fatalf("白名单标记错误：%v", allowed)
-	}
-	h.send(`{"id":5,"op":"allowedPeers","allowedPeers":[]}`)
-	h.response(5)
-	h.send(`{"id":6,"op":"peers"}`)
-	for _, p := range h.response(6)["result"].(map[string]any)["peers"].([]any) {
-		if !p.(map[string]any)["allowed"].(bool) {
-			t.Fatalf("清空白名单后应允许全部节点：%v", p)
-		}
+	if len(peers) != 2 {
+		t.Fatalf("应列出全部 tailnet 节点：%v", peers)
 	}
 	h.send(`{"id":7,"op":"login"}`)
 	h.response(7)

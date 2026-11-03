@@ -194,12 +194,12 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `new mcp server accepts HTTPS modern transport only`() = runTest {
+    fun `MCP服务器接受HTTP传输并拒绝stdio与无效URL`() = runTest {
         coEvery { skillRepo.insertMcpServer(any()) } returns Unit
         val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
         advanceUntilIdle()
 
-        vm.addMcpServer("legacy-http", "http://legacy.example.test", "http")
+        vm.addMcpServer("invalid", "ftp://invalid.example.test", "http")
         vm.addMcpServer("legacy-stdio", "/usr/bin/server", "stdio")
         advanceUntilIdle()
         coVerify(exactly = 0) { skillRepo.insertMcpServer(any()) }
@@ -211,21 +211,19 @@ class SettingsViewModelTest {
         }
     }
 
-    @Test
-    fun `本机MCP添加入口要求显式开启与Bearer令牌`() = runTest {
+    @Test fun `MCP添加入口接受HTTP且Bearer可选`() = runTest {
         val settings = McpConnectionSettings(prefs, MemorySecretStore())
         every { mockApp.mcpConnectionSettings } returns settings
         coEvery { skillRepo.insertMcpServer(any()) } returns Unit
         val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
-
-        vm.addMcpServer("本机", "http://127.0.0.1:8765/mcp", "http", "test-only-bearer")
-        assertThat(vm.mcpConfigError.value).isEqualTo(McpConfigError.INVALID_ENDPOINT)
-        vm.setAllowLoopbackMcp(true)
-        vm.addMcpServer("本机", "http://127.0.0.1:8765/mcp", "http")
+        for (host in listOf("127.0.0.1", "localhost", "192.168.1.2", "remote.example.test")) {
+            val completed = CompletableDeferred<Boolean>()
+            vm.addMcpServer("服务", "http://$host:8765/mcp", "http") { completed.complete(it) }
+            assertThat(completed.await()).isTrue()
+        }
+        vm.addMcpServer("无效令牌", "http://localhost:8765/mcp", "http", "invalid token")
         assertThat(vm.mcpConfigError.value).isEqualTo(McpConfigError.BEARER_REQUIRED)
-        vm.addMcpServer("非环回", "http://localhost:8765/mcp", "http", "test-only-bearer")
-        assertThat(vm.mcpConfigError.value).isEqualTo(McpConfigError.INVALID_ENDPOINT)
-        coVerify(exactly = 0) { skillRepo.insertMcpServer(any()) }
+        coVerify(exactly = 4) { skillRepo.insertMcpServer(any()) }
     }
 
     @Test
@@ -238,7 +236,6 @@ class SettingsViewModelTest {
             Unit
         }
         val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
-        vm.setAllowLoopbackMcp(true)
         val completed = CompletableDeferred<Boolean>()
         vm.addMcpServer("本机", "http://127.0.0.1:8765/mcp", "http", "test-only-bearer") {
             completed.complete(it)
@@ -257,7 +254,6 @@ class SettingsViewModelTest {
         val attemptedServer = io.mockk.slot<McpServerEntity>()
         coEvery { skillRepo.insertMcpServer(capture(attemptedServer)) } throws IllegalStateException("database unavailable")
         val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
-        vm.setAllowLoopbackMcp(true)
         val completed = CompletableDeferred<Boolean>()
         vm.addMcpServer("本机", "http://127.0.0.1:8765/mcp", "http", "test-only-bearer") {
             completed.complete(it)

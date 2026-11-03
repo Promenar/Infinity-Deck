@@ -9,11 +9,8 @@ import java.net.InetAddress
 data class ScriptEndpoint(val url: String, val host: String, val addresses: List<InetAddress>, val target: NetworkTargetClass = NetworkTargetClass.PUBLIC)
 
 object ScriptNetworkPolicy {
-    fun parseAllowlist(text: String): Set<String> = try { AgentNetworkPolicy.parseAllowlist(text) }
-    catch (failure: IllegalArgumentException) { denied(failure.message.orEmpty()) }
-
-    suspend fun validate(url: String, allowedLanHosts: Set<String>, resolver: suspend (String) -> Array<InetAddress>): ScriptEndpoint =
-        validate(url, AgentNetworkPolicy(allowedLanHosts = { allowedLanHosts }, resolver = resolver))
+    suspend fun validate(url: String, resolver: suspend (String) -> Array<InetAddress>): ScriptEndpoint =
+        validate(url, AgentNetworkPolicy(resolver = resolver))
 
     suspend fun validate(url: String, policy: AgentNetworkPolicy): ScriptEndpoint = try {
         val endpoint = policy.validate(url, AgentNetworkTool.SCRIPT)

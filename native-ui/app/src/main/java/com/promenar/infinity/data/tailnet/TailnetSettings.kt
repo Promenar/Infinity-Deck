@@ -14,20 +14,16 @@ data class TailnetSettings(
     /** 空表示 Tailscale 官方控制服务器。 */
     val controlUrl: String = "",
     val ephemeral: Boolean = false,
-    /** 设备白名单；为空表示允许全部 tailnet 节点。 */
-    val allowedPeers: List<String> = emptyList(),
     val hasAuthKey: Boolean = false,
     /** auth key 每次写入或删除递增（只在内存中），用于判断是否需要重启节点。 */
     val authKeyRevision: Int = 0,
 )
 
 /** 设置校验结果码；界面按码显示文案。 */
-enum class TailnetSettingsProblem { CONTROL_URL_INVALID, AUTH_KEY_INVALID, PEER_INVALID, TOO_MANY_PEERS }
+enum class TailnetSettingsProblem { CONTROL_URL_INVALID, AUTH_KEY_INVALID }
 
 object TailnetSettingsPolicy {
     const val MAX_AUTH_KEY_LENGTH = 512
-    const val MAX_ALLOWED_PEERS = 64
-    private val PEER_NAME = Regex("^[a-z0-9]([a-z0-9-]{0,62})(\\.[a-z0-9]([a-z0-9-]{0,62}))*$")
 
     /** 空串合法（官方控制服务器）；否则必须是不含凭据、查询与片段的 http(s) URL。 */
     fun normalizeControlUrl(raw: String): String? {
@@ -45,35 +41,6 @@ object TailnetSettingsPolicy {
         val value = raw.trim()
         return value.isNotEmpty() && value.length <= MAX_AUTH_KEY_LENGTH && value.none { it.isWhitespace() || it.isISOControl() }
     }
-
-    /** 把白名单输入（逗号、空白或换行分隔）拆成条目。 */
-    fun splitPeers(raw: String): List<String> = raw.split(',', '\n', ' ', '\t', '\r').filter { it.isNotBlank() }
-
-    /** 条目为节点短名、MagicDNS 全名或 tailnet IP；规范化并去重。非法或超过上限时返回 null。 */
-    fun parseAllowedPeers(entries: List<String>): List<String>? {
-        val result = linkedSetOf<String>()
-        for (entry in entries) {
-            val value = TailnetHosts.normalize(entry)
-            if (value.isEmpty()) continue
-            val literal = TailnetHosts.parseAddressLiteral(value)
-            if (literal != null) {
-                if (!TailnetHosts.isTailnetAddress(literal)) return null
-            } else if (value.length > 253 || !PEER_NAME.matches(value)) {
-                return null
-            }
-            result += value
-        }
-        return result.toList().takeIf { it.size <= MAX_ALLOWED_PEERS }
-    }
-
-    fun problemForPeers(raw: String): TailnetSettingsProblem? {
-        val entries = splitPeers(raw)
-        return when {
-            entries.size > MAX_ALLOWED_PEERS -> TailnetSettingsProblem.TOO_MANY_PEERS
-            parseAllowedPeers(entries) == null -> TailnetSettingsProblem.PEER_INVALID
-            else -> null
-        }
-    }
 }
 
 /**
@@ -85,6 +52,8 @@ class TailnetSettingsStore(
     private val preferences: SharedPreferences,
     private val secrets: SecretStore,
 ) {
+    init { preferences.edit().remove("tailnet_allowed_peers").apply() }
+
     private val mutable = MutableStateFlow(read(revision = 0))
     val settings: StateFlow<TailnetSettings> = mutable.asStateFlow()
 
@@ -107,14 +76,6 @@ class TailnetSettingsStore(
     fun setControlUrl(raw: String): Boolean {
         val value = TailnetSettingsPolicy.normalizeControlUrl(raw) ?: return false
         preferences.edit().putString(KEY_CONTROL_URL, value).apply()
-        refresh()
-        return true
-    }
-
-    @Synchronized
-    fun setAllowedPeers(entries: List<String>): Boolean {
-        val parsed = TailnetSettingsPolicy.parseAllowedPeers(entries) ?: return false
-        preferences.edit().putString(KEY_ALLOWED_PEERS, parsed.joinToString("\n")).apply()
         refresh()
         return true
     }
@@ -159,7 +120,6 @@ class TailnetSettingsStore(
         enabled = preferences.getBoolean(KEY_ENABLED, false),
         controlUrl = preferences.getString(KEY_CONTROL_URL, null).orEmpty(),
         ephemeral = preferences.getBoolean(KEY_EPHEMERAL, false),
-        allowedPeers = preferences.getString(KEY_ALLOWED_PEERS, null).orEmpty().split('\n').filter { it.isNotBlank() },
         hasAuthKey = secrets.contains(AUTH_KEY_ID),
         authKeyRevision = revision,
     )
@@ -170,7 +130,6 @@ class TailnetSettingsStore(
         const val KEY_ENABLED = "tailnet_enabled"
         const val KEY_CONTROL_URL = "tailnet_control_url"
         const val KEY_EPHEMERAL = "tailnet_ephemeral"
-        const val KEY_ALLOWED_PEERS = "tailnet_allowed_peers"
         val AUTH_KEY_ID = SecretId("tailnet_auth_key_v1")
     }
 }

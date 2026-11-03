@@ -27,7 +27,7 @@
     <string name="agent_reach_section_backends">运行代码</string>
     <string name="agent_reach_backends_footer">命令删除的文件不进回收站。</string>
     <string name="agent_reach_runner_linux">Linux 命令</string>
-    <string name="agent_reach_runner_linux_scope">在 Alpine 中运行，能访问上面所有路径；局域网不受白名单限制</string>
+    <string name="agent_reach_runner_linux_scope">在 Alpine 中运行，可访问上方列出的路径</string>
     <string name="agent_reach_runner_builtin">内置命令</string>
     <string name="agent_reach_backend_builtin_scope">以本应用权限运行，能读写全部应用数据，不受工作区限制</string>
     <string name="agent_reach_runner_sandbox">隔离脚本</string>
@@ -54,23 +54,13 @@
     <string name="agent_reach_approval_footer">定时任务、技能目录变更和 SSH 主机配置始终逐次批准。</string>
 
     <string name="agent_reach_section_network">能连到哪里</string>
-    <string name="agent_reach_network_public">所有工具都能访问</string>
+    <string name="agent_reach_network_public">直连访问</string>
     <string name="agent_reach_network_lan">局域网与本机</string>
-    <plurals name="agent_reach_lan_allowlist">
-        <item quantity="other">网页读取、媒体下载：只限白名单 %1$d 项</item>
-    </plurals>
-    <plurals name="agent_reach_lan_allowlist_scripts">
-        <item quantity="other">网页读取、媒体下载、隔离脚本：只限白名单 %1$d 项</item>
-    </plurals>
-    <string name="agent_reach_lan_allowlist_empty">网页读取、媒体下载：白名单为空，不可访问</string>
-    <string name="agent_reach_lan_allowlist_empty_scripts">网页读取、媒体下载、隔离脚本：白名单为空，不可访问</string>
-    <string name="agent_reach_lan_linux_commands">Linux 命令：不受白名单限制</string>
-    <string name="agent_reach_lan_builtin_commands">内置命令：不受白名单限制</string>
-    <string name="agent_reach_network_change">修改</string>
     <string name="agent_reach_network_configured">MCP 与 SSH</string>
     <string name="agent_reach_network_configured_desc">只连你添加过的地址和主机</string>
     <string name="agent_reach_network_details">各工具明细</string>
 
     <string name="agent_reach_mount_command_visible">命令可访问</string>
     <string name="agent_reach_mount_files_only">仅文件工具</string>
+    <string name="agent_reach_network_direct">经 HTTP 或 HTTPS 直连访问</string>
 </resources>

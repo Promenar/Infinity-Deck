@@ -35,7 +35,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.common.InfinitySwitch
 import com.promenar.infinity.R
-import com.promenar.infinity.data.remote.mcp.McpEndpointPolicy
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
@@ -154,8 +153,6 @@ private fun McpServerRow(
 ) {
     val enabledLabel = stringResource(R.string.skills_mcp_enabled)
     val status = when {
-        !server.isSupported && McpEndpointPolicy.kind(server.url) == McpEndpointPolicy.Kind.LOOPBACK_HTTP ->
-            stringResource(R.string.mcp_loopback_unavailable)
         !server.isSupported -> stringResource(R.string.skills_mcp_legacy_unsupported)
         server.syncError != null -> stringResource(R.string.skills_mcp_sync_error, server.syncError)
         server.isConnected -> stringResource(R.string.settings_batch1_mcp_connected)

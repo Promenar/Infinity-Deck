@@ -14,6 +14,5 @@
     <!-- 网络访问适用范围（D8） -->
     <string name="ux2_network_scope_prefix">适用范围：%1$s</string>
     <string name="ux2_network_scope_builtin_only">仅内置模式</string>
-    <string name="ux2_network_scope_not_bound">不受白名单约束</string>
-    <string name="ux2_network_matrix_footer_linux">Linux 环境中的命令可直接访问局域网，不受此白名单限制。</string>
+    <string name="ux2_network_matrix_footer_linux">Linux 命令使用系统网络，tailnet 经内置 Tailscale 代理。</string>
 </resources>

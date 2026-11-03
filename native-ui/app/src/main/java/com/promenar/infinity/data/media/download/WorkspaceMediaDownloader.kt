@@ -24,7 +24,6 @@ class WorkspaceMediaDownloader(
     client: OkHttpClient,
     private val policy: MediaFetchUrlPolicy,
     private val tailnetConnected: () -> Boolean,
-    private val cleartextPermitted: (String) -> Boolean,
     private val networkPolicy: AgentNetworkPolicy = AgentNetworkPolicy(isTailnetHost = policy::isTailnet, tailnetRunning = tailnetConnected),
     private val tailnetRouting: TailnetRouting = InstalledTailnetRouting.routing,
 ) {
@@ -44,20 +43,14 @@ class WorkspaceMediaDownloader(
     ): MediaRef = withContext(Dispatchers.IO) {
         require(maxBytes > 0 && maxBytes <= MAX_WORKSPACE_MEDIA_BYTES)
         var current = url.trim()
-        var previous: String? = null
         var redirects = 0
         while (true) {
             currentCoroutineContext().ensureActive()
             val endpoint = try { networkPolicy.validate(current, AgentNetworkTool.MEDIA_FETCH) }
             catch (failure: NetworkAccessDenied) { fail(failure.code, failure.message.orEmpty()) }
-            policy.validate(current, previous, endpoint.target)?.let { fail("URL_POLICY", it) }
+            policy.validate(current)?.let { fail("URL_POLICY", it) }
             val uri = endpoint.uri
-            val host = endpoint.host
             val tailnet = endpoint.target == NetworkTargetClass.TAILNET
-            if (uri.scheme.equals("http", true)) {
-                // Android 按目标主机检查明文策略；不借助改写地址或放宽全局配置绕过。
-                if (!cleartextPermitted(host)) fail("CLEARTEXT_BLOCKED", "该回环地址被 Android 明文网络策略拒绝，请使用 127.0.0.1 或 https")
-            }
             val route = try { AgentHttpRouting.route(client, endpoint, tailnetRouting) }
             catch (failure: NetworkAccessDenied) { fail(failure.code, failure.message.orEmpty()) }
             val call = route.client.newCall(route.request(
@@ -120,7 +113,7 @@ class WorkspaceMediaDownloader(
             }
             when (result) {
                 is DownloadResult.Saved -> return@withContext result.ref
-                is DownloadResult.Redirect -> { previous = current; current = result.url; redirects++ }
+                is DownloadResult.Redirect -> { current = result.url; redirects++ }
             }
         }
         @Suppress("UNREACHABLE_CODE")

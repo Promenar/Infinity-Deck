@@ -24,16 +24,14 @@ class WebDavBackupClientTest {
         password = "private-password",
     )
 
-    @Test
-    fun `http endpoint is rejected before request`() = runTest {
-        var requests = 0
-        val client = client(MockEngine { requests++; error("不应请求") })
-
-        val failure = client.test(config.copy(baseUrl = "http://dav.example.test/backups")).exceptionOrNull()
-
-        assertThat(requests).isEqualTo(0)
-        assertThat(failure).isInstanceOf(WebDavException::class.java)
-        assertThat(failure!!.message).contains("HTTPS")
+    @Test fun `HTTP地址可向配置的WebDAV服务器请求`() = runTest {
+        var requested: String? = null
+        val client = client(MockEngine { request ->
+            requested = request.url.toString()
+            respond(multistatus(response("/backups/", collection = true)), HttpStatusCode.MultiStatus)
+        })
+        assertThat(client.test(config.copy(baseUrl = "http://dav.example.test/backups")).isSuccess).isTrue()
+        assertThat(requested).startsWith("http://dav.example.test/backups/")
     }
 
     @Test

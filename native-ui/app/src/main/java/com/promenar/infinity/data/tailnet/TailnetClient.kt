@@ -125,7 +125,6 @@ class TailnetClient(
     suspend fun call(
         op: String,
         start: TailnetStartOptions? = null,
-        allowedPeers: List<String>? = null,
         timeoutMillis: Long = DEFAULT_TIMEOUT_MS,
     ): JsonElement? {
         if (exited.get() || closed.get()) throw IOException("内置 Tailscale 未运行")
@@ -133,7 +132,7 @@ class TailnetClient(
         val deferred = CompletableDeferred<TailnetMessage.Response>()
         pending[id] = deferred
         try {
-            val line = TailnetCodec.encode(TailnetRequest(id = id, op = op, start = start, allowedPeers = allowedPeers))
+            val line = TailnetCodec.encode(TailnetRequest(id = id, op = op, start = start))
             withContext(ioDispatcher) {
                 synchronized(writer) {
                     writer.write(line)
@@ -173,10 +172,6 @@ class TailnetClient(
 
     suspend fun logout() {
         call(TailnetOps.LOGOUT, timeoutMillis = LOGIN_TIMEOUT_MS)
-    }
-
-    suspend fun setAllowedPeers(peers: List<String>) {
-        call(TailnetOps.ALLOWED_PEERS, allowedPeers = peers)
     }
 
     /**

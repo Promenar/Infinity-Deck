@@ -20,7 +20,6 @@ object TailnetOps {
     const val PEERS = "peers"
     const val LOGIN = "login"
     const val LOGOUT = "logout"
-    const val ALLOWED_PEERS = "allowedPeers"
     const val SHUTDOWN = "shutdown"
 }
 
@@ -44,11 +43,10 @@ class TailnetStartOptions(
     val ephemeral: Boolean = false,
     val proxyUser: String,
     val proxyPassword: String,
-    val allowedPeers: List<String> = emptyList(),
 ) {
     override fun toString(): String =
         "TailnetStartOptions(hostname=$hostname, controlUrl=${controlUrl.orEmpty()}, ephemeral=$ephemeral, " +
-            "authKey=${if (authKey.isNullOrEmpty()) "无" else "已遮蔽"}, allowedPeers=${allowedPeers.size})"
+            "authKey=${if (authKey.isNullOrEmpty()) "无" else "已遮蔽"})"
 }
 
 @Serializable
@@ -56,7 +54,6 @@ class TailnetRequest(
     val id: Long,
     val op: String,
     val start: TailnetStartOptions? = null,
-    val allowedPeers: List<String>? = null,
 ) {
     override fun toString(): String = "TailnetRequest(id=$id, op=$op)"
 }
@@ -98,7 +95,6 @@ data class TailnetPeer(
     val ips: List<String> = emptyList(),
     val os: String? = null,
     val online: Boolean = false,
-    val allowed: Boolean = true,
 )
 
 @Serializable

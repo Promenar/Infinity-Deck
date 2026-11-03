@@ -49,7 +49,7 @@ internal fun customMirrorHost(url: String?): String? =
 /** 自定义镜像只接受带主机名的 https 地址。 */
 internal fun isValidCustomMirror(url: String): Boolean {
     val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return false
-    return uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
+    return (uri.scheme.equals("https", ignoreCase = true) || uri.scheme.equals("http", ignoreCase = true)) && !uri.host.isNullOrBlank()
 }
 
 @StringRes

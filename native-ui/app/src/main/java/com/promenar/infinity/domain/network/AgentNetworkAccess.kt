@@ -14,9 +14,7 @@ enum class AgentNetworkTool { WEB_FETCH, MEDIA_FETCH, SCRIPT, MCP, BUILTIN_PROCE
 enum class NetworkAccessState {
     /** 允许；脚本仍需每次调用声明 allow_network。 */
     ALLOWED,
-    /** 只允许共享白名单中的精确主机。 */
-    ALLOWLIST_ONLY,
-    /** 需要内置 Tailscale 已启用；可达节点再受 Tailscale 设备白名单约束。 */
+    /** 需要内置 Tailscale 已连接；访问范围由 tailnet 的 ACL 决定。 */
     TAILNET_REQUIRED,
     /** 只连接用户已配置的端点或主机（MCP 服务器、SSH 主机别名）。 */
     CONFIGURED_ONLY,
@@ -31,22 +29,15 @@ data class NetworkAccessCell(val target: NetworkTargetClass, val state: NetworkA
 data class NetworkAccessRow(val tool: AgentNetworkTool, val cells: List<NetworkAccessCell>)
 
 data class AgentNetworkSnapshot(
-    /** 共享的局域网与本机主机白名单（规范化后排序）。 */
-    val lanHosts: List<String>,
     /** 安装包是否包含内置 Tailscale。 */
     val tailnetAvailable: Boolean,
     val tailnetEnabled: Boolean,
     val tailnetRunning: Boolean,
-    /** Tailscale 设备白名单；为空表示允许全部节点。 */
-    val tailnetPeerAllowlist: List<String>,
     /** 按 [AgentNetworkTool] 声明顺序给出全部工具族。 */
     val rows: List<NetworkAccessRow>,
 )
 
-/** 界面读取网络访问总表并编辑共享白名单的唯一入口；判定逻辑与工具执行共用同一份规则。 */
+/** 界面读取网络路径总表的入口；选路逻辑与工具执行共用同一份规则。 */
 interface AgentNetworkAccess {
     val snapshot: StateFlow<AgentNetworkSnapshot>
-
-    /** 解析并保存白名单（逗号、空白或换行分隔）；输入无效时抛出 [IllegalArgumentException]，消息可直接展示。 */
-    fun setLanHosts(text: String)
 }

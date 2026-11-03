@@ -226,11 +226,17 @@ class ProviderEndpointResolverTest {
         ).isEqualTo("https://proxy.example.invalid/v2/chat/completions")
     }
 
+    @Test fun `Vertex官方端点接受HTTP`() {
+        assertThat(ProviderEndpointResolver.resolve(
+            ProtocolType.Google_VertexAI, "http://us-central1-aiplatform.googleapis.com",
+            ProviderEndpointTarget.VertexInference("project-safe", VERTEX_DEFAULT_LOCATION, "gemini-2.5-pro", false),
+        )).startsWith("http://us-central1-aiplatform.googleapis.com/")
+    }
+
     @Test
-    fun `Vertex inference 只接受 location 对应的官方 HTTPS origin`() {
+    fun `Vertex inference 只接受 location 对应的官方 HTTP/HTTPS origin`() {
         listOf(
             "https://attacker.example.invalid",
-            "http://us-central1-aiplatform.googleapis.com",
             "https://europe-west1-aiplatform.googleapis.com",
             "https://us-central1-aiplatform.googleapis.com.attacker.example",
             "https://us-central1-aiplatform.googleapis.com/custom-prefix",

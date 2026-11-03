@@ -16,7 +16,6 @@ class TailnetProtocolTest {
         ephemeral = true,
         proxyUser = "U".repeat(24),
         proxyPassword = "P".repeat(24),
-        allowedPeers = listOf("nas"),
     )
 
     @Test
@@ -27,7 +26,7 @@ class TailnetProtocolTest {
         assertThat(json["id"]!!.jsonPrimitive.int).isEqualTo(7)
         assertThat(json["op"]!!.jsonPrimitive.content).isEqualTo("start")
         val start = json["start"]!!.jsonObject
-        assertThat(start.keys).containsAtLeast("stateDir", "hostname", "controlUrl", "authKey", "ephemeral", "proxyUser", "proxyPassword", "allowedPeers")
+        assertThat(start.keys).containsAtLeast("stateDir", "hostname", "controlUrl", "authKey", "ephemeral", "proxyUser", "proxyPassword")
         assertThat(start["authKey"]!!.jsonPrimitive.content).isEqualTo(secretKey)
     }
 

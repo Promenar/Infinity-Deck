@@ -65,7 +65,7 @@ class ProviderModelReleaseBlockersTest {
         val actionsSection = form.substringAfter("private fun ProviderFormActionsSection")
             .substringBefore("private fun ProviderFormNotice")
         val localSection = form.substringAfter("private fun LocalProviderSection")
-            .substringBefore("internal fun isSecureProviderEndpoint")
+            .substringBefore("internal fun isHttpProviderEndpoint")
 
         assertThat(cloudSection).doesNotContain("Surface(")
         assertThat(cloudSection).contains("frameless = true")

@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,7 +34,6 @@ const (
 	socksAtypIPv6      = 4
 	socksReplyOK       = 0
 	socksReplyFailure  = 1
-	socksReplyNotAllow = 2
 	socksReplyHostUnr  = 4
 	socksReplyRefused  = 5
 	socksReplyCmdUnsup = 7
@@ -226,8 +227,6 @@ func writeSOCKSReply(c net.Conn, code byte) {
 
 func socksReplyFor(err error) byte {
 	switch {
-	case errors.Is(err, errPeerNotAllowed):
-		return socksReplyNotAllow
 	case errors.Is(err, errTailnetNotRunning), errors.Is(err, errUnknownTailnet):
 		return socksReplyHostUnr
 	case isConnRefused(err):
@@ -306,12 +305,41 @@ func (p *Proxy) serveConnect(w http.ResponseWriter, r *http.Request) {
 
 func httpStatusFor(err error) int {
 	switch {
-	case errors.Is(err, errPeerNotAllowed):
-		return http.StatusForbidden
 	case errors.Is(err, errTailnetNotRunning):
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusBadGateway
+}
+
+const tailnetOriginHostHeader = "X-Infinity-Origin-Host"
+
+// 固定 tailnet IP 的 HTTP 请求保留原始虚拟主机；内部头只携带合法 authority。
+func forwardedOriginHost(target, authority string) string {
+	addr, err := netip.ParseAddr(target)
+	if err != nil || !IsTailnetAddr(addr) || authority == "" || strings.ContainsAny(authority, " \t\r\n") {
+		return ""
+	}
+	origin, err := url.Parse("http://" + authority)
+	if err != nil || origin.Host != authority || origin.Hostname() == "" || origin.User != nil ||
+		origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || strings.HasSuffix(authority, ":") {
+		return ""
+	}
+	if !strings.HasPrefix(authority, "[") && strings.Count(authority, ":") > 1 {
+		return ""
+	}
+	if strings.HasPrefix(authority, "[") {
+		literal, err := netip.ParseAddr(origin.Hostname())
+		if err != nil || !literal.Is6() {
+			return ""
+		}
+	}
+	if port := origin.Port(); port != "" {
+		value, err := strconv.Atoi(port)
+		if err != nil || value < 1 || value > 65535 {
+			return ""
+		}
+	}
+	return authority
 }
 
 // newForwarder 转发 http:// 绝对 URI 请求；不添加 X-Forwarded-* 头，Proxy-Authorization 等逐跳头由 ReverseProxy 去除。
@@ -320,6 +348,11 @@ func (p *Proxy) newForwarder() *httputil.ReverseProxy {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL = pr.In.URL
 			pr.Out.Host = pr.In.Host
+			origin := pr.In.Header.Get(tailnetOriginHostHeader)
+			pr.Out.Header.Del(tailnetOriginHostHeader)
+			if host := forwardedOriginHost(pr.In.URL.Hostname(), origin); host != "" {
+				pr.Out.Host = host
+			}
 			pr.Out.Header.Del("Proxy-Connection")
 		},
 		Transport: &http.Transport{

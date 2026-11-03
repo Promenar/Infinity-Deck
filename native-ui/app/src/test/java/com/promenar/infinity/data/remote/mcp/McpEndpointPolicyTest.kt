@@ -4,61 +4,20 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class McpEndpointPolicyTest {
-    @Test
-    fun `本机HTTP必须显式启用并具备Bearer令牌`() {
-        val url = "http://127.0.0.1:8765/mcp"
-        assertThat(McpEndpointPolicy.isAllowed("http", url)).isFalse()
-        assertThat(McpEndpointPolicy.isAllowed("http", url, allowLoopbackHttp = true)).isFalse()
-        assertThat(McpEndpointPolicy.isAllowed("http", url, hasBearerToken = true)).isFalse()
-        assertThat(McpEndpointPolicy.isAllowed("http", url, true, true)).isTrue()
+    @Test fun `HTTP与HTTPS接受公网局域网及本机地址`() {
+        for (host in listOf("remote.example.test", "192.168.1.2", "127.0.0.1", "localhost", "[::1]", "100.64.0.1")) {
+            for (scheme in listOf("http", "https")) {
+                assertThat(McpEndpointPolicy.isAllowed("http", "$scheme://$host/mcp")).isTrue()
+                assertThat(McpEndpointPolicy.isAllowed("HTTP", "$scheme://$host:8765/mcp")).isTrue()
+            }
+        }
     }
 
-    @Test
-    fun `本机HTTP只接受精确IPv4环回与显式有效端口`() {
-        listOf(
-            "http://127.0.0.1:1",
-            "http://127.0.0.1:65535/mcp?client=infinity",
-            "HTTP://127.0.0.1:8765/mcp",
-        ).forEach { url ->
-            assertThat(McpEndpointPolicy.isAllowed("HTTP", url, true, true)).isTrue()
+    @Test fun `无效端点和不支持的传输仍拒绝`() {
+        for (url in listOf("file:///mcp", "http:///mcp", "http://u:p@host.test/mcp", "http://host.test:0/mcp", "http://host.test:65536/mcp", "not a url")) {
+            assertThat(McpEndpointPolicy.isAllowed("http", url)).isFalse()
         }
-        listOf(
-            "http://localhost:8765/mcp",
-            "http://127.0.0.2:8765/mcp",
-            "http://[::1]:8765/mcp",
-            "http://[::ffff:127.0.0.1]:8765/mcp",
-            "http://2130706433:8765/mcp",
-            "http://0177.0.0.1:8765/mcp",
-            "http://127.0.0.1.:8765/mcp",
-            "http://127.0.0.1.example.test:8765/mcp",
-            "http://user@127.0.0.1:8765/mcp",
-            "http://user:password@127.0.0.1:8765/mcp",
-            "http://127.0.0.1@remote.example.test:8765/mcp",
-            "http://192.168.1.1:8765/mcp",
-            "http://remote.example.test:8765/mcp",
-            "http://127.0.0.1/mcp",
-            "http://127.0.0.1:/mcp",
-            "http://127.0.0.1:0/mcp",
-            "http://127.0.0.1:-1/mcp",
-            "http://127.0.0.1:+8765/mcp",
-            "http://127.0.0.1:65536/mcp",
-            "http://127.0.0.1:8765/mcp#fragment",
-            "http://127.0.0.1:8765/mcp\r\nX-Test: injected",
-            "file://127.0.0.1:8765/mcp",
-            "not a url",
-        ).forEach { url ->
-            assertThat(McpEndpointPolicy.isAllowed("http", url, true, true)).isFalse()
-        }
-        assertThat(McpEndpointPolicy.isAllowed("stdio", "http://127.0.0.1:8765", true, true)).isFalse()
-    }
-
-    @Test
-    fun `HTTPS维持既有主机与用户信息边界`() {
-        assertThat(McpEndpointPolicy.isAllowed("http", "https://remote.example.test/mcp")).isTrue()
-        assertThat(McpEndpointPolicy.isAllowed("HTTP", "HTTPS://127.0.0.1/mcp")).isTrue()
-        assertThat(McpEndpointPolicy.isAllowed("http", "https://user@remote.example.test/mcp", true, true)).isFalse()
-        assertThat(McpEndpointPolicy.isAllowed("http", "https:///mcp", true, true)).isFalse()
-        assertThat(McpEndpointPolicy.isAllowed("sse", "https://remote.example.test/mcp", true, true)).isFalse()
+        assertThat(McpEndpointPolicy.isAllowed("stdio", "http://host.test/mcp")).isFalse()
     }
 
     @Test

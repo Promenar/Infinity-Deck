@@ -84,7 +84,6 @@ internal class FakeTailnetChild(
     @Volatile var destroyed = false
     @Volatile var stdinClosed = false
     @Volatile var backendState = "NeedsLogin"
-    val allowedPeers = CopyOnWriteArrayList<List<String>>()
 
     init {
         thread(isDaemon = true, name = "fake-tailnet-child") {
@@ -124,8 +123,8 @@ internal class FakeTailnetChild(
             TailnetOps.STATUS -> reply(id, statusJson())
             TailnetOps.PEERS -> reply(
                 id,
-                """{"peers":[{"name":"nas","dnsName":"nas.tail1.ts.net","ips":["100.64.0.5"],"os":"linux","online":true,"allowed":true},""" +
-                    """{"name":"laptop","dnsName":"laptop.tail1.ts.net","ips":["100.64.0.6"],"os":"macOS","online":false,"allowed":false}]}""",
+                """{"peers":[{"name":"nas","dnsName":"nas.tail1.ts.net","ips":["100.64.0.5"],"os":"linux","online":true},""" +
+                    """{"name":"laptop","dnsName":"laptop.tail1.ts.net","ips":["100.64.0.6"],"os":"macOS","online":false}]}""",
             )
             TailnetOps.LOGIN -> {
                 reply(id)
@@ -135,12 +134,6 @@ internal class FakeTailnetChild(
                 backendState = "NeedsLogin"
                 reply(id)
                 state("NeedsLogin")
-            }
-            TailnetOps.ALLOWED_PEERS -> {
-                allowedPeers += request["allowedPeers"]?.let { element ->
-                    (element as kotlinx.serialization.json.JsonArray).map { it.jsonPrimitive.content }
-                }.orEmpty()
-                reply(id)
             }
             else -> fail(id, TailnetErrors.UNSUPPORTED)
         }

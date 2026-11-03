@@ -25,38 +25,37 @@ class WebFetchSkillTest {
         .body("<article><p>网页正文内容可以正常读取。</p></article>".toResponseBody())
         .apply { location?.let { header("Location", it) } }.build()
 
-    @Test fun `本机和局域网未授权时在发送前结构化拒绝`() = runTest {
+    @Test fun `本机与局域网可直接读取HTTP和HTTPS网页`() = runTest {
         var requests = 0
         val client = OkHttpClient.Builder().addInterceptor { requests++; html(it.request()) }.build()
-        val skill = WebFetchSkill(client)
-        for (host in listOf("127.0.0.1", "192.168.1.10")) {
-            val result = skill.execute(skillArgs("url" to "http://$host/page"), context)
-            assertThat(result.status).isEqualTo("error")
-            assertThat(result.content).contains("Blocked URL")
-            assertThat(result.content).contains("LAN_HOST_NOT_ALLOWED")
-            assertThat(result.content).contains("设置 → 网络访问")
-        }
-        assertThat(requests).isEqualTo(0)
-    }
-
-    @Test fun `精确授权局域网后可重复读取网页且子域仍拒绝`() = runTest {
-        var requests = 0
-        val client = OkHttpClient.Builder().addInterceptor { requests++; html(it.request()) }.build()
-        val policy = AgentNetworkPolicy(allowedLanHosts = { setOf("lan.test") }, resolver = { arrayOf(InetAddress.getByName("192.168.1.2")) })
+        val policy = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName(if (it.endsWith(".test")) "192.168.1.2" else it)) })
         val skill = WebFetchSkill(client, networkPolicy = policy)
-        repeat(2) { assertThat(skill.execute(skillArgs("url" to "https://LAN.test/a"), context).status).isEqualTo("success") }
-        assertThat(skill.execute(skillArgs("url" to "https://child.lan.test/a"), context).content).contains("LAN_HOST_NOT_ALLOWED")
-        assertThat(requests).isEqualTo(2)
+        for (host in listOf("127.0.0.1", "192.168.1.10", "lan.test", "child.lan.test")) {
+            for (scheme in listOf("http", "https")) {
+                assertThat(skill.execute(skillArgs("url" to "$scheme://$host/page"), context).status).isEqualTo("success")
+            }
+        }
+        assertThat(requests).isEqualTo(8)
         assertThat(client.dispatcher.executorService.isShutdown).isFalse()
     }
 
-    @Test fun `重定向每跳重判并拒绝未授权局域网`() = runTest {
-        var requests = 0
-        val client = OkHttpClient.Builder().addInterceptor { requests++; html(it.request(), 302, "https://192.168.1.2/secret") }.build()
-        val policy = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName(if (it == "public.test") "93.184.216.34" else it)) })
-        val result = WebFetchSkill(client, networkPolicy = policy).execute(skillArgs("url" to "https://public.test/a"), context)
-        assertThat(result.content).contains("LAN_HOST_NOT_ALLOWED")
-        assertThat(requests).isEqualTo(1)
+    @Test fun `逐跳允许局域网并拒绝组播和未指定地址`() = runTest {
+        for (host in listOf("192.168.1.2", "224.0.0.1", "0.0.0.0")) {
+            var requests = 0
+            val client = OkHttpClient.Builder().addInterceptor {
+                requests++
+                if (requests == 1) html(it.request(), 302, "http://$host/next") else html(it.request())
+            }.build()
+            val policy = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName(if (it == "public.test") "93.184.216.34" else it)) })
+            val result = WebFetchSkill(client, networkPolicy = policy).execute(skillArgs("url" to "https://public.test/a"), context)
+            if (host == "192.168.1.2") {
+                assertThat(result.status).isEqualTo("success")
+                assertThat(requests).isEqualTo(2)
+            } else {
+                assertThat(result.content).contains("ADDRESS_DENIED")
+                assertThat(requests).isEqualTo(1)
+            }
+        }
     }
 
     @Test fun `公网相对重定向后仍可读取且不关闭共享客户端`() = runTest {

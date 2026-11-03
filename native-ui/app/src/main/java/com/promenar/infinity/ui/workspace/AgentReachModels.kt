@@ -175,27 +175,6 @@ private val LINUX_RUNNERS = setOf(ReachBackendKind.LINUX, ReachBackendKind.SSH)
 private val BUILTIN_RUNNERS = setOf(ReachBackendKind.BUILTIN, ReachBackendKind.SANDBOX, ReachBackendKind.TERMUX, ReachBackendKind.SSH)
 private val OPTIONAL_RUNNERS = setOf(ReachBackendKind.TERMUX, ReachBackendKind.SSH)
 
-/**
- * “局域网与本机”一行的两句说明：受白名单约束的工具（内置模式多出隔离脚本），以及不受白名单限制的命令。
- * 白名单为空时 [allowlistRes] 为字符串资源，否则为带项数的复数资源。
- */
-internal data class ReachLanLines(val allowlistRes: Int, val allowlistSize: Int, val commandsRes: Int)
-
-internal fun reachLanLines(mode: SessionRunMode, snapshot: AgentNetworkSnapshot): ReachLanLines {
-    val scripts = mode == SessionRunMode.BUILTIN
-    val size = snapshot.lanHosts.size
-    return ReachLanLines(
-        allowlistRes = when {
-            size == 0 && scripts -> R.string.agent_reach_lan_allowlist_empty_scripts
-            size == 0 -> R.string.agent_reach_lan_allowlist_empty
-            scripts -> R.plurals.agent_reach_lan_allowlist_scripts
-            else -> R.plurals.agent_reach_lan_allowlist
-        },
-        allowlistSize = size,
-        commandsRes = if (scripts) R.string.agent_reach_lan_builtin_commands else R.string.agent_reach_lan_linux_commands,
-    )
-}
-
 /** 用户级技能以保留别名 `skills` 出现在挂载列表中，面板单独说明，不作为普通挂载重复列出。 */
 internal fun reachMounts(mounts: List<ExternalMount>): List<ReachMount> =
     mounts.filterNot { it.alias == ExternalMountPaths.SKILLS_ALIAS }.map(ExternalMount::toReach).sortedBy { it.alias }

@@ -45,9 +45,7 @@ class MediaFetchSkillTest {
     private var bodyClosed = false
     private fun downloader(
         connected: Boolean = true,
-        cleartext: Boolean = true,
         proxies: List<Proxy> = listOf(Proxy.NO_PROXY),
-        hosts: Set<String> = emptySet(),
         responder: (Request) -> Response = { response(it, mediaTestPng) },
     ): WorkspaceMediaDownloader = WorkspaceMediaDownloader(
         OkHttpClient.Builder().proxySelector(object : ProxySelector() {
@@ -59,8 +57,7 @@ class MediaFetchSkillTest {
         }.build(),
         MediaFetchUrlPolicy { it == "main" },
         { connected },
-        { cleartext },
-        AgentNetworkPolicy(isTailnetHost = { it == "main" }, allowedLanHosts = { hosts }, tailnetRunning = { connected }, resolver = {
+        AgentNetworkPolicy(isTailnetHost = { it == "main" }, tailnetRunning = { connected }, resolver = {
             arrayOf(InetAddress.getByName(if (it.endsWith(".test")) "93.184.216.34" else it))
         }),
         object : TailnetRouting by DisabledTailnetRouting {
@@ -84,23 +81,19 @@ class MediaFetchSkillTest {
     private suspend fun execute(client: WorkspaceMediaDownloader = downloader(), path: String? = null, limit: Long = 100L * 1024 * 1024, url: String = "https://example.test/image") =
         MediaFetchSkill(store, client, limit).execute(buildJsonObject { put("url", url); path?.let { put("path", it) } }, mediaTestContext)
 
-    @Test fun `局域网HTTPS未授权时在发送前拒绝并提示共享白名单入口`() = runTest {
-        val result = execute(url = "https://192.168.1.2/a.png")
-        assertThat(result.status).isEqualTo("error")
-        assertThat(result.content).contains("设置 → 网络访问")
-        assertThat(requests).isEmpty()
+    @Test fun `局域网与本机支持HTTP和HTTPS下载`() = runTest {
+        for (host in listOf("192.168.1.2", "127.0.0.1", "[::1]")) {
+            for (scheme in listOf("http", "https")) {
+                assertThat(execute(url = "$scheme://$host/a.png").status).isEqualTo("success")
+            }
+        }
+        assertThat(requests).hasSize(6)
     }
 
-    @Test fun `共享白名单授权后允许局域网HTTPS及回环HTTP`() = runTest {
-        assertThat(execute(downloader(hosts = setOf("192.168.1.2")), url = "https://192.168.1.2/a.png").status).isEqualTo("success")
-        assertThat(execute(downloader(hosts = setOf("127.0.0.1")), url = "http://127.0.0.1/a.png").status).isEqualTo("success")
-    }
-
-    @Test fun `重定向到未授权局域网HTTPS在下一跳发送前拒绝`() = runTest {
-        val result = execute(downloader { response(it, code = 302, location = "https://192.168.1.2/a.png") })
-        assertThat(result.status).isEqualTo("error")
-        assertThat(result.content).contains("LAN_HOST_NOT_ALLOWED")
-        assertThat(requests).hasSize(1)
+    @Test fun `重定向到局域网HTTP允许并逐跳校验`() = runTest {
+        val result = execute(downloader { if (requests.size == 1) response(it, code = 302, location = "http://192.168.1.2/a.png") else response(it) })
+        assertThat(result.status).isEqualTo("success")
+        assertThat(requests).hasSize(2)
     }
 
     @Test fun `下载以流写入指定工作区路径并返回媒体引用与元数据`() = runTest {
@@ -185,19 +178,12 @@ class MediaFetchSkillTest {
         assertThat(requests).isEmpty()
     }
 
-    @Test fun `tailnet明文给出脚本降级且不经普通OkHttp访问`() = runTest {
+    @Test fun `tailnet明文使用内置HTTP代理`() = runTest {
+        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 34567))
         for (host in listOf("main", "100.64.1.2", "[fd7a:115c:a1e0::1]")) {
-            val result = execute(url = "http://$host/a")
-            assertThat(result.status).isEqualTo("error")
-            assertThat(result.content).contains("python_exec")
-            assertThat(result.content).contains("shell_exec")
+            assertThat(execute(downloader(proxies = listOf(proxy)), url = "http://$host/a").status).isEqualTo("success")
         }
-        assertThat(requests).isEmpty()
-    }
-
-    @Test fun `回环也尊重平台明文策略`() = runTest {
-        assertThat(execute(downloader(cleartext = false, hosts = setOf("localhost")), url = "http://localhost/a").status).isEqualTo("error")
-        assertThat(requests).isEmpty()
+        assertThat(requests).hasSize(3)
     }
 
     @Test fun `实际保存路径与审批规范路径一致`() = runTest {

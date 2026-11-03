@@ -204,9 +204,9 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
     }
 
     @Test
-    fun `仅HTTPS且非法工具名与不支持schema均不可发现`() = runTest {
+    fun `无效URL非法工具名与不支持schema均不可发现`() = runTest {
         assertThat(runCatching {
-            McpClient(HttpClient(MockEngine { error("不应联网") }), "http://clear.example.test").listTools()
+            McpClient(HttpClient(MockEngine { error("不应联网") }), "ftp://invalid.example.test").listTools()
         }.exceptionOrNull()).isNotNull()
 
         listOf(

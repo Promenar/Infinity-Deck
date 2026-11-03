@@ -16,6 +16,5 @@
     <!-- 网络访问适用范围（D8） -->
     <string name="ux2_network_scope_prefix">Scope: %1$s</string>
     <string name="ux2_network_scope_builtin_only">Built-in mode only</string>
-    <string name="ux2_network_scope_not_bound">Not bound by the allowlist</string>
-    <string name="ux2_network_matrix_footer_linux">Commands in the Linux environment can reach the local network directly and are not limited by this allowlist.</string>
+    <string name="ux2_network_matrix_footer_linux">Linux commands use the system network; tailnet uses the built-in Tailscale proxy.</string>
 </resources>
