@@ -48,4 +48,5 @@
     <string name="network_tool_linux">Linux commands shell_exec</string>
     <string name="network_tool_linux_hint">Runs in Alpine on the system network; tailnet goes through the built-in Tailscale proxy</string>
     <string name="network_access_entry_routes">Direct network and built-in Tailscale routes</string>
+    <string name="common_cleartext_url_hint">Unencrypted: http sends data in plain text that others on the network may see</string>
 </resources>

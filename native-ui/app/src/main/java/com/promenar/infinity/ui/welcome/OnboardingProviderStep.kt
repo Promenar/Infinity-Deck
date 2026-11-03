@@ -241,7 +241,8 @@ internal fun OnboardingProviderStep(state: OnboardingUiState, actions: Onboardin
                     placeholder = stringResource(R.string.provider_form_placeholder_url),
                     enabled = !connecting,
                     isError = baseUrl.isNotBlank() && !endpointValid,
-                    supportingText = if (baseUrl.isNotBlank() && !endpointValid) stringResource(R.string.provider_form_http_url_required) else null,
+                    supportingText = if (baseUrl.isNotBlank() && !endpointValid) stringResource(R.string.provider_form_http_url_required)
+                    else com.promenar.infinity.ui.common.cleartextUrlHelp(baseUrl),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth().testTag(OnboardingTags.PROVIDER_URL),
                 )

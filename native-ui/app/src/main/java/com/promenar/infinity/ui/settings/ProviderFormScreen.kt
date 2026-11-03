@@ -903,6 +903,7 @@ private fun ProviderInterfaceSection(state: ProviderFormUiState, actions: Provid
             placeholder = stringResource(R.string.provider_form_placeholder_url),
             monospace = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            help = com.promenar.infinity.ui.common.cleartextUrlHelp(state.baseUrl),
             error = if (!state.endpointValid) {
                 stringResource(
                     when {

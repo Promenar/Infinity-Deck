@@ -233,6 +233,7 @@ internal fun BackupSettingsScreen(
                     onValueChange = { tempWebdavUrl = it },
                     label = { Text(stringResource(R.string.backup_webdav_url_label)) },
                     placeholder = { Text(stringResource(R.string.backup_webdav_url_hint)) },
+                    supportingText = com.promenar.infinity.ui.common.cleartextUrlHelp(tempWebdavUrl)?.let { hint -> { Text(hint) } },
                     modifier = Modifier.fillMaxWidth()
                 )
 

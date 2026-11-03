@@ -202,7 +202,8 @@ internal fun LinuxMirrorsContent(
                             placeholder = { Text("https://") },
                             singleLine = true,
                             isError = invalid,
-                            supportingText = if (invalid) ({ Text(stringResource(R.string.linux_mirror_custom_invalid)) }) else null,
+                            supportingText = (if (invalid) stringResource(R.string.linux_mirror_custom_invalid)
+                            else com.promenar.infinity.ui.common.cleartextUrlHelp(customDraft))?.let { hint -> { Text(hint) } },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = InfinityMonospace).forInput(),
                             modifier = Modifier.fillMaxWidth().testTag(UiTags.LINUX_MIRROR_CUSTOM_FIELD),

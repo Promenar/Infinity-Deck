@@ -284,6 +284,7 @@ fun SkillsScreen(
                     onValueChange = { mcpUrl = it },
                     enabled = !mcpSaving,
                     label = { Text(stringResource(R.string.skills_mcp_url_placeholder)) },
+                    supportingText = com.promenar.infinity.ui.common.cleartextUrlHelp(mcpUrl)?.let { hint -> { Text(hint) } },
                     modifier = Modifier.fillMaxWidth()
                 )
 
