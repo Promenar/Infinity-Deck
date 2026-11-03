@@ -1838,7 +1838,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 chatStore.getSession(sessionId)?.let { resolveMediaViewTarget(it) }
                     ?: com.promenar.infinity.data.generation.MediaViewTarget()
             })
-            register(ImageGenerationSkill(this@InfinityApplication, ProviderManager.getInstance(), workspaceMediaStore, workspaceMediaDownloader, providerRequestRouter = providerRequestRouter))
+            register(ImageGenerationSkill(this@InfinityApplication, ProviderManager.getInstance(), workspaceMediaStore, workspaceMediaDownloader,
+                providerRequestRouter = providerRequestRouter, mediaResolver = workspaceMediaResolver))
             register(com.promenar.infinity.ui.chat.manager.skills.MediaFetchSkill(workspaceMediaStore, workspaceMediaDownloader,
                 mounts = externalFolderManager, sessionWorkspace = sessionWorkspaceResolver::resolve))
             register(mounted(FileReadSkill(fileOperationRepository, workspaceRepository)))

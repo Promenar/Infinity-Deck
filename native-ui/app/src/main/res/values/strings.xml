@@ -961,7 +961,7 @@
     <string name="skill_create_tool">Create Tool</string>
     <string name="skill_create_tool_desc">Create new custom tools via meta-tool</string>
     <string name="skill_image_generation">Image Generation</string>
-    <string name="skill_image_generation_desc">Generate AI images from text descriptions</string>
+    <string name="skill_image_generation_desc">Generate images from prompts or edit workspace images</string>
     <string name="skill_file_read">File Read</string>
     <string name="skill_file_read_desc">Read a file</string>
     <string name="skill_file_write">File Write</string>
