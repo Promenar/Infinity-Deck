@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.20.0-beta] - 2026-11-04
+
 ### 新增
 
 - 生成中发送的消息默认排队，在当前步骤结束后（整批工具结果落盘后或整轮结束后）逐条送达并在同一循环内继续；“插队”立即打断当前步骤并注入。插队消息未能认领时本次生成停止，消息留在队列，不会以原请求反复重发。
