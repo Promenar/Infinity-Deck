@@ -43,6 +43,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 |---|---|---|---|---|---|
 | `agents_read` | 自由 | 自由 | 自由 | 自由 | 无 |
 | `agents_write` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `browser_eval` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `copy_knowledge_to_linux` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
