@@ -81,9 +81,11 @@ class WebFetchSkill(
         val lineCount = rawLineCount.coerceAtLeast(1).coerceAtMost(500) // 最大单次读取 500 行，防爆
 
         return try {
-            val (finalUrl, html) = fetchHtml(url)
-            val doc = Jsoup.parse(html, finalUrl)
-            
+            val page = fetchPage(url)
+            // 纯文本、JSON、Markdown 等非 HTML 内容按原有换行逐行返回，不经 HTML 解析和断句。
+            val plainText = page.contentType?.let { !it.contains("html") && !it.contains("xml") } == true
+            val doc = Jsoup.parse(if (plainText) "" else page.body, page.url)
+
             // 1. 获取网页 Title
             val title = doc.title().trim()
             
@@ -107,12 +109,14 @@ class WebFetchSkill(
 
             // 5. 兜底提取：若精准提取得到的行数过少，则对 body 的纯文本进行按句断行切割
             var lines: List<String> = rawLines
-            if (lines.size < 5) {
+            if (plainText) {
+                lines = page.body.lines().map { it.trimEnd() }.filter { it.isNotBlank() }
+            } else if (lines.size < 5) {
                 val fallbackText = mainElement.text().replace("\\s+".toRegex(), " ").trim()
                 if (fallbackText.isNotEmpty()) {
-                    lines = fallbackText.split(Regex("(?<=[。！？；.!?;\n])"))
+                    lines = fallbackText.split(SENTENCE_BOUNDARY)
                         .map { it.trim() }
-                        .filter { it.length > 5 }
+                        .filter { it.isNotEmpty() }
                 }
             }
 
@@ -181,7 +185,9 @@ class WebFetchSkill(
         }
     }
 
-    private suspend fun fetchHtml(initialUrl: String): Pair<String, String> = withContext(Dispatchers.IO) {
+    private class FetchedPage(val url: String, val body: String, val contentType: String?)
+
+    private suspend fun fetchPage(initialUrl: String): FetchedPage = withContext(Dispatchers.IO) {
         var url = initialUrl
         repeat(6) { hop ->
             val endpoint = networkPolicy.validate(url, AgentNetworkTool.WEB_FETCH)
@@ -200,7 +206,12 @@ class WebFetchSkill(
                     }
                     try {
                         call.awaitAgentResponse().use { response ->
-                            Triple(response.code, response.header("Location"), if (response.code == 200) response.body?.string().orEmpty() else "")
+                            FetchResponse(
+                                code = response.code,
+                                location = response.header("Location"),
+                                body = if (response.code == 200) response.body?.string().orEmpty() else "",
+                                contentType = response.header("Content-Type")?.lowercase(),
+                            )
                         }
                     } finally { cancellation.cancel() }
                 }
@@ -208,18 +219,25 @@ class WebFetchSkill(
                 if (tailnet) throw com.promenar.infinity.data.network.AgentTailnetProxy.failure(failure)
                 throw failure
             }
-            if (result.first in setOf(301, 302, 303, 307, 308)) {
+            if (result.code in setOf(301, 302, 303, 307, 308)) {
                 if (hop == 5) throw NetworkAccessDenied("REDIRECT_LIMIT", "网页重定向超过 5 跳")
-                val location = result.second ?: throw NetworkAccessDenied("URL_POLICY", "重定向缺少目标")
+                val location = result.location ?: throw NetworkAccessDenied("URL_POLICY", "重定向缺少目标")
                 val reference = runCatching { URI(location) }.getOrNull()
                 if (reference == null || reference.rawUserInfo != null || location.startsWith("///")) throw NetworkAccessDenied("URL_POLICY", "重定向 URL 无效或包含用户信息")
                 url = url.toHttpUrl().resolve(location)?.toString() ?: throw NetworkAccessDenied("URL_POLICY", "重定向 URL 无效")
             } else {
                 // 由通用错误输出报告站点返回的 HTTP 状态。
-                if (result.first != 200) throw java.io.IOException("HTTP ${result.first}")
-                return@withContext url to result.third
+                if (result.code != 200) throw java.io.IOException("HTTP ${result.code}")
+                return@withContext FetchedPage(url, result.body, result.contentType)
             }
         }
         throw NetworkAccessDenied("REDIRECT_LIMIT", "网页重定向超过 5 跳")
+    }
+
+    private class FetchResponse(val code: Int, val location: String?, val body: String, val contentType: String?)
+
+    private companion object {
+        // 中文句末标点直接断句；英文句末标点后须跟空白，避免拆开小数、版本号与网址。
+        val SENTENCE_BOUNDARY = Regex("(?<=[。！？；])|(?<=[.!?;])(?=\\s)")
     }
 }

@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- `web_fetch` 读取纯文本、JSON、Markdown 等非 HTML 内容时按原有换行逐行返回，不再当作网页断句。网页正文过短需要按句断行时，英文句号、问号等只在后跟空白时才断开，小数、版本号与网址保持完整，短句也不再被丢弃。此前 `0.17.0-beta` 这类文本会被拆成 `0.` 与 `0-beta`，中间部分丢失。
+
 ## [0.17.0-beta] - 2026-11-03
 
 ### 新功能

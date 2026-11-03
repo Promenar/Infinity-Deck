@@ -94,6 +94,36 @@ class WebFetchSkillTest {
         }
     }
 
+    private fun fetchBody(body: String, contentType: String): String = kotlinx.coroutines.runBlocking {
+        val client = OkHttpClient.Builder().addInterceptor {
+            Response.Builder().request(it.request()).protocol(Protocol.HTTP_1_1).code(200).message("测试响应")
+                .header("Content-Type", contentType).body(body.toResponseBody()).build()
+        }.build()
+        val policy = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName("192.168.1.2")) })
+        val result = WebFetchSkill(client, networkPolicy = policy).execute(skillArgs("url" to "http://192.168.1.2/a"), context)
+        assertThat(result.status).isEqualTo("success")
+        result.content
+    }
+
+    @Test fun `纯文本按原有换行逐行返回且不拆版本号`() {
+        val content = fetchBody("LAN-CHECK-7Q2X 0.17.0-beta\nok\n\n第三行 v1.2", "text/plain; charset=utf-8")
+        assertThat(content).contains("[1] LAN-CHECK-7Q2X 0.17.0-beta\n")
+        assertThat(content).contains("[2] ok\n")
+        assertThat(content).contains("[3] 第三行 v1.2\n")
+        assertThat(content).contains("Total Lines: 3")
+    }
+
+    @Test fun `短网页按句断行时保留小数网址与短句`() {
+        val content = fetchBody(
+            "<html><body><div>版本 0.17.0-beta 已发布。详见 https://example.com/a.b/c 页面. Ok. 售价 3.5 元！</div></body></html>",
+            "text/html; charset=utf-8",
+        )
+        assertThat(content).contains("[1] 版本 0.17.0-beta 已发布。\n")
+        assertThat(content).contains("[2] 详见 https://example.com/a.b/c 页面.\n")
+        assertThat(content).contains("[3] Ok.\n")
+        assertThat(content).contains("[4] 售价 3.5 元！\n")
+    }
+
     @Test fun `系统回退本机代理不能冒充内置代理`() = runTest {
         ConnectProxyFixture().use { fixture ->
             val routing = object : TailnetRouting by DisabledTailnetRouting {
