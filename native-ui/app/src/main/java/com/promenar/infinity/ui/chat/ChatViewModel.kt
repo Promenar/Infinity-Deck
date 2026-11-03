@@ -1263,7 +1263,7 @@ class ChatViewModel(
         }
     }
 
-    private fun enqueueComposerDraft(sessionId: String, text: String, imageUris: List<Uri>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>, steer: Boolean = false, moveToFront: Boolean = false) {
+    private fun enqueueComposerDraft(sessionId: String, text: String, imageUris: List<Uri>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>, steer: Boolean = false, moveToFront: Boolean = false, beforeEnqueue: () -> Unit = {}) {
         generationPresentationStore.discardComposerAttachments(sessionId)
         _inputText.value = ""
         _draftDocuments.value = emptyList()
@@ -1272,6 +1272,7 @@ class ChatViewModel(
         composerImages = emptyList()
         _draftConsumptionEpoch.value += 1
         pendingQueueWrites[sessionId] = (pendingQueueWrites[sessionId] ?: 0) + 1
+        beforeEnqueue()
         viewModelScope.launch {
             var stored = false
             try {
@@ -1347,7 +1348,7 @@ class ChatViewModel(
         }
     }
 
-    /** 生成中在最近安全步骤边界注入当前循环；不在生成时等同普通发送。 */
+    /** 生成中立即打断当前步骤并注入当前循环；不在生成时等同普通发送。 */
     fun sendMessageSteering(text: String, imageUris: List<Uri> = emptyList()) {
         val sessionId = _currentSessionId.value ?: return
         if (!queuesDraft(sessionId, text, imageUris)) return sendMessage(text, imageUris)
@@ -1359,8 +1360,9 @@ class ChatViewModel(
         val sessionId = _currentSessionId.value ?: return
         if (!queuesDraft(sessionId, text, imageUris)) return sendMessage(text, imageUris)
         stopAndSendSessions += sessionId
-        enqueueComposerDraft(sessionId, text, imageUris, _draftDocuments.value, ComposerQuotes.toMessageQuotes(_draftQuotes.value), moveToFront = true)
-        cancelCurrentSessionGeneration()
+        // 先登记待写入草稿再取消旧循环，新条目入队时旧循环已撤销，终态派发也会等待写盘。
+        enqueueComposerDraft(sessionId, text, imageUris, _draftDocuments.value, ComposerQuotes.toMessageQuotes(_draftQuotes.value),
+            moveToFront = true, beforeEnqueue = ::cancelCurrentSessionGeneration)
         viewModelScope.launch {
             sendPreparationMutex(sessionId).withLock { terminateSessionWork(sessionId) }
         }

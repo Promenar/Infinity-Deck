@@ -133,13 +133,14 @@ class BuiltinExecService(
         live: ToolLiveOutputSink = ToolLiveOutputSink.None,
         expectedMode: SessionRunMode? = null,
         capture: SecretCapture? = null,
+        attachment: LinuxExecAttachment? = null,
     ): CommandToolResult {
         val mode = sessionMode(sessionId)
         if (expectedMode != null && mode != expectedMode) return modeChanged()
         when (mode) {
             null -> return modeRequired()
             SessionRunMode.LINUX -> return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.LINUX,
-                code, live, stdin = stdin, capture = capture, linuxSource = linuxPythonCommand(code)) { _, _ ->
+                code, live, stdin = stdin, attachment = attachment, capture = capture, linuxSource = linuxPythonCommand(code)) { _, _ ->
                 error("Linux Python 使用 guest 启动路径")
             }
             SessionRunMode.BUILTIN -> Unit
@@ -151,7 +152,7 @@ class BuiltinExecService(
                     "请改用 termux_exec 或 ssh_exec。shell_exec 仍可使用系统命令。",
             )
         }
-        return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.PYTHON, code, live, capture = capture) { root, kind ->
+        return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.PYTHON, code, live, stdin = stdin, attachment = attachment, capture = capture) { root, kind ->
             BuiltinCommandRequest(
                 argv = listOf(environment.pythonLauncher.path, "-c", code),
                 workingDirectory = root,
@@ -283,7 +284,19 @@ class BuiltinExecService(
                 if (linux && commandRequest.terminal) return runner.runTerminal(commandRequest, control,
                     onTerminalOutput = { safeLive.replace(ToolOutputStream.STDOUT, virtualize(it, root)) },
                     processGroupFile = attachment?.processGroupFile, terminalLog = attachment?.logFile)
-                if (safeLive === ToolLiveOutputSink.None) return runner.run(commandRequest, control)
+                if (attachment != null && capture == null) {
+                    return com.promenar.infinity.data.jobs.RotatingJobLog(attachment.logFile,
+                        startedAtMillis = control.logStartedAtMillis ?: wallClockMillis()).use { log ->
+                        val tee = LiveWorkspaceOutput(root) { stream, text ->
+                            log.write(text.toByteArray(Charsets.UTF_8))
+                            control.outputEvents?.invoke(stream, text)
+                            safeLive.emit(stream, text)
+                        }
+                        try { runner.runAttached(commandRequest, control, attachment.processGroupFile, tee::accept) }
+                        finally { tee.finish() }
+                    }
+                }
+                if (safeLive === ToolLiveOutputSink.None) return runner.runAttached(commandRequest, control, attachment?.processGroupFile)
                 val tee = LiveWorkspaceOutput(root, safeLive::emit)
                 return try { runner.run(commandRequest, control, tee::accept) } finally { tee.finish() }
             } finally {

@@ -1128,6 +1128,7 @@ internal class DefaultChatGenerationRuntime(
         if (kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext]?.pending() == true) {
             // 待审批集合在执行前计算；插队后的跳过结果已经配对，不能再用旧集合创建审批。
             toolExecutor.rejectTools(request.sessionId, assistantMessageId(request), calls.filter { it.id in pendingIds }, "用户插入了新消息，此调用未执行。")
+            store.updateSession(request.sessionId) { it.copy(approvalRequest = null, loopStatus = com.promenar.infinity.data.model.LoopStatus.RUNNING) }
             return GenerationToolDecision.CONTINUE
         }
         if (pendingIds.isNotEmpty()) {
@@ -1173,6 +1174,27 @@ internal class DefaultChatGenerationRuntime(
             return GenerationToolDecision.WAIT_FOR_APPROVAL
         }
         return GenerationToolDecision.CONTINUE
+    }
+
+    override suspend fun interruptPendingTools(request: GenerationRequest, toolCalls: List<GenerationToolCall>): Boolean {
+        val queue = composerQueueStore?.observe(request.sessionId) ?: return false
+        if (!com.promenar.infinity.data.exec.SteeringContext(queue).pending()) return false
+        withContext(kotlinx.coroutines.NonCancellable) {
+            val reason = "用户插队打断了本步，调用未执行。"
+            if (toolCalls.any { it.name in setOf("session_branch", com.promenar.infinity.domain.ask.AskUserLimits.TOOL_NAME, com.promenar.infinity.domain.secret.SecretIoLimits.REQUEST_TOOL_NAME) }) {
+                requireNotNull(askUserLedger) { "等待账本不可用，无法安全中断提问" }
+                    .cancel(request.sessionId, interruptionReason = reason)
+                    .forEach { messageManager.mirrorPersistedMessage(request.sessionId, it) }
+            }
+            toolExecutor.rejectTools(request.sessionId, assistantMessageId(request),
+                toolCalls.map { ToolCall(it.id, it.name, it.arguments) }, reason)
+            val transition = toolLedger.completeToolApproval(request.sessionId, assistantMessageId(request))
+            transition.terminalMessages.forEach { messageManager.mirrorPersistedMessage(request.sessionId, it) }
+            messageManager.mirrorPersistedPendingApprovalState(request.sessionId, assistantMessageId(request), null)
+            store.updateSession(request.sessionId) { it.copy(approvalRequest = null, loopStatus = com.promenar.infinity.data.model.LoopStatus.RUNNING) }
+            ui.setGenerating(true)
+        }
+        return true
     }
 
     override fun toolBudget(request: GenerationRequest): GenerationToolBudget = activeToolBudget ?: readToolBudget()
@@ -1232,10 +1254,20 @@ internal class DefaultChatGenerationRuntime(
         return true
     }
 
-    override suspend fun injectSteering(request: GenerationRequest): GenerationRequest? {
+    override suspend fun steeringContext(request: GenerationRequest): com.promenar.infinity.data.exec.SteeringContext? =
+        composerQueueStore?.observe(request.sessionId)?.let { com.promenar.infinity.data.exec.SteeringContext(it) }
+
+    override suspend fun markStepInterrupted(request: GenerationRequest, snapshot: GenerationSnapshot) {
+        messageManager.flushGenerationTerminal(request.sessionId, assistantMessageId(request))
+        messageManager.markGenerationTerminal(request.sessionId, assistantMessageId(request), snapshot.content, "interrupted")
+    }
+
+    override suspend fun injectSteering(request: GenerationRequest): GenerationRequest? = injectQueuedMessage(request, true)
+    override suspend fun injectQueuedAtBoundary(request: GenerationRequest): GenerationRequest? = injectQueuedMessage(request, false)
+    private suspend fun injectQueuedMessage(request: GenerationRequest, steeringOnly: Boolean): GenerationRequest? {
         val queue = composerQueueStore ?: return null
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
-        val item = queue.claimSteering(request.sessionId) ?: return null
+        val item = (if (steeringOnly) queue.claimSteering(request.sessionId) else queue.claimBoundary(request.sessionId)) ?: return null
         try {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
         } catch (cancelled: CancellationException) {
@@ -1262,7 +1294,8 @@ internal class DefaultChatGenerationRuntime(
                 messageManager.flushGenerationTerminal(request.sessionId, assistantMessageId(request))
                 val target = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
                     ?: error("插队目标消息不存在")
-                messageManager.markGenerationTerminal(request.sessionId, target.id, target.content, "success")
+                messageManager.markGenerationTerminal(request.sessionId, target.id, target.content,
+                    if (target.status == "interrupted") "interrupted" else "success")
                 if (request.messageIdsToReplace.isNotEmpty()) commitReplacement(request)
                 messageManager.addMessage(request.sessionId, com.promenar.infinity.data.model.Message(
                     id = userId, role = MessageRole.USER, content = item.text,

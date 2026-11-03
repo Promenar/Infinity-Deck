@@ -37,6 +37,19 @@ class TermuxExecSkill(
                     is ToolSchemaValidation.Invalid -> invalidArguments("${validation.error.path}：${validation.error.message}")
                     // Termux 结果由广播一次性回传，没有增量输出。
                     else -> {
+                        if (jobs != null) {
+                            val timeout = com.promenar.infinity.domain.tool.ExecToolArguments.integer(args, "timeout_seconds", 60, 1..600)
+                            val minutes = com.promenar.infinity.domain.tool.ExecToolArguments.integer(args, "max_runtime_minutes", 120, 1..1440)
+                            val action = com.promenar.infinity.domain.jobs.BackgroundJobExitAction.fromWire((args["on_exit"] as? JsonPrimitive)?.content ?: "notify")
+                                ?: throw IllegalArgumentException("on_exit 无效")
+                            val job = jobs.startTermux(context.sessionId, context.workspaceRootUuid,
+                                (args.getValue("command") as JsonPrimitive).content, normalizeWorkdir((args["workdir"] as? JsonPrimitive)?.content),
+                                (args["stdin"] as? JsonPrimitive)?.content, minutes, action,
+                                com.promenar.infinity.domain.tool.ExecToolArguments.title(args), waitForStart = false)
+                            val current = jobs.waitFor(context.sessionId, job.id, timeout, foreground = true)
+                            val command = termuxForegroundResult(current)
+                            return ToolResult("termux_${UUID.randomUUID()}", command.toJson().toString(), command.toolStatus)
+                        }
                         context.liveOutput.unsupported()
                         runner(TermuxCommandRequest(
                             command = (args.getValue("command") as JsonPrimitive).content,
@@ -65,3 +78,20 @@ class TermuxExecSkill(
     // 模型常为可选参数填空串或主目录简写；按省略处理，避免整次调用被拒。
     private fun normalizeWorkdir(raw: String?): String? = raw?.trim()?.takeUnless { it.isEmpty() || it == "~" || it == "\$HOME" }
 }
+
+/** 前台等待返回任务快照，日志只保留尾部时不推测原始长度。 */
+internal fun termuxForegroundResult(current: com.promenar.infinity.data.jobs.BackgroundJobStatus): com.promenar.infinity.domain.tool.CommandToolResult =
+    com.promenar.infinity.domain.tool.CommandToolResult(
+        exitCode = current.record.exitCode, stdout = current.tail.text,
+        stdoutOriginalLength = if (current.tail.truncated) null else current.tail.text.length.toLong(),
+        stdoutTruncated = current.tail.truncated,
+        timedOut = current.record.state == "TIMED_OUT",
+        errorCode = when (current.record.state) {
+            "FAILED" -> "TERMUX_EXEC_FAILED"
+            "TIMED_OUT" -> "TERMUX_TIMEOUT"
+            "STOPPED", "INTERRUPTED" -> "TERMUX_STOPPED"
+            else -> null
+        },
+        guidance = if (current.record.running) "命令继续在后台运行；可用 job_status/job_wait 查看。" else current.record.guidance,
+        backendFields = JsonObject(backgroundStartJson(current.record) - "guidance"),
+    )

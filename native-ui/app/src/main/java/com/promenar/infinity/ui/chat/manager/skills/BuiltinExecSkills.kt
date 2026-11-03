@@ -55,11 +55,14 @@ class ShellExecSkill(private val service: BuiltinExecService, private val jobs: 
             if (command.length > MAX_COMMAND_CHARS) return@runBuiltin invalid("command 超过 $MAX_COMMAND_CHARS 字符，请把脚本写入工作区文件后执行")
             val mode = context.runMode ?: service.runModeForSession(context.sessionId)
             val threshold = ExecToolArguments.integer(values, "yield_after_seconds", minOf(15, timeout), 0..timeout)
-            if (capture == null && mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX && jobs != null) {
+            if (jobs != null) {
                 val minutes = ExecToolArguments.integer(values, "max_runtime_minutes", 120, 1..1440)
                 val action = com.promenar.infinity.domain.jobs.BackgroundJobExitAction.fromWire((values["on_exit"] as? JsonPrimitive)?.content ?: "notify")!!
-                jobs.runLinuxForeground(context.sessionId, context.workspaceRootUuid, command, threshold, minutes, action, context.liveOutput, ExecToolArguments.title(values)) { attachment, live ->
-                    service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, live, expectedMode = mode, attachment = attachment)
+                jobs.runForeground(context.sessionId, context.workspaceRootUuid, command,
+                    if (mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX) threshold else 0,
+                    minutes, action, context.liveOutput, ExecToolArguments.title(values),
+                    if (mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX) com.promenar.infinity.domain.jobs.BackgroundJobRunner.LINUX else com.promenar.infinity.domain.jobs.BackgroundJobRunner.SHELL) { attachment, live ->
+                    service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, live, expectedMode = mode, attachment = attachment, capture = capture)
                 }
             } else com.promenar.infinity.data.exec.ToolExecutionControls.controlled(com.promenar.infinity.data.exec.ToolExecutionControls.Kind.FOREGROUND) {
                 service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, context.liveOutput, expectedMode = mode, capture = capture)
@@ -103,7 +106,17 @@ class PythonExecSkill(private val service: BuiltinExecService, private val jobs:
                 code.length > MAX_CODE_CHARS -> invalid("code 超过 $MAX_CODE_CHARS 字符，请把代码写入工作区文件后用 shell_exec 运行 python3 文件")
                 // 单个 execve 参数上限 128 KiB。
                 code.toByteArray(Charsets.UTF_8).size > MAX_CODE_BYTES -> invalid("code 的 UTF-8 编码超过 $MAX_CODE_BYTES 字节，请把代码写入工作区文件后用 shell_exec 运行 python3 文件")
-                else -> service.runPython(context.workspaceRootUuid, context.sessionId, code, stdin, timeout, context.liveOutput, expectedMode = context.runMode, capture = capture)
+                else -> if (jobs == null) service.runPython(context.workspaceRootUuid, context.sessionId, code, stdin, timeout, context.liveOutput, expectedMode = context.runMode, capture = capture)
+                else {
+                    val mode = context.runMode ?: service.runModeForSession(context.sessionId)
+                    val minutes = ExecToolArguments.integer(args, "max_runtime_minutes", 120, 1..1440)
+                    val action = com.promenar.infinity.domain.jobs.BackgroundJobExitAction.fromWire((args["on_exit"] as? JsonPrimitive)?.content ?: "notify")!!
+                    jobs.runForeground(context.sessionId, context.workspaceRootUuid, code, 0, minutes, action, context.liveOutput,
+                        ExecToolArguments.title(args), if (mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX)
+                            com.promenar.infinity.domain.jobs.BackgroundJobRunner.LINUX else com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON) { attachment, live ->
+                        service.runPython(context.workspaceRootUuid, context.sessionId, code, stdin, timeout, live, expectedMode = mode, capture = capture, attachment = attachment)
+                    }
+                }
             }
         }
 

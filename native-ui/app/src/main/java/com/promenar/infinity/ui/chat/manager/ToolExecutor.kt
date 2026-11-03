@@ -106,12 +106,17 @@ class ToolExecutor internal constructor(
         val targetMsg = store.getSession(sessionId)?.messages?.find { it.id == assistantMessageId } ?: return
         for (tc in toolCalls.distinctBy { it.id }) {
             val key = ToolExecutionKey(sessionId, assistantMessageId, tc.id)
-            val preflight = ToolPreflight.Invalid(
-                identity = rejectedIdentity(tc),
-                persistedIdentity = activeLedger.invocationIdentity(key),
-                feedback = reason,
-            )
-            finishInvalidCall(activeLedger, key, targetMsg, tc, preflight)
+            val persisted = activeLedger.invocationIdentity(key)
+            if (persisted != null) {
+                if (activeLedger.state(key) !in setOf(ToolLedgerState.PENDING_APPROVAL, ToolLedgerState.APPROVED, ToolLedgerState.RUNNING)) continue
+                activeLedger.terminalizeWithResults(setOf(ToolTerminalRequest(key, tc.name, targetMsg.thoughtSignature,
+                    interruptionReason = reason)), ToolLedgerState.CANCELLED)
+                    .forEach { messageManager.mirrorPersistedMessage(sessionId, it) }
+            } else {
+                finishInvalidCall(activeLedger, key, targetMsg, tc, ToolPreflight.Invalid(
+                    identity = rejectedIdentity(tc), persistedIdentity = null, feedback = reason,
+                ))
+            }
         }
     }
 
@@ -441,7 +446,7 @@ class ToolExecutor internal constructor(
         val sink = liveOutput?.open(stepId) ?: com.promenar.infinity.domain.tool.ToolLiveOutputSink.None
         return try {
             withContext(com.promenar.infinity.data.exec.ToolCallControlContext(session.id, tc.id, stepId)) {
-            skill.execute(
+            val execute: suspend () -> ToolResult = { skill.execute(
                 arguments,
                 object : SkillExecutionContext {
                     override val sessionId = session.id
@@ -456,7 +461,16 @@ class ToolExecutor internal constructor(
                     override val workspaceRootUuid = session.workspaceRootUuid
                         ?: throw SecurityException("Session workspace root is missing")
                 }
+            ) }
+            val cooperative = skill.sourceId == "builtin" && skill.name in setOf(
+                "shell_exec", "python_exec", "termux_exec", "ssh_exec", "job_wait", "agent_task", "agent_wait",
             )
+            if (cooperative) execute() else when (val outcome = com.promenar.infinity.data.exec.interruptOnSteering(
+                kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext], execute,
+            )) {
+                is com.promenar.infinity.data.exec.SteeringStep.Completed -> outcome.value
+                com.promenar.infinity.data.exec.SteeringStep.Interrupted -> ToolResult(tc.id, "用户插队打断了此工具调用。", "error")
+            }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

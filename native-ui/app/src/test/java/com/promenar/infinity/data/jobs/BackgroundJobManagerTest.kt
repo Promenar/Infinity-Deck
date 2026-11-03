@@ -36,6 +36,67 @@ class BackgroundJobManagerTest {
         } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
     }
 
+    @Test fun `Termux输出基线查询未返回时插队立即得到本地状态`() = runBlocking {
+        val root = Files.createTempDirectory("job-termux-wait-interrupt").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val querying = CompletableDeferred<Unit>()
+            val backend = com.promenar.infinity.data.termux.TermuxBackgroundJobs {
+                querying.complete(Unit)
+                awaitCancellation()
+            }
+            val store = BackgroundJobStore(File(root, "store"))
+            store.put(sample().copy(runner = "TERMUX", runDirectory = File(root, "runs/job-a").path,
+                termuxDirectory = "/termux/jobs/job-a", termuxPid = 123))
+            val jobs = manager(root, scope, store, termux = backend)
+            jobs.initialize()
+            val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+            val waiting = async(SteeringContext(queue) + ToolCallControlContext("s", "termux-check", "step")) {
+                jobs.waitFor("s", "job-a", 600, untilOutput = "ready")
+            }
+            withTimeout(5_000) { querying.await(); ToolExecutionControls.observe("s", "termux-check").first { it != null } }
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("q", "插队", createdAt = 0, steering = true)))
+            val returned = withTimeout(1_000) { waiting.await() }
+            assertThat(returned.waitReason).isEqualTo("steering")
+            assertThat(returned.record.running).isTrue()
+        } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
+    }
+
+    @Test fun `Termux前台在启动回执未返回时也可插队转后台`() = runBlocking {
+        val root = Files.createTempDirectory("job-termux-foreground").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val release = CompletableDeferred<Unit>()
+        try {
+            val started = CompletableDeferred<Unit>()
+            val directory = java.util.Base64.getEncoder().encodeToString("/termux/jobs/test".toByteArray())
+            val backend = com.promenar.infinity.data.termux.TermuxBackgroundJobs { request ->
+                if ("launch=" in request.command) { started.complete(Unit); release.await() }
+                com.promenar.infinity.data.termux.TermuxCommandResult(stdout = "INFINITY_JOB_V1\n$directory\n12345\n", exitCode = 0)
+            }
+            val jobs = manager(root, scope, BackgroundJobStore(File(root, "store")), termux = backend)
+            val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+            val context = object : com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext {
+                override val sessionId = "s"
+                override val agentId = "a"
+                override val workspacePath: String? = null
+                override val workspaceRootUuid = "root"
+            }
+            val skill = com.promenar.infinity.ui.chat.manager.skills.TermuxExecSkill({ error("不使用单次前台广播") }, jobs) { true }
+            val waiting = async(SteeringContext(queue) + ToolCallControlContext("s", "termux-exec", "step")) {
+                skill.execute(kotlinx.serialization.json.Json.parseToJsonElement("{\"command\":\"sleep 30\",\"on_exit\":\"none\"}") as kotlinx.serialization.json.JsonObject, context)
+            }
+            withTimeout(5_000) { started.await(); ToolExecutionControls.observe("s", "termux-exec").first { it != null } }
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("q", "插队", createdAt = 0, steering = true)))
+            val result = withTimeout(1_000) { waiting.await() }
+            assertThat(result.status).isEqualTo("success")
+            assertThat(result.content).contains("job_id")
+            assertThat(jobs.list("s").single().running).isTrue()
+            assertThat(release.isCompleted).isFalse()
+        } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
+    }
+
     @Test fun `文件已出现时立即返回并拒绝越界路径`() = fixture { m ->
         val job = m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "sleep 60", null, 1, BackgroundJobExitAction.NONE)
         File(job.workspaceDirectory!!, "ready").createNewFile()

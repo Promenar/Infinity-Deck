@@ -11,8 +11,8 @@ import kotlin.coroutines.CoroutineContext
 /** 队列的持久状态同时承担唤醒信号，登记等待前已经到达的插队也可见。 */
 class SteeringContext(val queue: StateFlow<ComposerQueueState>) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<SteeringContext>
-    fun pending(): Boolean = queue.value.let { it.pauseReason == null && it.items.any { item -> item.steering } }
-    suspend fun await() { queue.first { it.pauseReason == null && it.items.any { item -> item.steering } } }
+    fun pending(): Boolean = queue.value.let { it.pauseReason == null && it.items.any { item -> item.steering && item.id != it.editingId } }
+    suspend fun await() { queue.first { it.pauseReason == null && it.items.any { item -> item.steering && item.id != it.editingId } } }
 }
 
 class ToolCallControlContext(val sessionId: String, val toolCallId: String, val stepId: String) : AbstractCoroutineContextElement(Key) {
@@ -36,11 +36,12 @@ object ToolExecutionControls {
     fun moveToBackground(sessionId: String, toolCallId: String): Boolean = synchronized(lock) {
         entries[sessionId to toolCallId]?.background?.let { it(); true } ?: false
     }
-    suspend fun <T> controlled(kind: Kind, background: (() -> Unit)? = null, block: suspend (Deferred<Unit>) -> T): T {
+    suspend fun <T> controlled(kind: Kind, background: (() -> Unit)? = null, releaseToBackground: Boolean = false, block: suspend (Deferred<Unit>) -> T): T {
         val context = currentCoroutineContext()[ToolCallControlContext]
         val release = CompletableDeferred<Unit>()
+        val backgroundAction = background ?: if (releaseToBackground) ({ release.complete(Unit); Unit }) else null
         val key = context?.let { it.sessionId to it.toolCallId }
-        val entry = context?.let { Entry(State(it.sessionId, it.toolCallId, it.stepId, kind, kind == Kind.WAITING, background != null), release, background) }
+        val entry = context?.let { Entry(State(it.sessionId, it.toolCallId, it.stepId, kind, kind == Kind.WAITING, backgroundAction != null), release, backgroundAction) }
         if (key != null && entry != null) synchronized(lock) { entries[key] = entry; states.value = entries.mapValues { it.value.state } }
         try { return block(release) }
         finally { if (key != null && entry != null) synchronized(lock) {

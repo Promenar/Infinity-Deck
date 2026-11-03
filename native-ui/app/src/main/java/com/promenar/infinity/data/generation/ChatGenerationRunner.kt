@@ -46,8 +46,14 @@ interface ChatGenerationRuntime {
         toolCalls: List<GenerationToolCall>,
     ): GenerationToolDecision
     suspend fun prepareContinuation(request: GenerationRequest): String? = null
-    /** 安全边界认领并持久注入用户消息，返回后续请求使用的用户输入。 */
+    /** 认领并持久注入插队消息，返回后续请求使用的用户输入。 */
     suspend fun injectSteering(request: GenerationRequest): GenerationRequest? = null
+    /** 完整步骤结束后认领队首一条用户消息。 */
+    suspend fun injectQueuedAtBoundary(request: GenerationRequest): GenerationRequest? = injectSteering(request)
+    suspend fun steeringContext(request: GenerationRequest): com.promenar.infinity.data.exec.SteeringContext? = null
+    suspend fun markStepInterrupted(request: GenerationRequest, snapshot: GenerationSnapshot) = Unit
+    /** 插队到达审批或提问创建窗口时，先关闭等待并补齐本批结果。 */
+    suspend fun interruptPendingTools(request: GenerationRequest, toolCalls: List<GenerationToolCall>): Boolean = false
     /** 本次生成的工具轮次与调用预算。 */
     fun toolBudget(request: GenerationRequest): GenerationToolBudget = GenerationToolBudget()
     fun estimatedInputTokens(request: GenerationRequest): Int = 0
@@ -250,6 +256,7 @@ class ChatGenerationRunner(
                 }
                 return
             }
+            val steering = runtime.steeringContext(request)
             var attempt = 0
             val budget = runtime.toolBudget(request)
             val consumed = runtime.consumedToolUsage(request)
@@ -293,12 +300,14 @@ class ChatGenerationRunner(
                 var reportedUsage: Long? = null
                 // 自动重试沿用本轮首次请求时间，首个输出与结束时间以最终成功的那次请求为准。
                 var roundRequestStartedAt: Long? = null
+                var streamInterrupted = false
                 val terminal: GenerationChunk.Completed
                 while (true) {
                     val outcome: GenerationChunk.Completed? = try {
                         phase(GenerationPhase.CONNECTING)
                         val requestStartedAt = roundRequestStartedAt ?: clock().also { roundRequestStartedAt = it }
                         snapshot = snapshot.copy(timing = GenerationTiming(requestStartedAt))
+                        val streamOutcome = com.promenar.infinity.data.exec.interruptOnSteering(steering) {
                         val stream = runtime.stream(request, attempt)
                         phase(GenerationPhase.THINKING)
                         var streamingPhaseEmitted = false
@@ -381,7 +390,16 @@ class ChatGenerationRunner(
                                 code = GenerationFailureCode.NETWORK,
                                 technical = "Provider stream ended without explicit Completed",
                                 retryable = true,
-                            ))).also { markRoundEnded() }
+                            )))
+                        }
+                        markRoundEnded()
+                        when (streamOutcome) {
+                            is com.promenar.infinity.data.exec.SteeringStep.Completed -> streamOutcome.value
+                            com.promenar.infinity.data.exec.SteeringStep.Interrupted -> {
+                                streamInterrupted = true
+                                GenerationChunk.Completed(CompletionReason.END_TURN)
+                            }
+                        }
                     } catch (failed: GenerationFailedException) {
                         if (retries >= maxRetries || !isRetryableStreamFailure(failed.failure)) throw failed
                         retries++
@@ -410,9 +428,20 @@ class ChatGenerationRunner(
                         break
                     }
                 }
-                val finalized = runtime.finalizeStream(request, snapshot)
-                if (finalized != snapshot) snapshot = persist(request, finalized, emit)
-                validateCompletedRound(terminal, snapshot.toolCalls)
+                if (streamInterrupted) {
+                    // 未完成参数只保留可序列化占位，全部调用写中断结果，不能进入执行器。
+                    val pairedCalls = snapshot.toolCalls.distinctBy { it.id }.map { call ->
+                        val args = runCatching { Json.parseToJsonElement(call.arguments) as? JsonObject }.getOrNull()
+                        call.copy(name = call.name.ifBlank { "interrupted_tool_call" }, arguments = args?.toString() ?: "{}")
+                    }
+                    snapshot = persist(request, snapshot.copy(toolCalls = pairedCalls), emit)
+                    runtime.rejectToolCalls(request, pairedCalls, "用户插队打断了本步，调用未执行。")
+                    resultsCommitted = true
+                } else {
+                    val finalized = runtime.finalizeStream(request, snapshot)
+                    if (finalized != snapshot) snapshot = persist(request, finalized, emit)
+                    validateCompletedRound(terminal, snapshot.toolCalls)
+                }
                 if (reportedUsage == null) {
                     val input = runtime.estimatedInputTokens(request).coerceAtLeast(0)
                     val output = ApproximateTokenEstimator.estimate(snapshot.content + snapshot.reasoning) +
@@ -425,11 +454,11 @@ class ChatGenerationRunner(
                 cumulativeTokens += reportedUsage ?: snapshot.totalTokens.toLong()
                 if (reportedUsage == null) tokensEstimated = true
                 progress()
+                if (streamInterrupted) runtime.markStepInterrupted(request, snapshot)
                 if (terminal.reason == CompletionReason.END_TURN) {
-                    // Provider 流已经结束；保留当前回复后，把用户消息送入同一执行循环。
-                    val steered = runtime.injectSteering(request)
-                    if (steered != null) {
-                        request = steered
+                    val delivered = if (streamInterrupted) runtime.injectSteering(request) else runtime.injectQueuedAtBoundary(request)
+                    if (delivered != null || streamInterrupted) {
+                        if (delivered != null) request = delivered
                         emptyReplyRetried = false
                         attempt++
                         runtime.prepareContinuation(request)?.let { safeEmit(GenerationEvent.TargetChanged(it)) }
@@ -490,7 +519,7 @@ class ChatGenerationRunner(
                     finalAnswerMode = true
                     runtime.enterFinalAnswerMode(request)
                 }
-                val decision = if (finalAnswerMode) {
+                var decision = if (finalAnswerMode) {
                     GenerationToolDecision.CONTINUE
                 } else {
                     val repeated = effectiveTools.fold(false) { found, call -> loopDetector.record(call) || found }
@@ -506,20 +535,18 @@ class ChatGenerationRunner(
                     phase(GenerationPhase.EXECUTING_TOOLS)
                     // 批次可能在后续调用被取消前已有结果提交；终态按实际结果保留配对。
                     resultsCommitted = true
-                    runtime.handleTools(request, effectiveTools).also { result ->
-                        resultsCommitted = true
-                        if (result == GenerationToolDecision.WAIT_FOR_APPROVAL) {
-                            phase(GenerationPhase.WAITING_APPROVAL)
-                        } else if (result == GenerationToolDecision.WAIT_FOR_INPUT) {
-                            phase(GenerationPhase.WAITING_INPUT)
-                        }
-                    }
+                    runtime.handleTools(request, effectiveTools).also { resultsCommitted = true }
+                }
+                if (decision in setOf(GenerationToolDecision.WAIT_FOR_APPROVAL, GenerationToolDecision.WAIT_FOR_INPUT) &&
+                    steering?.pending() == true && runtime.interruptPendingTools(request, effectiveTools)) {
+                    decision = GenerationToolDecision.CONTINUE
                 }
                 when (decision) {
                     GenerationToolDecision.CONTINUE -> {
                         attempt++
                         if (!flushRoundBoundaryWithRetry()) return
-                        runtime.injectSteering(request)?.let {
+                        if (steering?.pending() == true) runtime.markStepInterrupted(request, snapshot)
+                        runtime.injectQueuedAtBoundary(request)?.let {
                             request = it
                             emptyReplyRetried = false
                         }
@@ -552,6 +579,7 @@ class ChatGenerationRunner(
                         snapshot = persist(request, snapshot, emit)
                     }
                     GenerationToolDecision.WAIT_FOR_APPROVAL, GenerationToolDecision.WAIT_FOR_INPUT -> {
+                        phase(if (decision == GenerationToolDecision.WAIT_FOR_APPROVAL) GenerationPhase.WAITING_APPROVAL else GenerationPhase.WAITING_INPUT)
                         withContext(NonCancellable) {
                             try {
                                 flushOnce()

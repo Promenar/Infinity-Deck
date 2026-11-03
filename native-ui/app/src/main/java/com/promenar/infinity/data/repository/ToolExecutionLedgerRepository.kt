@@ -342,6 +342,7 @@ data class ToolTerminalRequest(
     val key: ToolExecutionKey,
     val toolName: String,
     val thoughtSignature: String? = null,
+    val interruptionReason: String? = null,
 )
 
 enum class ToolApprovalCreation { CREATED, EXISTING, CONFLICT }
@@ -570,7 +571,7 @@ class ToolExecutionLedgerRepository(
             ).map { it.first }
             val messages = orderedRequests.mapNotNull { request ->
                 val createdAt = clock()
-                val message = terminalMessage(request, state, content, createdAt)
+                val message = terminalMessage(request, state, request.interruptionReason ?: content, createdAt)
                 val changed = dao.decideTerminal(
                     sessionId = request.key.sessionId,
                     assistantMessageId = request.key.assistantMessageId,

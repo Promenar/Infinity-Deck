@@ -387,6 +387,8 @@ class DefaultChatGenerationRuntimeTest {
         initialCustomPrompt: String? = null,
         initialTurnContext: String? = null,
         agentConfigService: com.promenar.infinity.data.agentconfig.AgentConfigService? = null,
+        secretLedger: com.promenar.infinity.data.secret.SecretInputLedgerRepository? = null,
+        composerQueue: com.promenar.infinity.data.chat.queue.ComposerQueueStore? = null,
     ): SkillsFixture {
         val settings = mockk<SharedPreferences> {
             every { getInt(any(), any()) } answers { secondArg() }
@@ -447,6 +449,8 @@ class DefaultChatGenerationRuntimeTest {
             mockk(), null, mockk(), mockk(), strategy, mockk(relaxed = true), skillCatalog = catalog, sessionWorkspace = workspace,
             stateBoardRepository = stateBoardRepository,
             askUserLedger = askLedger,
+            secretInputLedger = secretLedger,
+            composerQueueStore = composerQueue,
             subagentCompletions = subagentCompletions,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgePlanner, knowledgeTurns = knowledgeTurns,
             timedGrants = timedGrants, linuxFiles = linuxFiles,
@@ -2233,6 +2237,37 @@ class DefaultChatGenerationRuntimeTest {
         coVerify { fixture.executor.rejectTools("skills-session", "assistant", match { it.single().id == "write" }, "用户插入了新消息，此调用未执行。") }
     }
 
+    @Test fun `request_secret创建窗口收到插队时关闭输入账本并继续`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("secret-steering-window").toFile()
+        try {
+            val queue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(directory, { null }, UnconfinedTestDispatcher(testScheduler))
+            val input = mockk<com.promenar.infinity.data.secret.SecretInputLedgerRepository>()
+            val ask = mockk<com.promenar.infinity.data.repository.AskUserLedgerRepository>(relaxed = true)
+            val ledger = mockk<ToolExecutionLedger>(relaxed = true)
+            coEvery { ledger.completeToolApproval(any(), any()) } returns com.promenar.infinity.data.repository.ApprovalTransition(
+                "skills-session", "assistant", com.promenar.infinity.data.model.LoopStatus.RUNNING, null)
+            val name = com.promenar.infinity.domain.secret.SecretIoLimits.REQUEST_TOOL_NAME
+            coEvery { input.createBatch(any(), any(), any(), any()) } coAnswers {
+                val item = queue.enqueue("skills-session", "新指令")
+                queue.steer("skills-session", item.id)
+                com.promenar.infinity.data.secret.SecretInputBatchResult(mockk(relaxed = true), emptyList())
+            }
+            val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+                coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+            }
+            val fixture = skillsFixture(catalog, toolNames = listOf(name), askLedger = ask, secretLedger = input,
+                toolLedger = ledger, composerQueue = queue)
+            fixture.runtime.buildContext(fixture.request)
+            val calls = listOf(GenerationToolCall("secret", name, "{}"))
+            assertThat(fixture.runtime.handleTools(fixture.request, calls)).isEqualTo(GenerationToolDecision.WAIT_FOR_INPUT)
+            assertThat(fixture.runtime.interruptPendingTools(fixture.request, calls)).isTrue()
+            coVerify(exactly = 1) { ask.cancel("skills-session", "用户插队打断了本步，调用未执行。") }
+            coVerify { fixture.executor.rejectTools("skills-session", "assistant", match { it.single().id == "secret" }, any()) }
+            assertThat(fixture.store.getSession("skills-session")!!.loopStatus).isEqualTo(com.promenar.infinity.data.model.LoopStatus.RUNNING)
+            assertThat(queue.snapshot("skills-session").items.single().text).isEqualTo("新指令")
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun `认领完成前停止生成时插队原文保留在队列`() = runTest {
         val directory = java.nio.file.Files.createTempDirectory("steering-cancel").toFile()
         try {
@@ -2258,6 +2293,32 @@ class DefaultChatGenerationRuntimeTest {
         } finally { directory.deleteRecursively() }
     }
 
+    @Test fun `普通排队认领后生成取消保留未注入条目`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("boundary-cancel-runtime").toFile()
+        try {
+            val fileQueue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(directory, { null }, UnconfinedTestDispatcher(testScheduler))
+            val queue = object : com.promenar.infinity.data.chat.queue.ComposerQueueStore by fileQueue {
+                override suspend fun claimBoundary(sessionId: String): com.promenar.infinity.data.chat.queue.QueuedMessage? {
+                    val item = fileQueue.claimBoundary(sessionId)
+                    if (item != null) kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]?.cancel()
+                    return item
+                }
+            }
+            val writes = mutableListOf<String>()
+            val operation = launch {
+                runThreeRoundToolScenario(toolRoundCount = 0, composerQueue = queue,
+                    onPrompt = { queue.enqueue("s1", "cancelled-queued") }, onPersist = { writes += it })
+            }
+            operation.join()
+            assertThat(operation.isCancelled).isTrue()
+            val state = fileQueue.snapshot("s1")
+            assertThat(state.items.single().text).isEqualTo("cancelled-queued")
+            assertThat(state.items.single().steering).isFalse()
+            assertThat(state.sending).isNull()
+            assertThat(writes).doesNotContain("cancelled-queued")
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun `工具边界插队消息落盘且同一循环后续请求消费新用户输入`() = runTest {
         val directory = java.nio.file.Files.createTempDirectory("steering-runtime").toFile()
         try {
@@ -2267,16 +2328,19 @@ class DefaultChatGenerationRuntimeTest {
             val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 1, composerQueue = queue,
                 onToolsFinished = { val item = queue.enqueue("s1", "改查新目标"); queue.steer("s1", item.id) },
                 onCompleted = { saved = it.getSession("s1") })
-            assertThat(prompts).hasSize(2)
-            assertThat(prompts.last().messages.any { it.role == "user" && it.content.contains("改查新目标") }).isTrue()
+            assertThat(prompts).hasSize(3)
+            assertThat(prompts[1].messages.any { it.role == "user" && it.content.contains("改查新目标") }).isTrue()
+            assertThat(prompts[1].messages.none { it.role == "user" && it.content.contains("普通排队") }).isTrue()
+            assertThat(prompts[2].messages.any { it.role == "user" && it.content.contains("普通排队") }).isTrue()
             val user = saved!!.messages.single { it.role == MessageRole.USER && it.content == "改查新目标" }
-            assertThat(saved!!.messages.last { it.role == MessageRole.ASSISTANT }.parentMessageId).isEqualTo(user.id)
+            assertThat(saved!!.messages.first { it.role == MessageRole.ASSISTANT && it.parentMessageId == user.id }.content).isEqualTo("final")
             assertThat(queue.snapshot("s1").sending).isNull()
-            assertThat(queue.snapshot("s1").items.map { it.text }).containsExactly("普通排队")
+            assertThat(queue.snapshot("s1").items).isEmpty()
+            assertThat(queue.claimNext("s1")).isNull()
         } finally { directory.deleteRecursively() }
     }
 
-    @Test fun `纯文字END_TURN边界消费插队且普通队列保留`() = runTest {
+    @Test fun `流式插队消费后不重复派发`() = runTest {
         val directory = java.nio.file.Files.createTempDirectory("steering-end-turn").toFile()
         try {
             val queue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(directory, { null }, UnconfinedTestDispatcher(testScheduler))
@@ -2287,6 +2351,43 @@ class DefaultChatGenerationRuntimeTest {
                 onCompleted = { saved = it.getSession("s1") })
             assertThat(prompts).hasSize(2)
             assertThat(saved!!.messages.count { it.role == MessageRole.USER && it.content == "追加要求" }).isEqualTo(1)
+            assertThat(queue.claimNext("s1")).isNull()
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun `流被插队取消后部分正文思考持久化为interrupted且继续同一循环`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("steering-partial-runtime").toFile()
+        try {
+            val queue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(directory, { null }, UnconfinedTestDispatcher(testScheduler))
+            var saved: Session? = null
+            val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 0, composerQueue = queue,
+                onPartialStream = { val item = queue.enqueue("s1", "新指令"); queue.steer("s1", item.id) },
+                onCompleted = { saved = it.getSession("s1") })
+            assertThat(prompts).hasSize(2)
+            val partial = saved!!.messages.first { it.role == MessageRole.ASSISTANT }
+            assertThat(partial.content).isEqualTo("部分正文")
+            assertThat(partial.reasoning).isEqualTo("部分思考")
+            assertThat(partial.status).isEqualTo("interrupted")
+            assertThat(saved!!.messages.last { it.role == MessageRole.ASSISTANT }.content).isEqualTo("final")
+            assertThat(queue.claimNext("s1")).isNull()
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun `普通排队在整批结果落盘后送达且END_TURN只送下一条`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("queued-boundary-runtime").toFile()
+        try {
+            val queue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(directory, { null }, UnconfinedTestDispatcher(testScheduler))
+            var saved: Session? = null
+            val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 1, toolCallsPerRound = 3, composerQueue = queue,
+                onToolsFinished = { queue.enqueue("s1", "第一条排队"); queue.enqueue("s1", "第二条排队") },
+                onCompleted = { saved = it.getSession("s1") })
+            assertThat(prompts).hasSize(3)
+            assertThat(prompts[1].messages.count { it.role == "tool" }).isEqualTo(3)
+            assertThat(prompts[1].messages.any { it.role == "user" && it.content.contains("第一条排队") }).isTrue()
+            assertThat(prompts[1].messages.none { it.role == "user" && it.content.contains("第二条排队") }).isTrue()
+            assertThat(prompts[2].messages.any { it.role == "user" && it.content.contains("第二条排队") }).isTrue()
+            assertThat(saved!!.messages.filter { it.role == MessageRole.USER }.map { it.content })
+                .containsExactly("question", "第一条排队", "第二条排队").inOrder()
             assertThat(queue.claimNext("s1")).isNull()
         } finally { directory.deleteRecursively() }
     }
@@ -2397,6 +2498,8 @@ class DefaultChatGenerationRuntimeTest {
         outputStore: com.promenar.infinity.data.repository.ToolOutputStore? = null,
         onCompleted: (ChatStore) -> Unit = {},
         composerQueue: com.promenar.infinity.data.chat.queue.ComposerQueueStore? = null,
+        toolCallsPerRound: Int = 1,
+        onPartialStream: (suspend () -> Unit)? = null,
         expectedFailure: GenerationFailureCode? = null,
     ): Triple<List<PromptRequest>, Int, List<List<ProtocolTool>>> {
         val settings = mockk<SharedPreferences>()
@@ -2451,6 +2554,11 @@ class DefaultChatGenerationRuntimeTest {
                 prompts += request
                 onPrompt(request)
                 val round = completedRounds + 1
+                if (prompts.size == 1 && onPartialStream != null) {
+                    emit(StreamChunk.TextDelta("部分正文", reasoning = "部分思考"))
+                    onPartialStream()
+                    kotlinx.coroutines.awaitCancellation()
+                }
                 if (reasoningEveryRound) {
                     emit(StreamChunk.TextDelta("", reasoning = "正在思考"))
                     emit(StreamChunk.TextDelta(" \n"))
@@ -2464,7 +2572,10 @@ class DefaultChatGenerationRuntimeTest {
                 }
                 if (round <= toolRoundCount) {
                     val name = if (round == 1) "search" else "read_file"
-                    emit(StreamChunk.ToolCallDelta("call-$round", name, """{"round":$round}""", 0))
+                    repeat(toolCallsPerRound) { index ->
+                        val id = if (toolCallsPerRound == 1) "call-$round" else "call-$round-$index"
+                        emit(StreamChunk.ToolCallDelta(id, name, """{"round":$round}""", index))
+                    }
                 } else if (round > toolRoundCount + emptyFinalRounds) emit(StreamChunk.TextDelta("final"))
                 completedRounds++
                 emit(StreamChunk.Completed(
@@ -2473,7 +2584,9 @@ class DefaultChatGenerationRuntimeTest {
                     } else {
                         com.promenar.infinity.domain.generation.CompletionReason.END_TURN
                     },
-                    if (round <= toolRoundCount) listOf("call-$round") else emptyList(),
+                    if (round <= toolRoundCount) (0 until toolCallsPerRound).map { index ->
+                        if (toolCallsPerRound == 1) "call-$round" else "call-$round-$index"
+                    } else emptyList(),
                 ))
             }
             override suspend fun sendPromptSync(request: PromptRequest) = PromptResponse("")

@@ -178,7 +178,7 @@ class ToolExecutorTest {
                     toolCallId = request.key.toolCallId,
                     parentMessageId = request.key.assistantMessageId,
                     name = request.toolName,
-                    content = "工具执行已取消。",
+                    content = request.interruptionReason ?: "工具执行已取消。",
                     thoughtSignature = request.thoughtSignature,
                 )
             }
@@ -344,6 +344,59 @@ class ToolExecutorTest {
         val results = store.getSession("s1")!!.messages.filter { it.role == MessageRole.TOOL }
         assertThat(results.map { it.toolCallId }).containsExactly("one", "two", "three")
         assertThat(results.filter { it.toolCallId != "one" }.all { it.content.contains("用户插入了新消息，此调用未执行") }).isTrue()
+    }
+
+    @Test fun `插队立即取消当前普通工具且整批调用各有一次结果`() = testScope.runTest {
+        seedSessionWithAssistant()
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var cancelled = false
+        var executions = 0
+        val skill = testSkill("cancellable_tool") {
+            executions++
+            entered.complete(Unit)
+            try { kotlinx.coroutines.awaitCancellation() } finally { cancelled = true }
+        }
+        val registry = singleSkillRegistry(skill)
+        val executor = ToolExecutor(store, messageManager, registry, testToolResolver(registry), ledger = RecordingLedger())
+        val calls = listOf("one", "two", "three").map { ToolCall(it, skill.name, "{}") }
+        val operation = async(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+            executor.executeTools("s1", "m1", calls, preparedTools = registry.getAllTools())
+        }
+        entered.await()
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("normal", "普通排队", createdAt = 0)))
+        kotlinx.coroutines.yield()
+        assertThat(operation.isCompleted).isFalse()
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("urgent", "插队", createdAt = 0, steering = true)))
+        operation.await()
+        assertThat(cancelled).isTrue()
+        assertThat(executions).isEqualTo(1)
+        val results = store.getSession("s1")!!.messages.filter { it.role == MessageRole.TOOL }
+        assertThat(results.map { it.toolCallId }).containsExactly("one", "two", "three")
+        assertThat(results.single { it.toolCallId == "one" }.content).contains("用户插队打断")
+        assertThat(results.filter { it.toolCallId != "one" }.all { it.content.contains("此调用未执行") }).isTrue()
+    }
+
+    @Test fun `普通排队在批内到达时执行同批全部工具`() = testScope.runTest {
+        seedSessionWithAssistant()
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        var executions = 0
+        val skill = testSkill("queued_tool") {
+            executions++
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("normal", "普通排队", createdAt = 0)))
+            ToolResult("result", "done", "success")
+        }
+        val registry = singleSkillRegistry(skill)
+        val executor = ToolExecutor(store, messageManager, registry, testToolResolver(registry), ledger = RecordingLedger())
+        kotlinx.coroutines.withContext(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+            executor.executeTools("s1", "m1", listOf("one", "two", "three").map { ToolCall(it, skill.name, "{}") }, preparedTools = registry.getAllTools())
+        }
+        assertThat(executions).isEqualTo(3)
+        assertThat(store.getSession("s1")!!.messages.filter { it.role == MessageRole.TOOL }.map { it.toolCallId })
+            .containsExactly("one", "two", "three")
     }
 
     @Test

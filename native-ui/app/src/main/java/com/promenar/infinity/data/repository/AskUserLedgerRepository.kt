@@ -214,7 +214,7 @@ class AskUserLedgerRepository(
         }
     }
 
-    suspend fun cancel(sessionId: String): List<Message> = writable(sessionId) { cancelInTransaction(sessionId) }
+    suspend fun cancel(sessionId: String, interruptionReason: String? = null): List<Message> = writable(sessionId) { cancelInTransaction(sessionId, interruptionReason) }
 
     /** 删除入口已封闭会话写入，不能重新申请普通写租约。 */
     internal suspend fun cancelForDeletion(sessionId: String): List<Message> = withContext(Dispatchers.IO) {
@@ -223,7 +223,7 @@ class AskUserLedgerRepository(
         cancelInTransaction(sessionId)
     }
 
-    private suspend fun cancelInTransaction(sessionId: String): List<Message> = database.withTransaction {
+    private suspend fun cancelInTransaction(sessionId: String, interruptionReason: String? = null): List<Message> = database.withTransaction {
         val results = mutableListOf<Message>()
         val entries = ledger.getInputForSession(sessionId)
         entries.forEach { entry ->
@@ -233,7 +233,7 @@ class AskUserLedgerRepository(
             } else {
                 val result = Message(id = "ask_cancel_${UUID.randomUUID()}", role = MessageRole.TOOL,
                     name = entry.toolName, toolCallId = entry.toolCallId, parentMessageId = entry.assistantMessageId,
-                    content = if (entry.toolName == com.promenar.infinity.domain.secret.SecretIoLimits.REQUEST_TOOL_NAME)
+                    content = if (interruptionReason != null) interruptionReason else if (entry.toolName == com.promenar.infinity.domain.secret.SecretIoLimits.REQUEST_TOOL_NAME)
                         Json.encodeToString<com.promenar.infinity.domain.secret.SecretInputOutcome>(com.promenar.infinity.domain.secret.SecretInputOutcome.Cancelled)
                     else if (entry.toolName == "session_branch") "工作方案未处理，用户已停止本轮。" else AskUserProtocol.failure("ASK_USER_CANCELLED", "用户未回答并停止了本轮。", "本轮已停止，请勿继续执行。"),
                     thoughtSignature = messages.getById(entry.assistantMessageId)?.thoughtSignature, createdAt = clock())

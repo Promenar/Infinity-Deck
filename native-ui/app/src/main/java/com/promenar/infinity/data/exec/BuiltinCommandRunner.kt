@@ -128,6 +128,14 @@ class BuiltinCommandRunner(
         onOutput: ((ToolOutputStream, String) -> Unit)? = null,
     ): BuiltinCommandOutput = runInternal(request, control, onOutput)
 
+    /** 非终端前台命令把进程身份附着到任务目录，保留分离的标准输出与错误。 */
+    suspend fun runAttached(
+        request: BuiltinCommandRequest,
+        control: BuiltinCommandControl,
+        processGroupFile: File?,
+        onOutput: ((ToolOutputStream, String) -> Unit)? = null,
+    ): BuiltinCommandOutput = runInternal(request, control, onOutput, processGroupFile = processGroupFile)
+
     suspend fun runTerminal(
         request: BuiltinCommandRequest,
         control: BuiltinCommandControl,
@@ -197,19 +205,20 @@ class BuiltinCommandRunner(
         val scratch = File(scratchDirectory(), "exec-${UUID.randomUUID()}").apply { mkdirs() }
         val pidFile = processGroupFile ?: File(scratch, "pgid")
         pidFile.parentFile?.mkdirs()
+        val persistentIdentity = processGroupFile != null || logFile != null
         try {
-            val builder = ProcessBuilder(launchCommand(request, pidFile, logFile != null && requireBackgroundIdentity))
+            val builder = ProcessBuilder(launchCommand(request, pidFile, persistentIdentity && requireBackgroundIdentity))
                 .directory(request.workingDirectory)
                 .redirectErrorStream(logFile != null)
             builder.environment().clear()
             builder.environment().putAll(request.environment)
             val process = if (request.terminal) terminalFactory.start(
-                launchCommand(request, pidFile, logFile != null && requireBackgroundIdentity).drop(groupLauncher.size),
+                launchCommand(request, pidFile, persistentIdentity && requireBackgroundIdentity).drop(groupLauncher.size),
                 request.workingDirectory, request.environment + ("TERM" to "xterm-256color"),
             ) else builder.start()
             var settled=false
             try {
-            if (logFile != null) {
+            if (persistentIdentity) {
                 val group = awaitProcessGroup(pidFile)
                 if(requireBackgroundIdentity) {
                     repeat(10) {
