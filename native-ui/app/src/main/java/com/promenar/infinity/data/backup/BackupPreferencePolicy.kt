@@ -76,7 +76,7 @@ internal object BackupPreferencePolicy {
         "provider_status" to setOf("statuses"),
         "settings" to setOf(
             "local_models_enabled", "local_auto_load", "last_local_model", "unlimited_auto_confirmed",
-            "termux_integration_enabled", "ssh_agent_host_management", "ssh_terminal_idle_disconnect", "mcp_allow_loopback_http", "script_lan_hosts", "script_approve_writes",
+            "termux_integration_enabled", "ssh_agent_host_management", "ssh_terminal_idle_disconnect", "script_approve_writes",
             "rolled_back_summary_usage_v1", "embedding_setup_hint_shown",
         ),
         "generation_notification_permission" to setOf("post_notifications_asked"),
@@ -94,7 +94,7 @@ internal object BackupPreferencePolicy {
     // 只为读取旧备份时识别并丢弃；不得继续导出或写回设备。
     private val exactRetired = mapOf(
         "backup" to setOf("auto_backup"),
-        "settings" to setOf("tool_context_ratio_percent", "tool_context_keep_rounds"),
+        "settings" to setOf("tool_context_ratio_percent", "tool_context_keep_rounds", "script_lan_hosts", "mcp_allow_loopback_http", "tailnet_allowed_peers"),
         "rag" to setOf(
             "jit_max_chunks",
             "kg_domain_auto",

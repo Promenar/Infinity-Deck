@@ -35,7 +35,7 @@ class AvatarBackupPackageTest {
         assertThrows<BackupValidationException> { DefaultBackupPackageCodec().decode(archive(content, version = 2), null) }
         assertThrows<BackupValidationException> {
             DefaultBackupPackageCodec().encode(BackupSnapshot(databaseSchemaVersion = 12, appVersion = "test",
-                avatars = mapOf("photo" to ByteArray((AvatarBackupFiles.MAX_FILE_BYTES + 1).toInt()))), BackupOptions(setOf(BackupContent.FILES)))
+                avatars = mapOf("photo" to ByteArray((BackupPackageLimits.MAX_IN_MEMORY_BYTES + 1).toInt()))), BackupOptions(setOf(BackupContent.FILES)))
         }
     }
 

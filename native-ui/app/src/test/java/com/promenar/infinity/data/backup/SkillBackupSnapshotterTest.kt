@@ -151,10 +151,10 @@ class SkillBackupSnapshotterTest {
     }
 
     @Test
-    fun `包含 Git 的条目数超过四千时跳过 Git`() = withRoot { root ->
+    fun `包含Git的条目数超过整包剩余条目时跳过Git`() = withRoot { root ->
         write(root, "alpha/SKILL.md", "甲")
         write(root, ".git/HEAD", "d".repeat(40))
-        repeat(4000) { write(root, ".git/objects/$it", "") }
+        repeat(BackupPackageLimits.MAX_ENTRIES) { write(root, ".git/objects/$it", "") }
         val partition = snapshot(root)
         try {
             assertThat(partition.files.keys).containsExactly("alpha/SKILL.md")
@@ -163,11 +163,11 @@ class SkillBackupSnapshotterTest {
     }
 
     @Test
-    fun `无 Git 文件超过六十四 MiB 时在创建备份包前失败`() = withRoot { root ->
+    fun `无Git文件超过整包容量时在创建备份包前失败`() = withRoot { root ->
         write(root, "alpha/SKILL.md", "甲")
-        RandomAccessFile(root.resolve("large").toFile(), "rw").use { it.setLength(64L * 1024 * 1024 + 1) }
+        RandomAccessFile(root.resolve("large").toFile(), "rw").use { it.setLength(BackupPackageLimits.MAX_TOTAL_BYTES + 1) }
         val failure = assertThrows<BackupValidationException> { snapshot(root) }
-        assertThat(failure).hasMessageThat().contains("64 MiB")
+        assertThat(failure).hasMessageThat().contains("整包容量")
     }
 
     @Test
@@ -282,7 +282,7 @@ class SkillBackupSnapshotterTest {
             .isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
         assertThat(assertThrows<BackupValidationException> { SkillBackupSnapshotter(root).snapshot(100, 1) }.reason)
             .isEqualTo(BackupFailureReason.CAPACITY_EXCEEDED)
-        RandomAccessFile(root.resolve("large").toFile(), "rw").use { it.setLength(64L * 1024 * 1024 + 1) }
+        RandomAccessFile(root.resolve("large").toFile(), "rw").use { it.setLength(BackupPackageLimits.MAX_TOTAL_BYTES + 1) }
         assertThat(assertThrows<BackupValidationException> { snapshot(root) }.reason)
             .isEqualTo(BackupFailureReason.SKILL_CONTENT_UNSUPPORTED)
         Files.delete(root.resolve("large"))

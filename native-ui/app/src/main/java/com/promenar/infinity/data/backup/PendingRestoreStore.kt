@@ -26,23 +26,35 @@ data class PendingRestoreMetadata(
     val txId: String,
     val packageSha256: ByteArray,
     val phase: PendingRestorePhase,
+    val summary: BackupResultSummary? = null,
 )
 
 class PendingRestorePayload(
     val metadata: PendingRestoreMetadata,
     val packageBytes: ByteArray,
     val password: CharArray?,
+    val packageFile: java.nio.file.Path? = null,
+    private val ownedDirectory: java.nio.file.Path? = null,
 ) : AutoCloseable {
+    fun openPackage(): java.io.InputStream = packageFile?.let { java.nio.file.Files.newInputStream(it) } ?: packageBytes.inputStream()
     override fun close() {
-        packageBytes.fill(0)
-        password?.fill('\u0000')
-        metadata.packageSha256.fill(0)
+        try { ownedDirectory?.let(BackupStreams::deleteTree) }
+        finally {
+            packageBytes.fill(0)
+            password?.fill('\u0000')
+            metadata.packageSha256.fill(0)
+        }
     }
 }
 
 internal interface PendingRestoreStore {
     fun begin(expectedTxId: String)
     fun stage(expectedTxId: String, packageBytes: ByteArray, password: CharArray?): PendingRestoreMetadata
+    fun stageFile(expectedTxId: String, path: java.nio.file.Path, password: CharArray?): PendingRestoreMetadata {
+        if (java.nio.file.Files.size(path) > BackupPackageLimits.MAX_IN_MEMORY_BYTES) throw BackupValidationException("暂存实现不支持流式文件")
+        val bytes = java.nio.file.Files.readAllBytes(path)
+        try { return stage(expectedTxId, bytes, password) } finally { bytes.fill(0) }
+    }
     fun authorize(expectedTxId: String): PendingRestoreMetadata
     fun read(): PendingRestorePayload?
     fun clear(expectedTxId: String)
@@ -66,8 +78,22 @@ internal class AndroidPendingRestoreStore internal constructor(
         AndroidKeystorePendingRestoreCryptor(),
     )
 
+    private val streaming = StreamingPendingRestoreStore(atomicFile, cryptor)
+
+    @Synchronized
+    override fun stageFile(expectedTxId: String, path: java.nio.file.Path, password: CharArray?): PendingRestoreMetadata {
+        if (!streaming.exists()) {
+            val previous = read() ?: throw BackupValidationException("待恢复事务未开始")
+            previous.use { if (it.metadata.txId != expectedTxId || it.metadata.phase != PendingRestorePhase.STAGING || it.packageBytes.isNotEmpty()) throw BackupValidationException("待恢复事务已失效") }
+            streaming.begin(expectedTxId)
+            atomicFile.delete()
+        }
+        return streaming.stage(expectedTxId, path, password)
+    }
+
     @Synchronized
     override fun begin(expectedTxId: String) {
+        if (streaming.exists()) { streaming.begin(expectedTxId); return }
         requireTxId(expectedTxId)
         val existing = read()
         existing?.use {
@@ -104,6 +130,7 @@ internal class AndroidPendingRestoreStore internal constructor(
 
     @Synchronized
     override fun authorize(expectedTxId: String): PendingRestoreMetadata {
+        if (streaming.exists()) return streaming.authorize(expectedTxId)
         requireTxId(expectedTxId)
         val existing = read() ?: throw BackupValidationException("待恢复事务不存在")
         existing.use { payload ->
@@ -166,6 +193,8 @@ internal class AndroidPendingRestoreStore internal constructor(
 
     @Synchronized
     override fun read(): PendingRestorePayload? {
+        if (streaming.exists()) return streaming.read()
+        streaming.cleanupOrphans()
         if (!atomicFile.baseFile.exists()) return null
         val encrypted = try {
             atomicFile.openRead().use { input ->
@@ -217,6 +246,7 @@ internal class AndroidPendingRestoreStore internal constructor(
 
     @Synchronized
     override fun clear(expectedTxId: String) {
+        if (streaming.exists()) { streaming.clear(expectedTxId); return }
         requireTxId(expectedTxId)
         val existing = read() ?: return
         existing.use {
@@ -227,6 +257,7 @@ internal class AndroidPendingRestoreStore internal constructor(
 
     @Synchronized
     override fun cancel(expectedTxId: String) {
+        if (streaming.exists()) { streaming.clear(expectedTxId); return }
         requireTxId(expectedTxId)
         val existing = read() ?: return
         existing.use { payload ->

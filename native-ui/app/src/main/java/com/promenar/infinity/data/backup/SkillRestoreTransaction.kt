@@ -28,7 +28,8 @@ internal class SkillRestoreTransaction(
 
     fun stage(txId: String, partition: SkillBackupPartition, record: SkillRestoreJournalRecord, preparingParent: Path): SkillRestoreJournalRecord {
         requireRecord(record)
-        SkillBackupPaths.validate(partition.metadata, partition.files.keys, partition.files.values.sumOf { it.size.toLong() })
+        val blobs = partition.allBlobs()
+        SkillBackupPaths.validate(partition.metadata, blobs.keys, blobs.values.sumOf { it.size })
         if (keyOrNull(root) != record.oldRootFileKey) throw BackupValidationException("技能根目录在恢复准备期间发生变化")
         val staging = container(txId)
         // Android 禁止 Files.getFileStore；跨文件系统时 descriptor 间的 renameat 以 EXDEV 失败，由主事务回滚。
@@ -37,12 +38,12 @@ internal class SkillRestoreTransaction(
         partition.metadata.directories.sortedBy { it.split('/').size }.forEach { path ->
             operations.createDirectory(staging, listOf(NEW) + SkillBackupPaths.parts(path))
         }
-        partition.files.forEach { (path, bytes) -> operations.writeNew(staging, listOf(NEW) + SkillBackupPaths.parts(path), bytes) }
+        blobs.forEach { (path, blob) -> operations.writeStream(staging, listOf(NEW) + SkillBackupPaths.parts(path), blob) }
         val expected = buildSet {
             add(RestoreTreeEntry(OWNER, false))
             add(RestoreTreeEntry(NEW, true))
             partition.metadata.directories.forEach { add(RestoreTreeEntry("$NEW/$it", true)) }
-            partition.files.keys.forEach { add(RestoreTreeEntry("$NEW/$it", false)) }
+            blobs.keys.forEach { add(RestoreTreeEntry("$NEW/$it", false)) }
         }
         operations.verifyAndSync(staging, expected)
         FileRestoreJournal.syncDirectory(parent)

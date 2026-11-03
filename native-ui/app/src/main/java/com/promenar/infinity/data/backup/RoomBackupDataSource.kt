@@ -21,6 +21,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -53,6 +54,7 @@ internal const val ROOM_SCHEMA_V25_IDENTITY_HASH = com.promenar.infinity.data.lo
 internal const val ROOM_SCHEMA_V24_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V24_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V18_IDENTITY_HASH = "c32f59706ea482fd5697681569c6fdb5"
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class RoomBackupDataSource(
     private val database: InfinityDatabase,
     private val preferences: TransactionalBackupPreferenceStore,
@@ -77,9 +79,213 @@ class RoomBackupDataSource(
         ignoreUnknownKeys = false
     }
     private val restoreMutex = Mutex()
+    private val userSkillsDirectory = userSkillsRoot
     private val skillSnapshotter = userSkillsRoot?.let(::SkillBackupSnapshotter)
     private val skillRestore = userSkillsRoot?.let { SkillRestoreTransaction(it, restoreFileOperations, crashHook) }
     private val avatarRestore = avatarRoot?.let { SkillRestoreTransaction(it, restoreFileOperations, crashHook, "avatars") }
+
+    private fun backupTables(): List<String> = INSERT_ORDER + if (database.openHelper.writableDatabase.query(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_prompt_revisions'",
+    ).use { it.moveToFirst() }) listOf("agent_prompt_revisions") else emptyList()
+
+    override suspend fun estimate(): Map<BackupLayer, BackupLayerStats> = estimateFor(BackupLayer.entries.toSet())
+
+    private suspend fun estimateFor(layers: Set<BackupLayer>): Map<BackupLayer, BackupLayerStats> = withContext(Dispatchers.IO) {
+        run {
+            val payload = database.withTransaction { readLivePayload(layers) }
+            val index = BackupLayerPolicy.Index(payload.tables)
+            val counts = BackupLayer.entries.associateWith { 0 }.toMutableMap()
+            val bytes = BackupLayer.entries.associateWith { 0L }.toMutableMap()
+            payload.tables.forEach { (table, rows) -> rows.forEach { row ->
+                val layer = index.layer(table, row)
+                counts[layer] = counts.getValue(layer) + 1
+                bytes[layer] = bytes.getValue(layer) + row.toString().toByteArray().size + 1L
+                if (table == FILE_TABLE && !row.requiredBoolean("is_directory")) bytes[layer] = bytes.getValue(layer) + row.requiredLong("size_bytes")
+            } }
+            val pref = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES))
+            bytes[BackupLayer.CORE] = bytes.getValue(BackupLayer.CORE) + json.encodeToString(pref).toByteArray().size
+            val avatarReferences = payload.rows("agents").asSequence().mapNotNull { BackupLayerPolicy.string(it, "avatar_path") }.filter(String::isNotBlank).toSet() +
+                pref.entries.filter { it.namespace == "settings" && it.key == "user_avatar" }.map { it.value }.filter(String::isNotBlank)
+            avatarReferences.forEach { raw ->
+                try {
+                    val path = Paths.get(raw).toAbsolutePath().normalize()
+                    val trusted = avatarRoot?.toAbsolutePath()?.normalize() ?: throw BackupValidationException("头像目录未配置")
+                    FileRestoreJournal.rejectSymlinkAncestors(path)
+                    if (!path.startsWith(trusted) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw BackupValidationException("头像源文件不可读取")
+                    bytes[BackupLayer.CORE] = bytes.getValue(BackupLayer.CORE) + Files.size(path)
+                    counts[BackupLayer.CORE] = counts.getValue(BackupLayer.CORE) + 1
+                } catch (error: Exception) { throw BackupValidationException("核心层头像无法估算", error, BackupFailureReason.WORKSPACE_FILE_MISMATCH, BackupFailureDetail.CORE_CONTENT_UNREADABLE) }
+            }
+            val secretValues = if (BackupLayer.SECRETS in layers) snapshotSecrets(pref.providerIds, BackupPackageLimits.MAX_ENTRY_BYTES) else emptyMap()
+            try {
+                counts[BackupLayer.SECRETS] = secretValues.size
+                bytes[BackupLayer.SECRETS] = secretValues.entries.sumOf { (id, value) -> (value.size.toLong() + 2) / 3 * 4 + id.value.toByteArray().size + 64 }
+            } finally { secretValues.values.forEach { it.fill(0) } }
+            listOfNotNull(userSkillsDirectory).forEach { root ->
+                if (Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) Files.walkFileTree(root, object : java.nio.file.SimpleFileVisitor<Path>() {
+                    override fun preVisitDirectory(dir: Path, attrs: java.nio.file.attribute.BasicFileAttributes): java.nio.file.FileVisitResult =
+                        if (dir != root && (dir.fileName.toString() == ".git" || SkillBackupPaths.isTemporaryDirectory(dir.fileName.toString()) ||
+                            com.promenar.infinity.domain.workspace.WorkspaceInternalPaths.hasInternalPrefix(dir.fileName.toString()))) java.nio.file.FileVisitResult.SKIP_SUBTREE
+                        else java.nio.file.FileVisitResult.CONTINUE
+                    override fun visitFile(file: Path, attrs: java.nio.file.attribute.BasicFileAttributes): java.nio.file.FileVisitResult {
+                        if (attrs.isRegularFile && !SkillBackupPaths.isCredential(file.fileName.toString())) {
+                            counts[BackupLayer.CORE] = counts.getValue(BackupLayer.CORE) + 1
+                            bytes[BackupLayer.CORE] = bytes.getValue(BackupLayer.CORE) + attrs.size()
+                        }
+                        return java.nio.file.FileVisitResult.CONTINUE
+                    }
+                })
+            }
+            BackupLayer.entries.associateWith { BackupLayerStats(counts.getValue(it), bytes.getValue(it)) }
+        }
+    }
+
+    override suspend fun snapshotTo(layers: Set<BackupLayer>, directory: Path): BackupSnapshot = withContext(Dispatchers.IO) {
+        if (BackupLayer.CORE !in layers) throw BackupValidationException("核心层必须包含")
+        val estimate = estimateFor(layers).filterKeys { it in layers }.values.sumOf { it.sizeBytes }
+        if (estimate > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("所选内容超过整包上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
+        // 内容暂存、ZIP 与可选密文同时存在时预留三份磁盘空间。
+        BackupStreams.requireSpace(directory, estimate * 3 + 16L * 1024 * 1024)
+        repeat(MAX_CONFIGURATION_SNAPSHOT_ATTEMPTS) {
+            val before = configurationRevision()
+            if (before and 1L != 0L) return@repeat
+            val captured = streamSnapshotOnce(layers, directory)
+            if (before == configurationRevision() && before and 1L == 0L) return@withContext captured
+            captured.wipe()
+        }
+        throw BackupValidationException("提供商配置在备份期间变化，请重试")
+    }
+
+    private fun cursorRow(cursor: Cursor): JsonObject = JsonObject(cursor.columnNames.mapIndexed { index, name ->
+        name to when (cursor.getType(index)) {
+            Cursor.FIELD_TYPE_NULL -> JsonNull
+            Cursor.FIELD_TYPE_INTEGER -> JsonPrimitive(cursor.getLong(index))
+            Cursor.FIELD_TYPE_FLOAT -> JsonPrimitive(cursor.getDouble(index))
+            Cursor.FIELD_TYPE_STRING -> JsonPrimitive(cursor.getString(index))
+            else -> throw BackupValidationException("备份表包含不支持的字段")
+        }
+    }.toMap())
+
+    private fun readLivePayload(layers: Set<BackupLayer>? = null): DatabaseBackupPayload {
+        val sqlite = database.openHelper.writableDatabase
+        return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, backupTables().associateWith { table ->
+            val ids = sqlite.query("SELECT rowid FROM `$table`" + selectedRowsSql(table, layers)).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+            object : AbstractList<JsonObject>() {
+                override val size get() = ids.size
+                override fun get(index: Int): JsonObject = sqlite.query("SELECT * FROM `$table` WHERE rowid = ?", arrayOf<Any>(ids[index])).use { cursor ->
+                    if (!cursor.moveToFirst()) throw BackupValidationException("恢复验证期间本机记录发生变化")
+                    cursorRow(cursor)
+                }
+            }
+        })
+    }
+
+    private fun selectedRowsSql(table: String, layers: Set<BackupLayer>?): String {
+        if (layers == null) return ""
+        if (table in BackupLayerPolicy.CORE_TABLES) return if (BackupLayer.CORE in layers) "" else " WHERE 0"
+        if (table == "tags" || table == "document_tags") return if (BackupLayer.KNOWLEDGE in layers) "" else " WHERE 0"
+        val knowledge = BackupLayer.KNOWLEDGE in layers
+        val other = (if (table == FILE_TABLE) BackupLayer.WORKSPACE_FILES else BackupLayer.SESSIONS) in layers
+        if (knowledge && other) return ""
+        if (!knowledge && !other) return " WHERE 0"
+        val owner = "SELECT id FROM sessions WHERE agent_id = '__system__'"
+        val relation = if (knowledge) "IN" else "NOT IN"
+        return when (table) {
+            FILE_TABLE -> " WHERE workspace_root_uuid $relation (SELECT workspace_root_uuid FROM sessions WHERE agent_id = '__system__' AND workspace_root_uuid IS NOT NULL)"
+            "sessions" -> " WHERE id $relation ($owner)"
+            "attachments" -> " WHERE message_id IN (SELECT id FROM messages WHERE session_id $relation ($owner))"
+            else -> " WHERE session_id $relation ($owner)"
+        }
+    }
+
+    private fun readDiskPayload(directory: Path, layers: Set<BackupLayer>? = null): DatabaseBackupPayload {
+        val tables = backupTables().associateWith { table ->
+            val entries = database.openHelper.writableDatabase.query("SELECT * FROM `$table`" + selectedRowsSql(table, layers)).use { cursor ->
+                BackupDatabaseRows.write(sequence { while (cursor.moveToNext()) yield(cursorRow(cursor)) }, directory, table, BackupLayer.CORE)
+            }
+            BackupDatabaseRows.read(entries.map { it.blob })
+        }
+        return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables)
+    }
+
+    private suspend fun streamSnapshotOnce(layers: Set<BackupLayer>, directory: Path): BackupSnapshot {
+        val root = Files.createTempDirectory(directory, "snapshot-")
+        try {
+            requireWorkspaceMutationJournalRecovered()
+            var payload = database.withTransaction { readDiskPayload(root, layers) }
+            val policy = BackupLayerPolicy.Index(payload.tables)
+            var prefs = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES))
+            val skipped = mutableListOf<BackupSkippedItem>()
+            val entries = mutableListOf<BackupSourceEntry>()
+            val fileRows = mutableListOf<JsonObject>()
+            val skippedIds = mutableSetOf<String>()
+            payload.rows(FILE_TABLE).forEach { row ->
+                val layer = policy.layer(FILE_TABLE, row)
+                if (layer !in layers) return@forEach
+                val id = row.requiredString("uuid")
+                if (row.requiredBoolean("is_directory")) { fileRows += row; return@forEach }
+                try {
+                    val path = resolveSnapshotPath(row)
+                    val target = Files.createTempFile(root, "file-", ".bin")
+                    val blob = BackupStreams.stableCopy(path, target, row.requiredLong("size_bytes"), snapshotReadHook)
+                    val hash = BackupStreams.digest(blob)
+                    if (row.requiredString("hash").isNotBlank() && !row.requiredString("hash").equals(hash, true)) {
+                        Files.delete(target)
+                        throw BackupValidationException("文件摘要与登记不一致", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
+                    }
+                    entries += BackupSourceEntry("files/$id", layer, blob)
+                    fileRows += JsonObject(row + ("hash" to JsonPrimitive(hash)))
+                } catch (error: java.util.concurrent.CancellationException) { throw error }
+                catch (error: Exception) {
+                    if ((error as? BackupValidationException)?.reason in setOf(BackupFailureReason.CAPACITY_EXCEEDED)) throw error
+                    skippedIds += id
+                    skipped += BackupSkippedItem(layer, row.requiredString("name"), "文件缺失、内容变化或无法读取")
+                }
+            }
+            payload = payload.copy(tables = payload.tables + (FILE_TABLE to fileRows))
+            val avatar = AvatarBackupFiles.snapshotTo(payload, prefs, avatarRoot, root)
+            payload = avatar.payload; prefs = avatar.preferences
+            avatar.blobs.forEach { (id, blob) -> entries += BackupSourceEntry("avatars/$id", BackupLayer.CORE, blob) }
+            val fileIds = fileRows.map { it.requiredString("uuid") }.toSet()
+            payload.tables.forEach { (table, rows) ->
+                layers.forEach layerLoop@ { layer ->
+                    if (BackupLayerPolicy.tableLayer(table, layer) != layer) return@layerLoop
+                    val selected = rows.asSequence().filter { policy.layer(table, it) == layer }.filter { row ->
+                        table != "document_tags" || row.requiredString("doc_id") in fileIds && row.requiredString("doc_id") !in skippedIds
+                    }.map { row ->
+                        when {
+                            table == FILE_TABLE && BackupLayer.SESSIONS !in layers -> BackupLayerPolicy.clear(row, "last_write_session_id", "locked_by_session_id", "lock_expires_at")
+                            else -> row
+                        }
+                    }
+                    entries += BackupDatabaseRows.write(selected, root, table, layer)
+                }
+            }
+            val preferenceBytes = json.encodeToString(prefs).toByteArray()
+            try {
+                val path = root.resolve("preferences.json"); Files.write(path, preferenceBytes)
+                entries += BackupSourceEntry("preferences.json", BackupLayer.CORE, BackupBlob.File(path))
+            } finally { preferenceBytes.fill(0) }
+            if (BackupLayer.SECRETS in layers) {
+                val values = snapshotSecrets(prefs.providerIds, BackupPackageLimits.MAX_ENTRY_BYTES)
+                try {
+                    val bytes = json.encodeToString(values.map { (id, value) -> SecretBackupEntry(id.value, java.util.Base64.getEncoder().encodeToString(value)) }).toByteArray()
+                    try {
+                        val path = root.resolve("secrets.json"); Files.write(path, bytes)
+                        entries += BackupSourceEntry("secrets.json", BackupLayer.SECRETS, BackupBlob.File(path))
+                    } finally { bytes.fill(0) }
+                } finally { values.values.forEach { it.fill(0) } }
+            }
+            val skills = try { skillSnapshotter?.snapshot(BackupPackageLimits.MAX_TOTAL_BYTES - entries.sumOf { it.blob.size }, BackupPackageLimits.MAX_ENTRIES - entries.size, root) }
+            catch (error: java.util.concurrent.CancellationException) { throw error }
+            catch (error: Exception) { throw BackupValidationException("核心层用户技能无法读取", error, error.backupFailureReason() ?: BackupFailureReason.SKILL_CONTENT_UNSUPPORTED,
+                if (error.backupFailureReason() == BackupFailureReason.CAPACITY_EXCEEDED) (error as? BackupValidationException)?.detail else BackupFailureDetail.CORE_CONTENT_UNREADABLE) }
+            skills?.allBlobs()?.forEach { (path, blob) -> entries += BackupSourceEntry("skills/$path", BackupLayer.CORE, blob) }
+            if (entries.sumOf { it.blob.size } > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("内容超过整包容量", reason = BackupFailureReason.CAPACITY_EXCEEDED)
+            return BackupSnapshot(databaseSchemaVersion = DATABASE_SCHEMA_VERSION, appVersion = appVersion, layers = layers,
+                streamEntries = entries, skills = skills, skipped = skipped, ownedDirectory = root)
+        } catch (error: Throwable) { BackupStreams.deleteTree(root); throw error }
+    }
 
     override suspend fun snapshot(content: Set<BackupContent>): BackupSnapshot = withContext(Dispatchers.IO) {
         repeat(MAX_CONFIGURATION_SNAPSHOT_ATTEMPTS) {
@@ -96,7 +302,7 @@ class RoomBackupDataSource(
     private suspend fun snapshotOnce(content: Set<BackupContent>): BackupSnapshot {
         requireCanonicalSnapshotContent(content)
         requireWorkspaceMutationJournalRecovered()
-        val safePreferences = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES))
+        val safePreferences = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES))
         var preferenceBytes = json.encodeToString(safePreferences).toByteArray(Charsets.UTF_8)
         if (preferenceBytes.size.toLong() > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
             throw BackupValidationException("偏好数据超过内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
@@ -188,52 +394,67 @@ class RoomBackupDataSource(
         requireCanonicalRestoreContent(validated)
         if (journal.read() != null) throw BackupValidationException("存在未恢复的 restore journal，请先执行 recoverInterruptedRestore")
         validateAvatarPartition(validated)
-        val avatarPlan = AvatarBackupFiles.planRestore(
-            parseDatabase(validated.database), parsePreferences(validated.preferences), validated.avatars,
+        val imported = parseValidatedDatabase(validated)
+        val avatarPlan = AvatarBackupFiles.planRestoreBlobs(
+            imported, parseValidatedPreferences(validated), validated.avatarBlobs(),
             avatarRoot, validated.manifest.formatVersion >= 3,
         )
-        val parsedPayload = avatarPlan.payload
+        val layerSet = validated.manifest.layers?.keys
+        val importedPayload = avatarPlan.payload
+        val localRoot = if (layerSet != null) Files.createTempDirectory(restoreParent, ".merge-") else null
+        try {
+        val local = localRoot?.let { database.withTransaction { readLivePayload() } }
+        val parsedPayload = if (local == null) importedPayload else mergeLayers(importedPayload, local, layerSet!!, validated)
+        val fileBlobs = if (local == null) validated.fileBlobs() else {
+            val policy = BackupLayerPolicy.Index(local.tables)
+            local.rows(FILE_TABLE).asSequence().filter { policy.layer(FILE_TABLE, it) !in layerSet!! && !it.requiredBoolean("is_directory") }
+                .associate { row -> row.requiredString("uuid") to BackupBlob.File(Paths.get(row.requiredString("physical_root_path")).resolve(normalizeMaterializedPath(row.requiredString("materialized_path")).joinToString("/"))) } + validated.fileBlobs()
+        }
+        val importedFileIds = importedPayload.rows(FILE_TABLE).map { it.requiredString("uuid") }.toSet()
         val preferenceSnapshot = avatarPlan.preferences
-        validatePayload(parsedPayload, validated.files)
+        if (layerSet == null) validatePayload(parsedPayload, fileBlobs)
         validateSecrets(validated.secrets, preferenceSnapshot.providerIds)
-        val payload = normalizeBranchSessions(parsedPayload)
+        val payload = if (layerSet == null) normalizeBranchSessions(parsedPayload) else parsedPayload
 
         val restoreId = operationId
         val stagingRoot = restoreParent.resolve(".restore-$restoreId.tmp")
         val finalRoot = restoreParent.resolve("restore-$restoreId")
-        var transformed = transformPaths(payload, finalRoot)
-        validatePayload(transformed, validated.files)
+        var transformed = transformPaths(payload, finalRoot, if (layerSet == null) null else importedFileIds)
+        validatePayload(transformed, fileBlobs, layerSet != null, if (layerSet == null) null else importedFileIds)
         var expectedFingerprint = fingerprint(transformed)
         val plannedSkills = validated.skills?.let {
             (skillRestore ?: throw BackupValidationException("技能恢复根目录未配置")).plan(restoreId)
         }
-        val plannedAvatars = avatarPlan.files.takeIf { it.isNotEmpty() }?.let {
+        val plannedAvatars = avatarPlan.blobs.takeIf { avatarRoot != null && (layerSet != null || it.isNotEmpty()) }?.let {
             requireAvatarRestore().plan(restoreId)
         }
-        val beforePreferences = preferences.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+        val beforePreferences = preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES)
         preferences.preflightRestore(restoreId, beforePreferences, preferenceSnapshot)
         val eligibleIds = eligibleSecretIds(preferenceSnapshot.providerIds + beforePreferences.providerIds)
-        val beforeSecrets = secrets.snapshot(eligibleIds, BackupPackageLimits.MAX_IN_MEMORY_BYTES)
-        val afterSecrets = validated.secrets.mapValues { it.value.copyOf() }
+        val includeSecretLayer = validated.manifest.containsSecrets
+        val beforeSecrets = if (includeSecretLayer) secrets.snapshot(eligibleIds, BackupPackageLimits.MAX_ENTRY_BYTES) else emptyMap()
+        val afterSecrets = if (includeSecretLayer) validated.secrets.mapValues { it.value.copyOf() } else emptyMap()
         var record = RestoreJournalRecord(
             txId = restoreId,
             expectedDatabaseFingerprint = expectedFingerprint,
-            oldRootIdentity = currentOldRootIdentity(),
+            oldRootIdentity = currentOldRootIdentity(layerSet),
             newRootIdentity = finalRoot.fileName.toString(),
             newRootFileKey = null,
             phase = RestoreJournalPhase.PREPARED,
             skills = plannedSkills,
             avatars = plannedAvatars,
+            summary = if (layerSet == null) null else validated.restoreSummary,
+            secretsIncluded = includeSecretLayer,
         )
 
         try {
             journal.write(record)
             preferences.prepare(restoreId, beforePreferences, preferenceSnapshot)
-            secrets.prepare(restoreId, beforeSecrets, afterSecrets)
+            if (record.secretsIncluded) secrets.prepare(restoreId, beforeSecrets, afterSecrets)
             crashHook.hit(RestoreCrashPoint.JOURNAL_PREPARED)
-            val staged = stageFiles(stagingRoot, transformed, validated.files)
+            val staged = stageFiles(stagingRoot, transformed, fileBlobs.filterKeys { layerSet == null || it in importedFileIds }, if (layerSet == null) null else importedFileIds)
             transformed = staged.payload
-            validatePayload(transformed, validated.files)
+            validatePayload(transformed, fileBlobs, layerSet != null, if (layerSet == null) null else importedFileIds)
             expectedFingerprint = fingerprint(transformed)
             record = record.copy(expectedDatabaseFingerprint = expectedFingerprint)
             journal.write(record)
@@ -251,7 +472,7 @@ class RoomBackupDataSource(
 
             record.avatars?.let { planned ->
                 record = record.copy(avatars = requireAvatarRestore().stage(
-                    restoreId, SkillBackupPartition(avatarPlan.files, SkillBackupMetadata()), planned, finalRoot,
+                    restoreId, SkillBackupPartition(emptyMap(), SkillBackupMetadata(), avatarPlan.blobs), planned, finalRoot,
                 ))
                 journal.write(record)
                 crashHook.hit(RestoreCrashPoint.AVATARS_STAGED)
@@ -259,16 +480,18 @@ class RoomBackupDataSource(
 
             // Task 8 仍须在应用层冻结其它 DB/文件 writer；本地 mutex 只串行化 restore/recovery。
             restoreFileOperations.verifyAndSync(finalRoot, expectedTree)
-            if (currentOldRootIdentity() != record.oldRootIdentity) {
+            if (currentOldRootIdentity(layerSet) != record.oldRootIdentity) {
                 throw BackupValidationException("恢复期间旧 managed root 身份发生变化")
             }
             database.withTransaction {
-                clearAllRestorableTables()
-                insertPayload(transformed)
+                if (layerSet == null) {
+                    clearAllRestorableTables()
+                    insertPayload(transformed)
+                } else replaceLayers(transformed, local!!, layerSet)
                 record.skills?.let { skillRestore!!.commit(restoreId, it) }
                 record.avatars?.let { requireAvatarRestore().commit(restoreId, it) }
                 preferences.commitPrepared(restoreId)
-                secrets.commitPrepared(restoreId)
+                if (record.secretsIncluded) secrets.commitPrepared(restoreId)
                 crashHook.hit(RestoreCrashPoint.EXTERNAL_COMMITTED)
                 writeDatabaseCommitMarker(record)
             }
@@ -288,6 +511,7 @@ class RoomBackupDataSource(
             beforeSecrets.values.forEach { it.fill(0) }
             afterSecrets.values.forEach { it.fill(0) }
         }
+        } finally { localRoot?.let(BackupStreams::deleteTree) }
             }
         } finally {
             if (lockAcquired) restoreMutex.unlock()
@@ -336,14 +560,14 @@ class RoomBackupDataSource(
 
         if (databaseCommitted) {
             runCatching { preferences.commitPrepared(record.txId) }.onFailure(failures::add)
-            runCatching { secrets.commitPrepared(record.txId) }.onFailure(failures::add)
+            if (record.secretsIncluded) runCatching { secrets.commitPrepared(record.txId) }.onFailure(failures::add)
             if (failures.isEmpty()) {
                 runCatching { finishCommitted(record.copy(phase = RestoreJournalPhase.COMMITTED)) }
                     .onFailure(failures::add)
             }
         } else {
             runCatching { preferences.rollbackPrepared(record.txId) }.onFailure(failures::add)
-            runCatching { secrets.rollbackPrepared(record.txId) }.onFailure(failures::add)
+            if (record.secretsIncluded) runCatching { secrets.rollbackPrepared(record.txId) }.onFailure(failures::add)
             record.skills?.let { skills ->
                 runCatching { requireSkillRestore().rollback(record.txId, skills) }.onFailure(failures::add)
             }
@@ -353,7 +577,7 @@ class RoomBackupDataSource(
             runCatching { deleteOwnedRestoreRoots(record) }.onFailure(failures::add)
             if (failures.isEmpty()) {
                 runCatching { preferences.finalizePrepared(record.txId) }.onFailure(failures::add)
-                runCatching { secrets.finalizePrepared(record.txId) }.onFailure(failures::add)
+                if (record.secretsIncluded) runCatching { secrets.finalizePrepared(record.txId) }.onFailure(failures::add)
             }
             if (failures.isEmpty()) runCatching { journal.delete() }.onFailure(failures::add)
         }
@@ -367,7 +591,7 @@ class RoomBackupDataSource(
     private fun readDatabasePayload(): DatabaseBackupPayload {
         val sqlite = database.openHelper.writableDatabase
         val budget = MaterializationBudget(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
-        val tables = INSERT_ORDER.associateWith { table ->
+        val tables = backupTables().associateWith { table ->
             sqlite.query("SELECT * FROM `$table`").use { cursor -> cursorRows(cursor, budget) }
         }
         return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables).also(::validateLongTermMemories)
@@ -552,6 +776,150 @@ class RoomBackupDataSource(
 
     private suspend fun snapshotSecrets(providerIds: Set<String>, maxTotalBytes: Long): Map<SecretId, ByteArray> =
         secrets.snapshot(eligibleSecretIds(providerIds), maxTotalBytes)
+
+    override suspend fun validateStaged(validated: ValidatedBackup) = withContext(Dispatchers.IO) {
+        requireCanonicalRestoreContent(validated)
+        val payload = parseValidatedDatabase(validated)
+        validatePayload(payload, validated.fileBlobs(), allowMissingWorkspaceRoots = validated.manifest.layers != null)
+        val prefs = parseValidatedPreferences(validated)
+        validateSecrets(validated.secrets, prefs.providerIds)
+        AvatarBackupFiles.planRestoreBlobs(payload, prefs, validated.avatarBlobs(), avatarRoot, validated.manifest.formatVersion >= 3)
+        Unit
+    }
+
+    private fun parseValidatedPreferences(validated: ValidatedBackup): BackupPreferenceSnapshot =
+        if (validated.manifest.layers == null) parsePreferences(validated.preferences)
+        else validated.blobs["preferences.json"]?.open()?.use { sanitizePreferences(json.decodeFromStream<BackupPreferenceSnapshot>(it), rejectUnsafe = true) }
+            ?: throw BackupValidationException("核心层缺少偏好")
+
+    private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload {
+        if (validated.manifest.layers == null) {
+            val parsed = parseDatabase(validated.database)
+            return if ("agent_prompt_revisions" in backupTables() && "agent_prompt_revisions" !in parsed.tables)
+                parsed.copy(tables = parsed.tables + ("agent_prompt_revisions" to emptyList())) else parsed
+        }
+        if (validated.manifest.databaseSchemaVersion != DATABASE_SCHEMA_VERSION) throw BackupValidationException("数据库备份版本不兼容")
+        val tableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
+        if (tableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
+        val layers = validated.manifest.layers.keys
+        backupTables().forEach { table -> layers.forEach { layer ->
+            if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer }) {
+                throw BackupValidationException("备份层缺少数据表: $table")
+            }
+        } }
+        val payload = DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, backupTables().associateWith { table ->
+            BackupDatabaseRows.read(tableEntries[table].orEmpty().sortedBy { it.path }.map { validated.blobs.getValue(it.path) })
+        })
+        val index = BackupLayerPolicy.Index(payload.tables)
+        tableEntries.forEach { (table, entries) -> entries.forEach { entry ->
+            BackupDatabaseRows.read(listOf(validated.blobs.getValue(entry.path))).forEach { row ->
+                if (index.layer(table, row) != entry.layer) throw BackupValidationException("数据库记录与层归属不一致")
+            }
+        } }
+        return payload
+    }
+
+    private fun mergeLayers(imported: DatabaseBackupPayload, local: DatabaseBackupPayload, layers: Set<BackupLayer>, validated: ValidatedBackup): DatabaseBackupPayload {
+        val policy = BackupLayerPolicy.Index(local.tables)
+        val tables = backupTables().associateWith { table ->
+            BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { policy.layer(table, it) !in layers }, imported.rows(table))
+        }.toMutableMap()
+        // 日期序号跨层共享，保留两端较大值以避免保留文件的名称被复用。
+        val localSeq = local.rows("workspace_seq").associateBy { it.requiredString("date_key") }
+        tables["workspace_seq"] = tables.getValue("workspace_seq").map { row ->
+            val old = localSeq[row.requiredString("date_key")]
+            if (old == null) row else JsonObject(row.mapValues { (key, value) ->
+                if (key == "date_key") value else {
+                    val previous = (old[key] as? JsonPrimitive)?.longOrNull
+                    val next = (value as? JsonPrimitive)?.longOrNull
+                    if (previous != null && next != null) JsonPrimitive(maxOf(previous, next)) else value
+                }
+            })
+        } + localSeq.filterKeys { key -> tables.getValue("workspace_seq").none { it.requiredString("date_key") == key } }.values
+        val fileIds = tables.getValue(FILE_TABLE).map { it.requiredString("uuid") }.toSet()
+        val degraded = mutableMapOf<String, Int>()
+        fun record(category: String) { degraded[category] = (degraded[category] ?: 0) + 1 }
+        val agentIds = tables.getValue("agents").map { it.requiredString("id") }.toSet()
+        val workspaceIds = tables.getValue(WORKSPACE_TABLE).map { it.requiredString("id") }.toSet()
+        tables.getValue("document_tags").forEach { if (it.requiredString("doc_id") !in fileIds) record("document_tag_file_unavailable") }
+        val sessionsBefore = tables.getValue("sessions")
+        sessionsBefore.forEach { row ->
+            if (row.requiredString("agent_id") !in agentIds) record("session_agent_unavailable")
+            if (row.optionalString("workspace_id")?.let { it !in workspaceIds } == true) record("directory_workspace_unavailable")
+            if (row.optionalString("workspace_root_uuid")?.let { it !in fileIds } == true) record("session_workspace_unavailable")
+        }
+        tables["sessions"] = BackupDatabaseRows.map(sessionsBefore) { row ->
+            if (row.optionalString("workspace_root_uuid")?.let { it !in fileIds } == true) BackupLayerPolicy.clear(row, "workspace_root_uuid", "workspace_path") else row
+        }
+        val sessionRoots = tables.getValue("sessions").associate { it.requiredString("id") to it.optionalString("workspace_root_uuid") }
+        val artifacts = tables.getValue("artifacts")
+        artifacts.forEach { row -> if (row.optionalString("workspace_path") != null && sessionRoots[row.requiredString("session_id")] == null) record("artifact_workspace_unavailable") }
+        tables["artifacts"] = BackupDatabaseRows.map(artifacts) { row ->
+            if (sessionRoots[row.requiredString("session_id")] == null) BackupLayerPolicy.clear(row, "workspace_path") else row
+        }
+        if (BackupLayer.KNOWLEDGE !in layers) imported.rows("messages").forEach { row ->
+            val raw = BackupLayerPolicy.string(row, "rag_references") ?: return@forEach
+            val references = runCatching { json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonArray }.getOrNull().orEmpty()
+            references.forEach { reference ->
+                val id = (reference as? JsonObject)?.let { BackupLayerPolicy.string(it, "documentId") }
+                if (id != null && id !in fileIds) record("knowledge_document_unavailable")
+            }
+        }
+        validated.restoreSummary = validated.restoreSummary.copy(degraded = degraded.map { BackupDegradedReference(it.key, it.value) })
+        return imported.copy(tables = tables)
+    }
+
+    private fun replaceLayers(payload: DatabaseBackupPayload, local: DatabaseBackupPayload, layers: Set<BackupLayer>) {
+        val sqlite = database.openHelper.writableDatabase
+        val previous = BackupLayerPolicy.Index(local.tables)
+        val next = BackupLayerPolicy.Index(payload.tables)
+        data class Deletion(val columns: List<String>, val keys: List<List<String>>)
+        // 删除消息父节点会级联删除子节点，主键清单必须先冻结。
+        val deletions = backupTables().associateWith { table ->
+            val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor -> buildList {
+                val name = cursor.getColumnIndexOrThrow("name"); val pk = cursor.getColumnIndexOrThrow("pk")
+                while (cursor.moveToNext()) if (cursor.getInt(pk) > 0) add(cursor.getString(name))
+            } }
+            if (columns.isEmpty()) throw BackupValidationException("备份表缺少主键")
+            Deletion(columns, local.rows(table).asSequence().filter { previous.layer(table, it) in layers }
+                .map { row -> columns.map { row.requiredString(it) } }.toList())
+        }
+        val selected = payload.copy(tables = payload.tables.mapValues { (table, rows) -> BackupDatabaseRows.select(rows) { next.layer(table, it) in layers } })
+        val retainedSessions = payload.rows("sessions").asSequence().filter { next.layer("sessions", it) !in layers }.map { row ->
+            arrayOf<Any?>(row.optionalString("workspace_root_uuid"), row.optionalString("workspace_path"), row.requiredString("id"))
+        }.toList()
+        val retainedArtifacts = payload.rows("artifacts").asSequence().filter { next.layer("artifacts", it) !in layers }.map { row ->
+            arrayOf<Any?>(row.optionalString("workspace_path"), row.requiredString("id"))
+        }.toList()
+        // 未选层的索引和完成标记共同保留；选中源的向量、证据和版本缓存按稳定ID失效。
+        val fileIds = deletions.getValue(FILE_TABLE).keys.map { it.single() }.toSet() + selected.rows(FILE_TABLE).map { it.requiredString("uuid") }
+        fileIds.forEach { id ->
+            sqlite.execSQL("DELETE FROM vectors WHERE doc_id = ? OR file_uuid = ?", arrayOf<Any?>(id, id))
+            sqlite.execSQL("DELETE FROM kg_jit_cache WHERE cache_key IN (SELECT cache_key FROM kg_jit_cache_sources WHERE doc_id = ?)", arrayOf<Any?>(id))
+            sqlite.execSQL("DELETE FROM kg_evidence WHERE doc_id = ?", arrayOf<Any?>(id))
+            sqlite.execSQL("DELETE FROM file_versions WHERE file_uuid = ?", arrayOf<Any?>(id))
+        }
+        val sessionIds = deletions.getValue("sessions").keys.map { it.single() }.toSet() + selected.rows("sessions").map { it.requiredString("id") }
+        sessionIds.forEach { id ->
+            sqlite.execSQL("DELETE FROM kg_evidence WHERE session_id = ?", arrayOf<Any?>(id))
+        }
+        deletions.getValue("messages").keys.forEach { id -> sqlite.execSQL("DELETE FROM kg_evidence WHERE message_id = ?", arrayOf<Any?>(id.single())) }
+        sqlite.execSQL("DELETE FROM agent_rule_revisions")
+        sqlite.execSQL("DELETE FROM mcp_tool_snapshots")
+        backupTables().reversed().forEach { table ->
+            val deletion = deletions.getValue(table)
+            val statement = "DELETE FROM `$table` WHERE " + deletion.columns.joinToString(" AND ") { "`$it` = ?" }
+            deletion.keys.forEach { sqlite.execSQL(statement, it.toTypedArray()) }
+        }
+        insertPayload(selected)
+        retainedSessions.forEach { sqlite.execSQL("UPDATE sessions SET workspace_root_uuid = ?, workspace_path = ? WHERE id = ?", it) }
+        retainedArtifacts.forEach { sqlite.execSQL("UPDATE artifacts SET workspace_path = ? WHERE id = ?", it) }
+    }
+
+    override suspend fun restoreWithResult(validated: ValidatedBackup, operationId: String): BackupRestoreResult {
+        restore(validated, operationId)
+        return BackupRestoreResult(validated.manifest.skills?.summary, validated.restoreSummary)
+    }
 
     private fun parseDatabase(bytes: ByteArray): DatabaseBackupPayload {
         if (bytes.isEmpty()) throw BackupValidationException("恢复包缺少 database.json")
@@ -766,6 +1134,7 @@ class RoomBackupDataSource(
         val safe = snapshot.entries.map { it.copy(namespace = BackupPreferencePolicy.normalizeNamespace(it.namespace)) }.mapNotNull { entry ->
             val identity = entry.namespace to entry.key
             if (!seen.add(identity)) throw BackupValidationException("偏好键重复")
+            if (BackupPreferencePolicy.isRetired(entry.namespace, entry.key)) return@mapNotNull null
             val allowed = BackupPreferencePolicy.isAllowed(entry.namespace, entry.key)
             if (!allowed && rejectUnsafe) throw BackupValidationException("偏好 payload 包含非白名单字段")
             entry.takeIf { allowed }
@@ -773,11 +1142,11 @@ class RoomBackupDataSource(
         return BackupPreferenceSnapshot(safe, snapshot.providerIds.toSortedSet())
     }
 
-    private fun validatePayload(payload: DatabaseBackupPayload, files: Map<String, ByteArray>) {
+    private fun validatePayload(payload: DatabaseBackupPayload, files: Map<String, BackupBlob>, allowUnavailableAgents: Boolean = false, validateFileIds: Set<String>? = null, allowMissingWorkspaceRoots: Boolean = false) {
         if (payload.schemaVersion != DATABASE_SCHEMA_VERSION) {
             throw BackupValidationException("数据库 schema 版本不兼容")
         }
-        if (payload.tables.keys != INSERT_ORDER.toSet()) {
+        if (payload.tables.keys != backupTables().toSet()) {
             throw BackupValidationException("数据库 payload 表清单不完整或包含派生表")
         }
         validateRowsAgainstRoomSchema(payload)
@@ -806,7 +1175,7 @@ class RoomBackupDataSource(
         }
         val workspaces = payload.ids(WORKSPACE_TABLE, "id")
         payload.rows("agents").forEach { requireOptionalReference(it, "default_workspace_id", workspaces, "Agent 默认工作区") }
-        payload.rows("sessions").forEach { requireOptionalReference(it, "workspace_id", workspaces, "Session 工作区") }
+        if (!allowUnavailableAgents) payload.rows("sessions").forEach { requireOptionalReference(it, "workspace_id", workspaces, "Session 工作区") }
 
         val agents = payload.ids("agents", "id")
         val sessions = payload.ids("sessions", "id")
@@ -814,15 +1183,15 @@ class RoomBackupDataSource(
         val tags = payload.ids("tags", "id")
         val fileIds = payload.ids(FILE_TABLE, "uuid")
         val taskIds = payload.ids("task_nodes", "id")
-        payload.rows("sessions").forEach { requireReference(it, "agent_id", agents, "Agent") }
+        if (!allowUnavailableAgents) payload.rows("sessions").forEach { requireReference(it, "agent_id", agents, "Agent") }
         val messageRows = payload.rows("messages")
-        val messageById = messageRows.associateBy { it.requiredString("id") }
+        val messageById = messageRows.associate { it.requiredString("id") to it.requiredString("session_id") }
         messageRows.forEach { row ->
             requireReference(row, "session_id", sessions, "Session")
             row.optionalString("parent_message_id")?.let { parentId ->
                 val parent = messageById[parentId]
                     ?: throw BackupValidationException("Message parent 不存在")
-                if (parent.requiredString("session_id") != row.requiredString("session_id")) {
+                if (parent != row.requiredString("session_id")) {
                     throw BackupValidationException("Message parent 跨 session")
                 }
             }
@@ -831,7 +1200,7 @@ class RoomBackupDataSource(
             requireReference(row, "session_id", sessions, "状态面板会话")
             val anchor = messageById[row.requiredString("anchor_message_id")]
                 ?: throw BackupValidationException("状态面板所属消息不存在")
-            if (anchor.requiredString("session_id") != row.requiredString("session_id")) throw BackupValidationException("状态面板所属消息跨会话")
+            if (anchor != row.requiredString("session_id")) throw BackupValidationException("状态面板所属消息跨会话")
             if (row.requiredString("source") !in setOf("assistant", "user")) throw BackupValidationException("状态面板来源无效")
             row.optionalString("snapshot")?.let { raw ->
                 val board = try { json.decodeFromString<com.promenar.infinity.data.state.StateBoard>(raw) }
@@ -859,7 +1228,7 @@ class RoomBackupDataSource(
         }
         payload.rows("document_tags").forEach {
             requireReference(it, "tag_id", tags, "Tag")
-            requireReference(it, "doc_id", fileIds, "FileEntry")
+            if (!allowUnavailableAgents || it.requiredString("doc_id") in fileIds) requireReference(it, "doc_id", fileIds, "FileEntry")
         }
         payload.rows("task_nodes").forEach {
             requireReference(it, "session_id", sessions, "Session")
@@ -874,25 +1243,26 @@ class RoomBackupDataSource(
             normalizeMaterializedPath(row.requiredString("materialized_path"))
             row.optionalString("original_materialized_path")?.let(::normalizeMaterializedPath)
         }
-        validateWorkspaceIdentity(payload)
+        validateWorkspaceIdentity(payload, allowMissingWorkspaceRoots)
 
         val nonDirectories = payload.rows(FILE_TABLE)
             .filterNot { it.requiredBoolean("is_directory") }
             .associateBy { it.requiredString("uuid") }
         if (files.keys != nonDirectories.keys) throw BackupValidationException("文件清单与数据库不一致")
-        if (files.size > BackupPackageLimits.MAX_ENTRIES - 2) throw BackupValidationException("恢复文件项过多")
+        val packageFiles = if (validateFileIds == null) files else files.filterKeys { it in validateFileIds }
+        if (packageFiles.size > BackupPackageLimits.MAX_ENTRIES - 2) throw BackupValidationException("恢复文件项过多")
         var total = 0L
-        files.values.forEach { bytes ->
-            if (bytes.size.toLong() > BackupPackageLimits.MAX_ENTRY_BYTES) {
+        packageFiles.values.forEach { bytes ->
+            if (bytes.size > BackupPackageLimits.MAX_ENTRY_BYTES) {
                 throw BackupValidationException("恢复文件超过单项大小限制")
             }
             total = Math.addExact(total, bytes.size.toLong())
             if (total > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("恢复文件超过总大小限制")
         }
-        nonDirectories.forEach { (id, row) -> validateFileBytes(row, files.getValue(id)) }
+        nonDirectories.forEach { (id, row) -> if (validateFileIds == null || id in validateFileIds) validateFileBytes(row, files.getValue(id)) }
     }
 
-    private fun validateWorkspaceIdentity(payload: DatabaseBackupPayload) {
+    private fun validateWorkspaceIdentity(payload: DatabaseBackupPayload, allowMissingRoots: Boolean = false) {
         val files = payload.rows(FILE_TABLE)
         val byId = files.associateBy { it.requiredString("uuid") }
         val roots = files.filter { row ->
@@ -913,7 +1283,7 @@ class RoomBackupDataSource(
         }
         payload.rows("sessions").forEach { session ->
             session.optionalString("workspace_root_uuid")?.let { rootId ->
-                val root = roots[rootId] ?: throw BackupValidationException("Session workspace root 不存在")
+                val root = roots[rootId] ?: if (allowMissingRoots) return@let else throw BackupValidationException("Session workspace root 不存在")
                 session.optionalString("workspace_path")?.let { path ->
                     if (Paths.get(path).toAbsolutePath().normalize() !=
                         Paths.get(root.requiredString("physical_root_path")).toAbsolutePath().normalize()
@@ -948,7 +1318,7 @@ class RoomBackupDataSource(
         if (sqlite.version != 32 || identityHash != ROOM_SCHEMA_V32_IDENTITY_HASH) {
             throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v32")
         }
-        INSERT_ORDER.forEach { table ->
+        backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
                 buildList {
                     val nameIndex = cursor.getColumnIndexOrThrow("name")
@@ -987,40 +1357,33 @@ class RoomBackupDataSource(
     }
 
     private fun sortMessagesParentFirst(rows: List<JsonObject>): List<JsonObject> {
-        val byId = rows.associateBy { it.requiredString("id") }
-        if (byId.size != rows.size) throw BackupValidationException("Message id 重复")
-        val childrenByParent = mutableMapOf<String, MutableList<JsonObject>>()
-        val indegree = rows.associate { it.requiredString("id") to 0 }.toMutableMap()
-        rows.forEach { row ->
-            val id = row.requiredString("id")
-            row.optionalString("parent_message_id")?.let { parentId ->
-                if (parentId == id) throw BackupValidationException("Message 不得自引用")
-                val parent = byId[parentId] ?: throw BackupValidationException("Message parent 不存在")
-                if (parent.requiredString("session_id") != row.requiredString("session_id")) {
-                    throw BackupValidationException("Message parent 跨 session")
-                }
-                indegree[id] = 1
-                childrenByParent.getOrPut(parentId) { mutableListOf() } += row
+        data class Node(val position: Int, val id: String, val session: String, val parent: String?, val created: Long)
+        val nodes = rows.mapIndexed { index, row -> Node(index, row.requiredString("id"), row.requiredString("session_id"), row.optionalString("parent_message_id"), row.requiredLong("created_at")) }
+        val byId = nodes.associateBy { it.id }
+        if (byId.size != nodes.size) throw BackupValidationException("Message id 重复")
+        val children = mutableMapOf<String, MutableList<Node>>()
+        val roots = mutableListOf<Node>()
+        nodes.forEach { node ->
+            val parent = node.parent
+            if (parent == null) roots += node else {
+                val owner = byId[parent] ?: throw BackupValidationException("Message parent 不存在")
+                if (parent == node.id || owner.session != node.session) throw BackupValidationException("Message parent 自引用或跨会话")
+                children.getOrPut(parent) { mutableListOf() } += node
             }
         }
-        val stableOrder = compareBy<JsonObject> { it.requiredLong("created_at") }
-            .thenBy { it.requiredString("id") }
-        var layer = rows.filter { indegree.getValue(it.requiredString("id")) == 0 }.sortedWith(stableOrder)
-        val ordered = ArrayList<JsonObject>(rows.size)
+        val comparator = compareBy<Node> { it.created }.thenBy { it.id }
+        var layer = roots.sortedWith(comparator)
+        val order = ArrayList<Int>(rows.size)
         while (layer.isNotEmpty()) {
-            ordered += layer
-            val nextLayer = mutableListOf<JsonObject>()
-            layer.forEach { parent ->
-                childrenByParent[parent.requiredString("id")].orEmpty().forEach { child ->
-                    val childId = child.requiredString("id")
-                    indegree[childId] = indegree.getValue(childId) - 1
-                    if (indegree.getValue(childId) == 0) nextLayer += child
-                }
-            }
-            layer = nextLayer.sortedWith(stableOrder)
+            val next = mutableListOf<Node>()
+            layer.forEach { node -> order += node.position; next += children[node.id].orEmpty() }
+            layer = next.sortedWith(comparator)
         }
-        if (ordered.size != rows.size) throw BackupValidationException("Message parent 存在环")
-        return ordered
+        if (order.size != rows.size) throw BackupValidationException("Message parent 存在环")
+        return object : AbstractList<JsonObject>() {
+            override val size get() = order.size
+            override fun get(index: Int) = rows[order[index]]
+        }
     }
 
     private fun validateSqlitePrimitive(table: String, column: RoomColumn, value: kotlinx.serialization.json.JsonElement) {
@@ -1054,21 +1417,21 @@ class RoomBackupDataSource(
     private fun eligibleSecretIds(providerIds: Collection<String>): Set<SecretId> =
         SecretCatalog.backupEligible(providerIds) - SecretCatalog.automaticBackupPassword
 
-    private fun validateFileBytes(row: JsonObject, bytes: ByteArray) {
+    private fun validateFileBytes(row: JsonObject, bytes: BackupBlob) {
         val expectedSize = row.requiredLong("size_bytes")
         if (expectedSize != bytes.size.toLong()) throw BackupValidationException("文件大小不一致")
         val expectedHash = row.requiredString("hash")
         if (!Regex("[0-9a-fA-F]{64}").matches(expectedHash) ||
-            !expectedHash.equals(sha256(bytes), ignoreCase = true)
+            !expectedHash.equals(BackupStreams.digest(bytes), ignoreCase = true)
         ) {
             throw BackupValidationException("文件摘要不一致", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH)
         }
     }
 
-    private fun transformPaths(payload: DatabaseBackupPayload, finalRoot: Path): DatabaseBackupPayload {
+    private fun transformPaths(payload: DatabaseBackupPayload, finalRoot: Path, importedIds: Set<String>? = null): DatabaseBackupPayload {
         val rootTokens = linkedMapOf<String, String>()
         val rootIdentities = linkedMapOf<String, String>()
-        payload.rows(FILE_TABLE).forEach { row ->
+        payload.rows(FILE_TABLE).filter { importedIds == null || it.requiredString("uuid") in importedIds }.forEach { row ->
             val logicalRoot = logicalRoot(row)
             rootTokens.getOrPut(logicalRoot) { safeRootToken(logicalRoot) }
             rootIdentities.getOrPut(logicalRoot) { UUID.randomUUID().toString() }
@@ -1077,8 +1440,8 @@ class RoomBackupDataSource(
             throw BackupValidationException("workspace root token 冲突")
         }
         val transformedTables = payload.tables.toMutableMap()
-        transformedTables[FILE_TABLE] = payload.rows(FILE_TABLE).map { row ->
-            val token = rootTokens.getValue(logicalRoot(row))
+        transformedTables[FILE_TABLE] = BackupDatabaseRows.map(payload.rows(FILE_TABLE)) { row ->
+            val token = rootTokens[logicalRoot(row)] ?: return@map row
             val rewritten = row + mapOf(
                     "physical_root_path" to JsonPrimitive(finalRoot.resolve(token).toString()),
                     "vectorized_at" to JsonNull,
@@ -1091,28 +1454,26 @@ class RoomBackupDataSource(
                 else rewritten
             )
         }
-        transformedTables["messages"] = payload.rows("messages").map { row ->
+        transformedTables["messages"] = BackupDatabaseRows.map(payload.rows("messages")) { row ->
             JsonObject(row + ("vectorization_status" to JsonNull))
         }
-        transformedTables["sessions"] = payload.rows("sessions").map { row ->
-            val workspaceRootUuid = row.optionalString("workspace_root_uuid")
-            val token = workspaceRootUuid?.let(rootTokens::get)
-            if (token == null) row else JsonObject(
-                row + ("workspace_path" to JsonPrimitive(finalRoot.resolve(token).toString()))
-            )
+        val targetRoots = transformedTables.getValue(FILE_TABLE).filter { it.requiredString("uuid") == it.requiredString("workspace_root_uuid") }
+            .associate { it.requiredString("uuid") to Paths.get(it.requiredString("physical_root_path")) }
+        transformedTables["sessions"] = BackupDatabaseRows.map(payload.rows("sessions")) { row ->
+            val target = row.optionalString("workspace_root_uuid")?.let(targetRoots::get)
+            if (target == null) row else JsonObject(row + ("workspace_path" to JsonPrimitive(target.toString())))
         }
         val sessionPathMapping = payload.rows("sessions").associate { row ->
             val sessionId = row.requiredString("id")
             val rootId = row.optionalString("workspace_root_uuid")
-            val token = rootId?.let(rootTokens::get)
             val oldRoot = row.optionalString("workspace_path")?.let(Paths::get)?.toAbsolutePath()?.normalize()
-            val newRoot = token?.let(finalRoot::resolve)
+            val newRoot = rootId?.let(targetRoots::get)
             sessionId to (oldRoot to newRoot)
         }
-        transformedTables["artifacts"] = payload.rows("artifacts").map { row ->
+        transformedTables["artifacts"] = BackupDatabaseRows.map(payload.rows("artifacts")) { row ->
             val artifactPath = row.optionalString("workspace_path") ?: return@map row
             val (oldRoot, newRoot) = sessionPathMapping.getValue(row.requiredString("session_id"))
-            if (oldRoot == null || newRoot == null) throw BackupValidationException("Artifact 缺少可重写的 workspace root")
+            if (oldRoot == null || newRoot == null) return@map row
             val oldArtifact = Paths.get(artifactPath).toAbsolutePath().normalize()
             if (!oldArtifact.startsWith(oldRoot)) throw BackupValidationException("Artifact workspace path 越界")
             JsonObject(row + ("workspace_path" to JsonPrimitive(newRoot.resolve(oldRoot.relativize(oldArtifact)).toString())))
@@ -1128,7 +1489,8 @@ class RoomBackupDataSource(
     private fun stageFiles(
         stagingRoot: Path,
         transformed: DatabaseBackupPayload,
-        files: Map<String, ByteArray>,
+        files: Map<String, BackupBlob>,
+        importedIds: Set<String>? = null,
     ): StagedWorkspaceFiles {
         if (Files.exists(stagingRoot, LinkOption.NOFOLLOW_LINKS)) {
             throw BackupValidationException("staging 目录已存在")
@@ -1138,8 +1500,8 @@ class RoomBackupDataSource(
         restoreFileOperations.writeNew(stagingRoot, listOf(OWNER_MARKER), txId.toByteArray())
         val seen = mutableSetOf<String>()
         val directories = linkedSetOf<List<String>>()
-        val pendingFiles = mutableListOf<Pair<List<String>, ByteArray>>()
-        transformed.rows(FILE_TABLE).forEach { row ->
+        val pendingFiles = mutableListOf<Pair<List<String>, BackupBlob>>()
+        transformed.rows(FILE_TABLE).filter { importedIds == null || it.requiredString("uuid") in importedIds }.forEach { row ->
             val finalPhysicalRoot = Paths.get(row.requiredString("physical_root_path"))
             val rootToken = finalPhysicalRoot.fileName.toString()
             val relative = normalizeMaterializedPath(row.requiredString("materialized_path"))
@@ -1164,7 +1526,7 @@ class RoomBackupDataSource(
         transformed.rows(FILE_TABLE)
             .filter { row ->
                 row.requiredString("uuid") == row.requiredString("workspace_root_uuid") &&
-                    row.optionalString("parent_uuid") == null
+                    row.optionalString("parent_uuid") == null && (importedIds == null || row.requiredString("uuid") in importedIds)
             }
             .forEach { rootRow ->
                 val rootToken = Paths.get(rootRow.requiredString("physical_root_path")).fileName.toString()
@@ -1174,12 +1536,12 @@ class RoomBackupDataSource(
                     rootRow.requiredString("hash"),
                 )
             }
-        pendingFiles.forEach { (relative, bytes) -> restoreFileOperations.writeNew(stagingRoot, relative, bytes) }
+        pendingFiles.forEach { (relative, blob) -> restoreFileOperations.writeStream(stagingRoot, relative, blob) }
         val expected = buildSet {
             add(RestoreTreeEntry(OWNER_MARKER, false))
             directories.forEach { add(RestoreTreeEntry(it.joinToString("/"), true)) }
             transformed.rows(FILE_TABLE)
-                .filter { it.requiredString("uuid") == it.requiredString("workspace_root_uuid") && it.optionalString("parent_uuid") == null }
+                .filter { it.requiredString("uuid") == it.requiredString("workspace_root_uuid") && it.optionalString("parent_uuid") == null && (importedIds == null || it.requiredString("uuid") in importedIds) }
                 .forEach { row ->
                     val token = Paths.get(row.requiredString("physical_root_path")).fileName.toString()
                     add(RestoreTreeEntry("$token/.infinity_root_identity", false))
@@ -1211,12 +1573,12 @@ class RoomBackupDataSource(
 
     private fun clearAllRestorableTables() {
         val sqlite = database.openHelper.writableDatabase
-        (DERIVED_DELETE_ORDER + DELETE_ORDER).forEach { sqlite.execSQL("DELETE FROM `$it`") }
+        (DERIVED_DELETE_ORDER + backupTables().reversed()).forEach { sqlite.execSQL("DELETE FROM `$it`") }
     }
 
     private fun insertPayload(payload: DatabaseBackupPayload) {
         val sqlite = database.openHelper.writableDatabase
-        INSERT_ORDER.forEach { table ->
+        backupTables().forEach { table ->
             val rows = if (table == "messages") {
                 sortMessagesParentFirst(payload.rows(table))
             } else {
@@ -1286,7 +1648,7 @@ class RoomBackupDataSource(
         ) throw BackupValidationException("snapshot 超过备份 entry 限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
         var total = databaseBytes.size.toLong() + preferenceBytes.size.toLong()
         (files.values + secretValues.values + skills?.files.orEmpty().values + avatars.values).forEach { bytes ->
-            if (bytes.size.toLong() > BackupPackageLimits.MAX_ENTRY_BYTES) {
+            if (bytes.size > BackupPackageLimits.MAX_ENTRY_BYTES) {
                 throw BackupValidationException("snapshot 内容项超过大小限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             }
             total = Math.addExact(total, bytes.size.toLong())
@@ -1298,6 +1660,10 @@ class RoomBackupDataSource(
     }
 
     private fun requireCanonicalRestoreContent(validated: ValidatedBackup) {
+        if (validated.manifest.layers != null) {
+            if (validated.manifest.formatVersion != 3 || BackupLayer.CORE !in validated.manifest.layers || validated.blobs.isEmpty()) throw BackupValidationException("流式包缺少核心层")
+            return
+        }
         val paths = validated.manifest.entries.map { it.path }.toSet()
         if (validated.manifest.formatVersion !in 1..DefaultBackupPackageCodec.FORMAT_VERSION ||
             "database.json" !in paths || "preferences.json" !in paths ||
@@ -1351,9 +1717,9 @@ class RoomBackupDataSource(
 
     private fun fingerprint(payload: DatabaseBackupPayload): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        INSERT_ORDER.sorted().forEach { table ->
+        backupTables().sorted().forEach { table ->
             digest.update(table.toByteArray())
-            payload.rows(table).map(::canonicalRow).sorted().forEach { digest.update(it.toByteArray()) }
+            payload.rows(table).forEach { digest.update(canonicalRow(it).toByteArray()) }
         }
         return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
@@ -1367,12 +1733,21 @@ class RoomBackupDataSource(
         LinkOption.NOFOLLOW_LINKS,
     ).fileKey()?.toString() ?: throw BackupValidationException("文件系统未提供稳定 fileKey")
 
-    private fun currentOldRootIdentity(): String {
-        val rows = readDatabasePayload().rows(FILE_TABLE)
-        val groups = rows.groupBy { row ->
+    private fun currentOldRootIdentity(layers: Set<BackupLayer>? = null): String {
+        if (layers != null && BackupLayer.KNOWLEDGE !in layers && BackupLayer.WORKSPACE_FILES !in layers) return ""
+        val budget = MaterializationBudget(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+        val rows = database.openHelper.writableDatabase.query("SELECT * FROM `$FILE_TABLE`").use { cursorRows(it, budget) }
+        val knowledgeRoots = database.openHelper.writableDatabase.query("SELECT workspace_root_uuid FROM sessions WHERE agent_id = '__system__'")
+            .use { cursor -> buildSet { while (cursor.moveToNext()) if (!cursor.isNull(0)) add(cursor.getString(0)) } }
+        fun selected(row: JsonObject) = layers == null ||
+            (if (row.requiredString("workspace_root_uuid") in knowledgeRoots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES) in layers
+        val retained = rows.filterNot(::selected)
+        val groups = rows.filter(::selected).groupBy { row ->
             managedContainer(requireTrustedSourceRoot(row.requiredString("physical_root_path")))
         }
-        return groups.entries.joinToString(",") { (managed, managedRows) ->
+        return groups.entries.filter { (managed, _) -> retained.none { row ->
+            Paths.get(row.requiredString("physical_root_path")).toAbsolutePath().normalize().startsWith(managed.path)
+        } }.joinToString(",") { (managed, managedRows) ->
             val expected = expectedManagedInventory(managed, managedRows)
             val actual = restoreFileOperations.inventory(managed.path.parent, managed.path.fileName.toString())
             if (actual != expected) throw BackupValidationException(
@@ -1395,7 +1770,7 @@ class RoomBackupDataSource(
         record.skills?.let { requireSkillRestore().finish(record.txId, it) }
         record.avatars?.let { requireAvatarRestore().finish(record.txId, it) }
         preferences.finalizePrepared(record.txId)
-        secrets.finalizePrepared(record.txId)
+        if (record.secretsIncluded) secrets.finalizePrepared(record.txId)
         deleteOldRoots(record)
         writeCompletedReceipt(record)
         crashHook.hit(RestoreCrashPoint.RECEIPT_PERSISTED)
@@ -1403,6 +1778,10 @@ class RoomBackupDataSource(
     }
 
     private fun validateAvatarPartition(validated: ValidatedBackup) {
+        if (validated.manifest.layers != null) {
+            AvatarBackupFiles.validateSizes(validated.avatarBlobs().mapValues { it.value.size })
+            return
+        }
         val entries = validated.manifest.entries.filter { it.path.startsWith(AvatarBackupFiles.PREFIX) }
         if (entries.map { it.path.removePrefix(AvatarBackupFiles.PREFIX) }.toSet() != validated.avatars.keys ||
             entries.size != validated.avatars.size || validated.manifest.formatVersion < 3 && entries.isNotEmpty()
@@ -1453,7 +1832,7 @@ class RoomBackupDataSource(
             "UPDATE audit_logs SET status = ?, metadata = ?, created_at = ? WHERE id = ? AND action = ?",
             arrayOf<Any?>(
                 "completed",
-                record.expectedDatabaseFingerprint,
+                record.summary?.let { json.encodeToString(it) } ?: record.expectedDatabaseFingerprint,
                 System.currentTimeMillis(),
                 databaseMarkerId(record.txId),
                 DATABASE_MARKER_ACTION,
@@ -1476,6 +1855,13 @@ class RoomBackupDataSource(
                 databaseMarkerId(record.txId),
             ),
         )
+    }
+
+    override suspend fun completedRestoreSummary(operationId: String): BackupResultSummary? = withContext(Dispatchers.IO) {
+        requireOperationId(operationId)
+        database.openHelper.writableDatabase.query("SELECT metadata FROM audit_logs WHERE id = ? AND action = ? AND status = 'completed'", arrayOf(databaseMarkerId(operationId), DATABASE_MARKER_ACTION)).use { cursor ->
+            if (!cursor.moveToFirst()) null else runCatching { json.decodeFromString<BackupResultSummary>(cursor.getString(0)) }.getOrNull()
+        }
     }
 
     private fun hasCompletedRestoreLocked(operationId: String): Boolean =

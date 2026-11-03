@@ -28,6 +28,7 @@ class BackupRuntime internal constructor(
     private val dataSource: BackupDataSource,
     private val pendingStore: PendingRestoreStore? = null,
     private val codec: BackupPackageCodec? = null,
+    private val cacheDirectory: java.nio.file.Path? = null,
 ) {
     private val _state = MutableStateFlow<BackupStartupState>(BackupStartupState.Recovering)
     val state: StateFlow<BackupStartupState> = _state.asStateFlow()
@@ -80,6 +81,7 @@ class BackupRuntime internal constructor(
     }
 
     private suspend fun recoverAll() {
+        cacheDirectory?.let(BackupStreams::cleanCache)
         // journal 始终优先；它可能是 pending 对应 restore 在上次崩溃后留下的事务。
         dataSource.recoverInterruptedRestore()
         val store = pendingStore ?: return
@@ -92,14 +94,20 @@ class BackupRuntime internal constructor(
                 return
             }
             if (dataSource.hasCompletedRestore(txId)) {
-                packageCodec.decode(payload.packageBytes, payload.password).use {
-                    _restoreResult.value = BackupRestoreResult(it.skills?.metadata?.summary)
+                val summary = dataSource.completedRestoreSummary(txId)
+                if (summary != null) {
+                    _restoreResult.value = BackupRestoreResult(summary.skills, summary)
+                    store.clear(txId)
+                    return
+                }
+                decodePayload(packageCodec, payload).use {
+                    _restoreResult.value = BackupRestoreResult(it.manifest.skills?.summary, it.restoreSummary)
                 }
                 store.clear(txId)
                 return
             }
             val result = try {
-                val validated = packageCodec.decode(payload.packageBytes, payload.password)
+                val validated = decodePayload(packageCodec, payload)
                 dataSource.restoreWithResult(validated, txId)
             } catch (error: Exception) {
                 // 同一 txId 重放只会被偏好账本拒绝；只有数据源证明已完整回滚时才放弃本次恢复并解除锁定。
@@ -116,6 +124,10 @@ class BackupRuntime internal constructor(
             store.clear(txId)
         }
     }
+
+    private fun decodePayload(codec: BackupPackageCodec, payload: PendingRestorePayload): ValidatedBackup =
+        if (payload.packageFile == null) codec.decode(payload.packageBytes, payload.password)
+        else payload.openPackage().use { codec.decodeFrom(it, payload.password, payload.packageFile.parent) }
 
     companion object {
         fun createAndroid(
@@ -152,6 +164,7 @@ class BackupRuntime internal constructor(
                 dataSource = dataSource,
                 pendingStore = AndroidPendingRestoreStore(appContext),
                 codec = DefaultBackupPackageCodec(),
+                cacheDirectory = appContext.cacheDir.resolve("backup-stream-v3").toPath(),
             )
         }
     }

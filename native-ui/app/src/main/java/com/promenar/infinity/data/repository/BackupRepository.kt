@@ -8,6 +8,10 @@ import com.promenar.infinity.data.backup.AndroidPendingRestoreStore
 import com.promenar.infinity.data.backup.AndroidRestoreJournalAuthenticator
 import com.promenar.infinity.data.backup.AndroidTransactionalBackupPreferenceStore
 import com.promenar.infinity.data.backup.AndroidTransactionalBackupSecretStore
+import com.promenar.infinity.data.backup.BackupLayer
+import com.promenar.infinity.data.backup.BackupLayerStats
+import com.promenar.infinity.data.backup.BackupResultSummary
+import com.promenar.infinity.data.backup.BackupStreams
 import com.promenar.infinity.data.backup.BackupContent
 import com.promenar.infinity.data.backup.BackupDataSource
 import com.promenar.infinity.data.backup.BackupExportOptions
@@ -40,6 +44,7 @@ data class BackupUploadReceipt(
     val fileName: String,
     val pruneWarning: WebDavPruneWarning?,
     val skills: SkillBackupSummary? = null,
+    val summary: BackupResultSummary = BackupResultSummary(skills = skills),
 )
 
 /**
@@ -52,51 +57,85 @@ class BackupRepository internal constructor(
     private val webDav: WebDavBackupClient,
     private val pendingStore: PendingRestoreStore,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val cacheDirectory: java.nio.file.Path? = null,
 ) {
     constructor(context: Context) : this(
         dataSource = createDataSource(context),
         codec = DefaultBackupPackageCodec(),
         webDav = KtorWebDavBackupClient(),
         pendingStore = AndroidPendingRestoreStore(context),
+        cacheDirectory = context.applicationContext.cacheDir.resolve("backup-stream-v3").toPath(),
     )
 
-    suspend fun export(options: BackupExportOptions = BackupExportOptions()): ByteArray = exportWithSummary(options).packageBytes
+    suspend fun estimate(): Map<BackupLayer, BackupLayerStats> = withContext(Dispatchers.IO) { dataSource.estimate() }
 
-    suspend fun exportWithSummary(options: BackupExportOptions = BackupExportOptions()): BackupExportResult = withContext(Dispatchers.IO) {
+    suspend fun exportTo(output: java.io.OutputStream, options: BackupExportOptions = BackupExportOptions()): BackupResultSummary =
+        withSpool { root ->
+            val (file, summary) = createPackage(root, options)
+            java.nio.file.Files.newInputStream(file).use { input ->
+                BackupStreams.copy(input, output, BackupStreams.MAX_WIRE_BYTES)
+            }
+            output.flush()
+            summary
+        }
+
+    private suspend fun createPackage(root: java.nio.file.Path, options: BackupExportOptions): Pair<java.nio.file.Path, BackupResultSummary> {
         val password = validatedPassword(options)
-        val content = CANONICAL_CONTENT + if (options.includeSecrets) setOf(BackupContent.SECRETS) else emptySet()
+        val layers = options.layers + BackupLayer.CORE + if (options.includeSecrets) setOf(BackupLayer.SECRETS) else emptySet()
         var snapshot: com.promenar.infinity.data.backup.BackupSnapshot? = null
         try {
-            val captured = dataSource.snapshot(content)
-            snapshot = captured
-            val bytes = codec.encode(
-                captured,
-                BackupOptions(
-                    content = content,
-                    includeSecrets = options.includeSecrets,
-                    encryptPackage = options.encryptPackage || options.includeSecrets,
-                    password = password,
-                ),
-            )
-                .also(::requireBoundedPackage)
-            BackupExportResult(bytes, captured.skills?.metadata?.summary)
+            if (BackupLayer.SECRETS in layers && !options.includeSecrets) throw BackupValidationException("密钥层需要加密密码确认")
+            snapshot = dataSource.snapshotTo(layers, root)
+            val target = root.resolve("export.iwb")
+            val summary = java.nio.file.Files.newOutputStream(target).use { output -> codec.encodeTo(snapshot,
+                BackupOptions(CANONICAL_CONTENT + if (options.includeSecrets) setOf(BackupContent.SECRETS) else emptySet(),
+                    options.includeSecrets, password, options.encryptPackage || options.includeSecrets), output) }
+            if (java.nio.file.Files.size(target) > BackupStreams.MAX_WIRE_BYTES) throw BackupValidationException("备份包超过传输上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
+            return target to summary
+        } finally { snapshot?.wipe(); password?.fill('\u0000') }
+    }
+
+    private suspend fun <T> withSpool(block: suspend (java.nio.file.Path) -> T): T = withContext(Dispatchers.IO) {
+        spoolMutex.lock()
+        var owned: java.nio.file.Path? = null
+        try {
+            val candidate = (cacheDirectory ?: java.nio.file.Files.createTempDirectory("infinity-backup-")).toAbsolutePath().normalize()
+            com.promenar.infinity.data.backup.FileRestoreJournal.rejectSymlinkAncestors(candidate)
+            java.nio.file.Files.createDirectories(candidate)
+            val root = com.promenar.infinity.data.backup.FileRestoreJournal.requireTrustedDirectory(candidate)
+            owned = root
+            BackupStreams.cleanCache(root)
+            block(root)
+        } catch (error: java.io.IOException) {
+            if (owned?.toFile()?.usableSpace?.let { it < 1024 * 1024 } == true) throw BackupValidationException(
+                "可用存储空间不足", error, BackupFailureReason.CAPACITY_EXCEEDED, com.promenar.infinity.data.backup.BackupFailureDetail.INSUFFICIENT_STORAGE)
+            throw error
         } finally {
-            snapshot?.wipe()
-            password?.fill('\u0000')
+            try {
+                owned?.let { root ->
+                    BackupStreams.cleanCache(root)
+                    if (cacheDirectory == null) java.nio.file.Files.deleteIfExists(root)
+                }
+            } finally { spoolMutex.unlock() }
         }
     }
 
-    suspend fun upload(config: WebDavConfig, options: BackupExportOptions = BackupExportOptions()): BackupUploadReceipt {
-        val exported = exportWithSummary(options)
-        val bytes = exported.packageBytes
-        try {
-            val fileName = backupFileName(clock())
-            val result = webDav.uploadAndPrune(config, fileName, bytes, keep = REMOTE_KEEP)
-            return when (result) {
-                is UploadAndPruneResult.Committed -> BackupUploadReceipt(result.fileName, result.pruneWarning, exported.skills)
-            }
-        } finally {
-            bytes.fill(0)
+    suspend fun export(options: BackupExportOptions = BackupExportOptions()): ByteArray = exportWithSummary(options).packageBytes
+
+    suspend fun exportWithSummary(output: java.io.OutputStream, options: BackupExportOptions = BackupExportOptions()): BackupResultSummary = exportTo(output, options)
+
+    /** 小包调用点的兼容桥接；应用导出使用 OutputStream 接口。 */
+    suspend fun exportWithSummary(options: BackupExportOptions = BackupExportOptions()): BackupExportResult = withSpool { root ->
+        val (path, summary) = createPackage(root, options)
+        val bytes = java.nio.file.Files.newInputStream(path).use(::readBounded)
+        BackupExportResult(bytes, summary.skills, summary)
+    }
+
+    suspend fun upload(config: WebDavConfig, options: BackupExportOptions = BackupExportOptions()): BackupUploadReceipt = withSpool { root ->
+        val (file, summary) = createPackage(root, options)
+        val result = webDav.uploadAndPrune(config, backupFileName(clock()), file, keep = REMOTE_KEEP)
+        when (result) {
+            is UploadAndPruneResult.Committed -> BackupUploadReceipt(result.fileName, result.pruneWarning, summary.skills, summary)
         }
     }
 
@@ -118,14 +157,11 @@ class BackupRepository internal constructor(
         input: InputStream,
         password: CharArray? = null,
     ): PendingRestoreMetadata =
-        withContext(Dispatchers.IO) {
+        withSpool { root ->
             pendingStore.begin(operationId)
-            val bytes = readBounded(input)
-            try {
-                stageValidated(operationId, bytes, password)
-            } finally {
-                bytes.fill(0)
-            }
+            val path = root.resolve("import.iwb")
+            java.nio.file.Files.newOutputStream(path).use { output -> BackupStreams.copy(input, output, BackupStreams.MAX_WIRE_BYTES) }
+            stageValidatedFile(operationId, path, password, root)
         }
 
     suspend fun stageRemoteRestore(
@@ -139,14 +175,24 @@ class BackupRepository internal constructor(
         config: WebDavConfig,
         selected: RemoteBackup,
         password: CharArray? = null,
-    ): PendingRestoreMetadata = withContext(Dispatchers.IO) {
+    ): PendingRestoreMetadata = withSpool { root ->
         pendingStore.begin(operationId)
-        val bytes = downloadRemote(config, selected)
+        val current = webDav.list(config).singleOrNull { it == selected }
+            ?: throw BackupValidationException("所选备份已变化，请刷新列表")
+        val path = root.resolve("download.iwb")
+        webDav.downloadTo(config, current, path)
+        stageValidatedFile(operationId, path, password, root)
+    }
+
+    private suspend fun stageValidatedFile(operationId: String, path: java.nio.file.Path, password: CharArray?, root: java.nio.file.Path): PendingRestoreMetadata {
+        val owned = password?.copyOf()
         try {
-            stageValidated(operationId, bytes, password)
-        } finally {
-            bytes.fill(0)
-        }
+            val summary = java.nio.file.Files.newInputStream(path).use { codec.decodeFrom(it, owned, root).use { validated ->
+                dataSource.validateStaged(validated)
+                BackupResultSummary(validated.manifest.layers.orEmpty(), validated.manifest.skipped, skills = validated.manifest.skills?.summary)
+            } }
+            return pendingStore.stageFile(operationId, path, owned).copy(summary = summary)
+        } finally { owned?.fill('\u0000') }
     }
 
     fun stageValidated(packageBytes: ByteArray, password: CharArray? = null): PendingRestoreMetadata {
@@ -155,13 +201,8 @@ class BackupRepository internal constructor(
 
     fun stageValidated(operationId: String, packageBytes: ByteArray, password: CharArray? = null): PendingRestoreMetadata {
         requireBoundedPackage(packageBytes)
-        pendingStore.begin(operationId)
-        val ownedPassword = password?.copyOf()
-        try {
-            codec.decode(packageBytes, ownedPassword).use { /* 验证先行，运行中绝不写 Operational 数据 */ }
-            return pendingStore.stage(operationId, packageBytes, ownedPassword)
-        } finally {
-            ownedPassword?.fill('\u0000')
+        return kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            stageLocalRestore(operationId, packageBytes.inputStream(), password)
         }
     }
 
@@ -229,6 +270,7 @@ class BackupRepository internal constructor(
     companion object {
         val CANONICAL_CONTENT = setOf(BackupContent.DATABASE, BackupContent.PREFERENCES, BackupContent.FILES)
         const val REMOTE_KEEP = 5
+        private val spoolMutex = kotlinx.coroutines.sync.Mutex()
 
         private fun createDataSource(context: Context): BackupDataSource {
             val app = context.applicationContext as InfinityApplication

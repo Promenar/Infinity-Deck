@@ -17,12 +17,12 @@ import java.util.concurrent.CancellationException
 internal object AvatarBackupFiles {
     const val PREFIX = "avatars/"
     const val REFERENCE_PREFIX = "avatar:"
-    const val MAX_FILE_BYTES = 2L * 1024 * 1024
-    const val MAX_TOTAL_BYTES = 8L * 1024 * 1024
+    const val MAX_FILE_BYTES = BackupPackageLimits.MAX_ENTRY_BYTES
+    const val MAX_TOTAL_BYTES = BackupPackageLimits.MAX_TOTAL_BYTES
     private val safeId = Regex("[A-Za-z0-9_-]{1,128}")
 
     data class Snapshot(val payload: DatabaseBackupPayload, val preferences: BackupPreferenceSnapshot, val files: Map<String, ByteArray>)
-    data class RestorePlan(val payload: DatabaseBackupPayload, val preferences: BackupPreferenceSnapshot, val files: Map<String, ByteArray>)
+    data class RestorePlan(val payload: DatabaseBackupPayload, val preferences: BackupPreferenceSnapshot, val files: Map<String, ByteArray>, val blobs: Map<String, BackupBlob> = emptyMap())
 
     fun requireId(id: String) {
         if (!safeId.matches(id)) throw BackupValidationException("头像文件标识无效")
@@ -39,6 +39,35 @@ internal object AvatarBackupFiles {
         }
     }
 
+    data class StreamSnapshot(val payload: DatabaseBackupPayload, val preferences: BackupPreferenceSnapshot, val blobs: Map<String, BackupBlob>)
+
+    fun snapshotTo(payload: DatabaseBackupPayload, preferences: BackupPreferenceSnapshot, root: Path?, directory: Path): StreamSnapshot {
+        val blobs = linkedMapOf<String, BackupBlob>()
+        val references = mutableMapOf<Path, String>()
+        fun capture(raw: String?): String? {
+            if (raw.isNullOrBlank()) return null
+            try {
+                val trusted = root?.let(FileRestoreJournal::requireTrustedDirectory)
+                    ?: throw BackupValidationException("头像根目录未配置")
+                val path = Paths.get(raw).toAbsolutePath().normalize()
+                if (path == trusted || !path.startsWith(trusted)) throw BackupValidationException("头像引用越出私有目录")
+                references[path]?.let { return it }
+                FileRestoreJournal.rejectSymlinkAncestors(path)
+                val size = Files.size(path)
+                val id = UUID.randomUUID().toString()
+                val target = Files.createTempFile(directory, "avatar-", ".bin")
+                blobs[id] = BackupStreams.stableCopy(path, target, size)
+                return (REFERENCE_PREFIX + id).also { references[path] = it }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { throw BackupValidationException("核心层头像无法读取", error, error.backupFailureReason() ?: BackupFailureReason.WORKSPACE_FILE_MISMATCH,
+                if (error.backupFailureReason() == BackupFailureReason.CAPACITY_EXCEEDED) (error as? BackupValidationException)?.detail else BackupFailureDetail.CORE_CONTENT_UNREADABLE) }
+        }
+        payload.tables["agents"].orEmpty().forEach { row -> capture(row["avatar_path"]?.takeIf { it != JsonNull }?.jsonPrimitive?.contentOrNull) }
+        val rewrittenPreferences = mapPreferences(preferences, ::capture)
+        val rewritten = mapPayload(payload, { raw -> raw?.takeIf { it.isNotBlank() }?.let { references[Paths.get(it).toAbsolutePath().normalize()] } }, lazy = true)
+        return StreamSnapshot(rewritten, rewrittenPreferences, blobs)
+    }
+
     fun snapshot(
         payload: DatabaseBackupPayload,
         preferences: BackupPreferenceSnapshot,
@@ -51,18 +80,19 @@ internal object AvatarBackupFiles {
         val references = mutableMapOf<Path, String>()
         var remaining = minOf(memoryBudget.coerceAtLeast(0), MAX_TOTAL_BYTES)
         fun capture(raw: String?): String? {
-            if (raw.isNullOrBlank() || root == null) return null
+            if (raw.isNullOrBlank()) return null
+            if (root == null) throw BackupValidationException("核心层头像根目录未配置", reason = BackupFailureReason.WORKSPACE_FILE_MISMATCH, detail = BackupFailureDetail.CORE_CONTENT_UNREADABLE)
             return try {
                 val trustedRoot = FileRestoreJournal.requireTrustedDirectory(root)
                 val rootIdentity = Files.readAttributes(trustedRoot, BasicFileAttributes::class.java, NOFOLLOW_LINKS).fileKey()
                 val path = Paths.get(raw).toAbsolutePath().normalize()
-                if (!path.startsWith(trustedRoot) || path == trustedRoot) return null
+                if (!path.startsWith(trustedRoot) || path == trustedRoot) throw BackupValidationException("核心层头像路径越界")
                 FileRestoreJournal.rejectSymlinkAncestors(path)
                 references[path]?.let { return it }
                 val attributes = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
                 if (!attributes.isRegularFile || attributes.isSymbolicLink || attributes.size() > MAX_FILE_BYTES ||
                     attributes.size() > remaining || files.size >= entryBudget
-                ) return null
+                ) throw BackupValidationException("核心层头像属性或容量不符合备份要求", reason = BackupFailureReason.CAPACITY_EXCEEDED)
                 val id = UUID.randomUUID().toString()
                 val bytes = readStable(path, attributes.size(), id).first
                 try {
@@ -80,9 +110,9 @@ internal object AvatarBackupFiles {
                 (REFERENCE_PREFIX + id).also { references[path] = it }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                // 缺失、越界、链接或不稳定头像只清除对应引用，不阻断整个备份。
-                null
+            } catch (error: Exception) {
+                throw BackupValidationException("核心层头像无法读取", error, error.backupFailureReason() ?: BackupFailureReason.WORKSPACE_FILE_MISMATCH,
+                    if (error.backupFailureReason() == BackupFailureReason.CAPACITY_EXCEEDED) (error as? BackupValidationException)?.detail else BackupFailureDetail.CORE_CONTENT_UNREADABLE)
             }
         }
         try {
@@ -121,12 +151,40 @@ internal object AvatarBackupFiles {
         return RestorePlan(rewritten, rewrittenPreferences, files.mapKeys { names.getValue(it.key) })
     }
 
-    private fun mapPayload(payload: DatabaseBackupPayload, mapPath: (String?) -> String?): DatabaseBackupPayload {
+    fun planRestoreBlobs(
+        payload: DatabaseBackupPayload,
+        preferences: BackupPreferenceSnapshot,
+        files: Map<String, BackupBlob>,
+        root: Path?,
+        allowReferences: Boolean,
+    ): RestorePlan {
+        validateSizes(files.mapValues { it.value.size })
+        if (!allowReferences && files.isNotEmpty()) throw BackupValidationException("旧格式不支持头像分区")
+        if (files.isNotEmpty() && root == null) throw BackupValidationException("头像恢复根目录未配置")
+        val names = files.keys.associateWith { UUID.randomUUID().toString() + ".img" }
+        val referenced = mutableSetOf<String>()
+        fun resolve(raw: String?): String? {
+            if (!allowReferences || raw == null || !raw.startsWith(REFERENCE_PREFIX)) return null
+            val id = raw.removePrefix(REFERENCE_PREFIX)
+            requireId(id)
+            val name = names[id] ?: throw BackupValidationException("头像引用缺少文件")
+            referenced += id
+            return root!!.toAbsolutePath().normalize().resolve(name).toString()
+        }
+        payload.tables["agents"].orEmpty().forEach { row -> resolve(row["avatar_path"]?.takeIf { it != JsonNull }?.jsonPrimitive?.contentOrNull) }
+        val rewrittenPreferences = mapPreferences(preferences, ::resolve)
+        val rewritten = mapPayload(payload, ::resolve, lazy = true)
+        if (referenced != files.keys) throw BackupValidationException("头像分区包含无引用文件")
+        return RestorePlan(rewritten, rewrittenPreferences, emptyMap(), files.mapKeys { names.getValue(it.key) })
+    }
+
+    private fun mapPayload(payload: DatabaseBackupPayload, mapPath: (String?) -> String?, lazy: Boolean = false): DatabaseBackupPayload {
         val agents = payload.tables["agents"] ?: return payload
-        return payload.copy(tables = payload.tables + ("agents" to agents.map { row ->
+        val transform: (JsonObject) -> JsonObject = { row ->
             val raw = row["avatar_path"]?.let { if (it == JsonNull) null else it.jsonPrimitive.contentOrNull }
             JsonObject(row + ("avatar_path" to (mapPath(raw)?.let(::JsonPrimitive) ?: JsonNull)))
-        }))
+        }
+        return payload.copy(tables = payload.tables + ("agents" to if (lazy) BackupDatabaseRows.map(agents, transform) else agents.map(transform)))
     }
 
     private fun mapPreferences(snapshot: BackupPreferenceSnapshot, mapPath: (String?) -> String?): BackupPreferenceSnapshot =

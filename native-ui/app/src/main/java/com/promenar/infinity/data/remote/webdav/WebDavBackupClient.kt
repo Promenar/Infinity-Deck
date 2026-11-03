@@ -6,6 +6,7 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.delete
 import io.ktor.client.request.header
+import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -15,7 +16,13 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeFully
+import io.ktor.http.content.OutgoingContent
 import io.ktor.utils.io.readAvailable
+import com.promenar.infinity.data.backup.BackupStreams
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -79,6 +86,20 @@ interface WebDavBackupClient {
         bytes: ByteArray,
         keep: Int = 5,
     ): UploadAndPruneResult
+    suspend fun uploadAtomic(config: WebDavConfig, fileName: String, file: Path) {
+        if (Files.size(file) > BackupPackageLimits.MAX_IN_MEMORY_BYTES) throw WebDavException("当前客户端未实现流式上传")
+        val bytes = Files.readAllBytes(file)
+        try { uploadAtomic(config, fileName, bytes) } finally { bytes.fill(0) }
+    }
+    suspend fun uploadAndPrune(config: WebDavConfig, fileName: String, file: Path, keep: Int = 5): UploadAndPruneResult {
+        if (Files.size(file) > BackupPackageLimits.MAX_IN_MEMORY_BYTES) throw WebDavException("当前客户端未实现流式上传")
+        val bytes = Files.readAllBytes(file)
+        try { return uploadAndPrune(config, fileName, bytes, keep) } finally { bytes.fill(0) }
+    }
+    suspend fun downloadTo(config: WebDavConfig, backup: RemoteBackup, target: Path) {
+        val bytes = download(config, backup)
+        try { Files.write(target, bytes) } finally { bytes.fill(0) }
+    }
     suspend fun list(config: WebDavConfig): List<RemoteBackup>
     suspend fun download(config: WebDavConfig, backup: RemoteBackup): ByteArray
     suspend fun prune(config: WebDavConfig, keep: Int = 5)
@@ -130,9 +151,39 @@ class KtorWebDavBackupClient(
     }
 
     override suspend fun uploadAtomic(config: WebDavConfig, fileName: String, bytes: ByteArray) {
+        requirePayloadSize(bytes.size.toLong(), "上传")
+        uploadContent(config, fileName, bytes, bytes.size.toLong())
+    }
+
+    override suspend fun uploadAtomic(config: WebDavConfig, fileName: String, file: Path) {
+        val size = Files.size(file)
+        val body = object : OutgoingContent.WriteChannelContent() {
+            override val contentLength = size
+            override val contentType = ContentType.Application.OctetStream
+            override suspend fun writeTo(channel: ByteWriteChannel) {
+                withContext(Dispatchers.IO) {
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    try { Files.newInputStream(file).use { input ->
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            if (count > size - total) throw WebDavException("上传文件大小发生变化")
+                            channel.writeFully(buffer, 0, count); total += count
+                        }
+                        if (total != size) throw WebDavException("上传文件被截断")
+                    } } finally { buffer.fill(0) }
+                }
+            }
+        }
+        uploadContent(config, fileName, body, size)
+    }
+
+    private suspend fun uploadContent(config: WebDavConfig, fileName: String, content: Any, size: Long) {
         val collection = validatedCollection(config)
         val safeName = validatedBackupFileName(fileName)
-        requirePayloadSize(bytes.size.toLong(), "上传")
+        if (size !in 0..BackupStreams.MAX_WIRE_BYTES) throw WebDavException("上传内容超过容量上限")
         val temporaryUrl = childUri(collection, "$safeName.tmp-${uuidFactory()}")
         val finalUrl = childUri(collection, safeName)
 
@@ -142,7 +193,7 @@ class KtorWebDavBackupClient(
                     method = HttpMethod.Put
                     authenticated(config)
                     contentType(ContentType.Application.OctetStream)
-                    setBody(bytes)
+                    setBody(content)
                 }
                 requireExpectedResponse(putResponse, temporaryUrl)
                 requireAndDiscard("上传", putResponse, PUT_STATUSES)
@@ -203,6 +254,53 @@ class KtorWebDavBackupClient(
         return UploadAndPruneResult.Committed(fileName, warning)
     }
 
+    override suspend fun uploadAndPrune(config: WebDavConfig, fileName: String, file: Path, keep: Int): UploadAndPruneResult {
+        if (keep < 1) throw WebDavException("远程保留数量必须至少为1")
+        uploadAtomic(config, fileName, file)
+        val warning = try { prune(config, keep); null }
+        catch (error: CancellationException) { throw error }
+        catch (error: WebDavPruneException) { WebDavPruneWarning("备份已提交，部分旧备份清理失败", error.failedFileNames) }
+        catch (_: WebDavException) { WebDavPruneWarning("备份已提交，保留策略未完成") }
+        return UploadAndPruneResult.Committed(fileName, warning)
+    }
+
+    override suspend fun downloadTo(config: WebDavConfig, backup: RemoteBackup, target: Path) {
+        val collection = validatedCollection(config)
+        val name = validatedBackupFileName(backup.fileName)
+        val etag = backup.strongEtag?.takeIf(::isStrictStrongEtag) ?: throw WebDavException("远程备份缺少强ETag")
+        val uri = childUri(collection, name)
+        try {
+            timedOperation("下载", timeouts.getMillis) {
+                httpClient.prepareRequest(uri.toASCIIString()) {
+                    method = HttpMethod.Get; authenticated(config); header(HttpHeaders.IfMatch, etag)
+                }.execute { response ->
+                    requireExpectedResponse(response, uri)
+                    requireExactStatus("下载", response, GET_STATUSES)
+                    if (response.headers[HttpHeaders.ETag] != etag) { discard(response); throw WebDavException("远程备份身份已变化") }
+                    val channel = response.bodyAsChannel()
+                    val buffer = ByteArray(64 * 1024)
+                    try {
+                        val rawLength = response.headers[HttpHeaders.ContentLength]
+                        val length = rawLength?.toLongOrNull()
+                        if (backup.sizeBytes !in 1..BackupStreams.MAX_WIRE_BYTES || rawLength != null && (length == null || length != backup.sizeBytes)) throw WebDavException("下载声明大小无效")
+                        BackupStreams.requireSpace(target.parent, backup.sizeBytes * 3 + 8L * 1024 * 1024)
+                        var total = 0L
+                        Files.newOutputStream(target).use { out ->
+                            while (true) {
+                                val count = channel.readAvailable(buffer, 0, buffer.size)
+                                if (count < 0) break
+                                if (count == 0) continue
+                                if (count > backup.sizeBytes - total) throw WebDavException("下载超过声明大小")
+                                out.write(buffer, 0, count); total += count
+                            }
+                        }
+                        if (total != backup.sizeBytes) throw WebDavException("远程备份下载被截断")
+                    } finally { buffer.fill(0); channel.cancel(null) }
+                }
+            }
+        } catch (error: Throwable) { Files.deleteIfExists(target); throw error }
+    }
+
     override suspend fun list(config: WebDavConfig): List<RemoteBackup> {
         val collection = validatedCollection(config)
         return timedOperation("列出备份", timeouts.propfindMillis) {
@@ -231,11 +329,11 @@ class KtorWebDavBackupClient(
             ?: throw WebDavException("远程备份缺少可验证的强 ETag，已拒绝下载")
         val target = childUri(collection, safeName)
         return timedOperation("下载", timeouts.getMillis) {
-            val response = httpClient.request(target.toASCIIString()) {
+            httpClient.prepareRequest(target.toASCIIString()) {
                 method = HttpMethod.Get
                 authenticated(config)
                 header(HttpHeaders.IfMatch, strongEtag)
-            }
+            }.execute { response ->
             requireExpectedResponse(response, target)
             if (response.status == HttpStatusCode.PreconditionFailed) {
                 discard(response)
@@ -248,6 +346,7 @@ class KtorWebDavBackupClient(
                 throw WebDavException("远程备份响应身份与所选对象不一致")
             }
             readLimited(response, BackupPackageLimits.MAX_IN_MEMORY_BYTES, "远程备份")
+            }
         }
     }
 
@@ -313,6 +412,8 @@ class KtorWebDavBackupClient(
     } catch (error: CancellationException) {
         throw error
     } catch (error: WebDavException) {
+        throw error
+    } catch (error: com.promenar.infinity.data.backup.BackupValidationException) {
         throw error
     } catch (_: Exception) {
         throw WebDavException("WebDAV $operation 失败")

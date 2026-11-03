@@ -8,6 +8,14 @@ import java.nio.file.Path
 
 class BackupPreferenceInventoryTest {
     @Test
+    fun `废弃网络限制键仅作为旧包识别项且不参与导出`() {
+        listOf("script_lan_hosts", "mcp_allow_loopback_http", "tailnet_allowed_peers").forEach { key ->
+            assertThat(BackupPreferencePolicy.isRetired("settings", key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed("settings", key)).isFalse()
+        }
+    }
+
+    @Test
     fun `提供商连接与同步状态显式登记为本机状态且不参与备份`() {
         assertThat(BackupPreferencePolicy.isKnown("infinity_provider_status", "statuses")).isTrue()
         assertThat(BackupPreferencePolicy.isAllowed("infinity_provider_status", "statuses")).isFalse()

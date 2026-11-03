@@ -16,6 +16,69 @@ import javax.crypto.spec.SecretKeySpec
 @Config(sdk = [33])
 class PendingRestoreStoreTest {
     @Test
+    fun `流式暂存保留旧记录支持的四千零九十六字符密码`() {
+        val root = Files.createTempDirectory("pending-password-compat")
+        val password = CharArray(4096) { 'a' }
+        try {
+            val source = Files.write(root.resolve("source.iwb"), byteArrayOf(1))
+            val store = AndroidPendingRestoreStore(AtomicFile(root.resolve("pending.bin").toFile()), TestCryptor(ByteArray(32) { 5 }))
+            store.begin(TX_ID); store.stageFile(TX_ID, source, password); store.authorize(TX_ID)
+            store.read()!!.use { assertThat(it.password).isEqualTo(password) }
+        } finally { password.fill('\u0000'); BackupStreams.deleteTree(root) }
+    }
+
+    @Test
+    fun `重建暂存服务后清理进程中断留下的明文树`() {
+        val root = Files.createTempDirectory("pending-orphan")
+        try {
+            val orphan = Files.createDirectory(root.resolve(".pending-open-abandoned"))
+            Files.write(orphan.resolve("secrets.json"), "合成测试数据".toByteArray())
+            val store = AndroidPendingRestoreStore(AtomicFile(root.resolve("pending.bin").toFile()), TestCryptor(ByteArray(32) { 6 }))
+            assertThat(store.read()).isNull()
+            assertThat(Files.exists(orphan)).isFalse()
+        } finally { BackupStreams.deleteTree(root) }
+    }
+
+    @Test
+    fun `大包暂存重启后以文件读取且单次加密载荷有界`() {
+        val root = Files.createTempDirectory("pending-stream-test")
+        try {
+            val file = root.resolve("pending.bin").toFile()
+            val source = root.resolve("source.iwb")
+            java.io.RandomAccessFile(source.toFile(), "rw").use { it.setLength(30L * 1024 * 1024) }
+            val expected = BackupStreams.digest(BackupBlob.File(source))
+            val cryptor = TestCryptor(ByteArray(32) { 7 })
+            val store = AndroidPendingRestoreStore(AtomicFile(file), cryptor)
+            store.begin(TX_ID); store.stageFile(TX_ID, source, "暂存密码".toCharArray()); store.authorize(TX_ID)
+            assertThat(cryptor.maximumPlainBytes).isAtMost(BackupCrypto.CHUNK_BYTES + 128)
+            AndroidPendingRestoreStore(AtomicFile(file), cryptor).read()!!.use { payload ->
+                assertThat(payload.packageBytes).isEmpty()
+                assertThat(payload.packageFile).isNotNull()
+                assertThat(BackupStreams.digest(BackupBlob.File(payload.packageFile!!))).isEqualTo(expected)
+                assertThat(payload.password).isEqualTo("暂存密码".toCharArray())
+            }
+            store.cancel(TX_ID)
+            assertThat(store.read()).isNull()
+        } finally { BackupStreams.deleteTree(root) }
+    }
+
+    @Test
+    fun `分块暂存篡改后拒绝且取消不能被迟到的暂存覆盖`() {
+        val root = Files.createTempDirectory("pending-stream-tamper")
+        try {
+            val file = root.resolve("pending.bin").toFile()
+            val source = Files.write(root.resolve("source.iwb"), byteArrayOf(1, 2, 3))
+            val store = AndroidPendingRestoreStore(AtomicFile(file), TestCryptor(ByteArray(32) { 8 }))
+            store.begin(TX_ID); store.stageFile(TX_ID, source, null); store.authorize(TX_ID)
+            val payload = root.resolve(".pending-package-$TX_ID.bin")
+            java.io.RandomAccessFile(payload.toFile(), "rw").use { it.setLength(8) }
+            assertThrows(Exception::class.java) { store.read() }
+            store.cancel(TX_ID)
+            assertThrows(BackupValidationException::class.java) { store.stageFile(TX_ID, source, null) }
+        } finally { BackupStreams.deleteTree(root) }
+    }
+
+    @Test
     fun `staging ticket cannot overwrite another transaction and cancelled ticket cannot commit late stage`() {
         val file = Files.createTempFile("pending-restore", ".bin").toFile().also { it.delete() }
         val store = AndroidPendingRestoreStore(AtomicFile(file), TestCryptor(ByteArray(32) { 4 }))
@@ -108,7 +171,9 @@ class PendingRestoreStoreTest {
 
     private class TestCryptor(key: ByteArray) : PendingRestoreCryptor {
         private val key = SecretKeySpec(key.copyOf(), "AES")
+        var maximumPlainBytes = 0
         override fun encrypt(plain: ByteArray): ByteArray {
+            maximumPlainBytes = maxOf(maximumPlainBytes, plain.size)
             val iv = ByteArray(12) { (it + 9).toByte() }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))

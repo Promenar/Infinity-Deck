@@ -17,6 +17,12 @@ interface RestoreFileOperations {
     fun createTransactionRoot(parent: Path, name: String)
     fun createDirectory(root: Path, relative: List<String>)
     fun writeNew(root: Path, relative: List<String>, bytes: ByteArray)
+    fun writeStream(root: Path, relative: List<String>, blob: BackupBlob) {
+        // 旧测试适配器仅服务小样本；生产实现提供 descriptor-relative 流写入。
+        if (blob.size > BackupPackageLimits.MAX_IN_MEMORY_BYTES) throw BackupValidationException("恢复文件操作未实现流写入")
+        val bytes = blob.open().use { it.readBytes() }
+        try { writeNew(root, relative, bytes) } finally { bytes.fill(0) }
+    }
     fun initializeWorkspaceRootIdentity(root: Path, relative: List<String>, nonce: String): String
     fun moveTree(parent: Path, sourceName: String, targetName: String)
     fun moveTreeBetween(sourceParent: Path, sourceName: String, targetParent: Path, targetName: String) {
@@ -47,7 +53,9 @@ internal object SecureBackupFileOps : RestoreFileOperations {
         createDirectoryByDescriptorMove(root, relative.dropLast(1), relative.last())
     }
 
-    override fun writeNew(root: Path, relative: List<String>, bytes: ByteArray) {
+    override fun writeNew(root: Path, relative: List<String>, bytes: ByteArray) = writeStream(root, relative, BackupBlob.Bytes(bytes))
+
+    override fun writeStream(root: Path, relative: List<String>, blob: BackupBlob) {
         require(relative.isNotEmpty()) { "恢复文件相对路径不能为空" }
         openSecure(root).use { rootStream ->
             var current: SecureDirectoryStream<Path> = rootStream
@@ -64,9 +72,8 @@ internal object SecureBackupFileOps : RestoreFileOperations {
                     LinkOption.NOFOLLOW_LINKS,
                 )
                 current.newByteChannel(Paths.get(relative.last()), options).use { channel ->
-                    var offset = 0
-                    while (offset < bytes.size) {
-                        offset += channel.write(ByteBuffer.wrap(bytes, offset, bytes.size - offset))
+                    blob.open().use { input ->
+                        BackupStreams.copy(input, java.nio.channels.Channels.newOutputStream(channel), blob.size)
                     }
                     (channel as? FileChannel)?.force(true)
                         ?: throw BackupValidationException("恢复文件系统不支持文件 fsync")

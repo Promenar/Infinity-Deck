@@ -23,6 +23,19 @@ import java.util.zip.ZipOutputStream
 interface BackupPackageCodec {
     fun encode(snapshot: BackupSnapshot, options: BackupOptions): ByteArray
     fun decode(bytes: ByteArray, password: CharArray?): ValidatedBackup
+    fun encodeTo(snapshot: BackupSnapshot, options: BackupOptions, output: java.io.OutputStream): BackupResultSummary {
+        val bytes = encode(snapshot, options)
+        try { output.write(bytes) } finally { bytes.fill(0) }
+        return BackupResultSummary(skills = snapshot.skills?.metadata?.summary)
+    }
+    fun decodeFrom(input: java.io.InputStream, password: CharArray?, directory: java.nio.file.Path): ValidatedBackup {
+        val buffer = WipeableByteArrayOutputStream()
+        try {
+            BackupStreams.copy(input, buffer, BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+            val bytes = buffer.toByteArray()
+            try { return decode(bytes, password) } finally { bytes.fill(0) }
+        } finally { buffer.wipe() }
+    }
 }
 
 class DefaultBackupPackageCodec private constructor(
@@ -34,6 +47,13 @@ class DefaultBackupPackageCodec private constructor(
 
     private val json = Json { encodeDefaults = true; explicitNulls = false }
     private val activeWipeSession = ThreadLocal<WipeSession?>()
+
+    override fun encodeTo(snapshot: BackupSnapshot, options: BackupOptions, output: java.io.OutputStream): BackupResultSummary =
+        if (snapshot.layers == null) super.encodeTo(snapshot, options, output)
+        else StreamingBackupCodec(crypto).encode(snapshot, options, output)
+
+    override fun decodeFrom(input: java.io.InputStream, password: CharArray?, directory: java.nio.file.Path): ValidatedBackup =
+        StreamingBackupCodec(crypto).decode(input, password, directory, ::decode)
 
     override fun encode(snapshot: BackupSnapshot, options: BackupOptions): ByteArray =
         withWipeSession(resultWiper = { it.fill(0) }) {

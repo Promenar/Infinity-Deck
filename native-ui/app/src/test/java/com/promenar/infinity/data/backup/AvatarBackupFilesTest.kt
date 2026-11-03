@@ -11,7 +11,7 @@ import java.nio.file.Path
 
 class AvatarBackupFilesTest {
     @Test
-    fun `共享照片只收一次且按预算跳过不让路径泄露`() = withRoot { root ->
+    fun `共享照片只收一次且容量不足明确失败`() = withRoot { root ->
         val photo = Files.write(root.resolve("photo.img"), byteArrayOf(1, 2, 3))
         val payload = payload(photo.toString())
         val preferences = BackupPreferenceSnapshot(listOf(BackupPreferenceEntry("settings", "user_avatar", photo.toString())), emptySet())
@@ -19,19 +19,18 @@ class AvatarBackupFilesTest {
         assertEquals(1, snapshot.files.size)
         val reference = snapshot.payload.tables.getValue("agents").single().getValue("avatar_path")
         assertEquals(JsonPrimitive(snapshot.preferences.entries.single().value), reference)
-        val skipped = AvatarBackupFiles.snapshot(payload, preferences, root, 2, 1, ::read)
-        assertTrue(skipped.files.isEmpty())
-        assertEquals(JsonNull, skipped.payload.tables.getValue("agents").single()["avatar_path"])
-        assertTrue(skipped.preferences.entries.isEmpty())
+        assertThrows<BackupValidationException> { AvatarBackupFiles.snapshot(payload, preferences, root, 2, 1, ::read) }
     }
 
     @Test
-    fun `不稳定读取跳过且导入只接受受约束引用`() = withRoot { root ->
+    fun `不稳定核心头像读取失败且导入只接受受约束引用`() = withRoot { root ->
         val photo = Files.write(root.resolve("photo.img"), byteArrayOf(1))
         val empty = BackupPreferenceSnapshot(emptyList(), emptySet())
-        assertTrue(AvatarBackupFiles.snapshot(payload(photo.toString()), empty, root, 10, 10) { _, _, _ ->
-            throw BackupValidationException("读取中发生变化")
-        }.files.isEmpty())
+        assertThrows<BackupValidationException> {
+            AvatarBackupFiles.snapshot(payload(photo.toString()), empty, root, 10, 10) { _, _, _ ->
+                throw BackupValidationException("读取中发生变化")
+            }
+        }
         assertThrows<BackupValidationException> {
             AvatarBackupFiles.planRestore(payload("avatar:missing"), empty, emptyMap(), root, true)
         }
