@@ -269,6 +269,30 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
+    fun `知识库系统会话归属虚拟智能体也能随资料层恢复`() = runBlocking {
+        val cache = Files.createTempDirectory(sourceBase, "knowledge-system-session")
+        try {
+            seedCompleteGraph()
+            db.sessionDao().insert(SessionEntity("__infinity_rag_workspace__", BackupLayerPolicy.KNOWLEDGE_AGENT, title = "RAG Workspace", createdAt = 1, updatedAt = 1))
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(BackupLayer.DEFAULT, cache)
+            val file = cache.resolve("knowledge.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT, false, null), it) } }
+            finally { snapshot.wipe() }
+
+            db.clearAllTables()
+            db.agentDao().insert(AgentEntity("fresh-agent", "新设备智能体", createdAt = 3))
+            db.sessionDao().insert(SessionEntity("__infinity_rag_workspace__", BackupLayerPolicy.KNOWLEDGE_AGENT, title = "RAG Workspace", createdAt = 3, updatedAt = 3))
+            Files.newInputStream(file).use { input -> codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "knowledge-system") } }
+
+            assertThat(db.sessionDao().getById("__infinity_rag_workspace__")?.agentId).isEqualTo(BackupLayerPolicy.KNOWLEDGE_AGENT)
+            assertThat(db.agentDao().getAll().map { it.id }).containsExactly("agent-1")
+            Unit
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
     fun `工作区文件缺失与悬空头像引用都列为跳过项`() = runBlocking {
         val graph = seedCompleteGraph()
         Files.delete(graph.filePath)

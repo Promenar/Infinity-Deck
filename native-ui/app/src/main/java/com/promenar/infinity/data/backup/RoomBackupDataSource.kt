@@ -1183,7 +1183,10 @@ class RoomBackupDataSource(
         val tags = payload.ids("tags", "id")
         val fileIds = payload.ids(FILE_TABLE, "uuid")
         val taskIds = payload.ids("task_nodes", "id")
-        if (!allowUnavailableAgents) payload.rows("sessions").forEach { requireReference(it, "agent_id", agents, "Agent") }
+        // 知识库系统会话归属虚拟智能体 __system__，agents 表中没有对应行。
+        if (!allowUnavailableAgents) payload.rows("sessions")
+            .filter { it.requiredString("agent_id") != BackupLayerPolicy.KNOWLEDGE_AGENT }
+            .forEach { requireReference(it, "agent_id", agents, "Agent") }
         val messageRows = payload.rows("messages")
         val messageById = messageRows.associate { it.requiredString("id") to it.requiredString("session_id") }
         messageRows.forEach { row ->

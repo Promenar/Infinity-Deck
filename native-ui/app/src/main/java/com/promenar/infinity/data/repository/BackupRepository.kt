@@ -5,6 +5,7 @@ import androidx.core.content.ContextCompat
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.backup.AndroidPendingRestoreStore
+import com.promenar.infinity.data.backup.appBackupSourceBases
 import com.promenar.infinity.data.backup.AndroidRestoreJournalAuthenticator
 import com.promenar.infinity.data.backup.AndroidTransactionalBackupPreferenceStore
 import com.promenar.infinity.data.backup.AndroidTransactionalBackupSecretStore
@@ -280,11 +281,7 @@ class BackupRepository internal constructor(
                 database = app.database,
                 preferences = AndroidTransactionalBackupPreferenceStore(app),
                 secrets = AndroidTransactionalBackupSecretStore(app, app.secretStore),
-                trustedSourceBases = linkedSetOf(
-                    app.filesDir.toPath(),
-                    app.filesDir.resolve("WorkSpace").also { it.mkdirs() }.toPath(),
-                    app.filesDir.resolve("workspaces").also { it.mkdirs() }.toPath(),
-                ),
+                trustedSourceBases = appBackupSourceBases(app.filesDir),
                 trustedRestoreBase = restoreBase,
                 appVersion = BuildConfig.VERSION_NAME,
                 configurationRevision = ProviderConfigurationRevision::current,

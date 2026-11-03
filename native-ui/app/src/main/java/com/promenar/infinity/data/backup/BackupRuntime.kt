@@ -137,8 +137,6 @@ class BackupRuntime internal constructor(
             userSkillsRoot: java.nio.file.Path = context.applicationContext.filesDir.resolve("agent_skills").toPath(),
         ): BackupRuntime {
             val appContext = context.applicationContext
-            val workspaceBase = appContext.filesDir.resolve("WorkSpace").also { it.mkdirs() }.toPath()
-            val sessionWorkspaceBase = appContext.filesDir.resolve("workspaces").also { it.mkdirs() }.toPath()
             val restoreBase = requireNotNull(ContextCompat.getNoBackupFilesDir(appContext)) {
                 "noBackupFilesDir 不可用"
             }.resolve("backup-restore-runtime-v1")
@@ -149,11 +147,7 @@ class BackupRuntime internal constructor(
                     database = database,
                     preferences = preferenceStore,
                     secrets = secretStore,
-                    trustedSourceBases = linkedSetOf(
-                        appContext.filesDir.toPath(),
-                        workspaceBase,
-                        sessionWorkspaceBase,
-                    ),
+                    trustedSourceBases = appBackupSourceBases(appContext.filesDir),
                     trustedRestoreBase = restoreBase,
                     appVersion = BuildConfig.VERSION_NAME,
                     journalAuthenticator = AndroidRestoreJournalAuthenticator(),
@@ -172,3 +166,14 @@ class BackupRuntime internal constructor(
 
 class BackupStartupException internal constructor() :
     IllegalStateException("安全恢复未完成，应用写入已禁用")
+
+/**
+ * 备份读取与恢复共用的受信文件根父目录。顺序即旧 journal 记录的 base 序号，只能在末尾追加。
+ * session_workspaces 是会话专用空间与知识库系统会话的根目录所在位置。
+ */
+internal fun appBackupSourceBases(filesDir: java.io.File): LinkedHashSet<java.nio.file.Path> = linkedSetOf(
+    filesDir.toPath(),
+    filesDir.resolve("WorkSpace").also { it.mkdirs() }.toPath(),
+    filesDir.resolve("workspaces").also { it.mkdirs() }.toPath(),
+    filesDir.resolve("session_workspaces").also { it.mkdirs() }.toPath(),
+)
