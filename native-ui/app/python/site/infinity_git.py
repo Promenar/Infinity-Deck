@@ -63,6 +63,35 @@ FALLBACK = "完整 git 请改用 termux_exec 或 ssh_exec。"
 _SCP_LIKE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:")
 
 
+def _patch_midx_offsets():
+    """按 git 的读法解析多包索引（multi-pack-index）的对象偏移。
+
+    git 只在偏移超过 32 位时才写大偏移表 LOFF；2–4 GiB 之间的偏移直接以 32 位存放，最高位为 1。
+    dulwich 把所有最高位为 1 的偏移都当作 LOFF 下标，遇到没有 LOFF 的索引就无法读取仓库。
+    这里与 git 一致：只有存在 LOFF 时，最高位才表示大偏移表下标。
+    """
+    import struct
+
+    from dulwich import midx
+
+    index_class = getattr(midx, "MultiPackIndex", None)
+    if index_class is None or getattr(index_class, "_infinity_git_offsets", False):
+        return
+
+    def pack_info(self, index):
+        if index < 0 or index >= self.object_count:
+            raise IndexError("Index %d out of range" % index)
+        entry = self._ooff_offset + index * 8
+        pack_id, pack_offset = struct.unpack(">LL", self._contents[entry : entry + 8])
+        if pack_offset & 0x80000000 and midx.CHUNK_LOFF in self._chunks:
+            position = self._loff_offset + (pack_offset & 0x7FFFFFFF) * 8
+            (pack_offset,) = struct.unpack(">Q", self._contents[position : position + 8])
+        return pack_id, pack_offset
+
+    index_class._get_pack_info = pack_info
+    index_class._infinity_git_offsets = True
+
+
 def _unsupported(message):
     print("git: GIT_UNSUPPORTED: " + message, file=sys.stderr)
     return UNSUPPORTED_EXIT
@@ -1831,6 +1860,10 @@ def _inspect_commit(repo, sha, limit):
 
 def main(argv):
     args = list(argv)
+    try:
+        _patch_midx_offsets()
+    except ImportError:
+        pass  # 没有 dulwich 时由各子命令报告原因
     if args and args[0] == INSPECT_FLAG:
         return _inspect(args[1:])
     while args and args[0].startswith("-"):

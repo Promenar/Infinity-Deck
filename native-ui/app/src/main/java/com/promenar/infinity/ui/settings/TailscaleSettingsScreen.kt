@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.settings
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,10 +25,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.rounded.Add
 import com.promenar.infinity.data.ssh.SshHost
+import com.promenar.infinity.data.tailnet.TailnetPingResult
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
@@ -103,6 +106,10 @@ internal data class TailscaleSettingsActions(
     val onControlUrlEdited: () -> Unit = {},
     val onEphemeralChange: (Boolean) -> Unit = {},
     val onAuthKeyEdited: () -> Unit = {},
+    /** 打开设备面板时开始检测该设备的连接路径。 */
+    val onStartPing: (TailnetPeer) -> Unit = {},
+    val onStopPing: () -> Unit = {},
+    val onDismissPing: () -> Unit = {},
 )
 
 @Composable
@@ -161,6 +168,9 @@ fun TailscaleSettingsScreen(
                     onControlUrlEdited = viewModel::clearControlUrlError,
                     onEphemeralChange = viewModel::setEphemeral,
                     onAuthKeyEdited = viewModel::clearAuthKeyError,
+                    onStartPing = viewModel::startPing,
+                    onStopPing = viewModel::stopPing,
+                    onDismissPing = viewModel::dismissPing,
                 ),
                 contentPadding = contentPadding,
                 sshHosts = sshHosts,
@@ -221,6 +231,8 @@ internal fun TailscaleSettingsContent(
     val summary = tailnet.summary
     val enabled = state.available && settings.enabled
     var editor by remember { mutableStateOf(initialEditor) }
+    // 设备面板按名称跟随节点列表刷新；设备从列表消失时面板随之关闭。
+    var openPeer by remember { mutableStateOf<String?>(null) }
     // 保存成功后由通知收起对应面板；失败时面板保持打开并在面板内提示。
     LaunchedEffect(state.notice) {
         val closes = when (state.notice) {
@@ -263,7 +275,12 @@ internal fun TailscaleSettingsContent(
                 }
             }
             if (tailnet.phase == TailnetPhase.RUNNING) {
-                item { TailscalePeersSection(tailnet.peers, sshHosts, onAddSshHost) }
+                item {
+                    TailscalePeersSection(tailnet.peers, sshHosts, onAddSshHost, state.lastPing) { peer ->
+                        openPeer = peer.name
+                        actions.onStartPing(peer)
+                    }
+                }
             }
         }
         item {
@@ -306,6 +323,36 @@ internal fun TailscaleSettingsContent(
             TailscaleControlUrlEditor(state, actions, onCancel = dismiss)
         }
         null -> Unit
+    }
+    val sheetPeer = openPeer?.let { name -> tailnet.peers.firstOrNull { it.name == name } }
+        ?.takeIf { tailnet.phase == TailnetPhase.RUNNING }
+    if (openPeer != null && sheetPeer == null) {
+        LaunchedEffect(openPeer) { openPeer = null; actions.onDismissPing() }
+    }
+    if (sheetPeer != null) {
+        val closeSheet = { openPeer = null; actions.onDismissPing() }
+        val candidate = remember(tailnet.peers, sshHosts, onAddSshHost != null) {
+            if (onAddSshHost == null) null else sshTailnetCandidates(tailnet.peers, sshHosts).firstOrNull { it.peer == sheetPeer }
+        }
+        TailscalePeerSheet(
+            peer = sheetPeer,
+            run = state.ping?.takeIf { it.peerName == sheetPeer.name },
+            lastPing = state.lastPing[sheetPeer.name],
+            onPing = { actions.onStartPing(sheetPeer) },
+            onStop = actions.onStopPing,
+            onDismiss = closeSheet,
+            sshAction = if (candidate == null || onAddSshHost == null) null else {
+                {
+                    InfinitySettingsRowLayout(
+                        title = stringResource(R.string.tailscale_peer_ssh_host),
+                        icon = Icons.Rounded.Dns,
+                        trailingContent = {
+                            TailscalePeerSshAction(sheetPeer, candidate.existingAlias) { closeSheet(); onAddSshHost(sheetPeer) }
+                        },
+                    )
+                }
+            },
+        )
     }
 }
 
@@ -364,7 +411,13 @@ private fun TailscaleStatusSection(state: TailscaleSettingsUiState, actions: Tai
 }
 
 @Composable
-private fun TailscalePeersSection(peers: List<TailnetPeer>, sshHosts: List<SshHost>, onAddSshHost: ((TailnetPeer) -> Unit)?) {
+private fun TailscalePeersSection(
+    peers: List<TailnetPeer>,
+    sshHosts: List<SshHost>,
+    onAddSshHost: ((TailnetPeer) -> Unit)?,
+    lastPing: Map<String, TailnetPingResult> = emptyMap(),
+    onOpenPeer: (TailnetPeer) -> Unit = {},
+) {
     val online = peers.count { it.online }
     // 可添加为 SSH 主机的设备（有 tailnet 地址）及已指向它的主机 ID。
     val candidates = remember(peers, sshHosts, onAddSshHost != null) {
@@ -382,13 +435,19 @@ private fun TailscalePeersSection(peers: List<TailnetPeer>, sshHosts: List<SshHo
         },
     ) {
         peers.sortedForDisplay().forEach { peer ->
-            TailscalePeerRow(peer, candidates[peer], onAddSshHost)
+            TailscalePeerRow(peer, candidates[peer], onAddSshHost, lastPing[peer.name]) { onOpenPeer(peer) }
         }
     }
 }
 
 @Composable
-private fun TailscalePeerRow(peer: TailnetPeer, candidate: SshTailnetCandidate? = null, onAddSshHost: ((TailnetPeer) -> Unit)? = null) {
+private fun TailscalePeerRow(
+    peer: TailnetPeer,
+    candidate: SshTailnetCandidate? = null,
+    onAddSshHost: ((TailnetPeer) -> Unit)? = null,
+    lastPing: TailnetPingResult? = null,
+    onOpen: () -> Unit = {},
+) {
     val onlineText = stringResource(if (peer.online) R.string.tailscale_peer_online else R.string.tailscale_peer_offline)
     // 在线状态由图标角标表达，离线时在副标题写明；读屏通过 stateDescription 读出在线状态。
     val subtitle = listOfNotNull(
@@ -396,12 +455,18 @@ private fun TailscalePeerRow(peer: TailnetPeer, candidate: SshTailnetCandidate? 
         tailscaleOsLabel(peer.os),
         if (!peer.online) onlineText else null,
     ).joinToString(" · ").ifEmpty { null }  // wrap-check: allow 单行省略
+    val path = peer.pathView(lastPing)
+    val openLabel = stringResource(R.string.tailscale_peer_open_cd, peer.name)
     InfinitySettingsRowLayout(
         title = peer.name,
-        subtitle = subtitle,
+        subtitleContent = { TailscalePeerSubtitle(subtitle, path) },
         titleColor = if (peer.online) null else MaterialTheme.colorScheme.onSurfaceVariant,
         leadingContent = { TailscalePeerIcon(peer) },
-        modifier = Modifier.semantics(mergeDescendants = candidate == null) { stateDescription = onlineText },
+        // 在线设备点按打开路径检测面板；离线设备没有可测的路径。
+        modifier = Modifier
+            .then(if (peer.online) Modifier.clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen) else Modifier)
+            .semantics(mergeDescendants = candidate == null) { stateDescription = onlineText }
+            .testTag("tailscale_peer:${peer.name}"),
         trailingContent = if (candidate == null || onAddSshHost == null) null else {
             { TailscalePeerSshAction(peer, candidate.existingAlias) { onAddSshHost(peer) } }
         },

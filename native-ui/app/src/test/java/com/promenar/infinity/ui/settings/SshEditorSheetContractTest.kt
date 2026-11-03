@@ -16,11 +16,13 @@ class SshEditorSheetContractTest {
     )
 
     @Test
-    fun `主机编辑表单关闭拖拽手势，避免内容滚动到顶时与面板拖拽交接抖动`() {
+    fun `主机编辑表单的内容滚动不接力拖动面板，避免交接抖动，面板仍可从拖动条下滑关闭`() {
         val sheetSource = source("src/main/java/com/promenar/infinity/ui/common/InfinityBottomSheet.kt")
         val editorSource = source("src/main/java/com/promenar/infinity/ui/settings/SshSettingsScreen.kt")
 
-        assertThat(sheetSource).contains("sheetGesturesEnabled = dismissEnabled && dragGesturesEnabled")
+        assertThat(sheetSource).contains("sheetGesturesEnabled = dismissEnabled,")
+        assertThat(sheetSource).contains("contentDragsSheet = dragGesturesEnabled")
+        assertThat(sheetSource).contains("Modifier.nestedScroll(NoSheetHandoff)")
         assertThat(editorSource).contains("dragGesturesEnabled = false")
     }
 }

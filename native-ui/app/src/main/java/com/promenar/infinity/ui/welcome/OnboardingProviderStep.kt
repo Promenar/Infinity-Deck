@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.welcome
 
+import androidx.compose.ui.draw.clip
 import com.promenar.infinity.ui.settings.label
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
@@ -388,6 +389,7 @@ private fun ServiceTile(
         border = BorderStroke(1.dp, border),
         modifier = modifier
             .heightIn(min = OnboardingDimens.TileMinHeight)
+            .clip(RoundedCornerShape(14.dp))
             .selectable(selected = selected, enabled = enabled, role = role, onClick = onClick),
     ) {
         Row(

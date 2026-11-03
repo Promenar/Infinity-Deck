@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tailscale_path_direct">Direct</string>
+    <string name="tailscale_path_derp">Relay</string>
+    <string name="tailscale_path_peer_relay">Peer relay</string>
+    <string name="tailscale_path_idle">No recent connection</string>
+    <string name="tailscale_path_no_reply">No reply</string>
+    <string name="tailscale_path_lan">Local network</string>
+    <string name="tailscale_path_wan">Internet</string>
+    <string name="tailscale_latency_ms">%1$s ms</string>
+    <string name="tailscale_path_direct_desc">%1$s · peer-to-peer UDP</string>
+    <string name="tailscale_path_derp_desc">Through the %1$s DERP relay. No direct path yet.</string>
+    <string name="tailscale_path_peer_relay_desc">Relayed by another device in your tailnet.</string>
+    <string name="tailscale_path_idle_desc">Tailscale sets up a path once traffic flows. Ping to check it.</string>
+    <string name="tailscale_path_no_reply_desc">The device may be asleep, or a firewall is blocking UDP.</string>
+    <string name="tailscale_peer_path_title">Connection path</string>
+    <string name="tailscale_ping">Ping</string>
+    <string name="tailscale_ping_again">Ping again</string>
+    <string name="tailscale_ping_stop">Stop</string>
+    <string name="tailscale_ping_running">Checking…</string>
+    <string name="tailscale_ping_done_direct">Direct path established</string>
+    <string name="tailscale_ping_done_exhausted">No direct path after %1$d pings</string>
+    <string name="tailscale_ping_done_unreachable">%1$d pings in a row got no reply</string>
+    <string name="tailscale_ping_done_stopped">Stopped</string>
+    <string name="tailscale_ping_unavailable">Can\'t ping while Tailscale isn\'t running</string>
+    <string name="tailscale_ping_sample_direct">#%1$d  Direct · %2$s  %3$s ms</string>
+    <string name="tailscale_ping_sample_derp">#%1$d  Relay %2$s  %3$s ms</string>
+    <string name="tailscale_ping_sample_peer_relay">#%1$d  Peer relay  %2$s ms</string>
+    <string name="tailscale_ping_sample_timeout">#%1$d  Timed out</string>
+    <string name="tailscale_peer_copy_address">Copy address</string>
+    <string name="tailscale_peer_address_label">Tailnet address</string>
+    <string name="tailscale_peer_open_cd">Check connection path to %1$s</string>
+    <string name="tailscale_peer_ssh_host">SSH host</string>
+</resources>

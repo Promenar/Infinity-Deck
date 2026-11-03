@@ -2191,6 +2191,27 @@ class DefaultChatGenerationRuntimeTest {
     }
 
     @Test
+    fun `工具轮次后空回复在同一条回复上附加提醒重发一次`() = runTest {
+        var saved: Session? = null
+        val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 1, emptyFinalRounds = 1,
+            onCompleted = { saved = it.getSession("s1") })
+        assertThat(prompts).hasSize(3)
+        assertThat(prompts[1].messages.any { it.content.contains("ended without any text") }).isFalse()
+        assertThat(prompts[2].messages.last().role).isEqualTo("user")
+        assertThat(prompts[2].messages.last().content).contains("ended without any text")
+        val assistants = saved!!.messages.filter { it.role == MessageRole.ASSISTANT }
+        assertThat(assistants.last().content).isEqualTo("final")
+        assertThat(assistants.none { it.content.isBlank() && it.toolCalls.isNullOrEmpty() }).isTrue()
+        assertThat(saved!!.messages.none { it.content.contains("ended without any text") }).isTrue()
+    }
+
+    @Test
+    fun `空回复提醒只重发一次，仍为空时按原样结束`() = runTest {
+        val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 1, emptyFinalRounds = 2)
+        assertThat(prompts).hasSize(3)
+    }
+
+    @Test
     fun `四轮无正文工具后提醒持久化并保持历史前缀且不进入正文`() = runTest {
         var saved: Session? = null
         val prefixes = mutableListOf<List<com.promenar.infinity.data.remote.protocol.ProtocolMessage>>()
@@ -2256,6 +2277,7 @@ class DefaultChatGenerationRuntimeTest {
     private suspend fun kotlinx.coroutines.test.TestScope.runThreeRoundToolScenario(
         loopLimit: Int? = null,
         toolRoundCount: Int = 2,
+        emptyFinalRounds: Int = 0,
         progressAtRound: Int? = null,
         failAfterProgressAtRound: Int? = null,
         reasoningEveryRound: Boolean = false,
@@ -2334,7 +2356,7 @@ class DefaultChatGenerationRuntimeTest {
                 if (round <= toolRoundCount) {
                     val name = if (round == 1) "search" else "read_file"
                     emit(StreamChunk.ToolCallDelta("call-$round", name, """{"round":$round}""", 0))
-                } else emit(StreamChunk.TextDelta("final"))
+                } else if (round > toolRoundCount + emptyFinalRounds) emit(StreamChunk.TextDelta("final"))
                 completedRounds++
                 emit(StreamChunk.Completed(
                     if (round <= toolRoundCount) {

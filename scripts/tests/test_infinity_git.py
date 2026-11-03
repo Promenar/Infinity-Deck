@@ -590,6 +590,47 @@ class WorktreeInspectPathMappingTest(unittest.TestCase):
             infinity_git._inspect_mapped_control_paths(str(self.work), self.mapping)
 
 
+class MidxOffsetTest(unittest.TestCase):
+    """多包索引的对象偏移按 git 的规则读取：只有存在 LOFF 表时最高位才是大偏移下标。"""
+
+    def setUp(self) -> None:
+        try:
+            _load_dulwich()
+        except ImportError:
+            self.skipTest("未找到 dulwich：设置 INFINITY_DULWICH_PATH 指向解压后的 dulwich 与 urllib3 wheel 目录")
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.path = Path(temp.name) / "multi-pack-index"
+        infinity_git._patch_midx_offsets()
+
+    def write(self, offset: int):
+        from dulwich import midx
+
+        midx.write_midx_file(str(self.path), [("pack-a.idx", [(b"\x11" * 20, offset, None)])])
+        return midx
+
+    def test_offset_between_2_and_4_gib_without_loff_is_read_as_is(self) -> None:
+        midx = self.write(0x10)
+        index = midx.load_midx(str(self.path))
+        position = index._ooff_offset + 4
+        index.close()
+        data = bytearray(self.path.read_bytes())
+        # git 写 2–4 GiB 的偏移时不建 LOFF，直接存 32 位值，最高位为 1。
+        data[position:position + 4] = (0xDA77F000).to_bytes(4, "big")
+        self.path.write_bytes(bytes(data))
+        index = midx.load_midx(str(self.path))
+        self.addCleanup(index.close)
+        self.assertNotIn(midx.CHUNK_LOFF, index._chunks)
+        self.assertEqual(index._get_pack_info(0), (0, 0xDA77F000))
+
+    def test_offset_in_loff_table_still_resolves(self) -> None:
+        midx = self.write(0x1_2345_6789)
+        index = midx.load_midx(str(self.path))
+        self.addCleanup(index.close)
+        self.assertIn(midx.CHUNK_LOFF, index._chunks)
+        self.assertEqual(index._get_pack_info(0), (0, 0x1_2345_6789))
+
+
 class InspectTest(unittest.TestCase):
     """经 python -m infinity_git --infinity-inspect 读取状态、内容与历史，断言 JSON 结构且不改动仓库。"""
 

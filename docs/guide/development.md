@@ -27,7 +27,7 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 首次构建会从 python.org 下载官方 CPython Android 包（每个 ABI 约 23 MB）并按 SHA-256 校验，之后使用 Gradle 缓存。构建期需要 PATH 中有 `python3.14`，用它预编译打包 Python 的字节码（也可用 `-Pinfinity.hostPython=<路径>` 指定）。离线方式与打包结构见[打包 Python](../distribution-builds.md#打包-python)。Debug 构建不需要发行签名变量。Release 构建必须通过进程环境提供 `INFINITY_KEYSTORE_PATH`、`INFINITY_STORE_PASSWORD`、`INFINITY_KEY_ALIAS` 和 `INFINITY_KEY_PASSWORD`；仓库不保存 keystore 或密码。
 
-内置 Tailscale 由 `native-ui/app/tailnet/` 的 Go 程序编译为 `libnxtailnet.so`：构建需要 PATH 中有 Go 1.21 及以上（经 `GOTOOLCHAIN` 自动切换到固定的 Go 1.27.1，依赖由 `go.sum` 锁定；首次构建需要能访问 Go 模块代理，或预先填好模块缓存后设 `GOPROXY=off`），可用 `-Pinfinity.goExecutable=<路径>` 指定 go。临时没有 Go 时可加 `-Pinfinity.tailnet=false` 跳过，此时设置页提示安装包未包含内置 Tailscale，发行校验会拒绝这样的 APK。详见[内置 Tailscale](../distribution-builds.md#内置-tailscale)。
+内置 Tailscale 由 `native-ui/app/tailnet/` 的 Go 程序编译为 `libnxtailnet.so`：构建需要 PATH 中有 Go 1.21 及以上（经 `GOTOOLCHAIN` 自动切换到固定的 Go 1.27.1，依赖由 `go.sum` 锁定；首次构建需要能访问 Go 模块代理，或预先填好模块缓存后设 `GOPROXY=off`），可用 `-Pinfinity.goExecutable=<路径>` 指定 go。临时没有 Go 时可加 `-Pinfinity.tailnet=false` 跳过，此时设置页提示安装包未包含内置 Tailscale，发行校验会拒绝这样的 APK。应用经 JSON 行协议与该子进程通信：设备列表附带 `path`（`direct` / `peer_relay` / `derp`）、`directLan` 与 DERP 区域字段；`ping` 命令对一台在线设备做一次 disco ping，子进程侧超时 5 秒，`TailnetClient` 等待 8 秒，失败时 `TailnetController.ping` 返回空结果而不抛给界面，输出中不含对端 endpoint。详见[内置 Tailscale](../distribution-builds.md#内置-tailscale)。
 
 `distribution` 维度包含 `sideload` 与 `play`，二者共享包名，沿用各构建类型的后缀。仅侧载清单声明所有文件访问权限；`DistributionCapabilities` 提供渠道和能力开关，尚未提供该权限对应的文件管理功能。设置中的“导出诊断”首行包含渠道及版本。Debug APK 位于 `app/build/outputs/apk/<渠道>/debug/`；签名构建、设备测试及完整任务/产物表见[发行渠道构建说明](../distribution-builds.md)。
 

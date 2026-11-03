@@ -4,6 +4,8 @@ import com.promenar.infinity.data.model.ToolResult
 import com.promenar.infinity.data.tailnet.TailnetController
 import com.promenar.infinity.data.tailnet.TailnetFailure
 import com.promenar.infinity.data.tailnet.TailnetPhase
+import com.promenar.infinity.data.tailnet.TailnetPaths
+import com.promenar.infinity.data.tailnet.TailnetPeer
 import com.promenar.infinity.data.tailnet.TailnetState
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
@@ -25,7 +27,9 @@ class TailnetStatusSkill(private val controller: TailnetController) : SkillDefin
     override val name = "tailnet_status"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
-    override val description = "查询内置 Tailscale：本机节点名、tailnet IP、是否在线，以及 tailnet 节点（名称、IP、系统、在线状态）。" +
+    override val description = "查询内置 Tailscale：本机节点名、tailnet IP、是否在线，以及 tailnet 节点（名称、IP、系统、在线状态、连接路径）。" +
+        "connection_path 表示直连（局域网/公网）、经 peer relay 中转、经 DERP 中转（relay_region 区域代码与 relay_region_name 名称）或无近期连接；" +
+        "path 为 direct/peer_relay/derp，direct_lan 标记局域网直连，可据此判断延迟是否受中转影响。" +
         "在线时 tailnet IP 与 MagicDNS 名称可直接用于 SSH 主机、shell_exec/python_exec 中的 git 与 HTTP(S)；web_fetch 只访问公网。"
     override val parametersSchema = """{"type":"object","properties":{},"additionalProperties":false}"""
 
@@ -72,6 +76,21 @@ class TailnetStatusSkill(private val controller: TailnetController) : SkillDefin
                                 put("ips", JsonArray(peer.ips.map(::JsonPrimitive)))
                                 peer.os?.takeIf { it.isNotBlank() }?.let { put("os", it) }
                                 put("online", peer.online)
+                                put("connection_path", connectionPath(peer))
+                                if (peer.online) {
+                                    when (peer.path) {
+                                        TailnetPaths.DIRECT -> {
+                                            put("path", TailnetPaths.DIRECT)
+                                            put("direct_lan", peer.directLan)
+                                        }
+                                        TailnetPaths.PEER_RELAY -> put("path", TailnetPaths.PEER_RELAY)
+                                        TailnetPaths.DERP -> {
+                                            put("path", TailnetPaths.DERP)
+                                            peer.relayRegion?.takeIf { it.isNotBlank() }?.let { put("relay_region", it) }
+                                            peer.relayRegionName?.takeIf { it.isNotBlank() }?.let { put("relay_region_name", it) }
+                                        }
+                                    }
+                                }
                             }
                         },
                     ),
@@ -80,6 +99,19 @@ class TailnetStatusSkill(private val controller: TailnetController) : SkillDefin
             }
             if (!summary?.health.isNullOrEmpty()) put("health", JsonArray(summary!!.health.take(10).map(::JsonPrimitive)))
             put("guidance", guidance(state))
+        }
+
+        private fun connectionPath(peer: TailnetPeer): String {
+            if (!peer.online) return "无近期连接"
+            return when (peer.path) {
+                TailnetPaths.DIRECT -> if (peer.directLan) "直连（局域网）" else "直连（公网）"
+                TailnetPaths.PEER_RELAY -> "经 peer relay 中转"
+                TailnetPaths.DERP -> {
+                    val region = listOfNotNull(peer.relayRegion, peer.relayRegionName).filter { it.isNotBlank() }.joinToString("，")
+                    if (region.isEmpty()) "经 DERP 中转" else "经 DERP 中转（$region）"
+                }
+                else -> "无近期连接"
+            }
         }
 
         private fun guidance(state: TailnetState): String = when (state.phase) {

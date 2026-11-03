@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
@@ -21,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,13 +64,15 @@ fun <T> InfinityChoiceChips(
     ) {
         choices.forEach { choice ->
             val isSelected = choice.value in selected
+            // 48dp 外盒撑触控区，按压反馈画在 36dp 标签内。
+            val press = remember { MutableInteractionSource() }
             val interaction = if (multiSelect) {
-                Modifier.toggleable(value = isSelected, enabled = enabled, role = Role.Checkbox) {
+                Modifier.toggleable(value = isSelected, interactionSource = press, indication = null, enabled = enabled, role = Role.Checkbox) {
                     haptics.toggle(it)
                     onToggle(choice.value)
                 }
             } else {
-                Modifier.selectable(selected = isSelected, enabled = enabled, role = Role.RadioButton) {
+                Modifier.selectable(selected = isSelected, interactionSource = press, indication = null, enabled = enabled, role = Role.RadioButton) {
                     haptics.select(isSelected)
                     if (!isSelected) onToggle(choice.value)
                 }
@@ -77,6 +81,7 @@ fun <T> InfinityChoiceChips(
                 choice = choice,
                 selected = isSelected,
                 enabled = enabled,
+                press = press,
                 modifier = (choice.tag?.let { Modifier.testTag(it) } ?: Modifier)
                     .heightIn(min = InfinitySpacing.MinimumTouchTarget)
                     .then(interaction)
@@ -91,6 +96,7 @@ private fun <T> InfinityChoiceChip(
     choice: InfinityChoice<T>,
     selected: Boolean,
     enabled: Boolean,
+    press: MutableInteractionSource,
     modifier: Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -104,7 +110,7 @@ private fun <T> InfinityChoiceChip(
         Row(
             modifier = Modifier
                 .heightIn(min = ChipHeight)
-                .clip(ChipShape)
+                .pressFeedback(press, ChipShape)
                 .background(container)
                 .then(
                     if (selected) Modifier

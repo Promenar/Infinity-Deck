@@ -42,7 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -71,6 +76,11 @@ fun InfinityModalSheet(
     modifier: Modifier = Modifier,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     sheetGesturesEnabled: Boolean = true,
+    /**
+     * 为 false 时内容滚到边界后不接力拖动面板：内部列表、表单滚动与面板拖动不再在边界来回争抢位移（上下抖动），
+     * 面板仍可从拖动条、标题等不滚动的区域下滑关闭。
+     */
+    contentDragsSheet: Boolean = true,
     properties: ModalBottomSheetProperties = ModalBottomSheetProperties(),
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     popover: InfinityPopoverSpec? = null,
@@ -112,12 +122,20 @@ fun InfinityModalSheet(
         dragHandle = { InfinitySheetDragHandle() },
     ) {
         InfinityWindowBackScope {
+            val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
             when (height) {
-                InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight(), content = content)
-                InfinitySheetHeight.Content -> content()
+                InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight().then(handoff), content = content)
+                InfinitySheetHeight.Content -> if (contentDragsSheet) content() else Column(Modifier.fillMaxWidth().then(handoff), content = content)
             }
         }
     }
+}
+
+/** 吞掉内容滚动剩下的纵向位移与惯性，使面板只响应从不滚动区域开始的拖动。 */
+private object NoSheetHandoff : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = Offset(0f, available.y)
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = Velocity(0f, available.y)
 }
 
 /** 宽窗口判定与会话检视器一致：宽不小于 600dp 且高不小于 480dp。 */
@@ -210,8 +228,8 @@ fun InfinityBottomSheet(
     dismissEnabled: Boolean = true,
     scrollContent: Boolean = false,
     /**
-     * 是否允许拖动面板（含内容滚动到边界后接力拖动面板）。内部自带滚动的表单面板应关闭：
-     * 内容滚动与面板拖动在边界交接时会来回争抢位移，表现为上下抖动；关闭后仍可点外部、返回或按钮关闭。
+     * 内容滚动到边界后是否接力拖动面板。内部自带滚动的列表、表单面板应关闭：
+     * 内容滚动与面板拖动在边界交接时会来回争抢位移，表现为上下抖动；关闭后仍可从拖动条与标题区下滑关闭。
      */
     dragGesturesEnabled: Boolean = true,
     /** 宽窗口下贴着触发控件弹出；窄窗口仍是底部上滑面板。 */
@@ -274,7 +292,8 @@ fun InfinityBottomSheet(
         onDismissRequest = { if (currentDismissEnabled) onDismiss() },
         height = height,
         sheetState = sheetState,
-        sheetGesturesEnabled = dismissEnabled && dragGesturesEnabled,
+        sheetGesturesEnabled = dismissEnabled,
+        contentDragsSheet = dragGesturesEnabled,
         properties = ModalBottomSheetProperties(
             shouldDismissOnBackPress = dismissEnabled,
             shouldDismissOnClickOutside = dismissEnabled,

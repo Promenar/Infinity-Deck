@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.chat.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -173,11 +175,12 @@ private fun RunDockChip(
     content: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
     body: @Composable () -> Unit,
 ) {
-    // 外层 48dp 触控区，内层 32dp 可见胶囊。
+    // 外层 48dp 触控区，内层 32dp 可见胶囊；按压反馈画在胶囊内。
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = label, role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = label }
             .testTag(tag),
         contentAlignment = Alignment.Center,
@@ -186,6 +189,7 @@ private fun RunDockChip(
             Row(
                 modifier = Modifier
                     .heightIn(min = 32.dp)
+                    .pressFeedback(interaction, RoundedCornerShape(50))
                     .padding(horizontal = if (square) 8.5.dp else 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),

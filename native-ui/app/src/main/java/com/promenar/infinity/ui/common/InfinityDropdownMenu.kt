@@ -38,6 +38,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -56,6 +58,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
+import com.promenar.infinity.ui.theme.LocalInfinityPressCorner
+import com.promenar.infinity.ui.theme.indicationCornerRadius
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.window.PopupProperties
@@ -185,7 +189,10 @@ fun Modifier.infinityMenuTouch(touch: InfinityMenuTouch): Modifier = this
         }
     }
 
-/** 菜单打开期间触发它的行铺一层浅色高亮，看得出菜单属于哪一行；不缩放，避免在分组卡片里顶出边界。 */
+/**
+ * 菜单打开期间触发它的行铺一层浅色高亮，看得出菜单属于哪一行；不缩放，避免在分组卡片里顶出边界。
+ * 圆角与按压反馈一致（[LocalInfinityPressCorner]），长按松手后高亮不会从圆角跳成直角。
+ */
 @Composable
 fun Modifier.infinityMenuHost(active: Boolean): Modifier {
     val tint by androidx.compose.animation.animateColorAsState(
@@ -193,7 +200,10 @@ fun Modifier.infinityMenuHost(active: Boolean): Modifier {
         animationSpec = tween(InfinityMotion.DurationShort),
         label = "menu_host_tint",
     )
-    return this.background(tint)
+    val maxCorner = LocalInfinityPressCorner.current
+    return this.drawBehind {
+        if (tint.alpha > 0f) drawRoundRect(tint, cornerRadius = CornerRadius(indicationCornerRadius(size, maxCorner.toPx())))
+    }
 }
 
 /**

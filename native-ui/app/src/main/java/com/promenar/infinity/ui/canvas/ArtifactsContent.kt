@@ -62,6 +62,8 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.InfinitySegmentTrackInset
+import com.promenar.infinity.ui.common.inspectorTopGap
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -97,7 +99,12 @@ internal fun ArtifactsContent(
                 },
                 selected = filter,
                 onSelect = { selected = it },
-                contentPadding = PaddingValues(start = InfinitySpacing.Large, end = InfinitySpacing.Large, top = InfinitySpacing.Small, bottom = InfinitySpacing.XSmall),
+                contentPadding = PaddingValues(
+                    start = InfinitySpacing.Large,
+                    end = InfinitySpacing.Large,
+                    top = inspectorTopGap(InfinitySpacing.Small, visualInset = InfinitySegmentTrackInset),
+                    bottom = InfinitySpacing.XSmall,
+                ),
             )
         }
         if (view.prototypes.isNotEmpty()) {

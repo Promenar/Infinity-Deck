@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.hub
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,6 +71,7 @@ import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityTabSwitcher
 import com.promenar.infinity.ui.common.parseAgentColor
+import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTypography
 
@@ -517,11 +519,13 @@ private fun ColorPane(selectedHex: String, initialHex: String, onSelect: (String
                     val selected = option.hex.equals(selectedHex.trim(), ignoreCase = true)
                     val label = stringResource(colorLabelRes(option.key))
                     val swatch = parseAgentColor(option.hex) ?: MaterialTheme.colorScheme.primary
+                    // 整格撑触控区，按压反馈画在 34dp 色圆内。
+                    val interaction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
-                            .selectable(selected = selected, role = Role.RadioButton, onClick = { onSelect(option.hex) })
+                            .selectable(selected = selected, interactionSource = interaction, indication = null, role = Role.RadioButton, onClick = { onSelect(option.hex) })
                             .semantics { contentDescription = label }
                             .testTag(UiTags.agentAvatarColor(option.key ?: "current")),
                         contentAlignment = Alignment.Center,
@@ -529,6 +533,7 @@ private fun ColorPane(selectedHex: String, initialHex: String, onSelect: (String
                         Box(
                             Modifier
                                 .size(34.dp)
+                                .pressFeedback(interaction, CircleShape)
                                 .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape).padding(4.dp) else Modifier)
                                 .clip(CircleShape)
                                 .background(swatch),

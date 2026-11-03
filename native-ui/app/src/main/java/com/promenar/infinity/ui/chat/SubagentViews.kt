@@ -243,7 +243,8 @@ private fun SubagentRunRow(run: SubagentRun, now: Long, modelName: String, onCli
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick)
             .heightIn(min = InfinitySpacing.MinimumTouchTarget)
             .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)

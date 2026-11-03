@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import android.content.Context
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -18,6 +20,7 @@ import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import androidx.compose.ui.unit.IntOffset
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.common.pressFeedback
 import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -52,7 +55,6 @@ import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Badge
 import androidx.compose.ui.layout.Layout
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.ripple
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -454,13 +456,14 @@ private fun InspectorOverflowTabs(pages: List<ChatPage>, badges: ChatInspectorBa
     var expanded by remember { mutableStateOf(false) }
     val description = listOf(stringResource(R.string.chat_inspector_more_tabs)) + pages.map { it.label() }
     val marked = pages.any { it.hasMark(badges) }
+    val interaction = remember { MutableInteractionSource() }
     Box {
         Box(
             modifier = Modifier
                 .size(InspectorTabWidth)
                 .clickable(
-                    interactionSource = null,
-                    indication = ripple(bounded = false, radius = 20.dp),
+                    interactionSource = interaction,
+                    indication = null,
                     role = Role.Button,
                     onClick = { expanded = true },
                 )
@@ -468,6 +471,8 @@ private fun InspectorOverflowTabs(pages: List<ChatPage>, badges: ChatInspectorBa
                 .testTag(ChatInspectorTags.MORE),
             contentAlignment = Alignment.Center,
         ) {
+            // 按压反馈与页签同为 40dp 高的 12dp 圆角块，单独一层画，角标不被裁切。
+            Box(Modifier.size(40.dp).pressFeedback(interaction, RoundedCornerShape(12.dp)))
             Box {
                 Icon(Icons.Rounded.MoreHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 if (marked) {
@@ -516,13 +521,14 @@ internal fun ChatInspectorStrip(
         Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             badges.pages().forEach { page ->
                 val description = page.description(badges)
-                // 不用 IconButton：它把内容裁成 40dp 圆，伸出图标的角标会被切掉。
+                val interaction = remember { MutableInteractionSource() }
+                // 不用 IconButton：它把内容裁成 40dp 圆，伸出图标的角标会被切掉；按压圆单独一层画。
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .clickable(
-                            interactionSource = null,
-                            indication = ripple(bounded = false, radius = 20.dp),
+                            interactionSource = interaction,
+                            indication = null,
                             role = Role.Button,
                             onClick = { haptics.toggle(true); onOpen(page) },
                         )
@@ -530,6 +536,7 @@ internal fun ChatInspectorStrip(
                         .testTag(ChatInspectorTags.stripItem(page)),
                     contentAlignment = Alignment.Center,
                 ) {
+                    Box(Modifier.size(40.dp).pressFeedback(interaction, CircleShape))
                     InspectorIcon(page, badges, MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -600,7 +607,8 @@ internal fun ChatInspectorRunTab(
                 actionLabel = stringResource(R.string.chat_inspector_approval_action),
                 icon = Icons.Rounded.VerifiedUser,
                 onClick = onJumpToApproval,
-                modifier = Modifier.padding(top = InfinitySpacing.Small).testTag(ChatInspectorTags.APPROVAL),
+                // 提示卡自带上下 4dp，再加 12dp，与左右一样距卡片边缘 16dp。
+                modifier = Modifier.padding(top = InfinitySpacing.Medium).testTag(ChatInspectorTags.APPROVAL),
                 titleMaxLines = 2,
             )
         }

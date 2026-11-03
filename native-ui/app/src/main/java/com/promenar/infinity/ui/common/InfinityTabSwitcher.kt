@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -140,14 +142,17 @@ fun InfinityTabSwitcher(
                     animationSpec = tween(durationMillis = 200),
                     label = "infinityTabContentColor_$index",
                 )
+                // 触控区占满容器高度，按压反馈画在与滑动底座同形的内缩胶囊里。
+                val interaction = remember { MutableInteractionSource() }
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(CircleShape)
                         .selectable(
                             selected = selected,
+                            interactionSource = interaction,
+                            indication = null,
                             role = itemRole,
                             onClick = {
                                 if (!selected) {
@@ -159,6 +164,7 @@ fun InfinityTabSwitcher(
                         .then(tabModifier(index)),
                     contentAlignment = Alignment.Center,
                 ) {
+                    Box(Modifier.matchParentSize().padding(vertical = InfinityTabSwitcherInset).pressFeedback(interaction, CircleShape))
                     tabContent(index, selected, contentColor)
                 }
             }

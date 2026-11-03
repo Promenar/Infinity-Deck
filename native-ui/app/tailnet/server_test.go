@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,9 +15,10 @@ import (
 
 type fakeBackend struct {
 	fakeDirectory
-	opts   *StartOptions
-	closed atomic.Bool
-	logins atomic.Int32
+	opts        *StartOptions
+	closed      atomic.Bool
+	logins      atomic.Int32
+	pingTargets []netip.Addr
 }
 
 func (f *fakeBackend) Start(ctx context.Context, emit func(StatusSummary)) error {
@@ -43,6 +45,12 @@ func (f *fakeBackend) Dial(ctx context.Context, network, address string) (net.Co
 	return nil, errTailnetNotRunning
 }
 func (f *fakeBackend) Close() error { f.closed.Store(true); return nil }
+
+func (f *fakeBackend) Ping(ctx context.Context, ip netip.Addr) PingReply {
+	f.pingTargets = append(f.pingTargets, ip)
+	latency := 1.5
+	return PingReply{Path: pathDirect, LatencyMS: &latency}
+}
 
 type harness struct {
 	t       *testing.T

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.hub
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.promenar.infinity.ui.common.dimOnPress
 import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.core.tween
@@ -607,22 +609,24 @@ private fun UserProfileHeader(
 /** 个人区高度：与首次引导的灯珠字标同高，头像名片在其中垂直居中。 */
 private val ProfileHeaderHeight = 170.dp
 
-/** 与首次引导同一个灯珠变形字标，灯珠数不缩减；点按打开个人资料面板。 */
+/** 与首次引导同一个灯珠变形字标，灯珠数不缩减；点按打开个人资料面板。字标没有容器，按下时整体变暗。 */
 @Composable
 private fun ProfileBrandMark(onClick: () -> Unit) {
     val menuLabel = stringResource(R.string.settings_profile_menu)
+    val press = remember { MutableInteractionSource() }
     LedMorphWordmark(
         modifier = Modifier
             .fillMaxWidth()
             .height(ProfileHeaderHeight)
             .testTag(UiTags.SETTINGS_PROFILE_BRAND)
             .semantics { contentDescription = menuLabel }
-            .clickable(role = Role.Button, onClickLabel = menuLabel, onClick = onClick),
+            .dimOnPress(press)
+            .clickable(interactionSource = press, indication = null, role = Role.Button, onClickLabel = menuLabel, onClick = onClick),
         centerFraction = 0.5f,
     )
 }
 
-/** 头像与名字居中，整体是一个点按目标，点按打开个人资料面板。 */
+/** 头像与名字居中，整体是一个点按目标，点按打开个人资料面板；与品牌字标一样按下整体变暗。 */
 @Composable
 private fun UserProfileCard(
     userName: String,
@@ -630,11 +634,12 @@ private fun UserProfileCard(
     onClick: () -> Unit,
 ) {
     val menuLabel = stringResource(R.string.settings_profile_menu)
+    val press = remember { MutableInteractionSource() }
     Column(
         modifier = Modifier
-            .clip(MaterialTheme.shapes.large)
             .testTag(UiTags.SETTINGS_PROFILE_CARD)
-            .clickable(role = Role.Button, onClickLabel = menuLabel, onClick = onClick)
+            .dimOnPress(press)
+            .clickable(interactionSource = press, indication = null, role = Role.Button, onClickLabel = menuLabel, onClick = onClick)
             .padding(InfinitySpacing.Small),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

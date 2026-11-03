@@ -2,6 +2,9 @@ package com.promenar.infinity.ui.settings
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.tailnet.TailnetController
+import com.promenar.infinity.data.tailnet.TailnetPaths
+import com.promenar.infinity.data.tailnet.TailnetPeer
+import com.promenar.infinity.data.tailnet.TailnetPingResult
 import com.promenar.infinity.data.tailnet.TailnetPhase
 import com.promenar.infinity.data.tailnet.TailnetSettings
 import com.promenar.infinity.data.tailnet.TailnetSettingsPolicy
@@ -12,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -37,7 +41,6 @@ class TailscaleSettingsViewModelTest {
         override fun retry() {
             retried++
         }
-        override suspend fun refresh(): TailnetState = state.value
         override suspend fun login(): String? = loginUrl
         override suspend fun logout(): Boolean = logoutResult
         override suspend fun setEnabled(enabled: Boolean) {
@@ -67,6 +70,19 @@ class TailscaleSettingsViewModelTest {
             settings.value = settings.value.copy(hasAuthKey = false)
         }
         override suspend fun revealAuthKey(): CharArray? = savedKey?.toCharArray()
+        /** 依次返回的 Ping 结果；用尽后返回 [pingFallback]。 */
+        val pingReplies = ArrayDeque<TailnetPingResult?>()
+        var pingFallback: TailnetPingResult? = TailnetPingResult(timedOut = true)
+        var pings = 0
+        var refreshes = 0
+        override suspend fun ping(peer: TailnetPeer): TailnetPingResult? {
+            pings++
+            return if (pingReplies.isEmpty()) pingFallback else pingReplies.removeFirst()
+        }
+        override suspend fun refresh(): TailnetState {
+            refreshes++
+            return state.value
+        }
     }
 
     private val controller = FakeController()
@@ -143,5 +159,77 @@ class TailscaleSettingsViewModelTest {
         assertThat(viewModel.uiState.value.notice).isEqualTo(TailscaleNotice.LOGOUT_FAILED)
         viewModel.retry()
         assertThat(controller.retried).isEqualTo(1)
+    }
+
+    private val workstation = TailnetPeer("workstation", ips = listOf("100.64.0.12"), online = true)
+    private fun derp(ms: Double) = TailnetPingResult(path = TailnetPaths.DERP, relayRegion = "hkg", latencyMs = ms)
+    private fun direct(ms: Double) = TailnetPingResult(path = TailnetPaths.DIRECT, directLan = true, latencyMs = ms)
+
+    @Test
+    fun `先中转后打通：连续两次直连即停，并记下最近结果供列表显示`() = runTest(dispatcher) {
+        controller.pingReplies.addAll(listOf(derp(92.0), derp(88.0), direct(3.1), direct(2.4), direct(2.2)))
+        viewModel.startPing(workstation)
+        assertThat(viewModel.uiState.value.ping?.running).isTrue()
+        advanceUntilIdle()
+        val run = viewModel.uiState.value.ping!!
+        assertThat(run.finish).isEqualTo(TailscalePingFinish.DIRECT)
+        assertThat(run.samples.map { it.path })
+            .containsExactly(TailnetPaths.DERP, TailnetPaths.DERP, TailnetPaths.DIRECT, TailnetPaths.DIRECT).inOrder()
+        assertThat(controller.pings).isEqualTo(4)
+        assertThat(viewModel.uiState.value.lastPing["workstation"]?.latencyMs).isEqualTo(2.4)
+        // 检测结束后刷新列表里的被动路径。
+        assertThat(controller.refreshes).isAtLeast(1)
+    }
+
+    @Test
+    fun `始终中转发满上限，连续超时提前判为无响应`() = runTest(dispatcher) {
+        controller.pingFallback = derp(86.0)
+        viewModel.startPing(workstation)
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.EXHAUSTED)
+        assertThat(controller.pings).isEqualTo(TAILSCALE_PING_MAX_ATTEMPTS)
+
+        controller.pings = 0
+        controller.pingFallback = TailnetPingResult(timedOut = true)
+        viewModel.startPing(workstation)
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.UNREACHABLE)
+        assertThat(controller.pings).isEqualTo(TAILSCALE_PING_MAX_FAILURES)
+        // 超时不覆盖列表上次有路径的结果。
+        assertThat(viewModel.uiState.value.lastPing["workstation"]?.path).isEqualTo(TailnetPaths.DERP)
+    }
+
+    @Test
+    fun `未运行时结束为不可用，停止保留已有结果，关闭面板清空检测`() = runTest(dispatcher) {
+        controller.pingReplies.add(null)
+        viewModel.startPing(workstation)
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.UNAVAILABLE)
+        assertThat(viewModel.uiState.value.ping?.samples).isEmpty()
+
+        controller.pingFallback = derp(80.0)
+        viewModel.startPing(workstation)
+        assertThat(viewModel.uiState.value.ping?.samples).hasSize(1)
+        viewModel.stopPing()
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.ping?.finish).isEqualTo(TailscalePingFinish.STOPPED)
+        assertThat(viewModel.uiState.value.ping?.samples).hasSize(1)
+        assertThat(controller.pings).isEqualTo(2)
+
+        viewModel.dismissPing()
+        assertThat(viewModel.uiState.value.ping).isNull()
+        assertThat(viewModel.uiState.value.lastPing).containsKey("workstation")
+    }
+
+    @Test
+    fun `结束判定`() {
+        assertThat(tailscalePingFinish(listOf(derp(90.0)))).isNull()
+        assertThat(tailscalePingFinish(listOf(direct(2.0)))).isNull()
+        assertThat(tailscalePingFinish(listOf(derp(90.0), direct(2.0), direct(2.0)))).isEqualTo(TailscalePingFinish.DIRECT)
+        assertThat(tailscalePingFinish(listOf(direct(2.0), derp(90.0)))).isNull()
+        val timeout = TailnetPingResult(timedOut = true)
+        assertThat(tailscalePingFinish(listOf(derp(90.0), timeout, timeout))).isNull()
+        assertThat(tailscalePingFinish(listOf(timeout, timeout, timeout))).isEqualTo(TailscalePingFinish.UNREACHABLE)
+        assertThat(tailscalePingFinish(List(TAILSCALE_PING_MAX_ATTEMPTS) { derp(90.0) })).isEqualTo(TailscalePingFinish.EXHAUSTED)
     }
 }

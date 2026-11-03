@@ -1,10 +1,13 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.promenar.infinity.data.chat.queue.ComposerQuotes
 import com.promenar.infinity.ui.chat.quote.ComposerQuoteArea
 import com.promenar.infinity.ui.chat.quote.LocalMessageQuoteActions
 import com.promenar.infinity.ui.chat.quote.MessageQuoteActions
 import com.promenar.infinity.ui.chat.runmode.labelRes
+import com.promenar.infinity.ui.common.dimOnPress
+import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.material.icons.outlined.ViewSidebar
@@ -1940,10 +1943,12 @@ internal fun ChatModelSelector(
 ) {
     val anchor = LocalChatPopoverAnchors.current?.model
     val haptics = LocalInfinityHaptics.current
+    // 40dp 外盒只撑触控区，按压反馈画在 32dp 胶囊里。
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier.height(40.dp)
             .then(if (anchor != null) Modifier.infinityPopoverAnchor(anchor) else Modifier)
-            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.sheet_tab_model)) {
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClickLabel = stringResource(R.string.sheet_tab_model)) {
                 haptics.perform(InfinityHapticEvent.SELECTION)
                 onClick()
             }
@@ -1951,7 +1956,7 @@ internal fun ChatModelSelector(
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
-            modifier = Modifier.height(ComposerChipHeight).clip(CircleShape).background(containerColor)
+            modifier = Modifier.height(ComposerChipHeight).pressFeedback(interaction, CircleShape).background(containerColor)
                 .padding(start = 10.dp, end = 8.dp)
                 .testTag("chat_model_capsule"),
             verticalAlignment = Alignment.CenterVertically,
@@ -1984,10 +1989,12 @@ private fun TokenIndicator(
     val progress = (state.used.toFloat() / state.max.coerceAtLeast(1)).coerceIn(0f, 1f)
     val percentage = (state.used.toDouble() / state.max.coerceAtLeast(1) * 100).toInt()
     val description = stringResource(R.string.chat_context_usage_percent, percentage)
+    // 用量环没有容器，按下整体变淡，不画方块状态层。
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier.height(40.dp)
             .infinityPopoverAnchor(anchor)
-            .clickable(role = Role.Button) {
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button) {
                 if (!anchor.consumeRecentDismiss()) {
                     if (!showPanel) haptics.perform(InfinityHapticEvent.SELECTION)
                     showPanel = !showPanel
@@ -1995,6 +2002,7 @@ private fun TokenIndicator(
             }
             .semantics { contentDescription = description }
             .testTag(UiTags.CHAT_TOKEN_INDICATOR)
+            .dimOnPress(interaction)
             .widthIn(min = 40.dp)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,

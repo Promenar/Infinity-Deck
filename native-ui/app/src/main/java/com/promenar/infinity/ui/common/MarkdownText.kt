@@ -11,6 +11,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
@@ -1115,12 +1116,15 @@ private fun MarkdownSafe(
                     var showLightbox by remember(link) { mutableStateOf(false) }
                     val imageData = LocalImageTransformer.current.transform(link)
                     if (imageData != null) {
+                        val press = remember { MutableInteractionSource() }
                         Image(
                             painter = imageData.painter,
                             contentDescription = imageData.contentDescription,
+                            // 图片本身没有容器，按下时整体变暗，不在图上叠圆角状态层。
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { showLightbox = true },
+                                .dimOnPress(press)
+                                .clickable(interactionSource = press, indication = null) { showLightbox = true },
                             alignment = imageData.alignment,
                             contentScale = imageData.contentScale,
                             alpha = imageData.alpha,

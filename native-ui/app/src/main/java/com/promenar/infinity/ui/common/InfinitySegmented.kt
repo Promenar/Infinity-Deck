@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -88,7 +89,7 @@ fun <T> InfinitySegmentedControl(
     val haptics = LocalInfinityHaptics.current
     val density = LocalDensity.current
     val height = if (compact) 40.dp else 48.dp
-    val trackInset = if (compact) 2.dp else 4.dp
+    val trackInset = if (compact) 2.dp else InfinitySegmentTrackInset
     val rowPadding = trackInset + SegmentThumbGap
     // 各段在行内的位置与宽度（像素），用来摆放滑块。
     val bounds = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
@@ -137,6 +138,8 @@ fun <T> InfinitySegmentedControl(
         ) {
             segments.forEachIndexed { index, segment ->
                 val isSelected = index == selectedIndex
+                // 点击区占满控件高度，按压反馈画在与滑块同形的内缩区域，不溢出轨道。
+                val interaction = remember { MutableInteractionSource() }
                 Box(
                     modifier = (if (fillWidth) Modifier.weight(1f) else Modifier)
                         .fillMaxHeight()
@@ -145,6 +148,8 @@ fun <T> InfinitySegmentedControl(
                         }
                         .selectable(
                             selected = isSelected,
+                            interactionSource = interaction,
+                            indication = null,
                             enabled = enabled && segment.clickable,
                             role = Role.RadioButton,
                             onClick = { haptics.select(isSelected); onSelect(segment.value) },
@@ -156,6 +161,7 @@ fun <T> InfinitySegmentedControl(
                     if (isSelected && !thumbPlaced) {
                         SegmentThumb(Modifier.matchParentSize().padding(vertical = trackInset + SegmentThumbGap))
                     }
+                    Box(Modifier.matchParentSize().padding(vertical = trackInset + SegmentThumbGap).pressFeedback(interaction, SegmentThumbShape))
                     SegmentLabel(segment.label, segment.count, segment.leading, isSelected, Modifier.padding(horizontal = if (compact) 10.dp else 12.dp))
                 }
             }
@@ -244,6 +250,9 @@ fun InfinityChip(
 }
 
 private val SegmentTrackShape = RoundedCornerShape(12.dp)
+
+/** 标准分段控件的轨道在控件高度内上下各内缩这么多，可见轨道比控件本身矮。 */
+val InfinitySegmentTrackInset = 4.dp
 private val SegmentThumbShape = RoundedCornerShape(9.dp)
 private val SegmentThumbGap = 3.dp
 private val ChipHeight: Dp = 36.dp

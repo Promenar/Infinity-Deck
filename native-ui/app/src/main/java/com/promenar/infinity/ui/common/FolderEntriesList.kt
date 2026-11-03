@@ -136,59 +136,61 @@ private fun FolderEntryRows(
     dividers: Boolean,
 ) {
     val context = LocalContext.current
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .bettboxListGroup()
-            .then(if (listTag != null) Modifier.testTag(listTag) else Modifier),
-        contentPadding = PaddingValues(vertical = InfinitySpacing.XSmall),
-    ) {
-        itemsIndexed(entries, key = { _, entry -> entry.path }) { index, entry -> Column {
-            if (dividers && index > 0) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            }
-            val selecting = !selection.isNullOrEmpty()
-            val checked = selection?.contains(entry.path) == true
-            val subtitle = if (entry.isDirectory) null else Formatter.formatShortFileSize(context, entry.size)
-            val leading: @Composable () -> Unit = {
-                Icon(
-                    when {
-                        checked -> Icons.Rounded.CheckCircle
-                        selecting -> Icons.Rounded.RadioButtonUnchecked
-                        entry.isDirectory -> Icons.Rounded.Folder
-                        else -> Icons.AutoMirrored.Rounded.InsertDriveFile
-                    },
-                    contentDescription = null,
-                    tint = if (checked || (!selecting && entry.isDirectory)) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (onEntryLongClick == null) {
-                InfinitySettingsItem(
-                    title = entry.name,
-                    subtitle = subtitle,
-                    onClick = { onEntryClick(entry) },
-                    showChevron = entry.isDirectory,
-                    leadingContent = leading,
-                )
-            } else {
-                InfinitySettingsRowLayout(
-                    title = entry.name,
-                    subtitle = subtitle,
-                    leadingContent = leading,
-                    trailingContent = if (entry.isDirectory && !selecting) ({
-                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }) else null,
-                    modifier = Modifier
-                        .then(if (checked) Modifier.background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)) else Modifier)
-                        .combinedClickable(
-                            onClick = { onEntryClick(entry) },
-                            onLongClick = { onEntryLongClick(entry) },
-                        )
-                        .semantics { if (selecting) selected = checked },
-                )
-            }
-        } }
+    ProvideGroupedPress {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bettboxListGroup()
+                .then(if (listTag != null) Modifier.testTag(listTag) else Modifier),
+            contentPadding = PaddingValues(vertical = InfinitySpacing.XSmall),
+        ) {
+            itemsIndexed(entries, key = { _, entry -> entry.path }) { index, entry -> Column {
+                if (dividers && index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                }
+                val selecting = !selection.isNullOrEmpty()
+                val checked = selection?.contains(entry.path) == true
+                val subtitle = if (entry.isDirectory) null else Formatter.formatShortFileSize(context, entry.size)
+                val leading: @Composable () -> Unit = {
+                    Icon(
+                        when {
+                            checked -> Icons.Rounded.CheckCircle
+                            selecting -> Icons.Rounded.RadioButtonUnchecked
+                            entry.isDirectory -> Icons.Rounded.Folder
+                            else -> Icons.AutoMirrored.Rounded.InsertDriveFile
+                        },
+                        contentDescription = null,
+                        tint = if (checked || (!selecting && entry.isDirectory)) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (onEntryLongClick == null) {
+                    InfinitySettingsItem(
+                        title = entry.name,
+                        subtitle = subtitle,
+                        onClick = { onEntryClick(entry) },
+                        showChevron = entry.isDirectory,
+                        leadingContent = leading,
+                    )
+                } else {
+                    InfinitySettingsRowLayout(
+                        title = entry.name,
+                        subtitle = subtitle,
+                        leadingContent = leading,
+                        trailingContent = if (entry.isDirectory && !selecting) ({
+                            Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }) else null,
+                        modifier = Modifier
+                            .then(if (checked) Modifier.background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)) else Modifier)
+                            .combinedClickable(
+                                onClick = { onEntryClick(entry) },
+                                onLongClick = { onEntryLongClick(entry) },
+                            )
+                            .semantics { if (selecting) selected = checked },
+                    )
+                }
+            } }
+        }
     }
 }
 

@@ -69,6 +69,11 @@ interface ChatGenerationRuntime {
     ) = Unit
     /** 后续轮次只允许模型基于已有结果收尾；下一次 buildContext 起生效。 */
     fun enterFinalAnswerMode(request: GenerationRequest) = Unit
+    /**
+     * 工具轮次之后模型以空正文结束：给当前回复的下一次请求附加一次提醒，要求继续或用文字答复。
+     * 返回 false 表示不支持，生成按原样结束。
+     */
+    fun requestReplyAfterEmptyTurn(request: GenerationRequest): Boolean = false
     suspend fun postProcess(request: GenerationRequest, snapshot: GenerationSnapshot)
     suspend fun markTerminal(
         request: GenerationRequest,
@@ -260,6 +265,7 @@ class ChatGenerationRunner(
             progress()
             var finalAnswerMode = false
             var finalAnswerIgnoredBudget = false
+            var emptyReplyRetried = false
             var accountedAdditionalTokens = 0L
             while (true) {
                 val additional = runtime.additionalTokenUsage(request)
@@ -418,7 +424,19 @@ class ChatGenerationRunner(
                 cumulativeTokens += reportedUsage ?: snapshot.totalTokens.toLong()
                 if (reportedUsage == null) tokensEstimated = true
                 progress()
-                if (terminal.reason == CompletionReason.END_TURN) break
+                if (terminal.reason == CompletionReason.END_TURN) {
+                    // 工具轮次之后既无正文也无调用：同一条回复上提醒一次并重新请求，避免对话无声结束。
+                    if (!emptyReplyRetried && !finalAnswerMode && toolRoundCount > 0 && snapshot.content.isBlank() &&
+                        snapshot.toolCalls.isEmpty() && snapshot.failure == null && runtime.requestReplyAfterEmptyTurn(request)
+                    ) {
+                        emptyReplyRetried = true
+                        attempt++
+                        snapshot = persist(request, roundStart, emit)
+                        InfinityLogger.diagnostic("generation.empty_reply_retry", mapOf("sessionId" to request.sessionId))
+                        continue
+                    }
+                    break
+                }
                 val normalizedTools = snapshot.toolCalls.map { it.copy(arguments = normalizeToolArguments(it.arguments)) }
                 if (normalizedTools != snapshot.toolCalls) {
                     snapshot = persist(request, snapshot.copy(toolCalls = normalizedTools), emit)

@@ -18,6 +18,7 @@ object TailnetOps {
     const val START = "start"
     const val STATUS = "status"
     const val PEERS = "peers"
+    const val PING = "ping"
     const val LOGIN = "login"
     const val LOGOUT = "logout"
     const val SHUTDOWN = "shutdown"
@@ -54,8 +55,18 @@ class TailnetRequest(
     val id: Long,
     val op: String,
     val start: TailnetStartOptions? = null,
+    val ping: TailnetPingOptions? = null,
 ) {
     override fun toString(): String = "TailnetRequest(id=$id, op=$op)"
+}
+
+@Serializable
+data class TailnetPingOptions(val target: String)
+
+object TailnetPaths {
+    const val DIRECT = "direct"
+    const val PEER_RELAY = "peer_relay"
+    const val DERP = "derp"
 }
 
 @Serializable
@@ -95,6 +106,21 @@ data class TailnetPeer(
     val ips: List<String> = emptyList(),
     val os: String? = null,
     val online: Boolean = false,
+    val path: String? = null,
+    val directLan: Boolean = false,
+    val relayRegion: String? = null,
+    val relayRegionName: String? = null,
+)
+
+@Serializable
+data class TailnetPingResult(
+    val path: String? = null,
+    val directLan: Boolean = false,
+    val relayRegion: String? = null,
+    val relayRegionName: String? = null,
+    val latencyMs: Double? = null,
+    val timedOut: Boolean = false,
+    val error: String? = null,
 )
 
 @Serializable

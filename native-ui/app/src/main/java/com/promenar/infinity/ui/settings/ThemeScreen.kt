@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.theme.InfinityLightColorScheme
 import com.promenar.infinity.ui.theme.InfinityDarkColorScheme
 import androidx.compose.ui.graphics.luminance
@@ -405,14 +407,16 @@ private fun CustomColorChoice(color: Color?, onClick: () -> Unit) {
     val label = stringResource(R.string.theme_custom_color)
     val haptics = LocalInfinityHaptics.current
     val rainbow = remember { (0..6).map { Color.hsv(it * 60f % 360f, 0.85f, 1f) } }
+    // 48dp 外盒撑触控区，按压反馈画在 34dp 圆内。
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier.size(48.dp).semantics { contentDescription = label }
-            .selectable(selected = color != null, role = Role.Button, onClick = { haptics.select(false); onClick() })
+            .selectable(selected = color != null, interactionSource = interaction, indication = null, role = Role.Button, onClick = { haptics.select(false); onClick() })
             .testTag("theme_custom_color"),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier.size(34.dp).clip(CircleShape)
+            modifier = Modifier.size(34.dp).pressFeedback(interaction, CircleShape)
                 .background(if (color != null) androidx.compose.ui.graphics.SolidColor(color) else androidx.compose.ui.graphics.Brush.sweepGradient(rainbow))
                 .then(if (color != null) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
@@ -469,13 +473,14 @@ private fun SchemeStyleSelector(selected: InfinitySchemeStyle, enabled: Boolean,
 private fun ColorChoice(color: Color, selected: Boolean, onClick: () -> Unit) {
     val colorLabel = stringResource(R.string.settings_batch1_color_description, "%06X".format(color.toArgb() and 0xFFFFFF))
     val haptics = LocalInfinityHaptics.current
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier.size(48.dp).semantics { contentDescription = colorLabel }
-            .selectable(selected = selected, role = Role.RadioButton, onClick = { haptics.select(selected); onClick() }),
+            .selectable(selected = selected, interactionSource = interaction, indication = null, role = Role.RadioButton, onClick = { haptics.select(selected); onClick() }),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier.size(34.dp).clip(CircleShape).background(color)
+            modifier = Modifier.size(34.dp).pressFeedback(interaction, CircleShape).background(color)
                 .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {

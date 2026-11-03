@@ -41,12 +41,16 @@ func normalizeHost(host string) string {
 
 // Peer 是路由所需的节点信息（名称均已规范化）。
 type Peer struct {
-	ShortName string // MagicDNS 名称第一段
-	DNSName   string // MagicDNS 全名，不含末尾的点
-	HostName  string // 节点上报的主机名
-	IPs       []netip.Addr
-	OS        string
-	Online    bool
+	ShortName       string // MagicDNS 名称第一段
+	DNSName         string // MagicDNS 全名，不含末尾的点
+	HostName        string // 节点上报的主机名
+	IPs             []netip.Addr
+	OS              string
+	Online          bool
+	Path            string
+	DirectLAN       bool
+	RelayRegion     string
+	RelayRegionName string
 }
 
 // Directory 提供节点状态；由 tsnet 节点实现，测试使用假实现。

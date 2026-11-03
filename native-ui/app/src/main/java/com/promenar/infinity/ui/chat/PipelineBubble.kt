@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.promenar.infinity.ui.common.dimOnPress
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.material.icons.rounded.TextFields
 import com.promenar.infinity.ui.common.InfinityBottomSheet
@@ -74,6 +76,7 @@ import com.promenar.infinity.ui.common.status.UiStatusNotice
 import com.promenar.infinity.ui.renderer.ImageLightbox
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.chat.quote.QuotableSelectionContainer
 import com.promenar.infinity.ui.chat.quote.UserMessageQuotes
@@ -1370,6 +1373,15 @@ internal fun InlineToolRow(
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             val commandStep = remember(invocation, jobLabels) { commandStepLabel(invocation.name, invocation.call?.toolArgs, jobLabels) }
                             val heading = commandStep?.let { commandStepHeading(it) }
+                            // 计划与任务查看调用改用专用卡片；命令结果改用命令运行卡，耗时与“完整输出”都收进卡内。
+                            val planCard = rememberPlanCardModel(invocation)
+                            val jobCard = if (planCard == null) rememberJobCardModel(invocation) else null
+                            val commandResult = remember(invocation, planCard, jobCard) {
+                                if (planCard != null || jobCard != null) null
+                                else invocation.results.firstOrNull { it.type != "error" && !it.content.isNullOrBlank() }
+                                    ?.let { subagentCommandResult(invocation.name, it.content.orEmpty()) }
+                            }
+                            val runCard = jobCard != null || commandResult != null
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (heading != null) {
                                     // 有短标题或能认出所操作的任务时，标题占主位，工具名退为小字。
@@ -1391,15 +1403,18 @@ internal fun InlineToolRow(
                                     }
                                 }
                                 if (invocation.ranInLinux) LinuxRuntimeChip()
-                                invocation.durationMs?.let { Text(stepDurationText(it), style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                if (!runCard) invocation.durationMs?.let { Text(stepDurationText(it), style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             }
                             val outputTarget = remember(invocation) {
                                 invocation.call?.id?.takeIf { invocation.complete && invocation.isCommand }?.let(commandOutputTarget)
                             }
-                            if (linuxNavigation != null && outputTarget != null) {
+                            val openFullOutput: (() -> Unit)? = linuxNavigation?.let { navigation ->
+                                outputTarget?.let { (messageId, callId) -> { navigation.openCommandOutput(messageId, callId) } }
+                            }
+                            if (openFullOutput != null && !runCard) {
                                 InfinityPillButton(
                                     text = stringResource(R.string.chat_tool_full_output),
-                                    onClick = { linuxNavigation.openCommandOutput(outputTarget.first, outputTarget.second) },
+                                    onClick = openFullOutput,
                                     icon = Icons.AutoMirrored.Rounded.OpenInNew,
                                     modifier = Modifier.testTag(UiTags.CHAT_TOOL_FULL_OUTPUT),
                                 )
@@ -1410,12 +1425,11 @@ internal fun InlineToolRow(
                             }
                             val workspaceChanges = remember(invocation) { invocation.workspaceChanges }
                             workspaceChanges?.let { com.promenar.infinity.ui.chat.diff.WorkspaceChangesList(it) }
-                            commandStep?.waitLimitSeconds?.let { limit ->
-                                JobWaitProgress(limit, startedAt = invocation.call?.timestamp, running = !invocation.complete)
+                            val waitLimit = commandStep?.waitLimitSeconds
+                            if (waitLimit != null && jobCard == null) {
+                                JobWaitProgress(waitLimit, startedAt = invocation.call?.timestamp, running = !invocation.complete)
                             }
-                            // 计划与任务查看调用改用专用卡片；其余工具的 JSON 参数与结果按字段列出。
-                            val planCard = rememberPlanCardModel(invocation)
-                            val jobCard = if (planCard == null) rememberJobCardModel(invocation) else null
+                            // 其余工具的 JSON 参数与结果按字段列出。
                             val fieldFallback = planCard == null && jobCard == null && usesFieldFallback(invocation.name)
                             if (planCard != null) {
                                 PlanToolCard(
@@ -1424,7 +1438,7 @@ internal fun InlineToolRow(
                                     results = invocation.results.mapNotNull { it.content },
                                 )
                             } else if (jobCard != null) {
-                                JobToolCard(jobCard)
+                                JobToolCard(jobCard, onOpenFull = openFullOutput, waitLimit = waitLimit?.let { jobWaitLimitText(it) })
                             }
                             // 等待、查看、停止任务的参数只有任务号，标题已说明对象，不再显示原始参数。
                             val argumentsShown = planCard == null &&
@@ -1452,12 +1466,12 @@ internal fun InlineToolRow(
                                     )
                                 }
                                 result.content?.takeIf(String::isNotBlank)?.let { content ->
-                                    // 命令结果只展示输出正文与非零退出码，不显示外层 JSON 信封。
+                                    // 命令结果只展示输出正文与退出码，不显示外层 JSON 信封。
                                     val command = remember(content, invocation.name) {
                                         if (result.type == "error") null else subagentCommandResult(invocation.name, content)
                                     }
                                     if (result.type == "error") ToolErrorBlock(content)
-                                    else if (command != null) CommandResultPreview(command)
+                                    else if (command != null) CommandResultCard(command, invocation.durationMs, openFullOutput)
                                     else if (planCard == null && jobCard == null) {
                                         val fields = remember(content, fieldFallback) { if (fieldFallback) toolFieldRows(content) else null }
                                         if (fields != null) ToolFieldList(fields, arguments = false)
@@ -1505,8 +1519,7 @@ private fun commandJobName(step: CommandStepLabel): String = step.label
 /** job_wait 的等待进度：运行中每秒刷新“已等待 / 最长”，结束后只留最长等待时间。 */
 @Composable
 private fun JobWaitProgress(limitSeconds: Int, startedAt: Long?, running: Boolean) {
-    val limit = if (limitSeconds % 60 == 0) stringResource(R.string.chat_step_job_wait_limit_minutes, limitSeconds / 60)
-        else stringResource(R.string.chat_step_job_wait_limit_seconds, limitSeconds)
+    val limit = jobWaitLimitText(limitSeconds)
     val elapsedSeconds by produceState(initialValue = -1L, running, startedAt) {
         if (!running || startedAt == null || startedAt <= 0) { value = -1L; return@produceState }
         while (true) {
@@ -1523,6 +1536,12 @@ private fun JobWaitProgress(limitSeconds: Int, startedAt: Long?, running: Boolea
         Text(text, style = InfinityTypography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/** “最长等待 5 分钟”：整分钟按分钟写，否则按秒。 */
+@Composable
+private fun jobWaitLimitText(limitSeconds: Int): String =
+    if (limitSeconds % 60 == 0) stringResource(R.string.chat_step_job_wait_limit_minutes, limitSeconds / 60)
+    else stringResource(R.string.chat_step_job_wait_limit_seconds, limitSeconds)
 
 private fun clockText(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
 
@@ -1627,21 +1646,20 @@ internal fun ExpandableToolText(
     }
 }
 
-/** 命令输出：等宽卡片，可展开全文；没有输出时说明为空，退出码非零时另起一行标出。 */
+/** 命令结果：命令运行卡，退出码非零为失败；耗时取调用时长。 */
 @Composable
-private fun CommandResultPreview(command: SubagentCommandResult) {
-    command.output?.let { ExpandableToolText(text = it, collapsedLines = 12, code = true) } ?: Text(
-        stringResource(R.string.linux_output_empty),
-        style = InfinityTypography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun CommandResultCard(command: SubagentCommandResult, durationMs: Long?, onOpenFull: (() -> Unit)?) {
+    val failed = command.exitCode != null && command.exitCode != 0
+    CommandRunCard(
+        status = stringResource(if (failed) R.string.tool_card_job_state_failed else R.string.tool_card_job_state_completed),
+        statusColor = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.infinityDomainColors.success,
+        output = command.output,
+        emptyText = stringResource(R.string.linux_output_empty),
+        footerStart = durationMs?.let { stringResource(R.string.tool_card_run_duration, stepDurationText(it)) },
+        footerEnd = command.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) },
+        footerEndColor = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        onOpenFull = onOpenFull,
     )
-    command.exitCode?.takeIf { it != 0 }?.let {
-        Text(
-            stringResource(R.string.termux_exit_code, it.toString()),
-            style = InfinityTypography.labelMedium,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -1879,10 +1897,12 @@ private fun ChatImageThumbnail(
     contentScale: ContentScale = ContentScale.Fit,
 ) {
     var showLightbox by remember(imageModel) { mutableStateOf(false) }
+    val press = remember { MutableInteractionSource() }
+    // 缩略图按下整体变暗，不在图片上叠圆角状态层。
     coil3.compose.AsyncImage(
         model = imageModel,
         contentDescription = contentDescription,
-        modifier = modifier.clickable { showLightbox = true },
+        modifier = modifier.dimOnPress(press).clickable(interactionSource = press, indication = null) { showLightbox = true },
         contentScale = contentScale,
     )
     if (showLightbox) {

@@ -10,8 +10,62 @@ import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 
 class TailnetClientTest {
+    @Test
+    fun `ping 发送目标并解析成功与超时应答`(): Unit = runBlocking {
+        val child = FakeTailnetChild(handler = { process, request ->
+            if (request["op"]!!.jsonPrimitive.content != "ping") return@FakeTailnetChild false
+            val target = request["ping"]!!.jsonObject["target"]!!.jsonPrimitive.content
+            process.reply(
+                request["id"]!!.jsonPrimitive.long,
+                if (target == "100.64.0.5") {
+                    """{"path":"derp","relayRegion":"hkg","relayRegionName":"Hong Kong","latencyMs":12.5}"""
+                } else {
+                    """{"timedOut":true,"error":"Ping 超时"}"""
+                },
+            )
+            true
+        })
+        val client = TailnetClient(child, onState = {}, onExit = {})
+        try {
+            assertThat(client.ping("100.64.0.5")).isEqualTo(
+                TailnetPingResult(path = TailnetPaths.DERP, relayRegion = "hkg", relayRegionName = "Hong Kong", latencyMs = 12.5),
+            )
+            val timedOut = client.ping("fd7a:115c:a1e0::5")
+            assertThat(timedOut.timedOut).isTrue()
+            assertThat(timedOut.latencyMs).isNull()
+            assertThat(child.received).hasSize(2)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun `ping 错误码和无效结果沿用客户端失败契约`(): Unit = runBlocking {
+        val child = FakeTailnetChild(handler = { process, request ->
+            val id = request["id"]!!.jsonPrimitive.long
+            if (request["ping"]!!.jsonObject["target"]!!.jsonPrimitive.content == "100.64.0.5") {
+                process.fail(id, TailnetErrors.NOT_RUNNING)
+            } else {
+                process.reply(id, """{"latencyMs":"invalid"}""")
+            }
+            true
+        })
+        val client = TailnetClient(child, onState = {}, onExit = {})
+        try {
+            val failure = runCatching { client.ping("100.64.0.5") }.exceptionOrNull()
+            assertThat(failure).isInstanceOf(TailnetCommandException::class.java)
+            assertThat((failure as TailnetCommandException).code).isEqualTo(TailnetErrors.NOT_RUNNING)
+            assertThat(runCatching { client.ping("100.64.0.6") }.exceptionOrNull()).isInstanceOf(IOException::class.java)
+        } finally {
+            client.close()
+        }
+    }
+
     private val options = TailnetStartOptions(
         stateDir = "/data/tailnet",
         hostname = "infinity-test",

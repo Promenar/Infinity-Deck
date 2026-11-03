@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.common
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,10 +16,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.*
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
@@ -71,6 +74,8 @@ internal fun InfinityStepperButton(icon: ImageVector, label: String, enabled: Bo
     val currentStep by rememberUpdatedState(tickingStep)
     val silentStep by rememberUpdatedState(onStep)
     val currentEnabled by rememberUpdatedState(enabled)
+    val interaction = remember { MutableInteractionSource() }
+    val visualSize = if (outlined) 44.dp else 32.dp
     Box(
         Modifier.width(48.dp).requiredHeight(48.dp).minimumInteractiveComponentSize()
             .semantics {
@@ -83,8 +88,12 @@ internal fun InfinityStepperButton(icon: ImageVector, label: String, enabled: Bo
                 var repeated = false
                 detectTapGestures(
                     onTap = { if (!repeated && currentEnabled) currentStep() },
-                    onPress = {
+                    onPress = { offset ->
                         repeated = false
+                        // 手势自行处理，按压反馈画在居中的可见按钮上：坐标换到按钮内，水波从手指处展开。
+                        val inset = (size.width - visualSize.toPx()) / 2f to (size.height - visualSize.toPx()) / 2f
+                        val press = PressInteraction.Press(Offset(offset.x - inset.first, offset.y - inset.second))
+                        interaction.emit(press)
                         coroutineScope {
                             val repeat = launch {
                                 delay(400)
@@ -97,7 +106,10 @@ internal fun InfinityStepperButton(icon: ImageVector, label: String, enabled: Bo
                                     delay(80)
                                 }
                             }
-                            try { tryAwaitRelease() } finally { repeat.cancel() }
+                            try {
+                                val released = tryAwaitRelease()
+                                interaction.emit(if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press))
+                            } finally { repeat.cancel() }
                         }
                     },
                 )
@@ -105,10 +117,10 @@ internal fun InfinityStepperButton(icon: ImageVector, label: String, enabled: Bo
         contentAlignment = Alignment.Center,
     ) {
         val visual = if (outlined) {
-            Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
+            Modifier.size(visualSize).pressFeedback(interaction, RoundedCornerShape(12.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
         } else {
-            Modifier.size(32.dp).clip(CircleShape)
+            Modifier.size(visualSize).pressFeedback(interaction, CircleShape)
         }
         Box(visual, contentAlignment = Alignment.Center) {
             Icon(icon, null, Modifier.size(18.dp).alpha(if (enabled) 1f else 0.38f), MaterialTheme.colorScheme.primary)

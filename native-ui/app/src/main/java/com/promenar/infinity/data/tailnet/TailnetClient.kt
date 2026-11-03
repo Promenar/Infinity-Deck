@@ -126,13 +126,14 @@ class TailnetClient(
         op: String,
         start: TailnetStartOptions? = null,
         timeoutMillis: Long = DEFAULT_TIMEOUT_MS,
+        ping: TailnetPingOptions? = null,
     ): JsonElement? {
         if (exited.get() || closed.get()) throw IOException("内置 Tailscale 未运行")
         val id = nextId.getAndIncrement()
         val deferred = CompletableDeferred<TailnetMessage.Response>()
         pending[id] = deferred
         try {
-            val line = TailnetCodec.encode(TailnetRequest(id = id, op = op, start = start))
+            val line = TailnetCodec.encode(TailnetRequest(id = id, op = op, start = start, ping = ping))
             withContext(ioDispatcher) {
                 synchronized(writer) {
                     writer.write(line)
@@ -153,8 +154,14 @@ class TailnetClient(
         }
     }
 
-    suspend fun <T> call(serializer: KSerializer<T>, op: String, start: TailnetStartOptions? = null, timeoutMillis: Long = DEFAULT_TIMEOUT_MS): T {
-        val result = call(op, start = start, timeoutMillis = timeoutMillis) ?: throw IOException("内置 Tailscale 应答缺少结果")
+    suspend fun <T> call(
+        serializer: KSerializer<T>,
+        op: String,
+        start: TailnetStartOptions? = null,
+        timeoutMillis: Long = DEFAULT_TIMEOUT_MS,
+        ping: TailnetPingOptions? = null,
+    ): T {
+        val result = call(op, start = start, timeoutMillis = timeoutMillis, ping = ping) ?: throw IOException("内置 Tailscale 应答缺少结果")
         return runCatching { TailnetCodec.json.decodeFromJsonElement(serializer, result) }
             .getOrElse { throw IOException("内置 Tailscale 应答格式错误") }
     }
@@ -165,6 +172,9 @@ class TailnetClient(
     suspend fun status(): TailnetStatusSummary = call(TailnetStatusSummary.serializer(), TailnetOps.STATUS)
 
     suspend fun peers(): List<TailnetPeer> = call(TailnetPeersResult.serializer(), TailnetOps.PEERS).peers
+
+    suspend fun ping(target: String): TailnetPingResult =
+        call(TailnetPingResult.serializer(), TailnetOps.PING, timeoutMillis = PING_TIMEOUT_MS, ping = TailnetPingOptions(target))
 
     suspend fun login() {
         call(TailnetOps.LOGIN, timeoutMillis = LOGIN_TIMEOUT_MS)
@@ -187,6 +197,7 @@ class TailnetClient(
     companion object {
         const val DEFAULT_TIMEOUT_MS = 15_000L
         const val LOGIN_TIMEOUT_MS = 35_000L
+        const val PING_TIMEOUT_MS = 8_000L
         const val CLOSE_GRACE_MS = 6_000L
     }
 }

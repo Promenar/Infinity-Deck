@@ -53,6 +53,8 @@ import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.LocalInfinitySettingsEmbedded
+import com.promenar.infinity.ui.common.InfinitySegmentTrackInset
+import com.promenar.infinity.ui.common.inspectorTopGap
 import com.promenar.infinity.ui.settings.GitCredentialSettingsScreen
 import com.promenar.infinity.ui.settings.NetworkAccessSettingsScreen
 import com.promenar.infinity.ui.settings.SshSettingsScreen
@@ -185,7 +187,12 @@ internal fun RemotePageContent(
             selected = segment,
             onSelect = onSelectSegment,
             fillWidth = true,
-            contentPadding = PaddingValues(start = InfinitySpacing.Large, end = InfinitySpacing.Large, top = InfinitySpacing.Small, bottom = InfinitySpacing.XSmall),
+            contentPadding = PaddingValues(
+                start = InfinitySpacing.Large,
+                end = InfinitySpacing.Large,
+                top = if (onBack == null) inspectorTopGap(InfinitySpacing.Small, visualInset = InfinitySegmentTrackInset) else InfinitySpacing.Small,
+                bottom = InfinitySpacing.XSmall,
+            ),
         )
         val hint = when {
             !linuxMode -> null

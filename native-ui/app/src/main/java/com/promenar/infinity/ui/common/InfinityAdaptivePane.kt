@@ -50,6 +50,7 @@ import androidx.navigationevent.findViewTreeNavigationEventDispatcherOwner
 import com.promenar.infinity.navigation.PageLayer
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinityPureBlack
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -62,6 +63,15 @@ enum class InfinityPanePresentation { Page, Inspector }
 
 /** 二级内容据此决定根层是否需要自己的顶栏：检视器的页签已写明所在页，根层不再重复标题与返回。 */
 val LocalInfinityPanePresentation = staticCompositionLocalOf { InfinityPanePresentation.Page }
+
+/**
+ * 检视器根页首块内容距卡片顶边的留白：与左右页边距相同，三边等距；整页呈现时返回 [otherwise]。
+ * 只用于没有顶栏的检视器根层，有顶栏的层级由顶栏承担上方留白。
+ * 首块控件自身在顶部有透明留白（如分段控件的轨道内缩）时传入 [visualInset]，按可见边缘对齐。
+ */
+@Composable
+fun inspectorTopGap(otherwise: Dp = 0.dp, visualInset: Dp = 0.dp): Dp =
+    if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) InfinitySpacing.ScreenHorizontal - visualInset else otherwise
 
 /** 宿主判定的窗口形态：为 true 时宿主不再整页覆盖，二级内容交给主内容的浮动检视器承载。 */
 val LocalInfinityInspectorLayout = staticCompositionLocalOf { false }

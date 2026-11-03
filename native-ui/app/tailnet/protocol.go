@@ -20,6 +20,23 @@ type Request struct {
 	ID    int64         `json:"id"`
 	Op    string        `json:"op"`
 	Start *StartOptions `json:"start,omitempty"`
+	Ping  *PingOptions  `json:"ping,omitempty"`
+}
+
+// PingOptions 只接受在线节点的 tailnet IP。
+type PingOptions struct {
+	Target string `json:"target"`
+}
+
+// PingReply 只输出路径分类与延迟，不透传 ipnstate.PingResult 中的 endpoint。
+type PingReply struct {
+	Path            string   `json:"path,omitempty"`
+	DirectLAN       bool     `json:"directLan,omitempty"`
+	RelayRegion     string   `json:"relayRegion,omitempty"`
+	RelayRegionName string   `json:"relayRegionName,omitempty"`
+	LatencyMS       *float64 `json:"latencyMs,omitempty"`
+	TimedOut        bool     `json:"timedOut,omitempty"`
+	Error           string   `json:"error,omitempty"`
 }
 
 // StartOptions 是 start 命令的参数；只能发送一次。
@@ -38,6 +55,7 @@ const (
 	OpStart    = "start"
 	OpStatus   = "status"
 	OpPeers    = "peers"
+	OpPing     = "ping"
 	OpLogin    = "login"
 	OpLogout   = "logout"
 	OpShutdown = "shutdown"
@@ -90,11 +108,15 @@ type StatusSummary struct {
 
 // PeerInfo 是节点列表中的一项。
 type PeerInfo struct {
-	Name    string   `json:"name"`
-	DNSName string   `json:"dnsName,omitempty"`
-	IPs     []string `json:"ips"`
-	OS      string   `json:"os,omitempty"`
-	Online  bool     `json:"online"`
+	Name            string   `json:"name"`
+	DNSName         string   `json:"dnsName,omitempty"`
+	IPs             []string `json:"ips"`
+	OS              string   `json:"os,omitempty"`
+	Online          bool     `json:"online"`
+	Path            string   `json:"path,omitempty"`
+	DirectLAN       bool     `json:"directLan,omitempty"`
+	RelayRegion     string   `json:"relayRegion,omitempty"`
+	RelayRegionName string   `json:"relayRegionName,omitempty"`
 }
 
 // PeersResult 是 peers 的应答。

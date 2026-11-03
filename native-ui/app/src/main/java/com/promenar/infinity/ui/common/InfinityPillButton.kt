@@ -18,10 +18,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -250,13 +252,16 @@ private fun InfinityPillSurface(
         tone == InfinityPillTone.DANGER -> colors.error
         else -> colors.onSurface
     }
-    Box(
-        modifier = modifier
-            .heightIn(min = minHeight)
-            .clip(shape)
-            .background(fill)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = horizontalPadding, vertical = if (minHeight < PillHeight) 4.dp else 6.dp),
-        contentAlignment = Alignment.Center,
-    ) { content(contentColor) }
+    // 按压反馈取 LocalContentColor：主色、危险色胶囊上用其前景色，而不是外层的 onSurface。
+    CompositionLocalProvider(LocalContentColor provides contentColor) {
+        Box(
+            modifier = modifier
+                .heightIn(min = minHeight)
+                .clip(shape)
+                .background(fill)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .padding(horizontal = horizontalPadding, vertical = if (minHeight < PillHeight) 4.dp else 6.dp),
+            contentAlignment = Alignment.Center,
+        ) { content(contentColor) }
+    }
 }

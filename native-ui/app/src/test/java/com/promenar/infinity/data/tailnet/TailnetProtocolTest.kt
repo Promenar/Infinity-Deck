@@ -4,9 +4,48 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.junit.Test
 
 class TailnetProtocolTest {
+    @Test
+    fun `ping 请求包含目标且 toString 只暴露 id 与操作`() {
+        val request = TailnetRequest(id = 8, op = TailnetOps.PING, ping = TailnetPingOptions("100.64.0.5"))
+        val encoded = TailnetCodec.json.parseToJsonElement(TailnetCodec.encode(request)).jsonObject
+        assertThat(encoded["op"]!!.jsonPrimitive.content).isEqualTo("ping")
+        assertThat(encoded["ping"]!!.jsonObject["target"]!!.jsonPrimitive.content).isEqualTo("100.64.0.5")
+        assertThat(encoded).doesNotContainKey("start")
+        assertThat(request.toString()).isEqualTo("TailnetRequest(id=8, op=ping)")
+    }
+
+    @Test
+    fun `节点路径与 ping 应答按 Go 字段解码并兼容缺省字段`() {
+        val peer = TailnetCodec.json.decodeFromString(TailnetPeer.serializer(),
+            """{"name":"nas","online":true,"path":"derp","relayRegion":"hkg","relayRegionName":"Hong Kong"}""",
+        )
+        assertThat(peer.path).isEqualTo(TailnetPaths.DERP)
+        assertThat(peer.relayRegion).isEqualTo("hkg")
+        assertThat(peer.relayRegionName).isEqualTo("Hong Kong")
+        assertThat(peer.directLan).isFalse()
+        val old = TailnetCodec.json.decodeFromString(TailnetPeer.serializer(), """{"name":"old"}""")
+        assertThat(old.path).isNull()
+        assertThat(old.directLan).isFalse()
+        assertThat(old.relayRegion).isNull()
+        assertThat(old.relayRegionName).isNull()
+
+        val response = TailnetCodec.decode(
+            """{"id":8,"ok":true,"result":{"path":"direct","directLan":true,"latencyMs":0.25}}""",
+        ) as TailnetMessage.Response
+        val ping = TailnetCodec.json.decodeFromJsonElement<TailnetPingResult>(response.result!!)
+        assertThat(ping.path).isEqualTo(TailnetPaths.DIRECT)
+        assertThat(ping.directLan).isTrue()
+        assertThat(ping.latencyMs).isEqualTo(0.25)
+        assertThat(ping.timedOut).isFalse()
+        assertThat(ping.error).isNull()
+        assertThat(TailnetCodec.json.decodeFromString(TailnetPingResult.serializer(), "{}"))
+            .isEqualTo(TailnetPingResult())
+    }
+
     private val secretKey = "tskey-auth-kSECRETVALUE-0123456789"
     private val options = TailnetStartOptions(
         stateDir = "/data/user/0/app/no_backup/tailnet",

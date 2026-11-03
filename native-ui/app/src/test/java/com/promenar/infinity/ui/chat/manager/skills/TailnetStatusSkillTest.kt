@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.chat.manager.skills
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.tailnet.TailnetFailure
 import com.promenar.infinity.data.tailnet.TailnetPeer
+import com.promenar.infinity.data.tailnet.TailnetPaths
 import com.promenar.infinity.data.tailnet.TailnetPhase
 import com.promenar.infinity.data.tailnet.TailnetState
 import com.promenar.infinity.data.tailnet.TailnetStatusSummary
@@ -15,6 +16,28 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 class TailnetStatusSkillTest {
+    @Test
+    fun `设备路径区分局域网公网两类中转与无近期连接`() {
+        val output = TailnetStatusSkill.render(running.copy(peers = listOf(
+            TailnetPeer("lan", online = true, path = TailnetPaths.DIRECT, directLan = true),
+            TailnetPeer("wan", online = true, path = TailnetPaths.DIRECT),
+            TailnetPeer("relay", online = true, path = TailnetPaths.PEER_RELAY),
+            TailnetPeer("derp", online = true, path = TailnetPaths.DERP, relayRegion = "hkg", relayRegionName = "Hong Kong"),
+            TailnetPeer("idle", online = true),
+            TailnetPeer("offline", online = false, path = TailnetPaths.DIRECT),
+        )))
+        val peers = output["peers"]!!.jsonArray.map { it.jsonObject }
+        assertThat(peers.map { it["connection_path"]!!.jsonPrimitive.content })
+            .containsExactly("直连（局域网）", "直连（公网）", "经 peer relay 中转", "经 DERP 中转（hkg，Hong Kong）", "无近期连接", "无近期连接").inOrder()
+        assertThat(peers[3]["relay_region"]!!.jsonPrimitive.content).isEqualTo("hkg")
+        assertThat(peers[3]["relay_region_name"]!!.jsonPrimitive.content).isEqualTo("Hong Kong")
+        assertThat(peers[0]["direct_lan"]!!.jsonPrimitive.boolean).isTrue()
+        assertThat(peers[5]).doesNotContainKey("path")
+        assertThat(output.toString()).doesNotContain("endpoint")
+        assertThat(output.toString()).doesNotContain("CurAddr")
+        assertThat(output.toString()).doesNotContain("PeerRelay")
+    }
+
     private val running = TailnetState(
         phase = TailnetPhase.RUNNING,
         summary = TailnetStatusSummary(
@@ -92,6 +115,7 @@ class TailnetStatusSkillTest {
         override fun start() = Unit
         override fun retry() = Unit
         override suspend fun refresh() = state.value
+        override suspend fun ping(peer: TailnetPeer): com.promenar.infinity.data.tailnet.TailnetPingResult? = null
         override suspend fun login(): String? = null
         override suspend fun logout() = false
         override suspend fun setEnabled(enabled: Boolean) = Unit

@@ -1,7 +1,6 @@
 package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.ui.theme.InfinityMonospace
-import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
 import androidx.compose.foundation.background
@@ -16,7 +15,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -686,13 +684,11 @@ private fun DomainListDialog(title: String, initial: List<String>, onSave: (Stri
 
 @Composable
 internal fun EngineOption(id: String, label: String, isSelected: Boolean, onClick: () -> Unit) {
-    val haptics = LocalInfinityHaptics.current
-    val select = { haptics.select(isSelected); onClick() }
+    // 单选语义、触感与按压反馈都由 InfinitySettingsItem 给出，外层不再叠一层 selectable。
     InfinitySettingsItem(
         title = label,
         onClick = onClick,
-        modifier = Modifier.testTag("search_engine_$id")
-            .selectable(selected = isSelected, role = Role.RadioButton, onClick = select),
+        modifier = Modifier.testTag("search_engine_$id"),
         role = Role.RadioButton,
         selected = isSelected,
         trailingContent = { androidx.compose.material3.RadioButton(selected = isSelected, onClick = null) },

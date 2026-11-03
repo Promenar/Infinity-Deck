@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import com.promenar.infinity.data.model.params.ReasoningSupport
 import com.promenar.infinity.data.model.params.resolveModelParameterProfile
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -163,11 +165,13 @@ internal fun ChatReasoningChip(
     val fill = if (accent) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f).compositeOver(containerColor) else containerColor
     val chipDescription = stringResource(R.string.reasoning_effort_title)
     val chipState = if (accent) label else stringResource(R.string.reasoning_effort_model_default_state, label)
+    // 40dp 外层只撑触控区，按压反馈画在 32dp 胶囊里。
+    val interaction = remember { MutableInteractionSource() }
     Box(modifier) {
         Row(
             modifier = Modifier
                 .height(40.dp)
-                .clickable(role = Role.Button, onClickLabel = chipDescription) {
+                .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClickLabel = chipDescription) {
                     if (support.isToggleOnly) {
                         haptics.select(alreadySelected = false)
                         onChange(control.toggled())
@@ -185,7 +189,7 @@ internal fun ChatReasoningChip(
             Row(
                 modifier = Modifier
                     .height(ComposerChipHeight)
-                    .clip(CircleShape)
+                    .pressFeedback(interaction, CircleShape)
                     .background(fill)
                     // 紧凑时左右各 8dp，与 16dp 灯泡正好拼成 32dp 圆。
                     .padding(horizontal = if (compact) 8.dp else 10.dp),

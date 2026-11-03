@@ -198,7 +198,19 @@ class GitPanelModelsTest {
         assertThat(GitInspectError.TimedOut.toProblem().kind).isEqualTo(GitProblemKind.TIMED_OUT)
         assertThat(GitInspectError.UnsafePath("x").toProblem().kind).isEqualTo(GitProblemKind.UNSAFE_PATH)
         assertThat(GitInspectError.ParseFailed("x").toProblem().kind).isEqualTo(GitProblemKind.FAILED)
-        assertThat(GitInspectError.InspectFailed("NOT_FOUND", "x").toProblem()).isEqualTo(GitPanelProblem(GitProblemKind.FAILED))
+        assertThat(GitInspectError.InspectFailed("NOT_FOUND", "x").toProblem()).isEqualTo(GitPanelProblem(GitProblemKind.FAILED, "x"))
+    }
+
+    @Test fun `失败原因取末行并截断，路径不安全归入对应类别`() {
+        val traceback = "Traceback (most recent call last):\n  File \"midx.py\"\nValueError: Large offset found but no LOFF chunk\n"
+        assertThat(GitInspectError.CommandFailed(1, traceback).toProblem())
+            .isEqualTo(GitPanelProblem(GitProblemKind.FAILED, "ValueError: Large offset found but no LOFF chunk"))
+        assertThat(GitInspectError.InspectFailed("UNSAFE_GIT_PATH", "指针不在可信映射内").toProblem())
+            .isEqualTo(GitPanelProblem(GitProblemKind.UNSAFE_PATH, "指针不在可信映射内"))
+        val long = GitInspectError.ParseFailed("x".repeat(500)).toProblem().detail!!
+        assertThat(long.length).isEqualTo(240)
+        assertThat(long).endsWith("…")
+        assertThat(GitInspectError.CommandFailed(null, " \n ").toProblem().detail).isNull()
     }
 
     @Test fun `差异模型：二进制、超限、删除与修改`() {

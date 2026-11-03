@@ -120,6 +120,7 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
+import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 internal data class ProviderModelsScreenState(
     val providerName: String,
@@ -819,63 +820,65 @@ internal fun ProviderModelsModelRow(
     val contextShort = formatTokenShort(model.contextLength)
 
     // 全部模型拼成一个连续分组；行间细线从正文起点开始。
-    Column(modifier = modifier.fillMaxWidth().bettboxListGroupItem(groupIndex, groupSize)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onRowClick)
-                .testTag(UiTags.providerModelsModelCard(model.id))
-                .padding(start = InfinitySpacing.RowHorizontal, end = 8.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
+    ProvideGroupedPress {
+        Column(modifier = modifier.fillMaxWidth().bettboxListGroupItem(groupIndex, groupSize)) {
+            Row(
                 modifier = Modifier
-                    .size(ModelTileSize)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .clickable(onClick = onRowClick)
+                    .testTag(UiTags.providerModelsModelCard(model.id))
+                    .padding(start = InfinitySpacing.RowHorizontal, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                ModelBrandIcon(modelId = remoteModelId, modifier = Modifier.size(20.dp), contentDescription = null)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    model.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    remoteModelId,
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Box(
                     modifier = Modifier
-                        .testTag(UiTags.providerModelsRemoteId(model.id))
-                        .semantics { contentDescription = remoteModelId },
-                )
-                ModelCapabilityBadges(
-                    typeLabel = stringResource(modelTypeLabelRes(model.type)),
-                    capabilities = badges,
-                    contextLabel = contextShort.ifEmpty { null },
-                    capabilitiesDescription = capabilitiesDescription,
-                    contextDescription = contextShort.takeIf { it.isNotEmpty() }?.let {
-                        stringResource(R.string.provider_models_context_description, it)
-                    },
-                    modifier = Modifier.padding(top = 4.dp),
+                        .size(ModelTileSize)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ModelBrandIcon(modelId = remoteModelId, modifier = Modifier.size(20.dp), contentDescription = null)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        model.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        remoteModelId,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .testTag(UiTags.providerModelsRemoteId(model.id))
+                            .semantics { contentDescription = remoteModelId },
+                    )
+                    ModelCapabilityBadges(
+                        typeLabel = stringResource(modelTypeLabelRes(model.type)),
+                        capabilities = badges,
+                        contextLabel = contextShort.ifEmpty { null },
+                        capabilitiesDescription = capabilitiesDescription,
+                        contextDescription = contextShort.takeIf { it.isNotEmpty() }?.let {
+                            stringResource(R.string.provider_models_context_description, it)
+                        },
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                InfinitySwitch(
+                    checked = model.enabled,
+                    onCheckedChange = { onToggle() },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.providerModelsToggleAction(model.id)),
                 )
             }
-            Spacer(Modifier.width(4.dp))
-            InfinitySwitch(
-                checked = model.enabled,
-                onCheckedChange = { onToggle() },
-                modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.providerModelsToggleAction(model.id)),
-            )
-        }
-        if (groupIndex < groupSize - 1) {
-            InfinityGroupDivider(startInset = InfinitySpacing.RowHorizontal + ModelTileSize + 12.dp)
+            if (groupIndex < groupSize - 1) {
+                InfinityGroupDivider(startInset = InfinitySpacing.RowHorizontal + ModelTileSize + 12.dp)
+            }
         }
     }
 }

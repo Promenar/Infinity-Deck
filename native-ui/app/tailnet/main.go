@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -36,6 +37,7 @@ type Backend interface {
 	Start(ctx context.Context, emit func(StatusSummary)) error
 	Summary(ctx context.Context) (StatusSummary, error)
 	PeerList(ctx context.Context) []PeerInfo
+	Ping(ctx context.Context, ip netip.Addr) PingReply
 	Login(ctx context.Context) error
 	Logout(ctx context.Context) error
 	Dial(ctx context.Context, network, address string) (net.Conn, error)
@@ -111,6 +113,10 @@ func (s *Server) dispatch(req *Request) {
 	backend := s.backend
 	s.mu.Unlock()
 	if backend == nil {
+		if req.Op == OpPing {
+			s.out.Fail(req.ID, ErrNotRunning, "Tailscale 未运行")
+			return
+		}
 		s.out.Fail(req.ID, ErrNotStarted, "尚未启动")
 		return
 	}
@@ -119,6 +125,32 @@ func (s *Server) dispatch(req *Request) {
 
 func (s *Server) handle(req *Request, backend Backend) {
 	switch req.Op {
+	case OpPing:
+		ctx, cancel := context.WithTimeout(s.ctx, pingTimeout)
+		defer cancel()
+		if !backend.Running() {
+			s.out.Fail(req.ID, ErrNotRunning, "Tailscale 未运行")
+			return
+		}
+		if req.Ping == nil {
+			s.out.Fail(req.ID, ErrBadRequest, "缺少 ping 参数")
+			return
+		}
+		ip, err := netip.ParseAddr(req.Ping.Target)
+		if err != nil {
+			s.out.Fail(req.ID, ErrBadRequest, "ping 目标必须是在线节点的 tailnet IP")
+			return
+		}
+		peer := findPeerByAddr(backend.Peers(ctx, true), ip)
+		if !backend.Running() {
+			s.out.Fail(req.ID, ErrNotRunning, "Tailscale 未运行")
+			return
+		}
+		if peer == nil || !peer.Online {
+			s.out.Fail(req.ID, ErrBadRequest, "ping 目标必须是在线节点的 tailnet IP")
+			return
+		}
+		s.out.Reply(req.ID, backend.Ping(ctx, ip))
 	case OpStatus:
 		ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 		defer cancel()

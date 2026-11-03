@@ -309,7 +309,6 @@ fun WorkspacePickerSheet(
         title = stringResource(R.string.workspace_picker_title),
         height = InfinitySheetHeight.Full,
         dismissEnabled = !busy,
-        dragGesturesEnabled = false,
     ) {
         // 系统返回先逐级回到上一层目录，回到首页后再关闭面板。
         BackHandler(enabled = page != WorkspacePickerPage.Home && !busy) {

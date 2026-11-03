@@ -90,6 +90,7 @@ import com.promenar.infinity.ui.rag.canvas.of
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 /** 实体头像：与画布节点同一语言，类型色描边、淡色底、类型图标。 */
 @Composable
@@ -608,55 +609,57 @@ internal fun KnowledgeGraphSessionOptionsContent(
     onSelect: (String) -> Unit,
 ) {
     val untitled = stringResource(R.string.kg_session_untitled)
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .bettboxListGroup()
-            .selectableGroup(),
-    ) {
-        when {
-            loadError != null -> item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(UiTags.KG_SESSION_OPTIONS_ERROR)
-                        .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-                ) {
-                    Text(
-                        text = stringResource(R.string.kg_session_options_load_failed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    if (loadError.canRetry) {
-                        InfinityRetryButton(onClick = onRetry, modifier = Modifier.padding(top = InfinitySpacing.Small))
+    ProvideGroupedPress {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bettboxListGroup()
+                .selectableGroup(),
+        ) {
+            when {
+                loadError != null -> item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(UiTags.KG_SESSION_OPTIONS_ERROR)
+                            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.kg_session_options_load_failed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        if (loadError.canRetry) {
+                            InfinityRetryButton(onClick = onRetry, modifier = Modifier.padding(top = InfinitySpacing.Small))
+                        }
                     }
                 }
-            }
-            options.isEmpty() -> item {
-                Text(
-                    text = stringResource(R.string.kg_session_options_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .testTag(UiTags.KG_SESSION_OPTIONS_EMPTY)
-                        .padding(InfinitySpacing.Large),
-                )
-            }
-            else -> items(options, key = { it.sessionId }) { option ->
-                ListItem(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
-                        .selectable(
-                            selected = option.sessionId == selectedSessionId,
-                            role = Role.RadioButton,
-                            onClick = { onSelect(option.sessionId) },
-                        )
-                        .testTag(UiTags.kgSessionOption(option.sessionId)),
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = { Text(option.title.ifBlank { untitled }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(stringResource(R.string.kg_session_option_meta, option.turnCount, option.entityCount)) },
-                )
+                options.isEmpty() -> item {
+                    Text(
+                        text = stringResource(R.string.kg_session_options_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .testTag(UiTags.KG_SESSION_OPTIONS_EMPTY)
+                            .padding(InfinitySpacing.Large),
+                    )
+                }
+                else -> items(options, key = { it.sessionId }) { option ->
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
+                            .selectable(
+                                selected = option.sessionId == selectedSessionId,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(option.sessionId) },
+                            )
+                            .testTag(UiTags.kgSessionOption(option.sessionId)),
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        headlineContent = { Text(option.title.ifBlank { untitled }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(stringResource(R.string.kg_session_option_meta, option.turnCount, option.entityCount)) },
+                    )
+                }
             }
         }
     }

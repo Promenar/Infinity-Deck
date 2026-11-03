@@ -359,8 +359,8 @@ internal fun planSummaryText(model: PlanCardModel): ToolText? = when (model.tool
 //  后台任务卡
 // ─────────────────────────────────────────────────────────────────
 
-/** 日志末尾最多显示的行数与单行字符数；完整内容由“打开完整日志”查看。 */
-internal const val JOB_LOG_TAIL_LINES = 8
+/** 任务卡内嵌滚动区最多保留的日志行数与单行字符数；完整内容由“完整输出”查看。 */
+internal const val JOB_LOG_TAIL_LINES = 200
 private const val JOB_LOG_LINE_CHARS = 240
 private val ANSI_ESCAPE = Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]""")
 

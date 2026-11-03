@@ -8,9 +8,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.theme.LocalInfinityPressCorner
 
 /**
  * Bettbox `CommonCard` filled 变体的 Compose 对应实现。
@@ -29,8 +31,17 @@ fun BettboxListGroup(
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(content = content)
+        ProvideGroupedPress { Column(content = content) }
     }
+}
+
+/**
+ * 分组内的行按压反馈铺满整行、不带圆角，外轮廓交给分组自身的裁剪。
+ * [BettboxListGroup] 已自带；用 [bettboxListGroup] 修饰符拼出的分组需在可点击行外包一层。
+ */
+@Composable
+fun ProvideGroupedPress(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalInfinityPressCorner provides 0.dp, content = content)
 }
 
 /** 用于必须保持 LazyColumn 惰性或滑动手势的连续列表容器。 */

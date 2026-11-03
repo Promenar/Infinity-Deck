@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.tailnet
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,6 +62,8 @@ interface TailnetController {
     fun retry()
     /** 读取最新状态与节点列表；未运行时返回当前状态。 */
     suspend fun refresh(): TailnetState
+    /** 对一台在线设备发一次 disco ping；未运行、设备离线或没有 tailnet 地址时返回 null。 */
+    suspend fun ping(peer: TailnetPeer): TailnetPingResult? = null
     /** 发起浏览器登录，返回登录链接；已在线或超时返回 null。 */
     suspend fun login(): String?
     /** 注销本机节点并删除已保存的 auth key。 */
@@ -384,6 +387,22 @@ class TailnetManager(
         onSummary(target, summary)
         if (summary.running) refreshPeers(target)
         return mutableState.value
+    }
+
+    override suspend fun ping(peer: TailnetPeer): TailnetPingResult? {
+        if (!enabled || state.value.phase != TailnetPhase.RUNNING || !peer.online) return null
+        val ips = peer.ips.filter { it.isNotBlank() }
+        val address = ips.firstOrNull { it.contains('.') && !it.contains(':') } ?: ips.firstOrNull() ?: return null
+        val target = liveSession() ?: return null
+        val client = target.client ?: return null
+        val result = try {
+            client.ping(address)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return null
+        }
+        return result.takeIf { session === target && !target.stopping && state.value.phase == TailnetPhase.RUNNING }
     }
 
     override suspend fun login(): String? {

@@ -212,6 +212,8 @@ internal class DefaultChatGenerationRuntime(
     private var preparedTools: List<ProtocolTool> = emptyList()
     private var toolRounds = 0
     private var finalAnswerMode = false
+    /** 下一次发送附加空回复提醒；发送后即清除，只作用于那一次请求。 */
+    private var emptyReplyReminder = false
     private var currentAssistantMessageId: String? = null
     private var rollbackBaselineMessageIds: Set<String> = emptySet()
     private var replacementCommitted = false
@@ -665,6 +667,7 @@ internal class DefaultChatGenerationRuntime(
         if (target != null && (target.requestInstruction == null || target.id in unsentInstructionIds)) {
             val instruction = when {
                 finalAnswerMode -> FINAL_ANSWER_INSTRUCTION.trimStart()
+                emptyReplyReminder -> EMPTY_REPLY_INSTRUCTION
                 toolProgressReminder.shouldRemind() -> PROGRESS_INSTRUCTION
                 else -> ""
             }
@@ -752,6 +755,7 @@ internal class DefaultChatGenerationRuntime(
             awaitTailnet(route)?.let { failure -> return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(failure)) }
         }
         unsentInstructionIds.remove(assistantMessageId(request))
+        emptyReplyReminder = false
         InfinityLogger.log(mainPromptPrefixTracker.observe(request.sessionId, prompt))
         val source = if (route.useLocalProvider) {
             localProviderFactory(prompt.model).sendPrompt(prompt)
@@ -1206,6 +1210,13 @@ internal class DefaultChatGenerationRuntime(
 
     override fun enterFinalAnswerMode(request: GenerationRequest) {
         finalAnswerMode = true
+    }
+
+    override fun requestReplyAfterEmptyTurn(request: GenerationRequest): Boolean {
+        emptyReplyReminder = true
+        // 当前回复的尾部指令已随上一次请求发出；重新标为未发送，下一次发送时改写为提醒。
+        unsentInstructionIds += assistantMessageId(request)
+        return true
     }
 
     override suspend fun shouldYieldAtRoundBoundary(request: GenerationRequest): Boolean =
@@ -1716,6 +1727,8 @@ internal class DefaultChatGenerationRuntime(
 
     private companion object {
         const val LOOP_LIMIT_KEY = "loop_limit"
+        private const val EMPTY_REPLY_INSTRUCTION = "[System reminder]\nYour previous response ended without any text for the user. " +
+            "If the task is not finished, continue working; otherwise reply to the user now with the results and any next steps."
         private const val PROGRESS_INSTRUCTION = "[System reminder]\nBefore continuing, give the user one concise sentence about your current progress or next action. Avoid filler and repeating tool results."
         const val FINAL_ANSWER_INSTRUCTION = "\n\n## Tool Budget Exhausted\n" +
             "The tool budget for this request is used up. Do NOT call any tool. " +

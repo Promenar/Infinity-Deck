@@ -14,11 +14,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.R
+import com.promenar.infinity.data.tailnet.TailnetPaths
 import com.promenar.infinity.data.tailnet.TailnetPeer
 import com.promenar.infinity.data.tailnet.TailnetPhase
+import com.promenar.infinity.data.tailnet.TailnetPingResult
 import com.promenar.infinity.data.tailnet.TailnetSettings
 import com.promenar.infinity.data.tailnet.TailnetState
 import com.promenar.infinity.data.tailnet.TailnetStatusSummary
+import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.theme.InfinityColorSource
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -141,7 +144,7 @@ private fun previewState(phase: TailnetPhase): TailscaleSettingsUiState {
             summary = summary,
             peers = if (running) {
                 listOf(
-                    TailnetPeer("nas", "nas.example-tailnet.ts.net", listOf("100.64.0.7"), "linux", online = true),
+                    TailnetPeer("nas", "nas.example-tailnet.ts.net", listOf("100.64.0.7"), "linux", online = true, path = TailnetPaths.DIRECT, directLan = true),
                     TailnetPeer(
                         "build-server-with-a-long-name",
                         "build-server-with-a-long-name.example-tailnet.ts.net",
@@ -149,8 +152,11 @@ private fun previewState(phase: TailnetPhase): TailscaleSettingsUiState {
                         "linux",
                         online = false,
                     ),
-                    TailnetPeer("laptop", "laptop.example-tailnet.ts.net", listOf("100.64.0.9"), "macOS", online = true),
-                    TailnetPeer("Desktop", "desktop.example-tailnet.ts.net", listOf("100.64.0.10"), "windows", online = true),
+                    TailnetPeer(
+                        "laptop", "laptop.example-tailnet.ts.net", listOf("100.64.0.9"), "macOS", online = true,
+                        path = TailnetPaths.DERP, relayRegion = "hkg", relayRegionName = "Hong Kong",
+                    ),
+                    TailnetPeer("Desktop", "desktop.example-tailnet.ts.net", listOf("100.64.0.10"), "windows", online = true, path = TailnetPaths.PEER_RELAY),
                     TailnetPeer("pixel", "pixel.example-tailnet.ts.net", listOf("100.64.0.11"), "android", online = false),
                     TailnetPeer("muse", "muse.example-tailnet.ts.net", listOf("100.64.0.12"), null, online = true),
                 )
@@ -158,5 +164,45 @@ private fun previewState(phase: TailnetPhase): TailscaleSettingsUiState {
                 emptyList()
             },
         ),
+        // nas 本次 Ping 过，列表行带延迟；其余设备只显示被动路径。
+        lastPing = if (running) mapOf("nas" to TailnetPingResult(path = TailnetPaths.DIRECT, directLan = true, latencyMs = 2.4)) else emptyMap(),
     )
+}
+
+@PreviewTest
+@Preview(name = "Tailscale 路径面板 浅色", widthDp = 412, heightDp = 1100, locale = "en")
+@Preview(name = "Tailscale 路径面板 浅色 大字号130", widthDp = 360, heightDp = 1400, locale = "en", fontScale = 1.3f)
+@Composable
+fun tailscalePathCardLightPreview() = TailscalePathCardsPreview(dark = false)
+
+@PreviewTest
+@Preview(name = "Tailscale 路径面板 深色", widthDp = 412, heightDp = 1100, locale = "zh-rCN")
+@Composable
+fun tailscalePathCardDarkPreview() = TailscalePathCardsPreview(dark = true)
+
+/** 设备面板的路径卡片（不含底部弹层外壳）：检测中先中转、打通直连后结束、始终无响应三种状态。 */
+@Composable
+private fun TailscalePathCardsPreview(dark: Boolean) {
+    val peer = TailnetPeer("workstation", "workstation.example-tailnet.ts.net", listOf("100.64.0.12"), "linux", online = true)
+    val derp = TailnetPingResult(path = TailnetPaths.DERP, relayRegion = "hkg", relayRegionName = "Hong Kong", latencyMs = 92.0)
+    val direct = TailnetPingResult(path = TailnetPaths.DIRECT, directLan = false, latencyMs = 38.6)
+    val timeout = TailnetPingResult(timedOut = true)
+    PreviewTheme(dark) {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
+            ) {
+                BettboxListGroup { TailscalePathCard(peer, TailscalePingRun("workstation", listOf(derp, derp.copy(latencyMs = 88.0))), null, {}, {}) }
+                BettboxListGroup {
+                    TailscalePathCard(
+                        peer,
+                        TailscalePingRun("workstation", listOf(derp, derp.copy(latencyMs = 88.0), direct, direct.copy(latencyMs = 37.9)), TailscalePingFinish.DIRECT),
+                        null, {}, {},
+                    )
+                }
+                BettboxListGroup { TailscalePathCard(peer, TailscalePingRun("workstation", List(3) { timeout }, TailscalePingFinish.UNREACHABLE), null, {}, {}) }
+            }
+        }
+    }
 }

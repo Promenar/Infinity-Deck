@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,15 +14,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -30,11 +35,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +61,7 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -63,7 +72,8 @@ internal val LocalPlanCallSnapshots = compositionLocalOf<Map<String, PlanCallSna
 private const val PLAN_CARD_TAG = "CHAT_TOOL_PLAN_CARD"
 private const val PLAN_RAW_TOGGLE_TAG = "CHAT_TOOL_PLAN_RAW_TOGGLE"
 private const val JOB_CARD_TAG = "CHAT_TOOL_JOB_CARD"
-private const val JOB_OPEN_LOG_TAG = "CHAT_TOOL_JOB_OPEN_LOG"
+private const val COMMAND_STATUS_TAG = "CHAT_TOOL_COMMAND_STATUS"
+private const val COMMAND_OUTPUT_TAG = "CHAT_TOOL_RESULT"
 private const val JOB_STOP_TAG = "CHAT_TOOL_JOB_STOP"
 private const val FIELDS_ARGUMENTS_TAG = "CHAT_TOOL_FIELDS_ARGUMENTS"
 private const val FIELDS_RESULT_TAG = "CHAT_TOOL_FIELDS_RESULT"
@@ -236,8 +246,12 @@ private fun StateTag(text: String, container: Color, content: Color) {
 //  后台任务卡
 // ─────────────────────────────────────────────────────────────────
 
+/**
+ * 后台任务卡：查看或等待任务时的状态、日志末尾与耗时，沿用 [CommandRunCard] 的单框样式。
+ * [onOpenFull] 为命令输出页入口；没有时退回打开任务日志文件。[waitLimit] 是等待调用的最长等待说明，跟在耗时后。
+ */
 @Composable
-internal fun JobToolCard(model: JobCardModel) {
+internal fun JobToolCard(model: JobCardModel, onOpenFull: (() -> Unit)? = null, waitLimit: String? = null) {
     val access = LocalAgentActivity.current
     val jobId = model.jobId
     // 卡片显示调用当时的状态；停止按钮只在任务此刻仍在运行时出现。
@@ -248,118 +262,108 @@ internal fun JobToolCard(model: JobCardModel) {
     }.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
     val failure = jobStateIsFailure(model.state, model.exitCode)
-    Column(
-        modifier = Modifier.fillMaxWidth().cardSurface(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)).padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Medium)
-            .testTag(JOB_CARD_TAG),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    val openLog = model.logReference?.let { reference -> access?.onOpenLog?.let { open -> { open(reference) } } }
+    val elapsed = model.elapsedSeconds?.let { stringResource(R.string.tool_card_run_elapsed, jobElapsedClock(it)) }
+    val started = remember(model.startedAtMillis) {
+        model.startedAtMillis?.let { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(it)) }
+    }
+    CommandRunCard(
+        status = toolTextString(jobStateText(model.state, model.exitCode)),
+        statusColor = when {
+            failure -> MaterialTheme.colorScheme.error
+            model.running || model.state == "exited" -> MaterialTheme.infinityDomainColors.success
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        output = model.logLines.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+        emptyText = stringResource(R.string.tool_card_job_log_empty),
+        note = if (model.logTruncated && model.logLines.isNotEmpty()) stringResource(R.string.tool_card_job_log_truncated) else null,
+        footerStart = listOfNotNull(elapsed, waitLimit).joinToString(" · ").ifEmpty { null },
+        footerEnd = model.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) }
+            ?: started?.let { stringResource(R.string.tool_card_run_started, it) },
+        footerEndColor = if (model.exitCode != null && model.exitCode != 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        onOpenFull = onOpenFull ?: openLog,
+        modifier = Modifier.testTag(JOB_CARD_TAG),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-            JobStat(
-                label = stringResource(R.string.tool_card_job_label_state),
-                value = toolTextString(jobStateText(model.state, model.exitCode)),
-                color = when {
-                    failure -> MaterialTheme.colorScheme.error
-                    model.running -> MaterialTheme.infinityDomainColors.success
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.weight(1f),
-            )
-            JobStat(
-                label = stringResource(R.string.tool_card_job_label_elapsed),
-                value = model.elapsedSeconds?.let(::jobElapsedClock) ?: stringResource(R.string.tool_card_job_value_unknown),
-                modifier = Modifier.weight(1f),
-            )
-            if (model.exitCode != null) {
-                JobStat(
-                    label = stringResource(R.string.tool_card_job_label_exit_code),
-                    value = model.exitCode.toString(),
-                    color = if (model.exitCode != 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                val started = remember(model.startedAtMillis) {
-                    model.startedAtMillis?.let { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(it)) }
-                }
-                JobStat(
-                    label = stringResource(R.string.tool_card_job_label_started),
-                    value = started ?: stringResource(R.string.tool_card_job_value_unknown),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        // 日志末尾：等宽、行数与单行长度都有上限，不在列表内嵌套滚动。
-        Column(
-            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLowest, InnerShape)
-                .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small),
-        ) {
-            if (model.logLines.isEmpty()) {
-                Text(stringResource(R.string.tool_card_job_log_empty), style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                if (model.logTruncated) {
-                    Text(
-                        stringResource(R.string.tool_card_job_log_truncated),
-                        style = InfinityTypography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 2.dp),
-                    )
-                }
-                model.logLines.forEach { line ->
-                    Text(
-                        text = line,
-                        style = InfinityTypography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 12.sp, lineHeight = 18.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        val openLog = access?.onOpenLog?.takeIf { model.logReference != null }
-        val canStop = liveRunning && jobId != null
-        val openLogButton: @Composable () -> Unit = {
-            InfinityPillButton(
-                text = stringResource(R.string.tool_card_job_open_log),
-                onClick = { openLog?.invoke(requireNotNull(model.logReference)) },
-                modifier = Modifier.testTag(JOB_OPEN_LOG_TAG),
-            )
-        }
-        val stopButton: @Composable () -> Unit = {
+        if (liveRunning && jobId != null) {
             InfinityPillButton(
                 text = stringResource(R.string.tool_card_job_stop),
-                onClick = { scope.launch { access?.jobs?.stop(requireNotNull(jobId)) } },
+                onClick = { scope.launch { access?.jobs?.stop(jobId) } },
                 tone = InfinityPillTone.DANGER,
                 modifier = Modifier.testTag(JOB_STOP_TAG),
             )
         }
-        when {
-            // 两个操作同级并排，放不下时按原顺序竖排；只有一个时不铺满整行。
-            openLog != null && canStop -> InfinityPillRow(
-                modifier = Modifier.fillMaxWidth(),
-                spacing = 8.dp,
-                reverseWhenStacked = false,
-            ) {
-                openLogButton()
-                stopButton()
-            }
-            openLog != null -> openLogButton()
-            canStop -> stopButton()
-        }
     }
 }
 
+/**
+ * 命令运行卡：命令结果与后台任务共用的单框样式。左上是单行状态，右上是“完整输出”入口；
+ * 输出放在限高的内嵌滚动区，打开时停在末尾；左下是耗时，右下是退出码。
+ */
 @Composable
-private fun JobStat(label: String, value: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
-    Column(modifier = modifier.semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        Text(
-            value,
-            style = InfinityTypography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+internal fun CommandRunCard(
+    status: String,
+    statusColor: Color,
+    output: String?,
+    emptyText: String,
+    footerStart: String?,
+    footerEnd: String?,
+    modifier: Modifier = Modifier,
+    footerEndColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    note: String? = null,
+    onOpenFull: (() -> Unit)? = null,
+    actions: @Composable () -> Unit = {},
+) {
+    val meta = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontFeatureSettings = "tnum")
+    Column(
+        modifier = modifier.fillMaxWidth().cardSurface(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).background(statusColor, CircleShape))
+            Text(status, style = meta, color = statusColor, maxLines = 1, modifier = Modifier.padding(start = 6.dp).testTag(COMMAND_STATUS_TAG))
+            note?.let { Text(" · $it", style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Spacer(Modifier.weight(1f))
+            onOpenFull?.let { open ->
+                Row(
+                    modifier = Modifier.clip(TagShape).clickable(role = Role.Button, onClick = open)
+                        .padding(horizontal = 6.dp, vertical = 4.dp).testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_TOOL_FULL_OUTPUT),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                    Text(stringResource(R.string.chat_tool_full_output), style = meta, color = MaterialTheme.colorScheme.primary, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
+                }
+            }
+        }
+        // 输出在卡内限高滚动，滚到边界后交还会话列表；默认停在末尾，结果通常在最后几行。
+        val scroll = rememberScrollState()
+        LaunchedEffect(output) {
+            val bottom = snapshotFlow { scroll.maxValue }.first { it in 1 until Int.MAX_VALUE }
+            scroll.scrollTo(bottom)
+        }
+        Box(
+            Modifier.fillMaxWidth().heightIn(max = CommandOutputMaxHeight).clip(InnerShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest).verticalScroll(scroll)
+                .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small),
+        ) {
+            Text(
+                text = output ?: emptyText,
+                style = InfinityTypography.bodySmall.copy(fontFamily = if (output != null) InfinityMonospace else null, fontSize = 12.sp, lineHeight = 18.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag(COMMAND_OUTPUT_TAG),
+            )
+        }
+        if (footerStart != null || footerEnd != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(footerStart.orEmpty(), style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                footerEnd?.let { Text(it, style = meta, color = footerEndColor, maxLines = 1, modifier = Modifier.padding(start = InfinitySpacing.Small)) }
+            }
+        }
+        actions()
     }
 }
+
+private val CommandOutputMaxHeight = 200.dp
 
 // ─────────────────────────────────────────────────────────────────
 //  通用字段化展示

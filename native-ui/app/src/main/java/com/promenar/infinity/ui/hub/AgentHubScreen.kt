@@ -350,6 +350,7 @@ private fun AddAgentDialog(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { showModelPicker = true },
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -391,6 +392,7 @@ private fun AddAgentDialog(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { showPromptEditor = true },
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -742,74 +744,76 @@ internal fun AgentHubScreenContent(
 
                 1 -> HubSearchEmptyState(modifier = Modifier.padding(paddingValues))
 
-                else -> LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag(UiTags.HUB_AGENT_LIST),
-                    contentPadding = PaddingValues(
-                        top = paddingValues.calculateTopPadding() + InfinitySpacing.Small,
-                        bottom = paddingValues.calculateBottomPadding() + InfinitySpacing.XLarge,
-                    ),
-                ) {
-                    if (sections.pinnedSessions.isNotEmpty()) {
-                        item(key = "pinned") {
-                            HubSessionSection(
-                                modifier = Modifier.animateItem(),
-                                title = stringResource(R.string.hub_section_pinned),
-                                entries = sections.pinnedSessions,
-                                activity = state.sessionActivity,
-                                generation = state.sessionGeneration,
-                                selectedSessionId = state.selectedSessionId,
-                                actions = actions,
-                            )
+                else -> ProvideGroupedPress {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag(UiTags.HUB_AGENT_LIST),
+                        contentPadding = PaddingValues(
+                            top = paddingValues.calculateTopPadding() + InfinitySpacing.Small,
+                            bottom = paddingValues.calculateBottomPadding() + InfinitySpacing.XLarge,
+                        ),
+                    ) {
+                        if (sections.pinnedSessions.isNotEmpty()) {
+                            item(key = "pinned") {
+                                HubSessionSection(
+                                    modifier = Modifier.animateItem(),
+                                    title = stringResource(R.string.hub_section_pinned),
+                                    entries = sections.pinnedSessions,
+                                    activity = state.sessionActivity,
+                                    generation = state.sessionGeneration,
+                                    selectedSessionId = state.selectedSessionId,
+                                    actions = actions,
+                                )
+                            }
                         }
-                    }
-                    if (sections.sessions.isNotEmpty()) {
-                        item(key = "sessions") {
-                            HubSessionSection(
-                                modifier = Modifier.animateItem(),
-                                title = stringResource(if (searching) R.string.hub_section_sessions else R.string.hub_section_recent),
-                                entries = sections.sessions,
-                                activity = state.sessionActivity,
-                                generation = state.sessionGeneration,
-                                selectedSessionId = state.selectedSessionId,
-                                actions = actions,
-                            )
+                        if (sections.sessions.isNotEmpty()) {
+                            item(key = "sessions") {
+                                HubSessionSection(
+                                    modifier = Modifier.animateItem(),
+                                    title = stringResource(if (searching) R.string.hub_section_sessions else R.string.hub_section_recent),
+                                    entries = sections.sessions,
+                                    activity = state.sessionActivity,
+                                    generation = state.sessionGeneration,
+                                    selectedSessionId = state.selectedSessionId,
+                                    actions = actions,
+                                )
+                            }
                         }
-                    }
-                    if (sections.agents.isNotEmpty() || !searching) {
-                        item(key = "agents") {
-                            InfinitySettingsSection(
-                                title = stringResource(R.string.hub_section_agents),
-                                headerStartPadding = InfinitySpacing.ScreenHorizontal,
-                                modifier = Modifier.animateItem(),
-                            ) {
-                                sections.agents.forEach { entry ->
-                                    val agentId = entry.item.agent.id
-                                    key(agentId) {
-                                    val expanded = expandedAgentId == agentId
-                                    HubAgentRow(
-                                        entry = entry,
-                                        expanded = expanded,
-                                        onToggleExpand = {
-                                            // 展开与收起分别使用开/关两档轻振，与开关控件的触感一致。
-                                            haptics.toggle(!expanded)
-                                            expandedAgentId = if (expanded) null else agentId
-                                        },
-                                        onTogglePin = { actions.onTogglePin(agentId) },
-                                        onEdit = { actions.onEdit(agentId) },
-                                        onDelete = { actions.onRequestDelete(agentId) },
-                                    )
-                                    AnimatedVisibility(visible = expanded, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-                                        HubAgentSessions(
-                                            sessions = state.sessionsByAgent[agentId].orEmpty(),
-                                            activity = state.sessionActivity,
-                                            generation = state.sessionGeneration,
-                                            selectedSessionId = state.selectedSessionId,
-                                            actions = actions,
+                        if (sections.agents.isNotEmpty() || !searching) {
+                            item(key = "agents") {
+                                InfinitySettingsSection(
+                                    title = stringResource(R.string.hub_section_agents),
+                                    headerStartPadding = InfinitySpacing.ScreenHorizontal,
+                                    modifier = Modifier.animateItem(),
+                                ) {
+                                    sections.agents.forEach { entry ->
+                                        val agentId = entry.item.agent.id
+                                        key(agentId) {
+                                        val expanded = expandedAgentId == agentId
+                                        HubAgentRow(
+                                            entry = entry,
+                                            expanded = expanded,
+                                            onToggleExpand = {
+                                                // 展开与收起分别使用开/关两档轻振，与开关控件的触感一致。
+                                                haptics.toggle(!expanded)
+                                                expandedAgentId = if (expanded) null else agentId
+                                            },
+                                            onTogglePin = { actions.onTogglePin(agentId) },
+                                            onEdit = { actions.onEdit(agentId) },
+                                            onDelete = { actions.onRequestDelete(agentId) },
                                         )
-                                    }
+                                        AnimatedVisibility(visible = expanded, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+                                            HubAgentSessions(
+                                                sessions = state.sessionsByAgent[agentId].orEmpty(),
+                                                activity = state.sessionActivity,
+                                                generation = state.sessionGeneration,
+                                                selectedSessionId = state.selectedSessionId,
+                                                actions = actions,
+                                            )
+                                        }
+                                        }
                                     }
                                 }
                             }

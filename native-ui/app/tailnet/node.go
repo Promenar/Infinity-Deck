@@ -13,6 +13,7 @@ import (
 	"tailscale.com/client/local"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/tailcfg"
 	"tailscale.com/tsnet"
 	"tailscale.com/types/logger"
 )
@@ -198,18 +199,37 @@ func (n *Node) Peers(ctx context.Context, refresh bool) []Peer {
 	}
 	st, err := lc.Status(ctx)
 	if err != nil {
+		// 强制刷新用于在线校验；失败时不允许使用旧缓存确认设备在线。
+		if refresh {
+			return nil
+		}
 		n.mu.Lock()
 		defer n.mu.Unlock()
 		return n.peers
 	}
 	n.summarize(st)
+	var dm *tailcfg.DERPMap
+	for _, ps := range st.Peer {
+		if peerConnectionPath(ps, nil).path == pathDERP {
+			dm, _ = lc.CurrentDERPMap(ctx)
+			break
+		}
+	}
 	peers := make([]Peer, 0, len(st.Peer))
 	for _, ps := range st.Peer {
+		if ps == nil {
+			continue
+		}
+		path := peerConnectionPath(ps, dm)
 		peer := Peer{
-			DNSName:  normalizeHost(ps.DNSName),
-			HostName: normalizeHost(ps.HostName),
-			OS:       ps.OS,
-			Online:   ps.Online,
+			DNSName:         normalizeHost(ps.DNSName),
+			HostName:        normalizeHost(ps.HostName),
+			OS:              ps.OS,
+			Online:          ps.Online,
+			Path:            path.path,
+			DirectLAN:       path.lan,
+			RelayRegion:     path.region,
+			RelayRegionName: path.regionName,
 		}
 		peer.ShortName = normalizeHost(shortName(ps.DNSName, ps.HostName))
 		for _, ip := range ps.TailscaleIPs {
@@ -231,6 +251,8 @@ func (n *Node) PeerList(ctx context.Context) []PeerInfo {
 	for i := range peers {
 		p := peers[i]
 		info := PeerInfo{Name: p.ShortName, DNSName: p.DNSName, OS: p.OS, Online: p.Online}
+		info.Path, info.DirectLAN = p.Path, p.DirectLAN
+		info.RelayRegion, info.RelayRegionName = p.RelayRegion, p.RelayRegionName
 		for _, ip := range p.IPs {
 			info.IPs = append(info.IPs, ip.String())
 		}

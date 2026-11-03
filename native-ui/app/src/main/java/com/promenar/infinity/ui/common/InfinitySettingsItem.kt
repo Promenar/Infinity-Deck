@@ -107,11 +107,13 @@ internal fun InfinitySettingsRowLayout(
     marqueeTitle: Boolean = false,
     /** 多段元数据副标题：非空时以 [InfinityMetaLine] 排版并取代 [subtitle]，整段换行、分隔符不落行首行尾。 */
     subtitleSegments: List<String>? = null,
+    /** 自定义副标题（如文字后跟状态标签）：非空时取代 [subtitle] 与 [subtitleSegments]。 */
+    subtitleContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val marquee = marqueeTitle && rememberAnimationsEnabled()
     val segments = subtitleSegments?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() }
-    val hasSubtitle = subtitle != null || segments != null
+    val hasSubtitle = subtitle != null || segments != null || subtitleContent != null
     BoxWithConstraints(modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.38f)) {
         val trailingMaxWidth = maxWidth * trailingMaxWidthFraction
         val expandTitle = maxWidth < 280.dp || LocalDensity.current.fontScale > 1f
@@ -146,7 +148,10 @@ internal fun InfinitySettingsRowLayout(
                         else -> 1
                     },
                     overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis)
-                if (segments != null) {
+                if (subtitleContent != null) {
+                    Spacer(Modifier.height(InfinitySpacing.RowTwoLineGap))
+                    subtitleContent()
+                } else if (segments != null) {
                     Spacer(Modifier.height(InfinitySpacing.RowTwoLineGap))
                     InfinityMetaLine(
                         segments = segments,

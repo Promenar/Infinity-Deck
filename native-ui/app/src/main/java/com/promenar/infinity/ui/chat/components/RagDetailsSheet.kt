@@ -1,6 +1,7 @@
 // UNIT TEST EXEMPTION STATEMENT: 本文件仅涉及 Jetpack Compose 纯布局、UI 交互展现与跳转逻辑，不包含任何数据转换、判定、图算法或状态流转核心业务逻辑，故依全局开发规范 §4.2 予以单元测试豁免。
 package com.promenar.infinity.ui.chat.components
 
+import androidx.compose.ui.draw.clip
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
@@ -563,6 +564,7 @@ private fun WebCitationRow(citation: Citation, index: Int, onOpen: (String) -> U
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            .clip(MaterialTheme.shapes.medium)
             .clickable(
                 onClickLabel = openLabel,
                 role = Role.Button,

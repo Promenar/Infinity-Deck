@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.chat
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import com.promenar.infinity.ui.common.inspectorTopGap
 import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.runtime.remember
 import androidx.activity.compose.BackHandler
@@ -174,6 +175,7 @@ fun ResourceExplorerPage(
         bodyPadding = PaddingValues(
             start = InfinitySpacing.ScreenHorizontal,
             end = InfinitySpacing.ScreenHorizontal,
+            top = if (onBack == null) inspectorTopGap() else 0.dp,
             bottom = InfinitySpacing.Large,
         ),
     ) {
@@ -413,7 +415,7 @@ private fun ResourceExplorerFilesPage(
         )
         ResourceExplorerWorkspaceMode.Private -> ResourceExplorerPrivateFilesPage(state, actions, filesContent)
         is ResourceExplorerWorkspaceMode.Directory -> Column(modifier = Modifier.fillMaxSize()) {
-            ResourceExplorerGitEntry(state, actions)
+            ResourceExplorerGitEntry(state, actions, leadingGap = false)
             Spacer(modifier = Modifier.height(InfinitySpacing.Small))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 filesContent()
@@ -430,6 +432,8 @@ private fun ResourceExplorerFilesPage(
 private fun ResourceExplorerGitEntry(
     state: ResourceExplorerSheetState,
     actions: ResourceExplorerSheetActions,
+    /** 入口排在页面最顶端时不留前置间隔，顶距由页面统一给出。 */
+    leadingGap: Boolean = true,
 ) {
     // 收起期间沿用最后一次可见的摘要，避免入口在动画中途变空。
     val shownEntry = remember { arrayOfNulls<GitEntrySummary>(1) }
@@ -440,7 +444,7 @@ private fun ResourceExplorerGitEntry(
         exit = InfinityMotion.shrinkOut,
     ) {
         Column {
-            Spacer(modifier = Modifier.height(InfinitySpacing.Small))
+            if (leadingGap) Spacer(modifier = Modifier.height(InfinitySpacing.Small))
             shownEntry[0]?.let { GitWorkspaceEntry(summary = it, onClick = actions.onOpenGitPanel) }
         }
     }

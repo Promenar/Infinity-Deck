@@ -7,10 +7,13 @@ import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.RippleConfiguration
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +27,7 @@ import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.DelegatableNode
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.currentValueOf
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.hypot
 import kotlin.math.max
@@ -33,10 +37,29 @@ import kotlinx.coroutines.launch
 /** 点按反馈的圆角上限：短边一半更小时取一半，细长标签呈胶囊形。 */
 internal val IndicationMaxCorner = 12.dp
 
+/**
+ * 当前位置点按反馈的圆角上限。圆角分组列表内为 0：行的按压铺满整行，首尾圆角由分组外框裁出，
+ * 相邻行之间不出现内凹圆角；菜单打开时的行底色也按同一圆角绘制。
+ */
+val LocalInfinityPressCorner = staticCompositionLocalOf<Dp> { IndicationMaxCorner }
+
 /** 状态层与水波在按下时的透明度（叠加后中心约 0.12，与 Material 按压状态层接近）。 */
 private const val PressLayerAlpha = 0.06f
 private const val PressWaveAlpha = 0.06f
 private const val FocusLayerAlpha = 0.10f
+
+/**
+ * Material 组件（Surface(onClick)、IconButton、Button 等）直接调用 ripple()，不走 [InfinityIndication]；
+ * 由主题统一提供这份配置，使其按压浓度与 [InfinityIndication] 叠加后的中心浓度一致，颜色同取内容色。
+ */
+val InfinityRippleConfiguration = RippleConfiguration(
+    rippleAlpha = RippleAlpha(
+        draggedAlpha = PressLayerAlpha + PressWaveAlpha,
+        focusedAlpha = FocusLayerAlpha,
+        hoveredAlpha = PressLayerAlpha,
+        pressedAlpha = PressLayerAlpha + PressWaveAlpha,
+    ),
+)
 
 /** 圆角半径：不超过上限，也不超过短边一半。 */
 internal fun indicationCornerRadius(size: Size, maxCornerPx: Float): Float =
@@ -118,7 +141,7 @@ private class InfinityIndicationNode(
         val focus = if (focused) 1f else 0f
         if (press <= 0f && focus <= 0f) return
         val color = currentValueOf(LocalContentColor)
-        val corner = indicationCornerRadius(size, IndicationMaxCorner.toPx())
+        val corner = indicationCornerRadius(size, currentValueOf(LocalInfinityPressCorner).toPx())
         if (size != clipSize || corner != clipCorner) {
             clip.reset()
             clip.addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(corner)))

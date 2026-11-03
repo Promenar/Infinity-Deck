@@ -20,7 +20,7 @@ import com.promenar.infinity.ui.common.diff.FileDiffSummaryReason
 /** 面板显示的问题类别；界面按类别显示本地化文案，不直接显示底层错误信息。 */
 enum class GitProblemKind { PYTHON_UNAVAILABLE, NOT_REPOSITORY, WORKSPACE_UNAVAILABLE, TIMED_OUT, UNSAFE_PATH, FAILED }
 
-/** [detail] 只在工作区不可用时携带解析器给出的原因。 */
+/** [detail] 是底层给出的原因（截为一行），显示在本地化文案下方，便于排查。 */
 @Immutable
 data class GitPanelProblem(val kind: GitProblemKind, val detail: String? = null)
 
@@ -29,13 +29,24 @@ fun GitInspectError.toProblem(): GitPanelProblem = when (this) {
     GitInspectError.NotRepository -> GitPanelProblem(GitProblemKind.NOT_REPOSITORY)
     is GitInspectError.WorkspaceUnavailable -> GitPanelProblem(GitProblemKind.WORKSPACE_UNAVAILABLE, reason)
     GitInspectError.TimedOut -> GitPanelProblem(GitProblemKind.TIMED_OUT)
-    is GitInspectError.UnsafePath -> GitPanelProblem(GitProblemKind.UNSAFE_PATH)
-    is GitInspectError.ParseFailed,
-    is GitInspectError.CommandFailed,
-    is GitInspectError.InspectFailed,
-    is GitInspectError.WorkTreeReadFailed,
-    -> GitPanelProblem(GitProblemKind.FAILED)
+    is GitInspectError.UnsafePath -> GitPanelProblem(GitProblemKind.UNSAFE_PATH, problemDetail(path))
+    is GitInspectError.InspectFailed -> GitPanelProblem(
+        if (code == UNSAFE_GIT_PATH_CODE) GitProblemKind.UNSAFE_PATH else GitProblemKind.FAILED,
+        problemDetail(message),
+    )
+    is GitInspectError.ParseFailed -> GitPanelProblem(GitProblemKind.FAILED, problemDetail(detail))
+    is GitInspectError.CommandFailed -> GitPanelProblem(GitProblemKind.FAILED, problemDetail(detail))
+    is GitInspectError.WorkTreeReadFailed -> GitPanelProblem(GitProblemKind.FAILED, problemDetail(detail))
 }
+
+private const val UNSAFE_GIT_PATH_CODE = "UNSAFE_GIT_PATH"
+private const val PROBLEM_DETAIL_LIMIT = 240
+
+/** 取最后一个非空行（Python 异常与 stderr 的结论通常在末行），截断到界面可读的长度。 */
+internal fun problemDetail(raw: String): String? =
+    raw.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }?.let {
+        if (it.length > PROBLEM_DETAIL_LIMIT) it.take(PROBLEM_DETAIL_LIMIT - 1) + "…" else it
+    }
 
 @Immutable
 sealed interface GitLoad<out T> {

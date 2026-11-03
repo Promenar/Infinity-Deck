@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
@@ -318,18 +319,20 @@ internal fun UserMessageQuotes(quotes: List<MessageQuote>, maxWidth: Dp, fontSiz
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         quotes.forEach { quote ->
-            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+            val shape = RoundedCornerShape(16.dp)
+            // 点按整块引用气泡跳回原文，按压反馈铺满气泡而不只是正文那一块。
+            Surface(
+                shape = shape,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = if (actions != null) {
+                    Modifier.clip(shape).clickable(role = Role.Button, onClickLabel = jumpDescription) {
+                        actions.onLocateSource(quote.sourceMessageId)
+                    }
+                } else Modifier,
+            ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                     Box(
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .then(
-                                if (actions != null) {
-                                    Modifier.clickable(role = Role.Button, onClickLabel = jumpDescription) {
-                                        actions.onLocateSource(quote.sourceMessageId)
-                                    }
-                                } else Modifier,
-                            ),
+                        modifier = Modifier.heightIn(min = 48.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         Text(

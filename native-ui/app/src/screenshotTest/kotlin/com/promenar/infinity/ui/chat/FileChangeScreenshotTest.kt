@@ -99,7 +99,7 @@ fun fileChangeExecutionCardDarkPreview() = FileChangeFrame {
 }
 
 @PreviewTest
-@Preview(name = "执行卡 命令工作区改动 浅中411", widthDp = 411, heightDp = 700, locale = "zh-rCN")
+@Preview(name = "执行卡 命令工作区改动 浅中411", widthDp = 411, heightDp = 780, locale = "zh-rCN")
 @Composable
 fun fileChangeShellWorkspaceLightPreview() = FileChangeFrame(dark = false) {
     InlineToolRow(fileStep(0, "create_file", BinaryChange) + fileStep(1, "write_file", OversizedChange), isExecuting = false, fontSize = 15, initiallyExpanded = true)

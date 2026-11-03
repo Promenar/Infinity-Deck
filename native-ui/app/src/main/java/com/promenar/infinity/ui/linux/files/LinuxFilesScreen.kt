@@ -116,6 +116,7 @@ import com.promenar.infinity.ui.workspace.WorkspaceNameDialog
 import kotlinx.coroutines.delay
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 private const val OUTCOME_VISIBLE_MS = 4_000L
 /** 读取超过这个时长才显示进度条，常见的毫秒级读取不闪烁。 */
@@ -600,29 +601,31 @@ private fun LinuxDirectoryListing(state: LinuxFilesUiState, actions: LinuxFilesA
                 )
             }
         }
-        else -> LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .bettboxListGroup()
-                .testTag(UiTags.LINUX_FILES_LIST),
-            contentPadding = PaddingValues(vertical = InfinitySpacing.XSmall),
-        ) {
-            if (parent != null) {
-                item(key = "..") {
-                    LinuxUpRow(enabled = upEnabled, modifier = Modifier.animateItem()) { actions.onNavigate(parent) }
+        else -> ProvideGroupedPress {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bettboxListGroup()
+                    .testTag(UiTags.LINUX_FILES_LIST),
+                contentPadding = PaddingValues(vertical = InfinitySpacing.XSmall),
+            ) {
+                if (parent != null) {
+                    item(key = "..") {
+                        LinuxUpRow(enabled = upEnabled, modifier = Modifier.animateItem()) { actions.onNavigate(parent) }
+                    }
                 }
-            }
-            items(entries, key = { it.path }) { entry ->
-                LinuxFileRow(
-                    entry = entry,
-                    nowMs = state.nowMs,
-                    selecting = state.selecting,
-                    checked = entry.path in state.selection,
-                    onClick = { actions.onOpen(entry) },
-                    onLongClick = { actions.onToggleSelect(entry.path) },
-                    // 排序、筛选、隐藏文件与增删时条目平滑换位，而不是整表跳变。
-                    modifier = Modifier.animateItem(),
-                )
+                items(entries, key = { it.path }) { entry ->
+                    LinuxFileRow(
+                        entry = entry,
+                        nowMs = state.nowMs,
+                        selecting = state.selecting,
+                        checked = entry.path in state.selection,
+                        onClick = { actions.onOpen(entry) },
+                        onLongClick = { actions.onToggleSelect(entry.path) },
+                        // 排序、筛选、隐藏文件与增删时条目平滑换位，而不是整表跳变。
+                        modifier = Modifier.animateItem(),
+                    )
+                }
             }
         }
     }

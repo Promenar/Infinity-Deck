@@ -598,6 +598,52 @@ class ChatGenerationRunnerTest {
     }
 
     @Test
+    fun `工具轮次后空正文结束时提醒一次并在同一回复上重新请求`() = runTest {
+        val runtime = FakeRuntime(listOf(
+            flowOf(GenerationChunk.ToolCall("tool-1", "search", "{}"), GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("tool-1"))),
+            flowOf(GenerationChunk.Completed(CompletionReason.END_TURN)),
+            flowOf(GenerationChunk.Text("结果如下"), GenerationChunk.Completed(CompletionReason.END_TURN)),
+        )).apply {
+            toolDecisions += GenerationToolDecision.CONTINUE
+            replyReminderSupported = true
+        }
+        val events = mutableListOf<GenerationEvent>()
+
+        ChatGenerationRunner(runtime).run(request(), events::add)
+
+        assertThat(runtime.streamAttempts).isEqualTo(3)
+        assertThat(runtime.replyReminders).isEqualTo(1)
+        assertThat(runtime.persisted.last().content).isEqualTo("结果如下")
+        // 提醒重发沿用续轮创建的回复，不再新建占位。
+        assertThat(events.filterIsInstance<GenerationEvent.TargetChanged>().map { it.assistantMessageId })
+            .containsExactly("assistant-next")
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+    }
+
+    @Test
+    fun `空正文提醒每次生成只发一次，无工具轮次或不支持时不提醒`() = runTest {
+        val toolRound = flowOf(GenerationChunk.ToolCall("tool-1", "search", "{}"), GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("tool-1")))
+        val empty = { flowOf<GenerationChunk>(GenerationChunk.Completed(CompletionReason.END_TURN)) }
+        val twice = FakeRuntime(listOf(toolRound, empty(), empty())).apply {
+            toolDecisions += GenerationToolDecision.CONTINUE
+            replyReminderSupported = true
+        }
+        ChatGenerationRunner(twice).run(request()) {}
+        assertThat(twice.streamAttempts).isEqualTo(3)
+        assertThat(twice.replyReminders).isEqualTo(1)
+        assertThat(twice.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+
+        val unsupported = FakeRuntime(listOf(toolRound, empty())).apply { toolDecisions += GenerationToolDecision.CONTINUE }
+        ChatGenerationRunner(unsupported).run(request()) {}
+        assertThat(unsupported.streamAttempts).isEqualTo(2)
+
+        val textOnly = FakeRuntime(listOf(flowOf(GenerationChunk.Text("完成"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+            .apply { replyReminderSupported = true }
+        ChatGenerationRunner(textOnly).run(request()) {}
+        assertThat(textOnly.replyReminders).isEqualTo(0)
+    }
+
+    @Test
     fun `收尾轮仍只返回工具调用时以工具预算失败结束而非空回答成功`() = runTest {
         val toolRound = { id: String ->
             flowOf(
@@ -773,6 +819,12 @@ class ChatGenerationRunnerTest {
         val rejectedCalls = mutableListOf<String>()
         var handledToolRounds = 0
         var finalAnswerModeEntered = false
+        var replyReminderSupported = false
+        var replyReminders = 0
+        override fun requestReplyAfterEmptyTurn(request: GenerationRequest): Boolean {
+            if (replyReminderSupported) replyReminders++
+            return replyReminderSupported
+        }
         var loopContinue = false
         var loopPrompts = 0
         override suspend fun confirmLoopContinuation(request: GenerationRequest): Boolean {

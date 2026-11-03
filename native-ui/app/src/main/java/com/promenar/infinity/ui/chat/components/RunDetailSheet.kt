@@ -1,8 +1,10 @@
 package com.promenar.infinity.ui.chat.components
 
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Dp
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +55,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +72,7 @@ import com.promenar.infinity.ui.chat.TaskPanelStepStatus
 import com.promenar.infinity.ui.chat.TaskPanelUiState
 import com.promenar.infinity.ui.common.InfinityModalSheet
 import com.promenar.infinity.ui.common.InfinitySheetHeight
+import com.promenar.infinity.ui.common.inspectorTopGap
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -123,7 +126,7 @@ internal fun RunDetailSheet(
     onEditState: suspend (Long, StateOperation) -> String?,
     onRemoveState: suspend (Long) -> String?,
 ) {
-    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full, sheetGesturesEnabled = false) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full, contentDragsSheet = false) {
         RunDetailContent(
             initialTab = initialTab,
             plan = plan,
@@ -264,7 +267,10 @@ private fun RunDetailHeader(
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp).testTag(UiTags.CHAT_RUN_STATUS_CARD),
+        // 与下方页签同为 16dp 页边距；在检视器里是首块内容，距顶也取 16dp。
+        modifier = Modifier.fillMaxWidth()
+            .padding(start = InfinitySpacing.ScreenHorizontal, end = InfinitySpacing.ScreenHorizontal, top = inspectorTopGap(8.dp))
+            .testTag(UiTags.CHAT_RUN_STATUS_CARD),
     ) {
         // 有菜单时第一行由 48dp 按钮撑高，上下内边距收窄；没有菜单时按文字行高留出对称留白。
         Column(
@@ -459,32 +465,37 @@ private fun RunDetailTabs(
                     activity?.let { (it.jobs.size + it.schedules.size).takeIf { n -> n > 0 }?.toString() }
                 RunDetailTab.STATE -> stringResource(R.string.run_detail_tab_state) to null
             }
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (active) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainerHighest,
-                shadowElevation = if (active) 1.dp else 0.dp,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 40.dp)
-                    .clickable(role = Role.Tab) { haptics.select(active); onSelect(tab) }
-                    .semantics { this.selected = active }
-                    .testTag(UiTags.runSheetTab(tab.name)),
-            ) {
-                Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 10.dp)) {
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                    count?.let {
+            // 由 Surface 承接点击，按压反馈沿 20dp 胶囊裁剪，选中页签的阴影不被外层裁掉。
+            // 页签条连同 4dp 内衬已有 48dp 高，不再让 Surface 把每个页签撑到最小触控尺寸。
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                Surface(
+                    selected = active,
+                    onClick = { haptics.select(active); onSelect(tab) },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (active) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    shadowElevation = if (active) 1.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 40.dp)
+                        .semantics { role = Role.Tab }
+                        .testTag(UiTags.runSheetTab(tab.name)),
+                ) {
+                    Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 10.dp)) {
                         Text(
-                            " $it",
-                            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                         )
+                        count?.let {
+                            Text(
+                                " $it",
+                                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }

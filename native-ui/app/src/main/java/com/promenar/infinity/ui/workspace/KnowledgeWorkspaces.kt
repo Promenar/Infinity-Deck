@@ -86,6 +86,7 @@ import kotlinx.coroutines.withContext
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.theme.breakableIdentifier
+import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 private const val TEXT_PREVIEW_BYTES = 256 * 1024
 
@@ -307,59 +308,61 @@ fun KnowledgeWorkspaceListContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = InfinitySpacing.Large),
         )
-    } else LazyColumn(
-        modifier = Modifier.weight(1f, fill = false).fillMaxWidth().padding(top = InfinitySpacing.Small)
-            .bettboxListGroup().testTag("knowledge_workspaces_list"),
-        contentPadding = PaddingValues(bottom = InfinitySpacing.Large),
-    ) {
-        items(workspaces, key = { it.id }) { workspace ->
-            var menu by remember(workspace.id) { mutableStateOf(false) }
-            ListItem(
-                modifier = Modifier
-                    .animateItem()
-                    .fillMaxWidth()
-                    .clickable(role = Role.Button) { onOpen(workspace) }
-                    .testTag("knowledge_workspace_${workspace.id}"),
-                headlineContent = { Text(workspace.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                supportingContent = {
-                    InfinityMetaLine(
-                        // 内置文件夹只在显示名与目录名不同时补目录名；设备文件夹的路径本身有用。
-                        segments = listOfNotNull(
-                            workspaceKindLabel(workspace.kind),
-                            when {
-                                workspace.kind == WorkspaceEntity.KIND_SHARED -> compactSharedPath(workspace.location)
-                                workspace.kind == WorkspaceEntity.KIND_LINUX_HOME -> workspaceLocationText(workspace.kind, workspace.location)
-                                workspace.displayName != workspace.location -> workspace.location
-                                else -> null
-                            }?.breakableIdentifier(),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
-                },
-                leadingContent = { WorkspaceKindIcon(workspace.kind) },
-                trailingContent = {
-                    Box {
-                        IconButton(onClick = { menu = true }, modifier = Modifier.testTag("knowledge_workspace_menu_${workspace.id}")) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.workspace_kb_more, workspace.displayName))
+    } else ProvideGroupedPress {
+        LazyColumn(
+            modifier = Modifier.weight(1f, fill = false).fillMaxWidth().padding(top = InfinitySpacing.Small)
+                .bettboxListGroup().testTag("knowledge_workspaces_list"),
+            contentPadding = PaddingValues(bottom = InfinitySpacing.Large),
+        ) {
+            items(workspaces, key = { it.id }) { workspace ->
+                var menu by remember(workspace.id) { mutableStateOf(false) }
+                ListItem(
+                    modifier = Modifier
+                        .animateItem()
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button) { onOpen(workspace) }
+                        .testTag("knowledge_workspace_${workspace.id}"),
+                    headlineContent = { Text(workspace.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = {
+                        InfinityMetaLine(
+                            // 内置文件夹只在显示名与目录名不同时补目录名；设备文件夹的路径本身有用。
+                            segments = listOfNotNull(
+                                workspaceKindLabel(workspace.kind),
+                                when {
+                                    workspace.kind == WorkspaceEntity.KIND_SHARED -> compactSharedPath(workspace.location)
+                                    workspace.kind == WorkspaceEntity.KIND_LINUX_HOME -> workspaceLocationText(workspace.kind, workspace.location)
+                                    workspace.displayName != workspace.location -> workspace.location
+                                    else -> null
+                                }?.breakableIdentifier(),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    },
+                    leadingContent = { WorkspaceKindIcon(workspace.kind) },
+                    trailingContent = {
+                        Box {
+                            IconButton(onClick = { menu = true }, modifier = Modifier.testTag("knowledge_workspace_menu_${workspace.id}")) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.workspace_kb_more, workspace.displayName))
+                            }
+                            InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                InfinityMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_kb_rename)) },
+                                    leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, null) },
+                                    onClick = { menu = false; onRename(workspace) },
+                                )
+                                InfinityMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_kb_delete), color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = { menu = false; onDelete(workspace) },
+                                )
+                            }
                         }
-                        InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            InfinityMenuItem(
-                                text = { Text(stringResource(R.string.workspace_kb_rename)) },
-                                leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, null) },
-                                onClick = { menu = false; onRename(workspace) },
-                            )
-                            InfinityMenuItem(
-                                text = { Text(stringResource(R.string.workspace_kb_delete), color = MaterialTheme.colorScheme.error) },
-                                leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
-                                onClick = { menu = false; onDelete(workspace) },
-                            )
-                        }
-                    }
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
         }
     }
 }

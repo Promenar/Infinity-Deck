@@ -67,6 +67,7 @@ import com.promenar.infinity.ui.rag.canvas.KgEntityKind
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 @Composable
 fun KnowledgeGraphScreen(
@@ -479,59 +480,61 @@ internal fun KnowledgeGraphDocumentOptionsContent(
     onRetry: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .bettboxListGroup()
-            .selectableGroup(),
-    ) {
-        when {
-            loadError != null -> item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(UiTags.KG_DOCUMENT_OPTIONS_ERROR)
-                        .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-                ) {
-                    Text(
-                        text = stringResource(R.string.kg_document_options_load_failed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    if (loadError.canRetry) {
-                        InfinityRetryButton(
-                            onClick = onRetry,
-                            modifier = Modifier
-                                .padding(top = InfinitySpacing.Small)
-                                .testTag(UiTags.KG_DOCUMENT_OPTIONS_RETRY),
+    ProvideGroupedPress {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bettboxListGroup()
+                .selectableGroup(),
+        ) {
+            when {
+                loadError != null -> item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(UiTags.KG_DOCUMENT_OPTIONS_ERROR)
+                            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.kg_document_options_load_failed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
                         )
+                        if (loadError.canRetry) {
+                            InfinityRetryButton(
+                                onClick = onRetry,
+                                modifier = Modifier
+                                    .padding(top = InfinitySpacing.Small)
+                                    .testTag(UiTags.KG_DOCUMENT_OPTIONS_RETRY),
+                            )
+                        }
                     }
                 }
-            }
-            options.isEmpty() -> item {
-                Text(
-                    text = stringResource(R.string.kg_document_options_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .testTag(UiTags.KG_DOCUMENT_OPTIONS_EMPTY)
-                        .padding(InfinitySpacing.Large),
-                )
-            }
-            else -> items(options, key = { it.docId }) { option ->
-                ListItem(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
-                        .selectable(
-                            selected = option.docId == selectedDocumentId,
-                            role = Role.RadioButton,
-                            onClick = { onSelect(option.docId) },
-                        )
-                        .testTag(UiTags.kgDocumentOption(option.docId)),
-                    colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
-                    headlineContent = { Text(option.title) },
-                )
+                options.isEmpty() -> item {
+                    Text(
+                        text = stringResource(R.string.kg_document_options_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .testTag(UiTags.KG_DOCUMENT_OPTIONS_EMPTY)
+                            .padding(InfinitySpacing.Large),
+                    )
+                }
+                else -> items(options, key = { it.docId }) { option ->
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
+                            .selectable(
+                                selected = option.docId == selectedDocumentId,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(option.docId) },
+                            )
+                            .testTag(UiTags.kgDocumentOption(option.docId)),
+                        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        headlineContent = { Text(option.title) },
+                    )
+                }
             }
         }
     }

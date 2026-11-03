@@ -128,7 +128,11 @@ fun InfinityTheme(
             shapes = InfinityShapes,
         ) {
             // 默认点按反馈裁在圆角内，覆盖 MaterialTheme 提供的矩形涟漪。
-            CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides InfinityIndication, content = content)
+            CompositionLocalProvider(
+                androidx.compose.foundation.LocalIndication provides InfinityIndication,
+                androidx.compose.material3.LocalRippleConfiguration provides InfinityRippleConfiguration,
+                content = content,
+            )
         }
     }
 }
@@ -182,7 +186,11 @@ fun InfinityPureDarkTheme(content: @Composable () -> Unit) {
     }
     CompositionLocalProvider(LocalInfinityDomainColors provides domainColors) {
         MaterialTheme(colorScheme = colorScheme, typography = InfinityTypography, shapes = InfinityShapes) {
-            CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides InfinityIndication, content = content)
+            CompositionLocalProvider(
+                androidx.compose.foundation.LocalIndication provides InfinityIndication,
+                androidx.compose.material3.LocalRippleConfiguration provides InfinityRippleConfiguration,
+                content = content,
+            )
         }
     }
 }
