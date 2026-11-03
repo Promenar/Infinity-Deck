@@ -71,6 +71,7 @@ internal class DefaultChatGenerationRunnerFactory(
     private val knowledgeTurns: com.promenar.infinity.data.knowledge.KnowledgeTurnState? = null,
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
+    private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
 ) : GenerationRunnerFactory {
     override fun create(request: GenerationRequest, taskId: String): GenerationRunner =
         ChatGenerationRunner(createRuntime(request.sessionId, taskId))
@@ -100,6 +101,7 @@ internal class DefaultChatGenerationRunnerFactory(
             toolAllowlistStore = toolAllowlistStore,
             timedGrants = timedGrants,
             agentConfigService = agentConfigService,
+            attachmentWorkspaceStore = attachmentWorkspaceStore,
             workspaceRepository = workspaceRepository,
             outputStore = outputStore,
             interactionStore = interactionStore,

@@ -524,6 +524,8 @@ data class MessageDocumentAttachment(
     val sha256: String,
     val estimatedTokens: Int,
     val workspaceReference: WorkspaceDocumentReference? = null,
+    /** 自动保存的文档在当前轮保留全文；手动转存的引用默认不内联。 */
+    val inlineInCurrentTurn: Boolean = false,
 )
 
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
@@ -536,6 +538,7 @@ data class MessageDocumentEnvelope(
     val viewedMedia: List<com.promenar.infinity.domain.media.ViewedMedia>? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val legacyFilesPayload: String? = null,
+    val userImageReferences: List<WorkspaceDocumentReference?>? = null,
 ) {
     companion object {
         const val SCHEMA = "infinity-full-context-documents-v1"
@@ -600,6 +603,8 @@ data class Message(
     val turnContext: String? = null,
     /** 生成该助手消息前发送给模型的尾部提醒。 */
     val requestInstruction: String? = null,
+    /** 与 userImages 按位置对应；null 项表示未成功保存，继续沿用内联输入。 */
+    val userImageReferences: List<WorkspaceDocumentReference?>? = null,
 )
 
 @Serializable

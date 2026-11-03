@@ -23,6 +23,15 @@ class RuntimeGuideToolContractTest {
     private val source = runtimeGuideMainDirectory().resolve("java/com/promenar/infinity")
     private val guide = runtimeGuideMainDirectory().resolve("assets/builtin_skills/infinity-workbench/SKILL.md")
 
+    @Test fun `历史用户附件重看说明同时存在于系统媒体段和运行指南`() {
+        val instruction = "已保存到工作区的历史用户图片和文档以工作区路径提供"
+        val system = source.resolve("ui/chat/manager/SystemPromptSections.kt").readText()
+        assertThat(system).contains(instruction)
+        assertThat(guide.readText()).contains(instruction)
+        assertThat(guide.readText()).contains("`view_media` 查看图片")
+        assertThat(guide.readText()).contains("`read_file` 读取文档")
+    }
+
     private fun tools(): List<SkillDefinition> {
         val app = source.resolve("InfinityApplication.kt").readText()
         val registrations = app.substringAfter("val presetSkillRegistry:").substringBefore("val userSkillRegistry:")

@@ -21,6 +21,8 @@ description: 管理或创建技能、编辑技能文件、管理智能体规则�
 
 Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node.js 与 npm、FFmpeg，用户可能没有全部安装；使用前先确认，缺少时用 `apk add` 补装（遵循命令审批）。
 
+已保存到工作区的历史用户图片和文档以工作区路径提供；需要重新查看时，使用 `view_media` 查看图片、使用 `read_file` 读取文档。引用失效时，请用户在对应会话与工作区重新确认附件。
+
 私有会话不扫描项目级技能。切换目录工作区后，项目技能按新的工作区重新扫描。`Termux` 是另一个 Android 应用：`termux_exec` 只在内置模式且用户已安装、授权并启用集成时可用，以 Termux 身份执行。SSH 工具在用户配置的远端主机执行，与本地运行模式相互独立。`exec_js`、`run_script`、`python_sandbox` 是应用提供的隔离脚本入口，在 Linux 会话隐藏。
 
 内置命令及 Linux 进程均以本应用的 Android 用户身份运行，能访问应用数据；“工作区”权限档是审批策略，不是进程路径沙箱。隔离脚本与文件工具有各自的工作区边界。Linux 中的 `/root` 不进入备份，重置会清空；`/home/session` 在 rootfs 之外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 等规则属于第三方工具，修改它们不会修改本智能体的提示词或权限。

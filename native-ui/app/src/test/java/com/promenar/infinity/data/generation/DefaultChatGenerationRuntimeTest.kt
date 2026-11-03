@@ -74,6 +74,123 @@ import kotlinx.coroutines.launch
 import org.junit.Test
 
 class DefaultChatGenerationRuntimeTest {
+    @Test fun `草稿预警重建下一轮历史而不重复预留已保存文档全文`() = runTest {
+        val strategy = DefaultChatGenerationContentStrategy(mockk(relaxed = true), null)
+        val fixture = skillsFixture(mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList()) },
+            protocolMessages = { session, system, model -> strategy.buildProtocolMessages(session, system, replaySource = model) })
+        val document = MessageDocumentAttachment("d", "large.txt", "text/plain", "中".repeat(200000), 600000, "hash", 200000,
+            workspaceReference = com.promenar.infinity.data.model.WorkspaceDocumentReference("/session/attachments/large.txt", 1, 200000,
+                sourceSessionId = "skills-session", isPrivate = true, linuxNamespace = false), inlineInCurrentTurn = true)
+        fixture.store.updateSession("skills-session") { it.copy(messages = it.messages.map { message ->
+            if (message.id == "user") message.copy(userDocuments = listOf(document)) else message
+        }) }
+
+        val budget = fixture.runtime.estimateDraftDocumentBudget("skills-session", "下一轮问题", emptyList())
+
+        assertThat(budget.status).isEqualTo(DraftBudgetStatus.FITS)
+        assertThat(budget.currentUsedTokens).isGreaterThan(200000)
+        assertThat(budget.estimatedTotalTokens).isLessThan(100000)
+        assertThat(fixture.store.getSession("skills-session")!!.messages.first().userDocuments!!.single().content).isEqualTo(document.content)
+    }
+
+    private fun attachmentStore(snapshots: MutableList<Pair<List<String>, List<MessageDocumentAttachment>>>) =
+        object : com.promenar.infinity.data.document.UserAttachmentWorkspaceStore {
+            override suspend fun save(session: Session, images: List<String>, documents: List<MessageDocumentAttachment>,
+                relativeDirectory: String?): com.promenar.infinity.data.document.StoredUserAttachments {
+                snapshots += images to documents
+                fun reference(name: String) = com.promenar.infinity.data.model.WorkspaceDocumentReference(
+                    "/session/attachments/$name", 1, 12, sourceSessionId = session.id, isPrivate = true, linuxNamespace = false,
+                )
+                return com.promenar.infinity.data.document.StoredUserAttachments(
+                    images.mapIndexed { index, _ -> reference("image-$index.png") }.takeIf { it.isNotEmpty() },
+                    documents.map { it.copy(workspaceReference = reference(it.name), inlineInCurrentTurn = true) },
+                )
+            }
+        }
+
+    @Test fun `直接发送编辑重发和重新生成共用落盘且工具轮次只保存一次`() = runTest {
+        val image = "data:image/png;base64,AA=="
+        val document = MessageDocumentAttachment("d", "reference.txt", "text/plain", "附件全文", 12, "hash", 4)
+        for (mode in listOf("直接发送", "编辑重发", "重新生成")) {
+            val snapshots = mutableListOf<Pair<List<String>, List<MessageDocumentAttachment>>>()
+            var saved: Session? = null
+            val updates = mutableListOf<String>()
+            val oldReply = Message("old-reply", MessageRole.ASSISTANT, "旧回复", parentMessageId = "u1")
+            val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 1, contextTokens = 128000,
+                initialUser = Message("u1", MessageRole.USER, mode, userImages = listOf(image), userDocuments = listOf(document)),
+                initialReplies = if (mode == "重新生成") listOf(oldReply) else emptyList(),
+                replacementIds = if (mode == "重新生成") setOf(oldReply.id) else emptySet(),
+                attachmentStore = attachmentStore(snapshots), onPersist = { updates += it }, onCompleted = { saved = it.getSession("s1") })
+            assertThat(snapshots).hasSize(1)
+            assertThat(snapshots.single().first).containsExactly(image)
+            assertThat(snapshots.single().second).containsExactly(document)
+            val user = saved!!.messages.first { it.id == "u1" }
+            assertThat(user.userImages).containsExactly(image)
+            assertThat(user.userImageReferences!!.single()!!.path).isEqualTo("/session/attachments/image-0.png")
+            assertThat(user.userDocuments!!.single().content).isEqualTo(document.content)
+            assertThat(user.userDocuments!!.single().inlineInCurrentTurn).isTrue()
+            assertThat(updates.any { it.contains("userImageReferences") && it.contains("workspaceReference") }).isTrue()
+            assertThat(prompts).hasSize(2)
+            prompts.forEach { prompt ->
+                val current = prompt.messages.first { it.role == "user" && it.content.startsWith(mode) }
+                assertThat(current.imageUrls!!.single().url).isEqualTo(image)
+                assertThat(current.content).contains(document.content)
+            }
+        }
+    }
+
+    @Test fun `附件写入失败不阻断请求且图片文档仍内联`() = runTest {
+        val image = "data:image/png;base64,AA=="
+        val document = MessageDocumentAttachment("d", "reference.txt", "text/plain", "失败后原文", 15, "hash", 5)
+        val saver = mockk<com.promenar.infinity.data.document.UserAttachmentWorkspaceStore>()
+        coEvery { saver.save(any(), any(), any(), any()) } throws java.io.IOException("模拟后端不可写")
+        var saved: Session? = null
+        val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 0, contextTokens = 128000, attachmentStore = saver,
+            initialUser = Message("u1", MessageRole.USER, "question", userImages = listOf(image), userDocuments = listOf(document)),
+            onCompleted = { saved = it.getSession("s1") })
+        val user = saved!!.messages.first { it.id == "u1" }
+        assertThat(user.userImageReferences).isNull()
+        assertThat(user.userDocuments).containsExactly(document)
+        assertThat(prompts.single().messages.first { it.role == "user" }.imageUrls!!.single().url).isEqualTo(image)
+        assertThat(prompts.single().messages.first { it.role == "user" }.content).contains(document.content)
+    }
+
+    @Test fun `排队与插队注入后均保存附件且后续注入开启新当前轮`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("attachment-injection-runtime").toFile()
+        try {
+            for (steering in listOf(false, true)) {
+                val queue = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(
+                    java.io.File(directory, steering.toString()), { java.io.ByteArrayInputStream(byteArrayOf(1, 2, 3)) },
+                    UnconfinedTestDispatcher(testScheduler),
+                )
+                val snapshots = mutableListOf<Pair<List<String>, List<MessageDocumentAttachment>>>()
+                val document = MessageDocumentAttachment("d", "queued.txt", "text/plain", "注入附件原文", 18, "hash", 6)
+                var saved: Session? = null
+                val (prompts, _, _) = runThreeRoundToolScenario(toolRoundCount = 1, contextTokens = 128000, composerQueue = queue,
+                    attachmentStore = attachmentStore(snapshots),
+                    onToolsFinished = {
+                        val item = queue.enqueue("s1", "带附件的注入消息", listOf("source-image"), listOf(document))
+                        if (steering) queue.steer("s1", item.id)
+                        queue.enqueue("s1", "接着分析保存的附件")
+                    }, onCompleted = { saved = it.getSession("s1") })
+                assertThat(snapshots).hasSize(1)
+                assertThat(snapshots.single().first).hasSize(1)
+                assertThat(snapshots.single().second).containsExactly(document)
+                val user = saved!!.messages.single { it.content == "带附件的注入消息" }
+                assertThat(user.userImageReferences!!.single()!!.path).isEqualTo("/session/attachments/image-0.png")
+                val current = prompts[1].messages.single { it.role == "user" && it.content.startsWith(user.content) }
+                assertThat(current.imageUrls).hasSize(1)
+                assertThat(current.content).contains(document.content)
+                val historical = prompts[2].messages.single { it.role == "user" && it.content.startsWith(user.content) }
+                assertThat(historical.imageUrls).isNull()
+                assertThat(historical.content).contains("/session/attachments/image-0.png")
+                assertThat(historical.content).contains("/session/attachments/queued.txt")
+                assertThat(historical.content).doesNotContain(document.content)
+            }
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test
     fun `只有引用的当前用户轮次写入记忆时包含引文批注且不重复格式化`() = runTest {
         val memory = mockk<MemoryManager> { every { canEmbed } returns true }
@@ -105,7 +222,7 @@ class DefaultChatGenerationRuntimeTest {
         val archived = slot<List<Message>>()
         coEvery { fixture.postProcessor.archiveMessagesToRag(any(), capture(archived), any(), any()) } returns Unit
         val summarized = slot<List<Message>>()
-        coEvery { fixture.summaryManager.summarizeOrNull(any(), capture(summarized), any(), any(), any(), any()) } returns "摘要"
+        coEvery { fixture.summaryManager.summarizeOrNull(any(), capture(summarized), any(), any(), any(), any(), any()) } returns "摘要"
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
@@ -1359,7 +1476,7 @@ class DefaultChatGenerationRuntimeTest {
         )
         val cancellation = CancellationException("summary-cancel")
         coEvery { fixture.postProcessor.updateStats(any()) } returns Unit
-        coEvery { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any()) } throws cancellation
+        coEvery { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any(), any()) } throws cancellation
 
         val result = runCatching {
             fixture.runtime.postProcess(
@@ -1385,7 +1502,7 @@ class DefaultChatGenerationRuntimeTest {
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
-        coVerify(exactly = 0) { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { fixture.messageManager.updateMessage(any(), any(), any()) }
     }
 
@@ -1399,7 +1516,7 @@ class DefaultChatGenerationRuntimeTest {
         coEvery { fixture.postProcessor.updateStats(any()) } returns Unit
         val overflow = slot<List<Message>>()
         coEvery {
-            fixture.summaryManager.summarizeOrNull(any(), capture(overflow), any(), any(), any(), "session")
+            fixture.summaryManager.summarizeOrNull(any(), capture(overflow), any(), any(), any(), "session", any())
         } returns "summary"
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
@@ -1422,7 +1539,7 @@ class DefaultChatGenerationRuntimeTest {
             messageCount = 6,
         )
         coEvery { fixture.postProcessor.updateStats(any()) } returns Unit
-        coEvery { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any()) } returns null
+        coEvery { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any(), any()) } returns null
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
@@ -2549,15 +2666,21 @@ class DefaultChatGenerationRuntimeTest {
         toolCallsPerRound: Int = 1,
         onPartialStream: (suspend () -> Unit)? = null,
         expectedFailure: GenerationFailureCode? = null,
+        attachmentStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
+        initialUser: Message = Message("u1", MessageRole.USER, "question"),
+        initialReplies: List<Message> = emptyList(),
+        replacementIds: Set<String> = emptySet(),
+        contextTokens: Int? = null,
     ): Triple<List<PromptRequest>, Int, List<List<ProtocolTool>>> {
         val settings = mockk<SharedPreferences>()
         every { settings.getInt(any(), any()) } answers { secondArg() }
+        contextTokens?.let { every { settings.getInt("model_info_local::model_context", any()) } returns it }
         loopLimit?.let { every { settings.getInt("loop_limit", any()) } returns it }
         every { settings.getStringSet(any(), any()) } returns setOf("search", "read_file")
         every { settings.getString(any(), any()) } returns ""
         every { settings.getBoolean(any(), any()) } returns true
         every { settings.getFloat(any(), any()) } answers { secondArg() }
-        val user = Message("u1", MessageRole.USER, "question")
+        val user = initialUser
         val initialAssistant = Message("a0", MessageRole.ASSISTANT, "")
         val store = ChatStore().apply {
             update {
@@ -2569,7 +2692,7 @@ class DefaultChatGenerationRuntimeTest {
                             modelId = "local::model",
                             executionMode = "auto",
                             options = SessionOptions(toolsEnabled = true, webSearch = true),
-                            messages = listOf(user, initialAssistant),
+                            messages = listOf(user) + initialReplies + initialAssistant,
                         ),
                     ),
                 )
@@ -2720,9 +2843,11 @@ class DefaultChatGenerationRuntimeTest {
             outputStore = outputStore,
             toolProgressReminder = reminder,
             composerQueueStore = composerQueue,
+            attachmentWorkspaceStore = attachmentStore,
         )
         val request = GenerationRequest(
-            "s1", "a0", "u1", "question", emptyList(), GenerationRuntimePolicy.BACKGROUND_ALLOWED,
+            "s1", "a0", user.id, user.content, user.userImages.orEmpty(), GenerationRuntimePolicy.BACKGROUND_ALLOWED,
+            messageIdsToReplace = replacementIds,
         )
 
         if (expectedFailure == null) ChatGenerationRunner(runtime).run(request) {} else {

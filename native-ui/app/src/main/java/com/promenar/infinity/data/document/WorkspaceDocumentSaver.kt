@@ -5,12 +5,16 @@ import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.model.MessageDocumentAttachment
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.WorkspaceDocumentReference
+import com.promenar.infinity.data.model.isBoundTo
 import com.promenar.infinity.data.rag.DocumentReferenceExtractor
 import com.promenar.infinity.data.rag.FileIndexEvent
 import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.WorkspaceLifecycleErrorCode
 import com.promenar.infinity.data.repository.WorkspaceLifecycleException
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.AndroidRealPathFileSystem
+import com.promenar.infinity.data.storage.RealPathExternalFolderBackend
+import com.promenar.infinity.data.storage.RealPathFileSystem
 import com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding
 import com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination
 import com.promenar.infinity.data.workspace.WorkspaceFileTarget
@@ -31,6 +35,8 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 interface DocumentWorkspaceSaver {
@@ -39,11 +45,33 @@ interface DocumentWorkspaceSaver {
         document: MessageDocumentAttachment,
         relativeDirectory: String? = null,
     ): DocumentWorkspaceSaveResult
+
+    suspend fun saveBytes(
+        sessionId: String,
+        name: String,
+        mimeType: String,
+        bytes: ByteArray,
+        lineCount: Int = 0,
+        estimatedTokens: Int = 0,
+        relativeDirectory: String? = null,
+    ): DocumentWorkspaceBytesSaveResult = DocumentWorkspaceBytesSaveResult.Failure(DocumentWorkspaceSaveFailure.SaveFailed)
+
+    suspend fun isReusable(
+        session: Session,
+        reference: WorkspaceDocumentReference,
+        expectedSha256: String,
+        expectedSizeBytes: Long? = null,
+    ): Boolean = false
 }
 
 sealed interface DocumentWorkspaceSaveResult {
     data class Success(val attachment: MessageDocumentAttachment) : DocumentWorkspaceSaveResult
     data class Failure(val reason: DocumentWorkspaceSaveFailure) : DocumentWorkspaceSaveResult
+}
+
+sealed interface DocumentWorkspaceBytesSaveResult {
+    data class Success(val reference: WorkspaceDocumentReference) : DocumentWorkspaceBytesSaveResult
+    data class Failure(val reason: DocumentWorkspaceSaveFailure) : DocumentWorkspaceBytesSaveResult
 }
 
 enum class DocumentWorkspaceSaveFailure {
@@ -65,6 +93,7 @@ internal class WorkspaceDocumentSaver(
     private val indexEvents: FileIndexEventSink,
     private val clock: Clock = Clock.systemDefaultZone(),
     private val sessionFor: suspend (String) -> Session? = { null },
+    private val fileSystem: RealPathFileSystem = AndroidRealPathFileSystem,
 ) : DocumentWorkspaceSaver {
     override suspend fun save(
         sessionId: String,
@@ -74,10 +103,31 @@ internal class WorkspaceDocumentSaver(
         if (document.workspaceReference != null) {
             return@withContext DocumentWorkspaceSaveResult.Failure(DocumentWorkspaceSaveFailure.AlreadySaved)
         }
+        when (val saved = saveBytes(
+            sessionId, document.name, document.mimeType, document.content.toByteArray(Charsets.UTF_8),
+            lineCount = if (document.content.isEmpty()) 0 else document.content.lineSequence().count(),
+            estimatedTokens = document.estimatedTokens, relativeDirectory = relativeDirectory,
+        )) {
+            is DocumentWorkspaceBytesSaveResult.Success -> DocumentWorkspaceSaveResult.Success(
+                document.copy(content = "", workspaceReference = saved.reference, inlineInCurrentTurn = false),
+            )
+            is DocumentWorkspaceBytesSaveResult.Failure -> DocumentWorkspaceSaveResult.Failure(saved.reason)
+        }
+    }
+
+    override suspend fun saveBytes(
+        sessionId: String,
+        name: String,
+        mimeType: String,
+        bytes: ByteArray,
+        lineCount: Int,
+        estimatedTokens: Int,
+        relativeDirectory: String?,
+    ): DocumentWorkspaceBytesSaveResult = withContext(Dispatchers.IO) {
         try {
-            validateComponent(document.name)
-            val directory = validateDirectory(relativeDirectory ?: "attachments/${LocalDate.now(clock)}")
-            validateNamespace("$directory/${document.name}")
+            AttachmentWorkspacePaths.name(name)
+            val directory = AttachmentWorkspacePaths.directory(relativeDirectory ?: "attachments/${LocalDate.now(clock)}")
+            AttachmentWorkspacePaths.namespace("$directory/$name")
             val destination = targets.primaryDestination(sessionId)
                 ?: throw ExternalFolderException("UNAVAILABLE", "会话工作区不可用")
             val binding = bindSource(sessionId, destination)
@@ -85,9 +135,9 @@ internal class WorkspaceDocumentSaver(
             val target = targets.resolve(sessionId, TARGET_ANCHOR, writing = true, destination)
             withContext(ExternalMountOperationBindings(target.mountIds)) saving@ {
                 checkCurrent(target, binding)
-                val bytes = document.content.toByteArray(Charsets.UTF_8)
+                val sha256 = workspaceAttachmentSha256(bytes)
                 for (sequence in 1..MAX_NAME_ATTEMPTS) {
-                    val path = "$directory/${numberedName(document.name, sequence)}"
+                    val path = "$directory/${numberedName(name, sequence)}"
                     checkCurrent(target, binding)
                     if (entry(target, path) != null) continue
                     ensureParents(target, binding, path)
@@ -95,35 +145,85 @@ internal class WorkspaceDocumentSaver(
                     val presented = targets.presenter(sessionId).present(destination.destination, path, privatePrimary = false)
                     checkCurrent(target, binding)
                     try {
-                        create(target, binding, path, bytes, document.mimeType)
+                        create(target, binding, path, bytes, mimeType)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {
                         if (isNameConflict(failure)) continue
                         throw failure
                     }
-                    return@saving DocumentWorkspaceSaveResult.Success(
-                        document.copy(
-                            content = "",
-                            workspaceReference = WorkspaceDocumentReference(
-                                path = presented,
-                                lineCount = if (document.content.isEmpty()) 0 else document.content.lineSequence().count(),
-                                estimatedTokens = document.estimatedTokens,
-                                sourceSessionId = sessionId,
-                                workspaceId = destination.workspaceId,
-                                isPrivate = destination.destination == WorkspaceDefaultFileDestination.SESSION_PRIVATE,
-                                linuxNamespace = target.linuxNamespace,
-                                worktreeDirectory = binding.worktreeDirectory,
-                            ),
+                    return@saving DocumentWorkspaceBytesSaveResult.Success(
+                        WorkspaceDocumentReference(
+                            path = presented,
+                            lineCount = lineCount,
+                            estimatedTokens = estimatedTokens,
+                            sourceSessionId = sessionId,
+                            workspaceId = destination.workspaceId,
+                            isPrivate = destination.destination == WorkspaceDefaultFileDestination.SESSION_PRIVATE,
+                            linuxNamespace = target.linuxNamespace,
+                            worktreeDirectory = binding.worktreeDirectory,
+                            sha256 = sha256,
                         ),
                     )
                 }
-                DocumentWorkspaceSaveResult.Failure(DocumentWorkspaceSaveFailure.NameConflict)
+                DocumentWorkspaceBytesSaveResult.Failure(DocumentWorkspaceSaveFailure.NameConflict)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            DocumentWorkspaceSaveResult.Failure(failureReason(failure))
+            DocumentWorkspaceBytesSaveResult.Failure(failureReason(failure))
+        }
+    }
+
+    override suspend fun isReusable(
+        session: Session,
+        reference: WorkspaceDocumentReference,
+        expectedSha256: String,
+        expectedSizeBytes: Long?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if ((reference.sha256 != null && reference.sha256 != expectedSha256) || !reference.isBoundTo(session)) return@withContext false
+            val destination = targets.primaryDestination(session.id) ?: return@withContext false
+            if (reference.workspaceId != destination.workspaceId ||
+                reference.isPrivate != (destination.destination == WorkspaceDefaultFileDestination.SESSION_PRIVATE)
+            ) return@withContext false
+            val binding = bindSource(session.id, destination)
+            if (reference.worktreeDirectory != binding.worktreeDirectory) return@withContext false
+            val path = workspaceFileRelativePath(reference.path)
+            AttachmentWorkspacePaths.namespace(path)
+            val target = targets.resolve(session.id, TARGET_ANCHOR, writing = false, destination)
+            if (target.linuxNamespace != reference.linuxNamespace) return@withContext false
+            withContext(ExternalMountOperationBindings(target.mountIds)) checking@ {
+                checkCurrent(target, binding)
+                val file = entry(target, path) ?: return@checking false
+                if (file.isDirectory || file.sizeBytes < 0 || expectedSizeBytes != null && file.sizeBytes != expectedSizeBytes) return@checking false
+                val limit = expectedSizeBytes ?: file.sizeBytes
+                val backend = target.directoryBackend ?: target.mount?.let { mounts.backend(target.sessionId, target.mountIds) }
+                    ?: RealPathExternalFolderBackend(requireNotNull(target.directory), emptySet(), { true }, fileSystem)
+                val backendPath = if (target.mount != null) target.accessPath(path) else path
+                val hash = backend.readStream(backendPath, limit) { input ->
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        if (total > limit - count) throw ExternalFolderException("TOO_LARGE", "附件字节数已变化")
+                        total += count
+                        digest.update(buffer, 0, count)
+                    }
+                    if (total != limit) return@readStream null
+                    digest.digest().joinToString("") { "%02x".format(it) }
+                }
+                checkCurrent(target, binding)
+                hash == expectedSha256
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -220,7 +320,7 @@ internal class WorkspaceDocumentSaver(
             } catch (failure: Exception) {
                 withContext(NonCancellable) {
                     try {
-                        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+                        val hash = workspaceAttachmentSha256(bytes)
                         backend.deleteForTransfer(backendPath, created, hash)
                     } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
                 }
@@ -268,23 +368,6 @@ internal class WorkspaceDocumentSaver(
         }
     }
 
-    private fun validateDirectory(path: String): String {
-        if (path.startsWith('/') || path.isBlank()) invalidPath()
-        path.split('/').forEach(::validateComponent)
-        val normalized = ExternalFolderPaths.normalize(path)
-        validateNamespace(normalized)
-        return normalized
-    }
-
-    private fun validateNamespace(path: String) {
-        if (workspaceFileRelativePath(path) != path || ExternalMountPaths.isMountedPath(path)) invalidPath()
-    }
-
-    private fun validateComponent(name: String) {
-        ExternalFolderPaths.validateName(name)
-        if (':' in name || name.any(Char::isISOControl) || name == ".l2s" || name.startsWith(".l2s.") || name.startsWith(".proot.l2s.")) invalidPath()
-    }
-
     private fun numberedName(name: String, sequence: Int): String {
         if (sequence == 1) return name
         val extension = name.lastIndexOf('.').takeIf { it > 0 } ?: name.length
@@ -309,10 +392,30 @@ internal class WorkspaceDocumentSaver(
         else -> DocumentWorkspaceSaveFailure.SaveFailed
     }
 
-    private fun invalidPath(): Nothing = throw ExternalFolderException("INVALID_PATH", "文档保存路径无效")
-
     companion object {
         private const val TARGET_ANCHOR = "/attachments"
         private const val MAX_NAME_ATTEMPTS = 1_000
     }
 }
+
+internal object AttachmentWorkspacePaths {
+    fun directory(path: String): String {
+        if (path.startsWith('/') || path.isBlank()) invalid()
+        path.split('/').forEach(::name)
+        return ExternalFolderPaths.normalize(path).also(::namespace)
+    }
+
+    fun namespace(path: String) {
+        if (workspaceFileRelativePath(path) != path || ExternalMountPaths.isMountedPath(path)) invalid()
+    }
+
+    fun name(name: String) {
+        ExternalFolderPaths.validateName(name)
+        if (':' in name || name.any(Char::isISOControl) || name == ".l2s" || name.startsWith(".l2s.") || name.startsWith(".proot.l2s.")) invalid()
+    }
+
+    private fun invalid(): Nothing = throw ExternalFolderException("INVALID_PATH", "附件保存路径无效")
+}
+
+internal fun workspaceAttachmentSha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes).joinToString("") { "%02x".format(it) }

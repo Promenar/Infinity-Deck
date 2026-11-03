@@ -20,6 +20,7 @@ data class WorkspaceDocumentReference(
     val isPrivate: Boolean? = null,
     val linuxNamespace: Boolean? = null,
     val worktreeDirectory: String? = null,
+    val sha256: String? = null,
 )
 
 /** 这里只核验逻辑来源；文件工具继续负责实际后端的目录与路径安全检查。 */

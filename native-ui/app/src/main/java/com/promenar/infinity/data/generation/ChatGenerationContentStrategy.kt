@@ -3,14 +3,12 @@ package com.promenar.infinity.data.generation
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import android.content.SharedPreferences
 import com.promenar.infinity.data.model.ExecutionStep
-import com.promenar.infinity.data.model.FullContextDocumentFormatter
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
-import com.promenar.infinity.data.model.MessageQuoteFormatter
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.ToolCall
+import com.promenar.infinity.data.model.UserAttachmentModelContent
 import com.promenar.infinity.data.remote.parser.DsmlStreamParser
-import com.promenar.infinity.data.remote.protocol.ImageInput
 import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import com.promenar.infinity.data.remote.protocol.ProtocolToolCall
@@ -153,24 +151,14 @@ class DefaultChatGenerationContentStrategy(
             }
             add(
                 when (message.role) {
-                    MessageRole.USER -> ProtocolMessage(
-                        role = "user",
-                        content = FullContextDocumentFormatter.appendToUserContent(
-                            MessageQuoteFormatter.formatUserContent(message.content, message.quotes),
-                            message.userDocuments.orEmpty(),
-                            session,
-                        ),
-                        turnContext = com.promenar.infinity.ui.chat.manager.turnContextForModel(message.turnContext),
-                        imageUrls = message.userImages?.map { dataUrl ->
-                            val base64Index = dataUrl.indexOf("base64,")
-                            val mimeEnd = dataUrl.indexOf(';')
-                            ImageInput(
-                                url = dataUrl,
-                                base64 = if (base64Index >= 0) dataUrl.substring(base64Index + 7) else "",
-                                mimeType = if (mimeEnd > 5) dataUrl.substring(5, mimeEnd) else "image/jpeg",
-                            )
-                        },
-                    )
+                    MessageRole.USER -> UserAttachmentModelContent.format(message, session, index == currentTurnStart).let { attachment ->
+                        ProtocolMessage(
+                            role = "user",
+                            content = attachment.content,
+                            turnContext = com.promenar.infinity.ui.chat.manager.turnContextForModel(message.turnContext),
+                            imageUrls = attachment.imageUrls,
+                        )
+                    }
                     MessageRole.ASSISTANT -> ProtocolMessage(
                         role = "assistant",
                         content = message.content,

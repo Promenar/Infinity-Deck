@@ -5,6 +5,7 @@ object FullContextDocumentFormatter {
         userContent: String,
         documents: List<MessageDocumentAttachment>,
         session: Session? = null,
+        isCurrentTurn: Boolean = true,
     ): String {
         if (documents.isEmpty()) return userContent
         return buildString {
@@ -19,7 +20,8 @@ object FullContextDocumentFormatter {
             }
             documents.forEachIndexed { index, document ->
                 val reference = document.workspaceReference
-                if (reference != null) {
+                // 自动保存的当前附件保留全文；引用来源失效时仍只输出失效说明。
+                if (reference != null && !(document.inlineInCurrentTurn && isCurrentTurn && reference.isBoundTo(session))) {
                     append("[INFINITY_WORKSPACE_DOCUMENT name=\"")
                     append(document.name.escapeXmlAttribute())
                     if (!reference.isBoundTo(session)) {

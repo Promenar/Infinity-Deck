@@ -198,9 +198,11 @@ internal class DefaultChatGenerationRuntime(
     private val toolProgressReminder: ToolProgressReminder = ToolProgressReminder(),
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
+    private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
+    private val attachmentPersistenceAttempts = mutableSetOf<String>()
     private val contextLimitRecovery = ContextLimitRecovery()
     private var activeToolBudget: GenerationToolBudget? = null
     private var baselineTokens = 0L
@@ -505,9 +507,20 @@ internal class DefaultChatGenerationRuntime(
             } catch (_: java.io.IOException) { ContextCompactionPipeline.headTail(message.content, 2000) })
         }
         val preview = compactionPipeline.preview(context.session, context.prompt.copy(messages = messages), preparedRoute?.modelId)
+        // 合成用户轮只用于只读预估，使原当前轮附件和工具媒体采用历史引用。
+        val nextTurn = context.session.copy(messages = context.session.messages + com.promenar.infinity.data.model.Message(
+            "draft-budget-preview", MessageRole.USER, "",
+        ))
+        val nextMessages = buildMessagesWithMedia(nextTurn, context.systemPrompt, modelId = preparedRoute?.modelId).dropLast(1).map { message ->
+            if (message.role != "tool" || message.name == "view_media" || outputStore == null) message else message.copy(content = try {
+                outputStore.previewForContext(sessionId, message.content)
+            } catch (_: java.io.IOException) { ContextCompactionPipeline.headTail(message.content, 2000) })
+        }
+        val nextPreview = compactionPipeline.preview(nextTurn, context.prompt.copy(messages = nextMessages), preparedRoute?.modelId)
         return DraftDocumentBudgetEvaluator.evaluate(context.session, DraftBudgetContext(
             preparedRoute?.modelId ?: context.prompt.model, preview.prompt,
-            PreparedPromptBudgetGate.resolveWindow(context.session, context.prompt, settings, preparedRoute?.modelId)), text, documents)
+            PreparedPromptBudgetGate.resolveWindow(context.session, context.prompt, settings, preparedRoute?.modelId),
+            historyForNextTurn = nextPreview.prompt), text, documents)
     }
 
     override suspend fun prepare(request: GenerationRequest) {
@@ -542,6 +555,22 @@ internal class DefaultChatGenerationRuntime(
         }
     }
 
+    private suspend fun persistCurrentUserAttachments(request: GenerationRequest) {
+        val saver = attachmentWorkspaceStore ?: return
+        val session = store.getSession(request.sessionId) ?: return
+        val user = session.messages.firstOrNull { it.id == request.userMessageId && it.role == MessageRole.USER } ?: return
+        if (user.userImages.isNullOrEmpty() && user.userDocuments.isNullOrEmpty()) return
+        if (!attachmentPersistenceAttempts.add(user.id)) return
+        try {
+            val saved = saver.save(session, user.userImages.orEmpty(), user.userDocuments.orEmpty())
+            if (saved.imageReferences != user.userImageReferences || saved.documents != user.userDocuments.orEmpty())
+                messageManager.persistUserAttachments(session.id, user, saved.imageReferences, saved.documents)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            InfinityLogger.diagnostic("generation.user_attachment_save_failed", mapOf("sessionId" to session.id, "messageId" to user.id))
+        }
+    }
+
     override suspend fun buildContext(request: GenerationRequest): GenerationPreparationOutcome {
         interactionMode = request.interactionMode
         subagentCompletions?.let { bridge ->
@@ -553,6 +582,7 @@ internal class DefaultChatGenerationRuntime(
             handlePreparationFailure(request, failure, null)
             return GenerationPreparationOutcome.Handled(failure)
         }
+        persistCurrentUserAttachments(request)
         val storedUser = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == request.userMessageId && it.role == MessageRole.USER }
         val turnMessages = store.getSession(request.sessionId)?.messages.orEmpty()
             .dropWhile { it.id != request.userMessageId }.drop(1).takeWhile { it.role != MessageRole.USER }
@@ -725,7 +755,7 @@ internal class DefaultChatGenerationRuntime(
             stream = true,
         )
         val hasFullContextDocuments = session.messages.firstOrNull { it.id == request.userMessageId }
-            ?.userDocuments.orEmpty().any { it.workspaceReference == null } || prompt.messages.any { !it.documentData.isNullOrEmpty() }
+            ?.userDocuments.orEmpty().any { it.workspaceReference == null || it.inlineInCurrentTurn } || prompt.messages.any { !it.documentData.isNullOrEmpty() }
         val window = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, route.modelId)
         val floor = compactionPipeline.inputFloor(session, prompt, window, route.modelId)
         if (floor.exceeded || (hasFullContextDocuments && window.inputBudgetTokens == null)) {
@@ -817,7 +847,7 @@ internal class DefaultChatGenerationRuntime(
         val prompt = mediaPrompt
         val currentSession = store.getSession(request.sessionId) ?: error("生成会话不存在")
         val finalHasDocuments = prompt.messages.any { !it.documentData.isNullOrEmpty() } ||
-            currentSession.messages.firstOrNull { it.id == request.userMessageId }?.userDocuments.orEmpty().any { it.workspaceReference == null }
+            currentSession.messages.firstOrNull { it.id == request.userMessageId }?.userDocuments.orEmpty().any { it.workspaceReference == null || it.inlineInCurrentTurn }
         val finalBudget = PreparedPromptBudgetGate.evaluate(currentSession, prompt, settings,
             finalHasDocuments, route.modelId)
         if (finalBudget is ContextBudgetDecision.Blocked) {
@@ -1793,6 +1823,7 @@ internal class DefaultChatGenerationRuntime(
                     onProgress = { ui.updatePostProcessTask(taskId, progress = 0.5f) },
                     onUsage = { usage = it },
                     sessionId = request.sessionId,
+                    sourceSession = session,
                 )
             } finally {
                 usage?.let { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { recordSummaryUsage(request, it) } }

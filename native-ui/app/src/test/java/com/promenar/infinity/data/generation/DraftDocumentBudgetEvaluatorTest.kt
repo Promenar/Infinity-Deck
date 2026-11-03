@@ -46,4 +46,33 @@ class DraftDocumentBudgetEvaluatorTest {
         assertThat(result.documents.single().inline).isFalse()
         assertThat(result.overflowDocumentIds).isEmpty()
     }
+
+    @Test fun `自动保存的当前轮文档仍按全文预检`() {
+        val automatic = document("automatic", "中".repeat(3000)).copy(
+            workspaceReference = WorkspaceDocumentReference("/session/attachments/automatic.txt", 1, 3000,
+                sourceSessionId = session.id, isPrivate = true, linuxNamespace = false),
+            inlineInCurrentTurn = true,
+        )
+        val result = DraftDocumentBudgetEvaluator.evaluate(session, route(PromptWindow(2000, 256)), "问题", listOf(automatic))
+        assertThat(result.status).isEqualTo(DraftBudgetStatus.EXCEEDED)
+        assertThat(result.documents.single().inline).isTrue()
+        assertThat(result.individuallyOversizedDocumentIds).containsExactly("automatic")
+    }
+
+    @Test fun `下一轮草稿按历史引用评估且当前已用保留面板校准值`() {
+        val doc = document("sent", "中".repeat(20000)).copy(
+            workspaceReference = WorkspaceDocumentReference("/session/attachments/sent.txt", 1, 20000,
+                sourceSessionId = session.id, isPrivate = true, linuxNamespace = false), inlineInCurrentTurn = true)
+        val sent = session.copy(messages = listOf(Message("u", MessageRole.USER, "旧问题", userDocuments = listOf(doc))))
+        val strategy = DefaultChatGenerationContentStrategy(io.mockk.mockk(relaxed = true), null)
+        val original = prompt.copy(messages = strategy.buildProtocolMessages(sent, "规则"))
+        val calibrated = sent.copy(stats = SessionStats(contextUsageBaseline = PromptUsageCalibration.capture(sent, original, 40000, "provider::model")))
+        val nextHistory = strategy.buildProtocolMessages(calibrated.copy(messages = calibrated.messages + Message("draft", MessageRole.USER, "")), "规则").dropLast(1)
+        val result = DraftDocumentBudgetEvaluator.evaluate(calibrated, DraftBudgetContext("provider::model", original,
+            PromptWindow(8000, 1024), historyForNextTurn = original.copy(messages = nextHistory)), "新问题", listOf(document("new", "小文档")))
+        assertThat(result.currentUsedTokens).isEqualTo(40000)
+        assertThat(result.status).isEqualTo(DraftBudgetStatus.FITS)
+        assertThat(result.estimatedTotalTokens).isLessThan(1000)
+        assertThat(result.overflowDocumentIds).isEmpty()
+    }
 }

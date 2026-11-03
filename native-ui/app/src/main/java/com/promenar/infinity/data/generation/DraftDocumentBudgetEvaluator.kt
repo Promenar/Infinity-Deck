@@ -7,7 +7,13 @@ import com.promenar.infinity.data.remote.protocol.PromptRequest
 import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 
 /** prompt 是当前已存上下文的只读快照，模型 ID 使用稳定路由 ID。 */
-data class DraftBudgetContext(val modelId: String, val prompt: PromptRequest, val window: PromptWindow)
+data class DraftBudgetContext(
+    val modelId: String,
+    val prompt: PromptRequest,
+    val window: PromptWindow,
+    /** 新用户轮开始后的历史副本；旧附件按发送路径转引用，不包含草稿本身。 */
+    val historyForNextTurn: PromptRequest? = null,
+)
 enum class DraftBudgetStatus { FITS, EXCEEDED, UNKNOWN_WINDOW }
 data class DraftDocumentTokens(val documentId: String, val tokens: Int, val inline: Boolean)
 data class DraftDocumentBudget(
@@ -27,17 +33,18 @@ data class DraftDocumentBudget(
 object DraftDocumentBudgetEvaluator {
     fun evaluate(session: Session, model: DraftBudgetContext, draftText: String,
                  documents: List<MessageDocumentAttachment>): DraftDocumentBudget {
-        fun total(docs: List<MessageDocumentAttachment>) = PromptUsageCalibration.estimate(session, model.prompt.copy(
-            messages = model.prompt.messages + ProtocolMessage("user", FullContextDocumentFormatter.appendToUserContent(draftText, docs, session))), model.modelId)
+        val history = model.historyForNextTurn ?: model.prompt
+        fun total(docs: List<MessageDocumentAttachment>) = PromptUsageCalibration.estimate(session, history.copy(
+            messages = history.messages + ProtocolMessage("user", FullContextDocumentFormatter.appendToUserContent(draftText, docs, session))), model.modelId)
         val used = PromptUsageCalibration.estimate(session, model.prompt, model.modelId)
         val base = total(emptyList())
         val estimated = if (draftText.isEmpty() && documents.isEmpty()) used else total(documents)
         val estimates = documents.map { document -> DraftDocumentTokens(document.id,
             (ApproximateTokenEstimator.estimate(FullContextDocumentFormatter.appendToUserContent("", listOf(document), session))),
-            document.workspaceReference == null) }
+            document.workspaceReference == null || document.inlineInCurrentTurn) }
         val budget = model.window.inputBudgetTokens
         val excess = budget?.let { (estimated - it).coerceAtLeast(0) } ?: 0
-        val individual = if (budget == null) emptySet() else documents.filter { it.workspaceReference == null && total(listOf(it)) > budget }
+        val individual = if (budget == null) emptySet() else documents.filter { (it.workspaceReference == null || it.inlineInCurrentTurn) && total(listOf(it)) > budget }
             .mapTo(linkedSetOf()) { it.id }
         val contributors = if (excess > 0) estimates.filter { it.inline && it.tokens > 0 }.mapTo(linkedSetOf()) { it.documentId } else emptySet()
         return DraftDocumentBudget(
