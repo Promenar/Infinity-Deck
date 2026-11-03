@@ -65,6 +65,7 @@ object ApprovalPreview {
                 args.string("code")?.let { append(it) }
             }.trimEnd().ifEmpty { null },
                 scriptAllowsNetwork = (args["allow_network"] as? JsonPrimitive)?.booleanOrNull == true)
+            "browser_eval" -> Preview(Action.SCRIPT, "", args.string("code"))
             "shell_exec", "python_exec" -> Preview(
                 Action.SCRIPT,
                 "",

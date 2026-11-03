@@ -1811,7 +1811,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             }.forEach(::register)
             register(WebSearchSkill(this@InfinityApplication, httpClient, secretStore))
             register(WebFetchSkill(gitRemoteHttpClient, networkPolicy = agentNetworkPolicy, tailnetRouting = tailnetManager))
-            com.promenar.infinity.ui.chat.manager.skills.browserTools(agentBrowser, agentNetworkPolicy).forEach(::register)
+            com.promenar.infinity.ui.chat.manager.skills.browserTools(agentBrowser, agentNetworkPolicy,
+                com.promenar.infinity.ui.browser.WorkspaceBrowserScreenshotPublisher(workspaceMediaStore, workspaceMediaViewer) { sessionId ->
+                    chatStore.getSession(sessionId)?.let { resolveMediaViewTarget(it) }
+                        ?: com.promenar.infinity.data.generation.MediaViewTarget()
+                }).forEach(::register)
             register(com.promenar.infinity.ui.chat.manager.skills.ViewMediaSkill(workspaceMediaViewer) { sessionId ->
                 chatStore.getSession(sessionId)?.let { resolveMediaViewTarget(it) }
                     ?: com.promenar.infinity.data.generation.MediaViewTarget()

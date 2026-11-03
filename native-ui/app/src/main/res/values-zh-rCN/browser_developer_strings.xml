@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_dev_mobile">移动模式</string>
+    <string name="browser_dev_desktop">桌面模式</string>
+    <string name="browser_dev_tab_released">页面已释放；切换到此标签时按网址重新加载。</string>
+    <string name="browser_dev_capacity">浏览器内存配额已满。请关闭一个页面或交回操作权后重试。</string>
+</resources>

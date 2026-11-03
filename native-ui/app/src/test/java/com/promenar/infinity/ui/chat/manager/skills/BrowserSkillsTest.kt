@@ -37,8 +37,8 @@ class BrowserSkillsTest {
     private val password = BrowserElement("e3", "textbox", "密码", tag = "input", inputType = "password", editable = true)
     private val button = BrowserElement("e4", "button", "登录", tag = "button")
 
-    @Test fun `四个工具schema合法、绑定会话状态且免审批`() {
-        val tools = browserTools(FakeBrowserController(), publicPolicy)
+    @Test fun `基础工具schema合法、绑定会话状态且免审批`() {
+        val tools = browserTools(FakeBrowserController(), publicPolicy).filter { it.name !in BROWSER_DEVELOPER_TOOL_NAMES }
         val validator = ToolSchemaValidator()
         assertThat(tools.map { it.name }).containsExactly(BROWSER_OPEN, BROWSER_SNAPSHOT, BROWSER_CLICK, BROWSER_TYPE).inOrder()
         val samples = mapOf(

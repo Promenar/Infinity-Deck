@@ -29,7 +29,8 @@ object ToolExecutionPolicy {
         arguments: String = "{}",
         resolvedTarget: String? = null,
         usesLinux: Boolean = false,
-    ): Boolean = requiresNonGrantableApproval(toolName, risk, resolvedTarget) ||
+    ): Boolean = (toolName == "browser_eval" && mode == ExecutionMode.WORKSPACE) ||
+        requiresNonGrantableApproval(toolName, risk, resolvedTarget) ||
         grantCategory(mode, toolName, risk, arguments, resolvedTarget, usesLinux) != null
 
     fun grantCategory(
@@ -40,6 +41,8 @@ object ToolExecutionPolicy {
         resolvedTarget: String? = null,
         usesLinux: Boolean = false,
     ): ApprovalGrantCategory? {
+        // 页面脚本在命令审批档逐次确认，不受命令的限时授权影响。
+        if (toolName == "browser_eval") return null
         if (requiresNonGrantableApproval(toolName, risk, resolvedTarget)) return null
         val target = resolvedTarget ?: ToolExecutionTargets.extract(
             com.promenar.infinity.data.remote.protocol.ProtocolTool(

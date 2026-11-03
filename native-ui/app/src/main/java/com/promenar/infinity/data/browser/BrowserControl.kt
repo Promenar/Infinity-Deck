@@ -26,6 +26,11 @@ data class BrowserUiState(
     val mode: BrowserMode = BrowserMode.IDLE,
     val action: BrowserAgentAction? = null,
     val handoff: BrowserHandoffReason? = null,
+    val displayMode: BrowserDisplayMode = BrowserDisplayMode.MOBILE,
+    val tabs: List<BrowserTabState> = emptyList(),
+    val currentTabId: String? = null,
+    /** 界面控制失败的稳定错误码，成功操作后清空。 */
+    val lastErrorCode: String? = null,
 )
 
 /** 浏览器操作权的状态机；页面信息由宿主经 [updatePage] 写入。 */
@@ -86,6 +91,18 @@ interface BrowserController {
     suspend fun describe(sessionId: String, ref: String): BrowserElement?
     suspend fun click(sessionId: String, element: BrowserElement): BrowserSnapshot
     suspend fun type(sessionId: String, element: BrowserElement, text: String, submit: Boolean): BrowserSnapshot
+    suspend fun evaluate(sessionId: String, code: String): String = unsupportedBrowserOperation()
+    suspend fun console(sessionId: String, levels: Set<String>, sinceLastRead: Boolean): List<BrowserConsoleEntry> = unsupportedBrowserOperation()
+    suspend fun dom(sessionId: String, selector: String, limit: Int, maxChars: Int, textOnly: Boolean): String = unsupportedBrowserOperation()
+    suspend fun network(sessionId: String): List<BrowserNetworkEntry> = unsupportedBrowserOperation()
+    suspend fun screenshot(sessionId: String): ByteArray = unsupportedBrowserOperation()
+    suspend fun setDisplayMode(sessionId: String, mode: BrowserDisplayMode): BrowserUiState = unsupportedBrowserOperation()
+    suspend fun listTabs(sessionId: String): BrowserUiState = unsupportedBrowserOperation()
+    suspend fun newTab(sessionId: String, url: String): BrowserUiState = unsupportedBrowserOperation()
+    suspend fun switchTab(sessionId: String, tabId: String): BrowserUiState = unsupportedBrowserOperation()
+    suspend fun closeTab(sessionId: String, tabId: String): BrowserUiState = unsupportedBrowserOperation()
     /** 把页面交给用户填写敏感字段，直到用户交回后返回新快照。 */
     suspend fun handOff(sessionId: String, element: BrowserElement, reason: BrowserHandoffReason): BrowserSnapshot
 }
+
+private fun unsupportedBrowserOperation(): Nothing = throw BrowserActionException("UNSUPPORTED_OPERATION", "浏览器宿主不支持此操作。")
