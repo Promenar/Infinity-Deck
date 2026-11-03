@@ -21,10 +21,10 @@ class ViewedMediaContextLoader(
 ) {
     suspend fun attach(session: Session, messages: List<ProtocolMessage>, modelId: String?): List<ProtocolMessage> = withContext(Dispatchers.IO) {
         val cleanMessages = messages.map { message ->
-            if (message.role == "tool" && message.name == "view_media") message.copy(imageUrls = null, audioData = null, videoData = null, mediaPaths = null) else message
+            if (message.role == "tool" && message.name in setOf("view_media", "browser_screenshot")) message.copy(imageUrls = null, audioData = null, videoData = null, mediaPaths = null) else message
         }
         val currentTurn = cleanMessages.indexOfLast { it.role == "user" && !it.isRuntimeInstruction }
-        val records = session.messages.filter { it.role == MessageRole.TOOL && it.name == "view_media" }
+        val records = session.messages.filter { it.role == MessageRole.TOOL && it.name in setOf("view_media", "browser_screenshot") }
             .associateBy { it.toolCallId }
         val resolvedTarget = if (cleanMessages.drop(currentTurn + 1).any { it.role == "tool" && !records[it.toolCallId]?.viewedMedia.isNullOrEmpty() }) target(session, modelId) else return@withContext cleanMessages
         var audioSent = false

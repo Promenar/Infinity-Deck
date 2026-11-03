@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_dev_mobile">Mobile</string>
+    <string name="browser_dev_desktop">Desktop</string>
+    <string name="browser_dev_tab_released">Page released; switching to this tab reloads its URL.</string>
+    <string name="browser_dev_capacity">Browser memory is full. Close a page or hand control back, then retry.</string>
+</resources>

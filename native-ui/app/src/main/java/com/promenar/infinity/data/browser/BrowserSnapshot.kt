@@ -19,6 +19,8 @@ data class BrowserElement(
     val fieldName: String? = null,
     val placeholder: String? = null,
     val editable: Boolean = false,
+    /** 宿主绑定的标签身份，避免等待用户期间切换标签后误用同名 ref。 */
+    val browserTabId: String? = null,
 )
 
 @Serializable

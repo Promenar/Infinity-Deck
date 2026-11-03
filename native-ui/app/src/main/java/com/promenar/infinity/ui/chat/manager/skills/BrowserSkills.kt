@@ -22,13 +22,17 @@ const val BROWSER_OPEN = "browser_open"
 const val BROWSER_SNAPSHOT = "browser_snapshot"
 const val BROWSER_CLICK = "browser_click"
 const val BROWSER_TYPE = "browser_type"
-val BROWSER_TOOL_NAMES = setOf(BROWSER_OPEN, BROWSER_SNAPSHOT, BROWSER_CLICK, BROWSER_TYPE)
+val BROWSER_TOOL_NAMES = setOf(BROWSER_OPEN, BROWSER_SNAPSHOT, BROWSER_CLICK, BROWSER_TYPE) + BROWSER_DEVELOPER_TOOL_NAMES
 
 /** 结果首行的固定前缀，执行步骤行据此显示元素名称；改动时同步 [browserStepLabel] 的解析。 */
 internal const val BROWSER_CLICKED_PREFIX = "Clicked "
 internal const val BROWSER_ELEMENTS_PREFIX = "Interactive elements ("
 
-fun browserTools(controller: BrowserController, networkPolicy: AgentNetworkPolicy): List<SkillDefinition> = listOf(
+fun browserTools(
+    controller: BrowserController,
+    networkPolicy: AgentNetworkPolicy,
+    screenshots: com.promenar.infinity.ui.browser.BrowserScreenshotPublisher? = null,
+): List<SkillDefinition> = listOf(
     BrowserSkill(controller, networkPolicy, BROWSER_OPEN,
         "Open a web page in the user's in-app Agent browser and return a snapshot of its interactive elements. Use it for pages that need clicking, typing, scripts or a login; use web_fetch to just read a static page. The browser keeps its own cookies, separate from other apps.",
         """{"type":"object","properties":{"url":{"type":"string","description":"An http or https address. A bare host name is opened with https."}},"required":["url"],"additionalProperties":false}"""),
@@ -41,7 +45,7 @@ fun browserTools(controller: BrowserController, networkPolicy: AgentNetworkPolic
     BrowserSkill(controller, networkPolicy, BROWSER_TYPE,
         "Replace the text of an input field in the Agent browser and optionally press Enter, then return a new snapshot. Password, payment and verification-code fields are never filled by the agent: call this tool on such a field with empty text and the page is handed to the user, who fills it and hands control back; the call returns after that.",
         """{"type":"object","properties":{"ref":{"type":"string","description":"Field ref from the latest snapshot, such as e3."},"text":{"type":"string","description":"Text that replaces the field's current value, at most ${BrowserArguments.MAX_TEXT} characters."},"submit":{"type":"boolean","description":"Press Enter after typing to submit. Defaults to false."}},"required":["ref","text"],"additionalProperties":false}"""),
-)
+) + browserDeveloperTools(controller, networkPolicy, screenshots)
 
 private class BrowserSkill(
     private val controller: BrowserController,
