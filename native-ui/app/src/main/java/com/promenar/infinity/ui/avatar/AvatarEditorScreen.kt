@@ -60,7 +60,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
@@ -88,6 +87,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinitySlider
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.abs
 
 /** 裁剪圆直径占方形取景区边长的比例。 */
@@ -215,6 +215,7 @@ private fun CropViewport(
     val description = stringResource(R.string.avatar_editor_viewport)
     val backdrop = MaterialTheme.colorScheme.surfaceContainerHighest
     val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.58f)
+    val overlay = MaterialTheme.infinityDomainColors.overlayContent
     val gestures = if (enabled) {
         Modifier
             .pointerInput(Unit) {
@@ -295,11 +296,11 @@ private fun CropViewport(
                 addOval(circle)
             }
             drawPath(outside, scrim)
-            drawCircle(Color.White.copy(alpha = 0.9f), radius = cropSide / 2f, style = Stroke(1.5.dp.toPx()))
+            drawCircle(overlay.copy(alpha = 0.9f), radius = cropSide / 2f, style = Stroke(1.5.dp.toPx()))
             if (gridAlpha > 0f) {
                 clipPath(Path().apply { addOval(circle) }) {
                     val stroke = 0.75.dp.toPx()
-                    val color = Color.White.copy(alpha = 0.45f * gridAlpha)
+                    val color = overlay.copy(alpha = 0.45f * gridAlpha)
                     for (fraction in listOf(1f / 3f, 2f / 3f)) {
                         val x = circle.left + circle.width * fraction
                         val y = circle.top + circle.height * fraction
