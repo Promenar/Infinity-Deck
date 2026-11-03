@@ -20,6 +20,44 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MessageManagerTest {
+    @Test fun `在飞数据库失败批次不能在精确回退后取得新代次重排`() = testScope.runTest {
+        val retryEntered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val releaseRetry = kotlinx.coroutines.CompletableDeferred<Unit>()
+        messageManager = MessageManager(store, stubMessageRepo, stubSessionRepo, testScope,
+            MessageManagerHooks(beforeDbRetry = { retryEntered.complete(Unit); releaseRetry.await() }))
+        seedSession()
+        val original = Message("m1", MessageRole.ASSISTANT, "")
+        messageManager.addMessage("s1", original)
+        failPartialUpdate = true
+        messageManager.updateMessageContent("s1", "m1", "迟到回复", UpdateMessageOptions(reasoning = "迟到思考", thoughtSignature = "迟到签名"))
+        advanceTimeBy(1000)
+        runCurrent()
+        retryEntered.await()
+        failPartialUpdate = false
+        messageManager.restoreModelReply("s1", "m1", original)
+        releaseRetry.complete(Unit)
+        advanceUntilIdle()
+        assertThat(store.getSession("s1")!!.messages.single().content).isEmpty()
+        assertThat(partialUpdates.last()["content"]).isEqualTo("")
+        assertThat(partialUpdates.last()).containsEntry("thoughtSignature", null)
+    }
+    @Test fun `超限补救同步回退正文思考签名和未确认工具且旧缓冲不会复活`() = testScope.runTest {
+        val original = Message("retry", MessageRole.ASSISTANT, "")
+        store.upsertSession(Session("retry-session", "agent", messages = listOf(original)))
+        messageManager.updateMessageContent("retry-session", "retry", "半截回复", UpdateMessageOptions(
+            reasoning = "半截思考", thoughtSignature = "旧回传状态", toolCalls = listOf(ToolCall("call", "read_file", "{"))))
+        messageManager.restoreModelReply("retry-session", "retry", original)
+        val restored = store.getSession("retry-session")!!.messages.single()
+        assertThat(restored.content).isEmpty()
+        assertThat(restored.reasoning).isNull()
+        assertThat(restored.thoughtSignature).isNull()
+        assertThat(restored.toolCalls).isNull()
+        assertThat(partialUpdates.last()).containsEntry("thoughtSignature", null)
+        assertThat(partialUpdates.last()).containsEntry("reasoning", null)
+        advanceUntilIdle()
+        assertThat(store.getSession("retry-session")!!.messages.single().content).isEmpty()
+        assertThat(store.getSession("retry-session")!!.messages.single().thoughtSignature).isNull()
+    }
     @Test fun `消息计费更新保留独立的上下文用量基线`() = testScope.runTest {
         val baseline = PromptUsageBaseline("usage-session", "model-key", "summary-hash", "tool-hash", 500, emptyList())
         store.upsertSession(Session("usage-session", "agent", messages = listOf(Message("assistant", MessageRole.ASSISTANT, "")),

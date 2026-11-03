@@ -493,6 +493,8 @@ internal fun streamContractError(technical: String): StreamChunk.Error = StreamC
 internal fun abnormalFinishError(label: String, reason: String): StreamChunk.Error? {
     val (code, retryable) = when (reason) {
         "length", "max_tokens", "MAX_TOKENS", "max_output_tokens" -> GenerationFailureCode.OUTPUT_LIMIT to false
+        // Anthropic 官方独立终止信号：https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
+        "model_context_window_exceeded" -> GenerationFailureCode.CONTEXT_LIMIT to false
         "content_filter", "refusal", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY" ->
             GenerationFailureCode.CONTENT_FILTERED to false
         // DeepSeek：推理资源不足或生成被中断，原样重发通常可以成功。
@@ -509,8 +511,12 @@ internal class AbnormalFinishException(val error: StreamChunk.Error) : Exception
  * 流内错误事件（HTTP 200 后在 SSE 里返回 `error` 对象）：按事件自带的状态码与说明分类并保留服务商原因。
  * 无法归类的按可重试的服务端错误处理，由生成层自动重发本轮。
  */
-internal fun streamErrorEvent(chunk: kotlinx.serialization.json.JsonObject): StreamChunk.Error {
+internal fun streamErrorEvent(
+    chunk: kotlinx.serialization.json.JsonObject,
+    protocolType: ProtocolType = ProtocolType.OpenAI_ChatCompletions,
+): StreamChunk.Error {
     val error = chunk["error"]
+    (error as? JsonObject)?.let { ProtocolContextLimit.fromError(protocolType, it) }?.let { return it }
     val status = (error as? kotlinx.serialization.json.JsonObject)?.let { obj ->
         listOf("status", "code", "status_code").firstNotNullOfOrNull { key ->
             (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()?.takeIf { it in 400..599 }

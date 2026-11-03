@@ -123,10 +123,10 @@ class PromptUsageCalibrationTest {
         assertThat(preview.afterTokens).isEqualTo(PromptUsageCalibration.estimate(s, original, session.modelId))
         assertThat(breakdown.totalTokens).isEqualTo(preview.afterTokens)
         var summarized = false
-        val historyPrompt = original.copy(messages = original.messages + listOf(ProtocolMessage("assistant", "旧回复"), ProtocolMessage("user", "新问题")))
+        val historyPrompt = original.copy(messages = original.messages + listOf(ProtocolMessage("assistant", "旧回复".repeat(1000)), ProtocolMessage("user", "新问题")))
         val history = withBaseline(historyPrompt, 20000).copy(messages = listOf(
             com.promenar.infinity.data.model.Message("old-user", com.promenar.infinity.data.model.MessageRole.USER, "旧问题"),
-            com.promenar.infinity.data.model.Message("old-assistant", com.promenar.infinity.data.model.MessageRole.ASSISTANT, "旧回复"),
+            com.promenar.infinity.data.model.Message("old-assistant", com.promenar.infinity.data.model.MessageRole.ASSISTANT, "旧回复".repeat(1000)),
             com.promenar.infinity.data.model.Message("new-user", com.promenar.infinity.data.model.MessageRole.USER, "新问题")))
         val result = pipeline.compact(ContextCompactionInput(history, "new-user", 1, 0.5, PromptWindow(10000, 1000), stableModelId = session.modelId),
             buildPrompt = { if (it.summary == null) historyPrompt else original.copy(messages = listOf(ProtocolMessage("system", "摘要"))) },

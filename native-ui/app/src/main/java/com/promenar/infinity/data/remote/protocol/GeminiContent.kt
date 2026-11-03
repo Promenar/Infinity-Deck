@@ -316,6 +316,9 @@ internal object GeminiContentCodec {
         val parsed = runCatching { json.parseToJsonElement(responseText).jsonObject }.getOrNull()
             ?: throw Exception("Invalid JSON response from $label")
         parsed["error"]?.let { error ->
+            (error as? JsonObject)?.let {
+                ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromError(ProtocolType.Google_Gemini, it))
+            }
             val message = (error as? JsonObject)?.let { it.string("message").ifEmpty { it.string("status") } }
             throw Exception(message?.ifEmpty { null } ?: "$label returned an error")
         }
@@ -406,6 +409,7 @@ internal class GeminiStreamState(
     fun process(chunk: JsonObject): List<StreamChunk> {
         (chunk["error"] as? JsonObject)?.let { error ->
             val status = (error["code"] as? JsonPrimitive)?.intOrNull ?: 500
+            ProtocolContextLimit.fromError(ProtocolType.Google_Gemini, error, status)?.let { return listOf(it) }
             throw HttpStatusException(status, error.toString())
         }
         GeminiContentCodec.promptBlockReason(chunk)?.let {
@@ -509,4 +513,5 @@ internal suspend fun SendChannel<StreamChunk>.consumeGeminiStream(
 
 /** 非 2xx 响应统一归一化为错误分片。 */
 internal fun geminiHttpError(status: Int, body: String): StreamChunk.Error =
-    ErrorNormalizer.normalize(HttpStatusException(status, body)).toStreamChunkError()
+    ProtocolContextLimit.fromHttp(ProtocolType.Google_Gemini, status, body)
+        ?: ErrorNormalizer.normalize(HttpStatusException(status, body)).toStreamChunkError()

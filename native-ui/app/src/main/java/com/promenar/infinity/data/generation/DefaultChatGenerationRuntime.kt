@@ -201,6 +201,7 @@ internal class DefaultChatGenerationRuntime(
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
+    private val contextLimitRecovery = ContextLimitRecovery()
     private var activeToolBudget: GenerationToolBudget? = null
     private var baselineTokens = 0L
     private var mainSpentTokens = 0L
@@ -307,6 +308,7 @@ internal class DefaultChatGenerationRuntime(
         manual: Boolean = false,
         currentTurnId: String? = request.userMessageId,
         onProgress: (ContextCompactionStage) -> Unit = {},
+        recoveryBudget: Int? = null,
     ): ContextCompactionResult {
         val operation: suspend () -> ContextCompactionResult = {
             val eligible = session.copy(messages = session.messages.filterNot { it.id in request.messageIdsToReplace })
@@ -314,12 +316,13 @@ internal class DefaultChatGenerationRuntime(
                 ContextCompactionInput(
                     session = eligible,
                     currentTurnId = currentTurnId,
-                    keepRecentTurns = session.inferenceParams.resolvedKeepRecentTurns,
+                    keepRecentTurns = if (recoveryBudget != null) 1 else session.inferenceParams.resolvedKeepRecentTurns,
                     threshold = session.inferenceParams?.autoSummaryThreshold ?: 0.8,
                     window = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, preparedRoute?.modelId),
                     manual = manual,
                     turnState = compactionTurnState,
                     stableModelId = preparedRoute?.modelId,
+                    inputBudgetOverride = recoveryBudget,
                 ),
                 buildPrompt = { updated ->
                     val updatedSystem = replaceHistorySummary(systemPrompt, updated.summary, preparedContextSummary)
@@ -491,6 +494,20 @@ internal class DefaultChatGenerationRuntime(
             preview.foldedToolResults, window.modelContextTokens ?: 128000,
         )
         return ContextUsageCalibration.scale(local, preview.afterTokens)
+    }
+
+    internal suspend fun estimateDraftDocumentBudget(sessionId: String, text: String,
+        documents: List<com.promenar.infinity.data.model.MessageDocumentAttachment>): DraftDocumentBudget {
+        val context = prepareStoredContext(sessionId)
+        val messages = buildMessagesWithMedia(context.session, context.systemPrompt, modelId = preparedRoute?.modelId).map { message ->
+            if (message.role != "tool" || message.name == "view_media" || outputStore == null) message else message.copy(content = try {
+                outputStore.previewForContext(sessionId, message.content)
+            } catch (_: java.io.IOException) { ContextCompactionPipeline.headTail(message.content, 2000) })
+        }
+        val preview = compactionPipeline.preview(context.session, context.prompt.copy(messages = messages), preparedRoute?.modelId)
+        return DraftDocumentBudgetEvaluator.evaluate(context.session, DraftBudgetContext(
+            preparedRoute?.modelId ?: context.prompt.model, preview.prompt,
+            PreparedPromptBudgetGate.resolveWindow(context.session, context.prompt, settings, preparedRoute?.modelId)), text, documents)
     }
 
     override suspend fun prepare(request: GenerationRequest) {
@@ -707,14 +724,30 @@ internal class DefaultChatGenerationRuntime(
             toolChoice = if (finalAnswerMode) ProtocolToolChoice.NONE else ProtocolToolChoice.AUTO,
             stream = true,
         )
-        val budgetedPrompt = if (refreshingForSend) {
-            compactionPipeline.preview(session, prompt.copy(messages = offloadToolResults(request.sessionId, prompt.messages)), route.modelId).prompt
-        } else compactContext(request, session, prompt, systemPrompt).prompt
-        val hasFullContextDocuments = request.userMessageId
-            ?.let { id -> session.messages.firstOrNull { it.id == id } }
-            ?.userDocuments
-            .isNullOrEmpty()
-            .not()
+        val hasFullContextDocuments = session.messages.firstOrNull { it.id == request.userMessageId }
+            ?.userDocuments.orEmpty().any { it.workspaceReference == null } || prompt.messages.any { !it.documentData.isNullOrEmpty() }
+        val window = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, route.modelId)
+        val floor = compactionPipeline.inputFloor(session, prompt, window, route.modelId)
+        if (floor.exceeded || (hasFullContextDocuments && window.inputBudgetTokens == null)) {
+            val failure = if (floor.exceeded) floor.failure(hasFullContextDocuments) else GenerationFailure(
+                GenerationFailureCode.CONTEXT_LIMIT, mapOf(
+                    GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UNKNOWN_WINDOW",
+                    GenerationFailure.KEY_REQUIRED_TOKENS to floor.tokens.toString(),
+                    GenerationFailure.KEY_AVAILABLE_TOKENS to "0",
+                    GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to hasFullContextDocuments.toString(),
+                ))
+            handleDocumentBudgetFailure(request, failure)
+            return GenerationPreparationOutcome.Handled(failure)
+        }
+        val compacted = if (refreshingForSend) {
+            compactionPipeline.preview(session, prompt.copy(messages = offloadToolResults(request.sessionId, prompt.messages)), route.modelId)
+        } else compactContext(request, session, prompt, systemPrompt)
+        compacted.blockedFloor?.let { blocked ->
+            val failure = blocked.failure(hasFullContextDocuments)
+            handleDocumentBudgetFailure(request, failure)
+            return GenerationPreparationOutcome.Handled(failure)
+        }
+        val budgetedPrompt = compacted.prompt
         val budgetDecision = PreparedPromptBudgetGate.evaluate(
             store.getSession(request.sessionId) ?: session,
             budgetedPrompt,
@@ -726,6 +759,7 @@ internal class DefaultChatGenerationRuntime(
             val failure = GenerationFailure(
                 code = GenerationFailureCode.CONTEXT_LIMIT,
                 formatArgs = mapOf(
+                    GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "TOTAL_INPUT",
                     GenerationFailure.KEY_REQUIRED_TOKENS to budgetDecision.requiredTokens.toString(),
                     GenerationFailure.KEY_AVAILABLE_TOKENS to budgetDecision.availableTokens.toString(),
                     GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to hasFullContextDocuments.toString(),
@@ -738,6 +772,30 @@ internal class DefaultChatGenerationRuntime(
         }
         preparedPrompt = budgetedPrompt
         return GenerationPreparationOutcome.Ready
+    }
+
+    override suspend fun recoverContextLimit(request: GenerationRequest, failure: GenerationFailure,
+        beforeRetry: suspend () -> Unit): Boolean = contextLimitRecovery.attempt(failure, compactionTurnState.historySummaryAttempted) {
+        recoverContextLimit(request, beforeRetry)
+    }
+
+    private suspend fun recoverContextLimit(request: GenerationRequest, beforeRetry: suspend () -> Unit): Boolean {
+        val session = store.getSession(request.sessionId) ?: return false
+        val prompt = preparedPrompt ?: return false
+        val window = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, preparedRoute?.modelId)
+        // 服务端已拒绝本地口径，补救前清除基线，避免沿用失配的实际输入。
+        sessionManager.updateContextUsageBaseline(request.sessionId, null)
+        val uncalibrated = store.getSession(request.sessionId) ?: return false
+        val floor = compactionPipeline.inputFloor(uncalibrated, prompt, window, preparedRoute?.modelId)
+        val available = window.inputBudgetTokens ?: return false
+        if (floor.exceeded || historyCompactionCandidates(uncalibrated.messages, request.userMessageId, 1).isEmpty()) return false
+        val failedTokens = PromptUsageCalibration.estimate(uncalibrated, prompt, preparedRoute?.modelId)
+        val budget = maxOf(floor.tokens.toLong(), minOf(available * 4 / 5, failedTokens.toLong() * 3 / 4)).toInt()
+        beforeRetry()
+        val reset = store.getSession(request.sessionId) ?: return false
+        val result = compactContext(request, reset, prompt, preparedContext?.finalSystemPrompt.orEmpty(),
+            manual = true, recoveryBudget = budget)
+        return ContextLimitRecovery.meetsRecoveryBudget(result, budget)
     }
 
     override suspend fun stream(request: GenerationRequest, attempt: Int): Flow<GenerationChunk> {
@@ -759,11 +817,12 @@ internal class DefaultChatGenerationRuntime(
         val prompt = mediaPrompt
         val currentSession = store.getSession(request.sessionId) ?: error("生成会话不存在")
         val finalHasDocuments = prompt.messages.any { !it.documentData.isNullOrEmpty() } ||
-            currentSession.messages.firstOrNull { it.id == request.userMessageId }?.userDocuments?.isNotEmpty() == true
+            currentSession.messages.firstOrNull { it.id == request.userMessageId }?.userDocuments.orEmpty().any { it.workspaceReference == null }
         val finalBudget = PreparedPromptBudgetGate.evaluate(currentSession, prompt, settings,
             finalHasDocuments, route.modelId)
         if (finalBudget is ContextBudgetDecision.Blocked) {
             val failure = GenerationFailure(code = GenerationFailureCode.CONTEXT_LIMIT, formatArgs = mapOf(
+                GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "TOTAL_INPUT",
                 GenerationFailure.KEY_REQUIRED_TOKENS to finalBudget.requiredTokens.toString(),
                 GenerationFailure.KEY_AVAILABLE_TOKENS to finalBudget.availableTokens.toString(),
                 GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to finalHasDocuments.toString(),
@@ -808,7 +867,16 @@ internal class DefaultChatGenerationRuntime(
             recorder.start()
             emitAll(source.mapNotNull { chunk ->
                 if (!route.useLocalProvider && chunk is StreamChunk.Usage) recorder.observe(chunk.usage)
-                toGenerationChunk(chunk)?.also {
+                val mapped = toGenerationChunk(chunk)?.let { mapped ->
+                    if (mapped !is GenerationChunk.Failure || mapped.failure.code != GenerationFailureCode.CONTEXT_LIMIT) mapped else
+                        mapped.copy(failure = mapped.failure.copy(formatArgs = mapped.failure.formatArgs + mapOf(
+                            GenerationFailure.KEY_REQUIRED_TOKENS to PromptUsageCalibration.estimate(
+                                store.getSession(request.sessionId) ?: currentSession, prompt, route.modelId).toString(),
+                            GenerationFailure.KEY_AVAILABLE_TOKENS to (PreparedPromptBudgetGate.resolveWindow(currentSession, prompt, settings, route.modelId).inputBudgetTokens ?: 0).toString(),
+                            GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to finalHasDocuments.toString(),
+                        )))
+                }
+                mapped?.also {
                     if (it is GenerationChunk.Text) toolProgressReminder.onUserFacingText(it.content)
                 }
             })
@@ -876,6 +944,21 @@ internal class DefaultChatGenerationRuntime(
         return snapshot.copy(
             content = contentStrategy.stripToolCallMarkup(snapshot.content),
         )
+    }
+
+    override suspend fun restoreContextSnapshot(request: GenerationRequest, snapshot: GenerationSnapshot) {
+        val current = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
+            ?: error("重试回复不存在")
+        messageManager.restoreModelReply(request.sessionId, current.id, current.copy(
+            content = snapshot.content, reasoning = snapshot.reasoning.takeIf(String::isNotBlank),
+            thoughtSignature = snapshot.reasoningReplay, toolCalls = snapshot.toolCalls.map { ToolCall(it.id, it.name, it.arguments) },
+            citations = snapshot.citations.map { com.promenar.infinity.data.model.Citation(it.title, it.url, it.source) },
+            tokens = mainAndSummaryUsage(request, snapshot), isError = snapshot.failure != null,
+            errorMessage = snapshot.failure?.let(GenerationFailureCodec::encode),
+        ))
+        ui.setFailureSurface(snapshot.failure?.let { GenerationFailureSurface.INLINE_MESSAGE })
+        ui.setError(snapshot.failure)
+        ui.setStreamingContent(snapshot.content)
     }
 
     override suspend fun persist(request: GenerationRequest, snapshot: GenerationSnapshot) {
@@ -1759,7 +1842,9 @@ internal class DefaultChatGenerationRuntime(
                     ?.takeIf { it > 0 }
                     ?.let { mapOf(GenerationFailure.KEY_RETRY_AFTER_SECONDS to it.toString()) }
                     .orEmpty() +
-                    chunk.providerMessage?.let { mapOf(GenerationFailure.KEY_PROVIDER_MESSAGE to it) }.orEmpty(),
+                    chunk.providerMessage?.let { mapOf(GenerationFailure.KEY_PROVIDER_MESSAGE to it) }.orEmpty() +
+                    (if (chunk.code == GenerationFailureCode.CONTEXT_LIMIT)
+                        mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM") else emptyMap()),
                 technical = chunk.technical,
                 cause = chunk.cause,
                 retryable = chunk.retryable,

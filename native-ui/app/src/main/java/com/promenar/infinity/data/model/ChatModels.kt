@@ -523,6 +523,7 @@ data class MessageDocumentAttachment(
     val sizeBytes: Long,
     val sha256: String,
     val estimatedTokens: Int,
+    val workspaceReference: WorkspaceDocumentReference? = null,
 )
 
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)

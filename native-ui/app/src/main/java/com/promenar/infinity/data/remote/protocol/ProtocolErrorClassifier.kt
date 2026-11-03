@@ -27,10 +27,16 @@ internal object ProtocolErrorClassifier {
     )
     private val invalidRequestIdentifiers = setOf(
         "bad_parameter",
-        "context_length_exceeded",
         "invalid_request",
         "invalid_request_error",
         "model_not_found",
+    )
+    private val contextLimitIdentifiers = setOf(
+        // OpenAI Responses 与 llama.cpp 的官方稳定错误码/类型。
+        // https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/sse/responses_error.rs
+        // https://github.com/ggml-org/llama.cpp/blob/master/tools/server/server-common.cpp
+        "context_length_exceeded",
+        "exceed_context_size_error",
     )
     private val serverIdentifiers = setOf(
         "api_error",
@@ -52,6 +58,7 @@ internal object ProtocolErrorClassifier {
             identifiers.any(quotaIdentifiers::contains) -> GenerationFailureCode.QUOTA
             identifiers.any(authIdentifiers::contains) -> GenerationFailureCode.AUTH
             identifiers.any(rateLimitIdentifiers::contains) -> GenerationFailureCode.RATE_LIMIT
+            identifiers.any(contextLimitIdentifiers::contains) -> GenerationFailureCode.CONTEXT_LIMIT
             identifiers.any(invalidRequestIdentifiers::contains) -> GenerationFailureCode.INVALID_REQUEST
             identifiers.any(serverIdentifiers::contains) -> GenerationFailureCode.SERVER
             statusCode == 401 || statusCode == 403 -> GenerationFailureCode.AUTH

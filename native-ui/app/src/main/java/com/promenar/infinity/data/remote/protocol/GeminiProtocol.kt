@@ -109,6 +109,7 @@ class GeminiProtocol(
         }.execute { response ->
             val text = runCatching { response.bodyAsText() }.getOrDefault("")
             if (!response.status.isSuccess()) {
+                ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromHttp(protocolType, response.status.value, text))
                 val normalized = ErrorNormalizer.normalize(HttpStatusException(response.status.value, text))
                 throw Exception("[HTTP ${response.status.value}][${normalized.category}] ${text.take(300)}")
             }

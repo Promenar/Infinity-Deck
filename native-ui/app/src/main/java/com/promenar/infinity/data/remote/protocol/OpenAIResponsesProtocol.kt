@@ -165,6 +165,7 @@ class OpenAIResponsesProtocol(
             ""
         }
         if (!response.status.isSuccess()) {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromHttp(protocolType, response.status.value, responseText))
             val normalized = ErrorNormalizer.normalize(HttpStatusException(response.status.value, responseText))
             throw Exception("[HTTP ${response.status.value}][${normalized.category}] ${responseText.take(300)}")
         }
@@ -392,14 +393,16 @@ class OpenAIResponsesProtocol(
                         ?: chunk["error"] as? JsonObject
                     else -> chunk["error"] as? JsonObject
                 }
-                return ProtocolErrorClassifier.classify(
-                    type = errorObject?.stringField("type"),
-                    code = errorObject?.stringField("code"),
-                    technical = errorObject?.stringField("message")
-                        ?.ifBlank { chunk.stringField("message") }
-                        ?.ifBlank { null }
-                        ?: "OpenAI Responses request failed.",
-                )
+                return errorObject?.let { ProtocolContextLimit.fromError(protocolType, it) }
+                    ?: ProtocolContextLimit.fromError(protocolType, chunk)
+                    ?: ProtocolErrorClassifier.classify(
+                        type = errorObject?.stringField("type"),
+                        code = errorObject?.stringField("code"),
+                        technical = errorObject?.stringField("message")
+                            ?.ifBlank { chunk.stringField("message") }
+                            ?.ifBlank { null }
+                            ?: "OpenAI Responses request failed.",
+                    )
             }
             else -> {
                 val delta = chunk.stringField("delta")
@@ -447,6 +450,9 @@ class OpenAIResponsesProtocol(
 
     private fun parseSyncResponse(responseText: String): PromptResponse {
         val root = json.parseToJsonElement(responseText).jsonObject
+        (root["error"] as? JsonObject)?.let {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromError(protocolType, it))
+        }
         check(root.stringField("status") == "completed") {
             "Responses sync response did not complete successfully"
         }
@@ -497,6 +503,7 @@ class OpenAIResponsesProtocol(
         responseBody: String,
         retryAfterHeader: String?,
     ): StreamChunk.Error {
+        ProtocolContextLimit.fromHttp(protocolType, statusCode, responseBody)?.let { return it }
         val errorObject = runCatching {
             json.parseToJsonElement(responseBody).jsonObject["error"] as? JsonObject
         }.getOrNull()

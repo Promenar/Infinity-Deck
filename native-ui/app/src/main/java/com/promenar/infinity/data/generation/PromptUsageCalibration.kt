@@ -23,6 +23,14 @@ object PromptUsageCalibration {
         return calibrated(session, prompt, baseline, stableModelId) ?: ApproximateTokenEstimator.estimate(prompt)
     }
 
+    fun estimatePortion(session: Session, prompt: PromptRequest, portion: PromptRequest, stableModelId: String? = null): Int {
+        val total = estimate(session, prompt, stableModelId)
+        val local = ApproximateTokenEstimator.estimate(prompt).toLong()
+        if (local == 0L) return total
+        val part = ApproximateTokenEstimator.estimate(portion).toLong().coerceAtMost(local)
+        return ((total.toLong() * part + local - 1) / local).toInt()
+    }
+
     private fun calibrated(session: Session, prompt: PromptRequest, baseline: PromptUsageBaseline?, stableModelId: String?): Int? {
         if (baseline == null || baseline.version != 1 || baseline.inputTokens < 0 || baseline.sessionId != session.id ||
             baseline.modelKey != modelKey(session, prompt, stableModelId) || baseline.summaryHash != hash(session.summary.orEmpty()) ||
