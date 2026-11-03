@@ -42,6 +42,19 @@ class SystemPromptSectionsSkillsTest {
         assertThat(catalog).contains("shell_exec")
         assertThat(catalog).contains("python_exec")
         assertThat(catalog).contains("\$INFINITY_SKILLS/<name>")
+        assertThat(catalog).contains("按被引用技能的目录解析")
+    }
+
+    @Test fun `只有内置技能时仍提供跨技能路径解析规则`() {
+        val catalog = SystemPromptSections.skillCatalog(listOf(skill("guide", SkillScope.BUILTIN)))
+        assertThat(catalog).contains("按被引用技能的目录解析")
+    }
+
+    @Test fun `混合目录窗口只容纳省略行时仍提供路径规则且不越预算`() {
+        val catalog = SystemPromptSections.skillCatalog(listOf(skill("guide", SkillScope.BUILTIN), skill("demo")), modelContextTokens = 3000)
+        assertThat(catalog).contains("按被引用技能的目录解析")
+        assertThat(catalog).contains("more skills")
+        assertThat(catalog.length).isAtMost(240)
     }
 
     @Test fun `完整技能目录包含显式技能但排除停用与未信任技能`() {

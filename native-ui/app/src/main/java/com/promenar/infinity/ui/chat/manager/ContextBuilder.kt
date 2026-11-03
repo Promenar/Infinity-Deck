@@ -42,6 +42,8 @@ data class ContextBuilderResult(
     val stateBoardRevision: Long = 0,
     /** 仅发送给模型、随用户消息持久化的本轮上下文原文。 */
     val turnContext: String = "",
+    /** 与系统提示原文对应的真实段落边界，仅供本地上下文估算使用。 */
+    val systemPromptSections: List<com.promenar.infinity.data.generation.ContextPromptSection> = emptyList(),
 )
 
 /** 依赖用户问题的检索结果（联网搜索、文档与记忆、知识图谱），与工具轮次无关。 */
@@ -168,6 +170,7 @@ class ContextBuilder(
     private val stateBoardRepository: com.promenar.infinity.data.repository.StateBoardRepository? = null,
     private val longTermMemoryRepository: LongTermMemoryRepository? = null,
     private val longTermMemoryAccess: LongTermMemoryAccess? = null,
+    private val projectRulesReader: ProjectRulesReader = ProjectRulesReader(),
 ) {
     suspend fun buildContext(params: ContextBuilderParams): ContextBuilderResult {
         val frozen = params.cachedTurnContext
@@ -210,7 +213,8 @@ class ContextBuilder(
             sessionCustomPrompt = savedConfiguration.sessionCustomPrompt,
             session = params.session.copy(customPrompt = savedConfiguration.sessionCustomPrompt),
         )
-        val systemPrompt = buildSystemPrompt(promptParams)
+        val systemSections = buildSystemPrompt(promptParams)
+        val systemPrompt = systemSections.joinToString("") { it.content }
         val turnContext = frozen ?: buildTurnContext(params, retrieval, activePlan, memoryContext,
             stateBoardContext(stateSnapshot?.board,
                 params.session.options.toolsEnabled && (params.availableToolNames == null || "state_update" in params.availableToolNames)),
@@ -228,6 +232,7 @@ class ContextBuilder(
             retrieval = retrieval,
             stateBoardRevision = stateRevision,
             turnContext = turnContext,
+            systemPromptSections = systemSections,
         )
     }
 
@@ -417,9 +422,15 @@ class ContextBuilder(
         }
     }
 
-    private fun buildSystemPrompt(params: ContextBuilderParams): String {
+    private suspend fun buildSystemPrompt(params: ContextBuilderParams): List<com.promenar.infinity.data.generation.ContextPromptSection> {
         val sb = StringBuilder()
         val session = params.session
+        val sections = mutableListOf<com.promenar.infinity.data.generation.ContextPromptSection>()
+        var start = 0
+        fun finish(id: String) {
+            if (sb.length > start) sections += com.promenar.infinity.data.generation.ContextPromptSection(id, sb.substring(start))
+            start = sb.length
+        }
 
         // 1. 助手角色与风格来自用户提示词；应用宿主身份由固定运行环境段声明。
         params.agentSystemPrompt?.takeIf(String::isNotBlank)?.let { sb.appendLine(it.trim()) }
@@ -431,6 +442,13 @@ class ContextBuilder(
             sb.appendLine("## Session Instructions")
             sb.appendLine(customPrompt.trim())
         }
+        finish("instructions")
+
+        SystemPromptSections.projectRules(projectRulesReader.read(params.workspace)).takeIf(String::isNotEmpty)?.let {
+            if (sb.isNotEmpty()) sb.appendLine()
+            sb.append(it)
+        }
+        finish("project_rules")
 
         if (sb.isNotEmpty()) sb.appendLine()
         sb.append(SystemPromptSections.runtimeEnvironment(
@@ -444,6 +462,7 @@ class ContextBuilder(
             com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
             runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
         ))
+        finish("runtime_permissions")
 
         // 3. 工具与工作区运行时契约
         val toolGuidance = when (val names = params.availableToolNames) {
@@ -462,6 +481,7 @@ class ContextBuilder(
             sb.appendLine()
             sb.append(toolGuidance)
         }
+        finish("tool_guidance")
 
         // 3.1 内置与文件技能目录：只在模型有读取入口时披露元数据，正文按需加载。
         if (SystemPromptSections.canReadSkills(params.availableToolNames)) {
@@ -471,6 +491,7 @@ class ContextBuilder(
                     sb.append(it)
                 }
         }
+        finish("skill_catalog")
 
         // 范围来自配置；目录中的数量、标题与索引状态属于本轮资料快照。
         if (contextRetrievalMode(params) != AgentRetrievalMode.AUTO) {
@@ -482,6 +503,7 @@ class ContextBuilder(
             sb.appendLine("- Selected folders: ${options.activeFolderIds.sorted().joinToString(", ")}")
             sb.appendLine("- Material titles and index status, when available, are in the user turn context. Use knowledge tools to inspect current material.")
         }
+        finish("knowledge_catalog")
 
         // 6. 历史摘要
         session.summary?.takeIf(String::isNotBlank)?.let { summary ->
@@ -492,8 +514,10 @@ class ContextBuilder(
             sb.appendLine(summary.trim())
             sb.appendLine("</history_summary>")
         }
+        finish("history_summary")
 
-        return sb.toString().trimEnd() + "\n"
+        if (sections.isNotEmpty()) sections[sections.lastIndex] = sections.last().let { it.copy(content = it.content.trimEnd() + "\n") }
+        return sections
     }
 
     /** 段落顺序固定；空块也由调用方保存，避免续轮重新采样时间与状态。 */
