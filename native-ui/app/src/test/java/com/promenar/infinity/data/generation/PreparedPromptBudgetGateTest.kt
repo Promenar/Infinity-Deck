@@ -87,7 +87,7 @@ class PreparedPromptBudgetGateTest {
     }
 
     @Test
-    fun `中文按UTF8字节保守计量不会低估`() {
+    fun `完整文档中文与统一本地估算使用相同口径`() {
         val decision = PreparedPromptBudgetGate.evaluate(
             session(),
             prompt("中".repeat(2_000), maxTokens = 1_024),
@@ -95,7 +95,19 @@ class PreparedPromptBudgetGateTest {
             true,
         )
 
-        assertThat(decision).isInstanceOf(ContextBudgetDecision.Blocked::class.java)
+        assertThat(decision).isInstanceOf(ContextBudgetDecision.Allowed::class.java)
+        assertThat((decision as ContextBudgetDecision.Allowed).requiredTokens)
+            .isEqualTo(ApproximateTokenEstimator.estimate(prompt("中".repeat(2_000), maxTokens = 1_024)).toLong())
+    }
+
+    @Test fun `服务端校准数用于发送前门禁且完整文档开关不改变总数`() {
+        val p = prompt("短输入", maxTokens = 1024)
+        val s = session().let { current -> current.copy(stats = com.promenar.infinity.data.model.SessionStats(
+            contextUsageBaseline = PromptUsageCalibration.capture(current, p, 10000))) }
+        val ordinary = PreparedPromptBudgetGate.evaluate(s, p, settings(8000), false)
+        val document = PreparedPromptBudgetGate.evaluate(s, p, settings(8000), true)
+        assertThat(ordinary).isEqualTo(document)
+        assertThat((ordinary as ContextBudgetDecision.Blocked).requiredTokens).isEqualTo(10000)
     }
 
     @Test

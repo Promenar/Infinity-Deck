@@ -155,6 +155,28 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(fixture.prompts.last()).doesNotContain("- Model: skills\n")
     }
 
+    @Test fun `上下文面板与发送路径使用同一模型思考状态并复用实际输入基线`() = runTest {
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val builder = mockk<ContextBuilder> {
+            coEvery { buildContext(any()) } returns ContextBuilderResult("", "", emptyList(), emptyList(), null, "system")
+        }
+        val strategy = DefaultChatGenerationContentStrategy(mockk(relaxed = true), null)
+        val fixture = skillsFixture(catalog, toolNames = emptyList(), contextBuilder = builder,
+            protocolMessages = { session, system, model -> strategy.buildProtocolMessages(session, system, null, emptySet(), model) })
+        fixture.store.updateSession("skills-session") { session -> session.copy(messages = session.messages.map { message ->
+            if (message.role == MessageRole.ASSISTANT) message.copy(content = "回复", reasoning = "思考",
+                thoughtSignature = com.promenar.infinity.data.remote.protocol.ReasoningReplayCodec.encode("local::skills",
+                    com.promenar.infinity.data.remote.protocol.ReasoningReplay.ChatField("reasoning_content"))) else message
+        }) }
+        val session = fixture.store.getSession("skills-session")!!
+        val sent = PromptRequest(model = "skills", messages = strategy.buildProtocolMessages(session, "system", null, emptySet(), "local::skills"))
+        val baseline = PromptUsageCalibration.capture(session, sent, 500, "local::skills")
+        fixture.store.updateSession(session.id) { it.copy(stats = com.promenar.infinity.data.model.SessionStats(contextUsageBaseline = baseline)) }
+        assertThat(fixture.runtime.estimateContext(session.id).totalTokens).isEqualTo(500)
+    }
+
     @Test fun `下一步骤的上下文包含已合并的子代理完成通知`() = runTest {
         val bridge = com.promenar.infinity.data.trigger.SubagentCompletionSteering(backgroundScope)
         val builder = mockk<ContextBuilder> {
@@ -387,6 +409,7 @@ class DefaultChatGenerationRuntimeTest {
         initialCustomPrompt: String? = null,
         initialTurnContext: String? = null,
         agentConfigService: com.promenar.infinity.data.agentconfig.AgentConfigService? = null,
+        protocolMessages: ((Session, String, String?) -> List<com.promenar.infinity.data.remote.protocol.ProtocolMessage>)? = null,
     ): SkillsFixture {
         val settings = mockk<SharedPreferences> {
             every { getInt(any(), any()) } answers { secondArg() }
@@ -420,7 +443,8 @@ class DefaultChatGenerationRuntimeTest {
             every { buildProtocolMessages(any(), any(), any(), any(), any()) } answers {
                 val prompt = secondArg<String>()
                 prompts += prompt
-                listOf(com.promenar.infinity.data.remote.protocol.ProtocolMessage(role = "system", content = prompt))
+                protocolMessages?.invoke(firstArg(), prompt, arg(4))
+                    ?: listOf(com.promenar.infinity.data.remote.protocol.ProtocolMessage(role = "system", content = prompt))
             }
         }
         val executor = mockk<ToolExecutor>(relaxed = true)
@@ -439,12 +463,15 @@ class DefaultChatGenerationRuntimeTest {
                 store.updateSession(sessionId) { it.copy(messages = it.messages + message) }
             }
         }
+        val sessionManager = mockk<SessionManager> {
+            coEvery { updateContextUsageBaseline(any(), any()) } returns Unit
+        }
         val runtime = DefaultChatGenerationRuntime(
             settings, this, store, mockk<IAgentRepository> { coEvery { getById(any()) } returns
                 knowledgeConfig?.let { com.promenar.infinity.domain.model.Agent("agent", "智能体", retrievalConfig = it) } },
             AgentConfigResolver(settings), ChatProviderRouteGate(router, UnconfinedTestDispatcher(testScheduler)),
             contextBuilder, messageManager, { localProvider ?: mockk() }, mockk(), toolLedger, executor,
-            mockk(), null, mockk(), mockk(), strategy, mockk(relaxed = true), skillCatalog = catalog, sessionWorkspace = workspace,
+            mockk(), null, mockk(), sessionManager, strategy, mockk(relaxed = true), skillCatalog = catalog, sessionWorkspace = workspace,
             stateBoardRepository = stateBoardRepository,
             askUserLedger = askLedger,
             subagentCompletions = subagentCompletions,

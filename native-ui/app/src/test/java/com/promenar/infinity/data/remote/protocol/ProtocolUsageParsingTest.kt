@@ -54,6 +54,29 @@ class ProtocolUsageParsingTest {
     }
 
     @Test
+    fun `输入报告状态区分缺失字段与显式零值`() {
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"completion_tokens":7}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"prompt_tokens":0}""")).inputReported).isTrue()
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":0}""")).inputReported).isTrue()
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"prompt_cache_hit_tokens":10}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.openAiResponses(obj("""{"output_tokens":7}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.openAiResponses(obj("""{"input_tokens":0}""")).inputReported).isTrue()
+        assertThat(ProtocolUsageParsers.anthropic(null, obj("""{"output_tokens":7}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.anthropic(obj("""{"input_tokens":0,"cache_read_input_tokens":10}""")).inputReported).isTrue()
+        assertThat(ProtocolUsageParsers.anthropic(obj("""{"cache_read_input_tokens":10}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.gemini(obj("""{"candidatesTokenCount":7}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.gemini(obj("""{"promptTokenCount":0}""")).inputReported).isTrue()
+    }
+
+    @Test
+    fun `非法输入计数不能作为实际输入校准`() {
+        assertThat(ProtocolUsageParsers.openAiChat(obj("""{"prompt_tokens":-1}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.openAiResponses(obj("""{"input_tokens":null}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.anthropic(obj("""{"input_tokens":"bad","cache_read_input_tokens":10}""")).inputReported).isFalse()
+        assertThat(ProtocolUsageParsers.gemini(obj("""{"promptTokenCount":-1}""")).inputReported).isFalse()
+    }
+
+    @Test
     fun `Anthropic 输入归一为未缓存加缓存读写`() {
         val start = obj("""{"input_tokens":20,"cache_read_input_tokens":3000,"cache_creation_input_tokens":500,"output_tokens":1}""")
         val delta = obj("""{"output_tokens":240}""")
@@ -76,6 +99,17 @@ class ProtocolUsageParsingTest {
         assertThat(usage).isEqualTo(ProtocolUsage(800, 160, 960, cacheReadInput = 512, reasoningOutput = 60))
         val plain = GeminiContentCodec.usage(obj("""{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}"""))
         assertThat(plain).isEqualTo(ProtocolUsage(3, 2, 5))
+    }
+
+    @Test
+    fun `Gemini 服务端工具输入并入总输入且缓存只计一次`() {
+        val usage = ProtocolUsageParsers.gemini(obj(
+            """{"promptTokenCount":800,"cachedContentTokenCount":512,"toolUsePromptTokenCount":25,
+               "candidatesTokenCount":100,"thoughtsTokenCount":60,"totalTokenCount":985}""",
+        ))
+        assertThat(usage).isEqualTo(ProtocolUsage(825, 160, 985, cacheReadInput = 512, reasoningOutput = 60))
+        assertThat(usage.input + usage.output).isEqualTo(usage.total)
+        assertThat(ProtocolUsageParsers.gemini(obj("""{"toolUsePromptTokenCount":25}""")).inputReported).isFalse()
     }
 
     @Test
@@ -138,8 +172,86 @@ class ProtocolUsageParsingTest {
                 respond(stream, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
             }),
         )
-        val usage = protocol.sendPrompt(request()).toList().filterIsInstance<StreamChunk.Usage>().single().usage
-        assertThat(usage).isEqualTo(ProtocolUsage(3520, 240, 3760, cacheReadInput = 3000, cacheWriteInput = 500))
+        val usages = protocol.sendPrompt(request()).toList().filterIsInstance<StreamChunk.Usage>().map { it.usage }
+        assertThat(usages).containsExactly(
+            ProtocolUsage(3520, 1, 3521, cacheReadInput = 3000, cacheWriteInput = 500),
+            ProtocolUsage(3520, 240, 3760, cacheReadInput = 3000, cacheWriteInput = 500),
+        ).inOrder()
+    }
+
+    @Test
+    fun `Anthropic 中断前保留 message_start 的零输出用量`() = runBlocking {
+        val stream = """
+            event: message_start
+            data: {"type":"message_start","message":{"usage":{"input_tokens":0,"cache_read_input_tokens":3000,"cache_creation_input_tokens":500,"output_tokens":0}}}
+
+        """.trimIndent() + "\n"
+        val chunks = anthropicProtocol(stream).sendPrompt(request()).toList()
+        assertThat(chunks.filterIsInstance<StreamChunk.Usage>().map { it.usage }).containsExactly(
+            ProtocolUsage(3500, 0, 3500, cacheReadInput = 3000, cacheWriteInput = 500, inputReported = true),
+        )
+        assertThat(chunks.last()).isInstanceOf(StreamChunk.Error::class.java)
+    }
+
+    @Test
+    fun `Anthropic 多个累计 delta 保留最新输入与缓存明细`() = runBlocking {
+        val stream = """
+            event: message_start
+            data: {"type":"message_start","message":{"usage":{"input_tokens":20,"cache_read_input_tokens":3000,"cache_creation_input_tokens":500,"cache_creation":{"ephemeral_1h_input_tokens":200},"output_tokens":1}}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{},"usage":{"input_tokens":30,"cache_read_input_tokens":3100,"cache_creation_input_tokens":600,"cache_creation":{"ephemeral_1h_input_tokens":300},"output_tokens":100}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{},"usage":{"input_tokens":null,"cache_read_input_tokens":null,"cache_creation":{"ephemeral_5m_input_tokens":300},"output_tokens":200}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":240}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+        """.trimIndent() + "\n"
+        val usages = anthropicProtocol(stream).sendPrompt(request()).toList()
+            .filterIsInstance<StreamChunk.Usage>().map { it.usage }
+        assertThat(usages.map { it.input }).containsExactly(3520, 3730, 3730, 3730).inOrder()
+        assertThat(usages.last()).isEqualTo(
+            ProtocolUsage(3730, 240, 3970, cacheReadInput = 3100, cacheWriteInput = 600, cacheWriteLongTtlInput = 300),
+        )
+    }
+
+    @Test
+    fun `Anthropic 仅输出 usage 保留缺失输入标记`() = runBlocking {
+        val stream = """
+            event: message_start
+            data: {"type":"message_start","message":{"usage":{"output_tokens":0}}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+        """.trimIndent() + "\n"
+        val usage = anthropicProtocol(stream).sendPrompt(request()).toList()
+            .filterIsInstance<StreamChunk.Usage>().last().usage
+        assertThat(usage.output).isEqualTo(7)
+        assertThat(usage.inputReported).isFalse()
+    }
+
+    @Test
+    fun `Anthropic 异常终止事件保留累计用量`() = runBlocking {
+        val stream = """
+            event: message_start
+            data: {"type":"message_start","message":{"usage":{"input_tokens":20,"output_tokens":0}}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"input_tokens":30,"output_tokens":7}}
+
+        """.trimIndent() + "\n"
+        val chunks = anthropicProtocol(stream).sendPrompt(request()).toList()
+        assertThat(chunks.filterIsInstance<StreamChunk.Usage>().last().usage).isEqualTo(ProtocolUsage(30, 7, 37))
+        assertThat(chunks.last()).isInstanceOf(StreamChunk.Error::class.java)
     }
 
     @Test
@@ -167,4 +279,13 @@ class ProtocolUsageParsingTest {
     }
 
     private fun request() = PromptRequest(listOf(ProtocolMessage("user", "synthetic")), "fixture")
+
+    private fun anthropicProtocol(stream: String) = AnthropicProtocol(
+        baseUrl = "https://api.anthropic.com",
+        apiKey = "test-key",
+        model = "test-model",
+        httpClient = HttpClient(MockEngine {
+            respond(stream, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
+        }),
+    )
 }

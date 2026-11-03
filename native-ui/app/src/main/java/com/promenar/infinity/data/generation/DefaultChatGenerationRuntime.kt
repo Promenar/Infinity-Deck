@@ -85,6 +85,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -318,6 +319,7 @@ internal class DefaultChatGenerationRuntime(
                     window = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, preparedRoute?.modelId),
                     manual = manual,
                     turnState = compactionTurnState,
+                    stableModelId = preparedRoute?.modelId,
                 ),
                 buildPrompt = { updated ->
                     val updatedSystem = replaceHistorySummary(systemPrompt, updated.summary, preparedContextSummary)
@@ -346,8 +348,11 @@ internal class DefaultChatGenerationRuntime(
                 onProgress = onProgress,
             )
         }
-        return if (manual || compactionService == null) operation()
+        val result = if (manual || compactionService == null) operation()
             else compactionService.compactAutomatically(request.sessionId, operation)
+        if (result.newlyFoldedToolResults > 0 || result.summarizedTurns > 0)
+            sessionManager.updateContextUsageBaseline(request.sessionId, null)
+        return result
     }
 
     private fun canSpendOnSummary(request: GenerationRequest, estimatedTokens: Long): Boolean {
@@ -474,17 +479,18 @@ internal class DefaultChatGenerationRuntime(
 
     internal suspend fun estimateContext(sessionId: String): ContextUsageEstimate {
         val context = prepareStoredContext(sessionId)
-        val messages = buildMessagesWithMedia(context.session, context.systemPrompt).map { message ->
+        val messages = buildMessagesWithMedia(context.session, context.systemPrompt, modelId = preparedRoute?.modelId).map { message ->
             if (message.role != "tool" || message.name == "view_media" || outputStore == null) message else message.copy(content = try {
                 outputStore.previewForContext(sessionId, message.content)
             } catch (_: java.io.IOException) { ContextCompactionPipeline.headTail(message.content, 2000) })
         }
-        val preview = compactionPipeline.preview(context.session, context.prompt.copy(messages = messages))
+        val preview = compactionPipeline.preview(context.session, context.prompt.copy(messages = messages), preparedRoute?.modelId)
         val window = PreparedPromptBudgetGate.resolveWindow(context.session, context.prompt, settings, preparedRoute?.modelId)
-        return ContextUsageBreakdown.estimate(
+        val local = ContextUsageBreakdown.estimate(
             preview.prompt, preparedContext?.systemPromptSections.orEmpty(),
             preview.foldedToolResults, window.modelContextTokens ?: 128000,
         )
+        return ContextUsageCalibration.scale(local, preview.afterTokens)
     }
 
     override suspend fun prepare(request: GenerationRequest) {
@@ -702,7 +708,7 @@ internal class DefaultChatGenerationRuntime(
             stream = true,
         )
         val budgetedPrompt = if (refreshingForSend) {
-            compactionPipeline.preview(session, prompt.copy(messages = offloadToolResults(request.sessionId, prompt.messages))).prompt
+            compactionPipeline.preview(session, prompt.copy(messages = offloadToolResults(request.sessionId, prompt.messages)), route.modelId).prompt
         } else compactContext(request, session, prompt, systemPrompt).prompt
         val hasFullContextDocuments = request.userMessageId
             ?.let { id -> session.messages.firstOrNull { it.id == id } }
@@ -710,7 +716,7 @@ internal class DefaultChatGenerationRuntime(
             .isNullOrEmpty()
             .not()
         val budgetDecision = PreparedPromptBudgetGate.evaluate(
-            session,
+            store.getSession(request.sessionId) ?: session,
             budgetedPrompt,
             settings,
             hasFullContextDocuments,
@@ -751,6 +757,21 @@ internal class DefaultChatGenerationRuntime(
             prepared.copy(messages = mediaContextLoader.attach(currentSession, prepared.messages, route.modelId))
         }
         val prompt = mediaPrompt
+        val currentSession = store.getSession(request.sessionId) ?: error("生成会话不存在")
+        val finalHasDocuments = prompt.messages.any { !it.documentData.isNullOrEmpty() } ||
+            currentSession.messages.firstOrNull { it.id == request.userMessageId }?.userDocuments?.isNotEmpty() == true
+        val finalBudget = PreparedPromptBudgetGate.evaluate(currentSession, prompt, settings,
+            finalHasDocuments, route.modelId)
+        if (finalBudget is ContextBudgetDecision.Blocked) {
+            val failure = GenerationFailure(code = GenerationFailureCode.CONTEXT_LIMIT, formatArgs = mapOf(
+                GenerationFailure.KEY_REQUIRED_TOKENS to finalBudget.requiredTokens.toString(),
+                GenerationFailure.KEY_AVAILABLE_TOKENS to finalBudget.availableTokens.toString(),
+                GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to finalHasDocuments.toString(),
+            ), technical = "media budget blocked before request: ${finalBudget.reason}")
+            handleDocumentBudgetFailure(request, failure)
+            return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(failure))
+        }
+        preparedPrompt = prompt
         if (!route.useLocalProvider) {
             awaitTailnet(route)?.let { failure -> return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(failure)) }
         }
@@ -780,10 +801,17 @@ internal class DefaultChatGenerationRuntime(
                 StreamConfig(sessionId = request.sessionId),
             )
         }
-        return source.mapNotNull { chunk ->
-            toGenerationChunk(chunk)?.also {
-                if (it is GenerationChunk.Text) toolProgressReminder.onUserFacingText(it.content)
-            }
+        val recorder = RequestInputUsageRecorder(currentSession, prompt, route.modelId) { baseline ->
+            sessionManager.updateContextUsageBaseline(request.sessionId, baseline)
+        }
+        return kotlinx.coroutines.flow.flow {
+            recorder.start()
+            emitAll(source.mapNotNull { chunk ->
+                if (!route.useLocalProvider && chunk is StreamChunk.Usage) recorder.observe(chunk.usage)
+                toGenerationChunk(chunk)?.also {
+                    if (it is GenerationChunk.Text) toolProgressReminder.onUserFacingText(it.content)
+                }
+            })
         }
     }
 
@@ -1174,9 +1202,8 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override fun estimatedInputTokens(request: GenerationRequest): Int = preparedPrompt?.let { prompt ->
-        prompt.messages.sumOf(ApproximateTokenEstimator::estimate) + prompt.tools.orEmpty().sumOf {
-            ApproximateTokenEstimator.estimate(it.function.name + it.function.description + it.function.parameters)
-        }
+        store.getSession(request.sessionId)?.let { PromptUsageCalibration.estimate(it, prompt, preparedRoute?.modelId) }
+            ?: ApproximateTokenEstimator.estimate(prompt)
     } ?: 0
 
     override fun maxStreamRetries(request: GenerationRequest): Int =

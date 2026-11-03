@@ -25,6 +25,7 @@ data class ContextCompactionInput(
     val window: PromptWindow,
     val manual: Boolean = false,
     val turnState: ContextCompactionTurnState = ContextCompactionTurnState(),
+    val stableModelId: String? = null,
 )
 
 data class ContextCompactionResult(
@@ -43,9 +44,9 @@ enum class ContextCompactionStage { FOLDING, SUMMARIZING, COMPLETE }
 class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
     private val memoryFolds = java.util.concurrent.ConcurrentHashMap<Pair<String, FoldKey>, String>()
     /** 只读取已有折叠，供用量面板估算；不生成摘要、不改缓存或原始消息。 */
-    suspend fun preview(session: Session, prompt: PromptRequest): ContextCompactionResult {
+    suspend fun preview(session: Session, prompt: PromptRequest, stableModelId: String? = null): ContextCompactionResult {
         val prepared = applyCached(session, prompt, mutableMapOf(), readOnly = true)
-        val tokens = estimate(prepared.prompt)
+        val tokens = PromptUsageCalibration.estimate(session, prepared.prompt, stableModelId)
         return ContextCompactionResult(prepared.prompt, prepared.foldedIndexes.size, 0, tokens, tokens)
     }
 
@@ -59,7 +60,7 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
         var session = input.session
         val localFolds = mutableMapOf<FoldKey, String>()
         var prepared = applyCached(session, buildPrompt(session), localFolds)
-        val beforeTokens = estimate(prepared.prompt)
+        val beforeTokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
         var tokens = beforeTokens
         val budget = budget(input)
         val newlyFolded = mutableSetOf<FoldKey>()
@@ -86,11 +87,12 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
                 val key = foldKey(source, message, index)
                 localFolds[key] = replacement
                 val updated = message.copy(content = replacement)
-                tokens -= ApproximateTokenEstimator.estimate(message) - ApproximateTokenEstimator.estimate(updated)
                 prepared = prepared.copy(
                     prompt = prepared.prompt.copy(messages = prepared.prompt.messages.toMutableList().also { it[index] = updated }),
                     foldedIndexes = prepared.foldedIndexes + index,
                 )
+                session = session.copy(stats = session.stats?.copy(contextUsageBaseline = null))
+                tokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
                 newlyFolded += key
                 if (source != null) cacheWrite(session.id, source, replacement)
             }
@@ -114,7 +116,8 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
                         summarizedTurns = candidates.count { it.role == MessageRole.USER }
                         session = summarized
                         prepared = applyCached(session, buildPrompt(session), localFolds)
-                        tokens = estimate(prepared.prompt)
+                        session = session.copy(stats = session.stats?.copy(contextUsageBaseline = null))
+                        tokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
                     } else {
                         summaryFailed = true
                     }
@@ -229,13 +232,6 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
     private fun reduces(message: ProtocolMessage, content: String): Boolean =
         content.isNotBlank() && ApproximateTokenEstimator.estimate(message.copy(content = content)) <
             ApproximateTokenEstimator.estimate(message)
-
-    private fun estimate(prompt: PromptRequest): Int = (
-        prompt.messages.sumOf { ApproximateTokenEstimator.estimate(it).toLong() } +
-            prompt.tools.orEmpty().sumOf {
-                ApproximateTokenEstimator.estimate(it.function.name + it.function.description + it.function.parameters).toLong()
-            }
-        ).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 
     private fun budget(input: ContextCompactionInput): Int {
         val context = input.window.modelContextTokens?.takeIf { it > 0 } ?: 128_000

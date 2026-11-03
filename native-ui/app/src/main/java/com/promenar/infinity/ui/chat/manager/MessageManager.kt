@@ -552,7 +552,7 @@ class MessageManager(
                                     } else m
                                 },
                                 lastMessage = pending.content,
-                                stats = SessionStats(
+                                stats = (s.stats ?: SessionStats()).copy(
                                     totalTokens = updatedBilling.total,
                                     billing = updatedBilling
                                 )

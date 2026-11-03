@@ -25,7 +25,7 @@ object ApproximateTokenEstimator {
     internal fun mediaTokens(message: ProtocolMessage): Long =
         message.imageUrls.orEmpty().size.toLong() * IMAGE_TOKENS +
             message.audioData.orEmpty().size.toLong() * AUDIO_TOKENS +
-            message.documentData.orEmpty().size.toLong() * DOCUMENT_TOKENS +
+            message.documentData.orEmpty().sumOf { PdfInputTokenEstimator.estimate(it).toLong() } +
             message.videoData.orEmpty().size.toLong() * VIDEO_TOKENS
 
     fun estimate(prompt: PromptRequest): Int = (
@@ -35,11 +35,11 @@ object ApproximateTokenEstimator {
             }
         ).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 
-    // 媒体估算不扫描 base64：按每个输入的保守固定值预留预算。
+    // 音视频按输入个数预留；PDF 仅读取有界的页树元数据。
     const val IMAGE_TOKENS = 2048
     const val AUDIO_TOKENS = 32768
     const val VIDEO_TOKENS = 65536
-    const val DOCUMENT_TOKENS = 32768
+    const val DOCUMENT_TOKENS = PdfInputTokenEstimator.FALLBACK_TOKENS
     internal const val MESSAGE_OVERHEAD_TOKENS = 4
 }
 

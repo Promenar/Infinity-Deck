@@ -71,7 +71,8 @@ class PostProcessor(
 
         sessionManager.updateSession(
             params.sessionId,
-            mapOf("stats" to SessionStats(totalTokens = billingUsage.total, billing = billingUsage))
+            mapOf("stats" to (store.getSession(params.sessionId)?.stats ?: SessionStats())
+                .copy(totalTokens = billingUsage.total, billing = billingUsage))
         )
 
         val isDefaultTitle = params.session.title.isBlank() ||

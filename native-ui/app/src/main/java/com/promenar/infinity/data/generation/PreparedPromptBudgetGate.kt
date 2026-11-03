@@ -4,7 +4,6 @@ import android.content.SharedPreferences
 import com.promenar.infinity.data.document.ContextBudgetDecision
 import com.promenar.infinity.data.document.ContextBudgetGate
 import com.promenar.infinity.data.document.ContextBudgetRequest
-import com.promenar.infinity.data.document.ConservativeContextTokenEstimator
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.findRemoteModelSpec
 import com.promenar.infinity.data.remote.protocol.PromptRequest
@@ -56,9 +55,8 @@ object PreparedPromptBudgetGate {
         val modelContext = window.modelContextTokens
         // 未知模型仍须为完整文档失败关闭；其它请求没有可信窗口时不虚构容量。
         if (modelContext == null && !hasFullContextDocuments) return null
-        // 完整文档按 UTF-8 字节保守计量、失败关闭；其它请求与自动压缩使用同一近似估算，
-        // 否则压缩认为尚有余量而门禁按字节（中文每字 3 个）判定超限，会在远未用满时误拒。
-        val requiredTokens = if (hasFullContextDocuments) conservativeTokens(prompt) else ApproximateTokenEstimator.estimate(prompt)
+        // 文档与普通输入共用校准入口；未知容量的完整文档仍在前面失败关闭。
+        val requiredTokens = PromptUsageCalibration.estimate(session, prompt, stableModelId)
         return ContextBudgetGate.evaluate(
             ContextBudgetRequest(
                 modelContextTokens = modelContext,
@@ -70,34 +68,6 @@ object PreparedPromptBudgetGate {
             ),
         )
     }
-
-    private fun conservativeTokens(prompt: PromptRequest): Int {
-        val messageTokens = prompt.messages.sumOf { message ->
-            ConservativeContextTokenEstimator.estimate(
-                buildString {
-                    append(message.role)
-                    append(message.content)
-                    append(message.reasoning.orEmpty())
-                    append(message.name.orEmpty())
-                    append(message.toolCallId.orEmpty())
-                    message.toolCalls.orEmpty().forEach { call ->
-                        append(call.id)
-                        append(call.name)
-                        append(call.arguments)
-                    }
-                },
-            ).toLong() + message.imageUrls.orEmpty().size * IMAGE_TOKEN_RESERVE.toLong()
-        }
-        val toolTokens = prompt.tools.orEmpty().sumOf { tool ->
-            ConservativeContextTokenEstimator.estimate(
-                tool.function.name + tool.function.description + tool.function.parameters,
-            ).toLong()
-        }
-        return (messageTokens + toolTokens).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-    }
-
-    // 图像使用每张固定预留估算；传输编码与 URL 都不是模型文本 token，实际视觉用量由提供商决定。
-    private const val IMAGE_TOKEN_RESERVE = 4096
 
     // 未显式限制输出时的预留上限：足够容纳常规回答与思考，又不让长输出模型挤占大半窗口。
     private const val IMPLICIT_OUTPUT_RESERVE_CAP = 32_768
