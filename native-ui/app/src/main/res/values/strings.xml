@@ -435,8 +435,6 @@
     <string name="settings_btn_cancel">Cancel</string>
     <string name="settings_btn_delete">Delete</string>
     <string name="settings_edit_avatar">Edit Avatar</string>
-    <string name="avatar_crop_title">Move and scale</string>
-    <string name="avatar_crop_use_photo">Use photo</string>
 
     <!-- ============ Chat ============ -->
     <!-- ChatScreen -->

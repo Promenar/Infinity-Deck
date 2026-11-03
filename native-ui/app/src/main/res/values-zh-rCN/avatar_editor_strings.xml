@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="avatar_editor_title">调整头像</string>
+    <string name="avatar_editor_done">完成</string>
+    <string name="avatar_editor_close">关闭</string>
+    <string name="avatar_editor_saving">正在保存</string>
+    <string name="avatar_editor_hint">拖动移动 · 双指缩放 · 双击切换铺满与放大</string>
+    <string name="avatar_editor_viewport">头像取景区，拖动移动，双指缩放</string>
+    <string name="avatar_editor_preview_profile">资料页</string>
+    <string name="avatar_editor_preview_list">列表</string>
+    <string name="avatar_editor_preview_chat">对话</string>
+    <string name="avatar_editor_zoom">缩放</string>
+    <string name="avatar_editor_zoom_out">缩小</string>
+    <string name="avatar_editor_zoom_in">放大</string>
+    <string name="avatar_editor_zoom_percent">%1$d%%</string>
+    <string name="avatar_editor_rotate">旋转</string>
+    <string name="avatar_editor_rotate_description">顺时针旋转 90°</string>
+    <string name="avatar_editor_mirror">镜像</string>
+    <string name="avatar_editor_mirror_description">水平镜像</string>
+    <string name="avatar_editor_reset">重置</string>
+    <string name="avatar_editor_reset_description">重置取景</string>
+    <string name="avatar_editor_replace">换一张</string>
+    <string name="avatar_editor_replace_description">换一张照片</string>
+    <string name="avatar_editor_replace_failed">无法读取这张照片，已保留当前照片</string>
+</resources>
