@@ -46,6 +46,8 @@ data class BackgroundJobRecord(
     val secretNames: List<String> = emptyList(),
     /** 智能体为命令写的短标题；旧记录与未填写时为 null。 */
     val title: String? = null,
+    /** 最近一次安全输出事件的时间；旧记录从日志时间恢复。 */
+    val lastOutputAtMillis: Long? = null,
 ) {
     /** 未知执行器按 SHELL 展示，持久化原值保留，不据此启动新命令。 */
     val runnerKind: BackgroundJobRunner get() = BackgroundJobRunner.entries.firstOrNull { it.name == runner } ?: BackgroundJobRunner.SHELL

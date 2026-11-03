@@ -950,8 +950,12 @@ internal class DefaultChatGenerationRuntime(
     override suspend fun handleTools(
         request: GenerationRequest,
         toolCalls: List<GenerationToolCall>,
-    ): GenerationToolDecision = handleToolRound(request, toolCalls).also { decision ->
+    ): GenerationToolDecision {
+        val queue = composerQueueStore?.observe(request.sessionId)
+        val decision = if (queue == null) handleToolRound(request, toolCalls) else
+            withContext(com.promenar.infinity.data.exec.SteeringContext(queue)) { handleToolRound(request, toolCalls) }
         if (toolCalls.isNotEmpty() && decision == GenerationToolDecision.CONTINUE) toolProgressReminder.onToolsCompleted()
+        return decision
     }
 
     private suspend fun handleToolRound(
@@ -962,6 +966,10 @@ internal class DefaultChatGenerationRuntime(
         messageManager.flushGenerationTerminal(request.sessionId, assistantMessageId(request))
         settleQuestionResumption(request)
         val calls = toolCalls.map { ToolCall(it.id, it.name, it.arguments) }
+        if (kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext]?.pending() == true) {
+            toolExecutor.rejectTools(request.sessionId, assistantMessageId(request), calls, "用户插入了新消息，此调用未执行。")
+            return GenerationToolDecision.CONTINUE
+        }
         if (calls.any { it.name == "session_branch" }) {
             toolRounds++
             val repository = branchPlans
@@ -1117,6 +1125,11 @@ internal class DefaultChatGenerationRuntime(
             // 停止本轮时子代理已消耗的用量同样计入本轮，不留给下一轮。
             recordSubagentUsage(request)
         }
+        if (kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext]?.pending() == true) {
+            // 待审批集合在执行前计算；插队后的跳过结果已经配对，不能再用旧集合创建审批。
+            toolExecutor.rejectTools(request.sessionId, assistantMessageId(request), calls.filter { it.id in pendingIds }, "用户插入了新消息，此调用未执行。")
+            return GenerationToolDecision.CONTINUE
+        }
         if (pendingIds.isNotEmpty()) {
             val approval = ToolApprovalRequestFactory.create(
                 assistantMessageId = assistantMessageId(request),
@@ -1219,10 +1232,60 @@ internal class DefaultChatGenerationRuntime(
         return true
     }
 
-    override suspend fun shouldYieldAtRoundBoundary(request: GenerationRequest): Boolean =
-        composerQueueStore?.snapshot(request.sessionId)?.let { state ->
-            state.pauseReason == null && state.items.any { it.steering }
-        } ?: false
+    override suspend fun injectSteering(request: GenerationRequest): GenerationRequest? {
+        val queue = composerQueueStore ?: return null
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        val item = queue.claimSteering(request.sessionId) ?: return null
+        try {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        } catch (cancelled: CancellationException) {
+            withContext(kotlinx.coroutines.NonCancellable) {
+                queue.rollback(request.sessionId, item.id, com.promenar.infinity.data.chat.queue.QueuePauseReason.INTERRUPTED)
+            }
+            throw cancelled
+        }
+        // 消息插入和认领回执形成不可取消区间，避免停止时消息已落盘却又回到托盘。
+        return withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.IO) {
+            val userId = "steer_${item.id}"
+            var inserted = false
+            try {
+                val images = item.imagePaths.map { path ->
+                    val bytes = java.io.File(path).readBytes()
+                    val mime = when {
+                        bytes.size >= 3 && bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte() -> "image/jpeg"
+                        bytes.size >= 4 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" -> "image/webp"
+                        else -> "image/png"
+                    }
+                    "data:$mime;base64," + java.util.Base64.getEncoder().encodeToString(bytes)
+                }
+                queue.bindSending(request.sessionId, item.id, userId)
+                messageManager.flushGenerationTerminal(request.sessionId, assistantMessageId(request))
+                val target = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
+                    ?: error("插队目标消息不存在")
+                messageManager.markGenerationTerminal(request.sessionId, target.id, target.content, "success")
+                if (request.messageIdsToReplace.isNotEmpty()) commitReplacement(request)
+                messageManager.addMessage(request.sessionId, com.promenar.infinity.data.model.Message(
+                    id = userId, role = MessageRole.USER, content = item.text,
+                    userImages = images.takeIf { it.isNotEmpty() }, userDocuments = item.documents.takeIf { it.isNotEmpty() },
+                    quotes = item.quotes.takeIf { it.isNotEmpty() }, createdAt = System.currentTimeMillis(),
+                ))
+                inserted = true
+                queue.accept(request.sessionId, item.id)
+                frozenTurnContext = null
+                replacementTurnContext = null
+                cachedRetrieval = null
+                preparedContext = null
+                emptyReplyReminder = false
+                compactionTurnState.historySummaryAttempted = false
+                request.copy(userMessageId = userId, userContent = item.text, imageDataUrls = images,
+                    rollbackUserOnPreparationFailure = false, messageIdsToReplace = emptySet())
+            } catch (failure: Throwable) {
+                // 已插入的消息按绑定 ID 恢复回执；尚未插入的消息保留待用户重试。
+                if (!inserted) queue.rollback(request.sessionId, item.id, com.promenar.infinity.data.chat.queue.QueuePauseReason.FAILED)
+                throw failure
+            }
+        }
+    }
 
     /** 只继承本轮成功的内置状态工具读数，恢复生成时也不必改写初始快照。 */
     private fun observedStateRevision(session: com.promenar.infinity.data.model.Session, request: GenerationRequest): Long {

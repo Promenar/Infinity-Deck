@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="exec_steer_empty_reply">模型没有返回内容，请重试生成。</string>
+</resources>

@@ -14,6 +14,40 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ToolLiveOutputStoreTest {
+    @Test fun `相同终端快照仍按真实增量事件发布重复新输出`() {
+        val store = ToolLiveOutputStore(limit = 10)
+        val sink = store.open("job:repeated", inferOutputEvents = false)
+        val terminal = com.promenar.infinity.data.linux.LinuxExecTerminalText(10)
+        fun accept(text: String) {
+            terminal.accept(text) { store.publishOutput("job:repeated", it) }
+            sink.replace(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, terminal.snapshot().stdout)
+        }
+        accept("tick\ntick\n")
+        val previous = store.snapshot("job:repeated")!!.text
+        val changes = mutableListOf<String>()
+        val unsubscribe = store.listenOutput("job:repeated", changes::add)
+        accept("tick\n")
+        assertThat(store.snapshot("job:repeated")!!.text).isEqualTo(previous)
+        assertThat(changes).containsExactly("tick\n")
+        unsubscribe()
+        store.close("job:repeated", sink)
+    }
+
+    @Test fun `完整快照增量游标独立于显示尾部且不重放历史匹配词`() {
+        val store = ToolLiveOutputStore(limit = 16_000)
+        val sink = store.open("job:a")
+        val old = "historical-ready\n" + "x".repeat(20_000)
+        sink.replace(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, old)
+        val changes = mutableListOf<String>()
+        val unsubscribe = store.listenOutput("job:a", changes::add)
+        sink.replace(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, old + "new-output")
+        assertThat(changes).containsExactly("new-output")
+        unsubscribe()
+        sink.replace(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, old + "new-output-more")
+        assertThat(changes).containsExactly("new-output")
+        store.close("job:a", sink)
+    }
+
     @Test
     fun `两路输出按到达顺序合并，只保留尾部且不切开代理对`() {
         val store = ToolLiveOutputStore(limit = 3)

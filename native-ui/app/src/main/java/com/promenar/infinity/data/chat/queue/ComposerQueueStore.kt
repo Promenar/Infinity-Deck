@@ -38,6 +38,8 @@ interface ComposerQueueStore {
     suspend fun steer(sessionId: String, id: String): Boolean
     suspend fun pause(sessionId: String, reason: QueuePauseReason?)
     suspend fun claimNext(sessionId: String): QueuedMessage?
+    /** 仅认领插队项；回执和恢复与普通发送使用同一持久租约。 */
+    suspend fun claimSteering(sessionId: String): QueuedMessage? = null
     suspend fun bindSending(sessionId: String, id: String, userMessageId: String)
     suspend fun acceptForUser(sessionId: String, userMessageId: String?) {
         val state = snapshot(sessionId)

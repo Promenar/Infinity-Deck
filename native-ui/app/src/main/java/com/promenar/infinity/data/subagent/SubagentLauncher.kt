@@ -144,12 +144,26 @@ class SubagentLauncher(
                     putLocked(checkNotNull(batches[key(sessionId, step)]).copy(wait = SubagentWait(now, now + timeoutMillis)))
                 }
             }
-            val completed = withTimeoutOrNull(timeoutMillis) {
-                changes.first {
-                    waiter.release.isCompleted || mutex.withLock { selected.all { (_, run) -> !findLocked(sessionId, run.id).second.status.isActive } }
+            val steering = currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext]
+            val completed = com.promenar.infinity.data.exec.ToolExecutionControls.controlled(com.promenar.infinity.data.exec.ToolExecutionControls.Kind.WAITING) { release ->
+                coroutineScope {
+                    val ended = async(start = CoroutineStart.UNDISPATCHED) {
+                        changes.first { mutex.withLock { selected.all { (_, run) -> !findLocked(sessionId, run.id).second.status.isActive } } }
+                    }
+                    val insertion = steering?.let { async(start = CoroutineStart.UNDISPATCHED) { it.await() } }
+                    try {
+                        withTimeoutOrNull(timeoutMillis) {
+                            kotlinx.coroutines.selects.select<Unit> {
+                                ended.onAwait { }
+                                waiter.release.onAwait { }
+                                release.onAwait { waiter.release.complete(SubagentEvent.Actor.USER); Unit }
+                                insertion?.onAwait { waiter.release.complete(SubagentEvent.Actor.USER); Unit }
+                            }
+                            true
+                        } ?: false
+                    } finally { ended.cancel(); insertion?.cancel() }
                 }
-                true
-            } ?: false
+            }
             by = if (!completed) SubagentEvent.Actor.TIMEOUT else if (waiter.release.isCompleted) waiter.release.await() else null
             readyToReturn = true
         } catch (cancelled: CancellationException) {

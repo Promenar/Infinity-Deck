@@ -160,7 +160,12 @@ class ToolExecutor internal constructor(
         }
         val activeLedger = ledger ?: return
 
-        for (tc in admittedCalls.distinctBy { it.id }) {
+        val uniqueCalls = admittedCalls.distinctBy { it.id }
+        for ((index, tc) in uniqueCalls.withIndex()) {
+            if (kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext]?.pending() == true) {
+                rejectTools(sessionId, assistantMessageId, uniqueCalls.drop(index), "用户插入了新消息，此调用未执行。")
+                break
+            }
             val key = ToolExecutionKey(sessionId, targetMsgId, tc.id)
             val persistedIdentity = activeLedger.invocationIdentity(key)
             val preflight = preflight(
@@ -435,6 +440,7 @@ class ToolExecutor internal constructor(
     ): ToolResult {
         val sink = liveOutput?.open(stepId) ?: com.promenar.infinity.domain.tool.ToolLiveOutputSink.None
         return try {
+            withContext(com.promenar.infinity.data.exec.ToolCallControlContext(session.id, tc.id, stepId)) {
             skill.execute(
                 arguments,
                 object : SkillExecutionContext {
@@ -451,6 +457,7 @@ class ToolExecutor internal constructor(
                         ?: throw SecurityException("Session workspace root is missing")
                 }
             )
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (invalid: IllegalArgumentException) {

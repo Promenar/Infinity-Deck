@@ -47,6 +47,24 @@ class BackgroundSubagentTest {
     }
     private fun spec(prompt: String = "任务") = SubagentSpec(prompt, prompt, null, SubagentToolProfile.INHERIT)
 
+    @Test fun `父轮插队立即解除子代理等待且子代理继续执行`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val fixture = Fixture(this, answer(gate))
+        val queue = MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val waiting = async(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+            fixture.runtime.launch(parent(), "steering", listOf(spec()), background = false)
+        }
+        runCurrent()
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("q", "新指令", createdAt = 0, steering = true)))
+        runCurrent()
+        assertThat(waiting.await().single().status.isActive).isTrue()
+        assertThat(fixture.store.snapshot("parent", "steering")!!.wait).isNull()
+        gate.complete(Unit)
+        runCurrent()
+        assertThat(fixture.notices).hasSize(1)
+    }
+
     @Test fun `usage 检查点中断能恢复缓存且运行中重置不会结算旧请求`() = runTest {
         val gate = CompletableDeferred<Unit>()
         val f = Fixture(this, SubagentModelClient { _, _, _, _, _, _ -> flow {

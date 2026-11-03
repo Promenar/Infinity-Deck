@@ -59,6 +59,8 @@ class BuiltinCommandControl {
     var stopRequested: Boolean = false
         private set
 
+    @Volatile internal var outputEvents: ((ToolOutputStream, String) -> Unit)? = null
+    @Volatile var logStartedAtMillis: Long? = null
     val started = kotlinx.coroutines.CompletableDeferred<Unit>()
     @Volatile var timeoutSecondsOverride: Int? = null
     @Volatile var yieldAfterSeconds: Int = 0
@@ -76,6 +78,11 @@ class BuiltinCommandControl {
     }
     internal fun writeInput(text: String, eof: Boolean) {
         (input ?: throw java.io.IOException("任务没有可写的交互输入"))(text, eof)
+    }
+
+    fun requestYield() {
+        timeoutSecondsOverride = yieldedTimeoutSeconds
+        yielded.complete(Unit)
     }
 
     fun requestStop() {
@@ -220,6 +227,11 @@ class BuiltinCommandRunner(
             }
             val limit = request.outputLimitOverride ?: outputLimit
             val normalized = request.outputTransform?.normalized?.invoke()
+            val eventNormalizer = if (control.outputEvents != null) request.outputTransform?.normalized?.invoke() else null
+            fun emitTerminalEvent(text: String) {
+                val safe = eventNormalizer?.accept?.invoke(ToolOutputStream.STDOUT, text) ?: text
+                if (safe.isNotEmpty()) control.outputEvents?.invoke(ToolOutputStream.STDOUT, safe)
+            }
             fun clean(stream: ToolOutputStream, text: String) = request.outputTransform?.accept?.invoke(stream, text) ?: text
             fun tail(stream: ToolOutputStream) = request.outputTransform?.finish?.invoke(stream).orEmpty()
             fun normalizedText(text: String) = normalized?.accept?.invoke(ToolOutputStream.STDOUT, text) ?: text
@@ -232,11 +244,12 @@ class BuiltinCommandRunner(
                 { clean(ToolOutputStream.STDERR, it) }, { tail(ToolOutputStream.STDERR) })
             control.outputSanitizer = if (request.terminal) ::terminalSnapshot else request.outputTransform?.snapshot
             val logFailure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+            val logStartedAt = control.logStartedAtMillis ?: System.currentTimeMillis()
             // 为规范化后的匹配保留前文，遮蔽之后才裁成公开输出预算。
             val terminalLimit = (limit.toLong() + (request.outputTransform?.normalizationTailChars ?: 0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val terminalText = if (request.terminal) com.promenar.infinity.data.linux.LinuxExecTerminalText(terminalLimit).also { control.terminalText = it } else null
             val readers = if (terminalText != null) listOf(daemon("infinity-pty-output") {
-                val log = logFile?.let { com.promenar.infinity.data.jobs.RotatingJobLog(it) }
+                val log = logFile?.let { com.promenar.infinity.data.jobs.RotatingJobLog(it, startedAtMillis = logStartedAt) }
                 try {
                     InputStreamReader(process.inputStream, Charsets.UTF_8).use { reader ->
                         val chunk = CharArray(8192)
@@ -246,7 +259,7 @@ class BuiltinCommandRunner(
                                 if (failure.message?.contains("EIO") == true || failure.message?.contains("I/O error", ignoreCase = true) == true || !process.isAlive) -1 else throw failure
                             }
                             if (count < 0) break
-                            val committed = terminalText.accept(clean(ToolOutputStream.STDOUT, String(chunk, 0, count)))
+                            val committed = terminalText.accept(clean(ToolOutputStream.STDOUT, String(chunk, 0, count)), ::emitTerminalEvent)
                             answerTerminalQueries(process, terminalText)
                             val cleanCommitted = normalizedText(committed)
                             log?.write(cleanCommitted.toByteArray(Charsets.UTF_8))
@@ -255,7 +268,9 @@ class BuiltinCommandRunner(
                             else if (cleanCommitted.isNotEmpty()) onOutput?.invoke(ToolOutputStream.STDOUT, cleanCommitted)
                         }
                     }
-                    val rest = terminalText.accept(tail(ToolOutputStream.STDOUT)) + terminalText.finish()
+                    val rest = terminalText.accept(tail(ToolOutputStream.STDOUT), ::emitTerminalEvent) + terminalText.finish()
+                    eventNormalizer?.finish?.invoke(ToolOutputStream.STDOUT)?.takeIf { it.isNotEmpty() }
+                        ?.let { control.outputEvents?.invoke(ToolOutputStream.STDOUT, it) }
                     val cleanRest = normalizedText(rest) + normalized?.finish?.invoke(ToolOutputStream.STDOUT).orEmpty()
                     log?.write(cleanRest.toByteArray(Charsets.UTF_8))
                     if (onTerminalOutput != null) onTerminalOutput(terminalSnapshot(terminalText.snapshot().stdout))
@@ -264,7 +279,7 @@ class BuiltinCommandRunner(
                 finally { log?.close() }
             }) else if (logFile != null) listOf(daemon("infinity-job-output") {
                 try {
-                com.promenar.infinity.data.jobs.RotatingJobLog(logFile).use { log ->
+                com.promenar.infinity.data.jobs.RotatingJobLog(logFile, startedAtMillis = logStartedAt).use { log ->
                     InputStreamReader(process.inputStream, Charsets.UTF_8).use { reader ->
                         val chunk = CharArray(8 * 1024)
                         while (true) {
@@ -272,10 +287,12 @@ class BuiltinCommandRunner(
                             if (count < 0) break
                             val text = clean(ToolOutputStream.STDOUT, String(chunk, 0, count))
                             log.write(text.toByteArray(Charsets.UTF_8))
+                            if (text.isNotEmpty()) control.outputEvents?.invoke(ToolOutputStream.STDOUT, text)
                             onOutput?.invoke(ToolOutputStream.STDOUT, text)
                         }
                         val rest = tail(ToolOutputStream.STDOUT)
                         log.write(rest.toByteArray(Charsets.UTF_8))
+                        if (rest.isNotEmpty()) control.outputEvents?.invoke(ToolOutputStream.STDOUT, rest)
                         if (rest.isNotEmpty()) onOutput?.invoke(ToolOutputStream.STDOUT, rest)
                     }
                 }

@@ -2877,7 +2877,7 @@ class ChatViewModelTest {
 
 
     @Test
-    fun `生成中插队在工具边界让出并用工具结果开始新轮`() = runTest {
+    fun `生成中插队在工具边界注入且原队列在终态后派发`() = runTest {
         seedSession(); advanceUntilIdle()
         val gate = CompletableDeferred<List<StreamChunk>>()
         streamGate = gate
@@ -2899,7 +2899,7 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `生成中插队发送把草稿排到队首并标记当前步骤后发送`() = runTest {
+    fun `生成中插队发送把草稿标记为当前循环待注入`() = runTest {
         seedSession(); advanceUntilIdle()
         holdStreamOpen = true; fakeStreamChunks = listOf(StreamChunk.TextDelta("partial"))
         viewModel.sendMessage("first"); advanceUntilIdle()

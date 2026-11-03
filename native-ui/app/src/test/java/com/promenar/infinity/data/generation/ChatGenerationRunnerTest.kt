@@ -32,7 +32,7 @@ import org.junit.Test
 
 class ChatGenerationRunnerTest {
     @Test
-    fun `工具结果提交后插队让出为成功且不创建续写占位`() = runTest {
+    fun `工具结果提交后插队注入同一循环并继续生成`() = runTest {
         val runtime = FakeRuntime(listOf(flowOf(
             GenerationChunk.ToolCall("call", "search", "{}"),
             GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("call")),
@@ -41,21 +41,24 @@ class ChatGenerationRunnerTest {
         runtime.yieldAtBoundary = true
         val events = mutableListOf<GenerationEvent>()
         ChatGenerationRunner(runtime).run(request(), events::add)
-        assertThat(runtime.streamAttempts).isEqualTo(1)
+        assertThat(runtime.streamAttempts).isEqualTo(2)
         assertThat(runtime.handledToolRounds).isEqualTo(1)
         assertThat(runtime.nextAssistantId).isEqualTo("assistant-next")
-        assertThat(runtime.persisted.last().toolCalls.single().id).isEqualTo("call")
+        assertThat(runtime.persisted.last().content).isEqualTo("不应续写")
         assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
-        assertThat(runtime.yieldChecks).isEqualTo(1)
+        assertThat(runtime.yieldChecks).isEqualTo(2)
         assertThat(events.phases().last()).isEqualTo(GenerationPhase.COMPLETED)
     }
 
     @Test
-    fun `纯文字完成不查询插队边界`() = runTest {
-        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Text("完成"), GenerationChunk.Completed(CompletionReason.END_TURN))))
+    fun `纯文字结束边界同样注入插队`() = runTest {
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Text("完成"), GenerationChunk.Completed(CompletionReason.END_TURN)),
+            flowOf(GenerationChunk.Text("新指令回复"), GenerationChunk.Completed(CompletionReason.END_TURN))))
         runtime.yieldAtBoundary = true
         ChatGenerationRunner(runtime).run(request()) {}
-        assertThat(runtime.yieldChecks).isEqualTo(0)
+        assertThat(runtime.yieldChecks).isEqualTo(2)
+        assertThat(runtime.streamAttempts).isEqualTo(2)
+        assertThat(runtime.persisted.last().content).isEqualTo("新指令回复")
         assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
     }
 
@@ -628,10 +631,11 @@ class ChatGenerationRunnerTest {
             toolDecisions += GenerationToolDecision.CONTINUE
             replyReminderSupported = true
         }
-        ChatGenerationRunner(twice).run(request()) {}
+        val failed = runCatching { ChatGenerationRunner(twice).run(request()) {} }.exceptionOrNull()
+        assertThat((failed as GenerationFailedException).failure.code).isEqualTo(GenerationFailureCode.EMPTY_REPLY)
         assertThat(twice.streamAttempts).isEqualTo(3)
         assertThat(twice.replyReminders).isEqualTo(1)
-        assertThat(twice.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+        assertThat(twice.terminals).containsExactly(GenerationTerminalStatus.ERROR)
 
         val unsupported = FakeRuntime(listOf(toolRound, empty())).apply { toolDecisions += GenerationToolDecision.CONTINUE }
         ChatGenerationRunner(unsupported).run(request()) {}
@@ -793,10 +797,11 @@ class ChatGenerationRunnerTest {
         val toolDecisions = ArrayDeque<GenerationToolDecision>()
         var yieldAtBoundary = false
         var yieldChecks = 0
-        override suspend fun shouldYieldAtRoundBoundary(request: GenerationRequest): Boolean {
+        override suspend fun injectSteering(request: GenerationRequest): GenerationRequest? {
             yieldChecks++
-            check(flushCount > 0)
-            return yieldAtBoundary
+            if (!yieldAtBoundary) return null
+            yieldAtBoundary = false
+            return request.copy(userMessageId = "steered-user", userContent = "新指令")
         }
         var streamAttempts = 0
         var flushCount = 0

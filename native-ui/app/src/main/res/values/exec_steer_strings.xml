@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="exec_steer_empty_reply">The model returned no content. Try generating the reply again.</string>
+</resources>

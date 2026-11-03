@@ -12,6 +12,8 @@ data class TermuxJobSnapshot(
     val truncated: Boolean,
     val timedOut: Boolean = false,
     val stopped: Boolean = false,
+    /** 后端已提供的日志字节位置，用于识别内容相同的后续输出。 */
+    val logBytes: Long? = null,
 )
 
 /** 每次调用只等待短 RUN_COMMAND；用户进程及超时看门狗均由 Termux 独立托管。 */
@@ -245,7 +247,7 @@ internal object TermuxBackgroundJobScripts {
         val tail = decode(fields[6])
         return TermuxJobSnapshot(
             exit, alive, tail.takeLast(TAIL_CHARACTERS), byteCount > TAIL_BYTES || tail.length > TAIL_CHARACTERS,
-            timedOut, stopped,
+            timedOut, stopped, logBytes = byteCount,
         )
     }
 
@@ -368,7 +370,11 @@ internal object TermuxBackgroundJobScripts {
         [ -r "§directory.log" ] || exit 74
         count=§(wc -c < "§directory.log") || exit 74
         printf '$PROTOCOL\n%s\n%s\n%s\n%s\n%s\n' "§code" "§alive" "§timed_out" "§stopped" "§count"
-        tail -c $TAIL_BYTES -- "§directory.log" | base64 | tr -d '\r\n'
+        first=§((count > $TAIL_BYTES ? count - $TAIL_BYTES + 1 : 1))
+        bytes=§((count < $TAIL_BYTES ? count : $TAIL_BYTES))
+        if [ "§bytes" -gt 0 ]; then
+            tail -c "+§first" -- "§directory.log" | head -c "§bytes" | base64 | tr -d '\r\n'
+        fi
         printf '\n'
     """.trimIndent().shell()
 

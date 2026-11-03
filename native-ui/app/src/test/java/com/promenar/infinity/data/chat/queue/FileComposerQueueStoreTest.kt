@@ -14,6 +14,48 @@ import org.junit.rules.TemporaryFolder
 class FileComposerQueueStoreTest {
     @get:Rule val folder = TemporaryFolder()
 
+    @Test fun `插队回执首次写盘失败后同进程按已持久用户恢复且不重复派发`() = runTest {
+        var persisted = false
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler),
+            isUserPersisted = { _, user -> persisted && user == "saved-steering-user" })
+        val ordinary = store.enqueue("s", "ordinary")
+        val item = store.enqueue("s", "steered")
+        store.steer("s", item.id)
+        store.claimSteering("s")
+        store.bindSending("s", item.id, "saved-steering-user")
+        persisted = true
+        val temporary = File(folder.root.listFiles()!!.single(), "queue.json.tmp")
+        temporary.mkdir()
+        assertThat(runCatching { store.accept("s", item.id) }.isFailure).isTrue()
+        temporary.delete()
+        assertThat(store.snapshot("s").sending).isNull()
+        assertThat(store.claimNext("s")?.id).isEqualTo(ordinary.id)
+        assertThat(store.claimNext("s")).isNull()
+    }
+
+    @Test fun `插队认领只消费标记项且回执后普通派发不重复`() = runTest {
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler))
+        val ordinary = store.enqueue("s", "ordinary")
+        assertThat(store.claimSteering("s")).isNull()
+        val steering = store.enqueue("s", "steering")
+        store.steer("s", steering.id)
+        assertThat(store.claimSteering("s")?.id).isEqualTo(steering.id)
+        assertThat(store.claimNext("s")).isNull()
+        store.bindSending("s", steering.id, "user-steering")
+        store.accept("s", steering.id)
+        assertThat(store.claimNext("s")?.id).isEqualTo(ordinary.id)
+    }
+
+    @Test fun `插队认领未注入时取消保留原条目`() = runTest {
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler))
+        val item = store.enqueue("s", "keep")
+        store.steer("s", item.id)
+        store.claimSteering("s")
+        store.rollback("s", item.id, QueuePauseReason.INTERRUPTED)
+        assertThat(store.snapshot("s").items.single().id).isEqualTo(item.id)
+        assertThat(store.snapshot("s").items.single().steering).isTrue()
+    }
+
     @Test fun `提交期间取消调用者仍能确认已持久化的所有权`() = runTest {
         lateinit var operation: kotlinx.coroutines.Job
         var returned = false

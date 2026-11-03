@@ -40,7 +40,7 @@ class ShellExecSkill(private val service: BuiltinExecService, private val jobs: 
         "（可改用 python3 -m infinity_git" + (if (service.pipAvailable) " / python3 -m infinity_pip" else "") + "，或用 . 脚本 在当前 shell 执行）。" + workspaceNote() +
         "需要 apt 包、编译工具链、SSH 远端 git 或原生 Python 扩展时改用 termux_exec 或 ssh_exec。"
     override val mcpServerId: String? = null
-    override val parametersSchema = """{"type":"object","properties":{"command":{"type":"string","description":"在 sh -c 中执行的命令"},${ExecToolArguments.TITLE_SCHEMA},"timeout_seconds":{"type":"integer","description":"1–600 秒，默认 60"},"stdin":{"type":"string","description":"可选标准输入；Linux 交互命令请省略"},"yield_after_seconds":{"type":"integer","description":"Linux 前台让出阈值，0 不让出；默认 min(15,timeout_seconds)，不得超过 timeout_seconds"},${BACKGROUND_EXEC_SCHEMA},${SecretCapture.schema}},"required":["command"],"additionalProperties":false}"""
+    override val parametersSchema = """{"type":"object","properties":{"command":{"type":"string","description":"在 sh -c 中执行的命令"},${ExecToolArguments.TITLE_SCHEMA},"timeout_seconds":{"type":"integer","description":"1–600 秒，默认 60"},"stdin":{"type":"string","description":"可选标准输入；Linux 交互命令请省略"},"yield_after_seconds":{"type":"integer","description":"Linux 前台自动让出阈值，0 关闭自动让出，用户和插队仍可让出；默认 min(15,timeout_seconds)，不得超过 timeout_seconds"},${BACKGROUND_EXEC_SCHEMA},${SecretCapture.schema}},"required":["command"],"additionalProperties":false}"""
     private val validator = ToolSchemaValidator()
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
@@ -55,13 +55,15 @@ class ShellExecSkill(private val service: BuiltinExecService, private val jobs: 
             if (command.length > MAX_COMMAND_CHARS) return@runBuiltin invalid("command 超过 $MAX_COMMAND_CHARS 字符，请把脚本写入工作区文件后执行")
             val mode = context.runMode ?: service.runModeForSession(context.sessionId)
             val threshold = ExecToolArguments.integer(values, "yield_after_seconds", minOf(15, timeout), 0..timeout)
-            if (capture == null && mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX && jobs != null && threshold > 0) {
+            if (capture == null && mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX && jobs != null) {
                 val minutes = ExecToolArguments.integer(values, "max_runtime_minutes", 120, 1..1440)
                 val action = com.promenar.infinity.domain.jobs.BackgroundJobExitAction.fromWire((values["on_exit"] as? JsonPrimitive)?.content ?: "notify")!!
                 jobs.runLinuxForeground(context.sessionId, context.workspaceRootUuid, command, threshold, minutes, action, context.liveOutput, ExecToolArguments.title(values)) { attachment, live ->
                     service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, live, expectedMode = mode, attachment = attachment)
                 }
-            } else service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, context.liveOutput, expectedMode = mode, capture = capture)
+            } else com.promenar.infinity.data.exec.ToolExecutionControls.controlled(com.promenar.infinity.data.exec.ToolExecutionControls.Kind.FOREGROUND) {
+                service.runShell(context.workspaceRootUuid, context.sessionId, command, stdin, timeout, context.liveOutput, expectedMode = mode, capture = capture)
+            }
         }
         return result.copy(content = normalized.result(kotlinx.serialization.json.Json.parseToJsonElement(result.content) as JsonObject).toString())
     }

@@ -10,9 +10,73 @@ import com.promenar.infinity.domain.trigger.*
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.junit.Test
 
 class BackgroundJobManagerTest {
+    @Test fun `Termux重复尾部通过真实字节游标触发输出等待`() = runBlocking {
+        val root = Files.createTempDirectory("job-termux-output-position").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val bytes = java.util.concurrent.atomic.AtomicLong(5)
+            val encoded = java.util.Base64.getEncoder().encodeToString("ready".toByteArray())
+            val backend = com.promenar.infinity.data.termux.TermuxBackgroundJobs {
+                com.promenar.infinity.data.termux.TermuxCommandResult(stdout = "INFINITY_JOB_V1\n-\n1\n0\n0\n${bytes.get()}\n$encoded\n", exitCode = 0)
+            }
+            val store = BackgroundJobStore(File(root, "store"))
+            store.put(sample().copy(runner = "TERMUX", runDirectory = File(root, "runs/job-a").path,
+                termuxDirectory = "/termux/jobs/job-a", termuxPid = 123))
+            val manager = manager(root, scope, store, termux = backend)
+            manager.initialize()
+            val waiting = async(ToolCallControlContext("s", "termux-wait", "termux-step")) { manager.waitFor("s", "job-a", 5, untilOutput = "ready") }
+            withTimeout(5_000) { ToolExecutionControls.observe("s", "termux-wait").first { it != null } }
+            assertThat(waiting.isCompleted).isFalse()
+            bytes.set(10)
+            assertThat(waiting.await().waitReason).isEqualTo("output")
+        } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
+    }
+
+    @Test fun `文件已出现时立即返回并拒绝越界路径`() = fixture { m ->
+        val job = m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "sleep 60", null, 1, BackgroundJobExitAction.NONE)
+        File(job.workspaceDirectory!!, "ready").createNewFile()
+        val result = m.waitFor("s", job.id, 600, untilFile = "/workspace/ready")
+        assertThat(result.waitReason).isEqualTo("file")
+        assertThat(result.record.running).isTrue()
+        assertThat(runCatching { m.waitFor("s", job.id, 1, untilFile = "../../escape") }.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+        assertThat(runCatching { m.waitFor("s", job.id, 1, untilOutput = "[") }.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+        m.stop(job.id)
+    }
+
+    @Test fun `输出条件只匹配等待之后的新输出且返回触发原因`() = fixture { m ->
+        val job = m.startBuiltin("s", "root", BackgroundJobRunner.SHELL,
+            "echo historical; while [ ! -f release ]; do sleep 0.05; done; echo service-ready; sleep 60", null, 1, BackgroundJobExitAction.NONE)
+        val waiting = async(ToolCallControlContext("s", "output-call", "output-step")) { m.waitFor("s", job.id, 5, untilOutput = "service-ready") }
+        withTimeout(5_000) { ToolExecutionControls.observe("s", "output-call").first { it != null } }
+        File(job.workspaceDirectory!!, "release").createNewFile()
+        val result = waiting.await()
+        assertThat(result.waitReason).isEqualTo("output")
+        assertThat(result.matchedLine).contains("service-ready")
+        assertThat(result.record.running).isTrue()
+        assertThat(result.tail.text).doesNotContain("[+")
+        assertThat(result.lastOutputSecondsAgo).isNotNull()
+        m.stop(job.id)
+    }
+    @Test fun `用户立即检查和插队提前返回但后台任务继续`() = fixture { m ->
+        val job = m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "sleep 60", null, 1, BackgroundJobExitAction.NONE)
+        val waiting = async(com.promenar.infinity.data.exec.ToolCallControlContext("s", "wait-call", "step")) { m.waitFor("s", job.id, 600) }
+        withTimeout(5_000) {
+            com.promenar.infinity.data.exec.ToolExecutionControls.observe("s", "wait-call").first { it != null }
+        }
+        assertThat(com.promenar.infinity.data.exec.ToolExecutionControls.checkNow("s", "wait-call")).isTrue()
+        assertThat(waiting.await().waitReason).isEqualTo("released")
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        val inserted = async(com.promenar.infinity.data.exec.SteeringContext(queue)) { m.waitFor("s", job.id, 600) }
+        queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+            com.promenar.infinity.data.chat.queue.QueuedMessage("q", "steer", createdAt = 0, steering = true)))
+        assertThat(inserted.await().waitReason).isEqualTo("steering")
+        assertThat(m.status("s", job.id).record.running).isTrue()
+        m.stop(job.id)
+    }
     @Test fun `后台日志仅保存在应用任务目录且工具读取私有日志`() = fixture { m ->
         val job = m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "echo private-output", null, 1, BackgroundJobExitAction.NONE)
         val result = m.waitFor("s", job.id, 5)
@@ -282,7 +346,7 @@ class BackgroundJobManagerTest {
             val job = manager.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "printf '%s' \"\$TOKEN\"", null, 1, BackgroundJobExitAction.NONE)
             val result = manager.waitFor("s", job.id, 5)
             assertThat(result.tail.text).isEqualTo("‹保密:TOKEN›")
-            assertThat(File(job.runDirectory, "output.log").readText()).isEqualTo("‹保密:TOKEN›")
+            assertThat(readJobLogTail(File(job.runDirectory, "output.log")).text).isEqualTo("‹保密:TOKEN›")
             assertThat(File(root, "store/records.json").readText()).doesNotContain("fixture-background-secret")
             assertThat(result.record.secretNames).containsExactly("TOKEN")
             store.put(result.record.copy(state = "RUNNING"))

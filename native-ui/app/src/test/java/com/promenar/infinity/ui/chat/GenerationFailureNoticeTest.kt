@@ -30,6 +30,7 @@ class GenerationFailureNoticeTest {
             GenerationFailureCode.TAILNET_UNAVAILABLE to R.string.generation_failure_tailnet_failed,
             GenerationFailureCode.RUN_MODE_REQUIRED to R.string.run_mode_required,
             GenerationFailureCode.LINUX_UNAVAILABLE to R.string.run_mode_linux_unavailable,
+            GenerationFailureCode.EMPTY_REPLY to R.string.exec_steer_empty_reply,
             GenerationFailureCode.UNKNOWN to R.string.generation_failure_unknown,
         )
 

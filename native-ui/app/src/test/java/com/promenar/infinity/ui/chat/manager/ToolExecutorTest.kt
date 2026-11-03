@@ -324,6 +324,28 @@ class ToolExecutorTest {
         return session
     }
 
+    @Test fun `批内插队跳过剩余调用并为每个调用保留结果配对`() = testScope.runTest {
+        seedSessionWithAssistant()
+        val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
+        var executions = 0
+        val skill = testSkill("steering_tool") {
+            executions++
+            queue.value = com.promenar.infinity.data.chat.queue.ComposerQueueState(items = listOf(
+                com.promenar.infinity.data.chat.queue.QueuedMessage("q", "新指令", createdAt = 0, steering = true)))
+            ToolResult("result", "done", "success")
+        }
+        val registry = singleSkillRegistry(skill)
+        val executor = ToolExecutor(store, messageManager, registry, testToolResolver(registry), ledger = RecordingLedger())
+        val calls = listOf("one", "two", "three").map { ToolCall(it, "steering_tool", "{}") }
+        kotlinx.coroutines.withContext(com.promenar.infinity.data.exec.SteeringContext(queue)) {
+            executor.executeTools("s1", "m1", calls, preparedTools = registry.getAllTools())
+        }
+        assertThat(executions).isEqualTo(1)
+        val results = store.getSession("s1")!!.messages.filter { it.role == MessageRole.TOOL }
+        assertThat(results.map { it.toolCallId }).containsExactly("one", "two", "three")
+        assertThat(results.filter { it.toolCallId != "one" }.all { it.content.contains("用户插入了新消息，此调用未执行") }).isTrue()
+    }
+
     @Test
     fun `已批准工具成功写文件后按会话执行一次收尾`() = testScope.runTest {
         verifyApprovedToolFinalization(fail = false)

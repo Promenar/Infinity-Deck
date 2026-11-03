@@ -37,6 +37,7 @@ object GenerationFailureNotice {
     private const val CODE_TAILNET_TIMEOUT = "generation.failure.tailnet_timeout"
     private const val CODE_RUN_MODE_REQUIRED = "generation.failure.run_mode_required"
     private const val CODE_LINUX_UNAVAILABLE = "generation.failure.linux_unavailable"
+    private const val CODE_EMPTY_REPLY = "generation.failure.empty_reply"
     private const val CODE_UNKNOWN = "generation.failure.unknown"
 
     fun from(failure: GenerationFailure): UiStatusNotice {
@@ -69,6 +70,7 @@ object GenerationFailureNotice {
                 "TIMEOUT" -> CODE_TAILNET_TIMEOUT
                 else -> CODE_TAILNET_FAILED
             }
+            GenerationFailureCode.EMPTY_REPLY -> CODE_EMPTY_REPLY
             GenerationFailureCode.UNKNOWN -> CODE_UNKNOWN
         }
         return UiStatusNotice(
@@ -103,6 +105,7 @@ object GenerationFailureNotice {
 
     /** 未知 notice code 也由通用资源兜底，绝不展示内部 code 或其参数。 */
     fun template(notice: UiStatusNotice): ResolvedStatus = when (notice.code) {
+        CODE_EMPTY_REPLY -> ResolvedStatus(R.string.exec_steer_empty_reply)
         CODE_NETWORK -> ResolvedStatus(R.string.generation_failure_network)
         CODE_AUTH -> ResolvedStatus(R.string.generation_failure_auth)
         CODE_RATE_LIMIT -> ResolvedStatus(R.string.generation_failure_rate_limit)

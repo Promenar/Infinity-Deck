@@ -46,8 +46,8 @@ interface ChatGenerationRuntime {
         toolCalls: List<GenerationToolCall>,
     ): GenerationToolDecision
     suspend fun prepareContinuation(request: GenerationRequest): String? = null
-    /** 工具结果落盘后，是否结束本轮并让排队用户指令开始新轮。 */
-    suspend fun shouldYieldAtRoundBoundary(request: GenerationRequest): Boolean = false
+    /** 安全边界认领并持久注入用户消息，返回后续请求使用的用户输入。 */
+    suspend fun injectSteering(request: GenerationRequest): GenerationRequest? = null
     /** 本次生成的工具轮次与调用预算。 */
     fun toolBudget(request: GenerationRequest): GenerationToolBudget = GenerationToolBudget()
     fun estimatedInputTokens(request: GenerationRequest): Int = 0
@@ -96,6 +96,7 @@ class ChatGenerationRunner(
     override suspend fun cancelBeforeStart(request: GenerationRequest) = runtime.cancelBeforeStart(request)
 
     override suspend fun run(request: GenerationRequest, emit: suspend (GenerationEvent) -> Unit) {
+        var request = request
         var snapshot = GenerationSnapshot()
         var flushed = false
         var primaryFailure: Throwable? = null
@@ -425,6 +426,25 @@ class ChatGenerationRunner(
                 if (reportedUsage == null) tokensEstimated = true
                 progress()
                 if (terminal.reason == CompletionReason.END_TURN) {
+                    // Provider 流已经结束；保留当前回复后，把用户消息送入同一执行循环。
+                    val steered = runtime.injectSteering(request)
+                    if (steered != null) {
+                        request = steered
+                        emptyReplyRetried = false
+                        attempt++
+                        runtime.prepareContinuation(request)?.let { safeEmit(GenerationEvent.TargetChanged(it)) }
+                        snapshot = GenerationSnapshot()
+                        resultsCommitted = false
+                        phase(GenerationPhase.BUILDING_CONTEXT)
+                        val preparation = runtime.buildContext(request)
+                        if (preparation is GenerationPreparationOutcome.Handled) {
+                            safeEmit(GenerationEvent.Rejected(preparation.failure))
+                            flushOnce()
+                            phase(GenerationPhase.FAILED)
+                            return
+                        }
+                        continue
+                    }
                     // 工具轮次之后既无正文也无调用：同一条回复上提醒一次并重新请求，避免对话无声结束。
                     if (!emptyReplyRetried && !finalAnswerMode && toolRoundCount > 0 && snapshot.content.isBlank() &&
                         snapshot.toolCalls.isEmpty() && snapshot.failure == null && runtime.requestReplyAfterEmptyTurn(request)
@@ -434,6 +454,9 @@ class ChatGenerationRunner(
                         snapshot = persist(request, roundStart, emit)
                         InfinityLogger.diagnostic("generation.empty_reply_retry", mapOf("sessionId" to request.sessionId))
                         continue
+                    }
+                    if (emptyReplyRetried && snapshot.content.isBlank() && snapshot.toolCalls.isEmpty()) {
+                        throw GenerationFailedException(GenerationFailure(GenerationFailureCode.EMPTY_REPLY))
                     }
                     break
                 }
@@ -496,7 +519,10 @@ class ChatGenerationRunner(
                     GenerationToolDecision.CONTINUE -> {
                         attempt++
                         if (!flushRoundBoundaryWithRetry()) return
-                        if (runtime.shouldYieldAtRoundBoundary(request)) break
+                        runtime.injectSteering(request)?.let {
+                            request = it
+                            emptyReplyRetried = false
+                        }
                         runtime.prepareContinuation(request)?.let { assistantMessageId ->
                             safeEmit(GenerationEvent.TargetChanged(assistantMessageId))
                         }
