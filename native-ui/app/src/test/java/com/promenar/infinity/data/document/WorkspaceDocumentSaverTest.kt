@@ -310,7 +310,7 @@ class WorkspaceDocumentSaverTest {
         assertThat(failure).isInstanceOf(CancellationException::class.java)
     }
 
-    @Test fun `字节入口保存原二进制并记录实际字节hash`() = runBlocking {
+    @Test fun `字节入口保存原二进制并记录实际字节hash`() = runBlocking<Unit> {
         selectDirectory()
         val bytes = byteArrayOf(0xff.toByte(), 0, 1, 2, 0xfe.toByte())
 
@@ -380,7 +380,7 @@ class WorkspaceDocumentSaverTest {
         assertThat(reusable).isFalse()
     }
 
-    @Test fun `字节入口仍拒绝目录越界和文件名路径注入`() = runBlocking {
+    @Test fun `字节入口仍拒绝目录越界和文件名路径注入`() = runBlocking<Unit> {
         assertThat(saver().saveBytes("s", "../image.png", "image/png", byteArrayOf(1))).isEqualTo(
             DocumentWorkspaceBytesSaveResult.Failure(DocumentWorkspaceSaveFailure.InvalidPath),
         )

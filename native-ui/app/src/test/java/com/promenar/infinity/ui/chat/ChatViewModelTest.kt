@@ -1730,8 +1730,9 @@ class ChatViewModelTest {
 
         assertThat(savedMessages).isEmpty()
         assertThat(protocolRequestCount).isEqualTo(0)
+        // 文档本身超过窗口，属于当前轮放不下，提示转存工作区或换模型。
         assertThat(viewModel.uiState.value.generationNotice?.code)
-            .isEqualTo("generation.failure.context_limit")
+            .isEqualTo("generation.failure.context_limit_turn_documents")
         assertThat(viewModel.draftDocuments.value).containsExactly(document)
         assertThat(viewModel.inputText.value).isEqualTo("请分析")
         assertThat(savedSessions.single { it.id == "s1" }.draft).isEqualTo("请分析")

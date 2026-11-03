@@ -181,7 +181,7 @@ class UserAttachmentWorkspaceStoreTest {
         assertThat(saver.files.keys.any { it.startsWith("rebuilt-root:") }).isTrue()
     }
 
-    @Test fun `保存服务当前来源与发送快照不同则不把异根引用写入结果`() = runBlocking {
+    @Test fun `保存服务当前来源与发送快照不同则不把异根引用写入结果`() = runBlocking<Unit> {
         saver.current = session.copy(workspaceId = "changed-project")
 
         val result = store().save(session, listOf(dataUrl(png)), listOf(document("正文")))
@@ -194,7 +194,7 @@ class UserAttachmentWorkspaceStoreTest {
         )
     }
 
-    @Test fun `同名不同字节追加序号并保留已有文档`() = runBlocking {
+    @Test fun `同名不同字节追加序号并保留已有文档`() = runBlocking<Unit> {
         val result = store().save(session, emptyList(), listOf(document("第一份"), document("第二份")))
 
         assertThat(result.documents[0].workspaceReference!!.path).endsWith("/note.md")
