@@ -642,9 +642,6 @@ dependencies {
     implementation("com.mikepenz:multiplatform-markdown-renderer-coil3:$markdownRendererVersion")
     implementation("com.mikepenz:multiplatform-markdown-renderer-code:$markdownRendererVersion")
 
-    // ─── 图片裁剪 (UCrop) ───
-    implementation("com.github.yalantis:ucrop:2.2.8")
-
     // ─── HTML 解析 ───
     implementation("org.jsoup:jsoup:1.17.2")
 

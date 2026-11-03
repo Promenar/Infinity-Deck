@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="avatar_editor_title">Adjust avatar</string>
+    <string name="avatar_editor_done">Done</string>
+    <string name="avatar_editor_close">Close</string>
+    <string name="avatar_editor_saving">Saving</string>
+    <string name="avatar_editor_hint">Drag to move · pinch to zoom · double-tap to toggle zoom</string>
+    <string name="avatar_editor_viewport">Avatar framing area. Drag to move, pinch to zoom.</string>
+    <string name="avatar_editor_preview_profile">Profile</string>
+    <string name="avatar_editor_preview_list">List</string>
+    <string name="avatar_editor_preview_chat">Chat</string>
+    <string name="avatar_editor_zoom">Zoom</string>
+    <string name="avatar_editor_zoom_out">Zoom out</string>
+    <string name="avatar_editor_zoom_in">Zoom in</string>
+    <string name="avatar_editor_zoom_percent">%1$d%%</string>
+    <string name="avatar_editor_rotate">Rotate</string>
+    <string name="avatar_editor_rotate_description">Rotate 90° clockwise</string>
+    <string name="avatar_editor_mirror">Flip</string>
+    <string name="avatar_editor_mirror_description">Flip horizontally</string>
+    <string name="avatar_editor_reset">Reset</string>
+    <string name="avatar_editor_reset_description">Reset framing</string>
+    <string name="avatar_editor_replace">Replace</string>
+    <string name="avatar_editor_replace_description">Choose another photo</string>
+    <string name="avatar_editor_replace_failed">Couldn\'t read that photo. Kept the current one.</string>
+</resources>

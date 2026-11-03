@@ -107,8 +107,8 @@
         </provider>
 
         <activity
-            android:name=".ui.avatar.AvatarCropActivity"
-            android:screenOrientation="portrait"
+            android:name=".ui.avatar.AvatarEditorActivity"
+            android:exported="false"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
         <activity

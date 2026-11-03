@@ -435,8 +435,6 @@
     <string name="settings_btn_cancel">取消</string>
     <string name="settings_btn_delete">删除</string>
     <string name="settings_edit_avatar">编辑头像</string>
-    <string name="avatar_crop_title">移动和缩放</string>
-    <string name="avatar_crop_use_photo">使用照片</string>
 
     <!-- ============ Chat ============ -->
     <!-- ChatScreen -->
