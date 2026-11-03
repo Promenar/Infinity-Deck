@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
 
 - 内置 Tailscale 显示每台在线设备的连接路径：
   - 设备行的标签分为“直连 · 局域网/公网”“设备中继”“中转 · DERP 区域”和“尚未建立连接”，测过 Ping 的设备附带最近一次延迟。
-  - 点在线设备会弹出设备面板，可以按需 Ping：每 0.4 秒探测一次，连续两次直连、累计 10 次或连续 3 次无响应时停止，也可以手动停止；逐次结果列出路径与延迟。面板里还能复制 tailnet 地址、把设备添加为 SSH 主机。
+  - 点在线设备会弹出设备面板，可以按需 Ping：每 0.4 秒探测一次，连续两次直连、累计 10 次或连续 3 次无响应时停止，也可以手动停止；逐次结果列出路径与延迟。面板里还能复制 tailnet 地址；从远程页进入时，也可以把设备添加为 SSH 主机。
   - Agent 的 `tailnet_status` 工具为每台设备补充 `connection_path`、`path`、`direct_lan`、`relay_region` 与 `relay_region_name`，可用来判断慢是不是走了中转。
   - 界面、日志与工具结果都不输出对端的真实 endpoint 地址和端口，只给出局域网或公网分类。
 
