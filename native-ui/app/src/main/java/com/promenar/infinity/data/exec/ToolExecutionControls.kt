@@ -30,6 +30,9 @@ object ToolExecutionControls {
     private val states = MutableStateFlow<Map<Pair<String, String>, State>>(emptyMap())
     fun observe(sessionId: String, toolCallId: String): Flow<State?> = states.map { it[sessionId to toolCallId] }.distinctUntilChanged()
     fun snapshot(sessionId: String, toolCallId: String): State? = states.value[sessionId to toolCallId]
+    /** 界面按工具步骤 id 订阅；与实时输出共用同一个步骤 id。 */
+    fun observeStep(sessionId: String, stepId: String): Flow<State?> =
+        states.map { map -> map.values.firstOrNull { it.sessionId == sessionId && it.stepId == stepId } }.distinctUntilChanged()
     fun checkNow(sessionId: String, toolCallId: String): Boolean = synchronized(lock) {
         entries[sessionId to toolCallId]?.takeIf { it.state.canCheckNow }?.let { it.release.complete(Unit) } ?: false
     }

@@ -110,6 +110,13 @@ class GenerationFailureNoticeTest {
     }
 
     @Test
+    fun `只有空回复失败显示重试与换模型`() {
+        assertThat(GenerationFailureNotice.isEmptyReply(GenerationFailureNotice.from(GenerationFailure(GenerationFailureCode.EMPTY_REPLY)))).isTrue()
+        assertThat(GenerationFailureNotice.isEmptyReply(GenerationFailureNotice.from(GenerationFailure(GenerationFailureCode.NETWORK)))).isFalse()
+        assertThat(GenerationFailureNotice.isEmptyReply(GenerationFailureNotice.fromPersisted("@infinity/failure:EMPTY_REPLY"))).isTrue()
+    }
+
+    @Test
     fun `限流只在正数重试秒数存在时使用带参数资源`() {
         val withRetry = GenerationFailureNotice.template(
             GenerationFailureNotice.from(GenerationFailure.rateLimited(37)),

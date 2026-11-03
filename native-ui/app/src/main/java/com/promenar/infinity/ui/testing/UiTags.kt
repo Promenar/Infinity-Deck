@@ -79,6 +79,12 @@ object UiTags {
     const val CHAT_DRAFT_BUDGET_SAVE = "chat_draft_budget_save"
     const val CHAT_DRAFT_BUDGET_SWITCH_MODEL = "chat_draft_budget_switch_model"
     const val CHAT_DRAFT_BUDGET_SAVE_ERROR = "chat_draft_budget_save_error"
+    // 执行控制与空回复
+    const val CHAT_TOOL_MOVE_TO_BACKGROUND = "chat_tool_move_to_background"
+    const val CHAT_JOB_WAIT_CHECK_NOW = "chat_job_wait_check_now"
+    const val CHAT_EMPTY_REPLY_ACTIONS = "chat_empty_reply_actions"
+    const val CHAT_EMPTY_REPLY_RETRY = "chat_empty_reply_retry"
+    const val CHAT_EMPTY_REPLY_SWITCH_MODEL = "chat_empty_reply_switch_model"
     const val CHAT_MESSAGE_DOCUMENTS = "chat_message_documents"
     const val CHAT_LEGACY_ATTACHMENTS = "chat_legacy_attachments"
     const val CHAT_LEGACY_ATTACHMENT_ENTRY = "chat_legacy_attachment_entry"

@@ -446,6 +446,7 @@ fun PipelineBubble(
                 GenerationFailureNotice.tailnetKind(historicalGenerationFailureNotice(lastMsg.errorMessage))
             }
             val detail = remember(lastMsg.errorMessage) { historicalGenerationFailureNotice(lastMsg.errorMessage).detail }
+            val emptyReply = remember(lastMsg.errorMessage) { GenerationFailureNotice.isEmptyReply(historicalGenerationFailureNotice(lastMsg.errorMessage)) }
             ErrorMessageSegment(
                 messageId = lastMsg.id,
                 text = stringResource(resolved.resourceId, *resolved.args.toTypedArray()),
@@ -453,6 +454,7 @@ fun PipelineBubble(
                 fontSize = fontSize,
                 onDelete = onDelete,
                 tailnetKind = tailnetKind,
+                emptyReply = emptyReply,
                 actions = failureActions,
             )
         }
@@ -468,6 +470,7 @@ private fun ErrorMessageSegment(
     onDelete: ((String) -> Unit)?,
     detail: String? = null,
     tailnetKind: TailnetFailureKind? = null,
+    emptyReply: Boolean = false,
     actions: GenerationFailureActions? = null,
 ) {
     val context = LocalContext.current
@@ -512,6 +515,8 @@ private fun ErrorMessageSegment(
                     }
                     if (tailnetKind != null && actions != null) {
                         TailnetFailureActionRow(tailnetKind, actions)
+                    } else if (emptyReply && actions != null) {
+                        EmptyReplyActionRow(actions)
                     }
                 }
             }
@@ -603,6 +608,25 @@ private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: Generatio
                 }
             }
         }
+    }
+}
+
+/** 空回复失败没有正文，也就没有底部操作行；在气泡内给出重试与换模型，主操作在右。 */
+@Composable
+private fun EmptyReplyActionRow(actions: GenerationFailureActions) {
+    InfinityPillRow(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(UiTags.CHAT_EMPTY_REPLY_ACTIONS), spacing = 8.dp) {
+        InfinityPillButton(
+            text = stringResource(R.string.exec_steer_empty_reply_switch_model),
+            onClick = actions.onSwitchModel,
+            tone = InfinityPillTone.NEUTRAL,
+            modifier = Modifier.testTag(UiTags.CHAT_EMPTY_REPLY_SWITCH_MODEL),
+        )
+        InfinityPillButton(
+            text = stringResource(R.string.exec_steer_empty_reply_retry),
+            onClick = actions.onRetry,
+            tone = InfinityPillTone.PRIMARY,
+            modifier = Modifier.testTag(UiTags.CHAT_EMPTY_REPLY_RETRY),
+        )
     }
 }
 
@@ -1427,7 +1451,8 @@ internal fun InlineToolRow(
                             workspaceChanges?.let { com.promenar.infinity.ui.chat.diff.WorkspaceChangesList(it) }
                             val waitLimit = commandStep?.waitLimitSeconds
                             if (waitLimit != null && jobCard == null) {
-                                JobWaitProgress(waitLimit, startedAt = invocation.call?.timestamp, running = !invocation.complete)
+                                JobWaitProgress(waitLimit, startedAt = invocation.call?.timestamp, running = !invocation.complete,
+                                    stepId = invocation.call?.id?.let(::unscopedStepId))
                             }
                             // 其余工具的 JSON 参数与结果按字段列出。
                             val fieldFallback = planCard == null && jobCard == null && usesFieldFallback(invocation.name)
@@ -1518,7 +1543,7 @@ private fun commandJobName(step: CommandStepLabel): String = step.label
 
 /** job_wait 的等待进度：运行中每秒刷新“已等待 / 最长”，结束后只留最长等待时间。 */
 @Composable
-private fun JobWaitProgress(limitSeconds: Int, startedAt: Long?, running: Boolean) {
+private fun JobWaitProgress(limitSeconds: Int, startedAt: Long?, running: Boolean, stepId: String? = null) {
     val limit = jobWaitLimitText(limitSeconds)
     val elapsedSeconds by produceState(initialValue = -1L, running, startedAt) {
         if (!running || startedAt == null || startedAt <= 0) { value = -1L; return@produceState }
@@ -1530,10 +1555,23 @@ private fun JobWaitProgress(limitSeconds: Int, startedAt: Long?, running: Boolea
     val text = if (elapsedSeconds >= 0) {
         stringResource(R.string.chat_step_job_wait_elapsed, clockText(elapsedSeconds), clockText(limitSeconds.toLong()))
     } else limit
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        // 等待中挂工具阶段的生成动画，结束后只留最长等待时间。
-        if (elapsedSeconds >= 0) LiveStepDots(com.promenar.infinity.ui.common.motion.GenerationMotionPhase.TOOL, Modifier.padding(end = 6.dp))
-        Text(text, style = InfinityTypography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val sessionId = com.promenar.infinity.ui.chat.components.LocalAgentActivity.current?.sessionId
+    val control by remember(sessionId, stepId, running) {
+        if (sessionId == null || stepId == null || !running) kotlinx.coroutines.flow.flowOf(null)
+        else com.promenar.infinity.data.exec.ToolExecutionControls.observeStep(sessionId, stepId)
+    }.collectAsState(initial = null)
+    // 会话底部已有生成状态动画，等待行只写计时；可提前释放时给出“立即检查”。
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = InfinityTypography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f))
+        control?.takeIf { it.kind == com.promenar.infinity.data.exec.ToolExecutionControls.Kind.WAITING && it.canCheckNow }?.let { state ->
+            InfinityPillButton(
+                text = stringResource(R.string.exec_steer_check_now),
+                onClick = { com.promenar.infinity.data.exec.ToolExecutionControls.checkNow(state.sessionId, state.toolCallId) },
+                compact = true,
+                modifier = Modifier.testTag(UiTags.CHAT_JOB_WAIT_CHECK_NOW),
+            )
+        }
     }
 }
 

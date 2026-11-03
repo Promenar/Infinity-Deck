@@ -2,6 +2,7 @@ package com.promenar.infinity.data.exec
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -21,6 +22,24 @@ class ToolExecutionControlsTest {
         assertThat(ToolExecutionControls.checkNow("s", "call")).isTrue()
         assertThat(wait.await()).isEqualTo("running")
         assertThat(ToolExecutionControls.snapshot("s", "call")).isNull()
+    }
+
+    @Test fun `界面按步骤订阅控制状态且退出后清空`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val wait = async(ToolCallControlContext("s", "call", "step")) {
+            ToolExecutionControls.controlled(ToolExecutionControls.Kind.WAITING) { release ->
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        entered.await()
+        val state = ToolExecutionControls.observeStep("s", "step").first()
+        assertThat(state?.toolCallId).isEqualTo("call")
+        assertThat(state?.kind).isEqualTo(ToolExecutionControls.Kind.WAITING)
+        assertThat(ToolExecutionControls.observeStep("other", "step").first()).isNull()
+        assertThat(ToolExecutionControls.checkNow(state!!.sessionId, state.toolCallId)).isTrue()
+        wait.await()
+        assertThat(ToolExecutionControls.observeStep("s", "step").first()).isNull()
     }
 
     @Test fun `前台命令只在有后台接管能力时允许让出`() = runTest {

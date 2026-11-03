@@ -101,6 +101,9 @@ object GenerationFailureNotice {
         )
     }
 
+    /** 工具轮次后连续两次空回复：气泡内给出重试与换模型。 */
+    fun isEmptyReply(notice: UiStatusNotice): Boolean = notice.code == CODE_EMPTY_REPLY
+
     /** tailnet 失败在消息下方给出的入口；其它失败为 null。 */
     fun tailnetKind(notice: UiStatusNotice): TailnetFailureKind? = when (notice.code) {
         CODE_TAILNET_DISABLED -> TailnetFailureKind.DISABLED

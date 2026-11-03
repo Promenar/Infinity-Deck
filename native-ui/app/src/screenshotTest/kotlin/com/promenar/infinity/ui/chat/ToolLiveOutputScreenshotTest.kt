@@ -86,3 +86,34 @@ private fun LiveOutputFrame(dark: Boolean = true, content: @Composable () -> Uni
         }
     }
 }
+
+@PreviewTest
+@Preview(name = "实时输出 可转入后台 深中411", widthDp = 411, heightDp = 260, locale = "zh-rCN")
+@Preview(name = "Live output background English 360dp font130", widthDp = 360, heightDp = 320, locale = "en", fontScale = 1.3f)
+@Composable
+fun toolLiveOutputMoveToBackgroundPreview() = LiveOutputFrame {
+    ToolLiveOutputPanel(snapshot(buildOutput, stoppable = true), onStop = {}, onMoveToBackground = {})
+}
+
+// 工具轮次后连续两次空回复：失败气泡内给出换模型与重试。
+@PreviewTest
+@Preview(name = "空回复失败操作 深中411", widthDp = 411, heightDp = 200, locale = "zh-rCN")
+@Preview(name = "Empty reply actions English 360dp font130", widthDp = 360, heightDp = 260, locale = "en", fontScale = 1.3f)
+@Composable
+fun emptyReplyFailureActionsPreview() = LiveOutputFrame {
+    val group = buildPipelineGroups(
+        listOf(
+            com.promenar.infinity.data.model.Message(
+                "empty-error", com.promenar.infinity.data.model.MessageRole.ASSISTANT, "",
+                isError = true,
+                errorMessage = "@infinity/failure:EMPTY_REPLY",
+                modelId = "provider::model",
+                createdAt = 1_760_000_000_000,
+            ),
+        ),
+    ).single()
+    PipelineBubble(
+        group = group, isGenerating = false, streamingContent = "", fontSize = 15,
+        failureActions = GenerationFailureActions(onRetry = {}, onSwitchModel = {}, onOpenTailscaleSettings = null),
+    )
+}

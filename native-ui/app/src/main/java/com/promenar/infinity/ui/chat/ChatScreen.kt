@@ -1116,7 +1116,7 @@ fun ChatScreenContent(
                             failureActions = if (idx == pipelineGroups.lastIndex && !uiState.isGenerating) {
                                 GenerationFailureActions(
                                     onRetry = actions.onRetryLastMessage,
-                                    onSwitchModel = actions.onOpenSettings,
+                                    onSwitchModel = actions.onOpenModelPicker ?: actions.onOpenSettings,
                                     onOpenTailscaleSettings = actions.onOpenTailscaleSettings,
                                 )
                             } else {

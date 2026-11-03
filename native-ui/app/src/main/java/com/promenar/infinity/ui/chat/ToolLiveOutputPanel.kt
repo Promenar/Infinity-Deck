@@ -44,7 +44,19 @@ internal fun RunningToolLiveOutput(stepId: String, showStop: Boolean = true) {
     val store = LocalToolLiveOutput.current ?: return
     val initial = remember(store, stepId) { store.snapshot(stepId) }
     val snapshot by remember(store, stepId) { store.observe(stepId) }.collectAsState(initial = initial)
-    snapshot?.let { ToolLiveOutputPanel(it, onStop = { store.requestStop(stepId) }, showStop = showStop, modifier = Modifier.padding(bottom = ExpandedStepBottomPadding)) }
+    val sessionId = com.promenar.infinity.ui.chat.components.LocalAgentActivity.current?.sessionId
+    val control by remember(sessionId, stepId) {
+        if (sessionId == null) kotlinx.coroutines.flow.flowOf(null)
+        else com.promenar.infinity.data.exec.ToolExecutionControls.observeStep(sessionId, stepId)
+    }.collectAsState(initial = null)
+    // 只有支持后台接管的前台命令才给出“转入后台”；命令继续运行，结果改由后台任务承接。
+    val moveToBackground = control?.takeIf {
+        it.kind == com.promenar.infinity.data.exec.ToolExecutionControls.Kind.FOREGROUND && it.canMoveToBackground
+    }?.let { state -> { com.promenar.infinity.data.exec.ToolExecutionControls.moveToBackground(state.sessionId, state.toolCallId); Unit } }
+    snapshot?.let {
+        ToolLiveOutputPanel(it, onStop = { store.requestStop(stepId) }, showStop = showStop,
+            onMoveToBackground = moveToBackground, modifier = Modifier.padding(bottom = ExpandedStepBottomPadding))
+    }
 }
 
 @Composable
@@ -53,6 +65,7 @@ internal fun ToolLiveOutputPanel(
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
     showStop: Boolean = true,
+    onMoveToBackground: (() -> Unit)? = null,
 ) {
     val tail = remember(snapshot.text) { liveOutputTail(snapshot.text) }
     Column(
@@ -69,8 +82,18 @@ internal fun ToolLiveOutputPanel(
                 text = stringResource(R.string.chat_tool_live_output_title),
                 style = InfinityTypography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            if (onMoveToBackground != null && !snapshot.stopRequested) {
+                com.promenar.infinity.ui.common.InfinityPillButton(
+                    text = stringResource(R.string.exec_steer_move_to_background),
+                    onClick = onMoveToBackground,
+                    compact = true,
+                    modifier = Modifier.testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_TOOL_MOVE_TO_BACKGROUND),
+                )
+            }
             if (showStop && snapshot.stoppable) {
                 // 已请求停止时以文字说明进度，代替不可再点的图标按钮。
                 if (snapshot.stopRequested) {
