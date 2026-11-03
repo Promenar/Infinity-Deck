@@ -8,6 +8,17 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.ui.draw.clip
+import com.promenar.infinity.data.browser.BrowserDisplayMode
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -113,6 +124,12 @@ fun BrowserPage(sessionId: String, onBack: (() -> Unit)?) {
         onPageForward = { session?.goForward() },
         onUpdateWebView = { openWebViewStore(context) },
         onNavigate = { target: String -> host.openByUser(sessionId, target); Unit }.takeIf { host.availability() is BrowserAvailability.Supported },
+        tabActions = BrowserTabActions(
+            onSelect = { host.switchTabByUser(sessionId, it) },
+            onClose = { host.closeTabByUser(sessionId, it) },
+            onNew = { host.newTabByUser(sessionId) },
+            onDisplayMode = { host.setDisplayModeByUser(sessionId, it) },
+        ),
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -121,9 +138,17 @@ fun BrowserPage(sessionId: String, onBack: (() -> Unit)?) {
                 else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
             ),
     ) {
-        session?.let { BrowserWebViewHost(it, Modifier.fillMaxSize()) }
+        session?.let { BrowserWebViewHost(it, state?.currentTabId, Modifier.fillMaxSize()) }
     }
 }
+
+/** 标签栏与显示模式的用户操作；为空时不显示标签栏。 */
+class BrowserTabActions(
+    val onSelect: (String) -> Unit,
+    val onClose: (String) -> Unit,
+    val onNew: () -> Unit,
+    val onDisplayMode: (BrowserDisplayMode) -> Unit,
+)
 
 /** 无状态页面：[state] 为空表示本会话还没有打开网页。网页区域由 [web] 提供，截图测试可用占位内容代替。 */
 @Composable
@@ -140,10 +165,12 @@ fun BrowserPageContent(
     modifier: Modifier = Modifier,
     /** 用户在地址栏前往时收到解析后的地址；为空时地址栏只显示不可编辑。 */
     onNavigate: ((String) -> Unit)? = null,
+    tabActions: BrowserTabActions? = null,
     web: @Composable () -> Unit,
 ) {
     Column(modifier.testTag(BrowserTags.PAGE)) {
         BrowserUrlBar(state, onBack, onReload, onPageBack, onPageForward, onNavigate)
+        if (state != null && tabActions != null && availability !is BrowserAvailability.Unsupported) BrowserTabStrip(state, tabActions)
         when {
             availability is BrowserAvailability.Unsupported -> BrowserUnsupported(availability.currentVersion, onUpdateWebView)
             state == null -> BrowserEmpty()
@@ -400,25 +427,119 @@ private fun BrowserNotice(title: String, detail: String, action: Pair<String, ()
     }
 }
 
-/** 把会话的 WebView 挂进一个容器；离开组合时交还给会话离屏保持。 */
+/**
+ * 一行标签栏：当前标签高亮并带关闭按钮，其余标签单行截断；末尾新建标签与手机/桌面切换。
+ * 标签多时横向滚动，栏高固定。
+ */
 @Composable
-private fun BrowserWebViewHost(session: AgentBrowserSession, modifier: Modifier) {
+private fun BrowserTabStrip(state: BrowserUiState, actions: BrowserTabActions) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().height(40.dp).padding(start = 8.dp, end = 8.dp).testTag(BrowserTags.TABS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(state.tabs, key = { it.id }) { tab ->
+                val current = tab.id == state.currentTabId
+                Row(
+                    modifier = Modifier
+                        .widthIn(max = 160.dp)
+                        .height(32.dp)
+                        .background(if (current) scheme.surfaceContainerHigh else Color.Transparent, RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Tab) { if (!current) actions.onSelect(tab.id) }
+                        .padding(start = 10.dp, end = if (current && state.tabs.size > 1) 2.dp else 10.dp)
+                        .testTag(BrowserTags.TAB),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        tab.title.ifBlank { displayUrl(tab.url) }.ifBlank { stringResource(R.string.browser_tab_untitled) },
+                        style = InfinityTypography.labelMedium,
+                        color = when {
+                            current -> scheme.onSurface
+                            tab.released -> scheme.outline
+                            else -> scheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (current && state.tabs.size > 1) {
+                        IconButton(onClick = { actions.onClose(tab.id) }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Rounded.Close, stringResource(R.string.browser_cd_close_tab), tint = scheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+            item {
+                IconButton(onClick = actions.onNew, modifier = Modifier.size(32.dp).testTag(BrowserTags.NEW_TAB)) {
+                    Icon(Icons.Rounded.Add, stringResource(R.string.browser_cd_new_tab), tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        BrowserDisplayModeToggle(state.displayMode, actions.onDisplayMode)
+    }
+}
+
+@Composable
+private fun BrowserDisplayModeToggle(mode: BrowserDisplayMode, onChange: (BrowserDisplayMode) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier.padding(start = 8.dp).height(30.dp).border(1.dp, scheme.outlineVariant, CircleShape).clip(CircleShape).testTag(BrowserTags.DISPLAY_MODE),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            Triple(BrowserDisplayMode.MOBILE, Icons.Rounded.PhoneAndroid, R.string.browser_dev_mobile),
+            Triple(BrowserDisplayMode.DESKTOP, Icons.Rounded.Computer, R.string.browser_dev_desktop),
+        ).forEach { (value, icon, label) ->
+            val selected = value == mode
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .background(if (selected) scheme.secondaryContainer else Color.Transparent)
+                    .selectable(selected = selected, role = Role.RadioButton) { if (!selected) onChange(value) }
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = stringResource(label),
+                    tint = if (selected) scheme.onSecondaryContainer else scheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 把会话当前标签的 WebView 挂进一个容器；切换标签后重新挂载，离开组合时交还给会话离屏保持。
+ * 页面配额已满、当前标签拿不到 WebView 时显示配额提示。
+ */
+@Composable
+private fun BrowserWebViewHost(session: AgentBrowserSession, currentTabId: String?, modifier: Modifier) {
     if (LocalInspectionMode.current) {
         Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerLowest))
         return
     }
     val context = LocalContext.current
-    key(session) {
-        AndroidView(
+    key(session, currentTabId) {
+        if (session.currentWebViewOrNull() == null) {
+            BrowserNotice(title = stringResource(R.string.browser_capacity_title), detail = stringResource(R.string.browser_dev_capacity))
+        } else AndroidView(
             factory = { FrameLayout(it) },
             modifier = modifier,
             update = { container ->
-                if (session.webView.parent !== container) {
+                val page = session.currentWebViewOrNull()
+                if (page != null && page.parent !== container) {
                     container.removeAllViews()
                     container.addView(session.attach(context))
                 }
             },
-            onRelease = { container -> if (session.webView.parent === container) session.detach() },
+            onRelease = { session.detach() },
         )
     }
 }
@@ -453,4 +574,8 @@ object BrowserTags {
     const val TAKE_OVER = "browser_take_over"
     const val HAND_BACK = "browser_hand_back"
     const val TOP_BAR_ENTRY = "chat_browser_entry"
+    const val TABS = "browser_tabs"
+    const val TAB = "browser_tab"
+    const val NEW_TAB = "browser_new_tab"
+    const val DISPLAY_MODE = "browser_display_mode"
 }

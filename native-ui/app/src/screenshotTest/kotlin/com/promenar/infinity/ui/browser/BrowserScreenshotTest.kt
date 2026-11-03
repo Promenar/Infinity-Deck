@@ -24,6 +24,8 @@ import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.data.browser.BrowserActionKind
 import com.promenar.infinity.data.browser.BrowserAgentAction
 import com.promenar.infinity.data.browser.BrowserAvailability
+import com.promenar.infinity.data.browser.BrowserDisplayMode
+import com.promenar.infinity.data.browser.BrowserTabState
 import com.promenar.infinity.data.browser.BrowserHandoffReason
 import com.promenar.infinity.data.browser.BrowserMode
 import com.promenar.infinity.data.browser.BrowserUiState
@@ -37,7 +39,7 @@ import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
-// Agent 浏览器：地址栏下的状态条区分 Agent 操作、用户接手与交给用户登录；WebView 不可用时给出版本与更新入口。
+// Agent 浏览器：地址栏下是标签栏与手机/桌面切换，再下是状态条，区分 Agent 操作、用户接手与交给用户登录；WebView 不可用时给出版本与更新入口。
 @PreviewTest
 @Preview(name = "浏览器 Agent操作中 深中411", widthDp = 411, heightDp = 560, locale = "zh-rCN")
 @Composable fun browserAgentDarkChinese() = PagePreview(english = false, state = agentState(english = false))
@@ -88,6 +90,13 @@ private fun agentState(english: Boolean) = BrowserUiState(
     canGoBack = true,
     mode = BrowserMode.AGENT,
     action = BrowserAgentAction(BrowserActionKind.CLICK, "e12", if (english) "Kotlin coroutines guide" else "Kotlin 协程指南"),
+    tabs = listOf(
+        BrowserTabState("t1", "kotlin - Search", "https://www.bing.com/search?q=kotlin", released = false),
+        BrowserTabState("t2", "Coroutines guide | Kotlin Documentation", "https://kotlinlang.org/docs/coroutines-guide.html"),
+        BrowserTabState("t3", "", "http://localhost:5173/"),
+    ),
+    currentTabId = "t1",
+    displayMode = if (english) BrowserDisplayMode.DESKTOP else BrowserDisplayMode.MOBILE,
 )
 
 private fun handoffState() = BrowserUiState(
@@ -121,6 +130,7 @@ private fun handoffState() = BrowserUiState(
         onUpdateWebView = {},
         modifier = Modifier.fillMaxSize(),
         onNavigate = { _: String -> }.takeIf { availability is BrowserAvailability.Supported },
+        tabActions = BrowserTabActions({}, {}, {}, {}),
     ) { FakePage(login) }
 }
 

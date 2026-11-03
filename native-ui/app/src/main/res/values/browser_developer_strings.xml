@@ -2,6 +2,9 @@
 <resources>
     <string name="browser_dev_mobile">Mobile</string>
     <string name="browser_dev_desktop">Desktop</string>
-    <string name="browser_dev_tab_released">Page released; switching to this tab reloads its URL.</string>
     <string name="browser_dev_capacity">Browser memory is full. Close a page or hand control back, then retry.</string>
+    <string name="browser_cd_new_tab">New tab</string>
+    <string name="browser_cd_close_tab">Close tab</string>
+    <string name="browser_tab_untitled">New tab</string>
+    <string name="browser_capacity_title">Too many open pages</string>
 </resources>
