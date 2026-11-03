@@ -50,7 +50,7 @@ class BuiltinCommandRunnerTest {
             request("echo done; exit 3"), BuiltinCommandControl(), File(job, "log"), File(job, "pgid"),
         )
         assertThat(output.exitCode).isEqualTo(3)
-        assertThat(File(job, "log").readText()).isEqualTo("done\n")
+        assertThat(com.promenar.infinity.data.jobs.readJobLogTail(File(job, "log")).text).isEqualTo("done\n")
         assertThat(RuntimeDataMonitor.backgroundResult(job)["runtime_scan_notes"]).isNotNull()
     }
 

@@ -42,7 +42,7 @@ class SecretExecutionIoTest {
                 outputTransform = secretCommandOutput("s", SecretOutputRedactor(vault)))
             val log = File(root, "output.log")
             runner(root).runBackground(request, BuiltinCommandControl(), log, File(root, "pgid"))
-            assertThat(log.readText()).isEqualTo("‹保密:TOKEN› tail")
+            assertThat(com.promenar.infinity.data.jobs.readJobLogTail(log).text).isEqualTo("‹保密:TOKEN› tail")
         } finally { root.deleteRecursively() }
     }
 
