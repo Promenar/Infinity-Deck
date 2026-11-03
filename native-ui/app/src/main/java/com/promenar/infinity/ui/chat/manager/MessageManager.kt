@@ -20,6 +20,7 @@ import com.promenar.infinity.data.model.ToolCall
 import com.promenar.infinity.data.model.ToolResultArtifact
 import com.promenar.infinity.data.model.UpdateMessageOptions
 import com.promenar.infinity.data.model.json
+import com.promenar.infinity.data.model.toEntity
 import com.promenar.infinity.data.repository.IMessageRepository
 import com.promenar.infinity.data.repository.ISessionRepository
 import com.promenar.infinity.data.rag.ConversationMemoryLifecycle
@@ -339,6 +340,19 @@ class MessageManager(
                 )
             }
         }
+
+    /** 只更新附件信封，原图与正文保持原样；引用写入失败时调用方可以沿用内联内容。 */
+    suspend fun persistUserAttachments(sessionId: String, source: Message,
+        imageReferences: List<com.promenar.infinity.data.model.WorkspaceDocumentReference?>?,
+        documents: List<com.promenar.infinity.data.model.MessageDocumentAttachment>) = withContextMutation(sessionId) {
+        val current = store.getSession(sessionId)?.messages?.firstOrNull { it.id == source.id } ?: return@withContextMutation
+        check(current.userImages == source.userImages && current.userDocuments == source.userDocuments) { "用户附件已变化" }
+        val updated = current.copy(userImageReferences = imageReferences, userDocuments = documents.takeIf { it.isNotEmpty() })
+        messageRepository.updatePartial(source.id, mapOf("files" to updated.toEntity(sessionId).files))
+        store.updateMessageInSession(sessionId, source.id) { message -> message.copy(
+            userImageReferences = imageReferences, userDocuments = updated.userDocuments,
+        ) }
+    }
 
     /** 重试前同步替换模型回复；显式 null 必须清掉失败请求的思考与回传状态。 */
     suspend fun restoreModelReply(sessionId: String, messageId: String, reply: Message) = withContextMutation(sessionId) {

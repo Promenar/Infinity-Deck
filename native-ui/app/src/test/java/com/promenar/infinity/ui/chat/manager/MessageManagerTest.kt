@@ -20,6 +20,33 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MessageManagerTest {
+    @Test fun `附件引用持久化失败时保留原始内联消息`() = testScope.runTest {
+        seedSession()
+        val original = Message("u", MessageRole.USER, "问题", userImages = listOf("data:image/png;base64,AA=="))
+        messageManager.addMessage("s1", original)
+        failPartialUpdate = true
+        val reference = WorkspaceDocumentReference("/session/attachments/image.png", 0, 0)
+        val failure = runCatching { messageManager.persistUserAttachments("s1", original, listOf(reference), emptyList()) }.exceptionOrNull()
+        assertThat(failure).isNotNull()
+        assertThat(store.getSession("s1")!!.messages.single()).isEqualTo(original)
+    }
+
+    @Test fun `用户附件引用同步持久化且保留原图与轮次字段`() = testScope.runTest {
+        seedSession()
+        val image = "data:image/png;base64,AA=="
+        val original = Message("user-attachments", MessageRole.USER, "问题", userImages = listOf(image), turnContext = "轮次上下文")
+        messageManager.addMessage("s1", original)
+        val ref = WorkspaceDocumentReference("/session/attachments/image.png", 0, 2048,
+            sourceSessionId = "s1", isPrivate = true, linuxNamespace = false, sha256 = "hash")
+        messageManager.persistUserAttachments("s1", original, listOf(ref), emptyList())
+        val current = store.getSession("s1")!!.messages.last()
+        assertThat(current.userImageReferences).containsExactly(ref)
+        assertThat(current.userImages).containsExactly(image)
+        assertThat(current.turnContext).isEqualTo("轮次上下文")
+        val files = partialUpdates.last()["files"] as String
+        val restored = com.promenar.infinity.data.local.db.entity.MessageEntity("user-attachments", "s1", "user", "问题", files = files, createdAt = 1L).toDomain()
+        assertThat(restored.userImageReferences).containsExactly(ref)
+    }
     @Test fun `在飞数据库失败批次不能在精确回退后取得新代次重排`() = testScope.runTest {
         val retryEntered = kotlinx.coroutines.CompletableDeferred<Unit>()
         val releaseRetry = kotlinx.coroutines.CompletableDeferred<Unit>()

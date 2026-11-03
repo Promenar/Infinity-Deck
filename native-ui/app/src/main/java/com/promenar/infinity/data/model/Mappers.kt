@@ -25,7 +25,7 @@ private fun decodeMessageDocumentEnvelopeOrNull(text: String): MessageDocumentEn
     decodeFromJson<MessageDocumentEnvelope>(text)
         .takeIf {
             it.schema == MessageDocumentEnvelope.SCHEMA &&
-                (it.documents != null || it.viewedMedia != null || it.legacyFilesPayload != null)
+                (it.documents != null || it.viewedMedia != null || it.legacyFilesPayload != null || it.userImageReferences != null)
         }
 } catch (_: SerializationException) {
     null
@@ -169,6 +169,7 @@ fun MessageEntity.toDomain(): Message {
         thoughtSignature = thoughtSignature,
         images = images,
         userDocuments = envelope?.documents,
+        userImageReferences = envelope?.userImageReferences,
         quotes = quotes?.let(::decodeMessageQuotesOrNull),
         legacyFilesPayload = if (envelope != null) envelope.legacyFilesPayload else files,
         legacyAttachmentsPayload = legacyAttachments,
@@ -210,12 +211,13 @@ fun Message.toEntity(sessionId: String): MessageEntity = MessageEntity(
     reasoning = reasoning,
     thoughtSignature = thoughtSignature,
     images = images,
-    files = if (userDocuments != null || viewedMedia != null) {
+    files = if (userDocuments != null || viewedMedia != null || userImageReferences != null) {
         encodeToJson(
             MessageDocumentEnvelope(
                 documents = userDocuments,
                 viewedMedia = viewedMedia,
                 legacyFilesPayload = legacyFilesPayload,
+                userImageReferences = userImageReferences,
             ),
         )
     } else legacyFilesPayload,

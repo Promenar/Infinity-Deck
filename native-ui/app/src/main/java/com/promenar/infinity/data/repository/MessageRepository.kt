@@ -105,6 +105,7 @@ open class MessageRepository(
                 "modelId" -> result.copy(modelId = value as? String)
                 "turnContext" -> result.copy(turnContext = value as? String)
                 "requestInstruction" -> result.copy(requestInstruction = value as? String)
+                "files" -> result.copy(files = value as? String)
                 "quotes" -> result.copy(quotes = (value as? List<MessageQuote>)?.takeIf { it.isNotEmpty() }?.let { encode(it) })
                 "status" -> result.copy(status = value as? String)
                 "reasoning" -> result.copy(reasoning = value as? String)

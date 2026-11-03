@@ -25,6 +25,7 @@ import java.nio.file.Files
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -309,6 +310,88 @@ class WorkspaceDocumentSaverTest {
         assertThat(failure).isInstanceOf(CancellationException::class.java)
     }
 
+    @Test fun `字节入口保存原二进制并记录实际字节hash`() = runBlocking {
+        selectDirectory()
+        val bytes = byteArrayOf(0xff.toByte(), 0, 1, 2, 0xfe.toByte())
+
+        val result = saver().saveBytes("s", "image.png", "image/png", bytes) as DocumentWorkspaceBytesSaveResult.Success
+
+        assertThat(backend.binaryContents.getValue("/attachments/2026-11-03/image.png").toList()).containsExactlyElementsIn(bytes.toList()).inOrder()
+        assertThat(result.reference.sha256).isEqualTo(hash(bytes))
+        assertThat(result.reference.lineCount).isEqualTo(0)
+        assertThat(backend.createOnlyWrites).containsExactly(true)
+    }
+
+    @Test fun `复用核验读取当前真实字节而不只相信元数据hash`() = runBlocking {
+        selectDirectory()
+        val bytes = "first".toByteArray()
+        val saver = saver()
+        val saved = saver.saveBytes("s", "note.txt", "text/plain", bytes) as DocumentWorkspaceBytesSaveResult.Success
+        val session = Session("s", "a", workspaceId = "project", runMode = SessionRunMode.BUILTIN)
+
+        assertThat(saver.isReusable(session, saved.reference, hash(bytes), bytes.size.toLong())).isTrue()
+        backend.binaryContents["/attachments/2026-11-03/note.txt"] = "other".toByteArray()
+        assertThat(saver.isReusable(session, saved.reference, hash(bytes), bytes.size.toLong())).isFalse()
+        backend.contents.remove("/attachments/2026-11-03/note.txt")
+        backend.binaryContents.remove("/attachments/2026-11-03/note.txt")
+        assertThat(saver.isReusable(session, saved.reference, hash(bytes), bytes.size.toLong())).isFalse()
+    }
+
+    @Test fun `旧引用没有hash时仍实际读取核验且保留大小来源边界`() = runBlocking {
+        selectDirectory()
+        val bytes = "first".toByteArray()
+        val saver = saver()
+        val saved = saver.saveBytes("s", "note.txt", "text/plain", bytes) as DocumentWorkspaceBytesSaveResult.Success
+        val legacy = saved.reference.copy(sha256 = null)
+        val session = Session("s", "a", workspaceId = "project", runMode = SessionRunMode.BUILTIN)
+
+        assertThat(saver.isReusable(session, legacy, hash(bytes), bytes.size.toLong())).isTrue()
+        assertThat(saver.isReusable(session, legacy, hash("other".toByteArray()), bytes.size.toLong())).isFalse()
+        assertThat(saver.isReusable(session, legacy, hash(bytes), bytes.size.toLong() + 1)).isFalse()
+        assertThat(saver.isReusable(session.copy(workspaceId = "different"), legacy, hash(bytes), bytes.size.toLong())).isFalse()
+    }
+
+    @Test fun `复用核验拒绝换工作区模式或Unavailable且不建私有根`() = runBlocking {
+        selectDirectory()
+        val bytes = "data".toByteArray()
+        val saver = saver()
+        val saved = saver.saveBytes("s", "note.txt", "text/plain", bytes) as DocumentWorkspaceBytesSaveResult.Success
+        val session = Session("s", "a", workspaceId = "project", runMode = SessionRunMode.BUILTIN)
+
+        selectDirectory("another")
+        assertThat(saver.isReusable(session, saved.reference, hash(bytes))).isFalse()
+        selectDirectory()
+        mode = SessionRunMode.LINUX
+        assertThat(saver.isReusable(session, saved.reference, hash(bytes))).isFalse()
+        current = SessionWorkspace.Unavailable("missing", null, "不可用")
+        assertThat(saver.isReusable(session, saved.reference, hash(bytes))).isFalse()
+        coVerify(exactly = 0) { workspace.ensureSessionRoot(any()) }
+    }
+
+    @Test fun `核验过程中来源变化后不可复用`() = runBlocking {
+        selectDirectory()
+        val bytes = "data".toByteArray()
+        val saver = saver()
+        val saved = saver.saveBytes("s", "note.txt", "text/plain", bytes) as DocumentWorkspaceBytesSaveResult.Success
+        backend.afterRead = { selectDirectory("another") }
+
+        val reusable = saver.isReusable(Session("s", "a", workspaceId = "project", runMode = SessionRunMode.BUILTIN), saved.reference, hash(bytes))
+
+        assertThat(reusable).isFalse()
+    }
+
+    @Test fun `字节入口仍拒绝目录越界和文件名路径注入`() = runBlocking {
+        assertThat(saver().saveBytes("s", "../image.png", "image/png", byteArrayOf(1))).isEqualTo(
+            DocumentWorkspaceBytesSaveResult.Failure(DocumentWorkspaceSaveFailure.InvalidPath),
+        )
+        assertThat(saver().saveBytes("s", "image.png", "image/png", byteArrayOf(1), relativeDirectory = "../outside")).isEqualTo(
+            DocumentWorkspaceBytesSaveResult.Failure(DocumentWorkspaceSaveFailure.InvalidPath),
+        )
+        assertThat(entries.keys).containsExactly("/")
+    }
+
+    private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
     private fun entry(id: String, path: String, isDirectory: Boolean = false) = FileEntry(
         uuid = id, workspaceRootUuid = "root", parentUuid = if (path == "/") null else "root",
         name = path.substringAfterLast('/'), hash = "hash", mimeType = "text/markdown", isDirectory = isDirectory,
@@ -322,11 +405,13 @@ class WorkspaceDocumentSaverTest {
 
     private class MemoryBackend : ExternalFolderBackend {
         val contents = mutableMapOf<String, String>()
+        val binaryContents = mutableMapOf<String, ByteArray>()
         private val directories = mutableSetOf("/")
         val createOnlyWrites = mutableListOf<Boolean>()
         var beforeWrite: ((String) -> Unit)? = null
         var afterWrite: (() -> Unit)? = null
         var afterCreateDirectory: (() -> Unit)? = null
+        var afterRead: (() -> Unit)? = null
 
         override suspend fun stat(path: String): ExternalFolderEntry? = when {
             path in directories -> folderEntry(path, true)
@@ -334,12 +419,17 @@ class WorkspaceDocumentSaverTest {
             else -> null
         }
         override suspend fun list(path: String): List<ExternalFolderEntry> = emptyList()
-        override suspend fun read(path: String, maxBytes: Long): ByteArray = contents.getValue(path).toByteArray()
+        override suspend fun read(path: String, maxBytes: Long): ByteArray {
+            val bytes = binaryContents[path] ?: contents.getValue(path).toByteArray()
+            afterRead?.also { afterRead = null }?.invoke()
+            return bytes
+        }
         override suspend fun write(path: String, content: ByteArray, expectedSha256: String?, createOnly: Boolean): ExternalFolderEntry {
             createOnlyWrites += createOnly
             beforeWrite?.also { beforeWrite = null }?.invoke(path)
             if (path in contents || path in directories) throw ExternalFolderException("CONFLICT", "occupied")
             contents[path] = content.toString(Charsets.UTF_8)
+            binaryContents[path] = content.copyOf()
             afterWrite?.also { afterWrite = null }?.invoke()
             return folderEntry(path, false)
         }
@@ -348,9 +438,9 @@ class WorkspaceDocumentSaverTest {
             afterCreateDirectory?.also { afterCreateDirectory = null }?.invoke()
             return folderEntry(path, true)
         }
-        override suspend fun delete(path: String, expectedSha256: String?) { contents.remove(path) }
+        override suspend fun delete(path: String, expectedSha256: String?) { contents.remove(path); binaryContents.remove(path) }
         private fun folderEntry(path: String, directory: Boolean) = ExternalFolderEntry(
-            path, path.substringAfterLast('/'), directory, contents[path]?.length?.toLong() ?: 0, 1,
+            path, path.substringAfterLast('/'), directory, binaryContents[path]?.size?.toLong() ?: contents[path]?.toByteArray()?.size?.toLong() ?: 0, 1,
         )
     }
 }

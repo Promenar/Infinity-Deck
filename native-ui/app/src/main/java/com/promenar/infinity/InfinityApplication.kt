@@ -525,6 +525,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             ), workspaceRepository, externalFolderManager, pendingDocumentIndexCoordinator, sessionFor = sessionRepository::getById,
         )
     }
+    private val userAttachmentWorkspaceStore by lazy {
+        com.promenar.infinity.data.document.DefaultUserAttachmentWorkspaceStore(documentWorkspaceSaver)
+    }
     private val agentNetworkSettings by lazy {
         com.promenar.infinity.data.network.AgentNetworkSettings(getSharedPreferences(
             com.promenar.infinity.data.network.AgentNetworkSettings.PREFERENCES_NAME, MODE_PRIVATE))
@@ -1309,6 +1312,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             askUserLedger = askUserLedger,
             secretInputLedger = secretInputLedger,
             agentConfigService = { agentConfigService },
+            attachmentWorkspaceStore = userAttachmentWorkspaceStore,
             branchService = { branchService }, branchPlans = branchPlans, sessionMailbox = sessionMailbox,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
         )
