@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_layer_core">核心</string>
+    <string name="backup_layer_core_desc">设置、提供商、智能体与提示词历史、长期记忆、头像、技能包</string>
+    <string name="backup_layer_knowledge_desc">知识库文档与标签</string>
+    <string name="backup_layer_sessions_desc">会话、消息、产物与任务记录</string>
+    <string name="backup_layer_files">工作区文件</string>
+    <string name="backup_layer_files_desc">会话私有工作区里的文件；文件夹工作区请用 Git 同步</string>
+    <string name="backup_layer_keys_desc">提供商 API Key 等，需要加密</string>
+    <string name="backup_layer_always">始终包含</string>
+    <string name="backup_layer_size">约 %1$s</string>
+    <string name="backup_layer_estimating">计算中</string>
+    <string name="backup_layer_estimate_failed">无法估算大小</string>
+    <string name="backup_layer_separator">、</string>
+    <string name="backup_layer_summary">%1$s · 约 %2$s</string>
+    <string name="backup_encrypt_required">包含密钥时必须加密</string>
+    <string name="backup_layers_footer">恢复时只替换包里有的内容，没选的部分保留本机现有数据。</string>
+    <string name="backup_layers_footer_estimate">预计约 %1$s。恢复时只替换包里有的内容，没选的部分保留本机现有数据。</string>
+    <string name="backup_export_result_title">备份完成</string>
+    <plurals name="backup_export_result_skipped">
+        <item quantity="other">%d 项没有备份</item>
+    </plurals>
+    <string name="backup_skip_reason_file">文件已缺失、发生变化或无法读取</string>
+    <string name="backup_skip_reason_avatar">头像文件不存在或不在头像目录中，已清除该引用</string>
+    <string name="backup_result_done">完成</string>
+    <string name="backup_restore_result_title">恢复完成</string>
+    <string name="backup_restore_result_layers">已替换：%1$s。包里没有的内容保持本机原样。</string>
+    <string name="backup_restore_result_attention">需要你处理</string>
+    <plurals name="backup_degraded_session_agent">
+        <item quantity="other">%d 个会话的智能体不可用</item>
+    </plurals>
+    <plurals name="backup_degraded_directory_workspace">
+        <item quantity="other">%d 个会话的文件夹工作区不可用</item>
+    </plurals>
+    <plurals name="backup_degraded_session_workspace">
+        <item quantity="other">%d 个会话的工作区文件不在包里，显示为不可用</item>
+    </plurals>
+    <plurals name="backup_degraded_artifact_workspace">
+        <item quantity="other">%d 个产物的工作区文件不可用</item>
+    </plurals>
+    <plurals name="backup_degraded_knowledge_document">
+        <item quantity="other">%d 个知识文档引用不可用</item>
+    </plurals>
+    <plurals name="backup_degraded_document_tag">
+        <item quantity="other">%d 个文档标签关联的文件不可用</item>
+    </plurals>
+</resources>

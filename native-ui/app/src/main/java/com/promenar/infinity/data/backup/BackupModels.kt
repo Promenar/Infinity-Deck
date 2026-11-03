@@ -26,7 +26,13 @@ enum class BackupLayer {
 @Serializable
 data class BackupLayerStats(val entryCount: Int = 0, val sizeBytes: Long = 0)
 @Serializable
-data class BackupSkippedItem(val layer: BackupLayer, val name: String, val reason: String)
+data class BackupSkippedItem(val layer: BackupLayer, val name: String, val reason: String) {
+    companion object {
+        /** 原因写进清单，界面按这两个已知值显示本地化文案，其余原样显示。 */
+        const val REASON_FILE_UNAVAILABLE = "文件缺失、内容变化或无法读取"
+        const val REASON_AVATAR_DANGLING = "头像文件不存在或不在头像目录中，已清除该引用"
+    }
+}
 @Serializable
 data class BackupDegradedReference(val category: String, val count: Int)
 @Serializable
@@ -153,7 +159,11 @@ data class SkippedSkillGitRepository(
 data class SkillGitRemote(val name: String, val url: String, val push: Boolean = false)
 
 data class BackupExportResult(val packageBytes: ByteArray, val skills: SkillBackupSummary?, val summary: BackupResultSummary = BackupResultSummary(skills = skills))
-data class BackupRestoreResult(val skills: SkillBackupSummary?, val summary: BackupResultSummary = BackupResultSummary(skills = skills))
+data class BackupRestoreResult(val skills: SkillBackupSummary?, val summary: BackupResultSummary = BackupResultSummary(skills = skills)) {
+    /** 是否需要在启动后告知：分层包总要说明替换范围；旧包只在技能有待处理事项时提示。 */
+    val needsNotice: Boolean
+        get() = summary.layers.isNotEmpty() || skills?.let { it.skippedGitRepositories.isNotEmpty() || it.skippedSymbolicLinks > 0 } == true
+}
 
 @Serializable
 data class BackupManifestEntry(

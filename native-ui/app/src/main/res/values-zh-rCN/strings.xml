@@ -698,8 +698,6 @@
     <string name="backup_core_content_fixed">始终包含</string>
     <string name="backup_content_sessions">会话</string>
     <string name="backup_content_library">资料</string>
-    <string name="backup_content_files">文件</string>
-    <string name="backup_content_settings">设置</string>
     <string name="backup_content_keys">密钥</string>
     <string name="backup_section_local">本地存储</string>
     <string name="backup_export_title">导出备份</string>

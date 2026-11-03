@@ -243,12 +243,12 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private val _backupRestoreResult = MutableStateFlow<com.promenar.infinity.data.backup.BackupRestoreResult?>(null)
     val backupRestoreResult: StateFlow<com.promenar.infinity.data.backup.BackupRestoreResult?> = _backupRestoreResult.asStateFlow()
 
-    /** 启动时完成的备份恢复中需要用户处理的技能事项；界面展示后清除。 */
-    private val _skillRestoreNotice = MutableStateFlow<com.promenar.infinity.data.backup.SkillBackupSummary?>(null)
-    val skillRestoreNotice: StateFlow<com.promenar.infinity.data.backup.SkillBackupSummary?> = _skillRestoreNotice.asStateFlow()
+    /** 启动时完成的备份恢复结果，界面弹出说明替换范围与待处理事项后清除。 */
+    private val _backupRestoreNotice = MutableStateFlow<com.promenar.infinity.data.backup.BackupRestoreResult?>(null)
+    val backupRestoreNotice: StateFlow<com.promenar.infinity.data.backup.BackupRestoreResult?> = _backupRestoreNotice.asStateFlow()
 
-    fun consumeSkillRestoreNotice() {
-        _skillRestoreNotice.value = null
+    fun consumeBackupRestoreNotice() {
+        _backupRestoreNotice.value = null
     }
 
     /** 启动时待恢复事务确定性失败且已完整回滚；界面告知数据保持原状后清除。 */
@@ -2230,9 +2230,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     },
                 ).runOrThrow()
                 _backupRestoreResult.value = runtime.restoreResult.value
-                runtime.restoreResult.value?.skills
-                    ?.takeIf { it.skippedGitRepositories.isNotEmpty() || it.skippedSymbolicLinks > 0 }
-                    ?.let { _skillRestoreNotice.value = it }
+                // 恢复结果对话框已包含技能事项，不再单独弹技能提示。
+                runtime.restoreResult.value?.takeIf { it.needsNotice }
+                    ?.let { _backupRestoreNotice.value = it }
                 if (runtime.restoreNotApplied.value) _restoreNotAppliedNotice.value = true
                 startupIssueManager.recover(StartupStep.BACKGROUND_JOBS, StartupIssueScope.subsystem(StartupSubsystem.BACKGROUND_JOBS)) {
                     backgroundJobs.initialize()

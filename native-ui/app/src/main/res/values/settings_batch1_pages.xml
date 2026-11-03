@@ -16,7 +16,6 @@
     <string name="settings_batch1_home_token_summary">Model usage and cost</string>
     <string name="settings_batch1_ssh_summary">Saved SSH connections</string>
     <string name="settings_batch1_ssh_forward_summary">Listen on this device only</string>
-    <string name="settings_batch1_backup_core_summary">Chats, library, and app settings</string>
     <string name="settings_batch1_backup_encrypt_summary">Encrypt exported backup files</string>
     <string name="settings_batch1_backup_export_summary">Save a backup to this device</string>
     <string name="settings_batch1_backup_import_summary">Restore from a local backup</string>

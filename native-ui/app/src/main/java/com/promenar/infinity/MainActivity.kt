@@ -267,9 +267,9 @@ open class MainActivity : ComponentActivity() {
                             }
                             if (startupState == BackupStartupState.Ready) shareImportViewModel.presentNext()
                         }
-                        val skillRestoreNotice by app.skillRestoreNotice.collectAsStateWithLifecycle()
-                        skillRestoreNotice?.let { summary ->
-                            com.promenar.infinity.ui.skills.SkillRestoreNoticeDialog(summary, app::consumeSkillRestoreNotice)
+                        val backupRestoreNotice by app.backupRestoreNotice.collectAsStateWithLifecycle()
+                        backupRestoreNotice?.let { result ->
+                            com.promenar.infinity.ui.settings.BackupRestoreResultDialog(result, app::consumeBackupRestoreNotice)
                         }
                         val restoreNotAppliedNotice by app.restoreNotAppliedNotice.collectAsStateWithLifecycle()
                         if (restoreNotAppliedNotice) {

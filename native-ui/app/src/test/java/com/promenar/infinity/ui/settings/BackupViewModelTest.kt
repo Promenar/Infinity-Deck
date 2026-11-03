@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.settings
 
+import com.promenar.infinity.data.backup.BackupLayer
 import androidx.lifecycle.ViewModelStore
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.backup.BackupFailureReason
@@ -59,6 +60,17 @@ class BackupViewModelTest {
         advanceUntilIdle()
         assertThat(operations.lastOptions!!.layers).containsExactly(com.promenar.infinity.data.backup.BackupLayer.CORE, com.promenar.infinity.data.backup.BackupLayer.SESSIONS)
         assertThat(vm.uiState.value.exportSummary).isNotNull()
+        vm.dismissExportSummary()
+        assertThat(vm.uiState.value.exportSummary).isNull()
+    }
+
+    @Test
+    fun `逐层开关不能取消核心层且工作区文件可单独加入`() = runTest(dispatcher) {
+        val vm = newViewModel()
+        assertThat(vm.setLayerSelected(BackupLayer.CORE, false)).isFalse()
+        assertThat(vm.setLayerSelected(BackupLayer.WORKSPACE_FILES, true)).isTrue()
+        assertThat(vm.setLayerSelected(BackupLayer.KNOWLEDGE, false)).isTrue()
+        assertThat(vm.uiState.value.selectedLayers).containsExactly(BackupLayer.CORE, BackupLayer.SESSIONS, BackupLayer.WORKSPACE_FILES)
     }
 
     @Test

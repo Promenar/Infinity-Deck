@@ -284,7 +284,7 @@ class RoomBackupDataSourceTest {
             db.agentDao().update(agent.copy(avatarPath = avatar.resolve("missing.img").toString()))
             val core = source.snapshotTo(setOf(BackupLayer.CORE), cache)
             try {
-                assertThat(core.skipped).containsExactly(BackupSkippedItem(BackupLayer.CORE, "missing.img", AvatarBackupFiles.DANGLING_REASON))
+                assertThat(core.skipped).containsExactly(BackupSkippedItem(BackupLayer.CORE, "missing.img", BackupSkippedItem.REASON_AVATAR_DANGLING))
                 assertThat(core.streamEntries.none { it.path.startsWith("avatars/") }).isTrue()
             } finally { core.wipe() }
         } finally { BackupStreams.deleteTree(cache) }

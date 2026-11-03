@@ -43,17 +43,25 @@ fun SkillRestoreNoticeDialog(summary: SkillBackupSummary, onDismiss: () -> Unit)
                     Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).testTag("skill_restore_notice"),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (summary.skippedGitRepositories.isNotEmpty()) {
-                        Text(stringResource(R.string.skills_restore_notice_git))
-                        summary.skippedGitRepositories.forEach { repository -> SkippedRepository(repository) }
-                    }
-                    if (summary.skippedSymbolicLinks > 0) {
-                        Text(pluralStringResource(R.plurals.skills_restore_notice_links, summary.skippedSymbolicLinks, summary.skippedSymbolicLinks))
-                    }
+                    SkillRestoreNoticeContent(summary)
                 }
             }
         },
     )
+}
+
+/** 技能恢复中需要用户处理的事项：未带 Git 元数据的仓库与跳过的符号链接；备份恢复结果对话框复用。 */
+@Composable
+fun SkillRestoreNoticeContent(summary: SkillBackupSummary) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (summary.skippedGitRepositories.isNotEmpty()) {
+            Text(stringResource(R.string.skills_restore_notice_git))
+            summary.skippedGitRepositories.forEach { repository -> SkippedRepository(repository) }
+        }
+        if (summary.skippedSymbolicLinks > 0) {
+            Text(pluralStringResource(R.plurals.skills_restore_notice_links, summary.skippedSymbolicLinks, summary.skippedSymbolicLinks))
+        }
+    }
 }
 
 @Composable

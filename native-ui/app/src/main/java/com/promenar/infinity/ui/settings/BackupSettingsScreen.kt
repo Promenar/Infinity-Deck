@@ -114,6 +114,11 @@ internal fun BackupSettingsScreen(
             listState.scrollToItem(1)
         }
     }
+    // 进入页面后首次空闲时在后台估算各层大小；估算失败不自动重试，避免反复扫描。
+    LaunchedEffect(uiState.canExecute) {
+        if (uiState.canExecute && uiState.layerEstimates.isEmpty() && !uiState.estimating && !uiState.estimateFailed) viewModel.refreshEstimates()
+    }
+    uiState.exportSummary?.let { summary -> BackupExportResultSheet(summary, viewModel::dismissExportSummary) }
 
     var showWebdavSheet by remember { mutableStateOf(false) }
     var showExportPasswordDialog by remember { mutableStateOf(false) }
@@ -189,6 +194,7 @@ internal fun BackupSettingsScreen(
             onCancelOperation = viewModel::cancelOperation,
             onIncludeKeysChange = viewModel::setIncludeKeys,
             onEncryptBackupChange = viewModel::setEncryptBackup,
+            onLayerChange = { layer, selected -> viewModel.setLayerSelected(layer, selected) },
             onExport = onExportClick,
             onImport = onImportClick,
             onWebDavEnabledChange = viewModel::setWebdavEnabled,
@@ -397,6 +403,7 @@ internal data class BackupScreenActions(
     val onCancelOperation: () -> Unit = {},
     val onIncludeKeysChange: (Boolean) -> Unit = {},
     val onEncryptBackupChange: (Boolean) -> Unit = {},
+    val onLayerChange: (com.promenar.infinity.data.backup.BackupLayer, Boolean) -> Unit = { _, _ -> },
     val onExport: () -> Unit = {},
     val onImport: () -> Unit = {},
     val onWebDavEnabledChange: (Boolean) -> Unit = {},
@@ -415,12 +422,6 @@ internal fun BackupSettingsScreenContent(
     listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
 ) {
     var contentExpanded by remember { mutableStateOf(true) }
-    val coreContentLabels = listOf(
-        stringResource(R.string.backup_content_sessions),
-        stringResource(R.string.backup_content_library),
-        stringResource(R.string.backup_content_files),
-        stringResource(R.string.backup_content_settings),
-    )
     InfinitySettingsPageLayout(title = stringResource(R.string.backup_title), onBack = onNavigateBack) { paddingValues ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth(), contentPadding = paddingValues) {
             item {
@@ -446,11 +447,12 @@ internal fun BackupSettingsScreenContent(
             item {
                 InfinitySettingsSection(
                     title = stringResource(R.string.settings_batch1_backup_options),
-                    footer = stringResource(R.string.settings_batch1_backup_core_footer, coreContentLabels.joinToString(", ")),
+                    footer = backupLayersFooter(uiState),
                 ) {
                     InfinitySettingsItem(
                         title = stringResource(R.string.backup_content_title),
-                        subtitle = stringResource(R.string.settings_batch1_backup_core_summary),
+                        subtitle = backupLayerSummary(uiState),
+                        subtitleMaxLines = 3,
                         onClick = { contentExpanded = !contentExpanded },
                         trailingContent = {
                             Icon(if (contentExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, contentDescription = null)
@@ -458,16 +460,11 @@ internal fun BackupSettingsScreenContent(
                     )
                     AnimatedVisibility(visible = contentExpanded) {
                         Column {
-                            SettingsToggle(
-                                title = stringResource(R.string.backup_content_keys),
-                                checked = uiState.keysChecked,
-                                onCheckedChange = actions.onIncludeKeysChange,
-                            )
-                            SettingsToggle(
-                                title = stringResource(R.string.backup_encrypt_package),
-                                description = stringResource(R.string.settings_batch1_backup_encrypt_summary),
-                                checked = uiState.encryptBackup,
-                                onCheckedChange = actions.onEncryptBackupChange,
+                            BackupLayerToggles(
+                                state = uiState,
+                                onLayerChange = actions.onLayerChange,
+                                onIncludeKeysChange = actions.onIncludeKeysChange,
+                                onEncryptBackupChange = actions.onEncryptBackupChange,
                             )
                         }
                     }

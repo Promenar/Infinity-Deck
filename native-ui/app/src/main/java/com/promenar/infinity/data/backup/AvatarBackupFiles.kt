@@ -46,8 +46,6 @@ internal object AvatarBackupFiles {
         val skipped: List<BackupSkippedItem> = emptyList(),
     )
 
-    const val DANGLING_REASON = "头像文件不存在或不在头像目录中，已清除该引用"
-
     /**
      * 悬空引用：头像目录未配置、路径不在头像目录内，或文件已不存在。这类引用没有可备份的内容，
      * 清除引用并列为跳过项；目录内真实存在却无法稳定读取的头像仍让核心层失败。
@@ -65,7 +63,7 @@ internal object AvatarBackupFiles {
         fun capture(raw: String?): String? {
             if (raw.isNullOrBlank()) return null
             if (isDangling(root, raw)) {
-                skipped.getOrPut(raw) { BackupSkippedItem(BackupLayer.CORE, Paths.get(raw).fileName?.toString() ?: raw, DANGLING_REASON) }
+                skipped.getOrPut(raw) { BackupSkippedItem(BackupLayer.CORE, Paths.get(raw).fileName?.toString() ?: raw, BackupSkippedItem.REASON_AVATAR_DANGLING) }
                 return null
             }
             try {

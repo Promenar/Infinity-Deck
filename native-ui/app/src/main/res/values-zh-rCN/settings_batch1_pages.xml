@@ -16,7 +16,6 @@
     <string name="settings_batch1_home_token_summary">模型用量与费用</string>
     <string name="settings_batch1_ssh_summary">保存的 SSH 连接</string>
     <string name="settings_batch1_ssh_forward_summary">仅监听本机</string>
-    <string name="settings_batch1_backup_core_summary">会话、资料与应用设置</string>
     <string name="settings_batch1_backup_encrypt_summary">加密导出备份</string>
     <string name="settings_batch1_backup_export_summary">保存到本机文件</string>
     <string name="settings_batch1_backup_import_summary">从本机文件恢复</string>

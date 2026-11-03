@@ -239,7 +239,7 @@ class RoomBackupDataSource(
                 catch (error: Exception) {
                     if ((error as? BackupValidationException)?.reason in setOf(BackupFailureReason.CAPACITY_EXCEEDED)) throw error
                     skippedIds += id
-                    skipped += BackupSkippedItem(layer, row.requiredString("name"), "文件缺失、内容变化或无法读取")
+                    skipped += BackupSkippedItem(layer, row.requiredString("name"), BackupSkippedItem.REASON_FILE_UNAVAILABLE)
                 }
             }
             payload = payload.copy(tables = payload.tables + (FILE_TABLE to fileRows))

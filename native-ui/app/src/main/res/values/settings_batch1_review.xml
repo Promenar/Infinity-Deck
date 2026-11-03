@@ -15,7 +15,6 @@
     <string name="settings_batch1_termux_ssh_setup_footer">whoami prints your username. For password sign-in, run passwd first.</string>
     <string name="settings_batch1_termux_ssh_host_footer">Add 127.0.0.1:8022 with the username from whoami and password or key authentication.</string>
     <string name="settings_batch1_termux_key_section">Public key login</string>
-    <string name="settings_batch1_backup_core_footer">Always includes %1$s. Avatars aren\'t included; backups with keys must be encrypted.</string>
     <string name="settings_batch1_backup_local_footer">WebDAV backs up or restores only when you ask.</string>
     <string name="settings_batch1_local_models_footer">Models run on this device, so chats stay here.</string>
     <string name="settings_batch1_agent_skills_footer">Matching tasks load SKILL.md instructions and references. Skill packs themselves do not execute code.</string>

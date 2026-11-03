@@ -18,7 +18,7 @@ class BackupContentUiContractTest {
     }
 
     @Test
-    fun `screen has no interactive core category toggles`() {
+    fun `screen exposes optional layers while core stays locked`() {
         val source = String(
             Files.readAllBytes(Path.of("app/src/main/java/com/promenar/infinity/ui/settings/BackupSettingsScreen.kt")),
             Charsets.UTF_8,
@@ -28,11 +28,18 @@ class BackupContentUiContractTest {
             assertThat(source).doesNotContain("toggleCheck(\"$type\"")
         }
         assertThat(source).contains("onIncludeKeysChange = viewModel::setIncludeKeys")
-        assertThat(source).contains("onCheckedChange = actions.onIncludeKeysChange")
-        listOf("sessions", "library", "files", "settings").forEach { type ->
-            assertThat(source).contains("R.string.backup_content_$type")
-        }
-        assertThat(source).contains("R.string.settings_batch1_backup_core_footer, coreContentLabels.joinToString")
+        assertThat(source).contains("onIncludeKeysChange = actions.onIncludeKeysChange")
+        assertThat(source).contains("onLayerChange = { layer, selected -> viewModel.setLayerSelected(layer, selected) }")
+        assertThat(source).contains("footer = backupLayersFooter(uiState)")
+        assertThat(source).doesNotContain("settings_batch1_backup_core_footer")
+        val layers = String(
+            Files.readAllBytes(Path.of("app/src/main/java/com/promenar/infinity/ui/settings/BackupLayerSections.kt")),
+            Charsets.UTF_8,
+        )
+        // 核心层开关常亮且不可关，密钥开启时加密锁定。
+        assertThat(layers).contains("if (layer == BackupLayer.CORE)")
+        assertThat(layers).contains("Icons.Rounded.Lock")
+        assertThat(layers).contains("enabled = !state.keysChecked")
     }
 
     @Test

@@ -328,6 +328,15 @@ class BackupViewModel internal constructor(
 
     fun publishRestoreSummary(summary: BackupResultSummary) { _uiState.update { it.copy(restoreSummary = summary) } }
 
+    fun dismissExportSummary() { _uiState.update { it.copy(exportSummary = null) } }
+
+    /** 勾选或取消一个可选层；核心层始终保留，密钥层同步“包含密钥”与加密要求。 */
+    fun setLayerSelected(layer: BackupLayer, selected: Boolean): Boolean {
+        if (layer == BackupLayer.CORE) return false
+        val current = _uiState.value.selectedLayers
+        return setSelectedLayers(if (selected) current + layer else current - layer)
+    }
+
     fun setIncludeKeys(include: Boolean) {
         synchronized(operationLock) {
             if (!initialized || restoreControl?.restartAuthorized == true || restoreBlocked || cleared) return
