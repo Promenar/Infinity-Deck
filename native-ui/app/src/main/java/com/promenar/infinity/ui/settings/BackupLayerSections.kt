@@ -74,7 +74,7 @@ internal fun backupLayerSummary(state: BackupUiState): String {
     return selectedEstimateBytes(state)?.let { stringResource(R.string.backup_layer_summary, names, formatBackupBytes(it)) } ?: names
 }
 
-/** 层的副标题：内容说明一行，下一行是预计大小（核心层另注“始终包含”）。 */
+/** 层的副标题：内容说明一行，下一行是预计大小，核心层再起一行注“始终包含”；行组件只收纯文本，故按行分段而非“·”拼接。 */
 @Composable
 private fun layerDescription(state: BackupUiState, layer: BackupLayer, description: String): String {
     val size = when {
@@ -84,8 +84,7 @@ private fun layerDescription(state: BackupUiState, layer: BackupLayer, descripti
         else -> state.layerEstimates[layer]?.let { stringResource(R.string.backup_layer_size, formatBackupBytes(it.sizeBytes)) }
     }
     val always = if (layer == BackupLayer.CORE) stringResource(R.string.backup_layer_always) else null
-    val meta = listOfNotNull(size, always).joinToString(" · ")
-    return if (meta.isEmpty()) description else "$description\n$meta"
+    return listOfNotNull(description, size, always).joinToString("\n")
 }
 
 /** “备份内容”卡片展开后的分层开关。核心层常开不可关；密钥开启时加密锁定为开。 */

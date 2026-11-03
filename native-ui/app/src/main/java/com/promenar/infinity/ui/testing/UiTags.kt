@@ -163,6 +163,9 @@ object UiTags {
     const val SETTINGS_PROVIDER_ACTIONS = "settings_provider_actions"
     const val SETTINGS_LOCAL_INFERENCE_ENTRY = "settings_local_inference_entry"
     const val SETTINGS_USER_AVATAR = "settings_user_avatar"
+    const val SETTINGS_USER_NAME = "settings_user_name"
+    const val SETTINGS_PROFILE_BRAND = "settings_profile_brand"
+    const val SETTINGS_PROFILE_DISPLAY_TOGGLE = "settings_profile_display_toggle"
     private const val SETTINGS_PROVIDER_CARD_PREFIX = "settings_provider_card:"
 
     fun settingsProviderCard(providerId: String): String = SETTINGS_PROVIDER_CARD_PREFIX + providerId

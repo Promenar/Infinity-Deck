@@ -109,6 +109,19 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `个人区品牌显示偏好从本机读取并在切换时写回`() = runTest {
+        every { prefs.getBoolean("profile_show_brand", false) } returns true
+        val editor = prefs.edit()
+        val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
+        assertThat(vm.profilePrefersBrand.value).isTrue()
+
+        vm.setProfilePrefersBrand(false)
+
+        assertThat(vm.profilePrefersBrand.value).isFalse()
+        verify { editor.putBoolean("profile_show_brand", false) }
+    }
+
+    @Test
     fun `settings asynchronous failures expose only account scoped typed retry state`() {
         val getters = SettingsViewModel::class.java.methods.map { it.name }
 

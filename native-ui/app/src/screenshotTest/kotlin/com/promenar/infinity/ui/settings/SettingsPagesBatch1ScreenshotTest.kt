@@ -341,6 +341,26 @@ fun settingsHomeBatch1LightEnglish() = Batch1PagesTheme(dark = false) {
 }
 
 @PreviewTest
+@Preview(name = "设置首页 已设头像 名片 深色中文 360", widthDp = 360, heightDp = 914, locale = "zh-rCN")
+@Composable
+fun settingsHomeBatch1AvatarCard() = Batch1PagesTheme {
+    UserSettingsHomeScreenContent(
+        UserSettingsHomeScreenState(userName = "Maximum Warp", userAvatar = "/preview/user-avatar.img"),
+        UserSettingsHomeScreenActions(),
+    )
+}
+
+@PreviewTest
+@Preview(name = "设置首页 已设头像 品牌 浅色英文 360", widthDp = 360, heightDp = 914, locale = "en")
+@Composable
+fun settingsHomeBatch1AvatarBrand() = Batch1PagesTheme(dark = false) {
+    UserSettingsHomeScreenContent(
+        UserSettingsHomeScreenState(userName = "Maximum Warp", userAvatar = "/preview/user-avatar.img", profilePrefersBrand = true),
+        UserSettingsHomeScreenActions(),
+    )
+}
+
+@PreviewTest
 @Preview(name = "设置首页 深色中文 字号130", widthDp = 360, heightDp = 914, locale = "zh-rCN", fontScale = 1.3f)
 @Composable
 fun settingsHomeBatch1LargeText() = Batch1PagesTheme {

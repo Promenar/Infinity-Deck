@@ -55,7 +55,7 @@ class UserSettingsHomeScreenContractTest {
     @Test
     fun `settings-home 页面布局应先显示 profile 且不显示账户标签并按其余分区顺序排列`() {
         val content = screenSource.substringAfter("fun UserSettingsHomeScreenContent(")
-            .substringBefore("private fun UserProfileListItem(")
+            .substringBefore("private fun UserProfileHeader(")
         val orderedMarkers = listOf(
             "settings_section_general",
             "settings_ia_section_models",
@@ -70,7 +70,7 @@ class UserSettingsHomeScreenContractTest {
         assertThat(indices).doesNotContain(-1)
         assertThat(indices).isInStrictOrder()
         assertThat(content.substringBefore("settings_section_general"))
-            .contains("UserProfileListItem(")
+            .contains("UserProfileHeader(")
         assertThat(content).doesNotContain("settings_section_account")
         val aiSection = content.substringAfter("settings_ia_section_models")
             .substringBefore("settings_ia_section_agent_runtime")
@@ -100,7 +100,6 @@ class UserSettingsHomeScreenContractTest {
     fun `app settings are grouped into continuous material lists`() {
         assertThat(screenSource).contains("InfinitySettingsSection(")
         assertThat(screenSource).doesNotContain("settings_section_account")
-        assertThat(screenSource).contains("BettboxListGroup(")
         assertThat(screenSource).contains("settings_section_general")
         assertThat(screenSource).contains("settings_ia_section_models")
         assertThat(screenSource).contains("settings_ia_section_agent_runtime")
@@ -113,7 +112,7 @@ class UserSettingsHomeScreenContractTest {
     @Test
     fun `智能体运行与知识库分组各四行且按决定顺序排列`() {
         val content = screenSource.substringAfter("fun UserSettingsHomeScreenContent(")
-            .substringBefore("private fun UserProfileListItem(")
+            .substringBefore("private fun UserProfileHeader(")
         val runtime = content.substringAfter("settings_ia_section_agent_runtime").substringBefore("settings_ia_section_knowledge")
         val runtimeRoutes = listOf("AGENT_BUDGET", "BUILTIN_TOOLS", "SKILLS_CONFIG", "MCP_SERVERS").map(runtime::indexOf)
         assertThat(runtimeRoutes).doesNotContain(-1)
@@ -136,7 +135,7 @@ class UserSettingsHomeScreenContractTest {
     @Test
     fun `settings home uses the dedicated settings page layout and content padding`() {
         val content = screenSource.substringAfter("fun UserSettingsHomeScreenContent(")
-            .substringBefore("private fun UserProfileListItem(")
+            .substringBefore("private fun UserProfileHeader(")
 
         assertThat(content).contains("InfinitySettingsPageLayout(")
         assertThat(content).contains("contentPadding = contentPadding")
@@ -146,7 +145,7 @@ class UserSettingsHomeScreenContractTest {
     @Test
     fun `设置首页入口使用统一图标列与紧凑设置行`() {
         val content = screenSource.substringAfter("fun UserSettingsHomeScreenContent(")
-            .substringBefore("private fun UserProfileListItem(")
+            .substringBefore("private fun UserProfileHeader(")
 
         assertThat(content).contains("UserSettingsNavigationItem(")
         assertThat(content).contains("InfinitySettingsItem(")
@@ -158,20 +157,48 @@ class UserSettingsHomeScreenContractTest {
     }
 
     @Test
-    fun `profile is a prominent identity header and footer remains a continuous row`() {
-        val profile = screenSource.substringAfter("private fun UserProfileListItem(")
+    fun `个人区是页面顶部居中名片而非列表行`() {
+        val profile = screenSource.substringAfter("private fun UserProfileHeader(")
             .substringBefore("internal fun GitHubProjectFooter(")
-        assertThat(profile).contains("Row(")
-        assertThat(profile).contains("minHeight = 56.dp")
-        assertThat(profile).contains("size(48.dp)")
+        val header = screenSource.substringAfter("fun UserSettingsHomeScreenContent(")
+            .substringBefore("settings_section_general")
+        // 名片不放进列表卡片，整体水平居中。
+        assertThat(header).contains("Modifier.fillMaxWidth()")
+        assertThat(header).contains("horizontalAlignment = Alignment.CenterHorizontally")
+        assertThat(header).doesNotContain("BettboxListGroup(")
+        assertThat(profile).contains("size(96.dp)")
+        assertThat(profile).contains("Icons.Rounded.PhotoCamera")
+        assertThat(profile).contains("Icons.Rounded.Edit")
         assertThat(profile).contains("MaterialTheme.typography.titleLarge")
-        assertThat(profile).doesNotContain("Surface(")
-        assertThat(profile).doesNotContain("Icons.Outlined.Edit")
-        assertThat(profile).doesNotContain("IconButton(")
+        assertThat(profile).contains("maxLines = 2")
+        assertThat(profile).contains("settings_profile_local_hint")
         assertThat(profile).contains("onClick = onEditName")
         assertThat(profile).contains("onClick = onChangeAvatar")
-        assertThat(screenSource).doesNotContain("UserProfileHeader")
+        assertThat(profile).contains("minHeight = 48.dp")
         assertThat(screenSource).contains("GitHubProjectFooter")
+    }
+
+    @Test
+    fun `没有头像时显示品牌标识，有头像时按用户选择`() {
+        assertThat(UserSettingsHomeScreenState(userAvatar = null).profileShowsBrand).isTrue()
+        assertThat(UserSettingsHomeScreenState(userAvatar = null, profilePrefersBrand = false).profileShowsBrand).isTrue()
+        assertThat(UserSettingsHomeScreenState(userAvatar = "/data/avatar.img").profileShowsBrand).isFalse()
+        assertThat(UserSettingsHomeScreenState(userAvatar = "/data/avatar.img", profilePrefersBrand = true).profileShowsBrand).isTrue()
+    }
+
+    @Test
+    fun `品牌标识复用引导页同一个灯珠字标且不缩减灯珠数`() {
+        val brand = screenSource.substringAfter("private fun ProfileBrandMark(")
+            .substringBefore("private fun UserProfileCard(")
+        assertThat(brand).contains("LedMorphWordmark(")
+        assertThat(brand).doesNotContain("particleScale")
+        assertThat(brand).contains("height(170.dp)")
+        val header = screenSource.substringAfter("private fun UserProfileHeader(")
+            .substringBefore("private fun ProfileBrandMark(")
+        // 切换按钮只在有头像时出现；没有头像时点字标打开个人资料菜单。
+        assertThat(header).contains("if (avatarUri != null)")
+        assertThat(header).contains("onClick = if (avatarUri == null) onOpenMenu else null")
+        assertThat(header).contains("SETTINGS_PROFILE_DISPLAY_TOGGLE")
     }
 
     @Test

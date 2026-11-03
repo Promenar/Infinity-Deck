@@ -435,6 +435,11 @@
     <string name="settings_btn_cancel">Cancel</string>
     <string name="settings_btn_delete">Delete</string>
     <string name="settings_edit_avatar">Edit Avatar</string>
+    <string name="settings_profile_local_hint">Stored only on this device</string>
+    <string name="settings_profile_show_brand">Show brand mark</string>
+    <string name="settings_profile_show_avatar">Show my avatar</string>
+    <string name="settings_profile_menu">Profile</string>
+    <string name="settings_profile_set_avatar">Set avatar</string>
 
     <!-- ============ Chat ============ -->
     <!-- ChatScreen -->

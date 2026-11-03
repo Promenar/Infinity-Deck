@@ -380,5 +380,6 @@ class BackupPreferenceInventoryTest {
         assertThat(BackupPreferencePolicy.isKnown("settings", "user_avatar")).isTrue()
         assertThat(BackupPreferencePolicy.isAllowed("settings", "user_avatar")).isTrue()
         assertThat(BackupPreferencePolicy.isRetired("settings", "user_avatar")).isFalse()
+        assertThat(BackupPreferencePolicy.isAllowed("settings", "profile_show_brand")).isTrue()
     }
 }

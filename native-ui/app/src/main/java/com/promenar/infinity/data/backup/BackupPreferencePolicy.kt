@@ -14,7 +14,7 @@ internal object BackupPreferencePolicy {
             "embedding_base_url", "embedding_model",
         ),
         "settings" to setOf(
-            "language", "theme_mode", "theme_color_source", "haptic_enabled", "haptic_status_enabled", "loop_limit", "user_name", "user_avatar",
+            "language", "theme_mode", "theme_color_source", "haptic_enabled", "haptic_status_enabled", "loop_limit", "user_name", "user_avatar", "profile_show_brand",
             "task_token_limit", "tool_loop_repeat_limit", "stream_retry_limit",
             "extra_providers_count", "extra_providers_ids", "all_models", "enabled_models", "all_models_order",
             "preset_summary_model", "preset_image_model", "preset_embedding_model", "preset_rerank_model",

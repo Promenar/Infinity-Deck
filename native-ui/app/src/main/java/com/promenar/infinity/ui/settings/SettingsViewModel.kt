@@ -327,6 +327,10 @@ class SettingsViewModel(
     private val _userAvatar = MutableStateFlow<String?>(null)
     val userAvatar: StateFlow<String?> = _userAvatar.asStateFlow()
 
+    /** 已设头像时，设置页顶部是否仍显示品牌标识；没有头像时总显示品牌标识。 */
+    private val _profilePrefersBrand = MutableStateFlow(false)
+    val profilePrefersBrand: StateFlow<Boolean> = _profilePrefersBrand.asStateFlow()
+
     private val _language = MutableStateFlow("zh")
     val language: StateFlow<String> = _language.asStateFlow()
 
@@ -466,6 +470,7 @@ class SettingsViewModel(
         val defaultName = app.getString(R.string.settings_default_user_name)
         _userName.value = prefs.getString("user_name", defaultName) ?: defaultName
         _userAvatar.value = prefs.getString("user_avatar", null)
+        _profilePrefersBrand.value = prefs.getBoolean("profile_show_brand", false)
     }
 
     private fun loadPreferences() {
@@ -737,6 +742,11 @@ class SettingsViewModel(
         prefs.edit().putString("user_name", name).apply()
     }
 
+    fun setProfilePrefersBrand(prefersBrand: Boolean) {
+        _profilePrefersBrand.value = prefersBrand
+        prefs.edit().putBoolean("profile_show_brand", prefersBrand).apply()
+    }
+
     fun updateUserAvatar(uriStr: String?) {
         if (uriStr == null) {
             avatarImportJob?.cancel()
@@ -760,6 +770,8 @@ class SettingsViewModel(
             if (localPath != null) {
                 _userAvatar.value = localPath
                 prefs.edit().putString("user_avatar", localPath).apply()
+                // 刚换的头像直接显示出来。
+                if (_profilePrefersBrand.value) setProfilePrefersBrand(false)
                 AvatarCropFiles.deleteIfOwned(app.cacheDir, source)
                 avatarRetryUri = null
                 if (_settingsError.value == SettingsAsyncErrorCode.AVATAR_IMPORT_FAILED) {

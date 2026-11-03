@@ -290,10 +290,11 @@ private fun WebDavPage(
             OnboardingSheetOption(
                 icon = { Icon(Icons.Rounded.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) },
                 title = remote.fileName,
-                subtitle = listOfNotNull(
+                subtitle = "",
+                meta = listOfNotNull(
                     remote.lastModifiedEpochMillis.takeIf { it > 0 }?.let { timeText(it) },
                     remote.sizeBytes.takeIf { it >= 0 }?.let { formatBackupBytes(it) },
-                ).joinToString(" · "),
+                ),
                 onClick = { actions.onSelectRemote(remote) },
                 enabled = state.canExecute,
                 modifier = Modifier.testTag(OnboardingRestoreTags.REMOTE_PREFIX + remote.fileName),
@@ -443,6 +444,7 @@ private fun OnboardingSheetOption(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    meta: List<String> = emptyList(),
     enabled: Boolean = true,
     chevron: Boolean = false,
     color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainer,
@@ -468,6 +470,7 @@ private fun OnboardingSheetOption(
                 if (subtitle.isNotEmpty()) {
                     Text(subtitle, style = OnboardingType.rowSubtitle(), color = onboardingFaintText)
                 }
+                InfinityMetaLine(meta, style = OnboardingType.rowSubtitle(), color = onboardingFaintText)
             }
             if (chevron) {
                 Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
