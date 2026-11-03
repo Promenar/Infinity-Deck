@@ -137,6 +137,7 @@ private fun GalleryCell(
         modifier = modifier,
         shape = GalleryCellShape,
         background = MaterialTheme.colorScheme.surfaceContainerHigh,
+        showPlayBadge = overflow <= 0,
     ) {
         if (overflow > 0) {
             Box(
@@ -276,6 +277,8 @@ private fun MediaGroupCell(
     modifier: Modifier,
     shape: Shape,
     background: Color,
+    /** 被“+N”覆盖的格子不显示视频播放图标，避免两者叠在一起。 */
+    showPlayBadge: Boolean = true,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val environment = LocalWorkspaceMedia.current
@@ -315,7 +318,7 @@ private fun MediaGroupCell(
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
         } else if (available != null && model != null) {
-            AvailableCellContent(ref = available.ref, model = model, contentScale = contentScale)
+            AvailableCellContent(ref = available.ref, model = model, contentScale = contentScale, showPlayBadge = showPlayBadge)
         } else {
             Icon(
                 imageVector = Icons.Rounded.BrokenImage,
@@ -331,7 +334,7 @@ private fun MediaGroupCell(
 }
 
 @Composable
-private fun BoxScope.AvailableCellContent(ref: MediaRef, model: WorkspaceMediaModel, contentScale: ContentScale) {
+private fun BoxScope.AvailableCellContent(ref: MediaRef, model: WorkspaceMediaModel, contentScale: ContentScale, showPlayBadge: Boolean) {
     if (ref.kind != MediaKind.IMAGE && ref.kind != MediaKind.VIDEO) {
         Icon(
             imageVector = mediaKindIcon(ref.kind, ref.mimeType),
@@ -359,7 +362,7 @@ private fun BoxScope.AvailableCellContent(ref: MediaRef, model: WorkspaceMediaMo
             modifier = Modifier.size(32.dp),
         )
     }
-    if (video) {
+    if (video && showPlayBadge) {
         // 视频格只显示首帧与播放图标，点击走现有的全屏播放。
         Box(
             modifier = Modifier
