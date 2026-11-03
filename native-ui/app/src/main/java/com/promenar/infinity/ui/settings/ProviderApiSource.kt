@@ -9,8 +9,6 @@ enum class ProviderApiSource { PUBLIC, TAILNET }
 
 /** API 源区域的提示；按钮一键改回与地址一致的来源。 */
 enum class ProviderApiSourceHint {
-    /** tailnet 地址用了明文 http；建议在网关设备运行 tailscale serve 改用 https。 */
-    TAILNET_NEEDS_HTTPS,
     /** 手动选了公网，地址却在 tailnet 内（按钮：改用 Tailscale）。 */
     ADDRESS_IS_TAILNET,
     /** 选了 Tailscale，地址却是公网域名（按钮：改用公网）。 */
@@ -48,7 +46,6 @@ fun providerApiSourceState(baseUrl: String, manual: ProviderApiSource?, tailnet:
     val selected = manual ?: detected
     val hasHost = TailnetEndpoints.hostOf(baseUrl) != null
     val hint = when {
-        isTailnet && TailnetEndpoints.usesCleartext(baseUrl) -> ProviderApiSourceHint.TAILNET_NEEDS_HTTPS
         selected == ProviderApiSource.PUBLIC && isTailnet -> ProviderApiSourceHint.ADDRESS_IS_TAILNET
         selected == ProviderApiSource.TAILNET && !isTailnet && hasHost -> ProviderApiSourceHint.ADDRESS_IS_PUBLIC
         selected == ProviderApiSource.TAILNET && isTailnet -> ProviderApiSourceHint.RECOGNIZED_TAILNET

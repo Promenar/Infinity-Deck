@@ -73,7 +73,7 @@ class ScriptRuntimeDeviceTest {
                     }
                 }
             }
-            val http = ScriptHttpClient({ setOf("127.0.0.1") })
+            val http = ScriptHttpClient()
             val result = executeOnce(ScriptRequest("var result = fetch('http://127.0.0.1:${server.localPort}/').then(r=>r.json()).then(v=>v.answer)", allowNetwork = true), ScriptCapabilities { op, args ->
                 check(op == "fetch"); http.fetch(args, ScriptNetworkBudget())
             })

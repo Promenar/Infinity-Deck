@@ -514,17 +514,13 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private val agentNetworkPolicy by lazy {
         com.promenar.infinity.domain.network.AgentNetworkPolicy(
             isTailnetHost = tailnetManager::isTailnetHost,
-            allowedLanHosts = { agentNetworkSettings.lanHosts },
             tailnetRunning = { tailnetManager.state.value.phase == com.promenar.infinity.data.tailnet.TailnetPhase.RUNNING },
-            cleartextPermitted = { host -> android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(host) },
         )
     }
     val agentNetworkAccess: com.promenar.infinity.domain.network.AgentNetworkAccess by lazy {
-        com.promenar.infinity.data.network.DefaultAgentNetworkAccess(agentNetworkSettings, tailnetManager, startupScope)
+        com.promenar.infinity.data.network.DefaultAgentNetworkAccess(tailnetManager, startupScope)
     }
-    val scriptSettings by lazy {
-        com.promenar.infinity.data.script.ScriptSettings(getSharedPreferences("infinity_settings", MODE_PRIVATE))
-    }
+
     val scriptFileApprovals by lazy { com.promenar.infinity.data.script.ScriptFileApprovalBroker() }
     private val scriptRuntime by lazy {
         com.promenar.infinity.domain.script.SupervisedScriptRuntime { session ->
@@ -533,7 +529,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     }
     private val scriptToolRunner by lazy {
         com.promenar.infinity.data.script.AndroidScriptToolRunner(scriptRuntime, workspaceRepository, externalFolderManager,
-            fileOperationRepository, pendingDocumentIndexCoordinator, scriptFileApprovals, scriptSettings,
+            fileOperationRepository, pendingDocumentIndexCoordinator, scriptFileApprovals,
             sessionWorkspaceResolver::resolve, networkPolicy = agentNetworkPolicy, tailnetRouting = tailnetManager)
     }
     val generationInteractions by lazy {
@@ -2015,7 +2011,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         DefaultProviderRequestRouter(
             ProviderManager.getInstance(),
             middlewares,
-            allowLoopbackHttp = com.promenar.infinity.BuildConfig.DEBUG,
             sessionIdentifier = sessionHeaderIdentity::identifier,
             sessionHeaderPreferences = com.promenar.infinity.data.local.SessionHeaderPreferences(getSharedPreferences("infinity_settings", MODE_PRIVATE)),
         )
@@ -2049,6 +2044,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     override fun onCreate() {
         super.onCreate()
         if (android.os.Process.isIsolated()) return
+        agentNetworkSettings
+        getSharedPreferences("infinity_settings", MODE_PRIVATE).edit().remove("mcp_allow_loopback_http").apply()
+        getSharedPreferences(com.promenar.infinity.data.tailnet.TailnetSettingsStore.PREFERENCES_NAME, MODE_PRIVATE)
+            .edit().remove("tailnet_allowed_peers").apply()
         instance = this
         com.promenar.infinity.startup.diagnostics.AppDiagnostics.initialize(filesDir)
         com.promenar.infinity.utils.InfinityLogger.init(this)
@@ -3089,7 +3088,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             client = gitRemoteHttpClient,
             policy = com.promenar.infinity.domain.media.MediaFetchUrlPolicy(tailnetManager::isTailnetHost),
             tailnetConnected = { tailnetManager.state.value.phase == com.promenar.infinity.data.tailnet.TailnetPhase.RUNNING },
-            cleartextPermitted = { host -> android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(host) },
             networkPolicy = agentNetworkPolicy,
             tailnetRouting = tailnetManager,
         )

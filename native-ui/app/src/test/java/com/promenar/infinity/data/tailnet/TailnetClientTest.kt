@@ -30,8 +30,6 @@ class TailnetClientTest {
         child.goOnline()
         assertThat(client.status().running).isTrue()
         assertThat(client.peers().map { it.name }).containsExactly("nas", "laptop").inOrder()
-        client.setAllowedPeers(listOf("nas"))
-        assertThat(child.allowedPeers.last()).containsExactly("nas")
         val failure = runCatching { client.call("bogus") }.exceptionOrNull()
         assertThat(failure).isInstanceOf(TailnetCommandException::class.java)
         assertThat((failure as TailnetCommandException).code).isEqualTo(TailnetErrors.UNSUPPORTED)

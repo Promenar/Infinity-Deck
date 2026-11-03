@@ -41,7 +41,6 @@ class McpLoopbackClientTest {
 
     @Test
     fun `discovery与执行都携带Bearer且环回工具为PROCESS风险`() = runTest {
-        settings.setAllowLoopbackHttp(true)
         settings.saveBearerToken("local", "test-only-bearer")
         val methods = mutableListOf<String?>()
         val credentials = mutableListOf<String?>()
@@ -75,40 +74,28 @@ class McpLoopbackClientTest {
         http.close()
     }
 
-    @Test
-    fun `停用本机HTTP或删除令牌后旧客户端执行不再联网`() = runTest {
-        settings.setAllowLoopbackHttp(true)
+    @Test fun `HTTP无需令牌且删除令牌后仍可调用`() = runTest {
+        val credentials = mutableListOf<String?>()
+        val http = HttpClient(MockEngine { request ->
+            credentials += request.headers[HttpHeaders.Authorization]
+            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            respond("""{"jsonrpc":"2.0","id":$id,"result":{"tools":[]}}""", HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "application/json"))
+        })
+        for (host in listOf("127.0.0.1", "192.168.1.2", "remote.example.test")) {
+            assertThat(McpClient(http, "http://$host/mcp", settings, "local").listTools()).isEmpty()
+        }
         settings.saveBearerToken("local", "test-only-bearer")
-        var calls = 0
-        val http = HttpClient(MockEngine { calls++; error("不应联网") })
         val client = McpClient(http, "http://127.0.0.1:8765/mcp", settings, "local")
-        settings.setAllowLoopbackHttp(false)
-        assertThat(runCatching { client.listTools() }.exceptionOrNull()).isNotNull()
-        settings.setAllowLoopbackHttp(true)
+        assertThat(client.listTools()).isEmpty()
         settings.removeBearerToken("local")
-        assertThat(runCatching { client.callTool("exec", JsonObject(emptyMap())) }.exceptionOrNull()).isNotNull()
-        assertThat(calls).isEqualTo(0)
-        http.close()
-    }
-
-    @Test
-    fun `缺少Bearer或高级开关时客户端失败关闭`() = runTest {
-        var calls = 0
-        val http = HttpClient(MockEngine { calls++; error("不应联网") })
-        assertThat(runCatching {
-            McpClient(http, "http://127.0.0.1:8765/mcp", settings, "local").listTools()
-        }.exceptionOrNull()).isNotNull()
-        settings.setAllowLoopbackHttp(true)
-        assertThat(runCatching {
-            McpClient(http, "http://127.0.0.1:8765/mcp", settings, "local").listTools()
-        }.exceptionOrNull()).isNotNull()
-        assertThat(calls).isEqualTo(0)
+        assertThat(client.listTools()).isEmpty()
+        assertThat(credentials).containsExactly(null, null, null, "Bearer test-only-bearer", null).inOrder()
         http.close()
     }
 
     @Test
     fun `HTTP重定向不离开指定端口且不关闭共享引擎`() = runTest {
-        settings.setAllowLoopbackHttp(true)
         settings.saveBearerToken("local", "test-only-bearer")
         val urls = mutableListOf<String>()
         val http = HttpClient(MockEngine { request ->
@@ -138,7 +125,7 @@ class McpLoopbackClientTest {
     }
 
     @Test
-    fun `远端HTTPS维持UNKNOWN且无需本机开关或凭据`() = runTest {
+    fun `远端HTTPS维持UNKNOWN且支持独立可选凭据`() = runTest {
         settings.saveBearerToken("remote", "test-only-local-credential")
         var authorization: String? = null
         val http = HttpClient(MockEngine { request ->
@@ -152,13 +139,12 @@ class McpLoopbackClientTest {
         val mcp = McpClient(http, "https://remote.example.test/mcp", settings, "remote")
         assertThat(mcp.defaultToolRisk).isEqualTo(ToolRisk.UNKNOWN)
         assertThat(mcp.listTools()).isEmpty()
-        assertThat(authorization).isNull()
+        assertThat(authorization).isEqualTo("Bearer test-only-local-credential")
         http.close()
     }
 
     @Test
     fun `传输层异常不得把Bearer值带回工具结果`() = runTest {
-        settings.setAllowLoopbackHttp(true)
         settings.saveBearerToken("local", "test-only-bearer")
         val http = HttpClient(MockEngine { error("test-only-bearer") })
         val skill = McpSkill(

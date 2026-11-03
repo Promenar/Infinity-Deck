@@ -65,12 +65,12 @@ class BrowserSkillsTest {
         assertThat(result.content).contains("Interactive elements (3)")
     }
 
-    @Test fun `局域网与本机地址按网络策略拒绝且不打开`() = runTest {
+    @Test fun `局域网与本机地址允许打开且无效协议仍拒绝`() = runTest {
         val controller = FakeBrowserController()
         val lan = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName("192.168.1.8")) })
         val result = tool(BROWSER_OPEN, controller, lan).execute(args("""{"url":"https://router.test"}"""), context)
-        assertThat(result.status).isEqualTo("error")
-        assertThat(controller.calls).isEmpty()
+        assertThat(result.status).isEqualTo("success")
+        assertThat(controller.calls).containsExactly("open chat-1 https://router.test")
         val js = tool(BROWSER_OPEN, controller).execute(args("""{"url":"javascript:alert(1)"}"""), context)
         assertThat(js.content).startsWith("INVALID_ARGUMENTS")
         assertThat(controller.calls).isEmpty()

@@ -253,11 +253,9 @@ fun SkillsScreen(
         var mcpUrl by remember { mutableStateOf("") }
         var mcpBearer by remember { mutableStateOf("") }
         var mcpSaving by remember { mutableStateOf(false) }
-        val allowLoopback by viewModel.allowLoopbackMcp.collectAsState()
         val configError by viewModel.mcpConfigError.collectAsState()
-        val isLoopback = McpEndpointPolicy.kind(mcpUrl.trim()) == McpEndpointPolicy.Kind.LOOPBACK_HTTP
         val canSave = mcpName.isNotBlank() && !mcpSaving && McpEndpointPolicy.isAllowed(
-            "http", mcpUrl.trim(), allowLoopback, McpEndpointPolicy.isValidBearerToken(mcpBearer),
+            "http", mcpUrl.trim(),
         )
         androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.clearMcpConfigError() }
         InfinityModalSheet(onDismissRequest = { if (!mcpSaving) showAddMcp = false }, height = InfinitySheetHeight.Full) {
@@ -289,21 +287,7 @@ fun SkillsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                InfinitySettingsSection(
-                    title = stringResource(R.string.settings_batch1_mcp_security),
-                    footer = listOfNotNull(
-                        stringResource(R.string.mcp_connection_policy),
-                        if (allowLoopback) stringResource(R.string.mcp_loopback_security_notice) else null,
-                    ).joinToString("\n"),
-                ) {
-                    SettingsToggle(
-                        title = stringResource(R.string.mcp_allow_loopback_http),
-                        checked = allowLoopback,
-                        enabled = !mcpSaving,
-                        onCheckedChange = viewModel::setAllowLoopbackMcp,
-                    )
-                }
-                if (isLoopback) com.promenar.infinity.ui.common.SecretTextInput {
+                com.promenar.infinity.ui.common.SecretTextInput {
                     OutlinedTextField(
                         textStyle = LocalTextStyle.current.forInput(),
                         value = mcpBearer,

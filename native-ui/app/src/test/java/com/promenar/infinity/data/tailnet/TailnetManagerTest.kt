@@ -100,7 +100,6 @@ class TailnetManagerTest {
     @Test
     fun `启用后启动子进程，代理凭据与 auth key 只经 stdin 传入`(): Unit = runBlocking {
         store.setAuthKey("tskey-auth-SECRETVALUE".toCharArray())
-        store.setAllowedPeers(listOf("nas"))
         store.setEnabled(true)
         val manager = manager()
         manager.start()
@@ -110,7 +109,6 @@ class TailnetManagerTest {
         val start = child.received.single { "\"op\":\"start\"" in it }
         assertThat(start).contains("tskey-auth-SECRETVALUE")
         assertThat(start).contains("\"hostname\":\"infinity-test\"")
-        assertThat(start).contains("\"allowedPeers\":[\"nas\"]")
         assertThat(start).contains(File(work, "tailnet").absolutePath)
 
         val env = manager.subprocessEnvironment()
@@ -152,15 +150,11 @@ class TailnetManagerTest {
     }
 
     @Test
-    fun `白名单变化下发子进程，控制服务器变化重启并清空状态目录`(): Unit = runBlocking {
+    fun `控制服务器变化重启并清空状态目录`(): Unit = runBlocking {
         store.setEnabled(true)
         val manager = manager()
         manager.start()
         manager.awaitPhase(TailnetPhase.NEEDS_LOGIN)
-        assertThat(manager.setAllowedPeers("nas, 100.64.0.9")).isNull()
-        withTimeout(5_000) { while (children.single().allowedPeers.isEmpty()) kotlinx.coroutines.delay(20) }
-        assertThat(children.single().allowedPeers.last()).containsExactly("nas", "100.64.0.9").inOrder()
-        assertThat(manager.setAllowedPeers("8.8.8.8")).isEqualTo(TailnetSettingsProblem.PEER_INVALID)
 
         val marker = File(File(work, "tailnet").apply { mkdirs() }, "tailscaled.state").apply { writeText("old") }
         assertThat(manager.setControlUrl("ftp://hs.example.org")).isFalse()

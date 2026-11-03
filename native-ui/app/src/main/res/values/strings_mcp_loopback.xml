@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="mcp_connection_policy">Requires an HTTPS address. For a local server, use the advanced option below.</string>
-    <string name="mcp_allow_loopback_http">Advanced: allow local HTTP MCP</string>
-    <string name="mcp_loopback_security_notice">Other apps on this device can reach this port, so the server must require Bearer authentication.</string>
-    <string name="mcp_bearer_token">Bearer access token (required)</string>
+    <string name="mcp_bearer_token">Bearer access token (optional)</string>
     <string name="mcp_bearer_token_storage">The token is encrypted on this device. To change it, delete and add the server again.</string>
-    <string name="mcp_invalid_endpoint">Enter a valid HTTPS address, or enable the advanced option and use http://127.0.0.1 with a valid explicit port.</string>
-    <string name="mcp_bearer_required">Local MCP requires a valid Bearer token without spaces, line breaks, or a Bearer prefix.</string>
+    <string name="mcp_invalid_endpoint">Enter a valid HTTP or HTTPS address.</string>
+    <string name="mcp_bearer_required">Enter a valid Bearer token without spaces, line breaks, or a Bearer prefix.</string>
     <string name="mcp_config_save_failed">Could not save the MCP configuration or credentials. Please try again.</string>
     <string name="mcp_config_saving">Saving…</string>
-    <string name="mcp_loopback_unavailable">Missing access token. Delete and add the server again.</string>
 </resources>

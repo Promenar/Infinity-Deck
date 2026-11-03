@@ -4,8 +4,4 @@
         <item quantity="one">%1$d of %2$d device online</item>
         <item quantity="other">%1$d of %2$d devices online</item>
     </plurals>
-    <plurals name="tailscale_allowlist_count">
-        <item quantity="one">%1$d entry</item>
-        <item quantity="other">%1$d entries</item>
-    </plurals>
 </resources>

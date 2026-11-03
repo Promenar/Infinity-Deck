@@ -8,10 +8,10 @@ import com.promenar.infinity.ui.settings.SshHostEditorFields
 import org.junit.Test
 
 class SshTailnetImportTest {
-    private val fnos = TailnetPeer("fnos", "fnos.example-tailnet.ts.net.", listOf("fd7a:115c:a1e0::1", "100.101.7.42"), "linux", online = true, allowed = true)
-    private val laptop = TailnetPeer("Laptop", "laptop.example-tailnet.ts.net.", listOf("100.64.0.9"), "macOS", online = true, allowed = false)
-    private val build = TailnetPeer("build-server", null, listOf("100.64.0.8"), "linux", online = false, allowed = true)
-    private val noAddress = TailnetPeer("ghost", null, emptyList(), "linux", online = true, allowed = true)
+    private val fnos = TailnetPeer("fnos", "fnos.example-tailnet.ts.net.", listOf("fd7a:115c:a1e0::1", "100.101.7.42"), "linux", online = true)
+    private val laptop = TailnetPeer("Laptop", "laptop.example-tailnet.ts.net.", listOf("100.64.0.9"), "macOS", online = true)
+    private val build = TailnetPeer("build-server", null, listOf("100.64.0.8"), "linux", online = false)
+    private val noAddress = TailnetPeer("ghost", null, emptyList(), "linux", online = true)
 
     @Test fun `入口只在内置 Tailscale 已启用时出现，未连接时灰显`() {
         assertThat(sshTailnetAvailability(available = false, TailnetPhase.RUNNING)).isEqualTo(SshTailnetAvailability.HIDDEN)
@@ -23,9 +23,9 @@ class SshTailnetImportTest {
         assertThat(sshTailnetAvailability(true, TailnetPhase.RUNNING)).isEqualTo(SshTailnetAvailability.CONNECTED)
     }
 
-    @Test fun `列表填 IPv4，跳过没有地址的设备，按白名单与在线排序`() {
+    @Test fun `列表填 IPv4，跳过没有地址的设备，按在线状态排序`() {
         val candidates = sshTailnetCandidates(listOf(laptop, build, noAddress, fnos), emptyList())
-        assertThat(candidates.map { it.peer.name }).containsExactly("fnos", "build-server", "Laptop").inOrder()
+        assertThat(candidates.map { it.peer.name }).containsExactly("fnos", "Laptop", "build-server").inOrder()
         assertThat(candidates.first().address).isEqualTo("100.101.7.42")
     }
 

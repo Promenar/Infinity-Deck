@@ -4,48 +4,27 @@
 ]>
 <resources>
     <string name="network_access_title">Network access</string>
-    <string name="network_access_entry_empty">Local allowlist not set</string>
-    <plurals name="network_access_entry_count">
-        <item quantity="one">%1$d host on the local allowlist</item>
-        <item quantity="other">%1$d hosts on the local allowlist</item>
-    </plurals>
 
     <string name="network_section_controls">What you can change</string>
-    <string name="network_section_controls_footer">The allowlist covers web reading, media downloads and script networking; tailnet devices also follow the Tailscale device allowlist. Plain http works only for 127.0.0.1.</string>
-    <string name="network_section_matrix">Reach by tool</string>
+    <string name="network_section_controls_footer">Internet, LAN and this device connect directly. Tailnet uses connected built-in Tailscale; access follows your tailnet ACL. HTTP and HTTPS are supported.</string>
+    <string name="network_section_matrix">Network routes by tool</string>
     <string name="network_section_matrix_footer">Built-in commands and Termux use the system network. SSH connects only to saved hosts.</string>
 
-    <string name="network_lan_hosts_title">Local network and device allowlist</string>
-    <string name="network_lan_hosts_desc">One host name or IP per line, without scheme, port or path. Local network services need https; plain http works only for 127.0.0.1.</string>
-    <string name="network_lan_hosts_save">Save allowlist</string>
-    <string name="network_lan_hosts_invalid">Enter up to 64 exact host names or IPs, without scheme, port, path or wildcards.</string>
-    <string name="network_lan_hosts_empty">Not set; local network and this device are blocked</string>
-    <plurals name="network_lan_hosts_count">
-        <item quantity="one">%1$d host</item>
-        <item quantity="other">%1$d hosts</item>
-    </plurals>
 
     <string name="network_tailnet_title">Tailnet</string>
     <string name="network_tailnet_missing">This build has no built-in Tailscale</string>
     <string name="network_tailnet_disabled">Built-in Tailscale is off</string>
     <string name="network_tailnet_offline">Built-in Tailscale is not connected</string>
     <string name="network_tailnet_running">Built-in Tailscale is connected</string>
-    <string name="network_tailnet_peers_all">All devices allowed</string>
-    <plurals name="network_tailnet_peers_count">
-        <item quantity="one">%1$d device allowed</item>
-        <item quantity="other">%1$d devices allowed</item>
-    </plurals>
 
     <string name="network_target_public">Internet</string>
     <string name="network_target_lan">Local network</string>
     <string name="network_target_loopback">This device</string>
     <string name="network_target_tailnet">Tailnet</string>
 
-    <string name="network_cell_allowed">Allowed</string>
-    <string name="network_cell_unrestricted">Unrestricted</string>
-    <string name="network_cell_allowlist">Allowlist %1$d</string>
-    <string name="network_cell_allowlist_empty">Allowlist empty</string>
-    <string name="network_cell_configured">Configured only</string>
+    <string name="network_cell_allowed">Direct</string>
+    <string name="network_cell_unrestricted">System network</string>
+    <string name="network_cell_configured">Configured servers</string>
     <string name="network_cell_tailnet_ready">Via Tailscale</string>
     <string name="network_cell_tailnet_offline">Not connected</string>
     <string name="network_cell_tailnet_disabled">Off</string>
@@ -55,11 +34,11 @@
     <string name="network_tool_web_fetch">Web reading web_fetch</string>
     <string name="network_tool_web_fetch_hint">Reads the main text of a page</string>
     <string name="network_tool_media_fetch">Media download media_fetch</string>
-    <string name="network_tool_media_fetch_hint">Saves images, audio and video to the workspace; tailnet needs https</string>
+    <string name="network_tool_media_fetch_hint">Saves images, audio and video to the workspace over HTTP or HTTPS</string>
     <string name="network_tool_script">Script networking exec_js · python_sandbox</string>
     <string name="network_tool_script_hint">Each call must also request allow_network</string>
     <string name="network_tool_mcp">MCP servers</string>
-    <string name="network_tool_mcp_hint">Only servers you added: HTTPS, or 127.0.0.1 on this device when turned on</string>
+    <string name="network_tool_mcp_hint">Only servers you added, over HTTP or HTTPS</string>
     <string name="network_tool_builtin">Built-in commands shell_exec · python_exec · git</string>
     <string name="network_tool_builtin_hint">Uses the system network; tailnet goes through built-in Tailscale</string>
     <string name="network_tool_termux">Termux</string>
@@ -68,4 +47,5 @@
     <string name="network_tool_ssh_hint">Only hosts saved in settings; tailnet hosts go through built-in Tailscale</string>
     <string name="network_tool_linux">Linux commands shell_exec</string>
     <string name="network_tool_linux_hint">Runs in Alpine on the system network; tailnet goes through the built-in Tailscale proxy</string>
+    <string name="network_access_entry_routes">Direct network and built-in Tailscale routes</string>
 </resources>

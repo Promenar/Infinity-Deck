@@ -61,8 +61,8 @@ class McpClient(
     private val discoveredHeaderParameters = mutableMapOf<String, Set<String>>()
 
     init {
-        require(endpointKind != null) { "MCP_HTTPS_REQUIRED" }
-        require(isAllowed()) { "MCP_LOOPBACK_DISABLED_OR_TOKEN_REQUIRED" }
+        require(endpointKind != null) { "MCP_ENDPOINT_INVALID" }
+        require(isAllowed()) { "MCP_ENDPOINT_INVALID" }
     }
 
     suspend fun listTools(): List<McpTool> {
@@ -143,15 +143,10 @@ class McpClient(
         val request = JsonRpcRequest(method = method, params = params, id = id)
         return try {
             ensureAllowed()
-            val token = if (endpointKind == McpEndpointPolicy.Kind.LOOPBACK_HTTP) {
-                connectionSettings?.readBearerToken(requireNotNull(serverId))
-                    ?: throw McpProtocolException("MCP_BEARER_TOKEN_REQUIRED")
-            } else {
-                null
-            }
+            val token = serverId?.let { connectionSettings?.readBearerToken(it) }
             ensureAllowed()
-            // 明文环回请求不跟随重定向；包装客户端复用引擎但不持有其生命周期。
-            val localClient = if (endpointKind == McpEndpointPolicy.Kind.LOOPBACK_HTTP) {
+            // 明文请求不跟随重定向；包装客户端复用引擎但不持有其生命周期。
+            val localClient = if (endpointKind != McpEndpointPolicy.Kind.HTTPS) {
                 HttpClient(httpClient.engine) { followRedirects = false }
             } else {
                 null
@@ -188,7 +183,6 @@ class McpClient(
         } catch (error: McpProtocolException) {
             throw error
         } catch (error: Exception) {
-            if (endpointKind != McpEndpointPolicy.Kind.LOOPBACK_HTTP) throw error
             throw McpProtocolException("MCP_REQUEST_FAILED")
         }
     }
@@ -344,7 +338,7 @@ class McpClient(
 
     private fun ensureAllowed() {
         if (!isCurrent()) throw McpProtocolException("MCP_SERVER_CHANGED")
-        if (!isAllowed()) throw McpProtocolException("MCP_LOOPBACK_DISABLED_OR_TOKEN_REQUIRED")
+        if (!isAllowed()) throw McpProtocolException("MCP_ENDPOINT_INVALID")
     }
 
     private companion object {

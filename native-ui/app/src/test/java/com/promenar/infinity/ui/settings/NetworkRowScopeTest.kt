@@ -8,9 +8,9 @@ import org.junit.Test
 
 class NetworkRowScopeTest {
     @Test
-    fun `每行适用范围：脚本仅内置模式，内置命令不受白名单约束，其余不标注`() {
+    fun `每行适用范围：脚本仅内置模式，其余不标注`() {
         assertThat(networkRowScope(AgentNetworkTool.SCRIPT)).isEqualTo(NetworkRowScope.BUILTIN_ONLY)
-        assertThat(networkRowScope(AgentNetworkTool.BUILTIN_PROCESS)).isEqualTo(NetworkRowScope.NOT_BOUND_BY_ALLOWLIST)
+        assertThat(networkRowScope(AgentNetworkTool.BUILTIN_PROCESS)).isEqualTo(NetworkRowScope.ALL_MODES)
         listOf(
             AgentNetworkTool.WEB_FETCH, AgentNetworkTool.MEDIA_FETCH, AgentNetworkTool.MCP,
             AgentNetworkTool.TERMUX, AgentNetworkTool.SSH,

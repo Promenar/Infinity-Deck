@@ -69,10 +69,10 @@ class LinuxSettingsViewModelsTest {
     }
 
     @Test
-    fun `custom mirror accepts only https with host`() {
+    fun `镜像地址支持HTTP和HTTPS且需要主机`() {
         assertThat(isValidCustomMirror("https://mirror.tail1234.ts.net/alpine")).isTrue()
         assertThat(isValidCustomMirror(" https://example.org ")).isTrue()
-        assertThat(isValidCustomMirror("http://example.org")).isFalse()
+        assertThat(isValidCustomMirror("http://example.org")).isTrue()
         assertThat(isValidCustomMirror("https://")).isFalse()
         assertThat(isValidCustomMirror("mirror example")).isFalse()
         assertThat(customMirrorHost("https://mirror.example.org/alpine")).isEqualTo("mirror.example.org")
@@ -283,7 +283,7 @@ class LinuxSettingsViewModelsTest {
     fun `mirrors view model rejects invalid custom address`() = runTest(dispatcher) {
         val mirrors = FakeMirrors()
         val viewModel = LinuxMirrorsViewModel(mirrors)
-        viewModel.select(LinuxMirrorChoice(LinuxMirrorId.CUSTOM, "http://insecure"))
+        viewModel.select(LinuxMirrorChoice(LinuxMirrorId.CUSTOM, "ftp://invalid"))
         viewModel.select(LinuxMirrorChoice(LinuxMirrorId.USTC))
         advanceUntilIdle()
         assertThat(mirrors.selections).containsExactly(LinuxMirrorChoice(LinuxMirrorId.USTC))

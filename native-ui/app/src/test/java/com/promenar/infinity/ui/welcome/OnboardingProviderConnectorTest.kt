@@ -42,6 +42,13 @@ class OnboardingProviderConnectorTest {
 
     private val openAi = OnboardingProviderDraft(ProtocolType.OpenAI_ChatCompletions, "https://api.openai.com", "sk-test", null)
 
+    @Test fun `引导接受HTTP提供商地址并探测一次`() = runTest {
+        val fakes = Fakes()
+        assertThat(fakes.connect(openAi.copy(baseUrl = "http://192.168.1.2/v1")))
+            .isInstanceOf(OnboardingConnectOutcome.Connected::class.java)
+        assertThat(fakes.probed).hasSize(1)
+    }
+
     @Test
     fun `一次连接只探测一次并在成功后保存`() = runTest {
         val fakes = Fakes()
@@ -102,11 +109,11 @@ class OnboardingProviderConnectorTest {
     }
 
     @Test
-    fun `空密钥或不安全地址不发起探测`() = runTest {
+    fun `空密钥或无效地址不发起探测`() = runTest {
         val fakes = Fakes()
 
         assertThat(fakes.connect(openAi.copy(secret = "  "))).isEqualTo(OnboardingConnectOutcome.Invalid)
-        assertThat(fakes.connect(openAi.copy(baseUrl = "http://api.openai.com"))).isEqualTo(OnboardingConnectOutcome.Invalid)
+        assertThat(fakes.connect(openAi.copy(baseUrl = "ftp://api.openai.com"))).isEqualTo(OnboardingConnectOutcome.Invalid)
         assertThat(fakes.probed).isEmpty()
         assertThat(fakes.saved).isEmpty()
     }

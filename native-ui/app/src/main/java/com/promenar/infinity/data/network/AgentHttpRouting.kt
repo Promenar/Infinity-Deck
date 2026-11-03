@@ -4,7 +4,6 @@ import com.promenar.infinity.data.tailnet.TailnetHosts
 import com.promenar.infinity.data.tailnet.TailnetRouting
 import com.promenar.infinity.domain.network.AgentNetworkEndpoint
 import com.promenar.infinity.domain.network.NetworkTargetClass
-import com.promenar.infinity.domain.network.PublicHttpPolicy
 import java.io.IOException
 import java.net.InetAddress
 import java.net.Proxy
@@ -20,7 +19,11 @@ import okhttp3.Request
 /** 每一跳的客户端与实际连接目标；原始 URL 留给重定向、输出与 TLS 身份验证。 */
 class AgentHttpRoute(val client: OkHttpClient, private val requestUrl: String, private val hostHeader: String?) {
     fun request(request: Request): Request = request.newBuilder().url(requestUrl).apply {
-        hostHeader?.let { header("Host", it) }
+        hostHeader?.let {
+            header("Host", it)
+            // Go 代理按绝对 URL 解析 HTTP Host，另传原始主机供转发时恢复。
+            if (!request.url.isHttps) header("X-Infinity-Origin-Host", it)
+        }
     }.build()
 }
 
@@ -35,26 +38,21 @@ object AgentHttpRouting {
             if (address != null) {
                 // 普通域名经系统 DNS 归入 tailnet 时，CONNECT 必须发送固定 IP，避免代理再次按普通域名直连。
                 val origin = url.toHttpUrl()
-                val trustManager = checkNotNull(base.x509TrustManager) { "HTTPS 客户端缺少证书校验器" }
-                builder.sslSocketFactory(OriginTlsSocketFactory(base.sslSocketFactory, endpoint.host), trustManager)
-                    .hostnameVerifier { _, session ->
-                        base.hostnameVerifier.verify(endpoint.host, session) && runCatching {
-                            base.certificatePinner.check(endpoint.host, session.peerCertificates.toList())
-                        }.isSuccess
-                    }
-                hostHeader = origin.host.let { if (':' in it) "[$it]" else it } + if (origin.port == 443) "" else ":${origin.port}"
+                if (origin.isHttps) {
+                    val trustManager = checkNotNull(base.x509TrustManager) { "HTTPS 客户端缺少证书校验器" }
+                    builder.sslSocketFactory(OriginTlsSocketFactory(base.sslSocketFactory, endpoint.host), trustManager)
+                        .hostnameVerifier { _, session ->
+                            base.hostnameVerifier.verify(endpoint.host, session) && runCatching {
+                                base.certificatePinner.check(endpoint.host, session.peerCertificates.toList())
+                            }.isSuccess
+                        }
+                }
+                hostHeader = origin.host.let { if (':' in it) "[$it]" else it } + if (origin.port == (if (origin.isHttps) 443 else 80)) "" else ":${origin.port}"
                 url = origin.newBuilder().host(checkNotNull(address.hostAddress)).build().toString()
             }
         } else {
-            // 分类与连接使用相同地址集合；系统代理不能重新解析目标或绕过共享白名单。
-            val addresses = endpoint.addresses.filter { address ->
-                when (endpoint.target) {
-                    NetworkTargetClass.LOOPBACK -> address.isLoopbackAddress
-                    NetworkTargetClass.LAN -> PublicHttpPolicy.isPrivateOrLocalAddress(address) && !TailnetHosts.isTailnetAddress(address.address)
-                    NetworkTargetClass.PUBLIC -> !PublicHttpPolicy.isPrivateOrLocalAddress(address)
-                    NetworkTargetClass.TAILNET -> false
-                }
-            }
+            // 分类与连接使用相同地址集合；避免系统代理重新解析后改变 tailnet 选路。
+            val addresses = endpoint.addresses.filterNot { TailnetHosts.isTailnetAddress(it.address) }
             builder.proxy(Proxy.NO_PROXY).proxyAuthenticator(Authenticator.NONE).dns(object : Dns {
                 override fun lookup(hostname: String): List<InetAddress> =
                     if (hostname.equals(endpoint.host, true)) addresses else throw UnknownHostException("主机未通过校验")

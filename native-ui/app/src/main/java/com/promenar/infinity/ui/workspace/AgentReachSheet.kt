@@ -89,8 +89,6 @@ import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.common.InfinityMetaLine
 
 internal data class AgentReachActions(
-    /** 局域网白名单是全局设置：非 null 时该行关闭面板并打开全局网络访问页（R3），为 null 时只显示项数。 */
-    val onOpenNetworkAccess: (() -> Unit)? = null,
     /** 所在页面无法跳转设置时为 null，Tailscale 行只显示状态。 */
     val onOpenTailscale: (() -> Unit)? = null,
     /** 非 null 时 Linux 行可点按，进入 Linux 环境页安装、修复或开关。 */
@@ -150,7 +148,6 @@ internal fun AgentReachSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val runMode by viewModel.runMode.collectAsStateWithLifecycle()
     val linuxNavigation = com.promenar.infinity.ui.linux.LocalLinuxNavigation.current
-    val sessionSettingsNavigation = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current
     InfinityBottomSheet(
         show = true,
         onDismiss = onDismiss,
@@ -161,7 +158,6 @@ internal fun AgentReachSheet(
             state = state.copy(executionMode = ExecutionModeCodec.parseOrWorkspace(executionMode)),
             runMode = runMode,
             actions = AgentReachActions(
-                onOpenNetworkAccess = sessionSettingsNavigation?.let { navigation -> { onDismiss(); navigation.openNetworkAccess() } },
                 onOpenTailscale = onOpenTailscaleSettings?.let { open -> { onDismiss(); open() } },
                 onOpenLinux = linuxNavigation?.let { navigation -> { onDismiss(); navigation.openEnvironment() } },
                 workspaceSwitch = workspaceSwitch,
@@ -675,24 +671,10 @@ private fun NetworkSection(state: AgentReachState, actions: AgentReachActions, m
             subtitle = stringResource(R.string.agent_reach_network_public),
             modifier = Modifier.testTag("agent_reach_network_public"),
         )
-        val lan = reachLanLines(mode, network)
-        val allowlist = if (lan.allowlistSize == 0) stringResource(lan.allowlistRes)
-        else pluralStringResource(lan.allowlistRes, lan.allowlistSize, lan.allowlistSize)
-        val openNetworkAccess = actions.onOpenNetworkAccess
         ReachRow(
             title = stringResource(R.string.agent_reach_network_lan),
-            subtitle = allowlist + "\n" + stringResource(lan.commandsRes),
-            onClick = openNetworkAccess,
-            trailing = openNetworkAccess?.let {
-                {
-                    Text(
-                        stringResource(R.string.agent_reach_network_change),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            },
-            modifier = Modifier.testTag("agent_reach_lan_hosts"),
+            subtitle = stringResource(R.string.agent_reach_network_direct),
+            modifier = Modifier.testTag("agent_reach_network_lan"),
         )
         ReachRow(
             title = stringResource(R.string.network_tailnet_title),

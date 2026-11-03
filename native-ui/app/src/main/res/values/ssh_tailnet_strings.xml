@@ -4,11 +4,9 @@
     <string name="ssh_tailnet_pick_title">Choose from Tailscale</string>
     <string name="ssh_tailnet_pick_count">Other devices: %1$d</string>
     <string name="ssh_tailnet_pick_empty">No other devices with an address in your tailnet.</string>
-    <string name="ssh_tailnet_pick_footer">Fills in the device\'s tailnet IP. Offline devices can be added but must be online to connect. Devices outside the allowlist must be added to it first.</string>
+    <string name="ssh_tailnet_pick_footer">Fills in the device\'s tailnet IP. Offline devices can be added and connect when online. Access follows your tailnet ACL.</string>
     <string name="ssh_tailnet_added_as">Added as %1$s</string>
     <string name="ssh_tailnet_disconnected">Built-in Tailscale isn\'t connected. Connect it to choose a tailnet device.</string>
-    <string name="ssh_tailnet_blocked">%1$s isn\'t in the device allowlist. Add it to the allowlist before connecting.</string>
-    <string name="ssh_tailnet_open_allowlist">Edit device allowlist</string>
     <string name="ssh_tailnet_add_host">SSH</string>
     <string name="ssh_tailnet_add_host_cd">Add %1$s as an SSH host</string>
     <string name="ssh_tailnet_add_host_hint">Tap “SSH” to add a device as an SSH host.</string>

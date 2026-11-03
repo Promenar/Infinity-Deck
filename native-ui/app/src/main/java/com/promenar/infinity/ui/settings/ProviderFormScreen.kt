@@ -907,9 +907,7 @@ private fun ProviderInterfaceSection(state: ProviderFormUiState, actions: Provid
                 stringResource(
                     when {
                         state.protocolUnsupported -> R.string.provider_form_protocol_unsupported
-                        state.apiSource?.hint == ProviderApiSourceHint.TAILNET_NEEDS_HTTPS ->
-                            R.string.provider_form_tailnet_https_required
-                        else -> R.string.provider_form_https_required
+                        else -> R.string.provider_form_http_url_required
                     },
                 )
             } else {
@@ -1081,16 +1079,16 @@ private fun LocalProviderSection(state: ProviderFormUiState, actions: ProviderFo
 }
 }
 
-internal fun isSecureProviderEndpoint(value: String): Boolean = runCatching {
+internal fun isHttpProviderEndpoint(value: String): Boolean = runCatching {
     val uri = java.net.URI(value)
-    uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
+    (uri.scheme.equals("https", ignoreCase = true) || uri.scheme.equals("http", ignoreCase = true)) && !uri.host.isNullOrBlank()
 }.getOrDefault(false)
 
 internal fun isProviderEndpointAllowed(protocol: ProtocolType, value: String): Boolean =
     when {
         protocol is ProtocolType.Local -> true
         isRetiredProviderProtocol(protocol) -> false
-        !isSecureProviderEndpoint(value) -> false
+        !isHttpProviderEndpoint(value) -> false
         else -> runCatching {
             when (protocol) {
                 ProtocolType.Google_VertexAI -> ProviderEndpointResolver.resolve(

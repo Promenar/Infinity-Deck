@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/netip"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -24,7 +23,6 @@ const tailscaleMagicDNSDomain = "ts.net"
 
 var (
 	errTailnetNotRunning = errors.New("Tailscale 未登录或未在线（tailnet_not_running）")
-	errPeerNotAllowed    = errors.New("目标 tailnet 节点不在设备白名单内（tailnet_peer_not_allowed）")
 	errUnknownTailnet    = errors.New("tailnet 中没有这个节点（tailnet_unknown_host）")
 	errUnsupportedNet    = errors.New("只支持 TCP 连接")
 )
@@ -49,72 +47,6 @@ type Peer struct {
 	IPs       []netip.Addr
 	OS        string
 	Online    bool
-}
-
-func (p Peer) names() []string {
-	return []string{p.ShortName, p.DNSName, p.HostName}
-}
-
-// Allowlist 是设备白名单；为空表示允许全部 tailnet 节点。条目可以是短名、MagicDNS 全名、主机名或 IP。
-type Allowlist struct {
-	mu      sync.RWMutex
-	entries map[string]struct{}
-}
-
-func NewAllowlist(entries []string) *Allowlist {
-	a := &Allowlist{}
-	a.Set(entries)
-	return a
-}
-
-func (a *Allowlist) Set(entries []string) {
-	set := make(map[string]struct{}, len(entries))
-	for _, entry := range entries {
-		if e := normalizeHost(strings.TrimSpace(entry)); e != "" {
-			if addr, err := netip.ParseAddr(e); err == nil {
-				e = addr.Unmap().String()
-			}
-			set[e] = struct{}{}
-		}
-	}
-	a.mu.Lock()
-	a.entries = set
-	a.mu.Unlock()
-}
-
-// Allows 判断目标是否在白名单内：节点的任一名称或地址命中即可；peer 为 nil（地址不属于已知节点）时只按地址判断。
-func (a *Allowlist) Allows(peer *Peer, addr netip.Addr) bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if len(a.entries) == 0 {
-		return true
-	}
-	if addr.IsValid() {
-		if _, ok := a.entries[addr.Unmap().String()]; ok {
-			return true
-		}
-	}
-	if peer == nil {
-		return false
-	}
-	for _, name := range peer.names() {
-		if _, ok := a.entries[name]; ok && name != "" {
-			return true
-		}
-	}
-	for _, ip := range peer.IPs {
-		if _, ok := a.entries[ip.String()]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-// Empty 表示未设置白名单。
-func (a *Allowlist) Empty() bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return len(a.entries) == 0
 }
 
 // Directory 提供节点状态；由 tsnet 节点实现，测试使用假实现。
@@ -142,7 +74,6 @@ type Route struct {
 // Router 根据目标决定经 tsnet 还是直连。
 type Router struct {
 	Directory Directory
-	Allowlist *Allowlist
 	Tailnet   DialFunc
 	Direct    DialFunc
 }
@@ -250,9 +181,7 @@ func (r *Router) Dial(ctx context.Context, network, address string) (net.Conn, e
 		}
 		return nil, route.Err
 	}
-	if !r.Allowlist.Allows(route.Peer, route.Addr) {
-		return nil, errPeerNotAllowed
-	}
+
 	if !r.Directory.Running() {
 		return nil, errTailnetNotRunning
 	}

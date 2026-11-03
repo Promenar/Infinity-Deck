@@ -250,9 +250,7 @@ object ProviderEndpointResolver {
         } else {
             "$location-aiplatform.googleapis.com"
         }
-        require(uri.scheme.equals("https", ignoreCase = true)) {
-            "Vertex endpoint 必须使用 HTTPS"
-        }
+
         require(uri.host?.equals(expectedHost, ignoreCase = true) == true) {
             "Vertex endpoint 与 location 不匹配"
         }

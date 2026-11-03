@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.tailnet.TailnetController
 import com.promenar.infinity.data.tailnet.TailnetSettings
-import com.promenar.infinity.data.tailnet.TailnetSettingsProblem
 import com.promenar.infinity.data.tailnet.TailnetState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -26,7 +25,6 @@ enum class TailscaleNotice {
     AUTH_KEY_SAVED,
     AUTH_KEY_CLEARED,
     CONTROL_URL_SAVED,
-    PEERS_SAVED,
     LOGIN_UNAVAILABLE,
     LOGGED_OUT,
     LOGOUT_FAILED,
@@ -39,7 +37,6 @@ data class TailscaleSettingsUiState(
     val tailnet: TailnetState,
     val busy: Boolean = false,
     val controlUrlInvalid: Boolean = false,
-    val peersProblem: TailnetSettingsProblem? = null,
     /** 最近一次保存的 auth key 格式不正确；在编辑面板内提示，面板会遮住页面底部的通知。 */
     val authKeyInvalid: Boolean = false,
     val notice: TailscaleNotice? = null,
@@ -56,7 +53,6 @@ class TailscaleSettingsViewModel(private val controller: TailnetController) : Vi
     private data class Local(
         val busy: Boolean = false,
         val controlUrlInvalid: Boolean = false,
-        val peersProblem: TailnetSettingsProblem? = null,
         val authKeyInvalid: Boolean = false,
         val notice: TailscaleNotice? = null,
     )
@@ -72,7 +68,6 @@ class TailscaleSettingsViewModel(private val controller: TailnetController) : Vi
             tailnet = tailnet,
             busy = local.busy,
             controlUrlInvalid = local.controlUrlInvalid,
-            peersProblem = local.peersProblem,
             authKeyInvalid = local.authKeyInvalid,
             notice = local.notice,
         )
@@ -94,13 +89,6 @@ class TailscaleSettingsViewModel(private val controller: TailnetController) : Vi
     }
 
     fun clearControlUrlError() = local.update { it.copy(controlUrlInvalid = false) }
-
-    fun saveAllowedPeers(raw: String) = perform {
-        val problem = controller.setAllowedPeers(raw)
-        local.update { it.copy(peersProblem = problem, notice = if (problem == null) TailscaleNotice.PEERS_SAVED else null) }
-    }
-
-    fun clearPeersError() = local.update { it.copy(peersProblem = null) }
 
     /** [secret] 由本方法清零。 */
     fun saveAuthKey(secret: CharArray) = perform {

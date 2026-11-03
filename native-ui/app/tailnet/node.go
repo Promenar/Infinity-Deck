@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -226,12 +225,12 @@ func (n *Node) Peers(ctx context.Context, refresh bool) []Peer {
 }
 
 // PeerList 返回供父进程展示的节点列表。
-func (n *Node) PeerList(ctx context.Context, allow *Allowlist) []PeerInfo {
+func (n *Node) PeerList(ctx context.Context) []PeerInfo {
 	peers := n.Peers(ctx, true)
 	out := make([]PeerInfo, 0, len(peers))
 	for i := range peers {
 		p := peers[i]
-		info := PeerInfo{Name: p.ShortName, DNSName: p.DNSName, OS: p.OS, Online: p.Online, Allowed: allow.Allows(&p, netip.Addr{})}
+		info := PeerInfo{Name: p.ShortName, DNSName: p.DNSName, OS: p.OS, Online: p.Online}
 		for _, ip := range p.IPs {
 			info.IPs = append(info.IPs, ip.String())
 		}

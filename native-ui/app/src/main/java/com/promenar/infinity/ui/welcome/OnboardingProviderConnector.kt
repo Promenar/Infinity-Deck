@@ -31,7 +31,7 @@ internal sealed interface OnboardingConnectOutcome {
         val statusCode: Int?,
     ) : OnboardingConnectOutcome
 
-    /** 输入本身不可用（空凭证、非 https 地址或已退役协议），不发起任何网络请求。 */
+    /** 输入本身不可用（空凭证、无效 HTTP/HTTPS 地址或已退役协议），不发起任何网络请求。 */
     data object Invalid : OnboardingConnectOutcome
 
     data object LocalModelMissing : OnboardingConnectOutcome

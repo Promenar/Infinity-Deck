@@ -1,6 +1,5 @@
 package com.promenar.infinity.data.script
 
-import android.security.NetworkSecurityPolicy
 import com.promenar.infinity.data.network.AgentHttpRouting
 import com.promenar.infinity.data.network.awaitAgentResponse
 import com.promenar.infinity.data.tailnet.InstalledTailnetRouting
@@ -26,14 +25,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** 每跳重新校验；非 tailnet 直连并固定 DNS，tailnet 固定内置代理与代理认证。 */
 class ScriptHttpClient(
-    private val allowedLanHosts: () -> Set<String>,
-    private val cleartextAllowed: (String) -> Boolean = { NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(it) },
     private val tailnetRouting: TailnetRouting = InstalledTailnetRouting.routing,
     private val tailnetRunning: () -> Boolean = { (tailnetRouting as? TailnetController)?.state?.value?.phase == TailnetPhase.RUNNING },
     networkPolicy: AgentNetworkPolicy? = null,
     private val resolver: suspend (String) -> Array<InetAddress> = { InetAddress.getAllByName(it) },
 ) {
-    private val policy = networkPolicy ?: AgentNetworkPolicy(tailnetRouting::isTailnetHost, allowedLanHosts, tailnetRunning, resolver)
+    private val policy = networkPolicy ?: AgentNetworkPolicy(tailnetRouting::isTailnetHost, tailnetRunning, resolver)
 
     suspend fun fetch(arguments: JsonObject, budget: ScriptNetworkBudget): JsonObject = withContext(Dispatchers.IO) {
         var url = arguments["url"]?.jsonPrimitive?.content ?: throw ScriptFailure("NETWORK_DENIED", "缺少 URL")
@@ -49,7 +46,6 @@ class ScriptHttpClient(
             budget.request(bytes?.size ?: 0)
             val endpoint = try { policy.validate(url, AgentNetworkTool.SCRIPT) }
             catch (failure: NetworkAccessDenied) { throw ScriptFailure("NETWORK_DENIED", "${failure.code}：${failure.message}") }
-            if (url.startsWith("http:", true) && !cleartextAllowed(endpoint.host)) throw ScriptFailure("NETWORK_DENIED", "应用网络策略禁止此主机的明文 HTTP")
             val tailnet = endpoint.target == NetworkTargetClass.TAILNET
             val base = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).connectTimeout(10, TimeUnit.SECONDS).build()
             val route = try { AgentHttpRouting.route(base, endpoint, tailnetRouting) }

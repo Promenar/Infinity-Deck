@@ -40,7 +40,7 @@ internal fun sshTailnetAvailability(available: Boolean, phase: TailnetPhase): Ss
 internal data class SshTailnetCandidate(val peer: TailnetPeer, val address: String, val existingAlias: String?)
 
 /**
- * 设备列表：没有 tailnet 地址的设备不列出；顺序与 Tailscale 设置页一致（白名单内在线、离线、不在白名单）。
+ * 设备列表：没有 tailnet 地址的设备不列出；顺序与 Tailscale 设置页一致（在线、离线）。
  * 填入 IP 而不是 MagicDNS 名：SSH 主机经内置 Tailscale 按地址路由，IP 不受 MagicDNS 开关影响。
  */
 internal fun sshTailnetCandidates(peers: List<TailnetPeer>, hosts: List<SshHost>): List<SshTailnetCandidate> =
@@ -64,7 +64,7 @@ internal interface SshHostEditorFieldsTarget {
     var tailnetPeer: TailnetPeer?
 }
 
-/** “从 Tailscale 选择”底部面板：每台设备一行，标出已添加的主机与不在白名单的设备。 */
+/** “从 Tailscale 选择”底部面板：每台设备一行，标出已添加的主机。 */
 @Composable
 internal fun SshTailnetPickerSheet(
     candidates: List<SshTailnetCandidate>,
@@ -98,14 +98,13 @@ internal fun SshTailnetPickerContent(
         candidates.forEach { candidate ->
             val peer = candidate.peer
             val onlineText = stringResource(if (peer.online) R.string.tailscale_peer_online else R.string.tailscale_peer_offline)
-            // 与 Tailscale 设备列表同一行样式：地址、系统、在线与白名单状态写在副标题里。
+            // 与 Tailscale 设备列表同一行样式：地址、系统、在线状态写在副标题里。
             InfinitySettingsRowLayout(
                 title = peer.name,
                 subtitle = listOfNotNull(
                     candidate.address,
                     tailscaleOsLabel(peer.os),
                     if (peer.online) null else onlineText,
-                    if (peer.allowed) null else stringResource(R.string.tailscale_peer_blocked),
                     candidate.existingAlias?.let { stringResource(R.string.ssh_tailnet_added_as, it) },
                 ).joinToString(" · "),  // wrap-check: allow 单行省略
                 titleColor = if (peer.online) null else MaterialTheme.colorScheme.onSurfaceVariant,

@@ -303,7 +303,6 @@ fun SshSettingsScreen(
             existing = editing,
             hosts = hosts,
             initialPeer = editorPeer,
-            onOpenTailnetAllowlist = onOpenTailscale,
             onDismiss = { showEditor = false; editing = null; editorPeer = null },
             onSave = { host, credential, generate ->
                 val publicKey = withContext(Dispatchers.IO) {
@@ -802,7 +801,6 @@ private fun SshHostEditorSheet(
     existing: SshHost?,
     hosts: List<SshHost>,
     initialPeer: TailnetPeer?,
-    onOpenTailnetAllowlist: (() -> Unit)?,
     onDismiss: () -> Unit,
     onSave: suspend (SshHost, SshCredential?, Boolean) -> Unit,
 ) {
@@ -950,7 +948,6 @@ private fun SshHostEditorSheet(
             onSave = { save(false) },
             tailnet = tailnetAvailability,
             onPickTailnet = { showTailnetPicker = true },
-            onOpenTailnetAllowlist = onOpenTailnetAllowlist?.let { open -> { onDismiss(); open() } },
         )
     }
     if (showTailnetPicker) {
@@ -985,7 +982,6 @@ internal fun SshHostEditorForm(
     onSave: () -> Unit,
     tailnet: SshTailnetAvailability = SshTailnetAvailability.HIDDEN,
     onPickTailnet: () -> Unit = {},
-    onOpenTailnetAllowlist: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth().fillMaxHeight()) {
         Column(
@@ -1016,9 +1012,6 @@ internal fun SshHostEditorForm(
                         },
                         testTag = "ssh_editor_hostname",
                     )
-                    fields.tailnetPeer?.takeIf { !it.allowed }?.let { peer ->
-                        SshTailnetBlockedNotice(peer.name, onOpenTailnetAllowlist)
-                    }
                     SshEditorField(fields.port, { fields.port = it }, R.string.ssh_port, keyboardType = KeyboardType.Number, enabled = !busy, isError = errorCode == "SSH_PORT_INVALID")
                     SshEditorField(fields.username, { fields.username = it }, R.string.ssh_username, enabled = !busy, isError = errorCode == "SSH_USERNAME_INVALID")
                 }
@@ -1194,22 +1187,6 @@ private fun SshTailnetPickButton(enabled: Boolean, onClick: () -> Unit) {
         compact = true,
         modifier = Modifier.padding(end = InfinitySpacing.XSmall).testTag("ssh_editor_tailnet"),
     )
-}
-
-/** 选中的设备不在 Tailscale 设备白名单内：保存不受影响，但连接前需先加入白名单。 */
-@Composable
-private fun SshTailnetBlockedNotice(name: String, onOpenAllowlist: (() -> Unit)?) {
-    Column(Modifier.fillMaxWidth().testTag("ssh_editor_tailnet_blocked")) {
-        InfinityStatusStrip(kind = InfinityStatusKind.Warning, message = stringResource(R.string.ssh_tailnet_blocked, name))
-        if (onOpenAllowlist != null) {
-            InfinityPillButton(
-                text = stringResource(R.string.ssh_tailnet_open_allowlist),
-                onClick = onOpenAllowlist,
-                icon = Icons.AutoMirrored.Rounded.OpenInNew,
-                modifier = Modifier.align(Alignment.End).padding(top = InfinitySpacing.XSmall),
-            )
-        }
-    }
 }
 
 /** “终端会话”分区：全局空闲自动断开，只作用于用户自己的终端。 */

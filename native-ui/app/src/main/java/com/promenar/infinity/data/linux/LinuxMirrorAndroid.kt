@@ -55,7 +55,6 @@ internal class LinuxMirrorHttpClient(
     override suspend fun head(url: String): Boolean = withContext(Dispatchers.IO) {
         var current = url
         repeat(5) {
-            if (!current.toHttpUrl().isHttps) throw IOException("镜像测速只允许 HTTPS")
             val endpoint = policy.validate(current)
             val route = AgentHttpRouting.route(client, endpoint, routing)
             val request = route.request(Request.Builder().url(current).head().build())

@@ -33,7 +33,6 @@ class AndroidScriptToolRunner(
     private val files: IFileOperationRepository,
     private val indexEvents: FileIndexEventSink,
     private val approvals: ScriptFileApprovalBroker,
-    private val settings: ScriptSettings,
     private val sessionWorkspace: (suspend (String) -> SessionWorkspace)? = null,
     private val networkPolicy: com.promenar.infinity.domain.network.AgentNetworkPolicy? = null,
     private val tailnetRouting: com.promenar.infinity.data.tailnet.TailnetRouting = com.promenar.infinity.data.tailnet.InstalledTailnetRouting.routing,
@@ -51,7 +50,7 @@ class AndroidScriptToolRunner(
                 }
                 val requests = AtomicInteger()
                 val networkBudget = ScriptNetworkBudget()
-                val http = ScriptHttpClient({ settings.lanHosts }, tailnetRouting = tailnetRouting, networkPolicy = networkPolicy)
+                val http = ScriptHttpClient(tailnetRouting = tailnetRouting, networkPolicy = networkPolicy)
                 val live = context.liveOutput
                 val capabilities = object : ScriptCapabilities {
                     override suspend fun invoke(operation: String, arguments: JsonObject): JsonElement {

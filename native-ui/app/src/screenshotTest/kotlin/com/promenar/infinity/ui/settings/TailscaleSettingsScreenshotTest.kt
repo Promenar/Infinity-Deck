@@ -71,7 +71,7 @@ fun tailscaleEditorsLightPreview() = TailscaleEditorsPreview(dark = false)
 @Composable
 fun tailscaleEditorsDarkPreview() = TailscaleEditorsPreview(dark = true)
 
-/** 三个编辑面板的内容（不含底部弹层外壳），其中授权密钥展示校验失败态。 */
+/** 两个编辑面板的内容（不含底部弹层外壳），其中授权密钥展示校验失败态。 */
 @Composable
 private fun TailscaleEditorsPreview(dark: Boolean) {
     PreviewTheme(dark) {
@@ -86,9 +86,6 @@ private fun TailscaleEditorsPreview(dark: Boolean) {
                 HorizontalDivider()
                 Text(stringResource(R.string.tailscale_control_url), style = MaterialTheme.typography.titleMedium)
                 TailscaleControlUrlEditor(state, TailscaleSettingsActions())
-                HorizontalDivider()
-                Text(stringResource(R.string.tailscale_allowlist_label), style = MaterialTheme.typography.titleMedium)
-                TailscaleAllowlistEditor(state, TailscaleSettingsActions())
             }
         }
     }
@@ -137,7 +134,6 @@ private fun previewState(phase: TailnetPhase): TailscaleSettingsUiState {
         settings = TailnetSettings(
             enabled = phase != TailnetPhase.DISABLED,
             ephemeral = !running,
-            allowedPeers = if (running) listOf("nas", "100.64.0.8") else emptyList(),
             hasAuthKey = running,
         ),
         tailnet = TailnetState(
@@ -153,7 +149,7 @@ private fun previewState(phase: TailnetPhase): TailscaleSettingsUiState {
                         "linux",
                         online = false,
                     ),
-                    TailnetPeer("laptop", "laptop.example-tailnet.ts.net", listOf("100.64.0.9"), "macOS", online = true, allowed = false),
+                    TailnetPeer("laptop", "laptop.example-tailnet.ts.net", listOf("100.64.0.9"), "macOS", online = true),
                     TailnetPeer("Desktop", "desktop.example-tailnet.ts.net", listOf("100.64.0.10"), "windows", online = true),
                     TailnetPeer("pixel", "pixel.example-tailnet.ts.net", listOf("100.64.0.11"), "android", online = false),
                     TailnetPeer("muse", "muse.example-tailnet.ts.net", listOf("100.64.0.12"), null, online = true),

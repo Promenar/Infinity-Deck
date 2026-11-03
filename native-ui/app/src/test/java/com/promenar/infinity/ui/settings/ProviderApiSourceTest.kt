@@ -32,12 +32,11 @@ class ProviderApiSourceTest {
         assertThat(providerApiSourceState("", ProviderApiSource.TAILNET, running).hint).isNull()
     }
 
-    @Test
-    fun `tailnet 地址用明文 http 时优先提示改用 HTTPS`() {
-        listOf(null, ProviderApiSource.PUBLIC, ProviderApiSource.TAILNET).forEach { manual ->
-            assertThat(providerApiSourceState("http://100.101.7.42:8000/v1", manual, running).hint)
-                .isEqualTo(ProviderApiSourceHint.TAILNET_NEEDS_HTTPS)
-        }
+    @Test fun `tailnet的HTTP地址保留选路提示`() {
+        assertThat(providerApiSourceState("http://100.101.7.42:8000/v1", null, running).hint)
+            .isEqualTo(ProviderApiSourceHint.RECOGNIZED_TAILNET)
+        assertThat(providerApiSourceState("http://100.101.7.42:8000/v1", ProviderApiSource.PUBLIC, running).hint)
+            .isEqualTo(ProviderApiSourceHint.ADDRESS_IS_TAILNET)
         assertThat(providerApiSourceState("http://api.example.com/v1", null, running).hint).isNull()
     }
 

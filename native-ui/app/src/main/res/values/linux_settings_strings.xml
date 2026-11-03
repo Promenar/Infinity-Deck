@@ -135,10 +135,10 @@
     <string name="linux_mirror_aliyun">Alibaba Cloud</string>
     <string name="linux_mirror_official">Alpine official CDN</string>
     <string name="linux_mirror_custom">Custom</string>
-    <string name="linux_mirror_custom_hint">Enter an https address; a private mirror on your tailnet works too</string>
+    <string name="linux_mirror_custom_hint">Enter an HTTP or HTTPS address; a private mirror on your tailnet works too</string>
     <string name="linux_mirror_custom_label">Mirror address</string>
     <string name="linux_mirror_custom_save">Use this mirror</string>
-    <string name="linux_mirror_custom_invalid">Enter an https:// address</string>
+    <string name="linux_mirror_custom_invalid">Enter an HTTP or HTTPS address</string>
     <string name="linux_mirror_latency_failed">Unreachable</string>
     <string name="linux_mirror_latency_unknown">Not tested</string>
     <string name="linux_mirrors_note">Packages are always verified with Alpine\'s official keys. Downloads follow the Network access settings.</string>

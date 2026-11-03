@@ -135,10 +135,10 @@
     <string name="linux_mirror_aliyun">阿里云</string>
     <string name="linux_mirror_official">Alpine 官方 CDN</string>
     <string name="linux_mirror_custom">自定义</string>
-    <string name="linux_mirror_custom_hint">填写 https 地址，可用 tailnet 内的私有镜像</string>
+    <string name="linux_mirror_custom_hint">请输入 HTTP 或 HTTPS 地址，也支持 tailnet 内的私有镜像</string>
     <string name="linux_mirror_custom_label">镜像地址</string>
     <string name="linux_mirror_custom_save">使用此镜像</string>
-    <string name="linux_mirror_custom_invalid">请填写 https:// 开头的地址</string>
+    <string name="linux_mirror_custom_invalid">请输入 HTTP 或 HTTPS 地址</string>
     <string name="linux_mirror_latency_failed">无法连接</string>
     <string name="linux_mirror_latency_unknown">未测速</string>
     <string name="linux_mirrors_note">软件包始终用 Alpine 官方密钥校验签名；下载受“网络访问”设置约束。</string>

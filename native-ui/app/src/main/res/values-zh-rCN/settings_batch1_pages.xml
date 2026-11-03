@@ -26,7 +26,6 @@
     <string name="settings_batch1_local_active_reranker">重排模型就绪</string>
     <string name="settings_batch1_mcp_connected">已连接</string>
     <string name="settings_batch1_mcp_disconnected">未连接</string>
-    <string name="settings_batch1_mcp_security">连接安全</string>
     <string name="settings_batch1_home_retrieval_summary">重排、改写与混合搜索</string>
     <string name="settings_batch1_home_rag_summary">分块、摘要与知识图谱</string>
     <string name="settings_batch1_ssh_untrusted_summary">待确认主机指纹</string>

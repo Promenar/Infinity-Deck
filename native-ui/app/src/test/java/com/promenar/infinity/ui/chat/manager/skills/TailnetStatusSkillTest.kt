@@ -28,8 +28,8 @@ class TailnetStatusSkillTest {
             tailnetName = "user@example.com",
         ),
         peers = listOf(
-            TailnetPeer("nas", "nas.tail1.ts.net", listOf("100.64.0.5"), "linux", online = true, allowed = true),
-            TailnetPeer("laptop", "laptop.tail1.ts.net", listOf("100.64.0.6"), "macOS", online = false, allowed = false),
+            TailnetPeer("nas", "nas.tail1.ts.net", listOf("100.64.0.5"), "linux", online = true),
+            TailnetPeer("laptop", "laptop.tail1.ts.net", listOf("100.64.0.6"), "macOS", online = false),
         ),
     )
 
@@ -43,7 +43,7 @@ class TailnetStatusSkillTest {
         assertThat(self["online"]!!.jsonPrimitive.boolean).isTrue()
         val peers = output["peers"]!!.jsonArray.map { it.jsonObject }
         assertThat(peers.map { it["name"]!!.jsonPrimitive.content }).containsExactly("nas", "laptop").inOrder()
-        assertThat(peers[1]["allowed"]!!.jsonPrimitive.boolean).isFalse()
+        assertThat(peers[1].containsKey("allowed")).isFalse()
         assertThat(peers[1]["os"]!!.jsonPrimitive.content).isEqualTo("macOS")
         assertThat(output.toString()).doesNotContain("stale-secret")
         assertThat(output.toString()).doesNotContain("authUrl")
@@ -97,7 +97,6 @@ class TailnetStatusSkillTest {
         override suspend fun setEnabled(enabled: Boolean) = Unit
         override suspend fun setEphemeral(ephemeral: Boolean) = Unit
         override suspend fun setControlUrl(raw: String) = false
-        override suspend fun setAllowedPeers(raw: String): com.promenar.infinity.data.tailnet.TailnetSettingsProblem? = null
         override suspend fun setAuthKey(raw: CharArray) = false
         override suspend fun clearAuthKey() = Unit
         override suspend fun revealAuthKey(): CharArray? = null

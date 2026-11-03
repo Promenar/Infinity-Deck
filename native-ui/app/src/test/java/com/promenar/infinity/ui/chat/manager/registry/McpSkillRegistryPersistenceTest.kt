@@ -268,38 +268,26 @@ class McpSkillRegistryPersistenceTest {
         assertThat(header).isEqualTo("acme")
     }
 
-    @Test
-    fun `历史cleartext与stdio配置可保留但永不sync广告执行`() = runTest {
-        repository.insertMcpServer(
-            McpServerEntity("http", "HTTP", "http://legacy.example.test", "http", createdAt = 1),
-        )
-        repository.insertMcpServer(
-            McpServerEntity("stdio", "STDIO", "/usr/bin/server", "stdio", createdAt = 1),
-        )
-        database.skillDao().insertMcpToolSnapshots(
-            listOf(
-                McpToolSnapshotEntity("http", "legacy", "", """{"type":"object"}""", 1),
-                McpToolSnapshotEntity("stdio", "legacy", "", """{"type":"object"}""", 1),
-            ),
-        )
-        val registry = registry(MockEngine { error("旧配置不应联网") }, backgroundScope)
-
-        assertThat(registry.getAllTools(null)).isEmpty()
-        assertThat(registry.getSkillByRuntimeToolId("mcp:http:legacy")).isNull()
-        assertThat(registry.syncServer("http"))
-            .isEqualTo(McpSyncResult.Failure("MCP_LEGACY_TRANSPORT_UNSUPPORTED"))
-        assertThat(registry.syncServer("stdio"))
-            .isEqualTo(McpSyncResult.Failure("MCP_LEGACY_TRANSPORT_UNSUPPORTED"))
+    @Test fun `HTTP服务器可发现且stdio配置不接入`() = runTest {
+        repository.insertMcpServer(McpServerEntity("http", "HTTP", "http://legacy.example.test", "http", createdAt = 1))
+        repository.insertMcpServer(McpServerEntity("stdio", "STDIO", "/usr/bin/server", "stdio", createdAt = 1))
+        val registry = registry(MockEngine { request ->
+            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            respond("""{"jsonrpc":"2.0","id":$id,"result":{"tools":[{"name":"exec","inputSchema":{"type":"object"}}]}}""",
+                HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }, backgroundScope)
+        assertThat(registry.syncServer("http")).isEqualTo(McpSyncResult.Success(1))
+        assertThat(awaitToolCount(registry, 1)).hasSize(1)
+        assertThat(registry.syncServer("stdio")).isEqualTo(McpSyncResult.Failure("MCP_LEGACY_TRANSPORT_UNSUPPORTED"))
     }
 
     @Test
-    fun `本机MCP发现与注册执行都认证且停用后撤下PROCESS工具`() = runTest {
+    fun `本机MCP发现与注册执行使用可选凭据且服务器停用后撤下工具`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val settings = McpConnectionSettings(
             context.getSharedPreferences("mcp_registry_${System.nanoTime()}", Context.MODE_PRIVATE),
             MemoryMcpSecrets(),
         )
-        settings.setAllowLoopbackHttp(true)
         settings.saveBearerToken("local", "test-only-bearer")
         repository.insertMcpServer(McpServerEntity("local", "本机", "http://127.0.0.1:8765/mcp", "http"))
         val credentials = mutableListOf<String?>()
@@ -334,41 +322,19 @@ class McpSkillRegistryPersistenceTest {
         assertThat(methods).containsExactly("tools/list", "tools/call").inOrder()
         assertThat(credentials).containsExactly("Bearer test-only-bearer", "Bearer test-only-bearer")
 
-        settings.setAllowLoopbackHttp(false)
+        repository.updateMcpServerEnabled("local", false)
         assertThat(registry.getAllTools(null)).isEmpty()
         assertThat(skill.execute(JsonObject(emptyMap()), executionContext).status).isEqualTo("error")
         assertThat(methods).hasSize(2)
     }
 
     @Test
-    fun `本机MCP没有令牌或未启用时不发现也不广告`() = runTest {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val settings = McpConnectionSettings(
-            context.getSharedPreferences("mcp_unconfigured_${System.nanoTime()}", Context.MODE_PRIVATE),
-            MemoryMcpSecrets(),
-        )
-        repository.insertMcpServer(McpServerEntity("local", "本机", "http://127.0.0.1:8765/mcp", "http"))
-        database.skillDao().insertMcpToolSnapshots(
-            listOf(McpToolSnapshotEntity("local", "exec", "", """{"type":"object"}""", 1)),
-        )
-        val registry = registry(MockEngine { error("不应联网") }, backgroundScope, connectionSettings = settings)
-        assertThat(registry.syncServer("local"))
-            .isEqualTo(McpSyncResult.Failure("MCP_LOOPBACK_DISABLED_OR_TOKEN_REQUIRED"))
-        settings.setAllowLoopbackHttp(true)
-        assertThat(registry.syncServer("local"))
-            .isEqualTo(McpSyncResult.Failure("MCP_LOOPBACK_DISABLED_OR_TOKEN_REQUIRED"))
-        assertThat(registry.getAllTools(null)).isEmpty()
-        assertThat(registry.getSkillByRuntimeToolId("mcp:local:exec")).isNull()
-    }
-
-    @Test
-    fun `本机MCP发现期间停用高级选项不得提交返回的工具`() = runTest {
+    fun `MCP发现期间凭据变化不得提交返回的工具`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val settings = McpConnectionSettings(
             context.getSharedPreferences("mcp_disabling_${System.nanoTime()}", Context.MODE_PRIVATE),
             MemoryMcpSecrets(),
         )
-        settings.setAllowLoopbackHttp(true)
         settings.saveBearerToken("local", "test-only-bearer")
         repository.insertMcpServer(McpServerEntity("local", "本机", "http://127.0.0.1:8765/mcp", "http"))
         val entered = CompletableDeferred<Unit>()
@@ -385,7 +351,7 @@ class McpSkillRegistryPersistenceTest {
         }, backgroundScope, connectionSettings = settings)
         val sync = async { registry.syncServer("local") }
         entered.await()
-        settings.setAllowLoopbackHttp(false)
+        settings.removeBearerToken("local")
         release.complete(Unit)
         assertThat(sync.await()).isEqualTo(McpSyncResult.Failure("MCP_CONNECTION_SETTINGS_CHANGED_DURING_SYNC"))
         assertThat(repository.getMcpToolSnapshots("local")).isEmpty()
@@ -400,7 +366,6 @@ class McpSkillRegistryPersistenceTest {
             val settings = McpConnectionSettings(
                 context.getSharedPreferences("mcp_paging_${System.nanoTime()}", Context.MODE_PRIVATE), MemoryMcpSecrets(),
             )
-            settings.setAllowLoopbackHttp(true)
             settings.saveBearerToken(id, "test-only-bearer")
             val server = McpServerEntity(id, "本机", "http://127.0.0.1:8765/mcp", "http")
             repository.insertMcpServer(server)
@@ -413,7 +378,7 @@ class McpSkillRegistryPersistenceTest {
                     "disable" -> repository.updateMcpServerEnabled(id, false)
                     "delete" -> repository.deleteMcpServer(server)
                     "url" -> repository.insertMcpServer(server.copy(url = "http://127.0.0.1:8766/mcp"))
-                    else -> { settings.setAllowLoopbackHttp(false); settings.setAllowLoopbackHttp(true) }
+                    else -> { settings.removeBearerToken(id); settings.saveBearerToken(id, "test-only-bearer") }
                 }
                 val rpcId = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
                 val page = if (calls == 1) """{"tools":[],"nextCursor":"second"}""" else """{"tools":[]}"""

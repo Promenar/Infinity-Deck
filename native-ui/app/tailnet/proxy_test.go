@@ -125,8 +125,8 @@ func TestSOCKS5RequiresCredentials(t *testing.T) {
 	}
 }
 
-func TestSOCKS5ReportsPolicyRejection(t *testing.T) {
-	rec := &targetRecorder{backend: startEcho(t), fail: errPeerNotAllowed}
+func TestSOCKS5ReportsTailnetOffline(t *testing.T) {
+	rec := &targetRecorder{backend: startEcho(t), fail: errTailnetNotRunning}
 	addr := startProxy(t, rec)
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -146,8 +146,8 @@ func TestSOCKS5ReportsPolicyRejection(t *testing.T) {
 	if _, err := io.ReadFull(c, reply); err != nil {
 		t.Fatal(err)
 	}
-	if reply[1] != socksReplyNotAllow {
-		t.Fatalf("白名单拒绝应回复 0x02，得到 %#x", reply[1])
+	if reply[1] != socksReplyHostUnr {
+		t.Fatalf("未连接应回复主机不可达，得到 %#x", reply[1])
 	}
 }
 
@@ -218,7 +218,9 @@ func TestHTTPForwardStripsProxyHeaders(t *testing.T) {
 
 	proxyURL, _ := url.Parse("http://" + testUser + ":" + testPassword + "@" + addr)
 	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 10 * time.Second}
-	resp, err := client.Get("http://nas:5666/info/refs")
+	request, _ := http.NewRequest("GET", "http://nas:5666/info/refs", nil)
+	request.Header.Set(tailnetOriginHostHeader, "ignored.test")
+	resp, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +235,7 @@ func TestHTTPForwardStripsProxyHeaders(t *testing.T) {
 	if seenHost != "nas:5666" {
 		t.Fatalf("Host 头应保持原目标，得到 %q", seenHost)
 	}
-	for _, name := range []string{"Proxy-Authorization", "Proxy-Connection", "X-Forwarded-For", "Forwarded"} {
+	for _, name := range []string{"Proxy-Authorization", "Proxy-Connection", "X-Forwarded-For", "Forwarded", tailnetOriginHostHeader} {
 		if v := seen.Get(name); v != "" {
 			t.Fatalf("目标服务器不应收到 %s：%q", name, v)
 		}
@@ -247,6 +249,47 @@ func TestHTTPForwardStripsProxyHeaders(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusProxyAuthRequired {
 		t.Fatalf("无凭据的转发应回复 407，得到 %d", resp.StatusCode)
+	}
+}
+
+func TestHTTPForwardPreservesPinnedTailnetOrigin(t *testing.T) {
+	for _, authority := range []string{"origin.test", "origin.test:8080", "[fd7a:115c:a1e0::2]:8080"} {
+		t.Run(authority, func(t *testing.T) {
+			var seenHost, seenInternal string
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				seenHost, seenInternal = r.Host, r.Header.Get(tailnetOriginHostHeader)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer backend.Close()
+			rec := &targetRecorder{backend: strings.TrimPrefix(backend.URL, "http://")}
+			addr := startProxy(t, rec)
+			proxyURL, _ := url.Parse("http://" + testUser + ":" + testPassword + "@" + addr)
+			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			defer transport.CloseIdleConnections()
+			request, _ := http.NewRequest("GET", "http://100.64.0.9:8080/path", nil)
+			request.Header.Set(tailnetOriginHostHeader, authority)
+			response, err := (&http.Client{Transport: transport, Timeout: 10 * time.Second}).Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if rec.last() != "100.64.0.9:8080" || seenHost != authority || seenInternal != "" {
+				t.Fatalf("固定 IP、原始 Host 或内部头剥离错误：%q %q %q", rec.last(), seenHost, seenInternal)
+			}
+		})
+	}
+}
+
+func TestForwardedOriginHostValidation(t *testing.T) {
+	for _, authority := range []string{"", "user@origin.test", "origin.test/path", "origin.test?x=1", "origin.test#frag", "origin.test:0", "origin.test:65536", "origin.test:", "origin.test\r\nX: injected", "[invalid]", "origin.test:80:90", "::1", "fd7a:115c:a1e0::1"} {
+		if actual := forwardedOriginHost("100.64.0.9", authority); actual != "" {
+			t.Fatalf("无效 authority 应忽略：%q -> %q", authority, actual)
+		}
+	}
+	for _, target := range []string{"192.168.1.2", "127.0.0.1", "example.test"} {
+		if actual := forwardedOriginHost(target, "origin.test"); actual != "" {
+			t.Fatalf("普通目标不使用内部 Host：%q -> %q", target, actual)
+		}
 	}
 }
 

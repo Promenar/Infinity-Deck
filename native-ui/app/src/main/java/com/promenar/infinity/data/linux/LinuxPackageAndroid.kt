@@ -3,7 +3,6 @@ package com.promenar.infinity.data.linux
 import android.content.Context
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.exec.*
-import com.promenar.infinity.data.network.AgentNetworkSettings
 import com.promenar.infinity.data.tailnet.TailnetPhase
 import com.promenar.infinity.domain.linux.*
 import com.promenar.infinity.domain.network.AgentNetworkPolicy
@@ -30,12 +29,10 @@ internal class LinuxPackageBackend(context: Context, runtime: LinuxRuntime, host
     })
     val mirrors: LinuxMirrorSettings by lazy {
         val application = context.applicationContext as InfinityApplication
-        val network = AgentNetworkSettings(context.getSharedPreferences(AgentNetworkSettings.PREFERENCES_NAME, Context.MODE_PRIVATE))
         val tailnet = application.tailnetManager
         val policy = AgentNetworkPolicy(
-            isTailnetHost = tailnet::isTailnetHost, allowedLanHosts = { network.lanHosts },
+            isTailnetHost = tailnet::isTailnetHost,
             tailnetRunning = { tailnet.state.value.phase == TailnetPhase.RUNNING },
-            cleartextPermitted = { android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(it) },
         )
         LinuxMirrorService(runtime, LinuxMirrorSharedPreferences(context.getSharedPreferences(LinuxMirrorSharedPreferences.PREFERENCES_NAME, Context.MODE_PRIVATE)),
             LinuxMirrorHttpClient(application.gitRemoteHttpClient, policy, tailnet))

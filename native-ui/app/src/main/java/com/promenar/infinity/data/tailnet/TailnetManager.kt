@@ -69,7 +69,6 @@ interface TailnetController {
     suspend fun setEnabled(enabled: Boolean)
     suspend fun setEphemeral(ephemeral: Boolean)
     suspend fun setControlUrl(raw: String): Boolean
-    suspend fun setAllowedPeers(raw: String): TailnetSettingsProblem?
     suspend fun setAuthKey(raw: CharArray): Boolean
     suspend fun clearAuthKey()
     suspend fun revealAuthKey(): CharArray?
@@ -95,7 +94,6 @@ class TailnetManager(
 
     private inner class Session(val config: LaunchConfig) {
         @Volatile var client: TailnetClient? = null
-        @Volatile var allowedPeers: List<String> = emptyList()
         @Volatile var stopping = false
         val endpoint = CompletableFuture<TailnetProxyEndpoint?>()
     }
@@ -245,9 +243,6 @@ class TailnetManager(
                 // 换控制服务器：旧节点身份对新服务器无效，清空状态目录后重新登录。
                 if (controlChanged) withContext(ioDispatcher) { stateDirectory.deleteRecursively() }
                 launchLocked(settings, CompletableFuture())
-            } else if (current.allowedPeers != settings.allowedPeers) {
-                runCatching { current.client?.setAllowedPeers(settings.allowedPeers) }
-                    .onSuccess { current.allowedPeers = settings.allowedPeers }
             }
             return
         }
@@ -301,7 +296,6 @@ class TailnetManager(
             ephemeral = settings.ephemeral,
             proxyUser = user,
             proxyPassword = password,
-            allowedPeers = settings.allowedPeers,
         )
         authKey?.fill('\u0000')
         val result = try {
@@ -316,7 +310,6 @@ class TailnetManager(
             fail(next, TailnetFailure.START_FAILED)
             return
         }
-        next.allowedPeers = settings.allowedPeers
         next.endpoint.complete(TailnetProxyEndpoint(result.proxyPort, user, password))
     }
 
@@ -424,11 +417,6 @@ class TailnetManager(
     override suspend fun setEphemeral(ephemeral: Boolean) = withContext(ioDispatcher) { settingsStore.setEphemeral(ephemeral) }
 
     override suspend fun setControlUrl(raw: String): Boolean = withContext(ioDispatcher) { settingsStore.setControlUrl(raw) }
-
-    override suspend fun setAllowedPeers(raw: String): TailnetSettingsProblem? = withContext(ioDispatcher) {
-        TailnetSettingsPolicy.problemForPeers(raw)
-            ?: if (settingsStore.setAllowedPeers(TailnetSettingsPolicy.splitPeers(raw))) null else TailnetSettingsProblem.PEER_INVALID
-    }
 
     override suspend fun setAuthKey(raw: CharArray): Boolean = withContext(ioDispatcher) {
         try {

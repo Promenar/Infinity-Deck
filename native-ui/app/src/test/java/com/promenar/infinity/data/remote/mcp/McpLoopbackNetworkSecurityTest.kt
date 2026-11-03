@@ -8,7 +8,7 @@ import org.w3c.dom.Element
 
 class McpLoopbackNetworkSecurityTest {
     @Test
-    fun `主配置与调试配置只对精确127环回域放行明文`() {
+    fun `主配置与调试配置允许所有目标明文`() {
         listOf("main", "debug").forEach { sourceSet ->
             val candidates = listOf(
                 File("src/$sourceSet/res/xml/network_security_config.xml"),
@@ -20,15 +20,9 @@ class McpLoopbackNetworkSecurityTest {
             val bases = config.getElementsByTagName("base-config")
             assertThat(bases.length).isEqualTo(1)
             assertThat((bases.item(0) as Element).getAttribute("cleartextTrafficPermitted"))
-                .isEqualTo("false")
-
-            val domains = config.getElementsByTagName("domain")
-            assertThat(domains.length).isEqualTo(1)
-            val domain = domains.item(0) as Element
-            assertThat(domain.textContent.trim()).isEqualTo("127.0.0.1")
-            assertThat(domain.getAttribute("includeSubdomains")).isEqualTo("false")
-            assertThat((domain.parentNode as Element).getAttribute("cleartextTrafficPermitted"))
                 .isEqualTo("true")
+
+            assertThat(config.getElementsByTagName("domain-config").length).isEqualTo(0)
         }
     }
 }

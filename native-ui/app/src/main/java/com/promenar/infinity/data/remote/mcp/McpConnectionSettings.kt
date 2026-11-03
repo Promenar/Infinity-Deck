@@ -12,33 +12,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
-/** 本机 MCP 的显式启用状态和独立凭据。 */
+/** MCP 连接的独立凭据。 */
 class McpConnectionSettings(
     private val preferences: SharedPreferences,
     private val secretStore: SecretStore,
 ) {
-    private val _allowLoopbackHttp = MutableStateFlow(preferences.getBoolean(ALLOW_LOOPBACK_HTTP, false))
-    val allowLoopbackHttp: StateFlow<Boolean> = _allowLoopbackHttp.asStateFlow()
+    init { preferences.edit().remove("mcp_allow_loopback_http").apply() }
+
     private val _revision = MutableStateFlow(0L)
     val revision: StateFlow<Long> = _revision.asStateFlow()
-
-    @Synchronized
-    fun setAllowLoopbackHttp(enabled: Boolean) {
-        if (_allowLoopbackHttp.value == enabled) return
-        preferences.edit().putBoolean(ALLOW_LOOPBACK_HTTP, enabled).apply()
-        _allowLoopbackHttp.value = enabled
-        _revision.update { it + 1 }
-    }
 
     fun hasBearerToken(serverId: String): Boolean =
         serverId.isNotBlank() && runCatching { secretStore.contains(secretId(serverId)) }.getOrDefault(false)
 
-    fun isAllowed(serverId: String, type: String, url: String): Boolean = McpEndpointPolicy.isAllowed(
-        type = type,
-        url = url,
-        allowLoopbackHttp = _allowLoopbackHttp.value,
-        hasBearerToken = McpEndpointPolicy.kind(url) == McpEndpointPolicy.Kind.LOOPBACK_HTTP && hasBearerToken(serverId),
-    )
+    fun isAllowed(serverId: String, type: String, url: String): Boolean = McpEndpointPolicy.isAllowed(type, url)
 
     suspend fun saveBearerToken(serverId: String, token: String) {
         require(serverId.isNotBlank()) { "MCP_SERVER_ID_REQUIRED" }
@@ -95,7 +82,4 @@ class McpConnectionSettings(
         return SecretId("mcp_bearer_v1:$hash")
     }
 
-    private companion object {
-        const val ALLOW_LOOPBACK_HTTP = "mcp_allow_loopback_http"
-    }
 }

@@ -1,6 +1,5 @@
 package com.promenar.infinity.ui.welcome
 
-import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.data.manager.ProviderManager
 import com.promenar.infinity.data.remote.*
 
@@ -16,6 +15,5 @@ internal fun resolveOnboardingModelRoute(manager: ProviderManager, providerId: S
         providerResolver = { id -> manager.providers.value.firstOrNull { it.id == id } },
         configResolver = manager::getProviderConfig,
         unsupportedPersistedProtocolResolver = manager::isPersistedProtocolUnsupported,
-        allowLoopbackHttp = BuildConfig.DEBUG,
     ).resolve(modelId)
 }

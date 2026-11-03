@@ -145,7 +145,7 @@
     <string name="secret_field_show">Temporarily show full secret</string>
     <string name="secret_field_hide">Hide secret</string>
     <string name="secret_field_clear">Clear saved secret</string>
-    <string name="provider_form_https_required">Cloud provider endpoints must use a valid HTTPS URL.</string>
+    <string name="provider_form_http_url_required">Enter a valid HTTP or HTTPS URL.</string>
     <string name="provider_form_protocol_unsupported">This historical provider protocol is no longer supported.</string>
     <string name="settings_provider_protocol_unsupported">Protocol is not supported</string>
     <string name="provider_form_legacy_migration_required">Select a supported provider and replace or explicitly clear the stored credential before saving.</string>
@@ -901,10 +901,9 @@
     <string name="skills_mcp_url_placeholder">Server URL</string>
     <string name="skills_mcp_add_btn">Add Server</string>
     <string name="skills_mcp_call_interval">Call Interval</string>
-    <string name="skills_mcp_https_only">Only MCP 2026-07-28 Streamable HTTP over HTTPS is supported.</string>
     <string name="skills_mcp_legacy_unsupported">Legacy configuration: visible for migration or deletion, but cannot sync or execute.</string>
     <string name="skills_mcp_sync_error">Sync failed: %1$s</string>
-    <string name="skills_mcp_modern_transport">MCP 2026-07-28 · HTTPS</string>
+    <string name="skills_mcp_modern_transport">MCP 2026-07-28 · HTTP/HTTPS</string>
     <string name="skills_mcp_enabled">Enabled</string>
     <string name="skills_mcp_default">Default</string>
     <string name="skills_mcp_tools">Tools (%1$d)</string>
@@ -1540,7 +1539,6 @@
     <string name="provider_address_hint_use_tailnet">Use Tailscale</string>
     <string name="provider_address_hint_is_public">This address isn\'t in your tailnet, so requests go over the internet.</string>
     <string name="provider_address_hint_use_public">Use internet</string>
-    <string name="provider_form_tailnet_https_required">Tailscale addresses also need HTTPS. Run tailscale serve on the gateway device and use https://device.tailnet-name.ts.net instead.</string>
     <string name="provider_tailnet_peer_field_label">Tailnet device</string>
     <string name="provider_tailnet_peer_field_placeholder">Choose a device to fill in the address</string>
     <string name="provider_tailnet_peer_sheet_title">Choose a tailnet device</string>
@@ -1684,7 +1682,6 @@
     <string name="tailscale_peers_empty">No other devices in this tailnet.</string>
     <string name="tailscale_peer_online">Online</string>
     <string name="tailscale_peer_offline">Offline</string>
-    <string name="tailscale_peer_blocked">Not in allowlist</string>
     <string name="tailscale_section_login">Advanced</string>
     <string name="tailscale_auth_key">Auth key</string>
     <string name="tailscale_auth_key_desc">Optional. Signs in without a browser. Stored encrypted on this device and never backed up.</string>
@@ -1693,16 +1690,10 @@
     <string name="tailscale_control_url_invalid">Enter an http(s) URL without credentials, query or fragment.</string>
     <string name="tailscale_ephemeral">Ephemeral node</string>
     <string name="tailscale_ephemeral_desc">Removed when offline (from next sign-in)</string>
-    <string name="tailscale_section_allowlist">Device allowlist</string>
-    <string name="tailscale_allowlist_label">Allowed devices</string>
-    <string name="tailscale_allowlist_desc">Only listed devices are reachable through &brand;. Leave empty to allow every device in the tailnet.</string>
-    <string name="tailscale_allowlist_invalid">Each entry must be a device name, MagicDNS name or tailnet IP.</string>
-    <string name="tailscale_allowlist_too_many">At most 64 entries.</string>
     <string name="tailscale_notice_auth_key_saved">Auth key saved</string>
     <string name="tailscale_notice_auth_key_invalid">Auth key format is invalid</string>
     <string name="tailscale_notice_auth_key_cleared">Auth key deleted</string>
     <string name="tailscale_notice_control_saved">Control server saved</string>
-    <string name="tailscale_notice_peers_saved">Allowlist saved</string>
     <string name="tailscale_notice_login_unavailable">No sign-in link available yet. Try again in a moment.</string>
     <string name="tailscale_notice_logged_out">Signed out</string>
     <string name="tailscale_notice_logout_failed">Sign-out did not reach the control server; the saved auth key was deleted</string>
@@ -1712,8 +1703,6 @@
     <string name="tailscale_value_saved">Saved</string>
     <string name="tailscale_value_not_set">Not set</string>
     <string name="tailscale_control_official">Tailscale</string>
-    <string name="tailscale_allowlist_all">All devices</string>
-    <string name="tailscale_allowlist_format">One entry per line or comma-separated: device name, MagicDNS name or tailnet IP.</string>
     <string name="tailscale_auth_key_hint">Paste an auth key starting with tskey-</string>
     <string name="common_mode_workspace">Ask for commands</string>
     <string name="common_mode_full_access">No approvals</string>

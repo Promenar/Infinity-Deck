@@ -41,9 +41,9 @@ import com.promenar.infinity.ui.theme.InfinityThemePreferences
 // ── SSH 编辑面板的 Tailscale 入口 ──
 
 @PreviewTest
-@Preview(name = "SSH 添加主机 Tailscale 已选不在白名单 深色中文", widthDp = 390, heightDp = 1200, locale = "zh-rCN")
+@Preview(name = "SSH 添加主机 Tailscale 已选设备 深色中文", widthDp = 390, heightDp = 1200, locale = "zh-rCN")
 @Composable
-fun sshEditorTailnetBlockedDarkPreview() = EditorPreview(dark = true, tailnet = SshTailnetAvailability.CONNECTED, pick = LAPTOP)
+fun sshEditorTailnetSelectedDarkPreview() = EditorPreview(dark = true, tailnet = SshTailnetAvailability.CONNECTED, pick = LAPTOP)
 
 @PreviewTest
 @Preview(name = "SSH 添加主机 Tailscale 未连接 浅色英文 字号130", widthDp = 360, heightDp = 1500, locale = "en", fontScale = 1.3f)
@@ -168,7 +168,6 @@ private fun EditorPreview(dark: Boolean, tailnet: SshTailnetAvailability, pick: 
         onCancel = {},
         onSave = {},
         tailnet = tailnet,
-        onOpenTailnetAllowlist = {},
     )
 }
 
@@ -188,14 +187,14 @@ private const val CODE = "WDJB-MJHT"
 private const val URI = "https://github.com/login/device"
 private const val EXPIRES = 1_800_000_000_000L
 
-private val LAPTOP = TailnetPeer("laptop", "laptop.example-tailnet.ts.net.", listOf("100.64.0.9"), "macOS", online = true, allowed = false)
+private val LAPTOP = TailnetPeer("laptop", "laptop.example-tailnet.ts.net.", listOf("100.64.0.9"), "macOS", online = true)
 
 private val PEERS = listOf(
     TailnetPeer("fnos", "fnos.example-tailnet.ts.net.", listOf("100.101.7.42"), "linux", online = true),
     TailnetPeer("build-server", "build-server.example-tailnet.ts.net.", listOf("100.64.0.8"), "linux", online = false),
-    TailnetPeer("desktop", "desktop.example-tailnet.ts.net.", listOf("100.64.0.10"), "windows", online = true, allowed = false),
+    TailnetPeer("desktop", "desktop.example-tailnet.ts.net.", listOf("100.64.0.10"), "windows", online = true),
     LAPTOP,
-    TailnetPeer("pixel-tablet", "pixel-tablet.example-tailnet.ts.net.", listOf("100.64.0.12"), "android", online = false, allowed = false),
+    TailnetPeer("pixel-tablet", "pixel-tablet.example-tailnet.ts.net.", listOf("100.64.0.12"), "android", online = false),
 )
 
 private val HOSTS = listOf(
@@ -205,7 +204,7 @@ private val HOSTS = listOf(
 
 private val RUNNING_STATE = TailscaleSettingsUiState(
     available = true,
-    settings = TailnetSettings(enabled = true, allowedPeers = listOf("fnos", "build-server")),
+    settings = TailnetSettings(enabled = true),
     tailnet = TailnetState(
         phase = TailnetPhase.RUNNING,
         summary = TailnetStatusSummary(

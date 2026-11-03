@@ -19,21 +19,19 @@ class McpConnectionSettingsTest {
     private val preferences = context.getSharedPreferences("mcp_test_${System.nanoTime()}", Context.MODE_PRIVATE)
     private val secrets = MemoryMcpSecrets()
 
-    @Test
-    fun `本机明文默认关闭且启用状态持久化`() {
+    @Test fun `启动清除旧开关且HTTP无需开关或令牌`() {
+        preferences.edit().putBoolean("mcp_allow_loopback_http", true).putBoolean("unrelated", true).commit()
         val settings = McpConnectionSettings(preferences, secrets)
-        assertThat(settings.allowLoopbackHttp.value).isFalse()
-        settings.setAllowLoopbackHttp(true)
-        assertThat(settings.allowLoopbackHttp.value).isTrue()
-        assertThat(McpConnectionSettings(preferences, secrets).allowLoopbackHttp.value).isTrue()
-        settings.setAllowLoopbackHttp(false)
-        assertThat(McpConnectionSettings(preferences, secrets).allowLoopbackHttp.value).isFalse()
+        assertThat(preferences.contains("mcp_allow_loopback_http")).isFalse()
+        assertThat(preferences.getBoolean("unrelated", false)).isTrue()
+        for (host in listOf("127.0.0.1", "192.168.1.2", "remote.example.test")) {
+            assertThat(settings.isAllowed("server", "http", "http://$host/mcp")).isTrue()
+        }
     }
 
     @Test
-    fun `Bearer仅进入SecretStore且重建后可读取删除后失去访问资格`() = runTest {
+    fun `Bearer仅进入SecretStore且重建后可读取与删除`() = runTest {
         val settings = McpConnectionSettings(preferences, secrets)
-        settings.setAllowLoopbackHttp(true)
         settings.saveBearerToken("local", "test-only-bearer")
         assertThat(settings.hasBearerToken("local")).isTrue()
         assertThat(settings.isAllowed("local", "http", "http://127.0.0.1:8765/mcp")).isTrue()
@@ -43,7 +41,7 @@ class McpConnectionSettingsTest {
         assertThat(settings.readBearerToken("another")).isNull()
         settings.removeBearerToken("local")
         assertThat(secrets.values).isEmpty()
-        assertThat(settings.isAllowed("local", "http", "http://127.0.0.1:8765/mcp")).isFalse()
+        assertThat(settings.isAllowed("local", "http", "http://127.0.0.1:8765/mcp")).isTrue()
     }
 
     @Test
@@ -66,8 +64,7 @@ class McpConnectionSettingsTest {
             override fun remove(id: SecretId) = error("private-value")
         }
         val settings = McpConnectionSettings(preferences, unavailable)
-        settings.setAllowLoopbackHttp(true)
-        assertThat(settings.isAllowed("local", "http", "http://127.0.0.1:8765/mcp")).isFalse()
+        assertThat(settings.isAllowed("local", "http", "http://127.0.0.1:8765/mcp")).isTrue()
         val failure = runCatching { settings.readBearerToken("local") }.exceptionOrNull()
         assertThat(failure?.message).isEqualTo("MCP_CREDENTIAL_UNAVAILABLE")
         // 协程栈恢复可保留已脱敏的异常副本；完整可见异常链不得含底层秘密。

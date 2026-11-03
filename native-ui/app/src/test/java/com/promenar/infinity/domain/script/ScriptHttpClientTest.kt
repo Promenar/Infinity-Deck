@@ -26,7 +26,7 @@ class ScriptHttpClientTest {
                 flush()
             }
         }.use { fixture ->
-            val client = ScriptHttpClient({ setOf("127.0.0.1") }, { true }) { arrayOf(InetAddress.getByName(it)) }
+            val client = ScriptHttpClient() { arrayOf(InetAddress.getByName(it)) }
             val headers = client.fetch(args("http://127.0.0.1:${fixture.port}"), ScriptNetworkBudget())["headers"]!!.jsonObject
             assertThat(headers.entries.single { it.key.equals("x-trace", true) }.value).isEqualTo(JsonPrimitive("first, second"))
             assertThat(headers.keys.none { it.equals("set-cookie", true) }).isTrue()
@@ -36,7 +36,7 @@ class ScriptHttpClientTest {
     @Test fun `真实HTTP读取使用固定DNS且返回状态正文与请求头`() = runBlocking {
         Fixture { socket -> respond(socket, "hello") }.use { fixture ->
             var resolutions = 0
-            val client = ScriptHttpClient({ setOf("lan.test") }, { true }) {
+            val client = ScriptHttpClient() {
                 assertThat(it).isEqualTo("lan.test")
                 resolutions++
                 arrayOf(InetAddress.getByName("127.0.0.1"))
@@ -48,20 +48,17 @@ class ScriptHttpClientTest {
         }
     }
 
-    @Test fun `重定向重新验证私有地址且拒绝全局明文禁令`() = runBlocking {
-        Fixture { socket -> socket.getOutputStream().apply { write("HTTP/1.1 302 Found\r\nLocation: http://10.0.0.1/secret\r\nContent-Length: 0\r\n\r\n".toByteArray()); flush() } }.use { fixture ->
-            val client = ScriptHttpClient({ setOf("127.0.0.1") }, { true }) { arrayOf(InetAddress.getByName(it)) }
+    @Test fun `重定向重新验证并拒绝组播地址`() = runBlocking {
+        Fixture { socket -> socket.getOutputStream().apply { write("HTTP/1.1 302 Found\r\nLocation: http://224.0.0.1/secret\r\nContent-Length: 0\r\n\r\n".toByteArray()); flush() } }.use { fixture ->
+            val client = ScriptHttpClient { arrayOf(InetAddress.getByName(it)) }
             try { client.fetch(args("http://127.0.0.1:${fixture.port}"), ScriptNetworkBudget()); error("应拒绝重定向") }
-            catch (failure: ScriptFailure) { assertThat(failure.code).isEqualTo("NETWORK_DENIED") }
-            val blocked = ScriptHttpClient({ setOf("127.0.0.1") }, { false }) { arrayOf(InetAddress.getByName(it)) }
-            try { blocked.fetch(args("http://127.0.0.1:${fixture.port}"), ScriptNetworkBudget()); error("应拒绝明文") }
-            catch (failure: ScriptFailure) { assertThat(failure.message).contains("明文") }
+            catch (failure: ScriptFailure) { assertThat(failure.message).contains("ADDRESS_DENIED") }
         }
     }
 
     @Test fun `超大响应流在有界读取后拒绝`() = runBlocking {
         Fixture { socket -> respond(socket, "x".repeat(65537)) }.use { fixture ->
-            val client = ScriptHttpClient({ setOf("127.0.0.1") }, { true }) { arrayOf(InetAddress.getByName(it)) }
+            val client = ScriptHttpClient() { arrayOf(InetAddress.getByName(it)) }
             try { client.fetch(args("http://127.0.0.1:${fixture.port}"), ScriptNetworkBudget()); error("应超限") }
             catch (failure: ScriptFailure) { assertThat(failure.code).isEqualTo("NETWORK_LIMIT") }
         }
@@ -75,7 +72,7 @@ class ScriptHttpClientTest {
             headersSent.countDown()
             release.await(5, TimeUnit.SECONDS)
         }.use { fixture ->
-            val client = ScriptHttpClient({ setOf("127.0.0.1") }, { true }) { arrayOf(InetAddress.getByName(it)) }
+            val client = ScriptHttpClient() { arrayOf(InetAddress.getByName(it)) }
             val pending = launch { client.fetch(args("http://127.0.0.1:${fixture.port}"), ScriptNetworkBudget()) }
             try {
                 withContext(Dispatchers.IO) { check(headersSent.await(5, TimeUnit.SECONDS)) }
@@ -87,7 +84,7 @@ class ScriptHttpClientTest {
 
     @Test fun `tailnet经真实本机CONNECT并调用代理认证且不解析名称`() = runBlocking {
         ConnectProxyFixture().use { fixture ->
-            val client = ScriptHttpClient({ emptySet() }, tailnetRouting = fixture.routing, tailnetRunning = { true },
+            val client = ScriptHttpClient(tailnetRouting = fixture.routing, tailnetRunning = { true },
                 resolver = { error("tailnet 不应调用系统 DNS") })
             try { client.fetch(args("https://main.tail.ts.net/test"), ScriptNetworkBudget()); error("代理应返回失败") }
             catch (failure: ScriptFailure) {
@@ -105,7 +102,7 @@ class ScriptHttpClientTest {
             override val proxySelector = ConnectProxyFixture.selector(listOf(Proxy.NO_PROXY))
         }
         for (running in listOf(false, true)) {
-            val client = ScriptHttpClient({ setOf("main") }, tailnetRouting = routing, tailnetRunning = { running },
+            val client = ScriptHttpClient(tailnetRouting = routing, tailnetRunning = { running },
                 resolver = { error("tailnet 不应调用系统 DNS") })
             try { client.fetch(args("https://main/test"), ScriptNetworkBudget()); error("应拒绝直连") }
             catch (failure: ScriptFailure) {

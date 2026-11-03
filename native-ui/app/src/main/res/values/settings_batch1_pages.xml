@@ -26,7 +26,6 @@
     <string name="settings_batch1_local_active_reranker">Reranker ready</string>
     <string name="settings_batch1_mcp_connected">Connected</string>
     <string name="settings_batch1_mcp_disconnected">Disconnected</string>
-    <string name="settings_batch1_mcp_security">Connection security</string>
     <string name="settings_batch1_home_retrieval_summary">Reranking and hybrid search</string>
     <string name="settings_batch1_home_rag_summary">Chunking, summaries and knowledge graph</string>
     <string name="settings_batch1_ssh_untrusted_summary">Fingerprint needs review</string>

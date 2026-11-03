@@ -48,8 +48,6 @@ internal data class EnvironmentConnectionState(
     val termuxAvailability: TermuxAvailability? = null,
     val sshHostCount: Int? = null,
     val tailscaleState: TailnetState? = null,
-    /** 共享局域网与本机白名单条数。 */
-    val networkHostCount: Int? = null,
     val gitCredentialCount: Int? = null,
 )
 
@@ -59,7 +57,6 @@ internal fun rememberEnvironmentConnectionState(): EnvironmentConnectionState {
     val application = LocalContext.current.applicationContext as InfinityApplication
     val linuxState by application.linux.runtime.state.collectAsState()
     val linuxAgentEnabled by application.linux.runtime.agentEnabled.collectAsState()
-    val networkSnapshot by application.agentNetworkAccess.snapshot.collectAsState()
     val sshHosts by remember(application) {
         application.sshHostStore.observeHosts().flowOn(Dispatchers.IO)
     }.collectAsState(initial = null)
@@ -85,7 +82,6 @@ internal fun rememberEnvironmentConnectionState(): EnvironmentConnectionState {
         termuxAvailability = termuxAvailability,
         sshHostCount = sshHosts?.size,
         tailscaleState = tailscaleState,
-        networkHostCount = networkSnapshot.lanHosts.size,
         gitCredentialCount = gitCredentialCount,
     )
 }
@@ -134,11 +130,7 @@ internal fun ColumnScope.EnvironmentConnectionRows(
     EnvironmentRow(
         icon = Icons.Rounded.Public,
         title = stringResource(R.string.network_access_title),
-        subtitle = when (val count = state.networkHostCount) {
-            null -> loading
-            0 -> stringResource(R.string.network_access_entry_empty)
-            else -> pluralStringResource(R.plurals.network_access_entry_count, count, count)
-        },
+        subtitle = stringResource(R.string.network_access_entry_routes),
         route = NavDestinations.NETWORK_ACCESS,
         selectedRoute = selectedRoute,
         onOpen = onOpen,

@@ -39,27 +39,27 @@ class LinuxMirrorAndroidTest {
         assertTrue(restored.readLatencies().isEmpty())
     }
 
-    @Test fun redirectsRevalidateLanAllowlistBeforeIssuingRequest(): Unit = runBlocking {
+    @Test fun redirectsAllowLanAndRevalidateMulticast(): Unit = runBlocking {
         val seen = mutableListOf<String>()
         val client = client { request ->
             seen += request.url.toString()
-            response(request, 302, "https://lan.example/index")
+            if (seen.size == 1) response(request, 302, "http://lan.example/index") else response(request, 200)
         }
         val policy = AgentNetworkPolicy(resolver = { host -> arrayOf(address(if (host == "lan.example") byteArrayOf(192.toByte(), 168.toByte(), 1, 4) else byteArrayOf(93, 184.toByte(), 1, 1))) })
-        try { LinuxMirrorHttpClient(client, policy, DisabledTailnetRouting).head("https://public.example/index"); fail() }
-        catch (failure: NetworkAccessDenied) { assertEquals("LAN_HOST_NOT_ALLOWED", failure.code) }
-        assertEquals(listOf("https://public.example/index"), seen)
+        assertTrue(LinuxMirrorHttpClient(client, policy, DisabledTailnetRouting).head("https://public.example/index"))
+        assertEquals(listOf("https://public.example/index", "http://lan.example/index"), seen)
+        val multicast = client { request -> response(request, 302, "http://224.0.0.1/index") }
+        val literalPolicy = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName(it)) })
+        try { LinuxMirrorHttpClient(multicast, literalPolicy, DisabledTailnetRouting).head("http://127.0.0.1/index"); fail() }
+        catch (failure: NetworkAccessDenied) { assertEquals("ADDRESS_DENIED", failure.code) }
     }
 
-    @Test fun headRespectsAuthorizedLanAndRejectsHttpRedirect(): Unit = runBlocking {
+    @Test fun headAcceptsLoopbackHttp(): Unit = runBlocking {
         val methods = mutableListOf<String>()
         val client = client { request -> methods += request.method; response(request, 200) }
-        val policy = AgentNetworkPolicy(allowedLanHosts = { setOf("lan.example") }, resolver = { arrayOf(address(byteArrayOf(127, 0, 0, 1))) })
-        assertTrue(LinuxMirrorHttpClient(client, policy, DisabledTailnetRouting).head("https://lan.example/index"))
+        val policy = AgentNetworkPolicy(resolver = { arrayOf(address(byteArrayOf(127, 0, 0, 1))) })
+        assertTrue(LinuxMirrorHttpClient(client, policy, DisabledTailnetRouting).head("http://lan.example/index"))
         assertEquals(listOf("HEAD"), methods)
-        val redirect = client { request -> response(request, 302, "http://lan.example/index") }
-        try { LinuxMirrorHttpClient(redirect, policy, DisabledTailnetRouting).head("https://lan.example/index"); fail() }
-        catch (_: java.io.IOException) { }
     }
 
     @Test fun nonSuccessHttpStatusIsNotALatencySuccess(): Unit = runBlocking {

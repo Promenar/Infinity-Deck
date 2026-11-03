@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="mcp_connection_policy">需要 HTTPS 地址；本机服务请打开下方高级选项。</string>
-    <string name="mcp_allow_loopback_http">高级：允许本机 HTTP MCP</string>
-    <string name="mcp_loopback_security_notice">本机其它应用也能访问此端口，服务端必须启用 Bearer 认证。</string>
-    <string name="mcp_bearer_token">Bearer 访问令牌（必填）</string>
+    <string name="mcp_bearer_token">Bearer 访问令牌（可选）</string>
     <string name="mcp_bearer_token_storage">令牌加密保存在本机。如需更换，请删除后重新添加。</string>
-    <string name="mcp_invalid_endpoint">请输入有效 HTTPS 地址，或启用高级选项并使用带有效端口的 http://127.0.0.1。</string>
-    <string name="mcp_bearer_required">本机 MCP 必须填写有效 Bearer 令牌；请勿包含空格、换行或“Bearer ”前缀。</string>
+    <string name="mcp_invalid_endpoint">请输入有效的 HTTP 或 HTTPS 地址。</string>
+    <string name="mcp_bearer_required">请输入有效的 Bearer 令牌，不含空格、换行或 Bearer 前缀。</string>
     <string name="mcp_config_save_failed">无法保存 MCP 配置或访问凭据，请重试。</string>
     <string name="mcp_config_saving">正在保存…</string>
-    <string name="mcp_loopback_unavailable">缺少访问令牌，请删除后重新添加。</string>
 </resources>

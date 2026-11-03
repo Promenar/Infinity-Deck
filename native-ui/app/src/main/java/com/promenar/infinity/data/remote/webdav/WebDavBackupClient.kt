@@ -384,7 +384,7 @@ class KtorWebDavBackupClient(
         } catch (_: Exception) {
             throw WebDavException("WebDAV 地址格式无效")
         }
-        if (!parsed.scheme.equals("https", ignoreCase = true)) throw WebDavException("WebDAV 地址必须使用 HTTPS")
+        if (!parsed.scheme.equals("https", ignoreCase = true) && !parsed.scheme.equals("http", ignoreCase = true)) throw WebDavException("WebDAV 地址必须使用 HTTP 或 HTTPS")
         if (parsed.host.isNullOrBlank() || parsed.rawUserInfo != null || parsed.rawQuery != null || parsed.rawFragment != null) {
             throw WebDavException("WebDAV 地址格式无效，不得包含凭证、查询参数或片段")
         }
