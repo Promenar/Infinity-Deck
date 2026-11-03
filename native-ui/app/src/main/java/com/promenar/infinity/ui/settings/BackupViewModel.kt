@@ -249,10 +249,14 @@ class BackupViewModel internal constructor(
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
 
-    constructor(application: Application) : this(
-        operations = LazyBackupOperations(Dispatchers.IO) {
+    /** [decorateOperations] 供引导页在不改恢复管线的前提下观察暂存与丢弃。 */
+    constructor(
+        application: Application,
+        decorateOperations: (BackupOperations) -> BackupOperations = { it },
+    ) : this(
+        operations = decorateOperations(LazyBackupOperations(Dispatchers.IO) {
             RepositoryBackupOperations(BackupRepository(application))
-        },
+        }),
         settings = SharedPreferencesBackupSettingsStore(
             application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
         ),
@@ -1526,6 +1530,14 @@ class BackupViewModel internal constructor(
         fun factory(application: Application): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = BackupViewModel(application) as T
+        }
+
+        fun factory(
+            application: Application,
+            decorateOperations: (BackupOperations) -> BackupOperations,
+        ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = BackupViewModel(application, decorateOperations) as T
         }
     }
 }

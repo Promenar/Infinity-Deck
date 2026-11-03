@@ -269,7 +269,14 @@ open class MainActivity : ComponentActivity() {
                         }
                         val backupRestoreNotice by app.backupRestoreNotice.collectAsStateWithLifecycle()
                         backupRestoreNotice?.let { result ->
-                            com.promenar.infinity.ui.settings.BackupRestoreResultDialog(result, app::consumeBackupRestoreNotice)
+                            // 备份不含密钥层时，“去填写”直接打开提供商管理补填密钥。
+                            com.promenar.infinity.ui.settings.BackupRestoreResultDialog(
+                                result = result,
+                                onDismiss = app::consumeBackupRestoreNotice,
+                                onFillKeys = {
+                                    navController.navigate(NavDestinations.PROVIDER_LIST) { launchSingleTop = true }
+                                },
+                            )
                         }
                         val restoreNotAppliedNotice by app.restoreNotAppliedNotice.collectAsStateWithLifecycle()
                         if (restoreNotAppliedNotice) {

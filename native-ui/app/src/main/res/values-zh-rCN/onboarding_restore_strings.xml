@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="onboarding_restore_entry_title">从备份恢复</string>
+    <string name="onboarding_restore_entry_subtitle">换机或重装？导入备份，跳过全部配置</string>
+    <string name="onboarding_restore_sheet_title">从备份恢复</string>
+    <string name="onboarding_restore_sheet_desc">恢复会用备份里的智能体、提供商和设置替换当前内容，完成后自动重启。</string>
+    <string name="onboarding_restore_source_file">选择备份文件</string>
+    <string name="onboarding_restore_source_file_desc">.iwb 文件，来自下载目录、网盘或其它应用</string>
+    <string name="onboarding_restore_source_webdav">从 WebDAV 恢复</string>
+    <string name="onboarding_restore_source_webdav_desc">填写服务器后列出云端备份</string>
+    <string name="onboarding_restore_webdav_list">列出云端备份</string>
+    <string name="onboarding_restore_webdav_backups">云端备份</string>
+    <string name="onboarding_restore_webdav_empty">服务器上没有找到备份。</string>
+    <string name="onboarding_restore_reading">正在读取备份信息…</string>
+    <string name="onboarding_restore_confirm_title">恢复这份备份？</string>
+    <string name="onboarding_restore_meta_version">来自版本 %1$s</string>
+    <string name="onboarding_restore_keys_missing">密钥未包含</string>
+    <string name="onboarding_restore_encrypted_hint">这份备份已加密，需要导出时设置的密码。</string>
+    <string name="onboarding_restore_unknown_hint">读取备份前无法判断是否加密。</string>
+    <string name="onboarding_restore_confirm">恢复并重启</string>
+    <string name="onboarding_restore_change">换一份</string>
+    <string name="onboarding_restore_back">返回</string>
+    <string name="onboarding_restore_progress_title">正在恢复</string>
+    <string name="onboarding_restore_progress_note">重启提交前任何一步失败，当前数据都保持原样。</string>
+    <string name="onboarding_restore_retry_restart">重试重启</string>
+    <string name="onboarding_restore_cancel_restore">取消恢复</string>
+    <string name="onboarding_restore_result_keys_missing">备份未包含提供商密钥。本机没有密钥的提供商需要重新填写后才能对话。</string>
+    <string name="onboarding_restore_result_fill_keys">去填写</string>
+    <string name="onboarding_restore_result_later">稍后</string>
+</resources>

@@ -37,6 +37,8 @@ internal data class OnboardingUiState(
     val agentName: String? = null,
     val busy: Boolean = false,
     val errorMessage: String? = null,
+    /** 从备份恢复的面板；null 表示面板关闭。 */
+    val restore: OnboardingRestoreSheetState? = null,
 )
 
 internal class OnboardingActions(
@@ -56,6 +58,8 @@ internal class OnboardingActions(
     val onBackToModel: () -> Unit = {},
     val onCreateAgent: (String) -> Unit = {},
     val onStartChat: () -> Unit = {},
+    val onOpenRestore: () -> Unit = {},
+    val restore: OnboardingRestoreSheetActions = OnboardingRestoreSheetActions(),
 )
 
 /** 引导页的测试标签；设备测试与截图按步骤定位。 */

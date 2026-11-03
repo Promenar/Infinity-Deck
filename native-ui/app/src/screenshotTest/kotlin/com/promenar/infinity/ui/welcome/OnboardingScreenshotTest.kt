@@ -249,3 +249,34 @@ fun onboardingCustomProtocolPickerPreview() {
         }
     }
 }
+
+@PreviewTest
+@Preview(name = "Onboarding provider with restore entry Chinese", widthDp = PHONE_WIDTH_DP, heightDp = PHONE_HEIGHT_DP, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun onboardingProviderRestoreEntryPreview() {
+    // 不提供 Linux 时连接提供商是第一个配置步骤，标题下方出现“从备份恢复”。
+    OnboardingPreviewSurface { OnboardingScreen(OnboardingUiState(OnboardingStep.PROVIDER), OnboardingActions()) }
+}
+
+@PreviewTest
+@Preview(name = "Onboarding restore confirm encrypted Chinese", widthDp = PHONE_WIDTH_DP, heightDp = PHONE_HEIGHT_DP, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun onboardingRestoreConfirmPreview() {
+    val encrypted = OnboardingRestorePackage(
+        name = "infinity_backup_1793679632815.iwb",
+        sizeBytes = 58L * MB,
+        peek = BackupPackagePeek.Encrypted,
+    )
+    OnboardingPreviewSurface {
+        // 模拟底部弹层的容器色与拖动条留白；时间文字固定，参考图不随时区变化。
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Box(Modifier.padding(top = 32.dp)) {
+                OnboardingRestoreSheetContent(
+                    state = OnboardingRestoreSheetState(page = OnboardingRestorePage.CONFIRM, selected = encrypted),
+                    actions = OnboardingRestoreSheetActions(),
+                    timeText = { "2026/11/03 12:10" },
+                )
+            }
+        }
+    }
+}

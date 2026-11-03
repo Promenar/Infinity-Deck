@@ -242,6 +242,7 @@ internal fun OnboardingLinuxStep(status: OnboardingLinuxStatus, actions: Onboard
             stringResource(R.string.linux_install_hero_body),
             index = 1,
         )
+        RiseIn(3) { OnboardingRestoreEntry(onClick = actions.onOpenRestore) }
         RiseIn(3) {
             OnboardingCard {
                 LinuxPackageRow(

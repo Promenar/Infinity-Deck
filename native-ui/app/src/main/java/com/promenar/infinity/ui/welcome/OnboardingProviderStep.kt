@@ -82,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
+import com.promenar.infinity.onboarding.OnboardingStep
 import com.promenar.infinity.ui.common.CompactOutlinedTextField
 import com.promenar.infinity.ui.common.SecretField
 import com.promenar.infinity.ui.common.InfinitySegment
@@ -204,6 +205,9 @@ internal fun OnboardingProviderStep(state: OnboardingUiState, actions: Onboardin
             stringResource(R.string.onboarding_provider_desc),
             index = 1,
         )
+        if (onboardingRestoreStep(linuxOffered = state.linux != null) == OnboardingStep.PROVIDER) {
+            RiseIn(3) { OnboardingRestoreEntry(onClick = actions.onOpenRestore, enabled = !connecting && !state.busy) }
+        }
         RiseIn(3) {
             Text(
                 stringResource(R.string.onboarding_provider_service),
