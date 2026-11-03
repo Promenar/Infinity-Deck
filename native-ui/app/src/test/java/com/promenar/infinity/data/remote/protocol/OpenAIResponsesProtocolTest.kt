@@ -33,8 +33,8 @@ class OpenAIResponsesProtocolTest {
     }
 
     @Test
-    fun `response failed 的 context_length_exceeded 映射为不可重试 INVALID_REQUEST`() = runBlocking {
-        assertResponseFailed("context_length_exceeded", GenerationFailureCode.INVALID_REQUEST, retryable = false)
+    fun `response failed 的 context_length_exceeded 映射为不可重试 CONTEXT_LIMIT`() = runBlocking {
+        assertResponseFailed("context_length_exceeded", GenerationFailureCode.CONTEXT_LIMIT, retryable = false)
     }
 
     @Test

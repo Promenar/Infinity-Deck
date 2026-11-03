@@ -43,6 +43,7 @@ import java.util.Locale
 data class MessageManagerHooks(
     val beforeUiApply: suspend (String) -> Unit = {},
     val beforeDbWrite: suspend (String) -> Unit = {},
+    val beforeDbRetry: suspend (String) -> Unit = {},
 )
 
 internal data class MessageCoordinationState(
@@ -293,7 +294,13 @@ class MessageManager(
         sessionId: String,
         messageId: String,
         updates: Map<String, Any?>,
+        sourceLane: MessageLane? = null,
+        sourceEpoch: Long? = null,
     ) {
+        if (sourceLane != null) {
+            debouncedDbUpdate(sessionId, messageId, sourceEpoch ?: return, updates, sourceLane)
+            return
+        }
         val epoch = synchronized(stateLock) {
             lanes.getOrPut("$sessionId:$messageId") { MessageLane() }.epoch
         }
@@ -332,6 +339,22 @@ class MessageManager(
                 )
             }
         }
+
+    /** 重试前同步替换模型回复；显式 null 必须清掉失败请求的思考与回传状态。 */
+    suspend fun restoreModelReply(sessionId: String, messageId: String, reply: Message) = withContextMutation(sessionId) {
+        require(reply.id == messageId)
+        flushNonApprovalUpdatesNow(sessionId, messageId)
+        messageRepository.updatePartial(messageId, mapOf(
+            "content" to reply.content, "reasoning" to reply.reasoning, "thoughtSignature" to reply.thoughtSignature,
+            "toolCalls" to reply.toolCalls, "citations" to reply.citations, "tokens" to reply.tokens,
+            "isError" to reply.isError, "errorMessage" to reply.errorMessage,
+        ))
+        store.updateMessageInSession(sessionId, messageId) { current -> current.copy(
+            content = reply.content, reasoning = reply.reasoning, thoughtSignature = reply.thoughtSignature,
+            toolCalls = reply.toolCalls, citations = reply.citations, tokens = reply.tokens,
+            isError = reply.isError, errorMessage = reply.errorMessage,
+        ) }
+    }
 
     /** 用户主动编辑正文；流式更新仍使用 updateMessageContent。 */
     suspend fun editMessageContent(sessionId: String, messageId: String, content: String) = withContextMutation(sessionId) {
@@ -598,10 +621,12 @@ class MessageManager(
         messageId: String,
         epoch: Long,
         updates: Map<String, Any?>,
+        sourceLane: MessageLane? = null,
     ) {
         val key = "$sessionId:$messageId"
         val jobToStart = synchronized(stateLock) {
-            val lane = lanes.getOrPut(key) { MessageLane() }
+            val lane = if (sourceLane != null) lanes[key] ?: return else lanes.getOrPut(key) { MessageLane() }
+            if (sourceLane != null && (sourceLane !== lane || key in purgingKeys)) return
             if (lane.epoch != epoch) return
             val existing = dbPendingUpdates[key]
                 ?.takeIf { it.epoch == epoch }
@@ -628,6 +653,7 @@ class MessageManager(
         var flushedEpoch: Long? = null
         lane.mutex.withLock {
             val pending = synchronized(stateLock) {
+                if (lanes[key] !== lane || key in purgingKeys) return@synchronized null
                 dbDebounceJobs.remove(key)
                 dbPendingUpdates.remove(key)?.takeIf { it.epoch == lane.epoch }
             } ?: return
@@ -640,7 +666,8 @@ class MessageManager(
             }
         }
         retry?.let { updates ->
-            requeueNonApprovalDbUpdate(sessionId, messageId, updates)
+            hooks.beforeDbRetry(key)
+            requeueNonApprovalDbUpdate(sessionId, messageId, updates, lane, flushedEpoch)
         } ?: synchronized(stateLock) {
             val epoch = flushedEpoch ?: return@synchronized
             val hasNewCoordinatedWork = pendingUpdates[key]?.epoch == epoch ||

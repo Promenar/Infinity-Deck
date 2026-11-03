@@ -74,7 +74,8 @@ class OpenAIProtocol(
                     val normalized = ErrorNormalizer.normalize(
                         HttpStatusException(response.status.value, errorBody)
                     )
-                    val error = normalized.toStreamChunkError()
+                    val error = ProtocolContextLimit.fromHttp(protocolType, response.status.value, errorBody)
+                        ?: normalized.toStreamChunkError()
                     // 保留服务商给出的限流等待秒数，无有效响应头时沿用归一化默认值。
                     val retryAfter = response.headers[HttpHeaders.RetryAfter]?.trim()?.toLongOrNull()
                         ?.takeIf { it > 0 }?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
@@ -203,6 +204,7 @@ class OpenAIProtocol(
         }
 
         if (!response.status.isSuccess()) {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromHttp(protocolType, response.status.value, responseText))
             val normalized = ErrorNormalizer.normalize(
                 HttpStatusException(response.status.value, responseText)
             )
@@ -360,7 +362,7 @@ class OpenAIProtocol(
         toolCallAccumulator: MutableMap<Int, AccumulatedToolCall>,
         reasoningField: ReasoningFieldTracker,
     ): CompletionReason? {
-        chunk["error"]?.takeUnless { it is JsonNull }?.let { throw AbnormalFinishException(streamErrorEvent(chunk)) }
+        chunk["error"]?.takeUnless { it is JsonNull }?.let { throw AbnormalFinishException(streamErrorEvent(chunk, protocolType)) }
         val choice = (chunk["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
         if (choice == null) {
             val usageRaw = chunk["usage"]?.takeUnless { it is JsonNull }?.jsonObject
@@ -452,6 +454,9 @@ class OpenAIProtocol(
 
     private fun parseSyncResponse(responseText: String): PromptResponse {
         val parsed = json.parseToJsonElement(responseText).jsonObject
+        (parsed["error"] as? JsonObject)?.let {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromError(protocolType, it))
+        }
         val choice = parsed["choices"]
             ?.jsonArray?.firstOrNull() as? JsonObject
             ?: throw IllegalStateException("OpenAI sync response missing choice")

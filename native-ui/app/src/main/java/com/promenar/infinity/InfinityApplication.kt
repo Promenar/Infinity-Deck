@@ -511,6 +511,20 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         sessionExecutionGate.withNewSessionAdmission(sessionId) {
             generationRunnerFactory.createRuntime(sessionId, "context-estimate").estimateContext(sessionId)
         }
+    suspend fun estimateDraftDocumentBudget(sessionId: String, text: String,
+        documents: List<com.promenar.infinity.data.model.MessageDocumentAttachment>): com.promenar.infinity.data.generation.DraftDocumentBudget =
+        sessionExecutionGate.withNewSessionAdmission(sessionId) {
+            generationRunnerFactory.createRuntime(sessionId, "draft-budget").estimateDraftDocumentBudget(sessionId, text, documents)
+        }
+
+    val documentWorkspaceSaver: com.promenar.infinity.data.document.DocumentWorkspaceSaver by lazy {
+        com.promenar.infinity.data.document.WorkspaceDocumentSaver(
+            com.promenar.infinity.data.workspace.WorkspaceFileTargetResolver(
+                sessionRepository, workspaceRepository, externalFolderManager, sessionWorkspaceResolver::resolve, skillCatalog.userRoot,
+                sessionWorkspaceResolver::resolveWorkspace, sessionWorkspaceResolver::backend, modeFor = sessionRunModes::modeFor,
+            ), workspaceRepository, externalFolderManager, pendingDocumentIndexCoordinator, sessionFor = sessionRepository::getById,
+        )
+    }
     private val agentNetworkSettings by lazy {
         com.promenar.infinity.data.network.AgentNetworkSettings(getSharedPreferences(
             com.promenar.infinity.data.network.AgentNetworkSettings.PREFERENCES_NAME, MODE_PRIVATE))

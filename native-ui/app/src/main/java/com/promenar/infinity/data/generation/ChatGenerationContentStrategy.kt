@@ -158,6 +158,7 @@ class DefaultChatGenerationContentStrategy(
                         content = FullContextDocumentFormatter.appendToUserContent(
                             MessageQuoteFormatter.formatUserContent(message.content, message.quotes),
                             message.userDocuments.orEmpty(),
+                            session,
                         ),
                         turnContext = com.promenar.infinity.ui.chat.manager.turnContextForModel(message.turnContext),
                         imageUrls = message.userImages?.map { dataUrl ->

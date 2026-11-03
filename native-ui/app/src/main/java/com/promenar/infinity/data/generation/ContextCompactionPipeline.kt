@@ -26,6 +26,7 @@ data class ContextCompactionInput(
     val manual: Boolean = false,
     val turnState: ContextCompactionTurnState = ContextCompactionTurnState(),
     val stableModelId: String? = null,
+    val inputBudgetOverride: Int? = null,
 )
 
 data class ContextCompactionResult(
@@ -36,6 +37,7 @@ data class ContextCompactionResult(
     val afterTokens: Int,
     val summaryFailed: Boolean = false,
     val newlyFoldedToolResults: Int = 0,
+    val blockedFloor: ContextInputFloor? = null,
 )
 
 enum class ContextCompactionStage { FOLDING, SUMMARIZING, COMPLETE }
@@ -43,6 +45,8 @@ enum class ContextCompactionStage { FOLDING, SUMMARIZING, COMPLETE }
 /** 请求构建及摘要持久化由调用方负责；工具折叠只改写请求副本。 */
 class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
     private val memoryFolds = java.util.concurrent.ConcurrentHashMap<Pair<String, FoldKey>, String>()
+    fun inputFloor(session: Session, prompt: PromptRequest, window: PromptWindow, stableModelId: String? = null): ContextInputFloor =
+        ContextInputFloor.evaluate(session, prompt, window, stableModelId, foldingCandidates(prompt.messages).toSet())
     /** 只读取已有折叠，供用量面板估算；不生成摘要、不改缓存或原始消息。 */
     suspend fun preview(session: Session, prompt: PromptRequest, stableModelId: String? = null): ContextCompactionResult {
         val prepared = applyCached(session, prompt, mutableMapOf(), readOnly = true)
@@ -59,7 +63,14 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
     ): ContextCompactionResult {
         var session = input.session
         val localFolds = mutableMapOf<FoldKey, String>()
-        var prepared = applyCached(session, buildPrompt(session), localFolds)
+        val original = buildPrompt(session)
+        val floor = inputFloor(session, original, input.window, input.stableModelId)
+        if (floor.exceeded) {
+            val tokens = PromptUsageCalibration.estimate(session, original, input.stableModelId)
+            onProgress(ContextCompactionStage.COMPLETE)
+            return ContextCompactionResult(original, 0, 0, tokens, tokens, blockedFloor = floor)
+        }
+        var prepared = applyCached(session, original, localFolds)
         val beforeTokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
         var tokens = beforeTokens
         val budget = budget(input)
@@ -239,7 +250,7 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
         val thresholdBudget = floor(threshold * context).toLong()
         // 与发送门禁共用同一可用输入上限（含安全余量），保证门禁拒绝前自动压缩已先触发。
         val available = input.window.copy(modelContextTokens = context).inputBudgetTokens ?: 0
-        return minOf(thresholdBudget, available).toInt()
+        return minOf(thresholdBudget, available, input.inputBudgetOverride?.coerceAtLeast(0)?.toLong() ?: Long.MAX_VALUE).toInt()
     }
 
     private data class FoldKey(val messageId: String, val originalContent: String)

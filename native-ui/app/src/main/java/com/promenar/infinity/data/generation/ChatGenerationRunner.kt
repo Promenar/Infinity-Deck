@@ -35,6 +35,10 @@ interface ChatGenerationRuntime {
     suspend fun prepare(request: GenerationRequest)
     suspend fun buildContext(request: GenerationRequest): GenerationPreparationOutcome
     suspend fun stream(request: GenerationRequest, attempt: Int): Flow<GenerationChunk>
+    /** 上游超限的唯一压缩补救；通过回调先回退未完成输出，再重建请求。 */
+    suspend fun recoverContextLimit(request: GenerationRequest, failure: GenerationFailure, beforeRetry: suspend () -> Unit): Boolean = false
+    /** 补救的快照回退必须在请求重建前完成；具体运行时同步清理消息缓冲与回传状态。 */
+    suspend fun restoreContextSnapshot(request: GenerationRequest, snapshot: GenerationSnapshot) = persist(request, snapshot)
     suspend fun normalize(request: GenerationRequest, snapshot: GenerationSnapshot): GenerationSnapshot = snapshot
     suspend fun finalizeStream(request: GenerationRequest, snapshot: GenerationSnapshot): GenerationSnapshot = snapshot
     suspend fun persist(request: GenerationRequest, snapshot: GenerationSnapshot)
@@ -108,6 +112,7 @@ class ChatGenerationRunner(
         var primaryFailure: Throwable? = null
         var resultsCommitted = false
         var awaitingApproval = false
+        var contextRecoveryAttempted = false
         suspend fun safeEmit(event: GenerationEvent, primary: Throwable? = null) {
             try {
                 emit(event)
@@ -401,27 +406,53 @@ class ChatGenerationRunner(
                             }
                         }
                     } catch (failed: GenerationFailedException) {
-                        if (retries >= maxRetries || !isRetryableStreamFailure(failed.failure)) throw failed
-                        retries++
-                        val delayMs = streamRetryDelayMs(retries, failed.failure)
-                        snapshot = persist(
-                            request,
-                            roundStart.copy(timing = roundRequestStartedAt?.let { GenerationTiming(it) }),
-                            emit,
-                        )
-                        safeEmit(GenerationEvent.RetryScheduled(
-                            com.promenar.infinity.domain.generation.GenerationRetry(retries, maxRetries, failed.failure.code, delayMs),
-                        ))
-                        InfinityLogger.diagnostic(
-                            "generation.stream_retry",
-                            mapOf(
-                                "sessionId" to request.sessionId,
-                                "attempt" to retries.toString(),
-                                "code" to failed.failure.code.name,
-                            ),
-                        )
-                        runtime.awaitRetry(delayMs)
-                        null
+                        val failedSnapshot = snapshot
+                        var rewound = false
+                        suspend fun restoreFailedSnapshot(primary: Throwable) {
+                            if (!rewound) return
+                            snapshot = failedSnapshot
+                            withContext(NonCancellable) {
+                                try { snapshot = restoreContextSnapshot(request, failedSnapshot, emit) }
+                                catch (restoreFailure: Throwable) { primary.addSuppressed(restoreFailure) }
+                            }
+                        }
+                        val recovered = try {
+                            if (failed.failure.code == GenerationFailureCode.CONTEXT_LIMIT && !contextRecoveryAttempted) {
+                                contextRecoveryAttempted = true
+                                runtime.recoverContextLimit(request, failed.failure) {
+                                    rewound = true
+                                    snapshot = restoreContextSnapshot(request, roundStart.copy(timing = roundRequestStartedAt?.let { GenerationTiming(it) }), emit)
+                                }
+                            } else false
+                        } catch (error: Throwable) {
+                            restoreFailedSnapshot(error)
+                            if (error is CancellationException) throw error
+                            throw GenerationFailedException(failed.failure.copy(cause = error))
+                        }
+                        if (recovered) null else {
+                            restoreFailedSnapshot(failed)
+                            if (retries >= maxRetries || !isRetryableStreamFailure(failed.failure)) throw failed
+                            retries++
+                            val delayMs = streamRetryDelayMs(retries, failed.failure)
+                            snapshot = persist(
+                                request,
+                                roundStart.copy(timing = roundRequestStartedAt?.let { GenerationTiming(it) }),
+                                emit,
+                            )
+                            safeEmit(GenerationEvent.RetryScheduled(
+                                com.promenar.infinity.domain.generation.GenerationRetry(retries, maxRetries, failed.failure.code, delayMs),
+                            ))
+                            InfinityLogger.diagnostic(
+                                "generation.stream_retry",
+                                mapOf(
+                                    "sessionId" to request.sessionId,
+                                    "attempt" to retries.toString(),
+                                    "code" to failed.failure.code.name,
+                                ),
+                            )
+                            runtime.awaitRetry(delayMs)
+                            null
+                        }
                     }
                     if (outcome != null) {
                         terminal = outcome
@@ -709,6 +740,15 @@ class ChatGenerationRunner(
     private fun maxReported(current: Int?, reported: Int?): Int? {
         val value = reported?.coerceAtLeast(0) ?: return current
         return if (current == null) value else maxOf(current, value)
+    }
+
+    private suspend fun restoreContextSnapshot(request: GenerationRequest, snapshot: GenerationSnapshot,
+        emit: suspend (GenerationEvent) -> Unit): GenerationSnapshot {
+        runtime.restoreContextSnapshot(request, snapshot)
+        try { emit(GenerationEvent.SnapshotChanged(snapshot)) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Throwable) { /* 展示失败不撤回已经完成的持久化。 */ }
+        return snapshot
     }
 
     private suspend fun persist(

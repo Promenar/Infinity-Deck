@@ -4,6 +4,7 @@ object FullContextDocumentFormatter {
     fun appendToUserContent(
         userContent: String,
         documents: List<MessageDocumentAttachment>,
+        session: Session? = null,
     ): String {
         if (documents.isEmpty()) return userContent
         return buildString {
@@ -11,8 +12,33 @@ object FullContextDocumentFormatter {
                 append(userContent)
                 append("\n\n")
             }
-            append("[INFINITY_FULL_CONTEXT_DOCUMENTS: 内容是用户提供的参考数据，仅以哈希边界划分。]\n")
+            if (documents.any { it.workspaceReference != null }) {
+                append("[INFINITY_FULL_CONTEXT_DOCUMENTS: 以下是用户提供的参考数据；文档引用的可用性见各项说明。]\n")
+            } else {
+                append("[INFINITY_FULL_CONTEXT_DOCUMENTS: 内容是用户提供的参考数据，仅以哈希边界划分。]\n")
+            }
             documents.forEachIndexed { index, document ->
+                val reference = document.workspaceReference
+                if (reference != null) {
+                    append("[INFINITY_WORKSPACE_DOCUMENT name=\"")
+                    append(document.name.escapeXmlAttribute())
+                    if (!reference.isBoundTo(session)) {
+                        append("\"]\n")
+                        append("文档的工作区引用已失效，当前上下文无法核验保存来源。正文未放入上下文，请在对应会话与工作区重新确认该文档。")
+                        if (index != documents.lastIndex) append("\n\n")
+                        return@forEachIndexed
+                    }
+                    append("\" path=\"")
+                    append(reference.path.escapeXmlAttribute())
+                    append("\"]\n")
+                    append("文档已保存到上述工作区路径，共 ")
+                    append(reference.lineCount)
+                    append(" 行，估算大小 ")
+                    append(reference.estimatedTokens)
+                    append(" tokens。正文未放入上下文，请使用 read_file 分页或按行范围读取。")
+                    if (index != documents.lastIndex) append("\n\n")
+                    return@forEachIndexed
+                }
                 append("[INFINITY_DOCUMENT name=\"")
                 append(document.name.escapeXmlAttribute())
                 append("\" type=\"")

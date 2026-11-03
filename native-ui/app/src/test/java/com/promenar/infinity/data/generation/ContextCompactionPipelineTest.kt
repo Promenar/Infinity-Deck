@@ -349,7 +349,7 @@ class ContextCompactionPipelineTest {
         }
 
         val result = ContextCompactionPipeline().compact(
-            input(session, keep = 1, context = 1_000), build,
+            input(session, keep = 1, context = 3_000, threshold = 0.2), build,
             summarizeHistory = { current, messages -> archive(current, messages) },
         )
 
@@ -362,7 +362,7 @@ class ContextCompactionPipelineTest {
         val session = twoTurns("x".repeat(1_400))
 
         val result = ContextCompactionPipeline().compact(
-            input(session, keep = 1, context = 2_000, reserve = 1_700, threshold = 0.95), ::prompt,
+            input(session, keep = 1, context = 2_000, reserve = 900, threshold = 0.95), ::prompt,
             summarizeHistory = { current, messages -> archive(current, messages) },
         )
 
@@ -378,7 +378,7 @@ class ContextCompactionPipelineTest {
             PromptRequest(listOf(ProtocolMessage("user", "x".repeat(184))), "model")
         }
         val unchanged = ContextCompactionPipeline().compact(
-            input(session, keep = 1, context = 100, threshold = 0.505), atBudget,
+            input(session, keep = 1, context = 10_000, threshold = 0.00505), atBudget,
             summarizeHistory = { _, _ -> error("等于预算不应摘要") },
         )
         assertThat(unchanged.beforeTokens).isEqualTo(50)
@@ -388,7 +388,7 @@ class ContextCompactionPipelineTest {
             PromptRequest(listOf(ProtocolMessage("user", "x".repeat(188))), "model")
         }
         val compacted = ContextCompactionPipeline().compact(
-            input(session, keep = 1, context = 100, threshold = 0.505), overBudget,
+            input(session, keep = 1, context = 10_000, threshold = 0.00505), overBudget,
             summarizeHistory = { current, messages -> archive(current, messages) },
         )
         assertThat(compacted.beforeTokens).isEqualTo(51)
@@ -449,7 +449,7 @@ class ContextCompactionPipelineTest {
         val stages = mutableListOf<ContextCompactionStage>()
 
         val result = ContextCompactionPipeline().compact(
-            input(session, keep = 1, context = 500),
+            input(session, keep = 1, context = 1_800),
             { built += it; prompt(it) },
             summarizeHistory = { current, messages ->
                 assertThat(messages.map(Message::id)).containsExactly("old-user", "old-assistant").inOrder()
@@ -473,7 +473,7 @@ class ContextCompactionPipelineTest {
         listOf(false, true).forEach { throws ->
             val session = twoTurns("old ".repeat(1_000))
             val state = ContextCompactionTurnState()
-            val request = input(session, keep = 1, context = 500).copy(turnState = state)
+            val request = input(session, keep = 1, context = 1_800).copy(turnState = state)
             var calls = 0
             val summarize: suspend (Session, List<Message>) -> Session? = { _, _ ->
                 calls++

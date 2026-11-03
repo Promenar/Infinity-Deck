@@ -410,6 +410,7 @@ class ChatViewModelTest {
     private lateinit var generationCoordinator: com.promenar.infinity.domain.generation.GenerationCoordinator
     private lateinit var compactionService: com.promenar.infinity.data.generation.ContextCompactionService
     private var contextEstimateFails = false
+    private var documentSaveGate: CompletableDeferred<Unit>? = null
     private var compactionOperation: suspend (String) -> com.promenar.infinity.data.generation.ContextCompactionResult = {
         com.promenar.infinity.data.generation.ContextCompactionResult(PromptRequest(model = "model", messages = emptyList()), 0, 0, 0, 0)
     }
@@ -1223,6 +1224,21 @@ class ChatViewModelTest {
                 if (contextEstimateFails) throw java.io.IOException("估算不可用")
                 com.promenar.infinity.data.generation.ContextUsageEstimate(100, 0, 0, 0, 0, 128000)
             },
+            draftDocumentBudgetEstimator = { id, text, documents ->
+                val session = app.chatStore.getSession(id)!!
+                com.promenar.infinity.data.generation.DraftDocumentBudgetEvaluator.evaluate(session,
+                    com.promenar.infinity.data.generation.DraftBudgetContext(session.modelId.orEmpty(),
+                        PromptRequest(model = "model", messages = emptyList()),
+                        com.promenar.infinity.data.generation.PromptWindow(if (session.modelId == "small") 2400 else 128000, 256)), text, documents)
+            },
+            documentWorkspaceSaver = object : com.promenar.infinity.data.document.DocumentWorkspaceSaver {
+                override suspend fun save(sessionId: String, document: MessageDocumentAttachment, relativeDirectory: String?): com.promenar.infinity.data.document.DocumentWorkspaceSaveResult {
+                    documentSaveGate?.await()
+                    return com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Success(document.copy(content = "",
+                        workspaceReference = WorkspaceDocumentReference("/session/attachments/${document.name}", 1, 8000,
+                            sourceSessionId = sessionId, isPrivate = true, linuxNamespace = false)))
+                }
+            },
             workspaceLookupOverride = { id -> workspaceRecords[id] },
             workspaceSwitchNoticeTextOverride = { from, to -> "切换：$from → $to" },
         )
@@ -1230,6 +1246,46 @@ class ChatViewModelTest {
     }
 
     private val workspaceRecords = mutableMapOf<String, com.promenar.infinity.data.local.db.entity.WorkspaceEntity>()
+
+    @Test fun `草稿预算随文本文档模型和会话变化且转存后只计引用`() = runTest {
+        seedSession(); advanceUntilIdle()
+        val doc = MessageDocumentAttachment("budget-doc", "a.txt", "text/plain", "中".repeat(2000), 6000, "hash", 6000)
+        @Suppress("UNCHECKED_CAST")
+        val documents = ChatViewModel::class.java.getDeclaredField("_draftDocuments").apply { isAccessible = true }
+            .get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<List<MessageDocumentAttachment>>
+        documents.value = listOf(doc)
+        viewModel.updateInputText("问题")
+        awaitReal { viewModel.draftDocumentBudget.value?.documents?.singleOrNull()?.documentId == doc.id }
+        assertThat(viewModel.draftDocumentBudget.value!!.status).isEqualTo(com.promenar.infinity.data.generation.DraftBudgetStatus.FITS)
+        viewModel.updateModelId("small")
+        awaitReal { viewModel.draftDocumentBudget.value?.status == com.promenar.infinity.data.generation.DraftBudgetStatus.EXCEEDED }
+        val result = viewModel.saveDraftDocumentToWorkspace(doc.id)
+        assertThat(result).isInstanceOf(com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Success::class.java)
+        assertThat(viewModel.draftDocuments.value.single().content).isEmpty()
+        awaitReal { viewModel.draftDocumentBudget.value?.documents?.singleOrNull()?.inline == false }
+        assertThat(viewModel.draftDocumentBudget.value!!.status).isEqualTo(com.promenar.infinity.data.generation.DraftBudgetStatus.FITS)
+        seedSession("budget-other"); advanceUntilIdle()
+        awaitReal { viewModel.draftDocuments.value.isEmpty() && viewModel.draftDocumentBudget.value?.documents?.isEmpty() == true }
+    }
+
+    @Test fun `转存期间移除草稿时不把保存结果重新附加`() = runTest {
+        seedSession(); advanceUntilIdle()
+        val doc = MessageDocumentAttachment("save-doc", "a.txt", "text/plain", "正文", 6, "hash", 2)
+        @Suppress("UNCHECKED_CAST")
+        val documents = ChatViewModel::class.java.getDeclaredField("_draftDocuments").apply { isAccessible = true }
+            .get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<List<MessageDocumentAttachment>>
+        documents.value = listOf(doc)
+        documentSaveGate = CompletableDeferred()
+        var saved: com.promenar.infinity.data.document.DocumentWorkspaceSaveResult? = null
+        val job = launch { saved = viewModel.saveDraftDocumentToWorkspace(doc.id) }
+        runCurrent()
+        viewModel.removeDraftDocument(doc.id)
+        documentSaveGate!!.complete(Unit)
+        job.join()
+        assertThat((saved as com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Failure).reason)
+            .isEqualTo(com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.DraftChanged)
+        assertThat(documents.value).isEmpty()
+    }
 
     @Test
     fun `切换工作区写入会话并给出前后提示，生成中拒绝切换`() = runTest {

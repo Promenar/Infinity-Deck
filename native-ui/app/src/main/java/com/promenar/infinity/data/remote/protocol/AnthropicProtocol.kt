@@ -234,6 +234,7 @@ class AnthropicProtocol(
         }
 
         if (!response.status.isSuccess()) {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromHttp(protocolType, response.status.value, responseText))
             val normalized = ErrorNormalizer.normalize(
                 HttpStatusException(response.status.value, responseText)
             )
@@ -503,7 +504,7 @@ class AnthropicProtocol(
             "ping" -> { }
             "error" -> {
                 val errorObject = eventData["error"] as? JsonObject
-                send(ProtocolErrorClassifier.classify(
+                send(errorObject?.let { ProtocolContextLimit.fromError(protocolType, it) } ?: ProtocolErrorClassifier.classify(
                     type = errorObject?.stringField("type"),
                     code = errorObject?.stringField("code"),
                     technical = errorObject?.stringField("message")?.ifBlank { data } ?: data,
@@ -646,6 +647,9 @@ class AnthropicProtocol(
 
         val error = parsed["error"]
         if (error != null) {
+            (error as? JsonObject)?.let {
+                ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromError(protocolType, it))
+            }
             val errorMsg = error.jsonObject["message"]?.jsonPrimitive?.contentOrNull
                 ?: responseText
             throw Exception(errorMsg)
@@ -685,6 +689,7 @@ class AnthropicProtocol(
                 )
             } else null
         }
+        ProtocolContextLimit.throwIfPresent(abnormalFinishError("Anthropic", parsed.stringField("stop_reason")))
         val completionReason = when (val stopReason = parsed.stringField("stop_reason")) {
             "end_turn" -> CompletionReason.END_TURN
             "tool_use" -> CompletionReason.TOOL_CALLS
@@ -713,6 +718,7 @@ class AnthropicProtocol(
         responseBody: String,
         retryAfterHeader: String?,
     ): StreamChunk.Error {
+        ProtocolContextLimit.fromHttp(protocolType, statusCode, responseBody)?.let { return it }
         val errorObject = runCatching {
             json.parseToJsonElement(responseBody).jsonObject["error"] as? JsonObject
         }.getOrNull()

@@ -934,6 +934,9 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(outcome).isInstanceOf(GenerationPreparationOutcome.Handled::class.java)
         assertThat((outcome as GenerationPreparationOutcome.Handled).failure.code)
             .isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
+        assertThat(outcome.failure.formatArgs[GenerationFailure.KEY_CONTEXT_LIMIT_REASON]).isEqualTo("CURRENT_TURN")
+        assertThat(outcome.failure.formatArgs[GenerationFailure.KEY_REQUIRED_TOKENS]?.toLong())
+            .isGreaterThan(outcome.failure.formatArgs[GenerationFailure.KEY_AVAILABLE_TOKENS]!!.toLong())
         coVerify(exactly = 1) {
             fixture.messageManager.discardPreparedMessages("budget-session", listOf("assistant", "user"))
         }

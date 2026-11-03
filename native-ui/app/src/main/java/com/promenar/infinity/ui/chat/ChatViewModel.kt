@@ -342,6 +342,10 @@ class ChatViewModel(
         (application as InfinityApplication).secretInputCoordinator,
     secretOutputController: com.promenar.infinity.domain.secret.SecretOutputController =
         (application as InfinityApplication).secretOutputController,
+    private val draftDocumentBudgetEstimator: suspend (String, String, List<MessageDocumentAttachment>) -> com.promenar.infinity.data.generation.DraftDocumentBudget =
+        { id, text, documents -> (application as InfinityApplication).estimateDraftDocumentBudget(id, text, documents) },
+    private val documentWorkspaceSaver: com.promenar.infinity.data.document.DocumentWorkspaceSaver =
+        (application as InfinityApplication).documentWorkspaceSaver,
 ) : ViewModel() {
 
     private val store = (application as InfinityApplication).chatStore
@@ -439,6 +443,9 @@ class ChatViewModel(
     val inputText: StateFlow<String> = _inputText
     private val _draftDocuments = MutableStateFlow<List<MessageDocumentAttachment>>(emptyList())
     val draftDocuments: StateFlow<List<MessageDocumentAttachment>> = _draftDocuments
+    private val _draftDocumentBudget = MutableStateFlow<com.promenar.infinity.data.generation.DraftDocumentBudget?>(null)
+    /** null 表示没有会话或预算暂不可用；三种有效状态由 DraftBudgetStatus 表达。 */
+    val draftDocumentBudget: StateFlow<com.promenar.infinity.data.generation.DraftDocumentBudget?> = _draftDocumentBudget
     /** 输入区上方的引用卡；发送时只有写了批注的进入消息。 */
     private val _draftQuotes = MutableStateFlow<List<ComposerQuoteDraft>>(emptyList())
     val draftQuotes: StateFlow<List<ComposerQuoteDraft>> = _draftQuotes
@@ -728,6 +735,21 @@ class ChatViewModel(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ChatUiState())
 
     init {
+        viewModelScope.launch {
+            combine(store.state, _currentSessionId, _inputText, _draftDocuments, _draftQuotes) { state, id, text, documents, quotes ->
+                state.sessions.firstOrNull { it.id == id }?.let { session -> Triple(session,
+                    com.promenar.infinity.data.model.MessageQuoteFormatter.formatUserContent(text, ComposerQuotes.toMessageQuotes(quotes)), documents) }
+            }.collectLatest { draft ->
+                _draftDocumentBudget.value = null
+                if (draft != null) {
+                    try {
+                        val budget = withContext(Dispatchers.Default) { draftDocumentBudgetEstimator(draft.first.id, draft.second, draft.third) }
+                        _draftDocumentBudget.value = budget
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { _draftDocumentBudget.value = null }
+                }
+            }
+        }
         viewModelScope.launch {
             @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
             val resumptions = _currentSessionId.flatMapLatest { sessionId ->
@@ -1121,6 +1143,24 @@ class ChatViewModel(
 
     fun removeDraftDocument(documentId: String) {
         _draftDocuments.update { documents -> documents.filterNot { it.id == documentId } }
+    }
+
+    /** 项目规则指定的落点由 relativeDirectory 传入；未指定时使用附件日期目录。 */
+    suspend fun saveDraftDocumentToWorkspace(documentId: String, relativeDirectory: String? = null): com.promenar.infinity.data.document.DocumentWorkspaceSaveResult {
+        val sessionId = _currentSessionId.value ?: return com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Failure(
+            com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.WorkspaceUnavailable)
+        val document = _draftDocuments.value.firstOrNull { it.id == documentId }
+            ?: return com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Failure(com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.DocumentNotFound)
+        val result = documentWorkspaceSaver.save(sessionId, document, relativeDirectory)
+        if (result is com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Success) {
+            var replaced = false
+            if (_currentSessionId.value == sessionId) _draftDocuments.update { current -> current.map {
+                if (it == document) { replaced = true; result.attachment } else it
+            } }
+            if (!replaced) return com.promenar.infinity.data.document.DocumentWorkspaceSaveResult.Failure(
+                com.promenar.infinity.data.document.DocumentWorkspaceSaveFailure.DraftChanged)
+        }
+        return result
     }
 
     /** 选字工具条的“引用”：同一来源的同一段引文只加一张卡。 */

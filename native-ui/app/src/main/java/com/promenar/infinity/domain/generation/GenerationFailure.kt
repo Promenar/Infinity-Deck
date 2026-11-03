@@ -76,6 +76,9 @@ data class GenerationFailure(
         const val KEY_PROVIDER_MESSAGE = "providerMessage"
         const val KEY_REQUIRED_TOKENS = "requiredTokens"
         const val KEY_AVAILABLE_TOKENS = "availableTokens"
+        /** 上下文超限原因，供附件预警与失败提示选择入口。 */
+        const val KEY_CONTEXT_LIMIT_REASON = "contextLimitReason"
+        val CONTEXT_LIMIT_REASONS = setOf("CURRENT_TURN", "TOTAL_INPUT", "UNKNOWN_WINDOW", "UPSTREAM")
         /** 上下文超限时本轮是否携带完整上下文文档："false" 表示仅对话本身超限，提示应引导压缩而非移除文档。 */
         const val KEY_FULL_CONTEXT_DOCUMENTS = "fullContextDocuments"
         /** [GenerationFailureCode.TAILNET_UNAVAILABLE] 的原因，取值为 TailnetUnavailableReason 的名称。 */

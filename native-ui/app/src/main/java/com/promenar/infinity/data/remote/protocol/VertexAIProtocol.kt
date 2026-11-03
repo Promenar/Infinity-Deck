@@ -129,7 +129,8 @@ class VertexAIProtocol(
             val normalized = ErrorNormalizer.normalize(
                 HttpStatusException(response.status.value, errorBody)
             )
-            send(normalized.toStreamChunkError())
+            send(ProtocolContextLimit.fromHttp(protocolType, response.status.value, errorBody)
+                ?: normalized.toStreamChunkError())
             return@channelFlow
         }
 
@@ -205,6 +206,7 @@ class VertexAIProtocol(
         }
 
         if (!response.status.isSuccess()) {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromHttp(protocolType, response.status.value, responseText))
             val normalized = ErrorNormalizer.normalize(
                 HttpStatusException(response.status.value, responseText)
             )

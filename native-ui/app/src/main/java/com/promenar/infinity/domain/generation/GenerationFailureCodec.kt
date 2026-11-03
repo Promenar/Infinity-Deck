@@ -12,7 +12,7 @@ import java.net.URLEncoder
  *
  *   `@infinity/failure:CODE?k1=v1&k2=v2`
  *
- * - 仅写入 [GenerationFailure.code] 与白名单内的 [GenerationFailure.formatArgs]（限流秒数、tailnet 原因、
+ * - 仅写入 [GenerationFailure.code] 与白名单内的 [GenerationFailure.formatArgs]（限流秒数、tailnet 原因、上下文原因与计数、
  *   经 [ProviderErrorMessage.sanitize] 清洗并百分号编码的服务商原因）；
  * - 严禁写入 [GenerationFailure.technical] / [GenerationFailure.cause]（仅诊断，不入库展示列）；
  * - 下一批次的 UI mapper 识别该前缀后映射资源，未识别或未知串一律回落到通用安全文案。
@@ -88,6 +88,7 @@ object GenerationFailureCodec {
                         if (clean != text) return null
                         args[key] = clean
                     }
+                    code == GenerationFailureCode.CONTEXT_LIMIT && validContextArg(key, value) -> args[key] = value
                     else -> return null
                 }
             }
@@ -98,6 +99,7 @@ object GenerationFailureCodec {
 
     private fun allowedArgs(failure: GenerationFailure): Map<String, String> {
         val args = when (failure.code) {
+            GenerationFailureCode.CONTEXT_LIMIT -> failure.formatArgs.filter { (key, value) -> validContextArg(key, value) }
             GenerationFailureCode.RATE_LIMIT -> failure.retryAfterSeconds?.takeIf { it > 0 }
                 ?.let { mapOf(GenerationFailure.KEY_RETRY_AFTER_SECONDS to it.toString()) }
                 .orEmpty()
@@ -112,5 +114,13 @@ object GenerationFailureCodec {
         val provider = failure.providerMessage?.let(ProviderErrorMessage::sanitize)
             ?.let { URLEncoder.encode(it, Charsets.UTF_8.name()) }
         return if (provider == null) args else args + (GenerationFailure.KEY_PROVIDER_MESSAGE to provider)
+    }
+
+    private fun validContextArg(key: String, value: String): Boolean = when (key) {
+        GenerationFailure.KEY_CONTEXT_LIMIT_REASON -> value in GenerationFailure.CONTEXT_LIMIT_REASONS
+        GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS -> value == "true" || value == "false"
+        GenerationFailure.KEY_REQUIRED_TOKENS, GenerationFailure.KEY_AVAILABLE_TOKENS ->
+            value.toLongOrNull()?.let { it >= 0 && it.toString() == value } == true
+        else -> false
     }
 }

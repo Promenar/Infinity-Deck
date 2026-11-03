@@ -31,6 +31,81 @@ import kotlinx.coroutines.ensureActive
 import org.junit.Test
 
 class ChatGenerationRunnerTest {
+    @Test fun `Runner自身限制上下文补救次数不依赖运行时实现`() = runTest {
+        val failure = GenerationFailure(GenerationFailureCode.CONTEXT_LIMIT,
+            mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"))
+        val base = FakeRuntime(listOf(flowOf(GenerationChunk.Failure(failure))))
+        val runtime = object : ChatGenerationRuntime by base {
+            override suspend fun recoverContextLimit(request: GenerationRequest, failure: GenerationFailure, beforeRetry: suspend () -> Unit): Boolean {
+                beforeRetry()
+                return true
+            }
+        }
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(base.streamAttempts).isEqualTo(2)
+        assertThat(base.terminals).containsExactly(GenerationTerminalStatus.FAILED)
+    }
+    @Test fun `上游超限先回退部分输出再唯一补救且重试正文不重复`() = runTest {
+        var requests = 0
+        val failure = GenerationFailure(GenerationFailureCode.CONTEXT_LIMIT,
+            mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"))
+        val runtime = FakeRuntime(listOf(flow {
+            requests++
+            if (requests == 1) {
+                emit(GenerationChunk.Text("半截回复"))
+                emit(GenerationChunk.Failure(failure))
+            } else {
+                emit(GenerationChunk.Text("完整回复"))
+                emit(GenerationChunk.Completed(CompletionReason.END_TURN))
+            }
+        })).apply { contextRecoveryEnabled = true }
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(requests).isEqualTo(2)
+        assertThat(runtime.contextRecoveries).isEqualTo(1)
+        assertThat(runtime.recoverySnapshots.single().content).isEmpty()
+        assertThat(runtime.recoverySnapshots.single().failure).isNull()
+        assertThat(runtime.persisted.last().content).isEqualTo("完整回复")
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.SUCCESS)
+    }
+
+    @Test fun `补救请求仍超限时终止且不进入普通网络重试`() = runTest {
+        val failure = GenerationFailure(GenerationFailureCode.CONTEXT_LIMIT,
+            mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"))
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Failure(failure)))).apply { contextRecoveryEnabled = true }
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(runtime.streamAttempts).isEqualTo(2)
+        assertThat(runtime.contextRecoveries).isEqualTo(1)
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.FAILED)
+        assertThat(runtime.persisted.last().failure?.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
+    }
+
+    @Test fun `回退后补救抛异常时恢复已收到的部分回复`() = runTest {
+        val failure = GenerationFailure(GenerationFailureCode.CONTEXT_LIMIT,
+            mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"))
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Text("部分回复"), GenerationChunk.Failure(failure)))).apply {
+            contextRecoveryEnabled = true
+            contextRecoveryFailure = java.io.IOException("补救持久化失败")
+        }
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(runtime.contextRecoveries).isEqualTo(1)
+        assertThat(runtime.persisted.last().content).isEqualTo("部分回复")
+        assertThat(runtime.terminals).containsExactly(GenerationTerminalStatus.FAILED)
+    }
+
+    @Test fun `未达补救预算且恢复写入失败时仍保留原输出与上下文原因`() = runTest {
+        val failure = GenerationFailure(GenerationFailureCode.CONTEXT_LIMIT,
+            mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"))
+        val runtime = FakeRuntime(listOf(flowOf(GenerationChunk.Text("已收到的回复"), GenerationChunk.Failure(failure)))).apply {
+            contextRecoveryEnabled = true
+            contextRecoverySucceeds = false
+            failFailureSnapshotRestore = true
+        }
+        ChatGenerationRunner(runtime).run(request()) {}
+        assertThat(runtime.streamAttempts).isEqualTo(1)
+        assertThat(runtime.persisted.last().content).isEqualTo("已收到的回复")
+        assertThat(runtime.persisted.last().failure?.code).isEqualTo(GenerationFailureCode.CONTEXT_LIMIT)
+    }
+
     @Test
     fun `工具结果提交后排队注入同一循环并继续生成`() = runTest {
         val runtime = FakeRuntime(listOf(flowOf(
@@ -927,6 +1002,27 @@ class ChatGenerationRunnerTest {
         private val trace: MutableList<String> = mutableListOf(),
     ) : ChatGenerationRuntime {
         val persisted = mutableListOf<GenerationSnapshot>()
+        var contextRecoveryEnabled = false
+        var contextRecoveries = 0
+        var contextRecoveryFailure: Throwable? = null
+        var contextRecoverySucceeds = true
+        var failFailureSnapshotRestore = false
+        override suspend fun restoreContextSnapshot(request: GenerationRequest, snapshot: GenerationSnapshot) {
+            if (snapshot.failure != null && failFailureSnapshotRestore) throw java.io.IOException("恢复写入失败")
+            persist(request, snapshot)
+        }
+        private val contextRecovery = ContextLimitRecovery()
+        val recoverySnapshots = mutableListOf<GenerationSnapshot>()
+        override suspend fun recoverContextLimit(request: GenerationRequest, failure: GenerationFailure, beforeRetry: suspend () -> Unit): Boolean {
+            if (!contextRecoveryEnabled) return false
+            return contextRecovery.attempt(failure, false) {
+                beforeRetry()
+                recoverySnapshots += persisted.last()
+                contextRecoveries++
+                contextRecoveryFailure?.let { throw it }
+                contextRecoverySucceeds
+            }
+        }
         val toolDecisions = ArrayDeque<GenerationToolDecision>()
         var yieldAtBoundary = false
         var yieldChecks = 0

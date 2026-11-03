@@ -81,7 +81,8 @@ class GenericOpenAICompatProtocol(
                     val normalized = ErrorNormalizer.normalize(
                         HttpStatusException(response.status.value, errorBody)
                     )
-                    send(normalized.toStreamChunkError())
+                    send(ProtocolContextLimit.fromHttp(protocolType, response.status.value, errorBody)
+                        ?: normalized.toStreamChunkError())
                     return@execute
                 }
 
@@ -208,6 +209,7 @@ class GenericOpenAICompatProtocol(
         }
 
         if (!response.status.isSuccess()) {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromHttp(protocolType, response.status.value, responseText))
             val normalized = ErrorNormalizer.normalize(
                 HttpStatusException(response.status.value, responseText)
             )
@@ -373,7 +375,7 @@ class GenericOpenAICompatProtocol(
         toolCallAccumulator: MutableMap<Int, AccumulatedToolCall>,
         reasoningField: ReasoningFieldTracker,
     ): CompletionReason? {
-        chunk["error"]?.takeUnless { it is JsonNull }?.let { throw AbnormalFinishException(streamErrorEvent(chunk)) }
+        chunk["error"]?.takeUnless { it is JsonNull }?.let { throw AbnormalFinishException(streamErrorEvent(chunk, protocolType)) }
         val choice = (chunk["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
         if (choice == null) {
             val usageRaw = chunk["usage"]?.takeUnless { it is JsonNull }?.jsonObject
@@ -464,6 +466,9 @@ class GenericOpenAICompatProtocol(
 
     private fun parseSyncResponse(responseText: String): PromptResponse {
         val parsed = json.parseToJsonElement(responseText).jsonObject
+        (parsed["error"] as? JsonObject)?.let {
+            ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromError(protocolType, it))
+        }
         val choice = parsed["choices"]
             ?.jsonArray?.firstOrNull() as? JsonObject
             ?: throw IllegalStateException("Compatible sync response missing choice")
