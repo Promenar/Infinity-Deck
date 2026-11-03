@@ -38,4 +38,14 @@
         <item quantity="other">备份时跳过了 %d 个符号链接。</item>
     </plurals>
     <string name="skills_restore_notice_dismiss">知道了</string>
+    <!-- 设置页技能包按来源分组；组标题计数与组名由 InfinityMetaLine 分段排版。 -->
+    <string name="skills_group_builtin">内置</string>
+    <string name="skills_group_user">用户</string>
+    <string name="skills_group_enabled_count">%1$d/%2$d 已启用</string>
+    <string name="skills_group_always_on">始终启用</string>
+    <string name="skills_group_enable_all">全部开启</string>
+    <string name="skills_group_disable_all">全部关闭</string>
+    <plurals name="skills_group_batch_failed">
+        <item quantity="other">%d 个技能未能切换</item>
+    </plurals>
 </resources>

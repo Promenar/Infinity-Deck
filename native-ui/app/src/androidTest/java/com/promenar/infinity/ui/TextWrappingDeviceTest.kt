@@ -30,6 +30,7 @@ import com.promenar.infinity.data.model.ProviderListItem
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.skills.DiscoveredSkill
 import com.promenar.infinity.data.skills.SkillScope
+import com.promenar.infinity.data.skills.SkillSourceGroup
 import com.promenar.infinity.data.skills.SkillStatus
 import com.promenar.infinity.ui.skills.SkillCatalogActions
 import com.promenar.infinity.ui.chat.ApprovalCard
@@ -139,8 +140,9 @@ class TextWrappingDeviceTest {
                             actions = ProviderListScreenActions(),
                         )
                         AgentSkillsSection(
-                            skills = skills,
+                            groups = listOf(SkillSourceGroup(SkillScope.USER, skills)),
                             actions = SkillCatalogActions(),
+                            onSetGroupEnabled = { _, _ -> },
                             onImport = {},
                             onCreate = {},
                         )

@@ -138,12 +138,21 @@ fun SkillsScreen(
         viewModel(factory = AgentSkillsViewModel.factory(context.applicationContext as android.app.Application))
     val skillCatalogViewModel: com.promenar.infinity.ui.skills.SkillCatalogViewModel =
         viewModel(factory = com.promenar.infinity.ui.skills.SkillCatalogViewModel.factory(context.applicationContext as android.app.Application))
-    androidx.compose.runtime.LaunchedEffect(Unit) { skillCatalogViewModel.bind(null) }
-    val skillCatalogState by skillCatalogViewModel.state.collectAsState()
+    // 通用设置页不绑定具体项目：只扫描内置与用户级技能，界面也不渲染项目组。
+    androidx.compose.runtime.LaunchedEffect(Unit) { agentSkillsViewModel.bindWorkspace(null) }
+    val skillGroups by agentSkillsViewModel.groups.collectAsState()
+    val skillBatchResult by agentSkillsViewModel.batchResult.collectAsState()
     val skillCatalogError by skillCatalogViewModel.error.collectAsState()
     val agentSkillEvent by agentSkillsViewModel.event.collectAsState()
     var agentSkillEditor by remember { mutableStateOf<AgentSkillEditorState?>(null) }
     val agentSkillScope = androidx.compose.runtime.rememberCoroutineScope()
+    // 单项操作仍由技能目录视图模型执行；结束后（含失败）重扫分组，列表始终显示磁盘上的真实状态。
+    val refreshSkillGroupsAfter: (kotlinx.coroutines.Job) -> Unit = { job ->
+        agentSkillScope.launch {
+            job.join()
+            agentSkillsViewModel.refreshGroups()
+        }
+    }
     val importSkillLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { agentSkillsViewModel.import(it) } }
@@ -156,6 +165,8 @@ fun SkillsScreen(
     val retryLimit by viewModel.streamRetryLimit.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
+    // 同一提示条既用于成功提示，也用于批量切换的部分失败；显示前设置对应类型。
+    var snackbarType by remember { mutableStateOf(SnackbarType.SUCCESS) }
     val resetMessage = stringResource(R.string.settings_consent_reset)
 
     var showAddMcp by remember { mutableStateOf(false) }
@@ -190,6 +201,7 @@ fun SkillsScreen(
                             onRetryLimitChange = viewModel::updateStreamRetryLimit,
                             onResetConsent = {
                                 viewModel.resetUnlimitedAutoConsent()
+                                snackbarType = SnackbarType.SUCCESS
                                 scope.launch { snackbarHost.showSnackbar(resetMessage) }
                             },
                         ),
@@ -200,12 +212,12 @@ fun SkillsScreen(
                         onConfigureSearch = { showSearchConfig = true },
                     )
                     AgentRuntimeSection.SkillPacks -> AgentSkillsSection(
-                        skills = skillCatalogState.snapshot?.user.orEmpty(),
-                        builtinSkills = skillCatalogState.snapshot?.builtin.orEmpty(),
+                        groups = skillGroups,
+                        onSetGroupEnabled = { skillScope, enabled -> agentSkillsViewModel.setGroupEnabled(skillScope, enabled) },
                         actions = com.promenar.infinity.ui.skills.SkillCatalogActions(
-                            onToggle = { skill, enabled -> skillCatalogViewModel.setEnabled(skill, enabled) },
-                            onAcknowledge = skillCatalogViewModel::acknowledgeModified,
-                            onDelete = skillCatalogViewModel::delete,
+                            onToggle = { skill, enabled -> refreshSkillGroupsAfter(skillCatalogViewModel.setEnabled(skill, enabled)) },
+                            onAcknowledge = { skill -> refreshSkillGroupsAfter(skillCatalogViewModel.acknowledgeModified(skill)) },
+                            onDelete = { skill -> refreshSkillGroupsAfter(skillCatalogViewModel.delete(skill)) },
                             loadDocument = skillCatalogViewModel::loadDocument,
                             onEdit = { skill ->
                                 agentSkillScope.launch {
@@ -242,7 +254,7 @@ fun SkillsScreen(
             SnackbarHost(
                 hostState = snackbarHost,
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
-            ) { data -> InfinitySnackbar(InfinitySnackbarData(data.visuals.message, SnackbarType.SUCCESS)) }
+            ) { data -> InfinitySnackbar(InfinitySnackbarData(data.visuals.message, snackbarType)) }
         }
     }
 
@@ -370,12 +382,27 @@ fun SkillsScreen(
             onConfirm = agentSkillsViewModel::consumeEvent,
             onCancel = agentSkillsViewModel::consumeEvent,
         )
+        // 导入与应用内编辑完成后，视图模型已在同一次操作结束时重扫分组，这里只需消费事件。
         is AgentSkillEvent.Installed -> androidx.compose.runtime.LaunchedEffect(event) {
             agentSkillsViewModel.consumeEvent()
-            // 导入与应用内编辑经技能包存储写入同一目录，完成后重扫技能目录。
-            skillCatalogViewModel.bind(null)
         }
         null -> Unit
+    }
+
+    // 批量切换允许部分成功：有失败项时提示一行数量；跳过的内置、损坏或待信任项不提示。
+    skillBatchResult?.let { result ->
+        val failedCount = result.failures.size
+        val failedMessage = if (failedCount > 0) {
+            pluralStringResource(R.plurals.skills_group_batch_failed, failedCount, failedCount)
+        } else null
+        androidx.compose.runtime.LaunchedEffect(result) {
+            // 提示在页面作用域内显示：消费结果会移除本效应，不能让它带着提示一起取消。
+            if (failedMessage != null) {
+                snackbarType = SnackbarType.ERROR
+                scope.launch { snackbarHost.showSnackbar(failedMessage) }
+            }
+            agentSkillsViewModel.consumeBatchResult()
+        }
     }
 
     skillCatalogError?.let { message ->
