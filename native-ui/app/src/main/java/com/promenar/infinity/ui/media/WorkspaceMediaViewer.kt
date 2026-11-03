@@ -12,7 +12,13 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.promenar.infinity.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.promenar.infinity.ui.common.InfinityModalSheet
@@ -46,6 +52,59 @@ fun WorkspaceImageViewer(
                 onOpenWith = { runner.openWith(available) },
             ),
             overlay = {
+                MediaSnackbarHost(
+                    hostState = hostState,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp),
+                )
+            },
+        )
+    }
+}
+
+/**
+ * 组内图片的全屏查看器：沿用 [ImageLightbox]，两侧按钮在 [paths] 之间切换，左上角显示页码，从 [startIndex] 开始。
+ * 当前项尚未解析或不可用时仍保留查看器窗口，保存与分享提示文件不可用。
+ */
+@Composable
+fun WorkspaceImageGroupViewer(
+    paths: List<String>,
+    startIndex: Int,
+    onDismiss: () -> Unit,
+) {
+    val environment = LocalWorkspaceMedia.current ?: return
+    if (paths.isEmpty()) return
+    var index by rememberSaveable { mutableIntStateOf(startIndex.coerceIn(0, paths.lastIndex)) }
+    val current = index.coerceIn(0, paths.lastIndex)
+    val path = paths[current]
+    val resolved = rememberWorkspaceMediaResolution(environment, path)
+    val available = resolved?.available
+    val model = WorkspaceMediaModel(environment.sessionId, path, resolved?.identity)
+    val hostState = remember { SnackbarHostState() }
+    val messenger = rememberSnackbarMediaMessenger(hostState)
+    val unavailableText = stringResource(R.string.media_failure_unavailable)
+    CompositionLocalProvider(LocalMediaMessenger provides messenger) {
+        val runner = rememberMediaActionRunner(environment)
+        fun withAvailable(action: (MediaResolution.Available) -> Unit): () -> Unit = {
+            if (available != null) action(available) else messenger.show(unavailableText, true)
+        }
+        ImageLightbox(
+            imageUrl = model.toUri(),
+            model = model,
+            onDismiss = onDismiss,
+            actions = ImageLightboxActions(
+                onSave = withAvailable(runner::save),
+                onShare = withAvailable(runner::share),
+                onOpenWith = withAvailable(runner::openWith),
+            ),
+            overlay = {
+                MediaPagerControls(
+                    index = current,
+                    count = paths.size,
+                    onPrevious = { index = (current - 1).coerceAtLeast(0) },
+                    onNext = { index = (current + 1).coerceAtMost(paths.lastIndex) },
+                    counterAlignment = Alignment.TopStart,
+                    modifier = Modifier.padding(8.dp),
+                )
                 MediaSnackbarHost(
                     hostState = hostState,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp),

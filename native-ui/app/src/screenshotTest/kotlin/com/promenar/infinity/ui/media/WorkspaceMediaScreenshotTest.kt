@@ -48,7 +48,10 @@ private val PreviewVideo = MediaRef("/media/2026-10-20/海边延时 摄影.mp4",
 private val PreviewAudio = MediaRef("/media/2026-10-20/旁白-第一段 配音试听版本.m4a", "audio/mp4", MediaKind.AUDIO, 1_250_000, durationMs = 154_000)
 private val PreviewFile = MediaRef("/docs/2026 第三季度经营分析报告（终版）.pdf", "application/pdf", MediaKind.FILE, 2_621_440)
 
-private val PreviewAvailable = listOf(PreviewImage, PreviewPortrait, PreviewSquare, PreviewVideo, PreviewAudio, PreviewFile)
+private val PreviewWide = MediaRef("/media/2026-10-20/gen-1435-aabbcc.png", "image/png", MediaKind.IMAGE, 540_000, width = 1800, height = 1000)
+private val PreviewTall = MediaRef("/media/2026-10-20/gen-1436-ddeeff.jpg", "image/jpeg", MediaKind.IMAGE, 610_000, width = 1000, height = 1500)
+
+private val PreviewAvailable = listOf(PreviewImage, PreviewPortrait, PreviewSquare, PreviewVideo, PreviewAudio, PreviewFile, PreviewWide, PreviewTall)
 private val PreviewUnavailable = mapOf(
     "/media/2026-10-19/已删除的图片.png" to MediaUnavailableReason.NOT_FOUND,
     "/mnt/相册/失效挂载/a.jpg" to MediaUnavailableReason.UNREADABLE,
@@ -178,3 +181,57 @@ fun workspaceMediaToolStepDark() = MediaPreviewFrame(dark = true) { ToolMediaSte
 @Preview(name = "Tool step media English 360dp font130", widthDp = 360, heightDp = 1400, locale = "en", fontScale = 1.3f)
 @Composable
 fun workspaceMediaToolStepLargeFont() = MediaPreviewFrame(dark = false) { ToolMediaStep() }
+
+private val MarkdownGallerySample = """
+三张海报并排对比：
+
+```gallery
+![横版](${PreviewImage.path})
+![竖版](${PreviewPortrait.path})
+![方形](${PreviewSquare.path})
+```
+
+全部素材：
+
+```gallery
+![横版](${PreviewImage.path})
+![竖版](${PreviewPortrait.path})
+![方形](${PreviewSquare.path})
+![延时视频](</media/2026-10-20/海边延时 摄影.mp4>)
+![宽幅](${PreviewWide.path})
+![长图](${PreviewTall.path})
+![旁白](</media/2026-10-20/旁白-第一段 配音试听版本.m4a>)
+```
+""".trimIndent()
+
+private val MarkdownCarouselSample = """
+按顺序翻看分镜：
+
+```carousel
+![第一镜：远景海面与落日，镜头缓慢推近到礁石边缘的人物剪影](${PreviewImage.path})
+![第二镜：人物特写](${PreviewPortrait.path})
+![第三镜：延时](</media/2026-10-20/海边延时 摄影.mp4>)
+![第四镜](${PreviewSquare.path})
+![第五镜](${PreviewWide.path})
+```
+""".trimIndent()
+
+@PreviewTest
+@Preview(name = "正文媒体矩阵 三项与六项 浅色中文", widthDp = 411, heightDp = 1100, locale = "zh-rCN")
+@Composable
+fun workspaceMediaGalleryLight() = MediaPreviewFrame(dark = false) { MarkdownText(markdown = MarkdownGallerySample, fontSize = 15) }
+
+@PreviewTest
+@Preview(name = "正文媒体矩阵 三项与六项 深色中文", widthDp = 411, heightDp = 1100, locale = "zh-rCN")
+@Composable
+fun workspaceMediaGalleryDark() = MediaPreviewFrame(dark = true) { MarkdownText(markdown = MarkdownGallerySample, fontSize = 15) }
+
+@PreviewTest
+@Preview(name = "正文内嵌查看器 浅色中文", widthDp = 411, heightDp = 600, locale = "zh-rCN")
+@Composable
+fun workspaceMediaCarouselLight() = MediaPreviewFrame(dark = false) { MarkdownText(markdown = MarkdownCarouselSample, fontSize = 15) }
+
+@PreviewTest
+@Preview(name = "Inline carousel English 360dp font130", widthDp = 360, heightDp = 600, locale = "en", fontScale = 1.3f)
+@Composable
+fun workspaceMediaCarouselLargeFont() = MediaPreviewFrame(dark = true) { MarkdownText(markdown = MarkdownCarouselSample, fontSize = 15) }
