@@ -218,10 +218,12 @@ internal fun ASTNode.containsWideContentDescendant(): Boolean =
     type == GFMElementTypes.TABLE || type == MarkdownElementTypes.CODE_FENCE || type == MarkdownElementTypes.CODE_BLOCK ||
         children.any(ASTNode::containsWideContentDescendant)
 
-private fun nestedCodeSizingSample(content: String, root: ASTNode): Pair<String, Dp> {
+private fun nestedCodeSizingSample(content: String, root: ASTNode, skipMediaGroups: Boolean): Pair<String, Dp> {
     val samples = mutableListOf<String>()
     var maxDepth = 0
     fun visit(node: ASTNode, depth: Int) {
+        // 渲染为媒体矩阵或查看器的围栏块不参与代码宽度估算，不为它撑出横向滚动。
+        if (skipMediaGroups && isMarkdownMediaGroupFence(node, content)) return
         if (node.type == MarkdownElementTypes.CODE_FENCE || node.type == MarkdownElementTypes.CODE_BLOCK) {
             samples += content.substring(node.startOffset, node.endOffset)
             maxDepth = maxOf(maxDepth, depth)
@@ -1148,7 +1150,9 @@ private fun MarkdownSafe(
                 )
             },
             codeFence = { model ->
-                MarkdownCodeFence(
+                // 列表、引用块内的媒体围栏块同样按 Agent 选择的排版渲染。
+                val mediaGroup = rememberMarkdownMediaGroup(model.node, model.content)
+                if (mediaGroup != null) MarkdownMediaGroupBlock(mediaGroup) else MarkdownCodeFence(
                     content = model.content,
                     node = model.node,
                     style = model.typography.code,
@@ -1288,6 +1292,7 @@ private fun MarkdownSafe(
                     if (index > 0) Spacer(Modifier.height(markdownReadingGap(blocks[index - 1].type, node.type, compactSpacing)))
                     key(node.startOffset, node.type) {
                         val containsWideContent = remember(node) { node.containsWideContentDescendant() }
+                        val mediaGroup = if (node.type == MarkdownElementTypes.CODE_FENCE) rememberMarkdownMediaGroup(node, renderContent) else null
                         CompositionLocalProvider(LocalMarkdownAnnotator provides if (index == blocks.lastIndex) annotators.tail else annotators.base) {
                         when {
                             node.type == GFMElementTypes.TABLE -> {
@@ -1323,7 +1328,9 @@ private fun MarkdownSafe(
                                 ) {
                                     nestedTableMinimumWidth(renderContent, node, tableMeasurer)
                                 }
-                                val (codeSample, codeChrome) = remember(renderContent, node) { nestedCodeSizingSample(renderContent, node) }
+                                val (codeSample, codeChrome) = remember(renderContent, node, workspaceMedia != null) {
+                                    nestedCodeSizingSample(renderContent, node, skipMediaGroups = workspaceMedia != null)
+                                }
                                 if (minimumWidth == null && codeSample.isEmpty()) {
                                     MarkdownElement(node, resolvedComponents, renderContent)
                                 } else {
@@ -1371,6 +1378,8 @@ private fun MarkdownSafe(
                                     }
                                 }
                             }
+
+                            mediaGroup != null -> MarkdownMediaGroupBlock(mediaGroup)
 
                             node.type == MarkdownElementTypes.CODE_FENCE -> MarkdownCodeFence(
                                 content = renderContent,

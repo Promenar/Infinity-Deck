@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -88,6 +89,13 @@ fun ImageLightbox(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
     var rotation by remember { mutableFloatStateOf(0f) }
+    // 组内切换到另一张图时复位缩放、平移与旋转；手势协程持有同一组状态，故复位而不重建。
+    LaunchedEffect(model ?: imageUrl) {
+        scale = 1f
+        offsetX = 0f
+        offsetY = 0f
+        rotation = 0f
+    }
 
     Dialog(
         onDismissRequest = onDismiss,

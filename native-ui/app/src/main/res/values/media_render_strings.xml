@@ -37,4 +37,8 @@
     <string name="media_duration_unknown">--:--</string>
     <string name="media_kind_video">Video</string>
     <string name="media_kind_audio">Audio</string>
+    <string name="media_action_previous">Previous item</string>
+    <string name="media_action_next">Next item</string>
+    <string name="media_carousel_page">%1$d / %2$d</string>
+    <string name="media_gallery_more">+%1$d</string>
 </resources>

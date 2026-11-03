@@ -22,6 +22,17 @@ class SystemPromptSectionsMediaTest {
         assertThat(SystemPromptSections.toolGuidance(setOf("write_file"), false))
             .contains("已设定工作区时，创建成果须显式指定工作区子目录")
     }
+    @Test fun `媒体分节说明默认单列与gallery、carousel块的用法`() {
+        val prompt = SystemPromptSections.toolGuidance(setOf("read_file"), false)
+        val media = prompt.substringAfter("### Media")
+        assertThat(media).contains("shown on its own at its position in the text")
+        assertThat(media).contains("```gallery")
+        assertThat(media).contains("grid")
+        assertThat(media).contains("```carousel")
+        assertThat(media).contains("swipeable viewer")
+        assertThat(media).contains("one `![brief description](workspace path)` per line")
+        assertThat(media).contains("Do not use these blocks when each image needs its own paragraph of text")
+    }
     @Test fun `无媒体相关工具与generic不增加分节`() {
         listOf(emptySet(), setOf("calculator"), setOf("web_fetch"), setOf("get_plan")).forEach {
             assertThat(SystemPromptSections.toolGuidance(it, false)).doesNotContain("### Media")

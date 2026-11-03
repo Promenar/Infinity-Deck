@@ -94,6 +94,28 @@ internal fun MarkdownMediaBlock(references: List<MarkdownMediaReference>, modifi
     }
 }
 
+/**
+ * 媒体围栏块：```gallery 排成矩阵，```carousel 显示为内嵌查看器；可视项不足两个时按默认单列渲染。
+ * 音频与非媒体文件不进入矩阵或查看器，在块下方按现有卡片逐个渲染。
+ */
+@Composable
+internal fun MarkdownMediaGroupBlock(group: MarkdownMediaGroup, modifier: Modifier = Modifier) {
+    if (group.rendersAsColumn) {
+        val references = group.items + group.trailing
+        if (references.isNotEmpty()) MarkdownMediaBlock(references, modifier)
+        return
+    }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (group.layout) {
+            MarkdownMediaGroupLayout.GALLERY -> com.promenar.infinity.ui.media.WorkspaceMediaGallery(group.items)
+            MarkdownMediaGroupLayout.CAROUSEL -> com.promenar.infinity.ui.media.WorkspaceMediaCarousel(group.items)
+        }
+        group.trailing.forEach { reference ->
+            WorkspaceMediaReference(path = reference.path, alt = reference.label, asLink = reference.isLink)
+        }
+    }
+}
+
 /** 占位画笔：工作区目标报告较大的固有尺寸，使渲染库把它提升为块级元素并交给 image 组件绘制卡片。 */
 internal object WorkspaceMediaMarkerPainter : Painter() {
     override val intrinsicSize: Size = Size(1024f, 1024f)

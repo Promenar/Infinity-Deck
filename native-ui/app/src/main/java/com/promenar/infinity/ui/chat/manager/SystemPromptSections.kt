@@ -239,6 +239,7 @@ object SystemPromptSections {
             appendLine("- Present workspace media in your reply with `![brief description](workspace path)`. A regular link `[name](workspace path)` appears as a file card. Use the virtual paths returned by file tools, never local absolute filesystem paths or inline base64.")
             appendLine("- Media already shown in tool steps can still be referenced in your reply when useful.")
             appendLine("- 回复中的 ```html 卡片可以只读引用当前工作区的图片、视频和音频：地址为 https://workspace-media.infinity.invalid/workspace/ 加工作区根下的相对路径，每个路径段分别 URL 编码，例如 media/demo.mp4 写作 https://workspace-media.infinity.invalid/workspace/media/demo.mp4；视频和音频使用带 controls 的原生标签。")
+            appendLine("- By default each media reference is shown on its own at its position in the text. For a set of images on one theme that need no per-image commentary, wrap them in a ```gallery block to show them as a grid; for a set meant to be viewed in order, wrap them in a ```carousel block to show a swipeable viewer. Put one `![brief description](workspace path)` per line inside the block. Do not use these blocks when each image needs its own paragraph of text.")
             if ("view_media" in toolNames) {
                 appendLine("- Use `view_media` to inspect workspace media. For videos, adjust keyframe density with `frames` or `interval_seconds`, and inspect a specific time range again with `start_seconds` and `end_seconds` when needed.")
             }

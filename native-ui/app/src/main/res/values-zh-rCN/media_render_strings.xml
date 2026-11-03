@@ -37,4 +37,8 @@
     <string name="media_duration_unknown">--:--</string>
     <string name="media_kind_video">视频</string>
     <string name="media_kind_audio">音频</string>
+    <string name="media_action_previous">上一项</string>
+    <string name="media_action_next">下一项</string>
+    <string name="media_carousel_page">%1$d / %2$d</string>
+    <string name="media_gallery_more">+%1$d</string>
 </resources>
