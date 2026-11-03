@@ -447,10 +447,16 @@ internal class DefaultChatGenerationRuntime(
             modelContextTokens = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, preparedRoute?.modelId).modelContextTokens,
             runtimeModelId = prompt.model,
         ))
-        preparedContext = context
+        val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, session.summary)
+        preparedContext = context.copy(
+            finalSystemPrompt = systemPrompt,
+            systemPromptSections = context.systemPromptSections.map { section ->
+                if (section.id == "history_summary") section.copy(content = replaceHistorySummary(section.content, session.summary, session.summary)) else section
+            },
+        )
         preparedContextSummary = session.summary
         preparedPrompt = prompt
-        return StoredContext(session, request, prompt, replaceHistorySummary(context.finalSystemPrompt, session.summary, session.summary))
+        return StoredContext(session, request, prompt, systemPrompt)
     }
 
     private data class StoredContext(
@@ -474,17 +480,11 @@ internal class DefaultChatGenerationRuntime(
             } catch (_: java.io.IOException) { ContextCompactionPipeline.headTail(message.content, 2000) })
         }
         val preview = compactionPipeline.preview(context.session, context.prompt.copy(messages = messages))
-        val system = ApproximateTokenEstimator.estimate(
-            context.prompt.copy(messages = listOf(com.promenar.infinity.data.remote.protocol.ProtocolMessage(
-                "system", replaceHistorySummary(context.systemPrompt, null, context.session.summary),
-            ))),
-        )
-        val summary = (ApproximateTokenEstimator.estimate(context.systemPrompt) -
-            ApproximateTokenEstimator.estimate(replaceHistorySummary(context.systemPrompt, null, context.session.summary))).coerceAtLeast(0)
-        val conversation = preview.prompt.messages.drop(if (preview.prompt.messages.firstOrNull()?.role == "system") 1 else 0).sumOf(ApproximateTokenEstimator::estimate)
-        val rag = context.session.stats?.billing?.ragSystem?.count ?: 0
         val window = PreparedPromptBudgetGate.resolveWindow(context.session, context.prompt, settings, preparedRoute?.modelId)
-        return ContextUsageEstimate(system, summary, conversation, rag, preview.foldedToolResults, window.modelContextTokens ?: 128000)
+        return ContextUsageBreakdown.estimate(
+            preview.prompt, preparedContext?.systemPromptSections.orEmpty(),
+            preview.foldedToolResults, window.modelContextTokens ?: 128000,
+        )
     }
 
     override suspend fun prepare(request: GenerationRequest) {

@@ -12,8 +12,15 @@ class SystemPromptSectionsMediaTest {
             assertThat(prompt).contains("![brief description](workspace path)")
             assertThat(prompt).contains("[name](workspace path)")
             assertThat(prompt).contains("base64")
-            assertThat(prompt).contains("tailnet")
+            assertThat(prompt).contains("遵循运行环境段的成果文件落点")
         }
+    }
+    @Test fun `成果与媒体使用项目子目录且工具缺省落点要求显式覆盖`() {
+        val runtime = SystemPromptSections.runtimeEnvironment(null)
+        assertThat(runtime).contains("遵循项目规则放入工作区内合适的子目录")
+        assertThat(runtime).contains("未设定工作区时放入会话文件夹")
+        assertThat(SystemPromptSections.toolGuidance(setOf("write_file"), false))
+            .contains("已设定工作区时，创建成果须显式指定工作区子目录")
     }
     @Test fun `无媒体相关工具与generic不增加分节`() {
         listOf(emptySet(), setOf("calculator"), setOf("web_fetch"), setOf("get_plan")).forEach {

@@ -36,4 +36,13 @@ class ApproximateTokenEstimatorTest {
         assertThat(ApproximateTokenEstimator.estimate(withTools))
             .isGreaterThan(ApproximateTokenEstimator.estimate(prompt) + 300)
     }
+
+    @Test fun `媒体乘法溢出边界按正数饱和`() {
+        val message = ProtocolMessage("user", "输入", videoData = List(32768) {
+            com.promenar.infinity.data.remote.protocol.VideoInput("")
+        })
+        assertThat(ApproximateTokenEstimator.estimate(message)).isEqualTo(Int.MAX_VALUE)
+        assertThat(ApproximateTokenEstimator.estimate(PromptRequest(model = "demo", messages = listOf(message))))
+            .isEqualTo(Int.MAX_VALUE)
+    }
 }
