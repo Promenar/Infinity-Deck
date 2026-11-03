@@ -8,8 +8,7 @@
 <h1 align="center">Infinity Workbench</h1>
 
 <p align="center">
-  An open-source, bring-your-own-key AI workbench for Android.<br>
-  A real Linux, a desktop-class agent workbench and SSH server ops in your pocket, built to make the most of a foldable.
+  A full workbench in your pocket: native BYOK Android client · real Linux · Git and SSH · Tailscale private networking · built for foldables.
 </p>
 
 <p align="center">
@@ -30,9 +29,20 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
   <img src="assets/screenshots/en/hero.webp" alt="Unfolded: the chat beside the Git panel listing commits. Folded: the 502 fix report continues on the cover screen" width="860">
 </p>
 
-## A real Linux in your pocket
+## A full workbench in your pocket
 
-The sideload build installs Alpine Linux in one tap: proot, no root, no Termux. `apk add` works, and so do git, Python, Node.js, FFmpeg and anything else your project needs. Agents run their commands in the same system you open in the terminal, with the same paths.
+Infinity Workbench is a native Android client written in Kotlin and Jetpack Compose, and you bring your own keys: OpenAI (Chat Completions and Responses), Anthropic, Google Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint, with model switching in the middle of a chat. On an unfolded foldable the home screen splits into navigation, chat list and chat, and a floating inspector beside the chat opens tasks, files, Git, artifacts and the browser. Fold the phone and the same chat carries on in a single pane on the cover screen. Generation keeps going in the background or with the screen locked, and the touch lock turns the screen black, shows only status and progress, and ignores touches, so the phone can go straight into your pocket.
+
+<table>
+  <tr>
+    <td width="66%"><img src="assets/screenshots/en/fold-inspector.webp" alt="Unfolded: the chat beside the plan inspector showing finished steps, sub-agents and background jobs"></td>
+    <td width="34%"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen: the 502 fix report in the same chat"></td>
+  </tr>
+</table>
+
+## Real Linux, when the task needs it (sideload build)
+
+The sideload build installs Alpine Linux in one tap: proot, no root, no Termux. `apk add` installs any package, and the installer preselects git, ripgrep, Python, Node.js and FFmpeg. Agents run their commands in the same system you open in the terminal, with the same paths. Without Linux, both builds still offer sandboxed QuickJS and sandboxed Python runtimes. Files live in one of three workspace types: a chat's own space, the built-in file system, or, on the sideload build, the device file system.
 
 <table>
   <tr>
@@ -41,34 +51,21 @@ The sideload build installs Alpine Linux in one tap: proot, no root, no Termux. 
   </tr>
 </table>
 
-## A desktop-class agent workbench
+## Version control and server ops on the go (Git · SSH)
 
-Ask for a change and the agent works the way you would at a desk: it writes a plan, sends read-only sub-agents to survey the code and the tests in parallel, implements, runs the slow test suite as a background job and commits when the suite is green. Side work can become a branch chat in its own git worktree, and the Git panel shows which chat uses which worktree.
+Both builds ship a built-in git, and the sideload build's Linux adds full git and gh. The Git panel shows the branch, how far it is ahead of or behind upstream, the diff and recent commits. Side work can become a branch chat in its own worktree. HTTPS Git credentials are injected per command by a local proxy in the app, so they never land in repository config or in the model's context.
+
+SSH comes along too. Generate an Ed25519 key, confirm the fingerprint on first connect, and from then on agents refer to hosts by alias only: they run commands, read and write over SFTP, and transfer files of up to 4 GiB with SHA-256 checks on both ends. You can take over at any time in a real PTY terminal or through local port forwarding. Agents never see passwords or keys, and in Ask for commands mode every remote command waits for your approval.
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agents surveying code and test gaps in parallel while the main chat waits"></td>
-    <td width="50%"><img src="assets/screenshots/en/ade-background.webp" alt="All 21 tests pass and the 4-million-line full suite moves to a background job while the chat keeps going"></td>
-  </tr>
-  <tr>
-    <td align="center">Sub-agents survey the code in parallel</td>
-    <td align="center">Slow commands run as background jobs</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/en/ade-branch.webp" alt="Work plan proposing a branch chat in a new worktree, with Run here and Dispatch buttons"></td>
     <td width="50%"><img src="assets/screenshots/en/ade-git.webp" alt="Git panel listing branches and the worktrees used by each chat"></td>
+    <td width="50%"><img src="assets/screenshots/en/ade-branch.webp" alt="Work plan proposing a branch chat in a new worktree, with Run here and Dispatch buttons"></td>
   </tr>
   <tr>
-    <td align="center">Side work becomes a branch chat in its own worktree</td>
     <td align="center">Branches and worktrees, mapped to chats</td>
+    <td align="center">Side work becomes a branch chat</td>
   </tr>
-</table>
-
-## Server ops over SSH, with you in control
-
-Save a host once and let the agent investigate: it reads unit status and logs, finds the root cause, backs up what it changes, applies the fix and verifies it end to end. The agent sees host aliases only, never passwords or keys, and every remote command waits for your approval. You can take over in a real SSH terminal at any point.
-
-<table>
   <tr>
     <td width="50%"><img src="assets/screenshots/en/ops-diagnosis.webp" alt="Remote commands on web-01 wait in line: approve or reject each one, three pending"></td>
     <td width="50%"><img src="assets/screenshots/en/ops-detail.webp" alt="The fix report: config.toml pointed the database at a directory that was never created; the path is restored and the API restarted"></td>
@@ -79,38 +76,48 @@ Save a host once and let the agent investigate: it reads unit status and logs, f
   </tr>
 </table>
 
-## Built for foldables
+## Your private network and private compute (Tailscale)
 
-Unfold and the chat shares the screen with an inspector for tasks, files, Git, artifacts and remote terminals, so you can review the agent's work while it talks. Fold the phone and the same chat continues on the cover screen in a single-pane layout.
+The app runs a Tailscale node inside its own process. It does not take over the system VPN, works alongside other VPNs and supports self-hosted Headscale. SSH hosts, commands, MCP servers and model providers can reach tailnet IPs and MagicDNS names directly. When you add a provider, the form recognizes a tailnet endpoint and lets you pick a gateway device from your tailnet, so a model gateway on your home or office network can power chat, embeddings and reranking. The node is online only while the app runs and goes offline when it exits.
+
+## An agent that works the way you do at a desk
+
+Ask for something and the agent plans before it acts. It can send sub-agents to work in the background (up to six at once across the app), split side work into branch chats and move slow commands into background jobs, which run for up to 2 hours by default and 24 hours at most and can wake the chat when they finish. It can also set up one-off, interval or cron schedules. Up to four chats generate at the same time. While one is generating you can queue your next message or let it jump the line, and when the agent needs a decision from you it asks with a question card.
+
+The built-in agent browser lets you watch, take over and hand control back. Password, payment card and verification code fields are yours alone to fill in, and the agent never sees what you type. Skills come in three tiers, built-in, user and project, and you call one with `/skill-name`; MCP servers plug in as well. Agents can even manage agents, for example creating an assistant or rewriting a prompt. Every write needs your approval and shows a diff, and prompts keep their last 20 versions.
 
 <table>
   <tr>
-    <td colspan="3"><img src="assets/screenshots/en/fold-inspector.webp" alt="Unfolded: the chat beside the plan inspector showing finished steps, sub-agents and background jobs"></td>
+    <td width="50%"><img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agents surveying code and test gaps in parallel while the main chat waits"></td>
+    <td width="50%"><img src="assets/screenshots/en/ade-background.webp" alt="All 21 tests pass and the 4-million-line full suite moves to a background job while the chat keeps going"></td>
   </tr>
   <tr>
-    <td width="33%"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen: the fix report"></td>
-    <td width="33%"><img src="assets/screenshots/en/outer-git.webp" alt="Cover screen: branches and worktrees"></td>
-    <td width="33%"><img src="assets/screenshots/en/outer-terminal.webp" alt="Cover screen: the Linux terminal"></td>
+    <td align="center">Sub-agents survey the code in parallel</td>
+    <td align="center">Slow commands run as background jobs</td>
   </tr>
 </table>
 
-## Also included
+## Knowledge in, results out
 
-- **Your models, your keys.** OpenAI (Chat Completions and Responses), Anthropic, Google Gemini, Vertex AI, DeepSeek, GLM, Kimi and any OpenAI-compatible endpoint, with streaming, image input and per-chat model switching. Up to four chats can generate at the same time.
-- **You decide what runs.** Each chat has its own approval policy, and commands appear as cards you approve or reject before anything executes.
-- **Agents that manage agents.** An agent can read and adjust agent and chat settings, for example creating a translation assistant or rewriting a prompt. Every change needs your approval, and the card shows each changed field and a diff of the prompt. Agent prompts keep their last 20 versions, so you can restore any of them.
-- **Canvas.** Agents build interactive HTML pages with live preview and version history, saved in the chat's workspace.
-- **Library with RAG and a knowledge graph.** Import TXT, Markdown, PDF, Word and HTML, with hybrid vector and full-text retrieval, reranking and citations.
-- **Secret input and output.** Passwords and tokens go straight to their destination through dedicated cards, never through the chat, logs or the model.
-- **Runs in the background and on a schedule.** Generation continues when you leave the app, and agents can schedule one-off, interval or cron jobs with your approval.
-- **Rich output.** Markdown, LaTeX, Mermaid, ECharts and content-sized tables.
-- **Private by default.** Keys live in Android Keystore. Chats, documents and settings stay on the device, and model calls go straight to the provider you configured. Termux and a built-in Tailscale node are available when you need them.
+- **Knowledge in.** The library combines vector and full-text retrieval with reranking and citations, and can build a knowledge graph. Chat memory is searchable along a timeline, and long-term memory keeps your preferences and project facts across chats.
+- **Results out.** Agents build canvas pages and clickable multi-screen prototypes with a presentation mode, and the reports and files they deliver are saved as versioned artifacts.
+- **Rich output.** Markdown, LaTeX, Mermaid and ECharts, inline images, video and audio, plus image generation.
+- **Export and usage.** Export a chat as HTML, paginated A4 PDF or a long PNG. The usage page estimates cost and tracks the input cache hit rate.
+
+## You stay in control
+
+- **You approve what runs.** Two modes, Ask for commands and No approvals. The Agent reach panel shows which folders, runners and networks an agent can touch right now.
+- **Secrets stay out of the chat.** Passwords and tokens go through dedicated secret input and output cards, and screenshots and screen recording are blocked while a secret is shown. API keys are protected by Android Keystore.
+- **Local first.** Chats, documents and settings stay on the device, and model calls go straight to the provider you configured, never through a server of ours.
+- **Encrypted backups.** Back up in layers to a local file or WebDAV, optionally encrypted with AES-256-GCM.
+- **Failures stay contained.** If a startup check fails, only the affected workspace, chat or subsystem is isolated and the rest of the app keeps working.
+- **Open source.** Released under GPL-3.0.
 
 ## Get started
 
-**Requirements:** Android 12 (API 31) or later. The built-in Linux needs the sideload build on an arm64-v8a device, about 64 MB for the base system and about 470 MB with the default git, ripgrep, Python, Node.js and FFmpeg (each can be unchecked).
+**Requirements:** Android 12 (API 31) or later. The built-in Linux needs the sideload build on an arm64-v8a device, about 64 MB for the base system and about 470 MB with the default git, ripgrep, Python, Node.js and FFmpeg (each can be unchecked). The bundled Python is also arm64-v8a only.
 
-**Builds:** `sideload` includes the built-in Linux and device file access; `play` leaves both out. Both use the package name `com.promenar.infinity`, so they install alongside the old Nexara app.
+**Builds:** `sideload` includes the built-in Linux and device file access; `play` leaves both out, and its background jobs are only guaranteed to run while the app is in the foreground. Both use the package name `com.promenar.infinity`, so they install alongside the old Nexara app.
 
 **Install:** Download the APK and its `.sha256` file from [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases), check the SHA-256 and install it. Public releases can lag behind the source tree. Do not install CI artifacts, debug APKs or repackaged builds from other sources.
 

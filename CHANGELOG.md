@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 文档
+
+- 中英文 README 按新的价值排序重写：开头改为一句定位（BYOK 原生 Android 客户端 · 真 Linux · Git 与 SSH · Tailscale 私网 · 折叠屏优化），正文依次是口袋里的完整工作台、真 Linux（侧载版）、Git 与 SSH、Tailscale 私网与内网模型网关、Agent 工作方式、知识与成果、掌控与隐私；审批两档沿用界面名称“命令需批准 / 免批准”，截图复用现有静帧。
+
 ## [0.18.0-beta] - 2026-11-03
 
 ### 改进
