@@ -680,6 +680,10 @@ class ToolExecutor internal constructor(
                 com.promenar.infinity.data.model.json.encodeToString(search)
             }.getOrNull()
         }
+        // 生图卡片数据只经契约解码再编码后保存，未知版本与多余字段一律丢弃。
+        if (skill.sourceId == "builtin" && skill.name == "generate_image") {
+            return com.promenar.infinity.data.model.ImageGenerationResultData.decode(trimmed)?.encode()
+        }
         if (skill.sourceId == "builtin" && skill.runtimeToolId == "request_knowledge_access" && skill.name == "request_knowledge_access") {
             return runCatching {
                 com.promenar.infinity.data.model.json.encodeToString(

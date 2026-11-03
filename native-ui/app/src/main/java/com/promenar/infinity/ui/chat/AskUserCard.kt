@@ -356,9 +356,9 @@ internal fun AskUserAnsweredCard(answered: AskUserAnswered, modifier: Modifier =
     }
     Surface(
         modifier = modifier.fillMaxWidth().padding(vertical = 4.dp).testTag(UiTags.CHAT_ASK_ANSWERED),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(

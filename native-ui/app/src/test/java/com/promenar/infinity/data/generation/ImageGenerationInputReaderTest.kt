@@ -86,7 +86,10 @@ class ImageGenerationInputReaderTest {
     @Test fun `读取取消保持原始异常`() = runTest {
         val cancellation = CancellationException("cancelled")
         val resolver = Resolver().apply { available(png.size.toLong()); stream = { throw cancellation } }
-        assertThat(runCatching { ImageGenerationInputReader(resolver).read("s", listOf("/a.png"), null) }.exceptionOrNull()).isSameInstanceAs(cancellation)
+        // 协程调试模式跨 withContext 会复制异常，只断言取消原样向上传递而非被改写为参数错误。
+        val failure = runCatching { ImageGenerationInputReader(resolver).read("s", listOf("/a.png"), null) }.exceptionOrNull()
+        assertThat(failure).isInstanceOf(CancellationException::class.java)
+        assertThat(failure).hasMessageThat().isEqualTo(cancellation.message)
     }
 
     @Test fun `输出MIME支持三种格式且按响应请求魔数顺序选择`() {

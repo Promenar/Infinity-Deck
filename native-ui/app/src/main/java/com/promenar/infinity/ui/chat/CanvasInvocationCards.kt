@@ -118,9 +118,9 @@ internal fun CanvasInvocationCards(
 private fun FileArtifactCard(file: ArtifactInvocation, onOpen: () -> Unit) {
     Surface(
         onClick = onOpen,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
         modifier = Modifier.fillMaxWidth().testTag(UiTags.artifactItem(file.id)),
     ) {
         Row(

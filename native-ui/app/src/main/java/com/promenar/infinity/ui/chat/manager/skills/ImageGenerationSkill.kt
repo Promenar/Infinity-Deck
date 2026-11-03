@@ -58,7 +58,6 @@ class ImageGenerationSkill(
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "maxLength": 32000,
                     "description": "必填，最多 32000 字符。描述目标主体、动作、环境、构图、光照和风格。"
                 },
                 "size": {
@@ -81,15 +80,15 @@ class ImageGenerationSkill(
                     "description": "输出格式，默认 png。"
                 },
                 "output_compression": {
-                    "type": "integer", "minimum": 0, "maximum": 100,
+                    "type": "integer",
                     "description": "仅用于 jpeg/webp 输出，压缩参数范围 0–100。"
                 },
                 "n": {
-                    "type": "integer", "minimum": 1, "maximum": 4,
+                    "type": "integer",
                     "description": "生成数量，默认 1；移动端每次最多 4 张。"
                 },
                 "images": {
-                    "type": "array", "minItems": 1, "maxItems": 16,
+                    "type": "array",
                     "items": {"type": "string"},
                     "description": "1–16 个工作区图片路径。提供时使用编辑接口；每张必须为 PNG/WebP/JPEG，且小于 50 MiB。"
                 },

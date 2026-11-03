@@ -212,7 +212,7 @@ fun WorkspaceImageCard(
     val ratio = mediaAspectRatio(ref.width, ref.height, DEFAULT_IMAGE_RATIO)
     val sizing = when {
         cropToFill -> Modifier.fillMaxSize()
-        style == MediaCardStyle.TOOL -> Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp)
+        style == MediaCardStyle.TOOL -> toolMediaSizing(ratio)
         else -> Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = 480.dp).aspectRatio(ratio, matchHeightConstraintsFirst = true)
     }
     Box(
@@ -589,12 +589,15 @@ fun WorkspaceMediaUnavailable(
 }
 
 @Composable
-fun WorkspaceMediaLoading(hint: MediaRef?, style: MediaCardStyle, modifier: Modifier = Modifier) {
+fun WorkspaceMediaLoading(hint: MediaRef?, style: MediaCardStyle, modifier: Modifier = Modifier, fill: Boolean = false) {
     val loadingText = stringResource(R.string.media_loading)
     val visual = hint?.kind == MediaKind.IMAGE || hint?.kind == MediaKind.VIDEO
     val sizing = when {
+        fill -> Modifier.fillMaxSize()
         !visual -> Modifier.fillMaxWidth().height(56.dp)
-        style == MediaCardStyle.TOOL -> Modifier.fillMaxWidth().height(160.dp)
+        style == MediaCardStyle.TOOL -> toolMediaSizing(
+            mediaAspectRatio(hint?.width, hint?.height, if (hint?.kind == MediaKind.VIDEO) DEFAULT_VIDEO_RATIO else DEFAULT_IMAGE_RATIO),
+        )
         else -> Modifier
             .widthIn(max = 560.dp)
             .fillMaxWidth()
@@ -616,8 +619,12 @@ fun WorkspaceMediaLoading(hint: MediaRef?, style: MediaCardStyle, modifier: Modi
     }
 }
 
+/** 工具卡里的单张图片按原始比例显示：横图占满可用宽度，竖图限高居中，不再压进固定高度的横条。 */
+private fun toolMediaSizing(ratio: Float): Modifier =
+    Modifier.widthIn(max = 560.dp).heightIn(max = 320.dp).aspectRatio(ratio, matchHeightConstraintsFirst = true)
+
 /**
- * 工具步骤中的媒体：两张及以上图片按两列网格排列，其余类别纵向排列；单张图片沿用工具缩略图的尺寸。
+ * 工具步骤中的媒体：两张及以上图片按两列网格排列，其余类别纵向排列；单张图片按原始比例居中显示。
  */
 @Composable
 fun ToolMediaList(media: List<MediaRef>, modifier: Modifier = Modifier) {
@@ -625,7 +632,9 @@ fun ToolMediaList(media: List<MediaRef>, modifier: Modifier = Modifier) {
     val others = media.filter { it.kind != MediaKind.IMAGE }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
         if (images.size == 1) {
-            WorkspaceMediaReference(path = images.single().path, hint = images.single(), style = MediaCardStyle.TOOL)
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                WorkspaceMediaReference(path = images.single().path, hint = images.single(), style = MediaCardStyle.TOOL)
+            }
         } else if (images.size > 1) {
             images.chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
@@ -672,6 +681,44 @@ private fun ToolGridImage(ref: MediaRef) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        null -> WorkspaceMediaLoading(hint = ref, style = MediaCardStyle.TOOL, modifier = Modifier.fillMaxSize())
+        null -> WorkspaceMediaLoading(hint = ref, style = MediaCardStyle.TOOL, fill = true)
     }
+}
+
+/** 生图编辑模式的参考图：标签加一排小方图，点开看原图。 */
+@Composable
+fun ToolReferenceThumbnails(paths: List<String>, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.tool_step_reference_label),
+            style = InfinityTypography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        paths.take(MAX_REFERENCE_THUMBNAILS).forEach { path ->
+            Box(Modifier.size(40.dp)) {
+                ToolGridImage(MediaRef(path, mediaMimeFromPath(path), MediaKind.IMAGE, 0))
+            }
+        }
+        if (paths.size > MAX_REFERENCE_THUMBNAILS) {
+            Text(
+                "+${paths.size - MAX_REFERENCE_THUMBNAILS}",
+                style = InfinityTypography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+private const val MAX_REFERENCE_THUMBNAILS = 5
+
+private fun mediaMimeFromPath(path: String): String = when (path.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)) {
+    "jpg", "jpeg" -> "image/jpeg"
+    "webp" -> "image/webp"
+    else -> "image/png"
 }

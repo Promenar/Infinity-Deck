@@ -41,4 +41,24 @@
     <string name="tool_card_fields_result">结果</string>
     <string name="tool_card_fields_expand">展开</string>
     <string name="tool_card_fields_collapse">收起</string>
+    <string name="tool_step_full_result">完整结果</string>
+    <string name="tool_step_arguments_expand">展开参数</string>
+    <string name="tool_step_arguments_collapse">收起参数</string>
+    <string name="tool_step_image_edit_title">编辑图片</string>
+    <string name="tool_step_reference_label">参考图</string>
+    <string name="tool_step_quality_low">低质量</string>
+    <string name="tool_step_quality_medium">中等质量</string>
+    <string name="tool_step_quality_high">高质量</string>
+    <string name="tool_step_quality_xhigh">超高质量</string>
+    <string name="tool_step_quality_max">最高质量</string>
+    <string name="tool_step_background_transparent">透明背景</string>
+    <plurals name="tool_step_image_count">
+        <item quantity="other">%d 张</item>
+    </plurals>
+    <plurals name="tool_step_reference_count">
+        <item quantity="other">参考 %d 张</item>
+    </plurals>
+    <plurals name="tool_step_viewed_count">
+        <item quantity="other">已查看 %d 个</item>
+    </plurals>
 </resources>

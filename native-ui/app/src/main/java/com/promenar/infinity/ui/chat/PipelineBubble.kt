@@ -1314,7 +1314,6 @@ internal fun InlineToolRow(
     live: LiveStep? = null,
 ) {
     var isExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
-    val linuxNavigation = com.promenar.infinity.ui.linux.LocalLinuxNavigation.current
     val invocations = remember(steps) { toolInvocations(steps) }
     // 审批通过后的调用不在生成任务内执行，以实时输出通道判断它是否正在运行。
     val liveKeys = LocalToolLiveOutput.current?.activeKeys?.collectAsState()?.value.orEmpty()
@@ -1391,125 +1390,180 @@ internal fun InlineToolRow(
         }
         AnimatedVisibility(visible = isExpanded, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
             // 展开内容底部 8dp，与流水线块间 8dp 合计 16dp，与段落间距一致。
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = ExpandedStepBottomPadding).testTag("CHAT_TOOL_DETAILS"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = ExpandedStepBottomPadding).testTag("CHAT_TOOL_DETAILS"), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                 invocations.forEach { invocation ->
                     key(invocation.steps.firstOrNull()?.id) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val commandStep = remember(invocation, jobLabels) { commandStepLabel(invocation.name, invocation.call?.toolArgs, jobLabels) }
-                            val heading = commandStep?.let { commandStepHeading(it) }
-                            // 计划与任务查看调用改用专用卡片；命令结果改用命令运行卡，耗时与“完整输出”都收进卡内。
-                            val planCard = rememberPlanCardModel(invocation)
-                            val jobCard = if (planCard == null) rememberJobCardModel(invocation) else null
-                            val commandResult = remember(invocation, planCard, jobCard) {
-                                if (planCard != null || jobCard != null) null
-                                else invocation.results.firstOrNull { it.type != "error" && !it.content.isNullOrBlank() }
-                                    ?.let { subagentCommandResult(invocation.name, it.content.orEmpty()) }
-                            }
-                            val runCard = jobCard != null || commandResult != null
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (heading != null) {
-                                    // 有短标题或能认出所操作的任务时，标题占主位，工具名退为小字。
-                                    InfinityMetaLine(heading, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f), maxLines = 2)
-                                    invocation.name?.let { name ->
-                                        Text(name, style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontFamily = InfinityMonospace),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                    }
-                                } else {
-                                    Text(toolFriendlyName(invocation.name), style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                                    invocation.name?.let { name ->
-                                        Text(
-                                            name,
-                                            style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontFamily = InfinityMonospace),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                                if (invocation.ranInLinux) LinuxRuntimeChip()
-                                if (!runCard) invocation.durationMs?.let { Text(stepDurationText(it), style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            }
-                            val outputTarget = remember(invocation) {
-                                invocation.call?.id?.takeIf { invocation.complete && invocation.isCommand }?.let(commandOutputTarget)
-                            }
-                            val openFullOutput: (() -> Unit)? = linuxNavigation?.let { navigation ->
-                                outputTarget?.let { (messageId, callId) -> { navigation.openCommandOutput(messageId, callId) } }
-                            }
-                            if (openFullOutput != null && !runCard) {
-                                InfinityPillButton(
-                                    text = stringResource(R.string.chat_tool_full_output),
-                                    onClick = openFullOutput,
-                                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
-                                    modifier = Modifier.testTag(UiTags.CHAT_TOOL_FULL_OUTPUT),
-                                )
-                            }
-                            val invocationChanges = remember(invocation) { invocation.fileChanges }
-                            if (invocationChanges.isNotEmpty()) {
-                                com.promenar.infinity.ui.chat.diff.FileChangeList(invocationChanges, onOpen = { openedChange = it })
-                            }
-                            val workspaceChanges = remember(invocation) { invocation.workspaceChanges }
-                            workspaceChanges?.let { com.promenar.infinity.ui.chat.diff.WorkspaceChangesList(it) }
-                            val waitLimit = commandStep?.waitLimitSeconds
-                            if (waitLimit != null && jobCard == null) {
-                                JobWaitProgress(waitLimit, startedAt = invocation.call?.timestamp, running = !invocation.complete,
-                                    stepId = invocation.call?.id?.let(::unscopedStepId))
-                            }
-                            // 其余工具的 JSON 参数与结果按字段列出。
-                            val fieldFallback = planCard == null && jobCard == null && usesFieldFallback(invocation.name)
-                            if (planCard != null) {
-                                PlanToolCard(
-                                    model = planCard,
-                                    arguments = invocation.call?.toolArgs,
-                                    results = invocation.results.mapNotNull { it.content },
-                                )
-                            } else if (jobCard != null) {
-                                JobToolCard(jobCard, onOpenFull = openFullOutput, waitLimit = waitLimit?.let { jobWaitLimitText(it) })
-                            }
-                            // 等待、查看、停止任务的参数只有任务号，标题已说明对象，不再显示原始参数。
-                            val argumentsShown = planCard == null &&
-                                commandStep?.kind !in setOf(CommandStepKind.WAIT, CommandStepKind.STATUS, CommandStepKind.STOP)
-                            invocation.call?.toolArgs?.takeIf { argumentsShown && it.isNotBlank() }?.let { args ->
-                                val fields = remember(args, fieldFallback) { if (fieldFallback) toolFieldRows(args) else null }
-                                if (fields != null) ToolFieldList(fields, arguments = true)
-                                else ExpandableToolText(text = args, collapsedLines = 6, arguments = true)
-                            }
-                            invocation.results.forEach { result ->
-                                val media = result.media
-                                // 新结果以工作区媒体引用承载；旧数据仍从 data 字段取图片地址。
-                                val images = remember(result.data, media) {
-                                    if (media.isNullOrEmpty()) extractToolImageModels(result.data) else emptyList()
-                                }
-                                if (!media.isNullOrEmpty()) {
-                                    com.promenar.infinity.ui.media.ToolMediaList(media = media)
-                                }
-                                images.take(4).forEach { imageModel ->
-                                    ChatImageThumbnail(
-                                        imageModel = imageModel,
-                                        contentDescription = stringResource(R.string.chat_cd_tool_image),
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp).clip(MaterialTheme.shapes.small),
-                                        contentScale = ContentScale.Fit,
-                                    )
-                                }
-                                result.content?.takeIf(String::isNotBlank)?.let { content ->
-                                    // 命令结果只展示输出正文与退出码，不显示外层 JSON 信封。
-                                    val command = remember(content, invocation.name) {
-                                        if (result.type == "error") null else subagentCommandResult(invocation.name, content)
-                                    }
-                                    if (result.type == "error") ToolErrorBlock(content)
-                                    else if (command != null) CommandResultCard(command, invocation.durationMs, openFullOutput)
-                                    else if (planCard == null && jobCard == null) {
-                                        val fields = remember(content, fieldFallback) { if (fieldFallback) toolFieldRows(content) else null }
-                                        if (fields != null) ToolFieldList(fields, arguments = false)
-                                        else ExpandableToolText(text = content, collapsedLines = 12)
-                                    }
-                                }
-                            }
-                        }
+                        ToolInvocationCard(invocation, jobLabels, commandOutputTarget, turnActive, onOpenChange = { openedChange = it })
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * 单次工具调用的详情卡，统一由 [ToolStepCard] 承载：标题行给出工具与状态，摘要标签给出用户关心的结果，
+ * 正文依工具取媒体、命令输出、计划、字段表或原文。生图与查看媒体的原文只供模型阅读，收进“完整结果”。
+ */
+@Composable
+private fun ToolInvocationCard(
+    invocation: ToolInvocationPresentation,
+    jobLabels: Map<String, String>,
+    commandOutputTarget: (callStepId: String) -> Pair<String, String>?,
+    turnActive: Boolean,
+    onOpenChange: (com.promenar.infinity.data.model.FileChangeSummary) -> Unit,
+) {
+    val linuxNavigation = com.promenar.infinity.ui.linux.LocalLinuxNavigation.current
+    val commandStep = remember(invocation, jobLabels) { commandStepLabel(invocation.name, invocation.call?.toolArgs, jobLabels) }
+    val heading = commandStep?.let { commandStepHeading(it) }
+    val planCard = rememberPlanCardModel(invocation)
+    val jobCard = if (planCard == null) rememberJobCardModel(invocation) else null
+    val commandResult = remember(invocation, planCard, jobCard) {
+        if (planCard != null || jobCard != null) null
+        else invocation.results.firstOrNull { it.type != "error" && !it.content.isNullOrBlank() }
+            ?.let { subagentCommandResult(invocation.name, it.content.orEmpty()) }
+    }
+    val outputTarget = remember(invocation) {
+        invocation.call?.id?.takeIf { invocation.complete && invocation.isCommand }?.let(commandOutputTarget)
+    }
+    val openFullOutput: (() -> Unit)? = linuxNavigation?.let { navigation ->
+        outputTarget?.let { (messageId, callId) -> { navigation.openCommandOutput(messageId, callId) } }
+    }
+    val waitLimit = commandStep?.waitLimitSeconds
+    val action = toolSummaryAction(invocation.name)
+    val mediaTool = action == ToolSummaryAction.IMAGE || action == ToolSummaryAction.MEDIA_VIEW
+    val arguments = invocation.call?.toolArgs
+    val media = remember(invocation) { invocation.results.flatMap { it.media.orEmpty() } }
+    val imageData = remember(invocation, action) {
+        if (action == ToolSummaryAction.IMAGE) invocation.results.firstNotNullOfOrNull {
+            com.promenar.infinity.data.model.ImageGenerationResultData.decode(it.data)
+        } else null
+    }
+    val imageEdit = action == ToolSummaryAction.IMAGE && (imageData?.mode == "edit" || toolArgumentPresent(arguments, "images"))
+    var fullResult by remember { mutableStateOf<String?>(null) }
+    val rawResult = remember(invocation) {
+        invocation.results.filter { it.type != "error" }.mapNotNull { it.content?.takeIf(String::isNotBlank) }.joinToString("\n\n")
+    }
+
+    val commandSpec = when {
+        jobCard != null -> rememberJobCardSpec(jobCard, onOpenFull = openFullOutput, waitLimit = waitLimit?.let { jobWaitLimitText(it) })
+        commandResult != null -> commandResultSpec(commandResult, invocation.durationMs, openFullOutput)
+        else -> null
+    }
+    val tone = commandSpec?.tone ?: when {
+        invocation.failed -> ToolStepTone.FAILED
+        invocation.complete -> ToolStepTone.SUCCESS
+        turnActive -> ToolStepTone.RUNNING
+        else -> ToolStepTone.NEUTRAL
+    }
+    val status = commandSpec?.status ?: when {
+        invocation.failed -> stringResource(R.string.tool_card_job_state_failed)
+        !invocation.complete -> stringResource(if (turnActive) R.string.tool_card_job_state_running else R.string.tool_card_job_state_interrupted)
+        else -> invocation.durationMs?.let { stepDurationText(it) } ?: stringResource(R.string.tool_card_job_state_completed)
+    }
+    val summary = when (action) {
+        ToolSummaryAction.IMAGE -> if (media.isEmpty() && imageData == null) emptyList()
+            else mediaStepChips(remember(imageData, media) { imageGenerationFacts(imageData, media) }, viewed = false)
+        ToolSummaryAction.MEDIA_VIEW -> if (media.isEmpty()) emptyList()
+            else mediaStepChips(remember(media) { mediaViewFacts(media) }, viewed = true)
+        else -> emptyList()
+    }
+    val title = when {
+        imageEdit -> stringResource(R.string.tool_step_image_edit_title)
+        else -> toolFriendlyName(invocation.name)
+    }
+    ToolStepCard(
+        tone = tone,
+        status = status,
+        icon = toolStepIcon(invocation.name),
+        summary = summary,
+        statusTag = if (commandSpec != null) COMMAND_STATUS_TAG else null,
+        onOpenFull = commandSpec?.onOpenFull ?: openFullOutput
+            ?: if (mediaTool && rawResult.isNotBlank()) {{ fullResult = rawResult }} else null,
+        openFullLabel = if (commandSpec != null || openFullOutput != null) stringResource(R.string.chat_tool_full_output) else null,
+        footerMeta = commandSpec?.footerMeta,
+        footerMetaColor = if (commandSpec?.footerFailed == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        footerActions = commandSpec?.onStop?.let { stop -> { JobStopButton(stop) } },
+        modifier = if (jobCard != null) Modifier.testTag(JOB_CARD_TAG) else Modifier,
+        title = {
+            if (heading != null) {
+                // 有短标题或能认出所操作的任务时，标题占主位，工具名退为小字。
+                InfinityMetaLine(heading, style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f), maxLines = 1)
+            } else {
+                ToolStepTitle(title, invocation.name)
+            }
+            if (invocation.ranInLinux) LinuxRuntimeChip()
+        },
+    ) {
+        val invocationChanges = remember(invocation) { invocation.fileChanges }
+        if (invocationChanges.isNotEmpty()) {
+            com.promenar.infinity.ui.chat.diff.FileChangeList(invocationChanges, onOpen = onOpenChange)
+        }
+        val workspaceChanges = remember(invocation) { invocation.workspaceChanges }
+        workspaceChanges?.let { com.promenar.infinity.ui.chat.diff.WorkspaceChangesList(it) }
+        if (waitLimit != null && jobCard == null) {
+            JobWaitProgress(waitLimit, startedAt = invocation.call?.timestamp, running = !invocation.complete,
+                stepId = invocation.call?.id?.let(::unscopedStepId))
+        }
+        if (planCard != null) {
+            PlanToolCard(model = planCard, arguments = arguments, results = invocation.results.mapNotNull { it.content })
+        }
+        // 参数：生图只留提示词，查看媒体只留提问，其余尺寸与路径已由摘要和预览说明；等待、查看、停止任务的参数只有任务号。
+        val argumentsShown = planCard == null &&
+            commandStep?.kind !in setOf(CommandStepKind.WAIT, CommandStepKind.STATUS, CommandStepKind.STOP)
+        val fieldFallback = planCard == null && jobCard == null && usesFieldFallback(invocation.name)
+        when {
+            !argumentsShown || arguments.isNullOrBlank() -> Unit
+            action == ToolSummaryAction.IMAGE -> toolArgumentText(arguments, "prompt")?.let {
+                ExpandableToolText(text = it, collapsedLines = 2, arguments = true, code = false)
+            }
+            action == ToolSummaryAction.MEDIA_VIEW -> toolArgumentText(arguments, "question")?.let {
+                ExpandableToolText(text = it, collapsedLines = 2, arguments = true, code = false)
+            }
+            else -> {
+                val fields = remember(arguments, fieldFallback) { if (fieldFallback) toolFieldRows(arguments) else null }
+                if (fields != null) ToolArgumentsPreview(fields)
+                else ExpandableToolText(text = arguments, collapsedLines = 6, arguments = true)
+            }
+        }
+        if (imageEdit) imageData?.inputImages?.takeIf { it.isNotEmpty() }?.let { paths ->
+            com.promenar.infinity.ui.media.ToolReferenceThumbnails(paths)
+        }
+        if (commandSpec != null) CommandOutputBox(commandSpec.output, commandSpec.emptyText, commandSpec.note)
+        invocation.results.forEach { result ->
+            val resultMedia = result.media
+            // 新结果以工作区媒体引用承载；旧数据仍从 data 字段取图片地址。
+            val images = remember(result.data, resultMedia) {
+                if (resultMedia.isNullOrEmpty()) extractToolImageModels(result.data) else emptyList()
+            }
+            if (!resultMedia.isNullOrEmpty()) {
+                com.promenar.infinity.ui.media.ToolMediaList(media = resultMedia)
+            }
+            images.take(4).forEach { imageModel ->
+                ChatImageThumbnail(
+                    imageModel = imageModel,
+                    contentDescription = stringResource(R.string.chat_cd_tool_image),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp).clip(MaterialTheme.shapes.small),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            result.content?.takeIf(String::isNotBlank)?.let { content ->
+                when {
+                    result.type == "error" -> ToolErrorBlock(content)
+                    commandSpec != null || planCard != null -> Unit
+                    // 生图与查看媒体的结果文本给模型阅读，用户从摘要与预览获知结果，原文经“完整结果”查看。
+                    mediaTool && (!resultMedia.isNullOrEmpty() || images.isNotEmpty()) -> Unit
+                    else -> {
+                        val fields = remember(content, fieldFallback) { if (fieldFallback) toolFieldRows(content) else null }
+                        if (fields != null) ToolFieldList(fields, arguments = false)
+                        else ExpandableToolText(text = content, collapsedLines = 12)
+                    }
+                }
+            }
+        }
+    }
+    ToolFullResultSheet(fullResult) { fullResult = null }
 }
 
 /** 运行中摘要：有短标题的命令说明在做什么，等待任务说明在等哪个；其余返回 null 沿用通用文案。 */
@@ -1661,7 +1715,7 @@ internal fun ExpandableToolText(
     var overflows by remember(text, collapsedLines) { mutableStateOf(explicitLineOverflow) }
     Column(
         modifier = if (code) Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(8.dp)).padding(10.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(8.dp)).padding(10.dp)
         else Modifier.fillMaxWidth(),
     ) {
         Text(
@@ -1684,18 +1738,19 @@ internal fun ExpandableToolText(
     }
 }
 
-/** 命令结果：命令运行卡，退出码非零为失败；耗时取调用时长。 */
+/** 命令结果：退出码非零为失败；耗时与退出码进底栏。 */
 @Composable
-private fun CommandResultCard(command: SubagentCommandResult, durationMs: Long?, onOpenFull: (() -> Unit)?) {
+private fun commandResultSpec(command: SubagentCommandResult, durationMs: Long?, onOpenFull: (() -> Unit)?): CommandCardSpec {
     val failed = command.exitCode != null && command.exitCode != 0
-    CommandRunCard(
+    val duration = durationMs?.let { stringResource(R.string.tool_card_run_duration, stepDurationText(it)) }
+    val exit = command.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) }
+    return CommandCardSpec(
+        tone = if (failed) ToolStepTone.FAILED else ToolStepTone.SUCCESS,
         status = stringResource(if (failed) R.string.tool_card_job_state_failed else R.string.tool_card_job_state_completed),
-        statusColor = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.infinityDomainColors.success,
         output = command.output,
         emptyText = stringResource(R.string.linux_output_empty),
-        footerStart = durationMs?.let { stringResource(R.string.tool_card_run_duration, stepDurationText(it)) },
-        footerEnd = command.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) },
-        footerEndColor = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        footerMeta = listOfNotNull(duration, exit).joinToString(" · ").ifEmpty { null }, // wrap-check: allow 单行页脚
+        footerFailed = failed,
         onOpenFull = onOpenFull,
     )
 }

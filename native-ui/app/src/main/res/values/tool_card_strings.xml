@@ -41,4 +41,27 @@
     <string name="tool_card_fields_result">Result</string>
     <string name="tool_card_fields_expand">Show more</string>
     <string name="tool_card_fields_collapse">Show less</string>
+    <string name="tool_step_full_result">Full result</string>
+    <string name="tool_step_arguments_expand">Show arguments</string>
+    <string name="tool_step_arguments_collapse">Hide arguments</string>
+    <string name="tool_step_image_edit_title">Edit image</string>
+    <string name="tool_step_reference_label">References</string>
+    <string name="tool_step_quality_low">Low quality</string>
+    <string name="tool_step_quality_medium">Medium quality</string>
+    <string name="tool_step_quality_high">High quality</string>
+    <string name="tool_step_quality_xhigh">Extra-high quality</string>
+    <string name="tool_step_quality_max">Max quality</string>
+    <string name="tool_step_background_transparent">Transparent</string>
+    <plurals name="tool_step_image_count">
+        <item quantity="one">%d image</item>
+        <item quantity="other">%d images</item>
+    </plurals>
+    <plurals name="tool_step_reference_count">
+        <item quantity="one">%d reference</item>
+        <item quantity="other">%d references</item>
+    </plurals>
+    <plurals name="tool_step_viewed_count">
+        <item quantity="one">Viewed %d</item>
+        <item quantity="other">Viewed %d</item>
+    </plurals>
 </resources>

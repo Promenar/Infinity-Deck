@@ -564,6 +564,8 @@ object UiTags {
 
     // Linux 终端与输出
     const val CHAT_TOOL_FULL_OUTPUT = "chat_tool_full_output"
+    const val CHAT_TOOL_ARGUMENTS_PREVIEW = "chat_tool_arguments_preview"
+    const val CHAT_TOOL_FULL_RESULT_TEXT = "chat_tool_full_result_text"
     const val LINUX_TERMINAL_SCREEN = "linux_terminal_screen"
     const val LINUX_TERMINAL_NEW = "linux_terminal_new"
     const val LINUX_TERMINAL_CLOSE = "linux_terminal_close"

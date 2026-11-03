@@ -23,6 +23,9 @@ import coil3.compose.AsyncImagePreviewHandler
 import coil3.compose.LocalAsyncImagePreviewHandler
 import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.data.model.ExecutionStep
+import com.promenar.infinity.data.model.ImageGenerationActual
+import com.promenar.infinity.data.model.ImageGenerationRequested
+import com.promenar.infinity.data.model.ImageGenerationResultData
 import com.promenar.infinity.domain.media.MediaKind
 import com.promenar.infinity.domain.media.MediaRef
 import com.promenar.infinity.domain.media.MediaResolution
@@ -166,6 +169,55 @@ private val ToolMediaSteps = listOf(
 private fun ToolMediaStep() {
     InlineToolRow(ToolMediaSteps, isExecuting = false, fontSize = 15, initiallyExpanded = true)
 }
+
+private val ImageToolCardSteps = listOf(
+    listOf(
+        ExecutionStep("g1", "tool_call", "generate_image",
+            "{\"prompt\":\"黄昏的海边灯塔，暖色逆光，胶片质感，远处有归航的渔船\",\"size\":\"1536x1024\",\"quality\":\"high\"}", "g1", timestamp = 1_000),
+        ExecutionStep("g1r", "tool_result", "generate_image", toolCallId = "g1", timestamp = 19_400,
+            content = "${PreviewImage.path}（1600×900，812345 字节）\n回复中用 ![说明](工作区路径) 引用图片。",
+            data = ImageGenerationResultData(mode = "generate", model = "gpt-image-2",
+                requested = ImageGenerationRequested(size = "1536x1024", quality = "high"),
+                actual = ImageGenerationActual(size = "1536x1024", quality = "high", outputFormat = "png")).encode(),
+            media = listOf(PreviewImage)),
+    ),
+    listOf(
+        ExecutionStep("e1", "tool_call", "generate_image",
+            "{\"prompt\":\"把人物换到雨后的街道，保留发型与外套\",\"images\":[\"${PreviewSquare.path}\",\"${PreviewWide.path}\"]}", "e1", timestamp = 2_000),
+        ExecutionStep("e1r", "tool_result", "generate_image", toolCallId = "e1", timestamp = 25_000,
+            content = "${PreviewTall.path}（1000×1500，610000 字节）",
+            data = ImageGenerationResultData(mode = "edit", model = "gpt-image-2",
+                actual = ImageGenerationActual(size = "1024x1536", quality = "medium", outputFormat = "jpeg"),
+                inputImages = listOf(PreviewSquare.path, PreviewWide.path)).encode(),
+            media = listOf(PreviewTall)),
+    ),
+    listOf(
+        ExecutionStep("v1", "tool_call", "view_media",
+            "{\"path\":\"${PreviewPortrait.path}\",\"question\":\"海报上的标题文字是否清晰、有无错字？\"}", "v1", timestamp = 3_000),
+        ExecutionStep("v1r", "tool_result", "view_media", toolCallId = "v1", timestamp = 3_800,
+            content = "已附上 ${PreviewPortrait.path} 的图像内容（900×1600，image/png）。", media = listOf(PreviewPortrait)),
+    ),
+)
+
+@Composable
+private fun ImageToolCards() {
+    ImageToolCardSteps.forEach { steps -> InlineToolRow(steps, isExecuting = false, fontSize = 15, initiallyExpanded = true) }
+}
+
+@PreviewTest
+@Preview(name = "生图与查看媒体卡片 浅色中文", widthDp = 411, heightDp = 1500, locale = "zh-rCN")
+@Composable
+fun imageToolCardsLight() = MediaPreviewFrame(dark = false) { ImageToolCards() }
+
+@PreviewTest
+@Preview(name = "生图与查看媒体卡片 深色中文", widthDp = 411, heightDp = 1500, locale = "zh-rCN")
+@Composable
+fun imageToolCardsDark() = MediaPreviewFrame(dark = true) { ImageToolCards() }
+
+@PreviewTest
+@Preview(name = "Image tool cards English 360dp font130", widthDp = 360, heightDp = 1800, locale = "en", fontScale = 1.3f)
+@Composable
+fun imageToolCardsLargeFont() = MediaPreviewFrame(dark = false) { ImageToolCards() }
 
 @PreviewTest
 @Preview(name = "工具步骤 多媒体 浅色中文", widthDp = 411, heightDp = 1250, locale = "zh-rCN")

@@ -71,14 +71,11 @@ internal val LocalPlanCallSnapshots = compositionLocalOf<Map<String, PlanCallSna
 
 private const val PLAN_CARD_TAG = "CHAT_TOOL_PLAN_CARD"
 private const val PLAN_RAW_TOGGLE_TAG = "CHAT_TOOL_PLAN_RAW_TOGGLE"
-private const val JOB_CARD_TAG = "CHAT_TOOL_JOB_CARD"
-private const val COMMAND_STATUS_TAG = "CHAT_TOOL_COMMAND_STATUS"
 private const val COMMAND_OUTPUT_TAG = "CHAT_TOOL_RESULT"
 private const val JOB_STOP_TAG = "CHAT_TOOL_JOB_STOP"
 private const val FIELDS_ARGUMENTS_TAG = "CHAT_TOOL_FIELDS_ARGUMENTS"
 private const val FIELDS_RESULT_TAG = "CHAT_TOOL_FIELDS_RESULT"
 
-private val CardShape = RoundedCornerShape(12.dp)
 private val InnerShape = RoundedCornerShape(8.dp)
 private val TagShape = RoundedCornerShape(8.dp)
 
@@ -129,10 +126,8 @@ internal fun toolCardSummaryText(invocations: List<ToolInvocationPresentation>, 
 @Composable
 internal fun PlanToolCard(model: PlanCardModel, arguments: String?, results: List<String>) {
     var showRaw by rememberSaveable { mutableStateOf(false) }
-    Column(
-        modifier = Modifier.fillMaxWidth().cardSurface(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)).padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Small)
-            .testTag(PLAN_CARD_TAG),
-    ) {
+    // 计划卡作为工具卡正文嵌入，容器由 [ToolStepCard] 提供。
+    Column(modifier = Modifier.fillMaxWidth().testTag(PLAN_CARD_TAG)) {
         model.rows.forEach { row -> if (row.isGroup) PlanGroupRow(row) else PlanStepRow(row) }
         HorizontalDivider(
             modifier = Modifier.padding(top = InfinitySpacing.XSmall),
@@ -246,12 +241,26 @@ private fun StateTag(text: String, container: Color, content: Color) {
 //  后台任务卡
 // ─────────────────────────────────────────────────────────────────
 
+/** 命令与后台任务卡片的取值：状态进标题行，耗时、等待上限与退出码进底栏，输出放进限高滚动区。 */
+internal data class CommandCardSpec(
+    val tone: ToolStepTone,
+    val status: String,
+    val output: String?,
+    val emptyText: String,
+    val note: String? = null,
+    val footerMeta: String? = null,
+    val footerFailed: Boolean = false,
+    val onOpenFull: (() -> Unit)? = null,
+    /** 任务此刻仍在运行时的停止操作。 */
+    val onStop: (() -> Unit)? = null,
+)
+
 /**
- * 后台任务卡：查看或等待任务时的状态、日志末尾与耗时，沿用 [CommandRunCard] 的单框样式。
+ * 后台任务卡：查看或等待任务时的状态、日志末尾与耗时。
  * [onOpenFull] 为命令输出页入口；没有时退回打开任务日志文件。[waitLimit] 是等待调用的最长等待说明，跟在耗时后。
  */
 @Composable
-internal fun JobToolCard(model: JobCardModel, onOpenFull: (() -> Unit)? = null, waitLimit: String? = null) {
+internal fun rememberJobCardSpec(model: JobCardModel, onOpenFull: (() -> Unit)? = null, waitLimit: String? = null): CommandCardSpec {
     val access = LocalAgentActivity.current
     val jobId = model.jobId
     // 卡片显示调用当时的状态；停止按钮只在任务此刻仍在运行时出现。
@@ -267,100 +276,63 @@ internal fun JobToolCard(model: JobCardModel, onOpenFull: (() -> Unit)? = null, 
     val started = remember(model.startedAtMillis) {
         model.startedAtMillis?.let { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(it)) }
     }
-    CommandRunCard(
-        status = toolTextString(jobStateText(model.state, model.exitCode)),
-        statusColor = when {
-            failure -> MaterialTheme.colorScheme.error
-            model.running || model.state == "exited" -> MaterialTheme.infinityDomainColors.success
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
+    val end = model.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) }
+        ?: started?.let { stringResource(R.string.tool_card_run_started, it) }
+    return CommandCardSpec(
+        tone = when {
+            failure -> ToolStepTone.FAILED
+            model.running -> ToolStepTone.RUNNING
+            model.state == "exited" || model.state == "completed" -> ToolStepTone.SUCCESS
+            else -> ToolStepTone.NEUTRAL
         },
+        status = toolTextString(jobStateText(model.state, model.exitCode)),
         output = model.logLines.takeIf { it.isNotEmpty() }?.joinToString("\n"),
         emptyText = stringResource(R.string.tool_card_job_log_empty),
         note = if (model.logTruncated && model.logLines.isNotEmpty()) stringResource(R.string.tool_card_job_log_truncated) else null,
-        footerStart = listOfNotNull(elapsed, waitLimit).joinToString(" · ").ifEmpty { null }, // wrap-check: allow 单行页脚
-        footerEnd = model.exitCode?.let { stringResource(R.string.tool_card_run_exit_code, it.toString()) }
-            ?: started?.let { stringResource(R.string.tool_card_run_started, it) },
-        footerEndColor = if (model.exitCode != null && model.exitCode != 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        footerMeta = listOfNotNull(elapsed, waitLimit, end).joinToString(" · ").ifEmpty { null }, // wrap-check: allow 单行页脚
+        footerFailed = model.exitCode != null && model.exitCode != 0,
         onOpenFull = onOpenFull ?: openLog,
-        modifier = Modifier.testTag(JOB_CARD_TAG),
-    ) {
-        if (liveRunning && jobId != null) {
-            InfinityPillButton(
-                text = stringResource(R.string.tool_card_job_stop),
-                onClick = { scope.launch { access?.jobs?.stop(jobId) } },
-                tone = InfinityPillTone.DANGER,
-                modifier = Modifier.testTag(JOB_STOP_TAG),
-            )
-        }
-    }
+        onStop = if (liveRunning && jobId != null) {{ scope.launch { access?.jobs?.stop(jobId) } }} else null,
+    )
 }
 
-/**
- * 命令运行卡：命令结果与后台任务共用的单框样式。左上是单行状态，右上是“完整输出”入口；
- * 输出放在限高的内嵌滚动区，打开时停在末尾；左下是耗时，右下是退出码。
- */
+/** 任务卡底栏的停止按钮。 */
 @Composable
-internal fun CommandRunCard(
-    status: String,
-    statusColor: Color,
-    output: String?,
-    emptyText: String,
-    footerStart: String?,
-    footerEnd: String?,
-    modifier: Modifier = Modifier,
-    footerEndColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    note: String? = null,
-    onOpenFull: (() -> Unit)? = null,
-    actions: @Composable () -> Unit = {},
-) {
-    val meta = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontFeatureSettings = "tnum")
-    Column(
-        modifier = modifier.fillMaxWidth().cardSurface(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(6.dp).background(statusColor, CircleShape))
-            Text(status, style = meta, color = statusColor, maxLines = 1, modifier = Modifier.padding(start = 6.dp).testTag(COMMAND_STATUS_TAG))
-            note?.let { Text(" · $it", style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) } // wrap-check: allow 单行省略号状态
-            Spacer(Modifier.weight(1f))
-            onOpenFull?.let { open ->
-                Row(
-                    modifier = Modifier.clip(TagShape).clickable(role = Role.Button, onClick = open)
-                        .padding(horizontal = 6.dp, vertical = 4.dp).testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_TOOL_FULL_OUTPUT),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                    Text(stringResource(R.string.chat_tool_full_output), style = meta, color = MaterialTheme.colorScheme.primary, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
-                }
-            }
-        }
-        // 输出在卡内限高滚动，滚到边界后交还会话列表；默认停在末尾，结果通常在最后几行。
-        val scroll = rememberScrollState()
-        LaunchedEffect(output) {
-            val bottom = snapshotFlow { scroll.maxValue }.first { it in 1 until Int.MAX_VALUE }
-            scroll.scrollTo(bottom)
-        }
-        Box(
-            Modifier.fillMaxWidth().heightIn(max = CommandOutputMaxHeight).clip(InnerShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest).verticalScroll(scroll)
-                .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small),
-        ) {
-            Text(
-                text = output ?: emptyText,
-                style = InfinityTypography.bodySmall.copy(fontFamily = if (output != null) InfinityMonospace else null, fontSize = 12.sp, lineHeight = 18.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag(COMMAND_OUTPUT_TAG),
-            )
-        }
-        if (footerStart != null || footerEnd != null) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(footerStart.orEmpty(), style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                footerEnd?.let { Text(it, style = meta, color = footerEndColor, maxLines = 1, modifier = Modifier.padding(start = InfinitySpacing.Small)) }
-            }
-        }
-        actions()
+internal fun JobStopButton(onStop: () -> Unit) {
+    InfinityPillButton(
+        text = stringResource(R.string.tool_card_job_stop),
+        onClick = onStop,
+        tone = InfinityPillTone.DANGER,
+        compact = true,
+        modifier = Modifier.testTag(JOB_STOP_TAG),
+    )
+}
+
+internal const val JOB_CARD_TAG = "CHAT_TOOL_JOB_CARD"
+internal const val COMMAND_STATUS_TAG = "CHAT_TOOL_COMMAND_STATUS"
+
+/** 命令输出：限高的内嵌滚动区，打开时停在末尾；[note] 为“仅日志末尾”等补充说明。 */
+@Composable
+internal fun CommandOutputBox(output: String?, emptyText: String, note: String? = null) {
+    // 输出在卡内限高滚动，滚到边界后交还会话列表；默认停在末尾，结果通常在最后几行。
+    val scroll = rememberScrollState()
+    LaunchedEffect(output) {
+        val bottom = snapshotFlow { scroll.maxValue }.first { it in 1 until Int.MAX_VALUE }
+        scroll.scrollTo(bottom)
     }
+    Box(
+        Modifier.fillMaxWidth().heightIn(max = CommandOutputMaxHeight).clip(InnerShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest).verticalScroll(scroll)
+            .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small),
+    ) {
+        Text(
+            text = output ?: emptyText,
+            style = InfinityTypography.bodySmall.copy(fontFamily = if (output != null) InfinityMonospace else null, fontSize = 12.sp, lineHeight = 18.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag(COMMAND_OUTPUT_TAG),
+        )
+    }
+    note?.let { Text(it, style = ToolStepMetaStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }
 
 private val CommandOutputMaxHeight = 200.dp
@@ -429,7 +401,3 @@ private fun ToolFieldRowView(row: ToolFieldRow) {
         }
     }
 }
-
-private fun Modifier.cardSurface(container: Color, outline: Color): Modifier = this
-    .background(container, CardShape)
-    .border(0.5.dp, outline, CardShape)

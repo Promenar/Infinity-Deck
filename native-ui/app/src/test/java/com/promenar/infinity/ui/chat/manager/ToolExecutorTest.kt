@@ -527,6 +527,27 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun `生图结构化数据经过执行器持久化供卡片读取，未知版本被丢弃`() = testScope.runTest {
+        seedSessionWithAssistant()
+        val body = com.promenar.infinity.data.model.ImageGenerationResultData(
+            mode = "generate", model = "gpt-image-2",
+            actual = com.promenar.infinity.data.model.ImageGenerationActual(size = "1536x1024", quality = "high"),
+        )
+        val skill = testSkill("generate_image") { args ->
+            val data = if (args.containsKey("legacy")) """{"schema":"infinity-image-generation-v0","mode":"generate","model":"m"}""" else body.encode()
+            ToolResult("img", "已保存", data = data)
+        }
+        val registry = skillsRegistry(skill)
+        val executor = ToolExecutor(store, messageManager, registry, testToolResolver(registry), ledger = RecordingLedger())
+        executor.executeTools("s1", "m1", listOf(ToolCall("img", "generate_image", "{}"), ToolCall("old", "generate_image", """{"legacy":true}""")),
+            preparedTools = registry.getAllTools(null))
+        messageManager.flushNonApprovalUpdatesNow("s1", "m1")
+        val results = store.getSession("s1")!!.messages.single { it.id == "m1" }.executionSteps.orEmpty().filter { it.type == "tool_result" }
+        assertThat(com.promenar.infinity.data.model.ImageGenerationResultData.decode(results.single { it.toolCallId == "img" }.data)).isEqualTo(body)
+        assertThat(results.single { it.toolCallId == "old" }.data).isNull()
+    }
+
+    @Test
     fun `关闭工具时搜索经过真实解析与账本执行且拒绝其它工具`() = testScope.runTest {
         seedSessionWithAssistant(toolsEnabled = false)
         var searches = 0
