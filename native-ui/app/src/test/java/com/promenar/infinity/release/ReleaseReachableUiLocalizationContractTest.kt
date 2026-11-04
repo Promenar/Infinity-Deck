@@ -9,8 +9,6 @@ class ReleaseReachableUiLocalizationContractTest {
 
     private val sourcePaths = listOf(
         "ui/chat/ResourceExplorerSheet.kt",
-        "ui/chat/components/FilesPanel.kt",
-        "ui/chat/components/WorkspaceFolderBrowser.kt",
         "ui/common/FolderBreadcrumbs.kt",
         "ui/common/FolderEntriesList.kt",
         "ui/chat/components/FileTextPreviewPanel.kt",
@@ -34,18 +32,8 @@ class ReleaseReachableUiLocalizationContractTest {
 
     private val requiredKeys = listOf(
         "resource_explorer_title",
-        "resource_explorer_search_placeholder",
         "resource_explorer_import_files",
-        "resource_explorer_workspace_root",
         "resource_explorer_import_status",
-        "resource_explorer_recycle_bin_count",
-        "files_selected_count",
-        "files_reindex",
-        "files_extract_knowledge_graph",
-        "files_view_graph",
-        "files_move_to",
-        "files_empty_subtitle",
-        "files_time_minutes_ago",
         "provider_models_type_chat",
         "provider_models_capability_vision",
         "provider_models_field_model_id",
@@ -71,17 +59,6 @@ class ReleaseReachableUiLocalizationContractTest {
         "rag_details_link_error",
         "rag_details_retry",
         "chat_rag_open_details",
-        "recycle_bin_auto_cleanup",
-        "recycle_bin_permanent_delete_title",
-        "recycle_bin_permanent_delete_message",
-        "recycle_bin_empty_title",
-        "recycle_bin_empty_message",
-        "recycle_bin_empty_confirm",
-        "recycle_bin_restore_all",
-        "recycle_bin_clear_count",
-        "recycle_bin_original_path",
-        "recycle_bin_restore",
-        "recycle_bin_empty_state",
         "sheet_tool_gemini_grounding",
         "sheet_settings_rerank_unavailable",
         "retrieval_rerank_model_unconfigured",
@@ -176,8 +153,6 @@ class ReleaseReachableUiLocalizationContractTest {
         assertThat(valueOf(chinese, "provider_models_output_tokens")).contains("输出")
         assertThat(valueOf(english, "rag_details_title")).isEqualTo("References")
         assertThat(valueOf(chinese, "rag_details_title")).isEqualTo("引用内容")
-        assertThat(valueOf(english, "recycle_bin_restore")).isEqualTo("Restore")
-        assertThat(valueOf(chinese, "recycle_bin_restore")).isEqualTo("恢复")
         assertThat(valueOf(english, "retrieval_rerank_model_unconfigured")).doesNotContain("未配置")
         assertThat(valueOf(chinese, "retrieval_rerank_model_unconfigured")).contains("未配置")
 

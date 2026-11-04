@@ -37,14 +37,6 @@
         <item quantity="one">%1$d failed</item>
         <item quantity="other">%1$d failed</item>
     </plurals>
-    <string name="directory_op_name_invalid">That name isn\'t allowed</string>
-    <string name="directory_op_name_exists">An item with this name exists</string>
-    <string name="directory_op_not_found">The file no longer exists</string>
-    <string name="directory_op_inside_source">Can\'t move a folder into itself</string>
-    <string name="directory_op_read_only">The workspace is read-only</string>
-    <string name="directory_op_unavailable">The workspace is unavailable</string>
-    <string name="directory_op_busy">A reply is running. Try again later</string>
-    <string name="directory_op_failed">Couldn\'t complete the operation</string>
 
     <string name="directory_op_failed_reason">%1$s: %2$s</string>
 

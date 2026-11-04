@@ -5,7 +5,6 @@ native-ui/app/src/main/java/com/promenar/nexara/ui/chat/PipelineBubble.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/chat/ResourceExplorerSheet.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/chat/SessionSettingsScreen.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/chat/SessionSettingsSheet.kt
-native-ui/app/src/main/java/com/promenar/nexara/ui/chat/components/FilesPanel.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/chat/components/RecycleBinPanel.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/chat/components/TaskFloatingPanel.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/common/AgentAvatar.kt
@@ -46,7 +45,6 @@ native-ui/app/src/main/java/com/promenar/nexara/ui/rag/GlobalRagConfigScreen.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/rag/KnowledgeGraphScreen.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/rag/RagAdvancedScreen.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/rag/RagDebugScreen.kt
-native-ui/app/src/main/java/com/promenar/nexara/ui/rag/RagHomeScreen.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/rag/canvas/InteractiveGraphCanvas.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/renderer/EChartsRenderer.kt
 native-ui/app/src/main/java/com/promenar/nexara/ui/renderer/GfmAlertBlock.kt

@@ -235,11 +235,7 @@
     <string name="share_import_reason_write">The file could not be saved</string>
     <string name="share_import_reason_index">The file was not imported because its indexing task could not be saved</string>
     <string name="resource_explorer_title">Resource Explorer</string>
-    <string name="resource_explorer_search_placeholder">Search files…</string>
-    <string name="resource_explorer_files_heading">Files</string>
-    <string name="resource_explorer_importing">Importing</string>
     <string name="resource_explorer_import_files">Import Files</string>
-    <string name="resource_explorer_workspace_root">Workspace</string>
     <string name="resource_explorer_retry_document">Retry %1$s</string>
     <string name="resource_explorer_import_status">Import Status</string>
     <string name="resource_explorer_clear_results">Clear results</string>
@@ -248,29 +244,7 @@
     <string name="resource_explorer_status_created">Imported</string>
     <string name="resource_explorer_status_rejected">Rejected: %1$s</string>
     <string name="resource_explorer_reason_unknown">Unknown reason</string>
-    <string name="files_selected_count">Selected %1$d items</string>
-    <string name="files_cancel">Cancel</string>
-    <string name="files_reindex">Re-index</string>
-    <string name="files_extract_knowledge_graph">Extract Knowledge Graph</string>
-    <string name="files_view_graph">View Graph</string>
-    <string name="files_view_folder_graph">View Folder Graph</string>
-    <string name="files_rename">Rename</string>
-    <string name="files_move_to">Move to…</string>
-    <string name="files_transfer_to_knowledge_base">Save to Library</string>
-    <string name="files_tag_system">System</string>
-    <string name="files_tag_session">Session</string>
     <string name="files_session_workspaces_title">Session Workspaces</string>
-    <string name="files_multi_select">Select Multiple</string>
-    <string name="files_new_name">New name</string>
-    <string name="files_confirm">Confirm</string>
-    <string name="files_no_available_folders">No available folders</string>
-    <string name="files_root_directory">Root Folder</string>
-    <string name="files_empty_title">No files yet</string>
-    <string name="files_empty_subtitle">Import files, or let AI create them in the chat.</string>
-    <string name="files_time_just_now">Just now</string>
-    <string name="files_time_minutes_ago">%1$d min ago</string>
-    <string name="files_time_hours_ago">%1$d hr ago</string>
-    <string name="files_time_days_ago">%1$d days ago</string>
     <string name="shared_confirm_delete_title">Confirm Delete</string>
     <string name="shared_action_cannot_undo">This action cannot be undone.</string>
     <string name="shared_btn_copy">Copy</string>
@@ -307,7 +281,6 @@
     <string name="sessions_search_placeholder">Search sessions…</string>
     <string name="sessions_btn_new">New Session</string>
     <string name="sessions_count_format">%1$d sessions</string>
-    <string name="sessions_tag_session">SESSION</string>
     <string name="sessions_tag_pinned">PINNED</string>
 
     <!-- ============ Agent Edit ============ -->
@@ -1051,65 +1024,38 @@
     <!-- ============ RAG Module ============ -->
 
     <!-- RagHomeScreen -->
-    <string name="rag_home_title">Library</string>
     <string name="rag_home_subtitle">Documents, folders, and conversation memory you can search in chats.</string>
-    <string name="rag_home_search">Search documents…</string>
-    <string name="rag_home_memory_search">Search memory fragments and facts…</string>
-    <string name="rag_home_memory_search_empty">No matching memory fragments found</string>
     <string name="rag_search_fts_warning">Full-text search is unavailable. Showing title matches only.</string>
     <string name="rag_search_empty">No matching documents</string>
     <string name="rag_search_body_match">Body match</string>
     <string name="rag_search_title_fallback">Title fallback</string>
-    <string name="rag_home_documents">Documents</string>
-    <string name="rag_home_memory">Memory</string>
     <string name="rag_home_graph">Graph</string>
     <string name="rag_home_count_docs">%1$d documents</string>
     <string name="rag_home_count_items">%1$d items</string>
     <string name="rag_home_count_nodes">%1$d nodes</string>
     <string name="rag_home_section_collections">Collections</string>
     <string name="rag_home_new">New</string>
-    <string name="rag_home_new_folder_title">New Folder</string>
-    <string name="rag_home_folder_name">Folder Name</string>
     <string name="rag_home_graph_btn">Graph</string>
     <string name="rag_home_upload_area">Tap to upload documents</string>
     <string name="rag_home_upload_hint">Supports PDF, Markdown, TXT, max 50MB</string>
     <string name="rag_home_empty_title">No collections yet</string>
     <string name="rag_home_empty_subtitle">Upload documents or create a folder to get started.</string>
-    <string name="rag_home_search_results">Search Results</string>
     <string name="rag_home_recent_docs">Recent Documents</string>
     <string name="rag_home_memory_section">Memory</string>
-    <string name="rag_home_memory_empty_title">No Memories Yet</string>
-    <string name="rag_home_memory_empty">Memory summaries from sessions will appear here.</string>
-    <string name="rag_home_memory_search_empty_title">No Matching Memories</string>
-    <string name="rag_home_memory_footer_count">%1$d memories in total</string>
     <string name="rag_home_memory_stats">Memory Stats</string>
     <string name="rag_home_memory_total_count">Total: %1$d</string>
     <string name="rag_home_memory_est_tokens">~%1$d tokens</string>
-    <string name="rag_home_memory_delete_confirm_title">Delete this memory?</string>
-    <string name="rag_home_memory_delete_confirm_msg">This memory vector will be permanently removed.</string>
     <string name="rag_home_search_content_match">Content match</string>
     <string name="kg_view_global">Global</string>
     <string name="kg_view_session">Session</string>
     <string name="kg_view_document">Document</string>
     <string name="kg_empty_graph">No graph yet. Choose Extract knowledge graph in a document\'s menu.</string>
     <string name="rag_home_vectorizing">Vectorizing…</string>
-    <string name="rag_home_selected_count">%1$d items selected</string>
-    <string name="rag_home_clear_all">Clear all</string>
-    <string name="rag_home_move">Move</string>
-    <string name="rag_home_reindex">Re-index</string>
-    <string name="rag_home_move_to_folder">Move to Folder</string>
     <string name="rag_home_extract_kg">Extract Knowledge Graph</string>
     <string name="rag_home_extract_kg_full">Full Extraction (all chunks)</string>
     <string name="rag_home_extract_kg_summary">Summary-first (sampled)</string>
-    <string name="rag_home_docs_count">%1$d docs</string>
 
     <!-- RagFolderScreen -->
-    <string name="rag_folder_select_all">Select All</string>
-    <string name="rag_folder_deselect">Deselect All</string>
-    <string name="rag_folder_empty">No documents yet</string>
-    <string name="rag_folder_empty_subtitle">Upload documents to search them in chats.</string>
-    <string name="rag_folder_upload">Upload Document</string>
-    <string name="rag_folder_cd_open_document">Open %1$s</string>
 
     <!-- DocEditorScreen -->
     <string name="doc_editor_screen_title">Document</string>
@@ -1578,14 +1524,6 @@
     <string name="rag_index_retry_hint">Tap to retry indexing</string>
     <string name="rag_folder_cd_move">Move selected documents</string>
     <string name="rag_folder_cd_reindex">Re-index selected documents</string>
-    <string name="rag_folder_cd_move_to">Move to %1$s</string>
-    <string name="rag_status_go_to_settings">Settings</string>
-    <string name="rag_status_vectorizing">Vectorizing documents</string>
-    <string name="rag_status_kg_extracting">Extracting knowledge graph</string>
-    <string name="rag_status_tasks_running">Indexing tasks running</string>
-    <string name="rag_status_completed">Indexing complete</string>
-    <string name="rag_status_failed">Indexing failed</string>
-    <string name="rag_root_all_files">All Files</string>
     <string name="rag_back_to_parent">Back to parent</string>
 
     <plurals name="prompt_editor_word_count">

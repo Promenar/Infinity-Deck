@@ -11,7 +11,6 @@
     <string name="permanent_delete_rag_failed">部分文档删除失败，已保留选择以便重试。</string>
     <string name="permanent_delete_linux_message">文件将被永久删除，无法恢复。</string>
     <string name="permanent_delete_command_footer">命令可以永久删除文件。</string>
-    <string name="file_operation_too_large">项目过大。</string>
     <string name="file_cleanup_incomplete">文件清理未完成</string>
     <string name="permanent_delete_diff_omitted">已删除的内容不会保留。</string>
     <plurals name="permanent_delete_success">

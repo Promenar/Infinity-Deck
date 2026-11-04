@@ -29,14 +29,6 @@
     <plurals name="directory_op_failed_count">
         <item quantity="other">%1$d 项失败</item>
     </plurals>
-    <string name="directory_op_name_invalid">名称不可用</string>
-    <string name="directory_op_name_exists">已有同名项</string>
-    <string name="directory_op_not_found">文件已不存在</string>
-    <string name="directory_op_inside_source">不能移入自身</string>
-    <string name="directory_op_read_only">工作区只读</string>
-    <string name="directory_op_unavailable">工作区不可用</string>
-    <string name="directory_op_busy">生成中，稍后再试</string>
-    <string name="directory_op_failed">操作失败</string>
 
     <string name="directory_op_failed_reason">%1$s：%2$s</string>
 

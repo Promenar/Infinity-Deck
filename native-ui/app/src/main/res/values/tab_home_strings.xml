@@ -10,7 +10,4 @@
         <item quantity="one">%1$d session</item>
         <item quantity="other">%1$d sessions</item>
     </plurals>
-    <string name="rag_home_add">Add</string>
-    <string name="rag_home_section_browse">Browse</string>
-    <string name="rag_home_graph_desc">Entities and relations extracted from documents and chats</string>
 </resources>

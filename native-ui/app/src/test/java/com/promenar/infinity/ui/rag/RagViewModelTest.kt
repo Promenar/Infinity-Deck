@@ -204,21 +204,17 @@ class RagViewModelTest {
         val versionA = fileEntry("versioned-kg", "versioned.txt", materializedPath = "/versioned.txt")
             .copy(hash = "hash-a", mimeType = "text/plain", kgStrategy = "partial:2:5:1")
         listener!!.invoke(listOf(old), old)
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(versionA, vm.kgExtractionStates.value))
-            .isEqualTo(KgStatus.PARTIAL)
+        assertThat(vm.kgExtractionStates.value[versionA.uuid]).isEqualTo(KgStatus.PARTIAL)
 
         val current = old.copy(id = "version-b", status = "pending", kgStrategy = null,
             targetContentHash = "hash-b", targetEpoch = 2, updatedAt = 2)
         listener!!.invoke(listOf(old, current), current)
 
         assertThat(vm.kgExtractionStates.value).doesNotContainKey("versioned-kg")
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(
-            versionA.copy(hash = "hash-b", updatedAt = 2), vm.kgExtractionStates.value))
-            .isEqualTo(KgStatus.NOT_STARTED)
     }
 
     @Test
-    fun `手动KG队列失败在UI显示失败且ViewModel重建不丢失持久完成态`() = runTest {
+    fun `手动KG队列失败状态发布且重建不保留旧失败`() = runTest {
         var listener: ((List<com.promenar.infinity.data.rag.VectorizationTask>, com.promenar.infinity.data.rag.VectorizationTask?) -> Unit)? = null
         every { vectorizationQueue.setOnStateChange(any()) } answers {
             listener = firstArg()
@@ -238,15 +234,7 @@ class RagViewModelTest {
 
         val recreated = createViewModel()
         advanceUntilIdle()
-        val persisted = file.copy(kgExtractedAt = file.updatedAt)
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(persisted, recreated.kgExtractionStates.value))
-            .isEqualTo(KgStatus.COMPLETED)
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(persisted.copy(updatedAt = persisted.updatedAt + 1), emptyMap()))
-            .isEqualTo(KgStatus.NOT_STARTED)
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(file.copy(kgExtractedAt = null), mapOf("kg" to KgStatus.COMPLETED)))
-            .isEqualTo(KgStatus.NOT_STARTED)
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(persisted.copy(updatedAt = persisted.updatedAt + 1), mapOf("kg" to KgStatus.COMPLETED)))
-            .isEqualTo(KgStatus.NOT_STARTED)
+        assertThat(recreated.kgExtractionStates.value["kg"]).isNotEqualTo(KgStatus.FAILED)
     }
 
     @Test

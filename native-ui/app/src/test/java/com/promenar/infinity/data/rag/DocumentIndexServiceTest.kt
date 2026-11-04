@@ -555,8 +555,6 @@ class DocumentIndexServiceTest {
         assertThat(service.rebuild(changed())).isInstanceOf(DocumentIndexResult.Rebuilt::class.java)
         val reloaded = database.fileEntryDao().getByUuid(ROOT, FILE)!!
         assertThat(reloaded.kgExtractedAt).isEqualTo(EPOCH)
-        assertThat(com.promenar.infinity.ui.chat.components.resolveKgStatus(reloaded, emptyMap()))
-            .isEqualTo(com.promenar.infinity.ui.common.KgStatus.COMPLETED)
     }
 
     @Test

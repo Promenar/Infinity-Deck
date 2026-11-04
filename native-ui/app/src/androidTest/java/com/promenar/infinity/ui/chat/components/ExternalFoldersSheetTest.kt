@@ -70,6 +70,23 @@ class ExternalFoldersSheetTest {
         rule.onNodeWithText(text(R.string.mount_section_mounted)).assertIsDisplayed()
     }
 
+    @Test
+    fun managerOnlyOpensWithoutInlineEntryAndDismisses() {
+        var dismissed = false
+        rule.setContent {
+            InfinityTheme {
+                ExternalFoldersPanel(
+                    sessionId = "s1", workspaceRootUuid = null, manager = FakeManager(), onReindex = null,
+                    managerOnly = true, onManagerDismiss = { dismissed = true },
+                )
+            }
+        }
+        rule.onNodeWithTag("external_folders_entry").assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.mount_section_mounted)).assertIsDisplayed()
+        Espresso.pressBack()
+        rule.runOnIdle { check(dismissed) }
+    }
+
     private class FakeManager : IExternalFolderManager {
         private val mount = ExternalMount("m1", "photos", "saf_tree", "content://tree", "s1", createdAt = 0)
         override fun observeMounts(sessionId: String): Flow<List<ExternalMount>> = flowOf(listOf(mount))

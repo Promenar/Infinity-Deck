@@ -1,46 +1,34 @@
 package com.promenar.infinity.ui.chat.components
 
-import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
-import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
-import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -51,73 +39,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
-import com.promenar.infinity.data.local.db.entity.FileEntry
-import com.promenar.infinity.domain.storage.IExternalFolderManager
-import com.promenar.infinity.domain.workspace.DirectoryFileOpCode
-import com.promenar.infinity.ui.common.FolderStatusMessage
-import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
-import com.promenar.infinity.ui.common.InfinitySettingsGroup
-import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.theme.InfinitySpacing
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
-import com.promenar.infinity.ui.common.InfinityMetaLine
-
-/** 目录工作区的文件操作回调；为 null 时浏览器保持只读。 */
-internal data class DirectoryFileActions(
-    val onToggleSelect: (String) -> Unit,
-    val onClearSelection: () -> Unit,
-    val onCopy: (cut: Boolean) -> Unit,
-    val onPaste: () -> Unit,
-    val onCancelClipboard: () -> Unit,
-    val onDelete: () -> Unit,
-    val onCreateFolder: (name: String, onResult: (DirectoryFileOpCode?) -> Unit) -> Unit,
-    val onRename: (path: String, name: String, onResult: (DirectoryFileOpCode?) -> Unit) -> Unit,
-    val onDismissOutcome: () -> Unit,
-)
-
-/** 私有工作区文件页的长按操作回调；条目以 UUID 标识，为 null 时文件页保持只读。 */
-internal data class PrivateFileActions(
-    val onToggleSelect: (FileEntry) -> Unit,
-    val onClearSelection: () -> Unit,
-    val onCut: () -> Unit,
-    val onPaste: (targetParentUuid: String) -> Unit,
-    val onCancelClipboard: () -> Unit,
-    val onDelete: () -> Unit,
-    val onRename: (uuid: String, name: String, onResult: (DirectoryFileOpCode?) -> Unit) -> Unit,
-    val onDismissOutcome: () -> Unit,
-)
-
-@Composable
-internal fun directoryOpCodeText(code: DirectoryFileOpCode): String = stringResource(
-    when (code) {
-        DirectoryFileOpCode.NAME_INVALID -> R.string.directory_op_name_invalid
-        DirectoryFileOpCode.NAME_EXISTS -> R.string.directory_op_name_exists
-        DirectoryFileOpCode.NOT_FOUND -> R.string.directory_op_not_found
-        DirectoryFileOpCode.TARGET_INSIDE_SOURCE -> R.string.directory_op_inside_source
-        DirectoryFileOpCode.READ_ONLY -> R.string.directory_op_read_only
-        DirectoryFileOpCode.WORKSPACE_UNAVAILABLE -> R.string.directory_op_unavailable
-        DirectoryFileOpCode.SESSION_BUSY -> R.string.directory_op_busy
-        DirectoryFileOpCode.TOO_LARGE -> R.string.file_operation_too_large
-        DirectoryFileOpCode.IO -> R.string.directory_op_failed
-    },
-)
-
-@Composable
-internal fun directoryOutcomeSegments(outcome: DirectoryOpOutcome): List<String> {
-    val done = when (outcome.op) {
-        DirectoryOp.COPY -> pluralStringResource(R.plurals.directory_op_copied, outcome.succeeded, outcome.succeeded)
-        DirectoryOp.MOVE -> pluralStringResource(R.plurals.directory_op_moved, outcome.succeeded, outcome.succeeded)
-        DirectoryOp.DELETE -> pluralStringResource(R.plurals.directory_op_deleted, outcome.succeeded, outcome.succeeded)
-    }
-    if (outcome.failed == 0) return listOf(done)
-    val count = pluralStringResource(R.plurals.directory_op_failed_count, outcome.failed, outcome.failed)
-    val failed = outcome.reason?.let { stringResource(R.string.directory_op_failed_reason, count, directoryOpCodeText(it)) } ?: count
-    return if (outcome.succeeded == 0) listOf(failed) else listOf(done, failed)
-}
 
 /**
  * 选择期间的底部操作栏；重命名只对单个条目可用，[onCopy] 为 null 的来源不显示复制。
@@ -224,32 +149,4 @@ internal fun DirectoryPasteBar(
             )
         }
     }
-}
-
-@Composable
-internal fun DirectoryOutcomeLine(outcome: DirectoryOpOutcome) {
-    InfinityMetaLine(
-        directoryOutcomeSegments(outcome),
-        style = MaterialTheme.typography.bodySmall,
-        color = if (outcome.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall)
-            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
-            .testTag("directory_outcome"),
-    )
-}
-
-@Composable
-internal fun DirectoryDeleteDialog(count: Int, onConfirm: () -> Unit, onCancel: () -> Unit) {
-    InfinityConfirmDialog(
-        onDismissRequest = onCancel,
-        title = pluralStringResource(R.plurals.permanent_delete_title, count, count),
-        message = stringResource(R.string.permanent_delete_message),
-        confirmText = stringResource(R.string.permanent_delete_action),
-        onConfirm = onConfirm,
-        onCancel = onCancel,
-        isDestructive = true,
-        confirmButtonModifier = Modifier.testTag("directory_delete_confirm"),
-    )
 }

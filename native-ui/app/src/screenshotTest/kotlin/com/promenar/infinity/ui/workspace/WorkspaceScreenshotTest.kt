@@ -19,12 +19,6 @@ import com.promenar.infinity.data.workspace.WorkspaceFolder
 import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.workspace.DirectoryFileOpCode
 import com.promenar.infinity.domain.workspace.PrivateWorkspaceSummary
-import com.promenar.infinity.ui.chat.components.DirectoryBrowserState
-import com.promenar.infinity.ui.chat.components.DirectoryClipboard
-import com.promenar.infinity.ui.chat.components.DirectoryFileActions
-import com.promenar.infinity.ui.chat.components.DirectoryOp
-import com.promenar.infinity.ui.chat.components.DirectoryOpOutcome
-import com.promenar.infinity.ui.chat.components.DirectoryWorkspaceBrowser
 import com.promenar.infinity.ui.chat.components.ExternalTextPreview
 import com.promenar.infinity.ui.theme.InfinityColorSource
 import com.promenar.infinity.ui.theme.InfinityTheme
@@ -279,52 +273,6 @@ fun knowledgeWorkspaceFilePreview() = SheetFrame(stringResource(R.string.workspa
         notice = KnowledgeImportNotice.Imported,
     )
 }
-
-private val DirectoryEntries = listOf(
-    ExternalFolderEntry("/assets", "assets", true, 0, 0),
-    ExternalFolderEntry("/src", "src", true, 0, 0),
-    ExternalFolderEntry("/README.md", "README.md", false, 4_096, 0),
-    ExternalFolderEntry("/架构说明-检索与重排流程.md", "架构说明-检索与重排流程.md", false, 18_432, 0),
-)
-
-private val NoopFileActions = DirectoryFileActions(
-    onToggleSelect = {}, onClearSelection = {}, onCopy = {}, onPaste = {}, onCancelClipboard = {},
-    onDelete = {}, onCreateFolder = { _, _ -> }, onRename = { _, _, _ -> }, onDismissOutcome = {},
-)
-
-@Composable
-private fun DirectoryBrowserPreview(state: DirectoryBrowserState, mode: InfinityThemeMode = InfinityThemeMode.DARK) = WorkspaceTheme(mode) {
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        DirectoryWorkspaceBrowser(
-            rootTitle = Project.displayName,
-            state = state,
-            onNavigate = {}, onOpenFile = {}, onCloseFile = {}, onRefresh = {},
-            readFile = { _, _ -> ByteArray(0) },
-            fileActions = NoopFileActions,
-        )
-    }
-}
-
-@PreviewTest
-@Preview(name = "目录工作区 多选 深中411", widthDp = 411, heightDp = 640, locale = "zh-rCN")
-@Preview(name = "目录工作区 多选 深中360 大字", widthDp = 360, heightDp = 720, locale = "zh-rCN", fontScale = 1.3f)
-@Composable
-fun directoryWorkspaceSelectionPreview() = DirectoryBrowserPreview(
-    DirectoryBrowserState(entries = DirectoryEntries, selection = setOf("/src", "/README.md")),
-)
-
-@PreviewTest
-@Preview(name = "目录工作区 粘贴与部分失败 浅英411", widthDp = 411, heightDp = 640, locale = "en")
-@Composable
-fun directoryWorkspacePastePreview() = DirectoryBrowserPreview(
-    DirectoryBrowserState(
-        path = "/src",
-        entries = listOf(ExternalFolderEntry("/src/main.kt", "main.kt", false, 1_024, 0)),
-        clipboard = DirectoryClipboard(listOf("/README.md", "/assets"), cut = true),
-        outcome = DirectoryOpOutcome(DirectoryOp.MOVE, succeeded = 1, failed = 1, reason = DirectoryFileOpCode.NAME_EXISTS),
-    ),
-    InfinityThemeMode.LIGHT,
-)
 
 @PreviewTest
 @Preview(name = "删除会话 保留文件 深中411", widthDp = 411, heightDp = 480, locale = "zh-rCN")

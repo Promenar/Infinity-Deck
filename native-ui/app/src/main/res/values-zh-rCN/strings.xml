@@ -229,11 +229,7 @@
     <string name="share_import_reason_write">保存文件失败</string>
     <string name="share_import_reason_index">索引任务无法持久化，文件未导入</string>
     <string name="resource_explorer_title">资源管理器</string>
-    <string name="resource_explorer_search_placeholder">搜索文件…</string>
-    <string name="resource_explorer_files_heading">文件</string>
-    <string name="resource_explorer_importing">正在导入</string>
     <string name="resource_explorer_import_files">导入文件</string>
-    <string name="resource_explorer_workspace_root">工作区</string>
     <string name="resource_explorer_retry_document">重试 %1$s</string>
     <string name="resource_explorer_import_status">导入状态</string>
     <string name="resource_explorer_clear_results">清除结果</string>
@@ -242,29 +238,7 @@
     <string name="resource_explorer_status_created">已导入</string>
     <string name="resource_explorer_status_rejected">已拒绝：%1$s</string>
     <string name="resource_explorer_reason_unknown">未知原因</string>
-    <string name="files_selected_count">已选 %1$d 项</string>
-    <string name="files_cancel">取消</string>
-    <string name="files_reindex">重新索引</string>
-    <string name="files_extract_knowledge_graph">提取知识图谱</string>
-    <string name="files_view_graph">查看图谱</string>
-    <string name="files_view_folder_graph">查看目录图谱</string>
-    <string name="files_rename">重命名</string>
-    <string name="files_move_to">移动到…</string>
-    <string name="files_transfer_to_knowledge_base">转存到资料</string>
-    <string name="files_tag_system">系统</string>
-    <string name="files_tag_session">会话</string>
     <string name="files_session_workspaces_title">会话工作区</string>
-    <string name="files_multi_select">多选模式</string>
-    <string name="files_new_name">新名称</string>
-    <string name="files_confirm">确定</string>
-    <string name="files_no_available_folders">没有可用的目录</string>
-    <string name="files_root_directory">根目录</string>
-    <string name="files_empty_title">暂无文件</string>
-    <string name="files_empty_subtitle">导入文件，或让 AI 在对话中创建</string>
-    <string name="files_time_just_now">刚刚</string>
-    <string name="files_time_minutes_ago">%1$d 分钟前</string>
-    <string name="files_time_hours_ago">%1$d 小时前</string>
-    <string name="files_time_days_ago">%1$d 天前</string>
     <string name="shared_confirm_delete_title">确认删除</string>
     <string name="shared_action_cannot_undo">此操作无法撤销。</string>
     <string name="shared_btn_copy">复制</string>
@@ -301,7 +275,6 @@
     <string name="sessions_search_placeholder">搜索会话…</string>
     <string name="sessions_btn_new">新建会话</string>
     <string name="sessions_count_format">%1$d 个会话</string>
-    <string name="sessions_tag_session">会话</string>
     <string name="sessions_tag_pinned">已置顶</string>
 
     <!-- ============ Agent Edit ============ -->
@@ -1052,65 +1025,38 @@
     <!-- ============ RAG Module ============ -->
 
     <!-- RagHomeScreen -->
-    <string name="rag_home_title">资料</string>
     <string name="rag_home_subtitle">文档、文件夹与对话记忆，可在对话中检索。</string>
-    <string name="rag_home_search">搜索文档…</string>
-    <string name="rag_home_memory_search">搜索记忆碎片与事实…</string>
-    <string name="rag_home_memory_search_empty">未找到匹配的记忆碎片</string>
     <string name="rag_search_fts_warning">全文搜索暂不可用，仅显示标题匹配。</string>
     <string name="rag_search_empty">没有匹配的文档</string>
     <string name="rag_search_body_match">正文命中</string>
     <string name="rag_search_title_fallback">标题回退</string>
-    <string name="rag_home_documents">文档</string>
-    <string name="rag_home_memory">记忆</string>
     <string name="rag_home_graph">图谱</string>
     <string name="rag_home_count_docs">%1$d 份</string>
     <string name="rag_home_count_items">%1$d 条</string>
     <string name="rag_home_count_nodes">%1$d 个</string>
     <string name="rag_home_section_collections">集合</string>
     <string name="rag_home_new">新建</string>
-    <string name="rag_home_new_folder_title">新建文件夹</string>
-    <string name="rag_home_folder_name">文件夹名称</string>
     <string name="rag_home_graph_btn">图谱</string>
     <string name="rag_home_upload_area">点击上传文档</string>
     <string name="rag_home_upload_hint">支持 PDF, Markdown, TXT, 最大 50MB</string>
     <string name="rag_home_empty_title">暂无集合</string>
     <string name="rag_home_empty_subtitle">上传文档或创建文件夹以开始。</string>
-    <string name="rag_home_search_results">搜索结果</string>
     <string name="rag_home_recent_docs">最近文档</string>
     <string name="rag_home_memory_section">记忆</string>
-    <string name="rag_home_memory_empty_title">暂无记忆</string>
-    <string name="rag_home_memory_empty">来自会话的记忆摘要将显示在此处。</string>
-    <string name="rag_home_memory_search_empty_title">未找到匹配记忆</string>
-    <string name="rag_home_memory_footer_count">共 %1$d 条记忆</string>
     <string name="rag_home_memory_stats">记忆统计</string>
     <string name="rag_home_memory_total_count">总计: %1$d</string>
     <string name="rag_home_memory_est_tokens">约 %1$d Token</string>
-    <string name="rag_home_memory_delete_confirm_title">删除此记忆？</string>
-    <string name="rag_home_memory_delete_confirm_msg">此记忆向量将被永久删除。</string>
     <string name="rag_home_search_content_match">内容匹配</string>
     <string name="kg_view_global">全局</string>
     <string name="kg_view_session">会话</string>
     <string name="kg_view_document">文档</string>
     <string name="kg_empty_graph">暂无图谱。在文档菜单中选择“抽取知识图谱”。</string>
     <string name="rag_home_vectorizing">正在向量化…</string>
-    <string name="rag_home_selected_count">已选择 %1$d 项</string>
-    <string name="rag_home_clear_all">清除全部</string>
-    <string name="rag_home_move">移动</string>
-    <string name="rag_home_reindex">重新向量化</string>
-    <string name="rag_home_move_to_folder">移动到文件夹</string>
     <string name="rag_home_extract_kg">抽取知识图谱</string>
     <string name="rag_home_extract_kg_full">全量抽取（所有分块）</string>
     <string name="rag_home_extract_kg_summary">摘要优先（采样抽取）</string>
-    <string name="rag_home_docs_count">%1$d 文档</string>
 
     <!-- RagFolderScreen -->
-    <string name="rag_folder_select_all">全选</string>
-    <string name="rag_folder_deselect">取消全选</string>
-    <string name="rag_folder_empty">暂无文档</string>
-    <string name="rag_folder_empty_subtitle">上传文档后即可在对话中检索。</string>
-    <string name="rag_folder_upload">上传文档</string>
-    <string name="rag_folder_cd_open_document">打开 %1$s</string>
 
     <!-- DocEditorScreen -->
     <string name="doc_editor_screen_title">文档</string>
@@ -1573,14 +1519,6 @@
     <string name="rag_index_retry_hint">点按重试索引</string>
     <string name="rag_folder_cd_move">移动所选文档</string>
     <string name="rag_folder_cd_reindex">重新索引所选文档</string>
-    <string name="rag_folder_cd_move_to">移动到 %1$s</string>
-    <string name="rag_status_go_to_settings">去设置</string>
-    <string name="rag_status_vectorizing">文档向量化中</string>
-    <string name="rag_status_kg_extracting">知识图谱抽取中</string>
-    <string name="rag_status_tasks_running">后台索引任务运行中</string>
-    <string name="rag_status_completed">索引已完成</string>
-    <string name="rag_status_failed">索引任务失败</string>
-    <string name="rag_root_all_files">全部文件</string>
     <string name="rag_back_to_parent">返回上一级</string>
 
     <plurals name="prompt_editor_word_count">

@@ -165,7 +165,7 @@ class RagViewModel(
 
     private val vectorStatsService = VectorStatsService(vectorRepository)
 
-    /** 当前工作区根目录的 FileEntry UUID（首个根目录，用于 FilesPanel） */
+    /** 当前工作区根目录的 FileEntry UUID（首个根目录） */
     private val _workspaceRootUuid = MutableStateFlow<String?>(null)
     val workspaceRootUuid: StateFlow<String?> = _workspaceRootUuid.asStateFlow()
 
@@ -768,7 +768,7 @@ class RagViewModel(
         app.rebuildMemoryManager()
         app.rebuildGraphExtractor()
     }
-    /** 暴露工作区仓库供 UI 层 FilesPanel 使用（支持挂载会话工作区的全局资源聚合仓库） */
+    /** 提供支持会话工作区挂载的全局资源聚合仓库 */
     fun getWorkspaceRepo(): IWorkspaceRepository = compositeWorkspaceRepository
 
     /**

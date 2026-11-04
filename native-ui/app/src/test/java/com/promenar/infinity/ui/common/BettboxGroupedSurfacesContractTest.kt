@@ -66,14 +66,11 @@ class BettboxGroupedSurfacesContractTest {
     }
 
     @Test
-    fun `对话页与资料页按设置页的分组面组织`() {
+    fun `智能体页面按设置页的分组面组织`() {
         val agentHub = source("hub/AgentHubScreen.kt")
-        val ragHome = source("rag/RagHomeScreen.kt")
 
         assertThat(agentHub).contains("InfinitySettingsSection(")
         assertThat(agentHub).contains("headerStartPadding = InfinitySpacing.ScreenHorizontal")
-        assertThat(ragHome).contains("InfinitySettingsSection(")
-        assertThat(ragHome).contains("bettboxListGroupItem(index, filteredMemories.size)")
     }
 
     @Test

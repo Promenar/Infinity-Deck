@@ -1,21 +1,14 @@
 package com.promenar.infinity.ui.chat
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import com.promenar.infinity.ui.common.inspectorTopGap
-import com.promenar.infinity.ui.theme.InfinityMotion
-import androidx.compose.runtime.remember
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import com.promenar.infinity.ui.common.InfinityIdentifierText
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -26,29 +19,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.HourglassTop
-import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.layout.PaddingValues
-import com.promenar.infinity.ui.common.InfinityPageLayout
-import com.promenar.infinity.ui.common.InfinityRetryButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,47 +51,41 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.promenar.infinity.R
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
-import com.promenar.infinity.ui.chat.components.WorkspaceFolderBrowser
-import com.promenar.infinity.ui.chat.components.ResourceExplorerViewModel
-import com.promenar.infinity.ui.chat.components.ResourceExplorerWorkspaceMode
-import com.promenar.infinity.ui.chat.components.DirectoryFileActions
-import com.promenar.infinity.ui.chat.components.PrivateFileActions
-import com.promenar.infinity.ui.chat.components.DirectoryWorkspaceBrowser
-import com.promenar.infinity.ui.chat.components.ExternalFoldersPanel
-import com.promenar.infinity.ui.chat.components.rememberWorkspaceMediaOpener
+import com.promenar.infinity.R
 import com.promenar.infinity.share.core.ShareImportItem
 import com.promenar.infinity.share.core.ShareImportStatus
 import com.promenar.infinity.share.core.ShareRejectReason
 import com.promenar.infinity.share.core.SharedFileImporter
+import com.promenar.infinity.ui.chat.components.ExternalFoldersPanel
+import com.promenar.infinity.ui.chat.components.ResourceExplorerViewModel
+import com.promenar.infinity.ui.chat.components.ResourceExplorerWorkspaceMode
 import com.promenar.infinity.ui.common.BettboxListGroup
-import com.promenar.infinity.ui.common.InfinityNavigationHeader
-import com.promenar.infinity.ui.theme.hierarchicalTransition
-import com.promenar.infinity.ui.common.InfinityPageSearch
-import com.promenar.infinity.ui.common.InfinityToolbarSearch
-import com.promenar.infinity.ui.git.GitEntrySummary
-import com.promenar.infinity.ui.git.GitWorkspaceEntry
+import com.promenar.infinity.ui.common.InfinityIdentifierText
+import com.promenar.infinity.ui.common.InfinityRetryButton
+import com.promenar.infinity.ui.common.InfinitySearchTopBar
+import com.promenar.infinity.ui.common.inspectorTopGap
+import com.promenar.infinity.ui.files.FileFolderAction
+import com.promenar.infinity.ui.files.FileManagerHostSpec
+import com.promenar.infinity.ui.files.FileManagerLeading
+import com.promenar.infinity.ui.files.FileManagerPane
+import com.promenar.infinity.ui.files.state.FileManagerScope
+import com.promenar.infinity.ui.files.state.FileManagerViewModel
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 
-/**
- * 资源管理器二级页面：由 [com.promenar.infinity.ui.common.InfinityAdaptivePaneHost] 承载，窄窗口整页、宽窗口停靠侧栏。
- * Git 变更作为上一层压在本页之上打开，返回后本页的目录位置保持不变。
- */
+/** 会话资源管理器由统一文件组件承载。 */
 @Composable
 fun ResourceExplorerPage(
-    /** 为空时（检视器根层）不画顶栏：页签已写明所在页，由收起按钮离开。 */
     onBack: (() -> Unit)?,
     onOpenGit: () -> Unit,
-    /** Git 页关闭时递增；本页据此刷新 Git 入口的分支与改动数。 */
     gitRefreshKey: Int,
     sessionId: String,
     chatViewModel: ChatViewModel,
-    /** 打开后定位到的工作区虚拟目录；不存在时定位到最近的已存在上级。 */
     initialFolderPath: String? = null,
     viewModel: ResourceExplorerViewModel = viewModel(
         factory = ResourceExplorerViewModel.factory(
@@ -111,241 +93,145 @@ fun ResourceExplorerPage(
         )
     )
 ) {
-    val externalFolderManager = (LocalContext.current.applicationContext as? InfinityApplication)?.externalFolderManager
-    DisposableEffect(sessionId, viewModel) {
-        viewModel.loadSession(sessionId)
-        onDispose { viewModel.deactivateSession() }
-    }
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val app = LocalContext.current.applicationContext as InfinityApplication
+    val controller: FileManagerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        key = "resource-explorer-$sessionId",
+        factory = FileManagerViewModel.factory(app.fileManagerServices, FileManagerScope.Session(sessionId), null),
+    )
+    val fileState by controller.state.collectAsStateWithLifecycle()
+    val workspaceMode by viewModel.workspaceMode.collectAsStateWithLifecycle()
     val workspaceRootUuid by viewModel.workspaceRootUuid.collectAsStateWithLifecycle()
-    val rootFiles by viewModel.rootFiles.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val loadError by viewModel.loadError.collectAsStateWithLifecycle()
     val importItems by viewModel.importItems.collectAsStateWithLifecycle()
     val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
-    val gitEntry by viewModel.gitEntry.collectAsStateWithLifecycle()
-    val workspaceMode by viewModel.workspaceMode.collectAsStateWithLifecycle()
-    val directory by viewModel.directory.collectAsStateWithLifecycle()
-    val privateFiles by viewModel.privateFiles.collectAsStateWithLifecycle()
-    val privateFileActions = remember(viewModel) {
-        if (!viewModel.privateFileOpsAvailable) null else PrivateFileActions(
-            onToggleSelect = viewModel::togglePrivateSelection,
-            onClearSelection = viewModel::clearPrivateSelection,
-            onCut = viewModel::cutPrivateSelection,
-            onPaste = viewModel::pastePrivateClipboard,
-            onCancelClipboard = viewModel::clearPrivateClipboard,
-            onDelete = viewModel::deletePrivateSelection,
-            onRename = viewModel::renamePrivateEntry,
-            onDismissOutcome = viewModel::dismissPrivateOutcome,
-        )
-    }
-    var searchActive by rememberSaveable(sessionId) { mutableStateOf(searchQuery.isNotEmpty()) }
     val chatState by chatViewModel.uiState.collectAsStateWithLifecycle()
-    // 工作区在顶栏状态行切换；本页打开期间工作区变化时重新加载文件。会话尚未读出时为 null，不算变化。
-    val boundWorkspace = chatState.session?.let { it.workspaceId.orEmpty() }
-    val shownWorkspace = remember(sessionId) { arrayOfNulls<String>(1) }
+    var managerOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var initialPathHandled by rememberSaveable(sessionId, initialFolderPath) { mutableStateOf(false) }
+
+    DisposableEffect(sessionId, viewModel) {
+        viewModel.loadSession(sessionId)
+        onDispose { viewModel.deactivateSession() }
+    }
+    val boundWorkspace = chatState.session?.takeIf { it.id == sessionId }?.let {
+        Triple(it.workspaceId, it.branchPlanJson, it.worktreeDirectory)
+    }
+    val shownWorkspace = remember(sessionId) { arrayOfNulls<Triple<String?, String?, String?>>(1) }
     LaunchedEffect(boundWorkspace) {
         if (boundWorkspace == null) return@LaunchedEffect
         val previous = shownWorkspace[0]
         shownWorkspace[0] = boundWorkspace
-        if (previous != null && previous != boundWorkspace) viewModel.retryLoadSession()
+        if (previous != null && previous != boundWorkspace) viewModel.onWorkspaceBindingChanged()
     }
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments(),
-    ) { uris ->
-        if (uris.isNotEmpty()) viewModel.importDocuments(uris)
+    LaunchedEffect(gitRefreshKey) { controller.refresh() }
+    LaunchedEffect(importItems, isImporting) {
+        if (importItems.isNotEmpty() && !isImporting) controller.refresh()
     }
-
-    val initialGitRefreshKey = remember { gitRefreshKey }
-    LaunchedEffect(gitRefreshKey) {
-        if (gitRefreshKey != initialGitRefreshKey) viewModel.refreshGitEntry()
+    LaunchedEffect(sessionId, initialFolderPath, fileState.location?.id, workspaceMode) {
+        val path = initialFolderPath?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val location = fileState.location ?: return@LaunchedEffect
+        if (!initialPathHandled && workspaceMode != ResourceExplorerWorkspaceMode.Resolving &&
+            workspaceMode !is ResourceExplorerWorkspaceMode.Unavailable
+        ) {
+            initialPathHandled = true
+            controller.openLocation(location.id, path)
+        }
     }
-
-    InfinityPageLayout(
-        title = stringResource(R.string.resource_explorer_title),
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty() && viewModel.workspaceMode.value == ResourceExplorerWorkspaceMode.Private &&
+            canImportIntoSessionLocation(sessionId, controller.state.value.location?.id, viewModel.isImporting.value)
+        ) viewModel.importDocuments(uris)
+    }
+    val importLabel = stringResource(R.string.resource_explorer_import_files)
+    val externalLabel = stringResource(R.string.mount_title)
+    val actions = buildList {
+        if (workspaceMode == ResourceExplorerWorkspaceMode.Private &&
+            canImportIntoSessionLocation(sessionId, fileState.location?.id, isImporting)
+        ) {
+            add(FileFolderAction("session-import", Icons.Rounded.UploadFile, importLabel) { _, _ ->
+                filePicker.launch(SharedFileImporter.SUPPORTED_MIME_TYPES.toTypedArray())
+            })
+        }
+        add(FileFolderAction("session-external-folders", Icons.Rounded.FolderOpen, externalLabel) { _, _ ->
+            managerOpen = true
+        })
+    }
+    ResourceExplorerBody(
+        workspaceMode = workspaceMode,
+        isLoading = isLoading,
+        hasLoadError = loadError != null,
+        importItems = importItems,
+        isImporting = isImporting,
+        onRetryLoad = viewModel::retryLoadSession,
+        onRetryImport = viewModel::retryImport,
+        onClearImportResults = viewModel::clearImportResults,
         onBack = onBack,
-        showTopBar = onBack != null,
-        scrollable = false,
-        bodyPadding = PaddingValues(
-            start = InfinitySpacing.ScreenHorizontal,
-            end = InfinitySpacing.ScreenHorizontal,
-            top = if (onBack == null) inspectorTopGap() else 0.dp,
-            bottom = InfinitySpacing.Large,
-        ),
+        modifier = Modifier.padding(top = if (onBack == null) inspectorTopGap() else 0.dp),
     ) {
-        ResourceExplorerSheetContent(
-            state = ResourceExplorerSheetState(
-                searchQuery = searchQuery,
-                searchActive = searchActive,
-                workspaceReady = workspaceRootUuid != null,
-                importItems = importItems,
-                isImporting = isImporting,
-                isLoading = isLoading,
-                hasLoadError = loadError != null,
-                gitEntry = gitEntry,
-                workspaceMode = workspaceMode,
-            ),
-            actions = ResourceExplorerSheetActions(
-                onOpenGitPanel = onOpenGit,
-                onSearchQueryChanged = viewModel::updateSearchQuery,
-                onSearchActiveChange = { searchActive = it },
-                onImportFiles = {
-                    filePicker.launch(SharedFileImporter.SUPPORTED_MIME_TYPES.toTypedArray())
-                },
-                onRetryImport = viewModel::retryImport,
-                onClearImportResults = viewModel::clearImportResults,
-                onRetryLoad = viewModel::retryLoadSession,
-            ),
-            filesContent = {
-                val directoryMode = workspaceMode as? ResourceExplorerWorkspaceMode.Directory
-                if (directoryMode != null) {
-                    // 目录工作区内的路径以目录根为 `/`，与 Agent 和媒体解析器看到的虚拟路径一致。
-                    val openMedia = rememberWorkspaceMediaOpener(sessionId, directoryMode.displayName)
-                    DirectoryWorkspaceBrowser(
-                        rootTitle = directoryMode.displayName,
-                        state = directory,
-                        onNavigate = viewModel::openDirectory,
-                        onOpenFile = viewModel::openDirectoryFile,
-                        onCloseFile = viewModel::closeDirectoryFile,
-                        onRefresh = viewModel::refreshDirectory,
-                        readFile = viewModel::readDirectoryFile,
-                        onOpenMedia = openMedia?.let { open -> { entry -> open(entry.path) } },
-                        fileActions = remember(viewModel) {
-                            DirectoryFileActions(
-                                onToggleSelect = viewModel::toggleDirectorySelection,
-                                onClearSelection = viewModel::clearDirectorySelection,
-                                onCopy = viewModel::copyDirectorySelection,
-                                onPaste = viewModel::pasteDirectoryClipboard,
-                                onCancelClipboard = viewModel::clearDirectoryClipboard,
-                                onDelete = viewModel::deleteDirectorySelection,
-                                onCreateFolder = viewModel::createDirectoryFolder,
-                                onRename = viewModel::renameDirectoryEntry,
-                                onDismissOutcome = viewModel::dismissDirectoryOutcome,
-                            )
-                        },
-                        rootHeader = {
-                            // 目录工作区下 /mnt 挂载仍对 Agent 生效。
-                            externalFolderManager?.let { manager ->
-                                ExternalFoldersPanel(
-                                    sessionId = sessionId,
-                                    workspaceRootUuid = null,
-                                    manager = manager,
-                                    onReindex = null,
-                                )
-                            }
-                        },
-                    )
-                } else WorkspaceFolderBrowser(
-                    workspaceRootUuid = workspaceRootUuid,
-                    workspaceRepo = viewModel.workspaceRepo,
-                    sessionId = sessionId,
-                    externalFolderManager = externalFolderManager,
-                    searchQuery = searchQuery,
-                    rootFiles = rootFiles,
-                    isLoading = isLoading,
-                    hasLoadError = loadError != null,
-                    onRetryLoad = viewModel::retryLoadSession,
-                    onClearSearch = {
-                        viewModel.updateSearchQuery("")
-                        searchActive = false
-                    },
-                    initialFolderPath = initialFolderPath,
-                    onImport = { filePicker.launch(SharedFileImporter.SUPPORTED_MIME_TYPES.toTypedArray()) }
-                        .takeIf { workspaceRootUuid != null && !isImporting },
-                    fileOps = privateFiles,
-                    fileActions = privateFileActions,
-                )
-            },
+        FileManagerPane(
+            controller = controller,
+            host = resourceExplorerHost(onBack, onOpenGit, actions),
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+    if (managerOpen) {
+        ExternalFoldersPanel(
+            sessionId = sessionId,
+            workspaceRootUuid = workspaceRootUuid,
+            manager = app.externalFolderManager,
+            onReindex = null,
+            managerOnly = true,
+            onManagerDismiss = { managerOpen = false },
         )
     }
 }
 
-internal data class ResourceExplorerSheetState(
-    val searchQuery: String = "",
-    /** 工具行是否展开为搜索框；有查询时保持展开。 */
-    val searchActive: Boolean = false,
-    val workspaceReady: Boolean = false,
-    val importItems: List<ShareImportItem> = emptyList(),
-    val isImporting: Boolean = false,
-    val isLoading: Boolean = false,
-    val hasLoadError: Boolean = false,
-    /** 会话工作区是 Git 仓库时显示分支与改动数入口。 */
-    val gitEntry: GitEntrySummary = GitEntrySummary.Hidden,
-    /** 文件区展示的工作区；目录与不可用状态下停用搜索和导入。 */
-    val workspaceMode: ResourceExplorerWorkspaceMode = ResourceExplorerWorkspaceMode.Private,
-)
-
-internal data class ResourceExplorerSheetActions(
-    val onSearchQueryChanged: (String) -> Unit = {},
-    val onSearchActiveChange: (Boolean) -> Unit = {},
-    val onImportFiles: () -> Unit = {},
-    val onRetryImport: (android.net.Uri) -> Unit = {},
-    val onClearImportResults: () -> Unit = {},
-    val onRetryLoad: () -> Unit = {},
-    val onOpenGitPanel: () -> Unit = {},
+internal fun resourceExplorerHost(
+    onBack: (() -> Unit)?,
+    onOpenGit: () -> Unit,
+    actions: List<FileFolderAction>,
+): FileManagerHostSpec = FileManagerHostSpec(
+    leading = onBack?.let { FileManagerLeading.Leave(it) } ?: FileManagerLeading.None,
+    allowLocationSwitch = true,
+    onOpenGit = onOpenGit,
+    folderActions = actions,
 )
 
 @Composable
-internal fun ResourceExplorerSheetContent(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
+internal fun ResourceExplorerBody(
+    workspaceMode: ResourceExplorerWorkspaceMode,
+    isLoading: Boolean,
+    hasLoadError: Boolean,
+    importItems: List<ShareImportItem>,
+    isImporting: Boolean,
+    onRetryLoad: () -> Unit,
+    onRetryImport: (android.net.Uri) -> Unit,
+    onClearImportResults: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
     filesContent: @Composable () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize().testTag(UiTags.RESOURCE_EXPLORER_ROOT)) {
-        ResourceExplorerFilesPage(state = state, actions = actions, filesContent = filesContent)
-    }
-}
-
-@Composable
-private fun ResourceExplorerFilesPage(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
-    filesContent: @Composable () -> Unit,
-) {
-    when (val mode = state.workspaceMode) {
-        ResourceExplorerWorkspaceMode.Resolving -> ResourceExplorerSessionState(
-            isLoading = state.isLoading,
-            onRetry = actions.onRetryLoad.takeIf { state.hasLoadError },
-        )
-        ResourceExplorerWorkspaceMode.Private -> ResourceExplorerPrivateFilesPage(state, actions, filesContent)
-        is ResourceExplorerWorkspaceMode.Directory -> Column(modifier = Modifier.fillMaxSize()) {
-            ResourceExplorerGitEntry(state, actions, leadingGap = false)
-            Spacer(modifier = Modifier.height(InfinitySpacing.Small))
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                filesContent()
-            }
+    Column(modifier.fillMaxSize().testTag(UiTags.RESOURCE_EXPLORER_ROOT)) {
+        if (onBack != null && (workspaceMode is ResourceExplorerWorkspaceMode.Unavailable ||
+                workspaceMode == ResourceExplorerWorkspaceMode.Resolving)
+        ) {
+            InfinitySearchTopBar(title = stringResource(R.string.resource_explorer_title), search = null, onBack = onBack)
         }
-        is ResourceExplorerWorkspaceMode.Unavailable -> Column(modifier = Modifier.fillMaxSize()) {
-            WorkspaceUnavailableState(mode, onRetry = actions.onRetryLoad)
-            ResourceExplorerGitEntry(state, actions)
+        val shownImports = remember { arrayOfNulls<List<ShareImportItem>>(1) }
+        if (importItems.isNotEmpty()) shownImports[0] = importItems
+        AnimatedVisibility(visible = importItems.isNotEmpty(), enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+            ImportStatusList(shownImports[0].orEmpty(), isImporting || workspaceMode != ResourceExplorerWorkspaceMode.Private, onRetryImport, onClearImportResults)
+        }
+        when (workspaceMode) {
+            is ResourceExplorerWorkspaceMode.Unavailable -> WorkspaceUnavailableState(workspaceMode, onRetryLoad)
+            ResourceExplorerWorkspaceMode.Resolving -> ResourceExplorerSessionState(isLoading, onRetryLoad.takeIf { hasLoadError })
+            else -> Box(Modifier.weight(1f).fillMaxWidth()) { filesContent() }
         }
     }
 }
 
 @Composable
-private fun ResourceExplorerGitEntry(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
-    /** 入口排在页面最顶端时不留前置间隔，顶距由页面统一给出。 */
-    leadingGap: Boolean = true,
-) {
-    // 收起期间沿用最后一次可见的摘要，避免入口在动画中途变空。
-    val shownEntry = remember { arrayOfNulls<GitEntrySummary>(1) }
-    if (state.gitEntry != GitEntrySummary.Hidden) shownEntry[0] = state.gitEntry
-    AnimatedVisibility(
-        visible = state.gitEntry != GitEntrySummary.Hidden,
-        enter = InfinityMotion.expandIn,
-        exit = InfinityMotion.shrinkOut,
-    ) {
-        Column {
-            if (leadingGap) Spacer(modifier = Modifier.height(InfinitySpacing.Small))
-            shownEntry[0]?.let { GitWorkspaceEntry(summary = it, onClick = actions.onOpenGitPanel) }
-        }
-    }
-}
-
-@Composable
-private fun WorkspaceUnavailableState(
+internal fun WorkspaceUnavailableState(
     mode: ResourceExplorerWorkspaceMode.Unavailable,
     onRetry: () -> Unit,
 ) {
@@ -376,85 +262,6 @@ private fun WorkspaceUnavailableState(
             onClick = onRetry,
             modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RETRY_LOAD),
         )
-    }
-}
-
-@Composable
-private fun ResourceExplorerPrivateFilesPage(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
-    filesContent: @Composable () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        ResourceExplorerToolbar(state, actions)
-
-        val shownImports = remember { arrayOfNulls<List<ShareImportItem>>(1) }
-        if (state.importItems.isNotEmpty()) shownImports[0] = state.importItems
-        AnimatedVisibility(visible = state.importItems.isNotEmpty(), enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-            Column {
-                Spacer(modifier = Modifier.height(InfinitySpacing.Small))
-                ImportStatusList(
-                    items = shownImports[0].orEmpty(),
-                    isImporting = state.isImporting,
-                    onRetry = actions.onRetryImport,
-                    onClear = actions.onClearImportResults,
-                )
-            }
-        }
-
-        ResourceExplorerGitEntry(state, actions)
-
-        Spacer(modifier = Modifier.height(InfinitySpacing.Small))
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            filesContent()
-        }
-    }
-}
-
-/** 文件工具行：标题与导入；点放大镜后整行换成搜索框。 */
-@Composable
-private fun ResourceExplorerToolbar(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
-) {
-    InfinityToolbarSearch(
-        search = InfinityPageSearch(
-            query = state.searchQuery,
-            active = state.searchActive || state.searchQuery.isNotEmpty(),
-            onQueryChange = actions.onSearchQueryChanged,
-            onActiveChange = actions.onSearchActiveChange,
-            placeholder = stringResource(R.string.resource_explorer_search_placeholder),
-            fieldTag = UiTags.RESOURCE_EXPLORER_SEARCH,
-        ),
-        title = stringResource(R.string.resource_explorer_files_heading),
-        openButtonTag = UiTags.RESOURCE_EXPLORER_SEARCH_OPEN,
-        modifier = Modifier.padding(start = InfinitySpacing.Small),
-    ) {
-        ResourceExplorerImportAction(state, actions)
-    }
-}
-
-@Composable
-private fun ResourceExplorerImportAction(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
-) {
-    IconButton(
-        onClick = actions.onImportFiles,
-        enabled = state.workspaceReady && !state.isImporting,
-        modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_IMPORT),
-    ) {
-        if (state.isImporting) {
-            val importing = stringResource(R.string.resource_explorer_importing)
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .size(20.dp)
-                    .semantics { contentDescription = importing },
-                strokeWidth = 2.dp,
-            )
-        } else {
-            Icon(Icons.Rounded.UploadFile, contentDescription = stringResource(R.string.resource_explorer_import_files))
-        }
     }
 }
 
@@ -499,7 +306,7 @@ private fun ResourceExplorerSessionState(
 }
 
 @Composable
-private fun ImportStatusList(
+internal fun ImportStatusList(
     items: List<ShareImportItem>,
     isImporting: Boolean,
     onRetry: (android.net.Uri) -> Unit,

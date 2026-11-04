@@ -3,8 +3,6 @@
     <string name="kg_extraction_progress">Processed %1$s / %2$s chunks</string>
     <string name="kg_extraction_partial">Budget reached · %1$s / %2$s chunks processed. Raise the budget to continue</string>
     <string name="kg_extraction_confirmation_needed">Confirmation required · Processed %1$s / %2$s chunks. Choose Extract knowledge graph in the document menu to review the estimate.</string>
-    <string name="kg_extraction_confirm_title">Confirm large document extraction</string>
-    <string name="kg_extraction_confirm_description">“%1$s” needs about %2$d requests, about %3$s input tokens and up to %4$s output tokens. Document budget: %5$d requests, %6$s tokens, %7$d seconds.</string>
     <string name="token_usage_categories">Usage categories</string>
     <string name="token_usage_kg">Knowledge graph extraction</string>
     <string name="token_usage_chat">Chat</string>

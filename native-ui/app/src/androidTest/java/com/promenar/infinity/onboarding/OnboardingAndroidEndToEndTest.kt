@@ -251,7 +251,7 @@ class OnboardingAndroidEndToEndTest {
         rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.onNodeWithTag(UiTags.HUB_ROOT).assertIsDisplayed()
         rule.onNodeWithTag("main_navigation_tab_library").performClick()
-        rule.onNodeWithTag(UiTags.RAG_HOME_ROOT).assertIsDisplayed()
+        rule.onNodeWithTag(com.promenar.infinity.ui.library.LibraryTags.SCREEN).assertIsDisplayed()
 
         rule.onNodeWithTag("main_navigation_tab_settings").performClick()
         rule.onNodeWithTag(UiTags.SETTINGS_ROOT).assertIsDisplayed()

@@ -145,9 +145,11 @@ internal fun ExternalFoldersPanel(
     modifier: Modifier = Modifier,
     // true 时入口行不自带分组面，由调用方放进共享分组。
     grouped: Boolean = false,
+    managerOnly: Boolean = false,
+    onManagerDismiss: () -> Unit = {},
 ) {
     key(sessionId) {
-        ExternalFoldersPanelContent(sessionId, workspaceRootUuid, manager, onReindex, modifier, grouped)
+        ExternalFoldersPanelContent(sessionId, workspaceRootUuid, manager, onReindex, modifier, grouped, managerOnly, onManagerDismiss)
     }
 }
 
@@ -159,6 +161,8 @@ private fun ExternalFoldersPanelContent(
     onReindex: ((String) -> Unit)?,
     modifier: Modifier,
     grouped: Boolean,
+    managerOnly: Boolean,
+    onManagerDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -168,7 +172,7 @@ private fun ExternalFoldersPanelContent(
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<Int?>(null) }
-    var managerOpen by rememberSaveable { mutableStateOf(false) }
+    var managerOpen by rememberSaveable { mutableStateOf(managerOnly) }
     var formSource by rememberSaveable { mutableStateOf<ExternalMountSource?>(null) }
     var alias by rememberSaveable { mutableStateOf("") }
     var sourcePath by rememberSaveable { mutableStateOf("") }
@@ -337,7 +341,7 @@ private fun ExternalFoldersPanelContent(
             }
         } else null
 
-    ListItem(
+    if (!managerOnly) ListItem(
         modifier = modifier
             .fillMaxWidth()
             .let { if (grouped) it else it.bettboxListGroup() }
@@ -379,6 +383,7 @@ private fun ExternalFoldersPanelContent(
             onDismiss = {
                 managerOpen = false
                 backToManager()
+                onManagerDismiss()
             },
             height = InfinitySheetHeight.Full,
             dismissEnabled = !(busy || pickerActive),

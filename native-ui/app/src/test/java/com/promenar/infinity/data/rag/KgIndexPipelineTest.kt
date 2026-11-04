@@ -11,7 +11,6 @@ import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.*
 import com.promenar.infinity.data.remote.protocol.LlmProtocol
 import com.promenar.infinity.data.remote.protocol.PromptResponse
-import com.promenar.infinity.ui.chat.components.resolveKgStatus
 import com.promenar.infinity.ui.common.KgStatus
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -109,7 +108,7 @@ class KgIndexPipelineTest {
         assertThat(database.vectorizationTaskDao().getByDocId(file.uuid)).isEmpty()
         assertThat(database.vectorDao().getByDocId(file.uuid).single().content).isEqualTo("no relations")
         assertThat(database.kgEdgeDao().getByDocId(file.uuid)).isEmpty()
-        assertThat(resolveKgStatus(database.fileEntryDao().getByUuid("root", file.uuid)!!, emptyMap())).isEqualTo(KgStatus.COMPLETED)
+        assertThat(database.fileEntryDao().getByUuid("root", file.uuid)!!.kgExtractedAt).isAtLeast(file.updatedAt)
         queue.shutdown()
     }
 
@@ -139,7 +138,7 @@ class KgIndexPipelineTest {
     }
 
     @Test
-    fun `预算部分候选提交有效图并持久保留进度且文档新版本不冒充部分完成`() = runTest {
+    fun `预算部分候选提交有效图并持久保留版本进度`() = runTest {
         val file = register("partial.txt", "text/plain", "Alpha knows Beta".toByteArray())
         seedOld(file)
         val (queue, _) = pipeline { _, _, _ ->
@@ -163,8 +162,8 @@ class KgIndexPipelineTest {
         assertThat(database.vectorDao().getByDocId(file.uuid).single().id).isEqualTo("old-${file.uuid}")
         val persisted = database.fileEntryDao().getByUuid("root", file.uuid)!!
         assertThat(persisted.kgExtractedAt).isNull()
-        assertThat(resolveKgStatus(persisted, emptyMap())).isEqualTo(KgStatus.PARTIAL)
-        assertThat(resolveKgStatus(persisted.copy(updatedAt = persisted.updatedAt + 1), emptyMap())).isEqualTo(KgStatus.NOT_STARTED)
+        assertThat(persisted.kgStrategy).startsWith("partial:2:5:")
+        assertThat(persisted.kgStrategy).endsWith(":${persisted.updatedAt}")
         queue.shutdown()
     }
 

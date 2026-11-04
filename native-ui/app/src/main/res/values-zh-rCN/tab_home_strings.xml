@@ -9,7 +9,4 @@
     <plurals name="hub_agent_session_count">
         <item quantity="other">%1$d 个会话</item>
     </plurals>
-    <string name="rag_home_add">添加</string>
-    <string name="rag_home_section_browse">浏览</string>
-    <string name="rag_home_graph_desc">从文档与对话中抽取的实体和关系</string>
 </resources>

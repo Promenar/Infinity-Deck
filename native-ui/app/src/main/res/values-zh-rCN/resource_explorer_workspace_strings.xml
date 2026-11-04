@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="resource_explorer_directory_badge">%1$s · %2$s</string>
-    <string name="resource_explorer_directory_empty">这个文件夹是空的</string>
-    <string name="resource_explorer_directory_load_failed">无法读取此文件夹：%1$s</string>
-    <string name="resource_explorer_directory_load_failed_generic">无法读取此文件夹</string>
-    <string name="resource_explorer_directory_refresh">刷新</string>
     <string name="resource_explorer_unavailable_title">工作区不可用</string>
     <string name="resource_explorer_unavailable_help">请检查目录与访问授权，或在上方重新选择工作区。</string>
 </resources>

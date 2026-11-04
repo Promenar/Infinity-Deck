@@ -1,16 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 文件面板 -->
-    <string name="files_panel_group_workspace_named">Workspace · %1$s</string>
-    <plurals name="files_panel_hidden_system_trash">
-        <item quantity="one">%1$d system trash file hidden</item>
-        <item quantity="other">%1$d system trash files hidden</item>
-    </plurals>
-    <plurals name="files_panel_folder_child_count">
-        <item quantity="one">%1$d item</item>
-        <item quantity="other">%1$d items</item>
-    </plurals>
-    <string name="files_panel_folder_empty">Empty</string>
 
     <!-- 任务日志对话框 -->
     <string name="job_log_title_named">Job log · %1$s</string>

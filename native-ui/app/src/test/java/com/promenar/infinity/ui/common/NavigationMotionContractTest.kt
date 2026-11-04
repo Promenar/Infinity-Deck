@@ -36,9 +36,8 @@ class NavigationMotionContractTest {
         assertThat(header).doesNotContain("\"›\"")
 
         val knowledge = source("workspace/KnowledgeWorkspaces.kt")
-        val directory = source("chat/components/DirectoryWorkspaceBrowser.kt")
         assertThat(knowledge).contains("onExitRoot = onBackToList")
-        for ((name, text) in listOf("KnowledgeWorkspaces" to knowledge, "DirectoryWorkspaceBrowser" to directory)) {
+        for ((name, text) in listOf("KnowledgeWorkspaces" to knowledge)) {
             // 文件页与目录页都用统一页头，不再叠加单独的“返回”文字按钮。
             assertWithMessage(name).that(text).doesNotContain("workspace_kb_back")
             assertWithMessage(name).that(text).doesNotContain("resource_explorer_directory_back")
@@ -50,9 +49,6 @@ class NavigationMotionContractTest {
     fun `所有目录浏览都按层级方向切换内容`() {
         listOf(
             "common/FolderEntriesList.kt",
-            "rag/RagHomeScreen.kt",
-            "chat/components/WorkspaceFolderBrowser.kt",
-            "chat/components/DirectoryWorkspaceBrowser.kt",
             "chat/components/ExternalFoldersPanel.kt",
             "workspace/KnowledgeWorkspaces.kt",
             "workspace/WorkspacePicker.kt",
@@ -88,10 +84,6 @@ class NavigationMotionContractTest {
         assertThat(tabs).contains("animateColorAsState(")
         assertThat(tabs).contains("expandHorizontally(")
 
-        val rag = source("rag/RagHomeScreen.kt")
-        assertThat(rag).contains("label = \"rag_portal_tab\"")
-        assertThat(rag).contains("label = \"rag_documents_search\"")
-
         val pipeline = source("chat/PipelineBubble.kt")
         assertThat(pipeline).contains("visible = internalExpanded && reasoning.isNotBlank()")
         assertThat(pipeline).contains("AnimatedVisibility(visible = isExpanded, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut)")
@@ -102,9 +94,6 @@ class NavigationMotionContractTest {
         assertThat(chat).contains("label = \"chat_send_icon\"")
         assertThat(chat).contains("visible = runDockVisible,")
 
-        val files = source("chat/components/FilesPanel.kt")
-        assertThat(files).contains("label = \"files_panel_state\"")
-        assertThat(files).contains("Modifier.animateItem()")
     }
 
     @Test
@@ -219,7 +208,6 @@ class NavigationMotionContractTest {
             "settings/ProviderModelsScreen.kt" to listOf("Box(Modifier.animateItem())", "label = \"provider_models_sync_icon\""),
             "settings/ProviderListScreen.kt" to listOf(".animateItem()", ".animateContentSize("),
             "settings/ProviderFormScreen.kt" to listOf("animatedFormItem(\"cloud-section\")"),
-            "rag/RagFolderScreen.kt" to listOf("Box(Modifier.animateItem())"),
         ).forEach { (path, markers) ->
             val text = source(path)
             markers.forEach { marker -> assertWithMessage(path).that(text).contains(marker) }

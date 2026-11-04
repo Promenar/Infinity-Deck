@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 文件面板 -->
-    <string name="files_panel_group_workspace_named">工作区 · %1$s</string>
-    <plurals name="files_panel_hidden_system_trash">
-        <item quantity="other">已隐藏 %1$d 个系统回收区文件</item>
-    </plurals>
-    <plurals name="files_panel_folder_child_count">
-        <item quantity="other">%1$d 项</item>
-    </plurals>
-    <string name="files_panel_folder_empty">空</string>
 
     <!-- 任务日志对话框 -->
     <string name="job_log_title_named">任务日志 · %1$s</string>

@@ -31,7 +31,6 @@ import com.promenar.infinity.ui.rag.KnowledgeDebugSettingsScreen
 import com.promenar.infinity.ui.rag.KnowledgeGraphSettingsScreen
 import com.promenar.infinity.ui.rag.KnowledgeGraphScreen
 import com.promenar.infinity.ui.rag.RagDebugScreen
-import com.promenar.infinity.ui.rag.RagFolderScreen
 import com.promenar.infinity.ui.settings.BackupSettingsScreen
 import com.promenar.infinity.ui.settings.LocalModelsScreen
 import com.promenar.infinity.data.model.ModelInfo
@@ -65,7 +64,6 @@ object NavDestinations {
     const val RAG_ADVANCED_KG = "rag_advanced_kg"
     const val RAG_GLOBAL_CONFIG = "rag_global_config"
     const val LONG_TERM_MEMORY = "long_term_memory"
-    const val RAG_FOLDER = "rag_folder/{folderId}"
     const val RAG_DEBUG = "rag_debug"
     const val RAG_VECTOR_STATS = "rag_vector_stats"
     const val TOKEN_USAGE = "token_usage"
@@ -107,7 +105,6 @@ object NavDestinations {
     fun providerModels(providerId: String) = "provider_models/$providerId"
     fun docEditor(workspaceRootUuid: String, docId: String) = "doc_editor/$workspaceRootUuid/$docId"
     @Suppress("UNUSED_PARAMETER")
-    fun ragFolder(folderId: String) = "rag_folder/$folderId"
     fun knowledgeGraph(query: String) = "knowledge_graph?query=${android.net.Uri.encode(query)}"
     fun linuxTerminal(sessionId: String? = null, directory: String? = null, command: String? = null) =
         "linux_terminal" + query("session" to sessionId, "dir" to directory, "cmd" to command)
@@ -338,22 +335,6 @@ fun InfinityNavGraph(
                 initialQuery = backStackEntry.arguments?.getString("query"),
                 onNavigateBack = { navController.popBackStack() },
                 onOpenSession = { sessionId -> navController.navigate(NavDestinations.chatHero(sessionId)) },
-            )
-        }
-
-        composablePage(
-            route = NavDestinations.RAG_FOLDER,
-            arguments = listOf(
-                navArgument("folderId") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
-            RagFolderScreen(
-                folderId = folderId,
-                onNavigateToDocEditor = { rootUuid, docId ->
-                    navController.navigate(NavDestinations.docEditor(rootUuid, docId))
-                },
-                onNavigateBack = { navController.popBackStack() }
             )
         }
 
