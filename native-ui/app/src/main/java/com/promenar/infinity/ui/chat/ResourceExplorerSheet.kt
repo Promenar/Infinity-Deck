@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -166,7 +167,8 @@ fun ResourceExplorerPage(
         onRetryImport = viewModel::retryImport,
         onClearImportResults = viewModel::clearImportResults,
         onBack = onBack,
-        modifier = Modifier.padding(top = if (onBack == null) inspectorTopGap() else 0.dp),
+        // 整页覆盖时自行避开状态栏；检视器根层沿用检视器顶部间隔。
+        modifier = if (onBack == null) Modifier.padding(top = inspectorTopGap()) else Modifier.statusBarsPadding(),
     ) {
         FileManagerPane(
             controller = controller,

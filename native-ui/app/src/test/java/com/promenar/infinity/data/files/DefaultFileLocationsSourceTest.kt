@@ -4,6 +4,7 @@ import com.promenar.infinity.data.git.GitChangeList
 import com.promenar.infinity.data.git.GitInspectError
 import com.promenar.infinity.data.git.GitInspectResult
 import com.promenar.infinity.data.git.GitStatus
+import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.workspace.SessionWorkspace
 import java.io.File
@@ -52,5 +53,28 @@ class DefaultFileLocationsSourceTest {
         assertEquals(listOf("kb", "sessions", "workspace:project"), items.map { it.id })
         assertTrue(items.last().capabilities.writable)
         assertEquals(null, items.last().gitBranch)
+    }
+
+    @Test fun `会话位置在 Git 状态返回前先行发出`() = runBlocking {
+        val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
+        val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))
+        val sessions = listOf(
+            SessionEntity("bound", "agent", title = "绑定项目", createdAt = 1, updatedAt = 1),
+            SessionEntity("private", "agent", title = "专用空间", createdAt = 1, updatedAt = 1),
+        )
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(sessions), workspaces = flowOf(listOf(workspace)), linuxReady = flowOf(false),
+            mounts = { flowOf(emptyList()) },
+            resolveSession = { id -> if (id == "bound") directory else SessionWorkspace.Private },
+            resolveWorkspace = { directory }, mountAvailable = { true },
+            gitStatus = { awaitCancellation() }, workspaceGitStatus = { awaitCancellation() },
+            titles = LocationTitles("资料", "会话", "Linux"),
+        )
+        val bound = withTimeout(5_000) { locations.observeSessionLocations("bound").first() }
+        assertEquals(listOf("workspace:project"), bound.map { it.id })
+        assertTrue(bound.single().capabilities.writable)
+        val private = withTimeout(5_000) { locations.observeSessionLocations("private").first() }
+        assertEquals(listOf("session:private"), private.map { it.id })
+        assertFalse(private.single().capabilities.git)
     }
 }

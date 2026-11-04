@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.25.1-beta] - 2026-11-05
+
+### 修复
+
+- 对话页资源管理器打开绑定项目时，不再在读取 Git 状态的几秒内误显示“此位置暂不可用”：位置先不带 Git 信息出现，分支与改动数随后补上。
+- 对话页资源管理器整页打开时避开状态栏，返回键与标题不再压在状态栏下。
+
 ## [0.25.0-beta] - 2026-11-05
 
 ### 变更

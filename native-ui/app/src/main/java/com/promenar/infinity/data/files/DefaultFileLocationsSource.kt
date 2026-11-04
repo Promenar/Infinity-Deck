@@ -86,26 +86,38 @@ internal class DefaultFileLocationsSource(
         }
     }
 
+    /** 与资料页同样先发出不含 Git 信息的位置，Git 状态较慢时不会先显示“此位置暂不可用”。 */
     override fun observeSessionLocations(sessionId: String): Flow<List<FileLocation>> =
         combine(sessions, linuxReady, mounts(sessionId)) { rows, linux, attached ->
-            withContext(Dispatchers.IO) {
-                val session = rows.firstOrNull { it.id == sessionId && !isSystemSession(it) } ?: return@withContext emptyList()
-                val current = when (val workspace = resolveSession(session.id)) {
-                    SessionWorkspace.Private -> sessionLocation(session, linux)
-                    is SessionWorkspace.Directory -> workspaceLocation(workspace.workspace, session.id, linux, workspace)
-                    is SessionWorkspace.Unavailable -> null
-                }
-                listOfNotNull(current) + attached.filter { it.sourceType in setOf("saf_tree", "real_path", "knowledge_base") }
-                    .distinctBy { it.id }.map(::externalLocation)
-            }
+            Triple(rows, linux, attached)
+        }.transformLatest { (rows, linux, attached) ->
+            emit(sessionLocations(sessionId, rows, linux, attached, git = false))
+            emit(sessionLocations(sessionId, rows, linux, attached, git = true))
+        }.distinctUntilChanged()
+
+    private suspend fun sessionLocations(
+        sessionId: String, rows: List<SessionEntity>, linux: Boolean, attached: List<ExternalMount>, git: Boolean,
+    ): List<FileLocation> = withContext(Dispatchers.IO) {
+        val session = rows.firstOrNull { it.id == sessionId && !isSystemSession(it) } ?: return@withContext emptyList()
+        val current = when (val workspace = resolveSession(session.id)) {
+            SessionWorkspace.Private -> sessionLocation(session, linux, git)
+            is SessionWorkspace.Directory -> workspaceLocation(workspace.workspace, session.id, linux, workspace, git)
+            is SessionWorkspace.Unavailable -> null
         }
+        listOfNotNull(current) + attached.filter { it.sourceType in setOf("saf_tree", "real_path", "knowledge_base") }
+            .distinctBy { it.id }.map(::externalLocation)
+    }
 
     override fun observeLinuxHome(): Flow<FileLocation?> = linuxReady.map { if (it) linuxLocation() else null }
 
     internal fun libraryLocation() = FileLocation("kb", FileLocationKind.KNOWLEDGE_BASE, titles.library, WRITABLE)
     internal fun sessionsLocation() = FileLocation("sessions", FileLocationKind.SESSION_WORKSPACE, titles.sessions, READ_ONLY)
-    internal suspend fun sessionLocation(session: SessionEntity, linux: Boolean): FileLocation {
-        val status = (gitStatus(session.id) as? GitInspectResult.Success<GitStatus>)?.value
+    internal suspend fun sessionLocation(session: SessionEntity, linux: Boolean, git: Boolean = true): FileLocation {
+        val key = "session:${session.id}"
+        val status = if (!git) knownGitStatus[key] else {
+            (gitStatus(session.id) as? GitInspectResult.Success<GitStatus>)?.value
+                .also { if (it == null) knownGitStatus.remove(key) else knownGitStatus[key] = it }
+        }
         return FileLocation(
             "session:${session.id}", FileLocationKind.SESSION_WORKSPACE, session.title,
             WRITABLE.copy(git = status != null, terminal = linux && session.workspaceId == null && session.worktreeDirectory == null),
