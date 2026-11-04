@@ -1360,6 +1360,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
+    /** 统一资源管理器的位置、文件操作与固定文件夹。 */
+    val fileManagerServices: com.promenar.infinity.domain.files.FileManagerServices by lazy {
+        com.promenar.infinity.data.files.DefaultFileManagerServices.create(this, ::isSessionBusyForUserFileOps)
+    }
+
     val workspaceRepository: com.promenar.infinity.domain.repository.IWorkspaceRepository by lazy {
         val lifecycle = com.promenar.infinity.data.repository.WorkspaceLifecycleTransaction(database)
         WorkspaceRepository(
