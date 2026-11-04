@@ -104,7 +104,6 @@ import com.mikepenz.markdown.compose.elements.MarkdownListItems
 import com.mikepenz.markdown.compose.elements.listDepth
 import com.mikepenz.markdown.compose.LocalMarkdownA11yLabels
 import com.mikepenz.markdown.compose.extendedspans.ExtendedSpans
-import com.mikepenz.markdown.compose.extendedspans.RoundedCornerSpanPainter
 import com.mikepenz.markdown.model.markdownExtendedSpans
 import com.mikepenz.markdown.model.markdownInlineContent
 import com.mikepenz.markdown.model.markdownDimens
@@ -1263,7 +1262,7 @@ private fun MarkdownSafe(
         imageTransformer = InfinityMarkdownImageTransformer,
         extendedSpans = markdownExtendedSpans {
             remember(inlineCorner) {
-                ExtendedSpans(RoundedCornerSpanPainter(cornerRadius = inlineCorner, padding = RoundedCornerSpanPainter.TextPaddingValues()))
+                ExtendedSpans(InlineCodeSpanPainter(cornerRadius = inlineCorner))
             }
         },
         inlineContent = markdownInlineContent(inlineCodePaddingContent),

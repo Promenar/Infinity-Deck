@@ -8,6 +8,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -119,3 +120,24 @@ private fun ChatMarkdownBatch2Preview(content: String? = null) {
         }
     }
 }
+
+// 行内代码换行：左右留白被断行器单独留在行末或推到行首时，不再画出空底色小块。
+@PreviewTest
+@Preview(name = "行内代码换行 不留空底色 深色中文", widthDp = 411, heightDp = 700, locale = "zh-rCN")
+@Composable
+fun chatMarkdownInlineCodeWrapRegression() {
+    InfinityTheme(preferences = InfinityThemePreferences(mode = InfinityThemeMode.DARK, colorSource = InfinityColorSource.INFINITY)) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                listOf(371, 362, 354, 347).forEach { width ->
+                    MarkdownText(INLINE_CODE_WRAP_SAMPLE, fontSize = 16, modifier = Modifier.width(width.dp))
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+        }
+    }
+}
+
+private const val INLINE_CODE_WRAP_SAMPLE =
+    "技能目录复检：24 个目录 / 587 文件 / 缓存残留 0。`comfyui-generation` 源 79 文件、安装 80 文件，" +
+        "差的就是我新增的 `comfyui_host.py`，符合预期。`__pycache__` 消失后，输出已写回（`Qwen21_00001_.png`，1152×1536）。"

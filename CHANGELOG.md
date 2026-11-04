@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.2-beta] - 2026-11-04
+
+### 修复
+
+- 正文行内代码换行时，左右留白不再在上一行末或下一行首留下一小块空底色；代码本身跨行时仍逐行画底色，首尾两端保持圆角。
+
 ## [0.21.1-beta] - 2026-11-04
 
 ### 变更
