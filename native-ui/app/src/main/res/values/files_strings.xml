@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 统一资源管理器（FileManagerPane、RecycleBinPage）的界面文案。 -->
+<resources>
+    <!-- 页头 -->
+    <string name="fm_back">Back</string>
+    <string name="fm_close">Close</string>
+    <string name="fm_search">Search files</string>
+    <string name="fm_more">More options</string>
+    <string name="fm_free_space">%1$s free</string>
+    <string name="fm_switch_location">Switch location</string>
+    <string name="fm_locations_title">Locations this session can access</string>
+    <string name="fm_crumbs_collapsed">Show hidden levels</string>
+    <string name="fm_up_level">Up one level</string>
+
+    <!-- 排序 -->
+    <string name="fm_sort_title">Sort by</string>
+    <string name="fm_sort_name">Name</string>
+    <string name="fm_sort_modified">Modified</string>
+    <string name="fm_sort_size">Size</string>
+    <string name="fm_sort_type">Type</string>
+    <string name="fm_sort_ascending">Ascending</string>
+    <string name="fm_sort_descending">Descending</string>
+    <string name="fm_sort_folders_first">Folders first</string>
+
+    <!-- 菜单与动作 -->
+    <string name="fm_new_folder">New folder</string>
+    <string name="fm_new_text_file">New text file</string>
+    <string name="fm_new_file">New file</string>
+    <string name="fm_import">Import from device…</string>
+    <string name="fm_paste_as_file">Paste clipboard as file</string>
+    <string name="fm_select">Select</string>
+    <string name="fm_select_all">Select all</string>
+    <string name="fm_view_list">List view</string>
+    <string name="fm_view_grid">Grid view</string>
+    <string name="fm_show_hidden">Show hidden files</string>
+    <string name="fm_hide_hidden">Hide hidden files</string>
+    <string name="fm_pin">Pin to sidebar</string>
+    <string name="fm_unpin">Unpin from sidebar</string>
+    <string name="fm_folder_details">Folder details</string>
+    <string name="fm_open">Open</string>
+    <string name="fm_open_with">Open with</string>
+    <string name="fm_rename">Rename</string>
+    <string name="fm_copy_to">Copy to…</string>
+    <string name="fm_move_to">Move to…</string>
+    <string name="fm_share">Share</string>
+    <string name="fm_extract">Extract here</string>
+    <string name="fm_compress">Compress to ZIP</string>
+    <string name="fm_details">Details</string>
+    <string name="fm_delete">Delete</string>
+    <string name="fm_item_actions">Actions for %1$s</string>
+    <string name="fm_select_item">Select %1$s</string>
+    <string name="fm_deselect_item">Deselect %1$s</string>
+    <string name="fm_fab">Create or import</string>
+    <string name="fm_retry">Retry</string>
+    <string name="fm_selection_close">Exit selection</string>
+    <plurals name="fm_selected_count">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+
+    <!-- 列表 -->
+    <plurals name="fm_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <plurals name="fm_folder_count">
+        <item quantity="one">%1$d folder</item>
+        <item quantity="other">%1$d folders</item>
+    </plurals>
+    <plurals name="fm_file_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <string name="fm_empty_folder">This folder is empty</string>
+    <plurals name="fm_git_changes">
+        <item quantity="one">%1$d change</item>
+        <item quantity="other">%1$d changes</item>
+    </plurals>
+    <string name="fm_git_view">View changes</string>
+
+    <!-- 资料状态 -->
+    <string name="fm_knowledge_none">Not in library</string>
+    <string name="fm_knowledge_queued">Queued</string>
+    <string name="fm_knowledge_indexing">Indexing</string>
+    <string name="fm_knowledge_indexed">Indexed</string>
+    <string name="fm_knowledge_failed">Parse failed</string>
+    <string name="fm_knowledge_stale">Changed, needs reindex</string>
+    <string name="fm_knowledge_unsupported">Type not indexed</string>
+    <plurals name="fm_knowledge_chunks">
+        <item quantity="one">%1$d chunk</item>
+        <item quantity="other">%1$d chunks</item>
+    </plurals>
+
+    <!-- 搜索 -->
+    <string name="fm_search_close">Exit search</string>
+    <string name="fm_search_clear">Clear search</string>
+    <string name="fm_search_placeholder">Search names in %1$s</string>
+    <string name="fm_search_scope_location">Whole location</string>
+    <string name="fm_search_scope_folder">This folder</string>
+    <string name="fm_search_type">Type</string>
+    <string name="fm_search_type_count">Type (%1$d)</string>
+    <string name="fm_search_type_clear">Clear types</string>
+    <string name="fm_search_modified">Modified</string>
+    <string name="fm_modified_any">Any time</string>
+    <string name="fm_modified_day">Last 24 hours</string>
+    <string name="fm_modified_week">Last 7 days</string>
+    <string name="fm_modified_month">Last 30 days</string>
+    <string name="fm_search_hint">Type a file name to search</string>
+    <string name="fm_search_empty">No matching files</string>
+    <string name="fm_type_document">Documents</string>
+    <string name="fm_type_image">Images</string>
+    <string name="fm_type_audio">Audio</string>
+    <string name="fm_type_video">Video</string>
+    <string name="fm_type_archive">Archives</string>
+    <string name="fm_type_code">Code</string>
+    <string name="fm_type_other">Other</string>
+
+    <!-- 预览 -->
+    <string name="fm_preview_back">Back to list</string>
+    <string name="fm_back_to_folder">‹ %1$s</string>
+    <string name="fm_preview_truncated">Only the beginning of this file is shown.</string>
+    <string name="fm_preview_audio">Audio</string>
+    <string name="fm_preview_video">Video</string>
+    <string name="fm_preview_media_hint">Use “Open with” to play it in another app.</string>
+    <string name="fm_preview_pdf">PDF document</string>
+    <plurals name="fm_pdf_pages">
+        <item quantity="one">%1$d page</item>
+        <item quantity="other">%1$d pages</item>
+    </plurals>
+    <string name="fm_preview_pdf_hint">Use “Open with” to read it in a PDF viewer.</string>
+    <plurals name="fm_archive_entries">
+        <item quantity="one">%1$d entry</item>
+        <item quantity="other">%1$d entries</item>
+    </plurals>
+    <plurals name="fm_archive_more">
+        <item quantity="one">%1$d more entry</item>
+        <item quantity="other">%1$d more entries</item>
+    </plurals>
+    <string name="fm_preview_unsupported">No preview for this file</string>
+    <string name="fm_preview_unsupported_hint">Use “Open with” to view it in another app.</string>
+    <string name="fm_recent_changes">Recently changed</string>
+    <string name="fm_info_title">Info</string>
+    <string name="fm_info_location">Location</string>
+    <string name="fm_info_size">Size</string>
+    <string name="fm_info_modified">Modified</string>
+    <string name="fm_info_knowledge">Library</string>
+    <string name="fm_info_type">Type</string>
+    <string name="fm_info_type_folder">Folder</string>
+    <string name="fm_info_type_file">File</string>
+    <string name="fm_info_items">Items</string>
+    <string name="fm_info_folders">Folders</string>
+    <string name="fm_info_files">Files</string>
+    <string name="fm_info_free">Free space</string>
+    <string name="fm_info_git">Git branch</string>
+
+    <!-- 复制到 / 移动到 -->
+    <plurals name="fm_target_title_copy">
+        <item quantity="one">Copy %1$d item to…</item>
+        <item quantity="other">Copy %1$d items to…</item>
+    </plurals>
+    <plurals name="fm_target_title_move">
+        <item quantity="one">Move %1$d item to…</item>
+        <item quantity="other">Move %1$d items to…</item>
+    </plurals>
+    <string name="fm_target_no_folders">No subfolders</string>
+    <string name="fm_target_copy_here">Copy here</string>
+    <string name="fm_target_move_here">Move here</string>
+
+    <!-- 对话框 -->
+    <string name="fm_cancel">Cancel</string>
+    <string name="fm_create">Create</string>
+    <string name="fm_rename_confirm">Rename</string>
+    <string name="fm_compress_confirm">Compress</string>
+    <string name="fm_name_label">Name</string>
+    <string name="fm_name_invalid">Names cannot be empty or contain “/”.</string>
+    <string name="fm_default_folder_name">New folder</string>
+    <string name="fm_default_file_name">Untitled.txt</string>
+    <string name="fm_default_archive_name">Archive</string>
+    <string name="fm_paste_default_name">Clipboard %1$s.txt</string>
+    <plurals name="fm_paste_length">
+        <item quantity="one">%1$d character from the clipboard</item>
+        <item quantity="other">%1$d characters from the clipboard</item>
+    </plurals>
+    <string name="fm_delete_one_title">Delete “%1$s”?</string>
+    <plurals name="fm_delete_many_title">
+        <item quantity="one">Delete %1$d item?</item>
+        <item quantity="other">Delete %1$d items?</item>
+    </plurals>
+    <string name="fm_delete_message">Items move to the recycle bin and can be restored within 30 days.</string>
+    <string name="fm_delete_confirm">Move to bin</string>
+    <string name="fm_clipboard_empty">The clipboard has no text</string>
+    <string name="fm_no_app">No app can open this file</string>
+    <string name="fm_share_failed">Could not prepare the file</string>
+
+    <!-- 操作结果 -->
+    <string name="fm_kind_create">Create</string>
+    <string name="fm_kind_rename">Rename</string>
+    <string name="fm_kind_copy">Copy</string>
+    <string name="fm_kind_move">Move</string>
+    <string name="fm_kind_delete">Delete</string>
+    <string name="fm_kind_restore">Restore</string>
+    <string name="fm_kind_purge">Permanent delete</string>
+    <string name="fm_kind_compress">Compress</string>
+    <string name="fm_kind_extract">Extract</string>
+    <string name="fm_kind_import">Import</string>
+    <string name="fm_kind_pin">Pin</string>
+    <string name="fm_kind_share">Share</string>
+    <string name="fm_notice_failed">%1$s failed: %2$s</string>
+    <string name="fm_notice_failed_some">%1$s failed for %2$d of %3$d items: %4$s</string>
+    <string name="fm_notice_created">Created</string>
+    <string name="fm_notice_renamed">Renamed</string>
+    <string name="fm_notice_compressed">ZIP created</string>
+    <string name="fm_notice_extracted">Extracted</string>
+    <string name="fm_notice_pinned">Pinned to sidebar</string>
+    <plurals name="fm_notice_copied">
+        <item quantity="one">Copied %1$d item</item>
+        <item quantity="other">Copied %1$d items</item>
+    </plurals>
+    <plurals name="fm_notice_copied_to">
+        <item quantity="one">Copied %1$d item to %2$s</item>
+        <item quantity="other">Copied %1$d items to %2$s</item>
+    </plurals>
+    <plurals name="fm_notice_moved">
+        <item quantity="one">Moved %1$d item</item>
+        <item quantity="other">Moved %1$d items</item>
+    </plurals>
+    <plurals name="fm_notice_moved_to">
+        <item quantity="one">Moved %1$d item to %2$s</item>
+        <item quantity="other">Moved %1$d items to %2$s</item>
+    </plurals>
+    <plurals name="fm_notice_deleted">
+        <item quantity="one">Moved %1$d item to the recycle bin</item>
+        <item quantity="other">Moved %1$d items to the recycle bin</item>
+    </plurals>
+    <plurals name="fm_notice_restored">
+        <item quantity="one">Restored %1$d item</item>
+        <item quantity="other">Restored %1$d items</item>
+    </plurals>
+    <plurals name="fm_notice_purged">
+        <item quantity="one">Permanently deleted %1$d item</item>
+        <item quantity="other">Permanently deleted %1$d items</item>
+    </plurals>
+    <plurals name="fm_notice_imported">
+        <item quantity="one">Imported %1$d item</item>
+        <item quantity="other">Imported %1$d items</item>
+    </plurals>
+    <string name="fm_error_name_exists">an item with this name already exists</string>
+    <string name="fm_error_invalid_name">the name is not valid</string>
+    <string name="fm_error_not_found">the item no longer exists</string>
+    <string name="fm_error_read_only">this location is read-only</string>
+    <string name="fm_error_permission_lost">access to this folder was revoked; grant it again</string>
+    <string name="fm_error_too_large">the file is too large</string>
+    <string name="fm_error_no_space">not enough storage space</string>
+    <string name="fm_error_unsupported">this location does not support it</string>
+    <string name="fm_error_conflict">the item changed elsewhere; refresh and try again</string>
+    <string name="fm_error_io">a read or write error occurred</string>
+
+    <!-- 回收站 -->
+    <string name="fm_recycle_title">Recycle bin</string>
+    <string name="fm_recycle_retention">Kept for 30 days</string>
+    <string name="fm_recycle_empty">The recycle bin is empty</string>
+    <string name="fm_recycle_origin">From %1$s</string>
+    <string name="fm_recycle_deleted_at">Deleted %1$s</string>
+    <plurals name="fm_recycle_days_left">
+        <item quantity="one">%1$d day left</item>
+        <item quantity="other">%1$d days left</item>
+    </plurals>
+    <string name="fm_recycle_restore">Restore</string>
+    <string name="fm_recycle_restore_item">Restore %1$s</string>
+    <string name="fm_recycle_restore_all">Restore all</string>
+    <string name="fm_recycle_purge">Delete permanently</string>
+    <string name="fm_recycle_purge_title">Delete permanently?</string>
+    <string name="fm_recycle_purge_message">“%1$s” will be deleted permanently. This cannot be undone.</string>
+    <string name="fm_recycle_purge_confirm">Delete</string>
+    <string name="fm_recycle_empty_all">Empty recycle bin</string>
+    <string name="fm_recycle_empty_all_title">Empty the recycle bin?</string>
+    <plurals name="fm_recycle_empty_all_message">
+        <item quantity="one">%1$d item will be deleted permanently. This cannot be undone.</item>
+        <item quantity="other">%1$d items will be deleted permanently. This cannot be undone.</item>
+    </plurals>
+    <string name="fm_recycle_empty_all_confirm">Empty</string>
+</resources>
