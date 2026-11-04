@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface VectorizationTaskDao {
+    @Query("SELECT * FROM vectorization_tasks WHERE workspace_root_uuid = :root AND type IN ('document', 'document_reference')")
+    fun observeLibraryTasks(root: String): Flow<List<VectorizationTaskEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(task: VectorizationTaskEntity)
 

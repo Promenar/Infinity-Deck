@@ -28,6 +28,7 @@ object IndexingNotice {
     const val CODE_KG_CONFIRMATION = "rag.index.kg_confirmation"
     const val CODE_WARNING = "rag.index.warning"
     const val CODE_FAILED = "rag.index.failed"
+    const val CODE_OPERATION_FAILED = "rag.operation.failed"
     const val CODE_IMPORT_FAILED = "rag.index.import_failed"
     const val CODE_MOVE_FAILED = "rag.move.failed"
     const val CODE_DELETE_FAILED = "rag.delete.failed"
@@ -109,6 +110,7 @@ object IndexingNotice {
         CODE_KG_CONFIRMATION -> ResolvedStatus(R.string.kg_extraction_confirmation_needed, notice.formatArgs)
         CODE_WARNING -> ResolvedStatus(R.string.rag_index_phase_warning)
         CODE_FAILED -> ResolvedStatus(R.string.rag_index_phase_failed)
+        CODE_OPERATION_FAILED -> ResolvedStatus(R.string.library_knowledge_action_failed)
         CODE_IMPORT_FAILED -> ResolvedStatus(R.string.rag_import_failed)
         CODE_MOVE_FAILED -> ResolvedStatus(R.string.common_cd_failed)
         CODE_DELETE_FAILED -> ResolvedStatus(R.string.rag_delete_failed_notice)

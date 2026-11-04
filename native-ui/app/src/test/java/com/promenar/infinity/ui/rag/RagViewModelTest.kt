@@ -85,6 +85,7 @@ class RagViewModelTest {
         app = mockk<InfinityApplication>(relaxed = true)
 
         every { app.database } returns database
+        every { app.sessionExecutionGate } returns com.promenar.infinity.data.session.SessionExecutionGate()
         every { database.sessionDao() } returns sessionDao
         every { app.getSharedPreferences(any(), any()) } returns mockk(relaxed = true)
         ensureRagWorkspaceRoot = mockk()
@@ -433,6 +434,72 @@ class RagViewModelTest {
         assertThat(result.getOrThrow().indexingNotice.value).isNotNull()
         assertThat(result.getOrThrow().indexingNotice.value!!.severity)
             .isEqualTo(NoticeSeverity.Error)
+    }
+
+    @Test
+    fun `创建文件夹失败会显示操作提示`() = runTest {
+        val vm = createViewModel()
+        advanceUntilIdle()
+        coEvery { workspaceRepository.createDirectoryInWorkspace(any(), any(), any(), any(), any()) } throws IllegalStateException("fixture")
+        vm.createFolder("测试目录")
+        advanceUntilIdle()
+        assertThat(vm.indexingNotice.value?.code).isEqualTo(IndexingNotice.CODE_OPERATION_FAILED)
+        assertThat(vm.indexingNotice.value?.severity).isEqualTo(NoticeSeverity.Error)
+    }
+
+    @Test
+    fun `创建文件夹的协程取消会向外传播`() = runTest {
+        val vm = createViewModel()
+        advanceUntilIdle()
+        var operationJob: kotlinx.coroutines.Job? = null
+        coEvery { workspaceRepository.createDirectoryInWorkspace(any(), any(), any(), any(), any()) } coAnswers {
+            operationJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+            throw CancellationException("fixture cancellation")
+        }
+        vm.createFolder("测试目录")
+        advanceUntilIdle()
+        assertThat(operationJob).isNotNull()
+        assertThat(operationJob!!.isCancelled).isTrue()
+    }
+
+    @Test
+    fun `索引进度不会覆盖普通操作失败提示`() = runTest {
+        var callback: ((List<com.promenar.infinity.data.rag.VectorizationTask>, com.promenar.infinity.data.rag.VectorizationTask?) -> Unit)? = null
+        every { vectorizationQueue.setOnStateChange(any()) } answers { callback = firstArg(); AutoCloseable { } }
+        val vm = createViewModel()
+        coEvery { workspaceRepository.createDirectoryInWorkspace(any(), any(), any(), any(), any()) } throws IllegalStateException("fixture")
+        vm.createFolder("测试目录")
+        advanceUntilIdle()
+        val running = com.promenar.infinity.data.rag.VectorizationTask(id = "running", type = "document", status = "vectorizing")
+        callback?.invoke(listOf(running), running)
+        assertThat(vm.indexingNotice.value?.code).isEqualTo(IndexingNotice.CODE_OPERATION_FAILED)
+    }
+
+    @Test
+    fun `其它操作更新索引状态不会覆盖尚未关闭的操作错误`() = runTest {
+        val vm = createViewModel()
+        coEvery { workspaceRepository.createDirectoryInWorkspace(any(), any(), any(), any(), any()) } throws IllegalStateException("fixture")
+        vm.createFolder("测试目录")
+        advanceUntilIdle()
+        vm.reindexDocuments(emptyList())
+        assertThat(vm.indexingNotice.value?.code).isEqualTo(IndexingNotice.CODE_OPERATION_FAILED)
+    }
+
+    @Test
+    fun `关闭操作错误不会取消其它文档的失败任务`() = runTest {
+        var callback: ((List<com.promenar.infinity.data.rag.VectorizationTask>, com.promenar.infinity.data.rag.VectorizationTask?) -> Unit)? = null
+        every { vectorizationQueue.setOnStateChange(any()) } answers { callback = firstArg(); AutoCloseable { } }
+        val vm = createViewModel()
+        val failed = com.promenar.infinity.data.rag.VectorizationTask(id = "failed", type = "document_reference", workspaceRootUuid = "rag-root", docId = "doc-ref", status = "failed")
+        callback?.invoke(listOf(failed), failed)
+        coEvery { workspaceRepository.createDirectoryInWorkspace(any(), any(), any(), any(), any()) } throws IllegalStateException("fixture")
+        vm.createFolder("测试目录")
+        advanceUntilIdle()
+        vm.dismissQueueError()
+        advanceUntilIdle()
+        coVerify(exactly = 0) { vectorizationQueue.cancelAndJoin(any(), any()) }
+        assertThat(vm.canRetryLastFailedIndex.value).isTrue()
+        assertThat(vm.indexingNotice.value?.code).isEqualTo(IndexingNotice.CODE_FAILED)
     }
 
     private fun createViewModel(
@@ -1751,6 +1818,18 @@ class RagViewModelTest {
             updatedAt = 1L,
         )
         coEvery { workspaceRepository.getByUuid("rag-root", "doc-1") } returns entry
+        val taskDao = app.database.vectorizationTaskDao()
+        val fileDao = app.database.fileEntryDao()
+        val barrier = mockk<com.promenar.infinity.data.repository.WorkspaceDeleteBarrierLease>(relaxed = true)
+        coEvery { vectorizationQueue.acquireDeleteBarrier("rag-root", listOf("doc-1")) } returns barrier
+        coEvery { fileDao.getActiveByUuid("rag-root", "doc-1") } returns entry
+        coEvery { taskDao.getByWorkspaceFile("rag-root", "doc-1", "document_reference") } returns null
+        coEvery { taskDao.getByWorkspaceFile("rag-root", "doc-1", "document") } returns com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity(
+            id = "failed-document", type = "document", status = "failed", workspaceRootUuid = "rag-root", docId = "doc-1", createdAt = 1, updatedAt = 1,
+        )
+        coEvery { taskDao.migrateLegacyToTarget(any(), any()) } returns com.promenar.infinity.data.local.db.dao.VectorizationTaskTargetUpsertResult(
+            com.promenar.infinity.data.local.db.dao.VectorizationTaskTargetUpsertOutcome.INSERTED, "new-task",
+        )
         coEvery { fileOperationRepository.readFileRange("rag-root", "doc-1") } returns ReadResult(
             uuid = "doc-1",
             name = "doc.txt",
@@ -1779,18 +1858,9 @@ class RagViewModelTest {
         vm.retryLastFailedIndex()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) {
-            vectorizationQueue.enqueueDocumentReference(
-                workspaceRootUuid = "rag-root",
-                docId = "doc-1",
-                docTitle = "doc.txt",
-                sourceMimeType = "text/plain",
-                targetContentHash = "hash",
-                targetEpoch = 1L,
-                kgStrategy = any(),
-            )
-        }
-        coVerify(exactly = 1) { vectorizationQueue.cancelAndJoin("rag-root", listOf("doc-1")) }
+        coVerify(exactly = 1) { taskDao.migrateLegacyToTarget("failed-document", match { it.docId == "doc-1" && it.targetContentHash == "hash" }) }
+        coVerify(exactly = 1) { barrier.abort() }
+        coVerify(exactly = 0) { vectorizationQueue.cancelAndJoin("rag-root", listOf("doc-1")) }
         assertThat(vm.canRetryLastFailedIndex.value).isFalse()
         assertThat(vm.isRetryingLastFailedIndex.value).isFalse()
         assertThat(vm.indexingNotice.value).isNull()

@@ -422,6 +422,16 @@ class MemoryManager(
         aiContent: String,
         userMessageId: String,
         assistantMessageId: String
+    ): Int = ConversationMemoryWriteCoordinator.withDirectWriter(sessionId) {
+        addTurnToMemoryCoordinated(sessionId, userContent, aiContent, userMessageId, assistantMessageId)
+    }
+
+    private suspend fun addTurnToMemoryCoordinated(
+        sessionId: String,
+        userContent: String,
+        aiContent: String,
+        userMessageId: String,
+        assistantMessageId: String
     ): Int {
         if (userContent.isBlank() || aiContent.isBlank()) {
             InfinityLogger.log("[MemoryManager] addTurnToMemory skipped: empty content for session=$sessionId")

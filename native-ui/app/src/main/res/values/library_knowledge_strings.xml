@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_knowledge_root">Knowledge base</string>
+    <string name="library_knowledge_index_failed">Indexing failed. Try again.</string>
+    <string name="library_knowledge_action_failed">Could not complete the action. Try again.</string>
+    <string name="library_knowledge_confirm_graph">Graph extraction needs a usage confirmation in the document view.</string>
+    <string name="library_knowledge_fragments_busy">Conversation fragments are being processed. Try again when processing finishes.</string>
+</resources>

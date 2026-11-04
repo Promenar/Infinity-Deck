@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -105,8 +107,22 @@ class RagViewModel(
 
     private val compositeWorkspaceRepository: IWorkspaceRepository = injectedCompositeWorkspaceRepository
         ?: run {
-            val sessionDao = runCatching { app.database.sessionDao() }.getOrNull()
-            val fileEntryDao = runCatching { app.database.fileEntryDao() }.getOrNull()
+            val sessionDao = try {
+                app.database.sessionDao()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logRefreshFailure("sessionDao", failure)
+                null
+            }
+            val fileEntryDao = try {
+                app.database.fileEntryDao()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logRefreshFailure("fileEntryDao", failure)
+                null
+            }
             if (sessionDao != null && fileEntryDao != null) {
                 com.promenar.infinity.data.repository.CompositeGlobalWorkspaceRepository(
                     baseRepo = workspaceRepository,
@@ -115,11 +131,15 @@ class RagViewModel(
                     sessionWorkspacesRootName = app.getString(R.string.files_session_workspaces_title),
                     untitledSessionName = app.getString(R.string.hub_session_untitled),
                     onTransferToKnowledgeBaseCommitted = { transferredEntry ->
-                        runCatching {
+                        try {
                             val rootUuid = _workspaceRootUuid.value
                             if (rootUuid != null) {
                                 enqueueCurrentDocumentReference(rootUuid, transferredEntry)
                             }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            reportOperationFailure(failure)
                         }
                     }
                 )
@@ -188,7 +208,10 @@ class RagViewModel(
     val indexingProgress: StateFlow<Float> = _indexingProgress.asStateFlow()
 
     private val _indexingNotice = MutableStateFlow<UiStatusNotice?>(null)
-    val indexingNotice: StateFlow<UiStatusNotice?> = _indexingNotice.asStateFlow()
+    private val _operationNotice = MutableStateFlow<UiStatusNotice?>(null)
+    val indexingNotice: StateFlow<UiStatusNotice?> = combine(_operationNotice, _indexingNotice) { operation, indexing ->
+        operation ?: indexing
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _canRetryLastFailedIndex = MutableStateFlow(false)
     val canRetryLastFailedIndex: StateFlow<Boolean> = _canRetryLastFailedIndex.asStateFlow()
@@ -225,6 +248,15 @@ class RagViewModel(
     @Volatile private var observedQueue: com.promenar.infinity.data.rag.VectorizationQueue? = null
 
     private val _config = MutableStateFlow(RagConfiguration())
+    private val libraryIndexer by lazy {
+        com.promenar.infinity.data.library.LibraryDocumentIndexer(
+            queue = app::awaitVectorizationQueue,
+            taskDao = app.database.vectorizationTaskDao(),
+            fileDao = app.database.fileEntryDao(),
+            sessionGate = app.sessionExecutionGate,
+            graphEnabled = { _config.value.enableKnowledgeGraph },
+        )
+    }
     val config: StateFlow<RagConfiguration> = _config.asStateFlow()
 
     private val prefs = app.getSharedPreferences("rag_settings", 0)
@@ -471,7 +503,7 @@ class RagViewModel(
             try {
                 val submitted = when (target) {
                     is FailedIndexTarget.Document -> retryDocument(target)
-                    is FailedIndexTarget.DocumentReference -> app.awaitVectorizationQueue().retryDocumentReference(
+                    is FailedIndexTarget.DocumentReference -> libraryIndexer.retryReference(
                         target.workspaceRootUuid,
                         target.docId,
                     )
@@ -497,24 +529,14 @@ class RagViewModel(
 
     private suspend fun retryDocument(target: FailedIndexTarget.Document): Boolean {
         val entry = workspaceRepository.getByUuid(target.workspaceRootUuid, target.docId) ?: return false
-        app.awaitVectorizationQueue().cancelAndJoin(target.workspaceRootUuid, listOf(target.docId))
-        enqueueCurrentDocumentReference(target.workspaceRootUuid, entry)
-        return true
+        return libraryIndexer.retryLegacy(target.workspaceRootUuid, entry)
     }
 
     private suspend fun enqueueCurrentDocumentReference(
         workspaceRootUuid: String,
         entry: FileEntry,
     ) {
-        app.awaitVectorizationQueue().enqueueDocumentReference(
-            workspaceRootUuid = workspaceRootUuid,
-            docId = entry.uuid,
-            docTitle = entry.name,
-            sourceMimeType = requireNotNull(entry.mimeType) { "重新索引文件缺少 MIME" },
-            targetContentHash = entry.hash,
-            targetEpoch = entry.updatedAt,
-            kgStrategy = if (_config.value.enableKnowledgeGraph) "full" else null,
-        )
+        libraryIndexer.enqueue(workspaceRootUuid, entry)
     }
 
     private fun clearRetryTarget() {
@@ -535,6 +557,11 @@ class RagViewModel(
     /** 手动关闭错误提示（用户点击关闭后清除） */
     fun dismissQueueError() {
         if (_isRetryingLastFailedIndex.value || _isRetryingPendingRenameIndex.value) return
+        if (_operationNotice.value != null) {
+            _operationNotice.value = null
+            recomputeIndexingVisibility()
+            return
+        }
         discardFailedIndexTarget()
         _indexingNotice.value = null
         observedQueue?.clearAttention()
@@ -554,8 +581,21 @@ class RagViewModel(
         }
     }
 
+    private fun reportOperationFailure(failure: Exception) {
+        _operationNotice.value = UiStatusNotice(
+            severity = NoticeSeverity.Error,
+            code = IndexingNotice.CODE_OPERATION_FAILED,
+            technical = failure::class.java.simpleName,
+        )
+    }
+
+    private fun logRefreshFailure(operation: String, failure: Exception) {
+        InfinityLogger.log("[RagViewModel] $operation failed: ${failure::class.java.simpleName}")
+    }
+
     private fun shouldKeepNotice(notice: UiStatusNotice?): Boolean = when (notice?.code) {
         IndexingNotice.CODE_FAILED,
+        IndexingNotice.CODE_OPERATION_FAILED,
         IndexingNotice.CODE_PARTIAL,
         IndexingNotice.CODE_KG_PARTIAL,
         IndexingNotice.CODE_KG_CONFIRMATION,
@@ -745,12 +785,12 @@ class RagViewModel(
                         targetKnowledgeBaseRootUuid = rootUuid,
                         targetFolderUuid = targetFolderUuid,
                     )
-                    runCatching {
-                        enqueueCurrentDocumentReference(rootUuid, transferred)
-                    }
+                    enqueueCurrentDocumentReference(rootUuid, transferred)
                 }
-            } catch (e: Exception) {
-                InfinityLogger.logError("[RagViewModel] transferFileToKnowledgeBase failed", e)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
             }
         }
     }
@@ -767,7 +807,9 @@ class RagViewModel(
                 _vectorStats.value = vectorStatsService.getStats()
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) { }
+            } catch (failure: Exception) {
+                logRefreshFailure("loadVectorStats", failure)
+            }
         }
     }
 
@@ -783,7 +825,11 @@ class RagViewModel(
                     memoryCount = vStats.byType.memory,
                     graphEntityCount = nodeCount
                 )
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logRefreshFailure("loadStats", failure)
+            }
         }
     }
 
@@ -805,7 +851,11 @@ class RagViewModel(
                     parentUuid = targetParent,
                     materializedPath = matPath
                 )
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
+            }
         }
     }
 
@@ -819,7 +869,11 @@ class RagViewModel(
                         _documents.value = entries.filter { !it.isDirectory }.map { it.toDocument() }
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logRefreshFailure("loadDocumentsForFolder", failure)
+            }
         }
     }
 
@@ -846,7 +900,8 @@ class RagViewModel(
                                 }
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
-                            } catch (_: Exception) {
+                            } catch (failure: Exception) {
+                                logRefreshFailure("renameIndex", failure)
                                 // 已提交的重命名不能回滚；target 留在 VM 生命周期补偿队列中。
                             }
                         }
@@ -869,7 +924,9 @@ class RagViewModel(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) { }
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
+            }
         }
     }
 
@@ -925,7 +982,8 @@ class RagViewModel(
                 removePendingRenameTarget(target)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+                logRefreshFailure("retryRenameIndex", failure)
                 // 保留失败 target，继续补偿其它互不依赖的文件。
             }
         }
@@ -975,7 +1033,7 @@ class RagViewModel(
     private fun recomputeIndexingVisibility() {
         _isIndexing.value = _pendingRenameIndexTargets.value.isNotEmpty() ||
             observedQueue?.state?.value?.isDocumentIndexing == true ||
-            shouldKeepNotice(_indexingNotice.value) ||
+            shouldKeepNotice(_indexingNotice.value) || _operationNotice.value != null ||
             _canRetryLastFailedIndex.value
     }
 
@@ -1094,7 +1152,11 @@ class RagViewModel(
                 val rootUuid = _workspaceRootUuid.value ?: return@launch
                 val entry = workspaceRepository.getByUuid(rootUuid, uuid) ?: return@launch
                 enqueueCurrentDocumentReference(rootUuid, entry)
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
+            }
         }
     }
 
@@ -1141,7 +1203,8 @@ class RagViewModel(
                 onResult?.invoke(true)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
                 onResult?.invoke(false)
             }
         }
@@ -1320,7 +1383,11 @@ class RagViewModel(
                     parentUuid = parentUuid,
                     materializedPath = parentPath.trimEnd('/') + "/$newName"
                 )
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
+            }
         }
     }
 
@@ -1423,7 +1490,11 @@ class RagViewModel(
         viewModelScope.launch {
             try {
                 _memoryVectors.value = vectorRepository.getMemoryVectors()
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logRefreshFailure("loadMemoryVectors", failure)
+            }
         }
     }
 
@@ -1433,7 +1504,11 @@ class RagViewModel(
                 vectorRepository.deleteVector(id)
                 _memoryVectors.value = _memoryVectors.value.filter { it.id != id }
                 loadStats()
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
+            }
         }
     }
 
@@ -1453,7 +1528,11 @@ class RagViewModel(
                 val rootUuid = _workspaceRootUuid.value ?: return@launch
                 workspaceRepository.resetAllRAGStatus(rootUuid)
                 loadStats()
-            } catch (_: Exception) { }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportOperationFailure(failure)
+            }
         }
     }
 
