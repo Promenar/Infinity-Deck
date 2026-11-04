@@ -32,6 +32,7 @@ import java.util.stream.Stream;
  *
  * 母版是 scripts/branding/infinity_icon.py 生成的受限 SVG 子集：根级说明、径向渐变定义、
  * background / foreground 分组和其中的直接路径。路径填充为纯色或径向渐变，可带不透明度与描边。
+ * 彩色图标的前景改用发光点阵位图（scripts/branding/GlowIcon.java 按密度生成），SVG 母版只提供背景。
  */
 public abstract class GenerateLauncherIcons extends DefaultTask {
     private static final String ANDROID = "http://schemas.android.com/apk/res/android";
@@ -49,6 +50,10 @@ public abstract class GenerateLauncherIcons extends DefaultTask {
     /** 彩色母版：108 × 108，含 background 与 foreground 两个分组。 */
     @InputFile @PathSensitive(PathSensitivity.RELATIVE)
     public abstract RegularFileProperty getMasterSvg();
+
+    /** 彩色前景位图目录：mdpi…xxxhdpi 五个 108dp 画布 PNG，由 scripts/branding/GlowIcon.java 生成。 */
+    @org.gradle.api.tasks.InputDirectory @PathSensitive(PathSensitivity.RELATIVE)
+    public abstract DirectoryProperty getForegroundRasters();
 
     /** 主题图标母版：108 × 108，仅 foreground 分组，纯色不透明。 */
     @InputFile @PathSensitive(PathSensitivity.RELATIVE)
@@ -103,7 +108,16 @@ public abstract class GenerateLauncherIcons extends DefaultTask {
 
         Map<String, String> files = new LinkedHashMap<>();
         files.put("drawable/ic_launcher_background.xml", master.vector("background"));
-        files.put("drawable/ic_launcher_foreground.xml", master.vector("foreground"));
+        Map<String, byte[]> binaries = new LinkedHashMap<>();
+        File rasters = getForegroundRasters().get().getAsFile();
+        for (Map.Entry<String, Integer> density : Map.of("mdpi", 108, "hdpi", 162, "xhdpi", 216, "xxhdpi", 324, "xxxhdpi", 432).entrySet()) {
+            File png = new File(rasters, density.getKey() + ".png");
+            require(png.isFile(), "缺少前景位图 " + png.getName() + "，请运行 java scripts/branding/GlowIcon.java");
+            java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(png);
+            require(image != null && image.getWidth() == density.getValue() && image.getHeight() == density.getValue()
+                    && image.getColorModel().hasAlpha(), "前景位图 " + png.getName() + " 必须是 " + density.getValue() + " 像素见方的透明 PNG");
+            binaries.put("drawable-" + density.getKey() + "/ic_launcher_foreground.png", Files.readAllBytes(png.toPath()));
+        }
         files.put("drawable/ic_launcher_monochrome.xml", monochrome.vector("foreground"));
         files.put("drawable/ic_notification.xml", notification.vector("foreground"));
         for (String name : List.of("ic_launcher", "ic_launcher_round")) {
@@ -120,13 +134,19 @@ public abstract class GenerateLauncherIcons extends DefaultTask {
         Files.createDirectories(output);
         try (Stream<Path> walk = Files.walk(output)) {
             for (Path file : walk.filter(Files::isRegularFile).collect(Collectors.toList())) {
-                if (!files.containsKey(output.relativize(file).toString().replace(File.separatorChar, '/'))) Files.delete(file);
+                String relative = output.relativize(file).toString().replace(File.separatorChar, '/');
+                if (!files.containsKey(relative) && !binaries.containsKey(relative)) Files.delete(file);
             }
         }
         for (Map.Entry<String, String> file : files.entrySet()) {
             Path target = output.resolve(file.getKey());
             Files.createDirectories(target.getParent());
             Files.writeString(target, file.getValue(), StandardCharsets.UTF_8);
+        }
+        for (Map.Entry<String, byte[]> file : binaries.entrySet()) {
+            Path target = output.resolve(file.getKey());
+            Files.createDirectories(target.getParent());
+            Files.write(target, file.getValue());
         }
     }
 

@@ -345,6 +345,7 @@ androidComponents.onVariants { variant ->
     }
     val generateIcons = tasks.register<GenerateLauncherIcons>("generate${capitalizedName}InfinityLauncherIcons") {
         masterSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-dots-master.svg"))
+        foregroundRasters.set(rootProject.layout.projectDirectory.dir("../assets/branding/launcher-foreground"))
         monochromeSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-dots-monochrome.svg"))
         notificationSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-notification.svg"))
         sourceRoots.from(layout.projectDirectory.dir("src"))

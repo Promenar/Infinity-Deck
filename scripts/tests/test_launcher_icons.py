@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 TASK_SOURCE = ROOT / "native-ui/buildSrc"
 GENERATOR = ROOT / "scripts/branding/infinity_icon.py"
+RASTERS = ROOT / "assets/branding/launcher-foreground"
+DENSITIES = ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
 AAPT = "{http://schemas.android.com/aapt}"
 SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108">
 <title>测试母版</title>
@@ -52,10 +54,13 @@ class LauncherIconGenerationTest(unittest.TestCase):
         self.master.write_text(SVG, encoding="utf-8")
         self.mono.write_text(MONO, encoding="utf-8")
         self.notify.write_text(NOTIFY, encoding="utf-8")
+        self.rasters = self.assets / "launcher-foreground"
+        shutil.copytree(RASTERS, self.rasters)
         (self.project / "settings.gradle.kts").write_text('rootProject.name = "icon-contract"\n')
         (self.project / "build.gradle.kts").write_text('''import com.promenar.infinity.buildlogic.GenerateLauncherIcons
 tasks.register<GenerateLauncherIcons>("generateInfinityLauncherIcons") {
     masterSvg.set(layout.projectDirectory.file("../assets/branding/infinity-dots-master.svg"))
+    foregroundRasters.set(layout.projectDirectory.dir("../assets/branding/launcher-foreground"))
     monochromeSvg.set(layout.projectDirectory.file("../assets/branding/infinity-dots-monochrome.svg"))
     notificationSvg.set(layout.projectDirectory.file("../assets/branding/infinity-notification.svg"))
     sourceRoots.from(layout.projectDirectory.dir("app/src"))
@@ -96,24 +101,21 @@ tasks.register<GenerateLauncherIcons>("generateInfinityLauncherIcons") {
                 else:
                     self.assertIsNone(mono)
         self.assertEqual(sorted(p.relative_to(self.resources).as_posix() for p in self.resources.rglob("*.xml")), sorted([
-            "drawable/ic_launcher_background.xml", "drawable/ic_launcher_foreground.xml",
+            "drawable/ic_launcher_background.xml",
             "drawable/ic_launcher_monochrome.xml", "drawable/ic_notification.xml",
             "mipmap-anydpi-v26/ic_launcher.xml", "mipmap-anydpi-v26/ic_launcher_round.xml",
             "mipmap-anydpi-v33/ic_launcher.xml", "mipmap-anydpi-v33/ic_launcher_round.xml"]))
 
         source = {g.get("id"): [p.get("d") for p in g] for g in ET.fromstring(SVG) if g.tag.endswith("}g")}
         background = self.xml("drawable/ic_launcher_background.xml")
-        foreground = self.xml("drawable/ic_launcher_foreground.xml")
-        for vector, group in ((background, "background"), (foreground, "foreground")):
-            self.assertEqual(vector.get(ANDROID + "viewportWidth"), "108")
-            self.assertEqual([p.get(ANDROID + "pathData") for p in vector], source[group])
-        halo, dot = list(foreground)
-        gradient = halo.find(f"{AAPT}attr/gradient")
-        self.assertEqual(halo.find(f"{AAPT}attr").get("name"), "android:fillColor")
-        self.assertEqual((gradient.get(ANDROID + "type"), gradient.get(ANDROID + "centerX"), gradient.get(ANDROID + "gradientRadius")),
-                         ("radial", "40", "3"))
-        self.assertEqual([i.get(ANDROID + "color") for i in gradient], ["#8CBEEEFF", "#00BEEEFF"])
-        self.assertEqual((dot.get(ANDROID + "fillColor"), dot.get(ANDROID + "fillAlpha")), ("#BEEEFF", "0.95"))
+        self.assertEqual(background.get(ANDROID + "viewportWidth"), "108")
+        self.assertEqual([p.get(ANDROID + "pathData") for p in background], source["background"])
+
+    def test_foreground_is_density_raster_copied_from_branding(self) -> None:
+        self.run_generator()
+        for density in DENSITIES:
+            generated = self.resources / f"drawable-{density}/ic_launcher_foreground.png"
+            self.assertEqual(generated.read_bytes(), (self.rasters / f"{density}.png").read_bytes())
 
     def test_monochrome_and_notification_are_solid_silhouettes(self) -> None:
         self.run_generator()
@@ -126,12 +128,21 @@ tasks.register<GenerateLauncherIcons>("generateInfinityLauncherIcons") {
         self.assertEqual((path.get(ANDROID + "strokeColor"), path.get(ANDROID + "strokeWidth"), path.get(ANDROID + "strokeLineJoin")),
                          ("#000000", "2", "round"))
 
-    def test_rebuild_consumes_changed_master_without_stale_paths(self) -> None:
+    def test_rebuild_consumes_changed_master_without_stale_outputs(self) -> None:
         self.run_generator()
-        self.master.write_text(SVG.replace("M39.00 60.00", "M39.50 60.00"), encoding="utf-8")
+        stale = self.resources / "drawable/ic_launcher_foreground.xml"
+        stale.write_text("<vector/>", encoding="utf-8")
+        self.master.write_text(SVG.replace("M0 0H108V108H0Z", "M0 0H108V107H0Z"), encoding="utf-8")
         self.run_generator()
-        paths = [p.get(ANDROID + "pathData") for p in self.xml("drawable/ic_launcher_foreground.xml")]
-        self.assertTrue(paths[1].startswith("M39.50 60.00"))
+        paths = [p.get(ANDROID + "pathData") for p in self.xml("drawable/ic_launcher_background.xml")]
+        self.assertEqual(paths, ["M0 0H108V107H0Z"])
+        self.assertFalse(stale.exists())
+
+    def test_rejects_missing_or_wrong_size_raster(self) -> None:
+        shutil.copyfile(self.rasters / "mdpi.png", self.rasters / "hdpi.png")
+        self.assertIn("像素见方的透明 PNG", self.run_generator(expect_success=False).stdout)
+        (self.rasters / "hdpi.png").unlink()
+        self.assertIn("缺少前景位图", self.run_generator(expect_success=False).stdout)
 
     def test_rejects_legacy_and_variant_resource_overrides(self) -> None:
         for relative in ("app/src/release/res/mipmap-xxxhdpi/ic_launcher.png", "app/src/main/res/drawable/ic_notification.xml"):

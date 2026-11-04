@@ -76,10 +76,8 @@ class LauncherIconDeviceTest {
                 assertThat(Color.alpha(foreground.getPixel(4, 4))).isEqualTo(0)
                 // 环境光与光晕边缘的不透明度低于 150，只统计点本身。
                 assertThat(inkInsideSafeZone(foreground, threshold = 150)).isGreaterThan(3000)
-                // 高光段在左下：该区域有浅青色亮点（母版最亮点 #C8E9FF，最小通道约 200），且明显亮于右上环远端。
-                val highlight = brightest(foreground, 0 until SIZE / 2, SIZE / 2 until SIZE)
-                assertThat(highlight).isGreaterThan(180)
-                assertThat(brightest(foreground, SIZE / 2 until SIZE, 0 until SIZE / 2)).isLessThan(highlight)
+                // 发光位图前景的点芯接近白色（最小通道 > 180），光晕不计入。
+                assertThat(brightest(foreground, 0 until SIZE, 0 until SIZE)).isGreaterThan(180)
             }
             val output = File(instrumentation.targetContext.filesDir, "launcher-icon-${if (night) "dark" else "light"}.png")
             output.outputStream().use { render(icon(context, "ic_launcher"), 256).compress(Bitmap.CompressFormat.PNG, 100, it) }

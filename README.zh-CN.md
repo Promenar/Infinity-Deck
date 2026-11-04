@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/branding/infinity-dots-dark.svg">
-    <img src="assets/branding/infinity-dots-light.svg" alt="Infinity Workbench 点阵无穷图标" width="112" height="112">
-  </picture>
+  <img src="assets/branding/infinity-glow-icon.png" alt="Infinity Workbench 发光点阵无穷图标" width="112" height="112">
 </p>
 
 <h1 align="center">Infinity Workbench</h1>

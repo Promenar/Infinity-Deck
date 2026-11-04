@@ -1,10 +1,9 @@
 {
-  "asset": "Infinity Workbench 点阵无穷",
-  "adoption_date": "2026-10-29",
+  "asset": "Infinity Workbench 发光点阵无穷",
+  "adoption_date": "2026-11-05",
   "current_requirements": [
-    "深蓝径向渐变背景上的点阵无穷丝带",
-    "左下交汇段高光偏青白，右环偏紫并渐暗",
-    "亮点以径向渐变光晕模拟发光，全部位于 66dp 安全圆内",
+    "深蓝径向渐变背景上的发光点阵无穷丝带，点芯接近白色并带柔和光晕",
+    "彩色前景取自用户提供的带透明通道母版，符号外接圆位于 66dp 安全圆内",
     "Android 自适应、独立单色主题图层与实线通知图标"
   ],
   "lineage": [
@@ -15,13 +14,40 @@
       "root": "references/infinity-dotmatrix-concept.png",
       "generative_edit": 0,
       "status": "用户提供的概念图（AI 生成，带烘焙玻璃外框），作为方向参考，不进入构建"
+    },
+    {
+      "file": "infinity-glow-master.png",
+      "sha256": "70e0088f46e35c0f8e98f8d0a290a9f6f751f7a79acae0223b68c846af39f118",
+      "direct_input": null,
+      "root": "infinity-glow-master.png",
+      "generative_edit": 0,
+      "status": "用户于 2026-11-05 提供的 1254 × 1254 带透明通道母版（AI 生成），作为彩色前景的生成根节点"
     }
   ],
   "master": {
+    "file": "infinity-glow-master.png",
+    "processor": "scripts/branding/GlowIcon.java",
+    "outputs": [
+      "launcher-foreground/mdpi.png",
+      "launcher-foreground/hdpi.png",
+      "launcher-foreground/xhdpi.png",
+      "launcher-foreground/xxhdpi.png",
+      "launcher-foreground/xxxhdpi.png",
+      "infinity-glow-icon.png"
+    ],
+    "method": "按不透明度阈值定位符号，缩放、居中与合成背景；确定性栅格处理，不增加生成式编辑次数",
+    "status": "用户于 2026-11-05 采用，替换点阵矢量前景"
+  },
+  "vector_layers": {
     "file": "infinity-dots-master.svg",
     "source": "references/infinity-dotmatrix-concept.png",
     "generator": "scripts/branding/infinity_icon.py",
+    "used_for": [
+      "自适应图标背景（background 分组）",
+      "infinity-dots-monochrome.svg 主题图标",
+      "infinity-notification.svg 通知图标"
+    ],
     "method": "按参数重建中心线、丝带扭转、点线、亮度与光晕；确定性矢量制作，不增加生成式编辑次数",
-    "status": "用户于 2026-10-29 看过对比图后采用"
+    "status": "用户于 2026-10-29 采用；彩色前景自 2026-11-05 起改用发光位图"
   }
 }

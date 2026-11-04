@@ -5,7 +5,8 @@
 点按亮度和色相合并为少量路径，亮点各带一个径向渐变光晕，对应 VectorDrawable 中每个渐变一条路径。
 
 产物写入 assets/branding/，由 native-ui/buildSrc 的 GenerateLauncherIcons 转成 Android 资源：
-  infinity-dots-master.svg      108 × 108，background 与 foreground 两个图层
+  infinity-dots-master.svg      108 × 108，background 与 foreground 两个图层；构建只取 background，
+                                彩色前景改用 scripts/branding/GlowIcon.java 生成的发光位图
   infinity-dots-monochrome.svg  108 × 108，主题图标用的单色点阵（点更少、更大）
   infinity-notification.svg     24 × 24，通知栏用的实线无穷剪影
   infinity-dots-dark.svg / infinity-dots-light.svg  512 × 512 展示稿，取中心 72dp 可见区
