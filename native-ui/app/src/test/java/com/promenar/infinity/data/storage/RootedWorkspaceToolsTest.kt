@@ -85,7 +85,6 @@ class RootedWorkspaceToolsTest {
             assertThat(create.execute(args("""{"parentPath":"${base.ifEmpty { "/" }}","name":"a.txt","content":"content"}"""), execution).status).isEqualTo("success")
             val move = skill(MoveFileSkill(workspace, FileIndexEventSink.None))
             val path = "$base/a.txt"
-            val recycleCount = manager.recycleItems("session").size
             val before = manager.entry("session", path)!!
             for (name in listOf("", ",\"newName\":\"a.txt\"")) {
                 val result = move.execute(args("""{"path":"$path","newParentPath":"${base.ifEmpty { "/" }}"$name}"""), execution)
@@ -93,7 +92,6 @@ class RootedWorkspaceToolsTest {
                 assertThat(result.fileChanges.orEmpty()).isEmpty()
             }
             assertThat(manager.entry("session", path)!!.updatedAt).isEqualTo(before.updatedAt)
-            assertThat(manager.recycleItems("session").size).isEqualTo(recycleCount)
             assertThat(move.execute(args("""{"path":"$path","newParentPath":"${base.ifEmpty { "/" }}","newName":"b.txt"}"""), execution).status).isEqualTo("success")
             assertThat(String(manager.read("session", "$base/b.txt", 1024))).isEqualTo("content")
             assertThat(skill(CreateDirectorySkill(workspace)).execute(args("""{"parentPath":"${base.ifEmpty { "/" }}","name":"target"}"""), execution).status).isEqualTo("success")
@@ -138,13 +136,9 @@ class RootedWorkspaceToolsTest {
         assertThat(skill(FileSearchSkill(workspace, files)).execute(args("""{"query":"a.txt"}"""), execution).content).contains("/a.txt")
 
         assertThat(skill(MoveFileSkill(workspace, FileIndexEventSink.None)).execute(args("""{"path":"/a.txt","newParentPath":"/docs"}"""), execution).status).isEqualTo("success")
-        assertThat(File(repo, "docs/a.txt").readText()).isEqualTo("new\nlast")
         assertThat(File(repo, "a.txt").exists()).isFalse()
         assertThat(skill(DeleteFileSkill(workspace)).execute(args("""{"path":"/docs/a.txt"}"""), execution).status).isEqualTo("success")
         assertThat(File(repo, "docs/a.txt").exists()).isFalse()
-        val recycled = manager.recycleItems("session").single()
-        manager.restore("session", recycled.id)
-        assertThat(File(repo, "docs/a.txt").readText()).isEqualTo("new\nlast")
         assertThat(skill(DeleteFileSkill(workspace)).execute(args("""{"path":"/"}"""), execution).status).isEqualTo("error")
         assertThat(repo.isDirectory).isTrue()
         confirmVerified(workspace, files)

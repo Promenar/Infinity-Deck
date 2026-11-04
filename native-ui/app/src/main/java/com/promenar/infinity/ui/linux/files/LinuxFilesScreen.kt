@@ -891,7 +891,7 @@ private fun LinuxFilesDialogs(state: LinuxFilesUiState, actions: LinuxFilesActio
             is LinuxFilesDialog.ConfirmDelete -> InfinityConfirmDialog(
                 onDismissRequest = actions.onDismissDialog,
                 title = pluralStringResource(R.plurals.directory_delete_title, dialog.paths.size, dialog.paths.size),
-                message = stringResource(R.string.linux_files_delete_message),
+                message = stringResource(R.string.permanent_delete_linux_message),
                 confirmText = stringResource(R.string.directory_action_delete),
                 onConfirm = actions.onConfirmDelete,
                 onCancel = actions.onDismissDialog,

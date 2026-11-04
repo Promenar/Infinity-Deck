@@ -7,5 +7,4 @@
     <string name="resource_explorer_directory_refresh">刷新</string>
     <string name="resource_explorer_unavailable_title">工作区不可用</string>
     <string name="resource_explorer_unavailable_help">请检查目录与访问授权，或在上方重新选择工作区。</string>
-    <string name="resource_explorer_directory_recycle_info">工作区不可用时无法查看回收站</string>
 </resources>

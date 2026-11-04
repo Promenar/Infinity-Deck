@@ -53,7 +53,7 @@ class PrivateWorkspaceFileChangesTest {
             File(rootDir, path.trimStart('/')).writeText("")
             entryAt(path)!!
         }
-        coEvery { moveToRecycleBin("root", any()) } answers {
+        coEvery { permanentDelete("root", any()) } answers {
             File(rootDir, secondArg<String>().removePrefix("uuid:").trimStart('/')).delete()
             Unit
         }
@@ -139,9 +139,10 @@ class PrivateWorkspaceFileChangesTest {
         assertThat(patched.fileChanges!!.single().removed).isEqualTo(0)
 
         val deleted = skill(DeleteFileSkill(workspace)).execute(args("""{"path":"/n.md"}"""), execution)
-        assertThat(deleted.content).isEqualTo("已移入回收站：/n.md")
+        assertThat(deleted.content).isEqualTo("已永久删除：/n.md")
         assertThat(deleted.fileChanges!!.single().change).isEqualTo(FileChangeType.DELETED)
         assertThat(deleted.fileChanges!!.single().removed).isEqualTo(3)
+        assertThat(deleted.fileChanges!!.single().hunks).isNull()
     }
 
     @Test fun `脚本网关关闭采集时不附带改动摘要`() = runBlocking<Unit> {

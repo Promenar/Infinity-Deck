@@ -85,6 +85,6 @@ class IndexingNoticeTest {
         val resolved = IndexingNotice.template(notice)
 
         assertThat(resolved).isNotNull()
-        assertThat(resolved!!.resourceId).isEqualTo(R.string.rag_delete_failed_notice)
+        assertThat(resolved!!.resourceId).isEqualTo(R.string.permanent_delete_rag_failed)
     }
 }

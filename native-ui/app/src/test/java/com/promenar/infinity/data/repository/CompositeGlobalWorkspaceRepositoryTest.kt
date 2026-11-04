@@ -181,7 +181,7 @@ class CompositeGlobalWorkspaceRepositoryTest {
     @Test
     fun `系统虚拟目录受写保护禁止删除`() = runTest {
         assertThrows<SecurityException> {
-            compositeRepo.moveToRecycleBin(
+            compositeRepo.permanentDelete(
                 ragRootUuid,
                 CompositeWorkspaceConstants.VIRTUAL_SESSION_WORKSPACES_ROOT_UUID,
             )

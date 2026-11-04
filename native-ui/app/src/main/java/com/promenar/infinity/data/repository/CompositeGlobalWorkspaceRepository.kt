@@ -170,10 +170,6 @@ class CompositeGlobalWorkspaceRepository(
         return baseRepo.searchByName(workspaceRootUuid, query)
     }
 
-    override fun observeRecycleBin(workspaceRootUuid: String): Flow<List<FileEntry>> {
-        return baseRepo.observeRecycleBin(workspaceRootUuid)
-    }
-
     override suspend fun createFileInWorkspace(
         workspaceRootUuid: String,
         uuid: String,
@@ -229,29 +225,25 @@ class CompositeGlobalWorkspaceRepository(
         return baseRepo.createDirectoryInWorkspace(targetRoot, uuid, name, safeParentUuid, materializedPath)
     }
 
-    override suspend fun moveToRecycleBin(workspaceRootUuid: String, uuid: String) {
-        if (CompositeWorkspaceConstants.isVirtualNode(uuid)) {
-            throw SecurityException("系统虚拟目录受保护，不可移入回收站")
-        }
-        val entry = getByUuid(workspaceRootUuid, uuid)
-        val targetRoot = entry?.workspaceRootUuid ?: workspaceRootUuid
-        baseRepo.moveToRecycleBin(targetRoot, uuid)
-    }
-
-    override suspend fun restoreFromRecycleBin(workspaceRootUuid: String, uuid: String) {
-        if (CompositeWorkspaceConstants.isVirtualNode(uuid)) return
-        val entry = fileEntryDao.getAnyStateByUuidForLifecycle(workspaceRootUuid, uuid)
-        val targetRoot = entry?.workspaceRootUuid ?: workspaceRootUuid
-        baseRepo.restoreFromRecycleBin(targetRoot, uuid)
-    }
-
     override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String) {
         if (CompositeWorkspaceConstants.isVirtualNode(uuid)) {
             throw SecurityException("系统虚拟目录受保护，不可删除")
         }
-        val entry = fileEntryDao.getAnyStateByUuidForLifecycle(workspaceRootUuid, uuid)
+        val entry = getByUuid(workspaceRootUuid, uuid) ?: fileEntryDao.getAnyStateByUuidForLifecycle(workspaceRootUuid, uuid)
         val targetRoot = entry?.workspaceRootUuid ?: workspaceRootUuid
         baseRepo.permanentDelete(targetRoot, uuid)
+    }
+
+    override suspend fun permanentDeleteIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) {
+        if (CompositeWorkspaceConstants.isVirtualNode(uuid)) throw SecurityException("系统虚拟目录受保护，不可删除")
+        val targetRoot = getByUuid(workspaceRootUuid, uuid)?.workspaceRootUuid ?: workspaceRootUuid
+        baseRepo.permanentDeleteIfHash(targetRoot, uuid, expectedSha256)
+    }
+
+    override suspend fun permanentDeleteEmptyDirectory(workspaceRootUuid: String, uuid: String) {
+        if (CompositeWorkspaceConstants.isVirtualNode(uuid)) throw SecurityException("系统虚拟目录受保护，不可删除")
+        val targetRoot = getByUuid(workspaceRootUuid, uuid)?.workspaceRootUuid ?: workspaceRootUuid
+        baseRepo.permanentDeleteEmptyDirectory(targetRoot, uuid)
     }
 
     override suspend fun rollbackCreatedEntry(workspaceRootUuid: String, uuid: String) {
@@ -260,10 +252,6 @@ class CompositeGlobalWorkspaceRepository(
 
     override suspend fun confirmCreatedEntry(workspaceRootUuid: String, uuid: String) {
         baseRepo.confirmCreatedEntry(workspaceRootUuid, uuid)
-    }
-
-    override suspend fun emptyRecycleBin(workspaceRootUuid: String) {
-        baseRepo.emptyRecycleBin(workspaceRootUuid)
     }
 
     override suspend fun updateParent(workspaceRootUuid: String, uuid: String, newParentUuid: String) {

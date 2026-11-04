@@ -4,9 +4,7 @@ import com.promenar.infinity.domain.files.FileOpCode
 import com.promenar.infinity.domain.files.FileOpException
 import com.promenar.infinity.domain.files.FileTypeFilter
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -50,14 +48,6 @@ class FileManagerPrimitivesTest {
         listOf("/etc/passwd", "../file", "a/../file", "a\\b", "C:/file", "./file", "").forEach { path ->
             assertCode(FileOpCode.INVALID_NAME) { safeZipPath(path) }
         }
-    }
-
-    @Test fun `回收站标识可反查并拒绝损坏标识`() {
-        val original = RecycleKey("session:a:b", "u:123")
-        assertEquals(original, decodeRecycleId(encodeRecycleId(original)))
-        assertNull(decodeRecycleId("bad"))
-        assertFalse(encodeRecycleId(original).contains('/'))
-        assertTrue(encodeRecycleId(original).isNotEmpty())
     }
 
     private fun assertCode(code: FileOpCode, block: () -> Unit) {

@@ -401,7 +401,7 @@ private fun RunnerSection(state: AgentReachState, mode: SessionRunMode, actions:
     val traits = state.workspace.traits
     InfinitySettingsSection(
         title = stringResource(R.string.agent_reach_section_backends),
-        footer = stringResource(R.string.agent_reach_backends_footer),
+        footer = stringResource(R.string.permanent_delete_command_footer),
     ) {
         runners.shown.forEach { backend ->
             val ready = backend.status == ReachBackendStatus.READY

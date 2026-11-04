@@ -239,12 +239,12 @@ class WorkspaceCanvasFilesTest {
         assertThat(updated.metadata.workspaceSync).isEqualTo(CanvasWorkspaceSync.SYNCED)
     }
 
-    @Test fun `私有根文件移入回收站后只标记缺失更新重新创建索引`() = runBlocking {
+    @Test fun `私有根文件永久删除后只标记缺失更新重新创建索引`() = runBlocking {
         val first = store.create("s", "图表", "原文", "m")
         val root = workspace.ensureSessionRoot("s")
         val path = "/${first.metadata.workspacePath}"
         val entry = workspace.getByMaterializedPath(root.uuid, path)!!
-        workspace.moveToRecycleBin(root.uuid, entry.uuid)
+        workspace.permanentDelete(root.uuid, entry.uuid)
         assertThat(store.syncFromWorkspace("s", first.metadata.id)!!.metadata.workspaceSync).isEqualTo(CanvasWorkspaceSync.MISSING)
         assertThat(workspace.getByMaterializedPath(root.uuid, path)).isNull()
         val updated = store.update("s", first.metadata.id, html = "更新")

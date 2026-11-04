@@ -11,7 +11,7 @@
 - Read before you edit. `read_file` prefixes each line with `N| `; that prefix is not file content, and `patch_file` line numbers refer to it.
 - `write_file` and `patch_file` require `expectedHash`, the latest hash from `read_file`, `list_files`, or your previous write. On a hash conflict, re-read the file and redo the change.
 - Prefer `patch_file` for local edits and `write_file` for full rewrites of existing files. Create new files with `create_file` and folders with `create_directory`.
-- `move_file` moves or renames; `delete_file` moves items to the recycle bin, which the user can restore.
+- `move_file` moves or renames; `delete_file` permanently deletes items and requires user approval.
 
 ### Multi-step Tasks
 - For work that needs several steps or many tool calls, create a plan with `initialize_plan` first, keep it current with `update_plan` as steps finish, and finish with a short summary of results.

@@ -10,7 +10,7 @@ import kotlinx.serialization.json.*
 /** 广告工具和执行摘要共用的会话定义；底层定义指纹仍参与校验。 */
 object SessionRunModeToolDefinitions {
     private val files = setOf("read_file", "write_file", "patch_file", "diff_file", "list_files", "search_files", "create_file", "create_directory", "move_file", "delete_file")
-    private const val PATHS = "文件工具使用 Linux 路径：/workspace 为主工作区，/home/session 为会话专用空间，/mnt/<别名> 为真实路径挂载，/mnt/skills 为用户技能；其它绝对路径位于 rootfs。相对路径相对 /workspace，禁止 .. 和符号链接。Linux rootfs 删除为永久删除。"
+    private const val PATHS = "文件工具使用 Linux 路径：/workspace 为主工作区，/home/session 为会话专用空间，/mnt/<别名> 为真实路径挂载，/mnt/skills 为用户技能；其它绝对路径位于 rootfs。相对路径相对 /workspace，禁止 .. 和符号链接。delete_file 永久删除，需要用户批准。"
 
     fun forSession(tool: ProtocolTool, mode: SessionRunMode?): ProtocolTool {
         if (mode != SessionRunMode.LINUX || tool.sourceId != "builtin") return tool

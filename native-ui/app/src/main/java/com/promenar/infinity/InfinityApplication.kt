@@ -1366,7 +1366,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     }
 
     val workspaceRepository: com.promenar.infinity.domain.repository.IWorkspaceRepository by lazy {
-        val lifecycle = com.promenar.infinity.data.repository.WorkspaceLifecycleTransaction(database)
         WorkspaceRepository(
             database.fileEntryDao(),
             database.workspaceSeqDao(),
@@ -1379,21 +1378,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             },
             afterDeleteCommitted = { workspaceRootUuid, ids ->
                 pendingDocumentIndexCoordinator.clearCommitted(workspaceRootUuid, ids)
-            },
-            recycleCommitter = lifecycle::recycle,
-            restoreCommitter = lifecycle::restore,
-            beforeRecycleCommitted = { workspaceRootUuid, ids ->
-                awaitVectorizationQueue().acquireDeleteBarrier(workspaceRootUuid, ids)
-            },
-            afterRecycleCommitted = { workspaceRootUuid, ids ->
-                pendingDocumentIndexCoordinator.clearForRecycle(workspaceRootUuid, ids)
-            },
-            afterRestoreCommitted = { workspaceRootUuid, targets ->
-                pendingDocumentIndexCoordinator.resumeAfterRestore(
-                    workspaceRootUuid,
-                    targets.map { it.fileUuid },
-                )
-                awaitVectorizationQueue().resumeInterruptedTasks().getOrThrow()
             },
             executionGate = sessionExecutionGate,
             mutationJournal = workspaceFileMutationJournal,
@@ -2260,6 +2244,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                         }
                     },
                 ).runOrThrow()
+                withContext(Dispatchers.IO) { cleanupLegacyRecycleOnce() }
                 _backupRestoreResult.value = runtime.restoreResult.value
                 // 恢复结果对话框已包含技能事项，不再单独弹技能提示。
                 runtime.restoreResult.value?.takeIf { it.needsNotice }
@@ -2323,6 +2308,32 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 identityBaselines = workspaceIdentityBaselines,
                 deleteCommitter = com.promenar.infinity.data.repository.WorkspaceDeletionTransaction(database)::delete),
         ).recover()
+    }
+
+    private suspend fun cleanupLegacyRecycleOnce() {
+        val recycleCleanupPrefs = getSharedPreferences("infinity_settings", MODE_PRIVATE)
+        val dao = database.fileEntryDao()
+        val cleanup = com.promenar.infinity.data.repository.LegacyRecycleCleanup(
+            isComplete = { recycleCleanupPrefs.getBoolean("legacy_recycle_cleanup_complete", false) },
+            markComplete = { recycleCleanupPrefs.edit().putBoolean("legacy_recycle_cleanup_complete", true).commit() },
+            loadEntries = {
+                dao.getAllWorkspaceRootsForMaintenance().flatMap { root ->
+                    dao.getAllStatesByWorkspaceRootForCleanup(root.uuid).map { entry ->
+                        com.promenar.infinity.data.repository.LegacyRecycleEntry(
+                            entry.workspaceRootUuid, entry.uuid, entry.materializedPath, entry.inRecycleBin, entry.isDirectory,
+                        )
+                    }
+                }
+            },
+            deleteEntry = { root, uuid -> workspaceRepository.permanentDelete(root, uuid) },
+            deleteDirectory = { name ->
+                com.promenar.infinity.data.repository.deleteLegacyRecycleDirectory(noBackupFilesDir.toPath(), name)
+            },
+        )
+        val result = cleanup.run()
+        if (!result.alreadyComplete) {
+            InfinityLogger.log("[LegacyRecycleCleanup] deleted=${result.deletedRoots} failed=${result.failed}")
+        }
     }
 
     private fun initializeAfterRecoveryOnce() {

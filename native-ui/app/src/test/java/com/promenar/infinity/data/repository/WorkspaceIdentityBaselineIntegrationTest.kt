@@ -102,7 +102,7 @@ class WorkspaceIdentityBaselineIntegrationTest {
         assertThat(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash)).isEqualTo(version)
     }
 
-    @Test fun `两条命令间文件工具写入创建改名回收恢复后mv保留身份`() = runBlocking<Unit> {
+    @Test fun `两条命令间文件工具写入创建改名删除后mv保留身份`() = runBlocking<Unit> {
         val edited = create("edited", "/edit.txt", "old")
         val recycled = create("recycled", "/recycle.txt")
         val dir = repo.createDirectoryInWorkspace(root.uuid, "dir", "dir", root.uuid, "/dir")
@@ -113,10 +113,8 @@ class WorkspaceIdentityBaselineIntegrationTest {
         files.writeFileAtomic(root.uuid, edited.uuid, "written by tool", "s", edited.hash)
         repo.rename(root.uuid, edited.uuid, "tool.txt", null)
         repo.rename(root.uuid, dir.uuid, "tool-dir", null)
-        repo.moveToRecycleBin(root.uuid, recycled.uuid)
+        repo.permanentDelete(root.uuid, recycled.uuid)
         val created = create("created", "/created.txt")
-        repo.restoreFromRecycleBin(root.uuid, recycled.uuid)
-        repo.moveToRecycleBin(root.uuid, recycled.uuid)
         assertThat(fullScans).isEqualTo(scansBeforeTools)
         assertThat(scannedPaths.flatten()).containsAtLeast("/first.txt", "/tool.txt", "/tool-dir/a.txt", "/created.txt")
         command {
@@ -129,8 +127,8 @@ class WorkspaceIdentityBaselineIntegrationTest {
         assertThat(repo.getByMaterializedPath(root.uuid, "/last-dir")?.uuid).isEqualTo("dir")
         assertThat(repo.getByMaterializedPath(root.uuid, "/last-dir/a.txt")?.uuid).isEqualTo("child")
         assertThat(repo.getByMaterializedPath(root.uuid, "/new.txt")?.uuid).isEqualTo(created.uuid)
-        assertThat(db.fileEntryDao().getAnyStateByUuidForLifecycle(root.uuid, recycled.uuid)?.inRecycleBin).isTrue()
-        assertThat(deleted).isEmpty()
+        assertThat(db.fileEntryDao().getAnyStateByUuidForLifecycle(root.uuid, recycled.uuid)).isNull()
+        assertThat(deleted).containsExactly(recycled.uuid)
         val version = checkNotNull(db.fileVersionDao().getByHash(root.uuid, edited.uuid, edited.hash))
         assertThat(File(version.contentPath).readText()).isEqualTo("old")
     }

@@ -52,7 +52,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.local.db.entity.FileEntry
-import com.promenar.infinity.domain.storage.ExternalRecycleItem
 import com.promenar.infinity.domain.storage.IExternalFolderManager
 import com.promenar.infinity.domain.workspace.DirectoryFileOpCode
 import com.promenar.infinity.ui.common.FolderStatusMessage
@@ -78,8 +77,6 @@ internal data class DirectoryFileActions(
     val onCreateFolder: (name: String, onResult: (DirectoryFileOpCode?) -> Unit) -> Unit,
     val onRename: (path: String, name: String, onResult: (DirectoryFileOpCode?) -> Unit) -> Unit,
     val onDismissOutcome: () -> Unit,
-    val onDeletePermanently: () -> Unit = {},
-    val onKeepTooLarge: () -> Unit = {},
 )
 
 /** 私有工作区文件页的长按操作回调；条目以 UUID 标识，为 null 时文件页保持只读。 */
@@ -104,7 +101,7 @@ internal fun directoryOpCodeText(code: DirectoryFileOpCode): String = stringReso
         DirectoryFileOpCode.READ_ONLY -> R.string.directory_op_read_only
         DirectoryFileOpCode.WORKSPACE_UNAVAILABLE -> R.string.directory_op_unavailable
         DirectoryFileOpCode.SESSION_BUSY -> R.string.directory_op_busy
-        DirectoryFileOpCode.TOO_LARGE -> R.string.directory_op_too_large
+        DirectoryFileOpCode.TOO_LARGE -> R.string.file_operation_too_large
         DirectoryFileOpCode.IO -> R.string.directory_op_failed
     },
 )
@@ -247,114 +244,12 @@ internal fun DirectoryOutcomeLine(outcome: DirectoryOpOutcome) {
 internal fun DirectoryDeleteDialog(count: Int, onConfirm: () -> Unit, onCancel: () -> Unit) {
     InfinityConfirmDialog(
         onDismissRequest = onCancel,
-        title = pluralStringResource(R.plurals.directory_delete_title, count, count),
-        message = stringResource(R.string.directory_delete_message),
-        confirmText = stringResource(R.string.directory_action_delete),
+        title = pluralStringResource(R.plurals.permanent_delete_title, count, count),
+        message = stringResource(R.string.permanent_delete_message),
+        confirmText = stringResource(R.string.permanent_delete_action),
         onConfirm = onConfirm,
         onCancel = onCancel,
         isDestructive = true,
         confirmButtonModifier = Modifier.testTag("directory_delete_confirm"),
     )
 }
-
-/** 超出回收站容量的条目无法备份，只能永久删除或保留。 */
-@Composable
-internal fun DirectoryPermanentDeleteDialog(count: Int, onConfirm: () -> Unit, onCancel: () -> Unit) {
-    InfinityConfirmDialog(
-        onDismissRequest = onCancel,
-        title = pluralStringResource(R.plurals.directory_permanent_delete_title, count, count),
-        message = stringResource(R.string.directory_permanent_delete_message),
-        confirmText = stringResource(R.string.directory_permanent_delete_confirm),
-        onConfirm = onConfirm,
-        onCancel = onCancel,
-        isDestructive = true,
-        confirmButtonModifier = Modifier.testTag("directory_permanent_delete_confirm"),
-    )
-}
-
-/** 目录工作区的回收站：列出本会话挂载回收区中的删除副本，可逐项恢复回原位置。 */
-@Composable
-internal fun DirectoryRecycleList(
-    sessionId: String,
-    manager: IExternalFolderManager,
-    onRestored: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var items by remember(sessionId) { mutableStateOf<List<ExternalRecycleItem>?>(null) }
-    var reload by remember { mutableIntStateOf(0) }
-    var busy by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf(false) }
-    LaunchedEffect(manager, sessionId, reload) {
-        items = try {
-            manager.recycleItems(sessionId).sortedByDescending { it.deletedAt }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            failed = true
-            emptyList()
-        }
-    }
-    val current = items
-    Column(modifier.fillMaxSize().testTag("directory_recycle_list")) {
-        if (failed) DirectoryOutcomeError(stringResource(R.string.mount_operation_error))
-        when {
-            current == null -> Unit
-            current.isEmpty() -> FolderStatusMessage(
-                text = stringResource(R.string.mount_recycle_empty),
-                icon = Icons.Rounded.RestoreFromTrash,
-            )
-            else -> InfinitySettingsGroup(
-                footer = stringResource(R.string.directory_recycle_footer),
-                modifier = Modifier.padding(horizontal = InfinitySpacing.Small),
-            ) {
-                current.forEach { item ->
-                    key(item.id) {
-                        InfinitySettingsRowLayout(
-                            title = item.originalPath,
-                            subtitle = Formatter.formatShortFileSize(context, item.size),
-                            subtitleIsIdentifier = false,
-                            icon = Icons.AutoMirrored.Rounded.InsertDriveFile,
-                            trailingContent = {
-                                IconButton(
-                                    enabled = !busy,
-                                    colors = IconButtonDefaults.iconButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    onClick = {
-                                        busy = true
-                                        failed = false
-                                        scope.launch {
-                                            try {
-                                                manager.restore(sessionId, item.id)
-                                                onRestored()
-                                            } catch (cancelled: CancellationException) {
-                                                throw cancelled
-                                            } catch (_: Exception) {
-                                                failed = true
-                                            } finally {
-                                                busy = false
-                                                reload++
-                                            }
-                                        }
-                                    },
-                                ) {
-                                    Icon(Icons.Rounded.RestoreFromTrash, contentDescription = stringResource(R.string.mount_restore))
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DirectoryOutcomeError(text: String) = Text(
-    text,
-    style = MaterialTheme.typography.bodySmall,
-    color = MaterialTheme.colorScheme.error,
-    modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-)

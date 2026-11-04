@@ -26,10 +26,7 @@
     <string name="mount_remove_message">源文件保留在原处。没有其它挂载共用此授权时，将释放文件夹授权。</string>
     <string name="mount_browse">浏览文件夹</string>
     <string name="mount_refresh">刷新挂载</string>
-    <string name="mount_recycle_title">挂载回收区</string>
-    <string name="mount_recycle_help">删除的副本保留 7 天（最多 32 MiB、100 项），可恢复到源目录；空间不足时拒绝删除。</string>
-    <string name="mount_recycle_empty">没有可恢复的文件</string>
-    <string name="mount_restore">恢复</string>
+
     <string name="mount_directory_empty">这个文件夹是空的</string>
     <string name="mount_load_error">无法读取文件夹，请检查授权或存储设备后重试。</string>
     <string name="mount_operation_error">操作失败，请检查挂载状态、权限和输入内容。</string>
@@ -49,7 +46,6 @@
     <string name="mount_empty_hint">添加文件夹后，智能体可在 /mnt/别名/ 下读写其中的文件。</string>
     <string name="mount_add_saf_desc">在系统文件夹选择器中授权，可选择 Termux 等应用目录</string>
     <string name="mount_add_real_path_desc">浏览或填写存储路径，需要“所有文件访问”权限</string>
-    <string name="mount_recycle_desc">恢复智能体从挂载文件夹中删除的文件</string>
     <string name="mount_more_actions">%1$s 的更多操作</string>
     <string name="mount_form_section_target">文件夹</string>
     <string name="mount_saf_command_note">只有文件工具能访问，命令看不到此文件夹。</string>

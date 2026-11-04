@@ -18,7 +18,6 @@ interface IWorkspaceRepository {
     ): List<FileEntry>
     fun searchByName(workspaceRootUuid: String, query: String): Flow<List<FileEntry>>
 
-    fun observeRecycleBin(workspaceRootUuid: String): Flow<List<FileEntry>>
     suspend fun createFileInWorkspace(
         workspaceRootUuid: String,
         uuid: String,
@@ -47,19 +46,17 @@ interface IWorkspaceRepository {
         materializedPath: String
     ): FileEntry
 
-    suspend fun moveToRecycleBin(workspaceRootUuid: String, uuid: String)
-    /** 版本条件必须与回收操作在同一工作区写锁下核验。 */
-    suspend fun moveToRecycleBinIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) {
-        throw UnsupportedOperationException("仓库不支持带版本条件的删除")
-    }
-    suspend fun moveEmptyDirectoryToRecycleBin(workspaceRootUuid: String, uuid: String) {
-        throw UnsupportedOperationException("仓库不支持空目录条件回收")
-    }
-    suspend fun restoreFromRecycleBin(workspaceRootUuid: String, uuid: String)
     suspend fun permanentDelete(workspaceRootUuid: String, uuid: String)
+    /** 在同一工作区写锁中核验文件摘要并永久删除。 */
+    suspend fun permanentDeleteIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) {
+        throw UnsupportedOperationException("仓库不支持带版本条件的永久删除")
+    }
+    /** 仅在目录仍为空时永久删除。 */
+    suspend fun permanentDeleteEmptyDirectory(workspaceRootUuid: String, uuid: String) {
+        throw UnsupportedOperationException("仓库不支持空目录条件删除")
+    }
     suspend fun rollbackCreatedEntry(workspaceRootUuid: String, uuid: String)
     suspend fun confirmCreatedEntry(workspaceRootUuid: String, uuid: String)
-    suspend fun emptyRecycleBin(workspaceRootUuid: String)
     suspend fun updateParent(workspaceRootUuid: String, uuid: String, newParentUuid: String)
     suspend fun rename(
         workspaceRootUuid: String,

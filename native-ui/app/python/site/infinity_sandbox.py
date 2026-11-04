@@ -132,8 +132,9 @@ def _module(channel, args):
     def mkdir(path):
         return call("mkdir", path=str(path))
 
-    def delete(path, irreversible=None):
-        return call("delete", path=str(path), irreversible=irreversible)
+    def delete(path):
+        """永久删除工作区文件或目录，需要用户批准。"""
+        return call("delete", path=str(path))
 
     def fetch(url, method="GET", headers=None, body=None):
         """需 allow_network=true；返回 {"url","status","headers","body"}，body 为文本。"""

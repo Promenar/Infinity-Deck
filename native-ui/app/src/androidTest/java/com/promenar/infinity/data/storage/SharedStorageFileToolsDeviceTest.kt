@@ -400,14 +400,14 @@ class SharedStorageFileToolsDeviceTest {
                 execute(MoveFileSkill(repository, FileIndexEventSink.None), """{"path":"$folderPath/$prefix.md","newName":"renamed.md"}""")
                 assertFalse(File(directory, "$prefix-folder/$prefix.md").exists())
                 assertEquals("patched", File(directory, "$prefix-folder/renamed.md").readText())
-                execute(DeleteFileSkill(repository), """{"path":"$folderPath/renamed.md","irreversible":true}""")
+                execute(DeleteFileSkill(repository), """{"path":"$folderPath/renamed.md"}""")
                 assertFalse(File(directory, "$prefix-folder/renamed.md").exists())
                 execute(CreateDirectorySkill(repository), """{"name":"nested","parentPath":"$folderPath"}""")
                 execute(CreateFileSkill(repository, files), """{"name":"child.md","parentPath":"$folderPath/nested","content":"child"}""")
                 execute(MoveFileSkill(repository, FileIndexEventSink.None), """{"path":"$folderPath","newName":"$prefix-moved"}""")
                 assertFalse(File(directory, "$prefix-folder").exists())
                 assertEquals("child", File(directory, "$prefix-moved/nested/child.md").readText())
-                execute(DeleteFileSkill(repository), """{"path":"${parent.trimEnd('/')}/$prefix-moved","irreversible":true}""")
+                execute(DeleteFileSkill(repository), """{"path":"${parent.trimEnd('/')}/$prefix-moved"}""")
                 assertFalse(File(directory, "$prefix-moved").exists())
                 assertFalse(File(privateBase, "$prefix.md").exists())
                 assertFalse(File(rootfs, "workspace/$prefix.md").exists())
@@ -450,7 +450,6 @@ class SharedStorageFileToolsDeviceTest {
             val tool = MountedWorkspaceSkill(MoveFileSkill(repository, FileIndexEventSink.None), access, repository, files,
                 FileIndexEventSink.None, captureFileChanges = false, linuxPaths = isLinux)
             val prefix = if (isLinux) "/workspace" else ""
-            val recycleBefore = manager.recycleItems("move-session").map { it.id }
             suspend fun move(from: String, to: String, hash: String? = null) {
                 val arguments = kotlinx.serialization.json.buildJsonObject {
                     put("path", kotlinx.serialization.json.JsonPrimitive(prefix + from))
@@ -461,7 +460,6 @@ class SharedStorageFileToolsDeviceTest {
                 val result = tool.execute(arguments, invocation)
                 assertEquals("$from → $to：${result.content}", "success", result.status)
                 assertTrue(result.content, result.content.contains("已移动（原位重命名）"))
-                assertEquals("原生移动不能增加回收条目", recycleBefore, manager.recycleItems("move-session").map { it.id })
             }
             val source = File(directory, "large.bin")
             source.outputStream().use { output ->
@@ -535,7 +533,6 @@ class SharedStorageFileToolsDeviceTest {
             val hash = seed.hash
             val privatePrefix = if (isLinux) "/home/session" else "/session"
             val sharedPrefix = if (isLinux) "/workspace" else ""
-            val recycleBefore = manager.recycleItems("stream-session").map { it.id }
             suspend fun move(from: String, to: String) {
                 val arguments = kotlinx.serialization.json.buildJsonObject {
                     put("path", kotlinx.serialization.json.JsonPrimitive(from))
@@ -546,7 +543,6 @@ class SharedStorageFileToolsDeviceTest {
                 val result = tool.execute(arguments, invocation)
                 assertEquals("$from → $to：${result.content}", "success", result.status)
                 assertTrue(result.content, result.content.contains("已复制、校验并移动"))
-                assertEquals("移动不能增加挂载回收条目", recycleBefore, manager.recycleItems("stream-session").map { it.id })
             }
             move("$privatePrefix/large.bin", "$sharedPrefix/shared.bin")
             assertNull(repository.getByMaterializedPath(root.uuid, "/large.bin"))

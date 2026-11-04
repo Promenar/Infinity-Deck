@@ -107,7 +107,7 @@ internal fun StartupStep.titleRes(): Int = when (this) {
     StartupStep.LEGACY_ADOPTION -> R.string.startup_issue_title_adoption
     StartupStep.WORKSPACE_JOURNAL -> R.string.startup_issue_title_file_operation
     StartupStep.SESSION_JOURNAL -> R.string.startup_issue_title_session_delete
-    StartupStep.TOMBSTONES -> R.string.startup_issue_title_recycle
+    StartupStep.TOMBSTONES -> R.string.file_cleanup_incomplete
     StartupStep.TOOL_LEDGER -> R.string.startup_issue_title_tool_ledger
     StartupStep.VECTOR_QUEUE -> R.string.startup_issue_title_vectors
     StartupStep.BACKGROUND_JOBS -> R.string.startup_issue_title_background

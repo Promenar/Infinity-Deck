@@ -54,7 +54,6 @@
     <string name="linux_files_not_ready_unavailable">当前版本或设备不提供 Linux 环境。</string>
     <string name="linux_files_open_environment">前往 Linux 环境</string>
     <string name="linux_files_binding_notice">“%1$s”指向 %2$s。该路径只在命令运行时绑定，不在 Linux 文件中。</string>
-    <string name="linux_files_delete_message">Linux 文件不进回收站，删除后无法恢复。</string>
     <string name="linux_files_name_label">名称</string>
     <string name="linux_files_create">创建</string>
     <string name="linux_files_compress_title">压缩为 .tar.gz</string>

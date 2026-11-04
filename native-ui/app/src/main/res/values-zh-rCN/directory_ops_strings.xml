@@ -17,7 +17,6 @@
     <plurals name="directory_delete_title">
         <item quantity="other">删除 %1$d 项？</item>
     </plurals>
-    <string name="directory_delete_message">可在回收站恢复。</string>
     <plurals name="directory_op_copied">
         <item quantity="other">已复制 %1$d 项</item>
     </plurals>
@@ -38,12 +37,7 @@
     <string name="directory_op_unavailable">工作区不可用</string>
     <string name="directory_op_busy">生成中，稍后再试</string>
     <string name="directory_op_failed">操作失败</string>
-    <string name="directory_recycle_footer">保留 7 天，总量上限 32 MiB</string>
+
     <string name="directory_op_failed_reason">%1$s：%2$s</string>
-    <string name="directory_op_too_large">超出回收站容量</string>
-    <plurals name="directory_permanent_delete_title">
-        <item quantity="other">永久删除 %1$d 项？</item>
-    </plurals>
-    <string name="directory_permanent_delete_message">超出回收站容量（32 MB），删除后无法恢复。</string>
-    <string name="directory_permanent_delete_confirm">永久删除</string>
+
 </resources>

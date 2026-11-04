@@ -78,22 +78,6 @@ class ExternalTreeTransferTest {
         assertThat(destination.read("/copy/a.txt")).isEqualTo(byteArrayOf(1, 2))
     }
 
-    @Test fun `回收区重建后能恢复且保留期限与配额生效`() = runBlocking {
-        val directory = Files.createTempDirectory("mount-recycle-test").toFile()
-        try {
-            val backend = TransferMemoryBackend().apply { write("/a.txt", "abc".toByteArray()) }
-            val tree = ExternalTreeTransfer.capture(backend, "/a.txt", 10)
-            val first = ExternalRecycleStore(directory, maxBytes = 4, retentionMillis = 10, clock = { 1L })
-            val item = first.save("mount", "/a.txt", tree)
-            assertThrows(ExternalFolderException::class.java) { first.save("mount", "/b.txt", tree) }
-            backend.delete("/a.txt")
-            val restarted = ExternalRecycleStore(directory, maxBytes = 4, retentionMillis = 10, clock = { 2L })
-            ExternalTreeTransfer.copy(restarted.load(item.id), backend, item.originalPath)
-            assertThat(String(backend.read("/a.txt"))).isEqualTo("abc")
-            assertThat(ExternalRecycleStore(directory, 4, 10, { 12L }).items()).isEmpty()
-        } finally { directory.deleteRecursively() }
-    }
-
     @Test fun `别名可见范围冲突与挂载uuid解析均绑定会话`() {
         val mount = ExternalMount("id", "termux", "saf_tree", "content://test/tree/root", "session", 1)
         assertThat(ExternalMountPaths.parse("/mnt/termux/a.txt")).isEqualTo("termux" to "/a.txt")

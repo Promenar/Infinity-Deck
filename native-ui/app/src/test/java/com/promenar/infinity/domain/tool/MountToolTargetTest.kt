@@ -28,7 +28,7 @@ class MountToolTargetTest {
     }
 
     @Test fun `不可恢复删除必须显示提醒并禁止记忆授权目标`() {
-        val raw = """{"path":"/mnt/termux/large.bin","irreversible":true}"""
+        val raw = """{"path":"/mnt/termux/large.bin"}"""
         val target = target("delete_file", raw)!!
         assertThat(ToolExecutionTargets.display(target)).isEqualTo("/mnt/termux/large.bin")
         assertThat(ToolExecutionTargets.canRemember(target)).isFalse()

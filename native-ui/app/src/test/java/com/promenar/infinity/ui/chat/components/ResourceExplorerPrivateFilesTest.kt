@@ -55,7 +55,6 @@ class ResourceExplorerPrivateFilesTest {
     private fun repo(vararg sessions: String = arrayOf("s")) = mockk<IWorkspaceRepository> {
         sessions.forEach { session -> coEvery { ensureSessionRoot(session) } returns root("root-$session") }
         every { observeChildren(any(), any()) } returns flowOf(emptyList())
-        every { observeRecycleBin(any()) } returns flowOf(emptyList())
     }
 
     @Test
@@ -121,7 +120,7 @@ class ResourceExplorerPrivateFilesTest {
     }
 
     @Test
-    fun `删除所选条目移入回收站并清空选择`() = runTest(dispatcher) {
+    fun `永久删除所选条目并清空选择`() = runTest(dispatcher) {
         val files = mockk<PrivateWorkspaceFiles>()
         coEvery { files.delete("s", listOf("docs", "readme")) } returns DirectoryBatchResult(listOf("docs", "readme"), emptyMap())
         val vm = viewModel(files)

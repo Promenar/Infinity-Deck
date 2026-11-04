@@ -152,7 +152,7 @@ class WorkspaceCommandHostTest {
                 repo.rename(root.uuid, created.uuid, "moved.txt", null)
                 val removed = repo.createFileInWorkspace(root.uuid, "gone", "gone.txt", "gone", root.uuid, "/gone.txt")
                 repo.confirmCreatedEntry(root.uuid, removed.uuid)
-                repo.moveToRecycleBin(root.uuid, removed.uuid)
+                repo.permanentDelete(root.uuid, removed.uuid)
             }
             delay(50)
             assertThat(writer.isCompleted).isFalse()

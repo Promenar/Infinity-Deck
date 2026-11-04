@@ -27,7 +27,6 @@
     <string name="agent_reach_mount_unavailable">Unavailable</string>
 
     <string name="agent_reach_section_backends">Running code</string>
-    <string name="agent_reach_backends_footer">Files deleted by commands skip the recycle bin.</string>
     <string name="agent_reach_runner_linux">Linux commands</string>
     <string name="agent_reach_runner_linux_scope">Run in Alpine with every path above</string>
     <string name="agent_reach_runner_builtin">Built-in commands</string>

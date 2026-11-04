@@ -51,10 +51,8 @@ class DefaultFileManagerServices(
             )
             val backends = FileManagerBackends(app)
             val guard = FileMutationGuard(app.sessionExecutionGate, isSessionBusy)
-            val recycle = FileManagerRecycle(app.noBackupFilesDir, app.workspaceRepository, sessions,
-                { app.globalKnowledgeWorkspaceProvisioner.ensureRoot().uuid }, backends::resolve, app.externalFolderManager, guard)
             val operations = DefaultFileOperations(app, backends::resolve, { app.database.sessionDao().getAll() },
-                app.workspaceRepository, app.database.vectorizationTaskDao(), app.pendingDocumentIndexCoordinator, guard, recycle,
+                app.workspaceRepository, app.database.vectorizationTaskDao(), app.pendingDocumentIndexCoordinator, guard,
                 pendingTargets = app.pendingDocumentIndexCoordinator::snapshot)
             val validLocations = combine(locations.observeLibraryLocations(), sessions) { all, rows ->
                 all.map { it.id }.toSet() + rows.filterNot(::isSystemSession).map { "session:${it.id}" }

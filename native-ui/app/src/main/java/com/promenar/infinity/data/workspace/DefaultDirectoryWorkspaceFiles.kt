@@ -66,13 +66,11 @@ class DefaultDirectoryWorkspaceFiles(
             backend.copy(source, destination)
         }
 
-    override suspend fun delete(sessionId: String, paths: List<String>, permanent: Boolean): DirectoryBatchResult =
+    override suspend fun delete(sessionId: String, paths: List<String>): DirectoryBatchResult =
         batch(sessionId, paths) { backend, raw ->
             val source = mutationPath(raw)
-            requireEntry(backend, source)
-            backend.validateTree(source)
-            if (permanent) backend.delete(source)
-            else mounts.delete(sessionId, source, null, irreversible = false)
+            val entry = requireEntry(backend, source)
+            backend.delete(source, entry.sha256)
         }
 
     private suspend fun target(backend: ExternalFolderBackend, source: String, rawTarget: String): String {

@@ -14,28 +14,17 @@ class ResourceExplorerMaterialContractTest {
     }
 
     @Test
-    fun `资源浏览器与回收站不恢复Glass表面`() {
+    fun `资源浏览器不恢复Glass表面`() {
         val explorer = source("src/main/java/com/promenar/infinity/ui/chat/ResourceExplorerSheet.kt")
-        val recycle = source("src/main/java/com/promenar/infinity/ui/chat/components/RecycleBinPanel.kt")
 
         assertThat(explorer).doesNotContain("InfinityGlassCard")
-        assertThat(recycle).doesNotContain("InfinityGlassCard")
     }
 
     @Test
     fun `资源状态不使用固定微字号`() {
         val explorer = source("src/main/java/com/promenar/infinity/ui/chat/ResourceExplorerSheet.kt")
-        val recycle = source("src/main/java/com/promenar/infinity/ui/chat/components/RecycleBinPanel.kt")
 
         assertThat(explorer).doesNotContain("InfinityTypography.labelSmall")
-        assertThat(recycle).doesNotContain("InfinityTypography.labelSmall")
-    }
-
-    @Test
-    fun `回收站状态不复用RAG装饰色`() {
-        val recycle = source("src/main/java/com/promenar/infinity/ui/chat/components/RecycleBinPanel.kt")
-
-        assertThat(recycle).doesNotContain("InfinityColors.RagPending")
     }
 
     @Test

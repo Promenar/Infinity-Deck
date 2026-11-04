@@ -43,7 +43,7 @@ interface LinuxFileSystem {
     /** 逐项移动；同名时该项失败。 */
     suspend fun move(paths: List<String>, targetDirectory: String): Map<String, LinuxFileErrorCode>
 
-    /** 直接删除（rootfs 不进回收站）。 */
+    /** 永久删除文件或目录。 */
     suspend fun delete(paths: List<String>): Map<String, LinuxFileErrorCode>
 
     /** 打包为 `.tar.gz`，放在第一项所在目录。 */

@@ -29,7 +29,7 @@ sealed interface ResourceExplorerWorkspaceMode {
     /** 首次打开或切换会话时正在解析绑定的工作区。 */
     data object Resolving : ResourceExplorerWorkspaceMode
 
-    /** 会话私有工作区：由 Room 树跟踪，支持搜索、导入与回收站。 */
+    /** 会话私有工作区：由 Room 树跟踪，支持搜索、导入与永久删除。 */
     data object Private : ResourceExplorerWorkspaceMode
 
     /** 自选目录工作区：直接浏览目录内容，与 Agent 文件工具的 `/` 指向同一目录。 */
@@ -67,8 +67,6 @@ internal data class DirectoryBrowserState(
     val clipboard: DirectoryClipboard? = null,
     val operating: Boolean = false,
     val outcome: DirectoryOpOutcome? = null,
-    /** 因超出回收站容量未删除、等待用户确认永久删除的条目。 */
-    val permanentDeleteCandidates: List<String> = emptyList(),
 )
 
 /** 复制或剪切后等待粘贴的条目；进入目标目录后“粘贴到此处”。 */

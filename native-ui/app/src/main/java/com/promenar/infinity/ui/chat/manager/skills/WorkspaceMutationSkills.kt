@@ -218,7 +218,7 @@ class DeleteFileSkill(
 ) : SkillDefinition {
     override val id = "delete_file"
     override val name = "delete_file"
-    override val description = "将工作区中的文件或目录移入回收站（用户可在界面中恢复）。用 uuid 或 path 指定。"
+    override val description = "永久删除工作区中的文件或目录，需要用户批准。用 uuid 或 path 指定。"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.DELETE
     override val parametersSchema = """{"type":"object","properties":{"uuid":{"type":"string","description":"条目UUID"},"path":{"type":"string","description":"条目路径，如 /docs/a.md"}}}"""
@@ -231,10 +231,10 @@ class DeleteFileSkill(
         if (target.uuid == context.workspaceRootUuid) return workspaceToolError(id, "不能删除工作区根目录")
         val (_, error) = mutationFailure(id) {
             val expected = args.stringArgument("expectedHash") ?: args.stringArgument("expected_sha256")
-            if (expected == null) workspaceRepo.moveToRecycleBin(context.workspaceRootUuid, target.uuid)
-            else workspaceRepo.moveToRecycleBinIfHash(context.workspaceRootUuid, target.uuid, expected)
+            if (expected == null) workspaceRepo.permanentDelete(context.workspaceRootUuid, target.uuid)
+            else workspaceRepo.permanentDeleteIfHash(context.workspaceRootUuid, target.uuid, expected)
         }
         if (error != null) return error
-        return ToolResult("delete_file_${System.currentTimeMillis()}", "已移入回收站：${target.materializedPath}")
+        return ToolResult("delete_file_${System.currentTimeMillis()}", "已永久删除：${target.materializedPath}")
     }
 }

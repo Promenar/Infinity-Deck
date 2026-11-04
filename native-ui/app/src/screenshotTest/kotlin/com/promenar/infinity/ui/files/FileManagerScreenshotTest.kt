@@ -17,7 +17,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.ui.files.preview.FakeFileManagerController
-import com.promenar.infinity.ui.files.preview.FakeRecycleBinController
 import com.promenar.infinity.ui.files.preview.FileManagerSamples
 import com.promenar.infinity.ui.files.preview.itemAt
 import com.promenar.infinity.ui.files.state.FileTransferMode
@@ -28,7 +27,7 @@ import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
 /*
  * 统一资源管理器的截图：单列列表、单列子目录“..”、双栏列表 + 预览、选择模式、目标选择面板、
- * 搜索结果、单列预览页与回收站。每组深色中文与浅色英文各一，浅色组同时覆盖 360dp 与 1.3 倍字号。
+ * 搜索结果与单列预览页。每组深色中文与浅色英文各一，浅色组同时覆盖 360dp 与 1.3 倍字号。
  */
 
 @Composable
@@ -223,26 +222,3 @@ fun fileManagerTargetPickerDarkPreview() = TargetPickerSample(InfinityThemeMode.
 @Preview(name = "资源管理器 目标选择 浅英360 大字", widthDp = 360, heightDp = 760, locale = "en", fontScale = 1.3f)
 @Composable
 fun fileManagerTargetPickerLightPreview() = TargetPickerSample(InfinityThemeMode.LIGHT, english = true)
-
-// ---------- 回收站 ----------
-
-@Composable
-private fun RecycleSample(mode: InfinityThemeMode, english: Boolean) = FilesFrame(mode) {
-    val controller = remember { FakeRecycleBinController(FileManagerSamples.recycled(english)) }
-    RecycleBinPage(
-        controller = controller,
-        leading = FileManagerLeading.Leave(onLeave = {}),
-        locationTitle = FileManagerSamples.locationTitle(english),
-        now = FileManagerSamples.NOW,
-    )
-}
-
-@PreviewTest
-@Preview(name = "回收站 深中411", widthDp = 411, heightDp = 640, locale = "zh-rCN")
-@Composable
-fun recycleBinDarkPreview() = RecycleSample(InfinityThemeMode.DARK, english = false)
-
-@PreviewTest
-@Preview(name = "回收站 浅英360 大字", widthDp = 360, heightDp = 700, locale = "en", fontScale = 1.3f)
-@Composable
-fun recycleBinLightPreview() = RecycleSample(InfinityThemeMode.LIGHT, english = true)

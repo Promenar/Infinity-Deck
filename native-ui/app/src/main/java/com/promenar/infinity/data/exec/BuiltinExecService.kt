@@ -451,7 +451,7 @@ class BuiltinExecService(
     private fun warningGuidance(changes: WorkspaceChangeReport?): String? {
         if (changes == null) return null
         return buildList {
-            if (changes.reservedChanges.isNotEmpty()) add("命令改动了系统保留路径（.infinity*、.recycle_bin 或顶层 mnt），这些路径不进入索引，回收区或版本历史可能已损坏。")
+            if (changes.reservedChanges.isNotEmpty()) add("命令改动了系统保留路径（.infinity*、.recycle_bin 或顶层 mnt），这些路径不进入索引，历史保留区或版本历史可能已损坏。")
             if (changes.unsupported.isNotEmpty()) add("命令创建了符号链接、特殊文件或文件工具不支持的名称，这些条目不进入索引。")
         }.joinToString("").ifEmpty { null }
     }

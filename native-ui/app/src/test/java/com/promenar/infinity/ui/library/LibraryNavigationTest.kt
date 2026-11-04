@@ -20,6 +20,7 @@ class LibraryNavigationTest {
         assertThat(LibraryPageKeys.parse(LibraryPageKeys.MEMORY)).isEqualTo(LibraryPage.Memory)
         assertThat(LibraryPageKeys.parse("browse:|/x")).isEqualTo(LibraryPage.Overview)
         assertThat(LibraryPageKeys.parse("unknown")).isEqualTo(LibraryPage.Overview)
+        assertThat(LibraryPageKeys.parse("trash")).isEqualTo(LibraryPage.Overview)
     }
 
     @Test

@@ -94,6 +94,18 @@ class PythonSandboxEngineTest {
         assertThat(calls.single { it.first == "write" }.second["expected_sha256"]!!.jsonPrimitive.content).isEqualTo("0".repeat(64))
     }
 
+    @Test fun deletePassesOnlyTheTargetPathToTheApprovalGateway() {
+        val calls = CopyOnWriteArrayList<Pair<String, JsonObject>>()
+        val result = run("import infinity\ninfinity.delete('/old.txt')", capabilities = ScriptCapabilities { operation, arguments ->
+            calls += operation to arguments
+            buildJsonObject { put("message", "已永久删除") }
+        })
+        assertThat(result.errorCode).isNull()
+        assertThat(calls).hasSize(1)
+        assertThat(calls.single().first).isEqualTo("delete")
+        assertThat(calls.single().second).isEqualTo(buildJsonObject { put("path", "/old.txt") })
+    }
+
     @Test fun limitFailureAbortsExecution() {
         val result = run(
             "import infinity\nwhile True:\n    infinity.stat('/x')",

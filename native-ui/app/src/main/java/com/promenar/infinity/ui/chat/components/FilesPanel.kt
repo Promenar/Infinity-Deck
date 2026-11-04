@@ -650,7 +650,7 @@ private fun BatchActionBar(
                     }
                     if (onDeleteAll != null) {
                         InfinityPillButton(
-                            text = stringResource(R.string.shared_btn_move_to_recycle_bin),
+                            text = stringResource(R.string.permanent_delete_action),
                             onClick = onDeleteAll,
                             tone = InfinityPillTone.DANGER,
                             icon = Icons.Rounded.DeleteOutline,
@@ -950,7 +950,7 @@ private fun FileTreeRow(
                         },
                         text = {
                             Text(
-                                stringResource(R.string.shared_btn_move_to_recycle_bin),
+                                stringResource(R.string.permanent_delete_action),
                                 style = InfinityTypography.labelLarge,
                                 color = MaterialTheme.colorScheme.error,
                             )

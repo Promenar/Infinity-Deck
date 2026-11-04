@@ -20,12 +20,12 @@ class PrivateTransferLifecycleTest {
         val file = entry("file", "/large", false).copy(sizeBytes = 80L * 1024 * 1024)
         val workspace = mockk<IWorkspaceRepository> {
             coEvery { getByMaterializedPath("root", "/large") } returns file
-            coEvery { moveToRecycleBinIfHash("root", "file", "expected") } just Runs
+            coEvery { permanentDeleteIfHash("root", "file", "expected") } just Runs
         }
         val backend = PrivateWorkspaceTransferBackend(workspace, "root")
         backend.delete("/large", "expected")
-        coVerify(exactly = 1) { workspace.moveToRecycleBinIfHash("root", "file", "expected") }
-        coVerify(exactly = 0) { workspace.moveToRecycleBin(any(), any()) }
+        coVerify(exactly = 1) { workspace.permanentDeleteIfHash("root", "file", "expected") }
+        coVerify(exactly = 0) { workspace.permanentDelete(any(), any()) }
     }
 
     @Test fun `新建目录失败补偿使用已有回收语义`() = runBlocking<Unit> {
@@ -34,12 +34,12 @@ class PrivateTransferLifecycleTest {
             coEvery { getByMaterializedPath("root", "/new") } returns entry("directory", "/new", true)
             coEvery { createDirectoryInWorkspace(any(), any(), any(), any(), any()) } returns entry("directory", "/new", true)
             coEvery { rollbackCreatedEntry(any(), any()) } throws SecurityException("目录没有文件创建授权")
-            coEvery { moveToRecycleBin(any(), any()) } just Runs
+            coEvery { permanentDelete(any(), any()) } just Runs
         }
         val backend = PrivateWorkspaceTransferBackend(workspace, "root")
         backend.createDirectory("/new")
         backend.delete("/new")
-        coVerify(exactly = 1) { workspace.moveToRecycleBin("root", "directory") }
+        coVerify(exactly = 1) { workspace.permanentDelete("root", "directory") }
         coVerify(exactly = 0) { workspace.rollbackCreatedEntry(any(), any()) }
     }
 

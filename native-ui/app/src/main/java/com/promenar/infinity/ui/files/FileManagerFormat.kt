@@ -221,8 +221,6 @@ private fun noticeKindLabel(kind: FileManagerNotice.Kind): Int = when (kind) {
     FileManagerNotice.Kind.COPY -> R.string.fm_kind_copy
     FileManagerNotice.Kind.MOVE -> R.string.fm_kind_move
     FileManagerNotice.Kind.DELETE -> R.string.fm_kind_delete
-    FileManagerNotice.Kind.RESTORE -> R.string.fm_kind_restore
-    FileManagerNotice.Kind.PURGE -> R.string.fm_kind_purge
     FileManagerNotice.Kind.COMPRESS -> R.string.fm_kind_compress
     FileManagerNotice.Kind.EXTRACT -> R.string.fm_kind_extract
     FileManagerNotice.Kind.IMPORT -> R.string.fm_kind_import
@@ -259,9 +257,7 @@ private fun doneText(resources: Resources, notice: FileManagerNotice.Done): Stri
         } else {
             resources.getQuantityString(R.plurals.fm_notice_moved, n, n)
         }
-        FileManagerNotice.Kind.DELETE -> resources.getQuantityString(R.plurals.fm_notice_deleted, n, n)
-        FileManagerNotice.Kind.RESTORE -> resources.getQuantityString(R.plurals.fm_notice_restored, n, n)
-        FileManagerNotice.Kind.PURGE -> resources.getQuantityString(R.plurals.fm_notice_purged, n, n)
+        FileManagerNotice.Kind.DELETE -> resources.getQuantityString(R.plurals.permanent_delete_success, n, n)
         FileManagerNotice.Kind.COMPRESS -> resources.getString(R.string.fm_notice_compressed)
         FileManagerNotice.Kind.EXTRACT -> resources.getString(R.string.fm_notice_extracted)
         FileManagerNotice.Kind.IMPORT -> resources.getQuantityString(R.plurals.fm_notice_imported, n, n)

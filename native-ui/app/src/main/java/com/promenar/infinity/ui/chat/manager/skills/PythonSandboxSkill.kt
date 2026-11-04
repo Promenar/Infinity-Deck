@@ -23,7 +23,7 @@ class PythonSandboxSkill(private val runner: ScriptToolRunner) : SkillDefinition
     override val description = "在隔离进程运行内置 Python 3.14（仅 arm64 设备）：看不到本应用私有数据与工作区物理目录，没有可写目录，" +
         "默认无网络；只有标准库与 dulwich。用 import infinity 访问工作区虚拟路径：infinity.read_text(path)、infinity.read(path)→{content,sha256}、" +
         "infinity.list(path)、infinity.stat(path)（不存在为 None）、infinity.save(path, text)（不存在则新建，存在则覆盖）、" +
-        "infinity.write(path, text, expected_sha256)、infinity.create、infinity.mkdir、infinity.delete；allow_network=true 时可用 " +
+        "infinity.write(path, text, expected_sha256)、infinity.create、infinity.mkdir、infinity.delete（永久删除，需用户批准）；allow_network=true 时可用 " +
         "infinity.fetch(url, method, headers, body)→{status,headers,body}。单个文件只支持不超过 64 KB 的 UTF-8 文本，写入按脚本设置审批，" +
         "失败抛出 infinity.InfinityError（含 code）。结果含 exit_code、stdout、stderr 与 result 变量（可 JSON 序列化）。" +
         "需要直接读写大文件、子进程、git 仓库或 pip 包时改用 python_exec。默认 30 秒，上限 300 秒。"

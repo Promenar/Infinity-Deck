@@ -323,7 +323,7 @@ private fun SkillDetailSheet(
         InfinityConfirmDialog(
             onDismissRequest = { confirmDelete = false },
             title = stringResource(R.string.skills_runtime_delete_title, skill.displayName ?: skill.name),
-            message = stringResource(R.string.skills_runtime_delete_message, skill.virtualDir),
+            message = stringResource(R.string.permanent_delete_skill_message, skill.virtualDir),
             confirmText = stringResource(R.string.shared_btn_delete),
             cancelText = stringResource(R.string.common_btn_cancel),
             onConfirm = {

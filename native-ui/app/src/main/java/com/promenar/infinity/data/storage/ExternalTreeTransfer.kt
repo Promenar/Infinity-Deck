@@ -87,7 +87,7 @@ object ExternalTreeTransfer {
 
     private suspend fun compensate(label: String, original: Exception, block: suspend () -> Unit) = withContext(NonCancellable) {
         try { block() } catch (failure: Exception) {
-            val recovery = ExternalFolderException("RECOVERY_REQUIRED", "$label 补偿未完成；来源或目标已保留，请在文件面板与挂载回收区核查")
+            val recovery = ExternalFolderException("RECOVERY_REQUIRED", "$label 补偿未完成；来源或目标已保留，请在文件面板核查")
             recovery.addSuppressed(original); recovery.addSuppressed(failure)
             throw recovery
         }

@@ -32,7 +32,6 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.FolderShared
@@ -147,7 +146,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
                     title = location.title,
                     subtitle = if (location.accessLost) accessLost else location.gitBranch,
                 )
-            } + LibraryNavEntry(LibraryPageKeys.TRASH, Icons.Rounded.Delete, stringResource(R.string.library_page_trash)),
+            },
             foldable = true,
         ),
         LibraryNavGroup(
@@ -196,9 +195,8 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
         ) {
             groups.forEach { group ->
                 item(key = "group-${group.title}") { LibraryNavGroupTitle(group.title) }
-                val folded = group.foldable && !locationsExpanded && group.entries.size > VISIBLE_LOCATIONS + 1
-                // 回收站固定在位置组末尾，折叠时也保留。
-                val visible = if (folded) group.entries.take(VISIBLE_LOCATIONS) + group.entries.last() else group.entries
+                val folded = group.foldable && !locationsExpanded && group.entries.size > VISIBLE_LOCATIONS
+                val visible = if (folded) group.entries.take(VISIBLE_LOCATIONS) else group.entries
                 items(visible, key = { "nav-${group.title}-${it.key}" }) { entry ->
                     LibraryNavRow(
                         entry,
@@ -207,14 +205,14 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
                         modifier = Modifier.animateItem(),
                     )
                 }
-                if (group.foldable && group.entries.size > VISIBLE_LOCATIONS + 1) {
+                if (group.foldable && group.entries.size > VISIBLE_LOCATIONS) {
                     item(key = "fold-${group.title}") {
                         LibraryFoldRow(
                             modifier = Modifier.animateItem(),
                             text = if (locationsExpanded) {
                                 stringResource(R.string.library_locations_less)
                             } else {
-                                stringResource(R.string.library_locations_more, group.entries.size - VISIBLE_LOCATIONS - 1)
+                                stringResource(R.string.library_locations_more, group.entries.size - VISIBLE_LOCATIONS)
                             },
                             expanded = locationsExpanded,
                             onClick = { locationsExpanded = !locationsExpanded },
@@ -308,13 +306,13 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit,
     }
 }
 
-/** 展开后的图标条：视图、资料库、回收站与智能体记住的；不列出全部位置，位置在“资料库”页里切换。 */
+/** 展开后的图标条：视图、资料库与智能体记住的；位置在“资料库”页里切换。 */
 @Composable
 internal fun LibraryStrip(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
     val selected = libraryRootKey(host.navigator.stack)
     val entries = groups.flatMap { group ->
-        if (group.foldable) group.entries.take(1) + group.entries.last() else group.entries
+        if (group.foldable) group.entries.take(1) else group.entries
     }.filterNot { it.icon == Icons.Rounded.PushPin }
     Column(
         Modifier

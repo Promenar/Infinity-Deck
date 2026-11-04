@@ -83,10 +83,6 @@ import com.promenar.infinity.ui.chat.components.RunDetailContent
 import com.promenar.infinity.ui.chat.components.RunDetailTab
 import com.promenar.infinity.ui.chat.components.RunDockRow
 import com.promenar.infinity.ui.chat.components.runDockState
-import com.promenar.infinity.ui.chat.components.RecycleBinPanel
-import com.promenar.infinity.ui.chat.components.RecycleBinPermanentDeleteDialog
-import com.promenar.infinity.ui.chat.components.RecycleOperation
-import com.promenar.infinity.ui.chat.components.RecycleOperationState
 import com.promenar.infinity.ui.common.SecretField
 import com.promenar.infinity.ui.common.status.NoticeSeverity
 import com.promenar.infinity.ui.common.status.UiStatusNotice
@@ -2585,7 +2581,6 @@ fun resourceExplorerFilesImportEnglishReleasePreview() {
     ResourceExplorerReleasePreviewContainer {
         ResourceExplorerSheetContent(
             state = ResourceExplorerSheetState(
-                recycleBinCount = 1,
                 workspaceReady = true,
                 importItems = PREVIEW_RESOURCE_IMPORT_RESULTS,
             ),
@@ -2598,7 +2593,6 @@ fun resourceExplorerFilesImportEnglishReleasePreview() {
                     nowMillis = PREVIEW_RESOURCE_NOW_MILLIS,
                 )
             },
-            recycleBinContent = {},
         )
     }
 }
@@ -2616,7 +2610,6 @@ fun resourceExplorerEmptyChineseReleasePreview() {
     ResourceExplorerReleasePreviewContainer {
         ResourceExplorerSheetContent(
             state = ResourceExplorerSheetState(
-                recycleBinCount = 3,
                 workspaceReady = true,
             ),
             actions = ResourceExplorerSheetActions(),
@@ -2627,126 +2620,6 @@ fun resourceExplorerEmptyChineseReleasePreview() {
                     rootFiles = emptyList(),
                     nowMillis = PREVIEW_RESOURCE_NOW_MILLIS,
                     onImport = {},
-                )
-            },
-            recycleBinContent = {},
-        )
-    }
-}
-
-@PreviewTest
-@Preview(
-    name = "Resource Explorer recycle running Chinese large font",
-    widthDp = 360,
-    heightDp = 800,
-    locale = "zh-rCN",
-    fontScale = 2f,
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-fun resourceExplorerRecycleRunningChineseLargeFontReleasePreview() {
-    ResourceExplorerReleasePreviewContainer {
-        ResourceExplorerSheetContent(
-            state = ResourceExplorerSheetState(
-                showRecycle = true,
-                recycleBinCount = 1,
-                workspaceReady = true,
-            ),
-            actions = ResourceExplorerSheetActions(),
-            filesContent = {},
-            recycleBinContent = {
-                RecycleBinPanel(
-                    files = listOf(PREVIEW_RECYCLED_RESOURCE_FILE),
-                    operationState = RecycleOperationState.Running(
-                        operation = RecycleOperation.PermanentDelete,
-                        itemUuids = listOf(PREVIEW_RECYCLED_RESOURCE_FILE.uuid),
-                    ),
-                    onRestoreFiles = {},
-                    onPermanentlyDeleteFiles = {},
-                    onEmptyRecycleBin = {},
-                    onRetryOperation = {},
-                    onClearOperationState = {},
-                    nowMillis = PREVIEW_RESOURCE_NOW_MILLIS,
-                )
-            },
-        )
-    }
-}
-
-@PreviewTest
-@Preview(
-    name = "Resource Explorer recycle delete confirm Chinese large font",
-    widthDp = 360,
-    heightDp = 800,
-    locale = "zh-rCN",
-    fontScale = 2f,
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-fun resourceExplorerRecycleDeleteConfirmChineseLargeFontReleasePreview() {
-    ResourceExplorerReleasePreviewContainer {
-        ResourceExplorerSheetContent(
-            state = ResourceExplorerSheetState(
-                showRecycle = true,
-                recycleBinCount = 1,
-                workspaceReady = true,
-            ),
-            actions = ResourceExplorerSheetActions(),
-            filesContent = {},
-            recycleBinContent = {
-                RecycleBinPanel(
-                    files = listOf(PREVIEW_RECYCLED_RESOURCE_FILE),
-                    operationState = RecycleOperationState.Idle,
-                    onRestoreFiles = {},
-                    onPermanentlyDeleteFiles = {},
-                    onEmptyRecycleBin = {},
-                    onRetryOperation = {},
-                    onClearOperationState = {},
-                    nowMillis = PREVIEW_RESOURCE_NOW_MILLIS,
-                )
-            },
-        )
-        RecycleBinPermanentDeleteDialog(
-            target = PREVIEW_RECYCLED_RESOURCE_FILE,
-            onConfirm = {},
-            onDismiss = {},
-        )
-    }
-}
-
-@PreviewTest
-@Preview(
-    name = "Resource Explorer recycle failure landscape",
-    widthDp = 800,
-    heightDp = 360,
-    locale = "zh-rCN",
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-)
-@Composable
-fun resourceExplorerRecycleFailureLandscapeReleasePreview() {
-    ResourceExplorerReleasePreviewContainer {
-        ResourceExplorerSheetContent(
-            state = ResourceExplorerSheetState(
-                showRecycle = true,
-                recycleBinCount = 2,
-                workspaceReady = true,
-            ),
-            actions = ResourceExplorerSheetActions(),
-            filesContent = {},
-            recycleBinContent = {
-                RecycleBinPanel(
-                    files = listOf(PREVIEW_RECYCLED_RESOURCE_FILE, PREVIEW_RESOURCE_FILE_SECONDARY),
-                    operationState = RecycleOperationState.PartialFailure(
-                        operation = RecycleOperation.Restore,
-                        succeededItemUuids = listOf(PREVIEW_RESOURCE_FILE_SECONDARY.uuid),
-                        failedItemUuids = listOf(PREVIEW_RECYCLED_RESOURCE_FILE.uuid),
-                    ),
-                    onRestoreFiles = {},
-                    onPermanentlyDeleteFiles = {},
-                    onEmptyRecycleBin = {},
-                    onRetryOperation = {},
-                    onClearOperationState = {},
-                    nowMillis = PREVIEW_RESOURCE_NOW_MILLIS,
                 )
             },
         )
@@ -3434,17 +3307,6 @@ private val PREVIEW_RESOURCE_FILE_SECONDARY = previewResourceFile(
     sizeBytes = 262_144L,
     materializedPath = "/signed-apk-verification-report.pdf",
     vectorizedAt = PREVIEW_RESOURCE_NOW_MILLIS - 3_600_000L,
-)
-
-private val PREVIEW_RECYCLED_RESOURCE_FILE = previewResourceFile(
-    uuid = "resource-recycled-file-0001",
-    name = "这是一个用于验证永久删除确认框与大字体布局不会溢出的超长中文知识库归档文件.md",
-    hash = "sha256:resource-recycled-file-0001",
-    mimeType = "text/markdown",
-    sizeBytes = 65_536L,
-    materializedPath = "/.recycle/resource-recycled-file-0001.md",
-    recycledAt = PREVIEW_RESOURCE_NOW_MILLIS - 259_200_000L,
-    originalMaterializedPath = "/产品研究/发行审计/需要复核的历史文档/超长路径归档文件.md",
 )
 
 private val PREVIEW_RESOURCE_IMPORT_RESULTS = listOf(

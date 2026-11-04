@@ -126,7 +126,6 @@ internal fun LibraryPageContent(
     val onUplink: () -> Unit = { uplink?.onClick?.invoke() }
     when (page) {
         is LibraryPage.Browse -> LibraryBrowsePage(page.ref, host, leading)
-        LibraryPage.Trash -> LibraryTrashPage(host, leading)
         LibraryPage.Graph -> LibraryGraphPage(host, leading)
         LibraryPage.Memory -> LibraryMemoryPage(host, title, leading, uplinkTitle, onUplink)
         is LibraryPage.Document -> LibraryDocumentPage(page.documentId, host, title, leading, uplinkTitle, onUplink)
@@ -154,7 +153,6 @@ internal fun libraryPageTitle(page: LibraryPage, host: LibraryPageHost): String 
     LibraryPage.Memory -> stringResource(R.string.library_page_memory)
     LibraryPage.Fragments -> stringResource(R.string.library_page_fragments)
     LibraryPage.Graph -> stringResource(R.string.library_page_graph)
-    LibraryPage.Trash -> stringResource(R.string.library_page_trash)
     LibraryPage.Files -> stringResource(R.string.library_page_files)
     LibraryPage.Ask -> stringResource(R.string.library_page_ask)
     is LibraryPage.Document -> {

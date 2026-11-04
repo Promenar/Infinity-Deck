@@ -100,7 +100,7 @@ internal suspend fun resolveFolderChain(
 /**
  * 会话工作区的穿透式目录浏览：每次只显示一级，点目录进入下一级，面包屑与系统返回回到上级。
  * 搜索时改为整个工作区的扁平结果并标出所在路径，点结果跳转到对应目录。
- * 提供 [fileActions] 时与目录工作区一致：长按多选后移动、重命名、删除（移入回收站）。
+ * 提供 [fileActions] 时与目录工作区一致：长按多选后移动、重命名、永久删除。
  */
 @Composable
 internal fun WorkspaceFolderBrowser(

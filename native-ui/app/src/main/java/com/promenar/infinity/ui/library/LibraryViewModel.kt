@@ -46,7 +46,7 @@ data class LibraryLocations(
 
 /**
  * 资料页的数据入口：概览、待处理、最近、对话片段与“新记住的”来自知识层；位置与固定文件夹来自资源管理器数据层。
- * 资源管理器与回收站各自有控制器，这里不重复。
+ * 资源管理器有独立控制器，这里不重复。
  */
 class LibraryViewModel(
     private val knowledge: LibraryKnowledgeSource,

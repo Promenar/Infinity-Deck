@@ -57,6 +57,9 @@ enum class FileChangeType {
 /** 未保存 hunk 的原因。 */
 @Serializable
 enum class FileChangeHunkOmission {
+    /** 永久删除仅保留统计，不持久化被删除的文本。 */
+    @SerialName("permanent_delete") PERMANENT_DELETE,
+
     /** 二进制文件不做逐行差异。 */
     @SerialName("binary") BINARY,
 

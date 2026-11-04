@@ -59,6 +59,13 @@ class ScriptWorkspaceGatewayTest {
     private fun args(path: String, content: String? = null, hash: String? = null) = buildJsonObject {
         put("path", path); content?.let { put("content", it) }; hash?.let { put("expected_sha256", it) }
     }
+    private suspend fun <T> approveDelete(block: suspend () -> T): T = coroutineScope {
+        val result = async { block() }
+        val request = withTimeout(3000) { broker.pending.first { it.isNotEmpty() }.single() }
+        assertThat(request.toolName).isEqualTo("delete_file")
+        broker.resolve(request.id, approved = true)
+        result.await()
+    }
     @After fun cleanup() { directory.deleteRecursively() }
 
     @Test fun `代理拒绝路径越界和保留名称且只读挂载拒绝全部修改`() = runBlocking {
@@ -70,7 +77,10 @@ class ScriptWorkspaceGatewayTest {
         row = row.copy(readOnly = true)
         for (operation in listOf("create", "mkdir", "write", "delete")) {
             val path = if (operation in setOf("create", "mkdir")) "/mnt/demo/new" else "/mnt/demo/a.txt"
-            val failure = runCatching { gateway.invoke(operation, args(path, "x", Sha256Utils.hash("old"))) }.exceptionOrNull()
+            val failure = runCatching {
+                if (operation == "delete") approveDelete { gateway.invoke(operation, args(path, "x", Sha256Utils.hash("old"))) }
+                else gateway.invoke(operation, args(path, "x", Sha256Utils.hash("old")))
+            }.exceptionOrNull()
             assertThat((failure as? ScriptFailure)?.code).isEqualTo("FILE_ERROR")
             assertThat(failure?.message).contains("知识库挂载为只读")
         }
@@ -80,7 +90,7 @@ class ScriptWorkspaceGatewayTest {
         assertThat(broker.pending.value).isEmpty()
     }
 
-    @Test fun `写入删除免审批且覆盖仍须满足哈希条件`() = runBlocking {
+    @Test fun `写入免审批，删除须审批且覆盖仍须满足哈希条件`() = runBlocking {
         memory.write("/a.txt", "old".toByteArray())
         val gateway = open()
         try { gateway.invoke("write", args("/mnt/demo/a.txt", "new", "0".repeat(64))); error("应冲突") }
@@ -89,10 +99,22 @@ class ScriptWorkspaceGatewayTest {
         withTimeout(3000) {
             gateway.invoke("write", args("/mnt/demo/a.txt", "new", Sha256Utils.hash("old")))
             assertThat(String(memory.read("/a.txt"))).isEqualTo("new")
-            gateway.invoke("delete", args("/mnt/demo/a.txt", hash = Sha256Utils.hash("new")))
+            approveDelete { gateway.invoke("delete", args("/mnt/demo/a.txt", hash = Sha256Utils.hash("new"))) }
         }
         assertThat(memory.stat("/a.txt")).isNull()
         assertThat(broker.pending.value).isEmpty()
+    }
+
+    @Test fun `脚本删除被拒绝时保留文件`() = runBlocking {
+        memory.write("/a.txt", "保留".toByteArray())
+        val gateway = open()
+        val result = async { runCatching { gateway.invoke("delete", args("/mnt/demo/a.txt")) } }
+        val request = withTimeout(3000) { broker.pending.first { it.isNotEmpty() }.single() }
+        assertThat(request.toolName).isEqualTo("delete_file")
+        assertThat(String(memory.read("/a.txt"))).isEqualTo("保留")
+        broker.resolve(request.id, approved = false)
+        assertThat((result.await().exceptionOrNull() as? ScriptFailure)?.code).isEqualTo("APPROVAL_DENIED")
+        assertThat(String(memory.read("/a.txt"))).isEqualTo("保留")
     }
 
     @Test fun `免审批也不能使用换源后的挂载`() = runBlocking {

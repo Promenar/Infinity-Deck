@@ -1050,10 +1050,10 @@ class RagViewModelTest {
 
     @Test
     fun `批量删除部分失败会继续处理并逐项返回失败标识`() = runTest {
-        coEvery { workspaceRepository.moveToRecycleBin("rag-root", "doc-1") } returns Unit
-        coEvery { workspaceRepository.moveToRecycleBin("rag-root", "doc-2") } throws
+        coEvery { workspaceRepository.permanentDelete("rag-root", "doc-1") } returns Unit
+        coEvery { workspaceRepository.permanentDelete("rag-root", "doc-2") } throws
             IllegalStateException("private delete detail")
-        coEvery { workspaceRepository.moveToRecycleBin("rag-root", "doc-3") } returns Unit
+        coEvery { workspaceRepository.permanentDelete("rag-root", "doc-3") } returns Unit
         val vm = createViewModel()
         advanceUntilIdle()
 
@@ -1063,9 +1063,9 @@ class RagViewModelTest {
         }
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { workspaceRepository.moveToRecycleBin("rag-root", "doc-1") }
-        coVerify(exactly = 1) { workspaceRepository.moveToRecycleBin("rag-root", "doc-2") }
-        coVerify(exactly = 1) { workspaceRepository.moveToRecycleBin("rag-root", "doc-3") }
+        coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-1") }
+        coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-2") }
+        coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-3") }
         coVerify(exactly = 0) { workspaceRepository.permanentDelete(any(), any()) }
         assertThat(failedIds).containsExactly("doc-2")
         assertThat(vm.indexingNotice.value?.code).isEqualTo(IndexingNotice.CODE_DELETE_FAILED)
@@ -1074,7 +1074,7 @@ class RagViewModelTest {
 
     @Test
     fun `批量删除收到取消信号时立即传播且不继续处理后续项`() = runTest {
-        coEvery { workspaceRepository.moveToRecycleBin("rag-root", "doc-1") } throws
+        coEvery { workspaceRepository.permanentDelete("rag-root", "doc-1") } throws
             kotlinx.coroutines.CancellationException("cancel delete")
         val vm = createViewModel()
         advanceUntilIdle()
@@ -1083,8 +1083,8 @@ class RagViewModelTest {
         vm.deleteDocuments(listOf("doc-1", "doc-2")) { _, _ -> callbackInvoked = true }
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { workspaceRepository.moveToRecycleBin("rag-root", "doc-1") }
-        coVerify(exactly = 0) { workspaceRepository.moveToRecycleBin("rag-root", "doc-2") }
+        coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-1") }
+        coVerify(exactly = 0) { workspaceRepository.permanentDelete("rag-root", "doc-2") }
         coVerify(exactly = 0) { workspaceRepository.permanentDelete(any(), any()) }
         assertThat(callbackInvoked).isFalse()
         assertThat(vm.isDeletingDocuments.value).isFalse()

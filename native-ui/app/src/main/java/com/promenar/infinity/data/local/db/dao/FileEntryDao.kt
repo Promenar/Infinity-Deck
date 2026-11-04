@@ -101,9 +101,6 @@ interface FileEntryDao {
     """)
     suspend fun getUnvectorizedSupportedFiles(mimeTypes: List<String>): List<FileEntry>
 
-    @Query("SELECT * FROM workspace_files WHERE workspace_root_uuid = :workspaceRootUuid AND in_recycle_bin = 1 AND materialized_path != '/.recycle_bin' ORDER BY recycled_at DESC")
-    fun observeRecycleBin(workspaceRootUuid: String): Flow<List<FileEntry>>
-
     @Query("SELECT * FROM workspace_files WHERE workspace_root_uuid = :workspaceRootUuid AND materialized_path = :path AND in_recycle_bin = 0 LIMIT 1")
     suspend fun getActiveByMaterializedPath(workspaceRootUuid: String, path: String): FileEntry?
 

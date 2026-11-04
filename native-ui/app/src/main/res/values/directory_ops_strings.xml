@@ -21,7 +21,6 @@
         <item quantity="one">Delete %1$d item?</item>
         <item quantity="other">Delete %1$d items?</item>
     </plurals>
-    <string name="directory_delete_message">You can restore them from the recycle bin.</string>
     <plurals name="directory_op_copied">
         <item quantity="one">Copied %1$d item</item>
         <item quantity="other">Copied %1$d items</item>
@@ -46,13 +45,7 @@
     <string name="directory_op_unavailable">The workspace is unavailable</string>
     <string name="directory_op_busy">A reply is running. Try again later</string>
     <string name="directory_op_failed">Couldn\'t complete the operation</string>
-    <string name="directory_recycle_footer">Kept for 7 days, up to 32 MiB in total</string>
+
     <string name="directory_op_failed_reason">%1$s: %2$s</string>
-    <string name="directory_op_too_large">Too large for the recycle bin</string>
-    <plurals name="directory_permanent_delete_title">
-        <item quantity="one">Delete %1$d item permanently?</item>
-        <item quantity="other">Delete %1$d items permanently?</item>
-    </plurals>
-    <string name="directory_permanent_delete_message">Too large for the recycle bin (32 MB). This can\'t be undone.</string>
-    <string name="directory_permanent_delete_confirm">Delete permanently</string>
+
 </resources>

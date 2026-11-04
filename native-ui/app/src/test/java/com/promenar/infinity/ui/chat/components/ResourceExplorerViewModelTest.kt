@@ -62,14 +62,10 @@ class ResourceExplorerViewModelTest {
         val repo = mockk<IWorkspaceRepository>()
         val aFiles = MutableSharedFlow<List<FileEntry>>()
         val bFiles = MutableSharedFlow<List<FileEntry>>()
-        val aRecycle = MutableSharedFlow<List<FileEntry>>()
-        val bRecycle = MutableSharedFlow<List<FileEntry>>()
         coEvery { repo.ensureSessionRoot("a") } returns root("root-a")
         coEvery { repo.ensureSessionRoot("b") } returns root("root-b")
         every { repo.observeChildren("root-a", "root-a") } returns aFiles
         every { repo.observeChildren("root-b", "root-b") } returns bFiles
-        every { repo.observeRecycleBin("root-a") } returns aRecycle
-        every { repo.observeRecycleBin("root-b") } returns bRecycle
         val viewModel = ResourceExplorerViewModel(
             ApplicationProvider.getApplicationContext<Application>(),
             repo,
@@ -78,14 +74,11 @@ class ResourceExplorerViewModelTest {
         viewModel.loadSession("a")
         advanceUntilIdle()
         assertThat(aFiles.subscriptionCount.value).isEqualTo(1)
-        assertThat(aRecycle.subscriptionCount.value).isEqualTo(1)
         viewModel.loadSession("b")
         advanceUntilIdle()
 
         assertThat(aFiles.subscriptionCount.value).isEqualTo(0)
-        assertThat(aRecycle.subscriptionCount.value).isEqualTo(0)
         assertThat(bFiles.subscriptionCount.value).isEqualTo(1)
-        assertThat(bRecycle.subscriptionCount.value).isEqualTo(1)
         assertThat(viewModel.workspaceRootUuid.value).isEqualTo("root-b")
         verify(exactly = 0) { repo.observeRoots(any()) }
     }
@@ -94,33 +87,27 @@ class ResourceExplorerViewModelTest {
     fun `deactivating explorer stops session observers and reopening creates one fresh pair`() = runTest(dispatcher) {
         val repo = mockk<IWorkspaceRepository>()
         val files = MutableSharedFlow<List<FileEntry>>()
-        val recycle = MutableSharedFlow<List<FileEntry>>()
         coEvery { repo.ensureSessionRoot("session") } returns root("root")
         every { repo.observeChildren("root", "root") } returns files
-        every { repo.observeRecycleBin("root") } returns recycle
         val viewModel = ResourceExplorerViewModel(
             ApplicationProvider.getApplicationContext<Application>(),
             repo,
         )
 
         assertThat(files.subscriptionCount.value).isEqualTo(0)
-        assertThat(recycle.subscriptionCount.value).isEqualTo(0)
         viewModel.loadSession("session")
         advanceUntilIdle()
         assertThat(files.subscriptionCount.value).isEqualTo(1)
-        assertThat(recycle.subscriptionCount.value).isEqualTo(1)
 
         val deactivate = viewModel.javaClass.methods.singleOrNull { it.name == "deactivateSession" }
         assertThat(deactivate).isNotNull()
         deactivate?.invoke(viewModel)
         advanceUntilIdle()
         assertThat(files.subscriptionCount.value).isEqualTo(0)
-        assertThat(recycle.subscriptionCount.value).isEqualTo(0)
 
         viewModel.loadSession("session")
         advanceUntilIdle()
         assertThat(files.subscriptionCount.value).isEqualTo(1)
-        assertThat(recycle.subscriptionCount.value).isEqualTo(1)
     }
 
     @Test
@@ -132,7 +119,6 @@ class ResourceExplorerViewModelTest {
         val cancellationObserved = CompletableDeferred<Unit>()
         coEvery { repo.ensureSessionRoot("session") } returns root("root")
         every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returns flowOf(emptyList())
         coEvery { importer.inspect(any()) } returns listOf(item(uri, ShareImportStatus.Pending))
         coEvery { importer.import(any(), "root", null, "root") } coAnswers {
             try {
@@ -176,58 +162,6 @@ class ResourceExplorerViewModelTest {
     }
 
     @Test
-    fun `same session deactivate and reload preserves running recycle operation until completion`() =
-        runTest(dispatcher) {
-            val repo = mockk<IWorkspaceRepository>()
-            val recycledFile = recycled("resumed-recycle")
-            val restoreGate = CompletableDeferred<Unit>()
-            val cancellationObserved = CompletableDeferred<Unit>()
-            coEvery { repo.ensureSessionRoot("session") } returns root("root")
-            every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-            every { repo.observeRecycleBin("root") } returns flowOf(listOf(recycledFile))
-            coEvery { repo.restoreFromRecycleBin("root", recycledFile.uuid) } coAnswers {
-                try {
-                    restoreGate.await()
-                } catch (cancelled: CancellationException) {
-                    cancellationObserved.complete(Unit)
-                    throw cancelled
-                }
-            }
-            val viewModel = ResourceExplorerViewModel(
-                ApplicationProvider.getApplicationContext<Application>(),
-                repo,
-            )
-            viewModel.loadSession("session")
-            advanceUntilIdle()
-            viewModel.restoreRecycledFiles(listOf(recycledFile))
-            dispatcher.scheduler.runCurrent()
-            val running = RecycleOperationState.Running(
-                RecycleOperation.Restore,
-                listOf(recycledFile.uuid),
-            )
-            assertThat(viewModel.recycleOperationState.value).isEqualTo(running)
-
-            viewModel.deactivateSession()
-            viewModel.loadSession("session")
-            dispatcher.scheduler.runCurrent()
-            val cancellationAfterReload = cancellationObserved.isCompleted
-            val stateAfterReload = viewModel.recycleOperationState.value
-
-            restoreGate.complete(Unit)
-            advanceUntilIdle()
-
-            assertThat(cancellationAfterReload).isFalse()
-            assertThat(stateAfterReload).isEqualTo(running)
-            assertThat(viewModel.recycleOperationState.value).isEqualTo(
-                RecycleOperationState.Success(
-                    RecycleOperation.Restore,
-                    listOf(recycledFile.uuid),
-                )
-            )
-            coVerify(exactly = 1) { repo.restoreFromRecycleBin("root", recycledFile.uuid) }
-        }
-
-    @Test
     fun `same session observer failure preserves running import and valid root`() = runTest(dispatcher) {
         val repo = mockk<IWorkspaceRepository>()
         val importer = mockk<SharedFileImporter>()
@@ -235,15 +169,12 @@ class ResourceExplorerViewModelTest {
         val importGate = CompletableDeferred<Unit>()
         val observerFailureGate = CompletableDeferred<Unit>()
         val initialFiles = MutableSharedFlow<List<FileEntry>>()
-        val initialRecycle = MutableSharedFlow<List<FileEntry>>()
-        val resumedRecycle = MutableSharedFlow<List<FileEntry>>()
         val failingFiles = flow<List<FileEntry>> {
             observerFailureGate.await()
             throw IllegalStateException("resumed observer failed")
         }
         coEvery { repo.ensureSessionRoot("session") } returns root("root")
         every { repo.observeChildren("root", "root") } returnsMany listOf(initialFiles, failingFiles)
-        every { repo.observeRecycleBin("root") } returnsMany listOf(initialRecycle, resumedRecycle)
         coEvery { importer.inspect(any()) } returns listOf(item(uri, ShareImportStatus.Pending))
         coEvery { importer.import(any(), "root", null, "root") } coAnswers {
             importGate.await()
@@ -305,18 +236,12 @@ class ResourceExplorerViewModelTest {
                 throw IllegalStateException("late failure from cancelled observer")
             }
         }
-        val oldRecycle = MutableSharedFlow<List<FileEntry>>()
-        val newRootFile = recycled("new-root-file")
-        val newRecycledFile = recycled("new-recycled-file")
+        val newRootFile = file("new-root-file")
         val newFiles = MutableSharedFlow<List<FileEntry>>(replay = 1).apply {
             tryEmit(listOf(newRootFile))
         }
-        val newRecycle = MutableSharedFlow<List<FileEntry>>(replay = 1).apply {
-            tryEmit(listOf(newRecycledFile))
-        }
         coEvery { repo.ensureSessionRoot("session") } returns root("root")
         every { repo.observeChildren("root", "root") } returnsMany listOf(oldFiles, newFiles)
-        every { repo.observeRecycleBin("root") } returnsMany listOf(oldRecycle, newRecycle)
         val viewModel = ResourceExplorerViewModel(
             ApplicationProvider.getApplicationContext<Application>(),
             repo,
@@ -331,45 +256,34 @@ class ResourceExplorerViewModelTest {
         viewModel.loadSession("session")
         dispatcher.scheduler.runCurrent()
         val newFileSubscriptionsBeforeLateFailure = newFiles.subscriptionCount.value
-        val newRecycleSubscriptionsBeforeLateFailure = newRecycle.subscriptionCount.value
         val filesBeforeLateFailure = viewModel.rootFiles.value
-        val recycleBeforeLateFailure = viewModel.recycledFiles.value
 
         lateFailureGate.complete(Unit)
         dispatcher.scheduler.runCurrent()
         val errorAfterLateFailure = viewModel.loadError.value
         val rootAfterLateFailure = viewModel.workspaceRootUuid.value
         val filesAfterLateFailure = viewModel.rootFiles.value
-        val recycleAfterLateFailure = viewModel.recycledFiles.value
         val newFileSubscriptions = newFiles.subscriptionCount.value
-        val newRecycleSubscriptions = newRecycle.subscriptionCount.value
         viewModel.deactivateSession()
         dispatcher.scheduler.runCurrent()
 
         assertThat(oldStartedBeforeDeactivate).isTrue()
         assertThat(oldCancelledBeforeReload).isTrue()
         assertThat(newFileSubscriptionsBeforeLateFailure).isEqualTo(1)
-        assertThat(newRecycleSubscriptionsBeforeLateFailure).isEqualTo(1)
         assertThat(filesBeforeLateFailure).containsExactly(newRootFile)
-        assertThat(recycleBeforeLateFailure).containsExactly(newRecycledFile)
         assertThat(errorAfterLateFailure).isNull()
         assertThat(rootAfterLateFailure).isEqualTo("root")
         assertThat(filesAfterLateFailure).containsExactly(newRootFile)
-        assertThat(recycleAfterLateFailure).containsExactly(newRecycledFile)
         assertThat(newFileSubscriptions).isEqualTo(1)
-        assertThat(newRecycleSubscriptions).isEqualTo(1)
         assertThat(newFiles.subscriptionCount.value).isEqualTo(0)
-        assertThat(newRecycle.subscriptionCount.value).isEqualTo(0)
     }
 
     @Test
     fun `root creation failure is recoverable and retry starts scoped collectors`() = runTest(dispatcher) {
         val repo = mockk<IWorkspaceRepository>()
         val files = MutableSharedFlow<List<FileEntry>>()
-        val recycle = MutableSharedFlow<List<FileEntry>>()
         coEvery { repo.ensureSessionRoot("broken") } throws IllegalStateException("disk unavailable") andThen root("root-ok")
         every { repo.observeChildren("root-ok", "root-ok") } returns files
-        every { repo.observeRecycleBin("root-ok") } returns recycle
         val viewModel = ResourceExplorerViewModel(
             ApplicationProvider.getApplicationContext<Application>(),
             repo,
@@ -390,7 +304,6 @@ class ResourceExplorerViewModelTest {
         assertThat(viewModel.loadError.value).isNull()
         assertThat(viewModel.workspaceRootUuid.value).isEqualTo("root-ok")
         assertThat(files.subscriptionCount.value).isEqualTo(1)
-        assertThat(recycle.subscriptionCount.value).isEqualTo(1)
     }
 
     @Test
@@ -398,13 +311,11 @@ class ResourceExplorerViewModelTest {
         val repo = mockk<IWorkspaceRepository>()
         val importer = mockk<SharedFileImporter>()
         val files = MutableSharedFlow<List<FileEntry>>()
-        val recycle = MutableSharedFlow<List<FileEntry>>()
         val first = Uri.parse("content://test/first.txt")
         val second = Uri.parse("content://test/second.pdf")
         val importGate = CompletableDeferred<Unit>()
         coEvery { repo.ensureSessionRoot("session") } returns root("root")
         every { repo.observeChildren("root", "root") } returns files
-        every { repo.observeRecycleBin("root") } returns recycle
         coEvery { importer.inspect(any()) } answers {
             val uri = firstArg<com.promenar.infinity.ShareRequest>().uris.single()
             listOf(item(uri, ShareImportStatus.Pending))
@@ -459,11 +370,9 @@ class ResourceExplorerViewModelTest {
         val repo = mockk<IWorkspaceRepository>()
         val importer = mockk<SharedFileImporter>()
         val files = MutableSharedFlow<List<FileEntry>>()
-        val recycle = MutableSharedFlow<List<FileEntry>>()
         val uri = Uri.parse("content://test/failure.txt")
         coEvery { repo.ensureSessionRoot("session") } returns root("root")
         every { repo.observeChildren("root", "root") } returns files
-        every { repo.observeRecycleBin("root") } returns recycle
         coEvery { importer.inspect(any()) } returns listOf(item(uri, ShareImportStatus.Pending))
         coEvery { importer.import(any(), "root", null, "root") } throws IllegalStateException("unexpected")
         val viewModel = ResourceExplorerViewModel(
@@ -504,276 +413,10 @@ class ResourceExplorerViewModelTest {
     }
 
     @Test
-    fun `recycle operation is single flight across operation types`() = runTest(dispatcher) {
-        val repo = mockk<IWorkspaceRepository>()
-        val restoreGate = CompletableDeferred<Unit>()
-        val first = recycled("first")
-        val second = recycled("second")
-        coEvery { repo.ensureSessionRoot("session") } returns root("root")
-        every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returns flowOf(listOf(first, second))
-        coEvery { repo.restoreFromRecycleBin("root", first.uuid) } coAnswers { restoreGate.await() }
-        val viewModel = ResourceExplorerViewModel(
-            ApplicationProvider.getApplicationContext<Application>(),
-            repo,
-        )
-        viewModel.loadSession("session")
-        advanceUntilIdle()
-
-        viewModel.restoreRecycledFiles(listOf(first))
-        dispatcher.scheduler.runCurrent()
-        assertThat(viewModel.recycleOperationState.value)
-            .isEqualTo(RecycleOperationState.Running(RecycleOperation.Restore, listOf(first.uuid)))
-
-        viewModel.permanentlyDeleteRecycledFiles(listOf(second))
-        dispatcher.scheduler.runCurrent()
-        coVerify(exactly = 0) { repo.permanentDelete(any(), any()) }
-
-        restoreGate.complete(Unit)
-        advanceUntilIdle()
-        assertThat(viewModel.recycleOperationState.value)
-            .isEqualTo(RecycleOperationState.Success(RecycleOperation.Restore, listOf(first.uuid)))
-    }
-
-    @Test
-    fun `batch restore continues after failures and exposes partial failure items`() = runTest(dispatcher) {
-        val repo = mockk<IWorkspaceRepository>()
-        val first = recycled("first")
-        val second = recycled("second")
-        val third = recycled("third")
-        coEvery { repo.ensureSessionRoot("session") } returns root("root")
-        every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returns flowOf(listOf(first, second, third))
-        coEvery { repo.restoreFromRecycleBin("root", first.uuid) } throws IllegalStateException("first failed")
-        coEvery { repo.restoreFromRecycleBin("root", second.uuid) } returns Unit
-        coEvery { repo.restoreFromRecycleBin("root", third.uuid) } throws IllegalArgumentException("third failed")
-        val viewModel = ResourceExplorerViewModel(
-            ApplicationProvider.getApplicationContext<Application>(),
-            repo,
-        )
-        viewModel.loadSession("session")
-        advanceUntilIdle()
-
-        viewModel.restoreRecycledFiles(listOf(first, second, third))
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { repo.restoreFromRecycleBin("root", second.uuid) }
-        assertThat(viewModel.recycleOperationState.value).isEqualTo(
-            RecycleOperationState.PartialFailure(
-                operation = RecycleOperation.Restore,
-                succeededItemUuids = listOf(second.uuid),
-                failedItemUuids = listOf(first.uuid, third.uuid),
-            )
-        )
-    }
-
-    @Test
-    fun `retry recycle operation invokes only the previous failed items`() = runTest(dispatcher) {
-        val repo = mockk<IWorkspaceRepository>()
-        val failed = recycled("failed")
-        val succeeded = recycled("succeeded")
-        coEvery { repo.ensureSessionRoot("session") } returns root("root")
-        every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returns flowOf(listOf(failed, succeeded))
-        coEvery { repo.permanentDelete("root", failed.uuid) } throws
-            IllegalStateException("first attempt failed") andThen Unit
-        coEvery { repo.permanentDelete("root", succeeded.uuid) } returns Unit
-        val viewModel = ResourceExplorerViewModel(
-            ApplicationProvider.getApplicationContext<Application>(),
-            repo,
-        )
-        viewModel.loadSession("session")
-        advanceUntilIdle()
-
-        viewModel.permanentlyDeleteRecycledFiles(listOf(failed, succeeded))
-        advanceUntilIdle()
-        assertThat(viewModel.recycleOperationState.value).isInstanceOf(
-            RecycleOperationState.PartialFailure::class.java
-        )
-
-        viewModel.retryFailedRecycleOperation()
-        advanceUntilIdle()
-
-        coVerify(exactly = 2) { repo.permanentDelete("root", failed.uuid) }
-        coVerify(exactly = 1) { repo.permanentDelete("root", succeeded.uuid) }
-        assertThat(viewModel.recycleOperationState.value).isEqualTo(
-            RecycleOperationState.Success(RecycleOperation.PermanentDelete, listOf(failed.uuid))
-        )
-    }
-
-    @Test
-    fun `successful recycle operation refreshes exposed recycle bin`() = runTest(dispatcher) {
-        val repo = mockk<IWorkspaceRepository>()
-        val file = recycled("file")
-        coEvery { repo.ensureSessionRoot("session") } returns root("root")
-        every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returnsMany listOf(
-            flowOf(listOf(file)),
-            flowOf(emptyList()),
-        )
-        coEvery { repo.restoreFromRecycleBin("root", file.uuid) } returns Unit
-        val viewModel = ResourceExplorerViewModel(
-            ApplicationProvider.getApplicationContext<Application>(),
-            repo,
-        )
-        viewModel.loadSession("session")
-        advanceUntilIdle()
-        assertThat(viewModel.recycledFiles.value).containsExactly(file)
-
-        viewModel.restoreRecycledFiles(listOf(file))
-        advanceUntilIdle()
-
-        assertThat(viewModel.recycledFiles.value).isEmpty()
-        assertThat(viewModel.recycleBinCount.value).isEqualTo(0)
-        assertThat(viewModel.recycleOperationState.value)
-            .isEqualTo(RecycleOperationState.Success(RecycleOperation.Restore, listOf(file.uuid)))
-        verify(exactly = 2) { repo.observeRecycleBin("root") }
-    }
-
-    @Test
-    fun `empty recycle selections and empty bin keep operation idle`() = runTest(dispatcher) {
-        val repo = mockk<IWorkspaceRepository>()
-        coEvery { repo.ensureSessionRoot("session") } returns root("root")
-        every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returns flowOf(emptyList())
-        val viewModel = ResourceExplorerViewModel(
-            ApplicationProvider.getApplicationContext<Application>(),
-            repo,
-        )
-        viewModel.loadSession("session")
-        advanceUntilIdle()
-
-        viewModel.restoreRecycledFiles(emptyList())
-        viewModel.permanentlyDeleteRecycledFiles(emptyList())
-        viewModel.emptyRecycleBin()
-        advanceUntilIdle()
-
-        assertThat(viewModel.recycleOperationState.value).isEqualTo(RecycleOperationState.Idle)
-        coVerify(exactly = 0) { repo.restoreFromRecycleBin(any(), any()) }
-        coVerify(exactly = 0) { repo.permanentDelete(any(), any()) }
-        coVerify(exactly = 0) { repo.emptyRecycleBin(any()) }
-    }
-
-    @Test
-    fun `failed empty recycle bin remains retryable without synthetic item ids`() = runTest(dispatcher) {
-        val repo = mockk<IWorkspaceRepository>()
-        val file = recycled("file")
-        coEvery { repo.ensureSessionRoot("session") } returns root("root")
-        every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-        every { repo.observeRecycleBin("root") } returns flowOf(listOf(file))
-        coEvery { repo.emptyRecycleBin("root") } throws
-            IllegalStateException("first attempt failed") andThen Unit
-        val viewModel = ResourceExplorerViewModel(
-            ApplicationProvider.getApplicationContext<Application>(),
-            repo,
-        )
-        viewModel.loadSession("session")
-        advanceUntilIdle()
-
-        viewModel.emptyRecycleBin()
-        advanceUntilIdle()
-        assertThat(viewModel.recycleOperationState.value).isEqualTo(
-            RecycleOperationState.Failure(RecycleOperation.Empty, emptyList())
-        )
-
-        viewModel.retryFailedRecycleOperation()
-        advanceUntilIdle()
-
-        coVerify(exactly = 2) { repo.emptyRecycleBin("root") }
-        assertThat(viewModel.recycleOperationState.value).isEqualTo(
-            RecycleOperationState.Success(RecycleOperation.Empty, emptyList())
-        )
-    }
-
-    @Test
-    fun `switching session cancels running recycle operation without writing old result into new session`() =
-        runTest(dispatcher) {
-            val repo = mockk<IWorkspaceRepository>()
-            val oldFile = recycled("old-file", "old-root")
-            val restoreGate = CompletableDeferred<Unit>()
-            val cancellationObserved = CompletableDeferred<Unit>()
-            coEvery { repo.ensureSessionRoot("old-session") } returns root("old-root")
-            coEvery { repo.ensureSessionRoot("new-session") } returns root("new-root")
-            every { repo.observeChildren("old-root", "old-root") } returns flowOf(emptyList())
-            every { repo.observeChildren("new-root", "new-root") } returns flowOf(emptyList())
-            every { repo.observeRecycleBin("old-root") } returns flowOf(listOf(oldFile))
-            every { repo.observeRecycleBin("new-root") } returns flowOf(emptyList())
-            coEvery { repo.restoreFromRecycleBin("old-root", oldFile.uuid) } coAnswers {
-                try {
-                    restoreGate.await()
-                } catch (cancelled: CancellationException) {
-                    cancellationObserved.complete(Unit)
-                    throw cancelled
-                }
-            }
-            val viewModel = ResourceExplorerViewModel(
-                ApplicationProvider.getApplicationContext<Application>(),
-                repo,
-            )
-            viewModel.loadSession("old-session")
-            advanceUntilIdle()
-
-            viewModel.restoreRecycledFiles(listOf(oldFile))
-            dispatcher.scheduler.runCurrent()
-            assertThat(viewModel.recycleOperationState.value).isEqualTo(
-                RecycleOperationState.Running(RecycleOperation.Restore, listOf(oldFile.uuid))
-            )
-
-            viewModel.loadSession("new-session")
-            advanceUntilIdle()
-            restoreGate.complete(Unit)
-            advanceUntilIdle()
-
-            assertThat(cancellationObserved.isCompleted).isTrue()
-            assertThat(viewModel.workspaceRootUuid.value).isEqualTo("new-root")
-            assertThat(viewModel.recycledFiles.value).isEmpty()
-            assertThat(viewModel.recycleOperationState.value).isEqualTo(RecycleOperationState.Idle)
-            coVerify(exactly = 1) { repo.restoreFromRecycleBin("old-root", oldFile.uuid) }
-            verify(exactly = 1) { repo.observeRecycleBin("old-root") }
-        }
-
-    @Test
-    fun `refresh failure preserves partial result without replaying successful destructive item`() =
-        runTest(dispatcher) {
-            val repo = mockk<IWorkspaceRepository>()
-            val deleted = recycled("deleted")
-            val failed = recycled("failed")
-            coEvery { repo.ensureSessionRoot("session") } returns root("root")
-            every { repo.observeChildren("root", "root") } returns flowOf(emptyList())
-            every { repo.observeRecycleBin("root") } returnsMany listOf(
-                flowOf(listOf(deleted, failed)),
-                flow { throw IllegalStateException("refresh failed") },
-            )
-            coEvery { repo.permanentDelete("root", deleted.uuid) } returns Unit
-            coEvery { repo.permanentDelete("root", failed.uuid) } throws IllegalStateException("delete failed")
-            val viewModel = ResourceExplorerViewModel(
-                ApplicationProvider.getApplicationContext<Application>(),
-                repo,
-            )
-            viewModel.loadSession("session")
-            advanceUntilIdle()
-
-            viewModel.permanentlyDeleteRecycledFiles(listOf(deleted, failed))
-            advanceUntilIdle()
-
-            assertThat(viewModel.recycleOperationState.value).isEqualTo(
-                RecycleOperationState.PartialFailure(
-                    operation = RecycleOperation.PermanentDelete,
-                    succeededItemUuids = listOf(deleted.uuid),
-                    failedItemUuids = listOf(failed.uuid),
-                )
-            )
-            coVerify(exactly = 1) { repo.permanentDelete("root", deleted.uuid) }
-            coVerify(exactly = 1) { repo.permanentDelete("root", failed.uuid) }
-            verify(exactly = 2) { repo.observeRecycleBin("root") }
-        }
-
-    @Test
     fun `git entry shows branch and change count for repository sessions only`() = runTest(dispatcher) {
         val repo = mockk<IWorkspaceRepository>()
         coEvery { repo.ensureSessionRoot(any()) } answers { root("root-${firstArg<String>()}") }
         every { repo.observeChildren(any(), any()) } returns flowOf(emptyList())
-        every { repo.observeRecycleBin(any()) } returns flowOf(emptyList())
         val git = mockk<GitChangesService>()
         val status = GitStatus(
             branch = "main", detached = false, head = "a".repeat(40), unborn = false,
@@ -816,7 +459,6 @@ class ResourceExplorerViewModelTest {
         val repo = mockk<IWorkspaceRepository>()
         coEvery { repo.ensureSessionRoot(any()) } answers { root("root-${firstArg<String>()}") }
         every { repo.observeChildren(any(), any()) } returns flowOf(emptyList())
-        every { repo.observeRecycleBin(any()) } returns flowOf(emptyList())
         val git = mockk<GitChangesService>()
         val status = GitStatus(
             branch = "main", detached = false, head = "a".repeat(40), unborn = false,
@@ -854,7 +496,6 @@ class ResourceExplorerViewModelTest {
         val repo = mockk<IWorkspaceRepository>()
         coEvery { repo.ensureSessionRoot("a") } returns root("root-a")
         every { repo.observeChildren(any(), any()) } returns flowOf(emptyList())
-        every { repo.observeRecycleBin(any()) } returns flowOf(emptyList())
         val viewModel = ResourceExplorerViewModel(ApplicationProvider.getApplicationContext<Application>(), repo)
         viewModel.loadSession("a")
         advanceUntilIdle()
@@ -887,7 +528,7 @@ class ResourceExplorerViewModelTest {
         reason = reason,
     )
 
-    private fun recycled(uuid: String, rootUuid: String = "root") = FileEntry(
+    private fun file(uuid: String, rootUuid: String = "root") = FileEntry(
         uuid = uuid,
         workspaceRootUuid = rootUuid,
         parentUuid = null,
@@ -898,8 +539,5 @@ class ResourceExplorerViewModelTest {
         materializedPath = "/$uuid.txt",
         createdAt = 1,
         updatedAt = 1,
-        inRecycleBin = true,
-        originalMaterializedPath = "/$uuid.txt",
-        recycledAt = 2,
     )
 }

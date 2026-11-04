@@ -550,7 +550,7 @@ class AndroidSecureWorkspaceFileOpsTest {
             assertThat(renamedFiles).hasSize(1_001)
             assertThat(renamedFiles.all { it.materializedPath.startsWith("/renamed/") }).isTrue()
 
-            workspace.moveToRecycleBin("root-perf", "tree")
+            workspace.permanentDelete("root-perf", "tree")
             workspace.permanentDelete("root-perf", "tree")
             assertThat(contentReads).isEqualTo(0)
             assertThat(Files.exists(root.resolve("renamed"))).isFalse()

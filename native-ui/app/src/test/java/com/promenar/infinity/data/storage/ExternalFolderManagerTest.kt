@@ -21,6 +21,9 @@ import java.nio.file.Files
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
 import org.junit.After
 import org.junit.Assert.assertThrows
@@ -67,6 +70,45 @@ class ExternalFolderManagerTest {
 
     @After fun cleanup() { directory.deleteRecursively() }
 
+    @Test fun `删除目录只清理可计算的当前版本键`() = runBlocking<Unit> {
+        memory.createDirectory("/docs")
+        memory.write("/docs/a.txt", "old".toByteArray())
+        memory.write("/keep.txt", "keep".toByteArray())
+        manager.read("session", "/mnt/termux/docs/a.txt")
+        manager.read("session", "/mnt/termux/keep.txt")
+        memory.write("/docs/a.txt", "current".toByteArray())
+        manager.read("session", "/mnt/termux/docs/a.txt")
+        val oldHash = Sha256Utils.hash("old")
+        val currentHash = Sha256Utils.hash("current")
+        val keepHash = Sha256Utils.hash("keep")
+        manager.backend("session").delete("/mnt/termux/docs")
+        assertThat(memory.stat("/docs")).isNull()
+        assertThat(manager.version("session", "/mnt/termux/docs/a.txt", currentHash)).isNull()
+        assertThat(String(manager.version("session", "/mnt/termux/docs/a.txt", oldHash)!!)).isEqualTo("old")
+        assertThat(String(manager.version("session", "/mnt/termux/keep.txt", keepHash)!!)).isEqualTo("keep")
+    }
+
+    @Test fun `删除完成后迟到的读取不能重新保存版本快照`() = runBlocking<Unit> {
+        memory.write("/a.txt", "content".toByteArray())
+        val readStarted = CompletableDeferred<Unit>()
+        val releaseRead = CompletableDeferred<Unit>()
+        val delayed = object : ExternalFolderBackend by memory {
+            override suspend fun read(path: String, maxBytes: Long): ByteArray {
+                val bytes = memory.read(path, maxBytes)
+                readStarted.complete(Unit)
+                releaseRead.await()
+                return bytes
+            }
+        }
+        val isolated = ExternalFolderManager(context, dao, workspace, FileIndexEventSink.None) { delayed }
+        val read = async { isolated.read("session", "/mnt/termux/a.txt") }
+        withTimeout(3000) { readStarted.await() }
+        isolated.delete("session", "/mnt/termux/a.txt", null)
+        releaseRead.complete(Unit)
+        assertThat(String(read.await())).isEqualTo("content")
+        assertThat(isolated.version("session", "/mnt/termux/a.txt", Sha256Utils.hash("content"))).isNull()
+    }
+
     @Test fun `新增挂载必须指定非空会话且在申请权限前拒绝空白`() = runBlocking {
         for (session in listOf("", " ", "\t")) {
             assertThat(assertThrows(ExternalFolderException::class.java) {
@@ -98,7 +140,7 @@ class ExternalFolderManagerTest {
         val operations: List<suspend () -> Any?> = listOf(
             { manager.write("session", "/mnt/termux/a.txt", "changed".toByteArray(), null, false) },
             { manager.createDirectory("session", "/mnt/termux/dir") },
-            { manager.delete("session", "/mnt/termux/a.txt", null, true) },
+            { manager.delete("session", "/mnt/termux/a.txt", null) },
             { manager.importSnapshot("session", "root", "/mnt/termux/a.txt") },
             { backend.writeStream("/mnt/termux/new", 0) { error("只读不得运行生产者") } },
             { backend.write("/mnt/termux/a.txt", "changed".toByteArray()) },
@@ -116,27 +158,10 @@ class ExternalFolderManagerTest {
         assertThat(manager.list("session", "/mnt/termux").map { it.name }).containsExactly("a.txt")
         assertThat(backend.stat("/mnt/termux/a.txt")?.isDirectory).isFalse()
         assertThat(manager.visible("session").single { it.id == "mount" }.readOnly).isTrue()
-        assertThat(manager.recycleItems("session")).isEmpty()
         assertThat(memory.stat("/dir")).isNull()
         assertThat(memory.stat("/b.txt")).isNull()
         assertThat(assertThrows(ExternalFolderException::class.java) { runBlocking { manager.read("different", "/mnt/termux/a.txt") } }.code).isEqualTo("NOT_FOUND")
         coVerify(exactly = 0) { workspace.createFileInWorkspaceStreaming(any(), any(), any(), any(), any(), any(), any(), any()) }
-    }
-
-    @Test fun `只读挂载不能恢复已有删除副本`() = runBlocking<Unit> {
-        memory.write("/a.txt", "hello".toByteArray())
-        manager.delete("session", "/mnt/termux/a.txt", null, false)
-        val backup = manager.recycleItems("session").single().id
-        rows.value = rows.value.map { it.copy(readOnly = true) }
-        listOf<suspend () -> Unit>(
-            { manager.restore("session", backup) },
-        ).forEach { action ->
-            val failure = assertThrows(ExternalFolderException::class.java) { runBlocking { action() } }
-            assertThat(failure.code).isEqualTo("READ_ONLY")
-            assertThat(failure.message).isEqualTo("知识库挂载为只读")
-        }
-        assertThat(memory.stat("/a.txt")).isNull()
-        assertThat(manager.recycleItems("session").map { it.id }).containsExactly(backup)
     }
 
     @Test fun `挂载文件工具写入修补新建移动删除均被只读收口而搜索正常`() = runBlocking {
@@ -167,21 +192,18 @@ class ExternalFolderManagerTest {
             .contains("original")
         assertThat(String(memory.read("/a.txt"))).isEqualTo("original")
         assertThat(memory.stat("/docs/a.txt")).isNull()
-        assertThat(manager.recycleItems("session")).isEmpty()
     }
 
-    @Test fun `移动可写来源到只读目标在创建回收副本前拒绝`() = runBlocking {
+    @Test fun `移动可写来源到只读目标时拒绝且保留来源`() = runBlocking {
         memory.write("/a.txt", "original".toByteArray())
         memory.createDirectory("/docs")
         rows.value = rows.value + rows.value.single().copy(id = "readonly", alias = "readonly", readOnly = true)
         val operations = mockk<com.promenar.infinity.domain.repository.IFileOperationRepository>()
         val skill = MountedWorkspaceSkill(MoveFileSkill(workspace, FileIndexEventSink.None), manager, workspace,
             operations, FileIndexEventSink.None)
-        val before = manager.recycleItems("session")
         val result = skill.execute(args("""{"path":"/mnt/termux/a.txt","newParentPath":"/mnt/readonly/docs"}"""), executionContext)
         assertThat(result.status).isEqualTo("error")
         assertThat(result.content).contains("READ_ONLY：知识库挂载为只读")
-        assertThat(manager.recycleItems("session")).isEqualTo(before)
         assertThat(String(memory.read("/a.txt"))).isEqualTo("original")
         assertThat(memory.stat("/docs/a.txt")).isNull()
     }
@@ -300,21 +322,6 @@ class ExternalFolderManagerTest {
         coVerify(exactly = 0) { workspace.confirmCreatedEntry(any(), any()) }
     }
 
-    @Test fun `删除前备份可以重建管理器后恢复且拒绝覆盖同名文件`() = runBlocking {
-        memory.write("/a.txt", "saved".toByteArray())
-        manager.delete("session", "/mnt/termux/a.txt", null, false)
-        assertThat(memory.stat("/a.txt")).isNull()
-        val restarted = ExternalFolderManager(context, dao, workspace, FileIndexEventSink.None) { backend }
-        val item = restarted.recycleItems("session").single()
-        memory.write("/a.txt", "new".toByteArray())
-        assertThrows(ExternalFolderException::class.java) { runBlocking { restarted.restore("session", item.id) } }
-        assertThat(String(memory.read("/a.txt"))).isEqualTo("new")
-        memory.delete("/a.txt")
-        restarted.restore("session", item.id)
-        assertThat(String(memory.read("/a.txt"))).isEqualTo("saved")
-        assertThat(restarted.recycleItems("session")).isEmpty()
-    }
-
     @Test fun `十个工具共用挂载路由并校验写入sha256`() = runBlocking {
         val fileOperations = mockk<com.promenar.infinity.domain.repository.IFileOperationRepository>()
         fun skill(original: com.promenar.infinity.ui.chat.manager.registry.SkillDefinition) = MountedWorkspaceSkill(original, manager, workspace, fileOperations, FileIndexEventSink.None)
@@ -369,7 +376,7 @@ class ExternalFolderManagerTest {
         assertThat(second).isNotEqualTo(first)
         assertThat(resolveSessionToolTarget(session.copy(id = "other"), tool, """{"path":"/mnt/termux/a.txt"}""", workspace, manager)).isNull()
         val deletion = tool.copy(function = tool.function.copy(name = "delete_file"))
-        val arguments = """{"path":"/mnt/termux/a.txt","irreversible":true}"""
+        val arguments = """{"path":"/mnt/termux/a.txt"}"""
         val approvalTarget = resolveSessionToolTarget(session, deletion, arguments, workspace, manager)!!
         assertThat(ToolExecutionTargets.display(approvalTarget)).isEqualTo("/mnt/termux/a.txt")
         assertThat(ToolExecutionTargets.canRemember(approvalTarget)).isFalse()

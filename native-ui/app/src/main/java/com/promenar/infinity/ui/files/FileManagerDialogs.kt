@@ -140,13 +140,9 @@ internal fun FileManagerDialogHost(
         is FileManagerDialog.Delete -> {
             val count = dialog.items.size
             InfinityConfirmDialog(
-                title = if (count == 1) {
-                    stringResource(R.string.fm_delete_one_title, dialog.items.first().name)
-                } else {
-                    pluralStringResource(R.plurals.fm_delete_many_title, count, count)
-                },
-                message = stringResource(R.string.fm_delete_message),
-                confirmText = stringResource(R.string.fm_delete_confirm),
+                title = pluralStringResource(R.plurals.permanent_delete_title, count, count),
+                message = stringResource(R.string.permanent_delete_message),
+                confirmText = stringResource(R.string.permanent_delete_action),
                 cancelText = stringResource(R.string.fm_cancel),
                 isDestructive = true,
                 onConfirm = {

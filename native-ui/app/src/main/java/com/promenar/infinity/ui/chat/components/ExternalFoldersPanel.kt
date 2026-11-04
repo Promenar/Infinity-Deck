@@ -100,7 +100,6 @@ import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.ui.workspace.KnowledgeReadOnlyTag
 import com.promenar.infinity.ui.workspace.SharedFolderPicker
 import com.promenar.infinity.ui.theme.breakableIdentifier
-import com.promenar.infinity.domain.storage.ExternalRecycleItem
 import com.promenar.infinity.domain.storage.IExternalFolderManager
 import com.promenar.infinity.ui.common.ConfirmDialog
 import com.promenar.infinity.ui.common.FolderBreadcrumbsBar
@@ -136,7 +135,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.promenar.infinity.ui.common.InfinityMenuItem
 
-/** 挂载状态按当前会话隔离；管理、添加、浏览与回收区在同一个全高面板内逐页切换。 */
+/** 挂载状态按当前会话隔离；管理、添加与浏览在同一个全高面板内逐页切换。 */
 @Composable
 internal fun ExternalFoldersPanel(
     sessionId: String?,
@@ -185,7 +184,6 @@ private fun ExternalFoldersPanelContent(
     var pickerActive by rememberSaveable { mutableStateOf(false) }
     var browseMountId by rememberSaveable { mutableStateOf<String?>(null) }
     var removeMountId by rememberSaveable { mutableStateOf<String?>(null) }
-    var recycleOpen by rememberSaveable { mutableStateOf(false) }
     var realPathPermission by remember { mutableStateOf(false) }
     // Linux 会话只能挂载真实路径（以 /mnt/<别名> 绑定进 Linux）；SAF 目录对 Linux 会话的 Agent 不可见。
     val app = context.applicationContext as? com.promenar.infinity.InfinityApplication
@@ -368,14 +366,12 @@ private fun ExternalFoldersPanelContent(
                 ExternalMountPage.PickFolder
             formSource != null && formSource in sources -> ExternalMountPage.Form(formSource!!)
             browseMount != null -> ExternalMountPage.Browse(browseMount.id)
-            recycleOpen -> ExternalMountPage.Recycle
             else -> ExternalMountPage.Manager
         }
         val backToManager: () -> Unit = {
             formSource = null
             pickingFolder = false
             browseMountId = null
-            recycleOpen = false
             notice = null
         }
         InfinityBottomSheet(
@@ -389,7 +385,7 @@ private fun ExternalFoldersPanelContent(
             // 面板内有可滚动列表与输入框，关闭拖动避免与内容滚动争抢。
             dragGesturesEnabled = false,
         ) {
-            BackHandler(enabled = page is ExternalMountPage.Form || page is ExternalMountPage.Recycle) {
+            BackHandler(enabled = page is ExternalMountPage.Form) {
                 if (!busy && !pickerActive) backToManager()
             }
             AnimatedContent(
@@ -419,7 +415,6 @@ private fun ExternalFoldersPanelContent(
                         onReauthorize = { launchTreePicker(false, it.id) },
                         onRemove = { removeMountId = it.id },
                         onGrantRealPath = openAccessSettings,
-                        onRecycle = { notice = null; recycleOpen = true },
                         linuxSession = linuxSession,
                         knowledgeMount = knowledgePreview?.let(::knowledgeMountOption),
                         onMountKnowledge = {
@@ -497,11 +492,6 @@ private fun ExternalFoldersPanelContent(
                             onExit = backToManager,
                         )
                     }
-                    ExternalMountPage.Recycle -> ExternalMountRecyclePage(
-                        sessionId = sessionKey,
-                        manager = manager,
-                        onBack = backToManager,
-                    )
                 }
             }
         }
@@ -547,14 +537,13 @@ private fun describeSafTree(context: Context, treeUri: Uri, primaryVolumeLabel: 
     return PickedMountFolder(displayName ?: safTreeFallbackName(documentId) ?: treeUri.toString(), location)
 }
 
-/** 外部文件夹面板内的页面；挂载管理为根，表单、浏览与回收区比它深一层，表单内选目录再深一层。 */
+/** 外部文件夹面板内的页面；挂载管理为根，表单和浏览比它深一层，表单内选目录再深一层。 */
 private sealed interface ExternalMountPage {
     data object Manager : ExternalMountPage
     data class Form(val source: ExternalMountSource) : ExternalMountPage
     /** 存储路径表单内浏览手机存储选目录，比表单再深一层。 */
     data object PickFolder : ExternalMountPage
     data class Browse(val mountId: String) : ExternalMountPage
-    data object Recycle : ExternalMountPage
 
     val depth: Int get() = when (this) {
         Manager -> 0
@@ -563,7 +552,7 @@ private sealed interface ExternalMountPage {
     }
 }
 
-/** 挂载管理首页：已挂载、添加方式与回收区三组，刷新放在页头。 */
+/** 挂载管理首页：已挂载与添加方式，刷新放在页头。 */
 @Composable
 internal fun ExternalMountManagerContent(
     mounts: List<ExternalMount>,
@@ -577,7 +566,6 @@ internal fun ExternalMountManagerContent(
     onReauthorize: (ExternalMount) -> Unit,
     onRemove: (ExternalMount) -> Unit,
     onGrantRealPath: (() -> Unit)?,
-    onRecycle: () -> Unit,
     modifier: Modifier = Modifier,
     linuxSession: Boolean = false,
     /** 为空时不显示“挂载知识库”入口（无会话或无法取得预览）。 */
@@ -662,18 +650,6 @@ internal fun ExternalMountManagerContent(
                     modifier = Modifier.testTag(KNOWLEDGE_MOUNT_ADD_TAG),
                 )
             }
-        }
-        InfinitySettingsGroup {
-            InfinitySettingsItem(
-                icon = Icons.Rounded.RestoreFromTrash,
-                title = stringResource(R.string.mount_recycle_title),
-                subtitle = stringResource(R.string.mount_recycle_desc),
-                subtitleMaxLines = 2,
-                onClick = onRecycle,
-                enabled = !busy,
-                showChevron = true,
-                modifier = Modifier.testTag("external_mount_recycle"),
-            )
         }
     }
 }
@@ -1180,122 +1156,6 @@ private fun ExternalMountBrowserPage(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
             )
-        }
-    }
-}
-
-/** 挂载回收区：说明作为分组脚注，条目逐行恢复。 */
-@Composable
-private fun ExternalMountRecyclePage(
-    sessionId: String,
-    manager: IExternalFolderManager,
-    onBack: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    var entries by remember { mutableStateOf<List<ExternalRecycleItem>>(emptyList()) }
-    var reload by remember { mutableStateOf(0) }
-    var loading by remember { mutableStateOf(true) }
-    var busy by remember { mutableStateOf(false) }
-    var notice by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(manager, sessionId, reload) {
-        loading = true
-        try {
-            entries = manager.recycleItems(sessionId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            notice = R.string.mount_load_error
-        } finally {
-            loading = false
-        }
-    }
-    Column(Modifier.fillMaxSize()) {
-        InfinityNavigationHeader(
-            title = stringResource(R.string.mount_recycle_title),
-            titleStyle = MaterialTheme.typography.titleLarge,
-            onBack = onBack.takeUnless { busy },
-            depth = 1,
-            actions = {
-                MountRefreshAction(refreshing = loading || busy) { notice = null; reload++ }
-            },
-        )
-        MountNoticeBanner(notice, error = notice != R.string.mount_restored)
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(top = InfinitySpacing.Small),
-        ) {
-            AnimatedContent(
-                targetState = when {
-                    entries.isNotEmpty() -> 2
-                    loading -> 0
-                    else -> 1
-                },
-                transitionSpec = { InfinityMotion.fadeThrough() },
-                label = "mount_recycle_state",
-            ) { phase ->
-                when (phase) {
-                    0 -> Box(Modifier.fillMaxWidth().heightIn(min = 120.dp))
-                    1 -> FolderStatusMessage(
-                        text = stringResource(R.string.mount_recycle_empty),
-                        icon = Icons.Rounded.RestoreFromTrash,
-                    )
-                    else -> InfinitySettingsGroup(footer = stringResource(R.string.mount_recycle_help)) {
-                        Column(Modifier.animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate))) {
-                            entries.forEach { entry ->
-                                key(entry.id) {
-                                    InfinitySettingsRowLayout(
-                                        title = entry.originalPath,
-                                        subtitle = Formatter.formatShortFileSize(context, entry.size),
-                                        icon = Icons.AutoMirrored.Rounded.InsertDriveFile,
-                                        trailingContent = {
-                                            IconButton(
-                                                enabled = !busy && !loading,
-                                                colors = IconButtonDefaults.iconButtonColors(
-                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                ),
-                                                onClick = {
-                                                    busy = true
-                                                    notice = null
-                                                    scope.launch {
-                                                        try {
-                                                            manager.restore(sessionId, entry.id)
-                                                            notice = R.string.mount_restored
-                                                            reload++
-                                                        } catch (cancelled: CancellationException) {
-                                                            throw cancelled
-                                                        } catch (_: Exception) {
-                                                            notice = R.string.mount_operation_error
-                                                        } finally {
-                                                            busy = false
-                                                        }
-                                                    }
-                                                },
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.RestoreFromTrash,
-                                                    contentDescription = stringResource(R.string.mount_restore),
-                                                )
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (entries.isEmpty() && !loading) {
-                Text(
-                    stringResource(R.string.mount_recycle_help),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = InfinitySpacing.XLarge),
-                )
-            }
         }
     }
 }

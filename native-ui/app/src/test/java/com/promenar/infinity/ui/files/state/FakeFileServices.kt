@@ -52,7 +52,6 @@ internal class FakeFileOperations : FileOperations {
     val listings = mutableMapOf<FileRef, List<FileItem>>()
     val listCalls = mutableListOf<FileRef>()
     val searchCalls = mutableListOf<FileSearchQuery>()
-    val recycle = MutableStateFlow<List<RecycledItem>>(emptyList())
     var listHandler: suspend (FileRef) -> List<FileItem> = { listings[it].orEmpty() }
     var searchHandler: suspend (String, FileSearchQuery) -> List<FileSearchHit> = { _, _ -> emptyList() }
     var previewHandler: suspend (FileRef) -> FilePreview = { FilePreview.Text(it.path, false, false) }
@@ -62,9 +61,6 @@ internal class FakeFileOperations : FileOperations {
     var createFolderHandler: suspend (FileRef, String) -> FileItem = { parent, name ->
         file(if (parent.path == "/") "/$name" else "${parent.path}/$name", parent.locationId, directory = true)
     }
-    var restoreHandler: suspend (List<String>) -> FileOpOutcome = { FileOpOutcome(emptyList(), emptyList()) }
-    var purgeHandler: suspend (List<String>) -> Unit = {}
-    var emptyHandler: suspend () -> Unit = {}
     var moveCalls = 0
     var createCalls = 0
     var renameCalls = 0
@@ -115,8 +111,4 @@ internal class FakeFileOperations : FileOperations {
         shareCalls++
         return "content://example.invalid${ref.path}"
     }
-    override fun observeRecycleBin(): Flow<List<RecycledItem>> = recycle
-    override suspend fun restore(ids: List<String>): FileOpOutcome = restoreHandler(ids)
-    override suspend fun purge(ids: List<String>) = purgeHandler(ids)
-    override suspend fun emptyRecycleBin() = emptyHandler()
 }

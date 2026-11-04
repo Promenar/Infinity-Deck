@@ -54,7 +54,7 @@ class LinuxSessionFileSkill(
                 val result = linux.execute(linuxFiles.invocationArguments(context.sessionId, original.id, args), context)
                 if (original.id == "delete_file" && result.status == "success" && metadata?.get("linuxRootfs")?.jsonPrimitive?.booleanOrNull == true) {
                     val path = Json.parseToJsonElement(target).jsonArray[1].jsonPrimitive.content
-                    result.copy(content = "已永久删除 $path；Linux rootfs 不进入回收站")
+                    result.copy(content = "已永久删除：$path")
                 } else if (original.id in setOf("read_file", "diff_file") && result.status == "success") {
                     val path = Json.parseToJsonElement(target).jsonArray[1].jsonPrimitive.content
                     result.copy(content = "路径: $path\n${result.content}")

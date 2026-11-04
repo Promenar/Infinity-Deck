@@ -9,7 +9,6 @@ import com.promenar.infinity.domain.files.FileSearchHit
 import com.promenar.infinity.domain.files.FileSort
 import com.promenar.infinity.domain.files.FileSortKey
 import com.promenar.infinity.domain.files.FileTypeFilter
-import com.promenar.infinity.domain.files.RecycledItem
 import com.promenar.infinity.ui.files.FileKind
 import com.promenar.infinity.ui.files.fileExtension
 import com.promenar.infinity.ui.files.fileKindOf
@@ -21,8 +20,6 @@ import com.promenar.infinity.ui.files.state.FileSearchState
 import com.promenar.infinity.ui.files.state.FileTargetPickerState
 import com.promenar.infinity.ui.files.state.FileTransferMode
 import com.promenar.infinity.ui.files.state.FileViewMode
-import com.promenar.infinity.ui.files.state.RecycleBinController
-import com.promenar.infinity.ui.files.state.RecycleBinUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -375,26 +372,4 @@ internal class FakeFileManagerController(
     override suspend fun shareUri(item: FileItem): String = "content://example.invalid/files/${item.ref.locationId}${item.ref.path}"
 
     override fun consumeNotice() = update { it.copy(notice = null) }
-}
-
-/** 回收站的内存控制器。 */
-internal class FakeRecycleBinController(items: List<RecycledItem>) : RecycleBinController {
-    private val _state = MutableStateFlow(RecycleBinUiState(items = items))
-    override val state: StateFlow<RecycleBinUiState> = _state.asStateFlow()
-
-    private fun remove(ids: Set<String>, kind: FileManagerNotice.Kind) {
-        val s = _state.value
-        val removed = s.items.count { it.id in ids }
-        _state.value = s.copy(items = s.items.filterNot { it.id in ids }, notice = FileManagerNotice.Done(kind, removed))
-    }
-
-    override fun restore(items: List<RecycledItem>) = remove(items.map { it.id }.toSet(), FileManagerNotice.Kind.RESTORE)
-
-    override fun purge(items: List<RecycledItem>) = remove(items.map { it.id }.toSet(), FileManagerNotice.Kind.PURGE)
-
-    override fun emptyAll() = remove(_state.value.items.map { it.id }.toSet(), FileManagerNotice.Kind.PURGE)
-
-    override fun consumeNotice() {
-        _state.value = _state.value.copy(notice = null)
-    }
 }

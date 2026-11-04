@@ -8,7 +8,6 @@ import com.promenar.infinity.domain.files.FileManagerServices
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.domain.files.FileSearchHit
 import com.promenar.infinity.domain.files.FileSortKey
-import com.promenar.infinity.domain.files.RecycledItem
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 
@@ -78,26 +77,6 @@ class FileManagerViewModel(
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(FileManagerViewModel::class.java))
                     return FileManagerViewModel(services, scope, initial) as T
-                }
-            }
-    }
-}
-
-class RecycleBinViewModel(services: FileManagerServices) : ViewModel(), RecycleBinController {
-    private val controller = DefaultRecycleBinController(viewModelScope, services)
-    override val state: StateFlow<RecycleBinUiState> get() = controller.state
-    override fun restore(items: List<RecycledItem>) = controller.restore(items)
-    override fun purge(items: List<RecycledItem>) = controller.purge(items)
-    override fun emptyAll() = controller.emptyAll()
-    override fun consumeNotice() = controller.consumeNotice()
-
-    companion object {
-        fun factory(services: FileManagerServices): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    require(modelClass.isAssignableFrom(RecycleBinViewModel::class.java))
-                    return RecycleBinViewModel(services) as T
                 }
             }
     }

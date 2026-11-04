@@ -162,7 +162,7 @@ class BranchLinuxFileNamespaceTest {
         val actions: List<suspend () -> Any?> = listOf(
             { access.write("branch", "/mnt/knowledge/note.md", byteArrayOf(), null, false) },
             { access.createDirectory("branch", "/mnt/knowledge/new") },
-            { access.delete("branch", "/mnt/knowledge/note.md", null, true) },
+            { access.delete("branch", "/mnt/knowledge/note.md", null) },
             { backend.move("/mnt/knowledge/note.md", "/mnt/knowledge/new") },
             { backend.copy("/mnt/knowledge/note.md", "/mnt/knowledge/new") },
             { access.importSnapshot("branch", privateRoot.uuid, "/mnt/knowledge/note.md") },
@@ -188,18 +188,15 @@ class BranchLinuxFileNamespaceTest {
         assertFalse(File(knowledge, "new.md").exists())
     }
 
-    @Test fun `版本回收和恢复保持原管理器语义且操作真实父目录`() = runBlocking {
+    @Test fun `永久删除只操作真实父目录`() = runBlocking {
         val bytes = "recover-parent".toByteArray()
         val hash = Sha256Utils.hash(bytes)
         access.write("branch", "/workspace/recycle.txt", bytes, null, true)
         access.read("branch", "/workspace/recycle.txt", 1024)
         assertEquals("recover-parent", access.version("branch", "/workspace/recycle.txt", hash)!!.toString(Charsets.UTF_8))
-        access.delete("branch", "/workspace/recycle.txt", hash, false)
+        access.delete("branch", "/workspace/recycle.txt", hash)
         assertFalse(File(base, "recycle.txt").exists())
-        val recycled = access.recycleItems("branch").single()
-        assertEquals("/workspace/recycle.txt", recycled.originalPath)
-        access.restore("branch", recycled.id)
-        assertEquals("recover-parent", File(base, "recycle.txt").readText())
+        assertFalse(File(base, "recycle.txt").exists())
         assertFalse(File(child, "recycle.txt").exists())
     }
 
@@ -225,22 +222,19 @@ class BranchLinuxFileNamespaceTest {
         assertNotEquals(approved, access.executionTarget("branch", tool, args))
     }
 
-    @Test fun `workspace内mnt和skills实物目录不被外部虚拟根遮蔽且可回收恢复`() = runBlocking {
+    @Test fun `workspace内mnt和skills实物目录不被外部虚拟根遮蔽且可删除`() = runBlocking {
         for (name in listOf("mnt", "skills")) {
             File(base, name).mkdirs()
             val path = "/workspace/$name/probe.txt"
             val bytes = "base-$name".toByteArray()
             val hash = Sha256Utils.hash(bytes)
             access.write("branch", path, bytes, null, true)
-            assertEquals("base-$name", File(base, "$name/probe.txt").readText())
+            assertFalse(File(base, "$name/probe.txt").exists())
             assertEquals("base-$name", access.read("branch", path, 1024).toString(Charsets.UTF_8))
             assertTrue(access.list("branch", "/workspace").any { it.path == "/workspace/$name" })
             assertTrue(access.list("branch", "/workspace/$name").any { it.path == path })
-            access.delete("branch", path, hash, false)
-            val recycled = access.recycleItems("branch").single()
-            assertEquals(path, recycled.originalPath)
-            access.restore("branch", recycled.id)
-            assertEquals("base-$name", File(base, "$name/probe.txt").readText())
+            access.delete("branch", path, hash)
+            assertFalse(File(base, "$name/probe.txt").exists())
         }
         File(skills, "probe.txt").writeText("user-skills")
         assertEquals("user-skills", access.read("branch", "/mnt/skills/probe.txt", 1024).toString(Charsets.UTF_8))

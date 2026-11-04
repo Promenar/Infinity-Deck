@@ -35,7 +35,8 @@ class FileChangeSummariesTest {
         assertThat(summary.change).isEqualTo(FileChangeType.DELETED)
         assertThat(summary.removed).isEqualTo(2)
         assertThat(summary.countsLabel).isEqualTo("−2")
-        assertThat(summary.hunks!!.single().lines).containsExactly("-a", "-b").inOrder()
+        assertThat(summary.hunks).isNull()
+        assertThat(summary.hunksOmitted).isEqualTo(com.promenar.infinity.data.model.FileChangeHunkOmission.PERMANENT_DELETE)
     }
 
     @Test

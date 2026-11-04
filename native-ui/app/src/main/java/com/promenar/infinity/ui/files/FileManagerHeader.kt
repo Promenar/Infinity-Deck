@@ -701,8 +701,8 @@ private const val DayMillis = 24L * 60 * 60 * 1000
 
 internal fun FileManagerUiState.writable(): Boolean = location?.capabilities?.writable ?: true
 
-/** 只有支持回收站的可写位置才提供删除；不做不可逆删除。 */
+/** 只有可写且支持删除的位置才提供删除操作。 */
 internal fun FileManagerUiState.deletable(): Boolean =
-    writable() && (location?.capabilities?.recycle ?: true)
+    writable() && (location?.capabilities?.deletable ?: true)
 
 internal fun FileManagerUiState.selectedItems(): List<FileItem> = items.filter { it.ref.path in selection }

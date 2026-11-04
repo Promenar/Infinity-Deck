@@ -21,7 +21,6 @@ class ReleaseReachableUiLocalizationContractTest {
         "ui/chat/EmptyChatWordmark.kt",
         "ui/chat/components/ExternalFoldersPanel.kt",
         "ui/chat/components/RagDetailsSheet.kt",
-        "ui/chat/components/RecycleBinPanel.kt",
         "ui/chat/SessionSettingsSheet.kt",
         "ui/chat/PipelineBubble.kt",
         "ui/chat/ChatInlineComponents.kt",
@@ -195,29 +194,6 @@ class ReleaseReachableUiLocalizationContractTest {
         val chinese = resource("values-zh-rCN/strings.xml")
 
         assertThat(resourceKeys(english)).containsExactlyElementsIn(resourceKeys(chinese))
-    }
-
-    @Test
-    fun `回收站图标操作提供至少48dp触控目标和可本地化语义`() {
-        val recycleBin = source("ui/chat/components/RecycleBinPanel.kt")
-        val accessibleIconButtons = Regex(
-            "IconButton\\s*\\([\\s\\S]{0,220}?Modifier\\s*\\.size\\(48\\.dp\\)",
-        ).findAll(recycleBin).count()
-
-        assertThat(accessibleIconButtons).isAtLeast(2)
-        assertThat(recycleBin).contains(
-            "val restoreLabel = stringResource(R.string.recycle_bin_restore_document, file.name)",
-        )
-        assertThat(recycleBin).contains(
-            "val deleteLabel = stringResource(R.string.recycle_bin_delete_document, file.name)",
-        )
-        assertThat(recycleBin).contains("onClick(label = restoreLabel)")
-        assertThat(recycleBin).contains("onClick(label = deleteLabel)")
-        assertThat(recycleBin).contains("contentDescription = restoreLabel")
-        assertThat(recycleBin).contains("contentDescription = deleteLabel")
-        assertThat(recycleBin).contains("R.string.files_time_minutes_ago")
-        assertThat(recycleBin).contains("R.string.files_time_hours_ago")
-        assertThat(recycleBin).contains("R.string.files_time_days_ago")
     }
 
     private fun source(relative: String): String = Files.readAllBytes(

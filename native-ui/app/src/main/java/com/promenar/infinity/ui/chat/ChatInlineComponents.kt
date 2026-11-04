@@ -831,7 +831,7 @@ private fun approvalPreviewTitle(preview: ApprovalPreview.Preview, displayedTarg
             ApprovalPreview.Action.CREATE_FILE -> R.string.chat_approval_preview_create_file
             ApprovalPreview.Action.EDIT -> R.string.chat_approval_preview_edit
             ApprovalPreview.Action.MOVE -> R.string.chat_approval_preview_move
-            ApprovalPreview.Action.DELETE -> R.string.chat_approval_preview_delete
+            ApprovalPreview.Action.DELETE -> R.string.permanent_delete_approval_preview
             ApprovalPreview.Action.CREATE_DIRECTORY -> R.string.chat_approval_preview_create_directory
             ApprovalPreview.Action.SCRIPT -> R.string.chat_approval_preview_script
         },

@@ -40,37 +40,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class RecycleOperation {
-    Restore,
-    PermanentDelete,
-    Empty,
-}
-
-sealed interface RecycleOperationState {
-    data object Idle : RecycleOperationState
-
-    data class Running(
-        val operation: RecycleOperation,
-        val itemUuids: List<String>,
-    ) : RecycleOperationState
-
-    data class Success(
-        val operation: RecycleOperation,
-        val processedItemUuids: List<String>,
-    ) : RecycleOperationState
-
-    data class PartialFailure(
-        val operation: RecycleOperation,
-        val succeededItemUuids: List<String>,
-        val failedItemUuids: List<String>,
-    ) : RecycleOperationState
-
-    data class Failure(
-        val operation: RecycleOperation,
-        val failedItemUuids: List<String>,
-    ) : RecycleOperationState
-}
-
 class ResourceExplorerViewModel(
     application: Application,
     injectedWorkspaceRepository: IWorkspaceRepository? = null,
@@ -133,17 +102,8 @@ class ResourceExplorerViewModel(
     private val _rootFiles = MutableStateFlow<List<FileEntry>>(emptyList())
     val rootFiles: StateFlow<List<FileEntry>> = _rootFiles.asStateFlow()
 
-    private val _recycledFiles = MutableStateFlow<List<FileEntry>>(emptyList())
-    val recycledFiles: StateFlow<List<FileEntry>> = _recycledFiles.asStateFlow()
-
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private val _recycleBinCount = MutableStateFlow(0)
-    val recycleBinCount: StateFlow<Int> = _recycleBinCount.asStateFlow()
-
-    private val _recycleOperationState = MutableStateFlow<RecycleOperationState>(RecycleOperationState.Idle)
-    val recycleOperationState: StateFlow<RecycleOperationState> = _recycleOperationState.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -185,8 +145,6 @@ class ResourceExplorerViewModel(
     private var sessionObserverEpoch = 0L
     private var sessionJob: Job? = null
     private var importJob: Job? = null
-    private var recycleOperationJob: Job? = null
-    private var recycleRetryPlan: RecycleRetryPlan? = null
     private val importRequests = linkedMapOf<Uri, ShareRequest>()
 
     fun updateSearchQuery(query: String) {
@@ -295,18 +253,16 @@ class ResourceExplorerViewModel(
         val generation = ++loadGeneration
         invalidateSessionObservers()
         importJob?.cancel()
-        recycleOperationJob?.cancel()
         clearSessionState()
         _isLoading.value = true
         startSessionRootLoad(sessionId, generation)
     }
 
-    /** 离开私有工作区：停止 Room 观察并作废进行中的导入与回收操作结果。 */
+    /** 离开私有工作区：停止 Room 观察并作废进行中的导入操作结果。 */
     private fun leavePrivateWorkspace() {
         ++loadGeneration
         invalidateSessionObservers()
         importJob?.cancel()
-        recycleOperationJob?.cancel()
         clearSessionState()
     }
 
@@ -417,18 +373,6 @@ class ResourceExplorerViewModel(
         runDirectoryBatch(DirectoryOp.DELETE, clearClipboard = false) { files, sessionId -> files.delete(sessionId, paths) }
     }
 
-    /** 用户确认后永久删除先前因超出回收站容量而保留的条目。 */
-    fun deleteTooLargePermanently() {
-        val paths = _directory.value.permanentDeleteCandidates
-        if (paths.isEmpty()) return
-        _directory.value = _directory.value.copy(permanentDeleteCandidates = emptyList())
-        runDirectoryBatch(DirectoryOp.DELETE, clearClipboard = false) { files, sessionId -> files.delete(sessionId, paths, permanent = true) }
-    }
-
-    fun keepTooLarge() {
-        _directory.value = _directory.value.copy(permanentDeleteCandidates = emptyList())
-    }
-
     /** 新建或改名；[onResult] 收到 null 表示成功，否则为失败原因，由对话框就地显示。 */
     fun createDirectoryFolder(name: String, onResult: (DirectoryFileOpCode?) -> Unit) {
         val parent = _directory.value.path
@@ -497,18 +441,7 @@ class ResourceExplorerViewModel(
                 operating = false,
                 selection = emptySet(),
                 clipboard = clipboard,
-                // 超出回收站容量的条目另行询问是否永久删除，不计入失败提示。
-                outcome = if (op == DirectoryOp.DELETE && batch != null) {
-                    batch.copy(failed = batch.failed.filterValues { it != DirectoryFileOpCode.TOO_LARGE })
-                        .toOutcome(op).takeIf { it.succeeded + it.failed > 0 }
-                } else {
-                    outcome
-                },
-                permanentDeleteCandidates = if (op == DirectoryOp.DELETE) {
-                    batch?.failed?.filterValues { it == DirectoryFileOpCode.TOO_LARGE }?.keys?.toList().orEmpty()
-                } else {
-                    current.permanentDeleteCandidates
-                },
+                outcome = outcome,
             )
             refreshDirectory()
         }
@@ -701,7 +634,7 @@ class ResourceExplorerViewModel(
         currentSessionId?.let(::loadSession)
     }
 
-    /** 资源管理器离开组合树时停止会话数据库观察，已发起的导入/回收操作不因此中断。 */
+    /** 资源管理器离开组合树时停止会话数据库观察，已发起的导入操作不因此中断。 */
     fun deactivateSession() {
         invalidateSessionObservers()
         resolveJob?.cancel()
@@ -788,14 +721,7 @@ class ResourceExplorerViewModel(
                     }
                 }
             }
-            launch {
-                workspaceRepo.observeRecycleBin(rootUuid).collect { files ->
-                    if (isCurrentSessionObserver(generation, observerEpoch)) {
-                        _recycledFiles.value = files
-                        _recycleBinCount.value = files.size
-                    }
-                }
-            }
+
         }
     }
 
@@ -896,109 +822,6 @@ class ResourceExplorerViewModel(
         }
     }
 
-    fun restoreRecycledFiles(files: List<FileEntry>) {
-        startRecycleOperation(RecycleOperation.Restore, files.map(FileEntry::uuid))
-    }
-
-    fun permanentlyDeleteRecycledFiles(files: List<FileEntry>) {
-        startRecycleOperation(RecycleOperation.PermanentDelete, files.map(FileEntry::uuid))
-    }
-
-    fun emptyRecycleBin() {
-        if (_recycledFiles.value.isEmpty()) return
-        startRecycleOperation(RecycleOperation.Empty, emptyList())
-    }
-
-    fun retryFailedRecycleOperation() {
-        val retryPlan = recycleRetryPlan ?: return
-        startRecycleOperation(retryPlan.operation, retryPlan.itemUuids)
-    }
-
-    fun clearRecycleOperationState() {
-        if (recycleOperationJob?.isActive == true) return
-        recycleRetryPlan = null
-        _recycleOperationState.value = RecycleOperationState.Idle
-    }
-
-    private fun startRecycleOperation(
-        operation: RecycleOperation,
-        requestedItemUuids: List<String>,
-    ) {
-        if (recycleOperationJob?.isActive == true) return
-        val itemUuids = requestedItemUuids.distinct()
-        if (operation != RecycleOperation.Empty && itemUuids.isEmpty()) return
-        val rootUuid = _workspaceRootUuid.value
-        if (rootUuid == null) {
-            recycleRetryPlan = RecycleRetryPlan(operation, itemUuids)
-            _recycleOperationState.value = RecycleOperationState.Failure(operation, itemUuids)
-            return
-        }
-        val generation = loadGeneration
-        _recycleOperationState.value = RecycleOperationState.Running(operation, itemUuids)
-        recycleOperationJob = viewModelScope.launch {
-            val succeededItemUuids = mutableListOf<String>()
-            val failedItemUuids = mutableListOf<String>()
-            var operationFailedWithoutItem = false
-            when (operation) {
-                RecycleOperation.Empty -> {
-                    try {
-                        workspaceRepo.emptyRecycleBin(rootUuid)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        operationFailedWithoutItem = true
-                    }
-                }
-
-                RecycleOperation.Restore,
-                RecycleOperation.PermanentDelete,
-                -> itemUuids.forEach { itemUuid ->
-                    try {
-                        when (operation) {
-                            RecycleOperation.Restore -> workspaceRepo.restoreFromRecycleBin(rootUuid, itemUuid)
-                            RecycleOperation.PermanentDelete -> workspaceRepo.permanentDelete(rootUuid, itemUuid)
-                            RecycleOperation.Empty -> error("已由清空分支处理")
-                        }
-                        succeededItemUuids += itemUuid
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        failedItemUuids += itemUuid
-                    }
-                }
-            }
-            val hasFailures = operationFailedWithoutItem || failedItemUuids.isNotEmpty()
-            if (!hasFailures || succeededItemUuids.isNotEmpty()) {
-                refreshRecycleBin(rootUuid, generation)
-            }
-            if (generation != loadGeneration || _workspaceRootUuid.value != rootUuid) return@launch
-            recycleRetryPlan = if (hasFailures) RecycleRetryPlan(operation, failedItemUuids) else null
-            _recycleOperationState.value = when {
-                !hasFailures -> RecycleOperationState.Success(operation, succeededItemUuids)
-                succeededItemUuids.isEmpty() -> RecycleOperationState.Failure(operation, failedItemUuids)
-                else -> RecycleOperationState.PartialFailure(
-                    operation = operation,
-                    succeededItemUuids = succeededItemUuids,
-                    failedItemUuids = failedItemUuids,
-                )
-            }
-        }
-    }
-
-    private suspend fun refreshRecycleBin(rootUuid: String, generation: Long) {
-        try {
-            val refreshedFiles = workspaceRepo.observeRecycleBin(rootUuid).first()
-            if (generation == loadGeneration && _workspaceRootUuid.value == rootUuid) {
-                _recycledFiles.value = refreshedFiles
-                _recycleBinCount.value = refreshedFiles.size
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // 长期观察者仍会继续接收数据库更新；刷新失败不应重放已成功的破坏性操作。
-        }
-    }
-
     private fun createRequest(uri: Uri, rootUuid: String): ShareRequest {
         return requestFactory.create(uri, rootUuid)
     }
@@ -1027,21 +850,12 @@ class ResourceExplorerViewModel(
     private fun clearSessionState() {
         _workspaceRootUuid.value = null
         _rootFiles.value = emptyList()
-        _recycledFiles.value = emptyList()
-        _recycleBinCount.value = 0
         _loadError.value = null
         _isImporting.value = false
         _importItems.value = emptyList()
-        _recycleOperationState.value = RecycleOperationState.Idle
-        recycleRetryPlan = null
         importRequests.clear()
         _privateFiles.value = PrivateFileOpsState()
     }
-
-    private data class RecycleRetryPlan(
-        val operation: RecycleOperation,
-        val itemUuids: List<String>,
-    )
 
     companion object {
         /** 目录工作区文本预览上限，与外部文件夹预览一致。 */

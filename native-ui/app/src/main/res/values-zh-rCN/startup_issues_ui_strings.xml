@@ -24,8 +24,8 @@
     <string name="startup_issue_title_adoption">旧工作区接管失败</string>
     <string name="startup_issue_title_file_operation">文件操作没有完成</string>
     <string name="startup_issue_title_session_delete">会话删除没有完成</string>
-    <string name="startup_issue_title_recycle">回收站清理没有完成</string>
-    <string name="startup_issue_title_tool_ledger">工具记录无法恢复</string>
+
+<string name="startup_issue_title_tool_ledger">工具记录无法恢复</string>
     <string name="startup_issue_title_vectors">索引队列无法恢复</string>
     <string name="startup_issue_title_background">后台任务无法恢复</string>
     <string name="startup_issue_title_confirmations">后台确认无法恢复</string>

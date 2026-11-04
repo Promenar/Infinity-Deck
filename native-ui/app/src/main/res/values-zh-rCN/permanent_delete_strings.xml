@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="permanent_delete_title">
+        <item quantity="other">永久删除 %1$d 项？</item>
+    </plurals>
+    <string name="permanent_delete_message">删除后无法恢复。</string>
+    <string name="permanent_delete_action">删除</string>
+    <string name="permanent_delete_skill_message">%1$s 将被永久删除，无法恢复。</string>
+    <string name="permanent_delete_tool_description">经用户批准后永久删除工作区文件和文件夹</string>
+    <string name="permanent_delete_approval_preview">永久删除</string>
+    <string name="permanent_delete_rag_failed">部分文档删除失败，已保留选择以便重试。</string>
+    <string name="permanent_delete_linux_message">文件将被永久删除，无法恢复。</string>
+    <string name="permanent_delete_command_footer">命令可以永久删除文件。</string>
+    <string name="file_operation_too_large">项目过大。</string>
+    <string name="file_cleanup_incomplete">文件清理未完成</string>
+    <string name="permanent_delete_diff_omitted">已删除的内容不会保留。</string>
+    <plurals name="permanent_delete_success">
+        <item quantity="other">已永久删除 %1$d 项</item>
+    </plurals>
+</resources>

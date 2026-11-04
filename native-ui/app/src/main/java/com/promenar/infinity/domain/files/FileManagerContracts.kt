@@ -31,7 +31,7 @@ enum class FileLocationKind {
 /** 位置支持的操作；界面据此隐藏不可用的菜单项。 */
 data class FileLocationCapabilities(
     val writable: Boolean,
-    val recycle: Boolean,
+    val deletable: Boolean,
     val archive: Boolean,
     val git: Boolean = false,
     val terminal: Boolean = false,
@@ -137,19 +137,6 @@ data class FileOpOutcome(
     val failed: List<FileOpFailure>,
 )
 
-data class RecycledItem(
-    /** 回收站条目的不透明 id，恢复与彻底删除时原样传回。 */
-    val id: String,
-    val locationId: String,
-    val originalPath: String,
-    val name: String,
-    val isDirectory: Boolean,
-    val sizeBytes: Long,
-    val deletedAt: Long,
-    /** 自动清除时间；不自动清除时为 null。 */
-    val expiresAt: Long?,
-)
-
 /** 可访问的位置集合。 */
 interface FileLocationsSource {
     /** 资料页：全部位置（资料库、会话工作区汇总、项目、Linux 主目录、外部文件夹、分支 worktree）。 */
@@ -180,7 +167,7 @@ interface FileOperations {
     /** 移动到 [targetDirectory]，可跨位置；同名时该项以 [FileOpCode.NAME_EXISTS] 失败。 */
     suspend fun move(sources: List<FileRef>, targetDirectory: FileRef): FileOpOutcome
 
-    /** 移到回收站；位置不支持回收站时以 [FileOpCode.UNSUPPORTED] 失败，不做不可逆删除。 */
+    /** 永久删除指定条目，受保护位置与根目录不可删除。 */
     suspend fun delete(sources: List<FileRef>): FileOpOutcome
 
     /** 在 [targetDirectory] 生成 ZIP，返回新建的压缩包。 */
@@ -200,10 +187,6 @@ interface FileOperations {
     /** 供“打开方式”“分享”使用的 content URI（经 FileProvider 授权）。 */
     suspend fun shareUri(ref: FileRef): String
 
-    fun observeRecycleBin(): Flow<List<RecycledItem>>
-    suspend fun restore(ids: List<String>): FileOpOutcome
-    suspend fun purge(ids: List<String>)
-    suspend fun emptyRecycleBin()
 }
 
 /** 固定到资料页侧栏的文件夹，最多 [MAX_PINS] 个。 */

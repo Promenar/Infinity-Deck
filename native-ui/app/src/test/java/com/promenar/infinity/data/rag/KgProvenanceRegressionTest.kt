@@ -7,7 +7,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.FileEntry
-import com.promenar.infinity.data.repository.WorkspaceLifecycleTransaction
 import com.promenar.infinity.data.session.RoomSessionDeletionTransaction
 import com.promenar.infinity.domain.repository.RenameIndexTarget
 import kotlinx.coroutines.Dispatchers
@@ -69,21 +68,6 @@ class KgProvenanceRegressionTest {
         }
         assertThat(store.getGraphData().nodes).hasSize(2)
         assertThat(store.getGraphData().edges).hasSize(1)
-    }
-
-    @Test fun `恢复已建图文件保留建图意图且普通文件不扩大抽取`() = runBlocking {
-        val built = file("built").copy(kgExtractedAt = 10)
-        val plain = file("plain")
-        db.fileEntryDao().insert(file("root").copy(parentUuid = null, isDirectory = true))
-        db.fileEntryDao().insert(built)
-        db.fileEntryDao().insert(plain)
-        WorkspaceLifecycleTransaction(db).restore("root", listOf(built, plain), listOf(
-            RenameIndexTarget(built.uuid, built.hash, built.updatedAt),
-            RenameIndexTarget(plain.uuid, plain.hash, plain.updatedAt),
-        ))
-        assertThat(db.vectorizationTaskDao().getByWorkspaceFile("root", "built", "document_reference")?.kgStrategy)
-            .isEqualTo("full")
-        assertThat(db.vectorizationTaskDao().getByWorkspaceFile("root", "plain", "document_reference")?.kgStrategy).isNull()
     }
 
     @Test fun `数据库把来源证据独立存储`() {

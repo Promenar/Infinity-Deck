@@ -532,7 +532,7 @@ class FileSkillCatalogTest {
         assertThat(refs.resolve("info.txt").readText()).isEqualTo("内部内容")
     }
 
-    @Test fun `删除两级技能移动回收区并清除全部状态`() = runTest {
+    @Test fun `删除两级技能并清除暂存副本与全部状态`() = runTest {
         install(userRoot, "user")
         val project = project("project")
         val catalog = catalog()
@@ -545,8 +545,8 @@ class FileSkillCatalogTest {
         catalog.delete(pending)
 
         assertThat(catalog.scan(workspace).skills).isEmpty()
-        assertThat(stateRoot.resolve("trash/$now-user-user/SKILL.md").isFile).isTrue()
-        assertThat(stateRoot.resolve("trash/$now-project-project/SKILL.md").isFile).isTrue()
+        assertThat(stateRoot.resolve("trash/$now-user-user").exists()).isFalse()
+        assertThat(stateRoot.resolve("trash/$now-project-project").exists()).isFalse()
         assertThat(prefs.getStringSet(AgentSkillStore.ENABLED_KEY, null)).doesNotContain("user")
         install(userRoot, "user", "重装后的内容")
         install(project.parentFile, "project")
@@ -599,7 +599,7 @@ class FileSkillCatalogTest {
         files.failCopy = false
         catalog.delete(entry)
         assertThat(dir.exists()).isFalse()
-        assertThat(stateRoot.resolve("trash/$now-project-cross-volume/reference.txt").readText()).isEqualTo("保留内容")
+        assertThat(stateRoot.resolve("trash/$now-project-cross-volume").exists()).isFalse()
     }
 
     @Test fun `跨卷清除部分源文件失败时从完整副本恢复`() = runTest {
@@ -626,13 +626,13 @@ class FileSkillCatalogTest {
         assertThat(skill(catalog, "rollback").status).isEqualTo(SkillStatus.ENABLED)
     }
 
-    @Test fun `删除损坏链接技能只回收链接且不改目标`() = runTest {
+    @Test fun `删除损坏链接技能只删除链接且不改目标`() = runTest {
         val outside = install(temporary.newFolder("outside-delete"), "linked")
         Files.createSymbolicLink(userRoot.resolve("linked").toPath(), outside.toPath())
         val catalog = catalog()
         catalog.delete(skill(catalog, "linked"))
         assertThat(outside.resolve("SKILL.md").isFile).isTrue()
-        assertThat(Files.isSymbolicLink(stateRoot.resolve("trash/$now-user-linked").toPath())).isTrue()
+        assertThat(Files.exists(stateRoot.resolve("trash/$now-user-linked").toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)).isFalse()
         assertThat(catalog.scan(null).skills).isEmpty()
     }
 

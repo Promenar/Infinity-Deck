@@ -114,7 +114,7 @@ internal class DefaultFileLocationsSource(
         )
     }
     internal fun linuxLocation() = FileLocation("linux:home", FileLocationKind.LINUX_HOME, titles.linux,
-        FileLocationCapabilities(writable = true, recycle = true, archive = true, terminal = true))
+        FileLocationCapabilities(writable = true, deletable = true, archive = true, terminal = true))
 
     private suspend fun workspaceLocation(
         workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, directory: SessionWorkspace.Directory?, git: Boolean = true,
@@ -134,7 +134,7 @@ internal class DefaultFileLocationsSource(
             id = "workspace:${workspace.id}",
             kind = if (workspace.kind == BranchWorktreeWorkspaceResolver.KIND) FileLocationKind.BRANCH_WORKTREE else FileLocationKind.PROJECT,
             title = workspace.displayName,
-            capabilities = FileLocationCapabilities(writable = available, recycle = available, archive = available,
+            capabilities = FileLocationCapabilities(writable = available, deletable = available, archive = available,
                 git = status != null, terminal = available && linux && sessionId != null),
             gitBranch = status?.branch,
             gitChangeCount = status?.changeCount?.takeUnless { status.truncated },
@@ -145,13 +145,13 @@ internal class DefaultFileLocationsSource(
         val lost = mount.unavailableReason != null || !mountAvailable(mount)
         val writable = !mount.readOnly && mount.sourceType != "knowledge_base" && !lost
         return FileLocation("external:${mount.id}", FileLocationKind.EXTERNAL_FOLDER, mount.alias,
-            FileLocationCapabilities(writable = writable, recycle = writable, archive = writable, terminal = false),
+            FileLocationCapabilities(writable = writable, deletable = writable, archive = writable, terminal = false),
             accessLost = lost)
     }
 
     companion object {
-        private val WRITABLE = FileLocationCapabilities(writable = true, recycle = true, archive = true)
-        private val READ_ONLY = FileLocationCapabilities(writable = false, recycle = false, archive = false)
+        private val WRITABLE = FileLocationCapabilities(writable = true, deletable = true, archive = true)
+        private val READ_ONLY = FileLocationCapabilities(writable = false, deletable = false, archive = false)
     }
 }
 

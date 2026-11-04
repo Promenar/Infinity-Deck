@@ -99,7 +99,7 @@ internal fun DirectoryWorkspaceBrowser(
     onOpenMedia: ((ExternalFolderEntry) -> Unit)? = null,
     rootHeader: @Composable () -> Unit = {},
     fileActions: DirectoryFileActions? = null,
-    /** 追加在工具栏末尾的入口，例如回收站。 */
+    /** 追加在工具栏末尾的入口。 */
     extraActions: @Composable RowScope.() -> Unit = {},
 ) {
     val selected = state.selectedFile
@@ -305,13 +305,6 @@ private fun DirectoryListView(
                 fileActions.onDelete()
             },
             onCancel = { confirmingDelete = false },
-        )
-    }
-    if (state.permanentDeleteCandidates.isNotEmpty()) {
-        DirectoryPermanentDeleteDialog(
-            count = state.permanentDeleteCandidates.size,
-            onConfirm = fileActions.onDeletePermanently,
-            onCancel = fileActions.onKeepTooLarge,
         )
     }
 }

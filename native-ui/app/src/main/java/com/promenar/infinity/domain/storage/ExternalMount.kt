@@ -23,14 +23,6 @@ data class ExternalMountCommandAccess(
     val accessible: Boolean get() = realPath != null
 }
 
-data class ExternalRecycleItem(
-    val id: String,
-    val mountId: String,
-    val originalPath: String,
-    val deletedAt: Long,
-    val size: Long,
-)
-
 /** 文件面板与工具共用挂载管理，所有涉及文件与数据库的方法自行切换到 IO。 */
 interface IExternalFolderManager {
     fun observeMounts(sessionId: String): Flow<List<ExternalMount>>
@@ -44,8 +36,6 @@ interface IExternalFolderManager {
     suspend fun refresh(sessionId: String)
     suspend fun list(sessionId: String, virtualPath: String): List<ExternalFolderEntry>
     suspend fun read(sessionId: String, virtualPath: String, maxBytes: Long = 1024L * 1024): ByteArray
-    suspend fun recycleItems(sessionId: String): List<ExternalRecycleItem>
-    suspend fun restore(sessionId: String, recycleId: String)
     suspend fun importSnapshot(sessionId: String, workspaceRootUuid: String, virtualPath: String): String
     suspend fun snapshotChanged(sessionId: String, virtualPath: String): Boolean
 }

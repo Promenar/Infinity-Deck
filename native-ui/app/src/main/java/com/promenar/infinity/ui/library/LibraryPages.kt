@@ -14,7 +14,6 @@ object LibraryPageKeys {
     const val MEMORY = "memory"
     const val FRAGMENTS = "frag"
     const val GRAPH = "graph"
-    const val TRASH = "trash"
 
     /** 外屏“文件”页：列出位置与固定的文件夹。 */
     const val FILES = "files"
@@ -39,7 +38,6 @@ object LibraryPageKeys {
         key == MEMORY -> LibraryPage.Memory
         key == FRAGMENTS -> LibraryPage.Fragments
         key == GRAPH -> LibraryPage.Graph
-        key == TRASH -> LibraryPage.Trash
         key == FILES -> LibraryPage.Files
         key == ASK -> LibraryPage.Ask
         key.startsWith(FRAGMENT_SESSION_PREFIX) -> LibraryPage.FragmentSession(key.removePrefix(FRAGMENT_SESSION_PREFIX))
@@ -65,7 +63,6 @@ sealed interface LibraryPage {
     data object Fragments : LibraryPage
     data class FragmentSession(val sessionId: String) : LibraryPage
     data object Graph : LibraryPage
-    data object Trash : LibraryPage
     data object Files : LibraryPage
     data object Ask : LibraryPage
     data class Document(val documentId: String) : LibraryPage
@@ -78,5 +75,5 @@ internal fun twoPaneStack(stack: List<String>): List<String> = stack.ifEmpty { l
 /** 左列高亮的根页面键；浏览页按位置高亮（固定的文件夹按完整路径）。 */
 internal fun libraryRootKey(stack: List<String>): String = twoPaneStack(stack).first()
 
-/** 页面是否自带页头（资源管理器与回收站由组件画页头，资料页不再叠加）。 */
-internal fun LibraryPage.ownsHeader(): Boolean = this is LibraryPage.Browse || this is LibraryPage.Trash
+/** 页面是否自带页头。 */
+internal fun LibraryPage.ownsHeader(): Boolean = this is LibraryPage.Browse

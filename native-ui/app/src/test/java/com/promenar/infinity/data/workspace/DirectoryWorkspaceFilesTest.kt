@@ -69,9 +69,8 @@ class DirectoryWorkspaceFilesTest {
         assertEquals(listOf("/renamed"), files.move("s", listOf("/renamed"), "/target").succeeded)
         assertEquals(listOf("/target/renamed"), files.copy("s", listOf("/target/renamed"), "/").succeeded)
         assertEquals(33L * 1024 * 1024, File(root, "renamed/large").length())
-        assertEquals(DirectoryFileOpCode.TOO_LARGE, files.delete("s", listOf("/renamed")).failed["/renamed"])
-        assertEquals(listOf("/renamed"), files.delete("s", listOf("/renamed"), permanent = true).succeeded)
-        assertTrue(mounts.recycleItems("s").isEmpty())
+        assertEquals(listOf("/renamed"), files.delete("s", listOf("/renamed")).succeeded)
+        assertFalse(File(root, "renamed").exists())
     }
 
     @Test fun `超过快照字节和条目上限的目录改名移动保持 inode 与内容且不读文件`() = runBlocking {
@@ -91,7 +90,6 @@ class DirectoryWorkspaceFilesTest {
         RandomAccessFile(File(moved, "large.bin"), "r").use { assertEquals("内容标记", it.readUTF()) }
         assertEquals(33L * 1024 * 1024, File(moved, "large.bin").length())
         assertTrue(fs.reads.isEmpty())
-        assertTrue(mounts.recycleItems("s").isEmpty())
     }
 
     @Test fun `超过快照上限的目录可以复制且源和目标内容一致`() = runBlocking {
@@ -108,30 +106,27 @@ class DirectoryWorkspaceFilesTest {
         assertNotEquals(inode(large), inode(target))
     }
 
-    @Test fun `回收备份超限返回专用错误且来源不变`() = runBlocking {
+    @Test fun `超过原快照上限的文件直接永久删除`() = runBlocking {
         val (root, mounts) = fixture()
         val files = DefaultDirectoryWorkspaceFiles(mounts, SessionExecutionGate()) { false }
         val source = File(root, "large.bin")
         RandomAccessFile(source, "rw").use { it.setLength(33L * 1024 * 1024) }
-        val before = inode(source)
         val result = files.delete("s", listOf("/large.bin"))
-        assertEquals("TOO_LARGE", result.failed["/large.bin"]?.name)
-        assertEquals(before, inode(source))
-        assertEquals(33L * 1024 * 1024, source.length())
-        assertTrue(mounts.recycleItems("s").isEmpty())
+        assertEquals(listOf("/large.bin"), result.succeeded)
+        assertFalse(source.exists())
     }
 
-    @Test fun `目录条目快照超限不删除且批次继续删除可备份项`() = runBlocking {
+    @Test fun `大量条目目录和小文件均可永久删除`() = runBlocking {
         val (root, mounts) = fixture()
         val files = DefaultDirectoryWorkspaceFiles(mounts, SessionExecutionGate()) { false }
         val source = File(root, "many").apply { mkdir() }
         repeat(1001) { File(source, "item-$it").createNewFile() }
         File(root, "small").writeText("小文件")
         val result = files.delete("s", listOf("/many", "/small"))
-        assertEquals(mapOf("/many" to DirectoryFileOpCode.TOO_LARGE), result.failed)
-        assertEquals(listOf("/small"), result.succeeded)
-        assertEquals(1001, source.list()!!.size)
-        assertEquals(listOf("/small"), mounts.recycleItems("s").map { it.originalPath })
+        assertTrue(result.failed.isEmpty())
+        assertEquals(listOf("/many", "/small"), result.succeeded)
+        assertFalse(source.exists())
+        assertFalse(File(root, "small").exists())
     }
 
     @Test fun `永久删除大目录与小文件均不创建回收副本`() = runBlocking {
@@ -140,10 +135,9 @@ class DirectoryWorkspaceFilesTest {
         val source = File(root, "large").apply { mkdir() }
         RandomAccessFile(File(source, "data.bin"), "rw").use { it.setLength(33L * 1024 * 1024) }
         File(root, "small").writeText("小文件")
-        assertEquals(listOf("/large", "/small"), files.delete("s", listOf("/large", "/small"), permanent = true).succeeded)
+        assertEquals(listOf("/large", "/small"), files.delete("s", listOf("/large", "/small")).succeeded)
         assertEquals(listOf(".infinity"), root.list()!!.toList())
         assertEquals(listOf(".gitignore"), File(root, ".infinity").list()!!.toList())
-        assertTrue(mounts.recycleItems("s").isEmpty())
     }
 
     @Test fun `来源或祖先为链接时所有文件操作均拒绝`() = runBlocking {
@@ -157,11 +151,10 @@ class DirectoryWorkspaceFilesTest {
             expect(DirectoryFileOpCode.NAME_INVALID) { files.rename("s", path, "renamed") }
             assertEquals(DirectoryFileOpCode.NAME_INVALID, files.move("s", listOf(path), "/target").failed[path])
             assertEquals(DirectoryFileOpCode.NAME_INVALID, files.copy("s", listOf(path), "/target").failed[path])
-            assertEquals(DirectoryFileOpCode.NAME_INVALID, files.delete("s", listOf(path), permanent = true).failed[path])
+            assertEquals(DirectoryFileOpCode.NAME_INVALID, files.delete("s", listOf(path)).failed[path])
         }
         assertEquals("界外文件", File(outside, "a").readText())
         assertTrue(File(root, "target").list()!!.isEmpty())
-        assertTrue(mounts.recycleItems("s").isEmpty())
     }
 
     @Test fun `永久删除仍拒绝目录内的链接与保留条目`() = runBlocking {
@@ -170,7 +163,7 @@ class DirectoryWorkspaceFilesTest {
         File(root, "linked").mkdir()
         File(root, "reserved/.infinity-internal").mkdirs()
         Files.createSymbolicLink(File(root, "linked/link").toPath(), temporary.newFolder().toPath())
-        val result = files.delete("s", listOf("/linked", "/reserved"), permanent = true)
+        val result = files.delete("s", listOf("/linked", "/reserved"))
         assertEquals(mapOf("/linked" to DirectoryFileOpCode.NAME_INVALID, "/reserved" to DirectoryFileOpCode.NAME_INVALID), result.failed)
         assertTrue(File(root, "linked").exists())
         assertTrue(File(root, "reserved/.infinity-internal").exists())
@@ -347,7 +340,6 @@ class DirectoryWorkspaceFilesTest {
         assertTrue(File(root, "target").list()!!.isEmpty())
         assertFalse(File(root, "renamed").exists())
         assertTrue(fs.reads.isEmpty())
-        assertTrue(mounts.recycleItems("s").isEmpty())
     }
 
     @Test fun `复制超过条目和深度快照上限的目录成功`() = runBlocking {
@@ -421,7 +413,7 @@ class DirectoryWorkspaceFilesTest {
         return digest.digest().toList()
     }
 
-    @Test fun `改名移动复制和删除使用同一挂载且目录可从回收区恢复`() = runBlocking {
+    @Test fun `改名移动复制和删除使用同一挂载且目录永久删除`() = runBlocking {
         val (root, mounts) = fixture()
         val files = DefaultDirectoryWorkspaceFiles(mounts, SessionExecutionGate()) { false }
         files.createDirectory("s", "/", "source")
@@ -436,8 +428,7 @@ class DirectoryWorkspaceFilesTest {
         assertEquals("内容", File(root, "target/b (3).md").readText())
         assertEquals(listOf("/target"), files.delete("s", listOf("/target")).succeeded)
         assertFalse(File(root, "target").exists())
-        mounts.restore("s", mounts.recycleItems("s").single().id)
-        assertEquals("内容", File(root, "target/b (3).md").readText())
+        assertFalse(File(root, "target/b (3).md").exists())
     }
 
     @Test fun `单项失败继续执行且不覆盖同名文件`() = runBlocking {

@@ -71,12 +71,10 @@ class NavigationMotionContractTest {
         assertThat(panel).contains("height = InfinitySheetHeight.Full")
         assertThat(panel).contains("ExternalMountPage.Manager -> ExternalMountManagerContent(")
         assertThat(panel).contains("is ExternalMountPage.Form -> ExternalMountFormContent(")
-        assertThat(panel).contains("ExternalMountPage.Recycle -> ExternalMountRecyclePage(")
-        // 管理页按已挂载、添加方式、回收区分组，刷新在页头。
+        // 管理页按已挂载和添加方式分组，刷新在页头。
         val manager = panel.substringAfter("internal fun ExternalMountManagerContent(").substringBefore("private fun MountRefreshAction(")
         assertThat(manager).contains("R.string.mount_section_mounted")
         assertThat(manager).contains("R.string.agent_panels_mount_add")
-        assertThat(manager).contains("R.string.mount_recycle_title")
         assertThat(manager).contains("MountRefreshAction(")
         assertThat(panel).contains("BackHandler(")
     }
@@ -217,8 +215,6 @@ class NavigationMotionContractTest {
             "rag/DocEditorScreen.kt" to listOf("label = \"doc_editor_state\"", "exit = ExitTransition.None"),
             "rag/KnowledgeGraphScreen.kt" to listOf("label = \"kg_canvas_phase\""),
             "rag/KnowledgeGraphPageParts.kt" to listOf("label = \"kg_search_phase\""),
-            "chat/components/RecycleBinPanel.kt" to listOf("Modifier.animateItem()", "label = \"recycle_operation_icon\""),
-            "chat/ResourceExplorerSheet.kt" to listOf("label = \"resource_explorer_recycle_phase\""),
             "common/UnifiedPromptEditor.kt" to listOf("label = \"prompt_editor_view\""),
             "settings/ProviderModelsScreen.kt" to listOf("Box(Modifier.animateItem())", "label = \"provider_models_sync_icon\""),
             "settings/ProviderListScreen.kt" to listOf(".animateItem()", ".animateContentSize("),

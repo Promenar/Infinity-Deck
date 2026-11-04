@@ -64,9 +64,6 @@ class MountedWorkspaceSkill(
                 properties[parameter] = buildJsonObject { put("type", "string"); put("description", versionDescription) }
             }
         }
-        if (original.id == "delete_file") properties["irreversible"] = buildJsonObject {
-            put("type", "boolean"); put("description", "回收区不足时显式永久删除，必须重新 DELETE 审批并显示不可恢复")
-        }
         JsonObject(schema.toMutableMap().apply {
             put("properties", JsonObject(properties))
             (schema["required"] as? JsonArray)?.let { put("required", JsonArray(it.filterNot { item -> item.jsonPrimitive.content == "expectedHash" })) }
@@ -179,9 +176,8 @@ class MountedWorkspaceSkill(
                     return@bound finish(ToolResult("mount_create", "已创建 $path [uuid=${created.uuid}] [sha256=${created.hash}]"))
                 }
                 if (original.id == "delete_file" && sourceMounted && sourcePath != null) {
-                    mounts.delete(context.sessionId, sourcePath, routedArgs.stringArgument("expectedHash"),
-                        (args["irreversible"] as? JsonPrimitive)?.booleanOrNull == true)
-                    return@bound finish(ToolResult("mount_delete", "已删除 $sourcePath；回收副本可在挂载回收区恢复（显式不可恢复删除除外）"))
+                    mounts.delete(context.sessionId, sourcePath, routedArgs.stringArgument("expectedHash"))
+                    return@bound finish(ToolResult("mount_delete", "已永久删除：$sourcePath"))
                 }
                 if (original.id == "move_file") {
                     val newName = args.stringArgument("newName")?.trim()?.takeIf(String::isNotEmpty)
@@ -415,10 +411,12 @@ internal class MountedWorkspaceRepository(
         if (!linuxPaths && SessionPrivateWorkspacePaths.contains(materializedPath)) privateNamespace.createDirectoryInWorkspace(workspaceRootUuid, uuid, name, parentUuid, materializedPath)
         else if (rooted || (parentUuid?.startsWith("external:") ?: materializedPath.isMounted())) mounts.createDirectory(session, materializedPath)
         else base.createDirectoryInWorkspace(workspaceRootUuid, uuid, name, parentUuid, materializedPath)
-    override suspend fun moveToRecycleBin(workspaceRootUuid: String, uuid: String) =
-        if (SessionPrivateWorkspacePaths.privateUuid(uuid) != null) privateNamespace.moveToRecycleBin(workspaceRootUuid, uuid) else base.moveToRecycleBin(workspaceRootUuid, uuid)
-    override suspend fun moveToRecycleBinIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) =
-        if (SessionPrivateWorkspacePaths.privateUuid(uuid) != null) privateNamespace.moveToRecycleBinIfHash(workspaceRootUuid, uuid, expectedSha256) else base.moveToRecycleBinIfHash(workspaceRootUuid, uuid, expectedSha256)
+    override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String) =
+        if (SessionPrivateWorkspacePaths.privateUuid(uuid) != null) privateNamespace.permanentDelete(workspaceRootUuid, uuid) else base.permanentDelete(workspaceRootUuid, uuid)
+    override suspend fun permanentDeleteIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) =
+        if (SessionPrivateWorkspacePaths.privateUuid(uuid) != null) privateNamespace.permanentDeleteIfHash(workspaceRootUuid, uuid, expectedSha256) else base.permanentDeleteIfHash(workspaceRootUuid, uuid, expectedSha256)
+    override suspend fun permanentDeleteEmptyDirectory(workspaceRootUuid: String, uuid: String) =
+        if (SessionPrivateWorkspacePaths.privateUuid(uuid) != null) privateNamespace.permanentDeleteEmptyDirectory(workspaceRootUuid, uuid) else base.permanentDeleteEmptyDirectory(workspaceRootUuid, uuid)
     override suspend fun rename(workspaceRootUuid: String, uuid: String, newName: String, expectedName: String?) =
         if (SessionPrivateWorkspacePaths.privateUuid(uuid) != null) privateNamespace.rename(workspaceRootUuid, uuid, newName, expectedName) else base.rename(workspaceRootUuid, uuid, newName, expectedName)
     override suspend fun updateParent(workspaceRootUuid: String, uuid: String, newParentUuid: String) =
@@ -504,7 +502,7 @@ private class MountedFileOperations(
     private suspend fun textMime(path: String) = (mounts as? LinuxSessionExternalWorkspaceAccess)?.textMime(session, path)
 }
 
-/** 私有工作区只通过现有仓库创建、回收和确认，读取继续使用安全文件操作与根身份。 */
+/** 私有工作区通过现有仓库创建、删除和确认，读取继续使用安全文件操作与根身份。 */
 internal class PrivateWorkspaceTransferBackend(
     private val workspace: IWorkspaceRepository,
     private val rootUuid: String,
@@ -575,22 +573,22 @@ internal class PrivateWorkspaceTransferBackend(
     override suspend fun delete(path: String, expectedSha256: String?) {
         val entry = find(path) ?: return
         if (expectedSha256 != null) {
-            try { workspace.moveToRecycleBinIfHash(rootUuid, entry.uuid, expectedSha256) }
+            try { workspace.permanentDeleteIfHash(rootUuid, entry.uuid, expectedSha256) }
             catch (failure: IllegalStateException) { fail("CONFLICT", "删除前来源已改变") }
             created.remove(entry.uuid)
             return
         }
         if (entry.uuid in created) {
-            if (entry.isDirectory) workspace.moveToRecycleBin(rootUuid, entry.uuid) else workspace.rollbackCreatedEntry(rootUuid, entry.uuid)
+            if (entry.isDirectory) workspace.permanentDelete(rootUuid, entry.uuid) else workspace.rollbackCreatedEntry(rootUuid, entry.uuid)
             created.remove(entry.uuid)
         }
-        else workspace.moveToRecycleBin(rootUuid, entry.uuid)
+        else workspace.permanentDelete(rootUuid, entry.uuid)
     }
     override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) {
         val entry = find(path) ?: fail("CONFLICT", "来源已不存在")
         if (entry.uuid != expected.identity || entry.isDirectory != expected.isDirectory) fail("CONFLICT", "来源身份已变化")
-        if (entry.isDirectory) workspace.moveEmptyDirectoryToRecycleBin(rootUuid, entry.uuid)
-        else try { workspace.moveToRecycleBinIfHash(rootUuid, entry.uuid, requireNotNull(expectedSha256)) }
+        if (entry.isDirectory) workspace.permanentDeleteEmptyDirectory(rootUuid, entry.uuid)
+        else try { workspace.permanentDeleteIfHash(rootUuid, entry.uuid, requireNotNull(expectedSha256)) }
         catch (failure: IllegalStateException) { fail("CONFLICT", "删除前来源已改变") }
         created.remove(entry.uuid)
     }

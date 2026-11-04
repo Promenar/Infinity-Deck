@@ -723,7 +723,7 @@ class SettingsViewModel(
             Triple("create_file", R.string.skill_create_file, R.string.skill_create_file_desc),
             Triple("create_directory", R.string.skill_create_directory, R.string.skill_create_directory_desc),
             Triple("move_file", R.string.skill_move_file, R.string.skill_move_file_desc),
-            Triple("delete_file", R.string.skill_delete_file, R.string.skill_delete_file_desc),
+            Triple("delete_file", R.string.skill_delete_file, R.string.permanent_delete_tool_description),
             Triple("shell_exec", R.string.skill_shell_exec, R.string.skill_shell_exec_desc),
             Triple("python_exec", R.string.skill_python_exec, R.string.skill_python_exec_desc),
             Triple("python_sandbox", R.string.skill_python_sandbox, R.string.skill_python_sandbox_desc),

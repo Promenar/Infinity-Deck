@@ -58,7 +58,6 @@
     <string name="linux_files_not_ready_unavailable">This version or device doesn\'t include the Linux environment.</string>
     <string name="linux_files_open_environment">Go to Linux environment</string>
     <string name="linux_files_binding_notice">“%1$s” points to %2$s. That path is bound only while a command runs, so it isn\'t part of the Linux files.</string>
-    <string name="linux_files_delete_message">Linux files don\'t go to a recycle bin. This can\'t be undone.</string>
     <string name="linux_files_name_label">Name</string>
     <string name="linux_files_create">Create</string>
     <string name="linux_files_compress_title">Compress to .tar.gz</string>

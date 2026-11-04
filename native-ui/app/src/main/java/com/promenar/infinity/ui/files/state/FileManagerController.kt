@@ -9,7 +9,6 @@ import com.promenar.infinity.domain.files.FileSearchHit
 import com.promenar.infinity.domain.files.FileSort
 import com.promenar.infinity.domain.files.FileSortKey
 import com.promenar.infinity.domain.files.FileTypeFilter
-import com.promenar.infinity.domain.files.RecycledItem
 import kotlinx.coroutines.flow.StateFlow
 
 /*
@@ -49,7 +48,7 @@ sealed interface FileManagerNotice {
     data class Done(val kind: Kind, val count: Int, val target: String? = null) : FileManagerNotice
     data class Failed(val kind: Kind, val code: FileOpCode, val failedCount: Int, val total: Int) : FileManagerNotice
 
-    enum class Kind { CREATE, RENAME, COPY, MOVE, DELETE, RESTORE, PURGE, COMPRESS, EXTRACT, IMPORT, PIN }
+    enum class Kind { CREATE, RENAME, COPY, MOVE, DELETE, COMPRESS, EXTRACT, IMPORT, PIN }
 }
 
 data class FileManagerUiState(
@@ -82,13 +81,6 @@ data class FileManagerUiState(
     val canGoUp: Boolean get() = path != "/" && search == null
     val selecting: Boolean get() = selection.isNotEmpty()
 }
-
-/** 回收站页的状态，与目录浏览分开，跨所有位置汇总。 */
-data class RecycleBinUiState(
-    val items: List<RecycledItem> = emptyList(),
-    val running: Boolean = false,
-    val notice: FileManagerNotice? = null,
-)
 
 interface FileManagerController {
     val state: StateFlow<FileManagerUiState>
@@ -147,13 +139,5 @@ interface FileManagerController {
 
     suspend fun shareUri(item: FileItem): String
 
-    fun consumeNotice()
-}
-
-interface RecycleBinController {
-    val state: StateFlow<RecycleBinUiState>
-    fun restore(items: List<RecycledItem>)
-    fun purge(items: List<RecycledItem>)
-    fun emptyAll()
     fun consumeNotice()
 }

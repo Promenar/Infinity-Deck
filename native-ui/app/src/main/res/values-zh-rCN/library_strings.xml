@@ -18,7 +18,6 @@
     <string name="library_page_memory">长期记忆</string>
     <string name="library_page_fragments">对话片段</string>
     <string name="library_page_graph">知识图谱</string>
-    <string name="library_page_trash">回收站</string>
     <string name="library_page_files">文件</string>
     <string name="library_page_ask">问资料</string>
     <string name="library_page_document">文档</string>

@@ -68,12 +68,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.R
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.ui.chat.components.WorkspaceFolderBrowser
-import com.promenar.infinity.ui.chat.components.RecycleBinPanel
 import com.promenar.infinity.ui.chat.components.ResourceExplorerViewModel
 import com.promenar.infinity.ui.chat.components.ResourceExplorerWorkspaceMode
 import com.promenar.infinity.ui.chat.components.DirectoryFileActions
 import com.promenar.infinity.ui.chat.components.PrivateFileActions
-import com.promenar.infinity.ui.chat.components.DirectoryRecycleList
 import com.promenar.infinity.ui.chat.components.DirectoryWorkspaceBrowser
 import com.promenar.infinity.ui.chat.components.ExternalFoldersPanel
 import com.promenar.infinity.ui.chat.components.rememberWorkspaceMediaOpener
@@ -119,11 +117,8 @@ fun ResourceExplorerPage(
         onDispose { viewModel.deactivateSession() }
     }
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val recycleBinCount by viewModel.recycleBinCount.collectAsStateWithLifecycle()
     val workspaceRootUuid by viewModel.workspaceRootUuid.collectAsStateWithLifecycle()
     val rootFiles by viewModel.rootFiles.collectAsStateWithLifecycle()
-    val recycledFiles by viewModel.recycledFiles.collectAsStateWithLifecycle()
-    val recycleOperationState by viewModel.recycleOperationState.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val loadError by viewModel.loadError.collectAsStateWithLifecycle()
     val importItems by viewModel.importItems.collectAsStateWithLifecycle()
@@ -144,7 +139,6 @@ fun ResourceExplorerPage(
             onDismissOutcome = viewModel::dismissPrivateOutcome,
         )
     }
-    var showRecycle by rememberSaveable(sessionId) { mutableStateOf(false) }
     var searchActive by rememberSaveable(sessionId) { mutableStateOf(searchQuery.isNotEmpty()) }
     val chatState by chatViewModel.uiState.collectAsStateWithLifecycle()
     // 工作区在顶栏状态行切换；本页打开期间工作区变化时重新加载文件。会话尚未读出时为 null，不算变化。
@@ -181,10 +175,8 @@ fun ResourceExplorerPage(
     ) {
         ResourceExplorerSheetContent(
             state = ResourceExplorerSheetState(
-                showRecycle = showRecycle,
                 searchQuery = searchQuery,
                 searchActive = searchActive,
-                recycleBinCount = recycleBinCount,
                 workspaceReady = workspaceRootUuid != null,
                 importItems = importItems,
                 isImporting = isImporting,
@@ -202,8 +194,6 @@ fun ResourceExplorerPage(
                 },
                 onRetryImport = viewModel::retryImport,
                 onClearImportResults = viewModel::clearImportResults,
-                onOpenRecycle = { showRecycle = true },
-                onCloseRecycle = { showRecycle = false },
                 onRetryLoad = viewModel::retryLoadSession,
             ),
             filesContent = {
@@ -214,7 +204,6 @@ fun ResourceExplorerPage(
                     DirectoryWorkspaceBrowser(
                         rootTitle = directoryMode.displayName,
                         state = directory,
-                        extraActions = { ResourceExplorerRecycleAction(count = null, onClick = { showRecycle = true }) },
                         onNavigate = viewModel::openDirectory,
                         onOpenFile = viewModel::openDirectoryFile,
                         onCloseFile = viewModel::closeDirectoryFile,
@@ -232,12 +221,10 @@ fun ResourceExplorerPage(
                                 onCreateFolder = viewModel::createDirectoryFolder,
                                 onRename = viewModel::renameDirectoryEntry,
                                 onDismissOutcome = viewModel::dismissDirectoryOutcome,
-                                onDeletePermanently = viewModel::deleteTooLargePermanently,
-                                onKeepTooLarge = viewModel::keepTooLarge,
                             )
                         },
                         rootHeader = {
-                            // 目录工作区下 /mnt 挂载仍对 Agent 生效，其回收区也承接目录内被删除文件的备份。
+                            // 目录工作区下 /mnt 挂载仍对 Agent 生效。
                             externalFolderManager?.let { manager ->
                                 ExternalFoldersPanel(
                                     sessionId = sessionId,
@@ -269,35 +256,14 @@ fun ResourceExplorerPage(
                     fileActions = privateFileActions,
                 )
             },
-            recycleBinContent = {
-                RecycleBinPanel(
-                    files = recycledFiles,
-                    operationState = recycleOperationState,
-                    onRestoreFiles = viewModel::restoreRecycledFiles,
-                    onPermanentlyDeleteFiles = viewModel::permanentlyDeleteRecycledFiles,
-                    onEmptyRecycleBin = viewModel::emptyRecycleBin,
-                    onRetryOperation = viewModel::retryFailedRecycleOperation,
-                    onClearOperationState = viewModel::clearRecycleOperationState,
-                )
-            },
-            directoryRecycleContent = {
-                if (externalFolderManager != null && workspaceMode is ResourceExplorerWorkspaceMode.Directory) {
-                    DirectoryRecycleList(sessionId, externalFolderManager, onRestored = viewModel::refreshDirectory)
-                } else {
-                    DirectoryRecycleInfo()
-                }
-            },
         )
     }
 }
 
 internal data class ResourceExplorerSheetState(
-    /** 回收站是当前工作区的子页，从文件页工具栏进入。 */
-    val showRecycle: Boolean = false,
     val searchQuery: String = "",
     /** 工具行是否展开为搜索框；有查询时保持展开。 */
     val searchActive: Boolean = false,
-    val recycleBinCount: Int = 0,
     val workspaceReady: Boolean = false,
     val importItems: List<ShareImportItem> = emptyList(),
     val isImporting: Boolean = false,
@@ -305,7 +271,7 @@ internal data class ResourceExplorerSheetState(
     val hasLoadError: Boolean = false,
     /** 会话工作区是 Git 仓库时显示分支与改动数入口。 */
     val gitEntry: GitEntrySummary = GitEntrySummary.Hidden,
-    /** 文件区展示的工作区；目录与不可用状态下停用搜索、导入与会话回收站。 */
+    /** 文件区展示的工作区；目录与不可用状态下停用搜索和导入。 */
     val workspaceMode: ResourceExplorerWorkspaceMode = ResourceExplorerWorkspaceMode.Private,
 )
 
@@ -315,8 +281,6 @@ internal data class ResourceExplorerSheetActions(
     val onImportFiles: () -> Unit = {},
     val onRetryImport: (android.net.Uri) -> Unit = {},
     val onClearImportResults: () -> Unit = {},
-    val onOpenRecycle: () -> Unit = {},
-    val onCloseRecycle: () -> Unit = {},
     val onRetryLoad: () -> Unit = {},
     val onOpenGitPanel: () -> Unit = {},
 )
@@ -326,79 +290,9 @@ internal fun ResourceExplorerSheetContent(
     state: ResourceExplorerSheetState,
     actions: ResourceExplorerSheetActions,
     filesContent: @Composable () -> Unit,
-    recycleBinContent: @Composable () -> Unit,
-    directoryRecycleContent: @Composable () -> Unit = { DirectoryRecycleInfo() },
 ) {
-    BackHandler(enabled = state.showRecycle, onBack = actions.onCloseRecycle)
-    AnimatedContent(
-        targetState = state.showRecycle,
-        transitionSpec = { hierarchicalTransition { if (it) 1 else 0 } },
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(UiTags.RESOURCE_EXPLORER_ROOT),
-        label = "resource_explorer_page",
-    ) { recycle ->
-        if (recycle) {
-            ResourceExplorerRecyclePage(state, actions, recycleBinContent, directoryRecycleContent)
-        } else {
-            ResourceExplorerFilesPage(state = state, actions = actions, filesContent = filesContent)
-        }
-    }
-}
-
-@Composable
-private fun ResourceExplorerRecyclePage(
-    state: ResourceExplorerSheetState,
-    actions: ResourceExplorerSheetActions,
-    recycleBinContent: @Composable () -> Unit,
-    directoryRecycleContent: @Composable () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxSize().testTag(UiTags.RESOURCE_EXPLORER_RECYCLE_PAGE)) {
-        InfinityNavigationHeader(
-            title = stringResource(R.string.resource_explorer_recycle_bin),
-            onBack = actions.onCloseRecycle,
-            backButtonTag = UiTags.RESOURCE_EXPLORER_RECYCLE_BACK,
-            modifier = Modifier.padding(horizontal = InfinitySpacing.Small),
-        )
-        // 目录工作区说明、加载、失败与回收站列表之间交叉淡入。
-        val recyclePhase = when {
-            state.workspaceMode is ResourceExplorerWorkspaceMode.Directory ||
-                state.workspaceMode is ResourceExplorerWorkspaceMode.Unavailable -> 0
-            state.isLoading -> 1
-            state.hasLoadError -> 2
-            else -> 3
-        }
-        AnimatedContent(
-            targetState = recyclePhase,
-            transitionSpec = { InfinityMotion.fadeThrough() },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            label = "resource_explorer_recycle_phase",
-        ) { phase ->
-            when (phase) {
-                0 -> directoryRecycleContent()
-                1 -> ResourceExplorerSessionState(isLoading = true)
-                2 -> ResourceExplorerSessionState(
-                    isLoading = false,
-                    onRetry = actions.onRetryLoad,
-                )
-                else -> recycleBinContent()
-            }
-        }
-    }
-}
-
-/** 工具栏中的回收站入口；[count] 为 null 时不显示数量。 */
-@Composable
-internal fun ResourceExplorerRecycleAction(count: Int?, onClick: () -> Unit) {
-    val label = if (count != null && count > 0) {
-        stringResource(R.string.resource_explorer_recycle_bin_count, count)
-    } else {
-        stringResource(R.string.resource_explorer_recycle_bin)
-    }
-    IconButton(onClick = onClick, modifier = Modifier.testTag(UiTags.RESOURCE_EXPLORER_RECYCLE_ENTRY)) {
-        BadgedBox(badge = { if (count != null && count > 0) Badge { Text(count.toString()) } }) {
-            Icon(Icons.Rounded.DeleteOutline, contentDescription = label)
-        }
+    Box(Modifier.fillMaxSize().testTag(UiTags.RESOURCE_EXPLORER_ROOT)) {
+        ResourceExplorerFilesPage(state = state, actions = actions, filesContent = filesContent)
     }
 }
 
@@ -486,23 +380,6 @@ private fun WorkspaceUnavailableState(
 }
 
 @Composable
-private fun DirectoryRecycleInfo() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag(UiTags.RESOURCE_EXPLORER_DIRECTORY_RECYCLE_INFO)
-            .padding(InfinitySpacing.XXLarge),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Text(
-            text = stringResource(R.string.resource_explorer_directory_recycle_info),
-            style = InfinityTypography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun ResourceExplorerPrivateFilesPage(
     state: ResourceExplorerSheetState,
     actions: ResourceExplorerSheetActions,
@@ -534,7 +411,7 @@ private fun ResourceExplorerPrivateFilesPage(
     }
 }
 
-/** 文件工具行：标题与导入、回收站；点放大镜后整行换成搜索框。 */
+/** 文件工具行：标题与导入；点放大镜后整行换成搜索框。 */
 @Composable
 private fun ResourceExplorerToolbar(
     state: ResourceExplorerSheetState,
@@ -554,7 +431,6 @@ private fun ResourceExplorerToolbar(
         modifier = Modifier.padding(start = InfinitySpacing.Small),
     ) {
         ResourceExplorerImportAction(state, actions)
-        ResourceExplorerRecycleAction(count = state.recycleBinCount, onClick = actions.onOpenRecycle)
     }
 }
 

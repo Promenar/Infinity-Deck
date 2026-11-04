@@ -4,10 +4,15 @@ import androidx.test.core.app.ApplicationProvider
 import android.content.Context
 import com.promenar.infinity.data.local.db.dao.VectorizationTaskDao
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.session.SessionExecutionGate
 import com.promenar.infinity.domain.files.*
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
+import com.promenar.infinity.domain.storage.ExternalFolderBackend
+import com.promenar.infinity.domain.storage.ExternalFolderEntry
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -19,6 +24,62 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class FileManagerOperationsTest {
+    @Test fun `私有文件删除使用选中条目的身份与摘要`() = runBlocking {
+        val hash = "a".repeat(64)
+        val row = FileEntry(uuid = "item", workspaceRootUuid = "root", parentUuid = "root", name = "a.txt",
+            hash = hash, physicalRootPath = "/fixture", materializedPath = "/a.txt", createdAt = 1, updatedAt = 1)
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/a.txt") } returns ExternalFolderEntry("/a.txt", "a.txt", false, 1, 1, hash, "item")
+        }
+        val repository = mockk<IWorkspaceRepository> {
+            coEvery { getByMaterializedPath("root", "/a.txt") } returns row
+            coEvery { permanentDeleteIfHash("root", "item", hash) } returns Unit
+        }
+        val operations = roomOperations(backend, repository)
+        val result = operations.delete(listOf(FileRef("private", "/a.txt")))
+        assertTrue(result.failed.isEmpty())
+        coVerify(exactly = 1) { repository.permanentDeleteIfHash("root", "item", hash) }
+        coVerify(exactly = 0) { repository.permanentDelete(any(), any()) }
+    }
+
+    @Test fun `私有文件删除拒绝路径对应身份已变化`() = runBlocking {
+        val hash = "a".repeat(64)
+        val row = FileEntry(uuid = "replacement", workspaceRootUuid = "root", parentUuid = "root", name = "a.txt",
+            hash = hash, physicalRootPath = "/fixture", materializedPath = "/a.txt", createdAt = 1, updatedAt = 1)
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/a.txt") } returns ExternalFolderEntry("/a.txt", "a.txt", false, 1, 1, hash, "item")
+        }
+        val repository = mockk<IWorkspaceRepository> {
+            coEvery { getByMaterializedPath("root", "/a.txt") } returns row
+        }
+        val result = roomOperations(backend, repository).delete(listOf(FileRef("private", "/a.txt")))
+        assertEquals(FileOpCode.CONFLICT, result.failed.single().code)
+        coVerify(exactly = 0) { repository.permanentDelete(any(), any()) }
+        coVerify(exactly = 0) { repository.permanentDeleteIfHash(any(), any(), any()) }
+    }
+
+    private fun roomOperations(backend: ExternalFolderBackend, repository: IWorkspaceRepository) = DefaultFileOperations(
+        ApplicationProvider.getApplicationContext<Context>(),
+        { FileBackendHandle("private", backend, emptyList(), true, roomRoot = "root") },
+        { emptyList() }, repository, mockk<VectorizationTaskDao>(relaxed = true), FileIndexEventSink.None,
+        FileMutationGuard(SessionExecutionGate()) { false },
+    )
+
+    @Test fun `删除目录及子文件且不影响同级文件`() = runBlocking {
+        val backend = MemoryFileBackend().apply {
+            addDirectory("/folder")
+            addFile("/folder/remove.txt", "remove".toByteArray())
+            addFile("/keep.txt", "keep".toByteArray())
+        }
+        val ref = FileRef("external:test", "/folder")
+        val result = operations(mapOf("external:test" to backend)).delete(listOf(ref))
+        assertEquals(listOf(ref), result.succeeded)
+        assertTrue(result.failed.isEmpty())
+        assertEquals(null, backend.stat("/folder"))
+        assertEquals(null, backend.stat("/folder/remove.txt"))
+        assertEquals("keep", backend.bytes("/keep.txt").decodeToString())
+    }
+
     @Test fun `搜索限制深度数量与筛选`() = runBlocking {
         val backend = MemoryFileBackend()
         backend.addFile("/Report.TXT", "a".toByteArray(), 200)
@@ -102,6 +163,6 @@ class FileManagerOperationsTest {
             if (id == "sessions") throw FileOpException(FileOpCode.READ_ONLY)
             FileBackendHandle(id, backends[id] ?: throw FileOpException(FileOpCode.NOT_FOUND), emptyList(), true)
         }, { sessions }, mockk<IWorkspaceRepository>(relaxed = true), mockk<VectorizationTaskDao>(relaxed = true),
-            FileIndexEventSink.None, FileMutationGuard(SessionExecutionGate()) { false }, mockk(relaxed = true))
+            FileIndexEventSink.None, FileMutationGuard(SessionExecutionGate()) { false })
     }
 }

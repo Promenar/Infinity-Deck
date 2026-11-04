@@ -361,35 +361,6 @@ class KgIndexPipelineTest {
         queue.shutdown()
     }
 
-    @Test
-    fun `回收恢复已建图文件通过持久队列真正重建KG且不依赖当前配置`() = runTest {
-        val file = register("restore.txt", "text/plain", "Alpha knows Beta".toByteArray())
-        val built = file.copy(kgExtractedAt = 1, kgStrategy = "full")
-        database.fileEntryDao().update(built)
-        seedOld(built)
-        val lifecycle = com.promenar.infinity.data.repository.WorkspaceLifecycleTransaction(database)
-        lifecycle.recycle("root", listOf(built.copy(inRecycleBin = true)), listOf(file.uuid))
-        assertThat(database.kgEdgeDao().getByDocId(file.uuid)).isEmpty()
-        val restored = built.copy(inRecycleBin = false, updatedAt = 3, vectorizedAt = null)
-        lifecycle.restore("root", listOf(restored), listOf(
-            com.promenar.infinity.domain.repository.RenameIndexTarget(file.uuid, file.hash, 3),
-        ))
-        var calls = 0
-        val (queue, _) = pipeline { _, _, _ ->
-            calls++
-            ExtractionResult(listOf(ExtractedNode("Alpha", "person"), ExtractedNode("Beta", "person")),
-                listOf(ExtractedEdge("Alpha", "Beta", "knows")))
-        }
-        queue.resumeInterruptedTasks().getOrThrow()
-        advanceUntilIdle()
-        queue.awaitSettled()
-        assertThat(calls).isEqualTo(1)
-        assertThat(database.kgEdgeDao().getByDocId(file.uuid)).hasSize(1)
-        assertThat(database.fileEntryDao().getByUuid("root", file.uuid)!!.kgStrategy).isEqualTo("full")
-        assertThat(resolveKgStatus(database.fileEntryDao().getByUuid("root", file.uuid)!!, emptyMap())).isEqualTo(KgStatus.COMPLETED)
-        queue.shutdown()
-    }
-
     private fun TestScope.pipeline(graph: KnowledgeGraphCandidateBuilder): Pair<VectorizationQueue, DocumentIndexService> {
         val builder = WorkspaceDocumentIndexCandidateBuilder(database.fileEntryDao(), embedding, RagConfiguration(docChunkSize = 800, chunkOverlap = 100),
             dispatcher = StandardTestDispatcher(testScheduler), graphCandidateBuilder = graph)

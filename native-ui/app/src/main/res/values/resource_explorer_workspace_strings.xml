@@ -7,5 +7,4 @@
     <string name="resource_explorer_directory_refresh">Refresh</string>
     <string name="resource_explorer_unavailable_title">Workspace unavailable</string>
     <string name="resource_explorer_unavailable_help">Check the folder and access permission, or choose another workspace above.</string>
-    <string name="resource_explorer_directory_recycle_info">The recycle bin is unavailable while the workspace is unavailable</string>
 </resources>

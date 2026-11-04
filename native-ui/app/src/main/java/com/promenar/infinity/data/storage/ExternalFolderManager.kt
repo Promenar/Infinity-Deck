@@ -43,8 +43,8 @@ class ExternalFolderManager(
     private val backendOverride: ((ExternalMount) -> ExternalFolderBackend?)? = null,
 ) : ExternalWorkspaceAccess {
     private val mutex = Mutex()
-    private val recycle = ExternalRecycleStore(File(context.noBackupFilesDir, "external-recycle"))
     private val versions = File(context.noBackupFilesDir, "external-versions")
+    private var versionGeneration = 0L
     private fun skillsMount(sessionId: String) = ExternalMount(
         ExternalMountPaths.SKILLS_MOUNT_ID, ExternalMountPaths.SKILLS_ALIAS, ExternalMountPaths.SKILLS_SOURCE,
         "agent_skills", sessionId, createdAt = 0,
@@ -78,7 +78,7 @@ class ExternalFolderManager(
         ExternalMountPaths.workspaceMountId(workspaceId), ExternalMountPaths.WORKSPACE_ALIAS, ExternalMountPaths.WORKSPACE_SOURCE,
         workspaceId, sessionId, createdAt = createdAt, unavailableReason = unavailable,
     )
-    /** 可见挂载加当前工作区挂载，用于 uuid 解析与回收区归属。 */
+    /** 可见挂载加当前工作区挂载，用于 uuid 解析。 */
     private suspend fun namespace(sessionId: String) = visible(sessionId) + listOfNotNull(workspaceMount(sessionId))
 
     override suspend fun addSaf(alias: String, sessionId: String, treeUri: String, grantFlags: Int) =
@@ -167,7 +167,8 @@ class ExternalFolderManager(
     }
 
     override suspend fun read(sessionId: String, virtualPath: String, maxBytes: Long): ByteArray = withContext(Dispatchers.IO) {
-        access(sessionId, virtualPath) { mount, backend, path -> backend.read(path, maxBytes).also { remember(mount.id, path, it) } }
+        val generation = versionGeneration()
+        access(sessionId, virtualPath) { mount, backend, path -> backend.read(path, maxBytes).also { remember(mount.id, path, it, generation) } }
     }
 
     // 流式读取不记录版本快照：快照只保留 1 MiB 以内的小文件，大文件复制走这里。
@@ -175,6 +176,7 @@ class ExternalFolderManager(
         withContext(Dispatchers.IO) { access(sessionId, virtualPath) { _, backend, path -> backend.readStream(path, maxBytes, consume) } }
 
     override suspend fun entry(sessionId: String, path: String): FileEntry? = withContext(Dispatchers.IO) {
+        val generation = versionGeneration()
         if (!branchWorkspacePaths(sessionId) && ExternalFolderPaths.normalize(path) == "/mnt") return@withContext FileEntry(
             ExternalMountPaths.ROOT_UUID, "", null, "mnt", "", isDirectory = true,
             physicalRootPath = "", materializedPath = "/mnt", createdAt = 0, updatedAt = 0,
@@ -182,7 +184,7 @@ class ExternalFolderManager(
         access(sessionId, path) { mount, backend, relative ->
             val stat = backend.stat(relative) ?: return@access null
             val hash = stat.sha256 ?: if (!stat.isDirectory && stat.size <= 1024L * 1024) {
-                try { externalSha256(backend.read(relative, 1024L * 1024).also { remember(mount.id, relative, it) }) }
+                try { externalSha256(backend.read(relative, 1024L * 1024).also { remember(mount.id, relative, it, generation) }) }
                 catch (failure: ExternalFolderException) { if (failure.code == "TOO_LARGE") "" else throw failure }
             } else ""
             val parent = when {
@@ -231,48 +233,15 @@ class ExternalFolderManager(
         entry(sessionId, path) ?: fail("NOT_FOUND", "创建后目录不可用")
     } }
 
-    override suspend fun delete(sessionId: String, path: String, expectedSha256: String?, irreversible: Boolean) =
+    override suspend fun delete(sessionId: String, path: String, expectedSha256: String?) =
         withContext(Dispatchers.IO) { mutex.withLock {
             access(sessionId, path, writing = true) { mount, backend, relative ->
                 if (relative == "/") fail("INVALID_PATH", "不能删除挂载根目录，请在管理界面移除挂载")
-                var tree: ExternalTree? = null
-                try {
-                    tree = ExternalTreeTransfer.capture(backend, relative)
-                    if (expectedSha256 != null && tree.nodes.singleOrNull()?.let { externalSha256(it.bytes) } != expectedSha256) {
-                        fail("CONFLICT", "expected_sha256 与当前文件版本不一致")
-                    }
-                    recycle.save(mount.id, path, tree)
-                } catch (failure: ExternalFolderException) {
-                    if (failure.code !in setOf("RECYCLE_LIMIT", "TOO_LARGE") || !irreversible) throw failure
-                }
-                if (tree != null && ExternalTreeTransfer.capture(backend, relative).digest() != tree.digest()) {
-                    fail("CONFLICT", "回收备份期间来源发生变化，删除已取消")
-                }
-                val backedUpHash = tree?.nodes?.singleOrNull()?.takeUnless { it.isDirectory }?.let { externalSha256(it.bytes) }
-                backend.delete(relative, expectedSha256 ?: backedUpHash)
+                val keys = currentVersionKeys(mount.id, backend, relative)
+                backend.delete(relative, expectedSha256)
+                removeVersionKeys(keys)
             }
         } }
-
-    override suspend fun recycleItems(sessionId: String) = withContext(Dispatchers.IO) {
-        val ids = namespace(sessionId).map { it.id }.toSet()
-        mutex.withLock { recycle.items().filter { it.mountId in ids } }
-    }
-    override suspend fun restore(sessionId: String, recycleId: String) = withContext(Dispatchers.IO) { mutex.withLock {
-        val item = recycleItemsUnlocked(sessionId).firstOrNull { it.id == recycleId } ?: fail("NOT_FOUND", "回收副本已过期或不属于当前会话")
-        namespace(sessionId).singleOrNull { it.id == item.mountId }?.requireWritable()
-        val branch = currentCoroutineContext()[com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation]
-            ?.takeIf { it.sessionId == sessionId && it.mount.id == item.mountId }
-        withContext(branch?.copy(workspacePaths = true) ?: kotlin.coroutines.EmptyCoroutineContext) {
-            access(sessionId, item.originalPath, writing = true) { _, backend, relative ->
-                ExternalTreeTransfer.copy(recycle.load(item.id), backend, relative)
-                recycle.remove(item.id)
-            }
-        }
-    } }
-    private suspend fun recycleItemsUnlocked(sessionId: String): List<ExternalRecycleItem> {
-        val ids = namespace(sessionId).map { it.id }.toSet()
-        return recycle.items().filter { it.mountId in ids }
-    }
 
     override suspend fun importSnapshot(sessionId: String, workspaceRootUuid: String, virtualPath: String): String = withContext(Dispatchers.IO) {
         val (mount, relative) = resolve(sessionId, virtualPath)
@@ -340,7 +309,8 @@ class ExternalFolderManager(
             access(sessionId, path, bindings = bindings) { mount, backend, relative -> visibleChildren(mount, relative, backend.list(relative)) }
         }
         override suspend fun read(path: String, maxBytes: Long) = withContext(Dispatchers.IO) {
-            access(sessionId, path, bindings = bindings) { mount, backend, relative -> backend.read(relative, maxBytes).also { remember(mount.id, relative, it) } }
+            val generation = versionGeneration()
+            access(sessionId, path, bindings = bindings) { mount, backend, relative -> backend.read(relative, maxBytes).also { remember(mount.id, relative, it, generation) } }
         }
         override suspend fun <T> readStream(path: String, maxBytes: Long, consume: suspend (java.io.InputStream) -> T): T = withContext(Dispatchers.IO) {
             access(sessionId, path, bindings = bindings) { _, backend, relative -> backend.readStream(relative, maxBytes, consume) }
@@ -361,18 +331,22 @@ class ExternalFolderManager(
                 backend.createDirectory(relative).copy(path = path)
             }
         } }
-        override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) = withContext(Dispatchers.IO) {
-            access(sessionId, path, bindings, writing = true) { _, backend, relative ->
+        override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) = withContext(Dispatchers.IO) { mutex.withLock {
+            access(sessionId, path, bindings, writing = true) { mount, backend, relative ->
                 if (relative == "/") fail("INVALID_PATH", "不能移动挂载根目录")
+                val keys = currentVersionKeys(mount.id, backend, relative)
                 backend.deleteForTransfer(relative, expected.copy(path = relative), expectedSha256)
+                removeVersionKeys(keys)
             }
-        }
-        override suspend fun delete(path: String, expectedSha256: String?) = withContext(Dispatchers.IO) {
-            access(sessionId, path, bindings, writing = true) { _, backend, relative ->
-                if (relative == "/") fail("INVALID_PATH", "不能移动挂载根目录")
+        } }
+        override suspend fun delete(path: String, expectedSha256: String?) = withContext(Dispatchers.IO) { mutex.withLock {
+            access(sessionId, path, bindings, writing = true) { mount, backend, relative ->
+                if (relative == "/") fail("INVALID_PATH", "不能删除挂载根目录")
+                val keys = currentVersionKeys(mount.id, backend, relative)
                 backend.delete(relative, expectedSha256)
+                removeVersionKeys(keys)
             }
-        }
+        } }
     }
 
     override suspend fun version(sessionId: String, path: String, hash: String): ByteArray? = withContext(Dispatchers.IO) {
@@ -380,9 +354,56 @@ class ExternalFolderManager(
         if (!Regex("[0-9a-f]{64}").matches(hash)) null else File(versions, versionKey(mount.id, relative, hash)).takeIf { it.isFile }?.readBytes()
     }
     private fun versionKey(mountId: String, path: String, hash: String) = externalSha256("$mountId\u0000$path\u0000$hash".toByteArray(Charsets.UTF_8))
-    private fun remember(mountId: String, path: String, bytes: ByteArray) {
+    private suspend fun currentVersionKeys(mountId: String, backend: ExternalFolderBackend, path: String): List<String> {
+        if (!versions.exists()) return emptyList()
+        if (!versions.isDirectory) fail("UNAVAILABLE", "文件版本缓存不可用")
+        if ((versions.list() ?: fail("UNAVAILABLE", "无法读取文件版本缓存")).isEmpty()) return emptyList()
+        val keys = mutableListOf<String>()
+        val pending = ArrayDeque<String>()
+        val visited = mutableSetOf<String>()
+        pending.add(path)
+        while (pending.isNotEmpty()) {
+            val current = pending.removeLast()
+            if (!visited.add(current)) fail("CONFLICT", "目录结构包含重复路径")
+            val entry = backend.stat(current) ?: fail("CONFLICT", "删除范围在读取期间发生变化")
+            if (entry.isDirectory) {
+                backend.list(current).forEach { pending.add(it.path) }
+            } else if (entry.size <= 1024L * 1024) {
+                val hash = entry.sha256 ?: externalSha256(backend.read(current, 1024L * 1024))
+                keys += versionKey(mountId, current, hash)
+            }
+        }
+        return keys
+    }
+    private fun removeVersionKeys(keys: List<String>) {
+        synchronized(versions.path.intern()) {
+            versionGeneration++
+            keys.forEach { key ->
+                val file = File(versions, key)
+                if (file.exists() && !file.delete()) fail("UNAVAILABLE", "无法清除文件版本缓存")
+            }
+        }
+    }
+
+    /** 工作区直连后端也使用与文件工具相同的版本缓存键。 */
+    fun withVersionCleanup(mountId: String, backend: ExternalFolderBackend): ExternalFolderBackend = object : ExternalFolderBackend by backend {
+        override suspend fun delete(path: String, expectedSha256: String?) = withContext(Dispatchers.IO) { mutex.withLock {
+            val keys = currentVersionKeys(mountId, backend, path)
+            backend.delete(path, expectedSha256)
+            removeVersionKeys(keys)
+        } }
+        override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) = withContext(Dispatchers.IO) { mutex.withLock {
+            val keys = currentVersionKeys(mountId, backend, path)
+            backend.deleteForTransfer(path, expected, expectedSha256)
+            removeVersionKeys(keys)
+        } }
+    }
+    private fun versionGeneration(): Long = synchronized(versions.path.intern()) { versionGeneration }
+
+    private fun remember(mountId: String, path: String, bytes: ByteArray, generation: Long? = null) {
         if (bytes.size > 1024 * 1024) return
         synchronized(versions.path.intern()) {
+            if (generation != null && generation != versionGeneration) return
             versions.mkdirs()
             val file = File(versions, versionKey(mountId, path, externalSha256(bytes)))
             if (!file.exists()) file.writeBytes(bytes)

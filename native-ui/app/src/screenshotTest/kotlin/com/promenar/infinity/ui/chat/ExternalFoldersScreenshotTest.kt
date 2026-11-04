@@ -63,7 +63,6 @@ private fun ManagerPreview(
         onReauthorize = {},
         onRemove = {},
         onGrantRealPath = {},
-        onRecycle = {},
         knowledgeMount = knowledgeMount,
     )
 }

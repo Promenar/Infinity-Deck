@@ -248,7 +248,7 @@ class PrivateWorkspaceFilesTest {
     @Test fun `目标目录必须是本工作区活动目录`() = runBlocking<Unit> {
         val source = file("source", "a.txt")
         val recycled = folder("recycled")
-        repo.moveToRecycleBin(root.uuid, recycled.uuid)
+        repo.permanentDelete(root.uuid, recycled.uuid)
         val foreignDirectory = File(directory, "foreign-root").apply { mkdir() }
         db.sessionDao().insert(SessionEntity(id = "other", agentId = "agent", workspacePath = foreignDirectory.path, createdAt = 1, updatedAt = 1))
         val foreign = repo.ensureSessionRoot("other")
@@ -304,12 +304,12 @@ class PrivateWorkspaceFilesTest {
         assertJournal()
     }
 
-    @Test fun `所选祖先回收提交失败时后代继承失败且事务回滚`() = runBlocking<Unit> {
+    @Test fun `所选祖先删除提交失败时后代继承失败且事务回滚`() = runBlocking<Unit> {
         val source = folder("docs")
         val child = file("child", "a.txt", source)
         val failing = WorkspaceRepository(
             db.fileEntryDao(), db.workspaceSeqDao(), fileOps = io, mutationJournal = journal,
-            executionGate = gate, recycleCommitter = { _, _, _ -> error("注入回收提交失败") },
+            executionGate = gate, deleteCommitter = { _, _ -> error("注入删除提交失败") },
         )
         val result = service(failing).delete("s", listOf(child.uuid, source.uuid))
         assertThat(result.succeeded).isEmpty()
@@ -319,36 +319,24 @@ class PrivateWorkspaceFilesTest {
         assertThat(current(child)).isEqualTo(child)
         assertThat(File(directory, "docs/a.txt").readText()).isEqualTo("content")
         assertThat(File(directory, ".recycle_bin/${source.uuid}").exists()).isFalse()
-        assertThat(repo.observeRecycleBin(root.uuid).first()).isEmpty()
         assertThat(events).isEmpty()
-        assertJournal(WorkspaceMutationType.MKDIR, WorkspaceMutationType.RECYCLE)
+        assertJournal(WorkspaceMutationType.DELETE)
     }
 
-    @Test fun `删除进入回收站并可恢复原UUID身份版本与内容`() = runBlocking<Unit> {
+    @Test fun `删除文件清除内容和版本副本`() = runBlocking<Unit> {
         val source = versionedFile()
-        val identity = identity("a.txt")
         val versions = db.fileVersionDao().getByFile(root.uuid, source.uuid)
         val result = service().delete("s", listOf(source.uuid, source.uuid))
         assertThat(result.succeeded).containsExactly(source.uuid)
         assertThat(result.failed).isEmpty()
         assertThat(repo.getByUuid(root.uuid, source.uuid)).isNull()
-        assertThat(repo.observeChildren(root.uuid, root.uuid).first().map { it.uuid }).doesNotContain(source.uuid)
-        assertThat(repo.observeRecycleBin(root.uuid).first().map { it.uuid }).containsExactly(source.uuid)
-        assertThat(File(directory, ".recycle_bin/${source.uuid}").readText()).isEqualTo("current")
-        assertThat(identity(".recycle_bin/${source.uuid}")).isEqualTo(identity)
-        assertThat(events).isEmpty()
-        assertJournal(WorkspaceMutationType.MKDIR, WorkspaceMutationType.RECYCLE)
-        repo.restoreFromRecycleBin(root.uuid, source.uuid)
-        val restored = current(source)
-        assertThat(restored.uuid).isEqualTo(source.uuid)
-        assertThat(restored.hash).isEqualTo(source.hash)
-        assertThat(File(directory, "a.txt").readText()).isEqualTo("current")
-        assertThat(identity("a.txt")).isEqualTo(identity)
-        assertThat(db.fileVersionDao().getByFile(root.uuid, source.uuid)).isEqualTo(versions)
+        assertThat(File(directory, "a.txt").exists()).isFalse()
+        assertThat(db.fileVersionDao().getByFile(root.uuid, source.uuid)).isEmpty()
+        versions.forEach { assertThat(File(it.contentPath).exists()).isFalse() }
         assertThat(db.workspaceMutationDao().getUnfinished()).isEmpty()
     }
 
-    @Test fun `目录与子项同时选择仅回收目录且根和缺失项逐项失败`() = runBlocking<Unit> {
+    @Test fun `目录与子项同时选择仅删除目录且根和缺失项逐项失败`() = runBlocking<Unit> {
         val source = folder("docs")
         val child = file("child", "a.txt", source)
         val result = service().delete("s", listOf(child.uuid, root.uuid, source.uuid, "missing", child.uuid))
@@ -357,9 +345,7 @@ class PrivateWorkspaceFilesTest {
         assertThat(result.failed[root.uuid]).isEqualTo(DirectoryFileOpCode.NAME_INVALID)
         assertThat(result.failed["missing"]).isEqualTo(DirectoryFileOpCode.NOT_FOUND)
         assertThat(repo.getByUuid(root.uuid, child.uuid)).isNull()
-        assertThat(repo.observeRecycleBin(root.uuid).first().map { it.uuid }).containsExactly(source.uuid, child.uuid)
-        assertThat(File(directory, ".recycle_bin/${source.uuid}/a.txt").readText()).isEqualTo("content")
-        assertJournal(WorkspaceMutationType.MKDIR, WorkspaceMutationType.RECYCLE)
+        assertJournal(WorkspaceMutationType.DELETE)
     }
 
     @Test fun `改名与移动提交失败回滚数据库磁盘身份且清除journal`() = runBlocking<Unit> {
@@ -430,8 +416,6 @@ class PrivateWorkspaceFilesTest {
             assertThat(results[0].failed[source.uuid]).isAnyOf(null, DirectoryFileOpCode.NOT_FOUND)
         }
         assertThat(repo.getByUuid(root.uuid, source.uuid)).isNull()
-        assertThat(repo.observeRecycleBin(root.uuid).first().single().hash).isEqualTo(source.hash)
-        assertThat(File(directory, ".recycle_bin/${source.uuid}").readText()).isEqualTo("content")
         assertThat(File(directory, "a.txt").exists()).isFalse()
         assertThat(File(directory, "target/a.txt").exists()).isFalse()
         assertThat(events).isEmpty()
@@ -482,7 +466,7 @@ class PrivateWorkspaceFilesTest {
         val cancelling = object : IWorkspaceRepository by repo {
             override suspend fun rename(workspaceRootUuid: String, uuid: String, newName: String, expectedName: String?): RenameResult = throw CancellationException("取消改名")
             override suspend fun updateParent(workspaceRootUuid: String, uuid: String, newParentUuid: String): Unit = throw CancellationException("取消移动")
-            override suspend fun moveToRecycleBin(workspaceRootUuid: String, uuid: String): Unit = throw CancellationException("取消删除")
+            override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String): Unit = throw CancellationException("取消删除")
         }
         val target = folder("target")
         val files = service(cancelling)
@@ -515,7 +499,7 @@ class PrivateWorkspaceFilesTest {
         val failure = DirectoryFileOpException(DirectoryFileOpCode.READ_ONLY)
         val repository = object : IWorkspaceRepository by repo {
             override suspend fun rename(workspaceRootUuid: String, uuid: String, newName: String, expectedName: String?): RenameResult = throw failure
-            override suspend fun moveToRecycleBin(workspaceRootUuid: String, uuid: String): Unit = throw SessionDeletingException("s")
+            override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String): Unit = throw SessionDeletingException("s")
         }
         assertThat(runCatching { service(repository).rename("s", source.uuid, "b.txt") }.exceptionOrNull()).isSameInstanceAs(failure)
         assertThat(service(repository).delete("s", listOf(source.uuid)).failed).containsExactly(source.uuid, DirectoryFileOpCode.SESSION_BUSY)
@@ -523,6 +507,7 @@ class PrivateWorkspaceFilesTest {
 
     private fun repository(update: (suspend (List<FileEntry>) -> Unit)? = null) = WorkspaceRepository(
         db.fileEntryDao(), db.workspaceSeqDao(), fileOps = io, updateCommitter = update, mutationJournal = journal, executionGate = gate,
+        deleteCommitter = com.promenar.infinity.data.repository.WorkspaceDeletionTransaction(db)::delete,
     )
 
     private fun service(

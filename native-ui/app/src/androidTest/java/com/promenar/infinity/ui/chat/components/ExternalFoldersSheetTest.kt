@@ -11,7 +11,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalMount
-import com.promenar.infinity.domain.storage.ExternalRecycleItem
 import com.promenar.infinity.domain.storage.IExternalFolderManager
 import com.promenar.infinity.ui.theme.InfinityTheme
 import kotlinx.coroutines.flow.Flow
@@ -71,16 +70,6 @@ class ExternalFoldersSheetTest {
         rule.onNodeWithText(text(R.string.mount_section_mounted)).assertIsDisplayed()
     }
 
-    @Test
-    fun systemBackLeavesRecyclePageBeforeClosingSheet() {
-        openSheet()
-        rule.onNodeWithTag("external_mount_recycle").performClick()
-        waitForText(text(R.string.mount_recycle_empty))
-
-        Espresso.pressBack()
-        rule.onNodeWithText(text(R.string.mount_section_mounted)).assertIsDisplayed()
-    }
-
     private class FakeManager : IExternalFolderManager {
         private val mount = ExternalMount("m1", "photos", "saf_tree", "content://tree", "s1", createdAt = 0)
         override fun observeMounts(sessionId: String): Flow<List<ExternalMount>> = flowOf(listOf(mount))
@@ -95,8 +84,6 @@ class ExternalFoldersSheetTest {
             else -> emptyList()
         }
         override suspend fun read(sessionId: String, virtualPath: String, maxBytes: Long): ByteArray = "hello".toByteArray()
-        override suspend fun recycleItems(sessionId: String): List<ExternalRecycleItem> = emptyList()
-        override suspend fun restore(sessionId: String, recycleId: String) = error("unused")
         override suspend fun importSnapshot(sessionId: String, workspaceRootUuid: String, virtualPath: String) = error("unused")
         override suspend fun snapshotChanged(sessionId: String, virtualPath: String) = false
     }

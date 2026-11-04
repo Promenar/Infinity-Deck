@@ -69,7 +69,9 @@ object FileChangeSummaries {
     ): FileChangeSummary = contentChange(path, FileChangeType.MODIFIED, before, after, limits)
 
     fun deleted(path: String, before: FileSnapshot, limits: FileDiffLimits = FileDiffLimits.Default): FileChangeSummary =
-        contentChange(path, FileChangeType.DELETED, before, FileSnapshot.Text(""), limits)
+        contentChange(path, FileChangeType.DELETED, before, FileSnapshot.Text(""), limits).let { summary ->
+            if (summary.hunks == null) summary else summary.copy(hunks = null, hunksOmitted = FileChangeHunkOmission.PERMANENT_DELETE)
+        }
 
     /** 移动或重命名不改内容：计数为 0，不保存 hunk。 */
     fun moved(fromPath: String, toPath: String, directory: Boolean): FileChangeSummary = FileChangeSummary(

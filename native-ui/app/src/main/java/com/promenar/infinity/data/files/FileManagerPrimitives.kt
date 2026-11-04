@@ -5,7 +5,6 @@ import com.promenar.infinity.domain.files.FileOpException
 import com.promenar.infinity.domain.files.FileTypeFilter
 import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.domain.storage.ExternalFolderPaths
-import java.util.Base64
 import java.util.Locale
 
 internal sealed interface LocationKey {
@@ -76,18 +75,3 @@ internal fun safeZipPath(raw: String): List<String> {
     if (parts.isEmpty() || parts.any { it.isEmpty() || it == "." || it == ".." }) throw FileOpException(FileOpCode.INVALID_NAME)
     return parts.map(::validateFileName)
 }
-
-internal data class RecycleKey(val locationId: String, val itemId: String)
-
-internal fun encodeRecycleId(key: RecycleKey): String = listOf(key.locationId, key.itemId).joinToString(".") {
-    Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray(Charsets.UTF_8))
-}
-
-internal fun decodeRecycleId(id: String): RecycleKey? = try {
-    val parts = id.split('.')
-    if (parts.size != 2) null else {
-        val location = String(Base64.getUrlDecoder().decode(parts[0]), Charsets.UTF_8)
-        val item = String(Base64.getUrlDecoder().decode(parts[1]), Charsets.UTF_8)
-        if (parseLocationId(location) == null || item.isEmpty()) null else RecycleKey(location, item)
-    }
-} catch (_: IllegalArgumentException) { null }

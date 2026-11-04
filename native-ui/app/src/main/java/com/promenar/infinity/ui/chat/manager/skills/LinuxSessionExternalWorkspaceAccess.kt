@@ -56,7 +56,9 @@ class LinuxSessionExternalWorkspaceAccess(
         val workingDirectory: String get() = branch?.commandWorkspace?.workingDirectory
             ?: selectedDirectory ?: LinuxSessionPaths.WORKSPACE_ROOT
     }
-    private val versions = linkedMapOf<String, ByteArray>()
+    private data class VersionKey(val namespace: String, val path: String, val hash: String)
+    private val versions = linkedMapOf<VersionKey, ByteArray>()
+    private var versionGeneration = 0L
 
     override fun observeMounts(sessionId: String) = original.observeMounts(sessionId).map { mounts -> mounts.filter(::allowed) }
     override suspend fun visible(sessionId: String): List<ExternalMount> = operation {
@@ -141,6 +143,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     override suspend fun read(sessionId: String, virtualPath: String, maxBytes: Long): ByteArray = operation {
+        val generation = synchronized(versions) { versionGeneration }
         val current = namespace(sessionId)
         val path = normalize(current, virtualPath)
         val target = route(current, path)
@@ -151,7 +154,7 @@ class LinuxSessionExternalWorkspaceAccess(
             LinuxSessionPathKind.ROOTFS -> rootfs(current).read(target.path, maxBytes)
             LinuxSessionPathKind.MOUNTS -> fail("IS_DIRECTORY", "目标是目录")
         }
-        remember(current, path, bytes)
+        remember(current, path, bytes, generation)
         bytes
     }
 
@@ -168,6 +171,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     override suspend fun write(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?, createOnly: Boolean): FileEntry = operation {
+        val generation = synchronized(versions) { versionGeneration }
         val current = namespace(sessionId)
         val normalized = mutation(current, path)
         val target = route(current, normalized)
@@ -179,7 +183,7 @@ class LinuxSessionExternalWorkspaceAccess(
             LinuxSessionPathKind.ROOTFS -> rootfs(current).write(target.path, bytes, expectedSha256, createOnly)
             LinuxSessionPathKind.MOUNTS -> fail("INVALID_PATH", "不能覆盖挂载根目录")
         }
-        remember(current, normalized, bytes)
+        remember(current, normalized, bytes, generation)
         entry(sessionId, normalized) ?: fail("NOT_FOUND", "写入后文件不可用")
     }
 
@@ -198,7 +202,7 @@ class LinuxSessionExternalWorkspaceAccess(
         entry(sessionId, normalized) ?: fail("NOT_FOUND", "创建后目录不可用")
     }
 
-    override suspend fun delete(sessionId: String, path: String, expectedSha256: String?, irreversible: Boolean) = operation {
+    override suspend fun delete(sessionId: String, path: String, expectedSha256: String?) = operation {
         val current = namespace(sessionId)
         val normalized = mutation(current, path)
         val target = route(current, normalized)
@@ -206,14 +210,15 @@ class LinuxSessionExternalWorkspaceAccess(
         when (target.kind) {
             LinuxSessionPathKind.PRIVATE -> {
                 val entry = workspace.getByMaterializedPath(current.root.uuid, target.path) ?: fail("NOT_FOUND", "文件不存在")
-                if (expectedSha256 != null) workspace.moveToRecycleBinIfHash(current.root.uuid, entry.uuid, expectedSha256)
-                else workspace.moveToRecycleBin(current.root.uuid, entry.uuid)
+                if (expectedSha256 != null) workspace.permanentDeleteIfHash(current.root.uuid, entry.uuid, expectedSha256)
+                else workspace.permanentDelete(current.root.uuid, entry.uuid)
             }
-            LinuxSessionPathKind.WORKSPACE -> withOriginalBindings(current, workspacePaths = true) { original.delete(sessionId, target.path, expectedSha256, irreversible) }
-            LinuxSessionPathKind.EXTERNAL -> withExternal(current, sessionId, target.path) { original.delete(sessionId, it, expectedSha256, irreversible) }
+            LinuxSessionPathKind.WORKSPACE -> withOriginalBindings(current, workspacePaths = true) { original.delete(sessionId, target.path, expectedSha256) }
+            LinuxSessionPathKind.EXTERNAL -> withExternal(current, sessionId, target.path) { original.delete(sessionId, it, expectedSha256) }
             LinuxSessionPathKind.ROOTFS -> rootfs(current).delete(target.path, expectedSha256)
             LinuxSessionPathKind.MOUNTS -> fail("INVALID_PATH", "不能删除挂载根目录")
         }
+        forgetVersions(current, normalized)
     }
 
     override suspend fun version(sessionId: String, path: String, hash: String): ByteArray? = operation {
@@ -225,17 +230,6 @@ class LinuxSessionExternalWorkspaceAccess(
             LinuxSessionPathKind.EXTERNAL -> withExternal(current, sessionId, target.path) { original.version(sessionId, it, hash) }
             else -> synchronized(versions) { versions[versionKey(current, normalized, hash)]?.copyOf() }
         }
-    }
-
-    override suspend fun recycleItems(sessionId: String): List<ExternalRecycleItem> = operation {
-        val current = namespace(sessionId)
-        withOriginalBindings(current) { original.recycleItems(sessionId) }.map {
-            it.copy(originalPath = if (it.mountId == current.workspaceOverride?.mount?.id) fromWorkspace(it.originalPath) else fromOriginal(it.originalPath))
-        }
-    }
-
-    override suspend fun restore(sessionId: String, recycleId: String) = operation {
-        withOriginalBindings(namespace(sessionId)) { original.restore(sessionId, recycleId) }
     }
 
     override fun backend(sessionId: String, mountIds: Map<String, String>): ExternalFolderBackend = object : ExternalFolderBackend {
@@ -278,8 +272,15 @@ class LinuxSessionExternalWorkspaceAccess(
             if (backend is PrivateWorkspaceTransferBackend) backend.confirmCreated()
             receipt.copy(path = path)
         }
-        override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) = transferBackend(path, writing = true) { backend, actual -> backend.deleteForTransfer(actual, expected.copy(path = actual), expectedSha256) }
-        override suspend fun delete(path: String, expectedSha256: String?) = transferBackend(path, writing = true) { backend, actual -> backend.delete(actual, expectedSha256) }
+        override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) = bound {
+            val current = namespace(sessionId)
+            val normalized = mutation(current, path)
+            transferBackend(path, writing = true) { backend, actual -> backend.deleteForTransfer(actual, expected.copy(path = actual), expectedSha256) }
+            forgetVersions(current, normalized)
+        }
+        override suspend fun delete(path: String, expectedSha256: String?) = bound {
+            this@LinuxSessionExternalWorkspaceAccess.delete(sessionId, path, expectedSha256)
+        }
         override suspend fun move(sourcePath: String, targetPath: String) = unsupportedTransfer(sourcePath, targetPath)
         override suspend fun copy(sourcePath: String, targetPath: String) = unsupportedTransfer(sourcePath, targetPath)
         private suspend fun unsupportedTransfer(sourcePath: String, targetPath: String): Unit = bound {
@@ -619,17 +620,25 @@ class LinuxSessionExternalWorkspaceAccess(
             fail("INVALID_PATH", "不能修改 Linux 或挂载根目录")
         }
     }
-    private fun remember(current: Namespace, path: String, bytes: ByteArray) {
+    private fun remember(current: Namespace, path: String, bytes: ByteArray, generation: Long) {
         if (bytes.size > VERSION_BYTES) return
         synchronized(versions) {
+            if (generation != versionGeneration) return
             versions[versionKey(current, path, Sha256Utils.hash(bytes))] = bytes.copyOf()
             while (versions.size > 64 || versions.values.sumOf { it.size.toLong() } > 16L * VERSION_BYTES) versions.remove(versions.keys.first())
         }
     }
-    private fun versionKey(current: Namespace, path: String, hash: String): String {
+    private fun versionKey(current: Namespace, path: String, hash: String): VersionKey {
         val target = route(current, path)
-        return if (target.kind == LinuxSessionPathKind.PRIVATE) "${current.root.uuid}|${current.root.hash}|${target.path}|$hash"
-        else "${current.mount.id}|$path|$hash"
+        return if (target.kind == LinuxSessionPathKind.PRIVATE) VersionKey("${current.root.uuid}|${current.root.hash}", target.path, hash)
+        else VersionKey(current.mount.id, path, hash)
+    }
+    private fun forgetVersions(current: Namespace, path: String) {
+        val target = versionKey(current, path, "")
+        synchronized(versions) {
+            versionGeneration++
+            versions.keys.removeAll { it.namespace == target.namespace && (it.path == target.path || it.path.startsWith(target.path.trimEnd('/') + "/")) }
+        }
     }
     private fun originalMountId(id: String): String = if (id.startsWith("linux-mount:")) {
         try { String(Base64.getUrlDecoder().decode(id.removePrefix("linux-mount:").substringBefore(':')), Charsets.UTF_8) }

@@ -146,7 +146,7 @@ class ExternalKnowledgeBaseMountTest {
             assertThat(manager.read("session", "/note.md").toString(Charsets.UTF_8)).isEqualTo("原文")
             for (action in listOf<suspend () -> Any?>(
                 { manager.write("session", "/note.md", byteArrayOf(), null, false) },
-                { manager.createDirectory("session", "/new") }, { manager.delete("session", "/note.md", null, true) },
+                { manager.createDirectory("session", "/new") }, { manager.delete("session", "/note.md", null) },
                 { manager.backend("session").move("/note.md", "/new") },
                 { manager.backend("session").copy("/note.md", "/new") },
             )) assertThat(assertThrows(ExternalFolderException::class.java) { runBlocking(boundContext) { action() } }.code).isEqualTo("READ_ONLY")

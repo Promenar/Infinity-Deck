@@ -52,7 +52,10 @@ internal class FileManagerBackends(private val app: InfinityApplication) {
             val owners = sessions.filter { session ->
                 session.id == branch || (branch == null && session.workspaceId == key.id && session.worktreeDirectory == null)
             }.map { it.id }.sorted()
-            val backend = StartupFileBackend(app.sessionWorkspaceResolver.backend(directory), owners) { directory.root }
+            val backend = (app.externalFolderManager as com.promenar.infinity.data.storage.ExternalFolderManager).withVersionCleanup(
+                ExternalMountPaths.workspaceMountId(directory.workspace.id),
+                StartupFileBackend(app.sessionWorkspaceResolver.backend(directory), owners) { directory.root },
+            )
             FileBackendHandle(locationId, backend, owners, true)
         }
         is LocationKey.External -> {

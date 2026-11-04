@@ -16,7 +16,7 @@ import kotlinx.serialization.json.booleanOrNull
  * 预览正文不做任何截断：用户批准的必须是完整参数，折叠与限高只由界面负责。
  */
 object ApprovalPreview {
-    internal const val IRREVERSIBLE_WARNING = "不可恢复：文件超过挂载回收区上限或用户明确要求永久删除。"
+    internal const val IRREVERSIBLE_WARNING = "将永久删除，无法恢复。"
     internal const val NETWORK_ALLOWED = "可联网"
 
     enum class Action { OVERWRITE, CREATE_FILE, EDIT, MOVE, DELETE, CREATE_DIRECTORY, SCRIPT }
@@ -58,8 +58,7 @@ object ApprovalPreview {
             "write_file" -> Preview(Action.OVERWRITE, target, args.string("content"))
             "create_file" -> Preview(Action.CREATE_FILE, newChild, args.string("content"))
             "create_directory" -> Preview(Action.CREATE_DIRECTORY, newChild, null)
-            "delete_file" -> Preview(Action.DELETE, target,
-                if ((args["irreversible"] as? JsonPrimitive)?.booleanOrNull == true) IRREVERSIBLE_WARNING else null)
+            "delete_file" -> Preview(Action.DELETE, target, IRREVERSIBLE_WARNING)
             "exec_js", "run_script", "python_sandbox" -> Preview(Action.SCRIPT, if (toolName == "run_script") target else "", buildString {
                 if ((args["allow_network"] as? JsonPrimitive)?.booleanOrNull == true) appendLine(NETWORK_ALLOWED)
                 args.string("code")?.let { append(it) }

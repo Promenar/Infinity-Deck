@@ -113,7 +113,7 @@ object IndexingNotice {
         CODE_OPERATION_FAILED -> ResolvedStatus(R.string.library_knowledge_action_failed)
         CODE_IMPORT_FAILED -> ResolvedStatus(R.string.rag_import_failed)
         CODE_MOVE_FAILED -> ResolvedStatus(R.string.common_cd_failed)
-        CODE_DELETE_FAILED -> ResolvedStatus(R.string.rag_delete_failed_notice)
+        CODE_DELETE_FAILED -> ResolvedStatus(R.string.permanent_delete_rag_failed)
         else -> null
     }
 }

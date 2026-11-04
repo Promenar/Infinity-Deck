@@ -26,10 +26,7 @@
     <string name="mount_remove_message">Source files stay in place. Folder authorization is released when no other mount uses it.</string>
     <string name="mount_browse">Browse folder</string>
     <string name="mount_refresh">Refresh mounts</string>
-    <string name="mount_recycle_title">Mounted folder recycle area</string>
-    <string name="mount_recycle_help">Deleted copies are kept for 7 days (up to 32 MiB and 100 items) and restore to their source folder. Deletion is refused when space runs out.</string>
-    <string name="mount_recycle_empty">No recoverable files</string>
-    <string name="mount_restore">Restore</string>
+
     <string name="mount_directory_empty">This folder is empty</string>
     <string name="mount_load_error">Unable to load this folder. Check its authorization or storage device, then retry.</string>
     <string name="mount_operation_error">The operation failed. Check the mount, its permissions, and the entered values.</string>
@@ -49,7 +46,6 @@
     <string name="mount_empty_hint">After you add a folder, the Agent can work with its files at /mnt/alias/.</string>
     <string name="mount_add_saf_desc">Choose a folder in the system picker, including app folders such as Termux</string>
     <string name="mount_add_real_path_desc">Browse or enter a storage path. Requires All files access</string>
-    <string name="mount_recycle_desc">Restore files the Agent deleted from mounted folders</string>
     <string name="mount_more_actions">More actions for %1$s</string>
     <string name="mount_form_section_target">Folder</string>
     <string name="mount_saf_command_note">Only file tools can reach this folder; commands can\'t.</string>

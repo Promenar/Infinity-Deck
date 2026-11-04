@@ -29,10 +29,11 @@ internal class SessionPrivateWorkspaceRepository(
         virtual(base.createFileInWorkspace(root().uuid, id(uuid), name, content, parentUuid?.let(::id), path(materializedPath)))
     override suspend fun createDirectoryInWorkspace(workspaceRootUuid: String, uuid: String, name: String, parentUuid: String?, materializedPath: String) =
         virtual(base.createDirectoryInWorkspace(root().uuid, id(uuid), name, parentUuid?.let(::id), path(materializedPath)))
-    override suspend fun moveToRecycleBin(workspaceRootUuid: String, uuid: String) = base.moveToRecycleBin(root().uuid, id(uuid))
-    override suspend fun moveToRecycleBinIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) =
-        base.moveToRecycleBinIfHash(root().uuid, id(uuid), expectedSha256)
-    override suspend fun moveEmptyDirectoryToRecycleBin(workspaceRootUuid: String, uuid: String) = base.moveEmptyDirectoryToRecycleBin(root().uuid, id(uuid))
+    override suspend fun permanentDelete(workspaceRootUuid: String, uuid: String) = base.permanentDelete(root().uuid, id(uuid))
+    override suspend fun permanentDeleteIfHash(workspaceRootUuid: String, uuid: String, expectedSha256: String) =
+        base.permanentDeleteIfHash(root().uuid, id(uuid), expectedSha256)
+    override suspend fun permanentDeleteEmptyDirectory(workspaceRootUuid: String, uuid: String) =
+        base.permanentDeleteEmptyDirectory(root().uuid, id(uuid))
     override suspend fun rename(workspaceRootUuid: String, uuid: String, newName: String, expectedName: String?) =
         base.rename(root().uuid, id(uuid), newName, expectedName)
     override suspend fun updateParent(workspaceRootUuid: String, uuid: String, newParentUuid: String) =

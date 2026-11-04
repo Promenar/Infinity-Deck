@@ -25,7 +25,7 @@ class BackupPreferenceInventoryTest {
 
     @Test
     fun `资料页记忆查看时间与固定文件夹登记为本机状态且不参与备份`() {
-        for (key in listOf("library_memories_last_seen", "file_manager_pins")) {
+        for (key in listOf("library_memories_last_seen", "file_manager_pins", "legacy_recycle_cleanup_complete")) {
             assertWithMessage(key).that(BackupPreferencePolicy.isKnown("infinity_settings", key)).isTrue()
             assertWithMessage(key).that(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isFalse()
         }

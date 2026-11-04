@@ -200,11 +200,11 @@ class WorkspaceToolBehaviorTest {
     }
 
     @Test
-    fun `delete file recycles and never deletes the root`() = runTest {
+    fun `delete file permanently removes the entry and never deletes the root`() = runTest {
         val workspace = mockk<IWorkspaceRepository>()
         coEvery { workspace.getByMaterializedPath("root", "/a.md") } returns entry("a", "/a.md")
         coEvery { workspace.getByMaterializedPath("root", "/") } returns root
-        coEvery { workspace.moveToRecycleBin("root", "a") } returns Unit
+        coEvery { workspace.permanentDelete("root", "a") } returns Unit
         val skill = DeleteFileSkill(workspace)
 
         val deleted = skill.execute(skillArgs("path" to "/a.md"), context)
@@ -212,7 +212,7 @@ class WorkspaceToolBehaviorTest {
 
         assertThat(deleted.status).isEqualTo("success")
         assertThat(rootAttempt.status).isEqualTo("error")
-        coVerify(exactly = 1) { workspace.moveToRecycleBin(any(), any()) }
+        coVerify(exactly = 1) { workspace.permanentDelete(any(), any()) }
     }
 
     @Test

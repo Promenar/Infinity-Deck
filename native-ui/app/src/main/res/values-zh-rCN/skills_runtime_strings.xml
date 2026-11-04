@@ -23,7 +23,6 @@
     <string name="skills_runtime_detail_files">附带文件</string>
     <string name="skills_runtime_document_unavailable">无法读取 SKILL.md。</string>
     <string name="skills_runtime_delete_title">删除技能 %1$s？</string>
-    <string name="skills_runtime_delete_message">%1$s 会移入应用回收区，30 天后清除。</string>
     <string name="skills_runtime_error">技能操作失败：%1$s</string>
     <string name="sheet_tool_section_usage">工具使用</string>
     <string name="sheet_tool_tools_enabled">启用工具</string>

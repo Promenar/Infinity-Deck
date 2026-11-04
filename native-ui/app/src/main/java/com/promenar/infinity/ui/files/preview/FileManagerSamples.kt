@@ -8,7 +8,6 @@ import com.promenar.infinity.domain.files.FileLocationKind
 import com.promenar.infinity.domain.files.FilePreview
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.domain.files.KnowledgeIndexState
-import com.promenar.infinity.domain.files.RecycledItem
 
 /*
  * 资源管理器的示例数据，供预览与截图测试使用。名称与内容均为虚构。
@@ -32,7 +31,7 @@ internal object FileManagerSamples {
 
     fun locations(english: Boolean): List<FileLocation> {
         val n = Names(english)
-        val full = FileLocationCapabilities(writable = true, recycle = true, archive = true)
+        val full = FileLocationCapabilities(writable = true, deletable = true, archive = true)
         return listOf(
             FileLocation(
                 id = LIBRARY_ID,
@@ -196,28 +195,7 @@ internal object FileManagerSamples {
         )
     }
 
-    fun recycled(english: Boolean): List<RecycledItem> {
-        val n = Names(english)
-        return listOf(
-            RecycledItem("r1", LIBRARY_ID, "/" + n.t("旧版定价表.xlsx", "Old pricing.xlsx"), n.t("旧版定价表.xlsx", "Old pricing.xlsx"), false, 88 * KB, NOW - 2 * DAY, NOW + 28 * DAY),
-            RecycledItem("r2", WORKSPACE_ID, "/tmp", "tmp", true, 0, NOW - 9 * DAY, NOW + 21 * DAY),
-            RecycledItem(
-                "r3",
-                PROJECT_ID,
-                "/docs/" + n.t("草稿.md", "draft.md"),
-                n.t("草稿.md", "draft.md"),
-                false,
-                3 * KB,
-                NOW - 27 * DAY,
-                NOW + 3 * DAY,
-            ),
-        )
-    }
 
-    fun locationTitle(english: Boolean): (String) -> String? {
-        val titles = locations(english).associate { it.id to it.title }
-        return { id -> titles[id] }
-    }
 }
 
 /** 当前目录里路径为 [path] 的条目，供示例进入预览或选择。 */

@@ -24,8 +24,8 @@
     <string name="startup_issue_title_adoption">Couldn\'t take over an old workspace</string>
     <string name="startup_issue_title_file_operation">A file operation didn\'t finish</string>
     <string name="startup_issue_title_session_delete">A session deletion didn\'t finish</string>
-    <string name="startup_issue_title_recycle">Recycle bin cleanup didn\'t finish</string>
-    <string name="startup_issue_title_tool_ledger">Tool records couldn\'t be restored</string>
+
+<string name="startup_issue_title_tool_ledger">Tool records couldn\'t be restored</string>
     <string name="startup_issue_title_vectors">Indexing queue couldn\'t be restored</string>
     <string name="startup_issue_title_background">Background jobs couldn\'t be restored</string>
     <string name="startup_issue_title_confirmations">Background confirmations couldn\'t be restored</string>

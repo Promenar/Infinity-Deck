@@ -71,7 +71,7 @@ class DefaultPrivateWorkspaceFiles(
 
     override suspend fun delete(sessionId: String, uuids: List<String>): DirectoryBatchResult =
         operation(sessionId) { root ->
-            batch(root, uuids) { entry -> repository.moveToRecycleBin(root, entry.uuid) }
+            batch(root, uuids) { entry -> repository.permanentDelete(root, entry.uuid) }
         }
 
     private suspend fun <T> operation(sessionId: String, block: suspend (String) -> T): T = withContext(Dispatchers.IO) {

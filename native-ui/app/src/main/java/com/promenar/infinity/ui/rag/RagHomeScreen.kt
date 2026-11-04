@@ -1182,9 +1182,9 @@ internal fun RagHomeScreenContent(
         InfinityConfirmDialog(
             onDismissRequest = { if (!isDeletingSelection) dismissDeleteConfirmation() },
             modifier = Modifier.testTag(UiTags.RAG_HOME_DELETE_CONFIRM_DIALOG),
-            title = stringResource(R.string.rag_home_delete_confirm_title, pendingDelete.ids.size),
-            message = "",
-            confirmText = stringResource(R.string.shared_btn_move_to_recycle_bin),
+            title = androidx.compose.ui.res.pluralStringResource(R.plurals.permanent_delete_title, pendingDelete.ids.size, pendingDelete.ids.size),
+            message = stringResource(R.string.permanent_delete_message),
+            confirmText = stringResource(R.string.permanent_delete_action),
             cancelText = stringResource(R.string.common_btn_cancel),
             onConfirm = {
                 if (pendingDelete.ids.isNotEmpty()) {

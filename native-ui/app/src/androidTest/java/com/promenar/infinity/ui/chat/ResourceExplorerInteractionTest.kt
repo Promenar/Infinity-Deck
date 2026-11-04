@@ -46,8 +46,6 @@ import com.promenar.infinity.share.core.ShareImportItem
 import com.promenar.infinity.share.core.ShareImportStatus
 import com.promenar.infinity.share.core.ShareRejectReason
 import com.promenar.infinity.ui.common.InfinityBottomSheet
-import com.promenar.infinity.ui.chat.components.RecycleBinPanel
-import com.promenar.infinity.ui.chat.components.RecycleOperationState
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTheme
 import java.util.concurrent.atomic.AtomicInteger
@@ -63,52 +61,15 @@ class ResourceExplorerInteractionTest {
         get() = InstrumentationRegistry.getInstrumentation().targetContext.resources
 
     @Test
-    fun recycleEntryOpensRecyclePageAndBackReturnsToFiles() {
-        var showRecycle by mutableStateOf(false)
-
-        rule.setContent {
-            InfinityTheme(dynamicColor = false) {
-                ResourceExplorerSheetContent(
-                    state = state(showRecycle = showRecycle),
-                    actions = ResourceExplorerSheetActions(
-                        onOpenRecycle = { showRecycle = true },
-                        onCloseRecycle = { showRecycle = false },
-                    ),
-                    filesContent = {},
-                    recycleBinContent = {},
-                )
-            }
-        }
-
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_SEARCH_OPEN).assertIsDisplayed()
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_RECYCLE_ENTRY).performClick()
-        rule.waitForIdle()
-
-        assertThat(showRecycle).isTrue()
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_SEARCH_OPEN).assertDoesNotExist()
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_RECYCLE_PAGE).assertIsDisplayed()
-
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_RECYCLE_BACK).performClick()
-        rule.waitForIdle()
-
-        assertThat(showRecycle).isFalse()
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_SEARCH_OPEN).assertIsDisplayed()
-    }
-
-    @Test
-    fun recycleBinLoadingStateDoesNotExposeFalseEmptyState() {
+    fun workspaceLoadingDoesNotExposeFalseEmptyState() {
         rule.setContent {
             InfinityTheme(dynamicColor = false) {
                 ResourceExplorerSheetContent(
                     state = state(
-                        showRecycle = true,
                         isLoading = true,
                     ),
                     actions = ResourceExplorerSheetActions(),
-                    filesContent = {},
-                    recycleBinContent = {
-                        Box(Modifier.testTag(TAG_FALSE_EMPTY_STATE))
-                    },
+                    filesContent = { Box(Modifier.testTag(TAG_FALSE_EMPTY_STATE)) },
                 )
             }
         }
@@ -131,23 +92,19 @@ class ResourceExplorerInteractionTest {
     }
 
     @Test
-    fun recycleBinLoadErrorDoesNotExposeFalseEmptyStateAndRetriesOnce() {
+    fun workspaceLoadErrorDoesNotExposeFalseEmptyStateAndRetriesOnce() {
         val retryCount = AtomicInteger()
 
         rule.setContent {
             InfinityTheme(dynamicColor = false) {
                 ResourceExplorerSheetContent(
                     state = state(
-                        showRecycle = true,
                         hasLoadError = true,
                     ),
                     actions = ResourceExplorerSheetActions(
                         onRetryLoad = { retryCount.incrementAndGet() },
                     ),
-                    filesContent = {},
-                    recycleBinContent = {
-                        Box(Modifier.testTag(TAG_FALSE_EMPTY_STATE))
-                    },
+                    filesContent = { Box(Modifier.testTag(TAG_FALSE_EMPTY_STATE)) },
                 )
             }
         }
@@ -187,7 +144,6 @@ class ResourceExplorerInteractionTest {
                         onClearImportResults = { clearCount.incrementAndGet() },
                     ),
                     filesContent = {},
-                    recycleBinContent = {},
                 )
             }
         }
@@ -201,27 +157,6 @@ class ResourceExplorerInteractionTest {
             .performClick()
 
         assertThat(clearCount.get()).isEqualTo(1)
-    }
-
-    @Test
-    fun recycleBinTabDoesNotExposeFilesImportActionsOrResults() {
-        rule.setContent {
-            InfinityTheme(dynamicColor = false) {
-                ResourceExplorerSheetContent(
-                    state = state(
-                        showRecycle = true,
-                        importItems = listOf(importItem()),
-                    ),
-                    actions = ResourceExplorerSheetActions(),
-                    filesContent = {},
-                    recycleBinContent = {},
-                )
-            }
-        }
-
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_SEARCH_OPEN).assertDoesNotExist()
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_IMPORT).assertDoesNotExist()
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_IMPORT_RESULTS).assertDoesNotExist()
     }
 
     @Test
@@ -243,7 +178,6 @@ class ResourceExplorerInteractionTest {
                             onClearImportResults = { clearCount.incrementAndGet() },
                         ),
                         filesContent = {},
-                        recycleBinContent = {},
                     )
                 }
             }
@@ -305,7 +239,6 @@ class ResourceExplorerInteractionTest {
                                     }
                                 }
                             },
-                            recycleBinContent = {},
                         )
                     }
                 }
@@ -314,54 +247,6 @@ class ResourceExplorerInteractionTest {
 
         rule.onNodeWithTag(TAG_SHEET_FILES_LIST).performScrollToIndex(29)
         rule.onNodeWithTag("sheet-file-29").assertIsDisplayed()
-    }
-
-    @Test
-    fun trueSheetInLandscapeCanScrollToLastRecycleItem() {
-        val recycledFiles = (0 until 24).map(::recycledEntry)
-        val last = recycledFiles.last()
-        val restored = AtomicReference<List<FileEntry>>(emptyList())
-        rule.setContent {
-            DeviceConfigurationOverride(
-                DeviceConfigurationOverride.WindowSize(DpSize(800.dp, 360.dp)),
-            ) {
-                InfinityTheme(dynamicColor = false) {
-                    InfinityBottomSheet(
-                        show = true,
-                        onDismiss = {},
-                        title = resources.getString(R.string.resource_explorer_title),
-                        modifier = Modifier.fillMaxHeight(),
-                    ) {
-                        ResourceExplorerSheetContent(
-                            state = state(showRecycle = true),
-                            actions = ResourceExplorerSheetActions(),
-                            filesContent = {},
-                            recycleBinContent = {
-                                RecycleBinPanel(
-                                    files = recycledFiles,
-                                    operationState = RecycleOperationState.Idle,
-                                    onRestoreFiles = { restored.set(it) },
-                                    onPermanentlyDeleteFiles = {},
-                                    onEmptyRecycleBin = {},
-                                    onRetryOperation = {},
-                                    onClearOperationState = {},
-                                    nowMillis = FIXED_NOW,
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        rule.onNodeWithTag(UiTags.RESOURCE_EXPLORER_RECYCLE_LIST)
-            .performScrollToNode(hasTestTag(UiTags.resourceExplorerRecycleRestore(last.uuid)))
-        rule.onNodeWithTag(UiTags.resourceExplorerRecycleRestore(last.uuid))
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-            .performClick()
-
-        assertThat(restored.get()).containsExactly(last)
     }
 
     @Test
@@ -377,7 +262,6 @@ class ResourceExplorerInteractionTest {
                             state = state(),
                             actions = ResourceExplorerSheetActions(),
                             filesContent = {},
-                            recycleBinContent = {},
                         )
                     }
                 }
@@ -387,7 +271,6 @@ class ResourceExplorerInteractionTest {
         listOf(
             UiTags.RESOURCE_EXPLORER_SEARCH_OPEN,
             UiTags.RESOURCE_EXPLORER_IMPORT,
-            UiTags.RESOURCE_EXPLORER_RECYCLE_ENTRY,
         ).forEach { tag ->
             rule.onNodeWithTag(tag)
                 .assertIsDisplayed()
@@ -406,7 +289,6 @@ class ResourceExplorerInteractionTest {
                         state = state(searchActive = true),
                         actions = ResourceExplorerSheetActions(),
                         filesContent = {},
-                        recycleBinContent = {},
                     )
                 }
             }
@@ -424,16 +306,13 @@ class ResourceExplorerInteractionTest {
     private fun hasAncestorTag(tag: String) = androidx.compose.ui.test.hasAnyAncestor(hasTestTag(tag))
 
     private fun state(
-        showRecycle: Boolean = false,
         importItems: List<ShareImportItem> = emptyList(),
         isLoading: Boolean = false,
         hasLoadError: Boolean = false,
         searchActive: Boolean = false,
     ) = ResourceExplorerSheetState(
-        showRecycle = showRecycle,
         searchQuery = "",
         searchActive = searchActive,
-        recycleBinCount = 2,
         workspaceReady = true,
         importItems = importItems,
         isImporting = false,
@@ -456,22 +335,6 @@ class ResourceExplorerInteractionTest {
         sizeBytes = 4096L,
         status = ShareImportStatus.Rejected,
         reason = ShareRejectReason.WriteFailed,
-    )
-
-    private fun recycledEntry(index: Int) = FileEntry(
-        uuid = "sheet-recycled-$index",
-        workspaceRootUuid = "workspace",
-        parentUuid = "root",
-        name = "横屏回收站长文件-$index-验证真实列表末项可达.md",
-        hash = "hash-$index",
-        mimeType = "text/markdown",
-        physicalRootPath = "/fixture",
-        materializedPath = "/.recycle/sheet-$index.md",
-        inRecycleBin = true,
-        recycledAt = FIXED_NOW - 60_000L,
-        originalMaterializedPath = "/documents/sheet-$index.md",
-        createdAt = 1L,
-        updatedAt = 1L,
     )
 
     private fun importStatusTag(uri: Uri) = "resource_explorer_import_status:$uri"

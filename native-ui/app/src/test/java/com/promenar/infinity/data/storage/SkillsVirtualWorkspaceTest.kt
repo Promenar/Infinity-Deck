@@ -105,7 +105,7 @@ class SkillsVirtualWorkspaceTest {
         assertThat(manager.list("session", "/mnt")).isEmpty()
     }
 
-    @Test fun `文件工具在两种模式下读写列表移动并通过回收区删除技能`() = runBlocking {
+    @Test fun `文件工具在两种模式下读写列表移动并永久删除技能`() = runBlocking {
         for (root in listOf(true, false)) {
             rooted = root
             assertThat(execute(CreateDirectorySkill(workspace), """{"parentPath":"/skills","name":"demo"}""").status).isEqualTo("success")
@@ -118,9 +118,7 @@ class SkillsVirtualWorkspaceTest {
             assertThat(execute(MoveFileSkill(workspace, FileIndexEventSink.None), """{"path":"/skills/demo/SKILL.md","newName":"README.md"}""").status).isEqualTo("success")
             assertThat(File(userSkills, "demo/SKILL.md").exists()).isFalse()
             assertThat(execute(DeleteFileSkill(workspace), """{"path":"/skills/demo/README.md"}""").status).isEqualTo("success")
-            val recycled = manager.recycleItems("another").single { it.originalPath == "/skills/demo/README.md" }
-            manager.restore("another", recycled.id)
-            assertThat(File(userSkills, "demo/README.md").readText()).isEqualTo("two")
+            assertThat(File(userSkills, "demo/README.md").exists()).isFalse()
             execute(DeleteFileSkill(workspace), """{"path":"/skills/demo"}""")
         }
         confirmVerified(workspace, files)
@@ -156,7 +154,6 @@ class SkillsVirtualWorkspaceTest {
         assertThat(execute(MoveFileSkill(workspace, FileIndexEventSink.None), """{"path":"/a.txt","newParentPath":"/mnt/docs"}""").status).isEqualTo("success")
         assertThat(execute(MoveFileSkill(workspace, FileIndexEventSink.None), """{"path":"/mnt/docs/a.txt","newParentPath":"/skills"}""").status).isEqualTo("success")
         assertThat(File(userSkills, "a.txt").readText()).isEqualTo("payload")
-        assertThat(manager.recycleItems("session")).isEmpty()
     }
 
     @Test fun `脚本在自动模式逐次审批技能写入且忽略记忆选择`() = runBlocking {

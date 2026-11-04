@@ -53,12 +53,11 @@ class ResourceExplorerWorkspaceModeTest {
     @After fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `private workspace keeps room observers and session recycle bin`() = runTest(dispatcher) {
+    fun `private workspace keeps room observers`() = runTest(dispatcher) {
         val repo = mockk<IWorkspaceRepository>()
         val files = listOf(file("a.txt"))
         coEvery { repo.ensureSessionRoot("s") } returns root("root")
         every { repo.observeChildren("root", "root") } returns flowOf(files)
-        every { repo.observeRecycleBin("root") } returns flowOf(listOf(file("old.txt")))
         val access = FakeAccess(SessionWorkspace.Private)
         val viewModel = viewModel(repo, access)
 
@@ -68,7 +67,6 @@ class ResourceExplorerWorkspaceModeTest {
         assertThat(viewModel.workspaceMode.value).isEqualTo(ResourceExplorerWorkspaceMode.Private)
         assertThat(viewModel.workspaceRootUuid.value).isEqualTo("root")
         assertThat(viewModel.rootFiles.value).isEqualTo(files)
-        assertThat(viewModel.recycleBinCount.value).isEqualTo(1)
         assertThat(viewModel.directory.value).isEqualTo(DirectoryBrowserState())
         assertThat(access.backendRequests).isEqualTo(0)
     }
@@ -148,10 +146,8 @@ class ResourceExplorerWorkspaceModeTest {
     fun `rebinding private session to directory stops private observers on reopen`() = runTest(dispatcher) {
         val repo = mockk<IWorkspaceRepository>()
         val files = MutableSharedFlow<List<FileEntry>>()
-        val recycle = MutableSharedFlow<List<FileEntry>>()
         coEvery { repo.ensureSessionRoot("s") } returns root("root")
         every { repo.observeChildren("root", "root") } returns files
-        every { repo.observeRecycleBin("root") } returns recycle
         val backend = FakeBackend(mapOf("/" to listOf(entry("/notes.md"))))
         val access = FakeAccess(SessionWorkspace.Private) { backend }
         val viewModel = viewModel(repo, access)
@@ -166,9 +162,7 @@ class ResourceExplorerWorkspaceModeTest {
         advanceUntilIdle()
 
         assertThat(files.subscriptionCount.value).isEqualTo(0)
-        assertThat(recycle.subscriptionCount.value).isEqualTo(0)
         assertThat(viewModel.workspaceRootUuid.value).isNull()
-        assertThat(viewModel.recycleBinCount.value).isEqualTo(0)
         assertThat(viewModel.workspaceMode.value).isInstanceOf(ResourceExplorerWorkspaceMode.Directory::class.java)
         assertThat(viewModel.directory.value.entries.map(ExternalFolderEntry::name)).containsExactly("notes.md")
     }
@@ -318,7 +312,7 @@ class ResourceExplorerWorkspaceModeTest {
     }
 
     @Test
-    fun `items too large for recycle bin ask before permanent delete`() = runTest(dispatcher) {
+    fun `删除批次部分失败时展示实际结果`() = runTest(dispatcher) {
         val backend = FakeBackend(mapOf("/" to listOf(entry("/big", isDirectory = true), entry("/a.md"))))
         val files = FakeFiles().apply {
             deleteResult = { paths ->
@@ -331,23 +325,8 @@ class ResourceExplorerWorkspaceModeTest {
         viewModel.toggleDirectorySelection("/a.md")
         viewModel.deleteDirectorySelection()
         advanceUntilIdle()
-        // 超限项不算失败，只等待确认；其余项照常报告。
-        assertThat(viewModel.directory.value.permanentDeleteCandidates).containsExactly("/big")
-        assertThat(viewModel.directory.value.outcome).isEqualTo(DirectoryOpOutcome(DirectoryOp.DELETE, 1, 0, null))
-
-        viewModel.keepTooLarge()
-        assertThat(viewModel.directory.value.permanentDeleteCandidates).isEmpty()
-
-        viewModel.toggleDirectorySelection("/big")
-        viewModel.deleteDirectorySelection()
-        advanceUntilIdle()
-        assertThat(viewModel.directory.value.outcome).isNull()
-        viewModel.deleteTooLargePermanently()
-        advanceUntilIdle()
-
-        assertThat(files.calls.last()).isEqualTo("delete s [/big] permanent")
-        assertThat(viewModel.directory.value.permanentDeleteCandidates).isEmpty()
-        assertThat(viewModel.directory.value.outcome).isEqualTo(DirectoryOpOutcome(DirectoryOp.DELETE, 1, 0, null))
+        assertThat(viewModel.directory.value.outcome)
+            .isEqualTo(DirectoryOpOutcome(DirectoryOp.DELETE, 1, 1, DirectoryFileOpCode.TOO_LARGE))
     }
 
     private fun TestScope.directoryViewModel(backend: FakeBackend, files: DirectoryWorkspaceFiles): ResourceExplorerViewModel {
@@ -388,10 +367,10 @@ class ResourceExplorerWorkspaceModeTest {
             calls += "copy $sessionId $paths -> $targetDirectory"
             return DirectoryBatchResult(paths, emptyMap())
         }
-        override suspend fun delete(sessionId: String, paths: List<String>, permanent: Boolean): DirectoryBatchResult {
-            calls += "delete $sessionId $paths" + if (permanent) " permanent" else ""
+        override suspend fun delete(sessionId: String, paths: List<String>): DirectoryBatchResult {
+            calls += "delete $sessionId $paths"
             deleteFailure?.let { throw it }
-            return if (permanent) DirectoryBatchResult(paths, emptyMap()) else deleteResult(paths)
+            return deleteResult(paths)
         }
     }
 

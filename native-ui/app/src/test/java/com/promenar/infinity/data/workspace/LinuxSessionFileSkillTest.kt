@@ -397,7 +397,7 @@ class LinuxSessionFileSkillTest {
         coVerify(exactly = 1) { workspace.relocate("root-one", "file-one-same.txt", "docs-one", "renamed.txt", "same.txt", null) }
         coVerify(exactly = 0) { workspace.updateParent(any(), any(), any()) }
         coVerify(exactly = 0) { workspace.rename(any(), any(), any(), any()) }
-        coVerify(exactly = 0) { workspace.moveToRecycleBin(any(), any()) }
+        coVerify(exactly = 0) { workspace.permanentDelete(any(), any()) }
         val basis = Sha256Utils.hash("old-version")
         coEvery { files.diffFile("root-one", "file-one-same.txt", basis) } returns DiffResult("file-one-same.txt", basis, entries.getValue("file-one-same.txt").hash, emptyList())
         assertThat(skill(FileDiffSkill(files, workspace)).execute(json("path" to "/home/session/docs/renamed.txt", "basisHash" to basis), context()).status).isEqualTo("success")
@@ -451,7 +451,7 @@ class LinuxSessionFileSkillTest {
             val actions: List<suspend () -> Unit> = listOf(
                 { access.write("one", path, "new".toByteArray(), null, false); Unit },
                 { access.createDirectory("one", path + "-dir"); Unit },
-                { access.delete("one", path, null, false) },
+                { access.delete("one", path, null) },
             )
             for (action in actions) assertWithMessage("隔离路径=%s", path).that(runCatching { action() }.exceptionOrNull())
                 .isInstanceOf(com.promenar.infinity.startup.StartupIsolationException::class.java)

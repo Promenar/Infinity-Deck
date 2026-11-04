@@ -79,7 +79,7 @@ internal object BackupPreferencePolicy {
             "termux_integration_enabled", "ssh_agent_host_management", "ssh_terminal_idle_disconnect", "script_approve_writes",
             "rolled_back_summary_usage_v1", "embedding_setup_hint_shown",
             // 资料页长期记忆“新”标记的上次查看时间与侧栏固定文件夹（引用本机位置 id）只描述当前设备。
-            "library_memories_last_seen", "file_manager_pins",
+            "library_memories_last_seen", "file_manager_pins", "legacy_recycle_cleanup_complete",
         ),
         "generation_notification_permission" to setOf("post_notifications_asked"),
         // restore_tx_id 是向导发起恢复的本机标记，只在下次启动结算引导时读取。

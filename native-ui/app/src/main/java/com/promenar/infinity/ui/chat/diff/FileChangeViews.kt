@@ -319,6 +319,7 @@ private fun omissionReason(change: FileChangeSummary): Int = when {
     change.binary -> R.string.file_change_reason_binary
     change.directory -> R.string.file_change_reason_directory
     else -> when (change.hunksOmitted) {
+        FileChangeHunkOmission.PERMANENT_DELETE -> R.string.permanent_delete_diff_omitted
         FileChangeHunkOmission.BINARY -> R.string.file_change_reason_binary
         FileChangeHunkOmission.LARGE -> R.string.file_change_reason_large
         FileChangeHunkOmission.TOO_COMPLEX -> R.string.file_change_reason_too_complex

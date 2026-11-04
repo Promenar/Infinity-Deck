@@ -23,7 +23,6 @@
     <string name="skills_runtime_detail_files">Bundled files</string>
     <string name="skills_runtime_document_unavailable">SKILL.md cannot be read.</string>
     <string name="skills_runtime_delete_title">Delete %1$s?</string>
-    <string name="skills_runtime_delete_message">%1$s moves to the app\'s recycle area and is cleared after 30 days.</string>
     <string name="skills_runtime_error">Skill action failed: %1$s</string>
     <string name="sheet_tool_section_usage">Tool use</string>
     <string name="sheet_tool_tools_enabled">Use tools</string>

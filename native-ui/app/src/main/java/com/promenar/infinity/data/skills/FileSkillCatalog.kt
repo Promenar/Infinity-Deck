@@ -195,6 +195,8 @@ class FileSkillCatalog internal constructor(
         }
         cache.remove(location)
         changes.value++
+        // 状态提交成功后清除暂存目录；清理失败要向调用方报告。
+        target?.let(files::deleteTree)
     }
 
     private suspend fun <T> locked(block: () -> T): T = withContext(ioDispatcher) { mutex.withLock { block() } }

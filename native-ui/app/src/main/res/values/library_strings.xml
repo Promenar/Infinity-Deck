@@ -18,7 +18,6 @@
     <string name="library_page_memory">Long-term memory</string>
     <string name="library_page_fragments">Conversation snippets</string>
     <string name="library_page_graph">Knowledge graph</string>
-    <string name="library_page_trash">Recycle bin</string>
     <string name="library_page_files">Files</string>
     <string name="library_page_ask">Ask the library</string>
     <string name="library_page_document">Document</string>

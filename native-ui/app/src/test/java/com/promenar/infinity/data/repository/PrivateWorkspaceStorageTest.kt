@@ -74,6 +74,7 @@ class PrivateWorkspaceStorageTest {
             database.sessionDao().insert(SessionEntity(id = "session", agentId = "agent", createdAt = 1, updatedAt = 1))
             val repository = WorkspaceRepository(database.fileEntryDao(), database.workspaceSeqDao(),
                 fileOps = privateOps(base.resolve("private")), mutationJournal = RoomWorkspaceFileMutationJournal(database),
+                deleteCommitter = WorkspaceDeletionTransaction(database)::delete,
                 treeScanner = PathWorkspaceTreeScanner)
             val root = repository.ensureSessionRoot("session", base.resolve("user").toString())
             val physicalRoot = java.io.File(root.physicalRootPath)
@@ -88,9 +89,9 @@ class PrivateWorkspaceStorageTest {
                 check(command.waitFor() == 0)
             }
             assertThat(outcome.reconcileError).isNull()
-            repository.moveToRecycleBin(root.uuid, tracked.uuid)
+            repository.permanentDelete(root.uuid, tracked.uuid)
             val untracked = repository.getByMaterializedPath(root.uuid, "/command.txt")!!
-            repository.moveToRecycleBin(root.uuid, untracked.uuid)
+            repository.permanentDelete(root.uuid, untracked.uuid)
             assertThat(physicalRoot.list()!!.toList()).containsExactly(".git", ".infinity", "keep.txt")
             val status = git(physicalRoot, "status", "--porcelain")
             assertThat(status).contains("tracked.txt")
@@ -140,7 +141,7 @@ class PrivateWorkspaceStorageTest {
     }
 
     @Test
-    fun `回收文件保留数据库逻辑路径且不在用户根留下回收站`() = runBlocking {
+    fun `删除文件清除数据库和物理文件`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java)
             .allowMainThreadQueries().build()
@@ -148,14 +149,14 @@ class PrivateWorkspaceStorageTest {
         try {
             database.sessionDao().insert(SessionEntity(id = "session", agentId = "agent", createdAt = 1, updatedAt = 1))
             val repository = WorkspaceRepository(database.fileEntryDao(), database.workspaceSeqDao(),
-                fileOps = privateOps(base.resolve("private")))
+                fileOps = privateOps(base.resolve("private")), deleteCommitter = WorkspaceDeletionTransaction(database)::delete)
             val root = repository.ensureSessionRoot("session", base.resolve("user").toString())
             val file = repository.createFileInWorkspace(root.uuid, "file", "note.txt", "内容", root.uuid, "/note.txt")
-            repository.moveToRecycleBin(root.uuid, file.uuid)
+            repository.permanentDelete(root.uuid, file.uuid)
 
             assertThat(Files.exists(base.resolve("user/.recycle_bin"))).isFalse()
-            assertThat(database.fileEntryDao().getAnyStateByUuidForLifecycle(root.uuid, file.uuid)?.materializedPath)
-                .isEqualTo("/.recycle_bin/${file.uuid}")
+            assertThat(database.fileEntryDao().getAnyStateByUuidForLifecycle(root.uuid, file.uuid)).isNull()
+            assertThat(Files.exists(base.resolve("user/note.txt"))).isFalse()
         } finally {
             database.close()
             base.toFile().deleteRecursively()

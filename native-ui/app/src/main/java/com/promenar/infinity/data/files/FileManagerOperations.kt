@@ -57,7 +57,6 @@ internal class DefaultFileOperations(
     private val tasks: VectorizationTaskDao,
     private val indexEvents: FileIndexEventSink,
     private val guard: FileMutationGuard,
-    private val recycle: FileManagerRecycle,
     private val pendingTargets: () -> List<FileIndexEvent.Changed> = { emptyList() },
 ) : FileOperations {
     private val importer = AndroidSafContentSource(context.contentResolver)
@@ -248,8 +247,13 @@ internal class DefaultFileOperations(
                     val entry = requireEntry(handle.backend, path)
                     if (handle.roomRoot != null) {
                         val row = repository.getByMaterializedPath(handle.roomRoot, path) ?: throw FileOpException(FileOpCode.NOT_FOUND)
-                        repository.moveToRecycleBin(handle.roomRoot, row.uuid)
-                    } else recycle.delete(handle, entry)
+                        if ((entry.identity != null && entry.identity != row.uuid) || entry.isDirectory != row.isDirectory) {
+                            throw FileOpException(FileOpCode.CONFLICT)
+                        }
+                        if (!entry.isDirectory && entry.sha256 != null) {
+                            repository.permanentDeleteIfHash(handle.roomRoot, row.uuid, entry.sha256)
+                        } else repository.permanentDelete(handle.roomRoot, row.uuid)
+                    } else handle.backend.delete(path, entry.sha256)
                     succeeded += ref.copy(path = path)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -357,11 +361,6 @@ internal class DefaultFileOperations(
             requireNotNull(stat(FileRef(targetDirectory.locationId, destination)))
         }
     }
-
-    override fun observeRecycleBin() = recycle.observe()
-    override suspend fun restore(ids: List<String>) = io { recycle.restore(ids) }
-    override suspend fun purge(ids: List<String>) = io { recycle.purge(ids) }
-    override suspend fun emptyRecycleBin() = io { recycle.purge(recycle.observe().first().map { it.id }) }
 
     private suspend fun items(handle: FileBackendHandle, entries: List<ExternalFolderEntry>): List<FileItem> {
         val rows = if (handle.locationId == "kb" && handle.roomRoot != null) entries.mapNotNull {

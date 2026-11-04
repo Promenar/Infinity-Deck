@@ -204,7 +204,7 @@ object SystemPromptSections {
             appendLine("- Read before you edit. `read_file` prefixes each line with `N| `; that prefix is not file content, and `patch_file` line numbers refer to it.")
             appendLine("- `write_file` and `patch_file` require `expectedHash`, the latest hash from `read_file`, `list_files`, or your previous write. On a hash conflict, re-read the file and redo the change.")
             appendLine("- Prefer `patch_file` for local edits and `write_file` for full rewrites of existing files. Create new files with `create_file` and folders with `create_directory`.")
-            appendLine("- `move_file` moves or renames; `delete_file` moves items to the recycle bin, which the user can restore.")
+            appendLine("- `move_file` moves or renames; `delete_file` permanently deletes items and requires user approval.")
         }
         if (toolNames.any { it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS }) {
             currentWorkspace(workspace, usesLinux)?.let {

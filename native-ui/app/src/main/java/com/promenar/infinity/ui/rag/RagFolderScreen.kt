@@ -579,9 +579,9 @@ internal fun RagFolderScreenContent(
         InfinityConfirmDialog(
             modifier = Modifier.testTag(UiTags.RAG_FOLDER_DELETE_CONFIRM_DIALOG),
             onDismissRequest = { if (!state.isDeletingDocuments) showDeleteConfirm = false },
-            title = stringResource(R.string.rag_folder_delete_confirm_title, state.selectedIds.size),
-            message = stringResource(R.string.shared_action_move_to_recycle_bin),
-            confirmText = stringResource(R.string.shared_btn_move_to_recycle_bin),
+            title = androidx.compose.ui.res.pluralStringResource(R.plurals.permanent_delete_title, state.selectedIds.size, state.selectedIds.size),
+            message = stringResource(R.string.permanent_delete_message),
+            confirmText = stringResource(R.string.permanent_delete_action),
             cancelText = stringResource(R.string.common_btn_cancel),
             onConfirm = {
                 val deletingIds = state.selectedIds.toList()
