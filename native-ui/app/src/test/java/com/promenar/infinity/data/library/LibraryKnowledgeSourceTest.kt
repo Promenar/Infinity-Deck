@@ -122,12 +122,16 @@ class LibraryKnowledgeSourceTest {
 
     @Test
     fun `已删除会话仍保留空标题的历史片段`() = runBlocking {
+        // 历史遗留的孤儿片段：外键开关与插入必须在同一连接上执行，Room 的 DAO 可能走连接池里的另一条连接。
         val connection = db.openHelper.writableDatabase
-        connection.setForeignKeyConstraintsEnabled(false)
+        connection.execSQL("PRAGMA foreign_keys = OFF")
         try {
-            db.vectorDao().insert(vector("orphan", "gone", "memory", 1))
+            connection.execSQL(
+                "INSERT INTO vectors (id, session_id, content, embedding, metadata, created_at, stale, version) " +
+                    "VALUES ('orphan', 'gone', 'orphan', x'', '{\"type\":\"memory\"}', 1, 0, 1)",
+            )
         } finally {
-            connection.setForeignKeyConstraintsEnabled(true)
+            connection.execSQL("PRAGMA foreign_keys = ON")
         }
         val group = source.observeFragmentGroups().first().single()
         assertThat(group.sessionId).isEqualTo("gone")

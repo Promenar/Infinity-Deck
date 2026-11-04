@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.domain.files.FileRef
@@ -57,10 +59,12 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
 internal fun LibraryTrashPage(host: LibraryPageHost, leading: LibraryLeading) {
     val app = LocalContext.current.applicationContext as InfinityApplication
     val controller: RecycleBinViewModel = viewModel(factory = RecycleBinViewModel.factory(app.fileManagerServices))
+    val locations by host.viewModel.locations.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize().testTag(LibraryTags.page("trash"))) {
         RecycleBinPage(
             controller = controller,
             leading = leading.toFileManagerLeading(),
+            locationTitle = { id -> locations.locations.firstOrNull { it.id == id }?.title },
             modifier = Modifier.fillMaxSize(),
         )
     }

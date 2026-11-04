@@ -18,7 +18,7 @@ internal class MemoryFileBackend : ExternalFolderBackend {
     override suspend fun list(path: String): List<ExternalFolderEntry> {
         if (nodes[path]?.directory != true) throw ExternalFolderException("NOT_FOUND", "目录不存在")
         val prefix = path.trimEnd('/') + "/"
-        return nodes.keys.filter { it.startsWith(prefix) && '/' !in it.removePrefix(prefix) }.mapNotNull { stat(it) }
+        return nodes.keys.filter { it != path && it.startsWith(prefix) && '/' !in it.removePrefix(prefix) }.mapNotNull { stat(it) }
     }
     override suspend fun read(path: String, maxBytes: Long): ByteArray {
         val value = nodes[path] ?: throw ExternalFolderException("NOT_FOUND", "文件不存在")

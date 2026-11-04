@@ -53,6 +53,7 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
  * 窄窗口为底部面板，宽窗口由 InfinityModalSheet 改为居中对话框。
  */
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun FileTargetPickerSheet(
     picker: FileTargetPickerState,

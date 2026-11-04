@@ -127,6 +127,8 @@ internal class DefaultFileOperations(
                 currentCoroutineContext().ensureActive()
                 if (hits.size >= limit) break
                 val item = items(handle, listOf(child)).single()
+                // 后端若把目录自身列为子项，跳过以免重复遍历。
+                if (item.ref.path == normalizeFilePath(path)) continue
                 if (item.name.contains(needle, ignoreCase = true) &&
                     (query.modifiedAfter == null || item.lastModified > query.modifiedAfter) &&
                     (query.types.isEmpty() || !item.isDirectory && classifyFile(item.name, item.mimeType) in query.types)) {
