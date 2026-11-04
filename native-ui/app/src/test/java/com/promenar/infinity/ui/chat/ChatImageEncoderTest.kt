@@ -132,6 +132,20 @@ class ChatImageEncoderTest {
         }
     }
 
+    @Test fun `画板预览剥离私有块后编码为JPEG且尺寸不变`() {
+        val bitmap = Bitmap.createBitmap(24, 16, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP, 24, 16, "/layer.png", "/source.png", "{}")
+        val preview = com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(png, annotation)
+        val dataUrl = requireNotNull(ChatImageEncoder.encodeAnnotatedPreview(preview))
+        assertThat(dataUrl).startsWith("data:image/jpeg;base64,")
+        val decoded = decodeDataUrl(dataUrl)
+        assertThat(decoded.width to decoded.height).isEqualTo(24 to 16)
+        assertThat(ChatImageEncoder.encodeAnnotatedPreview("not png".toByteArray())).isNull()
+    }
+
     private fun decodeDataUrl(dataUrl: String): Bitmap {
         val bytes = Base64.decode(dataUrl.substringAfter("base64,"), Base64.NO_WRAP)
         return requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))

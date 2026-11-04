@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.RotateRight
 import androidx.compose.material.icons.rounded.SaveAlt
@@ -52,12 +53,14 @@ import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
+import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -68,6 +71,8 @@ data class ImageLightboxActions(
     val onSave: () -> Unit,
     val onShare: () -> Unit,
     val onOpenWith: (() -> Unit)? = null,
+    /** 进画板标注这张图；为 null 时不显示。 */
+    val onAnnotate: (() -> Unit)? = null,
 )
 
 /**
@@ -218,6 +223,17 @@ fun ImageLightbox(
                             tint = MaterialTheme.infinityDomainColors.overlayContent,
                             modifier = Modifier.size(24.dp)
                         )
+                    }
+
+                    actions?.onAnnotate?.let { annotate ->
+                        IconButton(onClick = annotate, modifier = Modifier.testTag(UiTags.IMAGE_LIGHTBOX_ANNOTATE)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Draw,
+                                contentDescription = stringResource(R.string.annotation_cd_edit_image),
+                                tint = MaterialTheme.infinityDomainColors.overlayContent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
 
                     actions?.onOpenWith?.let { openWith ->

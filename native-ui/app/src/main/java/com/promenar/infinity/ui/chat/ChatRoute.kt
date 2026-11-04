@@ -375,6 +375,32 @@ fun ChatRoute(
     var snackbarAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var selectedImageUriStrings by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     val selectedImageUris = selectedImageUriStrings.map(Uri::parse)
+    // 画板：打开的对象与完成后替换的输入框图片下标（null 表示追加）。
+    val imageAnnotationAvailable by chatViewModel.imageAnnotationAvailable.collectAsStateWithLifecycle()
+    var annotationTarget by rememberSaveable(stateSaver = com.promenar.infinity.ui.annotation.AnnotationTargetSaver) {
+        mutableStateOf<com.promenar.infinity.ui.annotation.AnnotationTarget?>(null)
+    }
+    var annotationReplaceIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    val selectedImageAnnotations by androidx.compose.runtime.produceState(
+        initialValue = emptyMap<String, com.promenar.infinity.domain.media.ImageAnnotation?>(),
+        selectedImageUriStrings,
+    ) {
+        value = selectedImageUriStrings.distinct().associateWith { chatViewModel.readImageAnnotation(Uri.parse(it)) }
+    }
+    val openComposerImageEditor: (Int) -> Unit = { index ->
+        selectedImageUriStrings.getOrNull(index)?.let { uriString ->
+            val annotation = selectedImageAnnotations[uriString]
+            val source = annotation?.sourcePath
+            annotationTarget = when {
+                annotation?.kind == com.promenar.infinity.domain.media.ImageAnnotationKind.SKETCH ->
+                    com.promenar.infinity.ui.annotation.AnnotationTarget.Sketch(annotation)
+                annotation != null && source != null ->
+                    com.promenar.infinity.ui.annotation.AnnotationTarget.WorkspaceImage(source, annotation)
+                else -> com.promenar.infinity.ui.annotation.AnnotationTarget.ComposerImage(Uri.parse(uriString))
+            }
+            annotationReplaceIndex = index
+        }
+    }
     var activeOverlayToken by rememberSaveable { mutableStateOf<String?>(null) }
     val popoverAnchors = remember { ChatPopoverAnchors() }
     val wideWindow = com.promenar.infinity.ui.common.rememberInfinityWideWindow()
@@ -876,6 +902,14 @@ fun ChatRoute(
         LocalBranchAccess provides branchAccess,
         com.promenar.infinity.ui.chat.components.LocalAgentActivity provides agentActivity,
         LocalChatBrowser provides ChatBrowserAccess(browserState) { openChatPage(ChatPage.Browser) },
+        com.promenar.infinity.ui.annotation.LocalImageAnnotationLauncher provides if (imageAnnotationAvailable) {
+            { path: String ->
+                annotationTarget = com.promenar.infinity.ui.annotation.AnnotationTarget.WorkspaceImage(path)
+                annotationReplaceIndex = null
+            }
+        } else {
+            null
+        },
     ) {
         ChatScreenContent(
             state = ChatScreenState(
@@ -895,6 +929,7 @@ fun ChatRoute(
                 generationPhase = generationPhase,
                 tailnetWait = tailnetWait,
                 selectedImageUris = selectedImageUris,
+                selectedImageAnnotationKinds = selectedImageUriStrings.map { selectedImageAnnotations[it]?.kind },
                 draftDocuments = draftDocuments,
                 draftDocumentBudget = draftDocumentBudget,
                 draftQuotes = draftQuotes,
@@ -1037,6 +1072,15 @@ fun ChatRoute(
                 onQuote = chatViewModel::addQuote,
                 onQuoteAnnotationChange = chatViewModel::updateQuoteAnnotation,
                 onRemoveQuote = chatViewModel::removeQuote,
+                onEditImage = openComposerImageEditor.takeIf { imageAnnotationAvailable },
+                onSketch = if (imageAnnotationAvailable) {
+                    {
+                        annotationTarget = com.promenar.infinity.ui.annotation.AnnotationTarget.Sketch()
+                        annotationReplaceIndex = null
+                    }
+                } else {
+                    null
+                },
                 onRemoveImage = { index ->
                     selectedImageUriStrings = selectedImageUriStrings.toMutableList().apply {
                         if (index in indices) removeAt(index)
@@ -1100,6 +1144,26 @@ fun ChatRoute(
         )
     }
     }
+    }
+
+    annotationTarget?.let { target ->
+        com.promenar.infinity.ui.annotation.ImageAnnotationEditor(
+            target = target,
+            readWorkspaceImage = chatViewModel::readAnnotationSourceImage,
+            onExport = { export ->
+                val uri = chatViewModel.saveImageAnnotation(export).toString()
+                val replace = annotationReplaceIndex
+                selectedImageUriStrings = selectedImageUriStrings.toMutableList().apply {
+                    if (replace != null && replace in indices) set(replace, uri) else add(uri)
+                }
+                annotationTarget = null
+                annotationReplaceIndex = null
+            },
+            onDismiss = {
+                annotationTarget = null
+                annotationReplaceIndex = null
+            },
+        )
     }
 
     pendingNotificationPermission?.takeIf { permissionDialogVisible }?.let { request ->

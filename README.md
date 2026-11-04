@@ -101,7 +101,7 @@ The built-in agent browser lets you watch, take over and hand control back. Pass
 
 - **Knowledge in.** The library combines vector and full-text retrieval with reranking and citations, and can build a knowledge graph. Chat memory is searchable along a timeline, and long-term memory keeps your preferences and project facts across chats.
 - **Results out.** Agents build canvas pages and clickable multi-screen prototypes with a presentation mode, and the reports and files they deliver are saved as versioned artifacts.
-- **Rich output.** Markdown, LaTeX, Mermaid and ECharts, inline images, video and audio, plus image generation.
+- **Rich output.** Markdown, LaTeX, Mermaid and ECharts, inline images, video and audio, plus image generation with a drawing board for markup, masks and sketches.
 - **Export and usage.** Export a chat as HTML, paginated A4 PDF or a long PNG. The usage page estimates cost and tracks the input cache hit rate.
 
 ## You stay in control

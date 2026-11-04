@@ -27,6 +27,7 @@
 | `n` | 1–4 的整数；移动端每次最多 4 张，服务端默认 1 |
 | `images` | 1–16 个工作区路径；提供时调用编辑接口；PNG/WebP/JPEG，每张小于 50 MiB |
 | `mask` | 仅与 `images` 同用；工作区 PNG 路径，小于 4 MiB，作用于第一张图片；元数据提供尺寸时检查二者相同 |
+| `markup` | 仅与 `images` 同用，不能与 `mask` 同用；工作区 PNG 路径（透明底、画有圈注与文字的标注图层），小于 4 MiB，尺寸须与第一张图片相同，无法确认尺寸时拒绝。仅 GPT Image 2.5 支持；服务端不支持时，Agent 按标注行说明去掉该参数，把修改要求写进提示词 |
 | `input_fidelity` | 仅编辑可用，`high` / `low`，默认省略；仅部分模型支持，`gpt-image-2` 应省略 |
 
 ## 审核档位
@@ -38,7 +39,7 @@
 ## HTTP 协议
 
 - 文本生成：`POST {base}/v1/images/generations`，JSON。
-- 图片编辑：`POST {base}/v1/images/edits`，`multipart/form-data`。每张图片使用重复的 `image[]` 部分；蒙版部分名为 `mask`，保真度为 `input_fidelity`，审核档位为 `moderation`。其它显式参数作为文本部分，图片部分携带由内容识别的 MIME 与对应扩展名。
+- 图片编辑：`POST {base}/v1/images/edits`，`multipart/form-data`。每张图片使用重复的 `image[]` 部分；标注图层为文件部分 `markup`（文件名 `markup.png`，审核字段降级重发时保留）；蒙版部分名为 `mask`，保真度为 `input_fidelity`，审核档位为 `moderation`。其它显式参数作为文本部分，图片部分携带由内容识别的 MIME 与对应扩展名。
 - `{base}` 已以 `/v1` 结尾时直接追加 `/images/...`。
 - 两种请求共用 `applyModelTimeout(ModelTimeoutKind.IMAGE)`、取消传播、HTTP 错误摘要和响应解析。
 - 响应读取 `data[].b64_json`，同时兼容历史服务商返回的 `url` 与 `revised_prompt`；保留顶层 `created`、`size`、`quality`、`background`、`output_format`，以及 `usage` 的三项 token 计数与输入／输出 token 详情对象。
@@ -63,11 +64,25 @@
 | `mode` / `model` | `generate` 或 `edit`；路由解析后的远端模型 ID |
 | `requested` | 调用方显式提供的 `size`、`quality`、`background`、`outputFormat`、`outputCompression`、`n` |
 | `actual` | 服务端回显的 `size`、`quality`、`background`、`outputFormat` |
-| `inputImages` / `mask` | 解析后的工作区输入路径和可选蒙版路径 |
+| `inputImages` / `mask` / `markup` | 解析后的工作区输入路径、可选蒙版路径与可选标注图层路径 |
 | `usage` | 可选 `inputTokens`、`outputTokens`、`totalTokens` |
 | `revisedPrompts` / `failedCount` | 去重的修订提示词、保存失败数；空图片响应计为一次失败 |
 
 新数据的字段名避开历史图片解析器识别的 `localPath`、`url`、`b64Json`。图片展示继续使用 `media`，卡片可独立读取结构化参数和回显信息。数据库沿用已有工具结果载荷。
+
+## 画板入参
+
+用户在会话画板中得到三类入参，均由 `ImageAnnotationEditor` 按原图像素导出：
+
+| 画法 | 入口 | 图层 | 交给工具的方式 |
+|---|---|---|---|
+| 标注 `markup` | 查看器“标注”、点输入框图片 | 透明底 PNG，与原图同尺寸 | `images=[原图]` + `markup=图层` |
+| 选区 `mask` | 同上，画板内切换 | 涂抹处透明、其余不透明黑 | `images=[原图]` + `mask=图层` |
+| 草图 `sketch` | 附件菜单“手绘草图” | 白底草图，比例 1:1 / 2:3 / 3:2 / 9:16 | `images=[草图]`，`size` 取画布尺寸 |
+
+点“完成”后，`ChatViewModel.saveImageAnnotation` 把原图（来自输入框时先规整为长边不超过 2048 的 PNG）与图层存入当前会话工作区，另写一张长边不超过 1568 的合成预览放进输入框。预览的私有 PNG 块 `inAn` 记录画法、尺寸、图层与原图路径、可再次编辑的笔画快照，以及来源会话、工作区、运行模式和 worktree 的绑定。发送时读取该块，写入 `Message.userImageAnnotations` 与 `userImageAnnotationContext`（保存在既有 `files` 信封中，无需数据库迁移），预览剥离私有块后按 JPEG 内联给对话模型。`UserAttachmentModelContent` 为当前轮与历史轮输出 `[INFINITY_IMAGE_ANNOTATION …]` 行，列出图层与原图路径及用法；来源绑定与当前会话不符时只输出失效说明，需要在当前会话重新打开画板。
+
+预览文件保存在应用私有目录 `image_annotation_previews/` 下按会话分组，七天后在后续保存时修剪，输入框、恢复草稿、提交草稿与队列仍引用的文件不删除。画板对象与笔画随界面重建（折叠屏开合）保存，快照超过 20 万字符时不保存笔画。
 
 ## 验收入口与边界
 

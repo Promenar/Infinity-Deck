@@ -123,6 +123,8 @@ class ChatViewModelTest {
             image.writeBytes(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(output.toByteArray(), annotation, context))
             assertThat(viewModel.readImageAnnotation(android.net.Uri.fromFile(image))).isEqualTo(annotation)
             viewModel.sendMessage("调整圈出部分", listOf(android.net.Uri.fromFile(image))); advanceUntilIdle()
+            // 图片在真实 IO 线程上转码，等到权限请求出现后再继续。
+            awaitReal { viewModel.notificationPermissionRequests.value != null }
             assertThat(savedMessages).isEmpty()
             val token = requireNotNull(viewModel.notificationPermissionRequests.value).taskId
             notificationPermissionState = notificationPermissionState!!.copy(alreadyAsked = true)

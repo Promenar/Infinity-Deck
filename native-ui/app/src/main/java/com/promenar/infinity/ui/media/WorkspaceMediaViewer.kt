@@ -29,6 +29,7 @@ import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.ui.renderer.ImageLightbox
 import com.promenar.infinity.ui.renderer.ImageLightboxActions
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.annotation.LocalImageAnnotationLauncher
 
 /** 工作区图片查看器：沿用 [ImageLightbox]，保存、分享与用其它应用打开均经工作区来源，提示显示在查看器窗口内。 */
 @Composable
@@ -42,6 +43,7 @@ fun WorkspaceImageViewer(
     val messenger = rememberSnackbarMediaMessenger(hostState)
     CompositionLocalProvider(LocalMediaMessenger provides messenger) {
         val runner = rememberMediaActionRunner(environment)
+        val annotate = LocalImageAnnotationLauncher.current
         ImageLightbox(
             imageUrl = model.toUri(),
             model = model,
@@ -50,6 +52,7 @@ fun WorkspaceImageViewer(
                 onSave = { runner.save(available) },
                 onShare = { runner.share(available) },
                 onOpenWith = { runner.openWith(available) },
+                onAnnotate = annotate?.let { launch -> { onDismiss(); launch(model.path) } },
             ),
             overlay = {
                 MediaSnackbarHost(
@@ -87,6 +90,7 @@ fun WorkspaceImageGroupViewer(
         fun withAvailable(action: (MediaResolution.Available) -> Unit): () -> Unit = {
             if (available != null) action(available) else messenger.show(unavailableText, true)
         }
+        val annotate = LocalImageAnnotationLauncher.current
         ImageLightbox(
             imageUrl = model.toUri(),
             model = model,
@@ -95,6 +99,7 @@ fun WorkspaceImageGroupViewer(
                 onSave = withAvailable(runner::save),
                 onShare = withAvailable(runner::share),
                 onOpenWith = withAvailable(runner::openWith),
+                onAnnotate = annotate?.let { launch -> withAvailable { onDismiss(); launch(path) } },
             ),
             overlay = {
                 MediaPagerControls(

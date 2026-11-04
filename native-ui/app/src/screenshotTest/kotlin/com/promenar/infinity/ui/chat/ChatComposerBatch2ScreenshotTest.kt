@@ -108,6 +108,12 @@ fun chatComposerGeneratingBatch2Preview() = ComposerFrame("请分析这份材料
 fun chatComposerAttachmentsBatch2Preview() = ComposerFrame("请比较图片和附件中的数据。", attachments = true)
 
 @PreviewTest
+@Preview(name = "输入画板角标 深中411", widthDp = 411, heightDp = 220, locale = "zh-rCN")
+@Preview(name = "输入画板角标 深英360", widthDp = 360, heightDp = 240, locale = "en", fontScale = 1.3f)
+@Composable
+fun chatComposerAnnotatedImagesPreview() = ComposerFrame("把圈出的杯子换成红色。", attachments = true, annotated = true)
+
+@PreviewTest
 @Preview(name = "输入任务状态 深中411", widthDp = 411, heightDp = 202, locale = "zh-rCN")
 @Composable
 fun chatComposerTaskBatch2Preview() = ComposerFrame("继续核对报告。", task = true)
@@ -132,6 +138,7 @@ private fun ComposerFrame(
     text: String = "", generating: Boolean = false, attachments: Boolean = false, task: Boolean = false,
     modelName: String = "Gemini 2.5 Flash", retry: GenerationRetry? = null, reasoning: ChatReasoningControl? = null,
     executionMode: com.promenar.infinity.ui.common.ExecutionMode? = null, dark: Boolean = true,
+    annotated: Boolean = false,
 ) {
     ChatBatch2Frame(dark) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -153,10 +160,22 @@ private fun ComposerFrame(
                     if (attachments) CompositionLocalProvider(
                         LocalAsyncImagePreviewHandler provides AsyncImagePreviewHandler { ColorImage(0xFF426A85.toInt()) },
                     ) {
-                        ChatComposerAttachments(
-                            imageUris = listOf(Uri.parse("content://preview/chat-image")),
-                            documents = listOf(batch2Document()), isImporting = false,
-                        )
+                        if (annotated) {
+                            ChatComposerAttachments(
+                                imageUris = listOf("a", "b", "c").map { Uri.parse("content://preview/chat-image-$it") },
+                                documents = emptyList(), isImporting = false,
+                                imageAnnotationKinds = listOf(
+                                    com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP, null,
+                                    com.promenar.infinity.domain.media.ImageAnnotationKind.SKETCH,
+                                ),
+                                onEditImage = {},
+                            )
+                        } else {
+                            ChatComposerAttachments(
+                                imageUris = listOf(Uri.parse("content://preview/chat-image")),
+                                documents = listOf(batch2Document()), isImporting = false,
+                            )
+                        }
                     }
                 },
             )

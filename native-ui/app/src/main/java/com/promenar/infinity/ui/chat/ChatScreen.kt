@@ -100,6 +100,9 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Gesture
+import androidx.compose.material.icons.rounded.Brush
+import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
@@ -271,6 +274,8 @@ data class ChatScreenState(
     /** 等待内置 Tailscale 接入时的连接浮窗内容。 */
     val tailnetWait: com.promenar.infinity.data.generation.TailnetWaitState? = null,
     val selectedImageUris: List<android.net.Uri> = emptyList(),
+    /** 与 [selectedImageUris] 按位对应：经画板处理过的图片的画法，用于缩略图角标。 */
+    val selectedImageAnnotationKinds: List<com.promenar.infinity.domain.media.ImageAnnotationKind?> = emptyList(),
     val draftDocuments: List<MessageDocumentAttachment> = emptyList(),
     /** 草稿文档的上下文预算；预算按最新草稿重算期间为 null。 */
     val draftDocumentBudget: com.promenar.infinity.data.generation.DraftDocumentBudget? = null,
@@ -391,6 +396,10 @@ data class ChatScreenActions(
     val onPickDocuments: () -> Unit = {},
     val onRemoveImage: (Int) -> Unit = {},
     val onRemoveDocument: (String) -> Unit = {},
+    /** 点输入框里的图片进画板标注；为 null 时缩略图不可点。 */
+    val onEditImage: ((Int) -> Unit)? = null,
+    /** 附件菜单的“手绘草图”；为 null 时不显示该项。 */
+    val onSketch: (() -> Unit)? = null,
     /** 把一份草稿文档转存到会话工作区，转存后以路径引用发送；为 null 时不显示该出路。 */
     val onSaveDraftDocumentToWorkspace: (suspend (String) -> com.promenar.infinity.data.document.DocumentWorkspaceSaveResult)? = null,
     /** 选字工具条的“引用”：来源消息 ID 与选中文字。 */
@@ -1496,6 +1505,8 @@ fun ChatScreenContent(
                                     isImporting = state.isImportingDocument,
                                     onRemoveImage = actions.onRemoveImage,
                                     onRemoveDocument = actions.onRemoveDocument,
+                                    imageAnnotationKinds = state.selectedImageAnnotationKinds,
+                                    onEditImage = actions.onEditImage,
                                     budgetNotice = budgetNotice,
                                     budgetNoticeFlashes = budgetNoticeFlashes,
                                     onSaveDocument = actions.onSaveDraftDocumentToWorkspace,
@@ -1772,6 +1783,7 @@ fun ChatScreenContent(
             onDismiss = { attachmentMenuExpanded = false },
             onPickImage = actions.onPickImages,
             onPickDocument = actions.onPickDocuments,
+            onSketch = actions.onSketch,
         )
     }
     }
@@ -2989,8 +3001,11 @@ internal fun ChatComposerAttachments(
     budgetNoticeFlashes: Int = 0,
     onSaveDocument: (suspend (String) -> com.promenar.infinity.data.document.DocumentWorkspaceSaveResult)? = null,
     onSwitchModel: () -> Unit = {},
+    imageAnnotationKinds: List<com.promenar.infinity.domain.media.ImageAnnotationKind?> = emptyList(),
+    onEditImage: ((Int) -> Unit)? = null,
 ) {
     if (imageUris.isEmpty() && documents.isEmpty() && !isImporting) return
+    val editDescription = stringResource(R.string.annotation_cd_edit_image)
     val removeDescription = stringResource(R.string.chat_cd_remove_document)
     val domainColors = MaterialTheme.infinityDomainColors
     // 同一张图可能被选两次，按出现次序区分，保证删除一张时其余缩略图平滑补位。
@@ -3005,14 +3020,42 @@ internal fun ChatComposerAttachments(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(imageUris.size, key = { imageKeys[it] }) { index ->
+            val annotationKind = imageAnnotationKinds.getOrNull(index)
             Box(Modifier.animateItem().size(56.dp)) {
                 coil3.compose.AsyncImage(
                     model = imageUris[index],
                     contentDescription = stringResource(R.string.chat_cd_selected_image),
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                        .then(if (onEditImage != null) Modifier.clickable(role = Role.Button, onClickLabel = editDescription) { onEditImage(index) } else Modifier),
                 )
-                IconButton(onClick = { onRemoveImage(index) }, modifier = Modifier.size(48.dp).align(Alignment.TopEnd)) {
+                if (annotationKind != null) {
+                    // 角标只用图标区分画法，不随语言与字号变长。
+                    Icon(
+                        when (annotationKind) {
+                            com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP -> Icons.Rounded.Draw
+                            com.promenar.infinity.domain.media.ImageAnnotationKind.MASK -> Icons.Rounded.Brush
+                            com.promenar.infinity.domain.media.ImageAnnotationKind.SKETCH -> Icons.Rounded.Gesture
+                        },
+                        contentDescription = stringResource(
+                            when (annotationKind) {
+                                com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP -> R.string.annotation_kind_markup
+                                com.promenar.infinity.domain.media.ImageAnnotationKind.MASK -> R.string.annotation_kind_mask
+                                com.promenar.infinity.domain.media.ImageAnnotationKind.SKETCH -> R.string.annotation_kind_sketch
+                            },
+                        ),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp).size(20.dp)
+                            .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape).padding(3.dp)
+                            .testTag(UiTags.chatImageAnnotationBadge(index)),
+                    )
+                }
+                // 移除键的 48dp 触控区以缩略图右上角为中心、向外伸出，留出大半张图给“点图标注”；图标仍画在图内。
+                Box(
+                    Modifier.align(Alignment.TopEnd).offset(x = 20.dp, y = (-20).dp).size(48.dp)
+                        .clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_cd_remove_image)) { onRemoveImage(index) },
+                    contentAlignment = Alignment.BottomStart,
+                ) {
                     Icon(Icons.Rounded.Close, stringResource(R.string.chat_cd_remove_image),
                         modifier = Modifier.size(20.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape).padding(2.dp))
                 }

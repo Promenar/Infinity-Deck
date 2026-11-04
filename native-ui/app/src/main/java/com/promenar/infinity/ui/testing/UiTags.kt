@@ -704,4 +704,13 @@ object UiTags {
     const val CHAT_SECRET_GUARD_SAVE_CONFIRM = "chat_secret_guard_save_confirm"
     const val CHAT_SECRET_GUARD_EDIT = "chat_secret_guard_edit"
     const val CHAT_SECRET_GUARD_SEND_ANYWAY = "chat_secret_guard_send_anyway"
+
+    const val ANNOTATION_EDITOR = "annotation_editor"
+    const val ANNOTATION_STAGE = "annotation_stage"
+    const val ANNOTATION_DONE = "annotation_done"
+    const val ANNOTATION_TEXT_INPUT = "annotation_text_input"
+    const val CHAT_MENU_SKETCH = "chat_menu_sketch"
+    const val IMAGE_LIGHTBOX_ANNOTATE = "image_lightbox_annotate"
+    fun annotationTool(tool: String): String = "annotation_tool:$tool"
+    fun chatImageAnnotationBadge(index: Int): String = "chat_image_annotation_badge:$index"
 }

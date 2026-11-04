@@ -18,7 +18,7 @@ internal data class QueuedUserImage(val dataUrl: String, val annotation: ImageAn
             require(preview == null || preview.context?.matches(session) == true) { "排队画板所属的会话或工作区已变化，请重新打开画板确认原图。" }
             val annotation = preview?.annotation
             val dataUrl = if (annotation != null) {
-                ChatImageEncoder.encodeToDataUrl { file.inputStream() } ?: error("无法读取排队画板预览。")
+                ChatImageEncoder.encodeAnnotatedPreview(file.readBytes()) ?: error("无法读取排队画板预览。")
             } else {
                 val bytes = file.readBytes()
                 val mime = when {

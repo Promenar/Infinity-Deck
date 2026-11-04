@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.chat
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
@@ -15,6 +17,10 @@ import java.io.InputStream
 internal object ChatImageEncoder {
     const val MAX_DIMENSION_PX = 1568
     const val JPEG_QUALITY = 85
+
+    /** 画板预览先剥离私有 `inAn` 块再解码：编辑状态不外发，部分解码器也不接受未知块。 */
+    fun encodeAnnotatedPreview(png: ByteArray): String? =
+        runCatching { ImageAnnotationPreviewCodec.strip(png) }.getOrNull()?.let { stripped -> encodeToDataUrl { ByteArrayInputStream(stripped) } }
 
     fun encodeToDataUrl(openStream: () -> InputStream?): String? = try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

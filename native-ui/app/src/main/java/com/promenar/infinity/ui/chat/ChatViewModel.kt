@@ -1336,7 +1336,7 @@ class ChatViewModel(
                     }
                     val imageDataUrls = if (imageUris.isNotEmpty()) {
                         val converted = withContext(Dispatchers.IO) {
-                            imageUris.map { uri -> uriToDataUrl(uri) }
+                            imageUris.mapIndexed { index, uri -> uriToDataUrl(uri, annotated = imageAnnotations[index] != null) }
                         }
                         if (converted.any { it == null }) {
                             restoreSubmittedDraft(sessionId)
@@ -1627,7 +1627,9 @@ class ChatViewModel(
                             _generationStatus.value = GenerationStatus.UPLOADING
                             val imageAnnotations = item.imagePaths.map { readAnnotationForSend(Uri.fromFile(java.io.File(it)), session) }
                             val images = if (item.imagePaths.isEmpty()) emptyList() else withContext(Dispatchers.IO) {
-                                item.imagePaths.map { uriToDataUrl(Uri.fromFile(java.io.File(it))) ?: error("无法读取排队图片") }
+                                item.imagePaths.mapIndexed { index, path ->
+                                    uriToDataUrl(Uri.fromFile(java.io.File(path)), annotated = imageAnnotations[index] != null) ?: error("无法读取排队图片")
+                                }
                             }
                             if (_currentSessionId.value != sessionId) {
                                 restoreSubmittedDraft(sessionId, queueReason = QueuePauseReason.INTERRUPTED)
@@ -1900,8 +1902,12 @@ class ChatViewModel(
         return@withLock true
     }
 
-    private fun uriToDataUrl(uri: Uri): String? =
-        ChatImageEncoder.encodeToDataUrl { application.contentResolver.openInputStream(uri) }
+    private fun uriToDataUrl(uri: Uri, annotated: Boolean = false): String? =
+        if (annotated) {
+            application.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let(ChatImageEncoder::encodeAnnotatedPreview)
+        } else {
+            ChatImageEncoder.encodeToDataUrl { application.contentResolver.openInputStream(uri) }
+        }
 
     private suspend fun enqueuePreparedUserTurn(
         sessionId: String,

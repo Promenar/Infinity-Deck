@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -72,6 +73,7 @@ internal fun AttachmentActionMenu(
     onPickDocument: () -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    onSketch: (() -> Unit)? = null,
 ) {
     val visibilityState = remember { MutableTransitionState(expanded) }
     visibilityState.targetState = expanded
@@ -147,6 +149,21 @@ internal fun AttachmentActionMenu(
                                     onPickImage()
                                 },
                             )
+                            if (onSketch != null) {
+                                AttachmentAction(
+                                    label = stringResource(R.string.annotation_menu_sketch),
+                                    hint = stringResource(R.string.annotation_menu_sketch_hint),
+                                    icon = Icons.Rounded.Draw,
+                                    tileColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    enabled = enabled,
+                                    modifier = Modifier.testTag(UiTags.CHAT_MENU_SKETCH),
+                                    onClick = {
+                                        onDismiss()
+                                        onSketch()
+                                    },
+                                )
+                            }
                             AttachmentAction(
                                 label = stringResource(R.string.chat_menu_attach_document),
                                 hint = stringResource(R.string.chat_menu_attach_document_hint),
