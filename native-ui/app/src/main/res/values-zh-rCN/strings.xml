@@ -455,8 +455,8 @@
     <string name="chat_input_placeholder">给 %1$s 发消息</string>
     <string name="chat_input_placeholder_default">发消息</string>
     <string name="chat_execution_mode_cd">审批：%1$s</string>
-    <string name="chat_execution_mode_workspace_hint">每条命令都要你批准</string>
-    <string name="chat_execution_mode_full_access_hint">命令不再问你，可读写全部应用数据</string>
+    <string name="chat_execution_mode_workspace_hint">逐条批准命令</string>
+    <string name="chat_execution_mode_full_access_hint">命令直接执行</string>
     <string name="chat_input_placeholder_generating">写下一条，发送后排队</string>
     <string name="chat_empty_prompt">今天想做点什么？</string>
     <string name="chat_cd_workspace">工作区</string>

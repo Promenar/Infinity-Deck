@@ -98,15 +98,14 @@ internal fun ExecutionModeButton(
             ExecutionMode.entries.forEach { option ->
                 InfinityMenuItem(
                     text = {
-                        // 浮层只放标题和一句短说明，完整解释在“Agent 可达范围”面板。菜单宽度有上限，
-                        // 说明在窄屏、大字号或英文下放不下一行时换到第二行，不截断。
+                        // 浮层只放标题和一行短说明，完整解释在“Agent 可达范围”面板；说明须短到菜单宽度内放得下一行。
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(stringResource(option.labelRes), style = InfinityTypography.labelLarge, maxLines = 1)
                             Text(
                                 stringResource(option.hintRes()),
                                 style = InfinityTypography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
+                                maxLines = 1,
                             )
                         }
                     },

@@ -455,8 +455,8 @@
     <string name="chat_input_placeholder">Message %1$s</string>
     <string name="chat_input_placeholder_default">Message</string>
     <string name="chat_execution_mode_cd">Approvals: %1$s</string>
-    <string name="chat_execution_mode_workspace_hint">Commands need your approval</string>
-    <string name="chat_execution_mode_full_access_hint">Commands run without asking, full app data access</string>
+    <string name="chat_execution_mode_workspace_hint">Approve each command</string>
+    <string name="chat_execution_mode_full_access_hint">Commands run directly</string>
     <string name="chat_input_placeholder_generating">Queue your next message</string>
     <string name="chat_empty_prompt">What would you like to do today?</string>
     <string name="chat_cd_workspace">Workspace</string>
