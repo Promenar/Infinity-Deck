@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.0-beta] - 2026-11-04
+
 ### 新功能
 
 - 资料页改版：内屏两列（视图、位置、固定的文件夹、智能体记住的）加右列页面栈，可展开占满内屏；外屏为单页栈首页（问资料、四个入口、概览）。概览提供待处理文档的重试与重建、最近加入与收集卡；文档页提供阅读与“智能体视角”。
