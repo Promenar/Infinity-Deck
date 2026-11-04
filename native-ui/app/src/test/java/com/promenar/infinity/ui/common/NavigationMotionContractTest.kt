@@ -197,9 +197,10 @@ class NavigationMotionContractTest {
         assertThat(source("chat/ChatRoute.kt")).contains("generationStartedAt = generationProgress?.startedAt")
         // 生成中输入框仍可编辑。
         assertThat(chat).contains("enabled = true")
-        // 宽窗口运行信息收进浮动检视器的“运行”页签，浮岛同时隐藏运行坞；检视器与运行详情面板共用同一份运行详情正文。
+        // 宽窗口运行详情在浮动检视器的“运行”页签，浮岛照样显示运行坞，点按打开检视器运行页；检视器与运行详情面板共用同一份运行详情正文。
         assertThat(chat).contains("com.promenar.infinity.ui.common.LocalInfinityInspectorLayout.current")
-        assertThat(chat).contains("runDockVisible = dock != null && !inspectorMode")
+        assertThat(chat).contains("runDockVisible = dock != null,")
+        assertThat(chat).contains("actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))")
         assertThat(chat).contains("ChatInspectorCard(")
         assertThat(chat).contains("RunDetailContent(")
         assertThat(chat.split("RunDetailSheet(").size - 1).isEqualTo(1)

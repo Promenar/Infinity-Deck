@@ -9,4 +9,7 @@
     <string name="chat_timed_grant_active">%1$s免审批 · 剩 %2$d 分钟</string>
     <string name="chat_timed_grant_revoke">恢复逐次审批</string>
     <string name="chat_execution_mode_timed_cd">%1$s，限时免审批生效中</string>
+    <string name="chat_execution_mode_pending_cd">%1$d 项待批准，双击查看，长按切换审批模式</string>
+    <string name="chat_execution_mode_jump_label">查看待批准</string>
+    <string name="chat_execution_mode_menu_label">切换审批模式</string>
 </resources>

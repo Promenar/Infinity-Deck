@@ -348,4 +348,34 @@ class GenerationMotionTest {
         assertTrue((0 until 200).none { actOn(it % 6, it * 0.013f, act = 0f) })
         assertTrue((0 until 200).any { actOn(it % 6, it * 0.013f, act = 1f) })
     }
+
+    @Test
+    fun `本轮结束时记下波形与平均速率，速率表清零后运行坞点阵屏仍能停在本轮`() {
+        val motion = GenerationMotion(GenerationMotion.Source.LIVE)
+        motion.update(GenerationMotionPhase.STREAM, retry = null, outputLength = 0, animate = true)
+        for (i in 1..20) {
+            motion.run(0.1f)
+            motion.update(GenerationMotionPhase.STREAM, retry = null, outputLength = i * 6, animate = true)
+        }
+        motion.run(0.2f)
+        assertEquals(0f, motion.lastRunRate, 0f)
+        motion.update(null, retry = null, outputLength = 120, animate = true)
+        // 120 字，首字到末字约 1.9 秒。
+        assertEquals(120f / 1.9f, motion.lastRunRate, 1.5f)
+        assertTrue(motion.lastRunLevel(0) > 0.1f)
+        assertEquals(0f, motion.lastRunLevel(OutputRateMeter.HistorySize), 0f)
+        // 下一轮开始后，结束前仍是上一轮的。
+        motion.update(GenerationMotionPhase.WAIT, retry = null, outputLength = 0, animate = true)
+        assertEquals(120f / 1.9f, motion.lastRunRate, 1.5f)
+    }
+
+    @Test
+    fun `没有出过字的一轮平均速率为零`() {
+        val motion = GenerationMotion(GenerationMotion.Source.LIVE)
+        motion.update(GenerationMotionPhase.WAIT, retry = null, outputLength = 0, animate = true)
+        motion.run(1f)
+        motion.update(null, retry = null, outputLength = 0, animate = true)
+        assertEquals(0f, motion.lastRunRate, 0f)
+        assertEquals(0f, motion.lastRunLevel(0), 0f)
+    }
 }

@@ -13,14 +13,18 @@ enum class ComposerGlowStyle {
     MESH,
     /** 底沿内侧两排细灯，数据包从左往右流过。 */
     BOTTOM_STRIP,
-    /** 一块点阵信息屏：左侧数字读数，右侧不断左移的速率柱状图；位置与数字见 [ScopeScreenPlacement] 与 [InfinityMotionStyles.scopeDigits]。 */
-    SCOPE_SCREEN,
+    /** 不画额外流光，只保留浮岛材质自带的生成光（环境光漫色或毛玻璃）；生成状态交给运行坞点阵屏表达。 */
+    MATERIAL_ONLY,
     /** 斜向光带扫过浮岛里隐藏的灯珠墙。 */
     SWEEP_GRID;
 
     companion object {
+        /** 点阵屏拆进运行坞前的取值；读到时按仅材质光处理，点阵屏改由 [InfinityMotionStyles.runDockScope] 控制。 */
+        internal const val LegacyScopeScreenValue = "scope_screen"
+
         internal fun fromPreferenceValue(value: String?): ComposerGlowStyle =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: SCOPE_SCREEN
+            if (value.equals(LegacyScopeScreenValue, ignoreCase = true)) MATERIAL_ONLY
+            else entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: MATERIAL_ONLY
     }
 }
 
@@ -28,25 +32,12 @@ enum class ComposerGlowStyle {
 enum class ComposerSurfaceStyle {
     /** 毛玻璃：半透明表面，背后的会话内容实时模糊，上沿一道细高光；生成光效沿用所选流光样式但减弱。 */
     FROSTED,
-    /** 环境光：实色表面，不画超出浮岛边界的光晕；生成时阶段色从点阵屏一侧在浮岛内部漫开。 */
+    /** 环境光：实色表面，不画超出浮岛边界的光晕；生成时阶段色从运行坞点阵屏一侧在浮岛内部漫开。 */
     AMBIENT;
 
     companion object {
         internal fun fromPreferenceValue(value: String?): ComposerSurfaceStyle =
             entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: AMBIENT
-    }
-}
-
-/** 点阵波形屏在浮岛里的位置。 */
-enum class ScopeScreenPlacement {
-    /** 输入行右侧一块 7 行点阵。 */
-    INPUT_ROW,
-    /** 浮岛顶沿一条 5 行点阵，铺满浮岛内宽，浮岛相应增高；运行坞出现时位于运行坞与输入区的接缝处。 */
-    TOP_EDGE;
-
-    companion object {
-        internal fun fromPreferenceValue(value: String?): ScopeScreenPlacement =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: INPUT_ROW
     }
 }
 
@@ -116,14 +107,14 @@ enum class InfinitySchemeStyle {
 /** 默认值只作用于从未手动选择过的用户：偏好里没有对应键时才回退到这里，选择过的值原样保留。 */
 @Immutable
 data class InfinityMotionStyles(
-    val composer: ComposerGlowStyle = ComposerGlowStyle.SCOPE_SCREEN,
+    val composer: ComposerGlowStyle = ComposerGlowStyle.MATERIAL_ONLY,
     val indicator: GenerationIndicatorStyle = GenerationIndicatorStyle.MATRIX,
     val emptyChat: EmptyChatStyle = EmptyChatStyle.LED_MORPH,
     /** 输入框浮岛的材质。 */
     val surface: ComposerSurfaceStyle = ComposerSurfaceStyle.AMBIENT,
-    /** 点阵波形屏的位置，只在 [composer] 为 [ComposerGlowStyle.SCOPE_SCREEN] 时生效。 */
-    val scopePlacement: ScopeScreenPlacement = ScopeScreenPlacement.INPUT_ROW,
-    /** 点阵波形屏是否显示数字读数；关闭时波形铺满整块屏。 */
+    /** 运行坞右侧是否显示点阵波形屏；与 [composer] 的浮岛流光互相独立。 */
+    val runDockScope: Boolean = true,
+    /** 运行坞点阵屏是否显示数字读数；关闭时波形铺满整块屏。 */
     val scopeDigits: Boolean = true,
 )
 

@@ -233,7 +233,7 @@ class ThemePreferenceStoreTest {
     }
 
     @Test
-    fun `从未选择过动效时走新默认值：点阵波形屏、运算矩阵、灯珠变形与环境光`() {
+    fun `从未选择过动效时走新默认值：仅材质光加运行坞点阵屏、运算矩阵、灯珠变形与环境光`() {
         val prefs = mockk<SharedPreferences>(relaxed = true) {
             every { getString(any(), any()) } returns null
             every { contains(any()) } returns false
@@ -241,8 +241,8 @@ class ThemePreferenceStoreTest {
 
         val motion = ThemePreferenceStore(contextFor(prefs)).state.value.motion
 
-        assertThat(motion.composer).isEqualTo(ComposerGlowStyle.SCOPE_SCREEN)
-        assertThat(motion.scopePlacement).isEqualTo(ScopeScreenPlacement.INPUT_ROW)
+        assertThat(motion.composer).isEqualTo(ComposerGlowStyle.MATERIAL_ONLY)
+        assertThat(motion.runDockScope).isTrue()
         assertThat(motion.scopeDigits).isTrue()
         assertThat(motion.indicator).isEqualTo(GenerationIndicatorStyle.MATRIX)
         assertThat(motion.emptyChat).isEqualTo(EmptyChatStyle.LED_MORPH)
@@ -268,11 +268,44 @@ class ThemePreferenceStoreTest {
     }
 
     @Test
+    fun `选过旧点阵波形屏流光的用户迁成仅材质光，点阵屏留在运行坞`() {
+        val prefs = mockk<SharedPreferences>(relaxed = true) {
+            every { getString("motion_composer_glow", any()) } returns "scope_screen"
+            every { getString("motion_scope_placement", any()) } returns "top_edge"
+            every { contains(any()) } returns false
+            every { contains("motion_composer_glow") } returns true
+            every { contains("motion_scope_placement") } returns true
+        }
+
+        val motion = ThemePreferenceStore(contextFor(prefs)).state.value.motion
+
+        assertThat(motion.composer).isEqualTo(ComposerGlowStyle.MATERIAL_ONLY)
+        assertThat(motion.runDockScope).isTrue()
+        assertThat(motion.scopeDigits).isTrue()
+    }
+
+    @Test
+    fun `运行坞点阵屏开关写入后读回`() {
+        val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+        every { editor.putBoolean(any(), any()) } returns editor
+        val prefs = mockk<SharedPreferences>(relaxed = true) {
+            every { edit() } returns editor
+            every { contains("motion_run_dock_scope") } returns true
+            every { getBoolean("motion_run_dock_scope", any()) } returns false
+        }
+        val store = ThemePreferenceStore(contextFor(prefs))
+        assertThat(store.state.value.motion.runDockScope).isFalse()
+        store.setRunDockScope(true)
+        assertThat(store.state.value.motion.runDockScope).isTrue()
+        verify { editor.putBoolean("motion_run_dock_scope", true) }
+    }
+
+    @Test
     fun `浮岛材质回退与写入`() {
         assertThat(ComposerSurfaceStyle.fromPreferenceValue(null)).isEqualTo(ComposerSurfaceStyle.AMBIENT)
         assertThat(ComposerSurfaceStyle.fromPreferenceValue("glassy")).isEqualTo(ComposerSurfaceStyle.AMBIENT)
         assertThat(ComposerSurfaceStyle.fromPreferenceValue("FROSTED")).isEqualTo(ComposerSurfaceStyle.FROSTED)
-        assertThat(ComposerGlowStyle.fromPreferenceValue("removed")).isEqualTo(ComposerGlowStyle.SCOPE_SCREEN)
+        assertThat(ComposerGlowStyle.fromPreferenceValue("removed")).isEqualTo(ComposerGlowStyle.MATERIAL_ONLY)
         assertThat(GenerationIndicatorStyle.fromPreferenceValue(null)).isEqualTo(GenerationIndicatorStyle.MATRIX)
         assertThat(EmptyChatStyle.fromPreferenceValue("led_morph")).isEqualTo(EmptyChatStyle.LED_MORPH)
 

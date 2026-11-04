@@ -22,7 +22,7 @@ class ThemePreferenceStore(context: Context) {
         const val COMPOSER_GLOW_STYLE_KEY = "motion_composer_glow"
         const val INDICATOR_STYLE_KEY = "motion_generation_indicator"
         const val EMPTY_CHAT_STYLE_KEY = "motion_empty_chat"
-        const val SCOPE_PLACEMENT_KEY = "motion_scope_placement"
+        const val RUN_DOCK_SCOPE_KEY = "motion_run_dock_scope"
         const val SCOPE_DIGITS_KEY = "motion_scope_digits"
         const val COMPOSER_SURFACE_KEY = "motion_composer_surface"
         const val RECENT_CUSTOM_COLORS_KEY = "theme_recent_custom_colors"
@@ -46,7 +46,7 @@ class ThemePreferenceStore(context: Context) {
             COMPOSER_GLOW_STYLE_KEY,
             INDICATOR_STYLE_KEY,
             EMPTY_CHAT_STYLE_KEY,
-            SCOPE_PLACEMENT_KEY,
+            RUN_DOCK_SCOPE_KEY,
             SCOPE_DIGITS_KEY,
             COMPOSER_SURFACE_KEY,
             RECENT_CUSTOM_COLORS_KEY,
@@ -141,9 +141,9 @@ class ThemePreferenceStore(context: Context) {
         preferences.edit().putString(EMPTY_CHAT_STYLE_KEY, style.name.lowercase()).apply()
     }
 
-    fun setScopePlacement(placement: ScopeScreenPlacement) {
-        _state.value = _state.value.copy(motion = _state.value.motion.copy(scopePlacement = placement))
-        preferences.edit().putString(SCOPE_PLACEMENT_KEY, placement.name.lowercase()).apply()
+    fun setRunDockScope(enabled: Boolean) {
+        _state.value = _state.value.copy(motion = _state.value.motion.copy(runDockScope = enabled))
+        preferences.edit().putBoolean(RUN_DOCK_SCOPE_KEY, enabled).apply()
     }
 
     fun setScopeDigits(enabled: Boolean) {
@@ -198,7 +198,8 @@ class ThemePreferenceStore(context: Context) {
             indicator = GenerationIndicatorStyle.fromPreferenceValue(preferences.getString(INDICATOR_STYLE_KEY, null)),
             emptyChat = EmptyChatStyle.fromPreferenceValue(preferences.getString(EMPTY_CHAT_STYLE_KEY, null)),
             surface = ComposerSurfaceStyle.fromPreferenceValue(preferences.getString(COMPOSER_SURFACE_KEY, null)),
-            scopePlacement = ScopeScreenPlacement.fromPreferenceValue(preferences.getString(SCOPE_PLACEMENT_KEY, null)),
+            // 缺省显示；选过旧“点阵波形屏”流光的用户迁成仅材质光，点阵屏照样在运行坞里。
+            runDockScope = !preferences.contains(RUN_DOCK_SCOPE_KEY) || preferences.getBoolean(RUN_DOCK_SCOPE_KEY, true),
             // 缺省显示数字。
             scopeDigits = !preferences.contains(SCOPE_DIGITS_KEY) || preferences.getBoolean(SCOPE_DIGITS_KEY, true),
         ),

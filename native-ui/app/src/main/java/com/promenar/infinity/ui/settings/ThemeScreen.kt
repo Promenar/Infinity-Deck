@@ -102,7 +102,7 @@ fun ThemeScreen(onNavigateBack: () -> Unit) {
         onComposerGlowSelect = viewModel::setComposerGlowStyle,
         onIndicatorSelect = viewModel::setGenerationIndicatorStyle,
         onEmptyChatSelect = viewModel::setEmptyChatStyle,
-        onScopePlacementSelect = viewModel::setScopePlacement,
+        onRunDockScopeChange = viewModel::setRunDockScope,
         onScopeDigitsChange = viewModel::setScopeDigits,
         onComposerSurfaceSelect = viewModel::setComposerSurfaceStyle,
     )
@@ -127,7 +127,7 @@ fun ThemeScreenContent(
     onComposerGlowSelect: (ComposerGlowStyle) -> Unit = {},
     onIndicatorSelect: (GenerationIndicatorStyle) -> Unit = {},
     onEmptyChatSelect: (EmptyChatStyle) -> Unit = {},
-    onScopePlacementSelect: (com.promenar.infinity.ui.theme.ScopeScreenPlacement) -> Unit = {},
+    onRunDockScopeChange: (Boolean) -> Unit = {},
     onScopeDigitsChange: (Boolean) -> Unit = {},
     onComposerSurfaceSelect: (com.promenar.infinity.ui.theme.ComposerSurfaceStyle) -> Unit = {},
 ) {
@@ -193,7 +193,7 @@ fun ThemeScreenContent(
                         onComposerSelect = onComposerGlowSelect,
                         onIndicatorSelect = onIndicatorSelect,
                         onEmptyChatSelect = onEmptyChatSelect,
-                        onScopePlacementSelect = onScopePlacementSelect,
+                        onRunDockScopeChange = onRunDockScopeChange,
                         onScopeDigitsChange = onScopeDigitsChange,
                         onSurfaceSelect = onComposerSurfaceSelect,
                     )

@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,11 +32,26 @@ internal fun ChatCompactIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     containerColor: Color = Color.Transparent,
+    /** 长按动作；为 null 时只响应点按。 */
+    onLongClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    onLongClickLabel: String? = null,
     content: @Composable () -> Unit,
 ) {
+    val base = modifier.size(ChatCompactIconSize).clip(CircleShape).background(containerColor)
     Box(
-        modifier = modifier.size(ChatCompactIconSize).clip(CircleShape).background(containerColor)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        modifier = if (onLongClick == null) {
+            base.clickable(enabled = enabled, onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+        } else {
+            base.combinedClickable(
+                enabled = enabled,
+                onClickLabel = onClickLabel,
+                role = Role.Button,
+                onLongClickLabel = onLongClickLabel,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            )
+        },
         contentAlignment = Alignment.Center,
     ) { content() }
 }

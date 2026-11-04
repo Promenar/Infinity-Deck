@@ -76,8 +76,8 @@ class ThemeViewModel(
         store.setEmptyChatStyle(style)
     }
 
-    fun setScopePlacement(placement: com.promenar.infinity.ui.theme.ScopeScreenPlacement) {
-        store.setScopePlacement(placement)
+    fun setRunDockScope(enabled: Boolean) {
+        store.setRunDockScope(enabled)
     }
 
     fun setScopeDigits(enabled: Boolean) {

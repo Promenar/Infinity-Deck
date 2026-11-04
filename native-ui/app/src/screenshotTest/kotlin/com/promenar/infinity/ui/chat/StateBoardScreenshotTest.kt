@@ -49,7 +49,6 @@ private const val STATE_NOW = 1_792_400_000_000L
                 RunDockRow(
                     state = requireNotNull(runDockState(null, false, 0, 0, 0, board.title, null)),
                     onOpen = {},
-                    onJumpToApproval = {},
                 )
             }
         }

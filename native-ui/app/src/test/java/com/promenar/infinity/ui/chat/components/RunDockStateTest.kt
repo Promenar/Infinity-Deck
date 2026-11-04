@@ -161,4 +161,13 @@ class RunDockStateTest {
         assertThat(runDockDefaultTab(RunDockLabel.WaitingApproval)).isNull()
         assertThat(runDockDefaultTab(RunDockLabel.PlanCompleted)).isNull()
     }
+
+    @Test
+    fun `点阵屏随运行坞状态切换：生成与等待实时、完成停在本轮、暂停调暗、只有后台任务留底格`() {
+        assertThat(runDockScopeMode(RunDockTone.RUNNING)).isEqualTo(RunDockScopeMode.LIVE)
+        assertThat(runDockScopeMode(RunDockTone.WAITING)).isEqualTo(RunDockScopeMode.LIVE)
+        assertThat(runDockScopeMode(RunDockTone.DONE)).isEqualTo(RunDockScopeMode.REST)
+        assertThat(runDockScopeMode(RunDockTone.PAUSED)).isEqualTo(RunDockScopeMode.PAUSED)
+        assertThat(runDockScopeMode(RunDockTone.IDLE)).isEqualTo(RunDockScopeMode.OFF)
+    }
 }

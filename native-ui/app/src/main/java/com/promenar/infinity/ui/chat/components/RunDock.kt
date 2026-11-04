@@ -1,29 +1,30 @@
 package com.promenar.infinity.ui.chat.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -31,10 +32,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -43,121 +52,211 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.chat.ComposerLightsPainter
+import com.promenar.infinity.ui.chat.LocalComposerGlow
+import com.promenar.infinity.ui.chat.ScopeScreenSpec
+import com.promenar.infinity.ui.chat.drawScopeFrame
+import com.promenar.infinity.ui.chat.drawScopeGrid
+import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
+import com.promenar.infinity.ui.common.motion.LocalGenerationMotion
+import com.promenar.infinity.ui.common.motion.rememberMotionPalette
 import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import kotlin.math.max
 import kotlinx.coroutines.delay
 
 /**
- * 输入浮岛顶层的运行坞：一行显示当前在做什么、计划进度（“2/5”）与本轮用时，右侧是待批准、后台任务与状态面板的入口，
- * 点按任意处打开运行详情。与输入区之间的细灯带（或顶沿模式的点阵屏）由浮岛绘制。
- * [startedAt] 为本轮开始时间（毫秒），不为 null 时用时每秒刷新，只重组运行坞这一行。
+ * 输入浮岛顶层的运行坞：一行显示当前在做什么、计划进度（“2/5”）与本轮用时，最左是后台任务圆环（或完成、暂停标记），
+ * 右侧是状态面板入口与点阵波形屏（[RunDockScope]）；点按整行打开运行详情。待批准数由工具行的执行模式盾牌承载，锁定触摸在顶栏。
+ * 与输入区之间的细灯带由浮岛绘制。[startedAt] 为本轮开始时间（毫秒），不为 null 时用时每秒刷新，只重组运行坞这一行。
  */
 @Composable
 internal fun RunDockRow(
     state: RunDockUiState,
     onOpen: (RunDetailTab?) -> Unit,
-    onJumpToApproval: () -> Unit,
     modifier: Modifier = Modifier,
     startedAt: Long? = null,
-    /** 生成中显示锁按钮，点按锁定触摸；为 null 时不显示。 */
-    onLockTouch: (() -> Unit)? = null,
 ) {
     val label = runDockLabelText(state.label)
     val elapsedSeconds by rememberRunElapsedSeconds(startedAt)
     val meta = runDockMetaText(state, elapsedSeconds)
     val openLabel = stringResource(R.string.run_dock_open)
-    Column(modifier.fillMaxWidth().testTag(UiTags.CHAT_RUN_DOCK)) {
+    val jobsLabel = when {
+        state.runningJobs > 0 -> pluralStringResource(R.plurals.agent_jobs_running, state.runningJobs, state.runningJobs)
+        state.enabledSchedules > 0 -> pluralStringResource(R.plurals.agent_schedules_count, state.enabledSchedules, state.enabledSchedules)
+        else -> null
+    }
+    val showBoard = state.hasStateBoard && state.label !is RunDockLabel.Board
+    val showScope = LocalInfinityMotionStyles.current.runDockScope
+    val leading = jobsLabel != null || state.tone == RunDockTone.DONE || state.tone == RunDockTone.PAUSED || state.tone == RunDockTone.IDLE
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(modifier.fillMaxWidth().testTag(UiTags.CHAT_RUN_DOCK)) {
+        // 点阵屏宽度随剩余空间伸缩：先给文字留够（至多 150dp 随字号放大、不超过行宽 42%），余下的给屏，限在 72～140dp。
+        val labelReserve = minOf(RunDockLabelReserve * fontScale, maxWidth * 0.42f) + if (leading) 44.dp else 12.dp
+        val boardReserve = if (showBoard) RunDockBoardChipWidth + RunDockGap else 0.dp
+        val scopeWidth = (maxWidth - labelReserve - boardReserve - RunDockEndPadding - RunDockGap)
+            .coerceIn(ScopeScreenSpec.MinWidthDp.dp, ScopeScreenSpec.MaxWidthDp.dp)
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(end = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                .clickable(onClickLabel = openLabel, role = Role.Button) { onOpen(runDockDefaultTab(state.label)) }
+                // 没有前置标记时文字与输入区文字左缘对齐；有标记时标记略向左探出。
+                .padding(start = if (leading) 8.dp else 12.dp, end = RunDockEndPadding)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = listOfNotNull(label, meta, jobsLabel).filter(String::isNotBlank).joinToString("，")
+                }
+                .testTag(UiTags.CHAT_RUN_DOCK_MAIN),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(RunDockGap),
         ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .clickable(onClickLabel = openLabel, role = Role.Button) { onOpen(runDockDefaultTab(state.label)) }
-                    // 与输入区文字左缘对齐。
-                    .padding(start = 12.dp)
-                    .semantics(mergeDescendants = true) {
-                        contentDescription = listOf(label, meta).filter(String::isNotBlank).joinToString("，")
+            if (leading) {
+                Box(Modifier.size(28.dp).testTag(if (jobsLabel != null) UiTags.CHAT_RUN_DOCK_JOBS else UiTags.CHAT_RUN_DOCK_LEAD), contentAlignment = Alignment.Center) {
+                    when {
+                        state.runningJobs > 0 -> RunDockJobsRing(state.runningJobs, spinning = true)
+                        state.enabledSchedules > 0 -> RunDockJobsRing(state.enabledSchedules, spinning = false)
+                        else -> RunDockDot(state.tone)
                     }
-                    .testTag(UiTags.CHAT_RUN_DOCK_MAIN),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                RunDockDot(state.tone)
-                // 标签与进度同一行文字：窄屏大字号时先截掉尾部的进度与用时，保住当前在做什么。
-                val metaStyle = MaterialTheme.typography.labelMedium
-                val metaColor = MaterialTheme.colorScheme.onSurfaceVariant
-                Text(
-                    text = buildAnnotatedString {
-                        append(label)
-                        if (meta.isNotBlank()) {
-                            append("\u2002")
-                            withStyle(SpanStyle(fontSize = metaStyle.fontSize, color = metaColor, fontFeatureSettings = "tnum")) { append(meta) }
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                }
             }
-            if (state.pendingApprovals > 0) {
+            // 标签与进度同一行文字：窄屏大字号时先截掉尾部的进度与用时，保住当前在做什么。
+            val metaStyle = MaterialTheme.typography.labelMedium
+            val metaColor = MaterialTheme.colorScheme.onSurfaceVariant
+            Text(
+                text = buildAnnotatedString {
+                    append(label)
+                    if (meta.isNotBlank()) {
+                        append("\u2002")
+                        withStyle(SpanStyle(fontSize = metaStyle.fontSize, color = metaColor, fontFeatureSettings = "tnum")) { append(meta) }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (showBoard) {
                 RunDockChip(
-                    onClick = onJumpToApproval,
-                    label = stringResource(R.string.run_dock_jump_approval_cd, state.pendingApprovals),
-                    container = MaterialTheme.infinityDomainColors.warningContainer,
-                    content = MaterialTheme.infinityDomainColors.onWarningContainer,
-                    tag = UiTags.CHAT_RUN_DOCK_APPROVAL,
+                    onClick = { onOpen(RunDetailTab.STATE) },
+                    label = stringResource(R.string.state_open),
+                    tag = UiTags.CHAT_RUN_DOCK_STATE,
+                    square = true,
                 ) {
-                    Text(
-                        pluralStringResource(R.plurals.run_dock_pending_approvals, state.pendingApprovals, state.pendingApprovals),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                    )
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                }
-            } else {
-                if (state.runningJobs > 0 || state.enabledSchedules > 0) {
-                    val jobsLabel = when {
-                        state.runningJobs > 0 -> pluralStringResource(R.plurals.agent_jobs_running, state.runningJobs, state.runningJobs)
-                        else -> pluralStringResource(R.plurals.agent_schedules_count, state.enabledSchedules, state.enabledSchedules)
-                    }
-                    RunDockChip(onClick = { onOpen(RunDetailTab.BACKGROUND) }, label = jobsLabel, tag = UiTags.CHAT_RUN_DOCK_JOBS) {
-                        if (state.runningJobs > 0) {
-                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                            Text("${state.runningJobs}", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
-                        } else {
-                            Icon(Icons.Rounded.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Text("${state.enabledSchedules}", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
-                        }
-                    }
-                }
-                if (state.hasStateBoard && state.label !is RunDockLabel.Board) {
-                    RunDockChip(
-                        onClick = { onOpen(RunDetailTab.STATE) },
-                        label = stringResource(R.string.state_open),
-                        tag = UiTags.CHAT_RUN_DOCK_STATE,
-                        square = true,
-                    ) {
-                        Icon(Icons.Rounded.TableChart, contentDescription = null, modifier = Modifier.size(15.dp))
-                    }
+                    Icon(Icons.Rounded.TableChart, contentDescription = null, modifier = Modifier.size(15.dp))
                 }
             }
-            if (onLockTouch != null) com.promenar.infinity.ui.chat.TouchLockButton(onLock = onLockTouch)
-            IconButton(onClick = { onOpen(runDockDefaultTab(state.label)) }, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
-                Icon(
-                    Icons.Rounded.ExpandLess,
-                    contentDescription = openLabel,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
+            if (showScope) RunDockScope(runDockScopeMode(state.tone), Modifier.width(scopeWidth))
+        }
+    }
+}
+
+/** 运行坞文字至少保留的宽度（按 1 倍字号），随系统字号放大。 */
+private val RunDockLabelReserve = 150.dp
+private val RunDockBoardChipWidth = 32.dp
+private val RunDockGap = 6.dp
+private val RunDockEndPadding = 10.dp
+
+/** 后台任务圆环：圆环中间是数量；有任务在运行时转动，只有定时任务时静止。 */
+@Composable
+private fun RunDockJobsRing(count: Int, spinning: Boolean) {
+    if (spinning) {
+        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+    } else {
+        CircularProgressIndicator(
+            progress = { 1f },
+            modifier = Modifier.size(24.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.outline,
+        )
+    }
+    Text(
+        if (count > 99) "99" else "$count",
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontFeatureSettings = "tnum"),
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+    )
+}
+
+/** 运行坞点阵屏的显示方式，由运行坞状态决定。 */
+internal enum class RunDockScopeMode {
+    /** 生成中或等待审批：按生成阶段实时绘制。 */
+    LIVE,
+    /** 计划完成：完成闪绿后停在本轮波形，数字区为本轮平均速率。 */
+    REST,
+    /** 已暂停：停在本轮波形并调暗。 */
+    PAUSED,
+    /** 只有后台任务：只留熄灭的底格。 */
+    OFF,
+}
+
+internal fun runDockScopeMode(tone: RunDockTone): RunDockScopeMode = when (tone) {
+    RunDockTone.RUNNING, RunDockTone.WAITING -> RunDockScopeMode.LIVE
+    RunDockTone.DONE -> RunDockScopeMode.REST
+    RunDockTone.PAUSED -> RunDockScopeMode.PAUSED
+    RunDockTone.IDLE -> RunDockScopeMode.OFF
+}
+
+/** 运行坞点阵屏的高度：7 行点阵加屏框留白，上下再各留一点。 */
+private val RunDockScopeHeight = 30.dp
+
+/**
+ * 运行坞右侧的点阵波形屏：常驻一层熄灭的底格，屏的位置不会因状态切换空出来；生成中按阶段绘制（等待审批时“!”慢闪、
+ * 波形区为静止的第三色基线），计划完成时先随浮岛闪绿再停在本轮波形，暂停时停在本轮波形并调暗。
+ * 生成进度与时钟取自浮岛的 [LocalComposerGlow]，并把自己的中心回报给浮岛作为环境光柔光的中心。纯装饰，不进入无障碍树。
+ */
+@Composable
+internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier) {
+    val glow = LocalComposerGlow.current
+    val motion = LocalGenerationMotion.current
+    val digits = LocalInfinityMotionStyles.current.scopeDigits
+    val palette = rememberMotionPalette()
+    val painter = remember { ComposerLightsPainter() }
+    val successColor = MaterialTheme.infinityDomainColors.signalOn
+    if (glow != null) {
+        DisposableEffect(glow) { onDispose { glow.scopeCenterInRoot = Offset.Unspecified } }
+    }
+    Canvas(
+        modifier
+            .height(RunDockScopeHeight)
+            .onGloballyPositioned { if (glow != null) glow.scopeCenterInRoot = it.boundsInRoot().center }
+            .clearAndSetSemantics {}
+            .testTag(UiTags.CHAT_RUN_DOCK_SCOPE),
+    ) {
+        val k = density
+        val pitch = ScopeScreenSpec.PitchDp * k
+        val inset = ScopeScreenSpec.InsetDp * k
+        val rows = ScopeScreenSpec.Rows
+        val cols = max(8, ((size.width - 2 * inset) / pitch).toInt())
+        val sx = size.width - (cols * pitch + 2 * inset)
+        val sy = (size.height - (rows * pitch + 2 * inset)) / 2
+        // 没有浮岛状态（单独预览运行坞）时，生成中按满幅显示。
+        val gen = glow?.generating?.value ?: if (mode == RunDockScopeMode.LIVE) 1f else 0f
+        val success = glow?.success?.value ?: 0f
+        val time = glow?.timeSeconds ?: 0f
+        drawIntoCanvas { canvas ->
+            val native = canvas.nativeCanvas
+            drawScopeGrid(native, k, sx, sy, cols, rows, palette, painter)
+            if (gen > 0f) for (phase in GenerationMotionPhase.entries) {
+                val weight = motion.weight(phase)
+                if (weight <= 0.004f) continue
+                drawScopeFrame(native, k, sx, sy, cols, rows, phase, gen * weight, time, motion, palette, painter, digits, drawOff = false)
+            }
+            val rest = when (mode) {
+                RunDockScopeMode.REST -> 0.8f + 0.2f * success
+                RunDockScopeMode.PAUSED -> 0.4f
+                else -> 0f
+            } * (1f - gen)
+            if (rest > 0.004f) {
+                val colors = if (success > 0f) listOf(lerp(palette.a, successColor, success), palette.b) else palette.leds
+                drawScopeFrame(
+                    native, k, sx, sy, cols, rows, GenerationMotionPhase.STREAM, rest, time, motion, palette, painter, digits,
+                    rest = true, colors = colors, drawOff = false,
                 )
             }
         }

@@ -160,9 +160,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
@@ -847,6 +849,7 @@ fun ChatScreenContent(
                     remote = if (inspectorMode) null else ChatTopBarRemote(state.remote, actions.onOpenRemote),
                     isBranch = uiState.session?.parentSessionId != null || uiState.session?.parentSessionDeleted == true,
                     branchOpenParent = branchAccess?.parentSessionId?.let { parent -> { branchAccess.onOpenSession(parent) } },
+                    touchLock = if (inspectorMode) null else ChatTopBarTouchLock(enabled = uiState.isGenerating, onLock = actions.onLockTouch),
                 )
                 if (state.startupWritePaused) {
                     com.promenar.infinity.ui.startup.StartupWritePausedBanner(onOpen = actions.onOpenStartupIssues)
@@ -1424,19 +1427,22 @@ fun ChatScreenContent(
                             onAttachmentMenuExpandedChange = { attachmentMenuExpanded = it },
                             onAttachmentAnchorBoundsChange = { attachmentAnchorInRoot = it },
                             // 运行坞：计划、生成、审批、后台任务与状态面板合成一行，清单收进运行详情，统计挂在回复下方。
-                            runDockVisible = dock != null && !inspectorMode,
+                            // 内屏也显示运行坞：点按打开检视器运行页，详情与锁定触摸留在检视器。
+                            runDockVisible = dock != null,
                             runDock = {
                                 lastDock?.let { shown ->
                                     com.promenar.infinity.ui.chat.components.RunDockRow(
                                         state = shown,
                                         onOpen = { tab ->
                                             hiddenPlanSignature = null
-                                            runSheetTab = tab
-                                            runSheetOpen = true
+                                            if (inspectorMode) {
+                                                actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
+                                            } else {
+                                                runSheetTab = tab
+                                                runSheetOpen = true
+                                            }
                                         },
-                                        onJumpToApproval = jumpToApproval,
                                         startedAt = turnStartedAt,
-                                        onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
                                     )
                                 }
                             },
@@ -1498,6 +1504,8 @@ fun ChatScreenContent(
                                 TimedGrantDisplay(timedGrantLabel(category), expiresAt)
                             },
                             onRevokeTimedGrants = actions.onRevokeTimedGrants,
+                            pendingApprovals = pendingApprovals,
+                            onJumpToApproval = jumpToApproval,
                             attachmentContent = {
                                 ChatComposerAttachments(
                                     imageUris = selectedImageUris,
@@ -2441,6 +2449,8 @@ fun ChatTopBar(
     /** 分支会话：标题前显示分支标记；主会话仍在时点按回到主会话。 */
     branchOpenParent: (() -> Unit)? = null,
     isBranch: Boolean = false,
+    /** 窄窗口 ⋮ 左侧的锁定触摸；宽窗口由检视器运行页承载，传 null。 */
+    touchLock: ChatTopBarTouchLock? = null,
 ) {
     val haptics = LocalInfinityHaptics.current
     var showMenu by remember { mutableStateOf(false) }
@@ -2615,6 +2625,17 @@ fun ChatTopBar(
                     modifier = Modifier.testTag(ChatInspectorTags.TOGGLE),
                 ) {
                     Icon(Icons.Outlined.ViewSidebar, stringResource(R.string.chat_inspector_toggle), modifier = Modifier.size(22.dp))
+                }
+            }
+            if (touchLock != null) {
+                // 不生成时保留透明占位，标题宽度与 ⋮ 的位置不随生成开始结束跳动。
+                Box(
+                    Modifier.size(InfinitySpacing.MinimumTouchTarget)
+                        .graphicsLayer { alpha = if (touchLock.enabled) 1f else 0f }
+                        .then(if (touchLock.enabled) Modifier else Modifier.clearAndSetSemantics {}),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (touchLock.enabled) TouchLockButton(onLock = touchLock.onLock, iconSize = 22.dp, tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
             Box(Modifier.infinityPopoverAnchor(menuAnchor)) {
@@ -2857,6 +2878,9 @@ internal fun chatTopBarArtifacts(inspectorMode: Boolean, count: Int, onOpen: () 
 
 /** 宽窗口顶栏的检视器入口状态。 */
 @Immutable
+/** 顶栏锁定触摸入口；[enabled] 为 false（不在生成）时只留透明占位。 */
+data class ChatTopBarTouchLock(val enabled: Boolean, val onLock: () -> Unit)
+
 data class ChatTopBarInspector(
     val open: Boolean,
     val onToggle: () -> Unit,
@@ -3269,6 +3293,9 @@ fun ChatInputBar(
     onExecutionModeChange: (com.promenar.infinity.ui.common.ExecutionMode) -> Unit = {},
     timedGrants: List<TimedGrantDisplay> = emptyList(),
     onRevokeTimedGrants: () -> Unit = {},
+    /** 待批准的数量；大于 0 时盾牌填色慢闪并显示数量，点按跳到 [onJumpToApproval]。 */
+    pendingApprovals: Int = 0,
+    onJumpToApproval: () -> Unit = {},
     attachmentContent: @Composable () -> Unit = {},
     /** 运行坞是否出现；出现时 [runDock] 作为浮岛顶层，与输入区共用底色、圆角与光效边框。 */
     runDockVisible: Boolean = false,
@@ -3337,15 +3364,15 @@ fun ChatInputBar(
         val hasAttachments = hasImages || hasDocuments || isImportingDocument
         // 灯语样式的灯效铺在浮岛底色之上、输入内容之下，随浮岛尺寸变化。
         val motionStyle = LocalInfinityMotionStyles.current.composer
-        Box {
+        // 运行坞点阵屏与盾牌从这里取光效时钟，点阵屏把自己的位置回报给浮岛作为环境光柔光的中心。
+        CompositionLocalProvider(LocalComposerGlow provides glow) {
+        Box(Modifier.onGloballyPositioned { glow.islandOriginInRoot = it.positionInRoot() }) {
         // 材质层垫在最底：毛玻璃的模糊背景，或环境光的阶段色柔光。
         ComposerIslandSurface(glow, Modifier.matchParentSize())
         ComposerIslandLights(glow, motionStyle, Modifier.matchParentSize())
         // 尺寸动画会按矩形裁剪，放在容器内部；放在外层会把圆角投影切成直角。
         Column(Modifier.animateContentSize()) {
-        // 同一浮岛只保留一条点阵带：运行坞下沿的细灯带，或顶沿模式的点阵屏（贴在输入区上沿，运行坞出现时就在接缝处）。
-        val motionStyles = LocalInfinityMotionStyles.current
-        val bands = composerBandLayout(motionStyles, runDockVisible, screenActive = isGenerating || awaitingUser)
+        // 运行坞下沿一排细灯带隔开输入区；点阵波形屏在运行坞这一行的右侧。
         AnimatedVisibility(
             visible = runDockVisible,
             enter = fadeIn(tween(220, delayMillis = 60)) + expandVertically(TaskPanelSizeSpring, expandFrom = Alignment.Bottom),
@@ -3353,19 +3380,10 @@ fun ChatInputBar(
         ) {
             Column {
                 runDock()
-                AnimatedVisibility(
-                    visible = bands.dockStrip,
-                    enter = fadeIn(tween(160)) + expandVertically(TaskPanelSizeSpring),
-                    exit = fadeOut(tween(120)) + shrinkVertically(TaskPanelSizeSpring),
-                ) { ComposerDockStrip(glow) }
+                ComposerDockStrip(glow)
             }
         }
         topContent()
-        AnimatedVisibility(
-            visible = bands.scope == ScopeSlot.ISLAND_TOP || bands.scope == ScopeSlot.DOCK_SEAM,
-            enter = fadeIn(tween(220)) + expandVertically(TaskPanelSizeSpring, expandFrom = Alignment.Bottom),
-            exit = fadeOut(tween(160)) + shrinkVertically(TaskPanelSizeSpring, shrinkTowards = Alignment.Bottom),
-        ) { ComposerScopeBand(glow) }
         Column(
             Modifier
                 .onPlaced { glow.lightsTop = it.positionInParent().y }
@@ -3429,7 +3447,14 @@ fun ChatInputBar(
                         modifier = Modifier.size(ComposerAddIconSize).rotate(attachmentIconRotation))
                 }
                 executionMode?.let { mode ->
-                    ExecutionModeButton(mode, onExecutionModeChange, timedGrants = timedGrants, onRevokeTimedGrants = onRevokeTimedGrants)
+                    ExecutionModeButton(
+                        mode,
+                        onExecutionModeChange,
+                        timedGrants = timedGrants,
+                        onRevokeTimedGrants = onRevokeTimedGrants,
+                        pendingApprovals = pendingApprovals,
+                        onJumpToApproval = onJumpToApproval,
+                    )
                 }
                 BoxWithConstraints(Modifier.weight(1f)) {
                     // 空间不足时推理强度胶囊只留灯泡，模型名优先显示。
@@ -3461,6 +3486,7 @@ fun ChatInputBar(
                     },
                 )
             }
+        }
         }
         }
         }

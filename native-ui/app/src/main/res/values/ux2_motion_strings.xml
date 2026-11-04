@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="motion_phase_thinking">Thinking</string>
-    <string name="motion_scope_placement">Screen position</string>
-    <string name="motion_scope_placement_input_row">Right of input</string>
-    <string name="motion_scope_placement_top_edge">Top edge</string>
+    <string name="motion_run_dock_scope">Run dock screen</string>
+    <string name="motion_run_dock_scope_desc">A dot-matrix screen at the right of the run dock: the output-rate waveform while generating, a blinking “!” while awaiting approval, and the turn\'s waveform once done.</string>
     <string name="motion_scope_digits">Show numbers</string>
     <string name="motion_scope_digits_desc">Seconds waited, characters per second, tool round, countdown, and the turn\'s average rate. When off, the waveform fills the screen.</string>
 </resources>

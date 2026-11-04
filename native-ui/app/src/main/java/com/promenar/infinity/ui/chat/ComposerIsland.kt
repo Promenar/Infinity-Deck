@@ -16,13 +16,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,8 +48,6 @@ import com.promenar.infinity.ui.theme.ComposerGlowStyle
 import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
-import com.promenar.infinity.ui.theme.InfinityMotionStyles
-import com.promenar.infinity.ui.theme.ScopeScreenPlacement
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.exp
 import kotlin.math.max
@@ -184,6 +185,14 @@ internal class ComposerGlowState {
     var writeHead = 0f
     /** 输入区在浮岛里的上沿（像素）；运行坞等顶层内容在它之上，灯珠墙类样式只铺到这里以下。 */
     var lightsTop by mutableFloatStateOf(0f)
+    /** 浮岛左上角在根布局里的位置（像素）。 */
+    var islandOriginInRoot by mutableStateOf(Offset.Zero)
+    /** 运行坞点阵屏中心在根布局里的位置（像素）；没有点阵屏时为 [Offset.Unspecified]。 */
+    var scopeCenterInRoot by mutableStateOf(Offset.Unspecified)
+
+    /** 运行坞点阵屏中心在浮岛里的位置；没有点阵屏时为 [Offset.Unspecified]。 */
+    val scopeCenter: Offset
+        get() = scopeCenterInRoot.takeIf { it.isSpecified }?.minus(islandOriginInRoot) ?: Offset.Unspecified
 
     fun advance(delta: Float, motion: GenerationMotion) {
         timeSeconds += delta
@@ -199,33 +208,8 @@ internal class ComposerGlowState {
     }
 }
 
-/** 点阵波形屏在浮岛里的槽位。 */
-internal enum class ScopeSlot {
-    /** 不画点阵屏（其它光效样式）。 */
-    NONE,
-    /** 输入行右侧，画在灯效层里。 */
-    INPUT_ROW,
-    /** 浮岛顶沿：没有运行坞时，输入区上方一条。 */
-    ISLAND_TOP,
-    /** 运行坞与输入区的接缝处，顶替运行坞细灯带；与 [ISLAND_TOP] 是同一位置（贴着输入区上沿），只是上面多了运行坞。 */
-    DOCK_SEAM,
-}
-
-/** 浮岛里点阵带的排布：点阵屏放在哪个槽位，运行坞下沿是否画细灯带。同一浮岛只保留一条点阵带。 */
-internal data class ComposerBandLayout(val scope: ScopeSlot, val dockStrip: Boolean)
-
-/**
- * 按光效样式、点阵屏位置、运行坞是否出现、点阵屏此刻是否在显示（生成中或等待审批），决定点阵带排布：
- * - 点阵屏为输入行右侧模式或其它样式时，运行坞出现就画细灯带；
- * - 点阵屏为顶沿模式且正在显示时，它贴在输入区上沿：有运行坞时位于接缝处、顶替细灯带，没有运行坞时就是浮岛顶沿；
- * - 顶沿模式的点阵屏不在显示时收起，运行坞照常画细灯带。
- */
-internal fun composerBandLayout(styles: InfinityMotionStyles, dockVisible: Boolean, screenActive: Boolean): ComposerBandLayout {
-    if (styles.composer != ComposerGlowStyle.SCOPE_SCREEN) return ComposerBandLayout(ScopeSlot.NONE, dockStrip = dockVisible)
-    if (styles.scopePlacement == ScopeScreenPlacement.INPUT_ROW) return ComposerBandLayout(ScopeSlot.INPUT_ROW, dockStrip = dockVisible)
-    if (!screenActive) return ComposerBandLayout(ScopeSlot.NONE, dockStrip = dockVisible)
-    return ComposerBandLayout(if (dockVisible) ScopeSlot.DOCK_SEAM else ScopeSlot.ISLAND_TOP, dockStrip = false)
-}
+/** 当前浮岛的光效状态；运行坞点阵屏从这里取生成进度与时钟，并回报自己的位置。浮岛之外为 null。 */
+internal val LocalComposerGlow = staticCompositionLocalOf<ComposerGlowState?> { null }
 
 /**
  * 本轮完成闪光的触发判定：本页看到过这一轮在运行（含等待审批），且任务以完成收尾时闪一次；出错、取消都作废。
@@ -419,6 +403,8 @@ internal fun Modifier.composerIslandGlow(
                     drawEdgeStroke(generating * approval * (0.35f + 0.65f * slowBlink(time)), 2f, cornerPx, colorB, colorB, outlinePaints)
                     drawEdgeStroke(generating * retry * (0.12f + 0.3f * evenBlink(time)), 1.4f, cornerPx, colorA, colorA, outlinePaints)
                 }
+                // 仅材质光不画描边，生成状态只靠浮岛材质与运行坞点阵屏。
+                ComposerGlowStyle.MATERIAL_ONLY -> Unit
                 else -> drawPhaseBorder(generating, time, motion, cornerPx, palette, outlinePaints)
             }
         }

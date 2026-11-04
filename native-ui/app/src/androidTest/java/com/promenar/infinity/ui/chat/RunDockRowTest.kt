@@ -1,14 +1,12 @@
 package com.promenar.infinity.ui.chat
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertContentDescriptionContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.R
@@ -22,7 +20,7 @@ import com.promenar.infinity.ui.theme.InfinityTheme
 import org.junit.Rule
 import org.junit.Test
 
-/** 运行坞：一句话读出当前步骤与进度，入口芯片各自打开对应页；待批准时只留跳转审批的芯片。 */
+/** 运行坞：一句话读出当前步骤与进度，点按整行打开运行详情；待批准数交给盾牌，锁定触摸在顶栏。 */
 class RunDockRowTest {
     @get:Rule val rule = createComposeRule()
 
@@ -45,7 +43,6 @@ class RunDockRowTest {
                 RunDockRow(
                     state = requireNotNull(runDockState(plan, true, 0, 1, 0, "进度", 3 * 60_000L)),
                     onOpen = { opened += it },
-                    onJumpToApproval = {},
                 )
             }
         }
@@ -53,53 +50,48 @@ class RunDockRowTest {
             .assertContentDescriptionContains("查找 Markdown 文件", substring = true)
             .assertContentDescriptionContains("1/2", substring = true)
             .performClick()
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS).performClick()
+        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS, useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_SCOPE, useUnmergedTree = true).assertExists()
         rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_STATE).performClick()
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_APPROVAL).assertDoesNotExist()
-        rule.runOnIdle { assertThat(opened).containsExactly(null, RunDetailTab.BACKGROUND, RunDetailTab.STATE).inOrder() }
+        rule.runOnIdle { assertThat(opened).containsExactly(null, RunDetailTab.STATE).inOrder() }
     }
 
     @Test
-    fun pendingApprovalsReplaceOtherChipsAndJump() {
-        var jumps = 0
+    fun pendingApprovalsLeaveDockChipsInPlace() {
         rule.setContent {
             InfinityTheme {
                 RunDockRow(
                     state = requireNotNull(runDockState(plan, true, 2, 1, 0, "进度", null)),
                     onOpen = {},
+                )
+            }
+        }
+        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS, useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_STATE).assertExists()
+        rule.onNodeWithTag(UiTags.CHAT_TOUCH_LOCK_BUTTON).assertDoesNotExist()
+    }
+
+    @Test
+    fun pendingShieldJumpsOnTapAndOpensMenuOnLongPress() {
+        var jumps = 0
+        rule.setContent {
+            InfinityTheme {
+                ExecutionModeButton(
+                    com.promenar.infinity.ui.common.ExecutionMode.WORKSPACE,
+                    onSelect = {},
+                    pendingApprovals = 2,
                     onJumpToApproval = { jumps++ },
                 )
             }
         }
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS).assertDoesNotExist()
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_STATE).assertDoesNotExist()
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_APPROVAL)
-            .assertContentDescriptionContains(context.getString(R.string.run_dock_jump_approval_cd, 2))
+        rule.onNodeWithTag(UiTags.CHAT_EXECUTION_MODE)
+            .assertContentDescriptionContains(context.getString(R.string.chat_execution_mode_pending_cd, 2))
             .performClick()
         rule.runOnIdle { assertThat(jumps).isEqualTo(1) }
-    }
-
-    @Test
-    fun touchLockButtonReportsTapAndHidesWhenNull() {
-        var onLock by mutableStateOf<(() -> Unit)?>(null)
-        var locks = 0
-        onLock = { locks++ }
-        rule.setContent {
-            InfinityTheme {
-                RunDockRow(
-                    state = requireNotNull(runDockState(null, true, 0, 0, 0, null, null)),
-                    onOpen = {},
-                    onJumpToApproval = {},
-                    onLockTouch = onLock,
-                )
-            }
-        }
-        rule.onNodeWithTag(UiTags.CHAT_TOUCH_LOCK_BUTTON).performClick()
-        rule.runOnIdle {
-            assertThat(locks).isEqualTo(1)
-            onLock = null
-        }
-        rule.onNodeWithTag(UiTags.CHAT_TOUCH_LOCK_BUTTON).assertDoesNotExist()
+        rule.onNodeWithTag("${UiTags.CHAT_EXECUTION_MODE}_workspace").assertDoesNotExist()
+        rule.onNodeWithTag(UiTags.CHAT_EXECUTION_MODE).performTouchInput { longClick() }
+        rule.onNodeWithTag("${UiTags.CHAT_EXECUTION_MODE}_workspace").assertExists()
+        rule.runOnIdle { assertThat(jumps).isEqualTo(1) }
     }
 
     @Test

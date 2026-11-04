@@ -9,8 +9,8 @@ import org.junit.Test
 class MotionStyleOrderTest {
     @Test
     fun `三个动效列表把默认样式排第一，其余保持枚举相对顺序`() {
-        assertThat(ComposerGlowStyle.entries.defaultFirst(ComposerGlowStyle.SCOPE_SCREEN)).containsExactly(
-            ComposerGlowStyle.SCOPE_SCREEN,
+        assertThat(ComposerGlowStyle.entries.defaultFirst(ComposerGlowStyle.MATERIAL_ONLY)).containsExactly(
+            ComposerGlowStyle.MATERIAL_ONLY,
             ComposerGlowStyle.AURORA,
             ComposerGlowStyle.BREATHE,
             ComposerGlowStyle.MESH,

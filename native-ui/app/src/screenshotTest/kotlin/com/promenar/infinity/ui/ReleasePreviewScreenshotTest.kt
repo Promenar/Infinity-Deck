@@ -642,7 +642,6 @@ fun chatTaskChecklistExpandedReleasePreview() {
                     RunDockRow(
                         state = requireNotNull(runDockState(state, false, 0, 0, 0, null, null)),
                         onOpen = {},
-                        onJumpToApproval = {},
                     )
                 }
             }

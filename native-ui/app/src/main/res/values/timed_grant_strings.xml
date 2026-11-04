@@ -9,4 +9,7 @@
     <string name="chat_timed_grant_active">No approval for %1$s · %2$d min left</string>
     <string name="chat_timed_grant_revoke">Ask for each call again</string>
     <string name="chat_execution_mode_timed_cd">%1$s, temporary approval skip active</string>
+    <string name="chat_execution_mode_pending_cd">%1$d approvals pending. Double-tap to view, long-press to switch approval mode</string>
+    <string name="chat_execution_mode_jump_label">View pending approvals</string>
+    <string name="chat_execution_mode_menu_label">Switch approval mode</string>
 </resources>

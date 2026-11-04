@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="motion_phase_thinking">思考</string>
-    <string name="motion_scope_placement">点阵屏位置</string>
-    <string name="motion_scope_placement_input_row">输入行右侧</string>
-    <string name="motion_scope_placement_top_edge">浮岛顶沿</string>
+    <string name="motion_run_dock_scope">运行坞点阵屏</string>
+    <string name="motion_run_dock_scope_desc">运行坞右侧的点阵屏：生成时显示输出速率波形，等待审批时闪“!”，完成后停在本轮波形。</string>
     <string name="motion_scope_digits">显示数字</string>
     <string name="motion_scope_digits_desc">首字等待秒数、每秒字数、工具轮次、倒计时与本轮平均速率；关闭后波形铺满整块屏。</string>
 </resources>

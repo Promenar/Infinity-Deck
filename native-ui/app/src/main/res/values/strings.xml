@@ -1781,8 +1781,8 @@
     <string name="motion_composer_mesh_desc">Status lights flicker behind a perforated server grille.</string>
     <string name="motion_composer_bottom_strip">Data strip</string>
     <string name="motion_composer_bottom_strip_desc">Packets stream along two rows of LEDs on the bottom edge.</string>
-    <string name="motion_composer_scope_screen">Scope screen</string>
-    <string name="motion_composer_scope_screen_desc">A dot-matrix info screen: a numeric readout beside the scrolling output-rate bars.</string>
+    <string name="motion_composer_material_only">Material only</string>
+    <string name="motion_composer_material_only_desc">No light trail. The island material and the run dock screen show progress.</string>
     <string name="motion_composer_sweep_grid">Sweep grid</string>
     <string name="motion_composer_sweep_grid_desc">A light band sweeps across a hidden wall of LEDs.</string>
     <string name="motion_indicator_wave">Wave</string>

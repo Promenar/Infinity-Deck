@@ -177,6 +177,10 @@ private fun TimedGrantApprovalPage(mode: InfinityThemeMode) {
                         onSelect = {},
                         timedGrants = listOf(TimedGrantDisplay(label, Long.MAX_VALUE)),
                     )
+                    // 待批准：盾牌填色并显示数量；两位数缩小字号仍在盾面内，超过 99 显示 99。
+                    ExecutionModeButton(com.promenar.infinity.ui.common.ExecutionMode.WORKSPACE, onSelect = {}, pendingApprovals = 2)
+                    ExecutionModeButton(com.promenar.infinity.ui.common.ExecutionMode.WORKSPACE, onSelect = {}, pendingApprovals = 12)
+                    ExecutionModeButton(com.promenar.infinity.ui.common.ExecutionMode.FULL_ACCESS, onSelect = {}, pendingApprovals = 120)
                 }
             }
         }

@@ -153,6 +153,13 @@ internal class OutputRateMeter {
         return history[(historyHead - 1 - back).mod(HistorySize)]
     }
 
+    /** 把历史按新到旧复制进 [out]，返回条数。 */
+    fun copyHistory(out: FloatArray): Int {
+        val n = minOf(historyCount, out.size)
+        for (i in 0 until n) out[i] = historyAt(i)
+        return n
+    }
+
     fun reset() {
         lastLength = -1
         pending = 0
@@ -252,6 +259,12 @@ class GenerationMotion internal constructor(
     private var toolRounds = 0
     private var heldRate = 0f
     private var heldRateClock = 0f
+    private var lastTotal = 0
+    private var outputStartedAt = -1f
+    private var outputEndedAt = 0f
+    private val lastRunHistory = FloatArray(OutputRateMeter.HistorySize)
+    private var lastRunCount = 0
+    private var lastRunAverage = 0f
 
     /** 真实阶段（已叠加重试倒计时）；没有进行中的生成时为 null。值相同时写入不触发重组，组合中可以读取。 */
     var actual: GenerationMotionPhase? by mutableStateOf(
@@ -319,6 +332,23 @@ class GenerationMotion internal constructor(
         else -> heldRate
     }
 
+    /**
+     * 上一轮结束时速率历史第 [back] 列（0 为最新）的柱高 0..1，供运行坞点阵屏停在本轮波形；本轮还在进行时也是上一轮的。
+     * 环境来源按列号合成固定柱高。
+     */
+    fun lastRunLevel(back: Int): Float = when (source) {
+        Source.PINNED -> requireNotNull(delegate).lastRunLevel(back)
+        Source.AMBIENT -> historyLevel(back, 40f - back)
+        else -> if (back in 0 until lastRunCount) clamp01(lastRunHistory[back] / (GenerationMotionFullRate * 1.15f)) else 0f
+    }
+
+    /** 上一轮的平均出字速率（字/秒）：累计字数除以首字到末字的时长（至少 1 秒）；没有出过字时为 0。 */
+    val lastRunRate: Float get() = when (source) {
+        Source.AMBIENT -> 28f
+        Source.PINNED -> requireNotNull(delegate).lastRunRate
+        else -> lastRunAverage
+    }
+
     /** 首字前已等待的整秒数，从进入首字前起逐秒递增。 */
     val waitSeconds: Int get() = when (source) {
         Source.AMBIENT -> 0
@@ -352,7 +382,17 @@ class GenerationMotion internal constructor(
             this.retry = retry
             retryStartedAt = clock
         }
-        if (phase == null) meter.reset() else meter.report(outputLength)
+        if (phase == null) {
+            if (rawPhase != null) snapshotRun()
+            meter.reset()
+        } else {
+            meter.report(outputLength)
+            if (meter.total > lastTotal) {
+                if (outputStartedAt < 0f) outputStartedAt = clock
+                outputEndedAt = clock
+                lastTotal = meter.total
+            }
+        }
         // 生成任务收到首个分片就进入流式；思考内容或正文比进入流式前有新增后才按流式显示，没有内容到达时仍是首字前。
         if (phase == GenerationMotionPhase.STREAM) {
             if (rawPhase != GenerationMotionPhase.STREAM) streamBaseLength = preStreamLength
@@ -372,6 +412,14 @@ class GenerationMotion internal constructor(
         toolRounds = 0
         heldRate = 0f
         heldRateClock = 0f
+        lastTotal = 0
+        outputStartedAt = -1f
+    }
+
+    /** 本轮结束：速率表清零前记下历史与平均速率。 */
+    private fun snapshotRun() {
+        lastRunCount = meter.copyHistory(lastRunHistory)
+        lastRunAverage = if (meter.total > 0 && outputStartedAt >= 0f) meter.total / maxOf(1f, outputEndedAt - outputStartedAt) else 0f
     }
 
     private fun resolveActual(): GenerationMotionPhase? {

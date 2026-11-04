@@ -40,7 +40,6 @@ import com.promenar.infinity.ui.common.motion.slowBlink
 import com.promenar.infinity.ui.common.motion.smoothStep
 import com.promenar.infinity.ui.theme.ComposerGlowStyle
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
-import com.promenar.infinity.ui.theme.ScopeScreenPlacement
 import com.promenar.infinity.ui.theme.InfinityPureWhite
 import kotlin.math.PI
 import kotlin.math.abs
@@ -187,17 +186,13 @@ internal class ComposerLightsPainter {
 }
 
 /**
- * 浮岛内的灯效层：放在浮岛底色之上、输入内容之下，只在网孔背光、底沿数据流、点阵波形屏（输入行右侧）与扫光点阵四种样式下绘制，
- * 按当前生成阶段（[LocalGenerationMotion]）分别绘制并交叉淡入淡出。[state] 的生成进度为 0 时什么都不画；
- * 点阵屏的透明度跟随生成态动画，本轮结束后与浮岛光效、运行坞一起收起。顶沿模式的点阵屏由 [ComposerScopeBand] 单独占一条，这里不画。
- * 灯珠墙类样式只铺到输入区（[ComposerGlowState.lightsTop] 以下），不铺到运行坞文字下方。
+ * 浮岛内的灯效层：放在浮岛底色之上、输入内容之下，只在网孔背光、底沿数据流与扫光点阵三种样式下绘制，
+ * 按当前生成阶段（[LocalGenerationMotion]）分别绘制并交叉淡入淡出。[state] 的生成进度为 0 时什么都不画。
+ * 灯珠墙类样式只铺到输入区（[ComposerGlowState.lightsTop] 以下），不铺到运行坞文字下方。点阵波形屏在运行坞里（[RunDockScope]）。
  */
 @Composable
 internal fun ComposerIslandLights(state: ComposerGlowState, style: ComposerGlowStyle, modifier: Modifier = Modifier) {
-    if (style == ComposerGlowStyle.AURORA || style == ComposerGlowStyle.BREATHE) return
-    val styles = LocalInfinityMotionStyles.current
-    if (style == ComposerGlowStyle.SCOPE_SCREEN && styles.scopePlacement != ScopeScreenPlacement.INPUT_ROW) return
-    val digits = styles.scopeDigits
+    if (style == ComposerGlowStyle.AURORA || style == ComposerGlowStyle.BREATHE || style == ComposerGlowStyle.MATERIAL_ONLY) return
     val palette = rememberMotionPalette()
     val motion = LocalGenerationMotion.current
     val painter = remember { ComposerLightsPainter() }
@@ -213,7 +208,6 @@ internal fun ComposerIslandLights(state: ComposerGlowState, style: ComposerGlowS
                 when (style) {
                     ComposerGlowStyle.MESH -> drawMesh(canvas, phase, alpha, time, state, palette, painter)
                     ComposerGlowStyle.BOTTOM_STRIP -> drawBottomStrip(canvas, phase, alpha, time, state, motion, palette, painter)
-                    ComposerGlowStyle.SCOPE_SCREEN -> drawInputRowScope(canvas, phase, alpha, time, motion, palette, painter, digits)
                     ComposerGlowStyle.SWEEP_GRID -> drawSweepGrid(canvas, phase, alpha, time, state, palette, painter)
                     else -> Unit
                 }
@@ -418,7 +412,7 @@ private const val DockStripHorizontalDp = 14f
 
 /**
  * 运行坞与输入区之间的一排小灯，与底沿数据流同一套数据包逻辑，随出字速率流动；
- * 不在生成时只留一排熄灭的灯珠当分隔线。点阵屏为顶沿模式且正在显示时，由点阵屏顶替这排小灯。
+ * 不在生成时只留一排熄灭的灯珠当分隔线。
  */
 @Composable
 internal fun ComposerDockStrip(state: ComposerGlowState, modifier: Modifier = Modifier) {
@@ -444,18 +438,13 @@ internal fun ComposerDockStrip(state: ComposerGlowState, modifier: Modifier = Mo
     }
 }
 
-/** 点阵波形屏的可调参数；尺寸单位为 dp，真机上再定。 */
+/** 运行坞点阵波形屏的可调参数；尺寸单位为 dp。 */
 internal object ScopeScreenSpec {
-    /** 输入行右侧模式的行数与最大宽度。 */
-    const val InputRowRows = 7
-    const val InputRowMaxWidthDp = 160f
-    /** 输入行右侧模式最左不越过浮岛宽度的这个比例，给输入文字留出左半边。 */
-    const val InputRowMinStartFraction = 0.5f
-    /** 浮岛顶沿模式的行数与四周留白。 */
-    const val TopEdgeRows = 5
-    const val TopEdgeHorizontalDp = 14f
-    const val TopEdgeTopDp = 10f
-    const val TopEdgeBottomDp = 4f
+    /** 点阵行数。 */
+    const val Rows = 7
+    /** 屏宽随运行坞剩余空间在这两者之间伸缩。 */
+    const val MinWidthDp = 72f
+    const val MaxWidthDp = 140f
     const val PitchDp = 3.2f
     const val DotDp = 2f
     const val GlowDp = 3.6f
@@ -469,44 +458,8 @@ internal object ScopeScreenSpec {
     const val MinColsForReadout = 30
 }
 
-/** 顶沿模式点阵屏占的高度：上留白 + 点阵 + 屏框留白 + 下留白。 */
-internal val ComposerScopeBandHeight =
-    (ScopeScreenSpec.TopEdgeTopDp + ScopeScreenSpec.TopEdgeRows * ScopeScreenSpec.PitchDp + 2 * ScopeScreenSpec.InsetDp + ScopeScreenSpec.TopEdgeBottomDp).dp
-
 /** 读数最长 5 个字符（“99:59”），留些余量。 */
 internal const val ScopeReadoutCapacity = 8
-
-/**
- * 浮岛顶沿模式的点阵屏：铺满浮岛内宽的 5 行点阵，始终贴在输入区上沿；运行坞出现时它就在运行坞与输入区的接缝处。
- * 读数与波形同输入行右侧模式；不在生成时由外层收起。
- */
-@Composable
-internal fun ComposerScopeBand(state: ComposerGlowState, modifier: Modifier = Modifier) {
-    val palette = rememberMotionPalette()
-    val motion = LocalGenerationMotion.current
-    val digits = LocalInfinityMotionStyles.current.scopeDigits
-    val painter = remember { ComposerLightsPainter() }
-    Canvas(modifier.fillMaxWidth().height(ComposerScopeBandHeight).clearAndSetSemantics {}) {
-        val gen = state.generating.value
-        if (gen <= 0f) return@Canvas
-        val k = density
-        val pitch = ScopeScreenSpec.PitchDp * k
-        val inset = ScopeScreenSpec.InsetDp * k
-        val rows = ScopeScreenSpec.TopEdgeRows
-        val cols = max(12, ((size.width - 2 * ScopeScreenSpec.TopEdgeHorizontalDp * k - 2 * inset) / pitch).toInt())
-        val sx = (size.width - (cols * pitch + 2 * inset)) / 2
-        val sy = ScopeScreenSpec.TopEdgeTopDp * k
-        val time = state.timeSeconds
-        drawIntoCanvas { canvas ->
-            val native = canvas.nativeCanvas
-            for (phase in GenerationMotionPhase.entries) {
-                val weight = motion.weight(phase)
-                if (weight <= 0.004f) continue
-                drawScopeFrame(native, k, sx, sy, cols, rows, phase, gen * weight, time, motion, palette, painter, digits)
-            }
-        }
-    }
-}
 
 /** 3×5 点阵字形，自上而下；窄字形（“.”与“:”）只占 1 列，取最低位。 */
 private val ScreenGlyphs: Map<Char, IntArray> = mapOf(
@@ -603,32 +556,12 @@ internal fun scopeReadout(
 }
 
 /**
- * 输入行右侧的点阵屏：嵌在输入行（工具栏正上方那一行）右端的 7 行点阵，与停止键右对齐，宽至多 [ScopeScreenSpec.InputRowMaxWidthDp]。
- */
-private fun DrawScope.drawInputRowScope(canvas: ComposeCanvas, phase: GenerationMotionPhase, alpha: Float, t: Float, motion: GenerationMotion, palette: MotionPalette, p: ComposerLightsPainter, digits: Boolean) {
-    if (alpha <= 0.004f) return
-    val k = density
-    val rows = ScopeScreenSpec.InputRowRows
-    val pitch = ScopeScreenSpec.PitchDp * k
-    val inset = ScopeScreenSpec.InsetDp * k
-    val x1 = size.width - ComposerInputRowEndDp * k
-    val cy = size.height - ComposerInputRowCenterDp * k
-    val x0 = max(size.width * ScopeScreenSpec.InputRowMinStartFraction, x1 - ScopeScreenSpec.InputRowMaxWidthDp * k)
-    val cols = max(12, ((x1 - x0 - 2 * inset) / pitch).toInt())
-    val sw = cols * pitch + 2 * inset
-    val sh = rows * pitch + 2 * inset
-    val sy = cy - sh / 2
-    if (sy < 0f) return
-    drawScopeFrame(canvas.nativeCanvas, k, x1 - sw, sy, cols, rows, phase, alpha, t, motion, palette, p, digits)
-}
-
-/**
  * 点阵波形屏的一帧：左上角 ([sx], [sy])、[cols] × [rows] 的点阵，像交换机前面板的流量显示；不画底板与描边，灯珠直接落在浮岛表面上。
  * 显示数字且屏够宽时左侧是数字区（[scopeReadout]），右侧是波形区；关闭数字时波形铺满整块屏，各阶段只保留图形。
  * 波形区：首字前底行一条带噪声的基线；流式（含思考）时柱状图就是实际出字速率，不断左移，最新两列在闪、越旧越暗；
  * 工具执行时第三色扫描线来回扫过；等待审批时第三色“!”慢闪（有数字区时“!”在数字区）；重试时底行是退避倒计时进度条。
  */
-private fun drawScopeFrame(
+internal fun drawScopeFrame(
     native: android.graphics.Canvas,
     k: Float,
     sx: Float,
@@ -642,6 +575,12 @@ private fun drawScopeFrame(
     palette: MotionPalette,
     p: ComposerLightsPainter,
     digits: Boolean,
+    /** 停在上一轮：画 [GenerationMotion.lastRunLevel] 的静止波形与平均速率，[phase] 不再起作用。 */
+    rest: Boolean = false,
+    /** 亮灯颜色（0 主色、1 第三色）；完成闪光时主色换成绿色。 */
+    colors: List<Color> = palette.leds,
+    /** 是否画熄灭的灯珠；运行坞点阵屏另画常驻底格，这里不重复。 */
+    drawOff: Boolean = true,
 ) {
     if (alpha <= 0.004f) return
     val pitch = ScopeScreenSpec.PitchDp * k
@@ -684,7 +623,16 @@ private fun drawScopeFrame(
     // 波形区起始列；没有数字区时从 0 开始铺满。
     val w0 = if (readout) ScopeScreenSpec.ReadoutCols + ScopeScreenSpec.ReadoutGapCols else 0
     val waveCols = cols - w0
-    if (readout) {
+    if (rest) {
+        if (readout && motion.lastRunRate > 0f) glyphs(writeRateReadout(motion.lastRunRate, p.readout), ScopeScreenSpec.ReadoutCols - 1, 0.85f, false)
+        for (c in w0 until cols) {
+            val back = cols - 1 - c
+            val level = motion.lastRunLevel(back)
+            val height = if (level < 0.04f) 0 else max(1, (level * rows).roundToInt())
+            val age = back.toFloat() / waveCols
+            for (r in 0 until height) set(c, r, (if (r == height - 1) 0.9f else 0.65f) * (1 - 0.6f * age), false)
+        }
+    } else if (readout) {
         val length = scopeReadout(phase, motion.waitSeconds, motion.readoutRate, motion.toolRound, motion.retrySeconds, p.readout)
         val intensity = when (phase) {
             GenerationMotionPhase.STREAM -> 1f
@@ -696,7 +644,7 @@ private fun drawScopeFrame(
         val isAmber = phase == GenerationMotionPhase.TOOL || phase == GenerationMotionPhase.APPROVAL
         glyphs(length, ScopeScreenSpec.ReadoutCols - 1, intensity, isAmber)
     }
-    when (phase) {
+    if (!rest) when (phase) {
         GenerationMotionPhase.WAIT -> for (c in w0 until cols) {
             set(c, 0, 0.35f, false)
             if (motionHash(c.toFloat(), floor(t * 6)) < 0.1f) set(c, 1, 0.3f, false)
@@ -741,9 +689,29 @@ private fun drawScopeFrame(
         val x = sx + inset + c * pitch + pitch / 2
         val y = sy + inset + (rows - 1 - r) * pitch + pitch / 2
         val i = c * rows + r
-        if (lit[i] < 0.1f) leds.offDot(x, y, sz) else leds.dot(if (amber[i]) 1 else 0, lit[i], x, y, sz, gz)
+        if (lit[i] < 0.1f) {
+            if (drawOff) leds.offDot(x, y, sz)
+        } else {
+            leds.dot(if (amber[i]) 1 else 0, lit[i], x, y, sz, gz)
+        }
     }
-    leds.draw(native, palette.leds, palette.dark, blur = 3 * k, offColor = palette.a.copy(alpha = if (palette.dark) 0.1f else 0.14f), alpha = alpha)
+    leds.draw(native, colors, palette.dark, blur = 3 * k, offColor = if (drawOff) scopeOffColor(palette) else Color.Transparent, alpha = alpha)
+}
+
+/** 点阵屏熄灭灯珠的颜色。 */
+internal fun scopeOffColor(palette: MotionPalette): Color = palette.a.copy(alpha = if (palette.dark) 0.1f else 0.14f)
+
+/** 点阵屏的常驻底格：[cols] × [rows] 颗熄灭的灯珠，运行坞没有生成时也留着，屏的位置不会空出来。 */
+internal fun drawScopeGrid(native: android.graphics.Canvas, k: Float, sx: Float, sy: Float, cols: Int, rows: Int, palette: MotionPalette, p: ComposerLightsPainter, alpha: Float = 1f) {
+    val pitch = ScopeScreenSpec.PitchDp * k
+    val inset = ScopeScreenSpec.InsetDp * k
+    val sz = ScopeScreenSpec.DotDp * k
+    val leds = p.leds5
+    leds.reset()
+    for (c in 0 until cols) for (r in 0 until rows) {
+        leds.offDot(sx + inset + c * pitch + pitch / 2, sy + inset + r * pitch + pitch / 2, sz)
+    }
+    leds.draw(native, palette.leds, palette.dark, blur = 0f, offColor = scopeOffColor(palette), alpha = alpha)
 }
 
 /** 扫光点阵的可调参数，真机上再定。 */

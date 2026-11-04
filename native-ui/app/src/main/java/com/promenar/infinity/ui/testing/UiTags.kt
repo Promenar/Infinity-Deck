@@ -519,7 +519,9 @@ object UiTags {
     // 运行坞与运行详情
     const val CHAT_RUN_DOCK = "chat_run_dock"
     const val CHAT_RUN_DOCK_MAIN = "chat_run_dock_main"
-    const val CHAT_RUN_DOCK_APPROVAL = "chat_run_dock_approval"
+    const val CHAT_RUN_DOCK_LEAD = "chat_run_dock_lead"
+    const val CHAT_EXECUTION_MODE_PENDING = "chat_execution_mode_pending"
+    const val CHAT_RUN_DOCK_SCOPE = "chat_run_dock_scope"
     const val CHAT_RUN_DOCK_JOBS = "chat_run_dock_jobs"
     const val CHAT_RUN_DOCK_STATE = "chat_run_dock_state"
     const val CHAT_RUN_SHEET = "chat_run_sheet"

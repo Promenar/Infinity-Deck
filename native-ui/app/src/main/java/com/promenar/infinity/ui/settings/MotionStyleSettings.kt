@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -41,7 +44,10 @@ import com.promenar.infinity.ui.chat.ComposerIslandSurface
 import com.promenar.infinity.ui.chat.LocalComposerBackdrop
 import com.promenar.infinity.ui.chat.composerBackdropSource
 import com.promenar.infinity.ui.chat.rememberComposerBackdrop
-import com.promenar.infinity.ui.chat.ComposerScopeBand
+import com.promenar.infinity.ui.chat.ComposerDockStrip
+import com.promenar.infinity.ui.chat.LocalComposerGlow
+import com.promenar.infinity.ui.chat.components.RunDockScope
+import com.promenar.infinity.ui.chat.components.RunDockScopeMode
 import com.promenar.infinity.ui.chat.LedEmptyChat
 import com.promenar.infinity.ui.chat.ParticleWordmark
 import com.promenar.infinity.ui.chat.composerIslandGlow
@@ -66,7 +72,6 @@ import com.promenar.infinity.ui.theme.EmptyChatStyle
 import com.promenar.infinity.ui.theme.GenerationIndicatorStyle
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.InfinityMotionStyles
-import com.promenar.infinity.ui.theme.ScopeScreenPlacement
 
 /** 一个可选样式的名称与一句话说明。 */
 internal data class MotionStyleLabel(@StringRes val name: Int, @StringRes val description: Int)
@@ -76,7 +81,7 @@ internal fun ComposerGlowStyle.label(): MotionStyleLabel = when (this) {
     ComposerGlowStyle.BREATHE -> MotionStyleLabel(R.string.motion_composer_breathe, R.string.motion_composer_breathe_desc)
     ComposerGlowStyle.MESH -> MotionStyleLabel(R.string.motion_composer_mesh, R.string.motion_composer_mesh_desc)
     ComposerGlowStyle.BOTTOM_STRIP -> MotionStyleLabel(R.string.motion_composer_bottom_strip, R.string.motion_composer_bottom_strip_desc)
-    ComposerGlowStyle.SCOPE_SCREEN -> MotionStyleLabel(R.string.motion_composer_scope_screen, R.string.motion_composer_scope_screen_desc)
+    ComposerGlowStyle.MATERIAL_ONLY -> MotionStyleLabel(R.string.motion_composer_material_only, R.string.motion_composer_material_only_desc)
     ComposerGlowStyle.SWEEP_GRID -> MotionStyleLabel(R.string.motion_composer_sweep_grid, R.string.motion_composer_sweep_grid_desc)
 }
 
@@ -106,8 +111,8 @@ private val DefaultMotion = InfinityMotionStyles()
 internal fun <T> List<T>.defaultFirst(default: T): List<T> = listOf(default) + filter { it != default }
 
 /**
- * 外观页“生成动效”分组：三行分别打开带实时预览的样式选择面板；浮岛光效下方是浮岛材质（毛玻璃 / 环境光）与它的静态预览，
- * 选“点阵波形屏”时另有位置与数字两个子选项。
+ * 外观页“生成动效”分组：三行分别打开带实时预览的样式选择面板；浮岛光效下方是浮岛材质（毛玻璃 / 环境光）与它的预览，
+ * 再下面是运行坞点阵屏开关，打开时另有“显示数字”。
  */
 @Composable
 internal fun MotionStyleRows(
@@ -115,7 +120,7 @@ internal fun MotionStyleRows(
     onComposerSelect: (ComposerGlowStyle) -> Unit,
     onIndicatorSelect: (GenerationIndicatorStyle) -> Unit,
     onEmptyChatSelect: (EmptyChatStyle) -> Unit,
-    onScopePlacementSelect: (ScopeScreenPlacement) -> Unit = {},
+    onRunDockScopeChange: (Boolean) -> Unit = {},
     onScopeDigitsChange: (Boolean) -> Unit = {},
     onSurfaceSelect: (ComposerSurfaceStyle) -> Unit = {},
 ) {
@@ -129,9 +134,7 @@ internal fun MotionStyleRows(
         phaseDemo = true,
     ) { ComposerPreview(it) }
     ComposerSurfaceOptions(motion, onSurfaceSelect)
-    if (motion.composer == ComposerGlowStyle.SCOPE_SCREEN) {
-        ScopeScreenOptions(motion, onScopePlacementSelect, onScopeDigitsChange)
-    }
+    RunDockScopeOptions(motion, onRunDockScopeChange, onScopeDigitsChange)
     MotionStylePicker(
         title = stringResource(R.string.motion_indicator_title),
         options = GenerationIndicatorStyle.entries.defaultFirst(DefaultMotion.indicator),
@@ -257,38 +260,29 @@ private fun ComposerSurfaceOptions(motion: InfinityMotionStyles, onSelect: (Comp
     }
 }
 
-/** 点阵波形屏的两个子选项：位置（输入行右侧 / 浮岛顶沿）与是否显示数字。 */
+/** 运行坞点阵屏开关；打开时另有“显示数字”。 */
 @Composable
-private fun ScopeScreenOptions(
+private fun RunDockScopeOptions(
     motion: InfinityMotionStyles,
-    onPlacementSelect: (ScopeScreenPlacement) -> Unit,
+    onScopeChange: (Boolean) -> Unit,
     onDigitsChange: (Boolean) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            stringResource(R.string.motion_scope_placement),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        InfinitySegmentedControl(
-            segments = listOf(
-                InfinitySegment(ScopeScreenPlacement.INPUT_ROW, stringResource(R.string.motion_scope_placement_input_row), tag = "theme_motion_scope_placement_input_row"),
-                InfinitySegment(ScopeScreenPlacement.TOP_EDGE, stringResource(R.string.motion_scope_placement_top_edge), tag = "theme_motion_scope_placement_top_edge"),
-            ),
-            selected = motion.scopePlacement,
-            onSelect = onPlacementSelect,
-            fillWidth = true,
-            compact = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("theme_motion_scope_placement"),
+    SettingsToggle(
+        title = stringResource(R.string.motion_run_dock_scope),
+        description = stringResource(R.string.motion_run_dock_scope_desc),
+        checked = motion.runDockScope,
+        onCheckedChange = onScopeChange,
+        modifier = Modifier.testTag("theme_motion_run_dock_scope"),
+    )
+    if (motion.runDockScope) {
+        SettingsToggle(
+            title = stringResource(R.string.motion_scope_digits),
+            description = stringResource(R.string.motion_scope_digits_desc),
+            checked = motion.scopeDigits,
+            onCheckedChange = onDigitsChange,
+            modifier = Modifier.testTag("theme_motion_scope_digits"),
         )
     }
-    SettingsToggle(
-        title = stringResource(R.string.motion_scope_digits),
-        description = stringResource(R.string.motion_scope_digits_desc),
-        checked = motion.scopeDigits,
-        onCheckedChange = onDigitsChange,
-        modifier = Modifier.testTag("theme_motion_scope_digits"),
-    )
 }
 
 /** 生成阶段在设置预览中的名称。 */
@@ -301,7 +295,7 @@ internal fun GenerationMotionPhase.labelRes(): Int = when (this) {
 }
 
 /**
- * 浮岛预览：一个迷你浮岛（默认处于生成中），右下角画出停止键的位置；点阵波形屏为顶沿模式时浮岛顶部多一条点阵屏。
+ * 浮岛预览：一个迷你浮岛（默认处于生成中），右下角画出停止键的位置；运行坞点阵屏打开时浮岛顶部多一行迷你运行坞。
  * 浮岛压在一段示例正文的下半部上，按当前材质画：毛玻璃时正文从浮岛后面模糊透出，环境光时被实色挡住。
  */
 @Composable
@@ -312,7 +306,6 @@ private fun ComposerPreview(style: ComposerGlowStyle, generating: Boolean = true
         val material = composerIslandMaterial()
         val backdrop = rememberComposerBackdrop(styles.surface)
         backdrop?.background = MaterialTheme.colorScheme.surfaceContainerLow
-        val topBand = style == ComposerGlowStyle.SCOPE_SCREEN && styles.scopePlacement == ScopeScreenPlacement.TOP_EDGE
         Box(Modifier.fillMaxWidth().clipToBounds()) {
             Text(
                 stringResource(R.string.motion_preview_backdrop),
@@ -320,7 +313,7 @@ private fun ComposerPreview(style: ComposerGlowStyle, generating: Boolean = true
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.matchParentSize().composerBackdropSource(backdrop).padding(horizontal = 20.dp, vertical = 10.dp),
             )
-            CompositionLocalProvider(LocalComposerBackdrop provides backdrop) {
+            CompositionLocalProvider(LocalComposerBackdrop provides backdrop, LocalComposerGlow provides glow) {
             Box(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 18.dp)) {
             Surface(
                 modifier = Modifier.fillMaxWidth().composerIslandGlow(glow, material.topHighlight),
@@ -328,10 +321,26 @@ private fun ComposerPreview(style: ComposerGlowStyle, generating: Boolean = true
                 color = material.container,
                 border = material.border,
             ) {
-                Box {
+                Box(Modifier.onGloballyPositioned { glow.islandOriginInRoot = it.positionInRoot() }) {
                 ComposerIslandSurface(glow, Modifier.matchParentSize())
                 Column {
-                if (topBand) ComposerScopeBand(glow)
+                if (styles.runDockScope) {
+                    // 迷你运行坞：右侧是点阵屏，环境光柔光从这里漫开。
+                    Row(
+                        Modifier.fillMaxWidth().height(44.dp).padding(start = 16.dp, end = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(R.string.chat_progress_running),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                        RunDockScope(RunDockScopeMode.LIVE, Modifier.width(120.dp))
+                    }
+                    ComposerDockStrip(glow)
+                }
                 Box(Modifier.fillMaxWidth().height(88.dp)) {
                     ComposerIslandLights(glow, style, Modifier.matchParentSize())
                     Text(

@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -46,11 +47,8 @@ import com.promenar.infinity.ui.common.motion.clamp01
 import com.promenar.infinity.ui.common.motion.evenBlink
 import com.promenar.infinity.ui.common.motion.rememberMotionPalette
 import com.promenar.infinity.ui.common.motion.slowBlink
-import com.promenar.infinity.ui.theme.ComposerGlowStyle
 import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
-import com.promenar.infinity.ui.theme.InfinityMotionStyles
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
-import com.promenar.infinity.ui.theme.ScopeScreenPlacement
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.roundToInt
 
@@ -112,7 +110,7 @@ internal fun ComposerIslandSurface(state: ComposerGlowState, modifier: Modifier 
     val styles = LocalInfinityMotionStyles.current
     when (styles.surface) {
         ComposerSurfaceStyle.FROSTED -> FrostedBackdrop(modifier.clearAndSetSemantics {})
-        ComposerSurfaceStyle.AMBIENT -> AmbientWash(state, styles, modifier.clearAndSetSemantics {})
+        ComposerSurfaceStyle.AMBIENT -> AmbientWash(state, modifier.clearAndSetSemantics {})
     }
 }
 
@@ -168,16 +166,18 @@ private fun frostedRenderEffect(radiusPx: Float): RenderEffect {
 }
 
 /**
- * 环境光柔光的中心（像素）：点阵屏在浮岛顶沿时取输入区上沿正中，其余样式取输入行右侧点阵屏所在处
- * （距右缘 [ScopeScreenSpec.InputRowMaxWidthDp] 一半加 [ComposerInputRowEndDp]，距底边 [ComposerInputRowCenterDp]），中心不高于浮岛 30% 高度。
+ * 环境光柔光的中心（像素）：运行坞点阵屏在显示时取它的中心 [scopeCenter]；没有点阵屏时取输入行右侧
+ * （距右缘 [ComposerWashFallbackEndDp]，距底边 [ComposerInputRowCenterDp]），中心不高于浮岛 30% 高度。
  */
-internal fun composerWashAnchor(styles: InfinityMotionStyles, width: Float, height: Float, lightsTop: Float, dp: Float): Offset {
-    val topEdge = styles.composer == ComposerGlowStyle.SCOPE_SCREEN && styles.scopePlacement == ScopeScreenPlacement.TOP_EDGE
-    if (topEdge) return Offset(width / 2, lightsTop.coerceIn(0f, height))
-    val x = (width - (ComposerInputRowEndDp + ScopeScreenSpec.InputRowMaxWidthDp / 2) * dp).coerceAtLeast(width * 0.5f)
+internal fun composerWashAnchor(scopeCenter: Offset, width: Float, height: Float, dp: Float): Offset {
+    if (scopeCenter.isSpecified) return Offset(scopeCenter.x.coerceIn(0f, width), scopeCenter.y.coerceIn(0f, height))
+    val x = (width - ComposerWashFallbackEndDp * dp).coerceAtLeast(width * 0.5f)
     val y = (height - ComposerInputRowCenterDp * dp).coerceAtLeast(height * 0.3f)
     return Offset(x, y)
 }
+
+/** 没有运行坞点阵屏时，环境光柔光中心距浮岛右缘的距离。 */
+internal const val ComposerWashFallbackEndDp = 90f
 
 /** 各阶段柔光的颜色序号（0 主色、1 第三色）与亮度 0..1。 */
 private fun washLevel(phase: GenerationMotionPhase, t: Float, act: Float): Float = when (phase) {
@@ -192,7 +192,7 @@ private fun washUsesTertiary(phase: GenerationMotionPhase): Boolean =
     phase == GenerationMotionPhase.TOOL || phase == GenerationMotionPhase.APPROVAL
 
 @Composable
-private fun AmbientWash(state: ComposerGlowState, styles: InfinityMotionStyles, modifier: Modifier) {
+private fun AmbientWash(state: ComposerGlowState, modifier: Modifier) {
     val palette = rememberMotionPalette()
     val motion = LocalGenerationMotion.current
     val domain = MaterialTheme.infinityDomainColors
@@ -213,7 +213,7 @@ private fun AmbientWash(state: ComposerGlowState, styles: InfinityMotionStyles, 
                 val error = state.error.value
                 val success = state.success.value
                 if (gen <= 0f && error <= 0f && success <= 0f) return@onDrawBehind
-                val anchor = composerWashAnchor(styles, size.width, size.height, state.lightsTop, density)
+                val anchor = composerWashAnchor(state.scopeCenter, size.width, size.height, density)
                 local.setScale(1f, ry / rx)
                 local.postTranslate(anchor.x, anchor.y)
                 shaders.forEach { it.setLocalMatrix(local) }

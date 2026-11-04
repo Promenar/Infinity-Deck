@@ -162,7 +162,7 @@ private fun RunDockStates(mode: InfinityThemeMode, english: Boolean) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Column(Modifier.padding(vertical = 8.dp)) {
-                states.forEach { RunDockRow(state = it, onOpen = {}, onJumpToApproval = {}, onLockTouch = if (it.tone == RunDockTone.RUNNING) ({}) else null) }
+                states.forEach { RunDockRow(state = it, onOpen = {}) }
             }
         }
     }

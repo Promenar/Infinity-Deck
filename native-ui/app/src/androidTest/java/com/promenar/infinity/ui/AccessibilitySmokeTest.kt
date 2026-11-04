@@ -373,7 +373,6 @@ class AccessibilitySmokeTest {
                     RunDockRow(
                         state = runDockState(plan, false, 0, 0, 0, null, null)!!,
                         onOpen = {},
-                        onJumpToApproval = {},
                     )
                     RunDetailContent(
                         initialTab = RunDetailTab.PLAN,

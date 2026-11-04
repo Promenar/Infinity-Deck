@@ -69,9 +69,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import com.promenar.infinity.ui.common.InfinityMetaLine
 
-/** 浮岛运行坞上的锁按钮：生成中点按后锁定触摸。 */
+/** 锁定触摸按钮：生成中点按后锁定触摸。外屏放在顶栏 ⋮ 左侧，内屏放在检视器运行页。 */
 @Composable
-internal fun TouchLockButton(onLock: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TouchLockButton(
+    onLock: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconSize: androidx.compose.ui.unit.Dp = 18.dp,
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     val haptics = LocalInfinityHaptics.current
     IconButton(
         onClick = {
@@ -83,8 +88,8 @@ internal fun TouchLockButton(onLock: () -> Unit, modifier: Modifier = Modifier) 
         Icon(
             Icons.Outlined.Lock,
             contentDescription = stringResource(R.string.touch_lock_button_cd),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
+            tint = tint,
+            modifier = Modifier.size(iconSize),
         )
     }
 }

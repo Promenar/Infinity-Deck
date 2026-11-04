@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GppGood
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GppMaybe
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,11 +31,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.ExecutionMode
@@ -42,14 +47,18 @@ import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.common.InfinityMenuItem
+import com.promenar.infinity.ui.common.motion.slowBlink
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.delay
 
 /** 输入栏上显示的一项限时免审批：类别名称与到期时间（epoch 毫秒）。 */
 data class TimedGrantDisplay(val label: String, val expiresAtMillis: Long)
 
 /**
- * 浮岛工具行上的执行模式切换：只显示盾牌图标，完全访问时换成警示图标与第三色，点按弹出两种模式。
+ * 浮岛工具行上的执行模式切换：只显示盾牌图标，完全访问时换成警示图标与第三色，点按或长按弹出两种模式。
  * 有限时免审批时图标右上角加主色圆点，菜单底部列出各类别剩余分钟并可恢复逐次审批。
+ * 有 [pendingApprovals] 项待批准时盾牌整块填成警示色、与运行坞点阵屏的“!”同步慢闪，中间显示数量；
+ * 此时点按跳到最早的审批卡（[onJumpToApproval]），长按才弹出模式菜单。
  */
 @Composable
 internal fun ExecutionModeButton(
@@ -58,10 +67,17 @@ internal fun ExecutionModeButton(
     modifier: Modifier = Modifier,
     timedGrants: List<TimedGrantDisplay> = emptyList(),
     onRevokeTimedGrants: () -> Unit = {},
+    pendingApprovals: Int = 0,
+    onJumpToApproval: () -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     val modeDescription = stringResource(R.string.chat_execution_mode_cd, stringResource(mode.labelRes))
-    val description = if (timedGrants.isEmpty()) modeDescription else stringResource(R.string.chat_execution_mode_timed_cd, modeDescription)
+    val pending = pendingApprovals > 0
+    val description = when {
+        pending -> stringResource(R.string.chat_execution_mode_pending_cd, pendingApprovals)
+        timedGrants.isEmpty() -> modeDescription
+        else -> stringResource(R.string.chat_execution_mode_timed_cd, modeDescription)
+    }
     // 只在菜单打开时每 10 秒刷新剩余分钟；到期项由上游流移除。
     val now by produceState(System.currentTimeMillis(), expanded, timedGrants) {
         value = System.currentTimeMillis()
@@ -71,20 +87,28 @@ internal fun ExecutionModeButton(
         }
     }
     val haptics = LocalInfinityHaptics.current
+    val openMenu = { haptics.perform(InfinityHapticEvent.SELECTION); expanded = true }
     Box(modifier) {
         ChatCompactIconButton(
-            onClick = { haptics.perform(InfinityHapticEvent.SELECTION); expanded = true },
+            onClick = if (pending) ({ haptics.perform(InfinityHapticEvent.SELECTION); onJumpToApproval() }) else openMenu,
+            onLongClick = openMenu,
+            onClickLabel = stringResource(if (pending) R.string.chat_execution_mode_jump_label else R.string.chat_execution_mode_menu_label),
+            onLongClickLabel = stringResource(R.string.chat_execution_mode_menu_label),
             modifier = Modifier
                 .semantics { contentDescription = description }
                 .testTag(UiTags.CHAT_EXECUTION_MODE),
         ) {
-            Icon(
-                imageVector = mode.icon(),
-                contentDescription = null,
-                tint = mode.tint(),
-                modifier = Modifier.size(20.dp),
-            )
-            if (timedGrants.isNotEmpty()) {
+            if (pending) {
+                PendingApprovalShield(pendingApprovals)
+            } else {
+                Icon(
+                    imageVector = mode.icon(),
+                    contentDescription = null,
+                    tint = mode.tint(),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            if (timedGrants.isNotEmpty() && !pending) {
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
@@ -153,6 +177,41 @@ internal fun ExecutionModeButton(
                 )
             }
         }
+    }
+}
+
+/**
+ * 待批准时的盾牌：整块填成警示色，透明度随浮岛时钟按审批慢闪（[slowBlink]）变化，与运行坞点阵屏的“!”同拍；
+ * 中间是数量，两位数时字号由 10 缩到 7.5 并收紧字距，超过 99 显示“99”。字号按 dp 换算，不随系统字号放大，数字不会溢出盾牌。
+ */
+@Composable
+private fun PendingApprovalShield(count: Int) {
+    val glow = LocalComposerGlow.current
+    val density = LocalDensity.current
+    val shown = count.coerceAtMost(99).toString()
+    val twoDigits = shown.length > 1
+    val fill = MaterialTheme.infinityDomainColors.warning
+    val onFill = MaterialTheme.infinityDomainColors.onWarning
+    val textStyle = with(density) {
+        InfinityTypography.labelSmall.copy(
+            fontSize = (if (twoDigits) 7.5.dp else 10.dp).toSp(),
+            letterSpacing = (if (twoDigits) (-0.4).dp else 0.dp).toSp(),
+            lineHeight = 10.dp.toSp(),
+            fontWeight = FontWeight.SemiBold,
+            fontFeatureSettings = "tnum",
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+        )
+    }
+    Box(
+        Modifier
+            .size(24.dp)
+            .graphicsLayer { alpha = glow?.let { 0.4f + 0.6f * slowBlink(it.timeSeconds) } ?: 1f }
+            .testTag(UiTags.CHAT_EXECUTION_MODE_PENDING),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Rounded.Shield, contentDescription = null, tint = fill, modifier = Modifier.size(24.dp))
+        // 盾牌下半收窄，数字略向上放在盾面最宽处。
+        Text(shown, style = textStyle, color = onFill, maxLines = 1, softWrap = false, modifier = Modifier.offset(y = (-1).dp))
     }
 }
 

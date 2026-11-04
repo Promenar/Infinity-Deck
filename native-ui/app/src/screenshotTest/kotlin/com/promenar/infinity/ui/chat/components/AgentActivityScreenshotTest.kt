@@ -109,7 +109,6 @@ fun runDockBackgroundTriggerLightChinesePreview() = ActivityPreviewFrame(dark = 
                 ),
             ),
             onOpen = {},
-            onJumpToApproval = {},
         )
         SystemTriggerRow(
             SystemTriggerMessage.Parsed(
