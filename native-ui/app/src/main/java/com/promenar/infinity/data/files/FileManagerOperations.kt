@@ -444,7 +444,7 @@ internal fun mapped(error: Exception): FileOpException {
             "NOT_FOUND" -> FileOpCode.NOT_FOUND
             "READ_ONLY" -> FileOpCode.READ_ONLY
             "UNAVAILABLE", "MOUNT_CHANGED", "PERMISSION_LOST" -> FileOpCode.PERMISSION_LOST
-            "TOO_LARGE", "RECYCLE_LIMIT" -> FileOpCode.TOO_LARGE
+            "TOO_LARGE" -> FileOpCode.TOO_LARGE
             "NO_SPACE" -> FileOpCode.NO_SPACE
             "UNSUPPORTED" -> FileOpCode.UNSUPPORTED
             "CONFLICT", "RECOVERY_REQUIRED" -> FileOpCode.CONFLICT

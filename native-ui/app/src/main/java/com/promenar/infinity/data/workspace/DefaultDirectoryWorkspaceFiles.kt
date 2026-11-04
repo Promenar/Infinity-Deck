@@ -154,7 +154,7 @@ class DefaultDirectoryWorkspaceFiles(
                 "NOT_FOUND" -> DirectoryFileOpCode.NOT_FOUND
                 "NAME_EXISTS" -> DirectoryFileOpCode.NAME_EXISTS
                 "TARGET_INSIDE_SOURCE" -> DirectoryFileOpCode.TARGET_INSIDE_SOURCE
-                "RECYCLE_LIMIT", "TOO_LARGE" -> DirectoryFileOpCode.TOO_LARGE
+                "TOO_LARGE" -> DirectoryFileOpCode.TOO_LARGE
                 "READ_ONLY" -> DirectoryFileOpCode.READ_ONLY
                 "UNAVAILABLE", "MOUNT_CHANGED" -> DirectoryFileOpCode.WORKSPACE_UNAVAILABLE
                 else -> DirectoryFileOpCode.IO

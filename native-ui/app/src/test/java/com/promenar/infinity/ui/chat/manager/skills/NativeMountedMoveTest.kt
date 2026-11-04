@@ -216,7 +216,7 @@ class NativeMountedMoveTest(private val linux: Boolean) {
         override suspend fun list(path: String) = nodes.values.filter { it.path.substringBeforeLast('/') == path }
         override suspend fun read(path: String, maxBytes: Long): ByteArray {
             reads++
-            if (nodes.getValue(path).size > maxBytes) throw ExternalFolderException("RECYCLE_LIMIT", "快照超限")
+            if (nodes.getValue(path).size > maxBytes) throw ExternalFolderException("TOO_LARGE", "读取超限")
             return "payload".toByteArray()
         }
         override suspend fun <T> readStream(path: String, maxBytes: Long, consume: suspend (InputStream) -> T): T {
