@@ -324,7 +324,7 @@ internal fun LinuxFilesContent(
 }
 
 @Composable
-private fun LinuxNotReady(runtime: LinuxRuntimeState?, onOpenEnvironment: () -> Unit) {
+internal fun LinuxNotReady(runtime: LinuxRuntimeState?, onOpenEnvironment: () -> Unit) {
     val message = when (runtime) {
         is LinuxRuntimeState.Installing -> R.string.linux_files_not_ready_installing
         is LinuxRuntimeState.Unavailable -> R.string.linux_files_not_ready_unavailable

@@ -80,6 +80,7 @@ object NavDestinations {
     const val LINUX_MIRRORS = "linux_mirrors"
     const val LINUX_TERMINAL = "linux_terminal?session={session}&dir={dir}&cmd={cmd}"
     const val LINUX_FILES = "linux_files?path={path}"
+    const val LINUX_SYSTEM_FILES = "linux_system_files?path={path}"
     const val LINUX_FILE = "linux_file?path={path}"
     const val COMMAND_OUTPUT = "command_output/{sessionId}/{messageId}/{toolCallId}"
     const val NETWORK_ACCESS = "network_access"
@@ -111,6 +112,7 @@ object NavDestinations {
     fun linuxTerminal(sessionId: String? = null, directory: String? = null, command: String? = null) =
         "linux_terminal" + query("session" to sessionId, "dir" to directory, "cmd" to command)
     fun linuxFiles(path: String? = null) = "linux_files" + query("path" to path)
+    fun linuxSystemFiles(path: String? = null) = "linux_system_files" + query("path" to path)
     fun linuxFile(path: String) = "linux_file" + query("path" to path)
     fun commandOutput(sessionId: String, messageId: String, toolCallId: String) =
         "command_output/${android.net.Uri.encode(sessionId)}/${android.net.Uri.encode(messageId)}/${android.net.Uri.encode(toolCallId)}"
@@ -378,11 +380,25 @@ fun InfinityNavGraph(
             NavDestinations.LINUX_FILES,
             arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { backStackEntry ->
+            com.promenar.infinity.ui.linux.files.LinuxFileManagerScreen(
+                onBack = { navController.popBackStack() },
+                onOpenTerminal = { directory -> navController.navigate(NavDestinations.linuxTerminal(directory = directory)) },
+                onOpenEnvironment = { navController.navigate(NavDestinations.LINUX_ENVIRONMENT) },
+                onOpenFile = { navController.navigate(NavDestinations.linuxFile(it)) },
+                onBrowseSystemRoot = { navController.navigate(NavDestinations.linuxSystemFiles("/")) },
+                initialPath = backStackEntry.arguments?.getString("path"),
+            )
+        }
+        // 整个根目录仍用 Linux 专属浏览页：统一资源管理器只提供主目录位置。
+        composablePage(
+            NavDestinations.LINUX_SYSTEM_FILES,
+            arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { backStackEntry ->
             com.promenar.infinity.ui.linux.files.LinuxFilesScreen(
                 onBack = { navController.popBackStack() },
                 onOpenTerminal = { directory, command -> navController.navigate(NavDestinations.linuxTerminal(directory = directory, command = command)) },
                 onOpenEnvironment = { navController.navigate(NavDestinations.LINUX_ENVIRONMENT) },
-                initialPath = backStackEntry.arguments?.getString("path") ?: com.promenar.infinity.ui.linux.files.LINUX_HOME_PATH,
+                initialPath = backStackEntry.arguments?.getString("path") ?: "/",
                 onOpenFile = { navController.navigate(NavDestinations.linuxFile(it)) },
             )
         }

@@ -50,6 +50,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -280,7 +281,7 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
             }
             FileListBody(state, actions, Modifier.fillMaxWidth().weight(1f))
         }
-        if (!state.selecting && state.search == null && state.writable()) {
+        if (!state.selecting && state.search == null && state.location != null && state.writable()) {
             FileManagerFab(actions, Modifier.align(Alignment.BottomEnd).padding(InfinitySpacing.Large))
         }
     }
@@ -344,6 +345,7 @@ private fun FileListBody(state: FileManagerUiState, actions: FileManagerUiAction
         state.loading && state.items.isEmpty() -> Box(modifier, contentAlignment = Alignment.Center) {
             InfinityLoadingIndicator()
         }
+        state.location == null -> LocationUnavailable(modifier)
         state.viewMode == FileViewMode.GRID -> FileGrid(state, actions, modifier)
         else -> FileList(state, actions, modifier)
     }
@@ -409,6 +411,24 @@ private fun FileGrid(state: FileManagerUiState, actions: FileManagerUiActions, m
         }
     }
 }
+
+/** 宿主范围内没有可用位置（例如 Linux 主目录尚未就绪）。位置列表刚开始加载时先显示加载指示，避免一闪而过。 */
+@Composable
+private fun LocationUnavailable(modifier: Modifier) {
+    val settled by produceState(initialValue = false) {
+        kotlinx.coroutines.delay(LocationSettleMillis)
+        value = true
+    }
+    Box(modifier.testTag(UiTags.FM_LOCATION_UNAVAILABLE), contentAlignment = Alignment.Center) {
+        if (settled) {
+            FolderStatusMessage(text = stringResource(R.string.fm_location_unavailable), icon = Icons.Rounded.ErrorOutline)
+        } else {
+            InfinityLoadingIndicator()
+        }
+    }
+}
+
+private const val LocationSettleMillis = 600L
 
 @Composable
 private fun EmptyFolder() {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 资源管理器宿主：Linux 文件页与位置不可用状态 -->
+    <string name="linux_file_host_details">Details and edit</string>
+    <string name="fm_location_unavailable">This location is unavailable</string>
+</resources>
