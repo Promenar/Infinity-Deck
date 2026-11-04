@@ -276,6 +276,9 @@ fun PipelineBubble(
     }
     // 展开状态只保存在界面层，以组首条消息 ID 为稳定键，不写数据库。
     var processExpanded by rememberSaveable(group.messages.firstOrNull()?.id) { mutableStateOf(initialProcessExpanded) }
+    // 本次组合中是否见过这一轮以平铺形式进行；只作结束收起时是否播放过渡的判断，不触发重组。
+    val sawLiveTurn = remember(group.messages.firstOrNull()?.id) { LiveTurnFlag() }
+    SideEffect { if (collapsePlan == null && isGenerating) sawLiveTurn.value = true }
 
     val footerContent = collapsePlan?.finalContent
         ?: allSteps.filterIsInstance<PipelineStep.Content>().lastOrNull { it.content.isNotBlank() }
@@ -370,17 +373,21 @@ fun PipelineBubble(
             allSteps.forEachIndexed { index, step -> renderStep(index, step, allSteps) }
         } else {
             val expandedSteps = remember(collapsePlan) { collapsePlan.processSteps + collapsePlan.finalContent }
+            // 本次组合亲眼看着这一轮跑完时，过程先以展开态出现再动画收起；翻看历史时直接是收起态。
+            val processVisibility = remember { MutableTransitionState(sawLiveTurn.value || processExpanded) }
+            SideEffect { processVisibility.targetState = processExpanded }
             // 过程步骤随摘要行纵向展开、收起，最终正文始终留在下方原位，不随切换重建。
-            AnimatedVisibility(visible = processExpanded, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+            AnimatedVisibility(visibleState = processVisibility, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
                 Column { collapsePlan.processSteps.forEachIndexed { index, step -> renderStep(index, step, expandedSteps) } }
             }
             renderStep(expandedSteps.lastIndex, collapsePlan.finalContent, expandedSteps)
         }
-        // 进行中元素在流末尾：正文流式时动画紧跟正文，等待模型或准备工具调用时单独一行。
-        liveStep?.let { live ->
-            if (live.kind == LiveStepKind.CONTENT) GenerationIndicator(live.motionPhase)
-            else if (live.isTailRow) LiveWaitingRow(live, onStopGeneration)
-        }
+        LiveTailSlot(
+            visible = isGenerating && !hasPendingApproval &&
+                liveStep?.kind != LiveStepKind.APPROVAL && liveStep?.kind != LiveStepKind.QUESTION,
+            liveStep = liveStep,
+            onStopGeneration = onStopGeneration,
+        )
         if (!isGenerating) CanvasInvocationCards(
             allSteps.filterIsInstance<PipelineStep.ToolExec>().flatMap { it.steps },
             messageIds = remember(group.messages) { group.messages.map { it.id }.toSet() },
@@ -1362,7 +1369,13 @@ internal fun InlineToolRow(
     val liveStartedAt = live?.startedAt
     Column(modifier = Modifier.fillMaxWidth()) {
         // 逐条显示的工具没有标题行，进行中时在上方单独显示动画与计时。
-        if (live != null && (memoryOnly || browserOnly || knowledgeOnly)) LiveToolTicker(live)
+        val tickerLive = live?.takeIf { memoryOnly || browserOnly || knowledgeOnly }
+        // 收起时仍需绘制最后一帧计时，用普通引用保留上一次的进行中步骤，不触发重组。
+        val lastTicker = remember { arrayOfNulls<LiveStep>(1) }
+        if (tickerLive != null) lastTicker[0] = tickerLive
+        AnimatedVisibility(visible = tickerLive != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+            (tickerLive ?: lastTicker[0])?.let { LiveToolTicker(it) }
+        }
         if (memoryOnly) MemoryChangeRows(memoryChanges) else if (browserOnly) BrowserStepRows(browserSteps, fontSize)
         else if (knowledgeOnly) KnowledgeSearchStepRows(knowledgeSteps, fontSize) else CompactStepRow(
             segments = segments,
@@ -1386,15 +1399,15 @@ internal fun InlineToolRow(
         invocations.filter { it.name == com.promenar.infinity.data.subagent.SubagentLimits.TOOL_NAME }.forEach { invocation ->
             invocation.call?.id?.let { stepId -> key("subagent", stepId) { SubagentGroupCard(unscopedStepId(stepId)) } }
         }
-        if (executing) {
-            // 运行中的命令在摘要下方显示实时输出，结束后由结果展示接替。
-            liveInvocations.forEach { invocation ->
-                invocation.call?.id?.let { stepId -> key(stepId) { RunningToolLiveOutput(unscopedStepId(stepId)) } }
-            }
-        }
         AnimatedVisibility(visible = isExpanded, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
             // 展开内容底部 8dp，与流水线块间 8dp 合计 16dp，与段落间距一致。
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = ExpandedStepBottomPadding).testTag("CHAT_TOOL_DETAILS"), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+                // 实时输出只在用户展开后显示：默认不在会话流里弹出终端区，命令结束时也不会突然消失。
+                if (executing) {
+                    liveInvocations.forEach { invocation ->
+                        invocation.call?.id?.let { stepId -> key("live", stepId) { RunningToolLiveOutput(unscopedStepId(stepId), modifier = Modifier) } }
+                    }
+                }
                 invocations.forEach { invocation ->
                     key(invocation.steps.firstOrNull()?.id) {
                         ToolInvocationCard(invocation, jobLabels, commandOutputTarget, turnActive, onOpenChange = { openedChange = it })
@@ -2047,6 +2060,50 @@ private fun formatMessageDocumentBytes(bytes: Long): String = when {
 // ─────────────────────────────────────────────────────────────────
 //  GenerationIndicator — 本轮生成期间的生成状态指示
 // ─────────────────────────────────────────────────────────────────
+
+/** 普通引用标志位：写入不触发重组。 */
+private class LiveTurnFlag { var value: Boolean = false }
+
+/** 流末尾状态位的最小高度：取等待行（36dp）与正文末尾生成动画行（32dp）中较高者，内容贴顶，位置与原先一致。 */
+internal val LiveTailSlotHeight = CompactStepRowHeight
+
+/** 流末尾状态位里显示的内容类别；同类之间只更新内容，不同类之间淡入淡出。 */
+private enum class LiveTailContent { NONE, CONTENT_DOTS, WAITING }
+
+/**
+ * 生成期间常驻在流末尾的一行状态位：正文流式时显示生成动画，等待模型或准备工具调用时显示等待行，其余阶段留空。
+ * 高度固定不随阶段出现、消失，内容之间淡入淡出；生成结束时整行以收起动画离开。
+ */
+@Composable
+private fun LiveTailSlot(visible: Boolean, liveStep: LiveStep?, onStopGeneration: (() -> Unit)?) {
+    val kind = when {
+        liveStep == null -> LiveTailContent.NONE
+        liveStep.kind == LiveStepKind.CONTENT -> LiveTailContent.CONTENT_DOTS
+        liveStep.isTailRow -> LiveTailContent.WAITING
+        else -> LiveTailContent.NONE
+    }
+    AnimatedVisibility(visible = visible, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+        androidx.compose.animation.AnimatedContent(
+            targetState = kind to liveStep,
+            contentKey = { it.first },
+            transitionSpec = {
+                (fadeIn(tween(InfinityMotion.DurationMedium)) togetherWith fadeOut(tween(InfinityMotion.DurationFadeOut)))
+                    .using(androidx.compose.animation.SizeTransform(clip = false))
+            },
+            modifier = Modifier.fillMaxWidth().heightIn(min = LiveTailSlotHeight).testTag(LIVE_TAIL_SLOT_TAG),
+            contentAlignment = Alignment.TopStart,
+            label = "liveTailSlot",
+        ) { (content, step) ->
+            when (content) {
+                LiveTailContent.CONTENT_DOTS -> GenerationIndicator(step?.motionPhase ?: com.promenar.infinity.ui.common.motion.GenerationMotionPhase.STREAM)
+                LiveTailContent.WAITING -> if (step != null) LiveWaitingRow(step, onStopGeneration)
+                LiveTailContent.NONE -> Spacer(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+internal const val LIVE_TAIL_SLOT_TAG = "CHAT_LIVE_TAIL_SLOT"
 
 @Composable
 private fun GenerationIndicator(phase: com.promenar.infinity.ui.common.motion.GenerationMotionPhase) {

@@ -312,11 +312,7 @@ private fun SubagentRunRow(run: SubagentRun, now: Long, modelName: String, onCli
                 )
             }
         }
-        if (run.status.isActive) {
-            run.liveOutputKey?.let { liveKey ->
-                Box(Modifier.padding(start = 24.dp, end = 8.dp, top = 4.dp)) { RunningToolLiveOutput(liveKey) }
-            }
-        }
+        // 子代理命令的实时输出只在点开后的子代理详情页显示，会话流中的分组卡不弹出终端区。
     }
 }
 

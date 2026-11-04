@@ -21,7 +21,7 @@ import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
 @PreviewTest
-@Preview(name = "实时输出 运行中 深色", widthDp = 411, heightDp = 420, locale = "zh-rCN")
+@Preview(name = "实时输出 运行中 收起与展开 深色", widthDp = 411, heightDp = 560, locale = "zh-rCN")
 @Composable
 fun toolLiveOutputRunningPreview() = LiveOutputFrame {
     val store = ToolLiveOutputStore().apply {
@@ -33,7 +33,9 @@ fun toolLiveOutputRunningPreview() = LiveOutputFrame {
     }
     CompositionLocalProvider(LocalToolLiveOutput provides store) {
         // 审批通过后的调用不在生成任务内（isExecuting 为假），仍按实时输出通道显示为运行中。
+        // 默认收起：只有工具行；点开后展开区顶部显示实时输出、停止与转入后台。
         InlineToolRow(steps = runningSteps, isExecuting = false, fontSize = 16)
+        InlineToolRow(steps = runningSteps, isExecuting = false, fontSize = 16, initiallyExpanded = true)
     }
 }
 

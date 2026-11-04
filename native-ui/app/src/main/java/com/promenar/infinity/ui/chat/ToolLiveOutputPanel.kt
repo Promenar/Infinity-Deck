@@ -40,7 +40,11 @@ val LocalToolLiveOutput = staticCompositionLocalOf<ToolLiveOutputStore?> { null 
  * 宿主已有自己的停止控件时传 [showStop] = false，避免同一任务出现两个停止按钮。
  */
 @Composable
-internal fun RunningToolLiveOutput(stepId: String, showStop: Boolean = true) {
+internal fun RunningToolLiveOutput(
+    stepId: String,
+    showStop: Boolean = true,
+    modifier: Modifier = Modifier.padding(bottom = ExpandedStepBottomPadding),
+) {
     val store = LocalToolLiveOutput.current ?: return
     val initial = remember(store, stepId) { store.snapshot(stepId) }
     val snapshot by remember(store, stepId) { store.observe(stepId) }.collectAsState(initial = initial)
@@ -55,7 +59,7 @@ internal fun RunningToolLiveOutput(stepId: String, showStop: Boolean = true) {
     }?.let { state -> { com.promenar.infinity.data.exec.ToolExecutionControls.moveToBackground(state.sessionId, state.toolCallId); Unit } }
     snapshot?.let {
         ToolLiveOutputPanel(it, onStop = { store.requestStop(stepId) }, showStop = showStop,
-            onMoveToBackground = moveToBackground, modifier = Modifier.padding(bottom = ExpandedStepBottomPadding))
+            onMoveToBackground = moveToBackground, modifier = modifier)
     }
 }
 
