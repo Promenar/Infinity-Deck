@@ -1,0 +1,5 @@
+<resources>
+    <string name="file_manager_location_library">Library</string>
+    <string name="file_manager_location_sessions">Session workspaces</string>
+    <string name="file_manager_location_linux">Linux home</string>
+</resources>
