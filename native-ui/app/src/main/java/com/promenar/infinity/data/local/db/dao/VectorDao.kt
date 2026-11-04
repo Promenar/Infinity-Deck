@@ -6,6 +6,10 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.promenar.infinity.data.local.db.entity.VectorEntity
+import com.promenar.infinity.data.library.LibraryChunkRow
+import com.promenar.infinity.domain.library.ConversationFragment
+import com.promenar.infinity.domain.library.FragmentGroup
+import kotlinx.coroutines.flow.Flow
 
 private const val ACTIVE_FILE_VECTOR = "((file_uuid IS NOT NULL AND file_uuid IN (SELECT uuid FROM workspace_files WHERE in_recycle_bin = 0)) OR (file_uuid IS NULL AND (doc_id IS NULL OR doc_id NOT IN (SELECT uuid FROM workspace_files) OR doc_id IN (SELECT uuid FROM workspace_files WHERE in_recycle_bin = 0))))"
 private const val ACTIVE_FILE_VECTOR_ALIAS = "((vectors.file_uuid IS NOT NULL AND vectors.file_uuid IN (SELECT uuid FROM workspace_files WHERE in_recycle_bin = 0)) OR (vectors.file_uuid IS NULL AND (vectors.doc_id IS NULL OR vectors.doc_id NOT IN (SELECT uuid FROM workspace_files) OR vectors.doc_id IN (SELECT uuid FROM workspace_files WHERE in_recycle_bin = 0))))"
@@ -32,6 +36,37 @@ private const val FTS_JOIN = "SELECT vectors.* FROM vectors_fts JOIN vectors ON 
 
 @Dao
 interface VectorDao {
+    @Query("SELECT COUNT(*) FROM vectors WHERE " + MEMORY_ROW + " AND " + ACTIVE_VECTOR_ALIAS)
+    fun observeLibraryMemoryCount(): Flow<Int>
+
+    @Query("""SELECT vectors.session_id AS sessionId, sessions.title AS sessionTitle, agents.name AS agentName,
+        COUNT(*) AS fragmentCount, MAX(vectors.created_at) AS lastAt
+        FROM vectors LEFT JOIN sessions ON sessions.id = vectors.session_id
+        LEFT JOIN agents ON agents.id = sessions.agent_id
+        WHERE vectors.session_id IS NOT NULL AND """ + MEMORY_ROW + " AND " + ACTIVE_VECTOR_ALIAS +
+        " GROUP BY vectors.session_id, sessions.title, agents.name ORDER BY lastAt DESC, sessionId ASC")
+    fun observeLibraryFragmentGroups(): Flow<List<FragmentGroup>>
+
+    @Query("""SELECT vectors.id AS id, vectors.session_id AS sessionId, vectors.content AS content,
+        vectors.created_at AS createdAt FROM vectors WHERE vectors.session_id = :sessionId AND """ +
+        MEMORY_ROW + " AND " + ACTIVE_VECTOR_ALIAS +
+        " ORDER BY vectors.created_at DESC, vectors.id DESC LIMIT 100")
+    fun observeLibraryFragments(sessionId: String): Flow<List<ConversationFragment>>
+
+    @Query("SELECT session_id FROM vectors WHERE id = :id AND " + MEMORY_ROW + " LIMIT 1")
+    suspend fun getLibraryFragmentSession(id: String): String?
+
+    @Query("DELETE FROM vectors WHERE id = :id AND " + MEMORY_ROW)
+    suspend fun deleteLibraryFragment(id: String): Int
+
+    @Query("DELETE FROM vectors WHERE session_id = :sessionId AND " + MEMORY_ROW)
+    suspend fun clearLibraryFragments(sessionId: String): Int
+
+    @Query("""SELECT id, content, metadata, created_at AS createdAt FROM vectors
+        WHERE stale = 0 AND (file_uuid = :documentId OR (file_uuid IS NULL AND doc_id = :documentId))
+        ORDER BY created_at, id""")
+    suspend fun getLibraryDocumentChunks(documentId: String): List<LibraryChunkRow>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vector: VectorEntity)
 

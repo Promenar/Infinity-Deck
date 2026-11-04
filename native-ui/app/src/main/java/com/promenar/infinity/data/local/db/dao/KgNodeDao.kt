@@ -2,11 +2,18 @@ package com.promenar.infinity.data.local.db.dao
 
 import androidx.room.*
 import com.promenar.infinity.data.local.db.entity.KgNodeEntity
+import kotlinx.coroutines.flow.Flow
 
 private const val ACTIVE_KG_NODE = "EXISTS (SELECT 1 FROM kg_evidence p WHERE p.node_id = kg_nodes.id AND " + ACTIVE_KG_EVIDENCE + ")"
 
 @Dao
 interface KgNodeDao {
+    @Query("SELECT COUNT(*) FROM kg_nodes WHERE " + ACTIVE_KG_NODE)
+    fun observeLibraryCount(): Flow<Int>
+
+    @Query("SELECT kg_nodes.name FROM kg_nodes JOIN kg_evidence p ON p.node_id = kg_nodes.id WHERE p.doc_id = :documentId AND " + ACTIVE_KG_EVIDENCE + " GROUP BY kg_nodes.id ORDER BY kg_nodes.name ASC, kg_nodes.id ASC")
+    suspend fun getLibraryDocumentEntityNames(documentId: String): List<String>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(node: KgNodeEntity): Long
 

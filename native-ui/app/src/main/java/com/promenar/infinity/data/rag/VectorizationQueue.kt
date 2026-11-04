@@ -153,6 +153,7 @@ class VectorizationQueue(
         userMessageId: String,
         assistantMessageId: String
     ) = withSessionAdmission(sessionId) {
+        ConversationMemoryWriteCoordinator.serialized(sessionId) { _ ->
         enqueueMutex.withLock {
         ensureSessionNotFenced(sessionId)
         val sanitize: (String) -> String = { text ->
@@ -175,6 +176,7 @@ class VectorizationQueue(
         notifyStateChange()
 
         startProcessorIfNeeded()
+        }
         }
     }
 

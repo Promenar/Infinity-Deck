@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_knowledge_root">资料库</string>
+    <string name="library_knowledge_index_failed">索引失败，请重试。</string>
+    <string name="library_knowledge_action_failed">操作未完成，请重试。</string>
+    <string name="library_knowledge_confirm_graph">知识图谱提取需要先在文档页确认用量。</string>
+    <string name="library_knowledge_fragments_busy">对话片段正在处理，请在处理完成后重试。</string>
+</resources>

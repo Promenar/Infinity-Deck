@@ -13,6 +13,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FileEntryDao {
+    @Query("SELECT COUNT(*) FROM workspace_files WHERE workspace_root_uuid = :root AND in_recycle_bin = 0 AND is_directory = 0 AND vectorized_at IS NOT NULL")
+    fun observeLibraryIndexedCount(root: String): Flow<Int>
+
+    @Query("SELECT * FROM workspace_files WHERE workspace_root_uuid = :root AND in_recycle_bin = 0 AND is_directory = 0 ORDER BY updated_at DESC, uuid ASC")
+    fun observeLibraryFiles(root: String): Flow<List<FileEntry>>
+
     /** 含回收站记录；仅供删除、恢复与启动恢复流程使用。 */
     @Query("SELECT * FROM workspace_files WHERE workspace_root_uuid = :workspaceRootUuid")
     suspend fun getAllStatesByWorkspaceRootForCleanup(workspaceRootUuid: String): List<FileEntry>

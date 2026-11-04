@@ -2,6 +2,7 @@ package com.promenar.infinity.data.local.db.dao
 
 import androidx.room.*
 import com.promenar.infinity.data.local.db.entity.KgEdgeEntity
+import kotlinx.coroutines.flow.Flow
 
 private const val ACTIVE_KG_EDGE = "EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = kg_edges.id AND " + ACTIVE_KG_EVIDENCE + ")"
 // 关系行上的 weight 只作兼容缓存，检索排序和展示必须按当前作用域的存活证据聚合。
@@ -10,6 +11,9 @@ private const val EDGE_FROM = "), kg_edges.weight) AS weight FROM kg_edges WHERE
 
 @Dao
 interface KgEdgeDao {
+    @Query("SELECT COUNT(*) FROM kg_edges WHERE " + ACTIVE_KG_EDGE)
+    fun observeLibraryCount(): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(edge: KgEdgeEntity): Long
 

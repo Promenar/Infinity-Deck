@@ -109,6 +109,15 @@ class PostProcessor(
         messages: List<com.promenar.infinity.data.model.Message>,
         modelId: String,
         onProgress: ((Float, String) -> Unit)? = null
+    ) = com.promenar.infinity.data.rag.ConversationMemoryWriteCoordinator.withDirectWriter(sessionId) {
+        archiveMessagesToRagCoordinated(sessionId, messages, modelId, onProgress)
+    }
+
+    private suspend fun archiveMessagesToRagCoordinated(
+        sessionId: String,
+        messages: List<com.promenar.infinity.data.model.Message>,
+        modelId: String,
+        onProgress: ((Float, String) -> Unit)?
     ) {
         if (messages.isEmpty()) return
         
