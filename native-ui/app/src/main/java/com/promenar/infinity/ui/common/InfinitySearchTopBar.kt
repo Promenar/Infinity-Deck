@@ -108,8 +108,10 @@ fun InfinitySearchTopBar(
             }
         },
         navigationIcon = {
+            val leading = LocalInfinitySettingsLeading.current
             when {
                 searching -> InfinityBackButton(onClick = exitSearch)
+                leading != null -> leading()
                 onBack != null && !LocalInfinitySettingsPaneRoot.current -> InfinityBackButton(onClick = onBack)
             }
         },

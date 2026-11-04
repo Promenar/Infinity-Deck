@@ -196,6 +196,12 @@ fun InfinityNavGraph(
     }
 
     val mainTabs = com.promenar.infinity.ui.rememberMainTabsState()
+    val openLibraryMemory: () -> Unit = remember(mainTabs, navController) {
+        {
+            mainTabs.openLibrary(com.promenar.infinity.ui.library.LibraryPageKeys.MEMORY)
+            navController.popBackStack(NavDestinations.MAIN_TAB_SCAFFOLD, inclusive = false)
+        }
+    }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val settingsTwoPane = com.promenar.infinity.ui.settings.settingsTwoPaneAvailable(configuration.screenWidthDp, configuration.screenHeightDp)
     // 窗口变宽：设置标签打开的整页设置子页收回到设置右列，主导航回到主标签页。
@@ -244,7 +250,7 @@ fun InfinityNavGraph(
                     navController.navigate(NavDestinations.chatHero(sessionId))
                 },
                 state = mainTabs,
-                settingsPaneGraph = { navigator -> settingsDestinations(navigator) },
+                settingsPaneGraph = { navigator -> settingsDestinations(navigator, openLibraryMemory) },
                 hubPaneGraph = hubPaneGraph,
             )
         }
@@ -306,7 +312,7 @@ fun InfinityNavGraph(
             )
         }
 
-        settingsDestinations(SettingsNavigator(navController))
+        settingsDestinations(SettingsNavigator(navController), openLibraryMemory)
 
         composablePage(
             route = NavDestinations.LAB_VERSION,
@@ -538,7 +544,11 @@ private fun NavGraphBuilder.agentRuntimeDestination(navigator: SettingsNavigator
     }
 }
 
-internal fun NavGraphBuilder.settingsDestinations(navigator: SettingsNavigator) {
+internal fun NavGraphBuilder.settingsDestinations(
+    navigator: SettingsNavigator,
+    /** 设置里长期记忆页的“在资料中管理”：切到资料页签的长期记忆。 */
+    onOpenLibraryMemory: () -> Unit = {},
+) {
     composablePage(NavDestinations.RAG_ADVANCED_KG) { entry ->
         navigator.Page(entry) {
             KnowledgeGraphSettingsScreen(
@@ -560,7 +570,10 @@ internal fun NavGraphBuilder.settingsDestinations(navigator: SettingsNavigator) 
 
     composablePage(NavDestinations.LONG_TERM_MEMORY) { entry ->
         navigator.Page(entry) {
-            com.promenar.infinity.ui.memory.LongTermMemoryScreen(onNavigateBack = { navigator.back() })
+            com.promenar.infinity.ui.memory.LongTermMemoryScreen(
+                onNavigateBack = { navigator.back() },
+                onOpenLibrary = onOpenLibraryMemory,
+            )
         }
     }
 

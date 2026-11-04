@@ -85,6 +85,8 @@ class MainTabsState(
     settingsLastRoot: String,
     hubStack: List<String> = emptyList(),
     hubExpanded: Boolean = false,
+    libraryStack: List<String> = emptyList(),
+    libraryExpanded: Boolean = false,
 ) {
     var selectedTab by mutableStateOf(selectedTab)
 
@@ -105,12 +107,62 @@ class MainTabsState(
     /** 展开时图标条是否展开成窄列表。 */
     var hubDrawerOpen by mutableStateOf(false)
 
+    /**
+     * 资料页的页面层级（[com.promenar.infinity.ui.library.LibraryPageKeys] 的键，首项为根）。
+     * 内屏两列时为空表示右列显示概览；外屏单列时为空表示资料首页。内外屏共用同一层级，开合屏无需迁移。
+     */
+    var libraryStack by mutableStateOf(libraryStack)
+        private set
+
+    /** 资料页是否展开：导航栏推出屏幕、左列收成图标条，内容占满其余宽度。 */
+    var libraryExpanded by mutableStateOf(libraryExpanded)
+        private set
+
+    /** 左列另选一项：替换根页面。 */
+    fun openLibraryRoot(key: String) {
+        libraryStack = listOf(key)
+    }
+
+    /** 从资料页外部（例如设置里的长期记忆）跳到资料页的某个根页面。 */
+    fun openLibrary(key: String) {
+        openLibraryRoot(key)
+        selectedTab = AppTab.LIBRARY
+    }
+
+    /** 页内继续点：推入下一层；与栈顶相同时不重复推入。 */
+    fun pushLibrary(key: String) {
+        if (libraryStack.lastOrNull() != key) libraryStack = libraryStack + key
+    }
+
+    /** 弹出栈顶；[keepRoot] 为 true 时（内屏两列）不弹出根页面。返回是否弹出。 */
+    fun popLibrary(keepRoot: Boolean): Boolean {
+        val min = if (keepRoot) 1 else 0
+        if (libraryStack.size <= min) return false
+        libraryStack = libraryStack.dropLast(1)
+        return true
+    }
+
+    /** 移除 [key] 及压在它上面的页面（用于关闭问资料结果等覆盖页）。 */
+    fun dropLibraryFrom(key: String) {
+        val index = libraryStack.indexOf(key)
+        if (index >= 0) libraryStack = libraryStack.take(index)
+    }
+
+    fun toggleLibraryExpanded() {
+        libraryExpanded = !libraryExpanded
+    }
+
+    fun collapseLibrary() {
+        libraryExpanded = false
+    }
+
     /** 会话列当前的会话。 */
     val hubSessionId: String? get() = com.promenar.infinity.navigation.hubPaneSessionId(hubStack.firstOrNull())
 
     /** 切换页签：展开状态只属于对话页，切到其它页签先还原三列。 */
     fun selectTab(tab: AppTab) {
         if (tab != AppTab.CHAT) collapseHub()
+        if (tab != AppTab.LIBRARY) collapseLibrary()
         selectedTab = tab
     }
 
@@ -161,7 +213,10 @@ class MainTabsState(
     companion object {
         val Saver: Saver<MainTabsState, Any> = listSaver(
             save = {
-                listOf(it.selectedTab.name, it.settingsLastRoot, ArrayList(it.settingsStack), ArrayList(it.hubStack), it.hubExpanded)
+                listOf(
+                    it.selectedTab.name, it.settingsLastRoot, ArrayList(it.settingsStack), ArrayList(it.hubStack), it.hubExpanded,
+                    ArrayList(it.libraryStack), it.libraryExpanded,
+                )
             },
             restore = {
                 @Suppress("UNCHECKED_CAST")
@@ -171,6 +226,8 @@ class MainTabsState(
                     settingsLastRoot = it[1] as String,
                     hubStack = it[3] as List<String>,
                     hubExpanded = it[4] as Boolean,
+                    libraryStack = it.getOrNull(5) as? List<String> ?: emptyList(),
+                    libraryExpanded = it.getOrNull(6) as? Boolean ?: false,
                 )
             },
         )
@@ -240,12 +297,27 @@ fun MainTabScaffold(
         }
     } else null
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val railShift: (() -> Float)? = if (hubThreePaneShown) {
-        val shiftPx = with(density) {
-            com.promenar.infinity.ui.hub.hubPaneGeometry(railWidth, railWidth, expanded = false).shift.toPx()
+    // 资料页两列与展开：可用条件与设置两列相同；展开进度与对话页同样驱动导航栏推出。
+    val libraryTwoPane = com.promenar.infinity.ui.settings.settingsTwoPaneAvailable(configuration.screenWidthDp, configuration.screenHeightDp)
+    val libraryTwoPaneShown = libraryTwoPane && selectedTab == AppTab.LIBRARY
+    val libraryExpansion = remember { androidx.compose.animation.core.Animatable(if (state.libraryExpanded) 1f else 0f) }
+    LaunchedEffect(libraryTwoPane) { if (!libraryTwoPane) state.collapseLibrary() }
+    LaunchedEffect(state.libraryExpanded, libraryTwoPaneShown) {
+        val target = if (state.libraryExpanded && libraryTwoPaneShown) 1f else 0f
+        if (libraryTwoPaneShown) {
+            libraryExpansion.animateTo(target, tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate))
+        } else {
+            libraryExpansion.snapTo(target)
         }
-        ({ -shiftPx * hubExpansion.value })
-    } else null
+    }
+    val paneShiftPx = with(density) {
+        com.promenar.infinity.ui.hub.hubPaneGeometry(railWidth, railWidth, expanded = false).shift.toPx()
+    }
+    val railShift: (() -> Float)? = when {
+        hubThreePaneShown -> ({ -paneShiftPx * hubExpansion.value })
+        libraryTwoPaneShown -> ({ -paneShiftPx * libraryExpansion.value })
+        else -> null
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val navigationRail = shouldUseNavigationRail(maxWidth)
@@ -263,24 +335,22 @@ fun MainTabScaffold(
                 },
                 modifier = Modifier.fillMaxSize().clipToBounds(),
                 label = "main-tab-content",
-            ) { tab -> NavigationBody(fullBleed = tab == AppTab.CHAT && hubThreePane) { when (tab) {
+            ) { tab -> NavigationBody(fullBleed = (tab == AppTab.CHAT && hubThreePane) || (tab == AppTab.LIBRARY && libraryTwoPane)) { when (tab) {
                 AppTab.CHAT -> com.promenar.infinity.ui.hub.AgentHubScreen(
                     onNavigateToChat = onNavigateToChat,
                     onNavigateToAgentEdit = onNavigateToAgentEdit,
                     onOpenLinuxEnvironment = { onNavigateToSecondary(com.promenar.infinity.navigation.NavDestinations.LINUX_ENVIRONMENT) },
                     threePane = hubHost,
                 )
-                AppTab.LIBRARY -> com.promenar.infinity.ui.rag.RagHomeScreen(
-                    onNavigateToFolder = { folderId, _ ->
-                        onNavigateToSecondary(com.promenar.infinity.navigation.NavDestinations.ragFolder(folderId))
+                AppTab.LIBRARY -> com.promenar.infinity.ui.library.LibraryScreen(
+                    state = state,
+                    layout = if (libraryTwoPane) {
+                        com.promenar.infinity.ui.library.LibraryLayout.TwoPane(railWidth, libraryExpansion)
+                    } else {
+                        com.promenar.infinity.ui.library.LibraryLayout.Single
                     },
-                    onNavigateToConfig = {
-                        onNavigateToSecondary(com.promenar.infinity.navigation.NavDestinations.DEFAULT_MODELS)
-                    },
-                    onNavigateToGraph = { onNavigateToSecondary("knowledge_graph") },
-                    onNavigateToDocEditor = { rootUuid, docId ->
-                        onNavigateToSecondary(com.promenar.infinity.navigation.NavDestinations.docEditor(rootUuid, docId))
-                    }
+                    onNavigateToSecondary = onNavigateToSecondary,
+                    onOpenSession = onNavigateToChat,
                 )
                 AppTab.SETTINGS -> if (settingsTwoPane) {
                     com.promenar.infinity.ui.settings.SettingsTwoPane(

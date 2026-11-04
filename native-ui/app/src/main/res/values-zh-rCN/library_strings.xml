@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 资料页（左列导航、概览、文档、对话片段与问资料）。 -->
+<resources>
+    <string name="library_ask_placeholder">问资料</string>
+    <string name="library_ask_clear">清空问题</string>
+    <string name="library_ask_hint">用自然语言搜索资料库，结果显示命中的段落。</string>
+
+    <string name="library_group_views">视图</string>
+    <string name="library_group_locations">位置</string>
+    <string name="library_group_pins">固定的文件夹</string>
+    <string name="library_group_remembered">智能体记住的</string>
+    <string name="library_locations_more">更多位置（%1$d）</string>
+    <string name="library_locations_less">收起</string>
+
+    <string name="library_page_overview">概览</string>
+    <string name="library_page_recent">最近</string>
+    <string name="library_page_pending">待处理</string>
+    <string name="library_page_memory">长期记忆</string>
+    <string name="library_page_fragments">对话片段</string>
+    <string name="library_page_graph">知识图谱</string>
+    <string name="library_page_trash">回收站</string>
+    <string name="library_page_files">文件</string>
+    <string name="library_page_ask">问资料</string>
+    <string name="library_page_document">文档</string>
+
+    <string name="library_uplink">返回%1$s</string>
+    <string name="library_badge_new">新</string>
+    <string name="library_location_access_lost">授权已失效</string>
+
+    <string name="library_kpi_documents">已索引文档</string>
+    <string name="library_kpi_memories">长期记忆</string>
+    <string name="library_kpi_memories_new">%1$d 条新</string>
+    <string name="library_kpi_graph">图谱实体</string>
+    <string name="library_kpi_graph_relations">%1$d 条关系</string>
+    <string name="library_kpi_fragments">对话片段</string>
+
+    <string name="library_pending_title">待处理</string>
+    <string name="library_pending_failed">解析失败</string>
+    <string name="library_pending_queued">排队中 · 第 %1$d 位</string>
+    <string name="library_pending_queued_plain">排队中</string>
+    <string name="library_pending_indexing">索引中</string>
+    <string name="library_pending_stale">已改动待重建</string>
+    <string name="library_pending_empty">没有需要处理的文档，全部已索引。</string>
+    <string name="library_view_all">查看全部</string>
+    <string name="library_action_retry">重试</string>
+    <string name="library_action_rebuild">重建</string>
+
+    <string name="library_recent_title">最近加入</string>
+    <string name="library_recent_empty">资料库里还没有文档。导入文件或新建笔记开始。</string>
+
+    <string name="library_collect_title">收集</string>
+    <string name="library_collect_hint">导入的文件放进资料库根目录，自动解析与索引。</string>
+    <string name="library_collect_import">导入文件</string>
+    <string name="library_collect_note">新建笔记</string>
+    <string name="library_note_title">新建笔记</string>
+    <string name="library_note_name">名称</string>
+    <string name="library_note_body">内容</string>
+    <string name="library_note_default_name">笔记.md</string>
+    <string name="library_note_save">保存</string>
+
+    <string name="library_notice_retry_done">已重新开始解析</string>
+    <string name="library_notice_rebuild_done">已开始重建索引</string>
+    <string name="library_notice_import_done">已导入到资料库</string>
+    <string name="library_notice_note_done">笔记已保存</string>
+    <string name="library_notice_clear_done">已清除该会话的对话片段</string>
+    <string name="library_notice_retry_failed">重试失败</string>
+    <string name="library_notice_rebuild_failed">重建失败</string>
+    <string name="library_notice_import_failed">导入失败</string>
+    <string name="library_notice_note_failed">笔记保存失败</string>
+    <string name="library_notice_clear_failed">清除对话片段失败</string>
+    <string name="library_notice_delete_failed">删除片段失败</string>
+    <string name="library_notice_with_reason">%1$s：%2$s</string>
+
+    <string name="library_doc_edit">编辑</string>
+    <string name="library_doc_agent_view">智能体视角</string>
+    <string name="library_doc_status">状态</string>
+    <string name="library_doc_status_indexed">已索引</string>
+    <string name="library_doc_chunks">索引段数</string>
+    <string name="library_doc_entities">图谱实体</string>
+    <string name="library_doc_entities_none">尚未抽取</string>
+    <string name="library_doc_location">位置</string>
+    <string name="library_doc_source">来源</string>
+    <string name="library_doc_versions">历史版本</string>
+    <string name="library_doc_body">正文</string>
+    <string name="library_doc_extracted">从文件中提取的文本</string>
+    <string name="library_doc_truncated">文档较长，只显示开头部分。</string>
+    <string name="library_doc_not_found">这个文档已不在资料库中。</string>
+    <string name="library_doc_no_body">没有可显示的正文。</string>
+
+    <string name="library_fragments_desc">智能体在对话中保存的原始段落，按会话分组。删除片段不影响会话本身。</string>
+    <string name="library_fragments_empty">还没有对话片段。</string>
+    <string name="library_fragments_deleted_session">已删除的会话</string>
+    <string name="library_fragments_clear">全部清除</string>
+    <string name="library_fragments_clear_title">清除该会话的对话片段？</string>
+    <string name="library_fragments_clear_message">智能体将不再回想起这些段落，会话本身保留。</string>
+    <string name="library_fragment_delete">删除片段</string>
+    <plurals name="library_fragment_count">
+        <item quantity="other">%1$d 段</item>
+    </plurals>
+
+    <string name="library_memory_search">搜索记忆</string>
+    <string name="library_memory_disabled">长期记忆已关闭，智能体不会新记住内容。可在设置中打开。</string>
+    <string name="library_memory_manage_section">记忆内容</string>
+    <string name="library_memory_manage">在资料中管理</string>
+    <string name="library_memory_manage_desc">查看、编辑与删除智能体记住的内容</string>
+</resources>

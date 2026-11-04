@@ -468,13 +468,16 @@ internal fun UserSettingsHomeScreenContent(
                         onClick = { actions.onNavigateToSecondary(NavDestinations.LONG_TERM_MEMORY) },
                         selected = state.selectedRoute == NavDestinations.LONG_TERM_MEMORY,
                     )
-                    UserSettingsNavigationItem(
-                        icon = Icons.Rounded.Tune,
-                        title = stringResource(R.string.settings_ia_debug_title),
-                        subtitle = stringResource(R.string.settings_ia_debug_desc),
-                        onClick = { actions.onNavigateToSecondary(NavDestinations.RAG_DEBUG) },
-                        selected = state.selectedRoute == NavDestinations.RAG_DEBUG,
-                    )
+                    // 检索调试只在开发者模式下出现在设置目录。
+                    if (state.developerModeEnabled) {
+                        UserSettingsNavigationItem(
+                            icon = Icons.Rounded.Tune,
+                            title = stringResource(R.string.settings_ia_debug_title),
+                            subtitle = stringResource(R.string.settings_ia_debug_desc),
+                            onClick = { actions.onNavigateToSecondary(NavDestinations.RAG_DEBUG) },
+                            selected = state.selectedRoute == NavDestinations.RAG_DEBUG,
+                        )
+                    }
                 }
             }
 

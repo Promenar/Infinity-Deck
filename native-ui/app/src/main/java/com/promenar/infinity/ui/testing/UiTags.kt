@@ -598,6 +598,7 @@ object UiTags {
     // 长期记忆管理页与会话记忆步骤
     const val LTM_LIST = "ltm_list"
     const val LTM_ENABLED = "ltm_enabled"
+    const val LTM_OPEN_LIBRARY = "ltm_open_library"
     const val LTM_EDIT_TITLE = "ltm_edit_title"
     const val LTM_EDIT_CONTENT = "ltm_edit_content"
     const val LTM_EDIT_DELETE = "ltm_edit_delete"

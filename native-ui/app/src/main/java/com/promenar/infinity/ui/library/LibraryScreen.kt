@@ -1,0 +1,294 @@
+package com.promenar.infinity.ui.library
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.R
+import com.promenar.infinity.ui.MainTabsState
+import com.promenar.infinity.ui.hub.HubListPaneWidth
+import com.promenar.infinity.ui.hub.HubStripWidth
+import com.promenar.infinity.ui.rag.RagViewModel
+
+/** 资料页的测试标签（与 UiTags 分开，避免与资源管理器组件的标签段冲突）。 */
+object LibraryTags {
+    const val SCREEN = "library_screen"
+    const val NAV_COLUMN = "library_nav_column"
+    const val STRIP = "library_strip"
+    const val ASK_FIELD = "library_ask_field"
+    const val UPLINK = "library_uplink"
+    const val EXPAND = "library_expand"
+    fun navItem(key: String) = "library_nav_$key"
+    fun page(key: String) = "library_page_$key"
+}
+
+/** 资料页的布局：外屏与窄窗口单页栈；内屏两列，可展开。 */
+sealed interface LibraryLayout {
+    data object Single : LibraryLayout
+
+    /** [railWidth] 为导航轨（含安全区）宽度；[expansion] 0 为两列，1 为展开，由主标签页与导航轨共用。 */
+    class TwoPane(val railWidth: Dp, val expansion: Animatable<Float, AnimationVector1D>) : LibraryLayout
+}
+
+/** 资料页的页面层级操作：内屏两列时根页面由左列决定，页内推入；外屏单列时空栈即资料首页。 */
+@Stable
+internal class LibraryNavigator(private val state: MainTabsState, val twoPane: Boolean) {
+    val stack: List<String> get() = if (twoPane) twoPaneStack(state.libraryStack) else state.libraryStack
+    val expanded: Boolean get() = twoPane && state.libraryExpanded
+
+    fun openRoot(key: String) = state.openLibraryRoot(key)
+
+    fun push(key: String) {
+        if (twoPane && state.libraryStack.isEmpty()) state.openLibraryRoot(LibraryPageKeys.OVERVIEW)
+        state.pushLibrary(key)
+    }
+
+    /** 打开左列级别的分区：内屏替换根页面（左列高亮随之变化），外屏在首页上推入。 */
+    fun openSection(key: String) = if (twoPane) openRoot(key) else push(key)
+
+    fun back(): Boolean = state.popLibrary(keepRoot = twoPane)
+
+    fun dropAsk() = state.dropLibraryFrom(LibraryPageKeys.ASK)
+
+    fun toggleExpanded() = state.toggleLibraryExpanded()
+
+    /** 系统返回：先弹出页内层级，再还原两列；都不需要时交给页签级处理。 */
+    val handlesBack: Boolean get() = (if (twoPane) state.libraryStack.size > 1 else state.libraryStack.isNotEmpty()) || expanded
+
+    fun handleBack() {
+        if (!back()) state.collapseLibrary()
+    }
+}
+
+@Composable
+fun LibraryScreen(
+    state: MainTabsState,
+    layout: LibraryLayout,
+    onNavigateToSecondary: (String) -> Unit,
+    onOpenSession: (String) -> Unit,
+) {
+    val app = LocalContext.current.applicationContext as InfinityApplication
+    val viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(app))
+    val ragViewModel: RagViewModel = viewModel(factory = RagViewModel.factory(app))
+    val twoPane = layout is LibraryLayout.TwoPane
+    val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
+    var askQuery by rememberSaveable { mutableStateOf("") }
+    val snackbar = remember { SnackbarHostState() }
+
+    // 问资料：有查询时压上结果页；结果页被弹出（返回或“‹ 上一页”）即清空查询。
+    val askInStack = LibraryPageKeys.ASK in navigator.stack
+    val ask = remember(ragViewModel, navigator) {
+        LibraryAsk(
+            onQueryChange = { text ->
+                askQuery = text
+                ragViewModel.search(text)
+                if (text.isNotBlank() && LibraryPageKeys.ASK !in navigator.stack) navigator.push(LibraryPageKeys.ASK)
+                if (text.isBlank()) navigator.dropAsk()
+            },
+        )
+    }
+    LaunchedEffect(askInStack) {
+        if (!askInStack && askQuery.isNotEmpty()) {
+            askQuery = ""
+            ragViewModel.search("")
+        }
+    }
+
+    BackHandler(enabled = navigator.handlesBack) { navigator.handleBack() }
+    LibraryNoticeEffect(viewModel, snackbar)
+
+    val host = LibraryPageHost(
+        viewModel = viewModel,
+        ragViewModel = ragViewModel,
+        navigator = navigator,
+        askQuery = askQuery,
+        ask = ask,
+        onNavigateToSecondary = onNavigateToSecondary,
+        onOpenSession = onOpenSession,
+    )
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag(LibraryTags.SCREEN)) {
+        when (layout) {
+            LibraryLayout.Single -> LibrarySingleLayout(host)
+            is LibraryLayout.TwoPane -> LibraryTwoPaneLayout(host, layout)
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+    }
+}
+
+/** 问资料输入的回调集合，左列、外屏首页与结果页共用。 */
+@Stable
+internal class LibraryAsk(val onQueryChange: (String) -> Unit)
+
+/** 各页面需要的依赖与回调。 */
+@Stable
+internal class LibraryPageHost(
+    val viewModel: LibraryViewModel,
+    val ragViewModel: RagViewModel,
+    val navigator: LibraryNavigator,
+    val askQuery: String,
+    val ask: LibraryAsk,
+    val onNavigateToSecondary: (String) -> Unit,
+    val onOpenSession: (String) -> Unit,
+)
+
+@Composable
+private fun LibrarySingleLayout(host: LibraryPageHost) {
+    val stack = host.navigator.stack
+    AnimatedContent(
+        targetState = stack.lastOrNull(),
+        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        modifier = Modifier.fillMaxSize(),
+        label = "library-single",
+    ) { key ->
+        if (key == null) {
+            LibraryHome(host)
+        } else {
+            LibraryPageContent(
+                page = LibraryPageKeys.parse(key),
+                host = host,
+                leading = LibraryLeading.Back(onBack = { host.navigator.back() }),
+                uplink = null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.TwoPane) {
+    val navigator = host.navigator
+    val expansion = layout.expansion
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val windowWidth = maxWidth
+        val listStart = layout.railWidth
+        val twoPaneContentStart = layout.railWidth + HubListPaneWidth
+        val shift = twoPaneContentStart - HubStripWidth
+
+        // 左列：随导航轨一起左移推出，展开后不再参与布局与无障碍。
+        if (expansion.value < 1f) {
+            Box(
+                Modifier
+                    .width(HubListPaneWidth)
+                    .fillMaxHeight()
+                    .offset { IntOffset((listStart - shift * expansion.value).roundToPx(), 0) }
+                    .graphicsLayer { alpha = 1f - expansion.value },
+            ) {
+                LibraryNavColumn(host)
+            }
+        }
+        // 展开后的图标条：直接切换分区并保持展开。
+        if (expansion.value > 0f) {
+            Box(
+                Modifier
+                    .width(HubStripWidth)
+                    .fillMaxHeight()
+                    .graphicsLayer { alpha = expansion.value },
+            ) {
+                LibraryStrip(host)
+            }
+        }
+        val contentStart = lerp(twoPaneContentStart.value, HubStripWidth.value, expansion.value).dp
+        Box(
+            Modifier
+                .offset { IntOffset(contentStart.roundToPx(), 0) }
+                .width((windowWidth - contentStart).coerceAtLeast(0.dp))
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            val stack = navigator.stack
+            AnimatedContent(
+                targetState = stack,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                contentKey = { it.last() },
+                modifier = Modifier.fillMaxSize(),
+                label = "library-detail",
+            ) { pages ->
+                val previous = pages.getOrNull(pages.lastIndex - 1)
+                LibraryPageContent(
+                    page = LibraryPageKeys.parse(pages.last()),
+                    host = host,
+                    leading = LibraryLeading.Expand(expanded = navigator.expanded, onToggle = navigator::toggleExpanded),
+                    uplink = previous?.let { key -> LibraryUplink(key, onClick = { navigator.back() }) },
+                )
+            }
+        }
+    }
+}
+
+/** 页头最左侧：内屏为展开 / 还原，外屏为离开本页。 */
+internal sealed interface LibraryLeading {
+    data class Expand(val expanded: Boolean, val onToggle: () -> Unit) : LibraryLeading
+    data class Back(val onBack: () -> Unit) : LibraryLeading
+}
+
+/** 标题下方“‹ 上一页名称”：[key] 为上一页的键。 */
+internal data class LibraryUplink(val key: String, val onClick: () -> Unit)
+
+@Composable
+private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarHostState) {
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val doneTexts = mapOf(
+        LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_done),
+        LibraryNotice.Kind.REBUILD to stringResource(R.string.library_notice_rebuild_done),
+        LibraryNotice.Kind.IMPORT to stringResource(R.string.library_notice_import_done),
+        LibraryNotice.Kind.NOTE to stringResource(R.string.library_notice_note_done),
+        LibraryNotice.Kind.CLEAR_FRAGMENTS to stringResource(R.string.library_notice_clear_done),
+    )
+    val failedTexts = mapOf(
+        LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_failed),
+        LibraryNotice.Kind.REBUILD to stringResource(R.string.library_notice_rebuild_failed),
+        LibraryNotice.Kind.IMPORT to stringResource(R.string.library_notice_import_failed),
+        LibraryNotice.Kind.NOTE to stringResource(R.string.library_notice_note_failed),
+        LibraryNotice.Kind.CLEAR_FRAGMENTS to stringResource(R.string.library_notice_clear_failed),
+        LibraryNotice.Kind.DELETE_FRAGMENT to stringResource(R.string.library_notice_delete_failed),
+    )
+    val withReason = stringResource(R.string.library_notice_with_reason)
+    LaunchedEffect(notice) {
+        val current = notice ?: return@LaunchedEffect
+        viewModel.consumeNotice()
+        val text = when (current) {
+            is LibraryNotice.ActionDone -> doneTexts[current.kind]
+            is LibraryNotice.ActionFailed -> {
+                val base = failedTexts[current.kind]
+                val reason = current.reason?.takeIf { it.isNotBlank() }
+                if (base != null && reason != null) withReason.format(base, reason) else base
+            }
+        } ?: return@LaunchedEffect
+        snackbar.showSnackbar(text)
+    }
+}

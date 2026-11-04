@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 资料页（左列导航、概览、文档、对话片段与问资料）。 -->
+<resources>
+    <string name="library_ask_placeholder">Ask the library</string>
+    <string name="library_ask_clear">Clear question</string>
+    <string name="library_ask_hint">Search your library in plain language. Results show the matching passages.</string>
+
+    <string name="library_group_views">Views</string>
+    <string name="library_group_locations">Locations</string>
+    <string name="library_group_pins">Pinned folders</string>
+    <string name="library_group_remembered">What agents remember</string>
+    <string name="library_locations_more">More locations (%1$d)</string>
+    <string name="library_locations_less">Show fewer</string>
+
+    <string name="library_page_overview">Overview</string>
+    <string name="library_page_recent">Recent</string>
+    <string name="library_page_pending">Needs attention</string>
+    <string name="library_page_memory">Long-term memory</string>
+    <string name="library_page_fragments">Conversation snippets</string>
+    <string name="library_page_graph">Knowledge graph</string>
+    <string name="library_page_trash">Recycle bin</string>
+    <string name="library_page_files">Files</string>
+    <string name="library_page_ask">Ask the library</string>
+    <string name="library_page_document">Document</string>
+
+    <string name="library_uplink">Back to %1$s</string>
+    <string name="library_badge_new">New</string>
+    <string name="library_location_access_lost">Access lost</string>
+
+    <string name="library_kpi_documents">Indexed documents</string>
+    <string name="library_kpi_memories">Long-term memories</string>
+    <string name="library_kpi_memories_new">%1$d new</string>
+    <string name="library_kpi_graph">Graph entities</string>
+    <string name="library_kpi_graph_relations">%1$d relations</string>
+    <string name="library_kpi_fragments">Snippets</string>
+
+    <string name="library_pending_title">Needs attention</string>
+    <string name="library_pending_failed">Couldn\'t be parsed</string>
+    <string name="library_pending_queued">Queued · #%1$d</string>
+    <string name="library_pending_queued_plain">Queued</string>
+    <string name="library_pending_indexing">Indexing</string>
+    <string name="library_pending_stale">Changed since indexing</string>
+    <string name="library_pending_empty">Nothing needs attention. Every document is indexed.</string>
+    <string name="library_view_all">View all</string>
+    <string name="library_action_retry">Retry</string>
+    <string name="library_action_rebuild">Rebuild</string>
+
+    <string name="library_recent_title">Recently added</string>
+    <string name="library_recent_empty">No documents yet. Import files or save a note to get started.</string>
+
+    <string name="library_collect_title">Collect</string>
+    <string name="library_collect_hint">Imported files go to the library root and are parsed and indexed automatically.</string>
+    <string name="library_collect_import">Import files</string>
+    <string name="library_collect_note">New note</string>
+    <string name="library_note_title">New note</string>
+    <string name="library_note_name">Name</string>
+    <string name="library_note_body">Content</string>
+    <string name="library_note_default_name">Note.md</string>
+    <string name="library_note_save">Save</string>
+
+    <string name="library_notice_retry_done">Parsing again</string>
+    <string name="library_notice_rebuild_done">Rebuilding the index</string>
+    <string name="library_notice_import_done">Imported to the library</string>
+    <string name="library_notice_note_done">Note saved</string>
+    <string name="library_notice_clear_done">Snippets from this conversation cleared</string>
+    <string name="library_notice_retry_failed">Retry failed</string>
+    <string name="library_notice_rebuild_failed">Rebuild failed</string>
+    <string name="library_notice_import_failed">Import failed</string>
+    <string name="library_notice_note_failed">Couldn\'t save the note</string>
+    <string name="library_notice_clear_failed">Couldn\'t clear snippets</string>
+    <string name="library_notice_delete_failed">Couldn\'t delete the snippet</string>
+    <string name="library_notice_with_reason">%1$s: %2$s</string>
+
+    <string name="library_doc_edit">Edit</string>
+    <string name="library_doc_agent_view">What the agent sees</string>
+    <string name="library_doc_status">Status</string>
+    <string name="library_doc_status_indexed">Indexed</string>
+    <string name="library_doc_chunks">Indexed passages</string>
+    <string name="library_doc_entities">Graph entities</string>
+    <string name="library_doc_entities_none">None extracted yet</string>
+    <string name="library_doc_location">Location</string>
+    <string name="library_doc_source">Source</string>
+    <string name="library_doc_versions">Earlier versions</string>
+    <string name="library_doc_body">Content</string>
+    <string name="library_doc_extracted">Text extracted from the file</string>
+    <string name="library_doc_truncated">This document is long. Only the beginning is shown.</string>
+    <string name="library_doc_not_found">This document is no longer in the library.</string>
+    <string name="library_doc_no_body">No readable content.</string>
+
+    <string name="library_fragments_desc">Raw passages agents saved during conversations, grouped by conversation. Deleting them doesn\'t touch the conversation itself.</string>
+    <string name="library_fragments_empty">No conversation snippets yet.</string>
+    <string name="library_fragments_deleted_session">Deleted conversation</string>
+    <string name="library_fragments_clear">Clear all</string>
+    <string name="library_fragments_clear_title">Clear snippets from this conversation?</string>
+    <string name="library_fragments_clear_message">Agents will no longer recall these passages. The conversation itself stays.</string>
+    <string name="library_fragment_delete">Delete snippet</string>
+    <plurals name="library_fragment_count">
+        <item quantity="one">%1$d snippet</item>
+        <item quantity="other">%1$d snippets</item>
+    </plurals>
+
+    <string name="library_memory_search">Search memories</string>
+    <string name="library_memory_disabled">Long-term memory is off, so agents won\'t remember anything new. Turn it on in Settings.</string>
+    <string name="library_memory_manage_section">Memories</string>
+    <string name="library_memory_manage">Manage in Library</string>
+    <string name="library_memory_manage_desc">View, edit and delete what agents remember</string>
+</resources>

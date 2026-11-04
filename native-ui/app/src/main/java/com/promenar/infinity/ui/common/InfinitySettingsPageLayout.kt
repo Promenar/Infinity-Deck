@@ -35,6 +35,12 @@ val LocalInfinitySettingsPaneRoot = compositionLocalOf { false }
 val LocalInfinitySettingsEmbedded = compositionLocalOf<PaddingValues?> { null }
 
 /**
+ * 宿主替换顶栏最左侧按钮（例如资料页右列的展开 / 还原按钮）：给出时代替返回按钮，搜索态仍显示退出搜索。
+ * 宿主只在被嵌入的那一页外层提供它。
+ */
+val LocalInfinitySettingsLeading = compositionLocalOf<(@Composable () -> Unit)?> { null }
+
+/**
  * 设置层级页共用骨架。
  *
  * 内容边距由 [PaddingValues] 统一下发，调用方可直接传给 LazyColumn 的
@@ -91,8 +97,10 @@ fun InfinitySettingsPageLayout(
                     )
                 },
                 navigationIcon = {
-                    if (onBack != null && !LocalInfinitySettingsPaneRoot.current) {
-                        InfinityBackButton(onClick = onBack)
+                    val leading = LocalInfinitySettingsLeading.current
+                    when {
+                        leading != null -> leading()
+                        onBack != null && !LocalInfinitySettingsPaneRoot.current -> InfinityBackButton(onClick = onBack)
                     }
                 },
                 actions = actions,

@@ -86,7 +86,11 @@ private val LongTermMemoryKind.shortLabelRes: Int
     }
 
 @Composable
-fun LongTermMemoryScreen(onNavigateBack: () -> Unit) {
+fun LongTermMemoryScreen(
+    onNavigateBack: () -> Unit,
+    /** 给出时（设置入口）只显示总开关与“在资料中管理”，记忆列表在资料页。 */
+    onOpenLibrary: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val viewModel: LongTermMemoryViewModel = viewModel(
         factory = LongTermMemoryViewModel.factory(context.applicationContext as Application),
@@ -116,6 +120,16 @@ fun LongTermMemoryScreen(onNavigateBack: () -> Unit) {
             }
             null -> Unit
         }
+    }
+
+    if (onOpenLibrary != null) {
+        LongTermMemorySwitchPage(
+            enabled = enabled,
+            onEnabledChange = viewModel::setEnabled,
+            onNavigateBack = onNavigateBack,
+            onOpenLibrary = onOpenLibrary,
+        )
+        return
     }
 
     InfinitySettingsPageLayout(
@@ -173,6 +187,10 @@ internal fun LongTermMemoryContent(
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
     modifier: Modifier = Modifier,
     nowMs: Long = System.currentTimeMillis(),
+    /** 资料页里总开关留在设置，这里不重复显示。 */
+    showToggle: Boolean = true,
+    /** 近 7 天新增且未看过的记忆，行内标“新”。 */
+    newIds: Set<String> = emptySet(),
 ) {
     val groups = remember(items, query) { groupLongTermMemories(items, query) }
     LazyColumn(
@@ -180,7 +198,7 @@ internal fun LongTermMemoryContent(
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.SectionGap),
     ) {
-        item(key = "toggle") {
+        if (showToggle) item(key = "toggle") {
             InfinitySettingsSection(title = stringResource(R.string.ltm_section_switch), footer = stringResource(R.string.ltm_switch_footer)) {
                 SettingsToggle(
                     title = stringResource(R.string.ltm_enabled),
@@ -205,7 +223,9 @@ internal fun LongTermMemoryContent(
         groups.forEach { (kind, group) ->
             item(key = "group-${kind.name}") {
                 InfinitySettingsSection(title = stringResource(R.string.ltm_group_title, stringResource(kind.labelRes), group.size)) {
-                    group.forEach { item -> LongTermMemoryRow(item, nowMs, onClick = { onOpen(item.memory) }) }
+                    group.forEach { item ->
+                        LongTermMemoryRow(item, nowMs, isNew = item.memory.id in newIds, onClick = { onOpen(item.memory) })
+                    }
                 }
             }
         }
@@ -223,7 +243,7 @@ internal fun LongTermMemoryContent(
 }
 
 @Composable
-private fun LongTermMemoryRow(item: LongTermMemoryListItem, nowMs: Long, onClick: () -> Unit) {
+private fun LongTermMemoryRow(item: LongTermMemoryListItem, nowMs: Long, isNew: Boolean, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -233,7 +253,24 @@ private fun LongTermMemoryRow(item: LongTermMemoryListItem, nowMs: Long, onClick
             .testTag(UiTags.ltmItem(item.memory.id)),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(item.memory.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
+            Text(
+                item.memory.title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (isNew) {
+                androidx.compose.material3.Badge(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) { Text(stringResource(R.string.library_badge_new)) }
+            }
+        }
         Text(
             item.memory.content,
             style = MaterialTheme.typography.bodyMedium,
@@ -352,4 +389,45 @@ private fun sourceSegments(memory: LongTermMemory, source: LongTermMemorySourceL
         time,
     )
     return listOf(stringResource(R.string.ltm_source, parts.first())) + parts.drop(1)
+}
+
+/** 设置里的长期记忆：只留总开关，查看与编辑在资料页。 */
+@Composable
+private fun LongTermMemorySwitchPage(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onNavigateBack: () -> Unit,
+    onOpenLibrary: () -> Unit,
+) {
+    InfinitySettingsPageLayout(title = stringResource(R.string.ltm_title), onBack = onNavigateBack) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().testTag(UiTags.LTM_LIST),
+            contentPadding = padding,
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.SectionGap),
+        ) {
+            item(key = "toggle") {
+                InfinitySettingsSection(title = stringResource(R.string.ltm_section_switch), footer = stringResource(R.string.ltm_switch_footer)) {
+                    SettingsToggle(
+                        title = stringResource(R.string.ltm_enabled),
+                        description = stringResource(R.string.ltm_enabled_desc),
+                        checked = enabled,
+                        icon = Icons.Rounded.Bookmarks,
+                        onCheckedChange = onEnabledChange,
+                        modifier = Modifier.testTag(UiTags.LTM_ENABLED),
+                    )
+                }
+            }
+            item(key = "manage") {
+                InfinitySettingsSection(title = stringResource(R.string.library_memory_manage_section)) {
+                    com.promenar.infinity.ui.common.InfinitySettingsItem(
+                        title = stringResource(R.string.library_memory_manage),
+                        subtitle = stringResource(R.string.library_memory_manage_desc),
+                        onClick = onOpenLibrary,
+                        showChevron = true,
+                        modifier = Modifier.testTag(UiTags.LTM_OPEN_LIBRARY),
+                    )
+                }
+            }
+        }
+    }
 }
