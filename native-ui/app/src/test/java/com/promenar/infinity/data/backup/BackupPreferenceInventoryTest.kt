@@ -24,6 +24,14 @@ class BackupPreferenceInventoryTest {
     }
 
     @Test
+    fun `资料页记忆查看时间与固定文件夹登记为本机状态且不参与备份`() {
+        for (key in listOf("library_memories_last_seen", "file_manager_pins")) {
+            assertWithMessage(key).that(BackupPreferencePolicy.isKnown("infinity_settings", key)).isTrue()
+            assertWithMessage(key).that(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isFalse()
+        }
+    }
+
+    @Test
     fun `检视器边缘条位置登记为本机状态且不参与备份`() {
         assertThat(BackupPreferencePolicy.isKnown("infinity_ui_state", "chat_inspector_strip_lift")).isTrue()
         assertThat(BackupPreferencePolicy.isAllowed("infinity_ui_state", "chat_inspector_strip_lift")).isFalse()
@@ -119,6 +127,9 @@ class BackupPreferenceInventoryTest {
             "ui/rag/KnowledgeBaseSettingsLogic.kt#prefs" to "rag_index_baseline",
             // 检视器边缘条位置：本机界面状态，独立偏好文件，不参与备份。
             "ui/chat/ChatInspector.kt#prefs" to "infinity_ui_state",
+            // 资料页知识源与固定文件夹由 LibraryKnowledgeModule / DefaultFileManagerServices 注入 infinity_settings。
+            "data/library/DefaultLibraryKnowledgeSource.kt#preferences" to "infinity_settings",
+            "data/files/DefaultPinnedFolderStore.kt#preferences" to "infinity_settings",
         )
         val editorChain = Regex("(\\w+)\\s*\\.edit\\(\\)([\\s\\S]{0,2000}?)\\.apply\\(\\)")
         val editorPut = Regex("\\.put(?:String|StringSet|Boolean|Int|Long|Float)\\(\\s*\"([^\"]+)\"")
