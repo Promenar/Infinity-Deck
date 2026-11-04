@@ -540,6 +540,10 @@ data class MessageDocumentEnvelope(
     val legacyFilesPayload: String? = null,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val userImageReferences: List<WorkspaceDocumentReference?>? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val userImageAnnotations: List<com.promenar.infinity.domain.media.ImageAnnotation?>? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val userImageAnnotationContext: com.promenar.infinity.data.media.annotation.ImageAnnotationContext? = null,
 ) {
     companion object {
         const val SCHEMA = "infinity-full-context-documents-v1"
@@ -606,6 +610,13 @@ data class Message(
     val requestInstruction: String? = null,
     /** 与 userImages 按位置对应；null 项表示未成功保存，继续沿用内联输入。 */
     val userImageReferences: List<WorkspaceDocumentReference?>? = null,
+    /** 画板元数据与 userImages 按位置对应；普通图片保留 null 占位。 */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val userImageAnnotations: List<com.promenar.infinity.domain.media.ImageAnnotation?>? = null,
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val userImageAnnotationContext: com.promenar.infinity.data.media.annotation.ImageAnnotationContext? = null,
 )
 
 @Serializable

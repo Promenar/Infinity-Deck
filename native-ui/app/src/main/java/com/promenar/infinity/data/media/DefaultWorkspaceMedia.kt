@@ -94,6 +94,16 @@ internal class DefaultWorkspaceMedia(
         }
     }
 
+    override suspend fun canSave(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val destination = targets.defaultDestination(sessionId)
+            val path = targets.present(sessionId, destination, "/media")
+            val target = targets.resolve(sessionId, path, writing = true, destination)
+            target.directoryBackend != null || target.directory?.canWrite() == true || target.mount != null
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { false }
+    }
+
     override suspend fun save(
         sessionId: String,
         payload: MediaPayload,

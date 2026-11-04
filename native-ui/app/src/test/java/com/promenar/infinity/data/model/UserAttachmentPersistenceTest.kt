@@ -5,6 +5,21 @@ import kotlinx.serialization.decodeFromString
 import org.junit.Test
 
 class UserAttachmentPersistenceTest {
+    @Test fun `标注保留空位通过消息JSON和附件信封往返`() {
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.MASK, 10, 20, "/mask.png", "/source.png", "笔画")
+        val message = Message("u", MessageRole.USER, "改图", userImages = listOf("first", "second"),
+            userImageAnnotations = listOf(null, annotation), legacyFilesPayload = "legacy",
+            userImageAnnotationContext = com.promenar.infinity.data.media.annotation.ImageAnnotationContext("s", "workspace", false))
+        assertThat(message.toEntity("s").toDomain().userImageAnnotations).containsExactly(null, annotation).inOrder()
+        assertThat(message.toEntity("s").toDomain().legacyFilesPayload).isEqualTo("legacy")
+        assertThat(message.toEntity("s").toDomain().userImageAnnotationContext).isEqualTo(message.userImageAnnotationContext)
+        val encoded = json.encodeToString(Message.serializer(), message)
+        assertThat(json.decodeFromString<Message>(encoded).userImageAnnotations).isEqualTo(message.userImageAnnotations)
+        assertThat(json.decodeFromString<Message>("""{"id":"old","role":"USER","content":"旧数据"}""").userImageAnnotations).isNull()
+        assertThat(Message("u", MessageRole.USER, "", userImageAnnotations = listOf(null)).toEntity("s").files).isNull()
+    }
+
     @Test fun `仅有图片引用也可在现有files列往返并保留空位与旧载荷`() {
         val reference = WorkspaceDocumentReference("/session/attachments/image.png", 0, 2048,
             sourceSessionId = "s", isPrivate = true, linuxNamespace = false, sha256 = "synthetic-hash")

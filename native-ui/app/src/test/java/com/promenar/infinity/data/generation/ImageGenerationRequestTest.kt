@@ -13,6 +13,14 @@ class ImageGenerationRequestTest {
         assertThat(failure?.message).contains(message)
     }
 
+    @Test fun `标注需要参考图且与蒙版互斥并拒绝空路径`() {
+        rejects(",\"markup\":\"/mark.png\"", "images")
+        rejects(",\"images\":[\"/a.png\"],\"markup\":\" \"", "markup")
+        rejects(",\"images\":[\"/a.png\"],\"markup\":true", "markup")
+        rejects(",\"images\":[\"/a.png\"],\"markup\":\"/mark.png\",\"mask\":\"/mask.png\"", "同时")
+        assertThat(request(",\"images\":[\"/a.png\"],\"markup\":\"/mark.png\"").markup).isEqualTo("/mark.png")
+    }
+
     @Test fun `省略参数保持空值且标准与自定义尺寸可用`() {
         assertThat(request().requested.n).isNull()
         listOf("auto", "1024x1024", "1536x1024", "1024x1536", "2048x2048", "3840x2160", "2160x3840", "768x2304").forEach {

@@ -5,6 +5,12 @@ import kotlinx.serialization.json.*
 import org.junit.Test
 
 class ImageGenerationResultDataTest {
+    @Test fun `标注路径往返且旧结果缺省为空`() {
+        val result = ImageGenerationResultData(mode = "edit", model = "gpt-image-2.5", markup = "/markup.png")
+        assertThat(ImageGenerationResultData.decode(result.encode())?.markup).isEqualTo("/markup.png")
+        assertThat(ImageGenerationResultData.decode("""{"schema":"infinity-image-generation-v1","mode":"edit","model":"gpt-image-2"}""")?.markup).isNull()
+    }
+
     @Test fun `结果往返保存请求与实际信息且不写入空字段或旧图片键`() {
         val result = ImageGenerationResultData(mode = "edit", model = "gpt-image-2", requested = ImageGenerationRequested(size = "auto", n = 2),
             actual = ImageGenerationActual(size = "1536x1024", outputFormat = "webp"), inputImages = listOf("/media/a.png"),

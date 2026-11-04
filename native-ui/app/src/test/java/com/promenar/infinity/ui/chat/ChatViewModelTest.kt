@@ -72,6 +72,74 @@ private const val BACKGROUND_SERVICE_STOPPED_MESSAGE = "background service stopp
 @RunWith(RobolectricTestRunner::class)
 @Config(application = TestInfinityApplication::class, sdk = [33])
 class ChatViewModelTest {
+    @Test
+    @org.robolectric.annotation.Config(sdk = [34])
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `失效画板预览不能恢复编辑或发送且失败还原草稿`() = runTest {
+        seedSession("annotation-invalid"); advanceUntilIdle()
+        val session = requireNotNull(viewModel.uiState.value.session)
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.SKETCH, 4, 4, "/sketch.png")
+        val png = java.io.ByteArrayOutputStream().also { output ->
+            android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output); bitmap.recycle()
+            }
+        }.toByteArray()
+        val file = java.io.File.createTempFile("infinity-annotation-invalid", ".png")
+        try {
+            for (context in listOf(null, com.promenar.infinity.data.media.annotation.ImageAnnotationContext.from(session.copy(workspaceId = "other")))) {
+                file.writeBytes(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(png, annotation, context))
+                val uri = android.net.Uri.fromFile(file)
+                assertThat(viewModel.readImageAnnotation(uri)).isNull()
+                viewModel.sendMessage("手绘草稿", listOf(uri)); advanceUntilIdle()
+                awaitReal { viewModel.uiState.value.status == GenerationStatus.ERROR }
+                assertThat(savedMessages).isEmpty()
+                assertThat(protocolRequestCount).isEqualTo(0)
+                assertThat(viewModel.restoredDraftImages.value).contains(uri.toString())
+            }
+        } finally { file.delete() }
+    }
+
+    @Test
+    @org.robolectric.annotation.Config(sdk = [34])
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `画板预览经权限等待持久化并在重试时保留标注`() = runTest {
+        notificationPermissionState = com.promenar.infinity.background.generation.NotificationPermissionPromptState(
+            sdkInt = 35, granted = false, alreadyAsked = false)
+        seedSession("annotation-permission"); advanceUntilIdle()
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"),
+            StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP, 4, 4, "/layer.png", "/source.png")
+        val image = java.io.File.createTempFile("infinity-annotation", ".png")
+        try {
+            val output = java.io.ByteArrayOutputStream()
+            android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output); bitmap.recycle()
+            }
+            image.writeBytes(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(output.toByteArray(), annotation))
+            val context = com.promenar.infinity.data.media.annotation.ImageAnnotationContext.from(
+                requireNotNull(viewModel.uiState.value.session))
+            image.writeBytes(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(output.toByteArray(), annotation, context))
+            assertThat(viewModel.readImageAnnotation(android.net.Uri.fromFile(image))).isEqualTo(annotation)
+            viewModel.sendMessage("调整圈出部分", listOf(android.net.Uri.fromFile(image))); advanceUntilIdle()
+            assertThat(savedMessages).isEmpty()
+            val token = requireNotNull(viewModel.notificationPermissionRequests.value).taskId
+            notificationPermissionState = notificationPermissionState!!.copy(alreadyAsked = true)
+            viewModel.onNotificationPermissionResult(token, granted = false); advanceUntilIdle()
+            awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating }
+            val user = savedMessages.map { it.first }.single { it.role == MessageRole.USER }
+            assertThat(user.userImageAnnotations).containsExactly(annotation)
+            assertThat(user.userImageAnnotationContext).isEqualTo(context)
+            assertThat(user.userImages!!.single()).startsWith("data:image/jpeg;base64,")
+            assertThat(lastPromptRequest!!.messages.last { it.role == "user" }.content).contains("markup=\"/layer.png\"")
+            val assistant = viewModel.uiState.value.messages.last { it.role == MessageRole.ASSISTANT }
+            viewModel.regenerateMessage(assistant.id); advanceUntilIdle()
+            awaitReal { protocolRequestCount == 2 && !viewModel.uiState.value.isGenerating }
+            assertThat(lastPromptRequest!!.messages.last { it.role == "user" }.content).contains("markup=\"/layer.png\"")
+        } finally { image.delete() }
+    }
+
     @Test fun `当前会话限时授权流随切页切换且撤销只影响当前会话`() = runTest {
         val app = ApplicationProvider.getApplicationContext<InfinityApplication>()
         app.timedApprovalGrants.grant("timed-a", com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS)
@@ -3167,6 +3235,10 @@ class ChatViewModelTest {
         val bitmap = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(android.graphics.Color.rgb(40, 120, 200))
         image.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.MASK, 4, 4, "/mask.png", "/source.png")
+        image.writeBytes(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(image.readBytes(), annotation,
+            com.promenar.infinity.data.media.annotation.ImageAnnotationContext.from(requireNotNull(viewModel.uiState.value.session))))
         val doc = MessageDocumentAttachment("d", "a.txt", "text/plain", "附件正文", 12, "hash", 4)
         @Suppress("UNCHECKED_CAST")
         (ChatViewModel::class.java.getDeclaredField("_draftDocuments").apply { isAccessible = true }.get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<List<MessageDocumentAttachment>>).value = listOf(doc)
@@ -3189,6 +3261,8 @@ class ChatViewModelTest {
         val sent = lastPromptRequest!!.messages.last { it.role == "user" }
         assertThat(sent.imageUrls).hasSize(1)
         assertThat(sent.content).contains("附件正文")
+        assertThat(sent.content).contains("mask=\"/mask.png\"")
+        assertThat(savedMessages.map { it.first }.last { it.role == MessageRole.USER }.userImageAnnotations).containsExactly(annotation)
         assertThat(queuedFile.exists()).isFalse()
         assertThat(viewModel.draftDocuments.value).isEmpty()
         image.delete()

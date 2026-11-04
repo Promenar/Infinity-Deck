@@ -18,6 +18,7 @@ data class ImageGenerationResultData(
     val usage: ImageGenerationUsage? = null,
     val revisedPrompts: List<String> = emptyList(),
     val failedCount: Int = 0,
+    val markup: String? = null,
 ) {
     fun encode(): String = resultJson.encodeToString(serializer(), this)
 

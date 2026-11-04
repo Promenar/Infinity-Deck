@@ -140,6 +140,14 @@ class DefaultWorkspaceMediaTest {
 
 
 
+    @Test fun `媒体写入可用性覆盖缺失会话且标注使用独立命名前缀`() = runBlocking {
+        assertThat(service.canSave("session")).isTrue()
+        assertThat(service.canSave("missing")).isFalse()
+        val saved = service.save("session", MediaPayload.Bytes(png), MediaOrigin.ANNOTATION, "image/png")
+        assertThat(saved.path.substringAfterLast('/')).startsWith("annot-")
+        assertThat(service.resolve("session", saved.path)).isInstanceOf(MediaResolution.Available::class.java)
+    }
+
     @Test fun `Linux私有主根双入口同源且SAF和workspace内同名虚拟根不串根`() = runBlocking {
         db.sessionDao().updateRunMode("session", "LINUX", 2)
         privateFile("/a.png")

@@ -24,6 +24,34 @@ class ImageGenClientProtocolTest {
         name.groupValues[1].ifEmpty { name.groupValues[2] } to part.substring(headerEnd + 4).removeSuffix("\r\n")
     }
 
+    @Test fun `标注通过multipart发送且审核参数回退保留文件`() = runTest {
+        val sent = mutableListOf<List<Pair<String, String>>>()
+        val http = HttpClient(MockEngine { request ->
+            val body = request.body as OutgoingContent.WriteChannelContent
+            val text = coroutineScope {
+                val channel = ByteChannel(autoFlush = true)
+                val reader = async { channel.readRemaining().readText() }
+                body.writeTo(channel); channel.close(null); reader.await()
+            }
+            assertThat(text).contains("filename=\"markup.png\"")
+            val fields = multipartFields(text)
+            sent += fields
+            if (fields.any { it.first == "moderation" }) respond("""{"error":{"message":"moderation: unsupported field"}}""", HttpStatusCode.BadRequest)
+            else respond("""{"data":[]}""")
+        })
+        try {
+            ImageGenClient("https://images.test", "test-key", "gpt-image-2.5", http).edit("调整位置",
+                listOf(ImageGenInput("SOURCE".toByteArray(), "image/png", "source.png")),
+                markup = ImageGenInput("MARKUP".toByteArray(), "image/png", "ignored.png"))
+            assertThat(sent).hasSize(2)
+            sent.forEach { fields ->
+                assertThat(fields.filter { it.first == "markup" }.map { it.second }).containsExactly("MARKUP")
+                assertThat(fields.filter { it.first == "image[]" }.map { it.second }).containsExactly("SOURCE")
+            }
+            assertThat(sent[1].map { it.first }).doesNotContain("moderation")
+        } finally { http.close() }
+    }
+
     @Test fun `生成请求仅包含显式参数与最低审核档位`() = runTest {
         val bodies = mutableListOf<JsonObject>()
         val http = HttpClient(MockEngine { request ->

@@ -7,6 +7,60 @@ class UserAttachmentModelContentTest {
     private val session = Session("session", "agent")
     private val images = listOf("data:image/png;base64,first", "data:image/jpeg;base64,second", "data:image/png;base64,third")
 
+    @Test fun `图层来源失效后重存预览引用也不能恢复旧图层路径`() {
+        val original = session.copy(workspaceId = "original")
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP, 4, 4, "/secret-layer.png", "/secret-source.png")
+        val message = Message("u", MessageRole.USER, "改图", userImages = images.take(1),
+            userImageAnnotations = listOf(annotation),
+            userImageAnnotationContext = com.promenar.infinity.data.media.annotation.ImageAnnotationContext.from(original))
+        val changed = listOf(original.copy(workspaceId = "other"), original.copy(id = "branch"),
+            original.copy(runMode = com.promenar.infinity.domain.model.SessionRunMode.LINUX))
+        for (target in changed) {
+            // 模拟重试已把预览保存到新会话、得到有效新引用。
+            val preview = reference("preview.png").copy(sourceSessionId = target.id,
+                linuxNamespace = target.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
+                path = if (target.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX) "/home/session/preview.png" else "/session/preview.png")
+            val rebound = message.copy(userImageReferences = listOf(preview))
+            for (current in listOf(true, false)) {
+                val text = UserAttachmentModelContent.format(rebound, target, current).content
+                assertThat(text).contains("画板图层的来源会话或工作区已失效")
+                assertThat(text).doesNotContain("secret-layer.png")
+                assertThat(text).doesNotContain("secret-source.png")
+                assertThat(text).doesNotContain("markup=")
+            }
+        }
+        assertThat(UserAttachmentModelContent.format(message, original, true).content).contains("markup=\"/secret-layer.png\"")
+        val unbound = UserAttachmentModelContent.format(message.copy(userImageAnnotationContext = null), original, true).content
+        assertThat(unbound).doesNotContain("secret-layer.png")
+        assertThat(unbound).contains("来源会话或工作区已失效")
+    }
+
+    @Test fun `三种画板标注在当前轮和历史轮保持下标路径转义与调用说明`() {
+        val annotations = com.promenar.infinity.domain.media.ImageAnnotationKind.entries.map { kind ->
+            com.promenar.infinity.domain.media.ImageAnnotation(kind, 1024, 768, "/a\"<&>.png", if (kind.name == "SKETCH") null else "/source\"<&>\n.png")
+        }
+        val message = Message("u", MessageRole.USER, "改图", userImages = images,
+            userImageReferences = List(3) { reference("image.png") }, userImageAnnotations = annotations,
+            userImageAnnotationContext = com.promenar.infinity.data.media.annotation.ImageAnnotationContext.from(session))
+        for (current in listOf(true, false)) {
+            val result = UserAttachmentModelContent.format(message, session, current)
+            val lines = result.content.lines().filter { it.startsWith("[INFINITY_IMAGE_ANNOTATION") }
+            assertThat(lines).hasSize(3)
+            listOf("markup", "mask", "sketch").forEachIndexed { index, kind ->
+                assertThat(lines[index]).contains("index=\"${index + 1}\" kind=\"$kind\"")
+                assertThat(lines[index]).contains("$kind=\"/a&quot;&lt;&amp;&gt;.png\"")
+                assertThat(lines[index]).contains("size=\"1024x768\"")
+            }
+            assertThat(lines[0]).contains("source=\"/source&quot;&lt;&amp;&gt;&#10;.png\"")
+            assertThat(lines[0]).contains("GPT Image 2.5")
+            assertThat(lines[1]).contains("透明处为重绘区域")
+            assertThat(lines[2]).doesNotContain("source=")
+            if (current) assertThat(result.imageUrls?.map { it.url }).containsExactlyElementsIn(images).inOrder()
+            else assertThat(result.content.indexOf("[INFINITY_WORKSPACE_IMAGE")).isLessThan(result.content.indexOf("[INFINITY_IMAGE_ANNOTATION"))
+        }
+    }
+
     @Test fun `当前轮全部原图保留且不因引用数组部分为空丢失位置`() {
         val message = Message("u", MessageRole.USER, "比较图片", userImages = images,
             userImageReferences = listOf(reference("first.png"), null, reference("third.png").copy(sourceSessionId = "other")))

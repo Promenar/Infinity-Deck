@@ -25,7 +25,7 @@ private fun decodeMessageDocumentEnvelopeOrNull(text: String): MessageDocumentEn
     decodeFromJson<MessageDocumentEnvelope>(text)
         .takeIf {
             it.schema == MessageDocumentEnvelope.SCHEMA &&
-                (it.documents != null || it.viewedMedia != null || it.legacyFilesPayload != null || it.userImageReferences != null)
+                (it.documents != null || it.viewedMedia != null || it.legacyFilesPayload != null || it.userImageReferences != null || it.userImageAnnotations != null)
         }
 } catch (_: SerializationException) {
     null
@@ -170,6 +170,8 @@ fun MessageEntity.toDomain(): Message {
         images = images,
         userDocuments = envelope?.documents,
         userImageReferences = envelope?.userImageReferences,
+        userImageAnnotations = envelope?.userImageAnnotations?.takeIf { annotations -> annotations.any { it != null } },
+        userImageAnnotationContext = envelope?.userImageAnnotationContext,
         quotes = quotes?.let(::decodeMessageQuotesOrNull),
         legacyFilesPayload = if (envelope != null) envelope.legacyFilesPayload else files,
         legacyAttachmentsPayload = legacyAttachments,
@@ -211,13 +213,15 @@ fun Message.toEntity(sessionId: String): MessageEntity = MessageEntity(
     reasoning = reasoning,
     thoughtSignature = thoughtSignature,
     images = images,
-    files = if (userDocuments != null || viewedMedia != null || userImageReferences != null) {
+    files = if (userDocuments != null || viewedMedia != null || userImageReferences != null || userImageAnnotations?.any { it != null } == true) {
         encodeToJson(
             MessageDocumentEnvelope(
                 documents = userDocuments,
                 viewedMedia = viewedMedia,
                 legacyFilesPayload = legacyFilesPayload,
                 userImageReferences = userImageReferences,
+                userImageAnnotations = userImageAnnotations?.takeIf { annotations -> annotations.any { it != null } },
+                userImageAnnotationContext = userImageAnnotationContext?.takeIf { userImageAnnotations?.any { it != null } == true },
             ),
         )
     } else legacyFilesPayload,

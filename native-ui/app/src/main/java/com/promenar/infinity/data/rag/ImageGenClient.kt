@@ -74,7 +74,10 @@ class ImageGenClient(
         outputFormat: String? = null,
         outputCompression: Int? = null,
         n: Int? = null,
+        markup: ImageGenInput? = null,
     ): ImageGenResult {
+        require(markup == null || mask == null) { "markup 与 mask 不能同时提供。" }
+        require(markup == null || images.isNotEmpty()) { "markup 必须同时提供 images。" }
         return withModerationFallback { moderation ->
             val fields = parameters(prompt, size, quality, background, outputFormat, outputCompression, n, moderation)
             val body = MultiPartFormDataContent(formData {
@@ -88,6 +91,7 @@ class ImageGenClient(
                 }
                 images.forEach { imagePart("image[]", it) }
                 mask?.let { imagePart("mask", it) }
+                markup?.let { imagePart("markup", it.copy(fileName = "markup.png")) }
                 inputFidelity?.let { append("input_fidelity", it) }
             })
             httpClient.post(endpoint("edits")) {

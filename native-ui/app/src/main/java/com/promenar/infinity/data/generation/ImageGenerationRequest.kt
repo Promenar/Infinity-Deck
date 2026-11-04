@@ -9,6 +9,7 @@ data class ImageGenerationRequest(
     val images: List<String>,
     val mask: String?,
     val inputFidelity: String?,
+    val markup: String? = null,
 )
 
 /** 保留未指定参数的空值，交给所选模型使用默认值。 */
@@ -60,8 +61,11 @@ fun parseImageGenerationRequest(args: JsonObject): ImageGenerationRequest {
         }
     } else emptyList()
     val mask = string("mask")
+    val markup = string("markup")
+    require(markup == null || markup.isNotBlank() && images.isNotEmpty()) { "markup 必须为非空工作区 PNG 路径，且必须同时提供 images。" }
+    require(markup == null || mask == null) { "markup 与 mask 不能同时提供。" }
     val fidelity = choice("input_fidelity", listOf("high", "low"))
     require(mask == null || mask.isNotBlank() && images.isNotEmpty()) { "mask 必须为工作区 PNG 路径，且必须同时提供 images。" }
     require(fidelity == null || images.isNotEmpty()) { "input_fidelity 仅用于编辑，必须同时提供 images；允许 high/low。" }
-    return ImageGenerationRequest(prompt, ImageGenerationRequested(size, quality, background, format, compression, n), images, mask, fidelity)
+    return ImageGenerationRequest(prompt, ImageGenerationRequested(size, quality, background, format, compression, n), images, mask, fidelity, markup)
 }

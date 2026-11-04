@@ -96,6 +96,10 @@ class ImageGenerationSkill(
                     "type": "string",
                     "description": "工作区 PNG 蒙版路径，小于 4 MiB，尺寸与 images 第一张相同；仅与 images 同用，透明区域表示编辑范围。"
                 },
+                "markup": {
+                    "type": "string",
+                    "description": "工作区透明底 PNG 标注路径，小于 4 MiB，尺寸与 images 第一张相同；仅编辑时与 images 同用，不能与 mask 同时提供；仅 GPT Image 2.5 系列支持。"
+                },
                 "input_fidelity": {
                     "type": "string", "enum": ["high", "low"],
                     "description": "仅编辑且仅部分模型支持。默认不发送；gpt-image-2 应省略。"
@@ -128,7 +132,7 @@ class ImageGenerationSkill(
             val (remoteModelId, inputs, result) = withContext(Dispatchers.IO) {
                 val inputs = if (request.images.isEmpty()) null else ImageGenerationInputReader(
                     mediaResolver ?: throw WorkspaceMediaException("WORKSPACE_UNAVAILABLE", "当前会话工作区不可用，无法读取输入图片")
-                ).read(context.sessionId, request.images, request.mask)
+                ).read(context.sessionId, request.images, request.mask, request.markup)
                 val resolved = providerRequestRouter.requireModelRoute(modelId).requireOpenAiModelRoute()
                 val client = imageGenClientFactory(resolved.config.baseUrl, resolved.config.apiKey, resolved.remoteModelId)
                 val options = request.requested
@@ -136,7 +140,7 @@ class ImageGenerationSkill(
                     prompt = request.prompt, size = options.size, quality = options.quality, background = options.background,
                     outputFormat = options.outputFormat, outputCompression = options.outputCompression, n = options.n,
                 ) else client.edit(
-                    prompt = request.prompt, images = inputs.images, mask = inputs.mask, inputFidelity = request.inputFidelity,
+                    prompt = request.prompt, images = inputs.images, mask = inputs.mask, markup = inputs.markup, inputFidelity = request.inputFidelity,
                     size = options.size, quality = options.quality, background = options.background,
                     outputFormat = options.outputFormat, outputCompression = options.outputCompression, n = options.n,
                 )
@@ -189,7 +193,7 @@ class ImageGenerationSkill(
                     mode = if (inputs == null) "generate" else "edit", model = remoteModelId,
                     requested = request.requested,
                     actual = ImageGenerationActual(result.size, result.quality, result.background, result.outputFormat),
-                    inputImages = inputs?.paths.orEmpty(), mask = inputs?.maskPath,
+                    inputImages = inputs?.paths.orEmpty(), mask = inputs?.maskPath, markup = inputs?.markupPath,
                     usage = result.usage?.let { ImageGenerationUsage(it.inputTokens, it.outputTokens, it.totalTokens) },
                     revisedPrompts = revised.distinct(), failedCount = failures.size,
                 ).encode(),

@@ -26,6 +26,24 @@ class ImageGenerationInputReaderTest {
         }
     }
 
+    @Test fun `标注必须为PNG且尺寸与第一张输入相同`() = runTest {
+        val resolver = object : WorkspaceMediaResolver {
+            var jpeg = true
+            var width = 4
+            override suspend fun resolve(sessionId: String, path: String) = MediaResolution.Available(
+                MediaRef(path, "image/png", MediaKind.IMAGE, 32, width = if (path == "/a.png") 3 else width, height = 2), MediaSource.LocalFile(File("unused")))
+            override suspend fun open(resolution: MediaResolution.Available) = ByteArrayInputStream(
+                if (resolution.ref.path == "/mark.png" && jpeg) byteArrayOf(255.toByte(), 216.toByte(), 255.toByte()) else png)
+        }
+        assertThat(runCatching { ImageGenerationInputReader(resolver).read("s", listOf("/a.png"), null, "/mark.png") }.exceptionOrNull()?.message).contains("PNG")
+        resolver.jpeg = false
+        assertThat(runCatching { ImageGenerationInputReader(resolver).read("s", listOf("/a.png"), null, "/mark.png") }.exceptionOrNull()?.message).contains("尺寸")
+        resolver.width = 3
+        val loaded = ImageGenerationInputReader(resolver).read("s", listOf("/a.png"), null, "/mark.png")
+        assertThat(loaded.markup?.fileName).isEqualTo("markup.png")
+        assertThat(loaded.markupPath).isEqualTo("/mark.png")
+    }
+
     @Test fun `越界来源在打开字节前被拒绝`() = runTest {
         val resolver = Resolver()
         val error = runCatching { ImageGenerationInputReader(resolver).read("session", listOf("../../private.png"), null) }.exceptionOrNull()

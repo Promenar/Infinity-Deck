@@ -1421,15 +1421,10 @@ internal class DefaultChatGenerationRuntime(
             val userId = "steer_${item.id}"
             var inserted = false
             try {
-                val images = item.imagePaths.map { path ->
-                    val bytes = java.io.File(path).readBytes()
-                    val mime = when {
-                        bytes.size >= 3 && bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte() -> "image/jpeg"
-                        bytes.size >= 4 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" -> "image/webp"
-                        else -> "image/png"
-                    }
-                    "data:$mime;base64," + java.util.Base64.getEncoder().encodeToString(bytes)
-                }
+                val annotationSession = store.getSession(request.sessionId) ?: error("会话已不存在，无法读取排队画板。")
+                val loadedImages = item.imagePaths.map { QueuedUserImage.read(it, annotationSession) }
+                val images = loadedImages.map { it.dataUrl }
+                val annotations = loadedImages.map { it.annotation }.takeIf { values -> values.any { it != null } }
                 queue.bindSending(request.sessionId, item.id, userId)
                 messageManager.flushGenerationTerminal(request.sessionId, assistantMessageId(request))
                 val target = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
@@ -1440,6 +1435,8 @@ internal class DefaultChatGenerationRuntime(
                 messageManager.addMessage(request.sessionId, com.promenar.infinity.data.model.Message(
                     id = userId, role = MessageRole.USER, content = item.text,
                     userImages = images.takeIf { it.isNotEmpty() }, userDocuments = item.documents.takeIf { it.isNotEmpty() },
+                    userImageAnnotations = annotations,
+                    userImageAnnotationContext = annotations?.let { com.promenar.infinity.data.media.annotation.ImageAnnotationContext.from(annotationSession) },
                     quotes = item.quotes.takeIf { it.isNotEmpty() }, createdAt = System.currentTimeMillis(),
                 ))
                 inserted = true

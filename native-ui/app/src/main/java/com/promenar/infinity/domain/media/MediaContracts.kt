@@ -63,6 +63,7 @@ enum class MediaOrigin(val prefix: String) {
     MCP("mcp"),
     DOWNLOAD("dl"),
     FRAME("frame"),
+    ANNOTATION("annot"),
 }
 
 /** 写入工作区的媒体内容。 */
@@ -75,6 +76,9 @@ sealed interface MediaPayload {
 
 /** 把媒体写入会话工作区，返回其引用。 */
 interface WorkspaceMediaStore {
+    /** 按媒体默认落点核验当前写入条件；保存时仍会重新核验。 */
+    suspend fun canSave(sessionId: String): Boolean = false
+
     /**
      * 写入 [payload]。[targetPath] 为空时写入默认目录 `media/<yyyy-MM-dd>/`，文件名为
      * “来源前缀-时分-短哈希.扩展名”，只新建不覆盖；[suggestedName] 只用于推断扩展名。

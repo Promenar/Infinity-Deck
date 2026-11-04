@@ -3,6 +3,11 @@ package com.promenar.infinity.ui.chat
 import com.promenar.infinity.ui.common.providerDisplayName
 import android.app.Application
 import android.net.Uri
+import com.promenar.infinity.domain.media.ImageAnnotation
+import com.promenar.infinity.domain.media.ImageAnnotationExport
+import com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec
+import com.promenar.infinity.data.media.annotation.ImageAnnotationStore
+import com.promenar.infinity.data.media.annotation.ImageAnnotationContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -107,6 +112,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -243,6 +250,8 @@ internal data class PendingPermissionTurn(
     val assistantMessageIdsToReplace: Set<String> = emptySet(),
     val reuseUserMessageId: String? = null,
     val quotes: List<MessageQuote> = emptyList(),
+    val imageAnnotations: List<ImageAnnotation?> = emptyList(),
+    val imageAnnotationContext: ImageAnnotationContext? = null,
 )
 
 internal fun ContextBuilderResult.hasPersistableRagContext(): Boolean =
@@ -363,6 +372,7 @@ class ChatViewModel(
     /** “停止并立即发送”的会话：本轮以取消收尾时不暂停队列，直接发出排在队首的草稿。 */
     private val stopAndSendSessions = ConcurrentHashMap.newKeySet<String>()
     private val preparingSessions = ConcurrentHashMap.newKeySet<String>()
+    private val annotationSavingSessions = ConcurrentHashMap.newKeySet<String>()
     private val queueDispatchJobs = ConcurrentHashMap<String, Job>()
     private val queueDispatchRequested = ConcurrentHashMap.newKeySet<String>()
     private val draftRecoveryRetries = ConcurrentHashMap.newKeySet<String>()
@@ -541,6 +551,74 @@ class ChatViewModel(
     private val _streamingContent = MutableStateFlow("")
     private val _error = MutableStateFlow<String?>(null)
     private val workspaceErrors = MutableStateFlow<Map<String, String>>(emptyMap())
+    private val annotationStore by lazy {
+        val app = application as InfinityApplication
+        ImageAnnotationStore(app.workspaceMediaStore, app.workspaceMediaResolver,
+            java.io.File(application.filesDir, "image_annotation_previews"))
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val imageAnnotationAvailable: StateFlow<Boolean> = combine(_currentSessionId, store.state, workspaceErrors) { id, state, errors ->
+        Triple(id, state.sessions.firstOrNull { it.id == id }?.let {
+            listOf(it.workspaceId, it.executionMode, it.runMode, it.worktreeDirectory, it.workspaceRootUuid)
+        }, id != null && errors.containsKey(id))
+    }.distinctUntilChanged().mapLatest { (id, binding, unavailable) ->
+        id != null && binding != null && !unavailable && withContext(Dispatchers.IO) {
+            (application as InfinityApplication).workspaceMediaStore.canSave(id)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    suspend fun saveImageAnnotation(export: ImageAnnotationExport): Uri {
+        val sessionId = _currentSessionId.value ?: error("请先打开会话，再保存画板。")
+        val session = store.getSession(sessionId) ?: error("当前会话已不存在，无法保存画板。")
+        val protectedUris = composerImages.map(Uri::toString) + _restoredDraftImages.value.orEmpty() +
+            generationPresentationStore.composerAttachments(sessionId)?.imageUris.orEmpty() +
+            generationPresentationStore.submittedDraft(sessionId)?.imageUris.orEmpty() + composerDraftRecovery.imageUris(sessionId)
+        val cleanupAllowed = pendingQueueWrites[sessionId] == null && sessionId !in preparingSessions
+        check(annotationSavingSessions.add(sessionId)) { "画板正在保存，请稍后再试。" }
+        return try {
+            val file = annotationStore.save(sessionId, export, ImageAnnotationContext.from(session))
+            val current = store.getSession(sessionId)
+            check(_currentSessionId.value == sessionId && current?.workspaceId == session.workspaceId &&
+                current?.executionMode == session.executionMode && current?.runMode == session.runMode && current?.worktreeDirectory == session.worktreeDirectory) {
+                "保存期间会话或工作区已切换，请在当前会话重新打开画板。"
+            }
+            if (cleanupAllowed) {
+                try {
+                    // 队列副本由队列管理；原预览还可能由提交草稿或失败恢复持有。
+                    val queued = composerQueueStore.snapshot(sessionId)
+                    val protectedPaths = (protectedUris.mapNotNull { Uri.parse(it).path } +
+                        queued.items.flatMap { it.imagePaths } + queued.sending?.imagePaths.orEmpty() + file.absolutePath).toSet()
+                    annotationStore.cleanup(sessionId, protectedPaths)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* 清理失败保留预览，留待下次保存时处理。 */ }
+            }
+            Uri.fromFile(file)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            throw IllegalStateException("画板保存失败：${failure.message ?: "请检查工作区目录与授权。"}", failure)
+        } finally { annotationSavingSessions.remove(sessionId) }
+    }
+
+    suspend fun readImageAnnotation(uri: Uri): ImageAnnotation? = withContext(Dispatchers.IO) {
+        try {
+            val preview = application.contentResolver.openInputStream(uri)?.use { ImageAnnotationPreviewCodec.readPreview(it) }
+            preview?.takeIf { it.context?.matches(store.getSession(_currentSessionId.value ?: "")) == true }?.annotation
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+    }
+
+    private suspend fun readAnnotationForSend(uri: Uri, session: Session): ImageAnnotation? = withContext(Dispatchers.IO) {
+        val preview = application.contentResolver.openInputStream(uri)?.use { ImageAnnotationPreviewCodec.readPreview(it) }
+        require(preview == null || preview.context?.matches(session) == true) { "画板所属的会话或工作区已变化，请重新打开画板确认原图。" }
+        preview?.annotation
+    }
+
+    suspend fun readAnnotationSourceImage(path: String): ByteArray {
+        val sessionId = _currentSessionId.value ?: error("请先打开会话，再读取画板原图。")
+        return annotationStore.readSource(sessionId, path)
+    }
+
     private val _generationNotice = MutableStateFlow<UiStatusNotice?>(null)
     private val _generationFailureSurface = MutableStateFlow<
         com.promenar.infinity.data.generation.GenerationFailureSurface?
@@ -1244,6 +1322,18 @@ class ChatViewModel(
                         _providerResolutionFailure.value = null
                     }
 
+                    val imageAnnotations = try {
+                        imageUris.map { readAnnotationForSend(it, session) }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (failure: Exception) {
+                        restoreSubmittedDraft(sessionId)
+                        if (_currentSessionId.value == sessionId) {
+                            _error.value = failure.message ?: stringResourceResolver(R.string.chat_image_read_failed)
+                            _generationStatus.value = GenerationStatus.ERROR
+                            _isGenerating.value = false
+                        }
+                        return@withLock
+                    }
                     val imageDataUrls = if (imageUris.isNotEmpty()) {
                         val converted = withContext(Dispatchers.IO) {
                             imageUris.map { uri -> uriToDataUrl(uri) }
@@ -1262,7 +1352,7 @@ class ChatViewModel(
                         emptyList()
                     }
 
-                    applyBackgroundPolicyGate(sessionId, session, text, imageDataUrls, documents, quotes)
+                    applyBackgroundPolicyGate(sessionId, session, text, imageDataUrls, documents, quotes, imageAnnotations = imageAnnotations, imageAnnotationContext = ImageAnnotationContext.from(session))
                 }
             } finally {
                 try {
@@ -1535,13 +1625,14 @@ class ChatViewModel(
                             val session = store.getSession(sessionId) ?: error("会话已删除")
                             _isGenerating.value = true
                             _generationStatus.value = GenerationStatus.UPLOADING
+                            val imageAnnotations = item.imagePaths.map { readAnnotationForSend(Uri.fromFile(java.io.File(it)), session) }
                             val images = if (item.imagePaths.isEmpty()) emptyList() else withContext(Dispatchers.IO) {
                                 item.imagePaths.map { uriToDataUrl(Uri.fromFile(java.io.File(it))) ?: error("无法读取排队图片") }
                             }
                             if (_currentSessionId.value != sessionId) {
                                 restoreSubmittedDraft(sessionId, queueReason = QueuePauseReason.INTERRUPTED)
                             } else {
-                                applyBackgroundPolicyGate(sessionId, session, item.text, images, item.documents, item.quotes)
+                                applyBackgroundPolicyGate(sessionId, session, item.text, images, item.documents, item.quotes, imageAnnotations = imageAnnotations, imageAnnotationContext = ImageAnnotationContext.from(session))
                             }
                         }
                     } catch (failure: Exception) {
@@ -1602,6 +1693,8 @@ class ChatViewModel(
         quotes: List<MessageQuote> = emptyList(),
         assistantMessageIdsToReplace: Set<String> = emptySet(),
         reuseUserMessageId: String? = null,
+        imageAnnotations: List<ImageAnnotation?> = emptyList(),
+        imageAnnotationContext: ImageAnnotationContext? = null,
     ) {
         when (
             com.promenar.infinity.background.generation.resolveBackgroundGenerationPolicy(
@@ -1619,6 +1712,8 @@ class ChatViewModel(
                     assistantMessageIdsToReplace = assistantMessageIdsToReplace,
                     reuseUserMessageId = reuseUserMessageId,
                     quotes = quotes,
+                    imageAnnotations = imageAnnotations,
+                    imageAnnotationContext = imageAnnotationContext,
                 )
             com.promenar.infinity.background.generation.BackgroundGenerationPolicy.FOREGROUND_ONLY ->
                 enqueuePreparedUserTurnAfterReplacement(
@@ -1631,6 +1726,8 @@ class ChatViewModel(
                     assistantMessageIdsToReplace = assistantMessageIdsToReplace,
                     reuseUserMessageId = reuseUserMessageId,
                     quotes = quotes,
+                    imageAnnotations = imageAnnotations,
+                    imageAnnotationContext = imageAnnotationContext,
                 )
             com.promenar.infinity.background.generation.BackgroundGenerationPolicy.REQUIRES_PERMISSION -> {
                 if (_currentSessionId.value != sessionId) {
@@ -1647,6 +1744,8 @@ class ChatViewModel(
                     assistantMessageIdsToReplace,
                     reuseUserMessageId,
                     quotes,
+                    imageAnnotations,
+                    imageAnnotationContext,
                 )
                 mutableNotificationPermissionRequest.value = NotificationPermissionRequest(token)
                 _isGenerating.value = false
@@ -1690,6 +1789,8 @@ class ChatViewModel(
                             assistantMessageIdsToReplace = pending.assistantMessageIdsToReplace,
                             reuseUserMessageId = pending.reuseUserMessageId,
                             quotes = pending.quotes,
+                            imageAnnotations = pending.imageAnnotations,
+                            imageAnnotationContext = pending.imageAnnotationContext,
                         )
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -1721,6 +1822,8 @@ class ChatViewModel(
         assistantMessageIdsToReplace: Set<String>,
         reuseUserMessageId: String?,
         quotes: List<MessageQuote> = emptyList(),
+        imageAnnotations: List<ImageAnnotation?> = emptyList(),
+        imageAnnotationContext: ImageAnnotationContext? = null,
     ) {
         if (reuseUserMessageId != null) {
             enqueuePreparedAssistantRetry(
@@ -1732,7 +1835,7 @@ class ChatViewModel(
                 assistantMessageIdsToReplace,
             )
         } else {
-            enqueuePreparedUserTurn(sessionId, session, text, imageDataUrls, documents, backgroundAllowed, quotes)
+            enqueuePreparedUserTurn(sessionId, session, text, imageDataUrls, documents, backgroundAllowed, quotes, imageAnnotations, imageAnnotationContext)
         }
     }
 
@@ -1808,6 +1911,8 @@ class ChatViewModel(
         documents: List<MessageDocumentAttachment>,
         backgroundAllowed: Boolean,
         quotes: List<MessageQuote> = emptyList(),
+        imageAnnotations: List<ImageAnnotation?> = emptyList(),
+        imageAnnotationContext: ImageAnnotationContext? = null,
     ) = store.turnAdmission.withLock(sessionId) {
         val userMsgId = IdGenerator.message("user")
         val assistantMsgId = IdGenerator.message("ai")
@@ -1829,6 +1934,8 @@ class ChatViewModel(
                 role = MessageRole.USER,
                 content = text,
                 userImages = imageDataUrls.ifEmpty { null },
+                userImageAnnotations = imageAnnotations.takeIf { annotations -> annotations.any { it != null } },
+                userImageAnnotationContext = imageAnnotationContext?.takeIf { imageAnnotations.any { it != null } },
                 userDocuments = documents.ifEmpty { null },
                 quotes = quotes.ifEmpty { null },
                 createdAt = System.currentTimeMillis()
@@ -2978,7 +3085,7 @@ class ChatViewModel(
             com.promenar.infinity.domain.generation.GenerationPhase.CANCELLED,
             com.promenar.infinity.domain.generation.GenerationPhase.PERSISTENCE_FAILED,
         )
-        return _isGenerating.value || running || store.getSession(sessionId)?.approvalRequest != null
+        return sessionId in annotationSavingSessions || _isGenerating.value || running || store.getSession(sessionId)?.approvalRequest != null
     }
 
     /** 切换当前会话的工作区；[workspaceId] 为 null 时改回会话私有工作区。不改动任何目录内容。 */
@@ -3272,6 +3379,8 @@ class ChatViewModel(
                         quotes = userMessage.quotes.orEmpty(),
                         assistantMessageIdsToReplace = replacedIds,
                         reuseUserMessageId = userMessage.id,
+                        imageAnnotations = userMessage.userImageAnnotations.orEmpty(),
+                        imageAnnotationContext = userMessage.userImageAnnotationContext,
                     )
                 } catch (cancelled: CancellationException) {
                     _replacingMessageIds.value = emptySet()

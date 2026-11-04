@@ -14,6 +14,21 @@ import org.junit.rules.TemporaryFolder
 class FileComposerQueueStoreTest {
     @get:Rule val folder = TemporaryFolder()
 
+    @Test fun `预览PNG私有块在排队和编辑副本中保留`() = runTest {
+        val png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=")
+        val annotation = com.promenar.infinity.domain.media.ImageAnnotation(
+            com.promenar.infinity.domain.media.ImageAnnotationKind.MARKUP, 1, 1, "/layer.png", "/source.png")
+        val preview = com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.embed(png, annotation)
+        val store = FileComposerQueueStore(folder.root, { ByteArrayInputStream(preview) }, StandardTestDispatcher(testScheduler))
+        val item = store.enqueue("s", "改图", listOf("preview"))
+        val copy = File(item.imagePaths.single())
+        assertThat(copy.extension).isEqualTo("image")
+        assertThat(copy.readBytes().toList()).isEqualTo(preview.toList())
+        assertThat(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.read(copy.readBytes())).isEqualTo(annotation)
+        val draft = requireNotNull(store.prepareEdit("s", item.id))
+        assertThat(com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec.read(File(draft.imagePaths.single()).readBytes())).isEqualTo(annotation)
+    }
+
     @Test fun `循环边界每次只认领队首一条且普通条目可恢复回执`() = runTest {
         val persisted = mutableSetOf<String>()
         val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler),

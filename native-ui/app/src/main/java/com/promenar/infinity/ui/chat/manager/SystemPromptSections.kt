@@ -179,7 +179,7 @@ object SystemPromptSections {
         }
         if ("artifact_publish" in toolNames) appendLine("- 交付文件完成后调用 artifact_publish 声明。" + if ("canvas_create" in toolNames) "页面与原型使用画布工具。" else "")
         if (toolNames.any { it == "generate_image" || it == "image_generation" }) {
-            appendLine("- generate_image 按提示词生成图片；images 提供 1–16 个工作区 PNG/WebP/JPEG 路径时编辑图片，mask 可对第一张图指定同尺寸 PNG 蒙版。生成数量 n 为 1–4；只传任务需要的可选参数，尺寸与质量支持以所选模型为准。input_fidelity 仅部分编辑模型支持，gpt-image-2 应省略。结果保存到工作区，按返回路径用 ![说明](路径) 引用；需要查看画面时调用 view_media。")
+            appendLine("- generate_image 按提示词生成图片；images 提供 1–16 个工作区 PNG/WebP/JPEG 路径时编辑图片，mask 可对第一张图指定同尺寸 PNG 蒙版。画板的 INFINITY_IMAGE_ANNOTATION 行给出原图与图层路径；按 kind 使用 images、mask 或 markup，markup 是 GPT Image 2.5 专用的同尺寸透明 PNG 标注，与 mask 互斥。生成数量 n 为 1–4；只传任务需要的可选参数，尺寸与质量支持以所选模型为准。input_fidelity 仅部分编辑模型支持，gpt-image-2 应省略。结果保存到工作区，按返回路径用 ![说明](路径) 引用；需要查看画面时调用 view_media。")
         }
         if (toolNames.any { it.startsWith("canvas_") }) {
             appendLine()

@@ -128,7 +128,7 @@ class ImageGenerationWorkspaceTest {
             assertThat(result.content).contains("low")
             assertThat(requests).isEqualTo(0)
             val schema = Json.parseToJsonElement(skill.parametersSchema).jsonObject["properties"]!!.jsonObject
-            assertThat(schema.keys).containsExactly("prompt", "size", "quality", "background", "output_format", "output_compression", "n", "images", "mask", "input_fidelity")
+            assertThat(schema.keys).containsExactly("prompt", "size", "quality", "background", "output_format", "output_compression", "n", "images", "mask", "markup", "input_fidelity")
         } finally { http.close() }
     }
 
@@ -146,12 +146,14 @@ class ImageGenerationWorkspaceTest {
         try {
             val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, mediaResolver = resolver,
                 imageGenClientFactory = { url, key, model -> ImageGenClient(url, key, model, http) })
-            val result = skill.execute(buildJsonObject { put("prompt", "调整光照"); put("images", buildJsonArray { add("a.png") }); put("mask", "mask.png") }, mediaTestContext)
-            assertThat(result.status).isEqualTo("success")
-            val data = ImageGenerationResultData.decode(result.data)!!
-            assertThat(data.mode).isEqualTo("edit")
-            assertThat(data.inputImages).containsExactly("/media/a.png")
-            assertThat(data.mask).isEqualTo("/media/mask.png")
+            for (layer in listOf("mask", "markup")) {
+                val result = skill.execute(buildJsonObject { put("prompt", "调整光照"); put("images", buildJsonArray { add("a.png") }); put(layer, "$layer.png") }, mediaTestContext)
+                assertThat(result.status).isEqualTo("success")
+                val data = ImageGenerationResultData.decode(result.data)!!
+                assertThat(data.mode).isEqualTo("edit")
+                assertThat(data.inputImages).containsExactly("/media/a.png")
+                assertThat(if (layer == "mask") data.mask else data.markup).isEqualTo("/media/$layer.png")
+            }
         } finally { http.close() }
     }
 

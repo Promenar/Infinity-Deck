@@ -20,5 +20,7 @@ class ComposerDraftRecoveryStore {
 
     @Synchronized fun take(sessionId: String): List<RecoverableComposerDraft> = drafts.remove(sessionId).orEmpty()
 
+    @Synchronized internal fun imageUris(sessionId: String): List<String> = drafts[sessionId].orEmpty().flatMap { it.imageUris }
+
     @Synchronized fun deleteSession(sessionId: String) { drafts.remove(sessionId) }
 }
