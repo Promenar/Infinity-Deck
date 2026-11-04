@@ -52,15 +52,15 @@ class ImageGenClient(
         outputCompression: Int? = null,
         n: Int? = null,
     ): ImageGenResult {
-        val requestBody = parameters(prompt, size, quality, background, outputFormat, outputCompression, n)
-        val response = httpClient.post(endpoint("generations")) {
-            applyModelTimeout(ModelTimeoutKind.IMAGE)
-            contentType(ContentType.Application.Json)
-            header("Authorization", "Bearer $apiKey")
-            setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+        return withModerationFallback { moderation ->
+            val requestBody = parameters(prompt, size, quality, background, outputFormat, outputCompression, n, moderation)
+            httpClient.post(endpoint("generations")) {
+                applyModelTimeout(ModelTimeoutKind.IMAGE)
+                contentType(ContentType.Application.Json)
+                header("Authorization", "Bearer $apiKey")
+                setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+            }
         }
-
-        return readResponse(response)
     }
 
     suspend fun edit(
@@ -75,29 +75,58 @@ class ImageGenClient(
         outputCompression: Int? = null,
         n: Int? = null,
     ): ImageGenResult {
-        val fields = parameters(prompt, size, quality, background, outputFormat, outputCompression, n)
-        val body = MultiPartFormDataContent(formData {
-            fields.forEach { (key, value) -> append(key, value.jsonPrimitive.content) }
-            // 官方指南以重复的 image[] 字段传多图；单图沿用相同字段。
-            fun imagePart(key: String, input: ImageGenInput) {
-                append(key, input.bytes, Headers.build {
-                    append(HttpHeaders.ContentType, input.mimeType)
-                    append(HttpHeaders.ContentDisposition, "filename=\"${input.fileName}\"")
-                })
+        return withModerationFallback { moderation ->
+            val fields = parameters(prompt, size, quality, background, outputFormat, outputCompression, n, moderation)
+            val body = MultiPartFormDataContent(formData {
+                fields.forEach { (key, value) -> append(key, value.jsonPrimitive.content) }
+                // 官方指南以重复的 image[] 字段传多图；单图沿用相同字段。
+                fun imagePart(key: String, input: ImageGenInput) {
+                    append(key, input.bytes, Headers.build {
+                        append(HttpHeaders.ContentType, input.mimeType)
+                        append(HttpHeaders.ContentDisposition, "filename=\"${input.fileName}\"")
+                    })
+                }
+                images.forEach { imagePart("image[]", it) }
+                mask?.let { imagePart("mask", it) }
+                inputFidelity?.let { append("input_fidelity", it) }
+            })
+            httpClient.post(endpoint("edits")) {
+                applyModelTimeout(ModelTimeoutKind.IMAGE)
+                header("Authorization", "Bearer $apiKey")
+                setBody(body)
             }
-            images.forEach { imagePart("image[]", it) }
-            mask?.let { imagePart("mask", it) }
-            inputFidelity?.let { append("input_fidelity", it) }
-        })
-        val response = httpClient.post(endpoint("edits")) {
-            applyModelTimeout(ModelTimeoutKind.IMAGE)
-            header("Authorization", "Bearer $apiKey")
-            setBody(body)
         }
-        return readResponse(response)
     }
 
-    private fun parameters(prompt: String, size: String?, quality: String?, background: String?, outputFormat: String?, outputCompression: Int?, n: Int?): JsonObject {
+    /**
+     * 审核档位固定取最低档 low（官方默认 auto）；DALL·E 不支持该参数，不发送。
+     * 不认识该字段的兼容网关返回 400/422 且错误指向 moderation 时，去掉它重发一次；
+     * 内容被安全系统拦截（moderation_blocked）不属于这种情况，照常报错。
+     */
+    private suspend fun withModerationFallback(send: suspend (moderation: String?) -> HttpResponse): ImageGenResult {
+        val moderation = IMAGE_MODERATION_LEVEL.takeIf { imageModelSupportsModeration(model) }
+        val first = send(moderation)
+        if (moderation == null || first.status.value !in setOf(400, 422)) return readResponse(first)
+        val errorBody = readErrorBody(first)
+        if (!rejectsModerationParameter(errorBody)) throw failure(first.status.value, errorBody)
+        return readResponse(send(null))
+    }
+
+    private suspend fun readErrorBody(response: HttpResponse): String = try {
+        responseBodyReader(response)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        ""
+    }
+
+    private fun failure(status: Int, errorBody: String): IllegalStateException {
+        // 按错误体结构提取状态码、错误码与说明，避免硬截断把服务端 JSON 拦腰截断。
+        val summary = com.promenar.infinity.data.remote.httpErrorSummary(status, errorBody)
+        return IllegalStateException("Image generation failed (${summary.head})" + summary.detail?.let { ": $it" }.orEmpty())
+    }
+
+    private fun parameters(prompt: String, size: String?, quality: String?, background: String?, outputFormat: String?, outputCompression: Int?, n: Int?, moderation: String?): JsonObject {
         require(baseUrl.isNotBlank()) { "Image generation base URL not configured" }
         require(apiKey.isNotBlank()) { "Image generation API key not configured" }
         require(prompt.isNotBlank()) { "Prompt must not be blank" }
@@ -110,6 +139,7 @@ class ImageGenClient(
             outputFormat?.let { put("output_format", it) }
             outputCompression?.let { put("output_compression", it) }
             n?.let { put("n", it) }
+            moderation?.let { put("moderation", it) }
         }
     }
 
@@ -119,20 +149,7 @@ class ImageGenClient(
     }
 
     private suspend fun readResponse(response: HttpResponse): ImageGenResult {
-        if (!response.status.isSuccess()) {
-            val errorBody = try {
-                responseBodyReader(response)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                ""
-            }
-            // 按错误体结构提取状态码、错误码与说明，避免硬截断把服务端 JSON 拦腰截断。
-            val summary = com.promenar.infinity.data.remote.httpErrorSummary(response.status.value, errorBody)
-            throw IllegalStateException(
-                "Image generation failed (${summary.head})" + summary.detail?.let { ": $it" }.orEmpty()
-            )
-        }
+        if (!response.status.isSuccess()) throw failure(response.status.value, readErrorBody(response))
 
         val responseText = responseBodyReader(response)
         val jsonResponse = json.parseToJsonElement(responseText).jsonObject
@@ -162,6 +179,18 @@ class ImageGenClient(
         )
     }
 }
+
+/** 生图审核档位：OpenAI Images API 允许 low / auto，默认 auto；本应用固定取最低档。 */
+internal const val IMAGE_MODERATION_LEVEL = "low"
+
+/** DALL·E 系列不支持审核档位；其余（GPT Image 及兼容网关上的同类模型）发送。 */
+internal fun imageModelSupportsModeration(model: String): Boolean = !model.contains("dall-e", ignoreCase = true)
+
+/** 错误体指向 moderation 参数本身（未知字段、取值不被接受），而不是内容被安全系统拦截。 */
+internal fun rejectsModerationParameter(errorBody: String): Boolean =
+    errorBody.contains("moderation", ignoreCase = true) &&
+        !errorBody.contains("moderation_blocked", ignoreCase = true) &&
+        !errorBody.contains("safety", ignoreCase = true)
 
 /**
  * 单张生成图像的数据。

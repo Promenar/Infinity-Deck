@@ -14,7 +14,7 @@
 
 ## 参数与校验
 
-工具使用 GPT 图像模型的参数语义，所有可选字段只在调用方明确提供时发送。服务端默认值不写入请求。
+工具使用 GPT 图像模型的参数语义，下表可选字段只在调用方明确提供时发送，服务端默认值不写入请求。审核档位例外：它不由 Agent 填写，客户端固定发送最低档（见“审核档位”）。
 
 | 参数 | 行为与本地约束 |
 |---|---|
@@ -29,12 +29,16 @@
 | `mask` | 仅与 `images` 同用；工作区 PNG 路径，小于 4 MiB，作用于第一张图片；元数据提供尺寸时检查二者相同 |
 | `input_fidelity` | 仅编辑可用，`high` / `low`，默认省略；仅部分模型支持，`gpt-image-2` 应省略 |
 
+## 审核档位
+
+官方 `moderation` 取 `low`（较宽松过滤）或 `auto`（默认）。客户端在生成与编辑请求中固定发送 `moderation=low`，不进入工具 schema，Agent 无法改动；模型 ID 含 `dall-e` 时不发送。兼容网关不认识该字段时，返回 400/422 且错误体提及 `moderation`（不含 `moderation_blocked` 与 `safety`），客户端去掉该字段重发一次；内容被安全系统拦截照常报错，不重发。
+
 参数枚举、类型、尺寸格式、数量、格式组合和文件限制在发请求前校验，失败返回 `status="error"` 及允许值。模型对具体尺寸、质量和保真度的支持由服务商进一步校验。
 
 ## HTTP 协议
 
 - 文本生成：`POST {base}/v1/images/generations`，JSON。
-- 图片编辑：`POST {base}/v1/images/edits`，`multipart/form-data`。每张图片使用重复的 `image[]` 部分；蒙版部分名为 `mask`，保真度为 `input_fidelity`。其它显式参数作为文本部分，图片部分携带由内容识别的 MIME 与对应扩展名。
+- 图片编辑：`POST {base}/v1/images/edits`，`multipart/form-data`。每张图片使用重复的 `image[]` 部分；蒙版部分名为 `mask`，保真度为 `input_fidelity`，审核档位为 `moderation`。其它显式参数作为文本部分，图片部分携带由内容识别的 MIME 与对应扩展名。
 - `{base}` 已以 `/v1` 结尾时直接追加 `/images/...`。
 - 两种请求共用 `applyModelTimeout(ModelTimeoutKind.IMAGE)`、取消传播、HTTP 错误摘要和响应解析。
 - 响应读取 `data[].b64_json`，同时兼容历史服务商返回的 `url` 与 `revised_prompt`；保留顶层 `created`、`size`、`quality`、`background`、`output_format`，以及 `usage` 的三项 token 计数与输入／输出 token 详情对象。

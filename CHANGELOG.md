@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.3-beta] - 2026-11-04
+
+### 变更
+
+- 生图与改图请求固定使用最低审核档位（`moderation=low`，官方默认为 `auto`），过滤更宽松；Agent 无需也不能改动。DALL·E 模型不发送该参数；兼容网关不认识该字段时自动去掉重发一次。
+
 ## [0.21.2-beta] - 2026-11-04
 
 ### 修复

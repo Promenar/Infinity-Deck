@@ -24,7 +24,7 @@ class ImageGenClientProtocolTest {
         name.groupValues[1].ifEmpty { name.groupValues[2] } to part.substring(headerEnd + 4).removeSuffix("\r\n")
     }
 
-    @Test fun `生成请求仅包含显式参数`() = runTest {
+    @Test fun `生成请求仅包含显式参数与最低审核档位`() = runTest {
         val bodies = mutableListOf<JsonObject>()
         val http = HttpClient(MockEngine { request ->
             assertThat(request.url.toString()).isEqualTo("https://images.test/v1/images/generations")
@@ -36,8 +36,9 @@ class ImageGenClientProtocolTest {
             client.generate("一棵树")
             client.generate("海报", size = "1536x1024", quality = "high", background = "opaque",
                 outputFormat = "webp", outputCompression = 80, n = 4)
-            assertThat(bodies[0].keys).containsExactly("model", "prompt")
-            assertThat(bodies[1]).isEqualTo(Json.parseToJsonElement("""{"model":"gpt-image-2","prompt":"海报","size":"1536x1024","quality":"high","background":"opaque","output_format":"webp","output_compression":80,"n":4}""").jsonObject)
+            assertThat(bodies[0].keys).containsExactly("model", "prompt", "moderation")
+            assertThat(bodies[0]["moderation"]?.jsonPrimitive?.content).isEqualTo("low")
+            assertThat(bodies[1]).isEqualTo(Json.parseToJsonElement("""{"model":"gpt-image-2","prompt":"海报","size":"1536x1024","quality":"high","background":"opaque","output_format":"webp","output_compression":80,"n":4,"moderation":"low"}""").jsonObject)
         } finally { http.close() }
     }
 
@@ -57,7 +58,7 @@ class ImageGenClientProtocolTest {
             val fields = multipartFields(text)
             assertThat(fields.filter { it.first == "image[]" }.map { it.second }).containsExactly("JPEG-BYTES", "WEBP-BYTES").inOrder()
             mapOf("mask" to "MASK-BYTES", "input_fidelity" to "high", "size" to "auto", "quality" to "high",
-                "background" to "transparent", "output_format" to "webp", "output_compression" to "90", "n" to "2",
+                "background" to "transparent", "output_format" to "webp", "output_compression" to "90", "n" to "2", "moderation" to "low",
                 "model" to "gpt-image-1.5", "prompt" to "合成海报").forEach { (key, value) ->
                 assertThat(fields.filter { it.first == key }.map { it.second }).containsExactly(value)
             }
@@ -90,7 +91,7 @@ class ImageGenClientProtocolTest {
                 body.writeTo(channel); channel.close(null); reader.await()
             }
             assertThat(multipartFields(text).map { it.first })
-                .containsExactly("model", "prompt", "image[]")
+                .containsExactly("model", "prompt", "moderation", "image[]")
             respond("""{"data":[]}""")
         })
         try {
@@ -139,6 +140,74 @@ class ImageGenClientProtocolTest {
             val error = runCatching { ImageGenClient("https://images.test", "test-key", "gpt-image-2", http)
                 .edit("调整光照", listOf(ImageGenInput(byteArrayOf(1), "image/png", "a.png"))) }.exceptionOrNull()
             assertThat(error?.message).isEqualTo("Image generation failed (HTTP 400 · invalid_image): 输入图片无效")
+        } finally { http.close() }
+    }
+
+    @Test fun `DALL·E 模型不发送审核档位`() = runTest {
+        val bodies = mutableListOf<JsonObject>()
+        val http = HttpClient(MockEngine { request ->
+            bodies += Json.parseToJsonElement((request.body as TextContent).text).jsonObject
+            respond("""{"data":[]}""")
+        })
+        try {
+            ImageGenClient("https://images.test", "test-key", "dall-e-3", http).generate("一棵树")
+            assertThat(bodies.single().keys).containsExactly("model", "prompt")
+        } finally { http.close() }
+    }
+
+    @Test fun `网关不认识审核参数时去掉后重发一次`() = runTest {
+        val bodies = mutableListOf<JsonObject>()
+        val http = HttpClient(MockEngine { request ->
+            val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
+            bodies += body
+            if ("moderation" in body) respond(
+                """{"error":{"message":"Unknown parameter: 'moderation'.","type":"invalid_request_error","param":"moderation","code":"unknown_parameter"}}""",
+                HttpStatusCode.BadRequest,
+            ) else respond("""{"data":[{"b64_json":"aGVsbG8="}]}""")
+        })
+        try {
+            val result = ImageGenClient("https://images.test", "test-key", "gpt-image-2", http).generate("一棵树", quality = "high")
+            assertThat(result.images).hasSize(1)
+            assertThat(bodies).hasSize(2)
+            assertThat(bodies[1].keys).containsExactly("model", "prompt", "quality")
+        } finally { http.close() }
+    }
+
+    @Test fun `内容被安全系统拦截时不重发并照常报错`() = runTest {
+        var calls = 0
+        val http = HttpClient(MockEngine {
+            calls++
+            respond(
+                """{"error":{"message":"Your request was rejected by the safety system.","type":"image_generation_user_error","code":"moderation_blocked"}}""",
+                HttpStatusCode.BadRequest,
+            )
+        })
+        try {
+            val error = runCatching { ImageGenClient("https://images.test", "test-key", "gpt-image-2", http).generate("一棵树") }.exceptionOrNull()
+            assertThat(calls).isEqualTo(1)
+            assertThat(error?.message).startsWith("Image generation failed (HTTP 400 · moderation_blocked)")
+        } finally { http.close() }
+    }
+
+    @Test fun `编辑同样在网关拒绝审核参数时重发`() = runTest {
+        val sent = mutableListOf<List<String>>()
+        val http = HttpClient(MockEngine { request ->
+            val body = request.body as OutgoingContent.WriteChannelContent
+            val text = coroutineScope {
+                val channel = ByteChannel(autoFlush = true)
+                val reader = async { channel.readRemaining().readText() }
+                body.writeTo(channel); channel.close(null); reader.await()
+            }
+            val names = multipartFields(text).map { it.first }
+            sent += names
+            if ("moderation" in names) respond("""{"error":{"message":"moderation: unsupported field"}}""", HttpStatusCode.UnprocessableEntity)
+            else respond("""{"data":[]}""")
+        })
+        try {
+            ImageGenClient("https://images.test", "test-key", "gpt-image-2", http)
+                .edit("调整照明", listOf(ImageGenInput(byteArrayOf(1), "image/png", "image.png")))
+            assertThat(sent).hasSize(2)
+            assertThat(sent[1]).containsExactly("model", "prompt", "image[]")
         } finally { http.close() }
     }
 }
