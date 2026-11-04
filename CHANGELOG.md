@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.1-beta] - 2026-11-04
+
 ### 变更
 
 - 生成中会话流不再随 Agent 高频执行上下跳动：运行中命令的实时输出默认收起，只在点开工具行后显示在展开区顶部，连同“转入后台”与停止；点开的工具行在命令结束后保持展开并换成结果。会话流中的子代理分组卡不再弹出实时输出，点开子代理详情页查看。
