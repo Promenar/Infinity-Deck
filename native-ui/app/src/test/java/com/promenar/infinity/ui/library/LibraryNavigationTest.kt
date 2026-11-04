@@ -115,4 +115,21 @@ class LibraryNavigationTest {
         assertThat(fromLegacy.libraryStack).isEmpty()
         assertThat(fromLegacy.libraryExpanded).isFalse()
     }
+
+    @Test
+    fun `展开折叠屏时去掉外屏文件中转页，由位置成为根页面`() {
+        val state = state()
+        val ref = FileRef("kb", "/")
+        state.pushLibrary(LibraryPageKeys.FILES)
+        state.pushLibrary(LibraryPageKeys.browse(ref))
+        state.normalizeLibraryForTwoPane()
+        assertThat(state.libraryStack).containsExactly(LibraryPageKeys.browse(ref))
+        assertThat(libraryRootKey(state.libraryStack)).isEqualTo(LibraryPageKeys.browse(ref))
+
+        val onlyFiles = state()
+        onlyFiles.pushLibrary(LibraryPageKeys.FILES)
+        onlyFiles.normalizeLibraryForTwoPane()
+        assertThat(libraryRootKey(onlyFiles.libraryStack)).isEqualTo(LibraryPageKeys.OVERVIEW)
+    }
 }
+

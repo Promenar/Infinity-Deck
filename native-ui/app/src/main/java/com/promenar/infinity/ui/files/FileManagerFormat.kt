@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.files
 
+import com.promenar.infinity.domain.files.FileRef
 import android.content.res.Resources
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
@@ -267,3 +268,9 @@ private fun doneText(resources: Resources, notice: FileManagerNotice.Done): Stri
         FileManagerNotice.Kind.PIN -> resources.getString(R.string.fm_notice_pinned)
     }
 }
+
+/**
+ * 列表行的稳定键：同一列表可能混排不同位置的同名路径（例如“会话工作区”汇总根下每个会话都是 "/"），
+ * 因此必须带上位置 id，否则 LazyColumn 会因重复键崩溃。
+ */
+internal fun FileRef.listKey(): String = "$locationId|$path"

@@ -366,7 +366,7 @@ private fun FileList(state: FileManagerUiState, actions: FileManagerUiActions, m
         if (state.items.isEmpty()) {
             item(key = "empty") { EmptyFolder() }
         }
-        items(state.items, key = { it.ref.path }) { item ->
+        items(state.items, key = { it.ref.listKey() }) { item ->
             FileRow(
                 item = item,
                 highlighted = item.ref == highlighted,
@@ -397,7 +397,7 @@ private fun FileGrid(state: FileManagerUiState, actions: FileManagerUiActions, m
         if (state.items.isEmpty()) {
             item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyFolder() }
         }
-        items(state.items, key = { it.ref.path }) { item ->
+        items(state.items, key = { it.ref.listKey() }) { item ->
             FileTile(
                 item = item,
                 highlighted = item.ref == highlighted,
@@ -438,7 +438,7 @@ private fun SearchResults(state: FileManagerUiState, search: FileSearchState, ac
                     }
                 }
             }
-            items(search.hits, key = { it.item.ref.path }) { hit ->
+            items(search.hits, key = { it.item.ref.listKey() }) { hit ->
                 FileRow(
                     item = hit.item,
                     highlighted = false,

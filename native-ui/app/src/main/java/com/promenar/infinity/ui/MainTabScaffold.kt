@@ -156,6 +156,12 @@ class MainTabsState(
         libraryExpanded = false
     }
 
+    /** 两列没有外屏的“文件”中转页：去掉后由下一层（某个位置）成为左列高亮的根页面。 */
+    fun normalizeLibraryForTwoPane() {
+        val normalized = libraryStack.filterNot { it == com.promenar.infinity.ui.library.LibraryPageKeys.FILES }
+        if (normalized != libraryStack) libraryStack = normalized
+    }
+
     /** 会话列当前的会话。 */
     val hubSessionId: String? get() = com.promenar.infinity.navigation.hubPaneSessionId(hubStack.firstOrNull())
 

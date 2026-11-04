@@ -136,7 +136,7 @@ internal fun FileTargetPickerContent(
                     )
                 }
                 else -> LazyColumn(Modifier.fillMaxWidth()) {
-                    items(picker.folders, key = { it.ref.path }) { folder ->
+                    items(picker.folders, key = { it.ref.listKey() }) { folder ->
                         TargetFolderRow(folder, onClick = { onGo(folder.ref.path) })
                     }
                 }

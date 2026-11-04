@@ -109,6 +109,8 @@ fun LibraryScreen(
     val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
     var askQuery by rememberSaveable { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
+    // 外屏的“文件”中转页在两列里没有对应导航项；展开折叠屏时去掉它，左列才能高亮当前位置。
+    LaunchedEffect(twoPane) { if (twoPane) state.normalizeLibraryForTwoPane() }
 
     // 问资料：有查询时压上结果页；结果页被弹出（返回或“‹ 上一页”）即清空查询。
     val askInStack = LibraryPageKeys.ASK in navigator.stack
