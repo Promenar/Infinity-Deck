@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.library
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,7 +22,7 @@ import com.promenar.infinity.ui.files.state.FileManagerViewModel
 import com.promenar.infinity.ui.files.state.RecycleBinViewModel
 
 /*
- * 资料页里的资源管理器与回收站宿主：组件自带页头，资料页只决定最左侧按钮与能否固定到侧栏。
+ * 资料页里的资源管理器与回收站宿主：组件自带页头但不处理系统栏，资料页负责状态栏留白、最左侧按钮与能否固定到侧栏。
  */
 
 private const val LIBRARY_FILES_VIEW_MODEL_KEY = "library-files"
@@ -43,7 +44,7 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
         val current = controller.state.value
         if (current.location?.id != ref.locationId || current.path != ref.path) controller.openLocation(ref.locationId, ref.path)
     }
-    Box(Modifier.fillMaxSize().testTag(LibraryTags.page("browse"))) {
+    Box(Modifier.fillMaxSize().statusBarsPadding().testTag(LibraryTags.page("browse"))) {
         FileManagerPane(
             controller = controller,
             host = FileManagerHostSpec(
@@ -60,7 +61,7 @@ internal fun LibraryTrashPage(host: LibraryPageHost, leading: LibraryLeading) {
     val app = LocalContext.current.applicationContext as InfinityApplication
     val controller: RecycleBinViewModel = viewModel(factory = RecycleBinViewModel.factory(app.fileManagerServices))
     val locations by host.viewModel.locations.collectAsStateWithLifecycle()
-    Box(Modifier.fillMaxSize().testTag(LibraryTags.page("trash"))) {
+    Box(Modifier.fillMaxSize().statusBarsPadding().testTag(LibraryTags.page("trash"))) {
         RecycleBinPage(
             controller = controller,
             leading = leading.toFileManagerLeading(),

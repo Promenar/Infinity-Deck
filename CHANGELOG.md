@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.2-beta] - 2026-11-04
+
+### 修复
+
+- 外屏资料页的文件浏览与回收站页头不再压在系统状态栏下。
+
 ## [0.24.1-beta] - 2026-11-04
 
 ### 修复
