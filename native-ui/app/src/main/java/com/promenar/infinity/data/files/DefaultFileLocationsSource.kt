@@ -33,6 +33,7 @@ internal class DefaultFileLocationsSource(
     private val resolveWorkspace: suspend (String) -> SessionWorkspace,
     private val mountAvailable: (ExternalMount) -> Boolean,
     private val gitStatus: suspend (String) -> GitInspectResult<GitStatus>,
+    private val workspaceGitStatus: suspend (SessionWorkspace.Directory) -> GitInspectResult<GitStatus>,
     private val titles: LocationTitles,
 ) : FileLocationsSource {
     private val mountSnapshot: Flow<List<ExternalMount>> = sessions.flatMapLatest { rows ->
@@ -48,14 +49,14 @@ internal class DefaultFileLocationsSource(
                 val worktreeIds = mutableSetOf<String>()
                 val sessionByWorkspace = visibleSessions.filter { it.workspaceId != null && it.worktreeDirectory == null }.groupBy { it.workspaceId }
                 registered.filter { it.kind in setOf(WorkspaceEntity.KIND_PROJECT, WorkspaceEntity.KIND_SHARED) }.forEach { workspace ->
-                    val available = resolveWorkspace(workspace.id) is SessionWorkspace.Directory
-                    result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, available)
+                    val directory = resolveWorkspace(workspace.id) as? SessionWorkspace.Directory
+                    result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, directory)
                 }
                 visibleSessions.filter { it.worktreeDirectory != null }.forEach { session ->
                     val resolved = resolveSession(session.id)
                     val directory = resolved as? SessionWorkspace.Directory
                     if (directory?.kind == BranchWorktreeWorkspaceResolver.KIND && worktreeIds.add(directory.workspace.id)) {
-                        result += workspaceLocation(directory.workspace, session.id, linux, true)
+                        result += workspaceLocation(directory.workspace, session.id, linux, directory)
                     }
                 }
                 if (linux) result += linuxLocation()
@@ -71,7 +72,7 @@ internal class DefaultFileLocationsSource(
                 val session = rows.firstOrNull { it.id == sessionId && !isSystemSession(it) } ?: return@withContext emptyList()
                 val current = when (val workspace = resolveSession(session.id)) {
                     SessionWorkspace.Private -> sessionLocation(session, linux)
-                    is SessionWorkspace.Directory -> workspaceLocation(workspace.workspace, session.id, linux, true)
+                    is SessionWorkspace.Directory -> workspaceLocation(workspace.workspace, session.id, linux, workspace)
                     is SessionWorkspace.Unavailable -> null
                 }
                 listOfNotNull(current) + attached.filter { it.sourceType in setOf("saf_tree", "real_path", "knowledge_base") }
@@ -83,15 +84,26 @@ internal class DefaultFileLocationsSource(
 
     internal fun libraryLocation() = FileLocation("kb", FileLocationKind.KNOWLEDGE_BASE, titles.library, WRITABLE)
     internal fun sessionsLocation() = FileLocation("sessions", FileLocationKind.SESSION_WORKSPACE, titles.sessions, READ_ONLY)
-    internal fun sessionLocation(session: SessionEntity, linux: Boolean) = FileLocation(
-        "session:${session.id}", FileLocationKind.SESSION_WORKSPACE, session.title,
-        WRITABLE.copy(terminal = linux && session.workspaceId == null && session.worktreeDirectory == null), sessionId = session.id,
-    )
+    internal suspend fun sessionLocation(session: SessionEntity, linux: Boolean): FileLocation {
+        val status = (gitStatus(session.id) as? GitInspectResult.Success<GitStatus>)?.value
+        return FileLocation(
+            "session:${session.id}", FileLocationKind.SESSION_WORKSPACE, session.title,
+            WRITABLE.copy(git = status != null, terminal = linux && session.workspaceId == null && session.worktreeDirectory == null),
+            sessionId = session.id, gitBranch = status?.branch,
+            gitChangeCount = status?.changeCount?.takeUnless { status.truncated },
+        )
+    }
     internal fun linuxLocation() = FileLocation("linux:home", FileLocationKind.LINUX_HOME, titles.linux,
         FileLocationCapabilities(writable = true, recycle = true, archive = true, terminal = true))
 
-    private suspend fun workspaceLocation(workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, available: Boolean): FileLocation {
-        val status = if (available) sessionId?.let { gitStatus(it) as? GitInspectResult.Success<GitStatus> }?.value else null
+    private suspend fun workspaceLocation(workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, directory: SessionWorkspace.Directory?): FileLocation {
+        val available = directory != null
+        val status = if (directory == null) null else {
+            when (val result = if (sessionId != null) gitStatus(sessionId) else workspaceGitStatus(directory)) {
+                is GitInspectResult.Success -> result.value
+                is GitInspectResult.Failure -> null
+            }
+        }
         return FileLocation(
             id = "workspace:${workspace.id}",
             kind = if (workspace.kind == BranchWorktreeWorkspaceResolver.KIND) FileLocationKind.BRANCH_WORKTREE else FileLocationKind.PROJECT,

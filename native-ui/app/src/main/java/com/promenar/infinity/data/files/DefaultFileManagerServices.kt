@@ -30,6 +30,7 @@ class DefaultFileManagerServices(
             val ready = app.linux.runtime.state.map { state ->
                 withContext(Dispatchers.IO) { state is LinuxRuntimeState.Ready && home.availability() == LinuxHomeAvailability.READY }
             }.distinctUntilChanged()
+            val workspaceGit by lazy { WorkspaceGitInspector(app) }
             val locations = DefaultFileLocationsSource(
                 sessions = sessions,
                 workspaces = app.database.workspaceDao().observeAll(),
@@ -44,6 +45,7 @@ class DefaultFileManagerServices(
                     }
                 },
                 gitStatus = app.gitChangesService::status,
+                workspaceGitStatus = { workspaceGit.status(it) },
                 titles = LocationTitles(app.getString(R.string.file_manager_location_library),
                     app.getString(R.string.file_manager_location_sessions), app.getString(R.string.file_manager_location_linux)),
             )
