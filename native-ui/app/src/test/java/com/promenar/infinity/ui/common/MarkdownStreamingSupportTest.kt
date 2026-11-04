@@ -185,6 +185,17 @@ class MarkdownStreamingSupportTest {
     }
 
     @Test
+    fun `中文标点处补入零宽空格后正文渐显仍使用原始边界`() {
+        val source = "说法：**收件人是神仙。**至于灵不灵"
+        val prepared = PreparedMarkdownContent(source, prepareMarkdownForRendering(source, true))
+        val visible = source.take(source.indexOf("至") + 1)
+        val frame = prepared.reveal(StreamRevealFrame(visible, 10L))
+
+        assertEquals("说法：**收件人是神仙。​**至", frame.text)
+        assertEquals(prepared.text, prepared.reveal(StreamRevealFrame(source, 20L)).text)
+    }
+
+    @Test
     fun `嵌套引用中的代码可见边界保持代码正文与缩进`() {
         val source = "> ```kotlin\n> val a = 1\n> val b = 2\n> ```"
         val prepared = PreparedMarkdownContent(source, prepareMarkdownForRendering(source, true))

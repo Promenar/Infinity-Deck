@@ -1025,6 +1025,10 @@ internal fun repairCompressedMarkdownBoundaries(text: String): String {
         "$prefix> ${match.groupValues[2]}"
     }
 
+    // 中日韩标点与星号定界符的交界修复；裸网址中的星号是字面量，先整体保护。
+    processed = protect(bareUrlPattern, processed)
+    processed = bridgeCjkEmphasisDelimiters(processed)
+
     for ((key, value) in protectedMap.entries.toList().asReversed()) {
         processed = processed.replace(key, value)
     }
@@ -1033,6 +1037,7 @@ internal fun repairCompressedMarkdownBoundaries(text: String): String {
 }
 
 private val boldMarkerPattern = Regex("""(?<!\*)\*\*(?!\*)""")
+private val bareUrlPattern = Regex("""(?i)\b(?:https?://|ftp://|www\.)[^\s<>\u0000]+""")
 private val emphasizedLineStartPattern = Regex("""[ \t]*(?:(?:[-+*>]|\d{1,2}[.)])[ \t]+)*[*_]{1,3}""")
 
 /** 同步解析的片段长度上限；更长的历史片段仍在后台解析。 */

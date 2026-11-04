@@ -390,6 +390,91 @@ class MarkdownTextTest {
     }
 
     @Nested
+    inner class CjkPunctuationEmphasis {
+        private fun nodesOf(markdown: String, type: org.intellij.markdown.IElementType): List<String> {
+            val found = mutableListOf<String>()
+            fun visit(node: ASTNode) {
+                if (node.type == type) found += markdown.substring(node.startOffset, node.endOffset)
+                node.children.forEach(::visit)
+            }
+            visit(MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(markdown))
+            return found
+        }
+
+        private fun strongTexts(markdown: String) = nodesOf(markdown, MarkdownElementTypes.STRONG)
+
+        @Test
+        fun `闭合加粗左侧为中文标点右侧为汉字时生效`() {
+            val input = "所以更准确的说法是：**符是一门用图形写成的公文术，……只是收件人是神仙。**至于灵不灵"
+            val prepared = prepareMarkdownForRendering(input)
+
+            assertThat(strongTexts(prepared).single()).contains("只是收件人是神仙。")
+            assertThat(prepared).isEqualTo(
+                "所以更准确的说法是：**符是一门用图形写成的公文术，……只是收件人是神仙。​**至于灵不灵",
+            )
+        }
+
+        @Test
+        fun `开启加粗左侧为汉字右侧为中文引号时生效`() {
+            val prepared = prepareMarkdownForRendering("这叫**“画符”**而已")
+
+            assertThat(strongTexts(prepared).single()).contains("“画符”")
+        }
+
+        @Test
+        fun `单星号斜体与三星号粗斜体同样生效`() {
+            val emphasis = prepareMarkdownForRendering("提示：*先读说明。*再动手")
+            assertThat(nodesOf(emphasis, MarkdownElementTypes.EMPH).single()).contains("先读说明。")
+
+            val strongEmphasis = prepareMarkdownForRendering("结论：***务必备份。***再升级")
+            assertThat(strongTexts(strongEmphasis)).isNotEmpty()
+            assertThat(nodesOf(strongEmphasis, MarkdownElementTypes.EMPH)).isNotEmpty()
+        }
+
+        @Test
+        fun `列表项内与同一行多段加粗都生效`() {
+            val prepared = prepareMarkdownForRendering("- **第一，**其次。**第二。**最后")
+
+            assertThat(strongTexts(prepared)).hasSize(2)
+        }
+
+        @Test
+        fun `原本就能解析的中文加粗保持原文`() {
+            for (input in listOf("说法是：**符**至于", "**重点**。后文", "前文**重点**后文", "注意：**一定**。")) {
+                assertThat(prepareMarkdownForRendering(input)).isEqualTo(input)
+            }
+        }
+
+        @Test
+        fun `英文强调保持原文`() {
+            for (input in listOf("foo.**bar**baz", "**Hello**, world.", "a *b* c", "x.*y*z", "2*3*4")) {
+                assertThat(prepareMarkdownForRendering(input)).isEqualTo(input)
+            }
+        }
+
+        @Test
+        fun `代码链接网址与转义星号保持原文`() {
+            val inputs = listOf(
+                "：**开始 `神仙。**至于` 结束",
+                "前文\n\n```\n：**开始神仙。**至于\n```\n\n后文",
+                "：**开始[神仙。**至于](https://example.com/a。**b)末",
+                "：**开始 https://example.com/神仙。**至于 末",
+                "字面：\\*\\*神仙。\\**至于",
+            )
+            for (input in inputs) {
+                assertThat(prepareMarkdownForRendering(input)).isEqualTo(input)
+            }
+        }
+
+        @Test
+        fun `列表符号与分隔线不受影响`() {
+            val input = "* 第一项。\n* 第二项\n\n***\n\n结束。"
+
+            assertThat(prepareMarkdownForRendering(input)).isEqualTo(input)
+        }
+    }
+
+    @Nested
     inner class PreserveOriginalSpacing {
 
         @Test

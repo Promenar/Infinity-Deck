@@ -126,6 +126,8 @@ private fun markdownSourceOffsets(source: String, rendered: String): MarkdownSou
             rendered[output] == '|' && source[raw] in "\r\n" && rendered.getOrNull(output + 1)?.let { it in "\r\n" } == true -> output++
             source[raw].isWhitespace() -> consume(1, 0)
             rendered[output].isWhitespace() -> output++
+            // 预处理在中日韩标点与星号交界补入的零宽空格没有来源字符。
+            rendered[output] == '​' && source[raw] != '​' -> output++
             (source.startsWith("\\[", raw) || source.startsWith("\\]", raw)) && rendered.startsWith("\$\$", output) -> consume(2, 2)
             (source.startsWith("\\(", raw) || source.startsWith("\\)", raw)) && rendered[output] == '$' -> consume(2, 1)
             source.startsWith("**", raw) && source.getOrNull(raw + 2)?.isDigit() == true -> consume(2, 0)
