@@ -77,7 +77,10 @@ class LibraryViewModel(
         files.locations.observeLibraryLocations(),
         files.pins.observePins(),
     ) { locations, pins -> LibraryLocations(locations, pins) }
-        .catch { emit(LibraryLocations()) }
+        .catch { error ->
+            android.util.Log.w(TAG, "资料页位置读取失败", error)
+            emit(LibraryLocations())
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), LibraryLocations())
 
     private val _notice = MutableStateFlow<LibraryNotice?>(null)
@@ -190,6 +193,7 @@ class LibraryViewModel(
     }
 
     companion object {
+        private const val TAG = "LibraryViewModel"
         private const val STOP_TIMEOUT_MS = 5_000L
         private const val RECENT_LIMIT = 50
         val LIBRARY_ROOT = FileRef(LIBRARY_LOCATION_ID, "/")

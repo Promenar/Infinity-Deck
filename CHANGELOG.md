@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.24.1-beta] - 2026-11-04
+
+### 修复
+
+- 资料页“文件”位置列表不再等待各项目的 Git 状态读取完毕才显示：先列出全部位置，分支名随后补上，会话刷新时沿用上次读到的分支名不闪烁。
+
 ## [0.24.0-beta] - 2026-11-04
 
 ### 新功能

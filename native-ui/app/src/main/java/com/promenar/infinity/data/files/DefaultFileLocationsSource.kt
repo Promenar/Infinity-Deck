@@ -15,9 +15,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.withContext
 
 internal data class LocationTitles(val library: String, val sessions: String, val linux: String)
@@ -36,35 +38,53 @@ internal class DefaultFileLocationsSource(
     private val workspaceGitStatus: suspend (SessionWorkspace.Directory) -> GitInspectResult<GitStatus>,
     private val titles: LocationTitles,
 ) : FileLocationsSource {
+    private val knownGitStatus = java.util.concurrent.ConcurrentHashMap<String, GitStatus>()
+
     private val mountSnapshot: Flow<List<ExternalMount>> = sessions.flatMapLatest { rows ->
         if (rows.isEmpty()) flowOf(emptyList())
         else combine(rows.map { mounts(it.id) }) { values -> values.flatMap { it } }
     }
 
+    /** 先发出不含 Git 信息的位置，避免逐个项目读取 Git 状态时侧栏长时间为空；随后补发带 Git 信息的结果。 */
     override fun observeLibraryLocations(): Flow<List<FileLocation>> =
         combine(sessions, workspaces, linuxReady, mountSnapshot) { rows, registered, linux, attached ->
-            withContext(Dispatchers.IO) {
-                val visibleSessions = rows.filterNot(::isSystemSession)
-                val result = mutableListOf(libraryLocation(), sessionsLocation())
-                val worktreeIds = mutableSetOf<String>()
-                val sessionByWorkspace = visibleSessions.filter { it.workspaceId != null && it.worktreeDirectory == null }.groupBy { it.workspaceId }
-                registered.filter { it.kind in setOf(WorkspaceEntity.KIND_PROJECT, WorkspaceEntity.KIND_SHARED) }.forEach { workspace ->
-                    val directory = resolveWorkspace(workspace.id) as? SessionWorkspace.Directory
-                    result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, directory)
-                }
-                visibleSessions.filter { it.worktreeDirectory != null }.forEach { session ->
-                    val resolved = resolveSession(session.id)
-                    val directory = resolved as? SessionWorkspace.Directory
-                    if (directory?.kind == BranchWorktreeWorkspaceResolver.KIND && worktreeIds.add(directory.workspace.id)) {
-                        result += workspaceLocation(directory.workspace, session.id, linux, directory)
-                    }
-                }
-                if (linux) result += linuxLocation()
-                result += attached.filter { it.sourceType in setOf("saf_tree", "real_path") }
-                    .distinctBy { it.id }.map(::externalLocation)
-                result
+            LibrarySnapshot(rows, registered, linux, attached)
+        }.transformLatest { snapshot ->
+            emit(libraryLocations(snapshot, git = false))
+            emit(libraryLocations(snapshot, git = true))
+        }.distinctUntilChanged()
+
+    private data class LibrarySnapshot(
+        val rows: List<SessionEntity>,
+        val registered: List<WorkspaceEntity>,
+        val linux: Boolean,
+        val attached: List<ExternalMount>,
+    )
+
+    private suspend fun libraryLocations(snapshot: LibrarySnapshot, git: Boolean): List<FileLocation> {
+        val (rows, registered, linux, attached) = snapshot
+        return withContext(Dispatchers.IO) {
+            val visibleSessions = rows.filterNot(::isSystemSession)
+            val result = mutableListOf(libraryLocation(), sessionsLocation())
+            val worktreeIds = mutableSetOf<String>()
+            val sessionByWorkspace = visibleSessions.filter { it.workspaceId != null && it.worktreeDirectory == null }.groupBy { it.workspaceId }
+            registered.filter { it.kind in setOf(WorkspaceEntity.KIND_PROJECT, WorkspaceEntity.KIND_SHARED) }.forEach { workspace ->
+                val directory = resolveWorkspace(workspace.id) as? SessionWorkspace.Directory
+                result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, directory, git)
             }
+            visibleSessions.filter { it.worktreeDirectory != null }.forEach { session ->
+                val resolved = resolveSession(session.id)
+                val directory = resolved as? SessionWorkspace.Directory
+                if (directory?.kind == BranchWorktreeWorkspaceResolver.KIND && worktreeIds.add(directory.workspace.id)) {
+                    result += workspaceLocation(directory.workspace, session.id, linux, directory, git)
+                }
+            }
+            if (linux) result += linuxLocation()
+            result += attached.filter { it.sourceType in setOf("saf_tree", "real_path") }
+                .distinctBy { it.id }.map(::externalLocation)
+            result
         }
+    }
 
     override fun observeSessionLocations(sessionId: String): Flow<List<FileLocation>> =
         combine(sessions, linuxReady, mounts(sessionId)) { rows, linux, attached ->
@@ -96,13 +116,19 @@ internal class DefaultFileLocationsSource(
     internal fun linuxLocation() = FileLocation("linux:home", FileLocationKind.LINUX_HOME, titles.linux,
         FileLocationCapabilities(writable = true, recycle = true, archive = true, terminal = true))
 
-    private suspend fun workspaceLocation(workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, directory: SessionWorkspace.Directory?): FileLocation {
+    private suspend fun workspaceLocation(
+        workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, directory: SessionWorkspace.Directory?, git: Boolean = true,
+    ): FileLocation {
         val available = directory != null
-        val status = if (directory == null) null else {
-            when (val result = if (sessionId != null) gitStatus(sessionId) else workspaceGitStatus(directory)) {
+        val key = "workspace:${workspace.id}"
+        val status = when {
+            directory == null -> null
+            // 快速通道沿用上次读到的 Git 状态，会话列表刷新时分支名不会闪烁消失。
+            !git -> knownGitStatus[key]
+            else -> when (val result = if (sessionId != null) gitStatus(sessionId) else workspaceGitStatus(directory)) {
                 is GitInspectResult.Success -> result.value
                 is GitInspectResult.Failure -> null
-            }
+            }.also { if (it == null) knownGitStatus.remove(key) else knownGitStatus[key] = it }
         }
         return FileLocation(
             id = "workspace:${workspace.id}",
