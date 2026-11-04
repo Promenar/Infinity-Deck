@@ -229,7 +229,7 @@ class BranchLinuxFileNamespaceTest {
             val bytes = "base-$name".toByteArray()
             val hash = Sha256Utils.hash(bytes)
             access.write("branch", path, bytes, null, true)
-            assertFalse(File(base, "$name/probe.txt").exists())
+            assertEquals("base-$name", File(base, "$name/probe.txt").readText())
             assertEquals("base-$name", access.read("branch", path, 1024).toString(Charsets.UTF_8))
             assertTrue(access.list("branch", "/workspace").any { it.path == "/workspace/$name" })
             assertTrue(access.list("branch", "/workspace/$name").any { it.path == path })

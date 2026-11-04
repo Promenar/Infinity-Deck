@@ -41,7 +41,6 @@
     <string name="mount_open_external">使用其它应用打开</string>
     <string name="mount_open_limit">打开只读副本支持最大 8 MB 的文件。</string>
     <string name="mount_open_failed">无法打开文件，请检查是否安装了支持该类型的应用。</string>
-    <string name="mount_restored">文件已恢复到源目录。</string>
     <string name="mount_section_mounted">已挂载</string>
     <string name="mount_empty_hint">添加文件夹后，智能体可在 /mnt/别名/ 下读写其中的文件。</string>
     <string name="mount_add_saf_desc">在系统文件夹选择器中授权，可选择 Termux 等应用目录</string>

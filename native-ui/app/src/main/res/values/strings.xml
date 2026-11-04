@@ -170,7 +170,6 @@
     <string name="shared_loading">Loading…</string>
     <string name="shared_error_generic">Something went wrong</string>
     <string name="shared_btn_delete">Delete</string>
-    <string name="shared_btn_move_to_recycle_bin">Move to recycle bin</string>
     <string name="shared_btn_save">Save</string>
     <string name="shared_btn_edit">Edit</string>
     <string name="shared_btn_add">Add</string>
@@ -241,8 +240,6 @@
     <string name="resource_explorer_importing">Importing</string>
     <string name="resource_explorer_import_files">Import Files</string>
     <string name="resource_explorer_workspace_root">Workspace</string>
-    <string name="resource_explorer_recycle_bin">Recycle Bin</string>
-    <string name="resource_explorer_recycle_bin_count">Recycle Bin (%1$d)</string>
     <string name="resource_explorer_retry_document">Retry %1$s</string>
     <string name="resource_explorer_import_status">Import Status</string>
     <string name="resource_explorer_clear_results">Clear results</string>
@@ -276,7 +273,6 @@
     <string name="files_time_days_ago">%1$d days ago</string>
     <string name="shared_confirm_delete_title">Confirm Delete</string>
     <string name="shared_action_cannot_undo">This action cannot be undone.</string>
-    <string name="shared_action_move_to_recycle_bin">You can restore these items later from the recycle bin.</string>
     <string name="shared_btn_copy">Copy</string>
     <string name="shared_btn_regenerate">Regenerate</string>
 
@@ -1064,7 +1060,6 @@
     <string name="rag_search_empty">No matching documents</string>
     <string name="rag_search_body_match">Body match</string>
     <string name="rag_search_title_fallback">Title fallback</string>
-    <string name="rag_delete_failed_notice">Some documents could not be moved to the recycle bin. Your selection is preserved for retry.</string>
     <string name="rag_home_documents">Documents</string>
     <string name="rag_home_memory">Memory</string>
     <string name="rag_home_graph">Graph</string>
@@ -1106,7 +1101,6 @@
     <string name="rag_home_extract_kg">Extract Knowledge Graph</string>
     <string name="rag_home_extract_kg_full">Full Extraction (all chunks)</string>
     <string name="rag_home_extract_kg_summary">Summary-first (sampled)</string>
-    <string name="rag_home_delete_confirm_title">Move %1$d items to the recycle bin?</string>
     <string name="rag_home_docs_count">%1$d docs</string>
 
     <!-- RagFolderScreen -->
@@ -1116,7 +1110,6 @@
     <string name="rag_folder_empty_subtitle">Upload documents to search them in chats.</string>
     <string name="rag_folder_upload">Upload Document</string>
     <string name="rag_folder_cd_open_document">Open %1$s</string>
-    <string name="rag_folder_delete_confirm_title">Move %1$d documents to the recycle bin?</string>
 
     <!-- DocEditorScreen -->
     <string name="doc_editor_screen_title">Document</string>
@@ -1455,32 +1448,6 @@
     <string name="rag_details_rank_unchanged">Rank unchanged after rerank</string>
     <string name="chat_rag_open_details">Open retrieval details</string>
 
-    <string name="recycle_bin_auto_cleanup">Items in the recycle bin are automatically deleted after 30 days</string>
-    <string name="recycle_bin_permanent_delete_title">Permanently delete</string>
-    <string name="recycle_bin_permanent_delete_message">Permanently delete “%1$s”? This action cannot be undone.</string>
-    <string name="recycle_bin_empty_title">Empty recycle bin</string>
-    <string name="recycle_bin_empty_message">Permanently delete all files in this workspace recycle bin? This action cannot be undone.</string>
-    <string name="recycle_bin_empty_confirm">Delete all</string>
-    <string name="recycle_bin_restore_all">Restore all</string>
-    <string name="recycle_bin_clear_count">Delete all (%1$d)</string>
-    <string name="recycle_bin_original_path">Original path: %1$s</string>
-    <string name="recycle_bin_restore">Restore</string>
-    <string name="recycle_bin_restore_document">Restore %1$s</string>
-    <string name="recycle_bin_delete_document">Permanently delete %1$s</string>
-    <string name="recycle_bin_empty_state">Recycle bin is empty</string>
-    <string name="recycle_bin_status_restoring">Restoring selected items…</string>
-    <string name="recycle_bin_status_deleting">Permanently deleting selected items…</string>
-    <string name="recycle_bin_status_emptying">Emptying the recycle bin…</string>
-    <string name="recycle_bin_status_restore_success">Items restored: %1$d</string>
-    <string name="recycle_bin_status_delete_success">Items permanently deleted: %1$d</string>
-    <string name="recycle_bin_status_empty_success">Recycle bin emptied</string>
-    <string name="recycle_bin_status_restore_partial">Items restored: %1$d; not restored: %2$d</string>
-    <string name="recycle_bin_status_delete_partial">Items deleted: %1$d; not deleted: %2$d</string>
-    <string name="recycle_bin_status_restore_failed">Items could not be restored: %1$d</string>
-    <string name="recycle_bin_status_delete_failed">Items could not be permanently deleted: %1$d</string>
-    <string name="recycle_bin_status_empty_failed">Could not empty the recycle bin</string>
-    <string name="recycle_bin_operation_retry">Retry failed items</string>
-    <string name="recycle_bin_operation_dismiss">Dismiss status</string>
 
     <!-- Release-reachable chat presentation -->
     <string name="chat_tool_error">Invalid tool request</string>
@@ -1644,7 +1611,6 @@
     <string name="chat_approval_preview_create_file">Create file</string>
     <string name="chat_approval_preview_edit">Edit</string>
     <string name="chat_approval_preview_move">Move / rename</string>
-    <string name="chat_approval_preview_delete">Move to recycle bin</string>
     <string name="chat_approval_preview_create_directory">Create folder</string>
     <string name="chat_approval_preview_script">Run script</string>
     <string name="skill_create_file">Create File</string>
@@ -1654,7 +1620,6 @@
     <string name="skill_move_file">Move / Rename</string>
     <string name="skill_move_file_desc">Move or rename workspace files and folders</string>
     <string name="skill_delete_file">Delete File</string>
-    <string name="skill_delete_file_desc">Move workspace files and folders to the recycle bin</string>
     <string name="skill_shell_exec">Shell Command</string>
     <string name="skill_shell_exec_desc">Run shell commands in the workspace</string>
     <string name="skill_python_exec">Python</string>

@@ -1066,7 +1066,6 @@ class RagViewModelTest {
         coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-1") }
         coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-2") }
         coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-3") }
-        coVerify(exactly = 0) { workspaceRepository.permanentDelete(any(), any()) }
         assertThat(failedIds).containsExactly("doc-2")
         assertThat(vm.indexingNotice.value?.code).isEqualTo(IndexingNotice.CODE_DELETE_FAILED)
         assertThat(vm.indexingNotice.value?.technical).doesNotContain("private delete detail")
@@ -1085,7 +1084,6 @@ class RagViewModelTest {
 
         coVerify(exactly = 1) { workspaceRepository.permanentDelete("rag-root", "doc-1") }
         coVerify(exactly = 0) { workspaceRepository.permanentDelete("rag-root", "doc-2") }
-        coVerify(exactly = 0) { workspaceRepository.permanentDelete(any(), any()) }
         assertThat(callbackInvoked).isFalse()
         assertThat(vm.isDeletingDocuments.value).isFalse()
     }

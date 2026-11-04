@@ -353,7 +353,11 @@ class TestWorkspaceFileOps(
         val staged = tombstones.resolve(deletionToken)
         Files.move(from, staged)
         return rollback(
-            commit = { deleteTree(staged) },
+            commit = {
+                deleteTree(staged)
+                // 与生产实现一致：暂存目录不留在用户可见的根目录下。
+                Files.list(tombstones).use { if (!it.findAny().isPresent) Files.delete(tombstones) }
+            },
             rollback = {
                 Files.move(staged, from)
             },

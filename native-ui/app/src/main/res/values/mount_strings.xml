@@ -41,7 +41,6 @@
     <string name="mount_open_external">Open in another app</string>
     <string name="mount_open_limit">Opening a read-only copy supports files up to 8 MB.</string>
     <string name="mount_open_failed">Unable to open this file. A compatible app may not be installed.</string>
-    <string name="mount_restored">File restored to its source folder.</string>
     <string name="mount_section_mounted">Mounted</string>
     <string name="mount_empty_hint">After you add a folder, the Agent can work with its files at /mnt/alias/.</string>
     <string name="mount_add_saf_desc">Choose a folder in the system picker, including app folders such as Termux</string>

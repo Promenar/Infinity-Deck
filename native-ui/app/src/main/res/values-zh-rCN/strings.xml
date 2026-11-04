@@ -164,7 +164,6 @@
     <string name="shared_loading">加载中…</string>
     <string name="shared_error_generic">出了点问题</string>
     <string name="shared_btn_delete">删除</string>
-    <string name="shared_btn_move_to_recycle_bin">移入回收站</string>
     <string name="shared_btn_save">保存</string>
     <string name="shared_btn_edit">编辑</string>
     <string name="shared_btn_add">添加</string>
@@ -235,8 +234,6 @@
     <string name="resource_explorer_importing">正在导入</string>
     <string name="resource_explorer_import_files">导入文件</string>
     <string name="resource_explorer_workspace_root">工作区</string>
-    <string name="resource_explorer_recycle_bin">回收站</string>
-    <string name="resource_explorer_recycle_bin_count">回收站 (%1$d)</string>
     <string name="resource_explorer_retry_document">重试 %1$s</string>
     <string name="resource_explorer_import_status">导入状态</string>
     <string name="resource_explorer_clear_results">清除结果</string>
@@ -270,7 +267,6 @@
     <string name="files_time_days_ago">%1$d 天前</string>
     <string name="shared_confirm_delete_title">确认删除</string>
     <string name="shared_action_cannot_undo">此操作无法撤销。</string>
-    <string name="shared_action_move_to_recycle_bin">之后可从回收站恢复这些项目。</string>
     <string name="shared_btn_copy">复制</string>
     <string name="shared_btn_regenerate">重新生成</string>
 
@@ -1065,7 +1061,6 @@
     <string name="rag_search_empty">没有匹配的文档</string>
     <string name="rag_search_body_match">正文命中</string>
     <string name="rag_search_title_fallback">标题回退</string>
-    <string name="rag_delete_failed_notice">部分文档未能移入回收站，已保留选择以便重试。</string>
     <string name="rag_home_documents">文档</string>
     <string name="rag_home_memory">记忆</string>
     <string name="rag_home_graph">图谱</string>
@@ -1107,7 +1102,6 @@
     <string name="rag_home_extract_kg">抽取知识图谱</string>
     <string name="rag_home_extract_kg_full">全量抽取（所有分块）</string>
     <string name="rag_home_extract_kg_summary">摘要优先（采样抽取）</string>
-    <string name="rag_home_delete_confirm_title">将 %1$d 项移入回收站？</string>
     <string name="rag_home_docs_count">%1$d 文档</string>
 
     <!-- RagFolderScreen -->
@@ -1117,7 +1111,6 @@
     <string name="rag_folder_empty_subtitle">上传文档后即可在对话中检索。</string>
     <string name="rag_folder_upload">上传文档</string>
     <string name="rag_folder_cd_open_document">打开 %1$s</string>
-    <string name="rag_folder_delete_confirm_title">将 %1$d 个文档移入回收站？</string>
 
     <!-- DocEditorScreen -->
     <string name="doc_editor_screen_title">文档</string>
@@ -1450,32 +1443,6 @@
     <string name="rag_details_rank_unchanged">重排后名次未变</string>
     <string name="chat_rag_open_details">打开检索详情</string>
 
-    <string name="recycle_bin_auto_cleanup">回收站中的项目将在 30 天后自动清理</string>
-    <string name="recycle_bin_permanent_delete_title">永久删除</string>
-    <string name="recycle_bin_permanent_delete_message">永久删除“%1$s”？此操作不可撤销。</string>
-    <string name="recycle_bin_empty_title">清空回收站</string>
-    <string name="recycle_bin_empty_message">永久删除此工作区回收站中的所有文件？此操作不可撤销。</string>
-    <string name="recycle_bin_empty_confirm">清空全部</string>
-    <string name="recycle_bin_restore_all">恢复全部</string>
-    <string name="recycle_bin_clear_count">清空（%1$d）</string>
-    <string name="recycle_bin_original_path">原始路径：%1$s</string>
-    <string name="recycle_bin_restore">恢复</string>
-    <string name="recycle_bin_restore_document">恢复 %1$s</string>
-    <string name="recycle_bin_delete_document">永久删除 %1$s</string>
-    <string name="recycle_bin_empty_state">回收站为空</string>
-    <string name="recycle_bin_status_restoring">正在恢复所选项目…</string>
-    <string name="recycle_bin_status_deleting">正在永久删除所选项目…</string>
-    <string name="recycle_bin_status_emptying">正在清空回收站…</string>
-    <string name="recycle_bin_status_restore_success">已恢复 %1$d 个项目</string>
-    <string name="recycle_bin_status_delete_success">已永久删除 %1$d 个项目</string>
-    <string name="recycle_bin_status_empty_success">已清空回收站</string>
-    <string name="recycle_bin_status_restore_partial">已恢复 %1$d 个项目，%2$d 个项目未能恢复</string>
-    <string name="recycle_bin_status_delete_partial">已删除 %1$d 个项目，%2$d 个项目未能删除</string>
-    <string name="recycle_bin_status_restore_failed">未能恢复 %1$d 个项目</string>
-    <string name="recycle_bin_status_delete_failed">未能永久删除 %1$d 个项目</string>
-    <string name="recycle_bin_status_empty_failed">未能清空回收站</string>
-    <string name="recycle_bin_operation_retry">重试失败项目</string>
-    <string name="recycle_bin_operation_dismiss">关闭状态提示</string>
 
     <!-- 发布可达的聊天展示层 -->
     <string name="chat_tool_error">工具指令有误</string>
@@ -1638,7 +1605,6 @@
     <string name="chat_approval_preview_create_file">新建文件</string>
     <string name="chat_approval_preview_edit">编辑</string>
     <string name="chat_approval_preview_move">移动 / 重命名</string>
-    <string name="chat_approval_preview_delete">移入回收站</string>
     <string name="chat_approval_preview_create_directory">新建目录</string>
     <string name="chat_approval_preview_script">执行脚本</string>
     <string name="skill_create_file">新建文件</string>
@@ -1648,7 +1614,6 @@
     <string name="skill_move_file">移动 / 重命名</string>
     <string name="skill_move_file_desc">移动或重命名工作区文件与目录</string>
     <string name="skill_delete_file">删除文件</string>
-    <string name="skill_delete_file_desc">将工作区文件与目录移入回收站</string>
     <string name="skill_shell_exec">Shell 命令</string>
     <string name="skill_shell_exec_desc">在工作区运行 shell 命令</string>
     <string name="skill_python_exec">Python</string>

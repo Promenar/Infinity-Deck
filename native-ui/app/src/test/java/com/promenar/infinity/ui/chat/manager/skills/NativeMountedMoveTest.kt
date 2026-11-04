@@ -63,7 +63,7 @@ class NativeMountedMoveTest(private val linux: Boolean) {
             val entry = store.createDirectory(secondArg())
             root.copy(uuid = "copy:${entry.path}", materializedPath = entry.path, name = entry.name)
         }
-        coEvery { delete("session", any(), any(), any()) } coAnswers { store.delete(arg(1), arg(2)) }
+        coEvery { delete("session", any(), any()) } coAnswers { store.delete(arg(1), arg(2)) }
     }
     private val rootfs = mockk<ExternalFolderBackend> {
         coEvery { stat("/") } returns ExternalFolderEntry("/", "", true, 0, 1, identity = "rootfs")

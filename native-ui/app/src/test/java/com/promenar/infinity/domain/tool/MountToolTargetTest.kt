@@ -27,13 +27,13 @@ class MountToolTargetTest {
             .isEqualTo("""["path","/docs/mnt"]""")
     }
 
-    @Test fun `不可恢复删除必须显示提醒并禁止记忆授权目标`() {
+    @Test fun `删除必须显示永久删除提醒并禁止记忆授权目标`() {
         val raw = """{"path":"/mnt/termux/large.bin"}"""
         val target = target("delete_file", raw)!!
         assertThat(ToolExecutionTargets.display(target)).isEqualTo("/mnt/termux/large.bin")
         assertThat(ToolExecutionTargets.canRemember(target)).isFalse()
         assertThat(ApprovalPreview.format("delete_file", Json.parseToJsonElement(raw).jsonObject)?.detail)
-            .contains("不可恢复")
+            .contains("永久删除，无法恢复")
         val ordinary = target("delete_file", """{"path":"/mnt/termux/other.bin"}""")!!
         assertThat(ToolExecutionTargets.canRemember(ordinary)).isFalse()
     }
