@@ -33,6 +33,8 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 侧载与 Play 的 Debug JVM 单测按测试类分到多个进程并行，每个进程配置 1 GiB 堆；默认进程数取 CPU 核心数的一半且不超过 4，内存紧张时可用 `-Pinfinity.unitTestForks=<n>` 下调（传 1 即恢复单进程）。Gradle 和 Kotlin 守护进程继续使用各自的内存配置。
 
+lint 不分析测试源码（`lint { ignoreTestSources = true }`），门禁只保留主变体的 lint 分析。AGP lint 默认在 Gradle 守护进程内运行，项目 `gradle.properties` 的 4g 堆供 GitHub 托管 runner 使用；本机全量门禁在用户级 `~/.gradle/gradle.properties` 设 `org.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError`，避免 lint 与打包、截图校验并行时频繁 Full GC。新机器内存不少于 32GB 时照此设置。
+
 发行签名构建在版本输入校验与静态检查通过后启动，与设备作业并行；依次执行 `:app:assembleSideloadRelease` 与 `:app:assemblePlayRelease` 两次 Gradle 调用，复用守护进程和缓存；合并为一次调用会使两个变体的 Kotlin 编译超出托管 runner 内存，随后执行两个 Python 检查的 `--build-type release` 模式。发行构建失败时保留 Gradle problems、清单合并日志及 R8 输出供诊断。
 
 依赖 Android 文件描述符与目录身份实现的工作区安全测试在设备回归中执行，覆盖根目录替换、符号链接竞争、回滚和旧回收目录恢复；不依赖 Android 桥接的协调逻辑仍由 JVM 单测覆盖。排查设备测试时可手动运行“Android 工作区设备诊断”，检查七项测试及执行日志，该诊断不替代完整设备门禁。
