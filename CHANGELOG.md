@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.23.1-beta] - 2026-11-04
+
+### 修复
+
+- 运行坞文字左缘与输入框正文对齐，前置的任务环或状态点与工具行“＋”笔画对齐，不再贴近浮岛左边。
+- 运行坞点阵屏待批准时的“!”改用与盾牌相同的警示色，不再随主题第二灯色显示。
+
 ## [0.23.0-beta] - 2026-11-04
 
 ### 修复

@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.chat.ComposerLightsPainter
+import com.promenar.infinity.ui.chat.ComposerTextInset
 import com.promenar.infinity.ui.chat.LocalComposerGlow
 import com.promenar.infinity.ui.chat.ScopeScreenSpec
 import com.promenar.infinity.ui.chat.drawScopeFrame
@@ -97,7 +98,7 @@ internal fun RunDockRow(
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth().testTag(UiTags.CHAT_RUN_DOCK)) {
         // 点阵屏宽度随剩余空间伸缩：先给文字留够（至多 150dp 随字号放大、不超过行宽 42%），余下的给屏，限在 72～140dp。
-        val labelReserve = minOf(RunDockLabelReserve * fontScale, maxWidth * 0.42f) + if (leading) 44.dp else 12.dp
+        val labelReserve = minOf(RunDockLabelReserve * fontScale, maxWidth * 0.42f) + if (leading) RunDockLeadStart + RunDockLeadSize + RunDockGap else ComposerTextInset
         val boardReserve = if (showBoard) RunDockBoardChipWidth + RunDockGap else 0.dp
         val scopeWidth = (maxWidth - labelReserve - boardReserve - RunDockEndPadding - RunDockGap)
             .coerceIn(ScopeScreenSpec.MinWidthDp.dp, ScopeScreenSpec.MaxWidthDp.dp)
@@ -106,8 +107,8 @@ internal fun RunDockRow(
                 .fillMaxWidth()
                 .heightIn(min = InfinitySpacing.MinimumTouchTarget)
                 .clickable(onClickLabel = openLabel, role = Role.Button) { onOpen(runDockDefaultTab(state.label)) }
-                // 没有前置标记时文字与输入区文字左缘对齐；有标记时标记略向左探出。
-                .padding(start = if (leading) 8.dp else 12.dp, end = RunDockEndPadding)
+                // 没有前置标记时文字与输入区文字左缘对齐；有标记时标记圆环与工具行“＋”笔画左缘对齐。
+                .padding(start = if (leading) RunDockLeadStart else ComposerTextInset, end = RunDockEndPadding)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(label, meta, jobsLabel).filter(String::isNotBlank).joinToString("，")
                 }
@@ -116,7 +117,7 @@ internal fun RunDockRow(
             horizontalArrangement = Arrangement.spacedBy(RunDockGap),
         ) {
             if (leading) {
-                Box(Modifier.size(28.dp).testTag(if (jobsLabel != null) UiTags.CHAT_RUN_DOCK_JOBS else UiTags.CHAT_RUN_DOCK_LEAD), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(RunDockLeadSize).testTag(if (jobsLabel != null) UiTags.CHAT_RUN_DOCK_JOBS else UiTags.CHAT_RUN_DOCK_LEAD), contentAlignment = Alignment.Center) {
                     when {
                         state.runningJobs > 0 -> RunDockJobsRing(state.runningJobs, spinning = true)
                         state.enabledSchedules > 0 -> RunDockJobsRing(state.enabledSchedules, spinning = false)
@@ -160,6 +161,10 @@ internal fun RunDockRow(
 private val RunDockLabelReserve = 150.dp
 private val RunDockBoardChipWidth = 32.dp
 private val RunDockGap = 6.dp
+
+/** 前置标记盒尺寸；圆环 24dp 居中，盒边比圆环多 2dp。 */
+private val RunDockLeadSize = 28.dp
+private val RunDockLeadStart = ComposerTextInset - 2.dp
 private val RunDockEndPadding = 10.dp
 
 /** 后台任务圆环：圆环中间是数量；有任务在运行时转动，只有定时任务时静止。 */
@@ -218,6 +223,8 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
     val palette = rememberMotionPalette()
     val painter = remember { ComposerLightsPainter() }
     val successColor = MaterialTheme.infinityDomainColors.signalOn
+    // 待批准的“!”与盾牌同用警示色，不随主题第二灯色变化。
+    val approvalColors = listOf(palette.a, MaterialTheme.infinityDomainColors.warning)
     if (glow != null) {
         DisposableEffect(glow) { onDispose { glow.scopeCenterInRoot = Offset.Unspecified } }
     }
@@ -245,7 +252,10 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
             if (gen > 0f) for (phase in GenerationMotionPhase.entries) {
                 val weight = motion.weight(phase)
                 if (weight <= 0.004f) continue
-                drawScopeFrame(native, k, sx, sy, cols, rows, phase, gen * weight, time, motion, palette, painter, digits, drawOff = false)
+                drawScopeFrame(
+                    native, k, sx, sy, cols, rows, phase, gen * weight, time, motion, palette, painter, digits,
+                    colors = if (phase == GenerationMotionPhase.APPROVAL) approvalColors else palette.leds, drawOff = false,
+                )
             }
             val rest = when (mode) {
                 RunDockScopeMode.REST -> 0.8f + 0.2f * success
