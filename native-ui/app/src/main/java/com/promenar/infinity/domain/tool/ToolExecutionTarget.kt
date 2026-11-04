@@ -119,8 +119,7 @@ object ToolExecutionTargets {
             "exec_js", "python_sandbox" -> args.string("code")?.let { tuple("tool", tool.function.name) }
             else -> null
         }
-        return if (target != null && (requiresSkillsApproval(tool.function.name, target) ||
-                tool.function.name == "delete_file" && (args["irreversible"] as? JsonPrimitive)?.booleanOrNull == true)) {
+        return if (target != null && (requiresSkillsApproval(tool.function.name, target) || tool.function.name == "delete_file")) {
             JsonArray((Json.parseToJsonElement(target) as JsonArray) + JsonObject(mapOf("oneShot" to JsonPrimitive(true)))).toString()
         } else target
     }

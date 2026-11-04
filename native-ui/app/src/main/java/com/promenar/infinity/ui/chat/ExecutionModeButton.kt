@@ -238,5 +238,6 @@ internal fun timedGrantLabel(category: com.promenar.infinity.domain.tool.Approva
         com.promenar.infinity.domain.tool.ApprovalGrantCategory.SKILLS -> R.string.chat_timed_grant_skills
         com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND -> R.string.chat_timed_grant_command
         com.promenar.infinity.domain.tool.ApprovalGrantCategory.LINUX_ROOTFS -> R.string.chat_timed_grant_linux_rootfs
+        com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE -> R.string.chat_timed_grant_delete
     },
 )

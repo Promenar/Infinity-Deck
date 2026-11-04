@@ -637,6 +637,44 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory).isNull()
     }
 
+    @Test fun `混合批次中的删除需要审批且删除限时授权到期后失效`() = runTest {
+        var now = 1_000L
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { now }
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val ledger = mockk<ToolExecutionLedger>(relaxed = true) {
+            coEvery { createToolApproval(any(), any(), any(), any(), any()) } returns com.promenar.infinity.data.repository.ToolApprovalCreation.CREATED
+        }
+        val fixture = skillsFixture(catalog, toolNames = listOf("delete_file", "read_file"), toolLedger = ledger, timedGrants = grants)
+        assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        val calls = listOf(
+            GenerationToolCall("delete-1", "delete_file", """{"path":"/a.txt"}"""),
+            GenerationToolCall("read", "read_file", """{"path":"/b.txt"}"""),
+            GenerationToolCall("delete-2", "delete_file", """{"path":"/c.txt"}"""),
+        )
+        assertThat(fixture.runtime.handleTools(fixture.request, calls)).isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        val pending = fixture.store.getSession("skills-session")!!.approvalRequest!!.calls
+        assertThat(pending.map { it.toolCallId }).containsExactly("delete-1", "delete-2").inOrder()
+        assertThat(pending.map { it.grantCategory }).containsExactly(
+            com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE,
+            com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE,
+        )
+        coVerify { fixture.executor.executeTools(any(), any(), any(), setOf("read"), any(), any(), any()) }
+
+        fixture.store.updateSession("skills-session") { it.copy(approvalRequest = null) }
+        grants.grant("skills-session", com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE)
+        val granted = calls.first().copy(id = "granted")
+        assertThat(fixture.runtime.handleTools(fixture.request, listOf(granted))).isEqualTo(GenerationToolDecision.CONTINUE)
+        coVerify { fixture.executor.executeTools(any(), any(), any(), setOf("granted"), any(), any(), match { "granted" in it }) }
+
+        now += 600_000
+        assertThat(fixture.runtime.handleTools(fixture.request, listOf(granted.copy(id = "expired"))))
+            .isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory)
+            .isEqualTo(com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE)
+    }
+
     @Test fun `同轮判定后到期或撤销不撤回已准入调用而下一轮重新审批`() = runTest {
         for (revoke in listOf(false, true)) {
             var now = 1_000L

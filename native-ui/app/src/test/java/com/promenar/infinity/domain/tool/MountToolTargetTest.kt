@@ -34,6 +34,8 @@ class MountToolTargetTest {
         assertThat(ToolExecutionTargets.canRemember(target)).isFalse()
         assertThat(ApprovalPreview.format("delete_file", Json.parseToJsonElement(raw).jsonObject)?.detail)
             .contains("不可恢复")
+        val ordinary = target("delete_file", """{"path":"/mnt/termux/other.bin"}""")!!
+        assertThat(ToolExecutionTargets.canRemember(ordinary)).isFalse()
     }
 
     @Test fun `挂载保留子目录不能进入授权目标`() {

@@ -38,10 +38,12 @@ class ToolExecutionTargetTest {
 
     @Test
     fun `文件工具使用规范路径且不会合并大小写不同目标`() {
-        listOf("read_file", "write_file", "patch_file", "diff_file", "delete_file").forEach { name ->
+        listOf("read_file", "write_file", "patch_file", "diff_file").forEach { name ->
             assertThat(extract(name, """{"path":" docs\\\\a.md// "}"""))
                 .isEqualTo("""["path","/docs/a.md"]""")
         }
+        assertThat(extract("delete_file", """{"path":" docs\\\\a.md// "}"""))
+            .isEqualTo("""["path","/docs/a.md",{"oneShot":true}]""")
         assertThat(extract("write_file", """{"path":"/Docs/a.md"}"""))
             .isNotEqualTo(extract("write_file", """{"path":"/docs/a.md"}"""))
     }

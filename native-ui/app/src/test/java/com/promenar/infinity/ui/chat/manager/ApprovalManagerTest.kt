@@ -794,6 +794,33 @@ class ApprovalManagerTest {
     }
 
     @Test
+    fun `删除限时授权只执行批次中的连续删除并保留后续异类审批`() = testScope.runTest {
+        val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
+        approvalManager = ApprovalManager(store, ledger, messageManager, stubSessionRepo, timedGrants = grants)
+        val seeded = seedExactApproval(listOf(
+            ToolCall("d1", "delete_file", """{"path":"/a.txt"}"""),
+            ToolCall("d2", "delete_file", """{"path":"/b.txt"}"""),
+            ToolCall("command", "shell_exec", """{"command":"pwd"}"""),
+        ))
+        val request = ToolApprovalRequestFactory.createFromIdentities("m1", seeded.calls.mapIndexed { index, call ->
+            call.copy(grantCategory = if (index == 2) com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND
+                else com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE)
+        })
+        approvalManager.setApprovalRequest("s1", request)
+        val executed = mutableListOf<String>()
+        var resumed = 0
+        approvalManager.setCallbacks({ _, _, _ -> resumed++ }) { session, message, ids ->
+            ids.forEach { id -> executed += id; ledger.states[ToolExecutionKey(session, message, id)] = ToolLedgerState.SUCCEEDED }
+        }
+        approvalManager.approveWithTimedGrant("s1", request)
+        assertThat(executed).containsExactly("d1", "d2").inOrder()
+        assertThat(store.getSession("s1")!!.approvalRequest!!.calls.map { it.toolCallId }).containsExactly("command")
+        assertThat(grants.isValid("s1", com.promenar.infinity.domain.tool.ApprovalGrantCategory.DELETE)).isTrue()
+        assertThat(grants.isValid("s1", com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND)).isFalse()
+        assertThat(resumed).isEqualTo(0)
+    }
+
+    @Test
     fun `全批同类授权只续跑一次且过时卡片与空类别不授予权限`() = testScope.runTest {
         val grants = com.promenar.infinity.data.approval.TimedApprovalGrantStore(backgroundScope) { testScheduler.currentTime }
         approvalManager = ApprovalManager(store, ledger, messageManager, stubSessionRepo, timedGrants = grants)

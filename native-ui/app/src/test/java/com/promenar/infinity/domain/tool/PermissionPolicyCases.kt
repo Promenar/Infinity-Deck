@@ -17,7 +17,7 @@ val permissionPolicyCases = listOf(
     PermissionPolicyCase("ssh_session_send", ToolRisk.PROCESS, command = true),
     PermissionPolicyCase("ssh_session_read", ToolRisk.SAFE_READ),
     PermissionPolicyCase("write_file", ToolRisk.FILE_WRITE, """{"path":"/a.txt"}"""),
-    PermissionPolicyCase("delete_file", ToolRisk.DELETE, """{"path":"/a.txt","irreversible":true}"""),
+    PermissionPolicyCase("delete_file", ToolRisk.DELETE, """{"path":"/a.txt"}""", alwaysApprove = true),
     PermissionPolicyCase("exec_js", ToolRisk.PROCESS),
     PermissionPolicyCase("run_script", ToolRisk.PROCESS, """{"path":"/script.js"}"""),
     PermissionPolicyCase("python_sandbox", ToolRisk.PROCESS),

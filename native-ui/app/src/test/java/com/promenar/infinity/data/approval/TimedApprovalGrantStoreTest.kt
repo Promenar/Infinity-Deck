@@ -10,6 +10,17 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimedApprovalGrantStoreTest {
+    @Test fun `删除授权仅在当前会话十分钟内生效`() = runTest {
+        val grants = TimedApprovalGrantStore(backgroundScope) { 1_000L + testScheduler.currentTime }
+        grants.grant("one", ApprovalGrantCategory.DELETE)
+        assertThat(grants.isValid("one", ApprovalGrantCategory.DELETE)).isTrue()
+        assertThat(grants.isValid("two", ApprovalGrantCategory.DELETE)).isFalse()
+        assertThat(grants.isValid("one", ApprovalGrantCategory.COMMAND)).isFalse()
+        advanceTimeBy(TimedApprovalGrantStore.GRANT_DURATION_MILLIS)
+        runCurrent()
+        assertThat(grants.isValid("one", ApprovalGrantCategory.DELETE)).isFalse()
+    }
+
     @Test fun `授权按会话类别隔离续期且到期无需读取自动消失`() = runTest {
         val grants = TimedApprovalGrantStore(backgroundScope) { 1_000L + testScheduler.currentTime }
         val current = grants.observe("one")

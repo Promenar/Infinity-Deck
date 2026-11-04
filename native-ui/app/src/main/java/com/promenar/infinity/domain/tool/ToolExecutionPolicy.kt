@@ -51,6 +51,7 @@ object ToolExecutionPolicy {
         )
         return when {
             ToolExecutionTargets.requiresSkillsApproval(toolName, target) -> ApprovalGrantCategory.SKILLS
+            toolName == "delete_file" -> ApprovalGrantCategory.DELETE
             mode != ExecutionMode.WORKSPACE -> null
             CommandToolClassification.backendFor(toolName, usesLinux) != null -> ApprovalGrantCategory.COMMAND
             usesLinux && ToolExecutionTargets.isPathMutation(toolName) && isLinuxRootfsTarget(resolvedTarget) -> ApprovalGrantCategory.LINUX_ROOTFS

@@ -5,6 +5,17 @@ import com.promenar.infinity.domain.model.ExecutionMode
 import org.junit.Test
 
 class ApprovalGrantCategoryTest {
+    @Test fun `删除在所有模式和后端均需审批且技能目录优先`() {
+        for (mode in ExecutionMode.entries) for (linux in listOf(false, true)) {
+            checkCategory(ApprovalGrantCategory.DELETE, mode, "delete_file", ToolRisk.DELETE,
+                """{"path":"/normal.txt"}""", linux = linux)
+            checkCategory(ApprovalGrantCategory.DELETE, mode, "delete_file", ToolRisk.DELETE,
+                target = """["path","/etc/example",{"linuxRootfs":true}]""", linux = linux)
+            checkCategory(ApprovalGrantCategory.SKILLS, mode, "delete_file", ToolRisk.DELETE,
+                """{"path":"/skills/demo"}""", linux = linux)
+        }
+    }
+
     @Test fun `技能变更覆盖全部写工具与两档并优先于rootfs类别`() {
         for (mode in ExecutionMode.entries) for (root in listOf("/skills", "/.agents/skills")) {
             for ((tool, args) in listOf(

@@ -7,12 +7,12 @@ import io.mockk.mockk
 import org.junit.Test
 
 class IrreversibleDeleteApprovalTest {
-    @Test fun `两档不可恢复删除免审批但技能目录删除逐次审批`() {
+    @Test fun `各模式下普通文件和技能目录删除都需要审批`() {
         val strategy = DefaultChatGenerationContentStrategy(mockk<SharedPreferences>(relaxed = true), null)
-        val call = ToolCall("permanent", "delete_file", """{"path":"/mnt/termux/big.bin","irreversible":true}""")
+        val call = ToolCall("permanent", "delete_file", """{"path":"/mnt/termux/big.bin"}""")
         listOf("workspace", "full_access", "auto", "semi", "manual").forEach { mode ->
-            assertThat(strategy.pendingApprovalIds(listOf(call), mode)).isEmpty()
-            assertThat(strategy.pendingApprovalIds(listOf(call.copy(arguments = """{"path":"/skills/demo","irreversible":true}""")), mode))
+            assertThat(strategy.pendingApprovalIds(listOf(call), mode)).containsExactly("permanent")
+            assertThat(strategy.pendingApprovalIds(listOf(call.copy(arguments = """{"path":"/skills/demo"}""")), mode))
                 .containsExactly("permanent")
         }
     }

@@ -24,11 +24,13 @@ class ToolExecutionPolicyTest {
             ToolRisk.entries.forEach { risk ->
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, "other", risk)).isEqualTo(risk in setOf(ToolRisk.SCHEDULE, ToolRisk.ACCESS_GRANT, ToolRisk.AGENT_CONFIG))
             }
-            listOf("ssh_session_read", "write_file", "delete_file", "exec_js", "run_script", "python_sandbox", "mcp_demo", "web_fetch", "update_plan").forEach { tool ->
+            listOf("ssh_session_read", "write_file", "exec_js", "run_script", "python_sandbox", "mcp_demo", "web_fetch", "update_plan").forEach { tool ->
                 assertThat(CommandToolClassification.backendFor(tool)).isNull()
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, tool, ToolRisk.UNKNOWN,
                     """{"path":"/a","irreversible":true,"url":"https://example.com/?data=secret"}""")).isFalse()
             }
+            assertThat(ToolExecutionPolicy.requiresApproval(mode, "delete_file", ToolRisk.DELETE,
+                """{"path":"/a"}""")).isTrue()
             listOf("schedule_create", "ssh_host_save", "ssh_host_delete", "ssh_host_install_key").forEach { tool ->
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, tool, ToolRisk.UNKNOWN)).isTrue()
             }
