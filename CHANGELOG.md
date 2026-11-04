@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.23.0-beta] - 2026-11-04
+
 ### 修复
 
 - 输入框盾牌菜单的模式说明精简为一行短句（“逐条批准命令”“命令直接执行”），不再被菜单宽度截断；完整解释仍在“Agent 可达范围”面板。

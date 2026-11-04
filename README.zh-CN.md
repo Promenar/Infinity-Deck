@@ -121,7 +121,7 @@ SSH 同样随身：生成 Ed25519 密钥，首次连接确认指纹，之后 Age
 
 **安装**：从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 与对应 `.sha256` 文件，核对 SHA-256 后安装。公开发布可能落后于源码；不要安装 CI 临时制品、Debug APK 或来源不明的重打包版本。
 
-当前源码版本为 `v0.22.1-beta`（versionCode `61`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.23.0-beta`（versionCode `62`），变更见[更新日志](CHANGELOG.md)。
 
 ## 从源码构建
 
