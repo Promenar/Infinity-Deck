@@ -33,12 +33,10 @@
     <string name="workspace_unavailable_reason">Workspace unavailable: %1$s</string>
 
     <string name="workspace_session_current">Current workspace</string>
-    <string name="workspace_session_reselect">Choose again</string>
-    <string name="workspace_bar_switch">Switch</string>
     <string name="workspace_session_busy">Can\'t switch while a reply is running</string>
     <string name="workspace_switch_notice">Switched from “%1$s” to “%2$s”</string>
-    <string name="chat_top_workspace_cd">Workspace %1$s. Opens workspace and Agent reach</string>
-    <string name="agent_reach_workspace_switch">Switch workspace</string>
+    <string name="chat_top_workspace_cd">Workspace %1$s. Switch workspace</string>
+    <string name="workspace_picker_reach_link">Agent reach</string>
     <string name="workspace_switch_failed">Switching failed. Try again</string>
 
     <string name="workspace_agent_default">Default workspace</string>

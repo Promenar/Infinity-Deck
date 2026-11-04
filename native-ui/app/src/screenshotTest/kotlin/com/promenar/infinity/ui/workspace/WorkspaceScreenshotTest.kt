@@ -146,6 +146,43 @@ fun workspacePickerBuiltinSessionPreview() = SheetFrame(stringResource(R.string.
 }
 
 @PreviewTest
+@Preview(name = "选择器 会话 深中411", widthDp = 411, heightDp = 820, locale = "zh-rCN")
+@Preview(name = "选择器 会话 浅英360 大字", widthDp = 360, heightDp = 1000, locale = "en", fontScale = 1.3f)
+@Composable
+fun workspacePickerSessionPreview() = SessionPickerPreview(busy = false)
+
+@PreviewTest
+@Preview(name = "选择器 会话生成中 深中411", widthDp = 411, heightDp = 820, locale = "zh-rCN")
+@Preview(name = "选择器 会话生成中 深中360 大字", widthDp = 360, heightDp = 1000, locale = "zh-rCN", fontScale = 1.3f)
+@Composable
+fun workspacePickerSessionBusyPreview() = SessionPickerPreview(busy = true)
+
+/** 从会话打开：顶部为运行模式、权限模式与可达范围链接；生成中时说明原因并只保留当前工作区可点。 */
+@Composable
+private fun SessionPickerPreview(busy: Boolean) = SheetFrame(stringResource(R.string.workspace_picker_title)) {
+    WorkspacePickerContent(
+        WorkspacePickerUiState(
+            registered = listOf(Project),
+            currentWorkspaceId = Project.id,
+            showPrivate = true,
+            sharedSupported = true,
+            sharedPermission = true,
+            sharedRoots = listOf(Volume),
+            linuxHome = com.promenar.infinity.data.workspace.LinuxHomeAvailability.READY,
+            runMode = com.promenar.infinity.domain.model.SessionRunMode.LINUX,
+            switchLocked = busy,
+        ),
+        switchStatus = WorkspaceSwitchStatus(
+            executionMode = com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE,
+            busy = busy,
+            failed = false,
+            onOpenReach = {},
+            onStopGeneration = {},
+        ),
+    )
+}
+
+@PreviewTest
 @Preview(name = "选择器 Play 起始页 深中411", widthDp = 411, heightDp = 560, locale = "zh-rCN")
 @Composable
 fun workspacePickerPlayHomePreview() = SheetFrame(stringResource(R.string.workspace_picker_title)) {

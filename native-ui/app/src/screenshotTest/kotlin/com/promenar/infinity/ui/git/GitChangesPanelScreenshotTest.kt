@@ -241,12 +241,12 @@ private fun PanelStates() {
 }
 
 @PreviewTest
-@Preview(name = "Git 入口 深中360", widthDp = 360, heightDp = 420, locale = "zh-rCN")
+@Preview(name = "Git 入口 深中360", widthDp = 360, heightDp = 500, locale = "zh-rCN")
 @Composable
 fun gitEntryDarkPreview() = PanelPreview(InfinityThemeMode.DARK) { EntryVariants() }
 
 @PreviewTest
-@Preview(name = "Git 入口 浅英360", widthDp = 360, heightDp = 420, locale = "en")
+@Preview(name = "Git 入口 浅英360", widthDp = 360, heightDp = 500, locale = "en")
 @Composable
 fun gitEntryLightPreview() = PanelPreview(InfinityThemeMode.LIGHT) { EntryVariants() }
 
@@ -259,6 +259,7 @@ private fun EntryVariants() {
         )
         GitWorkspaceEntry(GitEntrySummary.Repository(null, detached = true, headShortSha = "3f9c2a1", unborn = false, changeCount = 0, truncated = false), onClick = {})
         GitWorkspaceEntry(GitEntrySummary.Repository("main", detached = false, headShortSha = null, unborn = true, changeCount = 2_000, truncated = true), onClick = {})
+        GitWorkspaceEntry(GitEntrySummary.Loading, onClick = {})
         GitWorkspaceEntry(GitEntrySummary.PythonUnavailable, onClick = {})
         GitWorkspaceEntry(GitEntrySummary.Failed, onClick = {})
     }

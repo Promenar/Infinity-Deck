@@ -269,7 +269,7 @@ fun ChatRoute(
             null
         }
     }
-    var showWorkspaceStatus by remember(sessionId) { mutableStateOf(false) }
+    var showAgentReach by remember(sessionId) { mutableStateOf(false) }
     var pickingWorkspace by remember(sessionId) { mutableStateOf(false) }
     var workspaceSwitchFailed by remember(sessionId) { mutableStateOf(false) }
     // 与执行层一致：生成进行中或有待审批的操作时不允许切换工作区。
@@ -944,7 +944,7 @@ fun ChatRoute(
                 },
                 onOpenWorkspaceStatus = {
                     workspaceSwitchFailed = false
-                    showWorkspaceStatus = true
+                    pickingWorkspace = true
                 },
                 onOpenGit = { openChatPage(ChatPage.Git) },
                 onOpenBrowser = { openChatPage(ChatPage.Browser) },
@@ -1244,40 +1244,47 @@ fun ChatRoute(
             }
         },
     )
-    // 工作区与可达范围面板从顶栏状态行打开；选择器叠在面板之上，切换后面板随之刷新。
-    if (showWorkspaceStatus) {
-        com.promenar.infinity.ui.workspace.AgentReachSheet(
-            sessionId = sessionId,
-            executionMode = uiState.session?.executionMode,
-            onDismiss = { showWorkspaceStatus = false },
-            onOpenTailscaleSettings = onOpenTailscaleSettings,
-            workspaceSwitch = com.promenar.infinity.ui.workspace.AgentReachWorkspaceSwitch(
-                busy = workspaceBusy,
-                failed = workspaceSwitchFailed,
-                onChoose = {
-                    workspaceSwitchFailed = false
-                    pickingWorkspace = true
-                },
-                // 与输入区停止按钮同一入口；只在本会话确有生成进行时提供，待审批造成的停用不显示。
-                onStopGeneration = if (uiState.isGenerating) chatViewModel::stopGeneration else null,
-            ),
-            workspaceKey = boundWorkspaceId to workspaceRefresh,
-        )
+    // 顶栏状态行的工作区打开选择器；选择器顶部链接打开可达范围面板，叠在选择器之上。
+    // 生成进行中或有待审批时选择器照常打开，说明原因并只保留当前工作区可点。切换失败时选择器保持打开并提示。
+    val closePickerAfter: (com.promenar.infinity.data.workspace.WorkspaceSwitchResult) -> Unit = { result ->
+        onWorkspaceSwitched(result)
+        if (result is com.promenar.infinity.data.workspace.WorkspaceSwitchResult.Switched ||
+            result is com.promenar.infinity.data.workspace.WorkspaceSwitchResult.Unchanged
+        ) pickingWorkspace = false
     }
     com.promenar.infinity.ui.workspace.WorkspacePickerSheet(
-        show = pickingWorkspace && !workspaceBusy,
+        show = pickingWorkspace,
         onDismiss = { pickingWorkspace = false },
         currentWorkspaceId = uiState.session?.workspaceId,
         runMode = runModeStatus?.mode,
         onPicked = { picked ->
-            pickingWorkspace = false
-            chatViewModel.switchSessionWorkspace(picked.id, onWorkspaceSwitched)
+            workspaceSwitchFailed = false
+            if (picked.id == uiState.session?.workspaceId) pickingWorkspace = false
+            else chatViewModel.switchSessionWorkspace(picked.id, closePickerAfter)
         },
         onPickPrivate = {
-            pickingWorkspace = false
-            if (uiState.session?.workspaceId != null) chatViewModel.switchSessionWorkspace(null, onWorkspaceSwitched)
+            workspaceSwitchFailed = false
+            if (uiState.session?.workspaceId == null) pickingWorkspace = false
+            else chatViewModel.switchSessionWorkspace(null, closePickerAfter)
         },
+        switchStatus = com.promenar.infinity.ui.workspace.WorkspaceSwitchStatus(
+            executionMode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(uiState.session?.executionMode),
+            busy = workspaceBusy,
+            failed = workspaceSwitchFailed,
+            onOpenReach = { showAgentReach = true },
+            // 与输入区停止按钮同一入口；只在本会话确有生成进行时提供，待审批造成的停用不显示。
+            onStopGeneration = if (uiState.isGenerating) chatViewModel::stopGeneration else null,
+        ),
     )
+    if (showAgentReach) {
+        com.promenar.infinity.ui.workspace.AgentReachSheet(
+            sessionId = sessionId,
+            executionMode = uiState.session?.executionMode,
+            onDismiss = { showAgentReach = false },
+            onOpenTailscaleSettings = onOpenTailscaleSettings,
+            workspaceKey = boundWorkspaceId to workspaceRefresh,
+        )
+    }
     runModeCheckpoint?.let { stage ->
         com.promenar.infinity.ui.chat.runmode.RunModeCheckpointSheet(
             application = application,

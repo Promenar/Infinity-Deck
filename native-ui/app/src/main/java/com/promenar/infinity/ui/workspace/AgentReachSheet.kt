@@ -4,14 +4,6 @@ import android.app.Application
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.stateDescription
-import com.promenar.infinity.ui.theme.infinityDomainColors
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,14 +27,12 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -93,41 +83,12 @@ internal data class AgentReachActions(
     val onOpenTailscale: (() -> Unit)? = null,
     /** 非 null 时 Linux 行可点按，进入 Linux 环境页安装、修复或开关。 */
     val onOpenLinux: (() -> Unit)? = null,
-    /** 非 null 时工作区一行提供切换；从会话顶栏打开面板时传入。 */
-    val workspaceSwitch: AgentReachWorkspaceSwitch? = null,
     /** 非 null 时“未启用”一行带“设置”，打开 Termux 与 SSH 所在的工具设置。 */
     val onOpenToolSettings: (() -> Unit)? = null,
 )
 
 /**
- * 摘要卡内的工作区切换：生成进行中或有待审批时停用，切换失败时在工作区下方提示。
- * [onStopGeneration] 非 null 时，停用说明条右侧提供“停止生成”，停止当前会话的生成。
- */
-internal data class AgentReachWorkspaceSwitch(
-    val busy: Boolean,
-    val failed: Boolean,
-    val onChoose: () -> Unit,
-    val onStopGeneration: (() -> Unit)? = null,
-)
-
-/** 工作区切换下方说明条的内容：切换失败优先于生成中停用。 */
-internal enum class ReachSwitchHintKind { BUSY, FAILED }
-
-internal data class ReachSwitchHint(val kind: ReachSwitchHintKind, val showStop: Boolean)
-
-/** 说明条：切换失败时显示错误；生成中停用时说明原因，取得停止生成入口时带“停止生成”；其余情况不显示。 */
-internal fun reachSwitchHint(switch: AgentReachWorkspaceSwitch?): ReachSwitchHint? = when {
-    switch == null -> null
-    switch.failed -> ReachSwitchHint(ReachSwitchHintKind.FAILED, showStop = false)
-    switch.busy -> ReachSwitchHint(ReachSwitchHintKind.BUSY, showStop = switch.onStopGeneration != null)
-    else -> null
-}
-
-private const val REACH_SWITCH_HINT_TAG = "agent_reach_workspace_switch_hint"
-private const val REACH_STOP_GENERATION_TAG = "agent_reach_stop_generation"
-
-/**
- * 会话的工作区与“Agent 可达范围”面板，从顶栏状态行的工作区打开；[executionMode] 为会话保存的执行模式原值。
+ * 会话的“智能体可达范围”面板，从工作区选择器顶部的链接打开；[executionMode] 为会话保存的执行模式原值。
  * [workspaceKey] 变化（切换了工作区）时重新解析工作区。
  */
 @Composable
@@ -136,7 +97,6 @@ internal fun AgentReachSheet(
     executionMode: String?,
     onDismiss: () -> Unit,
     onOpenTailscaleSettings: (() -> Unit)? = null,
-    workspaceSwitch: AgentReachWorkspaceSwitch? = null,
     workspaceKey: Any? = null,
 ) {
     val application = LocalContext.current.applicationContext as Application
@@ -160,7 +120,6 @@ internal fun AgentReachSheet(
             actions = AgentReachActions(
                 onOpenTailscale = onOpenTailscaleSettings?.let { open -> { onDismiss(); open() } },
                 onOpenLinux = linuxNavigation?.let { navigation -> { onDismiss(); navigation.openEnvironment() } },
-                workspaceSwitch = workspaceSwitch,
             ),
         )
     }
@@ -189,7 +148,7 @@ internal fun AgentReachContent(
             .testTag("agent_reach_content"),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.SectionGap),
     ) {
-        SummaryCard(state, mode, actions.workspaceSwitch)
+        SummaryCard(state, mode)
         PathSection(state, mode)
         RunnerSection(state, mode, actions)
         ApprovalSection(state)
@@ -202,11 +161,10 @@ internal fun SessionRunMode.toNetworkRunMode(): NetworkRunMode = when (this) {
     SessionRunMode.BUILTIN -> NetworkRunMode.BUILTIN
 }
 
-/** 摘要卡：运行模式与权限模式两个小标签，下面是当前工作区、存放位置与是否进备份，右侧切换。 */
+/** 摘要卡：运行模式与权限模式两个小标签，下面是当前工作区、存放位置与是否进备份。切换在工作区选择器中进行。 */
 @Composable
-private fun SummaryCard(state: AgentReachState, mode: SessionRunMode, switch: AgentReachWorkspaceSwitch?) {
+private fun SummaryCard(state: AgentReachState, mode: SessionRunMode) {
     val workspace = state.workspace
-    val hint = reachSwitchHint(switch)
     InfinitySettingsGroup {
         Column(
             modifier = Modifier
@@ -269,87 +227,13 @@ private fun SummaryCard(state: AgentReachState, mode: SessionRunMode, switch: Ag
                         )
                     }
                 }
-                if (switch != null) {
-                    val label = stringResource(R.string.agent_reach_workspace_switch)
-                    // 停用或失败时把说明条的文字挂到按钮的状态描述上，读屏聚焦按钮即可听到原因。
-                    val reason = hint?.let { reachSwitchHintText(it.kind) }
-                    InfinityPillButton(
-                        text = stringResource(
-                            if (workspace is SessionWorkspaceUi.Unavailable) R.string.workspace_session_reselect
-                            else R.string.workspace_bar_switch,
-                        ),
-                        onClick = switch.onChoose,
-                        enabled = !switch.busy && workspace != SessionWorkspaceUi.Loading,
-                        compact = true,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .semantics {
-                                contentDescription = label
-                                if (reason != null) stateDescription = reason
-                            }
-                            .testTag("agent_reach_workspace_switch"),
-                    )
-                }
-            }
-            hint?.let { ReachSwitchHintStrip(it, onStop = switch?.onStopGeneration) }
-        }
-    }
-}
-
-@Composable
-private fun reachSwitchHintText(kind: ReachSwitchHintKind): String = stringResource(
-    when (kind) {
-        ReachSwitchHintKind.BUSY -> R.string.agent_reach_switch_busy_hint
-        ReachSwitchHintKind.FAILED -> R.string.workspace_switch_failed
-    },
-)
-
-/**
- * 工作区切换下方的说明条：圆角浅色容器，左侧图标、中间说明，生成中停用时右侧可带“停止生成”。
- * 切换失败用错误色并立即播报，生成中停用礼貌播报。
- */
-@Composable
-private fun ReachSwitchHintStrip(hint: ReachSwitchHint, onStop: (() -> Unit)?) {
-    val failed = hint.kind == ReachSwitchHintKind.FAILED
-    val accent = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.infinityDomainColors.info
-    val container = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.infinityDomainColors.infoContainer
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(container.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .padding(start = 12.dp, end = if (hint.showStop && onStop != null) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp)
-            .semantics { liveRegion = if (failed) LiveRegionMode.Assertive else LiveRegionMode.Polite }
-            .testTag(REACH_SWITCH_HINT_TAG),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(
-            if (failed) Icons.Rounded.ErrorOutline else Icons.Rounded.Schedule,
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            text = reachSwitchHintText(hint.kind),
-            style = MaterialTheme.typography.bodySmall.forReading(),
-            color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        if (hint.showStop && onStop != null) {
-            IconButton(onClick = onStop, modifier = Modifier.testTag(REACH_STOP_GENERATION_TAG)) {
-                Icon(
-                    Icons.Rounded.Stop,
-                    contentDescription = stringResource(R.string.agent_reach_stop_generation),
-                    tint = MaterialTheme.colorScheme.error,
-                )
             }
         }
     }
 }
 
 @Composable
-private fun ReachPill(label: String, modifier: Modifier = Modifier) {
+internal fun ReachPill(label: String, modifier: Modifier = Modifier) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

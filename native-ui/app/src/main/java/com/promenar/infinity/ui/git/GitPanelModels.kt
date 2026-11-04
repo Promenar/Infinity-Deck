@@ -67,6 +67,9 @@ fun <T> GitInspectResult<T>.toLoad(): GitLoad<T> = when (this) {
 sealed interface GitEntrySummary {
     data object Hidden : GitEntrySummary
 
+    /** 工作区含 `.git`，状态还在读取；入口先占位，读到后原地替换，不从无到有跳出。 */
+    data object Loading : GitEntrySummary
+
     data class Repository(
         val branch: String?,
         val detached: Boolean,

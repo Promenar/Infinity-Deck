@@ -1147,6 +1147,7 @@ fun GitWorkspaceEntry(
         GitEntrySummary.Hidden -> return
         is GitEntrySummary.Repository ->
             listOf(branchLabel(summary.branch, summary.detached, summary.headShortSha, summary.unborn)) + gitSummaryCounts(summary)
+        GitEntrySummary.Loading -> listOf(stringResource(R.string.git_panel_entry_loading))
         GitEntrySummary.PythonUnavailable -> listOf(stringResource(R.string.git_panel_entry_python_unavailable))
         GitEntrySummary.Failed -> listOf(stringResource(R.string.git_panel_entry_failed))
     }

@@ -59,6 +59,12 @@ class GitChangesService(
         }
     }
 
+    /** 只检查工作区里有没有 `.git`，不启动解释器；用于在读取状态前先显示入口占位。 */
+    suspend fun isRepository(sessionId: String): Boolean = when (val resolution = locate(sessionId)) {
+        is GitWorkspaceResolution.Unavailable -> false
+        is GitWorkspaceResolution.Ready -> hasGitDirectory(resolution.target.root)
+    }
+
     suspend fun log(sessionId: String, limit: Int = GitInspectLimits.DEFAULT_COMMITS): GitInspectResult<GitCommitLog> =
         withTarget(sessionId) { inspector.log(it, limit) }
 

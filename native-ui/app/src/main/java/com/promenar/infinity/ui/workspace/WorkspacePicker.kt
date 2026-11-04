@@ -142,7 +142,12 @@ data class WorkspacePickerUiState(
     val runMode: SessionRunMode? = null,
     /** 只浏览共享存储卷（挂载外部文件夹选路径）：首页只列存储卷，不列工作区登记、项目与 Linux。 */
     val sharedOnly: Boolean = false,
-)
+    /** 会话生成进行中或有待审批时为 true：除当前工作区外的行与“使用此文件夹”停用。 */
+    val switchLocked: Boolean = false,
+) {
+    /** 行是否可点：登记进行中全部停用；切换受阻时只保留当前工作区一行。 */
+    fun pickable(selected: Boolean = false): Boolean = !busy && (!switchLocked || selected)
+}
 
 /** Linux 主目录；选中它时沿用“Linux 主目录”显示名，其它目录取目录名。 */
 private const val LINUX_HOME_DIRECTORY = "/root"
@@ -220,6 +225,8 @@ fun WorkspacePickerSheet(
     privateTitle: String? = null,
     /** 会话保存的运行模式；智能体默认工作区等非会话场景为 null。 */
     runMode: SessionRunMode? = null,
+    /** 从会话打开时的会话状态：首页顶部显示标签、可达范围链接与切换说明；非会话场景为 null。 */
+    switchStatus: WorkspaceSwitchStatus? = null,
 ) {
     if (!show) return
     val context = LocalContext.current
@@ -301,6 +308,7 @@ fun WorkspacePickerSheet(
         sharedSupported = browser.sharedSupported, sharedPermission = permission, sharedRoots = roots,
         folders = folders, loading = loading, loadError = loadError, selectedProject = selectedProject,
         busy = busy, error = error, linuxHome = linuxHome, runMode = runMode,
+        switchLocked = switchStatus?.busy == true,
     )
 
     InfinityBottomSheet(
@@ -318,6 +326,7 @@ fun WorkspacePickerSheet(
         }
         WorkspacePickerContent(
             state = state,
+            switchStatus = switchStatus,
             onNavigate = { next ->
                 page = next
                 selectedProject = null
@@ -416,6 +425,8 @@ fun WorkspacePickerContent(
     rootTitle: String? = null,
     /** 非 null 时首页也显示页头，返回按钮离开选择器（嵌在其它面板中使用时）。 */
     onExitRoot: (() -> Unit)? = null,
+    /** 从会话打开时的会话状态，显示在首页顶部。 */
+    switchStatus: WorkspaceSwitchStatus? = null,
 ) = Column(modifier.fillMaxSize()) {
     val page = state.page
     val projectsLabel = stringResource(R.string.workspace_picker_shared_folder)
@@ -451,6 +462,7 @@ fun WorkspacePickerContent(
             },
         )
     }
+    if (page == WorkspacePickerPage.Home && switchStatus != null) WorkspaceSessionBar(switchStatus, state.runMode)
     AnimatedVisibility(
         visible = page != WorkspacePickerPage.Home && (state.loading || state.busy),
         enter = InfinityMotion.expandIn,
@@ -527,7 +539,7 @@ fun WorkspacePickerContent(
             }
             Button(
                 onClick = onUseFolder,
-                enabled = ready && !state.busy && state.loadError == null,
+                enabled = ready && state.pickable() && state.loadError == null,
                 modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("workspace_picker_use"),
             ) {
                 Text(
@@ -568,7 +580,7 @@ private fun LazyListScope.homeItems(
                 } else AnnotatedString(stringResource(R.string.workspace_picker_private_desc)),
                 tagsKind = null,
                 selected = state.currentWorkspaceId == null,
-                enabled = !state.busy,
+                enabled = state.pickable(selected = state.currentWorkspaceId == null),
                 onClick = onPickPrivate,
                 leading = { WorkspaceKindIcon(null) },
                 modifier = Modifier.testTag("workspace_picker_private"),
@@ -582,6 +594,7 @@ private fun LazyListScope.homeItems(
             subtitle = AnnotatedString(stringResource(R.string.workspace_picker_shared_folder_desc)),
             tagsKind = WorkspaceEntity.KIND_PROJECT,
             onClick = { onNavigate(WorkspacePickerPage.Projects) },
+            enabled = state.pickable(),
             leading = { Icon(Icons.Rounded.FolderOpen, null, tint = MaterialTheme.colorScheme.primary) },
             modifier = Modifier.testTag("workspace_picker_projects"),
         )
@@ -623,6 +636,7 @@ private fun LazyListScope.sharedVolumeItems(
             // 挂载选路径时不涉及工作区的备份与留存，标签不适用。
             showTags = !state.sharedOnly,
             onClick = { onNavigate(WorkspacePickerPage.Shared(volume, volume)) },
+            enabled = state.pickable(),
             leading = { Icon(Icons.Rounded.SdStorage, null, tint = MaterialTheme.colorScheme.primary) },
             modifier = Modifier.testTag("workspace_picker_volume"),
         )
@@ -650,7 +664,7 @@ private fun LazyListScope.linuxItems(
                     ?.let { AnnotatedString(it.breakableIdentifier()) },
                 tagsKind = WorkspaceEntity.KIND_LINUX_HOME,
                 selected = true,
-                enabled = !state.busy,
+                enabled = state.pickable(selected = true),
                 onClick = { onPickCurrent(current) },
                 leading = { WorkspaceKindIcon(WorkspaceEntity.KIND_LINUX_HOME) },
                 modifier = Modifier.testTag("workspace_picker_linux_current"),
@@ -669,7 +683,7 @@ private fun LazyListScope.linuxItems(
             showTags = !builtinSession,
             showChevron = !builtinSession,
             onClick = { onNavigate(WorkspacePickerPage.Linux(null)) },
-            enabled = ready && !builtinSession && !state.busy,
+            enabled = ready && !builtinSession && state.pickable(),
             leading = { Icon(Icons.Rounded.Home, null, tint = MaterialTheme.colorScheme.primary) },
             modifier = Modifier.testTag("workspace_picker_linux_home"),
         )
@@ -688,7 +702,7 @@ private fun RegisteredRow(state: WorkspacePickerUiState, workspace: WorkspaceEnt
         }?.let { AnnotatedString(it.breakableIdentifier()) },
         tagsKind = workspace.kind,
         selected = workspace.id == state.currentWorkspaceId,
-        enabled = !state.busy,
+        enabled = state.pickable(selected = workspace.id == state.currentWorkspaceId),
         onClick = { onPick(workspace) },
         leading = { WorkspaceKindIcon(workspace.kind) },
         modifier = Modifier.testTag("workspace_picker_registered_${workspace.id}"),

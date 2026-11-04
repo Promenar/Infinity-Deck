@@ -13,13 +13,17 @@ class WorkspaceStatusLineContractTest {
         Files.readAllBytes(sourceRoot.resolve(relativePath)).toString(Charsets.UTF_8)
 
     @Test
-    fun `顶栏状态行显示工作区并打开可达范围面板`() {
+    fun `顶栏状态行显示工作区并打开工作区选择器`() {
         val screen = source("chat/ChatScreen.kt")
         assertThat(screen).contains("UiTags.CHAT_WORKSPACE_LINE")
         assertThat(screen).contains("onWorkspaceStatus")
         val route = source("chat/ChatRoute.kt")
         assertThat(route).contains("AgentReachSheet(")
         assertThat(route).contains("WorkspacePickerSheet(")
+        val openStatus = route.substringAfter("onOpenWorkspaceStatus = {").substringBefore("},")
+        assertThat(openStatus).contains("pickingWorkspace = true")
+        assertThat(openStatus).doesNotContain("showAgentReach")
+        assertThat(route).contains("onOpenReach = { showAgentReach = true }")
     }
 
     @Test
@@ -31,8 +35,10 @@ class WorkspaceStatusLineContractTest {
     }
 
     @Test
-    fun `可达范围面板的工作区一节提供切换`() {
+    fun `切换只在选择器中进行，可达范围面板不再提供切换`() {
         val reach = source("workspace/AgentReachSheet.kt")
-        assertThat(reach).contains("agent_reach_workspace_switch")
+        assertThat(reach).doesNotContain("workspaceSwitch")
+        val picker = source("workspace/WorkspacePicker.kt")
+        assertThat(picker).contains("WorkspaceSessionBar(")
     }
 }

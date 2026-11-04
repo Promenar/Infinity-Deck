@@ -783,6 +783,8 @@ class ResourceExplorerViewModelTest {
         )
         coEvery { git.status("repo") } returns GitInspectResult.Success(status)
         coEvery { git.status("plain") } returns GitInspectResult.Failure(GitInspectError.NotRepository)
+        coEvery { git.isRepository("repo") } returns true
+        coEvery { git.isRepository("plain") } returns false
         val viewModel = ResourceExplorerViewModel(
             ApplicationProvider.getApplicationContext<Application>(),
             repo,
@@ -807,6 +809,44 @@ class ResourceExplorerViewModelTest {
         advanceUntilIdle()
         assertThat(viewModel.gitEntry.value).isEqualTo(GitEntrySummary.PythonUnavailable)
         coVerify(exactly = 1) { git.status("repo") }
+    }
+
+    @Test
+    fun `git entry shows a loading placeholder until the first status arrives and keeps the old summary on refresh`() = runTest(dispatcher) {
+        val repo = mockk<IWorkspaceRepository>()
+        coEvery { repo.ensureSessionRoot(any()) } answers { root("root-${firstArg<String>()}") }
+        every { repo.observeChildren(any(), any()) } returns flowOf(emptyList())
+        every { repo.observeRecycleBin(any()) } returns flowOf(emptyList())
+        val git = mockk<GitChangesService>()
+        val status = GitStatus(
+            branch = "main", detached = false, head = "a".repeat(40), unborn = false,
+            staged = GitChangeList.Empty, unstaged = GitChangeList.Empty, untracked = GitChangeList.Empty,
+        )
+        val first = kotlinx.coroutines.CompletableDeferred<GitInspectResult<GitStatus>>()
+        coEvery { git.isRepository("repo") } returns true
+        coEvery { git.status("repo") } coAnswers { first.await() }
+        val viewModel = ResourceExplorerViewModel(
+            ApplicationProvider.getApplicationContext<Application>(),
+            repo,
+            injectedGitChanges = git,
+        )
+
+        viewModel.loadSession("repo")
+        advanceUntilIdle()
+        assertThat(viewModel.gitEntry.value).isEqualTo(GitEntrySummary.Loading)
+        first.complete(GitInspectResult.Success(status))
+        advanceUntilIdle()
+        val ready = viewModel.gitEntry.value
+        assertThat(ready).isInstanceOf(GitEntrySummary.Repository::class.java)
+
+        val second = kotlinx.coroutines.CompletableDeferred<GitInspectResult<GitStatus>>()
+        coEvery { git.status("repo") } coAnswers { second.await() }
+        viewModel.refreshGitEntry()
+        advanceUntilIdle()
+        assertThat(viewModel.gitEntry.value).isEqualTo(ready)
+        second.complete(GitInspectResult.Success(status))
+        advanceUntilIdle()
+        assertThat(viewModel.gitEntry.value).isEqualTo(ready)
     }
 
     @Test

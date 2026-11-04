@@ -17,6 +17,7 @@
         <item quantity="other">%d+ 项改动</item>
     </plurals>
     <string name="git_panel_entry_python_unavailable">当前设备没有内置 Python</string>
+    <string name="git_panel_entry_loading">正在读取状态…</string>
     <string name="git_panel_entry_failed">无法读取 Git 状态</string>
     <string name="git_panel_group_staged">已暂存</string>
     <string name="git_panel_group_unstaged">未暂存</string>

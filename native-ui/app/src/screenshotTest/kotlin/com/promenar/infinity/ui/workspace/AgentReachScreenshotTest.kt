@@ -73,12 +73,7 @@ private fun AgentReachPreview(dark: Boolean, shared: Boolean, runMode: SessionRu
         Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
             AgentReachContent(
                 state = state,
-                // 从顶栏打开时工作区一行带切换；共享工作区预览为生成进行中，切换停用并提示。
-                actions = AgentReachActions(
-                    onOpenTailscale = {},
-                    onOpenLinux = {},
-                    workspaceSwitch = AgentReachWorkspaceSwitch(busy = shared, failed = false, onChoose = {}, onStopGeneration = {}),
-                ),
+                actions = AgentReachActions(onOpenTailscale = {}, onOpenLinux = {}),
                 modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal),
                 runMode = runMode,
                 networkDetailsExpanded = shared,

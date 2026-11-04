@@ -19,6 +19,7 @@
         <item quantity="other">%d+ changes</item>
     </plurals>
     <string name="git_panel_entry_python_unavailable">Built-in Python is unavailable on this device</string>
+    <string name="git_panel_entry_loading">Reading status…</string>
     <string name="git_panel_entry_failed">Couldn\'t read Git status</string>
     <string name="git_panel_group_staged">Staged</string>
     <string name="git_panel_group_unstaged">Unstaged</string>

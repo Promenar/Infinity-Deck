@@ -33,12 +33,10 @@
     <string name="workspace_unavailable_reason">工作区不可用：%1$s</string>
 
     <string name="workspace_session_current">当前工作区</string>
-    <string name="workspace_session_reselect">重新选择</string>
-    <string name="workspace_bar_switch">切换</string>
     <string name="workspace_session_busy">生成中，暂不能切换</string>
     <string name="workspace_switch_notice">已从“%1$s”切换到“%2$s”</string>
-    <string name="chat_top_workspace_cd">工作区 %1$s，打开工作区与智能体可达范围</string>
-    <string name="agent_reach_workspace_switch">切换工作区</string>
+    <string name="chat_top_workspace_cd">工作区 %1$s，切换工作区</string>
+    <string name="workspace_picker_reach_link">可达范围</string>
     <string name="workspace_switch_failed">切换失败，请重试</string>
 
     <string name="workspace_agent_default">默认工作区</string>

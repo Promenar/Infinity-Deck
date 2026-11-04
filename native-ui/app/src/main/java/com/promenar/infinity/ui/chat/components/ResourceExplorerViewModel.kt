@@ -688,6 +688,10 @@ class ResourceExplorerViewModel(
         val service = gitChanges ?: return
         gitJob?.cancel()
         gitJob = viewModelScope.launch {
+            // 首次读取先用 `.git` 判定占位；已有摘要时保留旧值直到新结果到达，避免刷新时闪烁。
+            if (_gitEntry.value == GitEntrySummary.Hidden && service.isRepository(sessionId) && sessionId == currentSessionId) {
+                _gitEntry.value = GitEntrySummary.Loading
+            }
             val summary = GitEntrySummary.from(service.status(sessionId))
             if (sessionId == currentSessionId) _gitEntry.value = summary
         }
