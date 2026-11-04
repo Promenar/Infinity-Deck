@@ -1,5 +1,12 @@
 package com.promenar.infinity.ui.library
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import com.promenar.infinity.ui.common.bettboxListGroupItem
+import com.promenar.infinity.ui.common.ProvideGroupedPress
+import com.promenar.infinity.ui.common.InfinitySettingsItem
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.animation.AnimatedContent
 import android.app.Application
 import android.text.format.DateUtils
 import android.text.format.Formatter
@@ -82,6 +89,7 @@ import com.promenar.infinity.domain.library.LibraryDocumentSummary
 import com.promenar.infinity.domain.library.PendingDocument
 import com.promenar.infinity.domain.library.PendingKind
 import com.promenar.infinity.navigation.NavDestinations
+import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -94,6 +102,7 @@ import com.promenar.infinity.ui.memory.LongTermMemorySourceLabel
 import com.promenar.infinity.ui.memory.LongTermMemoryViewModel
 import com.promenar.infinity.ui.rag.KnowledgeGraphScreen
 import com.promenar.infinity.ui.rag.RagSearchResults
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import kotlinx.coroutines.launch
@@ -279,27 +288,27 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                         label = stringResource(R.string.library_kpi_documents),
                         value = o?.indexedDocuments,
                         onClick = { host.navigator.openSection(LibraryPageKeys.RECENT) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
                     )
                     KpiTile(
                         label = stringResource(R.string.library_kpi_memories),
                         value = o?.longTermMemories,
                         detail = o?.newLongTermMemories?.takeIf { it > 0 }?.let { stringResource(R.string.library_kpi_memories_new, it) },
                         onClick = { host.navigator.openSection(LibraryPageKeys.MEMORY) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
                     )
                     KpiTile(
                         label = stringResource(R.string.library_kpi_graph),
                         value = o?.graphEntities,
                         detail = o?.graphRelations?.let { stringResource(R.string.library_kpi_graph_relations, it) },
                         onClick = { host.navigator.openSection(LibraryPageKeys.GRAPH) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
                     )
                     KpiTile(
                         label = stringResource(R.string.library_kpi_fragments),
                         value = o?.fragments,
                         onClick = { host.navigator.openSection(LibraryPageKeys.FRAGMENTS) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
                     )
                 }
             }
@@ -342,7 +351,7 @@ private fun LibraryEntryCards(host: LibraryPageHost) {
                 onClick = { host.navigator.push(key) },
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.weight(1f).heightIn(min = 72.dp).testTag(LibraryTags.navItem(key)),
+                modifier = Modifier.weight(1f).fillMaxRowHeight().heightIn(min = 72.dp).testTag(LibraryTags.navItem(key)),
             ) {
                 Row(
                     Modifier.padding(InfinitySpacing.Large),
@@ -366,7 +375,12 @@ private fun KpiTile(label: String, value: Int?, onClick: () -> Unit, modifier: M
         modifier = modifier.heightIn(min = 88.dp),
     ) {
         Column(Modifier.padding(InfinitySpacing.Large), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(value?.toString() ?: "–", style = MaterialTheme.typography.headlineSmall)
+            // 数值变化时纵向替换：增加自下而上，减少自上而下。
+            AnimatedContent(
+                targetState = value,
+                transitionSpec = { InfinityMotion.sharedAxisY(forward = (targetState ?: 0) >= (initialState ?: 0)) },
+                label = "kpi-value",
+            ) { shown -> Text(shown?.toString() ?: "–", style = MaterialTheme.typography.headlineSmall) }
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             detail?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
@@ -383,7 +397,7 @@ private fun LibraryCard(
     content: @Composable () -> Unit,
 ) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = InfinitySpacing.Small)) {
+        Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec()).padding(vertical = InfinitySpacing.Small)) {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).padding(start = InfinitySpacing.Large, end = InfinitySpacing.XSmall),
                 verticalAlignment = Alignment.CenterVertically,
@@ -571,8 +585,12 @@ private fun LibraryRecentContent(host: LibraryPageHost, padding: PaddingValues) 
     val recent by host.viewModel.recent.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
         if (recent.isEmpty()) item(key = "empty") { LibraryEmptyText(stringResource(R.string.library_recent_empty)) }
-        items(recent, key = { it.documentId }) { doc ->
-            DocumentRow(doc, onOpen = { host.navigator.push(LibraryPageKeys.document(doc.documentId)) })
+        itemsIndexed(recent, key = { _, it -> it.documentId }) { index, doc ->
+            ProvideGroupedPress {
+                Box(Modifier.animateItem().bettboxListGroupItem(index, recent.size)) {
+                    DocumentRow(doc, onOpen = { host.navigator.push(LibraryPageKeys.document(doc.documentId)) })
+                }
+            }
         }
     }
 }
@@ -583,13 +601,17 @@ private fun LibraryPendingContent(host: LibraryPageHost, padding: PaddingValues)
     val busy by host.viewModel.busyDocuments.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
         if (pending.isEmpty()) item(key = "empty") { LibraryEmptyText(stringResource(R.string.library_pending_empty)) }
-        items(pending, key = { it.documentId }) { doc ->
-            PendingRow(
-                doc,
-                busy = doc.documentId in busy,
-                onOpen = { host.navigator.push(LibraryPageKeys.document(doc.documentId)) },
-                onResolve = { host.viewModel.resolve(doc) },
-            )
+        itemsIndexed(pending, key = { _, it -> it.documentId }) { index, doc ->
+            ProvideGroupedPress {
+                Box(Modifier.animateItem().bettboxListGroupItem(index, pending.size)) {
+                    PendingRow(
+                        doc,
+                        busy = doc.documentId in busy,
+                        onOpen = { host.navigator.push(LibraryPageKeys.document(doc.documentId)) },
+                        onResolve = { host.viewModel.resolve(doc) },
+                    )
+                }
+            }
         }
     }
 }
@@ -615,14 +637,21 @@ private fun LibraryAskContent(host: LibraryPageHost, padding: PaddingValues) {
                 modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
             )
         }
-        if (host.askQuery.isBlank()) {
-            LibraryEmptyText(stringResource(R.string.library_ask_hint))
-        } else {
-            RagSearchResults(
-                state = searchState,
-                onOpenDocument = { docId -> host.navigator.push(LibraryPageKeys.document(docId)) },
-                modifier = Modifier.fillMaxSize(),
-            )
+        AnimatedContent(
+            targetState = host.askQuery.isBlank(),
+            transitionSpec = { InfinityMotion.fadeThrough() },
+            modifier = Modifier.fillMaxSize(),
+            label = "ask-results",
+        ) { blank ->
+            if (blank) {
+                LibraryEmptyText(stringResource(R.string.library_ask_hint))
+            } else {
+                RagSearchResults(
+                    state = searchState,
+                    onOpenDocument = { docId -> host.navigator.push(LibraryPageKeys.document(docId)) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
@@ -701,6 +730,13 @@ private fun LibraryDocumentPage(
 
 @Composable
 private fun DocumentBodyView(body: Loaded<DocumentBody>) {
+    AnimatedContent(targetState = body, contentKey = { it is Loaded.Loading }, transitionSpec = { InfinityMotion.fadeThrough() }, label = "doc-body") {
+        DocumentBodyState(it)
+    }
+}
+
+@Composable
+private fun DocumentBodyState(body: Loaded<DocumentBody>) {
     when (body) {
         Loaded.Loading -> Box(Modifier.fillMaxWidth().heightIn(min = 120.dp), contentAlignment = Alignment.Center) {
             com.promenar.infinity.ui.common.InfinityLoadingIndicator()
@@ -811,39 +847,35 @@ private fun LibraryFragmentsContent(host: LibraryPageHost, padding: PaddingValue
             )
         }
         if (groups.isEmpty()) item(key = "empty") { LibraryEmptyText(stringResource(R.string.library_fragments_empty)) }
-        items(groups, key = { it.sessionId }) { group ->
-            FragmentGroupRow(group, onOpen = { host.navigator.push(LibraryPageKeys.fragmentSession(group.sessionId)) })
+        itemsIndexed(groups, key = { _, it -> it.sessionId }) { index, group ->
+            ProvideGroupedPress {
+                FragmentGroupRow(
+                    group,
+                    onOpen = { host.navigator.push(LibraryPageKeys.fragmentSession(group.sessionId)) },
+                    modifier = Modifier.animateItem().bettboxListGroupItem(index, groups.size),
+                )
+            }
         }
     }
 }
 
+/** 对话片段的会话行：与设置页列表行相同的几何，副标题为智能体、片段数与最近时间。 */
 @Composable
-private fun FragmentGroupRow(group: FragmentGroup, onOpen: () -> Unit) {
+internal fun FragmentGroupRow(group: FragmentGroup, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val now = remember { System.currentTimeMillis() }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onOpen)
-            .heightIn(min = 64.dp)
-            .padding(vertical = InfinitySpacing.Small),
-    ) {
-        Text(
-            group.sessionTitle ?: stringResource(R.string.library_fragments_deleted_session),
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (group.sessionTitle == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        InfinityMetaLine(
-            listOfNotNull(
-                group.agentName,
-                pluralStringResource(R.plurals.library_fragment_count, group.fragmentCount, group.fragmentCount),
-                DateUtils.getRelativeTimeSpanString(group.lastAt, now, DateUtils.MINUTE_IN_MILLIS).toString(),
-            ),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
-        )
-    }
+    InfinitySettingsItem(
+        icon = Icons.Rounded.Forum,
+        title = group.sessionTitle ?: stringResource(R.string.library_fragments_deleted_session),
+        titleColor = if (group.sessionTitle == null) MaterialTheme.colorScheme.onSurfaceVariant else null,
+        subtitleSegments = listOfNotNull(
+            group.agentName,
+            pluralStringResource(R.plurals.library_fragment_count, group.fragmentCount, group.fragmentCount),
+            DateUtils.getRelativeTimeSpanString(group.lastAt, now, DateUtils.MINUTE_IN_MILLIS).toString(),
+        ),
+        onClick = onOpen,
+        showChevron = true,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -874,7 +906,7 @@ private fun LibraryFragmentSessionPage(
         LazyColumn(Modifier.fillMaxSize(), contentPadding = padding, verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
             if (fragments.isEmpty()) item(key = "empty") { LibraryEmptyText(stringResource(R.string.library_fragments_empty)) }
             items(fragments, key = { it.id }) { fragment ->
-                FragmentRow(fragment, onDelete = { host.viewModel.deleteFragment(fragment.id) })
+                Box(Modifier.animateItem()) { FragmentRow(fragment, onDelete = { host.viewModel.deleteFragment(fragment.id) }) }
             }
         }
     }
@@ -958,7 +990,7 @@ private fun LibraryMemoryPage(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize()) {
-            if (searching) {
+            AnimatedVisibility(visible = searching, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = memory::setQuery,
@@ -966,7 +998,7 @@ private fun LibraryMemoryPage(
                     placeholder = { Text(stringResource(R.string.library_memory_search), maxLines = 1) },
                     textStyle = MaterialTheme.typography.bodyLarge.forInput(),
                     shape = MaterialTheme.shapes.extraLarge,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small).keepsFocusOnTap(),
                 )
             }
             if (!enabled) {

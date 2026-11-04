@@ -1,5 +1,20 @@
 package com.promenar.infinity.navigation
 
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterExitState
@@ -239,4 +254,75 @@ private fun PageFrame(scope: AnimatedContentScope, entryId: String, content: @Co
         contentAlignment = Alignment.TopStart,
         propagateMinConstraints = true,
     ) { content() }
+}
+
+/**
+ * 不走 NavHost 的页面栈（资料页的单页栈与右列层级）：前进、返回与系统返回手势的跟手返回，
+ * 位移、左缘阴影与压暗都与 [InfinityPageNavHost] 一致；根页面变化（左列切换分区）为同级叠化。
+ * [pages] 为当前层级，末项为可见页。[popped] 非 null 时系统返回由本栈处理：手势跟手拖出顶层，
+ * 松手后调用 [onPop]，宿主随后把 [pages] 更新为 [popped]；取消则回弹。
+ */
+@Composable
+internal fun <T> InfinityPageStack(
+    pages: List<T>,
+    popped: List<T>?,
+    onPop: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable (List<T>) -> Unit,
+) {
+    val layers = remember { PageLayers() }
+    val seek = remember { SeekableTransitionState(pages) }
+    val scope = rememberCoroutineScope()
+    var gesture by remember { mutableStateOf(false) }
+    val currentOnPop by rememberUpdatedState(onPop)
+    LaunchedEffect(pages) {
+        if (seek.targetState != pages || seek.currentState != pages) seek.animateTo(pages)
+        gesture = false
+    }
+    PredictiveBackHandler(enabled = popped != null) { events ->
+        val target = popped ?: return@PredictiveBackHandler
+        gesture = true
+        try {
+            seek.seekTo(0f, targetState = target)
+            events.collect { event -> seek.seekTo(event.progress.coerceIn(0f, 1f)) }
+        } catch (cancelled: CancellationException) {
+            // 取消：按已拖动的进度回弹，再回到静止的原层级。
+            scope.launch {
+                val rebound = Animatable(seek.fraction)
+                val follower = launch { snapshotFlow { rebound.value }.collect { seek.seekTo(it) } }
+                rebound.animateTo(0f, InfinityMotion.pagePredictiveCancelSpec(rebound.value))
+                follower.cancel()
+                seek.snapTo(seek.currentState)
+                gesture = false
+            }
+            throw cancelled
+        }
+        currentOnPop()
+    }
+    val transition = rememberTransition(seek, label = "page-stack")
+    CompositionLocalProvider(LocalPageLayers provides layers) {
+        transition.AnimatedContent(
+            modifier = modifier.clipToBounds(),
+            contentKey = { pageStackId(it) },
+            transitionSpec = {
+                val change = pageStackChange(initialState, targetState, predictive = gesture)
+                layers.record(pageStackId(targetState), pageStackId(initialState), change)
+                // 越深的页叠得越高：返回时被弹出的页留在上层滑出。
+                ContentTransform(pageEnterFor(change), pageExitFor(change), targetContentZIndex = targetState.size.toFloat(), sizeTransform = null)
+            },
+        ) { state ->
+            PageFrame(this, pageStackId(state)) { content(state) }
+        }
+    }
+}
+
+/** 页面栈中一页的标识：层级深度加末项，同一层级换页视为不同页。 */
+internal fun pageStackId(pages: List<*>): String = "${pages.size}:${pages.lastOrNull()}"
+
+/** 页面栈的换页种类：根页面变化为同级叠化；层级加深为前进，变浅为返回（手势中为跟手返回）。 */
+internal fun pageStackChange(from: List<*>, to: List<*>, predictive: Boolean): PageChange = when {
+    from.isNotEmpty() && to.isNotEmpty() && from.first() != to.first() -> PageChange.SAME_LEVEL
+    to.size > from.size -> PageChange.PUSH
+    to.size < from.size -> if (predictive) PageChange.PREDICTIVE_POP else PageChange.POP
+    else -> PageChange.SAME_LEVEL
 }

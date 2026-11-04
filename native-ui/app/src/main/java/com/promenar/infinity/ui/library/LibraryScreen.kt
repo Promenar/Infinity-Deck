@@ -1,12 +1,8 @@
 package com.promenar.infinity.ui.library
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -40,6 +37,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.navigation.InfinityPageStack
+import com.promenar.infinity.ui.common.FocusDismissArea
 import com.promenar.infinity.ui.MainTabsState
 import com.promenar.infinity.ui.hub.HubListPaneWidth
 import com.promenar.infinity.ui.hub.HubStripWidth
@@ -144,12 +143,17 @@ fun LibraryScreen(
         onOpenSession = onOpenSession,
     )
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag(LibraryTags.SCREEN)) {
-        when (layout) {
-            LibraryLayout.Single -> LibrarySingleLayout(host)
-            is LibraryLayout.TwoPane -> LibraryTwoPaneLayout(host, layout)
+    // Surface 提供内容色：点按反馈取内容色绘制，裸 Box 下默认黑色，在深色主题里看不见。
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().testTag(LibraryTags.SCREEN)) {
+        FocusDismissArea(Modifier.fillMaxSize()) { area ->
+            Box(area) {
+                when (layout) {
+                    LibraryLayout.Single -> LibrarySingleLayout(host)
+                    is LibraryLayout.TwoPane -> LibraryTwoPaneLayout(host, layout)
+                }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+            }
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
     }
 }
 
@@ -172,12 +176,14 @@ internal class LibraryPageHost(
 @Composable
 private fun LibrarySingleLayout(host: LibraryPageHost) {
     val stack = host.navigator.stack
-    AnimatedContent(
-        targetState = stack.lastOrNull(),
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
+    // 与设置页、首页的二级页面相同的视差推入；空栈即资料首页。
+    InfinityPageStack(
+        pages = stack,
+        popped = stack.takeIf { it.isNotEmpty() }?.dropLast(1),
+        onPop = { host.navigator.back() },
         modifier = Modifier.fillMaxSize(),
-        label = "library-single",
-    ) { key ->
+    ) { pages ->
+        val key = pages.lastOrNull()
         if (key == null) {
             LibraryHome(host)
         } else {
@@ -233,13 +239,14 @@ private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.Tw
                 .background(MaterialTheme.colorScheme.background),
         ) {
             val stack = navigator.stack
-            AnimatedContent(
-                targetState = stack,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                contentKey = { it.last() },
+            // 右列内前进、后退用视差推入，左列切换分区时同级叠化，与设置页两列一致。
+            InfinityPageStack(
+                pages = stack,
+                popped = stack.takeIf { it.size > 1 }?.dropLast(1),
+                onPop = { navigator.back() },
                 modifier = Modifier.fillMaxSize(),
-                label = "library-detail",
             ) { pages ->
+                if (pages.isEmpty()) return@InfinityPageStack
                 val previous = pages.getOrNull(pages.lastIndex - 1)
                 LibraryPageContent(
                     page = LibraryPageKeys.parse(pages.last()),

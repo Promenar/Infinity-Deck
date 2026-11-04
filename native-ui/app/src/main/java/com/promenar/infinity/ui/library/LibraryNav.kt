@@ -1,5 +1,9 @@
 package com.promenar.infinity.ui.library
 
+import com.promenar.infinity.ui.theme.InfinityMotion
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -75,7 +79,10 @@ import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationKind
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.ui.common.InfinityBackButton
+import com.promenar.infinity.ui.common.InfinitySettingsItem
+import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityTabHeader
+import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.onSelectionIndicator
@@ -193,11 +200,17 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
                 // 回收站固定在位置组末尾，折叠时也保留。
                 val visible = if (folded) group.entries.take(VISIBLE_LOCATIONS) + group.entries.last() else group.entries
                 items(visible, key = { "nav-${group.title}-${it.key}" }) { entry ->
-                    LibraryNavRow(entry, selected = entry.key == selected, onClick = { host.navigator.openRoot(entry.key) })
+                    LibraryNavRow(
+                        entry,
+                        selected = entry.key == selected,
+                        onClick = { host.navigator.openRoot(entry.key) },
+                        modifier = Modifier.animateItem(),
+                    )
                 }
                 if (group.foldable && group.entries.size > VISIBLE_LOCATIONS + 1) {
                     item(key = "fold-${group.title}") {
                         LibraryFoldRow(
+                            modifier = Modifier.animateItem(),
                             text = if (locationsExpanded) {
                                 stringResource(R.string.library_locations_less)
                             } else {
@@ -229,11 +242,20 @@ private fun LibraryNavGroupTitle(title: String) {
 }
 
 @Composable
-internal fun LibraryNavRow(entry: LibraryNavEntry, selected: Boolean, onClick: () -> Unit) {
-    val container = if (selected) MaterialTheme.colorScheme.selectionIndicator(MaterialTheme.colorScheme.surface) else MaterialTheme.colorScheme.surface
-    val content = if (selected) MaterialTheme.colorScheme.onSelectionIndicator else MaterialTheme.colorScheme.onSurface
+internal fun LibraryNavRow(entry: LibraryNavEntry, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // 选中高亮随切换渐变，与设置页左列一致。
+    val container by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.selectionIndicator(MaterialTheme.colorScheme.surface) else MaterialTheme.colorScheme.surface,
+        tween(InfinityMotion.DurationShort),
+        label = "nav-row-container",
+    )
+    val content by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.onSelectionIndicator else MaterialTheme.colorScheme.onSurface,
+        tween(InfinityMotion.DurationShort),
+        label = "nav-row-content",
+    )
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = InfinitySpacing.Small)
             .clip(MaterialTheme.shapes.large)
@@ -263,9 +285,10 @@ internal fun LibraryNavRow(entry: LibraryNavEntry, selected: Boolean, onClick: (
 }
 
 @Composable
-private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit) {
+private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, tween(InfinityMotion.DurationMedium), label = "fold-arrow")
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = InfinitySpacing.Small)
             .clip(MaterialTheme.shapes.large)
@@ -279,7 +302,7 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit)
             Icons.Rounded.ExpandMore,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(InfinitySpacing.RowIconSize).graphicsLayer { rotationZ = if (expanded) 180f else 0f },
+            modifier = Modifier.size(InfinitySpacing.RowIconSize).graphicsLayer { rotationZ = rotation },
         )
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
@@ -337,7 +360,7 @@ internal fun LibraryAskField(query: String, onQueryChange: (String) -> Unit, mod
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth().testTag(LibraryTags.ASK_FIELD),
+        modifier = modifier.fillMaxWidth().keepsFocusOnTap().testTag(LibraryTags.ASK_FIELD),
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.forInput(),
         placeholder = { Text(stringResource(R.string.library_ask_placeholder), maxLines = 1) },
@@ -434,12 +457,22 @@ internal fun LibraryPageHeader(
     }
 }
 
-/** 外屏“文件”页与外屏首页共用的位置列表行。 */
+/** 外屏“文件”页的位置与固定项：与设置页相同的圆角分组列表，行尾带箭头。 */
 @Composable
 internal fun LibraryLocationRows(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
     groups.filter { it.foldable || it.entries.any { e -> e.icon == Icons.Rounded.PushPin } }.forEach { group ->
-        LibraryNavGroupTitle(group.title)
-        group.entries.forEach { entry -> LibraryNavRow(entry, selected = false, onClick = { host.navigator.push(entry.key) }) }
+        InfinitySettingsSection(title = group.title) {
+            group.entries.forEach { entry ->
+                InfinitySettingsItem(
+                    icon = entry.icon,
+                    title = entry.title,
+                    subtitle = entry.subtitle,
+                    onClick = { host.navigator.push(entry.key) },
+                    showChevron = true,
+                    modifier = Modifier.testTag(LibraryTags.navItem(entry.key)),
+                )
+            }
+        }
     }
 }

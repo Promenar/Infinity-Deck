@@ -183,6 +183,9 @@ object InfinityMotion {
     const val MenuExitMillis = 100
     const val MenuExitScale = 0.96f
 
+    /** 容器随内容增减改变高度（animateContentSize）：与层级切换的尺寸过渡同一曲线。 */
+    fun contentSizeSpec(): FiniteAnimationSpec<IntSize> = tween(DurationMedium, easing = EmphasizedDecelerate)
+
     private fun sizeTransform(): SizeTransform =
         SizeTransform(clip = false) { _: IntSize, _: IntSize -> tween(DurationMedium, easing = EmphasizedDecelerate) }
 }
