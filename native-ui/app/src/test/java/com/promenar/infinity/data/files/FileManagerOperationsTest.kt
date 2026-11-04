@@ -24,6 +24,20 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class FileManagerOperationsTest {
+    @Test fun `Linux主目录删除与移动源删除通知实际路径并在失败后失效`() = runBlocking<Unit> {
+        val backend = mockk<ExternalFolderBackend>()
+        val expected = ExternalFolderEntry("/b.txt", "b.txt", false, 1, 1, "hash", "identity")
+        coEvery { backend.delete("/a.txt", null) } returns Unit
+        coEvery { backend.delete("/failed.txt", null) } throws IllegalStateException("注入失败")
+        coEvery { backend.deleteForTransfer("/b.txt", expected, "hash") } returns Unit
+        val invalidated = mutableListOf<String>()
+        val guarded = LinuxHomeVersionCleanupBackend(backend) { invalidated += it }
+        guarded.delete("/a.txt")
+        assertTrue(runCatching { guarded.delete("/failed.txt") }.isFailure)
+        guarded.deleteForTransfer("/b.txt", expected, "hash")
+        assertEquals(listOf("/root/a.txt", "/root/failed.txt", "/root/b.txt"), invalidated)
+    }
+
     @Test fun `私有文件删除使用选中条目的身份与摘要`() = runBlocking {
         val hash = "a".repeat(64)
         val row = FileEntry(uuid = "item", workspaceRootUuid = "root", parentUuid = "root", name = "a.txt",

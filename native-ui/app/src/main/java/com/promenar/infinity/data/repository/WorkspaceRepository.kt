@@ -60,6 +60,7 @@ class WorkspaceRepository(
     private val beforeDeleteCommitted: suspend (String, List<String>) -> WorkspaceDeleteBarrierLease =
         { _, _ -> NoOpWorkspaceDeleteBarrierLease },
     private val afterDeleteCommitted: suspend (String, List<String>) -> Unit = { _, _ -> },
+    private val afterDeletePathCommitted: (String, String) -> Unit = { _, _ -> },
     private val clock: () -> Long = System::currentTimeMillis,
     private val executionGate: SessionExecutionGate? = null,
     private val mutationJournal: WorkspaceFileMutationJournal? = null,
@@ -633,6 +634,8 @@ class WorkspaceRepository(
             throw failure
         }
         withContext(NonCancellable) {
+            runCatching { afterDeletePathCommitted(workspaceRootUuid, entry.materializedPath) }
+                .onFailure { InfinityLogger.logError("WorkspaceDelete.invalidateVersions", it) }
             checkNotNull(barrier).commit()
             runCatching { afterDeleteCommitted(workspaceRootUuid, ids) }
                 .exceptionOrNull()

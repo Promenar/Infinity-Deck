@@ -357,6 +357,18 @@ class LinuxSessionFileSkillTest {
         assertThat(access.version("one", "/home/session/same.txt", Sha256Utils.hash(old))?.toString(Charsets.UTF_8)).isEqualTo("one-private")
     }
 
+    @Test fun `Linux根文件删除使不同会话的同路径快照失效`() = runBlocking<Unit> {
+        val first = access.read("one", "/etc/config")
+        val second = access.read("two", "/etc/config")
+        val hash = Sha256Utils.hash(first)
+        assertThat(second).isEqualTo(first)
+        assertThat(access.version("two", "/etc/config", hash)).isNotNull()
+        access.delete("one", "/etc/config", hash)
+        assertThat(access.version("one", "/etc/config", hash)).isNull()
+        assertThat(access.version("two", "/etc/config", hash)).isNull()
+        assertThat(File(rootfsDirectory, "etc/config").exists()).isFalse()
+    }
+
     @Test fun `模式快照已改变时不执行任何文件访问`() = runBlocking {
         val original = mockk<SkillDefinition> {
             every { id } returns "read_file"

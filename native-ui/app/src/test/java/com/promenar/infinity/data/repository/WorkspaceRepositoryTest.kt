@@ -135,6 +135,26 @@ class WorkspaceRepositoryTest {
     }
 
     @Test
+    fun `永久删除提交后通知路径且事务失败时不通知`() = runBlocking<Unit> {
+        insertSession("delete-notice", rootA.absolutePath)
+        val root = repo.ensureSessionRoot("delete-notice")
+        val done = repo.createFileInWorkspace(root.uuid, "done", "done.txt", "A", root.uuid, "/done.txt")
+        val failed = repo.createFileInWorkspace(root.uuid, "failed", "failed.txt", "B", root.uuid, "/failed.txt")
+        val notices = mutableListOf<Pair<String, String>>()
+        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = TestWorkspaceFileOps(),
+            deleteCommitter = WorkspaceDeletionTransaction(db)::delete,
+            afterDeletePathCommitted = { rootId, path -> notices += rootId to path })
+        repo.permanentDelete(root.uuid, done.uuid)
+        assertThat(notices).containsExactly(root.uuid to "/done.txt")
+        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = TestWorkspaceFileOps(),
+            deleteCommitter = { _, _ -> error("注入事务失败") },
+            afterDeletePathCommitted = { rootId, path -> notices += rootId to path })
+        assertThat(runCatching { repo.permanentDelete(root.uuid, failed.uuid) }.isFailure).isTrue()
+        assertThat(notices).containsExactly(root.uuid to "/done.txt")
+        assertThat(File(rootA, "failed.txt").readText()).isEqualTo("B")
+    }
+
+    @Test
     fun `所有文件生命周期操作接入统一journal并成功完成不留悬挂记录`() = runBlocking<Unit> {
         insertSession("journal-session", rootA.absolutePath)
         val journal = RecordingWorkspaceFileMutationJournal()

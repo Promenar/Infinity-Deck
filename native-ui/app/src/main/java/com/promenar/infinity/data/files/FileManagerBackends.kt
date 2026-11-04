@@ -73,7 +73,9 @@ internal class FileManagerBackends(private val app: InfinityApplication) {
             val owners = app.database.sessionDao().getAll().filter { session ->
                 session.workspaceId?.let { app.database.workspaceDao().getById(it)?.kind == "linux_home" } == true
             }.map { it.id }.sorted()
-            FileBackendHandle(locationId, StartupFileBackend(backend, owners) { home.root() }, owners, true)
+            val guarded = StartupFileBackend(backend, owners) { home.root() }
+            val cacheAware = LinuxHomeVersionCleanupBackend(guarded, app::forgetLinuxRootfsVersions)
+            FileBackendHandle(locationId, cacheAware, owners, true)
         }
         LocationKey.Sessions -> throw FileOpException(FileOpCode.READ_ONLY)
         null -> throw FileOpException(FileOpCode.NOT_FOUND)
@@ -82,6 +84,21 @@ internal class FileManagerBackends(private val app: InfinityApplication) {
     private fun room(locationId: String, sessionId: String, root: String): FileBackendHandle {
         val backend = PrivateWorkspaceTransferBackend(app.workspaceRepository, root, app.pendingDocumentIndexCoordinator)
         return FileBackendHandle(locationId, backend, listOf(sessionId), true, root, sessionId, backend)
+    }
+}
+
+/** Linux 主目录与文件工具共享 rootfs；删除尝试后使相关进程内基准失效。 */
+internal class LinuxHomeVersionCleanupBackend(
+    private val delegate: ExternalFolderBackend,
+    private val forget: (String) -> Unit,
+) : ExternalFolderBackend by delegate {
+    override suspend fun delete(path: String, expectedSha256: String?) {
+        val guestPath = "/root" + normalizeFilePath(path)
+        try { delegate.delete(path, expectedSha256) } finally { forget(guestPath) }
+    }
+    override suspend fun deleteForTransfer(path: String, expected: ExternalFolderEntry, expectedSha256: String?) {
+        val guestPath = "/root" + normalizeFilePath(path)
+        try { delegate.deleteForTransfer(path, expected, expectedSha256) } finally { forget(guestPath) }
     }
 }
 

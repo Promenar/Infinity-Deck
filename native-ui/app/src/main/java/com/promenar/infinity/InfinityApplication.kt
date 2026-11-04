@@ -1379,6 +1379,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             afterDeleteCommitted = { workspaceRootUuid, ids ->
                 pendingDocumentIndexCoordinator.clearCommitted(workspaceRootUuid, ids)
             },
+            afterDeletePathCommitted = { workspaceRootUuid, path ->
+                if (linuxSessionFilesDelegate.isInitialized()) linuxSessionFiles.forgetPrivateVersions(workspaceRootUuid, path)
+            },
             executionGate = sessionExecutionGate,
             mutationJournal = workspaceFileMutationJournal,
             // 延迟到发布时解析，避免与索引协调器的初始化互相依赖。
@@ -1723,7 +1726,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         }
     }
 
-    val linuxSessionFiles by lazy {
+    private val linuxSessionFilesDelegate = lazy {
         com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess(
             externalFolderManager, workspaceRepository, fileOperationRepository, sessionWorkspaceResolver::resolve,
             com.promenar.infinity.data.workspace.LinuxSessionRootfsBackend(linux.files), pendingDocumentIndexCoordinator, sessions = sessionRepository,
@@ -1737,6 +1740,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 }
             },
         )
+    }
+    val linuxSessionFiles by linuxSessionFilesDelegate
+
+    internal fun forgetLinuxRootfsVersions(path: String) {
+        if (linuxSessionFilesDelegate.isInitialized()) linuxSessionFiles.forgetRootfsVersions(path)
     }
 
     val linuxRunModeRecovery by lazy {
