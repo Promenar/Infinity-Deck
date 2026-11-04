@@ -49,7 +49,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `copy_knowledge_to_linux` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
-| `delete_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
+| `delete_file` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 技能目录=批,批,批,批;Linux根目录=批,批,批,批 |
 | `install_skill` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `job_input` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `media_fetch` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |

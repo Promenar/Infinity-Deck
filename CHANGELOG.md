@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.25.0-beta] - 2026-11-05
+
 ### 变更
 
 - 移除回收站：资料页、资源管理器、对话资源面板、外部文件夹与知识库里的删除一律永久生效，确认框写明数量与“删除后无法恢复”；升级后首次启动会一次性清除旧版本留下的回收内容（全部成功才记为完成，失败下次启动重试）。

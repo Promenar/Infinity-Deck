@@ -870,6 +870,8 @@ internal fun FragmentGroupRow(group: FragmentGroup, onOpen: () -> Unit, modifier
             pluralStringResource(R.plurals.library_fragment_count, group.fragmentCount, group.fragmentCount),
             DateUtils.getRelativeTimeSpanString(group.lastAt, now, DateUtils.MINUTE_IN_MILLIS).toString(),
         ),
+        // 大字号下元数据折到第二行，不截掉时间。
+        subtitleMaxLines = 2,
         onClick = onOpen,
         showChevron = true,
         modifier = modifier,
