@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 变更
+
+- 运行坞“执行中”“等待中”标签前不再显示脉动圆点：浮岛光效、点阵屏与标签文字已表达生成状态。已暂停、计划完成与仅后台任务仍保留静态标记。
+
 ## [0.22.1-beta] - 2026-11-04
 
 ### 修复

@@ -198,17 +198,20 @@ private fun RunDockChip(
     }
 }
 
+/**
+ * 运行坞标签前的静态状态标记。执行中与等待中不画：浮岛光效、点阵屏和标签文字已经表达了生成状态，
+ * 再加一颗脉动圆点既重复又与其余动效风格不一致。
+ */
 @Composable
 internal fun RunDockDot(tone: RunDockTone, modifier: Modifier = Modifier) {
     when (tone) {
+        RunDockTone.RUNNING, RunDockTone.WAITING -> Unit
         RunDockTone.DONE -> Icon(
             Icons.Rounded.CheckCircle,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = modifier.size(16.dp),
         )
-        RunDockTone.RUNNING -> TaskStatusDot(pulsing = true, color = MaterialTheme.colorScheme.primary, modifier = modifier)
-        RunDockTone.WAITING -> TaskStatusDot(pulsing = true, color = MaterialTheme.infinityDomainColors.warning, modifier = modifier)
         RunDockTone.PAUSED -> TaskStatusDot(pulsing = false, color = MaterialTheme.colorScheme.tertiary, modifier = modifier)
         RunDockTone.IDLE -> TaskStatusDot(pulsing = false, color = MaterialTheme.colorScheme.outline, modifier = modifier)
     }
