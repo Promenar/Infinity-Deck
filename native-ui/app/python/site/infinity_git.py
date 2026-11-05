@@ -45,6 +45,10 @@ import io
 import os
 import re
 import sys
+import time
+
+_ENTRY_WALL_MS = time.time_ns() // 1_000_000
+_ENTRY_MONOTONIC = time.perf_counter_ns()
 
 UNSUPPORTED_EXIT = 2
 FATAL_EXIT = 128
@@ -1151,6 +1155,12 @@ def _inspect_args(argv):
     parser.add_argument("--limit", type=int)
     parser.add_argument("--blob", action="append", default=[])
     parser.add_argument("--commit")
+    parser.add_argument("--cache-dir")
+    parser.add_argument("--no-stat-cache", action="store_true")
+    parser.add_argument("--trust-ctime", action="store_true")
+    parser.add_argument("--no-tracking-cache", action="store_true")
+    parser.add_argument("--legacy-tracking", action="store_true")
+    parser.add_argument("--legacy-untracked", action="store_true")
     options = parser.parse_args(argv)
     if options.limit is not None and options.limit < 1:
         raise _InspectUsage("--limit 必须为正整数")
@@ -1333,12 +1343,27 @@ def _inspect_shared_config(repo):
 
 
 def _inspect_run(options):
+    timings = None
+    if options.operation == "status":
+        started = time.perf_counter_ns()
+        from dulwich import index as _index  # noqa: F401
+        if options.legacy_untracked:
+            from dulwich import porcelain as _porcelain  # noqa: F401
+        from dulwich import repo as _repo  # noqa: F401
+        try:
+            launch_ms = int(os.environ.get("INFINITY_GIT_START_MS", _ENTRY_WALL_MS))
+        except ValueError:
+            launch_ms = _ENTRY_WALL_MS
+        timings = {"startup": max(0, _ENTRY_WALL_MS - launch_ms), "imports": (time.perf_counter_ns() - started) / 1_000_000}
     repo = _inspect_open(options.repo)
     if repo is None:
         return {"version": INSPECT_VERSION, "repository": False}
     try:
         if options.operation == "status":
-            body = _inspect_status(repo, _clamp(options.limit, INSPECT_DEFAULT_ENTRIES, INSPECT_MAX_ENTRIES))
+            body = _inspect_status(repo, _clamp(options.limit, INSPECT_DEFAULT_ENTRIES, INSPECT_MAX_ENTRIES), timings,
+                                   cache_dir=options.cache_dir, options=options)
+            timings["total"] = timings["startup"] + (time.perf_counter_ns() - _ENTRY_MONOTONIC) / 1_000_000
+            body["timings_ms"] = {key: round(value, 2) for key, value in timings.items()}
         elif options.operation == "read":
             body = {"blobs": [_inspect_blob(repo, *_split_blob_spec(spec)) for spec in options.blob]}
         elif options.operation == "log":
@@ -1455,7 +1480,36 @@ class _TrackingGraph:
             pending.extend(self.parents[sha])
         return seen
 
-    def tracking(self, branch, sha):
+    def linear_difference(self, left, right):
+        """线性历史在相遇点停止；出现合并时回退到完整可达集合。"""
+        positions = [{}, {}]
+        current = [left, right]
+        while current[0] is not None or current[1] is not None:
+            for side in (0, 1):
+                sha = current[side]
+                if sha is None:
+                    continue
+                if sha in positions[1 - side]:
+                    counts = [len(positions[0]), len(positions[1])]
+                    counts[1 - side] = positions[1 - side][sha]
+                    return tuple(counts)
+                if sha in positions[side]:
+                    return None
+                positions[side][sha] = len(positions[side])
+                if sha not in self.parents:
+                    if len(self.parents) >= INSPECT_MAX_GRAPH_COMMITS:
+                        return None
+                    try:
+                        self.parents[sha] = self.provider.get_parents(sha)
+                    except KeyError:
+                        return None
+                parents = self.parents[sha]
+                if len(parents) > 1:
+                    return False
+                current[side] = parents[0] if parents else None
+        return len(positions[0]), len(positions[1])
+
+    def tracking(self, branch, sha, cache=None, legacy=False):
         result = {"upstream": None, "ahead": None, "behind": None, "upstream_missing": False, "tracking_truncated": False}
         if branch is None or sha is None:
             return result
@@ -1478,16 +1532,26 @@ class _TrackingGraph:
         if sha == upstream:
             result.update(ahead=0, behind=0)
             return result
-        local, other = self.reachable(sha), self.reachable(upstream)
-        if local is None or other is None:
+        key = _text(sha) + ":" + _text(upstream)
+        saved = cache.get(key) if cache is not None else None
+        if isinstance(saved, list) and len(saved) == 3 and all(isinstance(x, int) and x >= 0 for x in saved[:2]) and isinstance(saved[2], bool):
+            result.update(ahead=saved[0], behind=saved[1], tracking_truncated=saved[2])
+            return result
+        counts = False if legacy else self.linear_difference(sha, upstream)
+        if counts is False:
+            local, other = self.reachable(sha), self.reachable(upstream)
+            counts = None if local is None or other is None else (len(local - other), len(other - local))
+        if counts is None:
             # 历史不可完整遍历时不把已见节点误报为精确计数。
             result["tracking_truncated"] = True
             return result
-        ahead, behind = len(local - other), len(other - local)
+        ahead, behind = counts
         result.update(
             ahead=min(ahead, INSPECT_MAX_TRACKING_COUNT), behind=min(behind, INSPECT_MAX_TRACKING_COUNT),
             tracking_truncated=ahead > INSPECT_MAX_TRACKING_COUNT or behind > INSPECT_MAX_TRACKING_COUNT,
         )
+        if cache is not None:
+            cache[key] = [result["ahead"], result["behind"], result["tracking_truncated"]]
         return result
 
 
@@ -1667,19 +1731,179 @@ def _repository_name(repo):
     return owner + "/" + name
 
 
-def _inspect_status(repo, limit):
-    from dulwich.index import ConflictedIndexEntry, get_unstaged_changes
-    from dulwich.porcelain import get_untracked_paths
+def _cache_fingerprint(path):
+    try:
+        info = os.stat(path)
+        return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+    except OSError:
+        return None
 
+
+class _StatusDiskCache:
+    """只在工作区以外写入可丢弃的应用缓存。"""
+    def __init__(self, root, repo, head, config):
+        import hashlib
+
+        self.directory = None
+        digest = hashlib.sha256()
+        for backend in getattr(config, "backends", []):
+            for section in sorted(backend.sections()):
+                if section[0].lower() not in (b"core", b"filter"):
+                    continue
+                for name, value in backend.items(section):
+                    for part in (*section, name, value):
+                        digest.update(len(part).to_bytes(4, "big"))
+                        digest.update(part)
+        self.key = [head, _cache_fingerprint(repo.index_path()),
+                    _cache_fingerprint(os.path.join(repo.path, ".gitattributes")),
+                    _cache_fingerprint(os.path.join(repo.controldir(), "info", "attributes")),
+                    _cache_fingerprint(os.path.join(repo.controldir(), "config")),
+                    _cache_fingerprint(os.path.join(repo.controldir(), "shallow")), digest.hexdigest()]
+        if root:
+            root = os.path.realpath(root)
+            work = os.path.realpath(repo.path)
+            control = os.path.realpath(repo.controldir())
+            if any(os.path.commonpath((root, item)) == item for item in (work, control)):
+                return
+            identity = hashlib.sha256(os.fsencode(work)).hexdigest()
+            candidate = os.path.join(root, identity)
+            resolved = os.path.realpath(candidate)
+            if any(os.path.commonpath((resolved, item)) == item for item in (work, control)):
+                return
+            self.directory = candidate
+
+    def read(self, name, keyed=True):
+        import json
+
+        if self.directory is None:
+            return {}
+        try:
+            with open(os.path.join(self.directory, name + ".json"), encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, dict) or (keyed and data.get("key") != self.key):
+                return {}
+            return data.get("items") if isinstance(data.get("items"), dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def write(self, name, items):
+        import json
+        import tempfile
+
+        if self.directory is None:
+            return
+        temporary = None
+        try:
+            os.makedirs(self.directory, mode=0o700, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(prefix=".status-", dir=self.directory)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump({"key": self.key, "items": items}, handle, separators=(",", ":"))
+            os.replace(temporary, os.path.join(self.directory, name + ".json"))
+        except (OSError, ValueError, TypeError):
+            pass
+        finally:
+            if temporary is not None:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+
+
+def _cached_unstaged(index, root, normalizer, trust_ctime, cached):
+    import stat
+    from dulwich import index as index_module
+
+    updated = {}
+    for path, entry in index.iteritems():
+        if isinstance(entry, index_module.ConflictedIndexEntry):
+            yield path
+            continue
+        full_path = index_module._tree_to_fs_path(root, path)
+        try:
+            info = os.lstat(full_path)
+            if stat.S_ISDIR(info.st_mode):
+                if index_module._has_directory_changed(path, entry):
+                    yield path
+                continue
+            if not stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode):
+                continue
+            if index_module._stat_matches_entry(info, entry, trust_ctime):
+                continue
+            key = os.fsdecode(path)
+            previous = cached.get(key)
+            # 符号链接的目标可以变化，始终按现有行为重新读取。
+            if stat.S_ISREG(info.st_mode) and isinstance(previous, list) and len(previous) == 3 and previous[:2] == [info.st_size, info.st_mtime_ns] and isinstance(previous[2], str) and _HEX_SHA.fullmatch(previous[2]):
+                sha = previous[2].encode("ascii")
+            else:
+                blob = index_module.blob_from_path_and_stat(full_path, info)
+                if normalizer is not None:
+                    blob = normalizer(blob, path)
+                sha = blob.get_id(index.object_format)
+            if stat.S_ISREG(info.st_mode):
+                updated[key] = [info.st_size, info.st_mtime_ns, _text(sha)]
+            if sha != entry.sha:
+                yield path
+        except FileNotFoundError:
+            yield path
+    cached.clear()
+    cached.update(updated)
+
+
+def _scandir_untracked(repo, index, config):
+    import unicodedata
+    from dulwich.ignore import IgnoreFilterManager
+
+    ignore = IgnoreFilterManager.from_repo(repo, config=config)
+    precompose = config.get_boolean(b"core", b"precomposeunicode", False)
+    pending = [(repo.path, "")]
+    while pending:
+        directory, prefix = pending.pop()
+        try:
+            with os.scandir(directory) as scan:
+                entries = list(scan)
+        except OSError:
+            continue
+        if prefix and any(entry.name == ".git" for entry in entries):
+            continue
+        for entry in entries:
+            if entry.name == ".git":
+                continue
+            name = unicodedata.normalize("NFC", entry.name) if precompose else entry.name
+            relative = prefix + name
+            try:
+                is_directory = entry.is_dir(follow_symlinks=True)
+                if is_directory:
+                    if not entry.is_symlink() and not ignore.may_prune_directory(relative + "/"):
+                        pending.append((entry.path, relative + "/"))
+                elif relative.encode("utf-8") not in index and not ignore.is_ignored(relative):
+                    yield relative
+            except FileNotFoundError:
+                continue
+
+
+def _inspect_status(repo, limit, timings=None, cache_dir=None, options=None):
+    from dulwich.index import ConflictedIndexEntry, get_unstaged_changes
+
+    timings = timings if timings is not None else {}
+    started = time.perf_counter_ns()
     config = repo.get_config_stack()
     index = repo.open_index(config=config)
+    timings["index"] = (time.perf_counter_ns() - started) / 1_000_000
     head = _head_commit(repo)
     result = _head_state(repo)
+    disk = _StatusDiskCache(cache_dir, repo, result["head"], config)
+    option = lambda name: bool(getattr(options, name, False))
+    tracking_cache = None if option("no_tracking_cache") or option("legacy_tracking") else disk.read("tracking")
     result["repository_name"] = _repository_name(repo)
+    started = time.perf_counter_ns()
     result.update(_TrackingGraph(repo).tracking(
         result["branch"].encode("utf-8") if result["branch"] is not None else None,
         head.id if head is not None else None,
+        tracking_cache, option("legacy_tracking"),
     ))
+    if tracking_cache is not None:
+        disk.write("tracking", tracking_cache)
+    timings["tracking"] = (time.perf_counter_ns() - started) / 1_000_000
     try:
         result["last_fetch_seconds"] = int(os.stat(os.path.join(repo.controldir(), "FETCH_HEAD")).st_mtime)
     except FileNotFoundError:
@@ -1697,35 +1921,47 @@ def _inspect_status(repo, limit):
                 yield {"path": _text(new_path), "change": "modified"}
 
     normalizer = repo.get_blob_normalizer(config=config)
-    trust_ctime = config.get_boolean(b"core", b"trustctime", True)
+    shared = _workspace_kind() == "shared" or os.path.realpath(repo.path).startswith("/storage/emulated/")
+    trust_ctime = True if option("trust_ctime") else config.get_boolean(b"core", b"trustctime", True) if not shared else False
     root = os.fsencode(repo.path)
+    stat_cache = disk.read("files") if not option("no_stat_cache") else None
 
     def unstaged():
         # refresh_stat 为 None：不回写索引的 stat 缓存，保持只读。
-        for tree_path in get_unstaged_changes(
-            index, root, normalizer.checkin_normalize if normalizer is not None else None,
-            False, trust_ctime, None, None,
-        ):
+        normalize = normalizer.checkin_normalize if normalizer is not None else None
+        changes = get_unstaged_changes(index, root, normalize, False, trust_ctime, None, None) if stat_cache is None else _cached_unstaged(index, root, normalize, trust_ctime, stat_cache)
+        for tree_path in changes:
             entry = index[tree_path]
             on_disk = os.path.lexists(os.path.join(root, tree_path.replace(b"/", os.fsencode(os.sep))))
             change = "modified" if on_disk or isinstance(entry, ConflictedIndexEntry) else "deleted"
             yield {"path": _text(tree_path), "change": change}
 
     def untracked():
-        precompose = config.get_boolean(b"core", b"precomposeunicode", False)
-        for path in get_untracked_paths(
-            repo.path, repo.path, index, exclude_ignored=True, untracked_files="all",
-            precompose_unicode=precompose, repo=repo,
-        ):
+        if option("legacy_untracked"):
+            from dulwich.porcelain import get_untracked_paths
+            paths = get_untracked_paths(repo.path, repo.path, index, exclude_ignored=True, untracked_files="all",
+                                        precompose_unicode=config.get_boolean(b"core", b"precomposeunicode", False), repo=repo)
+        else:
+            paths = _scandir_untracked(repo, index, config)
+        for path in paths:
             yield {"path": path.replace(os.sep, "/"), "change": "added"}
 
     stats = _LineStats(repo, index, head)
+    result["file_counts"] = {"tracked": len(index)}
+    timings["lines"] = 0.0
     for name, entries in (("staged", staged()), ("unstaged", unstaged()), ("untracked", untracked())):
+        started = time.perf_counter_ns()
         items, truncated = _limited(entries, limit)
         result[name] = sorted(items, key=lambda item: item["path"])
         result[name + "_truncated"] = truncated
+        result["file_counts"][name] = len(items)
+        timings[name] = (time.perf_counter_ns() - started) / 1_000_000
+        started = time.perf_counter_ns()
         for item in result[name]:
             stats.add(name, item)
+        timings["lines"] += (time.perf_counter_ns() - started) / 1_000_000
+    if stat_cache is not None:
+        disk.write("files", stat_cache)
     return result
 
 

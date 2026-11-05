@@ -22,6 +22,38 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DefaultFileLocationsSourceTest {
+    @Test fun `重新打开时先发出共享缓存并触发刷新`() = runBlocking {
+        val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
+        val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))
+        var invalidations = 0
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(emptyList()), workspaces = flowOf(listOf(workspace)), linuxReady = flowOf(false),
+            mounts = { flowOf(emptyList()) }, resolveSession = { SessionWorkspace.Private },
+            resolveWorkspace = { directory }, mountAvailable = { true },
+            gitStatus = { awaitCancellation() }, workspaceGitStatus = { awaitCancellation() },
+            titles = LocationTitles("资料", "会话", "Linux"),
+            cachedWorkspaceGitStatus = { GitInspectResult.Success(status("cached")) },
+            invalidateGitStatus = { invalidations++ },
+        )
+        val first = withTimeout(5_000) { locations.observeLibraryLocations().first() }
+        assertEquals("cached", first.last().gitBranch)
+        assertEquals(1, invalidations)
+    }
+
+    @Test fun `手动刷新位置时先使共享 Git 缓存失效`() {
+        var invalidations = 0
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(emptyList()), workspaces = flowOf(emptyList()), linuxReady = flowOf(false),
+            mounts = { flowOf(emptyList()) }, resolveSession = { SessionWorkspace.Private },
+            resolveWorkspace = { SessionWorkspace.Private }, mountAvailable = { true },
+            gitStatus = { GitInspectResult.Failure(GitInspectError.NotRepository) },
+            workspaceGitStatus = { GitInspectResult.Failure(GitInspectError.NotRepository) },
+            titles = LocationTitles("资料", "会话", "Linux"), invalidateGitStatus = { invalidations++ },
+        )
+        locations.refreshGitStatus()
+        assertEquals(1, invalidations)
+    }
+
     @Test fun `未绑定会话的项目读取现有 Git 状态`() = runBlocking {
         val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
         val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))

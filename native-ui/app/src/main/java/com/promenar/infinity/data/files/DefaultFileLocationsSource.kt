@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.withContext
 
@@ -38,11 +39,14 @@ internal class DefaultFileLocationsSource(
     private val gitStatus: suspend (String) -> GitInspectResult<GitStatus>,
     private val workspaceGitStatus: suspend (SessionWorkspace.Directory) -> GitInspectResult<GitStatus>,
     private val titles: LocationTitles,
+    private val invalidateGitStatus: () -> Unit = {},
+    private val cachedGitStatus: suspend (String) -> GitInspectResult<GitStatus>? = { null },
+    private val cachedWorkspaceGitStatus: suspend (SessionWorkspace.Directory) -> GitInspectResult<GitStatus>? = { null },
 ) : FileLocationsSource {
     private val knownGitStatus = java.util.concurrent.ConcurrentHashMap<String, GitStatus>()
     private val gitRefresh = MutableStateFlow(0)
 
-    override fun refreshGitStatus() { gitRefresh.value++ }
+    override fun refreshGitStatus() { invalidateGitStatus(); gitRefresh.value++ }
 
     private val mountSnapshot: Flow<List<ExternalMount>> = sessions.flatMapLatest { rows ->
         if (rows.isEmpty()) flowOf(emptyList())
@@ -53,7 +57,7 @@ internal class DefaultFileLocationsSource(
     override fun observeLibraryLocations(): Flow<List<FileLocation>> =
         combine(sessions, workspaces, linuxReady, mountSnapshot, gitRefresh) { rows, registered, linux, attached, _ ->
             LibrarySnapshot(rows, registered, linux, attached)
-        }.transformLatest { snapshot ->
+        }.onStart { invalidateGitStatus() }.transformLatest { snapshot ->
             emit(libraryLocations(snapshot, git = false))
             emit(libraryLocations(snapshot, git = true))
         }.distinctUntilChanged()
@@ -61,7 +65,7 @@ internal class DefaultFileLocationsSource(
     /** 置顶校验只需要位置 ID：沿用资料位置的组成规则，但不读取 Git 状态，避免每个资源管理器都为全部项目跑一遍 Git。 */
     fun observeLibraryLocationIds(): Flow<Set<String>> =
         combine(sessions, workspaces, linuxReady, mountSnapshot) { rows, registered, linux, attached ->
-            libraryLocations(LibrarySnapshot(rows, registered, linux, attached), git = false).mapTo(mutableSetOf()) { it.id }
+            libraryLocations(LibrarySnapshot(rows, registered, linux, attached), git = false, useCached = false).mapTo(mutableSetOf()) { it.id }
         }.distinctUntilChanged()
 
     private data class LibrarySnapshot(
@@ -71,7 +75,7 @@ internal class DefaultFileLocationsSource(
         val attached: List<ExternalMount>,
     )
 
-    private suspend fun libraryLocations(snapshot: LibrarySnapshot, git: Boolean): List<FileLocation> {
+    private suspend fun libraryLocations(snapshot: LibrarySnapshot, git: Boolean, useCached: Boolean = true): List<FileLocation> {
         val (rows, registered, linux, attached) = snapshot
         return withContext(Dispatchers.IO) {
             val visibleSessions = rows.filterNot(::isSystemSession)
@@ -80,13 +84,13 @@ internal class DefaultFileLocationsSource(
             val sessionByWorkspace = visibleSessions.filter { it.workspaceId != null && it.worktreeDirectory == null }.groupBy { it.workspaceId }
             registered.filter { it.kind in setOf(WorkspaceEntity.KIND_PROJECT, WorkspaceEntity.KIND_SHARED) }.forEach { workspace ->
                 val directory = resolveWorkspace(workspace.id) as? SessionWorkspace.Directory
-                result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, directory, git)
+                result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, directory, git, useCached)
             }
             visibleSessions.filter { it.worktreeDirectory != null }.forEach { session ->
                 val resolved = resolveSession(session.id)
                 val directory = resolved as? SessionWorkspace.Directory
                 if (directory?.kind == BranchWorktreeWorkspaceResolver.KIND && worktreeIds.add(directory.workspace.id)) {
-                    result += workspaceLocation(directory.workspace, session.id, linux, directory, git)
+                    result += workspaceLocation(directory.workspace, session.id, linux, directory, git, useCached)
                 }
             }
             if (linux) result += linuxLocation()
@@ -100,7 +104,7 @@ internal class DefaultFileLocationsSource(
     override fun observeSessionLocations(sessionId: String): Flow<List<FileLocation>> =
         combine(sessions, linuxReady, mounts(sessionId), gitRefresh) { rows, linux, attached, _ ->
             Triple(rows, linux, attached)
-        }.transformLatest { (rows, linux, attached) ->
+        }.onStart { invalidateGitStatus() }.transformLatest { (rows, linux, attached) ->
             emit(sessionLocations(sessionId, rows, linux, attached, git = false))
             emit(sessionLocations(sessionId, rows, linux, attached, git = true))
         }.distinctUntilChanged()
@@ -124,7 +128,7 @@ internal class DefaultFileLocationsSource(
     internal fun sessionsLocation() = FileLocation("sessions", FileLocationKind.SESSION_WORKSPACE, titles.sessions, READ_ONLY)
     internal suspend fun sessionLocation(session: SessionEntity, linux: Boolean, git: Boolean = true): FileLocation {
         val key = "session:${session.id}"
-        val status = if (!git) knownGitStatus[key] else {
+        val status = if (!git) knownGitStatus[key] ?: (cachedGitStatus(session.id) as? GitInspectResult.Success<GitStatus>)?.value else {
             (gitStatus(session.id) as? GitInspectResult.Success<GitStatus>)?.value
                 .also { if (it == null) knownGitStatus.remove(key) else knownGitStatus[key] = it }
         }
@@ -141,13 +145,16 @@ internal class DefaultFileLocationsSource(
 
     private suspend fun workspaceLocation(
         workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, directory: SessionWorkspace.Directory?, git: Boolean = true,
+        useCached: Boolean = true,
     ): FileLocation {
         val available = directory != null
         val key = "workspace:${workspace.id}"
         val status = when {
             directory == null -> null
             // 快速通道沿用上次读到的 Git 状态，会话列表刷新时分支名不会闪烁消失。
-            !git -> knownGitStatus[key]
+            !git -> knownGitStatus[key] ?: if (!useCached) null else
+                ((if (sessionId != null) cachedGitStatus(sessionId) else cachedWorkspaceGitStatus(directory))
+                    as? GitInspectResult.Success<GitStatus>)?.value
             else -> when (val result = if (sessionId != null) gitStatus(sessionId) else workspaceGitStatus(directory)) {
                 is GitInspectResult.Success -> result.value
                 is GitInspectResult.Failure -> null

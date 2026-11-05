@@ -7,6 +7,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import com.promenar.infinity.utils.InfinityLogger
 import java.io.File
 import java.io.IOException
 import java.util.UUID
@@ -75,7 +80,7 @@ class GitInspector(
     val pythonAvailable: Boolean get() = runtime.available
 
     suspend fun status(target: GitWorkspaceTarget, limit: Int = GitInspectLimits.MAX_ENTRIES): GitInspectResult<GitStatus> =
-        inspect(target, "status", listOf("--limit", limit.toString()), GitInspectJson::parseStatus)
+        inspect(target, "status", listOf("--limit", limit.toString(), "--cache-dir", File(outputDirectory(), "status-cache").path), GitInspectJson::parseStatus)
 
     suspend fun read(target: GitWorkspaceTarget, blobs: List<GitBlobRef>): GitInspectResult<List<GitFileContent>> {
         if (blobs.isEmpty()) return GitInspectResult.Success(emptyList())
@@ -109,17 +114,21 @@ class GitInspector(
         args: List<String>,
         parse: (String) -> GitInspectResult<T>,
     ): GitInspectResult<T> = withContext(Dispatchers.IO) {
-        if (!runtime.available) return@withContext GitInspectResult.Failure(GitInspectError.PythonUnavailable)
+        val startedMillis = System.currentTimeMillis()
+        val startedNanos = System.nanoTime()
+        var statusJson: String? = null
         val directory = outputDirectory()
         val output = File(directory, "inspect-${UUID.randomUUID()}.json")
         val partial = File(output.path + ".tmp")
         try {
+            if (!runtime.available) return@withContext GitInspectResult.Failure(GitInspectError.PythonUnavailable)
             // 状态与提交列表会并行检查：mkdirs 因目录已被另一检查建好而返回 false 时以目录实际存在为准。
             if (!directory.mkdirs() && !directory.isDirectory) {
                 return@withContext GitInspectResult.Failure(GitInspectError.CommandFailed(null, "无法创建临时目录"))
             }
             val argv = listOf(runtime.launcher.path, "-m", MODULE, FLAG, operation, "--output", output.path, "--repo", target.root.path) + args
             val environment = runtime.environment(target.root, target.kind).toMutableMap()
+            if (operation == "status") environment["INFINITY_GIT_START_MS"] = startedMillis.toString()
             // 仅装配点可提供映射，不从仓库配置、模型输出或执行环境继承。
             environment.remove("INFINITY_GIT_LINUX_PATH_MAP")
             target.linuxPathMappings?.let { mappings ->
@@ -131,14 +140,33 @@ class GitInspector(
                 result.exitCode != 0 -> GitInspectResult.Failure(GitInspectError.CommandFailed(result.exitCode, result.stderr.takeLast(DETAIL_LIMIT)))
                 !output.isFile -> GitInspectResult.Failure(GitInspectError.CommandFailed(result.exitCode, "检查子命令没有写出结果"))
                 output.length() > maxOutputBytes -> GitInspectResult.Failure(GitInspectError.ParseFailed("输出超过 $maxOutputBytes 字节"))
-                else -> parse(output.readText(Charsets.UTF_8))
+                else -> {
+                    val text = output.readText(Charsets.UTF_8)
+                    if (operation == "status") statusJson = text
+                    parse(text)
+                }
             }
         } catch (failure: IOException) {
             GitInspectResult.Failure(GitInspectError.CommandFailed(null, failure.message ?: failure.javaClass.simpleName))
         } finally {
+            if (operation == "status") logStatusTimings(statusJson, (System.nanoTime() - startedNanos) / 1_000_000)
             output.delete()
             partial.delete()
         }
+    }
+
+    private fun logStatusTimings(text: String?, elapsedMillis: Long) {
+        val root = runCatching { text?.let { Json.parseToJsonElement(it).jsonObject } }.getOrNull()
+        fun number(section: String, key: String): String = runCatching {
+            val value = root?.get(section)?.jsonObject?.get(key)?.jsonPrimitive?.doubleOrNull
+            if (value != null && value.isFinite() && value >= 0) value.toString() else "-1"
+        }.getOrDefault("-1")
+        val stages = listOf("startup", "imports", "index", "staged", "unstaged", "untracked", "tracking", "lines", "total")
+        val counts = listOf("tracked", "staged", "unstaged", "untracked")
+        val message = "status " + stages.joinToString(" ") { "$it=${number("timings_ms", it)}" } +
+            " elapsed=$elapsedMillis " + counts.joinToString(" ") { "${it}_files=${number("file_counts", it)}" }
+        runCatching { InfinityLogger.log("[InfinityGit] $message") }
+        runCatching { android.util.Log.i("InfinityGit", message) }
     }
 
     companion object {

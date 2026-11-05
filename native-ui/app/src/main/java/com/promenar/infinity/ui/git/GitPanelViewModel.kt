@@ -9,6 +9,7 @@ import com.promenar.infinity.data.git.GitCommitSummary
 import com.promenar.infinity.data.git.GitDiffSides
 import com.promenar.infinity.data.git.GitFileChange
 import com.promenar.infinity.data.git.GitInspectResult
+import com.promenar.infinity.data.git.GitStatusCache
 import com.promenar.infinity.ui.common.diff.FileDiffModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,6 +32,7 @@ class GitPanelViewModel(
     private val service: GitChangesService,
     private val diffDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val listWorktrees: (suspend (String) -> Result<List<com.promenar.infinity.domain.branch.WorktreeEntry>>)? = null,
+    private val statusCache: GitStatusCache? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(GitPanelUiState())
     val state: StateFlow<GitPanelUiState> = _state.asStateFlow()
@@ -52,9 +55,15 @@ class GitPanelViewModel(
         refresh()
     }
 
+    fun close() {
+        statusJob?.cancel()
+        statusJob = null
+    }
+
     /** 手动刷新：重新读取状态；已请求过的提交列表与当前详情页一并重新读取。 */
     fun refresh() {
-        loadStatus()
+        statusCache?.invalidate(sessionId)
+        if (statusCache == null || statusJob?.isActive != true) loadStatus()
         val current = _state.value
         if (current.tab == GitPanelTab.COMMITS || current.log != null) loadLog()
         if (current.tab == GitPanelTab.BRANCHES || current.branches != null) loadBranches()
@@ -149,8 +158,17 @@ class GitPanelViewModel(
             if (state.status is GitLoad.Ready) state.copy(refreshing = true) else state.copy(status = GitLoad.Loading)
         }
         statusJob = viewModelScope.launch {
-            val status = service.status(sessionId).toLoad()
-            _state.update { it.copy(status = status, refreshing = false) }
+            val cache = statusCache
+            if (cache == null) {
+                val status = service.status(sessionId).toLoad()
+                _state.update { it.copy(status = status, refreshing = false) }
+            } else {
+                cache.observe(sessionId).collect { snapshot ->
+                    _state.update { state ->
+                        state.copy(status = snapshot.result?.toLoad() ?: GitLoad.Loading, refreshing = snapshot.refreshing)
+                    }
+                }
+            }
         }
     }
 
@@ -185,11 +203,12 @@ class GitPanelViewModel(
             sessionId: String,
             service: GitChangesService,
             listWorktrees: (suspend (String) -> Result<List<com.promenar.infinity.domain.branch.WorktreeEntry>>)? = null,
+            statusCache: GitStatusCache? = null,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    GitPanelViewModel(sessionId, service, listWorktrees = listWorktrees) as T
+                    GitPanelViewModel(sessionId, service, listWorktrees = listWorktrees, statusCache = statusCache) as T
             }
     }
 }

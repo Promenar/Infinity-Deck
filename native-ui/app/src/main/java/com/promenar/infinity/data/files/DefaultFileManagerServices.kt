@@ -44,8 +44,11 @@ class DefaultFileManagerServices(
                         grant?.isReadPermission == true && grant.isWritePermission
                     }
                 },
-                gitStatus = app.gitChangesService::status,
+                gitStatus = { app.gitStatusCache.status(it) },
                 workspaceGitStatus = { workspaceGit.status(it) },
+                invalidateGitStatus = app.gitStatusCache::invalidateAll,
+                cachedGitStatus = { app.gitStatusCache.cachedStatus(it) },
+                cachedWorkspaceGitStatus = { workspaceGit.cachedStatus(it) },
                 titles = LocationTitles(app.getString(R.string.file_manager_location_library),
                     app.getString(R.string.file_manager_location_sessions), app.getString(R.string.file_manager_location_linux)),
             )

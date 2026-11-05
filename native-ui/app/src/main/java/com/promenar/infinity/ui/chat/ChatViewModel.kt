@@ -422,7 +422,10 @@ class ChatViewModel(
         (application as InfinityApplication).sessionExecutionGate,
         grantVerifier = (application as InfinityApplication)::verifyTargetGrant,
         liveOutput = (application as InfinityApplication).toolLiveOutputStore,
-        afterTools = (application as InfinityApplication)::reconcileBranchWorkspace,
+        afterTools = { sessionId ->
+            val app = application as InfinityApplication
+            try { app.reconcileBranchWorkspace(sessionId) } finally { runCatching { app.gitStatusCache.invalidateAll() } }
+        },
     )
     private val taskPlanActions = TaskPlanActions((application as InfinityApplication).taskRepository)
     private val approvalManager = ApprovalManager(
