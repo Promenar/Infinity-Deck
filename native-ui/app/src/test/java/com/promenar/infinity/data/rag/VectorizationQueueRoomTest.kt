@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.background.indexing.IndexForegroundDecision
+import com.promenar.infinity.background.indexing.reduceIndexForeground
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.dao.FileEntryDao
 import com.promenar.infinity.data.local.db.entity.FileEntry
@@ -227,6 +229,9 @@ class VectorizationQueueRoomTest {
             beforeScan.await()
             runCurrent()
             assertThat(queue.snapshotState().isProcessing).isFalse()
+            assertThat(queue.state.value.queue.single().status).isEqualTo("interrupted")
+            assertThat(queue.state.value.activeTaskIds).contains(TASK)
+            assertThat(reduceIndexForeground(queue.state.value)).isInstanceOf(IndexForegroundDecision.Active::class.java)
             assertThat(service.firstStarted.isCompleted).isFalse()
             allowScan.complete(Unit)
             assertThat(recovery.await().isSuccess).isTrue()
