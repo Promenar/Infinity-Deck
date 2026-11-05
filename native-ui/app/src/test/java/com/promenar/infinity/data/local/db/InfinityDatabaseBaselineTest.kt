@@ -28,6 +28,9 @@ import java.security.MessageDigest
 class InfinityDatabaseBaselineTest {
     @Test
     fun backupSchemaGateMatchesExportedRoomIdentityHash() {
+        assertThat(INFINITY_SCHEMA_V33_IDENTITY_HASH).isEqualTo(exportedSchema(33).identityHash)
+        assertThat(com.promenar.infinity.data.backup.ROOM_SCHEMA_V33_IDENTITY_HASH).isEqualTo(exportedSchema(33).identityHash)
+        assertThat(com.promenar.infinity.data.local.db.recovery.CURRENT_V33_IDENTITY).isEqualTo(exportedSchema(33).identityHash)
         assertThat(INFINITY_SCHEMA_V32_IDENTITY_HASH).isEqualTo(exportedSchema(32).identityHash)
         assertThat(com.promenar.infinity.data.backup.ROOM_SCHEMA_V32_IDENTITY_HASH).isEqualTo(exportedSchema(32).identityHash)
         assertThat(com.promenar.infinity.data.local.db.recovery.CURRENT_V32_IDENTITY).isEqualTo(exportedSchema(32).identityHash)
@@ -182,7 +185,7 @@ class InfinityDatabaseBaselineTest {
         val edges = INFINITY_DATABASE_MIGRATIONS.map { it.startVersion to it.endVersion }
         assertThat(edges).containsAtLeast(
             1 to 2, 2 to 3, 3 to 4, 4 to 5, 5 to 18, 17 to 18, 18 to 19, 19 to 20, 20 to 21, 21 to 22,
-            22 to 23, 23 to 24, 24 to 25, 25 to 26, 26 to 27, 27 to 28, 28 to 29, 29 to 30, 30 to 31, 31 to 32,
+            22 to 23, 23 to 24, 24 to 25, 25 to 26, 26 to 27, 27 to 28, 28 to 29, 29 to 30, 30 to 31, 31 to 32, 32 to 33,
         )
         // 每个已发布过的起点版本都能沿注册的迁移前进到当前版本。
         val current = File("app/schemas/com.promenar.infinity.data.local.db.InfinityDatabase").listFiles()!!
@@ -203,7 +206,7 @@ class InfinityDatabaseBaselineTest {
             .allowMainThreadQueries()
             .build()
 
-    private fun exportedSchema(version: Int = 32): ExportedSchema {
+    private fun exportedSchema(version: Int = 33): ExportedSchema {
         val file = File("app/schemas/com.promenar.infinity.data.local.db.InfinityDatabase/$version.json")
         assertThat(file.isFile).isTrue()
         val database = Json.parseToJsonElement(file.readText()).jsonObject
@@ -246,8 +249,8 @@ class InfinityDatabaseBaselineTest {
         database: SupportSQLiteDatabase,
         schema: ExportedSchema,
     ) {
-        assertThat(schema.version).isEqualTo(32)
-        assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(32L)
+        assertThat(schema.version).isEqualTo(33)
+        assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(33L)
         assertThat(database.longQuery("PRAGMA foreign_keys")).isEqualTo(1L)
 
         val runtimeTables = database.stringColumnQuery(

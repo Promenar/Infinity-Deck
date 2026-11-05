@@ -195,6 +195,23 @@ class MemoryManagerDocumentScopeTest {
     }
 
     @Test
+    fun `向量与关键词结果保留真实文件标识并用于对话引用`() = runTest {
+        database.fileEntryDao().insert(com.promenar.infinity.data.local.db.entity.FileEntry(
+            uuid = "file-a", parentUuid = null, name = "alpha.txt", hash = "", physicalRootPath = "",
+            materializedPath = "alpha.txt", createdAt = 1, updatedAt = 1,
+        ))
+        database.openHelper.writableDatabase.execSQL("UPDATE vectors SET file_uuid = 'file-a' WHERE doc_id = 'doc-a'")
+        val semantic = vectorStore.searchDocuments(floatArrayOf(1f, 0f), DocumentReach.All, 10, 0.1f)
+        assertThat(semantic.first { it.docId == "doc-a" }.fileUuid).isEqualTo("file-a")
+        val keywords = manager.searchDocumentKeywords("alpha", DocumentReach.All, 10)
+        assertThat(keywords.first { it.docId == "doc-a" }.fileUuid).isEqualTo("file-a")
+        val result = retrieve(MemoryManager.RetrieveOptions(
+            enableMemory = false, enableDocs = true, documentScope = DocumentScope.ALL_INDEXED, sessionId = "session-a",
+        ))
+        assertThat(result.references.first { it.content == "document alpha" }.documentId).isEqualTo("file-a")
+    }
+
+    @Test
     fun `非全局记忆检索与文档范围互不串扰且不跨会话`() = runTest {
         val result = retrieve(
             MemoryManager.RetrieveOptions(

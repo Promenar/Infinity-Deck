@@ -63,10 +63,10 @@ class LongTermMemoryMigrationTest {
                 sqlite.version = 27
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33).allowMainThreadQueries().build()
             try {
                 val sqlite = room.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(32)
+                assertThat(sqlite.version).isEqualTo(33)
                 assertThat(room.sessionDao().getById("session-before-v28")!!.title).isEqualTo("保留旧会话")
                 sqlite.query("SELECT * FROM long_term_memories").use { assertThat(it.count).isEqualTo(0) }
                 sqlite.query("PRAGMA foreign_key_list(long_term_memories)").use { assertThat(it.count).isEqualTo(0) }
@@ -88,7 +88,7 @@ class LongTermMemoryMigrationTest {
                 }
                 sqlite.query("PRAGMA foreign_key_check").use { assertThat(it.count).isEqualTo(0) }
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(32, INFINITY_SCHEMA_V32_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(33, INFINITY_SCHEMA_V33_IDENTITY_HASH)
                 }).isTrue()
             } finally {
                 room.close()

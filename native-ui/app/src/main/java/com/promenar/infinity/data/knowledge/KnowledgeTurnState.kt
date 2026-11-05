@@ -60,6 +60,9 @@ class KnowledgeTurnState {
         val state = turns.getOrPut(key) {
             Turn().apply {
                 this.injected += messages.flatMap { it.ragReferences.orEmpty() }.map { it.id }
+                messages.flatMap { it.ragReferences.orEmpty() }.forEach { reference ->
+                    reference.citationId?.takeIf { it.isNotBlank() }?.let { citations[reference.id] = it }
+                }
                 messages.flatMap { it.executionSteps.orEmpty() }
                     .filter { it.type == "tool_call" && it.toolName == "knowledge_search" }
                     .distinctBy { it.toolCallId ?: it.id }.forEach { step ->
@@ -92,6 +95,8 @@ class KnowledgeTurnState {
         val state = turns.getOrPut(sessionId to turnId) { Turn() }
         return state.citations.getOrPut(id) { "K${(state.citations.values.mapNotNull { it.removePrefix("K").toIntOrNull() }.maxOrNull() ?: 0) + 1}" }
     }
+    @Synchronized fun citationMapping(sessionId: String, turnId: String): Map<String, String> =
+        turns[sessionId to turnId]?.citations?.toMap().orEmpty()
     @Synchronized fun isInjected(sessionId: String, turnId: String, id: String): Boolean = turns[sessionId to turnId]?.injected?.contains(id) == true
     @Synchronized fun deny(sessionId: String, turnId: String) { turns.getOrPut(sessionId to turnId) { Turn() }.denied = true }
     @Synchronized fun isDenied(sessionId: String, turnId: String): Boolean = turns[sessionId to turnId]?.denied == true

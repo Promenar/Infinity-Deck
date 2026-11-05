@@ -44,6 +44,7 @@ data class SearchResult(
     val similarity: Float,
     val originalSimilarity: Float? = null,
     val documentContentHash: String? = null,
+    val fileUuid: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -60,6 +61,12 @@ data class SearchResult(
         return result
     }
 }
+
+data class ResolvedDocumentSearch(
+    val vector: List<SearchResult>,
+    val keywords: List<SearchResult>,
+    val fused: List<SearchResult>,
+)
 
 @Serializable
 data class RagConfiguration(

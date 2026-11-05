@@ -5,6 +5,13 @@ import io.ktor.client.*
 import io.ktor.client.engine.mock.*
 import io.ktor.http.*
 import io.ktor.utils.io.*
+import com.promenar.infinity.data.local.inference.LocalInferenceEngine
+import com.promenar.infinity.data.local.inference.SlotState
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
@@ -12,6 +19,59 @@ import org.junit.jupiter.api.assertThrows
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmbeddingClientTest {
+
+    @Test
+    fun `vector space tracks resolved remote model and endpoint while frozen route remains stable`() {
+        fun route(model: String, endpoint: String) = com.promenar.infinity.data.remote.ResolvedProviderModel(
+            "stable-id", model, "provider", "提供商",
+            com.promenar.infinity.data.remote.UnifiedProviderConfig(
+                com.promenar.infinity.data.remote.protocol.ProtocolType.OpenAI_ChatCompletions,
+                endpoint, "fake-key", model,
+            ),
+        )
+        var current = route("model-a", "https://example.invalid")
+        val client = EmbeddingClient("", "", modelRouteResolver = { current }, allowLocalFallback = false)
+        val frozen = client.frozen()
+        val firstKey = frozen.vectorSpaceKey()
+        current = route("model-b", "https://example.invalid")
+        assertThat(client.vectorSpaceKey()).isNotEqualTo(firstKey)
+        assertThat(frozen.vectorSpaceKey()).isEqualTo(firstKey)
+        current = route("model-a", "https://other.invalid")
+        assertThat(client.vectorSpaceKey()).isNotEqualTo(firstKey)
+    }
+
+    @Test
+    fun `local vector space follows actual loaded slot`() {
+        val local = mockk<LocalInferenceEngine>()
+        val slot = MutableStateFlow(SlotState(modelPath = "/example/model-a", isLoaded = true))
+        every { local.embeddingSlot } returns slot
+        val route = com.promenar.infinity.data.remote.ResolvedProviderModel(
+            "local-id", "local", "local", "本地",
+            com.promenar.infinity.data.remote.UnifiedProviderConfig(
+                com.promenar.infinity.data.remote.protocol.ProtocolType.Local, "", "", "local",
+            ),
+        )
+        val client = EmbeddingClient("", "", localEngine = local, modelRouteResolver = { route })
+        val first = client.vectorSpaceKey()
+        slot.value = SlotState(modelPath = "/example/model-b", isLoaded = true)
+        assertThat(client.vectorSpaceKey()).isNotEqualTo(first)
+        slot.value = SlotState()
+        assertThat(client.vectorSpaceKey()).isNull()
+    }
+
+    @Test
+    fun strictEmbeddingDoesNotFallBackToAnotherVectorSpace() = runTest {
+        val local = mockk<LocalInferenceEngine>()
+        every { local.embeddingSlot } returns MutableStateFlow(SlotState(isLoaded = true))
+        coEvery { local.embedBatch(any()) } returns Result.success(listOf(floatArrayOf(1f)))
+        val transport = HttpClient(MockEngine { respond("{}", HttpStatusCode.InternalServerError) })
+        val client = EmbeddingClient("https://embedding.example.invalid", "fake-key", "embedding-a",
+            httpClient = transport, localEngine = local, allowLocalFallback = false)
+
+        assertThrows<IllegalStateException> { client.embedQuery("问题") }
+        coVerify(exactly = 0) { local.embedBatch(any()) }
+        transport.close()
+    }
 
     // ── 构造与配置 ────────────────────────────────────────────────
 

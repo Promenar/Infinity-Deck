@@ -56,6 +56,16 @@ class KnowledgeSearchSkillTest {
     private suspend fun search(step: String = "step", args: String = """{"query":"完整问题"}""") = skill().execute(Json.parseToJsonElement(args).jsonObject, context(step))
     private fun ToolResult.body() = json.decodeFromString<KnowledgeSearchData>(requireNotNull(data))
 
+    @Test fun automaticCitationMappingSurvivesColdRestore() {
+        session = session.copy(messages = session.messages.map {
+            if (it.id == "m") it.copy(ragReferences = listOf(RagReference(id = "auto", citationId = "K4"))) else it
+        })
+        val restored = KnowledgeTurnState()
+        restored.seed(session, "u")
+        assertThat(restored.citationMapping("s", "u")).containsEntry("auto", "K4")
+        assertThat(restored.citation("s", "u", "next")).isEqualTo("K5")
+    }
+
     @Test fun `工具仅使用工具入口且保留图谱与用量`() = runTest {
         val result = search()
         assertThat(result.status).isEqualTo("success")

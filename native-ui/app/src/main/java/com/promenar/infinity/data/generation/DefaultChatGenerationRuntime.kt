@@ -195,6 +195,7 @@ internal class DefaultChatGenerationRuntime(
     private val knowledgeCatalog: com.promenar.infinity.data.knowledge.KnowledgeCatalogSource? = null,
     private val knowledgeAccessPlanner: com.promenar.infinity.data.knowledge.KnowledgeAccessPlanner? = null,
     private val knowledgeTurns: com.promenar.infinity.data.knowledge.KnowledgeTurnState? = null,
+    private val chatCitationRecorder: com.promenar.infinity.data.library.ask.ChatCitationRecorder? = null,
     private val toolProgressReminder: ToolProgressReminder = ToolProgressReminder(),
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
@@ -1605,6 +1606,10 @@ internal class DefaultChatGenerationRuntime(
             } else null,
         )
         settleQuestionResumption(request)
+        val citationSession = if (status == GenerationTerminalStatus.SUCCESS && chatCitationRecorder != null) {
+            store.getSession(request.sessionId)
+        } else null
+        val createdCitationIds = if (citationSession != null) messagesCreatedSincePrepare(request).toSet() else emptySet()
         if (request.messageIdsToReplace.isNotEmpty()) {
             if (status == GenerationTerminalStatus.SUCCESS) {
                 commitReplacement(request)
@@ -1613,6 +1618,20 @@ internal class DefaultChatGenerationRuntime(
                     request,
                     messagesCreatedSincePrepare(request),
                 )
+            }
+        }
+        if (citationSession != null && chatCitationRecorder != null) {
+            val retained = store.getSession(request.sessionId)?.messages.orEmpty().mapTo(hashSetOf()) { it.id }
+            com.promenar.infinity.data.library.ask.completedCitationMessages(
+                citationSession, createdCitationIds, retained, request.messageIdsToReplace,
+                request.userMessageId ?: knowledgeTurnId(citationSession, assistantMessageId(request)),
+            ).forEach { message ->
+                val turnId = knowledgeTurnId(citationSession, message.id)
+                knowledgeTurns?.seed(citationSession, turnId)
+                val content = if (message.id == assistantMessageId(request)) snapshot.content else message.content
+                chatCitationRecorder.record(citationSession, message.id, content,
+                    knowledgeTurns?.citationMapping(citationSession.id, turnId).orEmpty(),
+                    preparedContext?.ragReferences.orEmpty())
             }
         }
     }

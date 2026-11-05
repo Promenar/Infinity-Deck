@@ -210,6 +210,12 @@ class BranchSessionUseCase(
                     }
                     sessionDao.insert(plan.session)
                     messageDao.insertAll(plan.messages)
+                    val citations = database.knowledgeCitationDao().forSession(sourceSessionId).mapNotNull { citation ->
+                        citation.messageId?.let(plan.messageIdMap::get)?.let { messageId ->
+                            citation.copy(id = UUID.randomUUID().toString(), sessionId = plan.session.id, messageId = messageId)
+                        }
+                    }
+                    if (citations.isNotEmpty()) database.knowledgeCitationDao().insertAll(citations)
                     val versions = database.stateBoardDao().versions(sourceSessionId).mapNotNull { version ->
                         plan.messageIdMap[version.anchorMessageId]?.let { anchor ->
                             version.copy(id = 0, sessionId = plan.session.id, anchorMessageId = anchor)

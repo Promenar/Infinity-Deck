@@ -89,6 +89,86 @@ import kotlinx.serialization.json.jsonPrimitive
 @Config(sdk = [33])
 class RoomBackupDataSourceTest {
     @Test
+    fun `仅恢复会话层时恢复对话引用且文档缺失时报告降级`() = runBlocking {
+        seedCompleteGraph()
+        db.knowledgeCitationDao().insertAll(listOf(com.promenar.infinity.data.library.ask.KnowledgeCitationEntity(
+            "citation-session", "file-1", 1, "vector-1", "CHAT", "session-1", "message-1", null, "K1", 100,
+        )))
+        val cache = Files.createTempDirectory(sourceBase, "session-citation")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.SESSIONS), cache)
+            val file = cache.resolve("sessions.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            db.knowledgeCitationDao().deleteForMessage("message-1")
+            Files.newInputStream(file).use { input ->
+                codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "session-citation-1") }
+            }
+            assertThat(rowCount("knowledge_citations")).isEqualTo(1)
+            db.openHelper.writableDatabase.execSQL("DELETE FROM workspace_files WHERE uuid = 'file-1'")
+            val result = Files.newInputStream(file).use { input ->
+                codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "session-citation-2") }
+            }
+            assertThat(rowCount("knowledge_citations")).isEqualTo(0)
+            assertThat(result.summary.degraded.map { it.category }).contains("citation_document_unavailable")
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `旧版分层备份保留未改变会话的本地引用并报告变化来源`() = runBlocking {
+        seedCompleteGraph()
+        db.knowledgeCitationDao().insertAll(listOf(com.promenar.infinity.data.library.ask.KnowledgeCitationEntity(
+            "legacy-local", "file-1", 1, "vector-1", "CHAT", "session-1", "message-1", null, "K1", 100,
+        )))
+        val cache = Files.createTempDirectory(sourceBase, "legacy-session-citation")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.SESSIONS), cache)
+            val legacy = snapshot.copy(databaseSchemaVersion = 13,
+                streamEntries = snapshot.streamEntries.filterNot { it.path.startsWith("database/knowledge_citations/") })
+            val file = cache.resolve("legacy-sessions.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(legacy, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.newInputStream(file).use { input ->
+                codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "legacy-citation-1") }
+            }
+            assertThat(rowCount("knowledge_citations")).isEqualTo(1)
+            db.openHelper.writableDatabase.execSQL("UPDATE messages SET content = '变更后的回答' WHERE id = 'message-1'")
+            val result = Files.newInputStream(file).use { input ->
+                codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "legacy-citation-2") }
+            }
+            assertThat(rowCount("knowledge_citations")).isEqualTo(0)
+            assertThat(result.summary.degraded.map { it.category }).contains("legacy_citation_source_changed")
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `旧版文件层恢复保留仍存在文档的问资料引用`() = runBlocking {
+        seedCompleteGraph()
+        db.knowledgeCitationDao().insertAll(listOf(com.promenar.infinity.data.library.ask.KnowledgeCitationEntity(
+            "legacy-ask", "file-1", 1, "vector-1", "ASK", null, null, "问题", "1", 100,
+        )))
+        val cache = Files.createTempDirectory(sourceBase, "legacy-file-citation")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.WORKSPACE_FILES), cache)
+            val legacy = snapshot.copy(databaseSchemaVersion = 13,
+                streamEntries = snapshot.streamEntries.filterNot { it.path.startsWith("database/knowledge_citations/") })
+            val file = cache.resolve("legacy-files.iwb")
+            val codec = DefaultBackupPackageCodec()
+            try { Files.newOutputStream(file).use { codec.encodeTo(legacy, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            Files.newInputStream(file).use { input ->
+                codec.decodeFrom(input, null, cache).use { source.validateStaged(it); source.restoreWithResult(it, "legacy-file-citation") }
+            }
+            assertThat(rowCount("knowledge_citations")).isEqualTo(1)
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
     fun `未选密钥层时核心导出恢复不读取或准备密钥事务`() = runBlocking {
         emptyWorkspaceBackup().wipe()
         val cache = Files.createTempDirectory(sourceBase, "unselected-secrets")
@@ -125,6 +205,9 @@ class RoomBackupDataSourceTest {
     @Test
     fun `仅恢复工作区文件时保留会话Artifact路径同步且文件可达`() = runBlocking {
         seedCompleteGraph()
+        db.knowledgeCitationDao().insertAll(listOf(com.promenar.infinity.data.library.ask.KnowledgeCitationEntity(
+            "citation-files", "file-1", 1, "vector-1", "CHAT", "session-1", "message-1", null, "K1", 100,
+        )))
         val cache = Files.createTempDirectory(sourceBase, "retained-artifact")
         try {
             val source = newDataSource()
@@ -134,6 +217,7 @@ class RoomBackupDataSourceTest {
             try { Files.newOutputStream(file).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
             finally { snapshot.wipe() }
             Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
+            assertThat(rowCount("knowledge_citations")).isEqualTo(1)
             val root = db.sessionDao().getById("session-1")!!.workspacePath!!
             db.openHelper.writableDatabase.query("SELECT workspace_path FROM artifacts WHERE id = 'artifact-1'").use { cursor ->
                 assertThat(cursor.moveToFirst()).isTrue()
@@ -1002,7 +1086,7 @@ class RoomBackupDataSourceTest {
         val root = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
         val tables = root.getValue("tables").jsonObject
         for (version in 8..13) {
-            val legacyTables = if (version == 8) tables - "long_term_memories" else tables
+            val legacyTables = (if (version == 8) tables - "long_term_memories" else tables) - "knowledge_citations"
             val missingMode = JsonObject(root + mapOf(
                 "schemaVersion" to JsonPrimitive(version),
                 "tables" to JsonObject(legacyTables + ("sessions" to JsonArray(tables.getValue("sessions").jsonArray.map {
@@ -1020,7 +1104,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(13)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(14)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -1615,27 +1699,31 @@ class RoomBackupDataSourceTest {
     fun `database payload covers every user source table and excludes derived runtime tables`() {
         runBlocking {
             seedCompleteGraph()
+            db.knowledgeCitationDao().insertAll(listOf(com.promenar.infinity.data.library.ask.KnowledgeCitationEntity(
+                "citation-1", "file-1", 1, "vector-1", "CHAT", "session-1", "message-1", null, "K1", 100,
+            )))
 
             val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(13)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("13")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(14)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("14")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
                 "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
-                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions",
+                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(
                 "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "kg_jit_cache_sources",
                 "vectorization_tasks", "audit_logs", "tool_execution_ledger", "file_versions",
-                "workspace_mutations", "mcp_tool_snapshots",
+                "workspace_mutations", "mcp_tool_snapshots", "memory_embedding_cache",
             ).forEach { assertThat(text).doesNotContain("\"$it\"") }
 
             db.clearAllTables()
             newDataSource().restore(validated(snapshot))
+            assertThat(rowCount("knowledge_citations")).isEqualTo(1)
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
                 "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
@@ -1658,6 +1746,20 @@ class RoomBackupDataSourceTest {
             assertThat(Path.of(db.artifactDao().getById("artifact-1")!!.workspacePath!!).startsWith(restoreParent))
                 .isTrue()
         }
+    }
+
+    @Test
+    fun v13BackupWithoutCitationTableRestoresExistingData() = runBlocking {
+        seedCompleteGraph()
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val root = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val tables = root.getValue("tables").jsonObject - "knowledge_citations"
+        val old = JsonObject(root + mapOf("schemaVersion" to JsonPrimitive(13), "tables" to JsonObject(tables)))
+            .toString().toByteArray()
+        db.clearAllTables()
+        newDataSource().restore(validated(snapshot, database = old))
+        assertThat(db.messageDao().getById("message-1")).isNotNull()
+        assertThat(rowCount("knowledge_citations")).isEqualTo(0)
     }
 
     @Test

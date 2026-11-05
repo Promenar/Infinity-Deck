@@ -109,6 +109,8 @@ class LocalInferenceEngine internal constructor(
 
     private val _embeddingSlot = MutableStateFlow(SlotState())
     val embeddingSlot: StateFlow<SlotState> = _embeddingSlot.asStateFlow()
+    private val embeddingGeneration = java.util.concurrent.atomic.AtomicLong(0)
+    val embeddingModelGeneration: Long get() = embeddingGeneration.get()
 
     private val _rerankSlot = MutableStateFlow(SlotState())
     val rerankSlot: StateFlow<SlotState> = _rerankSlot.asStateFlow()
@@ -124,6 +126,7 @@ class LocalInferenceEngine internal constructor(
             // native 模型分配与槽位接管必须成对完成，取消在资源交接后传播。
             withContext(NonCancellable) {
                 val (stateField, backend) = slotResources(slot)
+                if (slot == SlotType.EMBEDDING) embeddingGeneration.incrementAndGet()
 
                 stateField.value = stateField.value.copy(
                     isLoading = true,
@@ -163,6 +166,7 @@ class LocalInferenceEngine internal constructor(
     suspend fun unloadModel(slot: SlotType): Unit = withContext(ioDispatcher) {
         withEngineLock {
             val (stateField, backend) = slotResources(slot)
+            if (slot == SlotType.EMBEDDING) embeddingGeneration.incrementAndGet()
             backend.release()
             stateField.value = SlotState()
             onStateChanged?.invoke()
@@ -271,6 +275,7 @@ class LocalInferenceEngine internal constructor(
             try {
                 operationMutex.withLock {
                     mainBackend.release()
+                    embeddingGeneration.incrementAndGet()
                     embeddingBackend.release()
                     rerankBackend.release()
                     _mainSlot.value = SlotState()
