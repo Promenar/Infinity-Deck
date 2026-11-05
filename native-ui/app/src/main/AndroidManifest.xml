@@ -74,6 +74,11 @@
             android:foregroundServiceType="dataSync" />
 
         <service
+            android:name=".background.indexing.IndexForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name=".background.schedule.ScheduledTaskJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />

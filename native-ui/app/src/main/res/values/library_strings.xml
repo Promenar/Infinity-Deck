@@ -102,4 +102,10 @@
     <string name="library_memory_manage_section">Memories</string>
     <string name="library_memory_manage">Manage in Library</string>
     <string name="library_memory_manage_desc">View, edit and delete what agents remember</string>
+    <string name="index_notification_channel">Document indexing</string>
+    <string name="index_notification_channel_description">Progress while library documents are indexed</string>
+    <string name="index_notification_title">Indexing documents</string>
+    <string name="index_notification_starting">Preparing document indexing</string>
+    <string name="index_notification_content">%1$s · %2$d of %3$d</string>
+    <string name="index_notification_untitled">Untitled document</string>
 </resources>

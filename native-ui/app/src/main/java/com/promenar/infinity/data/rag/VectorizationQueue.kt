@@ -777,16 +777,9 @@ class VectorizationQueue(
 
     fun getQueueLength(): Int = synchronized(queueLock) { queue.size }
 
-    fun snapshotState(): QueueState {
-        val (snapshot, current) = synchronized(queueLock) {
-            (queue + retainedAttention) to (queue.firstOrNull() ?: retainedAttention.firstOrNull())
-        }
-        return QueueState(
-            queue = snapshot,
-            currentTask = current,
-            isProcessing = isProcessing,
-            restored = restored,
-        )
+    fun snapshotState(): QueueState = synchronized(queueLock) {
+        val snapshot = queue + retainedAttention
+        QueueState(snapshot, snapshot.firstOrNull(), isProcessing, restored, queue.mapTo(mutableSetOf()) { it.id })
     }
 
     suspend fun cancelAndJoin(workspaceRootUuid: String, docIds: Collection<String>) {
@@ -1188,12 +1181,13 @@ class VectorizationQueue(
     )
 
     private fun notifyStateChange() {
-        val (snapshot, current) = synchronized(queueLock) {
-            (queue + retainedAttention) to (queue.firstOrNull() ?: retainedAttention.firstOrNull())
+        val snapshot = synchronized(queueLock) {
+            (queue + retainedAttention).also {
+                _state.value = snapshotVectorizationQueueState(it, isProcessing, restored, queue.mapTo(mutableSetOf()) { task -> task.id })
+            }
         }
-        _state.value = QueueState(snapshot, current, isProcessing, restored)
         val listener = synchronized(stateListenerLock) { stateListener }
-        listener?.invokeIfActive(snapshot, current)
+        listener?.invokeIfActive(snapshot, snapshot.firstOrNull())
     }
 
     private class StateListener(
@@ -1512,6 +1506,8 @@ class VectorizationQueue(
         val currentTask: VectorizationTask?,
         val isProcessing: Boolean,
         val restored: Boolean = false,
+        /** 待执行队列的任务 ID；queue 还包含供界面展示的历史失败记录。 */
+        val activeTaskIds: Set<String> = emptySet(),
     ) {
         /** 知识库页只关心文档任务；会话图谱等对话任务在后台进行时不显示为索引中。 */
         val isDocumentIndexing: Boolean

@@ -2192,6 +2192,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
 
         ModelCatalogRuntime.initialize(this)
 
+        indexActivityVisibility.start()
+        indexForegroundController.start()
         PDFBoxResourceLoader.init(applicationContext)
         startupScope.launch(Dispatchers.IO) {
             runCatching {
@@ -2939,6 +2941,14 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     /** 当前向量化队列的状态，队列被替换后自动跟随新实例；读取不会阻塞，也不会触发队列创建。 */
     val vectorizationQueueState: kotlinx.coroutines.flow.StateFlow<com.promenar.infinity.data.rag.VectorizationQueue.QueueState> =
         _vectorizationQueueState.asStateFlow()
+
+    internal val indexActivityVisibility by lazy {
+        com.promenar.infinity.background.indexing.IndexActivityVisibility(this)
+    }
+
+    internal val indexForegroundController by lazy {
+        com.promenar.infinity.background.indexing.IndexForegroundController(this, startupScope, vectorizationQueueState, indexActivityVisibility.visible)
+    }
 
     @Suppress("unused")
     private val vectorizationQueueStateSubscription = vectorizationQueueResource.observeInstances { queue ->

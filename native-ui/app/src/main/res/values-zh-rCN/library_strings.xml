@@ -101,4 +101,10 @@
     <string name="library_memory_manage_section">记忆内容</string>
     <string name="library_memory_manage">在资料中管理</string>
     <string name="library_memory_manage_desc">查看、编辑与删除智能体记住的内容</string>
+    <string name="index_notification_channel">资料索引</string>
+    <string name="index_notification_channel_description">资料文档索引时显示进度</string>
+    <string name="index_notification_title">正在索引资料</string>
+    <string name="index_notification_starting">正在准备资料索引</string>
+    <string name="index_notification_content">%1$s · 第 %2$d / 共 %3$d 份</string>
+    <string name="index_notification_untitled">未命名文档</string>
 </resources>
