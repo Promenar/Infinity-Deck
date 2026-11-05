@@ -74,4 +74,24 @@ class LibraryIndexMotionTest {
         assertEquals(IndexMotionPhase.FAILED, indexFailed.phase)
         assertEquals(0f, indexFailed.vectorProgress, 0f)
     }
+
+    @Test
+    fun graphRowUsesLiveWindowCountsWhileExtracting() {
+        val live = doc(PendingKind.INDEXING, PendingStage.EXTRACTING_GRAPH, processed = 4, total = 7)
+        assertEquals(4 to 7, liveGraphProgress(0, 7, live))
+    }
+
+    @Test
+    fun graphRowFallsBackToSnapshotOutsideGraphStage() {
+        val vectorizing = doc(PendingKind.INDEXING, PendingStage.VECTORIZING, processed = 30, total = 136)
+        assertEquals(2 to 7, liveGraphProgress(2, 7, vectorizing))
+        assertEquals(2 to 7, liveGraphProgress(2, 7, null))
+    }
+
+    @Test
+    fun graphRowHidesCountsWithoutTotalAndClampsOverflow() {
+        assertNull(liveGraphProgress(0, null, null))
+        assertNull(liveGraphProgress(0, 0, doc(PendingKind.INDEXING, PendingStage.EXTRACTING_GRAPH, processed = 0, total = 0)))
+        assertEquals(7 to 7, liveGraphProgress(0, 7, doc(PendingKind.INDEXING, PendingStage.EXTRACTING_GRAPH, processed = 9, total = 7)))
+    }
 }

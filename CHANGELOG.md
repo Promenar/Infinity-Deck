@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.29.1-beta] - 2026-11-05
+
+### 修复
+
+- 文档页“知识图谱”一行在抽取期间一直停在“抽取中 0 / 7”，直到完成才跳到结果：这一行原先只读打开页面时的快照；现在随抽取进度实时显示已完成的窗口数。
+
 ## [0.29.0-beta] - 2026-11-05
 
 ### 变更

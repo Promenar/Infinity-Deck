@@ -924,15 +924,15 @@ private fun DocumentInspector(info: DocumentInsight, livePending: PendingDocumen
     }
 }
 
-/** 文档的知识图谱状态与对应动作：抽取、确认用量或重试。抽取中的进度由上方状态行的索引指示表达。 */
+/** 文档的知识图谱状态与对应动作：抽取、确认用量或重试。抽取中的窗口数随待处理列表实时更新。 */
 @Composable
 private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
     val graph = info.graph
     val text = when (graph) {
         DocumentGraphState.NotExtracted -> stringResource(R.string.library_graph_state_none)
         is DocumentGraphState.Extracting -> {
-            val total = graph.total?.takeIf { it > 0 }
-            if (total != null && graph.processed != null) stringResource(R.string.library_graph_state_extracting_progress, graph.processed, total)
+            val progress = liveGraphProgress(graph.processed, graph.total, pending)
+            if (progress != null) stringResource(R.string.library_graph_state_extracting_progress, progress.first, progress.second)
             else stringResource(R.string.library_graph_state_extracting)
         }
         is DocumentGraphState.Complete -> stringResource(R.string.library_graph_state_complete, graph.entities, graph.relations)
