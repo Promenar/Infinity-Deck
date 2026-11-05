@@ -2,6 +2,8 @@ package com.promenar.infinity.data.rag
 
 import android.content.SharedPreferences
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.local.db.InfinityDatabase
+import com.promenar.infinity.data.local.db.dao.SessionDao
 import com.promenar.infinity.data.remote.SessionHeaderWiringEndpoint
 import com.promenar.infinity.data.remote.SessionHeaderWiringEndpoint.Companion.MODEL
 import io.ktor.http.HttpStatusCode
@@ -17,7 +19,8 @@ class SessionHeaderRagWiringTest {
             val client = KgRequestClient(endpoint.router, { endpoint.protocol }, Dispatchers.IO)
             val extractor = GraphExtractor(client, mockk(relaxed = true), MODEL, dispatcher = Dispatchers.IO)
             val stats = SessionGraphStats(mockk<SharedPreferences>(relaxed = true))
-            val processor = RoomSessionGraphProcessor({ error("失败请求不写数据库") }, { extractor }, stats)
+            val database = graphDatabase()
+            val processor = RoomSessionGraphProcessor({ database }, { extractor }, stats)
             val task = VectorizationTask(id = "graph-task", type = VectorizationQueue.TYPE_SESSION_GRAPH,
                 sessionId = "rag-session", assistantMessageId = "a", userContent = "足够长的用户输入内容用于图谱抽取", aiContent = "足够长的助手回复内容用于图谱抽取")
             assertThat(runCatching { processor.process(task) }.exceptionOrNull()).isNotNull()
@@ -40,6 +43,7 @@ class SessionHeaderRagWiringTest {
         SessionHeaderWiringEndpoint().use { endpoint ->
             endpoint.reply = { HttpStatusCode.OK to SessionHeaderWiringEndpoint.sync("{\"nodes\":[],\"edges\":[]}") }
             val store = mockk<GraphStore>(relaxed = true)
+            every { store.database } returns graphDatabase()
             coEvery { store.captureJitSources(any()) } returns emptyList()
             val cache = mockk<com.promenar.infinity.data.local.db.dao.KgJitCacheDao>(relaxed = true)
             coEvery { cache.getByKey(any()) } returns null
@@ -55,5 +59,13 @@ class SessionHeaderRagWiringTest {
                 assertThat(SessionHeaderWiringEndpoint.body(endpoint.requests.last())).isEqualTo(SessionHeaderWiringEndpoint.body(endpoint.requests.first()))
             }
         }
+    }
+
+    private fun graphDatabase(): InfinityDatabase {
+        val database = mockk<InfinityDatabase>()
+        val sessions = mockk<SessionDao>()
+        every { database.sessionDao() } returns sessions
+        coEvery { sessions.getById(any()) } returns null
+        return database
     }
 }

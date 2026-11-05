@@ -39,7 +39,7 @@ import org.robolectric.annotation.Config
 import java.nio.file.Path
 
 /**
- * 以 Room 生成的真实 v20 schema 验证双库全图合并契约。
+ * 以 Room 生成的当前 schema 验证双库合并中的引用映射。
  *
  * 夹具故意同时在 current 与 legacy 使用相同业务 ID；旧侧数据必须进入稳定命名空间，
  * 但 MCP 远端工具名属于业务协议名称，工具调用 JSON 中的引用则必须跟随对应 ID 映射。
@@ -48,7 +48,7 @@ import java.nio.file.Path
 @Config(sdk = [33], application = Application::class)
 class DualDatabaseFullGraphContractTest {
     @Test
-    fun `real v20 composite file task and complete graph references survive merge`() {
+    fun `当前schema文件任务与图谱引用在合并后保留`() {
         withDatabasePair(includeVectorizationTask = true) { currentPath, legacyPath ->
             val result = merge(currentPath, legacyPath)
 
@@ -66,6 +66,9 @@ class DualDatabaseFullGraphContractTest {
                 assertThat(count(database, "vectorization_tasks")).isEqualTo(2)
                 assertThat(count(database, "kg_jit_cache")).isEqualTo(0)
                 assertThat(count(database, "audit_logs")).isEqualTo(2)
+                assertThat(count(database, "kg_collections")).isEqualTo(2)
+                assertThat(count(database, "kg_nodes")).isEqualTo(4)
+                assertThat(count(database, "kg_edges")).isEqualTo(2)
 
                 val legacyRoot = RecoveryStableId.map("workspace_files", "uuid", ROOT_ID)
                 val legacyFile = RecoveryStableId.map("workspace_files", "uuid", FILE_ID)
@@ -88,7 +91,7 @@ class DualDatabaseFullGraphContractTest {
     }
 
     @Test
-    fun `real v20 mcp document rag and closed tool references remain reachable`() {
+    fun `当前schema的工具文档和对话引用在合并后保持可达`() {
         withDatabasePair(includeVectorizationTask = false) { currentPath, legacyPath ->
             val result = merge(currentPath, legacyPath)
             assertThat(result.unresolvedReferences.filter { it.startsWith("required:") }).isEmpty()
@@ -415,17 +418,27 @@ class DualDatabaseFullGraphContractTest {
         )
         database.tagDao().insert(TagEntity(TAG_ID, "tag-$label", createdAt = now))
         database.documentTagDao().insert(DocumentTagEntity(FILE_ID, TAG_ID, now))
+        val collectionId = "work:$FILE_ID"
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,?)",
+            arrayOf(collectionId, "work", "document.txt", FILE_ID, now),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collection_members(doc_id,collection_id) VALUES(?,?)", arrayOf(FILE_ID, collectionId),
+        )
         database.seedKgNode(
             KgNodeEntity(
                 id = KG_NODE_A_ID,
                 name = "node-a-$label",
                 createdAt = now,
+                collectionId = collectionId,
             ), sessionId = SESSION_ID, docId = FILE_ID, workspaceDocument = true)
         database.seedKgNode(
             KgNodeEntity(
                 id = KG_NODE_B_ID,
                 name = "node-b-$label",
                 createdAt = now,
+                collectionId = collectionId,
             ), sessionId = SESSION_ID, docId = FILE_ID, workspaceDocument = true)
         database.seedKgEdge(
             KgEdgeEntity(
@@ -434,6 +447,7 @@ class DualDatabaseFullGraphContractTest {
                 targetId = KG_NODE_B_ID,
                 relation = "references",
                 createdAt = now,
+                collectionId = collectionId,
             ), sessionId = SESSION_ID, docId = FILE_ID, workspaceDocument = true)
         database.taskNodeDao().upsert(
             TaskNodeEntity(

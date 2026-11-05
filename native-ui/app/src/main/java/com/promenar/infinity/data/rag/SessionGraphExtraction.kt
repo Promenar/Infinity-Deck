@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.rag
 
 import android.content.SharedPreferences
+import androidx.room.withTransaction
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.dao.KgTurnCount
 import com.promenar.infinity.data.local.db.dao.KgTurnRelation
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -19,7 +21,7 @@ import java.time.LocalDate
 /*
  * 会话图谱抽取：每轮回复结束后把本轮问答排入后台队列（任务类型 VectorizationQueue.TYPE_SESSION_GRAPH），
  * 抽取出的实体与关系写成 `session` 证据并带本轮最后一条助手消息的 id。证据的可见条件要求该消息存在，
- * 删除、丢弃、回退与撤销由 D1 的统一规则处理；可见范围随会话的图谱档位。
+ * 删除、丢弃、回退与撤销由统一规则处理；写入目标由会话图谱绑定决定。
  *
  * 每轮的抽取状态不另存列：排队、进行中、失败与未完成由任务行表达，完成后任务行删除，
  * 由证据按消息 id 统计实体与关系数。
@@ -56,6 +58,7 @@ class RoomSessionGraphScheduler(
 ) : SessionGraphScheduler {
     override suspend fun schedule(sessionId: String, assistantMessageId: String, userMessageId: String?): Boolean {
         if (!enabled()) return false
+        if (!withContext(Dispatchers.IO) { KgCollectionRepository(databaseProvider()).readBinding(sessionId).writable }) return false
         val turn = withContext(Dispatchers.IO) { loadTurn(databaseProvider(), sessionId, assistantMessageId, userMessageId) } ?: return false
         if (SessionGraphTurn.text(turn.second, turn.third) == null) return false
         queue().enqueueSessionGraph(sessionId, turn.first, assistantMessageId, turn.second, turn.third)
@@ -98,12 +101,14 @@ class RoomSessionGraphProcessor(
     override suspend fun process(task: VectorizationTask): String? {
         val sessionId = requireNotNull(task.sessionId) { "会话图谱任务缺少会话" }
         val messageId = requireNotNull(task.assistantMessageId) { "会话图谱任务缺少助手消息" }
+        val binding = withContext(Dispatchers.IO) { KgCollectionRepository(databaseProvider()).readBinding(sessionId) }
+        if (!binding.writable) return null
         val text = SessionGraphTurn.text(task.userContent.orEmpty(), task.aiContent.orEmpty()) ?: return null
         val contentHash = kgSha256(text)
         val result = extractor().extractCandidate(text, contentHash = contentHash, sessionId = sessionId)
         stats.record(calls = result.progress?.calls ?: 0)
         if (!result.isSuccess) error(result.error ?: "图谱抽取失败")
-        GraphStore(databaseProvider()).replaceTurn(sessionId, messageId, contentHash, ValidatedGraph.from(result.nodes, result.edges))
+        GraphStore(databaseProvider()).replaceTurn(sessionId, messageId, contentHash, ValidatedGraph.from(result.nodes, result.edges), binding.collectionId)
         return result.progress?.takeIf { it.reason != null }?.let { "已达到抽取预算上限（${it.description}）" }
     }
 }
@@ -190,21 +195,31 @@ class RoomSessionGraphPort(
     private val stats: SessionGraphStats,
     private val isEnabled: () -> Boolean,
 ) : SessionGraphPort {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun observeTurns(sessionId: String): Flow<Map<String, TurnGraphState>> {
         val database = databaseProvider()
-        return combine(
-            database.vectorizationTaskDao().observeSessionGraphTasks(sessionId),
-            database.kgEvidenceDao().observeTurnCounts(sessionId),
-            ::turnGraphStates,
-        ).flowOn(Dispatchers.IO)
+        return combine(database.sessionDao().observeById(sessionId), database.kgEvidenceDao().observeCollectionIds()) { _, _ -> Unit }
+            .flatMapLatest {
+                val collectionId = KgCollectionRepository(database).readBinding(sessionId).collectionId
+                combine(
+                    database.vectorizationTaskDao().observeSessionGraphTasks(sessionId),
+                    database.kgEvidenceDao().observeTurnCounts(sessionId, collectionId),
+                    ::turnGraphStates,
+                )
+            }.flowOn(Dispatchers.IO)
     }
 
     override suspend fun turnDetails(assistantMessageId: String): TurnGraphDetails = withContext(Dispatchers.IO) {
         val database = databaseProvider()
-        TurnGraphDetails(
-            entities = database.kgNodeDao().getForMessage(assistantMessageId, DETAIL_LIMIT).map { TurnGraphEntity(it.name, it.type) },
-            relations = database.kgEdgeDao().getRelationsForMessage(assistantMessageId, DETAIL_LIMIT),
-        )
+        database.withTransaction {
+            val message = database.messageDao().getById(assistantMessageId)
+                ?: return@withTransaction TurnGraphDetails(emptyList(), emptyList())
+            val collectionId = KgCollectionRepository(database).readBinding(message.sessionId).collectionId
+            TurnGraphDetails(
+                entities = database.kgNodeDao().getForMessage(assistantMessageId, DETAIL_LIMIT, collectionId).map { TurnGraphEntity(it.name, it.type) },
+                relations = database.kgEdgeDao().getRelationsForMessage(assistantMessageId, DETAIL_LIMIT, collectionId),
+            )
+        }
     }
 
     override suspend fun retry(sessionId: String, assistantMessageId: String): Boolean =

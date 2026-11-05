@@ -12,7 +12,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class KgChatRoutingRegressionTest {
-    @Test fun `有效KG范围保留会话全局选择并传递Agent开关`() = runTest {
+    @Test fun `旧图谱范围保持原始值且会话开关正常传递`() = runTest {
         var captured: RagOptions? = null
         val provider = object : KgProvider {
             override suspend fun extractContext(query: String, sessionId: String, topKResults: List<RagReference>) = KgContextResult("")
@@ -26,7 +26,7 @@ class KgChatRoutingRegressionTest {
                 ragOptions = RagOptions(enableDocs = false, enableMemory = false, isGlobal = true, activeDocIds = listOf("d"), enableKnowledgeGraph = true)),
 
         ))
-        assertThat(captured?.graphScope).isEqualTo(com.promenar.infinity.data.model.ConversationScope.AGENT)
+        assertThat(captured?.graphScope).isNull()
         assertThat(captured?.memoryScope).isEqualTo(com.promenar.infinity.data.model.ConversationScope.AGENT)
         assertThat(captured?.activeDocIds).containsExactly("d")
     }

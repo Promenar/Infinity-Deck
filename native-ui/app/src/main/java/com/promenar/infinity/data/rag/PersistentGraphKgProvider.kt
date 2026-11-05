@@ -37,7 +37,7 @@ class PersistentGraphKgProvider(
         if (options.enableKnowledgeGraph != true) return KgContextResult("")
         val config = configProvider()
         val resolvedScope = KgRetrievalScope.of(scopeResolver.resolve(sessionId, options))
-        // 自动图谱沿用独立开关；工具只读取本次所请求来源的证据。
+        // 文档范围决定即时抽取输入；持久图始终读取绑定图谱中的存活证据。
         val scope = if (allowJit) resolvedScope else resolvedScope.copy(
             documents = if (options.enableDocs) resolvedScope.documents else DocumentReach.Scoped(emptySet(), emptySet()),
             allowConversation = options.enableMemory,
@@ -56,10 +56,12 @@ class PersistentGraphKgProvider(
         val needsJit = persistent.seedCount < config.kgJitMinSeeds.coerceIn(1, 32) || persistent.paths.isEmpty()
         val instant = if (allowJit && config.kgJitFallbackEnabled && needsJit && visibleReferences.isNotEmpty()) {
             try {
-                jit.extractContext(query, sessionId, visibleReferences)?.takeIf { it.status == KgExtractionStatus.SUCCESS && it.error == null }
+                (if (jit is MicroGraphKgAdapter) jit.extractForGraph(query, sessionId, visibleReferences, scope.collectionId)
+                    else jit.extractContext(query, sessionId, visibleReferences))?.takeIf { it.status == KgExtractionStatus.SUCCESS && it.error == null }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { null }
         } else null
+        if (KgCollectionRepository(database).readBinding(sessionId).collectionId != scope.collectionId) return KgContextResult("")
         val paths = KgContextBudget.prune(KgContextBudget.fuse(persistent.paths, instant?.paths.orEmpty()), config.kgMaxNodes, config.kgMaxEdges)
         val context = KgContextBudget.fit(paths, config.kgContextMaxTokens.coerceIn(0, 16384))
         return KgContextResult(context.context, context.paths, canonicalPaths = true,

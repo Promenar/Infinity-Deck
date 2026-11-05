@@ -3,7 +3,7 @@ package com.promenar.infinity.data.local.db
 import java.text.Normalizer
 import java.util.Locale
 
-/** 全局共享实体：名称与类型共同定身份；文档、会话、助手只属于证据，不分割实体空间。 */
+/** 规范化实体名称与类型；实体身份由所属图谱和归一化结果共同确定。 */
 object KgIdentity {
     fun display(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
         .trim().replace(Regex("[\\s\\p{Z}]+"), " ")

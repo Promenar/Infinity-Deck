@@ -123,7 +123,7 @@ class GraphExtractorTest {
         // 验证第一次返回的是中断错误，且没有 upsert 进数据库（原子写保护）
         assertThat(result1.status).isEqualTo(KgExtractionStatus.PROVIDER_ERROR)
         coVerify(exactly = 0) { graphStore.clearGraphForDoc(any()) }
-        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any(), collectionId = any()) }
 
         // 验证 checkpoint 文件已成功落盘
         val chunk0File = File(tempDir, "kg_extraction_checkpoint").walkTopDown().first { it.name == "chunk_0.json" }
@@ -154,7 +154,7 @@ class GraphExtractorTest {
 
         // 候选构建不修改旧图谱。
         coVerify(exactly = 0) { graphStore.clearGraphForDoc(docId) }
-        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any(), collectionId = any()) }
 
         // 候选完成后清理缓存。
         val checkpointDir = File(tempDir, "kg_extraction_checkpoint/${kgSha256(docId)}")
@@ -330,7 +330,7 @@ class GraphExtractorTest {
 
         assertThat(failure).isInstanceOf(CancellationException::class.java)
         coVerify(exactly = 0) { graphStore.clearGraphForDoc(any()) }
-        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any(), collectionId = any()) }
     }
 
     @Test
@@ -341,8 +341,8 @@ class GraphExtractorTest {
         val result = testGraphExtractor(protocol, graphStore).extractCandidate("text", "doc")
         assertThat(result.isSuccess).isTrue()
         coVerify(exactly = 0) { graphStore.clearGraphForDoc(any()) }
-        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any(), any()) }
-        coVerify(exactly = 0) { graphStore.createEdge(any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { graphStore.upsertNode(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { graphStore.createEdge(any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test

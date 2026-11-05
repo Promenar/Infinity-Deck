@@ -10,7 +10,7 @@ import com.promenar.infinity.data.model.RagOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 对话记忆或图谱对话证据可读取的会话集合，按会话所属助手判定。 */
+/** 对话记忆可读取的会话集合，按会话所属助手判定。 */
 sealed interface ConversationReach {
     data class Session(val sessionId: String) : ConversationReach
 
@@ -42,11 +42,12 @@ data class ResolvedRetrievalScope(
     val memory: ConversationReach,
     val graph: ConversationReach,
     val documents: DocumentReach,
+    val graphBinding: ResolvedGraphBinding,
 )
 
 /**
  * 把会话检索选项解析为可执行的范围。选项应已按助手上限收紧（见 AgentMemoryPolicy.clamp）。
- * 向量检索、关键词检索与图谱可见性都从这里取范围，三条路径的结果因此一致。
+ * 向量和关键词检索使用对话与文档范围；图谱检索使用独立解析的绑定。
  */
 class RetrievalScopeResolver(private val database: InfinityDatabase) {
     suspend fun resolve(sessionId: String, options: RagOptions): ResolvedRetrievalScope = withContext(Dispatchers.IO) {
@@ -76,8 +77,9 @@ class RetrievalScopeResolver(private val database: InfinityDatabase) {
         ResolvedRetrievalScope(
             sessionId = sessionId,
             memory = reach(options.effectiveMemoryScope),
-            graph = reach(options.effectiveGraphScope),
+            graph = ConversationReach.Session(sessionId),
             documents = documents,
+            graphBinding = KgCollectionRepository(database).readBinding(sessionId),
         )
     }
 

@@ -219,7 +219,9 @@ data class ExtractedEdge(
     val source: String,
     val target: String,
     val relation: String,
-    val weight: Double = 1.0
+    val weight: Double = 1.0,
+    val sourceType: String? = null,
+    val targetType: String? = null,
 )
 
 @Serializable

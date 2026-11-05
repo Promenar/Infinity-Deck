@@ -7,6 +7,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.FileEntry
+import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.model.GraphBinding
+import com.promenar.infinity.data.model.GraphBindingMode
 import com.promenar.infinity.data.model.RagReference
 import com.promenar.infinity.data.remote.protocol.LlmProtocol
 import com.promenar.infinity.data.remote.protocol.PromptResponse
@@ -47,7 +50,7 @@ class KgJitProvenanceTest {
         assertThat(refs.captured.single().docId).isEqualTo("doc")
     }
 
-    @Test fun `缓存跨会话复用且命中登记当前会话证据`() = runTest {
+    @Test fun `不同会话图谱的缓存隔离且同图谱命中不重复登记证据`() = runTest {
         seedFile()
         val extractor = testMicroExtractor(protocol, store, db.kgJitCacheDao()).also(extractors::add)
         extractor.extract(refs(), "q", "s1")
@@ -60,8 +63,46 @@ class KgJitProvenanceTest {
         extractor.extract(refs(), "q", "s2")
         testScheduler.runCurrent()
         assertThat(db.kgEvidenceDao().affectedBySession("s2")).hasSize(before)
-        coVerify(exactly = 1) { protocol.sendPromptSync(any()) }
+        coVerify(exactly = 2) { protocol.sendPromptSync(any()) }
         assertThat(store.getGraphData(sessionId = "s2").edges).hasSize(1)
+    }
+
+    @Test fun `同一会话切换图谱不会命中另一图谱的即时缓存`() = runTest {
+        seedFile()
+        db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
+        val collections = KgCollectionRepository(db)
+        seedBindableWork("work:first")
+        collections.setBinding("s", GraphBinding("work:first"))
+        val extractor = testMicroExtractor(protocol, store, db.kgJitCacheDao()).also(extractors::add)
+        extractor.extract(refs(), "q", "s")
+        testScheduler.runCurrent()
+        awaitEdges("s")
+        seedBindableWork("work:second")
+        collections.setBinding("s", GraphBinding("work:second"))
+        extractor.extract(refs(), "q", "s")
+        testScheduler.runCurrent()
+        awaitEdges("s")
+        collections.setBinding("s", GraphBinding("work:first"))
+        extractor.extract(refs(), "q", "s")
+        coVerify(exactly = 2) { protocol.sendPromptSync(any()) }
+    }
+
+    @Test fun `只读绑定的即时抽取可返回结果但不写入证据和缓存`() = runTest {
+        seedFile()
+        db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
+        seedBindableWork("work:doc")
+        KgCollectionRepository(db).setBinding("s", GraphBinding("work:doc", GraphBindingMode.READ_ONLY))
+        val extractor = testMicroExtractor(protocol, store, db.kgJitCacheDao()).also(extractors::add)
+        val result = extractor.extract(refs(), "q", "s")
+        testScheduler.runCurrent()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.edges).hasSize(1)
+        assertThat(db.kgEvidenceDao().affectedBySession("s")).isEmpty()
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM kg_jit_cache").use {
+            check(it.moveToFirst()); assertThat(it.getInt(0)).isEqualTo(0)
+        }
+        coVerify(exactly = 1) { protocol.sendPromptSync(any()) }
     }
 
     @Test fun `相同片段标识预算外内容变化也使缓存失效`() = runTest {
@@ -139,9 +180,12 @@ class KgJitProvenanceTest {
         db.fileEntryDao().update(original.copy(hash = "version-2", updatedAt = 2))
         assertThat(store.getGraphData().edges).isEmpty()
         assertThat(store.getGraphData(docIds = listOf("other")).edges).isEmpty()
-        val a = store.upsertNode("Alpha", "person", scope = KgScope(sessionId = "independent"))
-        val b = store.upsertNode("Beta", "person", scope = KgScope(sessionId = "independent"))
-        store.createEdge(a, b, "knows", scope = KgScope(sessionId = "independent"))
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collections(id,kind,title,created_at) VALUES('session:independent','session','independent',1)",
+        )
+        val a = store.upsertNode("Alpha", "person", scope = KgScope(sessionId = "independent"), collectionId = "session:independent")
+        val b = store.upsertNode("Beta", "person", scope = KgScope(sessionId = "independent"), collectionId = "session:independent")
+        store.createEdge(a, b, "knows", scope = KgScope(sessionId = "independent"), collectionId = "session:independent")
         assertThat(store.getGraphData().edges).hasSize(1)
         assertThat(store.getGraphData(sessionId = "s").edges).isEmpty()
     }
@@ -156,6 +200,13 @@ class KgJitProvenanceTest {
         awaitEdges("s")
         assertThat(result.sourceDocumentIds).containsExactly("doc")
         assertThat(store.getGraphData(docIds = listOf("unused")).edges).isEmpty()
+    }
+
+    private fun seedBindableWork(id: String) {
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,1)", arrayOf(id, "work", id, id))
+        sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES(?,?,'concept',?,1,?)", arrayOf("seed-$id", "seed-$id", "seed-$id", id))
+        sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES(?,?,'legacy',?,'','fixture',1,0)", arrayOf("evidence-$id", "seed-$id", "historical-$id"))
     }
 
     private suspend fun seedFile() = db.fileEntryDao().insert(FileEntry(uuid = "doc", workspaceRootUuid = "root",

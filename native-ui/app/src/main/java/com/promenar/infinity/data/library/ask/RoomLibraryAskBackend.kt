@@ -10,6 +10,8 @@ import com.promenar.infinity.data.rag.DocumentReach
 import com.promenar.infinity.data.rag.EmbeddingClient
 import com.promenar.infinity.data.rag.GraphRetrievalStore
 import com.promenar.infinity.data.rag.KgRetrievalScope
+import com.promenar.infinity.data.rag.KgCollectionRepository
+import com.promenar.infinity.data.model.KgPath
 import com.promenar.infinity.data.rag.MemoryManager
 import com.promenar.infinity.data.rag.SearchResult
 import com.promenar.infinity.data.rag.VectorStore
@@ -121,8 +123,8 @@ internal class RoomLibraryAskBackend(
         }.sortedByDescending { it.similarity }
         if (!modelUnchanged()) throw AskEmbeddingException(IllegalStateException("向量模型已变化"))
         val graphHits = try {
-            graph.retrieve(query, KgRetrievalScope(sessionId = "", documents = reach, allowConversation = false),
-                ragDocumentIds = docs.fused.mapNotNull { it.fileUuid ?: it.docId }).paths
+            graphPathsForAskScope(graph, KgCollectionRepository(database), reach, query,
+                docs.fused.mapNotNull { it.fileUuid ?: it.docId })
                 .flatMap { path -> path.nodes.map { node -> node to path.sourceDocumentIds } }
                 .distinctBy { it.first.id }.take(3).map { (node, sourceIds) ->
                     AskHit("entity:${node.id}", AskHitKind.ENTITY, node.label, entityLocation(sourceIds.distinct().size),
@@ -209,6 +211,27 @@ internal class RoomLibraryAskBackend(
             highlights(excerpt, terms), match, similarity, memoryId = id)
     }
 }
+
+/** 按问资料的文档范围选择图谱，图谱文档可独立于向量索引存在。 */
+internal suspend fun collectionIdsForAskScope(
+    graph: GraphRetrievalStore,
+    collections: KgCollectionRepository,
+    reach: DocumentReach,
+): List<String> = collections.collectionIdsForDocuments(
+    graph.visibleDocumentIds(KgRetrievalScope(sessionId = "", documents = reach, allowConversation = false)),
+)
+
+/** 每张命中图谱独立扩展，再按得分交给原有的结果融合与预算。 */
+internal suspend fun graphPathsForAskScope(
+    graph: GraphRetrievalStore,
+    collections: KgCollectionRepository,
+    reach: DocumentReach,
+    query: String,
+    ragDocumentIds: List<String>,
+): List<KgPath> = collectionIdsForAskScope(graph, collections, reach).flatMap { collectionId ->
+    graph.retrieve(query, KgRetrievalScope(sessionId = "", documents = reach, allowConversation = false, collectionId = collectionId),
+        ragDocumentIds = ragDocumentIds).paths
+}.sortedByDescending { it.score }
 
 internal fun interleaveKeywordCandidates(vararg groups: List<AskHit>): List<AskHit> {
     val iterators = groups.map { it.iterator() }

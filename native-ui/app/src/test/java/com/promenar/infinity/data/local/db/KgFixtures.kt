@@ -15,7 +15,7 @@ suspend fun InfinityDatabase.seedKgNode(node: KgNodeEntity, sessionId: String? =
 
 suspend fun InfinityDatabase.seedKgEdge(edge: KgEdgeEntity, sessionId: String? = null, docId: String? = null, workspaceDocument: Boolean = false) {
     kgEdgeDao().insert(edge)
-    val storedId = requireNotNull(kgEdgeDao().findIdentity(edge.sourceId, edge.targetId, edge.normalizedRelation)).id
+    val storedId = requireNotNull(kgEdgeDao().findIdentity(edge.collectionId, edge.sourceId, edge.targetId, edge.normalizedRelation)).id
     listOf(edge.sourceId, edge.targetId).distinct().forEach { id ->
         kgEvidenceDao().insert(KgEvidenceEntity("fixture-endpoint:${edge.id}:$id:$sessionId:$docId", nodeId = id,
             sourceType = if (docId != null) "document" else if (sessionId != null) "session" else "legacy", docId = docId, sessionId = sessionId,
@@ -27,7 +27,7 @@ suspend fun InfinityDatabase.seedKgEdge(edge: KgEdgeEntity, sessionId: String? =
 }
 
 fun replaceKgTablesWithV18(database: android.database.sqlite.SQLiteDatabase) {
-    listOf("kg_jit_cache_sources", "kg_evidence", "kg_edges", "kg_nodes", "kg_jit_cache").forEach {
+    listOf("kg_jit_cache_sources", "kg_evidence", "kg_edges", "kg_nodes", "kg_jit_cache", "kg_collection_members", "kg_folder_settings", "kg_collections").forEach {
         database.execSQL("DROP TABLE IF EXISTS $it")
     }
     val schema = kotlinx.serialization.json.Json.parseToJsonElement(

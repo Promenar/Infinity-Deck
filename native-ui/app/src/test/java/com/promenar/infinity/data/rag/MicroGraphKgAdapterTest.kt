@@ -221,7 +221,7 @@ class MicroGraphKgAdapterTest {
     }
 
     @Test
-    fun `deduplicates duplicate node names by canonical type selection`() = runTest {
+    fun `有歧义的同名不同类型关系不猜测端点`() = runTest {
         val mg = microResult(
             nodes = listOf(node("A", "person"), node("A", "concept")),
             edges = listOf(edge("A", "A", "self")),
@@ -231,11 +231,23 @@ class MicroGraphKgAdapterTest {
 
         val result = adapter.extractContext("q", "s1", listOf(ragRef("r1")))!!
 
-        val path = result.paths.first()
-        assertThat(path.nodes).hasSize(1)
-        // 规范化选择：按 type 升序取最小（concept < person），与输入顺序无关
-        assertThat(path.nodes.first().type).isEqualTo("concept")
+        assertThat(result.paths).isEmpty()
         coVerify(exactly = 1) { extractor.extract(any(), any(), any()) }
+    }
+
+    @Test
+    fun `同名不同类型的即时关系保留各自的端点`() = runTest {
+        val mg = microResult(
+            nodes = listOf(node("星河", "person"), node("星河", "organization"), node("山城", "location")),
+            edges = listOf(ExtractedEdge("星河", "山城", "居住", sourceType = "person"),
+                ExtractedEdge("星河", "山城", "设址", sourceType = "organization")),
+        )
+        coEvery { extractor.extract(any(), any(), any()) } returns mg
+        val path = adapter.extractContext("q", "s1", listOf(ragRef("r1")))!!.paths.single()
+        val nodes = path.nodes.associateBy { it.id }
+        assertThat(path.nodes.filter { it.label == "星河" }.map { it.id }.distinct()).hasSize(2)
+        assertThat(path.edges.associate { it.relation to nodes.getValue(it.sourceId).type })
+            .containsExactly("居住", "person", "设址", "organization")
     }
 
     @Test
@@ -294,17 +306,15 @@ class MicroGraphKgAdapterTest {
     }
 
     @Test
-    fun `conflicting duplicate node names produce identical canonical result regardless of input order`() = runTest {
-        // 相同 name 但 type/metadata 冲突的同一节点集合，两种输入顺序必须产生完全相同结果。
-        // 旧“first wins”实现在此场景下顺序相关 → 必须改为规范化选择。
+    fun `同名不同类型的路径对输入重排保持稳定`() = runTest {
         val mgA = microResult(
             nodes = listOf(node("A", "person", "{\"x\":1}"), node("A", "concept", "{\"y\":2}")),
-            edges = listOf(edge("A", "A", "self")),
+            edges = listOf(ExtractedEdge("A", "A", "关联", sourceType = "person", targetType = "concept")),
             context = "ctx"
         )
         val mgB = microResult(
             nodes = listOf(node("A", "concept", "{\"y\":2}"), node("A", "person", "{\"x\":1}")),
-            edges = listOf(edge("A", "A", "self")),
+            edges = listOf(ExtractedEdge("A", "A", "关联", sourceType = "person", targetType = "concept")),
             context = "ctx"
         )
         coEvery { extractor.extract(any(), any(), any()) } returnsMany listOf(mgA, mgB)
@@ -312,6 +322,7 @@ class MicroGraphKgAdapterTest {
         val first = adapter.extractContext("q", "s1", listOf(ragRef("r1")))!!
         val second = adapter.extractContext("q", "s1", listOf(ragRef("r1")))!!
 
+        assertThat(first.paths.single().nodes.map { it.type }).containsExactly("person", "concept")
         assertThat(second.paths).isEqualTo(first.paths)
         coVerify(exactly = 2) { extractor.extract(any(), any(), any()) }
     }

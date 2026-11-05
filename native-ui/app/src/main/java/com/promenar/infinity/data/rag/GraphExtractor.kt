@@ -274,6 +274,7 @@ class GraphExtractor(
         put("edges", buildJsonArray { result.edges.forEach { edge -> add(buildJsonObject {
             put("source", edge.source); put("target", edge.target); put("relation", edge.relation)
             put("weight", edge.weight.takeIf { it.isFinite() } ?: 1.0)
+            edge.sourceType?.let { put("sourceType", it) }; edge.targetType?.let { put("targetType", it) }
         }) } })
     }.toString()
 
@@ -315,13 +316,13 @@ Return a valid JSON object:
     { "name": "Exact Name", "type": "EntityType", "metadata": { "description": "one short sentence", "aliases": ["other name"] } }
   ],
   "edges": [
-    { "source": "SourceNodeName", "target": "TargetNodeName", "relation": "relationship_verb", "weight": 0.8 }
+    { "source": "SourceNodeName", "sourceType": "SourceEntityType", "target": "TargetNodeName", "targetType": "TargetEntityType", "relation": "relationship_verb", "weight": 0.8 }
   ]
 }
 
 ## Rules
 1. Give each entity one canonical name; when the text uses multiple names, use the most complete name and list the other forms in metadata.aliases.
-2. Each node name must be unique. Edge source and target MUST match node names exactly.
+2. Identify each node by its name and type. Each edge's source and target names and types MUST match its endpoint nodes exactly.
 3. Relation should be a concise verb phrase. Weight from 0.0 to 1.0 expresses relationship strength.
 4. Return JSON only, without markdown or explanation."""
     }

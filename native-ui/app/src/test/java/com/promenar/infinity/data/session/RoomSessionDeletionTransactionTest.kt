@@ -86,7 +86,7 @@ class RoomSessionDeletionTransactionTest {
 
         listOf(
             "sessions", "messages", "attachments", "vectors", "vectors_fts",
-            "context_summaries", "document_tags", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache_sources", "kg_jit_cache",
+            "context_summaries", "document_tags", "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members", "kg_collections", "kg_jit_cache_sources", "kg_jit_cache",
             "vectorization_tasks", "audit_logs", "artifacts", "workspace_files", "task_nodes",
             "tool_execution_ledger", "file_versions",
         ).forEach { table ->
@@ -107,7 +107,7 @@ class RoomSessionDeletionTransactionTest {
 
         listOf(
             "sessions", "messages", "attachments", "vectors", "context_summaries",
-            "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache_sources", "vectorization_tasks", "audit_logs", "artifacts",
+            "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members", "kg_collections", "kg_jit_cache_sources", "vectorization_tasks", "audit_logs", "artifacts",
             "task_nodes", "tool_execution_ledger", "file_versions",
         ).forEach { table -> assertThat(count(table)).isEqualTo(0) }
         assertThat(count("workspace_files")).isEqualTo(2)
@@ -319,8 +319,10 @@ class RoomSessionDeletionTransactionTest {
         db.execSQL("INSERT INTO context_summaries(id,session_id,start_message_id,end_message_id,summary_content,created_at) VALUES('summary','$SESSION','$MESSAGE','$MESSAGE','summary',1)")
         db.execSQL("INSERT INTO tags(id,name,color,created_at) VALUES('tag','tag','#fff',1)")
         db.execSQL("INSERT INTO document_tags(doc_id,tag_id,created_at) VALUES('$FILE','tag',1)")
-        db.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at) VALUES('node','node','entity','node',1)")
-        db.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at) VALUES('edge','node','node','rel',1.0,'rel',1)")
+        db.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:$FILE','work','doc.txt','$FILE',1)")
+        db.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('$FILE','work:$FILE')")
+        db.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('node','node','entity','node',1,'work:$FILE')")
+        db.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at,collection_id) VALUES('edge','node','node','rel',1.0,'rel',1,'work:$FILE')")
         db.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,session_id,content_hash,task_id,created_at,workspace_document) VALUES('node-evidence','node','document','$FILE','$SESSION','hash','fixture',1,1)")
         db.execSQL("INSERT INTO kg_evidence(id,edge_id,source_type,doc_id,session_id,content_hash,task_id,created_at,workspace_document) VALUES('edge-evidence','edge','document','$FILE','$SESSION','hash','fixture',1,1)")
         db.execSQL("INSERT INTO kg_jit_cache(cache_key,query_hash,chunk_ids_hash,result_json,created_at,expires_at) VALUES('cache','q','c','{}',1,2)")

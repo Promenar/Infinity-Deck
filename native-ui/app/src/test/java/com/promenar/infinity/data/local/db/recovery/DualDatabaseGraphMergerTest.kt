@@ -7,9 +7,62 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.nio.file.Files
+import java.security.MessageDigest
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 @RunWith(RobolectricTestRunner::class)
 class DualDatabaseGraphMergerTest {
+    @Test
+    fun `新版图谱恢复时重映射作品会话绑定与证据身份`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val current = context.getDatabasePath("kg34-current-${System.nanoTime()}.db").toPath()
+        val legacy = context.getDatabasePath("kg34-legacy-${System.nanoTime()}.db").toPath()
+        try {
+            for (path in listOf(current, legacy)) {
+                createSchema(path)
+                SQLiteDatabase.openDatabase(path.toString(), null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                    listOf(
+                        "CREATE TABLE kg_collections(id TEXT PRIMARY KEY,kind TEXT,title TEXT,root_ref TEXT,created_at INTEGER)",
+                        "CREATE TABLE kg_folder_settings(folder_id TEXT PRIMARY KEY,mode TEXT)",
+                        "CREATE TABLE kg_collection_members(doc_id TEXT PRIMARY KEY,collection_id TEXT,order_key TEXT,order_source TEXT)",
+                        "CREATE TABLE kg_nodes(id TEXT PRIMARY KEY,name TEXT,type TEXT,metadata TEXT,created_at INTEGER,updated_at INTEGER,normalized_name TEXT,collection_id TEXT)",
+                        "CREATE UNIQUE INDEX kg_node_identity ON kg_nodes(collection_id,normalized_name,type)",
+                        "CREATE TABLE kg_edges(id TEXT PRIMARY KEY,source_id TEXT,target_id TEXT,relation TEXT,weight REAL,created_at INTEGER,normalized_relation TEXT,collection_id TEXT)",
+                        "CREATE TABLE kg_evidence(id TEXT PRIMARY KEY,node_id TEXT,edge_id TEXT,source_type TEXT,doc_id TEXT,session_id TEXT,content_hash TEXT,task_id TEXT,created_at INTEGER,workspace_document INTEGER,weight REAL,message_id TEXT)",
+                        "CREATE TABLE kg_jit_cache_sources(cache_key TEXT,doc_id TEXT,content_hash TEXT)",
+                    ).forEach(db::execSQL)
+                    seed(db, if (path == current) "current" else "legacy")
+                    db.execSQL("INSERT INTO kg_collections VALUES('work:file','work','作品','file',1)")
+                    db.execSQL("INSERT INTO kg_collection_members VALUES('file','work:file',NULL,NULL)")
+                    db.execSQL("INSERT INTO kg_nodes VALUES('node','同名','person','{}',1,1,'同名','work:file')")
+                    db.execSQL("INSERT INTO kg_evidence VALUES('evidence','node',NULL,'document','file',NULL,'h','task',1,1,NULL,NULL)")
+                    db.execSQL("UPDATE sessions SET rag_options='{\"graphBinding\":{\"collectionId\":\"work:file\",\"mode\":\"READ_ONLY\"}}' WHERE id='same-session'")
+                }
+            }
+            DualDatabaseGraphMerger(RecoveryPathRewriter { _, _, value -> value }).merge(current, legacy, "kg34")
+            SQLiteDatabase.openDatabase(current.toString(), null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                val mappedFile = RecoveryStableId.map("workspace_files", "uuid", "file")
+                val mappedSession = RecoveryStableId.map("sessions", "id", "same-session")
+                assertThat(count(db, "kg_nodes")).isEqualTo(2)
+                assertThat(count(db, "kg_collections")).isEqualTo(2)
+                db.rawQuery("SELECT n.collection_id,p.id,p.node_id,p.edge_id,p.source_type,p.doc_id,p.session_id,p.content_hash,p.task_id,p.message_id FROM kg_evidence p JOIN kg_nodes n ON n.id=p.node_id WHERE p.doc_id=?", arrayOf(mappedFile)).use { cursor ->
+                    check(cursor.moveToFirst())
+                    assertThat(cursor.getString(0)).isEqualTo("work:$mappedFile")
+                    val parts = (2..8).map { if (cursor.isNull(it)) "" else cursor.getString(it) } + if (cursor.isNull(9)) emptyList() else listOf(cursor.getString(9))
+                    val key = Json.encodeToString(ListSerializer(String.serializer()), parts)
+                    val expected = MessageDigest.getInstance("SHA-256").digest(key.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
+                    assertThat(cursor.getString(1)).isEqualTo(expected)
+                }
+                db.rawQuery("SELECT rag_options FROM sessions WHERE id=?", arrayOf(mappedSession)).use { cursor ->
+                    check(cursor.moveToFirst()); assertThat(cursor.getString(0)).contains("work:$mappedFile")
+                }
+            }
+        } finally { Files.deleteIfExists(current); Files.deleteIfExists(legacy) }
+    }
+
     @Test
     fun `恢复工作区把持久nonce与inode回执绑定到唯一Room根`() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -34,7 +87,7 @@ class DualDatabaseGraphMergerTest {
     }
 
     @Test
-    fun `历史非工作区KG文档不阻断源数据恢复`() {
+    fun `历史非工作区KG文档及关系随恢复保留`() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val current = context.getDatabasePath("kg-current-${System.nanoTime()}.db").toPath()
         val legacy = context.getDatabasePath("kg-legacy-${System.nanoTime()}.db").toPath()
@@ -55,9 +108,13 @@ class DualDatabaseGraphMergerTest {
             .merge(current, legacy, "kg-external-document")
         SQLiteDatabase.openDatabase(current.toString(), null, SQLiteDatabase.OPEN_READONLY).use { db ->
             assertThat(count(db, "messages")).isEqualTo(2)
-            assertThat(count(db, "kg_edges")).isEqualTo(0)
+            assertThat(count(db, "kg_edges")).isEqualTo(1)
+            db.rawQuery("SELECT doc_id FROM kg_edges", null).use {
+                check(it.moveToFirst())
+                assertThat(it.getString(0)).isEqualTo(RecoveryStableId.map("rag_documents", "id", "historical-external-document"))
+            }
         }
-        assertThat(result.unresolvedReferences.any { it.startsWith("discarded-derived:kg") }).isTrue()
+        assertThat(result.unresolvedReferences.any { it.startsWith("discarded-derived:kg") }).isFalse()
     }
 
     @Test

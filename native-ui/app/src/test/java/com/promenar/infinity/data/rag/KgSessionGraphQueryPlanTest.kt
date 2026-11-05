@@ -31,6 +31,7 @@ class KgSessionGraphQueryPlanTest {
     fun setUp() {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), InfinityDatabase::class.java)
             .allowMainThreadQueries().build()
+        database.openHelper.writableDatabase.execSQL("INSERT INTO kg_collections(id,kind,title,created_at) VALUES('shared','shared','通用知识',1)")
     }
 
     @After
@@ -39,10 +40,11 @@ class KgSessionGraphQueryPlanTest {
     @Test
     fun `三千条证据的查询使用现有索引且完成会话与轮次读取`() = runBlocking<Unit> {
         database.withTransaction {
-            repeat(60) { database.kgNodeDao().insert(KgNodeEntity("n-$it", "n-$it", createdAt = 1)) }
+            repeat(60) { database.kgNodeDao().insert(KgNodeEntity("n-$it", "n-$it", createdAt = 1, collectionId = "shared")) }
             repeat(5) { session ->
                 val sessionId = "s-$session"
-                database.sessionDao().insert(SessionEntity(sessionId, "agent", title = "", createdAt = 1, updatedAt = 1))
+                database.sessionDao().insert(SessionEntity(sessionId, "agent", title = "",
+                    ragOptions = """{"graphBinding":{"collectionId":"shared"}}""", createdAt = 1, updatedAt = 1))
                 repeat(10) { turn ->
                     database.messageDao().insert(MessageEntity("u-$session-$turn", sessionId, "user", "正文", createdAt = turn * 2L))
                     val messageId = "a-$session-$turn"
@@ -55,31 +57,25 @@ class KgSessionGraphQueryPlanTest {
                 }
             }
         }
+        val nodePredicate = "(EXISTS (SELECT 1 FROM kg_evidence p WHERE p.node_id = n.id AND $ACTIVE_KG_EVIDENCE) OR " +
+            "EXISTS (SELECT 1 FROM kg_edges endpoint_edge WHERE (endpoint_edge.source_id=n.id OR endpoint_edge.target_id=n.id) " +
+            "AND EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = endpoint_edge.id AND $ACTIVE_KG_EVIDENCE))) AND n.collection_id = ?"
+        val edgePredicate = "EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = e.id AND $ACTIVE_KG_EVIDENCE)"
         val queries = linkedMapOf(
-            "options" to KgSessionGraphQueries.options(),
-            "turns" to KgSessionGraphQueries.turns("s-0"),
-            "turnNodes" to KgSessionGraphQueries.turnNodes("s-0", (0..9).map { "a-0-$it" }),
+            "options" to KgSessionGraphQueries.options("shared"),
+            "turns" to KgSessionGraphQueries.turns("s-0", "shared"),
+            "turnNodes" to KgSessionGraphQueries.turnNodes("s-0", (0..9).map { "a-0-$it" }, "shared"),
             "documents" to KgSessionGraphQueries.documents("n-0", 20),
             "sessionRefs" to KgSessionGraphQueries.sessionRefs("n-0", 20),
-            "subgraphNodes" to SimpleSQLiteQuery("SELECT n.* FROM kg_nodes n WHERE n.id IN (SELECT p.node_id FROM kg_evidence p " +
-                "WHERE p.node_id IS NOT NULL AND $ACTIVE_KG_EVIDENCE AND p.source_type = 'session' AND p.session_id = ?) " +
-                "ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id LIMIT ?", arrayOf<Any?>("s-0", 300)),
-            "sessionEdgeWeights" to SimpleSQLiteQuery("SELECT p.edge_id, MAX(p.weight) AS weight FROM kg_evidence p " +
-                "WHERE p.edge_id IN (?) AND p.source_type = 'session' AND p.session_id = ? AND $ACTIVE_KG_EVIDENCE " +
-                "GROUP BY p.edge_id LIMIT ?", arrayOf<Any?>("e", "s-0", 1)),
+            "subgraphNodes" to SimpleSQLiteQuery("SELECT n.* FROM kg_nodes n WHERE $nodePredicate " +
+                "ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id LIMIT ?", arrayOf<Any?>("shared", 300)),
             "subgraphEdges" to SimpleSQLiteQuery("SELECT e.* FROM kg_edges e WHERE e.source_id IN (?) AND e.target_id IN (?) " +
-                "AND e.id IN (SELECT p.edge_id FROM kg_evidence p WHERE p.edge_id IS NOT NULL AND $ACTIVE_KG_EVIDENCE " +
-                "AND p.source_type = 'session' AND p.session_id = ?) ORDER BY e.created_at DESC, e.id LIMIT ?",
-                arrayOf<Any?>("n-0", "n-1", "s-0", 1_200)),
+                "AND $edgePredicate ORDER BY e.created_at DESC, e.id LIMIT ?", arrayOf<Any?>("n-0", "n-1", 1_200)),
             "neighbours" to SimpleSQLiteQuery("SELECT DISTINCT n.* FROM kg_edges e JOIN kg_nodes n " +
                 "ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END " +
-                "WHERE (e.source_id = ? OR e.target_id = ?) " +
-                "AND e.id IN (SELECT p.edge_id FROM kg_evidence p WHERE p.edge_id IS NOT NULL AND $ACTIVE_KG_EVIDENCE " +
-                "AND p.source_type = 'session' AND p.session_id = ?) " +
-                "AND n.id IN (SELECT p.node_id FROM kg_evidence p WHERE p.node_id IS NOT NULL AND $ACTIVE_KG_EVIDENCE " +
-                "AND p.source_type = 'session' AND p.session_id = ?) " +
+                "WHERE (e.source_id = ? OR e.target_id = ?) AND $edgePredicate AND $nodePredicate " +
                 "ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id LIMIT ? OFFSET ?",
-                arrayOf<Any?>("n-0", "n-0", "n-0", "s-0", "s-0", 128, 0)),
+                arrayOf<Any?>("n-0", "n-0", "n-0", "shared", 128, 0)),
         )
         queries.forEach { (name, sql) ->
             val plan = explain(sql)
@@ -91,7 +87,7 @@ class KgSessionGraphQueryPlanTest {
         }
         val started = System.nanoTime()
         val store = GraphStore(database)
-        assertThat(store.getSessionOptions()).hasSize(5)
+        assertThat(store.getSessionOptions("shared")).hasSize(5)
         val turns = store.getSessionTurns("s-0")
         assertThat(turns.map { it.turnNumber }).containsExactlyElementsIn(1..10).inOrder()
         assertThat(turns.sumOf { it.nodeIds.size }).isEqualTo(600)

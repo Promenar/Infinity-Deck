@@ -26,7 +26,7 @@ class MicroGraphExtractor(
         for (pending in pendingMerges) {
             try {
                 val merge: suspend () -> Unit = {
-                    graphStore.persistJit(pending.result, pending.sources, pending.sessionId, cacheEntry(pending.key, pending.result))
+                    graphStore.persistJit(pending.result, pending.sources, pending.sessionId, cacheEntry(pending.key, pending.result), pending.collectionId)
                 }
                 val gate = executionGate
                 if (gate == null) merge() else gate.withSessionAdmission(pending.sessionId, merge)
@@ -48,19 +48,24 @@ class MicroGraphExtractor(
         sessionId: String,
         timeout: Long = timeoutMs,
         maxChars: Int = 6000,
+        expectedCollectionId: String? = null,
     ): MicroGraphResult {
         require(timeout > 0 && maxChars > 0) { "JIT 超时和文本预算必须大于 0" }
         if (!scope.isActive) return MicroGraphResult.failure(KgExtractionStatus.CANCELLED, "JIT 抽取器已关闭", query)
         return withContext(dispatcher) { withTimeoutOrNull(timeout) {
+            val binding = KgCollectionRepository(graphStore.database).readBinding(sessionId)
+            if (expectedCollectionId != null && binding.collectionId != expectedCollectionId) {
+                return@withTimeoutOrNull MicroGraphResult.failure(KgExtractionStatus.CANCELLED, "图谱绑定已变化", query)
+            }
             val input = prepareInput(topKResults, maxChars)
             val sources = graphStore.captureJitSources(input.sources)
             val text = input.text
-            val key = kgSha256(listOf(query, text, modelId.orEmpty(), kgSha256(systemPrompt),
+            val key = kgSha256(listOf(sessionId, binding.collectionId, query, text, modelId.orEmpty(), kgSha256(systemPrompt),
                 Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
                     topKResults.map { Json.encodeToString(SearchResult.serializer(), it.copy(embedding = FloatArray(0))) }),
                 sources.joinToString("\u0000") { "${it.docId}:${it.contentHash}:${it.epoch}" }, maxChars.toString(), "validation-v2").joinToString("\u0000"))
             getFromCache(key)?.let { cached ->
-                pendingMerges.send(PendingMerge(key, cached, sessionId, sources))
+                if (binding.writable) pendingMerges.send(PendingMerge(key, cached, sessionId, sources, binding.collectionId))
                 return@withTimeoutOrNull cached
             }
             val extracted = if (text.isBlank()) ExtractionResult(emptyList(), emptyList())
@@ -71,7 +76,7 @@ class MicroGraphExtractor(
             currentCoroutineContext().ensureActive()
             if (!scope.isActive) return@withTimeoutOrNull MicroGraphResult.failure(KgExtractionStatus.CANCELLED, "JIT 抽取器已关闭", query)
             // 单个消费者与固定容量限制后台工作；队列繁忙时保留当前请求结果，跳过可选持久化。
-            pendingMerges.trySend(PendingMerge(key, result, sessionId, sources))
+            if (binding.writable) pendingMerges.trySend(PendingMerge(key, result, sessionId, sources, binding.collectionId))
             result
         } ?: MicroGraphResult.failure(KgExtractionStatus.TIMEOUT, "知识图谱 JIT 抽取超时", query) }
     }
@@ -122,5 +127,5 @@ class MicroGraphExtractor(
         scope.cancel()
     }
 
-    private data class PendingMerge(val key: String, val result: MicroGraphResult, val sessionId: String, val sources: List<KgJitSource>)
+    private data class PendingMerge(val key: String, val result: MicroGraphResult, val sessionId: String, val sources: List<KgJitSource>, val collectionId: String)
 }

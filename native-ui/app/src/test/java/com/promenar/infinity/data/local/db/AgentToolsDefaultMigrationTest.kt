@@ -48,9 +48,9 @@ class AgentToolsDefaultMigrationTest {
                 sqlite.version = 29
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34).allowMainThreadQueries().build()
             try {
-                assertThat(room.openHelper.writableDatabase.version).isEqualTo(33)
+                assertThat(room.openHelper.writableDatabase.version).isEqualTo(34)
                 val agent = room.agentDao().getById("old")!!
                 assertThat(agent.name).isEqualTo("保留智能体")
                 assertThat(agent.systemPrompt).isEqualTo("提示词")
@@ -66,7 +66,7 @@ class AgentToolsDefaultMigrationTest {
                     assertThat(it.getInt(0)).isEqualTo(0)
                 }
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(33, INFINITY_SCHEMA_V33_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(34, INFINITY_SCHEMA_V34_IDENTITY_HASH)
                 }).isTrue()
             } finally { room.close() }
         } finally { context.deleteDatabase(name) }

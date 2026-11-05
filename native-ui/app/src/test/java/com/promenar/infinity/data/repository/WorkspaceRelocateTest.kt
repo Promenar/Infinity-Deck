@@ -7,7 +7,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.FileEntry
+import com.promenar.infinity.data.local.db.entity.KgEdgeEntity
+import com.promenar.infinity.data.local.db.entity.KgNodeEntity
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.rag.DocumentIndexCandidate
+import com.promenar.infinity.data.rag.GraphStore
+import com.promenar.infinity.data.rag.KgCollectionRepository
+import com.promenar.infinity.data.rag.KgSource
 import com.promenar.infinity.domain.repository.RenameResult
 import com.promenar.infinity.domain.repository.WriteResult
 import com.promenar.infinity.infra.util.Sha256Utils
@@ -137,6 +143,40 @@ class WorkspaceRelocateTest {
         assertThat(current.kgExtractedAt).isNull()
         assertThat(result.affectedTargets.single().fileUuid).isEqualTo(child.uuid)
         assertThat(File(directory, "destination/renamed/a.txt").readText()).isEqualTo("content")
+    }
+
+    @Test fun `真实文档移动后成员校正将既有证据迁到目标作品`() = runBlocking<Unit> {
+        val root = root()
+        val from = folder(root, "source")
+        val target = folder(root, "destination")
+        val file = repo.createFileInWorkspace(root.uuid, "document", "a.txt", "content", from.uuid, "/source/a.txt")
+        repo.confirmCreatedEntry(root.uuid, file.uuid)
+        val source = KgNodeEntity(id = "source-node", name = "甲", type = "person", createdAt = 1)
+        val destination = KgNodeEntity(id = "target-node", name = "乙", type = "person", createdAt = 1)
+        val relation = KgEdgeEntity(id = "relation", sourceId = source.id, targetId = destination.id, relation = "认识", createdAt = 1)
+        GraphStore(db).commitCandidate(DocumentIndexCandidate(emptyList(), listOf(source, destination), listOf(relation)),
+            KgSource("document", docId = file.uuid, contentHash = file.hash, workspaceDocument = true))
+        val previous = db.kgEdgeDao().getByDocId(file.uuid).single()
+        val oldEvidence = db.kgEvidenceDao().getForEdges(listOf(previous.id)).single()
+        val indexed = requireNotNull(db.fileEntryDao().findActiveByUuid(file.uuid))
+        db.fileEntryDao().update(indexed.copy(vectorizedAt = 1, kgExtractedAt = 1))
+
+        repo.relocate(root.uuid, file.uuid, target.uuid, file.name, file.name, file.hash)
+        val movedFile = requireNotNull(db.fileEntryDao().findActiveByUuid(file.uuid))
+        assertThat(movedFile.vectorizedAt).isNull()
+        assertThat(movedFile.kgExtractedAt).isNull()
+        KgCollectionRepository(db).reconcileDocuments()
+
+        val moved = db.kgEdgeDao().getByDocId(file.uuid).single()
+        assertThat(moved.collectionId).isEqualTo("work:${target.uuid}")
+        assertThat(db.kgNodeDao().getRawById(moved.sourceId)?.collectionId).isEqualTo(moved.collectionId)
+        assertThat(db.kgNodeDao().getRawById(moved.targetId)?.collectionId).isEqualTo(moved.collectionId)
+        val movedEvidence = db.kgEvidenceDao().getForEdges(listOf(moved.id)).single()
+        assertThat(movedEvidence.docId).isEqualTo(oldEvidence.docId)
+        assertThat(movedEvidence.contentHash).isEqualTo(oldEvidence.contentHash)
+        assertThat(movedEvidence.sourceType).isEqualTo(oldEvidence.sourceType)
+        assertThat(db.kgNodeDao().getRawById(previous.sourceId)).isNull()
+        assertThat(db.kgEdgeDao().getRawById(previous.id)).isNull()
     }
 
     @Test fun `名称或真实内容的版本条件不匹配时不移动`() = runBlocking<Unit> {

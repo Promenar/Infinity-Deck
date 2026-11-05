@@ -20,6 +20,7 @@ data class GraphSubgraphRequest(
     val retainedNodeIds: List<String> = emptyList(),
     val expandNodeId: String? = null,
     val sessionId: String? = null,
+    val collectionId: String? = null,
 ) {
     init { require(docId == null || sessionId == null) { "文档与会话范围不能同时指定" } }
 }
@@ -32,6 +33,7 @@ data class GraphEntitySearchRequest(
     val conceptOnly: Boolean = false,
     val limit: Int = 20,
     val sessionId: String? = null,
+    val collectionId: String? = null,
 ) {
     init { require(docId == null || sessionId == null) { "文档与会话范围不能同时指定" } }
 }
@@ -46,11 +48,15 @@ const val GRAPH_EXPANSION_BATCH_SIZE = 100
 class GraphSubgraphStore(private val database: InfinityDatabase) {
     suspend fun load(request: GraphSubgraphRequest): GraphSubgraph = withContext(Dispatchers.IO) {
         database.withTransaction {
+            KgCollectionRepository(database).reconcileDocuments()
+            val collectionId = request.sessionId?.let { KgCollectionRepository(database).readBinding(it).collectionId } ?: request.collectionId
             val bounded = request.copy(
                 nodeLimit = request.nodeLimit.coerceIn(1, MAX_GRAPH_NODE_LIMIT),
                 edgeLimit = request.edgeLimit.coerceIn(1, MAX_GRAPH_EDGE_LIMIT),
+                sessionId = null,
+                collectionId = collectionId,
             )
-            val predicate = activeNode(bounded.docId, bounded.conceptOnly, bounded.sessionId)
+            val predicate = activeNode(bounded.docId, bounded.conceptOnly, bounded.sessionId, bounded.collectionId)
             val count = query("SELECT COUNT(*) AS total FROM kg_nodes n WHERE ${predicate.sql}", predicate.args) {
                 getLong(getColumnIndexOrThrow("total")).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             }.single()
@@ -82,8 +88,10 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
         val term = KgIdentity.normalize(request.query).take(512)
         if (term.isBlank()) return@withContext emptyList()
         database.withTransaction {
+            KgCollectionRepository(database).reconcileDocuments()
+            val collectionId = request.sessionId?.let { KgCollectionRepository(database).readBinding(it).collectionId } ?: request.collectionId
             val limit = request.limit.coerceIn(1, 100)
-            val predicate = activeNode(request.docId, request.conceptOnly, request.sessionId)
+            val predicate = activeNode(request.docId, request.conceptOnly, null, collectionId)
             val upper = term + String(Character.toChars(Character.MAX_CODE_POINT))
             // 精确和前缀匹配使用 normalized_name 索引；包含匹配仅补齐有界结果。
             val prefix = readNodes(
@@ -185,9 +193,15 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
         }
     }
 
-    private fun activeNode(docId: String?, conceptOnly: Boolean, sessionId: String?): SqlPredicate {
+    private fun activeNode(docId: String?, conceptOnly: Boolean, sessionId: String?, collectionId: String?): SqlPredicate {
         val evidence = activeEvidence("node_id", "n.id", docId, sessionId)
-        return SqlPredicate(evidence.sql + if (conceptOnly) " AND n.type = 'concept'" else "", evidence.args)
+        val relationEvidence = activeEvidence("edge_id", "endpoint_edge.id", docId, sessionId)
+        // 历史迁移允许只有关系证据；存活关系同样证明两个端点存在。
+        val visible = "(${evidence.sql} OR EXISTS (SELECT 1 FROM kg_edges endpoint_edge WHERE " +
+            "(endpoint_edge.source_id=n.id OR endpoint_edge.target_id=n.id) AND ${relationEvidence.sql}))"
+        val scope = if (collectionId != null) " AND n.collection_id = ?" else ""
+        return SqlPredicate(visible + (if (conceptOnly) " AND n.type = 'concept'" else "") + scope,
+            evidence.args + relationEvidence.args + listOfNotNull(collectionId))
     }
 
     private fun activeEvidence(column: String, owner: String, docId: String?, sessionId: String?): SqlPredicate {

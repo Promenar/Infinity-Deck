@@ -16,6 +16,13 @@ class MicroGraphKgAdapter(
         query: String,
         sessionId: String,
         topKResults: List<RagReference>
+    ): KgContextResult? = extractForGraph(query, sessionId, topKResults, null)
+
+    internal suspend fun extractForGraph(
+        query: String,
+        sessionId: String,
+        topKResults: List<RagReference>,
+        collectionId: String?,
     ): KgContextResult? {
         val searchResults = topKResults.map { ref ->
             SearchResult(
@@ -31,7 +38,8 @@ class MicroGraphKgAdapter(
         val result = extractor.extract(
             topKResults = searchResults,
             query = query,
-            sessionId = sessionId
+            sessionId = sessionId,
+            expectedCollectionId = collectionId,
         )
         if (!result.isSuccess) return KgContextResult(context = "", status = result.status, error = result.error)
         val graph = ValidatedGraph.from(result.nodes, result.edges)
@@ -48,9 +56,8 @@ class MicroGraphKgAdapter(
      * 将 [MicroGraphResult] 的 nodes/edges 确定性映射为可序列化的 [KgPath] 列表。
      *
      * 映射规则（不编造任何节点/关系）：
-     * 1. 节点：以 name 作为 KgNode.id/label，重复 name 做**规范化选择**（按 type 升序、再按 metadata
-     *    升序、null 视为最小排在最前，取最小候选），与输入顺序无关；输入重排得到完全相同结果。
-     * 2. 边：仅保留 source/target 均存在于节点表中的边（悬挂边被丢弃，不补造节点）；自环保留。
+     * 1. 节点按规范名和类型确定身份；同名不同类型时使用稳定的类型化 ID。
+     * 2. 边的名称与类型必须能唯一确定端点；悬挂边和有歧义的边丢弃，自环保留。
      * 3. 去重：仅去重完全相同（含 weight）的边；权重不同的并行边全部保留。KgEdge 是含 weight 的 data class，
      *    LinkedHashSet 天然按全字段去重，保留首次出现。
      * 4. 规范化排序：nodes/edges 按明确 comparator 排序，输入重排得到完全相同结果。
@@ -61,22 +68,30 @@ class MicroGraphKgAdapter(
     private fun MicroGraphResult.toKgPaths(): List<KgPath> {
         if (edges.isEmpty()) return emptyList()
 
-        val nodeByName = LinkedHashMap<String, KgNode>()
-        for (n in nodes) {
-            val candidate = KgNode(id = n.name, label = n.name, type = n.type, metadata = n.metadata)
-            val incumbent = nodeByName[n.name]
-            if (incumbent == null || NODE_CANDIDATE_COMPARATOR.compare(candidate, incumbent) < 0) {
-                nodeByName[n.name] = candidate
+        val graph = ValidatedGraph.from(nodes, edges)
+        val sameNames = graph.nodes.groupingBy { ValidatedGraph.identity(it.name) }.eachCount()
+        val reserved = graph.nodes.map { it.name }.toSet()
+        val ids = LinkedHashMap<Pair<String, String>, String>()
+        val nodeById = LinkedHashMap<String, KgNode>()
+        for (n in graph.nodes) {
+            val identity = ValidatedGraph.identity(n.name, n.type)
+            var id = if (sameNames[identity.first] == 1) n.name else {
+                "kg-jit:" + kgSha256("${identity.first.length}:${identity.first}${identity.second.length}:${identity.second}")
             }
+            if (sameNames[identity.first] != 1) while (id in reserved || id in nodeById) id = "_$id"
+            ids[identity] = id
+            nodeById[id] = KgNode(id = id, label = n.name, type = n.type, metadata = n.metadata)
         }
 
         val dedupedEdges = LinkedHashSet<KgEdge>()
-        for (e in edges) {
-            if (nodeByName.containsKey(e.source) && nodeByName.containsKey(e.target)) {
+        for (e in graph.edges) {
+            val from = graph.resolveEndpoint(e.source, e.sourceType)
+            val to = graph.resolveEndpoint(e.target, e.targetType)
+            if (from != null && to != null) {
                 dedupedEdges.add(
                     KgEdge(
-                        sourceId = e.source,
-                        targetId = e.target,
+                        sourceId = ids.getValue(ValidatedGraph.identity(from.name, from.type)),
+                        targetId = ids.getValue(ValidatedGraph.identity(to.name, to.type)),
                         relation = e.relation,
                         weight = e.weight
                     )
@@ -90,7 +105,7 @@ class MicroGraphKgAdapter(
         return weaklyConnectedComponents(dedupedEdges).map { nodeIds ->
             KgPath(
                 queryKeywords = queryKeywords,
-                nodes = nodeIds.mapNotNull { nodeByName[it] }.sortedWith(NODE_COMPARATOR),
+                nodes = nodeIds.mapNotNull { nodeById[it] }.sortedWith(NODE_COMPARATOR),
                 edges = dedupedEdges.filter { it.sourceId in nodeIds }.sortedWith(EDGE_COMPARATOR),
                 reasoning = null,
                 sourceDocumentIds = sourceDocumentIds,
@@ -135,14 +150,6 @@ class MicroGraphKgAdapter(
     private companion object {
         /** RagReference 无时间字段，未知时间使用 0L 哨兵，绝不使用墙上时钟。 */
         const val UNKNOWN_CREATED_AT_SENTINEL = 0L
-
-        /**
-         * 重复 name 候选节点的规范化选择比较器：先按 type 升序，再按 metadata 升序
-         * （null 视为最小，排在任何非 null 值之前）。取最小候选为该 name 的唯一代表，
-         * 使结果与输入顺序无关。compareBy 对 null selector 返回值按“小于非 null”处理，规则明确且稳定。
-         */
-        val NODE_CANDIDATE_COMPARATOR: Comparator<KgNode> =
-            compareBy({ it.type }, { it.metadata })
 
         val NODE_COMPARATOR: Comparator<KgNode> =
             compareBy({ it.id }, { it.label }, { it.type }, { it.metadata })

@@ -32,13 +32,14 @@ class KgSessionGraphTest {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), InfinityDatabase::class.java)
             .allowMainThreadQueries().build()
         store = GraphStore(database)
+        database.openHelper.writableDatabase.execSQL("INSERT INTO kg_collections(id,kind,title,created_at) VALUES('shared','shared','通用知识',1)")
     }
 
     @After
     fun tearDown() = database.close()
 
     @Test
-    fun `会话子图隔离其它会话文档和即时证据并按会话聚合关系`() = runBlocking<Unit> {
+    fun `会话子图展示绑定图谱内所有存活来源并聚合关系`() = runBlocking<Unit> {
         seedSession("s1")
         seedSession("s2")
         listOf("shared", "local", "other", "document", "jit").forEach { node(it) }
@@ -53,19 +54,19 @@ class KgSessionGraphTest {
         edgeEvidence("shared-local", "session", "s2", "s2-a", 0.9)
         edgeEvidence("shared-local", "jit", "s1", null, 0.95)
         edgeEvidence("shared-local", "document", null, null, 1.0, "doc")
-        // 两端在会话内可见，也不能让只有即时证据的关系进入子图。
         edge("jit-edge", "local", "shared")
         edgeEvidence("jit-edge", "jit", "s1", null, 1.0)
 
         val graph = store.getGraphSubgraph(GraphSubgraphRequest(sessionId = "s1"))
 
-        assertThat(graph.totalNodeCount).isEqualTo(2)
-        assertThat(graph.data.nodes.map { it.id }).containsExactly("shared", "local")
-        assertThat(graph.data.edges.map { it.id }).containsExactly("shared-local")
-        assertThat(graph.data.edges.single().weight).isWithin(0.0001).of(0.4)
-        assertThat(graph.data.edges.single().sourceType).isEqualTo("session")
-        assertThat(graph.data.edges.single().docId).isNull()
-        assertThat(graph.data.edges.single().documentIds).isEmpty()
+        assertThat(graph.totalNodeCount).isEqualTo(5)
+        assertThat(graph.data.nodes.map { it.id }).containsExactly("shared", "local", "other", "document", "jit")
+        assertThat(graph.data.edges.map { it.id }).containsExactly("shared-local", "jit-edge")
+        val combined = graph.data.edges.single { it.id == "shared-local" }
+        assertThat(combined.weight).isWithin(0.0001).of(1.0)
+        assertThat(combined.sourceType).isEqualTo("full")
+        assertThat(combined.docId).isEqualTo("doc")
+        assertThat(combined.documentIds).containsExactly("doc")
     }
 
     @Test
@@ -84,11 +85,12 @@ class KgSessionGraphTest {
 
         assertThat(store.searchGraphEntities(GraphEntitySearchRequest("loc", sessionId = "s1")).map { it.id }).containsExactly("local")
         assertThat(store.searchGraphEntities(GraphEntitySearchRequest("oca", sessionId = "s1")).map { it.id }).containsExactly("local")
-        assertThat(store.searchGraphEntities(GraphEntitySearchRequest("other", sessionId = "s1"))).isEmpty()
+        assertThat(store.searchGraphEntities(GraphEntitySearchRequest("other", sessionId = "s1")).map { it.id }).containsExactly("other")
         val graph = store.getGraphSubgraph(GraphSubgraphRequest(sessionId = "s1", retainedNodeIds = listOf("root", "other", "jit"), expandNodeId = "root"))
-        assertThat(graph.data.nodes.map { it.id }).containsExactly("root", "local")
-        assertThat(graph.data.edges.map { it.id }).containsExactly("root-local")
-        assertThat(store.getGraphSubgraph(GraphSubgraphRequest(sessionId = "s1", expandNodeId = "other")).data.nodes).isEmpty()
+        assertThat(graph.data.nodes.map { it.id }).containsExactly("root", "local", "other", "jit")
+        assertThat(graph.data.edges.map { it.id }).containsExactly("root-local", "root-other", "root-jit")
+        assertThat(store.getGraphSubgraph(GraphSubgraphRequest(sessionId = "s1", expandNodeId = "other")).data.nodes.map { it.id })
+            .containsExactly("other", "root")
     }
 
     @Test
@@ -128,6 +130,22 @@ class KgSessionGraphTest {
     }
 
     @Test
+    fun `仅有关系证据的历史轮次仍返回两个端点`() = runBlocking<Unit> {
+        seedSession("s")
+        node("source"); node("target")
+        edge("edge-only", "source", "target")
+        edgeEvidence("edge-only", "session", "s", "s-a", 0.8)
+
+        val turn = store.getSessionTurns("s").single()
+
+        assertThat(turn.messageId).isEqualTo("s-a")
+        assertThat(turn.nodeIds).containsExactly("source", "target")
+        assertThat(turn.newNodeIds).containsExactly("source", "target")
+        assertThat(store.getSessionOptions("shared").single().entityCount).isEqualTo(2)
+        assertThat(store.getEntitySources("source").sessionTurns.map { it.messageId }).containsExactly("s-a")
+    }
+
+    @Test
     fun `删除助手消息后四类读取失效且首次出现转移到后轮撤销后恢复`() = runBlocking<Unit> {
         seedSession("s1")
         seedSession("s2")
@@ -141,7 +159,7 @@ class KgSessionGraphTest {
         database.messageDao().deleteById("s1-a")
         database.messageDao().deleteById("s2-a")
 
-        assertThat(store.getGraphSubgraph(GraphSubgraphRequest(sessionId = "s2")).totalNodeCount).isEqualTo(0)
+        assertThat(store.getGraphSubgraph(GraphSubgraphRequest(sessionId = "s2")).data.nodes.map { it.id }).containsExactly("shared")
         assertThat(store.getSessionTurns("s2")).isEmpty()
         assertThat(store.getEntitySources("removed").sessionTurns).isEmpty()
         assertThat(store.getSessionOptions()).containsExactly(KgSessionOption("s1", "标题 s1", 1, 1, 200))
@@ -280,7 +298,8 @@ class KgSessionGraphTest {
     }
 
     private suspend fun seedSession(id: String, title: String = "标题 $id", assistantTime: Long = 2) {
-        database.sessionDao().insert(SessionEntity(id, "agent", title = title, createdAt = 1, updatedAt = 99_999))
+        database.sessionDao().insert(SessionEntity(id, "agent", title = title,
+            ragOptions = """{"graphBinding":{"collectionId":"shared"}}""", createdAt = 1, updatedAt = 99_999))
         message(id, "$id-u", "user", 1)
         message(id, "$id-a", "assistant", assistantTime)
     }
@@ -290,11 +309,11 @@ class KgSessionGraphTest {
     }
 
     private suspend fun node(id: String) {
-        database.kgNodeDao().insert(KgNodeEntity(id, id, createdAt = 1))
+        database.kgNodeDao().insert(KgNodeEntity(id, id, createdAt = 1, collectionId = "shared"))
     }
 
     private suspend fun edge(id: String, source: String, target: String) {
-        database.kgEdgeDao().insert(KgEdgeEntity(id, source, target, "关联", weight = 1.0, createdAt = 1))
+        database.kgEdgeDao().insert(KgEdgeEntity(id, source, target, "关联", weight = 1.0, createdAt = 1, collectionId = "shared"))
     }
 
     private suspend fun evidence(node: String, type: String = "session", session: String? = null, message: String? = null,

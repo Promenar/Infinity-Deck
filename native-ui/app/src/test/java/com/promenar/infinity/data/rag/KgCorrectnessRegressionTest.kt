@@ -2,7 +2,9 @@ package com.promenar.infinity.data.rag
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.dao.KgJitCacheDao
+import com.promenar.infinity.data.local.db.dao.SessionDao
 import com.promenar.infinity.data.remote.protocol.LlmProtocol
 import com.promenar.infinity.data.remote.protocol.PromptResponse
 import io.mockk.*
@@ -23,6 +25,8 @@ class KgCorrectnessRegressionTest {
     private val protocol = mockk<LlmProtocol>()
     private val store = mockk<GraphStore>(relaxed = true)
     private val cacheDao = mockk<KgJitCacheDao>(relaxed = true)
+    private val database = mockk<InfinityDatabase>()
+    private val sessionDao = mockk<SessionDao>()
 
     @BeforeEach
     fun setup() {
@@ -35,6 +39,9 @@ class KgCorrectnessRegressionTest {
             set(null, app)
         }
         coEvery { cacheDao.getByKey(any()) } returns null
+        every { store.database } returns database
+        every { database.sessionDao() } returns sessionDao
+        coEvery { sessionDao.getById(any()) } returns null
     }
 
     @AfterEach
@@ -131,7 +138,7 @@ class KgCorrectnessRegressionTest {
     @Test
     fun `JIT缓存与归并写入不延迟当前请求`() = runTest {
         coEvery { protocol.sendPromptSync(any()) } returns PromptResponse(GRAPH)
-        coEvery { store.persistJit(any(), any(), any(), any()) } coAnswers { delay(100); true }
+        coEvery { store.persistJit(any(), any(), any(), any(), any()) } coAnswers { delay(100); true }
         val result = testMicroExtractor(protocol, store, cacheDao).extract(refs(), "q", "s")
         assertThat(result?.edges).hasSize(1)
         assertThat(testScheduler.currentTime).isEqualTo(0)
@@ -195,6 +202,35 @@ class KgCorrectnessRegressionTest {
     }
 
     @Test
+    fun `图校验用名称和类型解析端点并丢弃有歧义的未标注关系`() {
+        val graph = ValidatedGraph.from(
+            listOf(ExtractedNode("星河", "person"), ExtractedNode("星河", "organization"),
+                ExtractedNode("山城", "location")),
+            listOf(
+                ExtractedEdge("星河", "山城", "居住", sourceType = "person"),
+                ExtractedEdge("星河", "山城", "设址", sourceType = "organization"),
+                ExtractedEdge("星河", "山城", "未知"),
+            ),
+        )
+        assertThat(graph.nodes.map { it.name to it.type }).containsExactly(
+            "星河" to "person", "星河" to "organization", "山城" to "location")
+        assertThat(graph.edges.map { it.relation }).containsExactly("居住", "设址")
+        assertThat(graph.resolveEndpoint("星河", null)).isNull()
+        assertThat(graph.resolveEndpoint("星河", "person")?.type).isEqualTo("person")
+    }
+
+    @Test
+    fun `解析抽取响应时保留端点类型并兼容缺省字段`() {
+        val parsed = KgGraphValidation.parse("""{"nodes":[],"edges":[
+            {"source":"甲","sourceType":"person","target":"乙","targetType":"location","relation":"位于"},
+            {"source":"乙","target":"甲","relation":"有关"}] }""")
+        assertThat(parsed.edges[0].sourceType).isEqualTo("person")
+        assertThat(parsed.edges[0].targetType).isEqualTo("location")
+        assertThat(parsed.edges[1].sourceType).isNull()
+        assertThat(parsed.edges[1].targetType).isNull()
+    }
+
+    @Test
     fun `超长名称不能截断合并到另一个合法实体`() {
         val validName = "A".repeat(512)
         val graph = ValidatedGraph.from(
@@ -220,7 +256,7 @@ class KgCorrectnessRegressionTest {
         val entered = CompletableDeferred<Unit>()
         val cancelled = CompletableDeferred<Unit>()
         coEvery { protocol.sendPromptSync(any()) } returns PromptResponse(GRAPH)
-        coEvery { store.persistJit(any(), any(), any(), any()) } coAnswers {
+        coEvery { store.persistJit(any(), any(), any(), any(), any()) } coAnswers {
             entered.complete(Unit)
             try { awaitCancellation() } finally { cancelled.complete(Unit) }
         }
@@ -232,7 +268,7 @@ class KgCorrectnessRegressionTest {
         runCurrent()
         assertThat(cancelled.isCompleted).isTrue()
         assertThat(extractor.extract(refs(), "q", "s").status).isEqualTo(KgExtractionStatus.CANCELLED)
-        coVerify(exactly = 0) { store.upsertNode(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { store.upsertNode(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test

@@ -17,25 +17,27 @@ data class KgRetrievalScope(
     val documentIds: List<String> = emptyList(),
     val folderIds: List<String> = emptyList(),
     val globalKnowledge: Boolean = false,
-    /** 对话证据可见的会话；为空时仅本会话。 */
+    /** 保留调用方兼容；图谱证据可见性由 collectionId 决定。 */
     val conversation: ConversationReach? = null,
-    /** 已解析的文档范围；非空时取代上面三个文档字段，与向量检索使用同一范围。 */
+    /** 已解析的文档范围，用于过滤即时抽取的输入片段。 */
     val documents: DocumentReach? = null,
-    /** 工具未请求历史对话时，从查询入口排除全部对话证据。 */
+    /** 保留调用方兼容；不限制绑定图谱内的存活证据。 */
     val allowConversation: Boolean = true,
+    val collectionId: String = KgCollectionRepository.sessionCollectionId(sessionId),
 ) {
     companion object {
         fun of(scope: ResolvedRetrievalScope) = KgRetrievalScope(
             sessionId = scope.sessionId,
             conversation = scope.graph,
             documents = scope.documents,
+            collectionId = scope.graphBinding.collectionId,
         )
     }
 }
 
 data class PersistentGraphResult(val seedCount: Int, val paths: List<KgPath>)
 
-/** 从来源索引定位实体，再通过主键读取；共享实体本身不授予来源访问权。 */
+/** 图谱种子与关系扩展都限定在同一图谱中。 */
 class GraphRetrievalStore(private val database: InfinityDatabase) {
     suspend fun retrieve(
         query: String,
@@ -44,6 +46,7 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
         config: RagConfiguration = RagConfiguration(),
     ): PersistentGraphResult = withContext(Dispatchers.IO) {
         database.withTransaction {
+            KgCollectionRepository(database).reconcileDocuments()
             val (seedSql, seedArgs) = seedQuery(query, scope, ragDocumentIds, config.kgMaxSeeds.coerceIn(1, 32))
             val seeds = database.query(SimpleSQLiteQuery(seedSql, seedArgs.toTypedArray())).use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
@@ -64,9 +67,9 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
                     "(0.35*COUNT(p.id)/(COUNT(p.id)+1.0)+0.65*MAX(COALESCE(p.weight,0))) AS score " +
                     "FROM kg_edges e JOIN kg_evidence p ON p.edge_id=e.id " +
                     "WHERE e.id IN (SELECT id FROM kg_edges WHERE source_id IN ($ids) UNION SELECT id FROM kg_edges WHERE target_id IN ($ids)) " +
-                    "AND ${visibleEvidence()} GROUP BY e.id ORDER BY score DESC,e.id LIMIT ?"
+                    "AND e.collection_id=? AND ${visibleEvidence()} GROUP BY e.id ORDER BY score DESC,e.id LIMIT ?"
                 val next = linkedSetOf<String>()
-                database.query(SimpleSQLiteQuery(sql, (args + frontier + frontier + listOf(edgeLimit * 8)).toTypedArray())).use { cursor ->
+                database.query(SimpleSQLiteQuery(sql, (args + frontier + frontier + listOf(scope.collectionId, edgeLimit * 8)).toTypedArray())).use { cursor ->
                     while (cursor.moveToNext() && paths.size < edgeLimit) {
                         val id = cursor.getString(0)
                         if (!seenEdges.add(id)) continue
@@ -74,7 +77,8 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
                         val target = cursor.getString(2)
                         val added = listOf(source, target).filterNot { it in acceptedNodes }.distinct()
                         if (acceptedNodes.size + added.size > nodeLimit) continue
-                        val nodes = database.kgNodeDao().getByIds(listOf(source, target)).map {
+                        val nodes = listOf(source, target).distinct().mapNotNull { database.kgNodeDao().getRawById(it) }
+                            .filter { it.collectionId == scope.collectionId }.map {
                             // metadata 聚合跨来源，不能作为当前可见来源的描述泄漏出去。
                             KgNode(it.id, it.name, it.type)
                         }
@@ -121,10 +125,10 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
         val ragIds = ragDocumentIds.distinct().take(64)
         val ragMatch = "n.id IN (SELECT p.node_id FROM kg_evidence p WHERE p.doc_id IN (${placeholders(ragIds.size)}) AND ${visibleEvidence()})"
         val (cte, args) = scopeQuery(scope)
-        val sql = "$cte SELECT n.id FROM kg_nodes n WHERE n.id IN (SELECT p.node_id FROM kg_evidence p " +
-            "WHERE p.node_id IS NOT NULL AND ${visibleEvidence()}) AND (${matches.joinToString(" OR ")} OR $ragMatch) " +
+        val sql = "$cte SELECT n.id FROM kg_nodes n WHERE n.collection_id=? AND (n.id IN (SELECT p.node_id FROM kg_evidence p " +
+            "WHERE p.node_id IS NOT NULL AND ${visibleEvidence()}) OR EXISTS (SELECT 1 FROM kg_edges x JOIN kg_evidence p ON p.edge_id=x.id WHERE x.collection_id=n.collection_id AND (x.source_id=n.id OR x.target_id=n.id) AND ${visibleEvidence()})) AND (${matches.joinToString(" OR ")} OR $ragMatch) " +
             "ORDER BY (n.normalized_name=?) DESC, instr(?,n.normalized_name)>0 DESC,n.normalized_name,n.type LIMIT ?"
-        return sql to (args + matchArgs + ragIds + listOf(normalized, normalized, limit))
+        return sql to (args + listOf(scope.collectionId) + matchArgs + ragIds + listOf(normalized, normalized, limit))
     }
 
     private fun scopeQuery(scope: KgRetrievalScope): Pair<String, List<Any>> {
@@ -136,31 +140,26 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
         val values = if (docs.isEmpty()) "SELECT NULL WHERE 0" else "VALUES " + docs.joinToString { "(${sqlText(it)})" }
         val folderValues = if (folders.isEmpty()) "NULL" else folders.joinToString { sqlText(it) }
         val liveFiles = "SELECT w.uuid FROM workspace_files w WHERE w.in_recycle_bin=0 AND w.is_directory=0"
+        val explicitLiveDocs = "SELECT d.id FROM explicit_docs d WHERE NOT EXISTS " +
+            "(SELECT 1 FROM workspace_files rejected WHERE rejected.uuid=d.id AND (rejected.in_recycle_bin!=0 OR rejected.is_directory!=0))"
+        val folderLiveDocs = "SELECT f.id FROM folder_tree f JOIN workspace_files w ON w.uuid=f.id WHERE w.in_recycle_bin=0 AND w.is_directory=0"
         val visibleDocs = when (documents) {
-            null -> "SELECT id FROM explicit_docs UNION SELECT id FROM folder_tree UNION $liveFiles AND w.workspace_root_uuid IN " +
+            null -> "$explicitLiveDocs UNION $folderLiveDocs UNION $liveFiles AND w.workspace_root_uuid IN " +
                 "(SELECT workspace_root_uuid FROM sessions WHERE id=(SELECT session_id FROM ctx)" +
                 (if (scope.globalKnowledge) " OR agent_id='__system__'" else "") + ")"
             // 与向量检索一致：未登记到工作区的旧文档同样可见。
-            DocumentReach.All -> "$liveFiles UNION SELECT doc_id FROM kg_evidence WHERE doc_id IS NOT NULL AND doc_id NOT IN (SELECT uuid FROM workspace_files)"
-            is DocumentReach.Scoped -> "SELECT id FROM explicit_docs UNION $liveFiles AND w.workspace_root_uuid IN (${sqlList(documents.workspaceRootUuids)})"
-        }
-        val visibleSessions = if (!scope.allowConversation) "SELECT NULL WHERE 0" else when (val reach = scope.conversation ?: ConversationReach.Session(scope.sessionId)) {
-            is ConversationReach.Session -> "VALUES (${sqlText(reach.sessionId)})"
-            is ConversationReach.Agent -> "SELECT id FROM sessions WHERE agent_id=${sqlText(reach.agentId)}"
-            is ConversationReach.SharedAgents -> "SELECT id FROM sessions WHERE agent_id=${sqlText(reach.agentId)} " +
-                "OR agent_id NOT IN (${sqlList(reach.privateAgentIds)})"
+            DocumentReach.All -> "$liveFiles UNION SELECT doc_id FROM kg_evidence WHERE doc_id IS NOT NULL AND doc_id NOT IN (SELECT uuid FROM workspace_files) " +
+                "UNION SELECT doc_id FROM vectors WHERE doc_id IS NOT NULL AND file_uuid IS NULL AND stale=0 AND doc_id NOT IN (SELECT uuid FROM workspace_files)"
+            is DocumentReach.Scoped -> "$explicitLiveDocs UNION $liveFiles AND w.workspace_root_uuid IN (${sqlList(documents.workspaceRootUuids)})"
         }
         val sql = "WITH RECURSIVE ctx(session_id) AS (VALUES (?)), explicit_docs(id) AS ($values), " +
             "folder_tree(id,root) AS (SELECT uuid,workspace_root_uuid FROM workspace_files WHERE uuid IN ($folderValues) AND in_recycle_bin=0 " +
             "UNION SELECT w.uuid,w.workspace_root_uuid FROM workspace_files w JOIN folder_tree f ON w.parent_uuid=f.id AND w.workspace_root_uuid=f.root WHERE w.in_recycle_bin=0), " +
-            "visible_docs(id) AS ($visibleDocs), visible_sessions(id) AS ($visibleSessions) "
+            "visible_docs(id) AS ($visibleDocs) "
         return sql to listOf(scope.sessionId)
     }
 
-    private fun visibleEvidence(): String = "($ACTIVE_KG_EVIDENCE) AND " +
-        "((p.doc_id IS NULL AND p.session_id IN (SELECT id FROM visible_sessions)) OR " +
-        "(p.doc_id IN (SELECT id FROM visible_docs) AND (p.source_type IN ('document','legacy') OR p.session_id IN (SELECT id FROM visible_sessions)))) " +
-        "AND (p.source_type!='jit' OR NOT EXISTS (SELECT 1 FROM kg_evidence d WHERE d.source_type='jit' AND d.task_id=p.task_id AND d.doc_id IS NOT NULL AND d.doc_id NOT IN (SELECT id FROM visible_docs)))"
+    private fun visibleEvidence(): String = "($ACTIVE_KG_EVIDENCE)"
 
     /** 空列表写成空子查询：`IN (NULL)` 恒为假，`NOT IN (NULL)` 也恒为假，都不能表达“无元素”。 */
     private fun sqlList(values: Collection<String>): String =

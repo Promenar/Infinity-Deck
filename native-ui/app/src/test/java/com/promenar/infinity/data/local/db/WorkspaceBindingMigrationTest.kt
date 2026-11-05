@@ -38,12 +38,12 @@ class WorkspaceBindingMigrationTest {
                 seed(database, "ssh_hosts", mapOf("id" to "host", "alias" to "fnos", "hostname" to "fnos.local", "username" to "root"))
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33)
+                .addMigrations(MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
                 .allowMainThreadQueries()
                 .build()
             try {
                 val sqlite = room.openHelper.writableDatabase
-                sqlite.query("PRAGMA user_version").use { check(it.moveToFirst()); assertThat(it.getInt(0)).isEqualTo(33) }
+                sqlite.query("PRAGMA user_version").use { check(it.moveToFirst()); assertThat(it.getInt(0)).isEqualTo(34) }
                 val agent = room.agentDao().getById("agent")!!
                 assertThat(agent.name).isEqualTo("保留中文😀")
                 assertThat(agent.systemPrompt).isEqualTo("你是助手")
@@ -62,7 +62,7 @@ class WorkspaceBindingMigrationTest {
                 }
                 sqlite.query("PRAGMA foreign_key_check").use { assertThat(it.count).isEqualTo(0) }
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(33, INFINITY_SCHEMA_V33_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(34, INFINITY_SCHEMA_V34_IDENTITY_HASH)
                 }).isTrue()
             } finally {
                 room.close()

@@ -549,6 +549,36 @@ class DocumentIndexServiceTest {
     }
 
     @Test
+    fun `文档候选的同名不同类型端点分别映射`() = runTest {
+        seedFileAndOldArtifacts()
+        val text = "星河和山城"
+        val file = File.createTempFile("infinity-index-types", ".txt").apply { writeText(text) }
+        try {
+            val hash = com.promenar.infinity.infra.util.Sha256Utils.hash(text)
+            val current = database.fileEntryDao().getByUuid(ROOT, FILE)!!
+            database.fileEntryDao().update(current.copy(
+                physicalRootPath = file.parentFile!!.absolutePath, materializedPath = "/${file.name}", hash = hash,
+            ))
+            val embedding = mockIndexEmbedding()
+            coEvery { embedding.embedDocuments(any()) } returns EmbeddingResult(listOf(floatArrayOf(1f, 0f)))
+            val builder = WorkspaceDocumentIndexCandidateBuilder(
+                database.fileEntryDao(), embedding,
+                RagConfiguration(enableKnowledgeGraph = true, docChunkSize = 100, chunkOverlap = 10),
+                graphCandidateBuilder = { _, _, _ -> ExtractionResult(
+                    listOf(ExtractedNode("星河", "person"), ExtractedNode("星河", "organization"), ExtractedNode("山城", "location")),
+                    listOf(ExtractedEdge("星河", "山城", "居住", sourceType = "person"),
+                        ExtractedEdge("星河", "山城", "设址", sourceType = "organization")),
+                ) }, checkpointRoot = checkpointRoot,
+            )
+            val candidate = builder.build(FileIndexEvent.Changed(ROOT, FILE, hash, current.updatedAt))
+            val nodes = candidate.nodes.associateBy { it.id }
+            assertThat(candidate.nodes.filter { it.name == "星河" }.map { it.id }.distinct()).hasSize(2)
+            assertThat(candidate.edges.associate { it.relation to nodes.getValue(it.sourceId).type })
+                .containsExactly("居住", "person", "设址", "organization")
+        } finally { file.delete() }
+    }
+
+    @Test
     fun `图谱失败时完整向量候选不包含半张图并保留旧图`() = runTest {
         seedFileAndOldArtifacts()
         val text = "Alpha knows Beta"

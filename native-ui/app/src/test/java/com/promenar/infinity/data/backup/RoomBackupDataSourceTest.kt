@@ -89,6 +89,93 @@ import kotlinx.serialization.json.jsonPrimitive
 @Config(sdk = [33])
 class RoomBackupDataSourceTest {
     @Test
+    fun `完整备份只往返存在的文件夹图谱设置`() = runBlocking {
+        seedCompleteGraph()
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("INSERT INTO kg_folder_settings(folder_id,mode) VALUES('root-1','SHARED'),('missing','WORK'),('file-1','WORK')")
+        val source = newDataSource()
+        val snapshot = source.snapshot(CANONICAL_CONTENT)
+        val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val tables = payload.getValue("tables").jsonObject
+        assertThat(tables.getValue("kg_folder_settings").jsonArray).hasSize(1)
+        listOf("kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "vectors").forEach {
+            assertThat(tables.containsKey(it)).isFalse()
+        }
+        db.clearAllTables()
+        source.restore(validated(snapshot))
+        sqlite.query("SELECT folder_id,mode FROM kg_folder_settings").use {
+            assertThat(it.moveToFirst()).isTrue()
+            assertThat(it.getString(0)).isEqualTo("root-1")
+            assertThat(it.getString(1)).isEqualTo("SHARED")
+            assertThat(it.moveToNext()).isFalse()
+        }
+        snapshot.wipe()
+    }
+
+    @Test
+    fun `分层备份按文件所在层恢复文件夹设置`() = runBlocking {
+        seedCompleteGraph()
+        val root = requireNotNull(db.fileEntryDao().getByUuid("root-1", "root-1"))
+        db.fileEntryDao().insert(root.copy(uuid = "knowledge-root", workspaceRootUuid = "knowledge-root"))
+        db.sessionDao().insert(SessionEntity(id = "knowledge-session", agentId = "__system__", workspaceRootUuid = "knowledge-root", createdAt = 100, updatedAt = 100))
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("INSERT INTO kg_folder_settings(folder_id,mode) VALUES('root-1','WORK'),('knowledge-root','SHARED')")
+        val cache = Files.createTempDirectory(sourceBase, "folder-settings")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.WORKSPACE_FILES), cache)
+            val file = cache.resolve("settings.iwb")
+            try { Files.newOutputStream(file).use { DefaultBackupPackageCodec().encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            sqlite.execSQL("UPDATE kg_folder_settings SET mode='MERGE_PARENT'")
+            Files.newInputStream(file).use { DefaultBackupPackageCodec().decodeFrom(it, null, cache).use { backup -> source.restore(backup) } }
+            sqlite.query("SELECT folder_id,mode FROM kg_folder_settings ORDER BY folder_id").use {
+                assertThat(it.moveToFirst()).isTrue()
+                assertThat(it.getString(0)).isEqualTo("knowledge-root")
+                assertThat(it.getString(1)).isEqualTo("MERGE_PARENT")
+                assertThat(it.moveToNext()).isTrue()
+                assertThat(it.getString(0)).isEqualTo("root-1")
+                assertThat(it.getString(1)).isEqualTo("WORK")
+                assertThat(it.moveToNext()).isFalse()
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `旧版备份没有文件夹设置时可以恢复`() = runBlocking {
+        seedCompleteGraph()
+        val source = newDataSource()
+        val snapshot = source.snapshot(CANONICAL_CONTENT)
+        val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val old = JsonObject(payload + ("schemaVersion" to JsonPrimitive(14)) +
+            ("tables" to JsonObject(payload.getValue("tables").jsonObject - "kg_folder_settings")))
+        db.clearAllTables()
+        source.restore(validated(snapshot, database = old.toString().toByteArray(Charsets.UTF_8)))
+        assertThat(rowCount("kg_folder_settings")).isEqualTo(0)
+        assertThat(db.fileEntryDao().getByUuid("root-1", "root-1")).isNotNull()
+        snapshot.wipe()
+    }
+
+    @Test
+    fun `旧版分层备份无文件夹设置也可以恢复`() = runBlocking {
+        seedCompleteGraph()
+        val cache = Files.createTempDirectory(sourceBase, "legacy-folder-settings")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.WORKSPACE_FILES), cache)
+            val legacy = snapshot.copy(databaseSchemaVersion = 14,
+                streamEntries = snapshot.streamEntries.filterNot { it.path.startsWith("database/kg_folder_settings/") })
+            val file = cache.resolve("legacy.iwb")
+            try { Files.newOutputStream(file).use { DefaultBackupPackageCodec().encodeTo(legacy, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            db.clearAllTables()
+            Files.newInputStream(file).use { DefaultBackupPackageCodec().decodeFrom(it, null, cache).use { backup -> source.restore(backup) } }
+            assertThat(rowCount("kg_folder_settings")).isEqualTo(0)
+            assertThat(db.fileEntryDao().getByUuid("root-1", "root-1")).isNotNull()
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
     fun `仅恢复会话层时恢复对话引用且文档缺失时报告降级`() = runBlocking {
         seedCompleteGraph()
         db.knowledgeCitationDao().insertAll(listOf(com.promenar.infinity.data.library.ask.KnowledgeCitationEntity(
@@ -233,7 +320,9 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         val sqlite = db.openHelper.writableDatabase
         sqlite.execSQL("INSERT INTO vectors(id,doc_id,content,embedding,created_at,stale,version) VALUES(?,?,?,?,?,?,?)", arrayOf<Any?>("retained-vector", "file-1", "索引", byteArrayOf(1, 2), 100L, 0, 1))
-        sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at) VALUES('retained-node','节点','concept','节点',100)")
+        sqlite.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:file-1','work','a.txt','file-1',100)")
+        sqlite.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('file-1','work:file-1')")
+        sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('retained-node','节点','concept','节点',100,'work:file-1')")
         sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('retained-evidence','retained-node','document','file-1','hash','fixture',100,1)")
         val cache = Files.createTempDirectory(sourceBase, "retained-index")
         try {
@@ -1104,7 +1193,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(14)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(15)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -1707,13 +1796,13 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(14)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("14")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(15)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("15")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
                 "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
-                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations",
+                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(
                 "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "kg_jit_cache_sources",
@@ -1910,10 +1999,11 @@ class RoomBackupDataSourceTest {
             newDataSource().restore(validated(backup))
 
             listOf(
-                "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "kg_jit_cache_sources",
+                "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members", "kg_jit_cache", "kg_jit_cache_sources",
                 "vectorization_tasks", "tool_execution_ledger", "file_versions", "workspace_mutations",
                 "mcp_tool_snapshots",
             ).forEach { table -> assertThat(rowCount(table)).isEqualTo(0) }
+            assertThat(rowCount("kg_collections")).isEqualTo(1)
             // 提示词历史属于核心层：恢复为备份时的状态，备份之后新增的版本不保留。
             assertThat(rowCount("agent_rule_revisions")).isEqualTo(0)
             assertThat(rowCount("audit_logs")).isEqualTo(1)
@@ -3562,17 +3652,19 @@ class RoomBackupDataSourceTest {
             arrayOf<Any?>("vector-1", "session-1", "derived", byteArrayOf(1, 2), 100L, 0, 1),
         )
         sqlite.execSQL("INSERT INTO vectors_fts(rowid, content) VALUES(?,?)", arrayOf<Any?>(99, "derived fts"))
+        sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,100)")
+        sqlite.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('file-1','shared')")
         sqlite.execSQL(
-            "INSERT INTO kg_nodes(id,name,type,normalized_name,created_at) VALUES(?,?,?,?,?)",
-            arrayOf<Any?>("node-1", "Node 1", "concept", "node 1", 100L),
+            "INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES(?,?,?,?,?,?)",
+            arrayOf<Any?>("node-1", "Node 1", "concept", "node 1", 100L, "shared"),
         )
         sqlite.execSQL(
-            "INSERT INTO kg_nodes(id,name,type,normalized_name,created_at) VALUES(?,?,?,?,?)",
-            arrayOf<Any?>("node-2", "Node 2", "concept", "node 2", 100L),
+            "INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES(?,?,?,?,?,?)",
+            arrayOf<Any?>("node-2", "Node 2", "concept", "node 2", 100L, "shared"),
         )
         sqlite.execSQL(
-            "INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at) VALUES(?,?,?,?,?,?,?)",
-            arrayOf<Any?>("edge-1", "node-1", "node-2", "rel", 1.0, "rel", 100L),
+            "INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at,collection_id) VALUES(?,?,?,?,?,?,?,?)",
+            arrayOf<Any?>("edge-1", "node-1", "node-2", "rel", 1.0, "rel", 100L, "shared"),
         )
         sqlite.execSQL(
             "INSERT INTO kg_jit_cache(cache_key,query_hash,chunk_ids_hash,result_json,created_at,expires_at) VALUES(?,?,?,?,?,?)",

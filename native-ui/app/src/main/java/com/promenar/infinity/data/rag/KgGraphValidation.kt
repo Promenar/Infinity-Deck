@@ -9,28 +9,46 @@ class ValidatedGraph private constructor(val nodes: List<ExtractedNode>, val edg
 
     fun toExtractionResult() = ExtractionResult(nodes, edges)
 
+    fun resolveEndpoint(name: String, type: String?): ExtractedNode? {
+        val candidates = nodes.filter { identity(it.name) == identity(name) }
+        return if (type.isNullOrBlank()) candidates.singleOrNull()
+        else candidates.singleOrNull { identity(it.name, it.type) == identity(name, type.orEmpty()) }
+    }
+
     companion object {
         fun from(nodes: List<ExtractedNode>, edges: List<ExtractedEdge>): ValidatedGraph {
             val canonical = nodes.asSequence().take(KgGraphValidation.MAX_RAW_NODES)
                 .map { it.copy(name = clean(it.name), type = clean(it.type).ifBlank { "concept" }, metadata = it.metadata?.take(4096)) }
                 .filter { it.name.isNotBlank() && it.name.length <= 512 && it.type.length <= 512 }
-                .sortedWith(compareBy({ identity(it.name) }, { it.type }, { it.metadata }, { it.name }))
-                .distinctBy { identity(it.name) }
+                .sortedWith(compareBy({ identity(it.name) }, { identityType(it.type) }, { it.metadata }, { it.name }))
+                .distinctBy { identity(it.name, it.type) }
                 .take(KgGraphValidation.MAX_NODES)
-                .associateBy { identity(it.name) }
+                .toList()
+            val byName = canonical.groupBy { identity(it.name) }
+            fun endpoint(name: String, type: String?): ExtractedNode? {
+                val candidates = byName[identity(name)].orEmpty()
+                return if (type.isNullOrBlank()) candidates.singleOrNull()
+                else candidates.singleOrNull { identityType(it.type) == identityType(type.orEmpty()) }
+            }
             val validEdges = edges.asSequence().take(KgGraphValidation.MAX_RAW_EDGES).mapNotNull { edge ->
-                val source = canonical[identity(edge.source)] ?: return@mapNotNull null
-                val target = canonical[identity(edge.target)] ?: return@mapNotNull null
+                val source = endpoint(edge.source, edge.sourceType) ?: return@mapNotNull null
+                val target = endpoint(edge.target, edge.targetType) ?: return@mapNotNull null
                 val relation = clean(edge.relation)
                 if (relation.isBlank() || relation.length > 512 || !edge.weight.isFinite() || edge.weight !in 0.0..1.0) return@mapNotNull null
-                edge.copy(source = source.name, target = target.name, relation = relation)
-            }.distinct().sortedWith(compareBy({ it.source }, { it.target }, { it.relation }, { it.weight }))
+                edge.copy(source = source.name, target = target.name, relation = relation,
+                    sourceType = edge.sourceType?.takeUnless { it.isBlank() }?.let { identityType(source.type) },
+                    targetType = edge.targetType?.takeUnless { it.isBlank() }?.let { identityType(target.type) })
+            }.distinct().sortedWith(compareBy({ it.source }, { it.sourceType }, { it.target }, { it.targetType }, { it.relation }, { it.weight }))
                 .take(KgGraphValidation.MAX_EDGES).toList()
-            val connected = validEdges.flatMap { listOf(it.source, it.target) }.toSet()
-            return ValidatedGraph(canonical.values.filter { it.name in connected }, validEdges)
+            val connected = validEdges.flatMap { edge ->
+                listOfNotNull(endpoint(edge.source, edge.sourceType), endpoint(edge.target, edge.targetType))
+            }.map { identity(it.name, it.type) }.toSet()
+            return ValidatedGraph(canonical.filter { identity(it.name, it.type) in connected }, validEdges)
         }
 
         fun identity(name: String): String = KgIdentity.normalize(name)
+        fun identity(name: String, type: String): Pair<String, String> = identity(name) to identityType(type)
+        private fun identityType(type: String) = KgIdentity.normalize(type).ifBlank { "concept" }
         private fun clean(value: String) = KgIdentity.display(value)
     }
 }
@@ -62,6 +80,7 @@ object KgGraphValidation {
                     ExtractedEdge(
                         edge.string("source"), edge.string("target"), edge.string("relation"),
                         if ("weight" in edge) edge.string("weight").toDoubleOrNull() ?: Double.NaN else 1.0,
+                        edge.string("sourceType").takeIf { it.isNotBlank() }, edge.string("targetType").takeIf { it.isNotBlank() },
                     )
                 },
             )

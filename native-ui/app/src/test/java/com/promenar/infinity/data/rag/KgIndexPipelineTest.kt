@@ -92,8 +92,8 @@ class KgIndexPipelineTest {
         val file = register("weight.txt", "text/plain", "text".toByteArray())
         seedOld(file)
         val edge = database.kgEdgeDao().getByDocId(file.uuid).single()
-        GraphStore(database).createEdge(edge.sourceId, edge.targetId, edge.relation, file.uuid, 0.9)
-        GraphStore(database).createEdge(edge.sourceId, edge.targetId, edge.relation, file.uuid, 0.8)
+        GraphStore(database).createEdge(edge.sourceId, edge.targetId, edge.relation, file.uuid, 0.9, collectionId = edge.collectionId)
+        GraphStore(database).createEdge(edge.sourceId, edge.targetId, edge.relation, file.uuid, 0.8, collectionId = edge.collectionId)
         assertThat(database.kgEdgeDao().getByDocId(file.uuid).single().weight).isEqualTo(0.9)
     }
 
@@ -427,10 +427,18 @@ class KgIndexPipelineTest {
     }
 
     private suspend fun seedOld(file: FileEntry) {
+        val collectionId = "work:${file.uuid}"
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,?)",
+            arrayOf(collectionId, "work", file.name, file.uuid, 1),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collection_members(doc_id,collection_id) VALUES(?,?)", arrayOf(file.uuid, collectionId),
+        )
         database.vectorDao().insert(VectorEntity(id = "old-${file.uuid}", docId = file.uuid, content = "old", embedding = ByteArray(8), createdAt = 1, fileUuid = file.uuid))
-        database.seedKgNode(KgNodeEntity("a-${file.uuid}", "Old Alpha ${file.uuid}", createdAt = 1) , docId = file.uuid, workspaceDocument = true)
-        database.seedKgNode(KgNodeEntity("b-${file.uuid}", "Old Beta ${file.uuid}", createdAt = 1) , docId = file.uuid, workspaceDocument = true)
-        database.seedKgEdge(KgEdgeEntity("edge-${file.uuid}", "a-${file.uuid}", "b-${file.uuid}", "knows", weight = 0.7, createdAt = 1) , docId = file.uuid, workspaceDocument = true)
+        database.seedKgNode(KgNodeEntity("a-${file.uuid}", "Old Alpha ${file.uuid}", createdAt = 1, collectionId = collectionId), docId = file.uuid, workspaceDocument = true)
+        database.seedKgNode(KgNodeEntity("b-${file.uuid}", "Old Beta ${file.uuid}", createdAt = 1, collectionId = collectionId), docId = file.uuid, workspaceDocument = true)
+        database.seedKgEdge(KgEdgeEntity("edge-${file.uuid}", "a-${file.uuid}", "b-${file.uuid}", "knows", weight = 0.7, createdAt = 1, collectionId = collectionId), docId = file.uuid, workspaceDocument = true)
         database.fileEntryDao().update(file.copy(vectorizedAt = 1, kgExtractedAt = 1))
     }
 }

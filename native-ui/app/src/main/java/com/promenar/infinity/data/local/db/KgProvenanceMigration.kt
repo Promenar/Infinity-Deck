@@ -3,6 +3,9 @@ package com.promenar.infinity.data.local.db
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.security.MessageDigest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Room 在一个事务内升级；以 500 行主键游标分批读取，映射驻留 SQLite，内存不随图大小增长。
@@ -51,6 +54,14 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
             db.execSQL("INSERT OR IGNORE INTO kg_nodes(id,name,type,metadata,created_at,updated_at,normalized_name) VALUES(?,?,?,?,?,?,?)",
                 arrayOf(id, KgIdentity.display(name), type, cursor.text("metadata"), created, cursor.text("updated_at")?.toLongOrNull(), normalized))
             val mapped = db.string("SELECT id FROM kg_nodes WHERE normalized_name=? AND type=?", normalized, type)!!
+            if (mapped != id) {
+                val previous = db.string("SELECT metadata FROM kg_nodes WHERE id=?", mapped)
+                val incoming = cursor.text("metadata")
+                fun metadataObject(value: String?) =
+                    runCatching { Json.parseToJsonElement(value.orEmpty()).jsonObject }.getOrDefault(JsonObject(emptyMap()))
+                val merged = JsonObject(metadataObject(previous) + metadataObject(incoming)).toString()
+                db.execSQL("UPDATE kg_nodes SET metadata=? WHERE id=?", arrayOf(merged, mapped))
+            }
             db.execSQL("INSERT INTO kg_migration_node_map(old_id,new_id) VALUES(?,?)", arrayOf(id, mapped))
             val doc = cursor.text("file_uuid")
             val session = cursor.text("session_id")

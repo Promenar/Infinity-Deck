@@ -435,6 +435,16 @@ enum class DocumentScope {
 }
 
 @Serializable
+enum class GraphBindingMode { READ_ONLY, READ_WRITE }
+
+@Serializable
+data class GraphBinding(
+    /** 空值表示当前会话自己的图谱。 */
+    val collectionId: String? = null,
+    val mode: GraphBindingMode = GraphBindingMode.READ_WRITE,
+)
+
+@Serializable
 data class RagOptions(
     val enableMemory: Boolean = true,
     val enableDocs: Boolean = true,  // 默认开启：用户导入文档的意图就是检索，不应要求手动再开开关
@@ -444,6 +454,7 @@ data class RagOptions(
     val isGlobal: Boolean = false,
     val memoryScope: ConversationScope? = null,
     val graphScope: ConversationScope? = null,
+    val graphBinding: GraphBinding? = null,
     val documentScope: DocumentScope? = null,
     val enableKnowledgeGraph: Boolean? = null,
     val enableRerank: Boolean = true,

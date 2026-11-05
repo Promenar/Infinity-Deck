@@ -67,7 +67,7 @@ data class AgentSubagentModelPolicy(
 
 /**
  * 助手级记忆权限：新会话的默认档位与会话可选的上限。
- * [shareWithOtherAgents] 关闭即私密助手，其他助手的“全部助手”档不会读取本助手的记忆与图谱对话证据。
+ * [shareWithOtherAgents] 关闭即私密助手，其他助手的“全部助手”档不会读取本助手的对话记忆。
  */
 @Serializable
 data class AgentMemoryPolicy(
@@ -82,14 +82,12 @@ data class AgentMemoryPolicy(
     /** 上限调低时默认档位随之收紧，保证默认值始终可选。 */
     fun normalized(): AgentMemoryPolicy = copy(
         memoryDefault = minOf(memoryDefault, memoryCap),
-        graphDefault = minOf(graphDefault, graphCap),
         documentDefault = minOf(documentDefault, documentCap),
     )
 
     fun defaultsFor(options: RagOptions): RagOptions = normalized().let { policy ->
         options.copy(
             memoryScope = policy.memoryDefault,
-            graphScope = policy.graphDefault,
             documentScope = policy.documentDefault,
         )
     }
@@ -97,7 +95,6 @@ data class AgentMemoryPolicy(
     /** 会话档位超出上限时按上限执行；会话保存的选择不被改写，助手上限放宽后自动恢复。 */
     fun clamp(options: RagOptions): RagOptions = options.copy(
         memoryScope = minOf(options.effectiveMemoryScope, memoryCap),
-        graphScope = minOf(options.effectiveGraphScope, graphCap),
         documentScope = minOf(options.effectiveDocumentScope, documentCap),
     )
 }

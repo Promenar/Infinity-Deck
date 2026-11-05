@@ -13,7 +13,7 @@ internal object BackupLayerPolicy {
     fun tableLayer(table: String, declared: BackupLayer? = null): BackupLayer? = when (table) {
         in CORE_TABLES -> BackupLayer.CORE
         "tags", "document_tags" -> BackupLayer.KNOWLEDGE
-        "workspace_files" -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES }
+        "workspace_files", "kg_folder_settings" -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES }
         "knowledge_citations" -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES || it == BackupLayer.SESSIONS }
         in SESSION_TABLES -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.SESSIONS }
         else -> null
@@ -29,6 +29,7 @@ internal object BackupLayerPolicy {
         private val messages = tables["messages"].orEmpty().asSequence().filter { string(it, "session_id") in owners }.mapNotNull { string(it, "id") }.toSet()
         private val fileRoots = tables["workspace_files"].orEmpty().associate { string(it, "uuid") to string(it, "workspace_root_uuid") }
         fun layer(table: String, row: JsonObject): BackupLayer {
+            if (table == "kg_folder_settings") return if (fileRoots[string(row, "folder_id")] in roots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES
             if (table == "workspace_files") return if (string(row, "workspace_root_uuid") in roots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES
             if (table == "knowledge_citations") {
                 if (string(row, "source_kind") == "CHAT") {

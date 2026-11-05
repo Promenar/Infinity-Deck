@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 private const val ACTIVE_KG_EDGE = "EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = kg_edges.id AND " + ACTIVE_KG_EVIDENCE + ")"
 // 关系行上的 weight 只作兼容缓存，检索排序和展示必须按当前作用域的存活证据聚合。
-private const val EDGE_SELECT = "SELECT kg_edges.id, source_id, target_id, relation, created_at, normalized_relation, COALESCE((SELECT MAX(p.weight) FROM kg_evidence p WHERE p.edge_id = kg_edges.id AND " + ACTIVE_KG_EVIDENCE
+private const val EDGE_SELECT = "SELECT kg_edges.id, source_id, target_id, relation, created_at, normalized_relation, collection_id, COALESCE((SELECT MAX(p.weight) FROM kg_evidence p WHERE p.edge_id = kg_edges.id AND " + ACTIVE_KG_EVIDENCE
 private const val EDGE_FROM = "), kg_edges.weight) AS weight FROM kg_edges WHERE "
 
 @Dao
@@ -19,8 +19,11 @@ interface KgEdgeDao {
 
     @Update suspend fun update(edge: KgEdgeEntity)
 
-    @Query("SELECT * FROM kg_edges WHERE source_id = :sourceId AND target_id = :targetId AND normalized_relation = :relation LIMIT 1")
-    suspend fun findIdentity(sourceId: String, targetId: String, relation: String): KgEdgeEntity?
+    @Query("SELECT * FROM kg_edges WHERE collection_id = :collectionId AND source_id = :sourceId AND target_id = :targetId AND normalized_relation = :relation LIMIT 1")
+    suspend fun findIdentity(collectionId: String, sourceId: String, targetId: String, relation: String): KgEdgeEntity?
+
+    @Query("SELECT * FROM kg_edges WHERE id = :id")
+    suspend fun getRawById(id: String): KgEdgeEntity?
 
     @Query(EDGE_SELECT + EDGE_FROM + "id = :edgeId AND " + ACTIVE_KG_EDGE)
     suspend fun getById(edgeId: String): KgEdgeEntity?
@@ -50,14 +53,17 @@ interface KgEdgeDao {
     @Query("SELECT COUNT(*) FROM kg_edges WHERE EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = kg_edges.id AND p.doc_id IN (:docIds) AND " + ACTIVE_KG_EVIDENCE + ")")
     suspend fun countByDocIds(docIds: List<String>): Int
 
-    @Query("SELECT e.id AS id, s.name AS source, e.relation AS relation, t.name AS target FROM kg_edges e JOIN kg_nodes s ON s.id = e.source_id JOIN kg_nodes t ON t.id = e.target_id WHERE EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = e.id AND p.message_id = :messageId AND " + ACTIVE_KG_EVIDENCE + ") ORDER BY e.weight DESC, e.id LIMIT :limit")
-    suspend fun getRelationsForMessage(messageId: String, limit: Int): List<KgTurnRelation>
+    @Query("SELECT e.id AS id, s.name AS source, e.relation AS relation, t.name AS target FROM kg_edges e JOIN kg_nodes s ON s.id = e.source_id JOIN kg_nodes t ON t.id = e.target_id WHERE (:collectionId IS NULL OR e.collection_id=:collectionId) AND EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id = e.id AND p.message_id = :messageId AND " + ACTIVE_KG_EVIDENCE + ") ORDER BY e.weight DESC, e.id LIMIT :limit")
+    suspend fun getRelationsForMessage(messageId: String, limit: Int, collectionId: String? = null): List<KgTurnRelation>
 
     @Query("SELECT COUNT(*) FROM kg_edges WHERE " + ACTIVE_KG_EDGE)
     suspend fun getCount(): Int
 
     @Query(EDGE_SELECT + EDGE_FROM + ACTIVE_KG_EDGE + " ORDER BY id")
     suspend fun getAll(): List<KgEdgeEntity>
+
+    @Query(EDGE_SELECT + EDGE_FROM + "collection_id=:collectionId AND " + ACTIVE_KG_EDGE + " ORDER BY id")
+    suspend fun getByCollection(collectionId: String): List<KgEdgeEntity>
 
     @Query("DELETE FROM kg_edges WHERE id = :edgeId")
     suspend fun deleteById(edgeId: String)
@@ -71,11 +77,23 @@ interface KgEdgeDao {
     @Query("DELETE FROM kg_jit_cache")
     suspend fun clearJitCache()
 
+    @Query("DELETE FROM kg_collection_members")
+    suspend fun clearMembers()
+
+    @Query("DELETE FROM kg_collections WHERE id != 'shared'")
+    suspend fun clearCollections()
+
+    @Query("INSERT OR IGNORE INTO kg_collections(id, kind, title, root_ref, created_at) VALUES('shared', 'shared', '通用知识', NULL, 0)")
+    suspend fun ensureSharedCollection()
+
     @Transaction
     suspend fun clearGraph() {
         clearAll()
         clearNodes()
         clearJitCache()
+        clearMembers()
+        clearCollections()
+        ensureSharedCollection()
     }
 
     data class DocumentOptionRow(val docId: String, val title: String)

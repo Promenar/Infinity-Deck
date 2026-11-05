@@ -7,7 +7,7 @@ import com.promenar.infinity.data.local.db.entity.*
 import kotlinx.serialization.json.*
 import java.util.UUID
 
-/** 实体全局共享，所有来源归属均由证据表达；业务唯一约束与 Room 事务共同保证并发幂等。 */
+/** 实体身份按图谱隔离；业务唯一约束与 Room 事务共同保证并发幂等。 */
 class GraphStore(internal val database: InfinityDatabase) {
     suspend fun getGraphSubgraph(request: GraphSubgraphRequest = GraphSubgraphRequest()): GraphSubgraph =
         GraphSubgraphStore(database).load(request)
@@ -16,7 +16,7 @@ class GraphStore(internal val database: InfinityDatabase) {
         GraphSubgraphStore(database).search(request)
 
     /** 按最近证据时间返回最多 1,000 个会话。 */
-    suspend fun getSessionOptions(): List<KgSessionOption> = KgSessionGraphStore(database).getSessionOptions()
+    suspend fun getSessionOptions(collectionId: String? = null): List<KgSessionOption> = KgSessionGraphStore(database).getSessionOptions(collectionId)
 
     /** 返回最早的完整轮次前缀，最多 400 轮、20,000 条实体出现记录。 */
     suspend fun getSessionTurns(sessionId: String): List<KgSessionTurn> = KgSessionGraphStore(database).getSessionTurns(sessionId)
@@ -28,37 +28,42 @@ class GraphStore(internal val database: InfinityDatabase) {
     private val nodes get() = database.kgNodeDao()
     private val edges get() = database.kgEdgeDao()
     private val evidence get() = database.kgEvidenceDao()
+    private val collections get() = KgCollectionRepository(database)
 
     suspend fun upsertNode(name: String, type: String = "concept", metadata: String? = null,
-        scope: KgScope? = null, sourceType: String = "full"): String = database.withTransaction {
-        putNode(name, type, metadata, source(scope, null, sourceType))
+        scope: KgScope? = null, sourceType: String = "full", collectionId: String): String = database.withTransaction {
+        require(collections.collectionExists(collectionId)) { "图谱不存在" }
+        putNode(collectionId, name, type, metadata, source(scope, null, sourceType))
     }
 
-    private suspend fun putNode(name: String, type: String, metadata: String?, source: KgSource): String {
+    private suspend fun putNode(collectionId: String, name: String, type: String, metadata: String?, source: KgSource): String {
         val normalized = KgIdentity.normalize(name)
         val normalizedType = KgIdentity.normalize(type).ifBlank { "concept" }
         require(normalized.isNotBlank() && normalized.length <= 512 && normalizedType.length <= 512) { "实体身份无效" }
         val now = System.currentTimeMillis()
         nodes.insert(KgNodeEntity(UUID.randomUUID().toString(), KgIdentity.display(name), normalizedType, metadata,
-            now, now, normalized))
-        val stored = requireNotNull(nodes.findIdentity(normalized, normalizedType))
+            now, now, normalized, collectionId))
+        val stored = requireNotNull(nodes.findIdentity(collectionId, normalized, normalizedType))
         nodes.update(stored.copy(metadata = mergeMetadata(stored.metadata, metadata), updatedAt = now))
         addEvidence(source, nodeId = stored.id)
         return stored.id
     }
 
     suspend fun createEdge(sourceId: String, targetId: String, relation: String, docId: String? = null,
-        weight: Double = 1.0, scope: KgScope? = null, sourceType: String = "full"): String = database.withTransaction {
-        putEdge(sourceId, targetId, relation, weight, source(scope, docId, sourceType))
+        weight: Double = 1.0, scope: KgScope? = null, sourceType: String = "full", collectionId: String): String = database.withTransaction {
+        require(collections.collectionExists(collectionId)) { "图谱不存在" }
+        putEdge(collectionId, sourceId, targetId, relation, weight, source(scope, docId, sourceType))
     }
 
-    private suspend fun putEdge(sourceId: String, targetId: String, relation: String, weight: Double, source: KgSource): String {
-        require(nodes.getRawById(sourceId) != null && nodes.getRawById(targetId) != null) { "关系端点不存在" }
+    private suspend fun putEdge(collectionId: String, sourceId: String, targetId: String, relation: String, weight: Double, source: KgSource): String {
+        val sourceNode = nodes.getRawById(sourceId)
+        val targetNode = nodes.getRawById(targetId)
+        require(sourceNode?.collectionId == collectionId && targetNode?.collectionId == collectionId) { "关系端点必须属于同一图谱" }
         val normalized = KgIdentity.normalize(relation)
         require(normalized.isNotBlank() && normalized.length <= 512 && weight.isFinite() && weight in 0.0..1.0) { "关系或权重无效" }
         edges.insert(KgEdgeEntity(UUID.randomUUID().toString(), sourceId, targetId, KgIdentity.display(relation), weight,
-            System.currentTimeMillis(), normalized))
-        val stored = requireNotNull(edges.findIdentity(sourceId, targetId, normalized))
+            System.currentTimeMillis(), normalized, collectionId))
+        val stored = requireNotNull(edges.findIdentity(collectionId, sourceId, targetId, normalized))
         if (weight > stored.weight) edges.update(stored.copy(weight = weight))
         addEvidence(source, edgeId = stored.id, weight = weight)
         // 关系本身也证明两个端点存在，不能沿用其它来源的单一节点归属。
@@ -69,9 +74,11 @@ class GraphStore(internal val database: InfinityDatabase) {
 
     /** 调用方必须持有候选提交的 hash/epoch 与活动任务准入；内部仍保证整图原子写入。 */
     suspend fun commitCandidate(candidate: DocumentIndexCandidate, source: KgSource) = database.withTransaction {
-        val mapping = candidate.nodes.associate { it.id to putNode(it.name, it.type, it.metadata, source) }
+        if (candidate.nodes.isEmpty() && candidate.edges.isEmpty()) return@withTransaction
+        val collectionId = collections.resolveDocumentForWrite(requireNotNull(source.docId) { "文档图谱缺少文档 ID" })
+        val mapping = candidate.nodes.associate { it.id to putNode(collectionId, it.name, it.type, it.metadata, source) }
         candidate.edges.forEach { edge ->
-            putEdge(requireNotNull(mapping[edge.sourceId]) { "候选关系缺少源节点" },
+            putEdge(collectionId, requireNotNull(mapping[edge.sourceId]) { "候选关系缺少源节点" },
                 requireNotNull(mapping[edge.targetId]) { "候选关系缺少目标节点" }, edge.relation, edge.weight, source)
         }
     }
@@ -79,15 +86,23 @@ class GraphStore(internal val database: InfinityDatabase) {
     /**
      * 以一轮会话图谱抽取结果替换该轮已有证据。所属助手消息已不存在（抽取期间被删除）时不写入并返回 false。
      */
-    suspend fun replaceTurn(sessionId: String, messageId: String, contentHash: String, graph: ValidatedGraph): Boolean =
+    suspend fun replaceTurn(sessionId: String, messageId: String, contentHash: String, graph: ValidatedGraph, expectedCollectionId: String? = null): Boolean =
         database.withTransaction {
             val message = database.messageDao().getById(messageId)
             if (message == null || message.sessionId != sessionId) return@withTransaction false
-            val previous = evidence.affectedByMessage(messageId)
-            evidence.deleteMessageEvidence(messageId)
+            val binding = collections.readBinding(sessionId)
+            if (!binding.writable || (expectedCollectionId != null && expectedCollectionId != binding.collectionId)) return@withTransaction false
+            collections.ensureSessionCollectionIfNeeded(sessionId, binding.collectionId)
+            val previous = evidence.evidenceForMessageInCollection(messageId, binding.collectionId)
+            previous.map { it.id }.chunked(400).forEach { evidence.deleteByIds(it) }
             val source = KgSource("session", sessionId = sessionId, contentHash = contentHash, messageId = messageId)
-            val ids = graph.nodes.associate { it.name to putNode(it.name, it.type, it.metadata, source) }
-            graph.edges.forEach { putEdge(ids.getValue(it.source), ids.getValue(it.target), it.relation, it.weight, source) }
+            val ids = graph.nodes.associate { ValidatedGraph.identity(it.name, it.type) to putNode(binding.collectionId, it.name, it.type, it.metadata, source) }
+            graph.edges.forEach { edge ->
+                val from = requireNotNull(graph.resolveEndpoint(edge.source, edge.sourceType))
+                val to = requireNotNull(graph.resolveEndpoint(edge.target, edge.targetType))
+                putEdge(binding.collectionId, ids.getValue(ValidatedGraph.identity(from.name, from.type)),
+                    ids.getValue(ValidatedGraph.identity(to.name, to.type)), edge.relation, edge.weight, source)
+            }
             evidence.collectAffected(previous)
             true
         }
@@ -113,7 +128,10 @@ class GraphStore(internal val database: InfinityDatabase) {
 
     /** 缓存与证据在同一事务内提交，删除、回收或版本变化后的后台结果不得重新落库。 */
     suspend fun persistJit(result: MicroGraphResult, sources: List<KgJitSource>, sessionId: String,
-        cache: KgJitCacheEntity): Boolean = database.withTransaction {
+        cache: KgJitCacheEntity, collectionId: String): Boolean = database.withTransaction {
+        val binding = collections.readBinding(sessionId)
+        if (!binding.writable || binding.collectionId != collectionId) return@withTransaction false
+        collections.ensureSessionCollectionIfNeeded(sessionId, collectionId)
         if (sources.isEmpty()) return@withTransaction false
         for (source in sources) {
             val docId = source.docId ?: continue
@@ -130,35 +148,43 @@ class GraphStore(internal val database: InfinityDatabase) {
         sources.forEach { input ->
             val source = KgSource("jit", input.docId, sessionId, input.contentHash, cache.cacheKey, input.docId != null)
             val graph = ValidatedGraph.from(result.nodes, result.edges)
-            val ids = graph.nodes.associate { it.name to putNode(it.name, it.type, it.metadata, source) }
-            graph.edges.forEach { putEdge(ids.getValue(it.source), ids.getValue(it.target), it.relation, it.weight, source) }
+            val ids = graph.nodes.associate { ValidatedGraph.identity(it.name, it.type) to putNode(collectionId, it.name, it.type, it.metadata, source) }
+            graph.edges.forEach { edge ->
+                val from = requireNotNull(graph.resolveEndpoint(edge.source, edge.sourceType))
+                val to = requireNotNull(graph.resolveEndpoint(edge.target, edge.targetType))
+                putEdge(collectionId, ids.getValue(ValidatedGraph.identity(from.name, from.type)),
+                    ids.getValue(ValidatedGraph.identity(to.name, to.type)), edge.relation, edge.weight, source)
+            }
         }
         true
     }
 
     suspend fun updateNode(id: String, updates: KgNodeUpdate) = database.withTransaction {
         val current = nodes.getById(id) ?: return@withTransaction
+        require(collections.collectionExists(current.collectionId)) { "图谱不存在" }
         val name = KgIdentity.display(updates.name ?: current.name)
         val type = KgIdentity.normalize(updates.type ?: current.type)
         require(name.isNotBlank() && name.length <= 512 && type.isNotBlank() && type.length <= 512)
-        val target = nodes.findIdentity(KgIdentity.normalize(name), type)
+        val target = nodes.findIdentity(current.collectionId, KgIdentity.normalize(name), type)
         if (target != null && target.id != id) mergeInto(id, target)
         else nodes.update(current.copy(name = name, type = type, normalizedName = KgIdentity.normalize(name), updatedAt = System.currentTimeMillis()))
     }
 
     suspend fun mergeNodes(sourceId: String, targetName: String) = database.withTransaction {
         val source = nodes.getById(sourceId) ?: return@withTransaction
-        val target = nodes.findIdentity(KgIdentity.normalize(targetName), source.type)
+        require(collections.collectionExists(source.collectionId)) { "图谱不存在" }
+        val target = nodes.findIdentity(source.collectionId, KgIdentity.normalize(targetName), source.type)
             ?: throw IllegalArgumentException("目标实体不存在或类型不一致")
         if (sourceId != target.id) mergeInto(sourceId, target)
     }
 
     private suspend fun mergeInto(sourceId: String, target: KgNodeEntity) {
+        require(nodes.getRawById(sourceId)?.collectionId == target.collectionId) { "不能跨图谱合并实体" }
         evidence.getForNode(sourceId).forEach { copyEvidence(it, nodeId = target.id) }
         edges.getRawByNodeId(sourceId).forEach { edge ->
             val source = if (edge.sourceId == sourceId) target.id else edge.sourceId
             val destination = if (edge.targetId == sourceId) target.id else edge.targetId
-            val existing = edges.findIdentity(source, destination, edge.normalizedRelation)
+            val existing = edges.findIdentity(edge.collectionId, source, destination, edge.normalizedRelation)
             if (existing == null || existing.id == edge.id) edges.update(edge.copy(sourceId = source, targetId = destination))
             else {
                 evidence.getForEdges(listOf(edge.id)).forEach { copyEvidence(it, edgeId = existing.id) }
@@ -175,20 +201,49 @@ class GraphStore(internal val database: InfinityDatabase) {
         addEvidence(KgSource(row.sourceType, row.docId, row.sessionId, row.contentHash, row.taskId, row.workspaceDocument, row.messageId), nodeId, edgeId, row.createdAt, row.weight)
     }
 
+    /** 只移动已有证据，并保留身份与元数据；调用方在同一事务中删除旧证据。 */
+    internal suspend fun relocateEvidence(row: KgEvidenceEntity, collectionId: String) {
+        suspend fun relocateNode(originalId: String): String {
+            val original = requireNotNull(nodes.getRawById(originalId))
+            nodes.insert(original.copy(id = UUID.randomUUID().toString(), collectionId = collectionId))
+            val target = requireNotNull(nodes.findIdentity(collectionId, original.normalizedName, original.type))
+            nodes.update(target.copy(metadata = mergeMetadata(target.metadata, original.metadata)))
+            return target.id
+        }
+        val node = row.nodeId
+        if (node != null) {
+            copyEvidence(row, nodeId = relocateNode(node))
+        } else {
+            val edge = requireNotNull(edges.getRawById(requireNotNull(row.edgeId)))
+            val source = relocateNode(edge.sourceId)
+            val target = relocateNode(edge.targetId)
+            edges.insert(edge.copy(id = UUID.randomUUID().toString(), collectionId = collectionId, sourceId = source, targetId = target))
+            val stored = requireNotNull(edges.findIdentity(collectionId, source, target, edge.normalizedRelation))
+            if (edge.weight > stored.weight) edges.update(stored.copy(weight = edge.weight))
+            copyEvidence(row, edgeId = stored.id)
+        }
+    }
+
     suspend fun deleteNode(id: String) = database.withTransaction {
-        edges.getRawByNodeId(id).forEach { edges.deleteById(it.id) }
+        val attached = edges.getRawByNodeId(id)
+        val affected = evidence.getForNode(id) + attached.map { it.id }.chunked(400).flatMap { evidence.getForEdges(it) }
+        attached.forEach { edges.deleteById(it.id) }
         nodes.deleteById(id)
         evidence.collectNodes()
+        affected.mapNotNull { it.docId }.distinct().forEach { evidence.collectDocumentMember(it) }
+        evidence.collectEmptyCollections()
+        Unit
     }
 
     suspend fun updateEdge(id: String, updates: KgEdgeUpdate) = database.withTransaction {
         val current = edges.getById(id) ?: return@withTransaction
+        require(collections.collectionExists(current.collectionId)) { "图谱不存在" }
         val relation = KgIdentity.display(updates.relation ?: current.relation)
         val weight = updates.weight ?: current.weight
         require(relation.isNotBlank() && relation.length <= 512 && weight.isFinite() && weight in 0.0..1.0)
         // 手动编辑作用于这条关系当前全部来源；重新归一关系时逐条保留来源置信度。
         if (updates.weight != null) evidence.setEdgeWeights(id, weight)
-        val target = edges.findIdentity(current.sourceId, current.targetId, KgIdentity.normalize(relation))
+        val target = edges.findIdentity(current.collectionId, current.sourceId, current.targetId, KgIdentity.normalize(relation))
         if (target != null && target.id != id) {
             evidence.getForEdges(listOf(id)).forEach { copyEvidence(it, edgeId = target.id) }
             edges.update(target.copy(weight = maxOf(target.weight, weight)))
@@ -197,25 +252,45 @@ class GraphStore(internal val database: InfinityDatabase) {
     }
 
     suspend fun clearGraphForDoc(docId: String) { evidence.clearDocument(docId) }
-    suspend fun deleteEdge(id: String) = database.withTransaction { edges.deleteById(id); evidence.collectNodes(); Unit }
-    suspend fun getAllNodes(): List<KgNode> = nodes.getAll().map { it.toModel() }
-    suspend fun getEdgesForNode(nodeId: String): List<KgEdge> = database.withTransaction { modelEdges(edges.getByNodeId(nodeId)) }
+    suspend fun deleteEdge(id: String) = database.withTransaction {
+        val affected = evidence.getForEdges(listOf(id))
+        edges.deleteById(id)
+        evidence.collectNodes()
+        affected.mapNotNull { it.docId }.distinct().forEach { evidence.collectDocumentMember(it) }
+        evidence.collectEmptyCollections()
+        Unit
+    }
+    suspend fun getAllNodes(): List<KgNode> = database.withTransaction {
+        collections.reconcileDocuments()
+        nodes.getAll().map { it.toModel() }
+    }
+    suspend fun getEdgesForNode(nodeId: String): List<KgEdge> = database.withTransaction {
+        collections.reconcileDocuments()
+        modelEdges(edges.getByNodeId(nodeId))
+    }
 
     suspend fun getGraphData(docIds: List<String>? = null, sessionId: String? = null): GraphData = database.withTransaction {
+        collections.reconcileDocuments()
+        val boundCollection = sessionId?.let { collections.readBinding(it).collectionId }
         val selectedEdges = when {
-            docIds != null -> edges.getByDocIds(docIds)
-            sessionId != null -> edges.getBySessionId(sessionId)
+            docIds != null -> docIds.distinct().chunked(400).flatMap { edges.getByDocIds(it) }
+                .distinctBy { it.id }.filter { boundCollection == null || it.collectionId == boundCollection }
+            boundCollection != null -> edges.getByCollection(boundCollection)
             else -> edges.getAll()
         }
         val selectedNodes = when {
-            docIds != null -> nodes.getByDocIds(docIds)
-            sessionId != null -> nodes.getBySessionId(sessionId)
+            docIds != null -> docIds.distinct().chunked(400).flatMap { nodes.getByDocIds(it) }
+                .distinctBy { it.id }.filter { boundCollection == null || it.collectionId == boundCollection }
+            boundCollection != null -> nodes.getByCollection(boundCollection)
             else -> nodes.getAll()
         }
-        GraphData(selectedNodes.map { it.toModel() }, modelEdges(selectedEdges, docIds, sessionId))
+        GraphData(selectedNodes.map { it.toModel() }, modelEdges(selectedEdges, docIds))
     }
 
-    suspend fun getDocumentOptions(): List<KgDocumentOption> = edges.getActiveDocumentOptions().map { KgDocumentOption(it.docId, it.title) }
+    suspend fun getDocumentOptions(): List<KgDocumentOption> = database.withTransaction {
+        collections.reconcileDocuments()
+        edges.getActiveDocumentOptions().map { KgDocumentOption(it.docId, it.title) }
+    }
 
     private suspend fun modelEdges(rows: List<KgEdgeEntity>, docIds: List<String>? = null, sessionId: String? = null): List<KgEdge> {
         val sources = rows.chunked(400).flatMap { evidence.getActiveForEdges(it.map { edge -> edge.id }) }.groupBy { it.edgeId }

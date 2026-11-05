@@ -27,7 +27,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * 三档范围在向量、关键词、图谱三条路径上取到同一组会话与文档。
+ * 对话记忆与文档范围控制向量和关键词检索；图谱由会话绑定独立控制。
  * 助手 A 有 a1、a2 两个会话，B 有 b1，私密助手 P 有 p1；知识库会话 kb 属于系统助手。
  */
 @RunWith(RobolectricTestRunner::class)
@@ -48,7 +48,9 @@ class RetrievalScopeTest {
         for ((session, agent) in listOf("a1" to "A", "a2" to "A", "b1" to "B", "p1" to "P")) {
             db.sessionDao().insert(SessionEntity(session, agent, createdAt = 1, updatedAt = 1, workspaceRootUuid = "root-$session"))
             db.vectorDao().insert(vector("mem-$session", sessionId = session, docId = null, metadata = "{\"type\":\"memory\",\"chunkIndex\":0}"))
-            db.kgNodeDao().insert(KgNodeEntity("node-$session", "甲$session", createdAt = 1))
+            db.openHelper.writableDatabase.execSQL("INSERT INTO kg_collections(id,kind,title,created_at) VALUES(?,?,?,1)",
+                arrayOf("session:$session", "session", session))
+            db.kgNodeDao().insert(KgNodeEntity("node-$session", "甲$session", createdAt = 1, collectionId = "session:$session"))
             db.kgEvidenceDao().insert(KgEvidenceEntity("ev-$session", nodeId = "node-$session", sourceType = "session",
                 sessionId = session, contentHash = "", taskId = "t-$session", createdAt = 1))
         }
@@ -60,7 +62,9 @@ class RetrievalScopeTest {
         }
         for (doc in listOf("f-a1", "f-kb", "f-b1", "legacy-doc")) {
             db.vectorDao().insert(vector("doc-$doc", sessionId = null, docId = doc, metadata = "{\"type\":\"document\",\"docId\":\"$doc\"}"))
-            db.kgNodeDao().insert(KgNodeEntity("node-$doc", "乙$doc", createdAt = 1))
+            db.openHelper.writableDatabase.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,1)",
+                arrayOf("work:$doc", "work", doc, doc))
+            db.kgNodeDao().insert(KgNodeEntity("node-$doc", "乙$doc", createdAt = 1, collectionId = "work:$doc"))
             db.kgEvidenceDao().insert(KgEvidenceEntity("ev-$doc", nodeId = "node-$doc", sourceType = "document",
                 docId = doc, contentHash = "", taskId = "index", createdAt = 1))
         }
@@ -70,7 +74,7 @@ class RetrievalScopeTest {
     fun tearDown() = db.close()
 
     @Test
-    fun `对话记忆三档在向量、关键词、图谱三条路径一致`() = runBlocking<Unit> {
+    fun `对话记忆三档改变向量和关键词范围而图谱保持本会话绑定`() = runBlocking<Unit> {
         val expected = mapOf(
             ConversationScope.SESSION to setOf("a1"),
             ConversationScope.AGENT to setOf("a1", "a2"),
@@ -80,7 +84,7 @@ class RetrievalScopeTest {
             val resolved = resolver.resolve("a1", RagOptions(memoryScope = scope, graphScope = scope))
             assertThat(db.vectorDao().conversationRows(resolved.memory, "memory").map { it.sessionId }).containsExactlyElementsIn(sessions)
             assertThat(db.vectorDao().conversationFts(resolved.memory, "needle").map { it.sessionId }).containsExactlyElementsIn(sessions)
-            assertThat(graphSessions(resolved)).containsExactlyElementsIn(sessions)
+            assertThat(graphSessions(resolved)).containsExactly("a1")
         }
     }
 
@@ -93,7 +97,7 @@ class RetrievalScopeTest {
         val fromP = resolver.resolve("p1", RagOptions(memoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.ALL_AGENTS))
         assertThat(db.vectorDao().conversationRows(fromP.memory, "memory").map { it.sessionId })
             .containsExactly("a1", "a2", "b1", "p1")
-        assertThat(graphSessions(fromP)).containsExactly("a1", "a2", "b1", "p1")
+        assertThat(graphSessions(fromP)).containsExactly("p1")
     }
 
     @Test
@@ -156,13 +160,17 @@ class RetrievalScopeTest {
         val clamped = policy.clamp(RagOptions(memoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.AGENT,
             documentScope = DocumentScope.ALL_INDEXED))
         assertThat(clamped.memoryScope).isEqualTo(ConversationScope.AGENT)
-        assertThat(clamped.graphScope).isEqualTo(ConversationScope.SESSION)
+        assertThat(clamped.graphScope).isEqualTo(ConversationScope.AGENT)
         assertThat(clamped.documentScope).isEqualTo(DocumentScope.WORKSPACE)
         assertThat(policy.clamp(RagOptions(memoryScope = ConversationScope.SESSION)).memoryScope).isEqualTo(ConversationScope.SESSION)
 
         val normalized = AgentMemoryPolicy(memoryDefault = ConversationScope.ALL_AGENTS, memoryCap = ConversationScope.SESSION).normalized()
         assertThat(normalized.memoryDefault).isEqualTo(ConversationScope.SESSION)
         assertThat(normalized.defaultsFor(RagOptions(isGlobal = true)).effectiveMemoryScope).isEqualTo(ConversationScope.SESSION)
+        val legacyGraphPolicy = AgentMemoryPolicy(graphDefault = ConversationScope.ALL_AGENTS, graphCap = ConversationScope.SESSION)
+        assertThat(legacyGraphPolicy.defaultsFor(RagOptions(graphScope = ConversationScope.AGENT)).graphScope)
+            .isEqualTo(ConversationScope.AGENT)
+        assertThat(legacyGraphPolicy.normalized().graphDefault).isEqualTo(ConversationScope.ALL_AGENTS)
     }
 
     /** 每个会话恰有一个“甲+会话名”实体，只有对话证据；按名称检索命中即说明该会话的证据可见。 */

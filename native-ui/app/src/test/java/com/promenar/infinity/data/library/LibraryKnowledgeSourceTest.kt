@@ -470,14 +470,20 @@ class LibraryKnowledgeSourceTest {
         db.vectorDao().insert(vector("chunk", null, "document", 1).copy(
             docId = "doc", fileUuid = "doc", content = "甲 乙 乙 乙",
         ))
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:doc','work','doc.txt','doc',1)",
+        )
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('doc','work:doc')",
+        )
         listOf("甲", "乙").forEach { name ->
-            db.kgNodeDao().insert(KgNodeEntity(id = name, name = name, createdAt = 1))
+            db.kgNodeDao().insert(KgNodeEntity(id = name, name = name, createdAt = 1, collectionId = "work:doc"))
             db.kgEvidenceDao().insert(KgEvidenceEntity(
                 id = "e-$name", nodeId = name, sourceType = "document", docId = "doc",
                 contentHash = "fixture-hash", taskId = "task", createdAt = 1, workspaceDocument = true,
             ))
         }
-        com.promenar.infinity.data.rag.GraphStore(db).createEdge("甲", "乙", "认识", "doc")
+        com.promenar.infinity.data.rag.GraphStore(db).createEdge("甲", "乙", "认识", "doc", collectionId = "work:doc")
         val insight = source.insight("doc")!!
         assertThat(insight.entities).containsExactly("乙", "甲").inOrder()
         assertThat(insight.chunkCount).isEqualTo(1)

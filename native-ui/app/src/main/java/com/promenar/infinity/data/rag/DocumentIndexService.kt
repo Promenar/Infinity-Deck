@@ -180,7 +180,8 @@ class WorkspaceDocumentIndexCandidateBuilder(
         val graphComplete = graph != null && graph.isSuccess && graph.status == KgExtractionStatus.SUCCESS && graph.progress?.isPartial != true
         val graphFailure = graph?.takeUnless { it.isSuccess }?.status
             ?: KgExtractionStatus.PROVIDER_ERROR.takeIf { graph != null && !graphComplete && graph.progress?.reason == null }
-        val nodeIds = graph?.nodes.orEmpty().associate { ValidatedGraph.identity(it.name) to UUID.randomUUID().toString() }
+        val validated = graph?.let { ValidatedGraph.from(it.nodes, it.edges) }
+        val nodeIds = validated?.nodes.orEmpty().associate { ValidatedGraph.identity(it.name, it.type) to UUID.randomUUID().toString() }
         DocumentIndexCandidate(
             graphExtracted = graphComplete,
             kgProgress = graph?.progress,
@@ -211,8 +212,8 @@ class WorkspaceDocumentIndexCandidateBuilder(
                     fileUuid = event.fileUuid,
                 )
             },
-            nodes = graph?.nodes.orEmpty().mapNotNull { node ->
-                nodeIds[ValidatedGraph.identity(node.name)]?.let { id ->
+            nodes = validated?.nodes.orEmpty().mapNotNull { node ->
+                nodeIds[ValidatedGraph.identity(node.name, node.type)]?.let { id ->
                     KgNodeEntity(
                         id = id,
                         name = node.name,
@@ -223,9 +224,11 @@ class WorkspaceDocumentIndexCandidateBuilder(
                     )
                 }
             },
-            edges = graph?.edges.orEmpty().mapNotNull { edge ->
-                val sourceId = nodeIds[ValidatedGraph.identity(edge.source)]
-                val targetId = nodeIds[ValidatedGraph.identity(edge.target)]
+            edges = validated?.edges.orEmpty().mapNotNull { edge ->
+                val source = validated?.resolveEndpoint(edge.source, edge.sourceType)
+                val target = validated?.resolveEndpoint(edge.target, edge.targetType)
+                val sourceId = source?.let { nodeIds[ValidatedGraph.identity(it.name, it.type)] }
+                val targetId = target?.let { nodeIds[ValidatedGraph.identity(it.name, it.type)] }
                 if (sourceId == null || targetId == null) null else KgEdgeEntity(
                     id = UUID.randomUUID().toString(),
                     sourceId = sourceId,

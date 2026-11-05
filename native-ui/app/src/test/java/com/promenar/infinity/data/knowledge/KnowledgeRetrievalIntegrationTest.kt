@@ -32,7 +32,7 @@ class KnowledgeRetrievalIntegrationTest {
         ContextBuilder(ragProvider = rag).buildContext(ContextBuilderParams("s", "q", assistantMsgId = "m", session = session, agentMemoryPolicy = policy))
         assertThat(received).isEqualTo(expected)
         assertThat(expected.memoryScope).isEqualTo(ConversationScope.SESSION)
-        assertThat(expected.graphScope).isEqualTo(ConversationScope.AGENT)
+        assertThat(expected.graphScope).isEqualTo(ConversationScope.ALL_AGENTS)
         assertThat(expected.documentScope).isEqualTo(DocumentScope.KNOWLEDGE_BASE)
     }
 

@@ -12,7 +12,13 @@ import com.promenar.infinity.data.local.db.dao.SessionGraphTaskRow
 import com.promenar.infinity.data.local.db.entity.MessageEntity
 import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity
+import com.promenar.infinity.data.model.GraphBinding
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -71,7 +77,49 @@ class SessionGraphStoreTest {
 
         assertThat(counts()).containsExactly(KgTurnCount("a1", 2, 1))
         assertThat(database.kgNodeDao().getForMessage("a1", 10).map { it.name }).containsExactly("Rust", "Mozilla")
-        assertThat(database.kgNodeDao().findIdentity(KgIdentity.normalize("Kotlin"), "language")).isNull()
+        assertThat(database.kgNodeDao().findIdentity("session:s1", KgIdentity.normalize("Kotlin"), "language")).isNull()
+    }
+
+    @Test
+    fun `轮次明细与状态只读取当前绑定图谱`() = runTest {
+        seedTurn()
+        val store = GraphStore(database)
+        store.replaceTurn("s1", "a1", "h1", graph())
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:doc','work','资料','doc',1)")
+        database.openHelper.writableDatabase.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('work-seed','资料节点','concept','资料节点',1,'work:doc')")
+        database.openHelper.writableDatabase.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('work-seed-evidence','work-seed','legacy','doc','','fixture',1,0)")
+        val collections = KgCollectionRepository(database)
+        collections.setBinding("s1", GraphBinding("work:doc"))
+        store.replaceTurn("s1", "a1", "h2", rustGraph())
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-bound-turn-test", Context.MODE_PRIVATE)
+        val port = RoomSessionGraphPort({ database }, { _, _, _ -> false }, SessionGraphStats(prefs), { true })
+
+        assertThat(port.turnDetails("a1").entities.map { it.name }).containsExactly("Rust", "Mozilla")
+        assertThat(port.observeTurns("s1").first().getValue("a1")).isEqualTo(TurnGraphState(TurnGraphState.Status.DONE, 2, 1))
+        val initialState = CompletableDeferred<Unit>()
+        val states = async { port.observeTurns("s1").onEach { initialState.complete(Unit) }.take(2).toList() }
+        initialState.await()
+        collections.setBinding("s1", GraphBinding())
+        assertThat(port.turnDetails("a1").entities.map { it.name }).containsExactly("Kotlin", "JetBrains")
+        assertThat(port.observeTurns("s1").first().getValue("a1")).isEqualTo(TurnGraphState(TurnGraphState.Status.DONE, 2, 1))
+        assertThat(states.await()).hasSize(2)
+    }
+
+    @Test
+    fun `只有关系证据时轮次状态计数包含两个端点`() = runTest {
+        seedTurn()
+        val sql = database.openHelper.writableDatabase
+        sql.execSQL("INSERT INTO kg_collections(id,kind,title,created_at) VALUES('session:s1','session','会话',1)")
+        sql.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('a','甲','person','甲',1,'session:s1'),('b','乙','person','乙',1,'session:s1')")
+        sql.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at,collection_id) VALUES('edge','a','b','认识',1,'认识',1,'session:s1')")
+        sql.execSQL("INSERT INTO kg_evidence(id,edge_id,source_type,session_id,message_id,content_hash,task_id,created_at,workspace_document,weight) VALUES('evidence','edge','session','s1','a1','','fixture',1,0,1)")
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-edge-turn-test", Context.MODE_PRIVATE)
+        val port = RoomSessionGraphPort({ database }, { _, _, _ -> false }, SessionGraphStats(prefs), { true })
+
+        assertThat(port.observeTurns("s1").first().getValue("a1"))
+            .isEqualTo(TurnGraphState(TurnGraphState.Status.DONE, 2, 1))
+        assertThat(port.turnDetails("a1").entities.map { it.name }).containsExactly("甲", "乙")
     }
 
     @Test
@@ -125,7 +173,7 @@ class SessionGraphStoreTest {
 
         assertThat(database.kgEvidenceDao().affectedByMessage("a1")).isEmpty()
         assertThat(database.kgEvidenceDao().affectedByMessage("a2")).isNotEmpty()
-        assertThat(database.kgNodeDao().findIdentity(KgIdentity.normalize("Kotlin"), "language")).isNull()
+        assertThat(database.kgNodeDao().findIdentity("session:s1", KgIdentity.normalize("Kotlin"), "language")).isNull()
         assertThat(database.vectorizationTaskDao().getById(VectorizationQueue.sessionGraphTaskId("a1"))).isNull()
         assertThat(database.vectorizationTaskDao().getById(VectorizationQueue.sessionGraphTaskId("a2"))).isNull()
     }
