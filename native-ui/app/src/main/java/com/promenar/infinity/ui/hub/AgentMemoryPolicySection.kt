@@ -63,7 +63,8 @@ internal fun AgentScopeSection(
         title = stringResource(R.string.agent_memory_section),
         linkedFooter = agentScopeFooter(onOpenKnowledgeSettings),
     ) {
-        ScopeResource.entries.forEach { resource ->
+        // 图谱不再设范围档位：每个会话绑定一张图谱，在会话设置中改绑。
+        ScopeResource.entries.filter { it != ScopeResource.Graph }.forEach { resource ->
             val (default, cap) = policy.ordinals(resource)
             InfinityValueRow(
                 title = stringResource(resource.titleRes),

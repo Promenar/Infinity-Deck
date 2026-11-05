@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -127,7 +128,7 @@ internal fun KnowledgeGraphModeSelector(
     )
 }
 
-/** 范围行：当前文档或会话的选择入口与规模说明；全局视角只显示说明。 */
+/** 范围行：当前图谱、文档或会话的选择入口与规模说明。 */
 @Composable
 internal fun KnowledgeGraphScopeRow(
     viewMode: KgViewMode,
@@ -146,7 +147,7 @@ internal fun KnowledgeGraphScopeRow(
             KgViewMode.DOCUMENT -> Icons.Rounded.Description
             KgViewMode.SESSION -> Icons.Rounded.ChatBubbleOutline
         }
-        val pickable = viewMode != KgViewMode.GLOBAL
+        val pickable = true
         Surface(
             shape = MaterialTheme.shapes.small,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -159,7 +160,13 @@ internal fun KnowledgeGraphScopeRow(
                         Modifier
                             .clip(MaterialTheme.shapes.small)
                             .clickable(role = Role.Button, onClick = onPick)
-                            .testTag(if (viewMode == KgViewMode.DOCUMENT) UiTags.KG_DOCUMENT_SELECTOR else UiTags.KG_SESSION_SELECTOR)
+                            .testTag(
+                                when (viewMode) {
+                                    KgViewMode.GLOBAL -> UiTags.KG_COLLECTION_SELECTOR
+                                    KgViewMode.DOCUMENT -> UiTags.KG_DOCUMENT_SELECTOR
+                                    KgViewMode.SESSION -> UiTags.KG_SESSION_SELECTOR
+                                },
+                            )
                     } else {
                         Modifier
                     },
@@ -599,6 +606,67 @@ internal fun KnowledgeGraphCanvasMessage(
         }
     }
 }
+
+/** 图谱视角的图谱列表：作品图谱与通用知识图谱，单选。 */
+@Composable
+internal fun KnowledgeGraphCollectionOptionsContent(
+    options: List<com.promenar.infinity.data.rag.KgCollectionSummary>,
+    selectedCollectionId: String?,
+    onSelect: (String) -> Unit,
+) {
+    val sharedTitle = stringResource(R.string.kg_spaces_shared_collection_title)
+    ProvideGroupedPress {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bettboxListGroup()
+                .selectableGroup(),
+        ) {
+            if (options.isEmpty()) {
+                item {
+                    Text(
+                        text = stringResource(R.string.ks_graph_page_options_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .testTag(UiTags.KG_COLLECTION_OPTIONS_EMPTY)
+                            .padding(InfinitySpacing.Large),
+                    )
+                }
+            } else {
+                items(options, key = { it.id }) { option ->
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
+                            .selectable(
+                                selected = option.id == selectedCollectionId,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(option.id) },
+                            )
+                            .testTag(UiTags.kgCollectionOption(option.id)),
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        headlineContent = {
+                            Text(kgCollectionTitle(option, sharedTitle), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.ks_graph_page_option_meta, option.documentCount, option.nodeCount))
+                        },
+                        trailingContent = if (option.id == selectedCollectionId) {
+                            { Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 图谱显示名：通用知识图谱用本地化名称，作品图谱用文件夹名。 */
+internal fun kgCollectionTitle(option: com.promenar.infinity.data.rag.KgCollectionSummary, sharedTitle: String): String =
+    if (option.kind == "shared") sharedTitle else option.title.ifBlank { option.rootRef.orEmpty().substringAfterLast('/') }
 
 @Composable
 internal fun KnowledgeGraphSessionOptionsContent(

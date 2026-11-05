@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ks_graph_section">知识图谱</string>
+    <string name="ks_graph_bound">绑定的图谱</string>
+    <string name="ks_graph_rebind">改绑</string>
+    <string name="ks_graph_mode_read_only">只读</string>
+    <string name="ks_graph_mode_read_write">读写</string>
+    <string name="ks_graph_hint_read_only">只检索这张图谱，本会话不抽取图谱。</string>
+    <string name="ks_graph_hint_own">每轮对话抽取的实体与关系写入本会话图谱。</string>
+    <string name="ks_graph_hint_merge">本会话抽取的实体并入「%1$s」，带会话来源标记，可整体撤回。</string>
+    <string name="ks_graph_retract">撤回本会话写入的内容</string>
+    <string name="ks_graph_retract_none">本会话尚未向这张图谱写入内容</string>
+    <string name="ks_graph_retract_count">本会话已向这张图谱写入 %1$d 个实体、%2$d 条关系</string>
+    <string name="ks_graph_retract_title">撤回本会话写入的内容？</string>
+    <string name="ks_graph_retract_message">从「%1$s」删除本会话写入的来源（%2$d 个实体、%3$d 条关系）。只由本会话支撑的实体与关系会一并移除，文档抽取的内容不受影响。</string>
+    <string name="ks_graph_retract_confirm">撤回</string>
+    <string name="ks_graph_group_own">本会话图谱</string>
+    <string name="ks_graph_group_collection">资料合集</string>
+    <string name="ks_graph_group_shared">通用知识文件夹共用</string>
+    <string name="ks_graph_group_other">其它会话</string>
+    <string name="ks_graph_group_header_own">本会话</string>
+    <string name="ks_graph_group_header_collection">资料合集</string>
+    <string name="ks_graph_group_header_shared">通用知识</string>
+    <string name="ks_graph_group_header_other">其它会话</string>
+    <string name="ks_graph_lock_agent">受智能体限制</string>
+    <string name="ks_graph_lock_global">需开启全局记忆</string>
+    <string name="ks_graph_lock_reach">超出全局记忆的可达范围</string>
+    <string name="ks_graph_current">当前</string>
+    <string name="ks_graph_rebind_title">改绑图谱</string>
+    <string name="ks_graph_rebind_desc">一个会话同时只用一张图谱。改绑后，之前写入的内容留在原图谱。</string>
+    <string name="ks_graph_rebind_adds_docs">绑定后，「%1$s」的文档会自动加入本会话的资料范围。</string>
+    <string name="ks_graph_rebind_confirm">绑定</string>
+    <string name="ks_folder_action">图谱设置</string>
+    <string name="ks_folder_title">「%1$s」的图谱</string>
+    <string name="ks_folder_desc">决定这个文件夹里的文档归入哪张图谱。切换只重新归类已抽取的实体，不重新调用模型。</string>
+    <string name="ks_folder_mode_work">独立作品（默认）</string>
+    <string name="ks_folder_mode_work_desc">只在本文件夹内合并同名实体，不与其它作品串线</string>
+    <string name="ks_folder_mode_shared">通用知识</string>
+    <string name="ks_folder_mode_shared_desc">与其它“通用知识”文件夹共用一张图谱，适合现实世界的资料</string>
+    <string name="ks_folder_mode_merge">与上级文件夹合并</string>
+    <string name="ks_folder_mode_merge_desc">一部作品按卷分了子文件夹时使用</string>
+    <string name="ks_folder_saved">已更新图谱设置</string>
+    <string name="ks_folder_failed">图谱设置未能更新</string>
+    <string name="ks_graph_page_select">选择图谱</string>
+    <string name="ks_graph_page_options_empty">还没有图谱。在资料库中抽取文档后会生成作品图谱。</string>
+    <string name="ks_graph_page_option_meta">%1$d 篇文档 · %2$d 个实体</string>
+    <plurals name="ks_graph_documents">
+        <item quantity="other">%1$d 篇</item>
+    </plurals>
+    <plurals name="ks_graph_entities">
+        <item quantity="other">%1$d 个实体</item>
+    </plurals>
+</resources>

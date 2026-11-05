@@ -2894,6 +2894,34 @@ class ChatViewModel(
         }
     }
 
+    /** 会话设置“知识图谱”一节的绑定状态；没有当前会话时为 null。 */
+    suspend fun sessionGraphBinding(): com.promenar.infinity.data.rag.SessionGraphBindingData? {
+        val sessionId = _currentSessionId.value ?: return null
+        return com.promenar.infinity.data.rag.loadSessionGraphBinding(
+            (application as InfinityApplication).database, sessionId, _currentRagOptions.value,
+        )
+    }
+
+    /** 改绑图谱或切换只读/读写；collectionId 为 null 表示本会话图谱。经 updateRagOptions 保持内存缓存一致。 */
+    fun updateGraphBinding(collectionId: String?, readOnly: Boolean) {
+        val sessionId = _currentSessionId.value ?: return
+        val own = com.promenar.infinity.data.rag.KgCollectionRepository.sessionCollectionId(sessionId)
+        val mode = if (readOnly) com.promenar.infinity.data.model.GraphBindingMode.READ_ONLY
+            else com.promenar.infinity.data.model.GraphBindingMode.READ_WRITE
+        updateRagOptions(_currentRagOptions.value.copy(
+            graphBinding = com.promenar.infinity.data.model.GraphBinding(collectionId?.takeIf { it != own }, mode),
+        ))
+    }
+
+    /** 撤回本会话写入指定图谱的证据，返回撤回的证据数。 */
+    suspend fun retractSessionGraph(collectionId: String): Int {
+        val sessionId = _currentSessionId.value ?: return 0
+        return withContext(Dispatchers.IO) {
+            com.promenar.infinity.data.rag.KgCollectionRepository((application as InfinityApplication).database)
+                .revokeSessionEvidence(sessionId, collectionId)
+        }
+    }
+
     private val sessionGraphPort by lazy { sessionGraphPortOverride ?: (application as InfinityApplication).sessionGraphPort }
 
     /** 当前会话每轮的图谱抽取状态，键为该轮最后一条助手消息。只在界面订阅时读取数据库。 */

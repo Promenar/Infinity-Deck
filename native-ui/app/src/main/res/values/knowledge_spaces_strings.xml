@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ks_graph_section">Knowledge graph</string>
+    <string name="ks_graph_bound">Bound graph</string>
+    <string name="ks_graph_rebind">Rebind</string>
+    <string name="ks_graph_mode_read_only">Read only</string>
+    <string name="ks_graph_mode_read_write">Read and write</string>
+    <string name="ks_graph_hint_read_only">Retrieval reads only this graph. This session does not extract graph data.</string>
+    <string name="ks_graph_hint_own">Entities and relations extracted from each turn are written to this session\'s own graph.</string>
+    <string name="ks_graph_hint_merge">Entities extracted in this session merge into “%1$s” with a session source tag, and can be retracted together.</string>
+    <string name="ks_graph_retract">Retract this session\'s additions</string>
+    <string name="ks_graph_retract_none">This session has not written to this graph</string>
+    <string name="ks_graph_retract_count">This session added %1$d entities and %2$d relations to this graph</string>
+    <string name="ks_graph_retract_title">Retract this session\'s additions?</string>
+    <string name="ks_graph_retract_message">Removes the sources this session added to “%1$s” (%2$d entities, %3$d relations). Entities and relations supported only by this session are removed too; content extracted from documents is not affected.</string>
+    <string name="ks_graph_retract_confirm">Retract</string>
+    <string name="ks_graph_group_own">This session\'s graph</string>
+    <string name="ks_graph_group_collection">Library collection</string>
+    <string name="ks_graph_group_shared">Shared across general-knowledge folders</string>
+    <string name="ks_graph_group_other">Another session</string>
+    <string name="ks_graph_group_header_own">This session</string>
+    <string name="ks_graph_group_header_collection">Library collections</string>
+    <string name="ks_graph_group_header_shared">General knowledge</string>
+    <string name="ks_graph_group_header_other">Other sessions</string>
+    <string name="ks_graph_lock_agent">Restricted by the agent</string>
+    <string name="ks_graph_lock_global">Requires global memory</string>
+    <string name="ks_graph_lock_reach">Outside the global memory reach</string>
+    <string name="ks_graph_current">Current</string>
+    <string name="ks_graph_rebind_title">Rebind graph</string>
+    <string name="ks_graph_rebind_desc">A session uses one graph at a time. Content written earlier stays in its original graph.</string>
+    <string name="ks_graph_rebind_adds_docs">After binding, documents in “%1$s” are added to this session\'s document scope.</string>
+    <string name="ks_graph_rebind_confirm">Bind</string>
+    <string name="ks_folder_action">Graph settings</string>
+    <string name="ks_folder_title">Graph for “%1$s”</string>
+    <string name="ks_folder_desc">Decides which graph the documents in this folder belong to. Switching only regroups extracted entities; the model is not called again.</string>
+    <string name="ks_folder_mode_work">Standalone work (default)</string>
+    <string name="ks_folder_mode_work_desc">Same-name entities merge only within this folder and never mix with other works</string>
+    <string name="ks_folder_mode_shared">General knowledge</string>
+    <string name="ks_folder_mode_shared_desc">Shares one graph with every other general-knowledge folder; suited to real-world material</string>
+    <string name="ks_folder_mode_merge">Merge with parent folder</string>
+    <string name="ks_folder_mode_merge_desc">Use when one work is split into volume subfolders</string>
+    <string name="ks_folder_saved">Graph setting updated</string>
+    <string name="ks_folder_failed">Couldn\'t update the graph setting</string>
+    <string name="ks_graph_page_select">Choose graph</string>
+    <string name="ks_graph_page_options_empty">No graph yet. Extract a document in the library to create its work graph.</string>
+    <string name="ks_graph_page_option_meta">%1$d documents · %2$d entities</string>
+    <plurals name="ks_graph_documents">
+        <item quantity="one">%1$d document</item>
+        <item quantity="other">%1$d documents</item>
+    </plurals>
+    <plurals name="ks_graph_entities">
+        <item quantity="one">%1$d entity</item>
+        <item quantity="other">%1$d entities</item>
+    </plurals>
+</resources>

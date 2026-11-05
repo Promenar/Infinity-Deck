@@ -47,6 +47,8 @@ data class FileHostAction(
     val label: String,
     val appliesTo: Set<FileHostActionScope>,
     val prominent: Boolean = false,
+    /** 额外的适用条件，例如只对资料库文件夹显示。 */
+    val visibleFor: (List<FileItem>) -> Boolean = { true },
     val onInvoke: (List<FileItem>) -> Unit,
 )
 
@@ -88,5 +90,5 @@ internal fun FileManagerHostSpec.actionsFor(items: List<FileItem>): List<FileHos
         items.first().isDirectory -> FileHostActionScope.FOLDER
         else -> FileHostActionScope.FILE
     }
-    return hostActions.filter { scope in it.appliesTo }
+    return hostActions.filter { scope in it.appliesTo && it.visibleFor(items) }
 }

@@ -432,6 +432,7 @@ internal fun knowledgeOf(entry: FileEntry, tasks: List<com.promenar.infinity.dat
         else -> KnowledgeIndexState.INDEXED
     }
     return FileKnowledge(state, documentId = entry.uuid.takeUnless { entry.isDirectory },
+        folderId = entry.uuid.takeIf { entry.isDirectory },
         failureReason = failed?.error.takeIf { state == KnowledgeIndexState.FAILED })
 }
 

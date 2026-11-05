@@ -281,6 +281,8 @@ object UiTags {
     const val KG_DOCUMENT_OPTIONS_EMPTY = "KG_DOCUMENT_OPTIONS_EMPTY"
     const val KG_REFRESH = "KG_REFRESH"
     const val KG_SESSION_SELECTOR = "KG_SESSION_SELECTOR"
+    const val KG_COLLECTION_SELECTOR = "KG_COLLECTION_SELECTOR"
+    const val KG_COLLECTION_OPTIONS_EMPTY = "KG_COLLECTION_OPTIONS_EMPTY"
     const val KG_SESSION_OPTIONS_ERROR = "KG_SESSION_OPTIONS_ERROR"
     const val KG_SESSION_OPTIONS_EMPTY = "KG_SESSION_OPTIONS_EMPTY"
     const val KG_TURN_STRIP = "KG_TURN_STRIP"
@@ -295,6 +297,7 @@ object UiTags {
     fun kgMode(mode: String): String = "$KG_MODE_PREFIX$mode"
     fun kgDocumentOption(documentId: String): String = "$KG_DOCUMENT_OPTION_PREFIX$documentId"
     fun kgSessionOption(sessionId: String): String = "$KG_SESSION_OPTION_PREFIX$sessionId"
+    fun kgCollectionOption(collectionId: String): String = "KG_COLLECTION_OPTION:$collectionId"
     fun kgTurn(messageId: String): String = "$KG_TURN_PREFIX$messageId"
     fun kgTypeFilter(kind: String): String = "$KG_TYPE_FILTER_PREFIX$kind"
 

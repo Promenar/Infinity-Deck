@@ -22,8 +22,6 @@ import com.promenar.infinity.data.model.ConversationScope
 import com.promenar.infinity.data.model.DocumentScope
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.rag.ConversationReachStats
-import com.promenar.infinity.data.rag.SessionGraphQueueStatus
-import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityValueRow
 import com.promenar.infinity.ui.common.ScopePickerSheet
@@ -34,7 +32,7 @@ import com.promenar.infinity.ui.common.withGraphScope
 import com.promenar.infinity.ui.common.withMemoryScope
 
 /**
- * 会话的三类检索范围。档位在智能体上限内选择；会话保存的档位超出上限时（智能体上限后来调低），
+ * 会话的对话记忆与资料检索范围。档位在智能体上限内选择；会话保存的档位超出上限时（智能体上限后来调低），
  * 行内显示实际生效的档位并注明受上限限制。对应功能关闭时整行停用。
  */
 @Composable
@@ -43,7 +41,6 @@ internal fun SessionScopeSection(
     policy: AgentMemoryPolicy,
     onRagOptionsChange: ((RagOptions) -> RagOptions) -> Unit,
     reachStats: Map<ConversationScope, ConversationReachStats> = emptyMap(),
-    graphQueue: SessionGraphQueueStatus? = null,
     /** 页脚“智能体设置”的去向（S7）；为 null 时页脚是纯文字。 */
     onOpenAgentSettings: (() -> Unit)? = null,
 ) {
@@ -52,7 +49,8 @@ internal fun SessionScopeSection(
         title = stringResource(R.string.memory_scope_section),
         linkedFooter = scopeFooter(onOpenAgentSettings),
     ) {
-        ScopeResource.entries.forEach { resource ->
+        // 图谱不再按范围档位选择：每个会话绑定一张图谱，见 SessionGraphBindingSection。
+        ScopeResource.entries.filter { it != ScopeResource.Graph }.forEach { resource ->
             val enabled = when (resource) {
                 ScopeResource.Memory -> ragOptions.enableMemory
                 ScopeResource.Graph -> ragOptions.enableKnowledgeGraph == true
@@ -83,7 +81,6 @@ internal fun SessionScopeSection(
                 onClick = { picking = resource },
                 modifier = Modifier.testTag("session_scope_${resource.name.lowercase()}"),
             )
-            if (resource == ScopeResource.Graph && graphQueue != null) SessionGraphQueueRow(graphQueue)
         }
     }
     picking?.let { resource ->
@@ -132,17 +129,6 @@ private fun scopeFooter(onOpenAgentSettings: (() -> Unit)?): AnnotatedString {
             }
         }
     }
-}
-
-/** 会话图谱后台抽取队列：待处理、失败与今日用量，只读。 */
-@Composable
-private fun SessionGraphQueueRow(queue: SessionGraphQueueStatus) {
-    InfinitySettingsRowLayout(
-        title = stringResource(R.string.session_graph_queue_title),
-        subtitle = stringResource(R.string.session_graph_queue_summary, queue.pending, queue.failed, queue.todayTurns, queue.todayCalls),
-        modifier = Modifier.testTag("session_graph_queue"),
-        subtitleMaxLines = 2,
-    )
 }
 
 private fun scopeOrdinals(resource: ScopeResource, options: RagOptions, policy: AgentMemoryPolicy): Pair<Int, Int> = when (resource) {

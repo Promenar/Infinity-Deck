@@ -1037,7 +1037,7 @@
     <string name="rag_home_memory_total_count">Total: %1$d</string>
     <string name="rag_home_memory_est_tokens">~%1$d tokens</string>
     <string name="rag_home_search_content_match">Content match</string>
-    <string name="kg_view_global">Global</string>
+    <string name="kg_view_global">Graph</string>
     <string name="kg_view_session">Session</string>
     <string name="kg_view_document">Document</string>
     <string name="kg_empty_graph">No graph yet. Choose Extract knowledge graph in a document\'s menu.</string>

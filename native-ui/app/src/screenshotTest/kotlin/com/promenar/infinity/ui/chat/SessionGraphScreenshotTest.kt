@@ -11,14 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
-import com.promenar.infinity.data.agent.AgentMemoryPolicy
 import com.promenar.infinity.data.local.db.dao.KgTurnRelation
-import com.promenar.infinity.data.model.ConversationScope
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.TurnMemoryState
-import com.promenar.infinity.data.rag.ConversationReachStats
 import com.promenar.infinity.data.rag.SessionGraphQueueStatus
 import com.promenar.infinity.data.rag.TurnGraphDetails
 import com.promenar.infinity.data.rag.TurnGraphEntity
@@ -77,19 +74,33 @@ fun turnGraphSheetFailedEnglishPreview() = SessionGraphFrame(dark = false) {
 }
 
 @PreviewTest
-@Preview(name = "会话检索范围 后台抽取 深色", widthDp = 411, heightDp = 420, locale = "zh-rCN")
+@Preview(name = "会话知识图谱 并入作品 后台抽取 深色", widthDp = 411, heightDp = 420, locale = "zh-rCN")
 @Composable
 fun sessionGraphQueuePreview() = SessionGraphFrame {
-    SessionScopeSection(
-        ragOptions = RagOptions(enableKnowledgeGraph = true, graphScope = ConversationScope.AGENT),
-        policy = AgentMemoryPolicy(),
-        onRagOptionsChange = {},
-        reachStats = mapOf(
-            ConversationScope.SESSION to ConversationReachStats(1, 1),
-            ConversationScope.AGENT to ConversationReachStats(12, 1),
-            ConversationScope.ALL_AGENTS to ConversationReachStats(30, 4),
-        ),
+    val current = GraphChoice(id = "work:demo", group = GraphGroup.Collection, title = "长夜行", detail = "资料库/长夜行", documents = 20, entities = 412)
+    SessionGraphBindingSection(
+        enabled = true,
+        binding = SessionGraphBindingUi(current = current, readOnly = false, contribution = 18 to 9),
+        choices = listOf(current),
+        onRebind = {},
+        onReadOnlyChange = {},
+        onRetract = {},
         graphQueue = SessionGraphQueueStatus(pending = 2, failed = 1, todayTurns = 14, todayCalls = 17),
+    )
+}
+
+@PreviewTest
+@Preview(name = "Session graph read only English 360dp font130", widthDp = 360, heightDp = 520, locale = "en", fontScale = 1.3f)
+@Composable
+fun sessionGraphReadOnlyEnglishPreview() = SessionGraphFrame(dark = false) {
+    val current = GraphChoice(id = "shared", group = GraphGroup.Shared, title = "General knowledge", documents = 6, entities = 88)
+    SessionGraphBindingSection(
+        enabled = true,
+        binding = SessionGraphBindingUi(current = current, readOnly = true),
+        choices = listOf(current),
+        onRebind = {},
+        onReadOnlyChange = {},
+        onRetract = {},
     )
 }
 

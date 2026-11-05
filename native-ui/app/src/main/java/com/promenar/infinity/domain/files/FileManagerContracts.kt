@@ -67,6 +67,8 @@ data class FileKnowledge(
     val state: KnowledgeIndexState,
     /** 资料库文档 id，可打开文档页。 */
     val documentId: String? = null,
+    /** 资料库文件夹 id（工作区文件表主键），用于文件夹的图谱设置；文件为空。 */
+    val folderId: String? = null,
     val chunkCount: Int? = null,
     /** 解析或索引失败的可读原因。 */
     val failureReason: String? = null,

@@ -87,7 +87,9 @@ data class GraphEdge(
 class KnowledgeGraphViewModel(
     private val repo: IKnowledgeGraphRepository,
     private val graphStore: GraphStore,
-    private val application: Application
+    private val application: Application,
+    /** 图谱列表读取；为空时读本机数据库（测试注入固定列表）。 */
+    private val collectionLoader: (suspend () -> List<com.promenar.infinity.data.rag.KgCollectionSummary>)? = null,
 ) : ViewModel() {
 
     private val _nodes = MutableStateFlow<List<GraphNode>>(emptyList())
@@ -116,6 +118,13 @@ class KnowledgeGraphViewModel(
 
     private val _viewMode = MutableStateFlow(KgViewMode.GLOBAL)
     val viewMode: StateFlow<KgViewMode> = _viewMode.asStateFlow()
+
+    /** “图谱”视角可选的作品图谱与通用知识图谱。 */
+    private val _collectionOptions = MutableStateFlow<List<com.promenar.infinity.data.rag.KgCollectionSummary>>(emptyList())
+    val collectionOptions: StateFlow<List<com.promenar.infinity.data.rag.KgCollectionSummary>> = _collectionOptions.asStateFlow()
+
+    private val _selectedCollectionId = MutableStateFlow<String?>(null)
+    val selectedCollectionId: StateFlow<String?> = _selectedCollectionId.asStateFlow()
 
     private val _selectedDocumentId = MutableStateFlow<String?>(null)
     val selectedDocumentId: StateFlow<String?> = _selectedDocumentId.asStateFlow()
@@ -181,7 +190,40 @@ class KnowledgeGraphViewModel(
     init {
         loadDocumentOptions()
         loadSessionOptions()
-        loadGraph()
+        loadCollectionOptions(loadDefault = true)
+    }
+
+    /** 读取图谱列表；[loadDefault] 时选中实体最多的一张并加载（无图谱时选通用知识）。 */
+    fun loadCollectionOptions(loadDefault: Boolean = false) {
+        viewModelScope.launch {
+            val options = try {
+                collectionLoader?.invoke() ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.promenar.infinity.data.rag.KgCollectionRepository((application as com.promenar.infinity.InfinityApplication).database)
+                        .listBindableCollections("").filter { it.kind != "session" }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                InfinityLogger.logError("[KG] loadCollectionOptions failed", failure)
+                emptyList()
+            }
+            _collectionOptions.value = options
+            if (loadDefault && _selectedCollectionId.value == null && _viewMode.value == KgViewMode.GLOBAL) {
+                loadGraphByCollection(options.maxByOrNull { it.nodeCount }?.takeIf { it.nodeCount > 0 }?.id ?: "shared")
+            }
+        }
+    }
+
+    fun loadGraphByCollection(collectionId: String) {
+        require(collectionId.isNotBlank()) { "图谱标识不能为空" }
+        clearSearch()
+        clearScopeFocus()
+        _viewMode.value = KgViewMode.GLOBAL
+        _selectedCollectionId.value = collectionId
+        _documentSelectionRequired.value = false
+        _sessionSelectionRequired.value = false
+        _loadError.value = null
+        loadGraphInternal(scope = KgScope.Collection(collectionId), preserveSameScope = false)
     }
 
     fun loadSessionOptions() {
@@ -374,7 +416,8 @@ class KnowledgeGraphViewModel(
         _viewMode.value = KgViewMode.GLOBAL
         _documentSelectionRequired.value = false
         _sessionSelectionRequired.value = false
-        loadGraphInternal(scope = KgScope.Global, preserveSameScope = false)
+        _selectedCollectionId.value?.let { loadGraphInternal(scope = KgScope.Collection(it), preserveSameScope = false) }
+            ?: loadCollectionOptions(loadDefault = true)
     }
 
     fun loadGraphByDoc(docId: String) {
@@ -396,6 +439,7 @@ class KnowledgeGraphViewModel(
     fun refreshCurrentScope() {
         reloadCurrentScope(preserveSameScope = true)
         if (_viewMode.value == KgViewMode.SESSION) loadSessionOptions()
+        if (_viewMode.value == KgViewMode.GLOBAL) loadCollectionOptions()
     }
 
     fun searchEntities(query: String) {
@@ -414,6 +458,7 @@ class KnowledgeGraphViewModel(
             query = _searchQuery.value,
             docId = (scope as? KgScope.Document)?.docId,
             sessionId = (scope as? KgScope.Session)?.sessionId,
+            collectionId = (scope as? KgScope.Collection)?.collectionId,
         )
         _isSearching.value = true
         searchJob = viewModelScope.launch {
@@ -441,6 +486,7 @@ class KnowledgeGraphViewModel(
             request = GraphSubgraphRequest(
                 docId = (scope as? KgScope.Document)?.docId,
                 sessionId = (scope as? KgScope.Session)?.sessionId,
+                collectionId = (scope as? KgScope.Collection)?.collectionId,
                 nodeLimit = (_nodes.value.size + GRAPH_EXPANSION_BATCH_SIZE + 1).coerceAtMost(MAX_GRAPH_NODE_LIMIT),
                 edgeLimit = maxOf(DEFAULT_GRAPH_EDGE_LIMIT, (_nodes.value.size + GRAPH_EXPANSION_BATCH_SIZE) * 4).coerceAtMost(MAX_GRAPH_EDGE_LIMIT),
                 retainedNodeIds = _nodes.value.map { it.id },
@@ -460,7 +506,7 @@ class KnowledgeGraphViewModel(
 
     /** 当前视角对应的查询范围；文档或会话未选定时为 null。 */
     private fun currentScope(): KgScope? = when (_viewMode.value) {
-        KgViewMode.GLOBAL -> KgScope.Global
+        KgViewMode.GLOBAL -> _selectedCollectionId.value?.let(KgScope::Collection)
         KgViewMode.DOCUMENT -> _selectedDocumentId.value?.let(KgScope::Document)
         KgViewMode.SESSION -> _selectedSessionId.value?.let(KgScope::Session)
     }
@@ -607,9 +653,10 @@ private sealed interface KgScope {
     val key: String
     fun request(): GraphSubgraphRequest
 
-    data object Global : KgScope {
-        override val key = "global"
-        override fun request() = GraphSubgraphRequest()
+    /** 一张图谱（作品或通用知识）；图谱之间实体互不合并，不再提供跨图谱的全局视图。 */
+    data class Collection(val collectionId: String) : KgScope {
+        override val key get() = "collection:$collectionId"
+        override fun request() = GraphSubgraphRequest(collectionId = collectionId)
     }
 
     data class Document(val docId: String) : KgScope {

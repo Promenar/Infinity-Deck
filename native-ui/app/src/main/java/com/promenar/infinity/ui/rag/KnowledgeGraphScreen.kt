@@ -105,6 +105,10 @@ fun KnowledgeGraphScreen(
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var showDocumentSelector by remember { mutableStateOf(false) }
     var showSessionSelector by remember { mutableStateOf(false) }
+    var showCollectionSelector by remember { mutableStateOf(false) }
+    val collectionOptions by viewModel.collectionOptions.collectAsState()
+    val selectedCollectionId by viewModel.selectedCollectionId.collectAsState()
+    val sharedGraphTitle = stringResource(R.string.kg_spaces_shared_collection_title)
     var showAccessibilityList by remember { mutableStateOf(false) }
     var resetKey by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -159,7 +163,9 @@ fun KnowledgeGraphScreen(
     )
     val selectedSession = sessionOptions.firstOrNull { it.sessionId == selectedSessionId }
     val scopeLabel = when (viewMode) {
-        KgViewMode.GLOBAL -> stringResource(R.string.kg_scope_all_sources)
+        KgViewMode.GLOBAL -> collectionOptions.firstOrNull { it.id == selectedCollectionId }
+            ?.let { kgCollectionTitle(it, sharedGraphTitle) }
+            ?: if (selectedCollectionId == "shared") sharedGraphTitle else stringResource(R.string.ks_graph_page_select)
         KgViewMode.DOCUMENT -> documentOptions.firstOrNull { it.docId == selectedDocumentId }?.title
             ?: stringResource(R.string.kg_select_document)
         KgViewMode.SESSION -> when {
@@ -236,7 +242,10 @@ fun KnowledgeGraphScreen(
                     when (viewMode) {
                         KgViewMode.DOCUMENT -> showDocumentSelector = true
                         KgViewMode.SESSION -> showSessionSelector = true
-                        KgViewMode.GLOBAL -> Unit
+                        KgViewMode.GLOBAL -> {
+                            viewModel.loadCollectionOptions()
+                            showCollectionSelector = true
+                        }
                     }
                 },
                 modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
@@ -427,6 +436,22 @@ fun KnowledgeGraphScreen(
                 onSelect = { docId ->
                     showDocumentSelector = false
                     viewModel.loadGraphByDoc(docId)
+                },
+            )
+        }
+    }
+    if (showCollectionSelector) {
+        InfinityBottomSheet(
+            show = true,
+            onDismiss = { showCollectionSelector = false },
+            title = stringResource(R.string.ks_graph_page_select),
+        ) {
+            KnowledgeGraphCollectionOptionsContent(
+                options = collectionOptions,
+                selectedCollectionId = selectedCollectionId,
+                onSelect = { collectionId ->
+                    showCollectionSelector = false
+                    viewModel.loadGraphByCollection(collectionId)
                 },
             )
         }

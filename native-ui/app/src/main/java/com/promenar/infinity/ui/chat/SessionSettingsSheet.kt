@@ -654,12 +654,41 @@ private fun SettingsPanel(
         session?.id, memoryPolicy,
     ) { value = runCatching { chatViewModel.conversationReachStats() }.getOrDefault(emptyMap()) }
     val graphQueue by chatViewModel.sessionGraphQueue.collectAsStateWithLifecycle()
+    val ragOptions = session?.ragOptions ?: com.promenar.infinity.data.model.RagOptions()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var graphRefresh by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val graphData by androidx.compose.runtime.produceState<com.promenar.infinity.data.rag.SessionGraphBindingData?>(
+        initialValue = null, session?.id, ragOptions.graphBinding, ragOptions.enableKnowledgeGraph, graphRefresh,
+    ) { value = runCatching { chatViewModel.sessionGraphBinding() }.getOrNull() }
+    val sharedTitle = stringResource(R.string.kg_spaces_shared_collection_title)
+    val ownTitle = session?.title?.takeIf(String::isNotBlank) ?: stringResource(R.string.ks_graph_group_own)
+    val graphChoices = androidx.compose.runtime.remember(graphData, sharedTitle, ownTitle) {
+        graphData?.collections.orEmpty().map { it.toGraphChoice(sharedTitle, ownTitle) }
+    }
+    val graphBinding = androidx.compose.runtime.remember(graphData, graphChoices) {
+        graphData?.let { data ->
+            graphChoices.firstOrNull { it.id == data.binding.collectionId }?.let { current ->
+                SessionGraphBindingUi(current, readOnly = !data.binding.writable, contribution = data.contribution)
+            }
+        }
+    }
     SessionContextPanelContent(
         params = session?.inferenceParams ?: com.promenar.infinity.data.model.InferenceParams(),
-        ragOptions = session?.ragOptions ?: com.promenar.infinity.data.model.RagOptions(),
+        ragOptions = ragOptions,
         memoryPolicy = memoryPolicy,
         reachStats = reachStats,
         graphQueue = graphQueue,
+        graphBinding = graphBinding,
+        graphChoices = graphChoices,
+        onGraphRebind = { choice -> chatViewModel.updateGraphBinding(choice.id, readOnly = graphBinding?.readOnly ?: false) },
+        onGraphReadOnlyChange = { readOnly -> chatViewModel.updateGraphBinding(graphBinding?.current?.id, readOnly) },
+        onGraphRetract = {
+            val target = graphBinding?.current?.id
+            if (target != null) scope.launch {
+                runCatching { chatViewModel.retractSessionGraph(target) }
+                graphRefresh++
+            }
+        },
         fontSize = session?.options?.fontSize ?: 15,
         isRerankAvailable = presetRerankModel.isNotBlank(), isGenerating = isGenerating, isCompressing = isCompressing,
         onParamsChange = chatViewModel::updateInferenceParams,
@@ -681,6 +710,12 @@ internal fun SessionContextPanelContent(
     reachStats: Map<com.promenar.infinity.data.model.ConversationScope, com.promenar.infinity.data.rag.ConversationReachStats> = emptyMap(),
     /** 会话图谱后台抽取队列；全局开关关闭时为 null，不显示。 */
     graphQueue: com.promenar.infinity.data.rag.SessionGraphQueueStatus? = null,
+    /** 会话绑定的图谱；读取中为 null。 */
+    graphBinding: SessionGraphBindingUi? = null,
+    graphChoices: List<GraphChoice> = emptyList(),
+    onGraphRebind: (GraphChoice) -> Unit = {},
+    onGraphReadOnlyChange: (Boolean) -> Unit = {},
+    onGraphRetract: () -> Unit = {},
     fontSize: Int = 15,
     isRerankAvailable: Boolean = true,
     isGenerating: Boolean = false,
@@ -717,7 +752,16 @@ internal fun SessionContextPanelContent(
             SettingsToggle(stringResource(R.string.sheet_settings_kg), checked = ragOptions.enableKnowledgeGraph ?: false, icon = Icons.Rounded.Psychology,
                 onCheckedChange = { onRagOptionsChange { current -> current.withRetrievalToggle(SessionRetrievalToggle.KnowledgeGraph, it) } })
         }
-        SessionScopeSection(ragOptions, memoryPolicy, onRagOptionsChange, reachStats, graphQueue, onOpenAgentSettings)
+        SessionScopeSection(ragOptions, memoryPolicy, onRagOptionsChange, reachStats, onOpenAgentSettings)
+        SessionGraphBindingSection(
+            enabled = ragOptions.enableKnowledgeGraph == true,
+            binding = graphBinding,
+            choices = graphChoices,
+            onRebind = onGraphRebind,
+            onReadOnlyChange = onGraphReadOnlyChange,
+            onRetract = onGraphRetract,
+            graphQueue = graphQueue,
+        )
         InfinitySettingsSection(
             title = stringResource(R.string.sheet_settings_ui_title),
             footer = stringResource(R.string.settings_ia_message_font_footer),
@@ -778,3 +822,20 @@ internal fun SessionContextSettingsSection(
         )
     }
 }
+
+/** 仓库图谱摘要转为会话设置的图谱选项。 */
+private fun com.promenar.infinity.data.rag.KgCollectionSummary.toGraphChoice(sharedTitle: String, ownTitle: String) = GraphChoice(
+    id = id,
+    group = when (kind) {
+        "session" -> GraphGroup.Session
+        "shared" -> GraphGroup.Shared
+        else -> GraphGroup.Collection
+    },
+    title = when (kind) {
+        "shared" -> sharedTitle
+        "session" -> ownTitle
+        else -> title
+    },
+    documents = documentCount,
+    entities = nodeCount,
+)

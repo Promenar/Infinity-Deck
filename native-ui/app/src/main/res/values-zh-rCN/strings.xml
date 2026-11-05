@@ -1038,7 +1038,7 @@
     <string name="rag_home_memory_total_count">总计: %1$d</string>
     <string name="rag_home_memory_est_tokens">约 %1$d Token</string>
     <string name="rag_home_search_content_match">内容匹配</string>
-    <string name="kg_view_global">全局</string>
+    <string name="kg_view_global">图谱</string>
     <string name="kg_view_session">会话</string>
     <string name="kg_view_document">文档</string>
     <string name="kg_empty_graph">暂无图谱。在文档菜单中选择“抽取知识图谱”。</string>
