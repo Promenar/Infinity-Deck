@@ -17,7 +17,7 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class KgProvenanceMigrationTest {
-    @Test fun `v18实体按来源拆入图谱且保留legacy与各来源证据`() = runBlocking {
+    @Test fun `v18实体按来源拆入图谱且保留legacy与各来源证据`() = runBlocking<Unit> {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "kg-migration-${System.nanoTime()}.db"
         createV18(context, name).use { old ->
@@ -65,7 +65,7 @@ class KgProvenanceMigrationTest {
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
-    @Test fun `v18同名无来源实体仍在通用图谱保留各自来源数据`() = runBlocking {
+    @Test fun `v18同名无来源实体仍在通用图谱保留各自来源数据`() = runBlocking<Unit> {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "kg-migration-unattributed-${System.nanoTime()}.db"
         createV18(context, name).use { old ->

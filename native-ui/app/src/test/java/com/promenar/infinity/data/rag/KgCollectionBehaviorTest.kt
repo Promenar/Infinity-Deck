@@ -50,7 +50,7 @@ class KgCollectionBehaviorTest {
 
     @After fun close() = db.close()
 
-    @Test fun `外层事务内图谱绑定与文档归属不会等待自身连接`() = runBlocking {
+    @Test fun `外层事务内图谱绑定与文档归属不会等待自身连接`() = runBlocking<Unit> {
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         folder("p", null); file("one", "p")
         collections.setFolderSetting("p", KgFolderSetting.WORK)
@@ -66,7 +66,7 @@ class KgCollectionBehaviorTest {
         }
     }
 
-    @Test fun `读取绑定只查询不会补建共享图谱或校正文档`() = runBlocking {
+    @Test fun `读取绑定只查询不会补建共享图谱或校正文档`() = runBlocking<Unit> {
         folder("p", null); folder("q", null); file("one", "p"); write("one")
         val file = requireNotNull(db.fileEntryDao().findActiveByUuid("one"))
         db.fileEntryDao().update(file.copy(parentUuid = "q"))
@@ -77,7 +77,7 @@ class KgCollectionBehaviorTest {
         assertThat(entityCollections()).containsExactly("work:p:2")
     }
 
-    @Test fun `空库可绑定固定通用图谱且全量清空后仍可绑定`() = runBlocking {
+    @Test fun `空库可绑定固定通用图谱且全量清空后仍可绑定`() = runBlocking<Unit> {
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         assertThat(collections.listBindableCollections("s").map { it.id }).contains("shared")
         collections.setBinding("s", GraphBinding("shared", GraphBindingMode.READ_ONLY))
@@ -90,7 +90,7 @@ class KgCollectionBehaviorTest {
         }
     }
 
-    @Test fun `直接父文件夹限定实体身份与关系扩展`() = runBlocking {
+    @Test fun `直接父文件夹限定实体身份与关系扩展`() = runBlocking<Unit> {
         folder("p", null); folder("q", null)
         file("one", "p"); file("two", "p"); file("three", "q")
         write("one"); write("two"); write("three")
@@ -104,7 +104,7 @@ class KgCollectionBehaviorTest {
         assertThat(first.paths.single().nodes.map { it.id }.toSet()).containsNoneIn(second.paths.single().nodes.map { it.id })
     }
 
-    @Test fun `问资料按范围选择只有图谱没有向量的文档并逐图检索`() = runBlocking {
+    @Test fun `问资料按范围选择只有图谱没有向量的文档并逐图检索`() = runBlocking<Unit> {
         folder("p", null); folder("q", null)
         file("one", "p"); file("two", "q")
         write("one"); write("two")
@@ -120,7 +120,7 @@ class KgCollectionBehaviorTest {
         assertThat(collectionIdsForAskScope(retrieval, collections, otherRoot)).isEmpty()
     }
 
-    @Test fun `文件夹设置重建和文档移动后重新抽取前的归属校正`() = runBlocking {
+    @Test fun `文件夹设置重建和文档移动后重新抽取前的归属校正`() = runBlocking<Unit> {
         folder("p", null); folder("child", "p"); folder("q", null)
         file("one", "p"); file("two", "child")
         write("one"); write("two")
@@ -134,7 +134,7 @@ class KgCollectionBehaviorTest {
         assertThat(entityCollections()).containsExactly("work:p:2", "work:q:2")
     }
 
-    @Test fun `文档条目变为目录后回收无效来源与成员`() = runBlocking {
+    @Test fun `文档条目变为目录后回收无效来源与成员`() = runBlocking<Unit> {
         folder("p", null); file("one", "p"); write("one")
         val entry = requireNotNull(db.fileEntryDao().findActiveByUuid("one"))
         db.fileEntryDao().update(entry.copy(isDirectory = true))
@@ -146,7 +146,7 @@ class KgCollectionBehaviorTest {
         assertThat(collections.collectionIdsForDocuments(listOf("one"))).isEmpty()
     }
 
-    @Test fun `两个通用知识文件夹共享实体`() = runBlocking {
+    @Test fun `两个通用知识文件夹共享实体`() = runBlocking<Unit> {
         folder("p", null); folder("q", null)
         collections.setFolderSetting("p", KgFolderSetting.SHARED)
         collections.setFolderSetting("q", KgFolderSetting.SHARED)
@@ -155,7 +155,7 @@ class KgCollectionBehaviorTest {
         assertThat(entityCollections()).containsExactly("shared:2")
     }
 
-    @Test fun `永久删除文件夹后回收设置，回收站中的设置保留`() = runBlocking {
+    @Test fun `永久删除文件夹后回收设置，回收站中的设置保留`() = runBlocking<Unit> {
         folder("p", null); folder("q", null)
         collections.setFolderSetting("p", KgFolderSetting.SHARED)
         collections.setFolderSetting("q", KgFolderSetting.MERGE_PARENT)
@@ -169,7 +169,7 @@ class KgCollectionBehaviorTest {
         assertThat(collections.readFolderSetting("q")).isEqualTo(KgFolderSetting.MERGE_PARENT)
     }
 
-    @Test fun `实体类型与图谱共同限定身份且禁止跨图谱关系`() = runBlocking {
+    @Test fun `实体类型与图谱共同限定身份且禁止跨图谱关系`() = runBlocking<Unit> {
         folder("p", null); folder("q", null)
         file("one", "p"); file("two", "q"); write("one"); write("two")
         val first = store.upsertNode("共同人物", "person", collectionId = "work:p")
@@ -186,7 +186,7 @@ class KgCollectionBehaviorTest {
         assertThat(runCatching { store.updateEdge(edge.id, KgEdgeUpdate(relation = "无效图谱")) }.isFailure).isTrue()
     }
 
-    @Test fun `会话抽取的同名不同类型关系指向各自实体`() = runBlocking {
+    @Test fun `会话抽取的同名不同类型关系指向各自实体`() = runBlocking<Unit> {
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         db.messageDao().insert(MessageEntity(id = "m", sessionId = "s", role = "assistant", content = "测试", createdAt = 1))
         val graph = ValidatedGraph.from(
@@ -201,7 +201,7 @@ class KgCollectionBehaviorTest {
         assertThat(relations).containsExactly("居住", "person", "设址", "organization")
     }
 
-    @Test fun `只有关系证据的端点仍能在图谱页和列表计数中显示`() = runBlocking {
+    @Test fun `只有关系证据的端点仍能在图谱页和列表计数中显示`() = runBlocking<Unit> {
         val sql = db.openHelper.writableDatabase
         sql.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:legacy','work','历史','legacy',1)")
         sql.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('a','甲','person','甲',1,'work:legacy'),('b','乙','person','乙',1,'work:legacy')")
@@ -222,7 +222,7 @@ class KgCollectionBehaviorTest {
         assertThat(db.kgEdgeDao().getRawById("edge")?.targetId).isEqualTo("a")
     }
 
-    @Test fun `手动删除全部文档实体后回收成员和空作品图谱`() = runBlocking {
+    @Test fun `手动删除全部文档实体后回收成员和空作品图谱`() = runBlocking<Unit> {
         folder("p", null); file("one", "p"); write("one")
         val ids = db.kgNodeDao().getByCollection("work:p").map { it.id }
         ids.forEach { store.deleteNode(it) }
@@ -231,7 +231,7 @@ class KgCollectionBehaviorTest {
         assertThat(collections.listBindableCollections("s").map { it.id }).contains("shared")
     }
 
-    @Test fun `清除只有关系证据的文档时回收端点与空图谱`() = runBlocking {
+    @Test fun `清除只有关系证据的文档时回收端点与空图谱`() = runBlocking<Unit> {
         val sql = db.openHelper.writableDatabase
         sql.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:legacy','work','历史','legacy',1)")
         sql.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('legacy','work:legacy')")
@@ -249,7 +249,7 @@ class KgCollectionBehaviorTest {
         assertThat(collections.listBindableCollections("s").map { it.id }).doesNotContain("work:legacy")
     }
 
-    @Test fun `清除只有关系证据的会话消息时回收端点与空图谱`() = runBlocking {
+    @Test fun `清除只有关系证据的会话消息时回收端点与空图谱`() = runBlocking<Unit> {
         val sql = db.openHelper.writableDatabase
         sql.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('session:s','session','会话',NULL,1)")
         sql.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('a','甲','person','甲',1,'session:s'),('b','乙','person','乙',1,'session:s')")
@@ -264,7 +264,7 @@ class KgCollectionBehaviorTest {
         sql.query("SELECT 1 FROM kg_collections WHERE id='session:s'").use { assertThat(it.moveToFirst()).isFalse() }
     }
 
-    @Test fun `全量清空图谱同时清理成员与空图谱并保留文件夹设置`() = runBlocking {
+    @Test fun `全量清空图谱同时清理成员与空图谱并保留文件夹设置`() = runBlocking<Unit> {
         folder("p", null); file("one", "p")
         collections.setFolderSetting("p", KgFolderSetting.SHARED)
         write("one")
@@ -279,7 +279,7 @@ class KgCollectionBehaviorTest {
         assertThat(collections.readFolderSetting("p")).isEqualTo(KgFolderSetting.SHARED)
     }
 
-    @Test fun `会话只读绑定拒绝排队和持久化，读写绑定可按来源撤回`() = runBlocking {
+    @Test fun `会话只读绑定拒绝排队和持久化，读写绑定可按来源撤回`() = runBlocking<Unit> {
         folder("p", null); file("one", "p"); write("one")
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         db.messageDao().insert(MessageEntity(id = "u", sessionId = "s", role = "user", content = "足够长的问题".repeat(5), createdAt = 1))
@@ -317,7 +317,7 @@ class KgCollectionBehaviorTest {
         assertThat(graphCounts("session:s").second).isEqualTo(1)
     }
 
-    @Test fun `会话图谱页和搜索始终使用会话绑定`() = runBlocking {
+    @Test fun `会话图谱页和搜索始终使用会话绑定`() = runBlocking<Unit> {
         folder("p", null); folder("q", null); file("one", "p"); file("two", "q")
         write("one"); write("two")
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
@@ -329,7 +329,7 @@ class KgCollectionBehaviorTest {
             .containsExactlyElementsIn(boundIds.filter { id -> graph.data.nodes.first { it.id == id }.name == "共同人物" })
     }
 
-    @Test fun `会话图数据入口只返回当前绑定图谱的全部存活来源`() = runBlocking {
+    @Test fun `会话图数据入口只返回当前绑定图谱的全部存活来源`() = runBlocking<Unit> {
         folder("p", null); file("one", "p"); write("one")
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         db.messageDao().insert(MessageEntity(id = "m", sessionId = "s", role = "assistant", content = "测试", createdAt = 1))
@@ -344,7 +344,7 @@ class KgCollectionBehaviorTest {
         assertThat(graph.edges.map { it.relation }).containsExactly("认识")
     }
 
-    @Test fun `绑定作品随文档移动变空后立即回落会话图谱`() = runBlocking {
+    @Test fun `绑定作品随文档移动变空后立即回落会话图谱`() = runBlocking<Unit> {
         folder("p", null); folder("q", null); file("one", "p"); write("one")
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         db.messageDao().insert(MessageEntity(id = "m", sessionId = "s", role = "assistant", content = "测试", createdAt = 1))
@@ -360,7 +360,7 @@ class KgCollectionBehaviorTest {
         assertThat(GraphRetrievalStore(db).retrieve("会话甲", KgRetrievalScope("s", collectionId = binding.collectionId)).paths).hasSize(1)
     }
 
-    @Test fun `旧选项默认本会话图谱且不允许绑定其他会话`() = runBlocking {
+    @Test fun `旧选项默认本会话图谱且不允许绑定其他会话`() = runBlocking<Unit> {
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         db.sessionDao().insert(SessionEntity("other", "agent", createdAt = 1, updatedAt = 1))
         db.messageDao().insert(MessageEntity(id = "m-other", sessionId = "other", role = "assistant", content = "测试", createdAt = 1))
@@ -376,7 +376,7 @@ class KgCollectionBehaviorTest {
         assertThat(fallback.writable).isFalse()
     }
 
-    @Test fun `会话其他检索选项损坏时仍保留图谱只读绑定`() = runBlocking {
+    @Test fun `会话其他检索选项损坏时仍保留图谱只读绑定`() = runBlocking<Unit> {
         folder("p", null); file("one", "p"); write("one")
         db.sessionDao().insert(SessionEntity("s", "agent", ragOptions =
             """{"enableDocs":"invalid","graphBinding":{"collectionId":"work:p","mode":"READ_ONLY"}}""",
@@ -386,7 +386,7 @@ class KgCollectionBehaviorTest {
         assertThat(binding.writable).isFalse()
     }
 
-    @Test fun `图谱模式无法解码时不静默获得写权限`() = runBlocking {
+    @Test fun `图谱模式无法解码时不静默获得写权限`() = runBlocking<Unit> {
         db.sessionDao().insert(SessionEntity("s", "agent", ragOptions =
             """{"graphBinding":{"mode":"unknown"}}""", createdAt = 1, updatedAt = 1))
         val binding = collections.readBinding("s")
@@ -394,7 +394,7 @@ class KgCollectionBehaviorTest {
         assertThat(binding.writable).isFalse()
     }
 
-    @Test fun `检索期间改绑不会返回先前图谱结果`() = runBlocking {
+    @Test fun `检索期间改绑不会返回先前图谱结果`() = runBlocking<Unit> {
         folder("p", null); file("one", "p"); write("one")
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         collections.setBinding("s", GraphBinding("work:p"))

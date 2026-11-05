@@ -67,12 +67,12 @@ val MIGRATION_33_34 = object : Migration(33, 34) {
             CASE WHEN g.collection_id=(SELECT MIN(x.collection_id) FROM kg_migration_edge_groups x WHERE x.old_id=g.old_id)
                 THEN g.old_id ELSE 'copy:' || lower(hex(randomblob(16))) END AS new_id FROM kg_migration_edge_groups g""".trimIndent())
         db.execSQL("CREATE UNIQUE INDEX kg_migration_edge_map_key ON kg_migration_edge_map(old_id,collection_id)")
-        db.execSQL("CREATE TABLE kg_edges_new (id TEXT NOT NULL PRIMARY KEY, source_id TEXT NOT NULL, target_id TEXT NOT NULL, relation TEXT NOT NULL, weight REAL NOT NULL, created_at INTEGER NOT NULL, normalized_relation TEXT NOT NULL, collection_id TEXT NOT NULL, FOREIGN KEY(collection_id,source_id) REFERENCES kg_nodes_new(collection_id,id) ON UPDATE NO ACTION ON DELETE RESTRICT, FOREIGN KEY(collection_id,target_id) REFERENCES kg_nodes_new(collection_id,id) ON UPDATE NO ACTION ON DELETE RESTRICT)")
+        db.execSQL("CREATE TABLE kg_edges_new (id TEXT NOT NULL PRIMARY KEY, source_id TEXT NOT NULL, target_id TEXT NOT NULL, relation TEXT NOT NULL, weight REAL NOT NULL, created_at INTEGER NOT NULL, normalized_relation TEXT NOT NULL, collection_id TEXT NOT NULL, FOREIGN KEY(collection_id,source_id) REFERENCES kg_nodes(collection_id,id) ON UPDATE NO ACTION ON DELETE RESTRICT, FOREIGN KEY(collection_id,target_id) REFERENCES kg_nodes(collection_id,id) ON UPDATE NO ACTION ON DELETE RESTRICT)")
         db.execSQL("""INSERT INTO kg_edges_new SELECT m.new_id,s.new_id,t.new_id,e.relation,e.weight,e.created_at,e.normalized_relation,m.collection_id
             FROM kg_migration_edge_map m JOIN kg_edges e ON e.id=m.old_id
             JOIN kg_migration_node_map s ON s.old_id=e.source_id AND s.collection_id=m.collection_id
             JOIN kg_migration_node_map t ON t.old_id=e.target_id AND t.collection_id=m.collection_id""".trimIndent())
-        db.execSQL("CREATE TABLE kg_evidence_new (id TEXT NOT NULL PRIMARY KEY, node_id TEXT, edge_id TEXT, source_type TEXT NOT NULL, doc_id TEXT, session_id TEXT, content_hash TEXT NOT NULL, task_id TEXT NOT NULL, created_at INTEGER NOT NULL, workspace_document INTEGER NOT NULL, weight REAL, message_id TEXT, FOREIGN KEY(node_id) REFERENCES kg_nodes_new(id) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(edge_id) REFERENCES kg_edges_new(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE TABLE kg_evidence_new (id TEXT NOT NULL PRIMARY KEY, node_id TEXT, edge_id TEXT, source_type TEXT NOT NULL, doc_id TEXT, session_id TEXT, content_hash TEXT NOT NULL, task_id TEXT NOT NULL, created_at INTEGER NOT NULL, workspace_document INTEGER NOT NULL, weight REAL, message_id TEXT, FOREIGN KEY(node_id) REFERENCES kg_nodes(id) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(edge_id) REFERENCES kg_edges(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
         copyEvidence(db)
 
         db.execSQL("DROP TABLE kg_evidence")

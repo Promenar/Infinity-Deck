@@ -48,6 +48,9 @@ class SshHostMigrationTest {
                 seed(database, "agents", mapOf("id" to "ssh-migration-agent", "name" to "保留中文😀"))
                 seed(database, "kg_nodes", mapOf("id" to "ssh-migration-node", "name" to "测试实体",
                     "normalized_name" to "测试实体", "type" to "concept"))
+                // v19 起实体须有证据才可见；迁移按证据把实体分入图谱，无证据实体本就不可见。
+                if (version >= 19) seed(database, "kg_evidence", mapOf("id" to "ssh-migration-evidence", "node_id" to "ssh-migration-node",
+                    "source_type" to "legacy", "content_hash" to "", "task_id" to "ssh-migration", "created_at" to "0", "workspace_document" to "0"))
                 if (version >= 20) seed(database, "external_mounts", mapOf("id" to "ssh-migration-mount",
                     "alias" to "docs", "source_type" to "saf_tree", "source_id" to "content://test/tree/docs", "scope_key" to "session"))
             }

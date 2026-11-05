@@ -325,7 +325,7 @@ class InfinityDatabaseBaselineTest {
                 }
             }
         }
-        assertThat(runtime).containsExactlyElementsIn(entity.foreignKeys)
+        assertThat(runtime).containsExactlyElementsIn(entity.foreignKeys.toSet())
     }
 
     private fun assertToolExecutionLedger(database: SupportSQLiteDatabase) {

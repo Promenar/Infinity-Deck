@@ -258,9 +258,10 @@ class RoomBackupDataSourceTest {
         val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
         val tables = payload.getValue("tables").jsonObject
         assertThat(tables.getValue("kg_folder_settings").jsonArray).hasSize(1)
-        listOf("kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "vectors").forEach {
-            assertThat(tables.containsKey(it)).isFalse()
+        listOf("kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "vectors").forEach {
+            assertThat(tables.containsKey(it)).isTrue()
         }
+        assertThat(tables.containsKey("kg_jit_cache")).isFalse()
         db.clearAllTables()
         source.restore(validated(snapshot))
         sqlite.query("SELECT folder_id,mode FROM kg_folder_settings").use {
