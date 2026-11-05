@@ -566,6 +566,7 @@ class RoomBackupDataSource(
                 val sqlite = database.openHelper.writableDatabase
                 sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
                 sqlite.execSQL("INSERT INTO vectors_fts(vectors_fts) VALUES('rebuild')")
+                com.promenar.infinity.data.rag.KgCollectionRepository(database).reconcileDocuments()
                 record.skills?.let { skillRestore!!.commit(restoreId, it) }
                 record.avatars?.let { requireAvatarRestore().commit(restoreId, it) }
                 preferences.commitPrepared(restoreId)

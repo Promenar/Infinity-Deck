@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
@@ -25,6 +26,7 @@ import com.promenar.infinity.ui.chat.manager.KgProvider
 import io.mockk.mockk
 import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -47,6 +49,33 @@ class KgCollectionBehaviorTest {
     }
 
     @After fun close() = db.close()
+
+    @Test fun `外层事务内图谱绑定与文档归属不会等待自身连接`() = runBlocking {
+        db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
+        folder("p", null); file("one", "p")
+        collections.setFolderSetting("p", KgFolderSetting.WORK)
+        withTimeout(3_000) {
+            db.withTransaction {
+                assertThat(collections.readBinding("s").collectionId).isEqualTo("session:s")
+                collections.ensureSessionCollectionIfNeeded("s", "session:s")
+                assertThat(collections.collectionExists("session:s")).isTrue()
+                assertThat(collections.resolveDocumentForWrite("one")).isEqualTo("work:p")
+                assertThat(collections.collectionExists("work:p")).isTrue()
+                assertThat(collections.readBinding("s", RagOptions(graphBinding = GraphBinding("work:p"))).collectionId).isEqualTo("work:p")
+            }
+        }
+    }
+
+    @Test fun `读取绑定只查询不会补建共享图谱或校正文档`() = runBlocking {
+        folder("p", null); folder("q", null); file("one", "p"); write("one")
+        val file = requireNotNull(db.fileEntryDao().findActiveByUuid("one"))
+        db.fileEntryDao().update(file.copy(parentUuid = "q"))
+        val shared = collections.readBinding("s", RagOptions(graphBinding = GraphBinding("shared")))
+        assertThat(shared.collectionId).isEqualTo("session:s")
+        assertThat(collections.collectionExists("shared")).isFalse()
+        assertThat(collections.readBinding("s", RagOptions(graphBinding = GraphBinding("work:p"))).collectionId).isEqualTo("work:p")
+        assertThat(entityCollections()).containsExactly("work:p:2")
+    }
 
     @Test fun `空库可绑定固定通用图谱且全量清空后仍可绑定`() = runBlocking {
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
@@ -325,6 +354,7 @@ class KgCollectionBehaviorTest {
         collections.setBinding("s", GraphBinding("work:p"))
         val entry = requireNotNull(db.fileEntryDao().findActiveByUuid("one"))
         db.fileEntryDao().update(entry.copy(parentUuid = "q"))
+        collections.reconcileDocuments()
         val binding = collections.readBinding("s")
         assertThat(binding.collectionId).isEqualTo("session:s")
         assertThat(GraphRetrievalStore(db).retrieve("会话甲", KgRetrievalScope("s", collectionId = binding.collectionId)).paths).hasSize(1)

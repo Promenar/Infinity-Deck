@@ -46,7 +46,6 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
         config: RagConfiguration = RagConfiguration(),
     ): PersistentGraphResult = withContext(Dispatchers.IO) {
         database.withTransaction {
-            KgCollectionRepository(database).reconcileDocuments()
             val (seedSql, seedArgs) = seedQuery(query, scope, ragDocumentIds, config.kgMaxSeeds.coerceIn(1, 32))
             val seeds = database.query(SimpleSQLiteQuery(seedSql, seedArgs.toTypedArray())).use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }

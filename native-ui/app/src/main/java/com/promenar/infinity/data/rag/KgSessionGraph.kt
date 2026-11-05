@@ -43,7 +43,6 @@ internal const val MAX_KG_ENTITY_SOURCES = 100
 internal class KgSessionGraphStore(private val database: InfinityDatabase) {
     suspend fun getSessionOptions(collectionId: String? = null): List<KgSessionOption> = withContext(Dispatchers.IO) {
         database.withTransaction {
-            KgCollectionRepository(database).reconcileDocuments()
             query(KgSessionGraphQueries.options(collectionId)) {
                 KgSessionOption(string("sessionId"), string("title"), int("turnCount"), int("entityCount"), long("updatedAt"))
             }
@@ -52,7 +51,6 @@ internal class KgSessionGraphStore(private val database: InfinityDatabase) {
 
     suspend fun getSessionTurns(sessionId: String): List<KgSessionTurn> = withContext(Dispatchers.IO) {
         database.withTransaction {
-            KgCollectionRepository(database).reconcileDocuments()
             val collectionId = KgCollectionRepository(database).readBinding(sessionId).collectionId
             val turns = query(KgSessionGraphQueries.turns(sessionId, collectionId)) {
                 KgSessionTurn(string("messageId"), int("turnNumber"), long("createdAt"), emptyList(), emptyList())
@@ -77,7 +75,6 @@ internal class KgSessionGraphStore(private val database: InfinityDatabase) {
         val bounded = limit.coerceIn(0, MAX_KG_ENTITY_SOURCES)
         if (bounded == 0) return@withContext KgEntitySources(emptyList(), emptyList())
         database.withTransaction {
-            KgCollectionRepository(database).reconcileDocuments()
             val documents = query(KgSessionGraphQueries.documents(nodeId, bounded)) {
                 KgDocumentOption(string("docId"), string("title"))
             }

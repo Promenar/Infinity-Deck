@@ -20,6 +20,7 @@ class WorkspaceDeletionTransaction(
             database.kgJitCacheDao().deleteAll()
             beforeFileDelete()
             database.fileEntryDao().deleteByUuids(workspaceRootUuid, fileUuids)
+            if (fileUuids.isNotEmpty()) database.kgNodeDao().deleteFolderSettings(fileUuids)
         }
     }
 }

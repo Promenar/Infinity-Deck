@@ -9,6 +9,15 @@ private const val ACTIVE_KG_NODE = "(EXISTS (SELECT 1 FROM kg_evidence p WHERE p
 
 @Dao
 interface KgNodeDao {
+    @Query("SELECT kind FROM kg_collections WHERE id=:id LIMIT 1")
+    suspend fun collectionKind(id: String): String?
+
+    @Query("SELECT mode FROM kg_folder_settings WHERE folder_id=:id LIMIT 1")
+    suspend fun folderSetting(id: String): String?
+
+    @Query("DELETE FROM kg_folder_settings WHERE folder_id IN (:ids)")
+    suspend fun deleteFolderSettings(ids: List<String>)
+
     @Query("SELECT COUNT(*) FROM kg_nodes WHERE " + ACTIVE_KG_NODE)
     fun observeLibraryCount(): Flow<Int>
 

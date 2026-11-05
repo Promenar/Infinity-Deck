@@ -101,7 +101,7 @@ class RoomBackupDataSourceTest {
         sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('p1','n1','document','file-1','','doc-task',100,1),('p2','n2','document','file-1','','doc-task',100,1)")
         sqlite.execSQL("INSERT INTO kg_evidence(id,edge_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('p3','e1','document','file-1','','doc-task',100,1)")
         val embedding = byteArrayOf(0, 0, 0, 1, 2, 3, 4, 5)
-        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES(?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v1", "file-1", "file-1", "restorable keyword", embedding, "{\"type\":\"document\",\"embeddingSpaceKey\":\"fixture-space\"}", 100L))
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES(?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v1", "file-1", "file-1", "restorable keyword", embedding, "{\"type\":\"document\"}", 100L))
         sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,metadata,start_message_id,end_message_id,created_at,stale,version) VALUES(?,?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v2", "session-1", "memory keyword", embedding, "{\"type\":\"memory\",\"embeddingSpaceKey\":\"fixture-space\"}", "message-1", "message-1", 100L))
         val source = newDataSource()
         val snapshot = source.snapshot(CANONICAL_CONTENT)
@@ -120,6 +120,7 @@ class RoomBackupDataSourceTest {
             assertThat(cursor.getBlob(0)).isEqualTo(embedding)
         }
         assertThat(rowCount("vectors")).isEqualTo(2)
+        assertThat(db.vectorDao().getByDocId("file-1").map { it.id }).containsExactly("v1")
         sqlite.query("SELECT COUNT(*) FROM vectors_fts WHERE vectors_fts MATCH 'keyword'").use { cursor ->
             check(cursor.moveToFirst()); assertThat(cursor.getInt(0)).isEqualTo(2)
         }
@@ -146,7 +147,7 @@ class RoomBackupDataSourceTest {
         db.fileEntryDao().insert(FileEntry(uuid = "knowledge-root", workspaceRootUuid = "knowledge-root", parentUuid = null, name = "资料库",
             hash = "", isDirectory = true, physicalRootPath = knowledgeRoot.toString(), materializedPath = "/", createdAt = 100, updatedAt = 100))
         db.fileEntryDao().insert(FileEntry(uuid = "knowledge-file", workspaceRootUuid = "knowledge-root", parentUuid = "knowledge-root", name = "note.txt",
-            hash = sha256(bytes), sizeBytes = bytes.size.toLong(), physicalRootPath = knowledgeRoot.toString(), materializedPath = "/note.txt", vectorizedAt = 100, kgExtractedAt = 100, createdAt = 100, updatedAt = 100))
+            hash = sha256(bytes), sizeBytes = bytes.size.toLong(), mimeType = "text/plain", physicalRootPath = knowledgeRoot.toString(), materializedPath = "/note.txt", vectorizedAt = 100, kgExtractedAt = 100, createdAt = 100, updatedAt = 100))
         preferences.snapshot = preferences.snapshot.copy(entries = preferences.snapshot.entries + BackupPreferenceEntry("settings", "preset_embedding_model", "model-fixture"))
         val sqlite = db.openHelper.writableDatabase
         sqlite.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:knowledge-file','work','资料','knowledge-file',100)")
@@ -154,7 +155,7 @@ class RoomBackupDataSourceTest {
         sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('doc-node','文档','concept','文档',100,'work:knowledge-file'),('session-node','会话','concept','会话',100,'work:knowledge-file')")
         sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('doc-proof','doc-node','document','knowledge-file','','doc-task',100,1)")
         sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,session_id,message_id,content_hash,task_id,created_at,workspace_document) VALUES('session-proof','session-node','session','session-1','message-1','','turn-task',100,0)")
-        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES('doc-vector','knowledge-file','knowledge-file','keyword',X'00000001',?,100,0,1)", arrayOf("{\"type\":\"document\",\"embeddingSpaceKey\":\"fixture-space\"}"))
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES('doc-vector','knowledge-file','knowledge-file','keyword',X'00000001',?,100,0,1)", arrayOf("{\"type\":\"document\"}"))
         sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,created_at,stale,version) VALUES('memory-vector','session-1','memory',X'00000001',100,0,1)")
         val cache = Files.createTempDirectory(sourceBase, "knowledge-graph-backup")
         try {
@@ -177,6 +178,9 @@ class RoomBackupDataSourceTest {
                 val ids = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
                 assertThat(ids).containsExactly("doc-vector")
             }
+            assertThat(db.vectorDao().getByDocId("knowledge-file").map { it.id }).containsExactly("doc-vector")
+            assertThat(db.fileEntryDao().getByUuid("knowledge-root", "knowledge-file")!!.vectorizedAt).isEqualTo(100L)
+            assertThat(db.fileEntryDao().getUnvectorizedSupportedFiles(listOf("text/plain")).map { it.uuid }).doesNotContain("knowledge-file")
         } finally { BackupStreams.deleteTree(cache) }
     }
 
@@ -185,7 +189,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         preferences.snapshot = preferences.snapshot.copy(entries = preferences.snapshot.entries + BackupPreferenceEntry("settings", "preset_embedding_model", "model-a"))
         val sqlite = db.openHelper.writableDatabase
-        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES('v1','file-1','file-1','keyword',X'00000001',?,100,0,1)", arrayOf("{\"type\":\"document\",\"embeddingSpaceKey\":\"fixture-space\"}"))
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES('v1','file-1','file-1','keyword',X'00000001',?,100,0,1)", arrayOf("{\"type\":\"document\"}"))
         sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,metadata,start_message_id,end_message_id,created_at,stale,version) VALUES('v2','session-1','memory',X'00000001',?,'message-1','message-1',100,0,1)", arrayOf("{\"type\":\"memory\",\"embeddingSpaceKey\":\"fixture-space\"}"))
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
         val backup = validated(snapshot)

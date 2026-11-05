@@ -297,6 +297,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         Room.databaseBuilder(this, InfinityDatabase::class.java, "infinity_v2.db")
             .addMigrations(*com.promenar.infinity.data.local.db.INFINITY_DATABASE_MIGRATIONS)
             .addCallback(SessionMountNormalizationCallback { InfinityLogger.logError("SessionMountNormalization", it) })
+            .addCallback(object : androidx.room.RoomDatabase.Callback() {
+                override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
+                }
+            })
             .setQueryCallback(
                 androidx.room.RoomDatabase.QueryCallback { sqlQuery, bindArgs ->
                     if (com.promenar.infinity.BuildConfig.DEBUG) {
@@ -1380,6 +1385,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             File(filesDir, "session_workspaces"),
             fileOps = privateWorkspaceFileOps,
             identityBaselines = workspaceIdentityBaselines,
+            afterMoveCommitted = { com.promenar.infinity.data.rag.KgCollectionRepository(database).reconcileDocuments() },
             deleteCommitter = com.promenar.infinity.data.repository.WorkspaceDeletionTransaction(database)::delete,
             beforeDeleteCommitted = { workspaceRootUuid, ids ->
                 awaitVectorizationQueue().acquireDeleteBarrier(workspaceRootUuid, ids)
@@ -2382,6 +2388,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 identityBaselines = workspaceIdentityBaselines,
                 deleteCommitter = com.promenar.infinity.data.repository.WorkspaceDeletionTransaction(database)::delete),
         ).recover()
+        com.promenar.infinity.data.rag.KgCollectionRepository(database).reconcileDocuments()
     }
 
     private suspend fun cleanupLegacyRecycleOnce() {

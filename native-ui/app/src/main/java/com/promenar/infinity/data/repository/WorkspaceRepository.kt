@@ -67,6 +67,7 @@ class WorkspaceRepository(
     private val treeScanner: WorkspaceTreeScanner = SecureWorkspaceTreeScanner,
     private val indexEventSink: FileIndexEventSink = FileIndexEventSink.None,
     private val identityBaselines: WorkspaceIdentityBaselineStore? = null,
+    private val afterMoveCommitted: suspend () -> Unit = {},
 ) : IWorkspaceRepository, WorkspaceCommandHost {
     @Volatile
     private var defaultParentIdentity: String? = null
@@ -1071,6 +1072,7 @@ class WorkspaceRepository(
             if (entry.parentUuid != expectedParent) updates[entry.uuid] = entry.copy(parentUuid = expectedParent)
         }
         dao.commitCommandReconcile(inserts, updates.values.toList())
+        if (plan.moves.isNotEmpty()) withContext(NonCancellable) { afterMoveCommitted() }
 
         (inserts + updates.values)
             .filter { DocumentReferenceExtractor.supports(it) && !isGitInternalWorkspacePath(it.materializedPath) }
@@ -1199,6 +1201,7 @@ class WorkspaceRepository(
             databaseCommitted = true
             rollback.commit()
             completeMutation(staged)
+            if (type == WorkspaceMutationType.MOVE) withContext(NonCancellable) { afterMoveCommitted() }
         } catch (failure: Throwable) {
             if (!databaseCommitted) {
                 rollbackPhysicalOrPreserveJournal(rollback, staged, failure)

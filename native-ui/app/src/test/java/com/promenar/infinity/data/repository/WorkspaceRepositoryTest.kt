@@ -1438,6 +1438,7 @@ class WorkspaceRepositoryTest {
         val folder = repo.createDirectoryInWorkspace(root.uuid, "folder", "folder", root.uuid, "/folder")
         val file = repo.createFileInWorkspace(root.uuid, "child", "a.txt", "A", folder.uuid, "/folder/a.txt")
         seedDerivedArtifacts(root.uuid, file.uuid)
+        com.promenar.infinity.data.rag.KgCollectionRepository(db).setFolderSetting(folder.uuid, com.promenar.infinity.data.rag.KgFolderSetting.SHARED)
         val deletion = WorkspaceDeletionTransaction(db)
         repo = WorkspaceRepository(
             db.fileEntryDao(), db.workspaceSeqDao(), fileOps = TestWorkspaceFileOps(),
@@ -1446,6 +1447,7 @@ class WorkspaceRepositoryTest {
 
         repo.permanentDelete(root.uuid, folder.uuid)
 
+        assertThat(com.promenar.infinity.data.rag.KgCollectionRepository(db).readFolderSetting(folder.uuid)).isEqualTo(com.promenar.infinity.data.rag.KgFolderSetting.AUTO)
         assertThat(db.vectorDao().getByDocId(file.uuid)).isEmpty()
         assertThat(db.kgEdgeDao().getByDocId(file.uuid)).isEmpty()
         assertThat(db.documentTagDao().getByDocId(file.uuid)).isEmpty()

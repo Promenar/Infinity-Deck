@@ -48,7 +48,6 @@ const val GRAPH_EXPANSION_BATCH_SIZE = 100
 class GraphSubgraphStore(private val database: InfinityDatabase) {
     suspend fun load(request: GraphSubgraphRequest): GraphSubgraph = withContext(Dispatchers.IO) {
         database.withTransaction {
-            KgCollectionRepository(database).reconcileDocuments()
             val collectionId = request.sessionId?.let { KgCollectionRepository(database).readBinding(it).collectionId } ?: request.collectionId
             val bounded = request.copy(
                 nodeLimit = request.nodeLimit.coerceIn(1, MAX_GRAPH_NODE_LIMIT),
@@ -88,7 +87,6 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
         val term = KgIdentity.normalize(request.query).take(512)
         if (term.isBlank()) return@withContext emptyList()
         database.withTransaction {
-            KgCollectionRepository(database).reconcileDocuments()
             val collectionId = request.sessionId?.let { KgCollectionRepository(database).readBinding(it).collectionId } ?: request.collectionId
             val limit = request.limit.coerceIn(1, 100)
             val predicate = activeNode(request.docId, request.conceptOnly, null, collectionId)

@@ -11,6 +11,38 @@ class BackupGraphVectorPolicyTest {
     private fun row(value: String) = Json.parseToJsonElement(value).jsonObject
 
     @Test
+    fun `历史向量按维度恢复且不补写空间标记`() {
+        val preferences = BackupPreferenceSnapshot(listOf(BackupPreferenceEntry("settings", "preset_embedding_model", "model")), emptySet())
+        val file = row("""{"uuid":"doc","hash":"h","vectorized_at":3,"kg_extracted_at":null}""")
+        val historical = row("""{"id":"old","doc_id":"doc","file_uuid":"doc","embedding":"AAAAAQ==","metadata":"{\"type\":\"document\"}","stale":0}""")
+        val wrongDimension = row("""{"id":"wrong","doc_id":"other","embedding":"AAAAAQAAAAE=","metadata":"{}","stale":0}""")
+        val source = DatabaseBackupPayload(16, mapOf("workspace_files" to listOf(file), "vectors" to listOf(historical)))
+        val manifest = embeddingMetadata(source, preferences, "space")
+        assertThat(manifest?.dimension).isEqualTo(1)
+        val payload = source.copy(tables = source.tables + ("vectors" to listOf(historical, wrongDimension)))
+        val result = prepareRestoredGraphAndVectors(payload, payload, null, 16, manifest, "model", "space")
+        assertThat(result.tables.getValue("vectors").map { it.getValue("stale").jsonPrimitive.content }).containsExactly("0", "2").inOrder()
+        assertThat(result.tables.getValue("vectors").first().getValue("metadata")).isEqualTo(historical.getValue("metadata"))
+        assertThat(result.tables.getValue("workspace_files").single().getValue("vectorized_at").jsonPrimitive.content).isEqualTo("3")
+    }
+
+    @Test
+    fun `混合维度依配置选择清单维度否则失效`() {
+        val old = row("""{"id":"old","embedding":"AAAAAQ==","metadata":"{}","stale":0}""")
+        val marked = row("""{"id":"marked","embedding":"AAAAAQAAAAE=","metadata":"{\"embeddingSpaceKey\":\"space\"}","stale":0}""")
+        val payload = DatabaseBackupPayload(16, mapOf("vectors" to listOf(old, marked)))
+        val entries = listOf(BackupPreferenceEntry("settings", "preset_embedding_model", "model"))
+        val unset = BackupPreferenceSnapshot(entries, emptySet())
+        assertThat(embeddingMetadata(payload, unset, "space")).isNull()
+        val configured = unset.copy(entries = entries + BackupPreferenceEntry("rag", "embed_dimension", "2"))
+        assertThat(embeddingMetadata(payload, configured, "space")?.dimension).isEqualTo(2)
+        val noManifest = prepareRestoredGraphAndVectors(payload, payload, null, 16, null, "model", "space")
+        assertThat(noManifest.tables.getValue("vectors").map { it.getValue("stale").jsonPrimitive.content }).containsExactly("2", "2")
+        val mismatch = prepareRestoredGraphAndVectors(payload, payload, null, 16, BackupEmbeddingMetadata("model", "space", 2), "other", "space")
+        assertThat(mismatch.tables.getValue("vectors").map { it.getValue("stale").jsonPrimitive.content }).containsExactly("2", "2")
+    }
+
+    @Test
     fun `图谱按所有者分层证据按来源分层`() {
         val tables = mapOf(
             "sessions" to listOf(row("""{"id":"ks","agent_id":"__system__","workspace_root_uuid":"kr"}"""), row("""{"id":"s","agent_id":"agent"}""")),

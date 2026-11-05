@@ -261,16 +261,13 @@ class GraphStore(internal val database: InfinityDatabase) {
         Unit
     }
     suspend fun getAllNodes(): List<KgNode> = database.withTransaction {
-        collections.reconcileDocuments()
         nodes.getAll().map { it.toModel() }
     }
     suspend fun getEdgesForNode(nodeId: String): List<KgEdge> = database.withTransaction {
-        collections.reconcileDocuments()
         modelEdges(edges.getByNodeId(nodeId))
     }
 
     suspend fun getGraphData(docIds: List<String>? = null, sessionId: String? = null): GraphData = database.withTransaction {
-        collections.reconcileDocuments()
         val boundCollection = sessionId?.let { collections.readBinding(it).collectionId }
         val selectedEdges = when {
             docIds != null -> docIds.distinct().chunked(400).flatMap { edges.getByDocIds(it) }
@@ -288,7 +285,6 @@ class GraphStore(internal val database: InfinityDatabase) {
     }
 
     suspend fun getDocumentOptions(): List<KgDocumentOption> = database.withTransaction {
-        collections.reconcileDocuments()
         edges.getActiveDocumentOptions().map { KgDocumentOption(it.docId, it.title) }
     }
 

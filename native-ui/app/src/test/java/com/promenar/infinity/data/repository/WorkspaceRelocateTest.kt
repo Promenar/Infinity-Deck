@@ -39,7 +39,8 @@ class WorkspaceRelocateTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java).allowMainThreadQueries().build()
         io = TestWorkspaceFileOps()
-        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = io)
+        repo = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), fileOps = io,
+            afterMoveCommitted = { KgCollectionRepository(db).reconcileDocuments() })
         directory = Files.createTempDirectory(java.nio.file.Path.of(System.getProperty("user.dir")), ".infinity-workspace-relocate").toFile()
     }
 
@@ -165,8 +166,6 @@ class WorkspaceRelocateTest {
         val movedFile = requireNotNull(db.fileEntryDao().findActiveByUuid(file.uuid))
         assertThat(movedFile.vectorizedAt).isNull()
         assertThat(movedFile.kgExtractedAt).isNull()
-        KgCollectionRepository(db).reconcileDocuments()
-
         val moved = db.kgEdgeDao().getByDocId(file.uuid).single()
         assertThat(moved.collectionId).isEqualTo("work:${target.uuid}")
         assertThat(db.kgNodeDao().getRawById(moved.sourceId)?.collectionId).isEqualTo(moved.collectionId)

@@ -8,8 +8,6 @@ import com.promenar.infinity.data.model.GraphBinding
 import com.promenar.infinity.data.model.GraphBindingMode
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.json
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
@@ -31,17 +29,15 @@ data class ResolvedGraphBinding(val collectionId: String, val mode: GraphBinding
 
 /** 图谱归属、绑定和无模型重建的统一入口。 */
 class KgCollectionRepository(private val database: InfinityDatabase) {
-    suspend fun collectionIdsForDocuments(docIds: Collection<String>): List<String> = withContext(Dispatchers.IO) {
-        reconcileDocuments()
+    suspend fun collectionIdsForDocuments(docIds: Collection<String>): List<String> = database.withTransaction {
         docIds.distinct().chunked(400).flatMap { chunk ->
             val sql = "SELECT DISTINCT collection_id FROM kg_collection_members WHERE doc_id IN (${chunk.joinToString { "?" }})"
             database.query(SimpleSQLiteQuery(sql, chunk.toTypedArray())).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
         }.distinct().sorted()
     }
 
-    suspend fun listBindableCollections(sessionId: String): List<KgCollectionSummary> = withContext(Dispatchers.IO) {
+    suspend fun listBindableCollections(sessionId: String): List<KgCollectionSummary> = database.withTransaction {
         ensureShared()
-        reconcileDocuments()
         val own = sessionCollectionId(sessionId)
         val sql = """SELECT c.id,c.kind,c.title,c.root_ref,
             (SELECT COUNT(*) FROM kg_collection_members m WHERE m.collection_id=c.id),
@@ -60,7 +56,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         }
     }
 
-    suspend fun readBinding(sessionId: String, options: RagOptions? = null): ResolvedGraphBinding = withContext(Dispatchers.IO) {
+    suspend fun readBinding(sessionId: String, options: RagOptions? = null): ResolvedGraphBinding {
         val stored = if (options != null) options.graphBinding else database.sessionDao().getById(sessionId)?.ragOptions?.let { raw ->
             runCatching {
                 val binding = json.parseToJsonElement(raw).jsonObject["graphBinding"]
@@ -70,98 +66,87 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         }
         val own = sessionCollectionId(sessionId)
         val requested = stored?.collectionId?.takeIf { it.isNotBlank() }
-        if (requested != null && requested != own && requested != "shared") reconcileDocuments()
         val resolved = if (requested == null || requested == own) own else {
             val kind = collectionKind(requested)
             if (kind == "work" || kind == "shared") requested else own
         }
-        ResolvedGraphBinding(resolved, stored?.mode ?: GraphBindingMode.READ_WRITE)
+        return ResolvedGraphBinding(resolved, stored?.mode ?: GraphBindingMode.READ_WRITE)
     }
 
     /** 用于非当前会话或测试；当前会话应通过 ChatViewModel.updateRagOptions 更新整份选项，以同步内存缓存。 */
-    suspend fun setBinding(sessionId: String, binding: GraphBinding) = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            val session = requireNotNull(database.sessionDao().getById(sessionId)) { "会话不存在" }
-            val id = binding.collectionId?.takeIf { it.isNotBlank() }
-            if (id != null && id != sessionCollectionId(sessionId)) {
-                require(collectionKind(id) in setOf("work", "shared")) { "只能绑定作品图谱、通用知识图谱或本会话图谱" }
-            }
-            val existing = session.ragOptions?.let { json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())
-            val updated = JsonObject(existing + ("graphBinding" to json.encodeToJsonElement(GraphBinding.serializer(), binding)))
-            database.sessionDao().updateOptions(sessionId, session.options, updated.toString(), System.currentTimeMillis())
+    suspend fun setBinding(sessionId: String, binding: GraphBinding) = database.withTransaction {
+        val session = requireNotNull(database.sessionDao().getById(sessionId)) { "会话不存在" }
+        val id = binding.collectionId?.takeIf { it.isNotBlank() }
+        if (id == "shared") ensureShared()
+        if (id != null && id != sessionCollectionId(sessionId)) {
+            require(collectionKind(id) in setOf("work", "shared")) { "只能绑定作品图谱、通用知识图谱或本会话图谱" }
         }
+        val existing = session.ragOptions?.let { json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())
+        val updated = JsonObject(existing + ("graphBinding" to json.encodeToJsonElement(GraphBinding.serializer(), binding)))
+        database.sessionDao().updateOptions(sessionId, session.options, updated.toString(), System.currentTimeMillis())
     }
 
-    suspend fun readFolderSetting(folderId: String): KgFolderSetting = withContext(Dispatchers.IO) {
-        val value = database.query(SimpleSQLiteQuery("SELECT mode FROM kg_folder_settings WHERE folder_id=?", arrayOf(folderId))).use { if (it.moveToFirst()) it.getString(0) else null }
-        value?.let { runCatching { KgFolderSetting.valueOf(it) }.getOrNull() } ?: KgFolderSetting.AUTO
+    suspend fun readFolderSetting(folderId: String): KgFolderSetting {
+        val value = database.kgNodeDao().folderSetting(folderId)
+        return value?.let { runCatching { KgFolderSetting.valueOf(it) }.getOrNull() } ?: KgFolderSetting.AUTO
     }
 
-    suspend fun setFolderSetting(folderId: String, setting: KgFolderSetting) = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            val folder = database.fileEntryDao().findActiveByUuid(folderId)
-            require(folder?.isDirectory == true) { "文件夹不存在" }
-            val sql = database.openHelper.writableDatabase
-            if (setting == KgFolderSetting.AUTO) sql.execSQL("DELETE FROM kg_folder_settings WHERE folder_id=?", arrayOf(folderId))
-            else sql.execSQL("INSERT OR REPLACE INTO kg_folder_settings(folder_id,mode) VALUES(?,?)", arrayOf(folderId, setting.name))
-            reconcileDocuments()
-        }
+    suspend fun setFolderSetting(folderId: String, setting: KgFolderSetting) = database.withTransaction {
+        val folder = database.fileEntryDao().findActiveByUuid(folderId)
+        require(folder?.isDirectory == true) { "文件夹不存在" }
+        val sql = database.openHelper.writableDatabase
+        if (setting == KgFolderSetting.AUTO) sql.execSQL("DELETE FROM kg_folder_settings WHERE folder_id=?", arrayOf(folderId))
+        else sql.execSQL("INSERT OR REPLACE INTO kg_folder_settings(folder_id,mode) VALUES(?,?)", arrayOf(folderId, setting.name))
+        reconcileDocuments()
     }
 
     /** 只撤回本会话在指定图谱中写入的会话与即时证据。 */
-    suspend fun revokeSessionEvidence(sessionId: String, collectionId: String): Int = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            val evidence = database.kgEvidenceDao()
-            val rows = evidence.evidenceForSessionInCollection(sessionId, collectionId)
-            rows.filter { it.sourceType == "jit" }.map { it.taskId }.distinct().forEach {
-                database.openHelper.writableDatabase.execSQL("DELETE FROM kg_jit_cache WHERE cache_key=?", arrayOf(it))
-            }
-            rows.map { it.id }.chunked(400).forEach { evidence.deleteByIds(it) }
-            evidence.collectEdges(); evidence.collectNodes(); collectEmptyCollections()
-            rows.size
+    suspend fun revokeSessionEvidence(sessionId: String, collectionId: String): Int = database.withTransaction {
+        val evidence = database.kgEvidenceDao()
+        val rows = evidence.evidenceForSessionInCollection(sessionId, collectionId)
+        rows.filter { it.sourceType == "jit" }.map { it.taskId }.distinct().forEach {
+            database.openHelper.writableDatabase.execSQL("DELETE FROM kg_jit_cache WHERE cache_key=?", arrayOf(it))
         }
+        rows.map { it.id }.chunked(400).forEach { evidence.deleteByIds(it) }
+        evidence.collectEdges(); evidence.collectNodes(); collectEmptyCollections()
+        rows.size
     }
 
     /** 校正物化成员与文件树；每批最多读取 400 个文档 ID。 */
-    suspend fun reconcileDocuments() = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            var after = ""
-            while (true) {
-                val docs = database.query(SimpleSQLiteQuery("SELECT doc_id FROM kg_collection_members WHERE doc_id>? ORDER BY doc_id LIMIT 400", arrayOf(after))).use { c ->
-                    buildList { while (c.moveToNext()) add(c.getString(0)) }
-                }
-                if (docs.isEmpty()) break
-                docs.forEach { reconcileDocument(it) }
-                after = docs.last()
-                if (docs.size < 400) break
+    suspend fun reconcileDocuments() = database.withTransaction {
+        var after = ""
+        while (true) {
+            val docs = database.query(SimpleSQLiteQuery("SELECT doc_id FROM kg_collection_members WHERE doc_id>? ORDER BY doc_id LIMIT 400", arrayOf(after))).use { c ->
+                buildList { while (c.moveToNext()) add(c.getString(0)) }
             }
-            database.openHelper.writableDatabase.execSQL("DELETE FROM kg_folder_settings WHERE NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND f.is_directory=1)")
-            collectEmptyCollections()
+            if (docs.isEmpty()) break
+            docs.forEach { reconcileDocument(it) }
+            after = docs.last()
+            if (docs.size < 400) break
         }
+        database.openHelper.writableDatabase.execSQL("DELETE FROM kg_folder_settings WHERE NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND f.is_directory=1)")
+        collectEmptyCollections()
     }
 
-    internal suspend fun resolveDocumentForWrite(docId: String): String {
+    internal suspend fun resolveDocumentForWrite(docId: String): String = database.withTransaction {
         val descriptor = documentDescriptor(docId)
         val current = memberCollection(docId)
         if (current != null && current != descriptor.id) relocateDocument(docId, descriptor)
         ensureCollection(descriptor)
         database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_collection_members(doc_id,collection_id,order_key,order_source) VALUES(?,?,NULL,NULL)", arrayOf(docId, descriptor.id))
         database.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET collection_id=? WHERE doc_id=?", arrayOf(descriptor.id, docId))
-        return descriptor.id
+        descriptor.id
     }
 
-    internal suspend fun ensureSessionCollectionIfNeeded(sessionId: String, collectionId: String) {
-        if (collectionId != sessionCollectionId(sessionId)) return
+    internal suspend fun ensureSessionCollectionIfNeeded(sessionId: String, collectionId: String) = database.withTransaction {
+        if (collectionId != sessionCollectionId(sessionId)) return@withTransaction
         val title = database.sessionDao().getById(sessionId)?.title ?: sessionId
         ensureCollection(Descriptor(collectionId, "session", title, null))
     }
 
-    internal fun collectionExists(id: String): Boolean = collectionKind(id) != null
+    internal suspend fun collectionExists(id: String): Boolean = collectionKind(id) != null
 
-    private fun collectionKind(id: String): String? {
-        if (id == "shared") ensureShared()
-        return database.query(SimpleSQLiteQuery("SELECT kind FROM kg_collections WHERE id=?", arrayOf(id))).use { if (it.moveToFirst()) it.getString(0) else null }
-    }
+    private suspend fun collectionKind(id: String): String? = database.kgNodeDao().collectionKind(id)
 
     private fun ensureShared() = ensureCollection(Descriptor("shared", "shared", "通用知识", null))
 

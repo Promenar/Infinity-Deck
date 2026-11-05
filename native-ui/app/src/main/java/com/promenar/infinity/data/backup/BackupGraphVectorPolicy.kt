@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.util.Base64
 
-/** 选定模型标识来自已备份的安全偏好；实际向量空间以摘要和逐行来源标记核验。 */
+/** 模型标识来自已备份偏好；历史向量按原有检索行为以维度判定兼容性。 */
 internal fun embeddingModelId(preferences: BackupPreferenceSnapshot): String? {
     fun value(namespace: String, key: String) = preferences.entries.lastOrNull {
         BackupPreferencePolicy.normalizeNamespace(it.namespace) == namespace && it.key == key
@@ -43,10 +43,12 @@ internal fun embeddingMetadata(
     val model = embeddingModelId(preferences) ?: return null
     val space = currentSpace ?: return null
     val dimensions = payload.tables["vectors"].orEmpty().asSequence().filter {
-        vectorSpaceFromMetadata(BackupLayerPolicy.string(it, "metadata")) == space &&
+        (vectorSpaceFromMetadata(BackupLayerPolicy.string(it, "metadata"))?.let { key -> key == space } ?: true) &&
             (it["stale"] as? JsonPrimitive)?.longOrNull == 0L
-    }.mapNotNull { row -> embeddingSize(row)?.takeIf { it > 0 && it % 4 == 0 }?.div(4) }.distinct().take(2).toList()
-    return dimensions.singleOrNull()?.let { BackupEmbeddingMetadata(model, space, it) }
+    }.mapNotNull { row -> embeddingSize(row)?.takeIf { it > 0 && it % 4 == 0 }?.div(4) }.distinct().toList()
+    val configured = embeddingConfiguredDimension(preferences)
+    val dimension = configured?.takeIf { it in dimensions } ?: dimensions.singleOrNull()
+    return dimension?.let { BackupEmbeddingMetadata(model, space, it) }
 }
 
 private fun embeddingSize(row: JsonObject): Int? = runCatching {
@@ -132,7 +134,8 @@ internal fun prepareRestoredGraphAndVectors(
         val normalized = if (doc != null && session != null && session !in sessions) JsonObject(row + ("session_id" to JsonNull)) else row
         val contentHash = documentContentHashFromVectorMetadata(string(row, "metadata"))
         val untouchedLocal = layers != null && preserveUnselectedVectors && string(row, "id") !in importedVectorIds
-        val sourceMatches = untouchedLocal || compatible && vectorSpaceFromMetadata(string(row, "metadata")) == embedding?.spaceKey &&
+        val rowSpace = vectorSpaceFromMetadata(string(row, "metadata"))
+        val sourceMatches = untouchedLocal || compatible && (rowSpace == null || rowSpace == embedding?.spaceKey) &&
             embeddingSize(row) == embedding?.dimension?.times(4) &&
             (string(row, "file_uuid") == null || files[doc]?.let { string(it, "is_directory") != "1" } == true) &&
             (contentHash == null || doc != null && contentHash == files[doc]?.let { string(it, "hash") })
