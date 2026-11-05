@@ -24,15 +24,20 @@ data class LongTermMemory(
     val sourceMessageId: String?,
     val createdAt: Long,
     val updatedAt: Long,
+    val ownerSessionId: String? = null,
 )
 
 data class LongTermMemoryWrite(val memory: LongTermMemory, val previous: LongTermMemory?)
-data class LongTermMemorySource(val agentId: String?, val sessionId: String?, val messageId: String?)
+data class LongTermMemorySource(val agentId: String?, val sessionId: String?, val messageId: String?, val ownerSessionId: String? = null)
 
 interface LongTermMemoryRepository {
     fun observeAll(): Flow<List<LongTermMemory>>
     suspend fun getAll(): List<LongTermMemory>
     suspend fun get(id: String): LongTermMemory?
+    suspend fun getAllForOwner(ownerSessionId: String?): List<LongTermMemory> = getAll().filter { it.ownerSessionId == ownerSessionId }
+    suspend fun getForOwner(id: String, ownerSessionId: String?): LongTermMemory? = get(id)?.takeIf { it.ownerSessionId == ownerSessionId }
+    suspend fun deleteForOwner(id: String, ownerSessionId: String?): LongTermMemory? =
+        getForOwner(id, ownerSessionId)?.let { delete(id) }
     suspend fun save(
         kind: LongTermMemoryKind,
         title: String,

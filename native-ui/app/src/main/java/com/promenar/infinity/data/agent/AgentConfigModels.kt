@@ -3,6 +3,7 @@ package com.promenar.infinity.data.agent
 import com.promenar.infinity.data.model.ConversationScope
 import com.promenar.infinity.data.model.DocumentScope
 import com.promenar.infinity.data.model.RagOptions
+import com.promenar.infinity.data.model.ActiveMemoryMode
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -19,6 +20,9 @@ enum class AgentRetrievalMode { AUTO, TOOL, BOTH }
 
 @Serializable
 enum class KnowledgeFileAccess { OFF, ON_REQUEST, ALWAYS }
+
+@Serializable
+enum class GlobalMemoryPolicy { FORBID, ALLOW_DEFAULT_OFF, ALLOW_DEFAULT_ON }
 
 @Serializable
 data class AgentRetrievalConfig(
@@ -66,8 +70,7 @@ data class AgentSubagentModelPolicy(
 )
 
 /**
- * 助手级记忆权限：新会话的默认档位与会话可选的上限。
- * [shareWithOtherAgents] 关闭即私密助手，其他助手的“全部助手”档不会读取本助手的对话记忆。
+ * 智能体级记忆权限、资料合集上限和新会话默认值。
  */
 @Serializable
 data class AgentMemoryPolicy(
@@ -77,24 +80,37 @@ data class AgentMemoryPolicy(
     val graphCap: ConversationScope = ConversationScope.ALL_AGENTS,
     val documentDefault: DocumentScope = DocumentScope.KNOWLEDGE_BASE,
     val documentCap: DocumentScope = DocumentScope.ALL_INDEXED,
+    /** 仅用于解码历史数据；v35 迁移后不参与权限判定。 */
     val shareWithOtherAgents: Boolean = true,
+    val globalMemory: GlobalMemoryPolicy = GlobalMemoryPolicy.ALLOW_DEFAULT_OFF,
+    val activeMemoryDefault: ActiveMemoryMode = ActiveMemoryMode.SHARED,
+    /** null 表示允许全部资料合集。 */
+    val allowedCollectionIds: List<String>? = null,
+    /** null 表示新会话选择允许的全部资料合集。 */
+    val defaultCollectionIds: List<String>? = null,
 ) {
     /** 上限调低时默认档位随之收紧，保证默认值始终可选。 */
     fun normalized(): AgentMemoryPolicy = copy(
         memoryDefault = minOf(memoryDefault, memoryCap),
-        documentDefault = minOf(documentDefault, documentCap),
     )
 
     fun defaultsFor(options: RagOptions): RagOptions = normalized().let { policy ->
         options.copy(
-            memoryScope = policy.memoryDefault,
+            memoryScope = if (policy.globalMemory == GlobalMemoryPolicy.ALLOW_DEFAULT_ON)
+                minOf(if (policy.memoryDefault == ConversationScope.ALL_AGENTS) ConversationScope.ALL_AGENTS else ConversationScope.AGENT, policy.memoryCap)
+                else ConversationScope.SESSION,
+            globalMemoryEnabled = policy.globalMemory == GlobalMemoryPolicy.ALLOW_DEFAULT_ON,
+            globalMemoryScope = if (policy.memoryDefault == ConversationScope.ALL_AGENTS) ConversationScope.ALL_AGENTS else ConversationScope.AGENT,
+            activeMemoryMode = policy.activeMemoryDefault,
+            selectedCollectionIds = policy.defaultCollectionIds,
             documentScope = policy.documentDefault,
         )
     }
 
     /** 会话档位超出上限时按上限执行；会话保存的选择不被改写，助手上限放宽后自动恢复。 */
     fun clamp(options: RagOptions): RagOptions = options.copy(
-        memoryScope = minOf(options.effectiveMemoryScope, memoryCap),
-        documentScope = minOf(options.effectiveDocumentScope, documentCap),
+        memoryScope = if (globalMemory == GlobalMemoryPolicy.FORBID || !options.globalMemoryEnabled) ConversationScope.SESSION
+            else minOf(options.globalMemoryScope.coerceAtLeast(ConversationScope.AGENT), memoryCap),
+        documentScope = options.effectiveDocumentScope,
     )
 }

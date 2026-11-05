@@ -114,7 +114,7 @@ class RoomKnowledgeCatalogTest {
         db.fileEntryDao().insert(file("folder", "root-b1").copy(isDirectory = true, materializedPath = "/folder"))
         db.fileEntryDao().insert(file("nested", "root-b1").copy(parentUuid = "folder", materializedPath = "/folder/nested.md"))
         db.vectorDao().insert(vector("v-nested", docId = "nested"))
-        val options = RagOptions(enableMemory = false, documentScope = DocumentScope.WORKSPACE)
+        val options = RagOptions(enableMemory = false, documentScope = DocumentScope.WORKSPACE, selectedCollectionIds = emptyList())
         assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
         for (selected in listOf(options.copy(activeDocIds = listOf("legacy-doc")), options.copy(activeFolderIds = listOf("folder")))) {
             assertThat(catalog.hasIndexedMaterial(session, selected)).isTrue()
@@ -123,10 +123,10 @@ class RoomKnowledgeCatalogTest {
     }
 
     @Test
-    fun `历史统计排除其他私密智能体并与解析器一致且不泄露会话标题`() = runBlocking<Unit> {
+    fun `历史统计与解析器一致且不泄露会话标题`() = runBlocking<Unit> {
         val resolver = RetrievalScopeResolver(db)
         for (scope in ConversationScope.entries) {
-            val options = RagOptions(enableDocs = false, memoryScope = scope)
+            val options = RagOptions(enableDocs = false, globalMemoryEnabled = scope != ConversationScope.SESSION, globalMemoryScope = scope)
             val snapshot = catalog.snapshot(session, options)
             val reach = resolver.resolve("a1", options).memory
             val expectedSessions = db.vectorDao().conversationRows(reach, "memory").map { it.sessionId }.toSet()
@@ -138,9 +138,9 @@ class RoomKnowledgeCatalogTest {
         db.vectorDao().deleteBySessionId("a1")
         db.vectorDao().deleteBySessionId("a2")
         db.vectorDao().deleteBySessionId("b1")
-        val options = RagOptions(enableDocs = false, memoryScope = ConversationScope.ALL_AGENTS)
-        assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
-        assertThat(catalog.snapshot(session, options).hasIndexedMaterial).isFalse()
+        val options = RagOptions(enableDocs = false, globalMemoryEnabled = true, globalMemoryScope = ConversationScope.ALL_AGENTS)
+        assertThat(catalog.hasIndexedMaterial(session, options)).isTrue()
+        assertThat(catalog.snapshot(session, options).hasIndexedMaterial).isTrue()
         val privateSession = Session("p1", "P")
         assertThat(catalog.hasIndexedMaterial(privateSession, options)).isTrue()
     }
@@ -178,6 +178,14 @@ class RoomKnowledgeCatalogTest {
         db.vectorDao().insert(vector("mapped", docId = "old-doc-id").copy(fileUuid = "f-kb"))
         mounts += ExternalMount("kb-mount", "knowledge", ExternalMountPaths.KNOWLEDGE_BASE_SOURCE, "root-kb", "a1", 1, readOnly = true)
         assertThat(catalog.documentLocation("a1", RagReference(documentId = "old-doc-id"))?.path).isEqualTo("/mnt/knowledge/f-kb.md")
+    }
+
+    @Test fun `引用定位不把规范文件ID误当成其它向量的旧文档ID`() = runBlocking<Unit> {
+        db.vectorDao().insert(vector("collision", docId = "f-a1").copy(fileUuid = "f-b1"))
+        val location = catalog.documentLocation("a1", RagReference(id = "v-f-a1", documentId = "f-a1"))!!
+        assertThat(location.kind).isEqualTo(KnowledgeDocumentLocationKind.WORKSPACE)
+        assertThat(location.rootUuid).isEqualTo("root-a1")
+        assertThat(location.path).isEqualTo("/f-a1.md")
     }
 
     @Test

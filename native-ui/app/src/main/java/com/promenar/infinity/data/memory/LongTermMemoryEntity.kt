@@ -16,10 +16,11 @@ data class LongTermMemoryEntity(
     @ColumnInfo(name = "source_message_id") val sourceMessageId: String?,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    @ColumnInfo(name = "owner_session_id") val ownerSessionId: String? = null,
 ) {
     fun toDomain() = LongTermMemory(id, LongTermMemoryKind.fromStorage(kind), title, content,
-        sourceAgentId, sourceSessionId, sourceMessageId, createdAt, updatedAt)
+        sourceAgentId, sourceSessionId, sourceMessageId, createdAt, updatedAt, ownerSessionId)
 }
 
 internal fun LongTermMemory.toEntity() = LongTermMemoryEntity(id, kind.storageValue, title, content,
-    sourceAgentId, sourceSessionId, sourceMessageId, createdAt, updatedAt)
+    sourceAgentId, sourceSessionId, sourceMessageId, createdAt, updatedAt, ownerSessionId)

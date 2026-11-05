@@ -52,7 +52,7 @@ class InfinityDatabaseMigration19To20JvmTest {
         val room = openMigratedDatabase()
         try {
             val database = room.openHelper.writableDatabase
-            assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(34L)
+            assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(35L)
             assertThat(database.stringQuery("SELECT name FROM agents WHERE id='existing-agent'"))
                 .isEqualTo("已有助手")
             assertThat(database.stringQuery("SELECT title FROM sessions WHERE id='existing-session'"))
@@ -87,7 +87,7 @@ class InfinityDatabaseMigration19To20JvmTest {
         val room = openMigratedDatabase()
         try {
             val database = room.openHelper.writableDatabase
-            assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(34L)
+            assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(35L)
             assertThat(database.stringQuery("SELECT normalized_name FROM kg_nodes WHERE id='node'"))
                 .isEqualTo("实体")
             assertThat(database.stringQuery("SELECT content_hash FROM kg_evidence WHERE node_id='node'"))
@@ -108,7 +108,7 @@ class InfinityDatabaseMigration19To20JvmTest {
             override fun migrate(db: SupportSQLiteDatabase) = Unit
         }
         val room = Room.databaseBuilder(context, InfinityDatabase::class.java, MIGRATED_DATABASE)
-            .addMigrations(emptyMigration, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
+            .addMigrations(emptyMigration, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
             .allowMainThreadQueries()
             .build()
         try {
@@ -257,7 +257,7 @@ class InfinityDatabaseMigration19To20JvmTest {
 
     private fun openMigratedDatabase(): InfinityDatabase =
         Room.databaseBuilder(context, InfinityDatabase::class.java, MIGRATED_DATABASE)
-            .addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
+            .addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
             .allowMainThreadQueries()
             .build()
 

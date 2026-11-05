@@ -87,7 +87,7 @@ internal class RoomLibraryAskBackend(
         val fileHits = files.filter { file -> terms.any { file.name.contains(it, ignoreCase = true) } }
             .map { file -> AskHit("file:${file.id}", AskHitKind.DOCUMENT, file.name, file.location,
                 file.name, highlights(file.name, terms), AskMatch.KEYWORD, null, documentId = file.id) }
-        val memoryHits = memories.getAll().take(200).filter { memory ->
+        val memoryHits = memories.getAllForOwner(null).take(200).filter { memory ->
             terms.any { memory.title.contains(it, true) || memory.content.contains(it, true) }
         }.map { it.toHit(terms, AskMatch.KEYWORD, null) }
         // 融合之前保留各文档的候选块，最终排序后再执行每篇两段的上限。
@@ -115,7 +115,7 @@ internal class RoomLibraryAskBackend(
         val semantic = docs.vector.mapNotNull { row ->
             (row.fileUuid ?: row.docId)?.let(files::get)?.let { row.toHit(it, terms, AskMatch.SEMANTIC, row.similarity.coerceIn(0f, 1f)) }
         }
-        val memoryRows = memories.getAll().take(200)
+        val memoryRows = memories.getAllForOwner(null).take(200)
         val semanticMemories = memoryVectors(memoryRows, model, client, ::modelUnchanged).mapNotNull { (memory, vector) ->
             val score = VectorStore.cosineSimilarity(queryVector, vector)
             if (score < memoryManager().ragConfig.docThreshold) null

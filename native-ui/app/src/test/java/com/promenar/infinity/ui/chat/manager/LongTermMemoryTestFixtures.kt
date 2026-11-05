@@ -66,6 +66,7 @@ internal class RecordingMemoryRepository(initial: List<LongTermMemory> = emptyLi
 }
 
 internal class RecordingMemoryAccess(var enabled: Boolean = true) : LongTermMemoryAccess {
+    var ownerSessionId: String? = null
     var failure: Throwable? = null
     var checkedSession: Session? = null
     val checkedIds = mutableListOf<String>()
@@ -79,4 +80,5 @@ internal class RecordingMemoryAccess(var enabled: Boolean = true) : LongTermMemo
         failure?.let { throw it }
         return enabled
     }
+    override suspend fun ownerForSession(sessionId: String): String? = ownerSessionId
 }

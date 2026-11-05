@@ -9,6 +9,7 @@ import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.MIGRATION_32_33
 import com.promenar.infinity.data.local.db.MIGRATION_33_34
+import com.promenar.infinity.data.local.db.MIGRATION_34_35
 import com.promenar.infinity.data.model.RagReference
 import java.io.File
 import java.util.UUID
@@ -51,10 +52,10 @@ class KnowledgeCitationMigrationTest {
                 sqlite.version = 32
             }
             val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_32_33, MIGRATION_33_34).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35).allowMainThreadQueries().build()
             try {
                 val sqlite = db.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(34)
+                assertThat(sqlite.version).isEqualTo(35)
                 assertThat(db.messageDao().getById("m")!!.content).isEqualTo("原文")
                 val repository = RoomKnowledgeCitationRepository(db)
                 val first = KnowledgeCitationEntity("c1", "d1", 2, "v1", "CHAT", "s", "m", null, "K1", 10)

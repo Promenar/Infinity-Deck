@@ -52,6 +52,7 @@ import com.promenar.infinity.data.security.SecretCatalog
 import com.promenar.infinity.data.security.SecretId
 import com.promenar.infinity.data.security.SecretStore
 import com.promenar.infinity.data.model.ProviderConfig
+import com.promenar.infinity.data.model.toDomain
 import com.promenar.infinity.data.model.toCredentialUpdate
 import com.promenar.infinity.data.model.catalog.ModelCatalogRuntime
 import com.promenar.infinity.data.remote.protocol.ProtocolType
@@ -1650,6 +1651,14 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             )).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } } } },
             knowledgeBaseOwnerRoot = { sessionId -> database.sessionDao().getById(sessionId)
                 ?.takeIf { it.agentId == "__system__" }?.workspaceRootUuid },
+            knowledgeBaseAllowed = { sessionId, _ ->
+                val session = chatStore.getSession(sessionId) ?: database.sessionDao().getById(sessionId)?.toDomain()
+                val config = session?.agentId?.let { database.agentDao().getById(it)?.retrievalConfig }
+                session != null && session.options.toolsEnabled && session.ragOptions?.enableDocs != false &&
+                    session.ragOptions?.effectiveDocumentScope != com.promenar.infinity.data.model.DocumentScope.WORKSPACE &&
+                    config?.knowledgeFileAccess != com.promenar.infinity.data.agent.KnowledgeFileAccess.OFF &&
+                    config?.memoryPolicy?.allowedCollectionIds == null && session.ragOptions?.selectedCollectionIds == null
+            },
         )
     }
 

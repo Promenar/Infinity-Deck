@@ -39,6 +39,8 @@ class ExternalFolderManager(
     private val knowledgeBaseRoots: suspend () -> Set<String> = { emptySet() },
     /** 知识库管理会话拥有的受控根；普通会话不能通过快照导入修改知识库。 */
     private val knowledgeBaseOwnerRoot: suspend (String) -> String? = { null },
+    /** 每次通过已批准挂载读取前校验当前会话的资料范围。 */
+    private val knowledgeBaseAllowed: suspend (String, String) -> Boolean = { _, _ -> false },
     /** 测试替身；返回 null 时使用真实来源。 */
     private val backendOverride: ((ExternalMount) -> ExternalFolderBackend?)? = null,
 ) : ExternalWorkspaceAccess {
@@ -478,6 +480,9 @@ class ExternalFolderManager(
             ?.takeIf { it.sessionId == sessionId && it.mount.id == mount.id }
             ?.let { return guarded(it.backend, it.baseRoot) }
         if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {
+            if (sessionId != null && !knowledgeBaseAllowed(sessionId, mount.sourceId)) {
+                fail("ACCESS_DENIED", "当前会话的资料范围不允许读取该知识库挂载")
+            }
             // 知识库标识是 FileEntry 根 UUID，与自选目录的 WorkspaceEntity.id 不同。
             val root = knowledgeBaseRoot(mount.sourceId)
             return guarded(backendOverride?.invoke(mount) ?: RealPathExternalFolderBackend(root), root)

@@ -19,6 +19,26 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [33], application = Application::class)
 class LongTermMemoryRepositoryTest {
+    @Test fun `共享与会话隔离记录按归属分别读取更新和删除`() = runBlocking<Unit> {
+        val shared = repo.save(LongTermMemoryKind.USER, "共同标题", "共享").memory
+        val isolated = repo.save(LongTermMemoryKind.USER, "共同标题", "隔离", source =
+            LongTermMemorySource("a", "s1", null, ownerSessionId = "s1")).memory
+        assertThat(isolated.id).isNotEqualTo(shared.id)
+        assertThat(repo.getForOwner(shared.id, null)?.content).isEqualTo("共享")
+        assertThat(repo.getForOwner(isolated.id, null)).isNull()
+        assertThat(repo.getForOwner(shared.id, "s1")).isNull()
+        assertThat(repo.getForOwner(isolated.id, "s2")).isNull()
+        assertThat(repo.getAllForOwner("s1").map { it.id }).containsExactly(isolated.id)
+        assertThat(repo.getAllForOwner(null).map { it.id }).containsExactly(shared.id)
+        assertThat(repo.deleteForOwner(isolated.id, "s2")).isNull()
+        assertThat(repo.getForOwner(isolated.id, "s1")).isNotNull()
+        repo.save(LongTermMemoryKind.USER, "共同标题", "管理页更新", isolated.id)
+        assertThat(repo.getForOwner(isolated.id, "s1")?.content).isEqualTo("管理页更新")
+        assertThat(runCatching { repo.save(LongTermMemoryKind.USER, "共同标题", "越权", shared.id,
+            LongTermMemorySource("a", "s1", null, ownerSessionId = "s1")) }.isFailure).isTrue()
+        assertThat(repo.deleteForOwner(isolated.id, "s1")?.id).isEqualTo(isolated.id)
+    }
+
     @Test fun `恢复拒绝非UUID标识防止无界元数据进入提示`() = runBlocking<Unit> {
         val memory = repo.save(LongTermMemoryKind.USER, "标题", "正文").memory
         assertThat(runCatching { repo.restore(memory.copy(id = "x".repeat(10000))) }.isFailure).isTrue()

@@ -7,6 +7,8 @@ import com.promenar.infinity.data.local.db.entity.VectorEntity
 import com.promenar.infinity.data.model.ConversationScope
 import com.promenar.infinity.data.model.DocumentScope
 import com.promenar.infinity.data.model.RagOptions
+import com.promenar.infinity.data.model.ActiveMemoryMode
+import com.promenar.infinity.data.agent.AgentMemoryPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -43,6 +45,12 @@ data class ResolvedRetrievalScope(
     val graph: ConversationReach,
     val documents: DocumentReach,
     val graphBinding: ResolvedGraphBinding,
+    val activeMemoryMode: ActiveMemoryMode = ActiveMemoryMode.SHARED,
+    val selectedCollectionIds: Set<String> = emptySet(),
+    val graphTitle: String? = null,
+    val graphRestriction: String? = null,
+    val restrictedCollectionIds: Set<String> = emptySet(),
+    val memoryRestriction: String? = null,
 )
 
 /**
@@ -52,34 +60,78 @@ data class ResolvedRetrievalScope(
 class RetrievalScopeResolver(private val database: InfinityDatabase) {
     suspend fun resolve(sessionId: String, options: RagOptions): ResolvedRetrievalScope = withContext(Dispatchers.IO) {
         val session = database.sessionDao().getById(sessionId)
+        if (session == null) return@withContext ResolvedRetrievalScope(
+            sessionId, ConversationReach.Session(sessionId), ConversationReach.Session(sessionId),
+            DocumentReach.Scoped(emptySet(), emptySet()),
+            ResolvedGraphBinding(KgCollectionRepository.sessionCollectionId(sessionId), com.promenar.infinity.data.model.GraphBindingMode.READ_ONLY),
+            graphRestriction = "会话不存在",
+        )
         val agentId = session?.agentId
-        var privateAgents: Set<String>? = null
-        suspend fun privateAgents(): Set<String> = privateAgents ?: database.agentDao().getAll()
-            .filter { it.id != agentId && it.retrievalConfig?.memoryPolicy?.shareWithOtherAgents == false }
-            .mapTo(linkedSetOf()) { it.id }
-            .also { privateAgents = it }
+        val policy = agentId?.let { database.agentDao().getById(it)?.retrievalConfig?.memoryPolicy } ?: AgentMemoryPolicy()
+        val effective = policy.clamp(options)
 
         suspend fun reach(scope: ConversationScope): ConversationReach = when {
             agentId == null || scope == ConversationScope.SESSION -> ConversationReach.Session(sessionId)
             scope == ConversationScope.AGENT -> ConversationReach.Agent(agentId)
-            else -> ConversationReach.SharedAgents(agentId, privateAgents())
+            else -> ConversationReach.SharedAgents(agentId, emptySet())
         }
 
-        val documentScope = options.effectiveDocumentScope
-        val documents = if (documentScope == DocumentScope.ALL_INDEXED) {
-            DocumentReach.All
-        } else {
-            val roots = linkedSetOf<String>()
-            session?.workspaceRootUuid?.takeIf(String::isNotBlank)?.let(roots::add)
-            if (documentScope == DocumentScope.KNOWLEDGE_BASE) roots += knowledgeBaseRoots()
-            DocumentReach.Scoped(roots, explicitDocuments(options))
+        val binding = KgCollectionRepository(database).readBinding(sessionId, options)
+        val collectionRows = database.query(SimpleSQLiteQuery("SELECT id,title FROM kg_collections WHERE kind IN ('work','shared')")).use { cursor ->
+            buildMap { while (cursor.moveToNext()) put(cursor.getString(0), cursor.getString(1)) }
         }
+        val allowed = policy.allowedCollectionIds?.toSet()
+        val selected = (options.selectedCollectionIds?.toSet() ?: collectionRows.keys).filterTo(linkedSetOf()) { allowed == null || it in allowed }
+        val boundIsDocument = binding.collectionId in collectionRows
+        val graphRestriction = if (boundIsDocument && allowed != null && binding.collectionId !in allowed) "受智能体资料限制" else null
+        if (boundIsDocument && graphRestriction == null) selected += binding.collectionId
+        val requested = explicitDocuments(options)
+        val requestedFiles = requested.toMutableSet()
+        requested.chunked(400).forEach { batch ->
+            database.query(SimpleSQLiteQuery("SELECT DISTINCT file_uuid FROM vectors WHERE file_uuid IS NOT NULL AND stale=0 AND doc_id IN (${batch.joinToString { "?" }})", batch.toTypedArray())).use { cursor ->
+                while (cursor.moveToNext()) requestedFiles += cursor.getString(0)
+            }
+        }
+        val roots = knowledgeBaseRoots().toSet()
+        val docIds = linkedSetOf<String>()
+        val sql = "SELECT f.uuid,f.workspace_root_uuid,m.collection_id FROM workspace_files f LEFT JOIN kg_collection_members m ON m.doc_id=f.uuid WHERE f.in_recycle_bin=0 AND f.is_directory=0"
+        val files = database.query(SimpleSQLiteQuery(sql)).use { cursor -> buildList {
+            while (cursor.moveToNext()) add(Triple(cursor.getString(0), cursor.getString(1), if (cursor.isNull(2)) null else cursor.getString(2)))
+        } }
+        val collections = KgCollectionRepository(database)
+        for ((id, root, member) in files) {
+            val inferred = member ?: collections.documentCollectionIdForRead(id)
+            val knownCollection = member != null || inferred in collectionRows || root in roots
+            val collection = inferred.takeIf { knownCollection }
+            if (options.selectedCollectionIds == null && collection != null && (allowed == null || collection in allowed)) selected += collection
+            val collectionAllowed = if (collection == null) allowed == null || root == session.workspaceRootUuid
+                else allowed == null || collection in allowed
+            val requestedBySession = root == session?.workspaceRootUuid || id in requestedFiles
+            val selectedByCollection = collection != null && collection in selected
+            if (collectionAllowed && (requestedBySession || selectedByCollection)) docIds += id
+        }
+        database.query(SimpleSQLiteQuery("SELECT DISTINCT v.doc_id,m.collection_id FROM vectors v LEFT JOIN kg_collection_members m ON m.doc_id=v.doc_id WHERE v.doc_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=COALESCE(v.file_uuid,v.doc_id))")).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(0)
+                val collection = if (cursor.isNull(1)) null else cursor.getString(1)
+                if ((collection == null && allowed == null && (id in requested || options.selectedCollectionIds == null)) ||
+                    (collection != null && collection in selected && (allowed == null || collection in allowed))) docIds += id
+            }
+        }
+        val documents = DocumentReach.Scoped(emptySet(), docIds)
         ResolvedRetrievalScope(
             sessionId = sessionId,
-            memory = reach(options.effectiveMemoryScope),
+            memory = reach(effective.effectiveMemoryScope),
             graph = ConversationReach.Session(sessionId),
             documents = documents,
-            graphBinding = KgCollectionRepository(database).readBinding(sessionId),
+            graphBinding = binding,
+            activeMemoryMode = options.activeMemoryMode ?: policy.activeMemoryDefault,
+            selectedCollectionIds = selected,
+            graphTitle = collectionRows[binding.collectionId] ?: session?.title,
+            graphRestriction = graphRestriction,
+            restrictedCollectionIds = options.selectedCollectionIds.orEmpty().filterTo(linkedSetOf()) { allowed != null && it !in allowed },
+            memoryRestriction = if (options.globalMemoryEnabled && effective.effectiveMemoryScope != options.globalMemoryScope)
+                "受智能体全局记忆上限限制" else null,
         )
     }
 
@@ -108,17 +160,17 @@ class RetrievalScopeResolver(private val database: InfinityDatabase) {
     /** 显式文档与文件夹下的全部文件；文件夹在这里展开，下游不再区分。 */
     private fun explicitDocuments(options: RagOptions): Set<String> {
         val documents = options.activeDocIds.filterTo(linkedSetOf(), String::isNotBlank)
-        val folders = options.activeFolderIds.filter(String::isNotBlank).distinct().take(MAX_SCOPED_DOCUMENTS)
-        if (folders.isNotEmpty()) {
+        val folders = options.activeFolderIds.filter(String::isNotBlank).distinct()
+        folders.chunked(400).forEach { batch ->
             val sql = "WITH RECURSIVE tree(id, root) AS (" +
-                "SELECT uuid, workspace_root_uuid FROM workspace_files WHERE uuid IN (${folders.joinToString { "?" }}) AND in_recycle_bin = 0 " +
+                "SELECT uuid, workspace_root_uuid FROM workspace_files WHERE uuid IN (${batch.joinToString { "?" }}) AND in_recycle_bin = 0 " +
                 "UNION SELECT w.uuid, w.workspace_root_uuid FROM workspace_files w JOIN tree t ON w.parent_uuid = t.id AND w.workspace_root_uuid = t.root WHERE w.in_recycle_bin = 0) " +
-                "SELECT w.uuid FROM workspace_files w JOIN tree t ON w.uuid = t.id WHERE w.is_directory = 0 LIMIT $MAX_SCOPED_DOCUMENTS"
-            database.query(SimpleSQLiteQuery(sql, folders.toTypedArray())).use { cursor ->
+                "SELECT w.uuid FROM workspace_files w JOIN tree t ON w.uuid = t.id WHERE w.is_directory = 0"
+            database.query(SimpleSQLiteQuery(sql, batch.toTypedArray())).use { cursor ->
                 while (cursor.moveToNext()) documents += cursor.getString(0)
             }
         }
-        return documents.take(MAX_SCOPED_DOCUMENTS).toSet()
+        return documents
     }
 
     companion object {
@@ -145,13 +197,13 @@ internal suspend fun VectorDao.conversationFts(reach: ConversationReach, query: 
 internal suspend fun VectorDao.documentRows(reach: DocumentReach): List<VectorEntity> = when (reach) {
     DocumentReach.All -> getAllDocuments()
     is DocumentReach.Scoped -> if (reach.isEmpty) emptyList()
-        else getDocumentsInScope(reach.workspaceRootUuids.toList(), reach.documentIds.toList())
+        else reach.documentIds.chunked(400).ifEmpty { listOf(emptyList()) }.flatMap { getDocumentsInScope(reach.workspaceRootUuids.toList(), it) }.distinctBy { it.id }
 }
 
 internal suspend fun VectorDao.documentFts(reach: DocumentReach, query: String): List<VectorEntity> = when (reach) {
     DocumentReach.All -> searchFtsDocuments(query)
     is DocumentReach.Scoped -> if (reach.isEmpty) emptyList()
-        else searchFtsDocumentsInScope(query, reach.workspaceRootUuids.toList(), reach.documentIds.toList())
+        else reach.documentIds.chunked(400).ifEmpty { listOf(emptyList()) }.flatMap { searchFtsDocumentsInScope(query, reach.workspaceRootUuids.toList(), it) }.distinctBy { it.id }
 }
 
 private val DocumentReach.Scoped.isEmpty: Boolean

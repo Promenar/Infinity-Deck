@@ -12,6 +12,12 @@ import com.promenar.infinity.domain.model.ExecutionMode
 import org.junit.Test
 
 class NewSessionDefaultsTest {
+    @Test fun `默认智能体的新会话只检索本会话对话片段`() {
+        val session = newSessionDefaults("session-a", "agent-a", Agent("agent-a", "测试智能体"), null, RagConfiguration(), 42)
+
+        assertThat(session.ragOptions!!.effectiveMemoryScope).isEqualTo(ConversationScope.SESSION)
+    }
+
     @Test fun `智能体默认关闭工具时新会话关闭工具且不复制技能名单`() {
         val agent = Agent("a", "智能体", skills = listOf("a", "b"), toolsEnabledByDefault = false)
 

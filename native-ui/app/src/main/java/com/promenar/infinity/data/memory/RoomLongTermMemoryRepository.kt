@@ -21,14 +21,24 @@ class RoomLongTermMemoryRepository(
     override suspend fun getAll(): List<LongTermMemory> = withContext(Dispatchers.IO) { dao.getAll().map { it.toDomain() } }
     override suspend fun get(id: String): LongTermMemory? = withContext(Dispatchers.IO) { dao.get(id)?.toDomain() }
 
+    override suspend fun deleteForOwner(id: String, ownerSessionId: String?): LongTermMemory? = withContext(Dispatchers.IO) {
+        StartupWriteBarrier.requireWritable()
+        database.withTransaction {
+            dao.get(id)?.takeIf { it.ownerSessionId == ownerSessionId }?.toDomain()?.also { dao.delete(id) }
+        }
+    }
+
     override suspend fun save(kind: LongTermMemoryKind, title: String, content: String, id: String?, source: LongTermMemorySource?): LongTermMemoryWrite = withContext(Dispatchers.IO) {
         val (cleanTitle, cleanContent) = LongTermMemoryValidation.validate(title, content)
         StartupWriteBarrier.requireWritable()
         database.withTransaction {
             val rows = dao.getAll()
+            // 管理入口按记录 ID 编辑；工具入口始终提供 source 并限定归属。
+            val owner = if (source == null && id != null) rows.firstOrNull { it.id == id }?.ownerSessionId else source?.ownerSessionId
+            val visible = rows.filter { it.ownerSessionId == owner }
             val previous = if (id != null) {
-                rows.firstOrNull { it.id == id } ?: throw LongTermMemoryException(LongTermMemoryFailure.NOT_FOUND)
-            } else rows.firstOrNull { it.title.trim().equals(cleanTitle, ignoreCase = true) }
+                visible.firstOrNull { it.id == id } ?: throw LongTermMemoryException(LongTermMemoryFailure.NOT_FOUND)
+            } else visible.firstOrNull { it.title.trim().equals(cleanTitle, ignoreCase = true) }
             if (previous == null) requireCapacity(rows.size)
             val memory = LongTermMemory(
                 id = previous?.id ?: UUID.randomUUID().toString(), kind = kind, title = cleanTitle, content = cleanContent,
@@ -36,6 +46,7 @@ class RoomLongTermMemoryRepository(
                 sourceSessionId = if (source == null) previous?.sourceSessionId else source.sessionId,
                 sourceMessageId = if (source == null) previous?.sourceMessageId else source.messageId,
                 createdAt = previous?.createdAt ?: now(), updatedAt = now(),
+                ownerSessionId = owner,
             )
             dao.upsert(memory.toEntity())
             LongTermMemoryWrite(memory, previous?.toDomain())

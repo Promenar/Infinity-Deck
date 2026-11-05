@@ -15,6 +15,27 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class KnowledgeRetrievalIntegrationTest {
+    @Test fun `自动检索把同一个生效范围交给图谱读取`() = runTest {
+        val scope = ResolvedRetrievalScope("s", ConversationReach.Session("s"), ConversationReach.Session("s"),
+            DocumentReach.Scoped(emptySet(), setOf("doc-a")), ResolvedGraphBinding("work:a", GraphBindingMode.READ_ONLY))
+        val rag = object : RagProvider {
+            override suspend fun retrieveContext(query: String, sessionId: String, options: RagOptions,
+                onProgress: ((String, Int, String?) -> Unit)?) = RagRetrievalResult("", emptyList(), null, resolvedScope = scope)
+        }
+        var received: ResolvedRetrievalScope? = null
+        val kg = object : KgProvider {
+            override suspend fun extractContext(query: String, sessionId: String, topKResults: List<RagReference>) = KgContextResult("")
+            override suspend fun retrieveWithScope(query: String, sessionId: String, topKResults: List<RagReference>,
+                options: RagOptions, scope: ResolvedRetrievalScope?, forTool: Boolean): KgContextResult {
+                received = scope
+                return KgContextResult("")
+            }
+        }
+        ContextBuilder(ragProvider = rag, kgProvider = kg).buildContext(ContextBuilderParams("s", "q", assistantMsgId = "m",
+            session = Session("s", "a", ragOptions = RagOptions(enableKnowledgeGraph = true))))
+        assertThat(received).isSameInstanceAs(scope)
+    }
+
     @Test fun `工具与自动入口共用收紧后的范围和会话开关`() = runTest {
         val selected = RagOptions(memoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.ALL_AGENTS,
             documentScope = DocumentScope.ALL_INDEXED, enableKnowledgeGraph = true)
@@ -33,7 +54,15 @@ class KnowledgeRetrievalIntegrationTest {
         assertThat(received).isEqualTo(expected)
         assertThat(expected.memoryScope).isEqualTo(ConversationScope.SESSION)
         assertThat(expected.graphScope).isEqualTo(ConversationScope.ALL_AGENTS)
-        assertThat(expected.documentScope).isEqualTo(DocumentScope.KNOWLEDGE_BASE)
+        assertThat(expected.documentScope).isEqualTo(DocumentScope.ALL_INDEXED)
+    }
+
+    @Test fun `临时仅工作区不能扩大为已允许的资料合集`() {
+        val selected = RagOptions(selectedCollectionIds = null, activeDocIds = listOf("a", "b"))
+        val temporary = RagOptions(documentScope = DocumentScope.WORKSPACE, activeDocIds = listOf("b", "outside"))
+        val effective = resolveEffectiveRagOptions(selected, temporary)
+        assertThat(effective.selectedCollectionIds).isEmpty()
+        assertThat(effective.activeDocIds).containsExactly("b")
     }
 
     @Test fun `TOOL跳过全部前置检索且工具关闭回退AUTO和不注入目录`() = runTest {

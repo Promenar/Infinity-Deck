@@ -53,7 +53,7 @@ class RetrievalConfigConvergenceTest {
         assertThat(captured.captured.enableRerank).isTrue()
         assertThat(result.retrieval.effectiveRagOptions!!.memoryScope).isEqualTo(ConversationScope.SESSION)
         assertThat(result.retrieval.effectiveRagOptions!!.graphScope).isEqualTo(ConversationScope.ALL_AGENTS)
-        assertThat(result.retrieval.effectiveRagOptions!!.documentScope).isEqualTo(DocumentScope.WORKSPACE)
+        assertThat(result.retrieval.effectiveRagOptions!!.documentScope).isEqualTo(DocumentScope.ALL_INDEXED)
         assertThat(saved.memoryScope).isEqualTo(ConversationScope.ALL_AGENTS)
         assertThat(saved.graphScope).isEqualTo(ConversationScope.ALL_AGENTS)
         assertThat(saved.documentScope).isEqualTo(DocumentScope.ALL_INDEXED)

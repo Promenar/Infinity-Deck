@@ -17,12 +17,20 @@ fun resolveEffectiveRagOptions(
     return memoryPolicy.clamp(RagOptions(
         enableMemory = temporary.enableMemory && session.enableMemory,
         enableDocs = temporary.enableDocs && session.enableDocs,
-        activeDocIds = temporary.activeDocIds.ifEmpty { session.activeDocIds },
-        activeFolderIds = temporary.activeFolderIds.ifEmpty { session.activeFolderIds },
+        activeDocIds = if (temporaryOptions == null || temporary.activeDocIds.isEmpty()) session.activeDocIds
+            else session.activeDocIds.filter { it in temporary.activeDocIds },
+        activeFolderIds = if (temporaryOptions == null || temporary.activeFolderIds.isEmpty()) session.activeFolderIds
+            else session.activeFolderIds.filter { it in temporary.activeFolderIds },
         memoryScope = (temporaryOptions ?: session).effectiveMemoryScope,
         graphScope = (temporaryOptions ?: session).graphScope,
         graphBinding = session.graphBinding,
-        documentScope = (temporaryOptions ?: session).effectiveDocumentScope,
+        globalMemoryEnabled = session.globalMemoryEnabled && (temporaryOptions?.globalMemoryEnabled ?: true),
+        globalMemoryScope = if (temporaryOptions == null) session.globalMemoryScope else minOf(session.globalMemoryScope, temporary.globalMemoryScope),
+        activeMemoryMode = session.activeMemoryMode,
+        selectedCollectionIds = if (temporaryOptions?.documentScope == com.promenar.infinity.data.model.DocumentScope.WORKSPACE) emptyList() else session.selectedCollectionIds?.let { selected ->
+            temporaryOptions?.selectedCollectionIds?.let { selected.intersect(it.toSet()).toList() } ?: selected
+        } ?: temporaryOptions?.selectedCollectionIds,
+        documentScope = if (temporaryOptions == null) session.effectiveDocumentScope else minOf(session.effectiveDocumentScope, temporary.effectiveDocumentScope),
         enableRerank = if (sessionOptions == null) temporary.enableRerank else session.enableRerank,
         enableKnowledgeGraph = if (sessionOptions == null) temporary.enableKnowledgeGraph else session.enableKnowledgeGraph,
     ))

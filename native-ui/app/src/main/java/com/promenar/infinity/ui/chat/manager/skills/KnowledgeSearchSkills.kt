@@ -29,7 +29,7 @@ class KnowledgeSearchSkill(
     override val name = id
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
-    override val description = "只读检索用户导入的文档、知识库和过往对话，可附带持久知识图谱关系。查询词使用完整问题或关键短语。memory_* 管理用户长期事实与偏好，其目录已在上下文中；需要知识库文档全文时，通过只读挂载后使用 read_file、list_files、search_files。每轮最多检索6次，达到上限后基于已有结果作答。"
+    override val description = "只读检索用户导入的文档、知识库和过往对话，可附带持久知识图谱关系。查询词使用完整问题或关键短语。memory_* 管理主动记忆中的事实与偏好，其目录已在上下文中；需要知识库文档全文时，通过只读挂载后使用 read_file、list_files、search_files。每轮最多检索6次，达到上限后基于已有结果作答。"
     override val parametersSchema = """{"type":"object","properties":{"query":{"type":"string","description":"完整的问题或关键短语"},"sources":{"type":"array","items":{"type":"string","enum":["documents","history"]}},"limit":{"type":"integer","description":"返回条数，1 至 10，默认 5"}},"required":["query"],"additionalProperties":false}"""
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
@@ -63,8 +63,10 @@ class KnowledgeSearchSkill(
             if (retrieved.trace?.outcome == RagRetrievalTrace.OUTCOME_UNAVAILABLE) return@withContext error("未配置嵌入模型，请在设置 → 默认模型中配置嵌入模型后再检索。")
             if (retrieved.trace?.outcome == RagRetrievalTrace.OUTCOME_FAILED) return@withContext error("知识检索失败，请检查嵌入模型配置。")
             val references = retrieved.references.distinctBy { it.id }.take(limit)
-            val paths = if (options.enableKnowledgeGraph == true) kg?.retrieveForTool(query, session.id, references, options)
-                ?.takeIf { it.status == KgExtractionStatus.SUCCESS && it.error == null }?.paths.orEmpty() else emptyList()
+            val graph = if (options.enableKnowledgeGraph != true) null else if (retrieved.resolvedScope == null)
+                kg?.retrieveForTool(query, session.id, references, options)
+            else kg?.retrieveWithScope(query, session.id, references, options, retrieved.resolvedScope, true)
+            val paths = graph?.takeIf { it.status == KgExtractionStatus.SUCCESS && it.error == null }?.paths.orEmpty()
             val results = references.map { reference ->
                 val location = catalog.documentLocation(session.id, reference)
                 KnowledgeSearchHit(reference.id, turns.citation(session.id, turnId, reference.id),

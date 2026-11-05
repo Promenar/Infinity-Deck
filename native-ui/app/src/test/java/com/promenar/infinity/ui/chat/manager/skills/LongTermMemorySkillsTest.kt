@@ -24,6 +24,15 @@ import org.junit.Test
 import kotlin.coroutines.cancellation.CancellationException
 
 class LongTermMemorySkillsTest {
+    @Test fun `工具读取和遗忘按会话归属过滤`() = runTest {
+        val repository = RecordingMemoryRepository(listOf(
+            memoryFixture(id = "shared", content = "共享"),
+            memoryFixture(id = "private", content = "隔离").copy(ownerSessionId = "current-session")))
+        val access = RecordingMemoryAccess().apply { ownerSessionId = "current-session" }
+        assertError(tool("memory_read", repository, access).execute(args("""{"id":"shared"}"""), context), "MEMORY_NOT_FOUND")
+        assertError(tool("memory_forget", repository, access).execute(args("""{"id":"shared"}"""), context), "MEMORY_NOT_FOUND")
+        assertThat(tool("memory_read", repository, access).execute(args("""{"id":"private"}"""), context).body()["content"]!!.jsonPrimitive.content).isEqualTo("隔离")
+    }
     @Test fun `领域错误分别告诉模型补正文改id删旧记忆或移除凭据`() = runTest {
         val expected = mapOf(
             com.promenar.infinity.data.memory.LongTermMemoryFailure.INVALID_TITLE to "INVALID_MEMORY_TITLE",

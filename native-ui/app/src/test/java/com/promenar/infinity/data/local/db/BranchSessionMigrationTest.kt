@@ -47,9 +47,9 @@ class BranchSessionMigrationTest {
                 sqlite.version = 28
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35).allowMainThreadQueries().build()
             try {
-                assertThat(room.openHelper.writableDatabase.version).isEqualTo(34)
+                assertThat(room.openHelper.writableDatabase.version).isEqualTo(35)
                 val session = room.sessionDao().getById("old")!!
                 assertThat(session.title).isEqualTo("保留会话")
                 assertThat(session.parentSessionId).isNull()
@@ -66,7 +66,7 @@ class BranchSessionMigrationTest {
                     parentSessionDeleted = true, sessionAutoWakeCount = 8, sessionAutoProcessingPaused = true))
                 assertThat(room.sessionDao().getById("old")!!.sessionAutoWakeCount).isEqualTo(8)
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(34, INFINITY_SCHEMA_V34_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(35, INFINITY_SCHEMA_V35_IDENTITY_HASH)
                 }).isTrue()
             } finally { room.close() }
         } finally { context.deleteDatabase(name) }

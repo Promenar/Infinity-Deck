@@ -11,7 +11,7 @@ class LongTermMemoryContextTest {
             memoryFixture("older", title = "偏好", content = "中文", updatedAt = 1),
             memoryFixture("newer", LongTermMemoryKind.PROJECT, "项目", "保持兼容", 2),
         ), true)
-        assertThat(context).isEqualTo("### Long-term memory\n- [newer] (project) 项目: 保持兼容\n- [older] (user) 偏好: 中文\n")
+        assertThat(context).isEqualTo("### Active memory\n- [newer] (project) 项目: 保持兼容\n- [older] (user) 偏好: 中文\n")
     }
 
     @Test fun `六千字符预算只计算正文且容纳不下后全部仅列标题`() {
@@ -70,7 +70,7 @@ class LongTermMemoryContextTest {
         assertThat(saveOnly).contains("memory_save")
         assertThat(saveOnly).doesNotContain("memory_read")
         assertThat(saveOnly).doesNotContain("memory_forget")
-        assertThat(SystemPromptSections.toolGuidance(setOf("calculator"), false)).doesNotContain("长期记忆")
-        assertThat(SystemPromptSections.toolGuidance(setOf("memory_save"), true)).doesNotContain("长期记忆")
+        assertThat(SystemPromptSections.toolGuidance(setOf("calculator"), false)).doesNotContain("主动记忆")
+        assertThat(SystemPromptSections.toolGuidance(setOf("memory_save"), true)).doesNotContain("主动记忆")
     }
 }

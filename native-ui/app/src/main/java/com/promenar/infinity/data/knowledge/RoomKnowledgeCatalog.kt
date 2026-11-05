@@ -1,9 +1,7 @@
 package com.promenar.infinity.data.knowledge
 
 import androidx.sqlite.db.SimpleSQLiteQuery
-import com.promenar.infinity.data.local.db.Converters
 import com.promenar.infinity.data.local.db.InfinityDatabase
-import com.promenar.infinity.data.model.ConversationScope
 import com.promenar.infinity.data.model.DocumentScope
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.RagReference
@@ -30,9 +28,20 @@ class RoomKnowledgeCatalog(
 
     override suspend fun knowledgeBases(session: Session, options: RagOptions): List<KnowledgeBaseSummary> = withContext(Dispatchers.IO) {
         if (!options.enableDocs || options.effectiveDocumentScope == DocumentScope.WORKSPACE) return@withContext emptyList()
+        val policy = database.agentDao().getById(session.agentId)?.retrievalConfig?.memoryPolicy
+        if (policy?.allowedCollectionIds != null || options.selectedCollectionIds != null) return@withContext emptyList()
         val reach = resolver.resolve(session.id, options).documents
         val documents = indexedDocuments(reach)
-        roots().filter { root -> reach == DocumentReach.All || root.uuid in (reach as DocumentReach.Scoped).workspaceRootUuids }
+        roots().filter { root ->
+            reach == DocumentReach.All || (documents.any { it.rootUuid == root.uuid } && database.query(SimpleSQLiteQuery(
+                "SELECT uuid FROM workspace_files WHERE workspace_root_uuid=? AND is_directory=0 AND in_recycle_bin=0", arrayOf(root.uuid),
+            )).use { cursor ->
+                val visible = (reach as DocumentReach.Scoped).documentIds
+                var allowed = true
+                while (cursor.moveToNext()) if (cursor.getString(0) !in visible) allowed = false
+                allowed
+            })
+        }
             .map { root -> KnowledgeBaseSummary(root.uuid, root.title, documents.count { it.rootUuid == root.uuid }, root.isDefault) }
     }
 
@@ -63,23 +72,25 @@ class RoomKnowledgeCatalog(
 
     /** 与向量检索使用相同范围和有效性条件；只做 EXISTS，不读取 embedding BLOB。 */
     override fun hasIndexedMaterial(session: Session, options: RagOptions): Boolean {
-        if (options.enableDocs && indexedDocumentsExist(synchronousDocumentReach(session, options))) return true
+        val scope = kotlinx.coroutines.runBlocking(Dispatchers.IO) { resolver.resolve(session.id, options) }
+        if (options.enableDocs && indexedDocumentsExist(scope.documents)) return true
         if (!options.enableMemory) return false
-        val agentId = sessionAgentId(session.id)
-        val reach = when {
-            agentId == null || options.effectiveMemoryScope == ConversationScope.SESSION -> ConversationReach.Session(session.id)
-            options.effectiveMemoryScope == ConversationScope.AGENT -> ConversationReach.Agent(agentId)
-            else -> ConversationReach.SharedAgents(agentId, privateAgents(agentId))
-        }
-        return indexedHistorySessionCount(reach) > 0
+        return indexedHistorySessionCount(scope.memory) > 0
     }
 
     override suspend fun documentLocation(sessionId: String, reference: RagReference): KnowledgeDocumentLocation? = withContext(Dispatchers.IO) {
         val documentId = reference.documentId?.takeIf(String::isNotBlank) ?: return@withContext null
-        val fileUuid = database.query(SimpleSQLiteQuery(
-            "SELECT file_uuid FROM vectors WHERE doc_id = ? AND file_uuid IS NOT NULL AND stale = 0 LIMIT 1",
-            arrayOf(documentId),
-        )).use { if (it.moveToFirst()) it.getString(0) else documentId }
+        val exactVectorFile = reference.id.takeIf(String::isNotBlank)?.let { id ->
+            database.query(SimpleSQLiteQuery(
+                "SELECT COALESCE(file_uuid,doc_id) FROM vectors WHERE id=? AND stale=0 AND (doc_id=? OR file_uuid=?)",
+                arrayOf(id, documentId, documentId),
+            )).use { if (it.moveToFirst()) it.getString(0) else null }
+        }
+        val directFile = database.fileEntryDao().findActiveByUuid(documentId)
+        val legacyFiles = if (exactVectorFile == null && directFile == null && reference.id.isBlank()) database.query(SimpleSQLiteQuery(
+            "SELECT DISTINCT file_uuid FROM vectors WHERE doc_id=? AND file_uuid IS NOT NULL AND stale=0 LIMIT 2", arrayOf(documentId),
+        )).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } } else emptyList()
+        val fileUuid = exactVectorFile ?: directFile?.uuid ?: legacyFiles.singleOrNull() ?: documentId
         val file = database.fileEntryDao().findActiveByUuid(fileUuid)
         val title = file?.name ?: reference.source.removePrefix("文档: ").ifBlank { documentId }
         if (file == null || file.isDirectory) return@withContext KnowledgeDocumentLocation(documentId, title, KnowledgeDocumentLocationKind.SNIPPET_ONLY)
@@ -109,6 +120,8 @@ class RoomKnowledgeCatalog(
     }
 
     private fun indexedDocuments(reach: DocumentReach): List<IndexedDocument> {
+        if (reach is DocumentReach.Scoped && reach.documentIds.size > 400) return reach.documentIds.chunked(400)
+            .flatMap { indexedDocuments(DocumentReach.Scoped(reach.workspaceRootUuids, it.toSet())) }.distinctBy { it.id }
         val condition = documentCondition(reach)
         return database.query(SimpleSQLiteQuery(
             "SELECT MIN(v.doc_id), f.workspace_root_uuid, f.name, MAX(COALESCE(f.updated_at, v.updated_at, v.created_at)), v.metadata " +
@@ -124,6 +137,8 @@ class RoomKnowledgeCatalog(
     }
 
     private fun indexedDocumentsExist(reach: DocumentReach): Boolean {
+        if (reach is DocumentReach.Scoped && reach.documentIds.size > 400) return reach.documentIds.chunked(400)
+            .any { indexedDocumentsExist(DocumentReach.Scoped(reach.workspaceRootUuids, it.toSet())) }
         val condition = documentCondition(reach)
         return database.query(SimpleSQLiteQuery(
             "SELECT 1 FROM vectors v LEFT JOIN workspace_files f ON f.uuid = COALESCE(v.file_uuid, v.doc_id) WHERE $ACTIVE_DOCUMENT AND ${condition.sql} LIMIT 1",
@@ -138,30 +153,10 @@ class RoomKnowledgeCatalog(
             val docs = reach.documentIds.toList()
             val conditions = buildList {
                 if (roots.isNotEmpty()) add("(f.in_recycle_bin = 0 AND f.workspace_root_uuid IN (${placeholders(roots.size)}))")
-                if (docs.isNotEmpty()) add("v.doc_id IN (${placeholders(docs.size)})")
+                if (docs.isNotEmpty()) add("COALESCE(v.file_uuid,v.doc_id) IN (${placeholders(docs.size)})")
             }
             SqlCondition(if (conditions.isEmpty()) "0" else conditions.joinToString(" OR ", "(", ")"), roots + docs)
         }
-    }
-
-    /** 同步广告入口复用解析器的根、显式文件与文件夹展开规则。 */
-    private fun synchronousDocumentReach(session: Session, options: RagOptions): DocumentReach {
-        if (options.effectiveDocumentScope == DocumentScope.ALL_INDEXED) return DocumentReach.All
-        val rootIds = linkedSetOf<String>()
-        database.query(SimpleSQLiteQuery("SELECT workspace_root_uuid FROM sessions WHERE id = ?", arrayOf(session.id))).use {
-            if (it.moveToFirst()) it.getString(0)?.takeIf(String::isNotBlank)?.let(rootIds::add)
-        }
-        if (options.effectiveDocumentScope == DocumentScope.KNOWLEDGE_BASE) rootIds += roots().map { it.uuid }
-        val docs = options.activeDocIds.filterTo(linkedSetOf(), String::isNotBlank)
-        val folders = options.activeFolderIds.filter(String::isNotBlank).distinct().take(RetrievalScopeResolver.MAX_SCOPED_DOCUMENTS)
-        if (folders.isNotEmpty()) database.query(SimpleSQLiteQuery(
-            "WITH RECURSIVE tree(id, root) AS (" +
-                "SELECT uuid, workspace_root_uuid FROM workspace_files WHERE uuid IN (${placeholders(folders.size)}) AND in_recycle_bin = 0 " +
-                "UNION SELECT w.uuid, w.workspace_root_uuid FROM workspace_files w JOIN tree t ON w.parent_uuid = t.id AND w.workspace_root_uuid = t.root WHERE w.in_recycle_bin = 0) " +
-                "SELECT w.uuid FROM workspace_files w JOIN tree t ON w.uuid = t.id WHERE w.is_directory = 0 LIMIT ${RetrievalScopeResolver.MAX_SCOPED_DOCUMENTS}",
-            folders.toTypedArray(),
-        )).use { while (it.moveToNext()) docs += it.getString(0) }
-        return DocumentReach.Scoped(rootIds, docs.take(RetrievalScopeResolver.MAX_SCOPED_DOCUMENTS).toSet())
     }
 
     private fun indexedHistorySessionCount(reach: ConversationReach): Int {
@@ -178,19 +173,6 @@ class RoomKnowledgeCatalog(
             condition.args.toTypedArray(),
         )).use { if (it.moveToFirst()) it.getInt(0) else 0 }
     }
-
-    private fun sessionAgentId(sessionId: String): String? = database.query(SimpleSQLiteQuery(
-        "SELECT agent_id FROM sessions WHERE id = ?", arrayOf(sessionId),
-    )).use { if (it.moveToFirst()) it.getString(0) else null }
-
-    private fun privateAgents(currentAgent: String): Set<String> = database.query(SimpleSQLiteQuery(
-        "SELECT id, retrieval_config FROM agents WHERE id != ?", arrayOf(currentAgent),
-    )).use { cursor -> buildSet {
-        while (cursor.moveToNext()) {
-            val shared = runCatching { Converters.toRetrievalConfig(cursor.getString(1))?.memoryPolicy?.shareWithOtherAgents != false }.getOrDefault(false)
-            if (!shared) add(cursor.getString(0))
-        }
-    } }
 
     private fun roots(): List<Root> = database.query(SimpleSQLiteQuery(
         "SELECT workspace_root_uuid, title, id FROM sessions WHERE agent_id = ? AND workspace_root_uuid IS NOT NULL AND workspace_root_uuid != '' " +

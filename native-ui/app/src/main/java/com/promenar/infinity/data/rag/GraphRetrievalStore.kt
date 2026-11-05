@@ -24,6 +24,7 @@ data class KgRetrievalScope(
     /** 保留调用方兼容；不限制绑定图谱内的存活证据。 */
     val allowConversation: Boolean = true,
     val collectionId: String = KgCollectionRepository.sessionCollectionId(sessionId),
+    val restriction: String? = null,
 ) {
     companion object {
         fun of(scope: ResolvedRetrievalScope) = KgRetrievalScope(
@@ -31,6 +32,7 @@ data class KgRetrievalScope(
             conversation = scope.graph,
             documents = scope.documents,
             collectionId = scope.graphBinding.collectionId,
+            restriction = scope.graphRestriction,
         )
     }
 }
@@ -45,6 +47,7 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
         ragDocumentIds: List<String> = emptyList(),
         config: RagConfiguration = RagConfiguration(),
     ): PersistentGraphResult = withContext(Dispatchers.IO) {
+        if (scope.restriction != null) return@withContext PersistentGraphResult(0, emptyList())
         database.withTransaction {
             val (seedSql, seedArgs) = seedQuery(query, scope, ragDocumentIds, config.kgMaxSeeds.coerceIn(1, 32))
             val seeds = database.query(SimpleSQLiteQuery(seedSql, seedArgs.toTypedArray())).use { cursor ->
@@ -151,14 +154,20 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
                 "UNION SELECT doc_id FROM vectors WHERE doc_id IS NOT NULL AND file_uuid IS NULL AND stale=0 AND doc_id NOT IN (SELECT uuid FROM workspace_files)"
             is DocumentReach.Scoped -> "$explicitLiveDocs UNION $liveFiles AND w.workspace_root_uuid IN (${sqlList(documents.workspaceRootUuids)})"
         }
-        val sql = "WITH RECURSIVE ctx(session_id) AS (VALUES (?)), explicit_docs(id) AS ($values), " +
+        val sql = "WITH RECURSIVE ctx(session_id,allow_conversation) AS (VALUES (?,?)), explicit_docs(id) AS ($values), " +
             "folder_tree(id,root) AS (SELECT uuid,workspace_root_uuid FROM workspace_files WHERE uuid IN ($folderValues) AND in_recycle_bin=0 " +
             "UNION SELECT w.uuid,w.workspace_root_uuid FROM workspace_files w JOIN folder_tree f ON w.parent_uuid=f.id AND w.workspace_root_uuid=f.root WHERE w.in_recycle_bin=0), " +
             "visible_docs(id) AS ($visibleDocs) "
-        return sql to listOf(scope.sessionId)
+        return sql to listOf(scope.sessionId, if (scope.allowConversation) 1 else 0)
     }
 
-    private fun visibleEvidence(): String = "($ACTIVE_KG_EVIDENCE)"
+    private fun visibleEvidence(): String = "($ACTIVE_KG_EVIDENCE) AND " +
+        "(p.session_id IS NULL OR p.doc_id IS NOT NULL OR (SELECT allow_conversation FROM ctx)=1) AND " +
+        "(p.doc_id IS NULL OR p.doc_id IN (SELECT id FROM visible_docs)) AND " +
+        "(p.source_type!='jit' OR NOT EXISTS (SELECT 1 FROM kg_evidence dependency " +
+        "WHERE dependency.source_type='jit' AND dependency.task_id=p.task_id AND " +
+        "((dependency.doc_id IS NOT NULL AND dependency.doc_id NOT IN (SELECT id FROM visible_docs)) OR " +
+        "(dependency.session_id IS NOT NULL AND dependency.doc_id IS NULL AND (SELECT allow_conversation FROM ctx)=0))))"
 
     /** 空列表写成空子查询：`IN (NULL)` 恒为假，`NOT IN (NULL)` 也恒为假，都不能表达“无元素”。 */
     private fun sqlList(values: Collection<String>): String =
