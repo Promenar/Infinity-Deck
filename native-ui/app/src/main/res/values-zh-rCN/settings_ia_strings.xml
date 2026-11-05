@@ -63,6 +63,8 @@
     </plurals>
     <string name="settings_ia_kg_budget_section">文档抽取预算</string>
     <string name="settings_ia_kg_budget_footer">按单个文档计算；预计调用超过确认阈值时先询问你。达到预算时保留已处理的部分。</string>
+    <string name="settings_ia_kg_window_section">抽取窗口</string>
+    <string name="settings_ia_kg_window_footer">文档按段落切成这一长度的窗口，窗口越大调用越少；长度会按图谱模型的上下文与输出上限自动收窄。每轮补抽会让模型对每个窗口再找一次遗漏的实体。</string>
     <string name="settings_ia_kg_extraction_model">抽取模型</string>
     <string name="settings_ia_kg_more">抽取超时与提示词</string>
     <string name="settings_ia_kg_more_desc">在调试与高级中调整</string>

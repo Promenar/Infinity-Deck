@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -78,7 +81,9 @@ import com.promenar.infinity.ui.files.state.FileManagerUiState
 import com.promenar.infinity.ui.files.state.FileSearchState
 import com.promenar.infinity.ui.files.state.FileViewMode
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.hierarchicalTransition
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -212,8 +217,7 @@ fun FileManagerPane(
 
     BoxWithConstraints(modifier.fillMaxSize().testTag(UiTags.FM_ROOT)) {
         val dual = maxWidth >= FileManagerDualPaneMinWidth
-        val previewItem = state.previewItem?.takeIf { !it.isDirectory }
-        val compactPreview = !dual && previewItem != null
+        val compactPreview = !dual && state.compactPreviewItem() != null
 
         BackHandler(
             enabled = state.targetPicker == null &&
@@ -228,10 +232,23 @@ fun FileManagerPane(
         }
 
         when {
-            compactPreview && previewItem != null -> FileCompactPreviewPage(previewItem, state, actions, Modifier.fillMaxSize())
-            !dual -> Column(Modifier.fillMaxSize()) {
-                FileManagerTopBar(state, actions)
-                FileListColumn(state, actions, Modifier.fillMaxWidth().weight(1f))
+            // 退出中的一页保留自己的状态快照：关闭预览时预览页不会先变成加载态，打开预览时列表也不会被清空。
+            !dual -> AnimatedContent(
+                targetState = state,
+                contentKey = { it.compactPreviewItem() != null },
+                transitionSpec = { hierarchicalTransition { if (it.compactPreviewItem() != null) 1 else 0 } },
+                modifier = Modifier.fillMaxSize(),
+                label = "fm_compact_preview",
+            ) { page ->
+                val item = page.compactPreviewItem()
+                if (item != null) {
+                    FileCompactPreviewPage(item, page, actions, Modifier.fillMaxSize())
+                } else {
+                    Column(Modifier.fillMaxSize()) {
+                        FileManagerTopBar(page, actions)
+                        FileListColumn(page, actions, Modifier.fillMaxWidth().weight(1f))
+                    }
+                }
             }
             else -> {
                 val listWidth = (maxWidth * ListWidthFraction).coerceIn(ListMinWidth, ListMaxWidth)
@@ -279,7 +296,24 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                 }
                 GitStrip(state, actions)
             }
-            FileListBody(state, actions, Modifier.fillMaxWidth().weight(1f))
+            AnimatedContent(
+                targetState = rememberSettledListing(state),
+                contentKey = { it.listingKey() },
+                transitionSpec = {
+                    if (initialState.search != null || targetState.search != null ||
+                        initialState.location?.id != targetState.location?.id
+                    ) {
+                        InfinityMotion.fadeThrough()
+                    } else {
+                        hierarchicalTransition { it.pathDepth() }
+                    }
+                },
+                // 共享轴只滑动一小段，裁在列表区内，双栏时不压到分隔线与预览。
+                modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds(),
+                label = "fm_folder",
+            ) { page ->
+                FileListBody(page, actions, Modifier.fillMaxSize())
+            }
         }
         if (!state.selecting && state.search == null && state.location != null && state.writable()) {
             FileManagerFab(actions, Modifier.align(Alignment.BottomEnd).padding(InfinitySpacing.Large))
@@ -329,12 +363,36 @@ private fun GitStrip(state: FileManagerUiState, actions: FileManagerUiActions) {
 
 @Composable
 private fun FileListBody(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
+    val search = state.search
+    val loadError = state.loadError
+    val phase = when {
+        search != null -> FileListPhase.Search
+        loadError != null && state.items.isEmpty() -> FileListPhase.Error
+        state.loading && state.items.isEmpty() -> FileListPhase.Loading
+        state.location == null -> FileListPhase.Unavailable
+        state.viewMode == FileViewMode.GRID -> FileListPhase.Grid
+        else -> FileListPhase.List
+    }
+    AnimatedContent(
+        targetState = phase,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        modifier = modifier,
+        label = "fm_list_phase",
+    ) { current ->
+        FileListPhaseContent(current, state, actions, Modifier.fillMaxSize())
+    }
+}
+
+private enum class FileListPhase { Search, Error, Loading, Unavailable, Grid, List }
+
+@Composable
+private fun FileListPhaseContent(phase: FileListPhase, state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
     val controller = actions.controller
     val search = state.search
     val loadError = state.loadError
     when {
-        search != null -> SearchResults(state, search, actions, modifier)
-        loadError != null && state.items.isEmpty() -> Box(modifier.testTag(UiTags.FM_LOAD_ERROR)) {
+        phase == FileListPhase.Search && search != null -> SearchResults(state, search, actions, modifier)
+        phase == FileListPhase.Error && loadError != null -> Box(modifier.testTag(UiTags.FM_LOAD_ERROR)) {
             FolderStatusMessage(
                 text = stringResource(opCodeReason(loadError)),
                 error = true,
@@ -342,16 +400,53 @@ private fun FileListBody(state: FileManagerUiState, actions: FileManagerUiAction
                 action = { InfinityPillButton(text = stringResource(R.string.fm_retry), onClick = controller::refresh) },
             )
         }
-        state.loading && state.items.isEmpty() -> Box(modifier, contentAlignment = Alignment.Center) {
+        phase == FileListPhase.Loading -> Box(modifier, contentAlignment = Alignment.Center) {
             InfinityLoadingIndicator()
         }
-        state.location == null -> LocationUnavailable(modifier)
-        state.viewMode == FileViewMode.GRID -> FileGrid(state, actions, modifier)
-        else -> FileList(state, actions, modifier)
+        phase == FileListPhase.Unavailable -> LocationUnavailable(modifier)
+        phase == FileListPhase.Grid -> FileGrid(state, actions, modifier)
+        phase == FileListPhase.List -> FileList(state, actions, modifier)
+        // 退出中的一态可能已拿到新状态（如搜索刚关闭），留空等它淡出。
+        else -> Box(modifier)
     }
 }
 
 private fun FileManagerUiState.showUpEntry(): Boolean = canGoUp && !selecting
+
+/** 单栏下占满整屏的文件预览；文件夹不进预览。 */
+private fun FileManagerUiState.compactPreviewItem(): FileItem? = previewItem?.takeIf { !it.isDirectory }
+
+/** 列表内容的身份：搜索结果整体算一页，其余按位置与路径区分。 */
+private fun FileManagerUiState.listingKey(): String =
+    if (search != null) "search" else "${location?.id}\u0000$path"
+
+private fun FileManagerUiState.pathDepth(): Int = path.split('/').count { it.isNotEmpty() }
+
+/**
+ * 进入或返回文件夹时，新目录还在读取的这一小段里继续显示旧列表，读完后再整页滑入，
+ * 免得滑进来的是一页加载指示再闪成列表；读取超过 [ListingSettleMillis] 才带着加载指示切换。
+ */
+@Composable
+private fun rememberSettledListing(state: FileManagerUiState): FileManagerUiState {
+    val shown = remember { ListingHolder(state) }
+    val key = state.listingKey()
+    val pending = key != shown.value.listingKey() && state.search == null &&
+        state.loading && state.items.isEmpty() && state.loadError == null
+    var timedOut by remember(key) { mutableStateOf(false) }
+    if (pending) {
+        LaunchedEffect(key) {
+            kotlinx.coroutines.delay(ListingSettleMillis)
+            timedOut = true
+        }
+    }
+    val result = if (pending && !timedOut) shown.value else state
+    SideEffect { shown.value = result }
+    return result
+}
+
+private class ListingHolder(var value: FileManagerUiState)
+
+private const val ListingSettleMillis = 200L
 
 private fun FileManagerController.openItem(item: FileItem) {
     if (item.isDirectory) open(item) else showPreview(item)

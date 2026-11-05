@@ -47,22 +47,45 @@ internal fun ColumnScope.KgRetrievalRows(
     }
 }
 
+/** 图谱抽取的窗口切分、并发与补抽轮数；窗口长度会按图谱模型的上下文与输出上限自动收窄。 */
+@Composable
+internal fun ColumnScope.KgWindowRows(
+    config: RagConfiguration,
+    onChanged: (RagConfiguration.() -> RagConfiguration) -> Unit,
+) {
+    KgIntegerSetting(R.string.settings_retrieval_kg_window_title, config.kgWindowChars, 2000, 128000, 16000, listOf(4000, 8000, 16000, 32000, 64000, 128000)) { value ->
+        onChanged { copy(kgWindowChars = value) }
+    }
+    RetrievalStepperSetting(
+        title = stringResource(R.string.settings_retrieval_kg_concurrency_title),
+        value = config.kgConcurrency,
+        range = 1..8,
+        onValueChange = { value -> onChanged { copy(kgConcurrency = value) } },
+    )
+    RetrievalStepperSetting(
+        title = stringResource(R.string.settings_retrieval_kg_gleaning_title),
+        value = config.kgGleaningPasses,
+        range = 0..2,
+        onValueChange = { value -> onChanged { copy(kgGleaningPasses = value) } },
+    )
+}
+
 /** 单个文档的图谱抽取预算，显示的是配置中的当前值（默认值即代码默认值）。 */
 @Composable
 internal fun ColumnScope.KgBudgetRows(
     config: RagConfiguration,
     onChanged: (RagConfiguration.() -> RagConfiguration) -> Unit,
 ) {
-    KgIntegerSetting(R.string.settings_retrieval_kg_calls_title, config.kgMaxCalls, 1, 1024, 32, listOf(1, 16, 32, 128, 1024)) { value ->
+    KgIntegerSetting(R.string.settings_retrieval_kg_calls_title, config.kgMaxCalls, 1, 1024, 64, listOf(1, 16, 64, 256, 1024)) { value ->
         onChanged { copy(kgMaxCalls = value) }
     }
-    KgIntegerSetting(R.string.settings_retrieval_kg_output_title, config.kgMaxOutputTokens, 256, 1048576, 32768, listOf(256, 8192, 32768, 131072, 1048576)) { value ->
+    KgIntegerSetting(R.string.settings_retrieval_kg_output_title, config.kgMaxOutputTokens, 256, 1048576, 262144, listOf(8192, 65536, 262144, 524288, 1048576)) { value ->
         onChanged { copy(kgMaxOutputTokens = value) }
     }
-    KgIntegerSetting(R.string.settings_retrieval_kg_request_output_title, config.kgRequestMaxOutputTokens, 128, 16384, 4096, listOf(128, 1024, 2048, 4096, 8192, 16384)) { value ->
+    KgIntegerSetting(R.string.settings_retrieval_kg_request_output_title, config.kgRequestMaxOutputTokens, 128, 65536, 16384, listOf(2048, 4096, 8192, 16384, 32768, 65536)) { value ->
         onChanged { copy(kgRequestMaxOutputTokens = value) }
     }
-    KgIntegerSetting(R.string.settings_retrieval_kg_duration_title, config.kgMaxDurationSeconds, 5, 3600, 180, listOf(5, 60, 180, 600, 3600)) { value ->
+    KgIntegerSetting(R.string.settings_retrieval_kg_duration_title, config.kgMaxDurationSeconds, 5, 3600, 600, listOf(60, 180, 600, 1800, 3600)) { value ->
         onChanged { copy(kgMaxDurationSeconds = value) }
     }
     KgIntegerSetting(R.string.settings_retrieval_kg_confirm_title, config.kgLargeDocumentConfirmCalls, 1, 128, 16, listOf(1, 8, 16, 32, 128)) { value ->

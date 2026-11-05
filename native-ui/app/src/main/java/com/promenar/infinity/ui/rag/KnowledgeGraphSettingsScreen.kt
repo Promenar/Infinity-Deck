@@ -109,6 +109,13 @@ internal fun KnowledgeGraphSettingsContent(
             }
 
             InfinitySettingsSection(
+                title = stringResource(R.string.settings_ia_kg_window_section),
+                footer = stringResource(R.string.settings_ia_kg_window_footer),
+            ) {
+                KgWindowRows(config, actions.onConfigChanged)
+            }
+
+            InfinitySettingsSection(
                 title = stringResource(R.string.settings_ia_kg_budget_section),
                 footer = stringResource(R.string.settings_ia_kg_budget_footer),
             ) {

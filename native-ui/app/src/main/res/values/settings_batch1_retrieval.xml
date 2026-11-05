@@ -18,6 +18,9 @@
     <string name="settings_retrieval_kg_request_output_title">Tokens per request</string>
     <string name="settings_retrieval_kg_duration_title">Time limit (sec)</string>
     <string name="settings_retrieval_kg_confirm_title">Large document threshold</string>
+    <string name="settings_retrieval_kg_window_title">Window length (chars)</string>
+    <string name="settings_retrieval_kg_concurrency_title">Parallel windows</string>
+    <string name="settings_retrieval_kg_gleaning_title">Follow-up passes</string>
     <string name="settings_retrieval_kg_budget_footer">Applied per document. You\'re asked first when estimated calls exceed the threshold.</string>
     <string name="settings_retrieval_agent_actions_section">Manage</string>
     <string name="settings_retrieval_icon_sparkles">Sparkles</string>

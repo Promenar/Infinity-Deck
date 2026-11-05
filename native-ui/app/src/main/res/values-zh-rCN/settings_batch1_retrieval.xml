@@ -18,6 +18,9 @@
     <string name="settings_retrieval_kg_request_output_title">单次输出 Token</string>
     <string name="settings_retrieval_kg_duration_title">抽取时长（秒）</string>
     <string name="settings_retrieval_kg_confirm_title">大文档确认阈值</string>
+    <string name="settings_retrieval_kg_window_title">窗口长度（字）</string>
+    <string name="settings_retrieval_kg_concurrency_title">并发窗口数</string>
+    <string name="settings_retrieval_kg_gleaning_title">补抽轮数</string>
     <string name="settings_retrieval_kg_budget_footer">按单个文档计算；预计调用超过确认阈值时先询问你。</string>
     <string name="settings_retrieval_agent_actions_section">管理</string>
     <string name="settings_retrieval_icon_sparkles">星光</string>

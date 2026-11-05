@@ -6,13 +6,13 @@
     <string name="library_graph_state_extracting">抽取中</string>
     <string name="library_graph_state_extracting_progress">抽取中 %1$d / %2$d</string>
     <string name="library_graph_state_complete">%1$d 个实体 · %2$d 条关系</string>
-    <string name="library_graph_state_partial">已抽取 %1$d / %2$d 块，%3$s</string>
+    <string name="library_graph_state_partial">已抽取 %1$d / %2$d 个窗口，%3$s</string>
     <string name="library_graph_state_confirm">等待确认用量</string>
     <string name="library_action_extract_graph">抽取图谱</string>
     <string name="library_action_confirm_graph">确认抽取</string>
     <string name="library_action_retry_graph">重试图谱</string>
     <string name="library_graph_confirm_title">抽取知识图谱？</string>
-    <string name="library_graph_confirm_message">将用 %1$s 处理 %2$d 个分块，约 %3$d 次调用，输出上限约 %4$s token。解析失败的分块会拆开重抽，可能多出少量调用。</string>
+    <string name="library_graph_confirm_message">将用 %1$s 处理 %2$d 个窗口，约 %3$d 次调用（含补抽），输出上限约 %4$s token。解析失败的窗口会拆开重抽，可能多出少量调用。</string>
     <string name="library_graph_confirm_model_unknown">当前图谱模型</string>
     <string name="library_graph_confirm_start">开始抽取</string>
     <string name="library_notice_graph_done">已开始抽取知识图谱</string>

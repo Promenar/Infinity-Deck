@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.files
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -90,6 +91,7 @@ import com.promenar.infinity.ui.files.state.FileTransferMode
 import com.promenar.infinity.ui.files.state.FileViewMode
 import com.promenar.infinity.ui.hub.HubExpandButton
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 
@@ -186,13 +188,15 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
                 .testTag(UiTags.FM_TITLE),
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            AnimatedContent(targetState = title, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (subtitle != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

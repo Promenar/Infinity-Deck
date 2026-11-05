@@ -65,6 +65,8 @@
     </plurals>
     <string name="settings_ia_kg_budget_section">Document extraction budget</string>
     <string name="settings_ia_kg_budget_footer">Counted per document; you are asked first when the estimated calls exceed the confirmation threshold. Work done so far is kept when the budget runs out.</string>
+    <string name="settings_ia_kg_window_section">Extraction windows</string>
+    <string name="settings_ia_kg_window_footer">Documents are split by paragraph into windows of this length; larger windows mean fewer calls. The length shrinks automatically to fit the graph model\'s context and output limits. Each follow-up pass asks the model once more per window for entities it missed.</string>
     <string name="settings_ia_kg_extraction_model">Extraction model</string>
     <string name="settings_ia_kg_more">Extraction timeout and prompt</string>
     <string name="settings_ia_kg_more_desc">Adjust in Debug &amp; advanced</string>

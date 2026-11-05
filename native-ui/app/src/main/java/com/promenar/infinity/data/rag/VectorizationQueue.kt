@@ -306,7 +306,9 @@ class VectorizationQueue(
                 skipVectorization = if (restarting) skipVectorization else active.skipVectorization && skipVectorization,
                 sourceMimeType = sourceMimeType,
                 contentTruncated = false, lastChunkIndex = 0, totalChunks = null,
-                assistantMessageId = UUID.randomUUID().toString(),
+                // 中断后的自动恢复仍是同一次抽取，沿用运行标识以接着原预算；失败、部分完成或已完成后的重试另起预算。
+                assistantMessageId = if (active.status == "interrupted") active.assistantMessageId ?: UUID.randomUUID().toString()
+                else UUID.randomUUID().toString(),
                 subStatus = "等待重新索引",
                 updatedAt = System.currentTimeMillis(),
             )

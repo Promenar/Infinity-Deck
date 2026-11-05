@@ -278,7 +278,7 @@ internal sealed interface LibraryLeading {
 /** 标题下方“‹ 上一页名称”：[key] 为上一页的键。 */
 internal data class LibraryUplink(val key: String, val onClick: () -> Unit)
 
-/** 抽取知识图谱前的用量确认：模型、分块数、调用次数与输出上限。 */
+/** 抽取知识图谱前的用量确认：模型、窗口数、调用次数与输出上限。 */
 @Composable
 private fun LibraryGraphConfirmDialog(viewModel: LibraryViewModel) {
     val request by viewModel.graphRequest.collectAsStateWithLifecycle()

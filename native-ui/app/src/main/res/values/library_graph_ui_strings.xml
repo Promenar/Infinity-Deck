@@ -6,13 +6,13 @@
     <string name="library_graph_state_extracting">Extracting</string>
     <string name="library_graph_state_extracting_progress">Extracting %1$d / %2$d</string>
     <string name="library_graph_state_complete">%1$d entities · %2$d relations</string>
-    <string name="library_graph_state_partial">%1$d / %2$d chunks extracted, %3$s</string>
+    <string name="library_graph_state_partial">%1$d / %2$d windows extracted, %3$s</string>
     <string name="library_graph_state_confirm">Waiting for usage confirmation</string>
     <string name="library_action_extract_graph">Extract graph</string>
     <string name="library_action_confirm_graph">Confirm</string>
     <string name="library_action_retry_graph">Retry graph</string>
     <string name="library_graph_confirm_title">Extract knowledge graph?</string>
-    <string name="library_graph_confirm_message">%1$s will process %2$d chunks in about %3$d calls, with an output cap of about %4$s tokens. Chunks that fail to parse are split and extracted again, which can add a few calls.</string>
+    <string name="library_graph_confirm_message">%1$s will process %2$d windows in about %3$d calls, including follow-up passes, with an output cap of about %4$s tokens. Windows that fail to parse are split and extracted again, which can add a few calls.</string>
     <string name="library_graph_confirm_model_unknown">The current graph model</string>
     <string name="library_graph_confirm_start">Extract</string>
     <string name="library_notice_graph_done">Knowledge graph extraction started</string>

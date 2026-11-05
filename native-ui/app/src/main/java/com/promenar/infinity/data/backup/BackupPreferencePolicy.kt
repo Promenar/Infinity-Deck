@@ -147,7 +147,8 @@ internal object BackupPreferencePolicy {
     fun isDenied(key: String): Boolean {
         val normalized = normalize(key)
         // 数字预算逐键列举，不能把认证令牌的通用拒绝规则放宽。
-        if (normalized in setOf("task_token_limit", "kg_context_max_tokens", "kg_max_output_tokens", "kg_request_max_output_tokens")) return false
+        if (normalized in setOf("task_token_limit", "kg_context_max_tokens", "kg_max_output_tokens", "kg_request_max_output_tokens",
+            "kg_request_max_output_tokens_default_v2")) return false
         return deniedFragments.any(normalized::contains)
     }
 
