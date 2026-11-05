@@ -2,7 +2,6 @@
 <!-- 资料页（左列导航、概览、文档、对话片段与问资料）。 -->
 <resources>
     <string name="library_ask_placeholder">问资料</string>
-    <string name="library_ask_clear">清空问题</string>
     <string name="library_ask_hint">用自然语言搜索资料库，结果显示命中的段落。</string>
 
     <string name="library_group_views">视图</string>

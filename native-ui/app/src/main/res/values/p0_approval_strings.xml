@@ -10,6 +10,7 @@
     <string name="chat_approval_title_js">Run JavaScript</string>
     <string name="chat_approval_title_ssh_host_save">Save SSH host</string>
     <string name="chat_approval_title_ssh_host_delete">Delete SSH host</string>
+    <string name="chat_approval_title_delete_file">Delete file</string>
     <string name="chat_approval_title_ssh_install_key">Install SSH key</string>
     <string name="chat_approval_title_mcp">MCP tool</string>
     <string name="chat_approval_kind_builtin_command">Built-in command</string>

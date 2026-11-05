@@ -297,6 +297,6 @@ private fun folderDetailsRows(state: FileManagerUiState): List<Pair<String, Stri
         stringResource(R.string.fm_info_size) to formatFileSize(state.items.filterNot { it.isDirectory }.sumOf { it.sizeBytes }),
     )
     state.location?.freeBytes?.let { rows += stringResource(R.string.fm_info_free) to formatFileSize(it) }
-    state.location?.gitBranch?.let { rows += stringResource(R.string.fm_info_git) to it }
+    state.location?.gitLabel()?.let { rows += stringResource(R.string.fm_info_git) to it }
     return rows
 }

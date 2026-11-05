@@ -14,6 +14,7 @@ import com.promenar.infinity.domain.storage.ExternalMount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -39,6 +40,9 @@ internal class DefaultFileLocationsSource(
     private val titles: LocationTitles,
 ) : FileLocationsSource {
     private val knownGitStatus = java.util.concurrent.ConcurrentHashMap<String, GitStatus>()
+    private val gitRefresh = MutableStateFlow(0)
+
+    override fun refreshGitStatus() { gitRefresh.value++ }
 
     private val mountSnapshot: Flow<List<ExternalMount>> = sessions.flatMapLatest { rows ->
         if (rows.isEmpty()) flowOf(emptyList())
@@ -47,11 +51,17 @@ internal class DefaultFileLocationsSource(
 
     /** 先发出不含 Git 信息的位置，避免逐个项目读取 Git 状态时侧栏长时间为空；随后补发带 Git 信息的结果。 */
     override fun observeLibraryLocations(): Flow<List<FileLocation>> =
-        combine(sessions, workspaces, linuxReady, mountSnapshot) { rows, registered, linux, attached ->
+        combine(sessions, workspaces, linuxReady, mountSnapshot, gitRefresh) { rows, registered, linux, attached, _ ->
             LibrarySnapshot(rows, registered, linux, attached)
         }.transformLatest { snapshot ->
             emit(libraryLocations(snapshot, git = false))
             emit(libraryLocations(snapshot, git = true))
+        }.distinctUntilChanged()
+
+    /** 置顶校验只需要位置 ID：沿用资料位置的组成规则，但不读取 Git 状态，避免每个资源管理器都为全部项目跑一遍 Git。 */
+    fun observeLibraryLocationIds(): Flow<Set<String>> =
+        combine(sessions, workspaces, linuxReady, mountSnapshot) { rows, registered, linux, attached ->
+            libraryLocations(LibrarySnapshot(rows, registered, linux, attached), git = false).mapTo(mutableSetOf()) { it.id }
         }.distinctUntilChanged()
 
     private data class LibrarySnapshot(
@@ -88,7 +98,7 @@ internal class DefaultFileLocationsSource(
 
     /** 与资料页同样先发出不含 Git 信息的位置，Git 状态较慢时不会先显示“此位置暂不可用”。 */
     override fun observeSessionLocations(sessionId: String): Flow<List<FileLocation>> =
-        combine(sessions, linuxReady, mounts(sessionId)) { rows, linux, attached ->
+        combine(sessions, linuxReady, mounts(sessionId), gitRefresh) { rows, linux, attached, _ ->
             Triple(rows, linux, attached)
         }.transformLatest { (rows, linux, attached) ->
             emit(sessionLocations(sessionId, rows, linux, attached, git = false))
@@ -123,6 +133,7 @@ internal class DefaultFileLocationsSource(
             WRITABLE.copy(git = status != null, terminal = linux && session.workspaceId == null && session.worktreeDirectory == null),
             sessionId = session.id, gitBranch = status?.branch,
             gitChangeCount = status?.changeCount?.takeUnless { status.truncated },
+            gitDetached = status?.detached == true, gitHeadShortSha = status?.head?.take(7),
         )
     }
     internal fun linuxLocation() = FileLocation("linux:home", FileLocationKind.LINUX_HOME, titles.linux,
@@ -150,6 +161,8 @@ internal class DefaultFileLocationsSource(
                 git = status != null, terminal = available && linux && sessionId != null),
             gitBranch = status?.branch,
             gitChangeCount = status?.changeCount?.takeUnless { status.truncated },
+            gitDetached = status?.detached == true,
+            gitHeadShortSha = status?.head?.take(7),
         )
     }
 

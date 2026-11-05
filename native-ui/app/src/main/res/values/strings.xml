@@ -235,15 +235,6 @@
     <string name="share_import_reason_write">The file could not be saved</string>
     <string name="share_import_reason_index">The file was not imported because its indexing task could not be saved</string>
     <string name="resource_explorer_title">Resource Explorer</string>
-    <string name="resource_explorer_import_files">Import Files</string>
-    <string name="resource_explorer_retry_document">Retry %1$s</string>
-    <string name="resource_explorer_import_status">Import Status</string>
-    <string name="resource_explorer_clear_results">Clear results</string>
-    <string name="resource_explorer_status_pending">Waiting</string>
-    <string name="resource_explorer_status_importing">Importing</string>
-    <string name="resource_explorer_status_created">Imported</string>
-    <string name="resource_explorer_status_rejected">Rejected: %1$s</string>
-    <string name="resource_explorer_reason_unknown">Unknown reason</string>
     <string name="files_session_workspaces_title">Session Workspaces</string>
     <string name="shared_confirm_delete_title">Confirm Delete</string>
     <string name="shared_action_cannot_undo">This action cannot be undone.</string>

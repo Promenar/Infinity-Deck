@@ -279,6 +279,7 @@ class DefaultFileManagerController(
 
     @Synchronized
     override fun refresh() {
+        services.locations.refreshGitStatus()
         val current = state.value
         val ref = currentRef(current) ?: return
         if (!isLocationAvailable(ref)) return

@@ -891,6 +891,7 @@ internal fun approvalToolTitle(name: String): String = when {
     name == "ssh_host_save" -> stringResource(R.string.chat_approval_title_ssh_host_save)
     name == "ssh_host_delete" -> stringResource(R.string.chat_approval_title_ssh_host_delete)
     name == "ssh_host_install_key" -> stringResource(R.string.chat_approval_title_ssh_install_key)
+    name == "delete_file" -> stringResource(R.string.chat_approval_title_delete_file)
     name.startsWith("mcp__") -> stringResource(R.string.chat_approval_title_mcp)
     name == REQUEST_KNOWLEDGE_ACCESS_TOOL -> stringResource(R.string.chat_approval_title_knowledge_access)
     name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> stringResource(R.string.agent_config_title_generic)

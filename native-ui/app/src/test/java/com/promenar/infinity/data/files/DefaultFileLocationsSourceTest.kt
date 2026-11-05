@@ -9,6 +9,9 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.workspace.SessionWorkspace
 import java.io.File
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -77,4 +80,68 @@ class DefaultFileLocationsSourceTest {
         assertEquals(listOf("session:private"), private.map { it.id })
         assertFalse(private.single().capabilities.git)
     }
+
+    @Test fun `刷新 Git 状态后位置补发新分支`() = runBlocking {
+        val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
+        val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))
+        var branch = "main"
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(listOf(SessionEntity("bound", "agent", createdAt = 1, updatedAt = 1))),
+            workspaces = flowOf(listOf(workspace)), linuxReady = flowOf(false),
+            mounts = { flowOf(emptyList()) }, resolveSession = { directory },
+            resolveWorkspace = { directory }, mountAvailable = { true },
+            gitStatus = { GitInspectResult.Success(status(branch)) },
+            workspaceGitStatus = { GitInspectResult.Success(status(branch)) },
+            titles = LocationTitles("资料", "会话", "Linux"),
+        )
+        val seen = java.util.concurrent.CopyOnWriteArrayList<String?>()
+        val job = launch(Dispatchers.Default) {
+            locations.observeSessionLocations("bound").collect { seen += it.singleOrNull()?.gitBranch }
+        }
+        withTimeout(5_000) { while ("main" !in seen) delay(10) }
+        branch = "feature"
+        locations.refreshGitStatus()
+        withTimeout(5_000) { while ("feature" !in seen) delay(10) }
+        job.cancel()
+    }
+
+    @Test fun `游离 HEAD 位置带短提交号`() = runBlocking {
+        val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
+        val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))
+        val detached = status(null).copy(detached = true, head = "0123456789abcdef")
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(listOf(SessionEntity("bound", "agent", createdAt = 1, updatedAt = 1))),
+            workspaces = flowOf(listOf(workspace)), linuxReady = flowOf(false),
+            mounts = { flowOf(emptyList()) }, resolveSession = { directory },
+            resolveWorkspace = { directory }, mountAvailable = { true },
+            gitStatus = { GitInspectResult.Success(detached) },
+            workspaceGitStatus = { GitInspectResult.Success(detached) },
+            titles = LocationTitles("资料", "会话", "Linux"),
+        )
+        val item = withTimeout(5_000) { locations.observeSessionLocations("bound").first { it.single().capabilities.git } }.single()
+        assertTrue(item.gitDetached)
+        assertEquals("0123456", item.gitHeadShortSha)
+        assertEquals(null, item.gitBranch)
+    }
+
+    @Test fun `置顶校验只取位置 ID 不读取 Git 状态`() = runBlocking {
+        val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
+        val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))
+        val gitCalls = java.util.concurrent.atomic.AtomicInteger()
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(emptyList()), workspaces = flowOf(listOf(workspace)), linuxReady = flowOf(false),
+            mounts = { flowOf(emptyList()) }, resolveSession = { SessionWorkspace.Private },
+            resolveWorkspace = { directory }, mountAvailable = { true },
+            gitStatus = { gitCalls.incrementAndGet(); GitInspectResult.Success(status("main")) },
+            workspaceGitStatus = { gitCalls.incrementAndGet(); GitInspectResult.Success(status("main")) },
+            titles = LocationTitles("资料", "会话", "Linux"),
+        )
+        val ids = withTimeout(5_000) { locations.observeLibraryLocationIds().first() }
+        delay(200)
+        assertEquals(setOf("kb", "sessions", "workspace:project"), ids)
+        assertEquals(0, gitCalls.get())
+    }
+
+    private fun status(branch: String?) = GitStatus(branch = branch, detached = false, head = "abc", unborn = false,
+        staged = GitChangeList.Empty, unstaged = GitChangeList.Empty, untracked = GitChangeList.Empty)
 }

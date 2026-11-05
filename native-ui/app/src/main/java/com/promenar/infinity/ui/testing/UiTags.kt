@@ -366,14 +366,11 @@ object UiTags {
 
     // ============ Resource Explorer ==========
     const val RESOURCE_EXPLORER_ROOT = "resource_explorer_root"
-    const val RESOURCE_EXPLORER_IMPORT_RESULTS = "resource_explorer_import_results"
     const val RESOURCE_EXPLORER_CLEAR_RESULTS = "resource_explorer_clear_results"
     const val RESOURCE_EXPLORER_SESSION_STATUS = "resource_explorer_session_status"
     const val RESOURCE_EXPLORER_RETRY_LOAD = "resource_explorer_retry_load"
     const val RESOURCE_EXPLORER_WORKSPACE_UNAVAILABLE = "resource_explorer_workspace_unavailable"
 
-    fun resourceExplorerImportStatus(uri: String) = "resource_explorer_import_status:$uri"
-    fun resourceExplorerImportRetry(uri: String) = "resource_explorer_import_retry:$uri"
 
     private const val FILE_NODE_OPTIONS_PREFIX = "file_node_options:"
     private const val FILE_NODE_REINDEX_PREFIX = "file_node_reindex:"

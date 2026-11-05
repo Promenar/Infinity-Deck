@@ -10,6 +10,7 @@
     <string name="chat_approval_title_js">运行 JavaScript</string>
     <string name="chat_approval_title_ssh_host_save">保存 SSH 主机</string>
     <string name="chat_approval_title_ssh_host_delete">删除 SSH 主机</string>
+    <string name="chat_approval_title_delete_file">删除文件</string>
     <string name="chat_approval_title_ssh_install_key">安装 SSH 公钥</string>
     <string name="chat_approval_title_mcp">MCP 工具</string>
     <string name="chat_approval_kind_builtin_command">内置命令</string>

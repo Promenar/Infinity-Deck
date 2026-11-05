@@ -32,8 +32,6 @@ class ReleaseReachableUiLocalizationContractTest {
 
     private val requiredKeys = listOf(
         "resource_explorer_title",
-        "resource_explorer_import_files",
-        "resource_explorer_import_status",
         "provider_models_type_chat",
         "provider_models_capability_vision",
         "provider_models_field_model_id",

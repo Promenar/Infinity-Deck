@@ -286,6 +286,16 @@ class DefaultFileManagerControllerTest {
         assertThat(controller.shareUri(file("/a"))).isEqualTo("content://example.invalid/a")
     }
 
+    @Test fun `手动刷新同时请求重读位置的 Git 状态`() = runTest {
+        val services = FakeFileServices()
+        services.operations.listings[FileRef("library", "/")] = listOf(file("/a.txt"))
+        val controller = controller(services)
+        runCurrent()
+        controller.refresh()
+        runCurrent()
+        assertThat(services.locations.gitRefreshes).isEqualTo(1)
+    }
+
     @Test fun `加载失败可刷新恢复且非文件异常映射 IO`() = runTest {
         val services = FakeFileServices()
         services.operations.listHandler = { throw IllegalStateException("synthetic") }

@@ -2,7 +2,6 @@
 <!-- 资料页（左列导航、概览、文档、对话片段与问资料）。 -->
 <resources>
     <string name="library_ask_placeholder">Ask the library</string>
-    <string name="library_ask_clear">Clear question</string>
     <string name="library_ask_hint">Search your library in plain language. Results show the matching passages.</string>
 
     <string name="library_group_views">Views</string>

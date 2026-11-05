@@ -34,6 +34,8 @@ internal class FakeFileLocations : FileLocationsSource {
         return session
     }
     override fun observeLinuxHome(): Flow<FileLocation?> = linux
+    var gitRefreshes = 0
+    override fun refreshGitStatus() { gitRefreshes++ }
 }
 
 internal class FakePins : PinnedFolderStore {

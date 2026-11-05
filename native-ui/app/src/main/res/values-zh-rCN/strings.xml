@@ -229,15 +229,6 @@
     <string name="share_import_reason_write">保存文件失败</string>
     <string name="share_import_reason_index">索引任务无法持久化，文件未导入</string>
     <string name="resource_explorer_title">资源管理器</string>
-    <string name="resource_explorer_import_files">导入文件</string>
-    <string name="resource_explorer_retry_document">重试 %1$s</string>
-    <string name="resource_explorer_import_status">导入状态</string>
-    <string name="resource_explorer_clear_results">清除结果</string>
-    <string name="resource_explorer_status_pending">等待中</string>
-    <string name="resource_explorer_status_importing">导入中</string>
-    <string name="resource_explorer_status_created">已导入</string>
-    <string name="resource_explorer_status_rejected">已拒绝：%1$s</string>
-    <string name="resource_explorer_reason_unknown">未知原因</string>
     <string name="files_session_workspaces_title">会话工作区</string>
     <string name="shared_confirm_delete_title">确认删除</string>
     <string name="shared_action_cannot_undo">此操作无法撤销。</string>

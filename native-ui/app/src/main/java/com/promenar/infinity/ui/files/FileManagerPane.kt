@@ -290,7 +290,7 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
 /** 根目录的 Git 状态条：分支与改动数；宿主给出 onOpenGit 时可点。 */
 @Composable
 private fun GitStrip(state: FileManagerUiState, actions: FileManagerUiActions) {
-    val branch = state.location?.gitBranch ?: return
+    val branch = state.location?.gitLabel() ?: return
     if (state.path != "/") return
     val onOpen = actions.host.onOpenGit
     val colors = MaterialTheme.infinityDomainColors

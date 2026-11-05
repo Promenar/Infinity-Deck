@@ -48,6 +48,9 @@ data class FileLocation(
     /** 有 Git 仓库时的当前分支与改动数，否则为 null。 */
     val gitBranch: String? = null,
     val gitChangeCount: Int? = null,
+    /** 游离 HEAD：没有分支名，以 [gitHeadShortSha] 标识当前提交。 */
+    val gitDetached: Boolean = false,
+    val gitHeadShortSha: String? = null,
     /** 可用空间字节数，无法查询时为 null。 */
     val freeBytes: Long? = null,
     /** 外部文件夹授权已失效，需要重新授权。 */
@@ -147,6 +150,9 @@ interface FileLocationsSource {
 
     /** Linux 文件页：本机 Linux 主目录；环境不可用时为 null。 */
     fun observeLinuxHome(): Flow<FileLocation?>
+
+    /** 重新读取各位置的 Git 状态（例如关闭 Git 页、手动刷新后）；位置流随后补发新结果。 */
+    fun refreshGitStatus() {}
 }
 
 /** 文件操作；所有方法在 IO 线程执行，失败抛出 [FileOpException]，批量操作按项汇总到 [FileOpOutcome]。 */

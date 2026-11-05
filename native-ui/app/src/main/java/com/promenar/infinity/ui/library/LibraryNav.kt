@@ -24,13 +24,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.rounded.AccountTree
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -50,7 +47,6 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -63,13 +59,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,9 +75,10 @@ import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityTabHeader
+import com.promenar.infinity.ui.common.InfinitySearchBar
+import com.promenar.infinity.ui.files.gitLabel
 import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.theme.InfinitySpacing
-import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.onSelectionIndicator
 import com.promenar.infinity.ui.theme.selectionIndicator
 
@@ -144,7 +139,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
                     key = LibraryPageKeys.browse(FileRef(location.id, "/")),
                     icon = location.navIcon(),
                     title = location.title,
-                    subtitle = if (location.accessLost) accessLost else location.gitBranch,
+                    subtitle = if (location.accessLost) accessLost else location.gitLabel(),
                 )
             },
             foldable = true,
@@ -351,28 +346,16 @@ internal fun LibraryStrip(host: LibraryPageHost) {
     }
 }
 
-/** 问资料输入框：输入即在右列（外屏为整页）显示结果。 */
+/** 问资料输入框：与全站搜索同一原子组件，输入即在右列（外屏为整页）显示结果。 */
 @Composable
 internal fun LibraryAskField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    val focusManager = LocalFocusManager.current
-    OutlinedTextField(
+    InfinitySearchBar(
         value = query,
         onValueChange = onQueryChange,
-        modifier = modifier.fillMaxWidth().keepsFocusOnTap().testTag(LibraryTags.ASK_FIELD),
-        singleLine = true,
-        textStyle = MaterialTheme.typography.bodyLarge.forInput(),
-        placeholder = { Text(stringResource(R.string.library_ask_placeholder), maxLines = 1) },
-        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-        trailingIcon = if (query.isNotEmpty()) {
-            {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.library_ask_clear))
-                }
-            }
-        } else null,
-        shape = MaterialTheme.shapes.extraLarge,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+        placeholder = stringResource(R.string.library_ask_placeholder),
+        // 整条搜索框（含清空按钮）点按时保持焦点，框外点按才退出输入。
+        modifier = modifier.keepsFocusOnTap(),
+        fieldModifier = Modifier.testTag(LibraryTags.ASK_FIELD),
     )
 }
 

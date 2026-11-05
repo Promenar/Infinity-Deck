@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -71,6 +74,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -86,6 +90,7 @@ import com.promenar.infinity.domain.library.DocumentBody
 import com.promenar.infinity.domain.library.DocumentInsight
 import com.promenar.infinity.domain.library.FragmentGroup
 import com.promenar.infinity.domain.library.LibraryDocumentSummary
+import com.promenar.infinity.domain.library.LibraryOverview
 import com.promenar.infinity.domain.library.PendingDocument
 import com.promenar.infinity.domain.library.PendingKind
 import com.promenar.infinity.navigation.NavDestinations
@@ -271,43 +276,10 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
             contentPadding = padding,
             verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
         ) {
-            if (entryCards) {
-                item(key = "entries") { LibraryEntryCards(host) }
-            }
             item(key = "kpi") {
-                val o = overview
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-                    verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-                    maxItemsInEachRow = if (wide) 4 else 2,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    KpiTile(
-                        label = stringResource(R.string.library_kpi_documents),
-                        value = o?.indexedDocuments,
-                        onClick = { host.navigator.openSection(LibraryPageKeys.RECENT) },
-                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
-                    )
-                    KpiTile(
-                        label = stringResource(R.string.library_kpi_memories),
-                        value = o?.longTermMemories,
-                        detail = o?.newLongTermMemories?.takeIf { it > 0 }?.let { stringResource(R.string.library_kpi_memories_new, it) },
-                        onClick = { host.navigator.openSection(LibraryPageKeys.MEMORY) },
-                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
-                    )
-                    KpiTile(
-                        label = stringResource(R.string.library_kpi_graph),
-                        value = o?.graphEntities,
-                        detail = o?.graphRelations?.let { stringResource(R.string.library_kpi_graph_relations, it) },
-                        onClick = { host.navigator.openSection(LibraryPageKeys.GRAPH) },
-                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
-                    )
-                    KpiTile(
-                        label = stringResource(R.string.library_kpi_fragments),
-                        value = o?.fragments,
-                        onClick = { host.navigator.openSection(LibraryPageKeys.FRAGMENTS) },
-                        modifier = Modifier.weight(1f).fillMaxRowHeight(),
-                    )
+                // 外屏首页：统计卡兼作四个入口，不再另放入口卡；内屏左列已有入口，统计卡选中对应项。
+                LibraryKpiGrid(overview, entryCards, wide) { entry, section ->
+                    if (entryCards) host.navigator.push(entry) else host.navigator.openSection(section)
                 }
             }
             if (wide) {
@@ -328,58 +300,102 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
     }
 }
 
-/** 外屏首页的四张入口卡：文件、长期记忆、知识图谱、对话片段。 */
-@OptIn(ExperimentalLayoutApi::class)
+/** 概览统计卡：宽版一行四张，窄版两列等高；[entryCards] 时兼作入口，带页面图标与页面名。 */
 @Composable
-private fun LibraryEntryCards(host: LibraryPageHost) {
-    val entries = listOf(
-        Triple(LibraryPageKeys.FILES, Icons.Rounded.Description, stringResource(R.string.library_page_files)),
-        Triple(LibraryPageKeys.MEMORY, Icons.Rounded.Psychology, stringResource(R.string.library_page_memory)),
-        Triple(LibraryPageKeys.GRAPH, Icons.Rounded.Hub, stringResource(R.string.library_page_graph)),
-        Triple(LibraryPageKeys.FRAGMENTS, Icons.Rounded.Forum, stringResource(R.string.library_page_fragments)),
+internal fun LibraryKpiGrid(
+    overview: LibraryOverview?,
+    entryCards: Boolean,
+    wide: Boolean,
+    open: (entry: String, section: String) -> Unit,
+) {
+    val o = overview
+    val tiles: List<@Composable (Modifier) -> Unit> = listOf(
+        { m ->
+            KpiTile(
+                label = stringResource(R.string.library_kpi_documents),
+                value = o?.indexedDocuments,
+                onClick = { open(LibraryPageKeys.FILES, LibraryPageKeys.RECENT) },
+                entry = if (entryCards) KpiEntry(LibraryPageKeys.FILES, Icons.Rounded.Description, stringResource(R.string.library_page_files), showLabel = true) else null,
+                modifier = m,
+            )
+        },
+        { m ->
+            KpiTile(
+                label = stringResource(R.string.library_kpi_memories),
+                value = o?.longTermMemories,
+                detail = o?.newLongTermMemories?.takeIf { it > 0 }?.let { stringResource(R.string.library_kpi_memories_new, it) },
+                onClick = { open(LibraryPageKeys.MEMORY, LibraryPageKeys.MEMORY) },
+                entry = if (entryCards) KpiEntry(LibraryPageKeys.MEMORY, Icons.Rounded.Psychology, stringResource(R.string.library_page_memory)) else null,
+                modifier = m,
+            )
+        },
+        { m ->
+            KpiTile(
+                label = stringResource(R.string.library_kpi_graph),
+                value = o?.graphEntities,
+                detail = o?.graphRelations?.let { stringResource(R.string.library_kpi_graph_relations, it) },
+                onClick = { open(LibraryPageKeys.GRAPH, LibraryPageKeys.GRAPH) },
+                entry = if (entryCards) KpiEntry(LibraryPageKeys.GRAPH, Icons.Rounded.Hub, stringResource(R.string.library_page_graph), showLabel = true) else null,
+                modifier = m,
+            )
+        },
+        { m ->
+            KpiTile(
+                label = stringResource(R.string.library_kpi_fragments),
+                value = o?.fragments,
+                onClick = { open(LibraryPageKeys.FRAGMENTS, LibraryPageKeys.FRAGMENTS) },
+                entry = if (entryCards) KpiEntry(LibraryPageKeys.FRAGMENTS, Icons.Rounded.Forum, stringResource(R.string.library_page_fragments)) else null,
+                modifier = m,
+            )
+        },
     )
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        maxItemsInEachRow = 2,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        entries.forEach { (key, icon, title) ->
-            Surface(
-                onClick = { host.navigator.push(key) },
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.weight(1f).fillMaxRowHeight().heightIn(min = 72.dp).testTag(LibraryTags.navItem(key)),
-            ) {
-                Row(
-                    Modifier.padding(InfinitySpacing.Large),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-                ) {
-                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+    // 固定列数逐行排布并按行等高，大字号下长标题换行而不是把卡片挤到单独一行。
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+        tiles.chunked(if (wide) 4 else 2).forEach { row ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+                row.forEach { tile -> tile(Modifier.weight(1f).fillMaxHeight()) }
             }
         }
     }
 }
 
+/** 统计卡兼作入口时的页面键、图标与页面名。 */
+private data class KpiEntry(val key: String, val icon: ImageVector, val title: String, val showLabel: Boolean = false)
+
 @Composable
-private fun KpiTile(label: String, value: Int?, onClick: () -> Unit, modifier: Modifier = Modifier, detail: String? = null) {
+private fun KpiTile(
+    label: String,
+    value: Int?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    detail: String? = null,
+    entry: KpiEntry? = null,
+) {
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier.heightIn(min = 88.dp),
+        modifier = modifier.heightIn(min = 88.dp).then(entry?.let { Modifier.testTag(LibraryTags.navItem(it.key)) } ?: Modifier),
     ) {
         Column(Modifier.padding(InfinitySpacing.Large), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // 图标单独一行，页面名占满卡片宽度，大字号英文长名按词换行而不是在词中断开。
+            entry?.let {
+                Icon(it.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Text(
+                    it.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XSmall),
+                )
+            }
             // 数值变化时纵向替换：增加自下而上，减少自上而下。
             AnimatedContent(
                 targetState = value,
                 transitionSpec = { InfinityMotion.sharedAxisY(forward = (targetState ?: 0) >= (initialState ?: 0)) },
                 label = "kpi-value",
             ) { shown -> Text(shown?.toString() ?: "–", style = MaterialTheme.typography.headlineSmall) }
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // 兼作入口时只在统计口径与页面名不同（已索引文档、图谱实体）时补一行说明。
+            if (entry == null || entry.showLabel) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             detail?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
