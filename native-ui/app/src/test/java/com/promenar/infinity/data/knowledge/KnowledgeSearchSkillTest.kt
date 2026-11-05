@@ -51,7 +51,13 @@ class KnowledgeSearchSkillTest {
             graphScope = scope
             return retrieveForTool(query, sessionId, topKResults, options)
         }
+        override suspend fun retrieveForToolAt(query: String, sessionId: String, topKResults: List<RagReference>,
+            options: RagOptions, scope: ResolvedRetrievalScope?, asOf: com.promenar.infinity.data.rag.KgAsOf?): KgContextResult {
+            graphAsOf = asOf
+            return retrieveWithScope(query, sessionId, topKResults, options, scope, true)
+        }
     }
+    private var graphAsOf: com.promenar.infinity.data.rag.KgAsOf? = null
     private fun context(step: String = "step") = object : SkillExecutionContext {
         override val sessionId = "s"
         override val agentId = "a"
@@ -70,6 +76,15 @@ class KnowledgeSearchSkillTest {
         resolvedScope = scope
         assertThat(search().status).isEqualTo("success")
         assertThat(graphScope).isSameInstanceAs(scope)
+    }
+
+    @Test fun `篇目时间点交给图谱且非法序号直接拒绝`() = runTest {
+        assertThat(search(args = """{"query":"完整问题","as_of":3}""").status).isEqualTo("success")
+        assertThat(graphAsOf).isEqualTo(com.promenar.infinity.data.rag.KgAsOf.Ordinal(3))
+        val invalid = search(step = "step-2", args = """{"query":"完整问题","as_of":0}""")
+        assertThat(invalid.status).isEqualTo("error")
+        assertThat(invalid.content).contains("as_of")
+        assertThat(toolCalls).isEqualTo(1)
     }
 
     @Test fun automaticCitationMappingSurvivesColdRestore() {

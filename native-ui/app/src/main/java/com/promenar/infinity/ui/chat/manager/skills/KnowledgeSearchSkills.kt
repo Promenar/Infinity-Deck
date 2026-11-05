@@ -30,11 +30,11 @@ class KnowledgeSearchSkill(
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
     override val description = "只读检索用户导入的文档、知识库和过往对话，可附带持久知识图谱关系。查询词使用完整问题或关键短语。memory_* 管理主动记忆中的事实与偏好，其目录已在上下文中；需要知识库文档全文时，通过只读挂载后使用 read_file、list_files、search_files。每轮最多检索6次，达到上限后基于已有结果作答。"
-    override val parametersSchema = """{"type":"object","properties":{"query":{"type":"string","description":"完整的问题或关键短语"},"sources":{"type":"array","items":{"type":"string","enum":["documents","history"]}},"limit":{"type":"integer","description":"返回条数，1 至 10，默认 5"}},"required":["query"],"additionalProperties":false}"""
+    override val parametersSchema = """{"type":"object","properties":{"query":{"type":"string","description":"完整的问题或关键短语"},"sources":{"type":"array","items":{"type":"string","enum":["documents","history"]}},"limit":{"type":"integer","description":"返回条数，1 至 10，默认 5"},"as_of":{"type":"integer","description":"可选：图谱合集的篇目序号（从 1 开始）。给出时图谱关系按读到该篇为止的状态返回，用于回答某章时的人物关系或位置"}},"required":["query"],"additionalProperties":false}"""
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
         try {
-            require(args.keys.all { it in setOf("query", "sources", "limit") }) { "存在未支持的参数" }
+            require(args.keys.all { it in setOf("query", "sources", "limit", "as_of") }) { "存在未支持的参数" }
             val query = args.string("query")?.trim()?.takeIf { it.isNotEmpty() } ?: return@withContext error("查询词不能为空")
             val limit = if ("limit" in args) (args["limit"] as? JsonPrimitive)?.intOrNull
                 ?.takeIf { it in 1..10 } ?: return@withContext error("limit 必须为1至10的整数") else 5
@@ -43,6 +43,8 @@ class KnowledgeSearchSkill(
                 values.map { (it as? JsonPrimitive)?.takeIf { item -> item.isString }?.content
                     ?.takeIf { item -> item in setOf("documents", "history") } ?: return@withContext error("检索来源无效") }.distinct()
             } else listOf("documents", "history")
+            val asOf = if ("as_of" in args) (args["as_of"] as? JsonPrimitive)?.intOrNull?.takeIf { it >= 1 }
+                ?.let(com.promenar.infinity.data.rag.KgAsOf::Ordinal) ?: return@withContext error("as_of 必须为从 1 开始的篇目序号") else null
             val session = loadSession(context.sessionId) ?: return@withContext error("会话不存在")
             val config = loadConfig(session.agentId)
             if (effectiveRetrievalMode(config, session.options.toolsEnabled) == AgentRetrievalMode.AUTO) return@withContext error("当前会话未启用工具检索")
@@ -63,7 +65,9 @@ class KnowledgeSearchSkill(
             if (retrieved.trace?.outcome == RagRetrievalTrace.OUTCOME_UNAVAILABLE) return@withContext error("未配置嵌入模型，请在设置 → 默认模型中配置嵌入模型后再检索。")
             if (retrieved.trace?.outcome == RagRetrievalTrace.OUTCOME_FAILED) return@withContext error("知识检索失败，请检查嵌入模型配置。")
             val references = retrieved.references.distinctBy { it.id }.take(limit)
-            val graph = if (options.enableKnowledgeGraph != true) null else if (retrieved.resolvedScope == null)
+            val graph = if (options.enableKnowledgeGraph != true) null
+            else if (asOf != null) kg?.retrieveForToolAt(query, session.id, references, options, retrieved.resolvedScope, asOf)
+            else if (retrieved.resolvedScope == null)
                 kg?.retrieveForTool(query, session.id, references, options)
             else kg?.retrieveWithScope(query, session.id, references, options, retrieved.resolvedScope, true)
             val paths = graph?.takeIf { it.status == KgExtractionStatus.SUCCESS && it.error == null }?.paths.orEmpty()
@@ -103,7 +107,7 @@ class KnowledgeSearchSkill(
                     paths.forEach { path -> path.edges.forEach { edge ->
                         val source = path.nodes.firstOrNull { it.id == edge.sourceId }?.label ?: ""
                         val target = path.nodes.firstOrNull { it.id == edge.targetId }?.label ?: ""
-                        appendLine("$source —${edge.relation}→ $target")
+                        appendLine("$source —${edge.relation}→ $target" + (path.reasoning?.let { "（$it）" } ?: ""))
                     } }
                 }
             }.trim(), data)

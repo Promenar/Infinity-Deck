@@ -31,6 +31,10 @@ class PersistentGraphKgProvider(
         scope: ResolvedRetrievalScope?, forTool: Boolean): KgContextResult =
         retrieve(query, sessionId, topKResults, options, allowJit = !forTool, scope = scope)
 
+    override suspend fun retrieveForToolAt(query: String, sessionId: String, topKResults: List<RagReference>, options: RagOptions,
+        scope: ResolvedRetrievalScope?, asOf: KgAsOf?): KgContextResult =
+        retrieve(query, sessionId, topKResults, options, allowJit = false, scope = scope, asOf = asOf)
+
     private suspend fun retrieve(
         query: String,
         sessionId: String,
@@ -38,6 +42,7 @@ class PersistentGraphKgProvider(
         options: RagOptions,
         allowJit: Boolean = true,
         scope: ResolvedRetrievalScope? = null,
+        asOf: KgAsOf? = null,
     ): KgContextResult {
         if (options.enableKnowledgeGraph != true) return KgContextResult("")
         val config = configProvider()
@@ -47,6 +52,7 @@ class PersistentGraphKgProvider(
         val scope = resolvedScope.copy(
             documents = if (allowJit || options.enableDocs) resolvedScope.documents else DocumentReach.Scoped(emptySet(), emptySet()),
             allowConversation = allowJit || options.enableMemory,
+            asOf = asOf,
         )
         val documents = retrieval.visibleDocumentIds(scope)
         val visibleReferences = withContext(Dispatchers.IO) {

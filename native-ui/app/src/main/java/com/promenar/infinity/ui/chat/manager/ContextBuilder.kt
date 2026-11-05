@@ -144,6 +144,10 @@ interface KgProvider {
         options: com.promenar.infinity.data.model.RagOptions, scope: com.promenar.infinity.data.rag.ResolvedRetrievalScope?,
         forTool: Boolean): KgContextResult? = if (forTool) retrieveForTool(query, sessionId, topKResults, options)
             else retrieveContext(query, sessionId, topKResults, options)
+    /** 按合集篇目时间点读取持久图；不支持时间线的提供者忽略时间点。 */
+    suspend fun retrieveForToolAt(query: String, sessionId: String, topKResults: List<RagReference>,
+        options: com.promenar.infinity.data.model.RagOptions, scope: com.promenar.infinity.data.rag.ResolvedRetrievalScope?,
+        asOf: com.promenar.infinity.data.rag.KgAsOf?): KgContextResult? = retrieveWithScope(query, sessionId, topKResults, options, scope, true)
     /** 未声明支持持久图读取的提供者不参与工具检索，避免间接触发抽取。 */
     suspend fun retrieveForTool(
         query: String,
