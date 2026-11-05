@@ -13,12 +13,23 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class KgAdvancedSettingsTest {
-    @Test fun `默认输出上限调整但已保存值保持不变`() {
+    @Test fun `旧版随保存写入的默认单次输出 2048 一次性升到 4096，其后的用户选择保留`() {
         val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-output-default-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(4096)
-        prefs.edit().putInt("kg_request_max_output_tokens", 2048).commit()
+
+        // 旧版：保存任一高级参数都会写入当时的默认 2048。
+        prefs.edit().clear().putInt("kg_request_max_output_tokens", 2048).commit()
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(4096)
+        assertThat(prefs.getInt("kg_request_max_output_tokens", -1)).isEqualTo(4096)
+
+        // 迁移之后用户再选 2048 时照常保留。
+        KgAdvancedSettings.save(RagConfiguration(kgRequestMaxOutputTokens = 2048), prefs)
         assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(2048)
+
+        // 旧版的其它自定义值不迁移。
+        prefs.edit().clear().putInt("kg_request_max_output_tokens", 1024).commit()
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(1024)
         prefs.edit().clear().commit()
     }
 

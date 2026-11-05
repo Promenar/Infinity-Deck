@@ -442,7 +442,7 @@ internal class AndroidTransactionalBackupPreferenceStore(
             typed("rag", PreferenceValueType.BOOLEAN,
                 "enable_rerank", "enable_query_rewrite", "enable_hybrid_search", "enable_memory", "enable_docs",
                 "enable_kg", "kg_free_mode", "kg_domain_auto", "enable_incremental_hash", "enable_local_preprocess", "kg_jit_fallback",
-                "kg_session_extraction", "memory_state_extraction",
+                "kg_session_extraction", "memory_state_extraction", "kg_request_max_output_tokens_default_v2",
                 "show_retrieval_progress", "show_retrieval_details", "track_retrieval_metrics")
             typed("ui", PreferenceValueType.BOOLEAN, "has_shown_welcome", "haptic_enabled")
             typed("ui", PreferenceValueType.INT, "loop_limit")
