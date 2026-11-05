@@ -175,15 +175,15 @@ class GraphExtractorTest {
             }
             PromptResponse(body, usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(2, 1))
         }
-        val extractor = testGraphExtractor(protocol, graphStore, chunkSize = 10, chunkOverlap = 0)
+        val extractor = testGraphExtractor(protocol, graphStore, chunkSize = 20, chunkOverlap = 0)
 
-        val result = extractor.extractCandidate("甲乙内容\n\n丙丁内容后续正文123456", "split-doc")
+        val result = extractor.extractCandidate("甲乙内容\n\n丙丁内容", "split-doc")
 
-        assertThat(received).containsExactly("甲乙内容\n\n丙丁内容", "甲乙内容\n\n", "丙丁内容", "后续正文123456").inOrder()
-        assertThat(result.nodes.map { it.name }).containsExactly("甲", "乙", "丙", "丁", "戊", "己")
-        assertThat(result.edges).hasSize(3)
-        assertThat(result.progress!!.calls).isEqualTo(4)
-        assertThat(result.usage.outputTokens).isEqualTo(4)
+        assertThat(received).containsExactly("甲乙内容\n\n丙丁内容", "甲乙内容\n\n", "丙丁内容").inOrder()
+        assertThat(result.nodes.map { it.name }).containsExactly("甲", "乙", "丙", "丁")
+        assertThat(result.edges).hasSize(2)
+        assertThat(result.progress!!.calls).isEqualTo(3)
+        assertThat(result.usage.outputTokens).isEqualTo(3)
     }
 
     @Test
@@ -224,7 +224,7 @@ class GraphExtractorTest {
             else PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
         }
         val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 20, chunkOverlap = 0,
-            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler),
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), concurrency = 1, gleaningPasses = 0,
             budget = KgExtractionBudget(maxOutputTokens = 3, requestMaxOutputTokens = 3))
 
         val result = extractor.extractCandidate("abcdefgh", "output-split")
@@ -244,7 +244,7 @@ class GraphExtractorTest {
                 usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
         }
         val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 20, chunkOverlap = 0,
-            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxDurationMs = 200),
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), concurrency = 1, gleaningPasses = 0, budget = KgExtractionBudget(maxDurationMs = 200),
             nowMs = { testScheduler.currentTime })
 
         val result = extractor.extractCandidate("abcdefgh", "time-split")
@@ -261,7 +261,7 @@ class GraphExtractorTest {
             PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1)),
         )
         val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 20, chunkOverlap = 0,
-            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 2))
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), concurrency = 1, gleaningPasses = 0, budget = KgExtractionBudget(maxCalls = 2))
 
         val result = extractor.extractCandidate("abcdefgh", "budget-split")
 
@@ -303,30 +303,21 @@ class GraphExtractorTest {
 
         assertThat(result.status).isEqualTo(KgExtractionStatus.SUCCESS)
         assertThat(requests).containsExactly("abcdefgh", "abcd", "efgh", "efgh").inOrder()
-        assertThat(result.progress!!.calls).isEqualTo(4)
+        assertThat(result.progress!!.calls).isEqualTo(1)
     }
 
     @Test
-    fun `旧格式整块断点仍可读取并恢复`() = runTest {
+    fun `旧版本断点失效后重新抽取`() = runTest {
         val root = File(tempDir, "legacy-chunks")
         val text = "abcdefgh"
         val identity = GraphCheckpointIdentity(kgSha256(text), kgSha256(text), "owner::model",
-            kgSha256(GraphExtractor.DEFAULT_KG_PROMPT), 20, 0)
-        val store = GraphExtractionCheckpoints(root)
-        store.save("legacy-doc", identity, 0, text, ExtractionResult(
-            listOf(ExtractedNode("甲", "person"), ExtractedNode("乙", "person")),
-            listOf(ExtractedEdge("甲", "乙", "认识")),
-        ))
-        val saved = root.walkTopDown().first { it.name == "chunk_0.json" }.readText()
-        assertThat(saved).doesNotContain("splitPaths")
-        assertThat(saved).doesNotContain("parts")
-
+            kgSha256(GraphExtractor.DEFAULT_KG_PROMPT), 20, 0, validationVersion = 1)
+        GraphExtractionCheckpoints(root).save("legacy-doc", identity, 0, text, ExtractionResult(emptyList(), emptyList()))
+        coEvery { protocol.sendPromptSync(any()) } returns PromptResponse("""{"nodes":[],"edges":[]}""")
         val result = testGraphExtractor(protocol, graphStore, chunkSize = 20, chunkOverlap = 0, checkpointRoot = root)
             .extractCandidate(text, "legacy-doc")
-
         assertThat(result.status).isEqualTo(KgExtractionStatus.SUCCESS)
-        assertThat(result.edges).hasSize(1)
-        coVerify(exactly = 0) { protocol.sendPromptSync(any()) }
+        coVerify(exactly = 1) { protocol.sendPromptSync(any()) }
     }
 
     @Test
@@ -362,11 +353,11 @@ class GraphExtractorTest {
             PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(2, 1))
         }
         val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 10, chunkOverlap = 0,
-            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 1))
-        extractor.extractCandidate("a".repeat(20), "cache-eviction-document")
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), concurrency = 1, gleaningPasses = 0, budget = KgExtractionBudget(maxCalls = 1))
+        extractor.extractCandidate("a".repeat(20), "cache-eviction-document", runId = "same-run")
         File(tempDir, "kg_extraction_checkpoint").deleteRecursively()
 
-        val result = extractor.extractCandidate("a".repeat(20), "cache-eviction-document")
+        val result = extractor.extractCandidate("a".repeat(20), "cache-eviction-document", runId = "same-run")
 
         assertThat(requests).isEqualTo(1)
         assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.CALLS)
@@ -381,12 +372,12 @@ class GraphExtractorTest {
             PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(2, 1))
         }
         val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 10, chunkOverlap = 0,
-            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 1))
-        extractor.extractCandidate("a".repeat(20), "corrupt-budget-document")
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), concurrency = 1, gleaningPasses = 0, budget = KgExtractionBudget(maxCalls = 1))
+        extractor.extractCandidate("a".repeat(20), "corrupt-budget-document", runId = "same-run")
         File(tempDir, "durable").walkTopDown().first { it.name.startsWith("budget_") }.writeText("{")
         File(tempDir, "kg_extraction_checkpoint").deleteRecursively()
 
-        val failure = runCatching { extractor.extractCandidate("a".repeat(20), "corrupt-budget-document") }.exceptionOrNull()
+        val failure = runCatching { extractor.extractCandidate("a".repeat(20), "corrupt-budget-document", runId = "same-run") }.exceptionOrNull()
 
         assertThat(failure).isInstanceOf(IllegalStateException::class.java)
         assertThat(requests).isEqualTo(1)

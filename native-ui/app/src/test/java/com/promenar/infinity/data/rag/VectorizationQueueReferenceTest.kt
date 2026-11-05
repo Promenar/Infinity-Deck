@@ -365,6 +365,7 @@ class VectorizationQueueReferenceTest {
             taskDao.upsertTarget(match {
                 it.id == id && it.workspaceRootUuid == ROOT && it.docId == DOC &&
                     it.sessionId == null && it.userContent == null &&
+                    !it.assistantMessageId.isNullOrBlank() &&
                     it.type == VectorizationQueue.TYPE_DOCUMENT_REFERENCE
             })
         }

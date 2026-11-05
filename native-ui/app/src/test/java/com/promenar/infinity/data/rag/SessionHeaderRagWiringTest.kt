@@ -21,7 +21,9 @@ class SessionHeaderRagWiringTest {
             val task = VectorizationTask(id = "graph-task", type = VectorizationQueue.TYPE_SESSION_GRAPH,
                 sessionId = "rag-session", assistantMessageId = "a", userContent = "足够长的用户输入内容用于图谱抽取", aiContent = "足够长的助手回复内容用于图谱抽取")
             assertThat(runCatching { processor.process(task) }.exceptionOrNull()).isNotNull()
-            assertThat(endpoint.requests.single().headers["x-opencode-session"]).isEqualTo(endpoint.identifier("rag-session"))
+            assertThat(endpoint.requests).hasSize(2)
+            assertThat(endpoint.requests.first().headers["x-opencode-session"]).isEqualTo(endpoint.identifier("rag-session"))
+            assertThat(endpoint.requests[1].headers["x-opencode-session"]).isEqualTo(endpoint.identifier("rag-session"))
             endpoint.enabled = false
             assertThat(runCatching { processor.process(task) }.exceptionOrNull()).isNotNull()
             assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()

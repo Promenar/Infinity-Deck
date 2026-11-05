@@ -32,12 +32,13 @@ class KgRequestClient(
     },
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val usageStore: KgUsageStore = KgUsageStore.None,
-    private val defaultMaxOutputTokens: Int = 4_096,
+    private val defaultMaxOutputTokens: Int = 16_384,
 ) {
     suspend fun extract(
         modelId: String?, systemPrompt: String, text: String, timeoutMs: Long,
         maxOutputTokens: Int = defaultMaxOutputTokens,
         sessionId: String? = null,
+        historyMessages: List<ProtocolMessage> = emptyList(),
         responseParser: (String) -> ExtractionResult = KgGraphValidation::parse,
     ): ExtractionResult =
         withContext(dispatcher) {
@@ -62,7 +63,7 @@ class KgRequestClient(
                         messages = listOf(
                             ProtocolMessage("system", systemPrompt),
                             ProtocolMessage("user", text),
-                        ),
+                        ) + historyMessages,
                         model = resolved.remoteModelId,
                         temperature = 0.0,
                         maxTokens = maxOutputTokens,
@@ -73,7 +74,7 @@ class KgRequestClient(
                     reportedUsage = response.usage?.let {
                         KgTokenUsage(it.input.coerceAtLeast(0).toLong(), it.output.coerceAtLeast(0).toLong())
                     } ?: KgTokenUsage(
-                        inputTokens = (systemPrompt.length.toLong() + text.length + 1) / 2,
+                        inputTokens = (systemPrompt.length.toLong() + text.length + historyMessages.sumOf { it.content.length.toLong() } + 1) / 2,
                         outputTokens = (response.content.length.toLong() + 1) / 2,
                         estimated = true,
                     )
@@ -90,7 +91,10 @@ class KgRequestClient(
                 ExtractionResult.failure(KgExtractionStatus.TIMEOUT, "知识图谱提供商请求超时")
             } catch (failure: Exception) {
                 // 同步协议把传输超时归一为此类别前缀；不回显可能含请求信息的技术消息。
-                if (failure.message?.let { it.startsWith("[TIMEOUT]") || Regex("^\\[HTTP \\d{3}\\]\\[TIMEOUT\\]").containsMatchIn(it) } == true) {
+                val prefix = Regex("^\\[HTTP (429|503)\\]").find(failure.message.orEmpty())?.value
+                if (prefix != null) {
+                    ExtractionResult.failure(KgExtractionStatus.PROVIDER_ERROR, "$prefix 知识图谱提供商请求失败")
+                } else if (failure.message?.let { it.startsWith("[TIMEOUT]") || Regex("^\\[HTTP \\d{3}\\]\\[TIMEOUT\\]").containsMatchIn(it) } == true) {
                     ExtractionResult.failure(KgExtractionStatus.TIMEOUT, "知识图谱提供商请求超时")
                 } else ExtractionResult.failure(KgExtractionStatus.PROVIDER_ERROR, "知识图谱提供商请求失败")
             } finally {

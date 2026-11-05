@@ -13,15 +13,40 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class KgAdvancedSettingsTest {
-    @Test fun `旧版随保存写入的默认单次输出 2048 一次性升到 4096，其后的用户选择保留`() {
+    @Test fun `v3 只迁移匹配的旧默认值并保留其他设置`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-defaults", Context.MODE_PRIVATE)
+        prefs.edit().clear().putInt("kg_request_max_output_tokens", 4096)
+            .putInt("kg_max_output_tokens", 32768).putInt("kg_max_calls", 32)
+            .putInt("kg_max_duration_seconds", 181).commit()
+        val migrated = KgAdvancedSettings.load(RagConfiguration(), prefs)
+        assertThat(migrated.kgRequestMaxOutputTokens).isEqualTo(16384)
+        assertThat(migrated.kgMaxOutputTokens).isEqualTo(262144)
+        assertThat(migrated.kgMaxCalls).isEqualTo(64)
+        assertThat(migrated.kgMaxDurationSeconds).isEqualTo(181)
+        prefs.edit().putInt("kg_max_calls", 32).commit()
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgMaxCalls).isEqualTo(32)
+        KgAdvancedSettings.save(migrated.copy(kgWindowChars = 32000, kgConcurrency = 8, kgGleaningPasses = 2), prefs)
+        val restored = RagConfigPersistence(prefs).loadFullConfig()
+        assertThat(restored.kgWindowChars).isEqualTo(32000)
+        assertThat(restored.kgConcurrency).isEqualTo(8)
+        assertThat(restored.kgGleaningPasses).isEqualTo(2)
+        assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
+        assertThat(prefs.getBoolean("kg_request_max_output_tokens_default_v2", false)).isTrue()
+        prefs.edit().clear().putInt("kg_max_duration_seconds", 180).commit()
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgMaxDurationSeconds).isEqualTo(600)
+        prefs.edit().clear().commit()
+    }
+
+    @Test fun `旧版随保存写入的默认单次输出 2048 一次性升到 16384，其后的用户选择保留`() {
         val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-output-default-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(4096)
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(16384)
 
         // 旧版：保存任一高级参数都会写入当时的默认 2048。
         prefs.edit().clear().putInt("kg_request_max_output_tokens", 2048).commit()
-        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(4096)
-        assertThat(prefs.getInt("kg_request_max_output_tokens", -1)).isEqualTo(4096)
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(16384)
+        assertThat(prefs.getInt("kg_request_max_output_tokens", -1)).isEqualTo(16384)
+        assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
 
         // 迁移之后用户再选 2048 时照常保留。
         KgAdvancedSettings.save(RagConfiguration(kgRequestMaxOutputTokens = 2048), prefs)

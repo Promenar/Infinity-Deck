@@ -2804,7 +2804,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private fun createKgRequestClient() = com.promenar.infinity.data.rag.KgRequestClient(
         router = providerRequestRouter,
         usageStore = kgUsageStore,
-        defaultMaxOutputTokens = ragConfigPersistence.loadFullConfig().kgRequestMaxOutputTokens.coerceIn(128, 16384),
+        defaultMaxOutputTokens = ragConfigPersistence.loadFullConfig().kgRequestMaxOutputTokens.coerceIn(128, 65536),
         protocolFactory = ::createRoutedModelProtocol,
     )
 
@@ -2864,10 +2864,18 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     graphStore = graphStore,
                     modelId = settings.modelId,
                     systemPrompt = settings.systemPrompt,
-                    chunkSize = config.docChunkSize.coerceAtLeast(400),
-                    chunkOverlap = config.chunkOverlap.coerceAtMost(200),
+                    chunkSize = config.kgWindowChars.coerceIn(2000, 128000),
                     timeoutMs = config.kgExtractionTimeoutSeconds.coerceIn(5, 300) * 1000L,
                     budget = com.promenar.infinity.data.rag.KgExtractionBudget.from(config),
+                    concurrency = config.kgConcurrency.coerceIn(1, 8),
+                    gleaningPasses = config.kgGleaningPasses.coerceIn(0, 2),
+                    modelLimits = {
+                        runCatching {
+                            ProviderManager.getInstance().providerModels.value.firstOrNull { it.id == settings.modelId }?.let {
+                                com.promenar.infinity.data.rag.KgModelLimits(it.maxOutputTokens, it.contextLength)
+                            }
+                        }.getOrNull()
+                    },
                 ).also { _graphExtractor = it }
             }
         }

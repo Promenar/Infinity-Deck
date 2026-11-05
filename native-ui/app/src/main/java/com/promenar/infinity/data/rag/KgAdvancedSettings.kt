@@ -5,26 +5,28 @@ import android.content.SharedPreferences
 /** KG 高级参数在全局检索设置和应用构造器之间使用同一持久来源。 */
 object KgAdvancedSettings {
     private const val REQUEST_OUTPUT_KEY = "kg_request_max_output_tokens"
-    private const val LEGACY_REQUEST_OUTPUT_DEFAULT = 2048
-    const val REQUEST_OUTPUT_DEFAULT = 4096
+    const val REQUEST_OUTPUT_DEFAULT = 16384
     private const val REQUEST_OUTPUT_MIGRATED_KEY = "kg_request_max_output_tokens_default_v2"
+    private const val BUDGET_DEFAULTS_MIGRATED_KEY = "kg_budget_defaults_v3"
 
-    /**
-     * 旧版保存任一高级参数时会把当时的单次输出默认值 2048 一并写入，与用户主动选择无法区分；
-     * 2048 会截断思考型模型的图谱 JSON，因此一次性把这个旧默认值升到新默认，之后的用户选择照常保留。
-     */
-    private fun migrateLegacyRequestOutput(preferences: SharedPreferences) {
-        // 新版每次保存都会写入迁移标记，所以只有旧版写下的值会在这里被改写；读取本身通常不写入。
-        if (preferences.getBoolean(REQUEST_OUTPUT_MIGRATED_KEY, false)) return
-        if (preferences.getInt(REQUEST_OUTPUT_KEY, -1) != LEGACY_REQUEST_OUTPUT_DEFAULT) return
-        preferences.edit()
-            .putInt(REQUEST_OUTPUT_KEY, REQUEST_OUTPUT_DEFAULT)
-            .putBoolean(REQUEST_OUTPUT_MIGRATED_KEY, true)
-            .apply()
+    private fun migrateBudgetDefaults(preferences: SharedPreferences) {
+        if (preferences.getBoolean(BUDGET_DEFAULTS_MIGRATED_KEY, false)) return
+        val defaults = mapOf(
+            REQUEST_OUTPUT_KEY to (setOf(2048, 4096) to REQUEST_OUTPUT_DEFAULT),
+            "kg_max_output_tokens" to (setOf(32768) to 262144),
+            "kg_max_calls" to (setOf(32) to 64),
+            "kg_max_duration_seconds" to (setOf(180) to 600),
+        )
+        val changes = defaults.filter { (key, values) -> preferences.contains(key) && preferences.getInt(key, -1) in values.first }
+        if (changes.isEmpty()) return
+        val editor = preferences.edit()
+        changes.forEach { (key, values) -> editor.putInt(key, values.second) }
+        editor.putBoolean(REQUEST_OUTPUT_MIGRATED_KEY, true)
+            .putBoolean(BUDGET_DEFAULTS_MIGRATED_KEY, true).apply()
     }
 
     fun load(base: RagConfiguration, preferences: SharedPreferences): RagConfiguration = run {
-        migrateLegacyRequestOutput(preferences)
+        migrateBudgetDefaults(preferences)
         loadMigrated(base, preferences)
     }
 
@@ -38,10 +40,13 @@ object KgAdvancedSettings {
         kgSessionExtractionEnabled = preferences.getBoolean("kg_session_extraction", false),
         memoryStateExtractionEnabled = preferences.getBoolean("memory_state_extraction", false),
         kgJitMinSeeds = preferences.getInt("kg_jit_min_seeds", 2).coerceIn(1, 32),
-        kgMaxCalls = preferences.getInt("kg_max_calls", 32).coerceIn(1, 1024),
-        kgMaxOutputTokens = preferences.getInt("kg_max_output_tokens", 32768).coerceIn(256, 1048576),
-        kgRequestMaxOutputTokens = preferences.getInt(REQUEST_OUTPUT_KEY, REQUEST_OUTPUT_DEFAULT).coerceIn(128, 16384),
-        kgMaxDurationSeconds = preferences.getInt("kg_max_duration_seconds", 180).coerceIn(5, 3600),
+        kgWindowChars = preferences.getInt("kg_window_chars", 16000).coerceIn(2000, 128000),
+        kgConcurrency = preferences.getInt("kg_concurrency", 4).coerceIn(1, 8),
+        kgGleaningPasses = preferences.getInt("kg_gleaning_passes", 1).coerceIn(0, 2),
+        kgMaxCalls = preferences.getInt("kg_max_calls", 64).coerceIn(1, 1024),
+        kgMaxOutputTokens = preferences.getInt("kg_max_output_tokens", 262144).coerceIn(256, 1048576),
+        kgRequestMaxOutputTokens = preferences.getInt(REQUEST_OUTPUT_KEY, REQUEST_OUTPUT_DEFAULT).coerceIn(128, 65536),
+        kgMaxDurationSeconds = preferences.getInt("kg_max_duration_seconds", 600).coerceIn(5, 3600),
         kgLargeDocumentConfirmCalls = preferences.getInt("kg_large_document_confirm_calls", 16).coerceIn(1, 128),
     )
 
@@ -56,10 +61,14 @@ object KgAdvancedSettings {
             .putBoolean("kg_session_extraction", config.kgSessionExtractionEnabled)
             .putBoolean("memory_state_extraction", config.memoryStateExtractionEnabled)
             .putInt("kg_jit_min_seeds", config.kgJitMinSeeds)
+            .putInt("kg_window_chars", config.kgWindowChars.coerceIn(2000, 128000))
+            .putInt("kg_concurrency", config.kgConcurrency.coerceIn(1, 8))
+            .putInt("kg_gleaning_passes", config.kgGleaningPasses.coerceIn(0, 2))
             .putInt("kg_max_calls", config.kgMaxCalls)
             .putInt("kg_max_output_tokens", config.kgMaxOutputTokens)
             .putInt(REQUEST_OUTPUT_KEY, config.kgRequestMaxOutputTokens)
             .putBoolean(REQUEST_OUTPUT_MIGRATED_KEY, true)
+            .putBoolean(BUDGET_DEFAULTS_MIGRATED_KEY, true)
             .putInt("kg_max_duration_seconds", config.kgMaxDurationSeconds)
             .putInt("kg_large_document_confirm_calls", config.kgLargeDocumentConfirmCalls)
             .apply()

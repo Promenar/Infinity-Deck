@@ -16,6 +16,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Files
@@ -23,7 +25,7 @@ import java.nio.file.Files
 @OptIn(ExperimentalCoroutinesApi::class)
 class GraphExtractionBudgetTest {
     @Test
-    fun `默认文档调用预算停止于32次并返回部分完成`() = runTest {
+    fun `默认文档调用预算停止于64次并返回部分完成`() = runTest {
         val protocol = mockk<LlmProtocol>()
         var requests = 0
         coEvery { protocol.sendPromptSync(any()) } answers {
@@ -32,9 +34,9 @@ class GraphExtractionBudgetTest {
         }
         val extractor = testGraphExtractor(protocol, mockk(relaxed = true), chunkSize = 10, chunkOverlap = 0)
 
-        val result = extractor.extractCandidate("a".repeat(330))
+        val result = extractor.extractCandidate("a".repeat(650))
 
-        assertThat(requests).isEqualTo(32)
+        assertThat(requests).isEqualTo(64)
         assertThat(result.status.name).isEqualTo("PARTIAL")
         assertThat(result.edges).hasSize(1)
     }
@@ -51,7 +53,7 @@ class GraphExtractionBudgetTest {
         val result = testKgClient(protocol).extract("owner::model", "提取实体", "甲与乙认识", 1000)
 
         assertThat(result.isSuccess).isTrue()
-        assertThat(sent!!.maxTokens).isEqualTo(4096)
+        assertThat(sent!!.maxTokens).isEqualTo(16384)
     }
 
     @Test
@@ -106,8 +108,8 @@ class GraphExtractionBudgetTest {
             val text = "a".repeat(30)
             val limited = KgExtractionBudget(maxCalls = 1)
 
-            val first = extractor(protocol, limited, root).extractCandidate(text, "document")
-            val sameBudget = extractor(protocol, limited, root).extractCandidate(text, "document")
+            val first = extractor(protocol, limited, root).extractCandidate(text, "document", runId = "run-a")
+            val sameBudget = extractor(protocol, limited, root).extractCandidate(text, "document", runId = "run-a")
             assertThat(first.progress!!.processedChunks).isEqualTo(1)
             assertThat(sameBudget.progress!!.processedChunks).isEqualTo(1)
             assertThat(requests).isEqualTo(1)
@@ -131,20 +133,20 @@ class GraphExtractionBudgetTest {
                 "owner::model", kgSha256(GraphExtractor.DEFAULT_KG_PROMPT), 10, 0)
             var reservedElapsed: Long? = null
             coEvery { protocol.sendPromptSync(any()) } coAnswers {
-                if (reservedElapsed == null) reservedElapsed = GraphExtractionCheckpoints(root).loadBudget("document", identity)?.elapsedMs
+                if (reservedElapsed == null) reservedElapsed = root.walkTopDown().firstOrNull { it.name.startsWith("budget_") }?.readText()?.let { kotlinx.serialization.json.Json.parseToJsonElement(it).jsonObject["state"]?.jsonObject?.get("elapsedMs")?.jsonPrimitive?.content?.toLong() }
                 delay(1_000)
                 PromptResponse(GRAPH, usage = ProtocolUsage(5, 2))
             }
             val budget = KgExtractionBudget(maxDurationMs = 1_000)
-            val first = launch { extractor(protocol, budget, root).extractCandidate("a".repeat(10), "document") }
+            val first = launch { extractor(protocol, budget, root).extractCandidate("a".repeat(10), "document", runId = "run-a") }
             runCurrent()
             assertThat(reservedElapsed).isEqualTo(1_000)
             advanceTimeBy(500)
             first.cancelAndJoin()
 
-            val resumed = extractor(protocol, budget, root).extractCandidate("a".repeat(10), "document")
+            val resumed = extractor(protocol, budget, root).extractCandidate("a".repeat(10), "document", runId = "run-a")
 
-            assertThat(testScheduler.currentTime).isEqualTo(1_000)
+            assertThat(testScheduler.currentTime).isEqualTo(500)
             assertThat(resumed.status).isEqualTo(KgExtractionStatus.PARTIAL)
             assertThat(resumed.progress!!.reason).isEqualTo(KgExtractionStopReason.DURATION)
             assertThat(resumed.progress!!.processedChunks).isEqualTo(0)
@@ -154,7 +156,7 @@ class GraphExtractionBudgetTest {
     }
 
     @Test
-    fun `同文档版本切换模型或切块不会重新获得调用预算`() = runTest {
+    fun `切换模型或窗口后新运行重新获得调用预算`() = runTest {
         for ((model, chunk) in listOf("other::model" to 10, "owner::model" to 5)) {
             val root = Files.createTempDirectory("kg-budget-configuration").toFile()
             try {
@@ -169,8 +171,8 @@ class GraphExtractionBudgetTest {
 
                 val result = extractor(protocol, budget, root, model, chunk).extractCandidate("a".repeat(20), "document")
 
-                assertThat(requests).isEqualTo(1)
-                assertThat(result.progress!!.processedChunks).isEqualTo(0)
+                assertThat(requests).isEqualTo(2)
+                assertThat(result.progress!!.processedChunks).isEqualTo(1)
                 assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.CALLS)
             } finally {
                 root.deleteRecursively()
@@ -195,16 +197,16 @@ class GraphExtractionBudgetTest {
     }
 
     @Test
-    fun `估算匹配抽取切块边界且百万字符需要确认`() {
+    fun `估算按窗口与追加轮计算确认阈值`() {
         val budget = KgExtractionBudget()
-        assertThat(budget.estimate("a".repeat(11_300), 800, 100).requiresConfirmation).isFalse()
-        assertThat(budget.estimate("a".repeat(11_301), 800, 100).requiresConfirmation).isTrue()
-        val large = budget.estimate("a".repeat(1_000_000), 800, 100)
-        assertThat(large.calls).isEqualTo(1_429)
+        assertThat(budget.estimate("a".repeat(128_000)).requiresConfirmation).isFalse()
+        assertThat(budget.estimate("a".repeat(128_001)).requiresConfirmation).isTrue()
+        val large = budget.estimate("a".repeat(1_000_000))
+        assertThat(large.windows).isEqualTo(63)
+        assertThat(large.calls).isEqualTo(126)
         assertThat(large.requiresConfirmation).isTrue()
-        assertThat(large.budgetedCalls).isEqualTo(32)
-        assertThat(large.outputTokenLimit).isEqualTo(1_429L * 4096)
-        assertThat(budget.copy(requestMaxOutputTokens = 2048).estimate("a".repeat(11_301), 800, 100).requiresConfirmation).isTrue()
+        assertThat(large.budgetedCalls).isEqualTo(64)
+        assertThat(large.outputTokenLimit).isEqualTo(126L * 16384)
     }
 
     private fun TestScope.extractor(
@@ -213,7 +215,7 @@ class GraphExtractionBudgetTest {
     ) = GraphExtractor(
         testKgClient(protocol), mockk(relaxed = true), modelId, chunkSize = chunkSize, chunkOverlap = 0,
         checkpointRoot = root, dispatcher = StandardTestDispatcher(testScheduler), budget = budget,
-        nowMs = { testScheduler.currentTime },
+        nowMs = { testScheduler.currentTime }, concurrency = 1, gleaningPasses = 0,
     )
 
     companion object {

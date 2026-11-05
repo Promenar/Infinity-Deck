@@ -71,14 +71,14 @@ class KgApplicationRoutingTest {
         ))
         assertThat(app.graphExtractor.extractCandidate("text").isSuccess).isTrue()
         assertThat(app.microGraphExtractor.extract(listOf(SearchResult(id = "r", content = "text", similarity = 1f, createdAt = 0)), "q", "s").isSuccess).isTrue()
-        coVerify(exactly = 2) { ownerProtocol.sendPromptSync(match { it.model == "main" }) }
+        coVerify(exactly = 3) { ownerProtocol.sendPromptSync(match { it.model == "main" }) }
     }
 
     @Test
     fun `全量抽取仅向模型所属Provider发送远端ID`() = runTest {
         val result = app.graphExtractor.extractCandidate("document")
         assertThat(result.error).isNull()
-        coVerify(exactly = 1) { ownerProtocol.sendPromptSync(match { it.model == "remote" }) }
+        coVerify(exactly = 2) { ownerProtocol.sendPromptSync(match { it.model == "remote" }) }
         coVerify(exactly = 0) { defaultProtocol.sendPromptSync(any()) }
     }
 

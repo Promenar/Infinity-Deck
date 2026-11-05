@@ -67,10 +67,15 @@ fun interface KnowledgeGraphCandidateBuilder {
     suspend fun build(text: String, fileUuid: String, contentHash: String, onProgress: suspend (KgExtractionProgress) -> Unit): ExtractionResult =
         build(text, fileUuid, contentHash)
 
+    suspend fun build(text: String, fileUuid: String, contentHash: String, runId: String?, onProgress: suspend (KgExtractionProgress) -> Unit): ExtractionResult =
+        build(text, fileUuid, contentHash, onProgress)
+
     fun estimate(text: String, config: RagConfiguration): KgExtractionEstimate =
-        KgExtractionBudget.from(config).estimate(text, config.docChunkSize.coerceAtLeast(400), config.chunkOverlap.coerceAtMost(200))
+        KgExtractionBudget.from(config).estimate(text, config.kgWindowChars, config.kgGleaningPasses,
+            systemPrompt = config.kgExtractionPrompt?.takeIf { it.isNotBlank() } ?: GraphExtractor.DEFAULT_KG_PROMPT)
 
     suspend fun onCommitted(text: String, fileUuid: String, contentHash: String) = Unit
+    suspend fun onCommitted(text: String, fileUuid: String, contentHash: String, runId: String?) = onCommitted(text, fileUuid, contentHash)
 }
 
 class GraphExtractorKnowledgeGraphCandidateBuilder(
@@ -82,10 +87,18 @@ class GraphExtractorKnowledgeGraphCandidateBuilder(
     override suspend fun build(text: String, fileUuid: String, contentHash: String, onProgress: suspend (KgExtractionProgress) -> Unit): ExtractionResult =
         graphExtractor.extractCandidate(text, fileUuid, contentHash, onProgress, retainCompletedCheckpoints = true)
 
+    override suspend fun build(text: String, fileUuid: String, contentHash: String, runId: String?, onProgress: suspend (KgExtractionProgress) -> Unit): ExtractionResult =
+        graphExtractor.extractCandidate(text, fileUuid, contentHash, onProgress, retainCompletedCheckpoints = true,
+            runId = runId ?: UUID.randomUUID().toString())
+
     override fun estimate(text: String, config: RagConfiguration) = graphExtractor.estimate(text)
 
     override suspend fun onCommitted(text: String, fileUuid: String, contentHash: String) {
         graphExtractor.clearCommittedCheckpoints(text, fileUuid, contentHash)
+    }
+
+    override suspend fun onCommitted(text: String, fileUuid: String, contentHash: String, runId: String?) {
+        graphExtractor.clearCommittedCheckpoints(text, fileUuid, contentHash, runId)
     }
 }
 
@@ -151,8 +164,8 @@ class WorkspaceDocumentIndexCandidateBuilder(
             val estimate = builder.estimate(extraction.graphText, ragConfig)
             val result = if (estimate.requiresConfirmation && event.kgStrategy != KgExtractionBudget.CONFIRMED_STRATEGY) {
                 ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
-                    progress = KgExtractionProgress(0, estimate.calls, KgExtractionStopReason.CONFIRMATION_REQUIRED))
-            } else builder.build(extraction.graphText, event.fileUuid, event.contentHash, event.onKgProgress)
+                    progress = KgExtractionProgress(0, estimate.windows, KgExtractionStopReason.CONFIRMATION_REQUIRED))
+            } else builder.build(extraction.graphText, event.fileUuid, event.contentHash, event.kgRunId, event.onKgProgress)
             result.progress?.let { event.onKgProgress(it) }
             if (!result.isSuccess || result.status == KgExtractionStatus.PARTIAL || result.progress?.isPartial == true) {
                 result.copy(nodes = emptyList(), edges = emptyList())
@@ -175,7 +188,7 @@ class WorkspaceDocumentIndexCandidateBuilder(
             preserveExistingGraph = graph != null && !graphComplete,
             onGraphCommitted = {
                 if (graphComplete) {
-                    graphCandidateBuilder?.onCommitted(extraction.graphText, event.fileUuid, event.contentHash)
+                    graphCandidateBuilder?.onCommitted(extraction.graphText, event.fileUuid, event.contentHash, event.kgRunId)
                 }
             },
             onEmbeddingCommitted = {

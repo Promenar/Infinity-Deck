@@ -284,6 +284,7 @@ class VectorizationQueue(
             targetContentHash = targetContentHash,
             targetEpoch = targetEpoch,
             userContent = null,
+            assistantMessageId = UUID.randomUUID().toString(),
         )
         val upsert = vectorizationTaskDao.upsertTarget(incoming.toEntity())
         if (upsert.outcome == VectorizationTaskTargetUpsertOutcome.IGNORED_OLDER) {
@@ -305,6 +306,7 @@ class VectorizationQueue(
                 skipVectorization = if (restarting) skipVectorization else active.skipVectorization && skipVectorization,
                 sourceMimeType = sourceMimeType,
                 contentTruncated = false, lastChunkIndex = 0, totalChunks = null,
+                assistantMessageId = UUID.randomUUID().toString(),
                 subStatus = "等待重新索引",
                 updatedAt = System.currentTimeMillis(),
             )
@@ -657,6 +659,7 @@ class VectorizationQueue(
             kgStrategy = task.kgStrategy,
             useConfiguredKgStrategy = false,
             activeTaskId = task.id,
+            kgRunId = task.assistantMessageId ?: "legacy-${task.id}",
             onEmbeddingProgress = { progress ->
                 currentCoroutineContext().ensureActive()
                 task.status = "vectorizing"
@@ -1182,6 +1185,7 @@ class VectorizationQueue(
             status = "pending",
             kgStrategy = legacy.kgStrategy,
             skipVectorization = legacy.skipVectorization,
+            assistantMessageId = UUID.randomUUID().toString(),
             sourceMimeType = mimeType,
             targetContentHash = entry.hash,
             targetEpoch = entry.updatedAt,

@@ -75,7 +75,7 @@ object LibraryKnowledgeModule {
                         ProviderManager.getInstance().providerModels.value.firstOrNull { it.id == id }?.name
                             ?.takeIf { it.isNotBlank() } ?: id.substringAfter("::", id)
                     }
-                    GraphEstimate(estimate.calls, estimate.calls, estimate.outputTokenLimit, estimate.requiresConfirmation, label)
+                    GraphEstimate(estimate.windows, estimate.calls, estimate.outputTokenLimit, estimate.requiresConfirmation, label)
                 }
             },
             enqueueGraph = indexer::enqueueGraph,

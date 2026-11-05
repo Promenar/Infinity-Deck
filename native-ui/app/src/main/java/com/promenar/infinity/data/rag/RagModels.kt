@@ -99,7 +99,7 @@ data class RagConfiguration(
     val kgFreeMode: Boolean = false,
     val kgDomainAuto: Boolean = false,
     val kgDomainHint: String? = null,
-    /** 每个 chunk 的 KG 抽取超时（秒），默认 120 秒 */
+    /** 每次 KG 请求的超时（秒）。 */
     val kgExtractionTimeoutSeconds: Int = 120,
     val kgRetrievalHops: Int = 1,
     val kgMaxSeeds: Int = 12,
@@ -112,10 +112,13 @@ data class RagConfiguration(
     /** 每轮后台抽取事件与可变状态，默认关闭。 */
     val memoryStateExtractionEnabled: Boolean = false,
     val kgJitMinSeeds: Int = 2,
-    val kgMaxCalls: Int = 32,
-    val kgMaxOutputTokens: Int = 32768,
-    val kgRequestMaxOutputTokens: Int = 4096,
-    val kgMaxDurationSeconds: Int = 180,
+    val kgWindowChars: Int = 16000,
+    val kgConcurrency: Int = 4,
+    val kgGleaningPasses: Int = 1,
+    val kgMaxCalls: Int = 64,
+    val kgMaxOutputTokens: Int = 262144,
+    val kgRequestMaxOutputTokens: Int = 16384,
+    val kgMaxDurationSeconds: Int = 600,
     val kgLargeDocumentConfirmCalls: Int = 16,
     val costStrategy: String = "on-demand",
     val trackRetrievalMetrics: Boolean = false,

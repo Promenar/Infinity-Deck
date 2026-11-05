@@ -118,7 +118,7 @@ class KgIndexPipelineTest {
 
     @Test
     fun `自动大文档先完成向量索引且不绕过KG确认或清空旧图`() = runTest {
-        val file = register("auto-large.txt", "text/plain", "a".repeat(14_000).toByteArray())
+        val file = register("auto-large.txt", "text/plain", "a".repeat(128_001).toByteArray())
         seedOld(file)
         var graphCalls = 0
         val (queue, _) = pipeline { _, _, _ ->
@@ -135,8 +135,8 @@ class KgIndexPipelineTest {
         val task = database.vectorizationTaskDao().getByDocId(file.uuid).single()
         assertThat(task.status).isEqualTo("partial")
         assertThat(task.lastChunkIndex).isEqualTo(0)
-        assertThat(task.totalChunks).isEqualTo(20)
-        assertThat(task.subStatus).contains("已处理 0 / 20 分块")
+        assertThat(task.totalChunks).isEqualTo(9)
+        assertThat(task.subStatus).contains("已处理 0 / 9 分块")
         assertThat(database.fileEntryDao().getByUuid("root", file.uuid)!!.kgExtractedAt).isEqualTo(1)
         queue.shutdown()
     }
@@ -213,7 +213,7 @@ class KgIndexPipelineTest {
         }
         val extractor = GraphExtractor(testKgClient(protocol), GraphStore(database), "owner::model",
             chunkSize = 10, chunkOverlap = 0, checkpointRoot = File(root, "rollback-checkpoints"),
-            dispatcher = StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 3),
+            dispatcher = StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 3), concurrency = 1, gleaningPasses = 0,
             nowMs = { testScheduler.currentTime })
         val builder = WorkspaceDocumentIndexCandidateBuilder(database.fileEntryDao(), embedding, RagConfiguration(),
             dispatcher = StandardTestDispatcher(testScheduler), checkpointRoot = File(root, "embedding-checkpoints"), graphCandidateBuilder = GraphExtractorKnowledgeGraphCandidateBuilder(extractor))

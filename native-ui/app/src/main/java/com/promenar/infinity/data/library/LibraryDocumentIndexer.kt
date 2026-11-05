@@ -79,7 +79,8 @@ class LibraryDocumentIndexer(
                         it == KgExtractionBudget.CONFIRMED_STRATEGY &&
                             (legacy.targetContentHash != current.hash || legacy.targetEpoch != current.updatedAt)
                     } ?: "full".takeIf { legacy.kgStrategy != null || graphRetry },
-                    skipVectorization = if (graphRetry) retryGraphOnly else legacy.skipVectorization, createdAt = now, updatedAt = now,
+                    skipVectorization = if (graphRetry) retryGraphOnly else legacy.skipVectorization,
+                    assistantMessageId = UUID.randomUUID().toString(), createdAt = now, updatedAt = now,
                 )
                 (taskDao.migrateLegacyToTarget(legacy.id, replacement) != null).also { success ->
                     if (success) migrated = replacement

@@ -2,6 +2,7 @@ package com.promenar.infinity.data.rag
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
@@ -12,9 +13,10 @@ internal data class GraphCheckpointIdentity(
     val textHash: String,
     val modelId: String?,
     val promptHash: String,
-    val chunkSize: Int,
-    val chunkOverlap: Int,
-    val validationVersion: Int = 1,
+    val windowChars: Int,
+    val gleaningPasses: Int,
+    val algorithmVersion: Int = KgWindowing.ALGORITHM_VERSION,
+    val validationVersion: Int = 2,
 )
 
 @Serializable
@@ -24,10 +26,11 @@ internal data class GraphChunkCheckpoint(
     val result: ExtractionResult? = null,
     val splitPaths: Set<String> = emptySet(),
     val parts: Map<String, ExtractionResult> = emptyMap(),
+    val gleaning: Map<Int, ExtractionResult> = emptyMap(),
 )
 
 @Serializable
-private data class GraphBudgetCheckpoint(val contentHash: String, val state: GraphExtractionBudgetState)
+private data class GraphBudgetCheckpoint(val contentHash: String, val runId: String, val state: GraphExtractionBudgetState)
 
 /** 路径不接受原始文件名；正文和配置身份必须同时匹配才能恢复。 */
 internal class GraphExtractionCheckpoints(private val root: File, private val budgetRoot: File = root) {
@@ -38,7 +41,8 @@ internal class GraphExtractionCheckpoints(private val root: File, private val bu
         if (!file.isFile) null else {
             val saved = Json.decodeFromString<GraphChunkCheckpoint>(file.readText())
             if (saved.identity == identity && saved.chunkHash == kgSha256(chunk) &&
-                (saved.result == null || saved.result.isSuccess) && saved.parts.values.all { it.isSuccess }) saved
+                (saved.result == null || saved.result.isSuccess) && saved.parts.values.all { it.isSuccess } &&
+                saved.gleaning.values.all { it.isSuccess }) saved
             else { file.delete(); null }
         }
     } catch (_: Exception) { null }
@@ -50,7 +54,7 @@ internal class GraphExtractionCheckpoints(private val root: File, private val bu
         legacyDirectory(docId)?.deleteRecursively()
         val dir = directory(docId)
         val current = identityKey(identity)
-        // 配置变化只让分块候选失效，同一文档内容的已发生费用不能返还。
+        // 内容或配置变化时仅保留当前身份的候选。
         dir.listFiles()?.filter { it.isDirectory && it.name != current }?.forEach { it.deleteRecursively() }
     }
 
@@ -63,20 +67,37 @@ internal class GraphExtractionCheckpoints(private val root: File, private val bu
         writeAtomically(chunkFile(docId, identity, index), Json.encodeToString(GraphChunkCheckpoint.serializer(), checkpoint))
     }
 
-    fun loadBudget(docId: String, identity: GraphCheckpointIdentity): GraphExtractionBudgetState? {
-        val file = budgetFile(docId, identity)
+    fun prepareBudget(docId: String, runId: String) {
+        val dir = budgetDirectory(docId)
+        val marker = File(dir, "active_run")
+        if (marker.isFile && marker.readText() == runId) return
+        dir.listFiles()?.filter { it.isFile && (it.name == "active_run" || it.name.startsWith("budget_")) }
+            ?.forEach { it.delete() }
+        writeAtomically(marker, runId)
+    }
+
+    fun loadBudget(docId: String, identity: GraphCheckpointIdentity, runId: String = "legacy"): GraphExtractionBudgetState? {
+        val file = budgetFile(docId, identity, runId)
         if (!file.isFile) return null
         return try {
-            val saved = Json.decodeFromString<GraphBudgetCheckpoint>(file.readText())
-            check(saved.contentHash == identity.contentHash)
+            val content = file.readText()
+            val root = Json.parseToJsonElement(content) as? JsonObject
+            if (root != null && "runId" !in root) {
+                file.delete()
+                return null
+            }
+            val saved = Json.decodeFromString<GraphBudgetCheckpoint>(content)
+            check(saved.contentHash == identity.contentHash && saved.runId == runId)
             saved.state.also { check(it.calls >= 0 && it.outputTokens >= 0 && it.elapsedMs >= 0) }
         } catch (_: Exception) {
             throw IllegalStateException("知识图谱预算账本损坏，无法安全恢复")
         }
     }
 
-    fun saveBudget(docId: String, identity: GraphCheckpointIdentity, state: GraphExtractionBudgetState) {
-        writeAtomically(budgetFile(docId, identity), Json.encodeToString(GraphBudgetCheckpoint.serializer(), GraphBudgetCheckpoint(identity.contentHash, state)))
+    fun saveBudget(docId: String, identity: GraphCheckpointIdentity, state: GraphExtractionBudgetState, runId: String = "legacy") {
+        val marker = File(budgetDirectory(docId), "active_run")
+        if (marker.exists() && marker.readText() != runId) return
+        writeAtomically(budgetFile(docId, identity, runId), Json.encodeToString(GraphBudgetCheckpoint.serializer(), GraphBudgetCheckpoint(identity.contentHash, runId, state)))
     }
 
     private fun writeAtomically(file: File, content: String) {
@@ -95,10 +116,14 @@ internal class GraphExtractionCheckpoints(private val root: File, private val bu
     }
 
     /** 成功提交只释放该候选身份与文档版本，不能删除新版本的账本。 */
-    fun clear(docId: String, identity: GraphCheckpointIdentity) {
+    fun clear(docId: String, identity: GraphCheckpointIdentity, runId: String? = null) {
         File(directory(docId), identityKey(identity)).deleteRecursively()
-        val budget = budgetFile(docId, identity)
-        check(!budget.exists() || budget.delete()) { "无法清理已提交的图谱预算账本" }
+        val prefix = "budget_${kgSha256(identity.contentHash)}_"
+        val budgets = if (runId != null) listOf(budgetFile(docId, identity, runId))
+            else budgetDirectory(docId).listFiles()?.filter { it.name.startsWith(prefix) }.orEmpty()
+        budgets.forEach { check(!it.exists() || it.delete()) { "无法清理已提交的图谱预算账本" } }
+        val marker = File(budgetDirectory(docId), "active_run")
+        if (marker.isFile && (runId == null || marker.readText() == runId)) marker.delete()
         listOf(directory(docId), budgetDirectory(docId)).distinct().forEach { dir ->
             if (dir.isDirectory && dir.listFiles()?.isEmpty() == true) dir.delete()
         }
@@ -110,8 +135,8 @@ internal class GraphExtractionCheckpoints(private val root: File, private val bu
     private fun identityKey(identity: GraphCheckpointIdentity) = kgSha256(Json.encodeToString(GraphCheckpointIdentity.serializer(), identity))
     private fun chunkFile(docId: String, identity: GraphCheckpointIdentity, index: Int) =
         File(File(directory(docId), identityKey(identity)), "chunk_$index.json")
-    private fun budgetFile(docId: String, identity: GraphCheckpointIdentity) =
-        File(budgetDirectory(docId), "budget_${kgSha256(identity.contentHash)}.json")
+    private fun budgetFile(docId: String, identity: GraphCheckpointIdentity, runId: String) =
+        File(budgetDirectory(docId), "budget_${kgSha256(identity.contentHash)}_${kgSha256(runId)}.json")
     private fun budgetDirectory(docId: String) = File(budgetRoot, kgSha256(docId))
 }
 

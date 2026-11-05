@@ -15,6 +15,7 @@ sealed interface FileIndexEvent {
         override val contentHash: String,
         val targetEpoch: Long,
         val activeTaskId: String? = null,
+        val kgRunId: String? = null,
         val skipVectorization: Boolean = false,
         val kgStrategy: String? = null,
         val useConfiguredKgStrategy: Boolean = true,

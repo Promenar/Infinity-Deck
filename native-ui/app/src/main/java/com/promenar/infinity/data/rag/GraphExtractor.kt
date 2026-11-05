@@ -1,14 +1,24 @@
 package com.promenar.infinity.data.rag
 
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.*
 import java.io.File
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /** 只构建候选图；文件图谱只能由文档索引事务提交。 */
 class GraphExtractor(
@@ -16,19 +26,24 @@ class GraphExtractor(
     private val graphStore: GraphStore,
     private val modelId: String? = null,
     private val systemPrompt: String = DEFAULT_KG_PROMPT,
-    private val chunkSize: Int = 1200,
-    private val chunkOverlap: Int = 200,
+    private val chunkSize: Int = 16000,
+    @Suppress("UNUSED_PARAMETER") chunkOverlap: Int = 0,
     private val timeoutMs: Long = 120_000L,
     private val checkpointRoot: File? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val budget: KgExtractionBudget = KgExtractionBudget(),
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
     private val budgetRoot: File? = null,
+    private val concurrency: Int = 4,
+    private val gleaningPasses: Int = 1,
+    private val modelLimits: () -> KgModelLimits? = { null },
 ) {
     init {
-        require(chunkSize > 0 && chunkOverlap in 0 until chunkSize) { "知识图谱切块参数无效" }
+        require(chunkSize >= 2 && concurrency in 1..8 && gleaningPasses in 0..2) { "知识图谱窗口配置无效" }
         require(timeoutMs > 0) { "知识图谱超时必须大于 0" }
     }
+
+    private val pendingCommits = ConcurrentHashMap<Pair<String, String>, Pair<GraphCheckpointIdentity, String>>()
 
     private val checkpoints: GraphExtractionCheckpoints
         get() = GraphExtractionCheckpoints(
@@ -41,169 +56,226 @@ class GraphExtractor(
         onProgress: suspend (KgExtractionProgress) -> Unit = {},
         retainCompletedCheckpoints: Boolean = false,
         sessionId: String? = null,
-    ): ExtractionResult =
-        withContext(dispatcher) {
-            val identity = checkpointIdentity(text, contentHash)
-            val store = docId?.let { checkpoints }
-            if (docId != null) store?.prepare(docId, identity)
-            val nodes = mutableListOf<ExtractedNode>()
-            val edges = mutableListOf<ExtractedEdge>()
-            val savedBudget = docId?.let { store?.loadBudget(it, identity) }
-            var state = savedBudget ?: GraphExtractionBudgetState()
-            val previousElapsed = state.elapsedMs
-            val startedAt = nowMs()
-            val totalChunks = KgExtractionBudget.chunkCount(text, chunkSize, chunkOverlap)
-            var processedChunks = 0
-            var budgetCleared = false
-            fun elapsed() = previousElapsed + (nowMs() - startedAt).coerceAtLeast(0)
-            fun progress(reason: KgExtractionStopReason? = null) =
-                KgExtractionProgress(processedChunks, totalChunks, reason, state.calls, elapsed())
-            fun persistBudget(reservedDurationMs: Long = 0) {
-                state = state.copy(elapsedMs = elapsed())
-                if (docId != null) store?.saveBudget(docId, identity, state.copy(elapsedMs = state.elapsedMs + reservedDurationMs))
-            }
-            suspend fun finish(reason: KgExtractionStopReason? = null): ExtractionResult {
-                currentCoroutineContext().ensureActive()
-                val finalProgress = progress(reason)
-                if (reason != null || retainCompletedCheckpoints) persistBudget() else if (docId != null) {
-                    store?.clear(docId, identity)
-                    budgetCleared = true
+        runId: String = UUID.randomUUID().toString(),
+    ): ExtractionResult = withContext(dispatcher) {
+        val limits = modelLimits()
+        val requestLimit = KgWindowing.effectiveOutputLimit(budget.requestMaxOutputTokens, limits)
+        val windowChars = KgWindowing.effectiveWindowChars(chunkSize, limits, requestLimit, systemPrompt)
+        val identity = checkpointIdentity(text, contentHash, windowChars)
+        val ledgerRunId = ledgerRunId(runId, identity, limits)
+        val store = docId?.let { checkpoints }
+        if (docId != null) {
+            store?.prepare(docId, identity)
+            store?.prepareBudget(docId, ledgerRunId)
+        }
+        val windows = KgWindowing.split(text, windowChars)
+        val mutex = Mutex()
+        val semaphore = Semaphore(concurrency)
+        var state = if (docId != null) store?.loadBudget(docId, identity, ledgerRunId) ?: GraphExtractionBudgetState()
+            else GraphExtractionBudgetState()
+        val previousElapsed = state.elapsedMs
+        val startedAt = nowMs()
+        val inFlight = mutableMapOf<Int, Long>()
+        val completed = arrayOfNulls<ExtractionResult>(windows.size)
+        var processed = 0
+        var stopped: ExtractionResult? = null
+        var budgetCleared = false
+        fun elapsed() = previousElapsed + (nowMs() - startedAt).coerceAtLeast(0)
+        fun progress(reason: KgExtractionStopReason? = null) =
+            KgExtractionProgress(processed, windows.size, reason, state.calls, elapsed())
+        fun persistBudget() {
+            val remainingInFlight = inFlight.values.maxOfOrNull { (it - nowMs()).coerceAtLeast(0) } ?: 0
+            if (docId != null) store?.saveBudget(docId, identity, state.copy(elapsedMs = elapsed() + remainingInFlight), ledgerRunId)
+        }
+        fun stopReason(): KgExtractionStopReason? = when {
+            state.calls >= budget.maxCalls -> KgExtractionStopReason.CALLS
+            state.outputTokens >= budget.maxOutputTokens -> KgExtractionStopReason.OUTPUT_TOKENS
+            elapsed() >= budget.maxDurationMs -> KgExtractionStopReason.DURATION
+            else -> null
+        }
+        suspend fun request(part: String, history: List<ProtocolMessage>): ExtractionResult {
+            val retriedStatuses = mutableSetOf<String>()
+            while (true) {
+                val reservation = mutex.withLock {
+                    val reason = stopReason()
+                    if (reason != null) return@withLock null to reason
+                    val limit = minOf(requestLimit.toLong(), budget.maxOutputTokens - state.outputTokens).toInt()
+                    val duration = minOf(timeoutMs, (budget.maxDurationMs - elapsed()).coerceAtLeast(1))
+                    state = state.copy(calls = state.calls + 1, outputTokens = state.outputTokens + limit)
+                    val id = state.calls
+                    inFlight[id] = nowMs() + duration
+                    persistBudget()
+                    Triple(id, limit, duration) to null
                 }
-                onProgress(finalProgress)
-                return ValidatedGraph.from(nodes, edges).toExtractionResult().copy(
-                    status = if (reason == null) KgExtractionStatus.SUCCESS else KgExtractionStatus.PARTIAL,
-                    progress = finalProgress,
-                    usage = state.usage,
-                )
-            }
-            try {
-                onProgress(progress())
-                for ((index, chunk) in splitText(text).withIndex()) {
-                    currentCoroutineContext().ensureActive()
-                    var checkpoint = docId?.let { store?.loadCheckpoint(it, identity, index, chunk) }
-                        ?: GraphChunkCheckpoint(identity, kgSha256(chunk))
-                    fun saveCheckpoint() {
-                        if (docId == null) return
-                        try {
-                            store?.saveCheckpoint(docId, identity, index, checkpoint)
-                        } catch (_: Exception) {
-                            // 断点是可丢弃缓存，失败不改变候选结果或旧图谱。
-                            InfinityLogger.log("[KG] 断点写入失败")
-                        }
-                    }
-                    fun chargeLegacy(result: ExtractionResult) {
-                        if (savedBudget == null) state = state.copy(
-                            calls = state.calls + 1,
-                            outputTokens = state.outputTokens + result.usage.outputTokens.takeIf { it > 0 }
-                                .let { it ?: budget.requestMaxOutputTokens.toLong() },
-                            usage = state.usage + result.usage,
-                        )
-                    }
-                    suspend fun extractPart(part: String, path: String, depth: Int): ExtractionResult {
-                        currentCoroutineContext().ensureActive()
-                        checkpoint.parts[path]?.let { cached ->
-                            chargeLegacy(cached)
-                            return cached
-                        }
-                        if (path in checkpoint.splitPaths) {
-                            val (left, right) = splitForRetry(part)
-                            val first = extractPart(left, path + "0", depth + 1)
-                            if (!first.isSuccess || first.progress?.isPartial == true) return first
-                            val second = extractPart(right, path + "1", depth + 1)
-                            if (!second.isSuccess || second.progress?.isPartial == true) return second
-                            return ExtractionResult(first.nodes + second.nodes, first.edges + second.edges,
-                                usage = first.usage + second.usage)
-                        }
-                        val reason = when {
-                            state.calls >= budget.maxCalls -> KgExtractionStopReason.CALLS
-                            state.outputTokens >= budget.maxOutputTokens -> KgExtractionStopReason.OUTPUT_TOKENS
-                            elapsed() >= budget.maxDurationMs -> KgExtractionStopReason.DURATION
-                            else -> null
-                        }
-                        if (reason != null) return ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
-                            progress = progress(reason))
-                        val requestLimit = minOf(budget.requestMaxOutputTokens.toLong(), budget.maxOutputTokens - state.outputTokens).toInt()
-                        val remainingMs = (budget.maxDurationMs - elapsed()).coerceAtLeast(1)
-                        // 请求前预留输出和在途时长，响应后结算已发生的费用。
-                        state = state.copy(calls = state.calls + 1, outputTokens = state.outputTokens + requestLimit)
-                        persistBudget(minOf(timeoutMs, remainingMs))
-                        val response = requestClient.extract(modelId, systemPrompt, part, minOf(timeoutMs, remainingMs), requestLimit, sessionId = sessionId)
-                        currentCoroutineContext().ensureActive()
-                        val hasResponse = response.isSuccess || response.status == KgExtractionStatus.PARSE_FAILURE
-                        val chargedOutput = if (hasResponse) {
-                            if (response.usage.estimated) maxOf(requestLimit.toLong(), response.usage.outputTokens) else response.usage.outputTokens
-                        } else requestLimit.toLong()
-                        state = state.copy(
-                            outputTokens = state.outputTokens - requestLimit + chargedOutput,
-                            usage = state.usage + if (hasResponse) response.usage else KgTokenUsage(estimated = true),
-                        )
-                        val shouldSplit = response.status == KgExtractionStatus.PARSE_FAILURE && depth < 2 &&
-                            part.length > 1 && !(part.length == 2 && part[0].isHighSurrogate() && part[1].isLowSurrogate())
-                        // 先保存已完成的子块或拆分决定；进程中断时预算仍保留请求前的保守预留。
-                        if (shouldSplit) {
-                            checkpoint = checkpoint.copy(splitPaths = checkpoint.splitPaths + path)
-                            saveCheckpoint()
-                        } else if (response.isSuccess) {
-                            checkpoint = checkpoint.copy(parts = checkpoint.parts + (path to response))
-                            saveCheckpoint()
-                        }
-                        persistBudget()
-                        if (response.status == KgExtractionStatus.TIMEOUT && elapsed() >= budget.maxDurationMs) {
-                            return ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
-                                progress = progress(KgExtractionStopReason.DURATION))
-                        }
-                        if (shouldSplit) return extractPart(part, path, depth)
-                        return response
-                    }
-                    val cached = checkpoint.result
-                    val result = if (cached != null) {
-                        // 旧断点没有预算账本时，成功分块也必须计入文档预算。
-                        if (checkpoint.parts.isEmpty()) chargeLegacy(cached) else if (savedBudget == null) {
-                            checkpoint.parts.values.forEach(::chargeLegacy)
-                            state = state.copy(calls = state.calls + checkpoint.splitPaths.size,
-                                outputTokens = state.outputTokens + checkpoint.splitPaths.size.toLong() * budget.requestMaxOutputTokens)
-                        }
-                        cached
-                    } else extractPart(chunk, "", 0)
-                    currentCoroutineContext().ensureActive()
-                    result.progress?.reason?.let { return@withContext finish(it) }
-                    if (!result.isSuccess) return@withContext result.copy(progress = progress(), usage = state.usage)
-                    if (cached == null && docId != null) {
-                        checkpoint = checkpoint.copy(result = result)
-                        saveCheckpoint()
-                    }
-                    nodes += result.nodes.take((KgGraphValidation.MAX_RAW_NODES - nodes.size).coerceAtLeast(0))
-                    edges += result.edges.take((KgGraphValidation.MAX_RAW_EDGES - edges.size).coerceAtLeast(0))
-                    processedChunks++
-                    onProgress(progress())
+                val reserved = reservation.first ?: return ExtractionResult(emptyList(), emptyList(),
+                    status = KgExtractionStatus.PARTIAL, progress = mutex.withLock { progress(reservation.second) })
+                val response = requestClient.extract(modelId, systemPrompt, part, reserved.third, reserved.second,
+                    sessionId = sessionId, historyMessages = history)
+                mutex.withLock {
+                    inFlight.remove(reserved.first)
+                    val hasResponse = response.isSuccess || response.status == KgExtractionStatus.PARSE_FAILURE
+                    val output = if (hasResponse) {
+                        if (response.usage.estimated) maxOf(reserved.second.toLong(), response.usage.outputTokens) else response.usage.outputTokens
+                    } else reserved.second.toLong()
+                    state = state.copy(outputTokens = state.outputTokens - reserved.second + output,
+                        usage = state.usage + if (hasResponse) response.usage else KgTokenUsage(estimated = true))
+                    persistBudget()
                 }
-                finish()
-            } finally {
-                if (docId != null && !budgetCleared) {
-                    // 取消仍消耗在途时长，恢复时不能重新获得这部分预算。
-                    withContext(NonCancellable + dispatcher) {
-                        try { persistBudget() } catch (_: Exception) { InfinityLogger.log("[KG] 预算账本写入失败") }
-                    }
+                val retryStatus = listOf("[HTTP 429]", "[HTTP 503]")
+                    .firstOrNull { response.error?.startsWith(it) == true }
+                if (response.status == KgExtractionStatus.PROVIDER_ERROR && retryStatus != null && retriedStatuses.add(retryStatus)) {
+                    delay(2_000)
+                    continue
                 }
+                if (response.status == KgExtractionStatus.TIMEOUT && mutex.withLock { elapsed() >= budget.maxDurationMs }) {
+                    return ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
+                        progress = mutex.withLock { progress(KgExtractionStopReason.DURATION) })
+                }
+                return response
             }
         }
-
-    fun clearCheckpoints(docId: String) { checkpoints.clear(docId) }
-
-    fun clearCommittedCheckpoints(text: String, docId: String, contentHash: String) {
-        checkpoints.clear(docId, checkpointIdentity(text, contentHash))
+        suspend fun processWindow(index: Int, window: String): ExtractionResult {
+            var checkpoint = if (docId != null) mutex.withLock { store?.loadCheckpoint(docId, identity, index, window) }
+                ?: GraphChunkCheckpoint(identity, kgSha256(window)) else GraphChunkCheckpoint(identity, kgSha256(window))
+            suspend fun save() {
+                if (docId == null) return
+                mutex.withLock {
+                    try { store?.saveCheckpoint(docId, identity, index, checkpoint) }
+                    catch (_: Exception) { InfinityLogger.log("[KG] 断点写入失败") }
+                }
+            }
+            suspend fun extractPart(part: String, path: String, depth: Int): ExtractionResult {
+                checkpoint.parts[path]?.let { return it }
+                if (path in checkpoint.splitPaths) {
+                    val (left, right) = splitForRetry(part)
+                    val first = extractPart(left, path + "0", depth + 1)
+                    if (!first.isSuccess || first.progress?.isPartial == true) return first
+                    val second = extractPart(right, path + "1", depth + 1)
+                    if (!second.isSuccess || second.progress?.isPartial == true) return second
+                    return ExtractionResult(first.nodes + second.nodes, first.edges + second.edges)
+                }
+                val response = request(part, emptyList())
+                val split = response.status == KgExtractionStatus.PARSE_FAILURE && depth < 2 && part.length > 1 &&
+                    !(part.length == 2 && part[0].isHighSurrogate() && part[1].isLowSurrogate())
+                if (split) {
+                    checkpoint = checkpoint.copy(splitPaths = checkpoint.splitPaths + path)
+                    save()
+                    return extractPart(part, path, depth)
+                }
+                if (response.isSuccess && response.progress?.isPartial != true) {
+                    checkpoint = checkpoint.copy(parts = checkpoint.parts + (path to response))
+                    save()
+                }
+                return response
+            }
+            val base = extractPart(window, "", 0)
+            if (!base.isSuccess || base.progress?.isPartial == true) return base
+            val results = mutableListOf(base)
+            val history = mutableListOf<ProtocolMessage>()
+            for (pass in 0 until gleaningPasses) {
+                history += ProtocolMessage("assistant", compactGraph(results.last()))
+                history += ProtocolMessage("user", GLEANING_PROMPT)
+                val extra = checkpoint.gleaning[pass] ?: request(window, history).also {
+                    if (it.isSuccess && it.progress?.isPartial != true) {
+                        checkpoint = checkpoint.copy(gleaning = checkpoint.gleaning + (pass to it))
+                        save()
+                    }
+                }
+                if (!extra.isSuccess || extra.progress?.isPartial == true) break
+                results += extra
+            }
+            return ExtractionResult(results.flatMap { it.nodes }, results.flatMap { it.edges })
+        }
+        try {
+            mutex.withLock { onProgress(progress()) }
+            coroutineScope {
+                windows.mapIndexed { index, window -> async {
+                    semaphore.withPermit {
+                        val allowed = mutex.withLock { stopped == null }
+                        if (!allowed) return@withPermit
+                        val result = processWindow(index, window)
+                        mutex.withLock {
+                            if (result.progress?.isPartial == true || !result.isSuccess) {
+                                if (stopped == null) stopped = result
+                            } else {
+                                completed[index] = result
+                                processed++
+                                onProgress(progress())
+                            }
+                        }
+                    }
+                } }.awaitAll()
+            }
+            val collected = completed.filterNotNull()
+            val merged = KgAliasMerge.merge(collected.flatMap { it.nodes }, collected.flatMap { it.edges })
+            val validated = ValidatedGraph.from(merged.nodes, merged.edges).toExtractionResult()
+            val failure = stopped
+            val reason = failure?.progress?.reason
+            val finalProgress = progress(reason)
+            if (docId != null) {
+                if (failure == null && !retainCompletedCheckpoints) {
+                    store?.clear(docId, identity, ledgerRunId)
+                    budgetCleared = true
+                } else {
+                    persistBudget()
+                    if (failure == null && retainCompletedCheckpoints) {
+                        pendingCommits.keys.removeAll { it.first == docId }
+                        pendingCommits[docId to runId] = identity to ledgerRunId
+                    }
+                }
+            }
+            onProgress(finalProgress)
+            if (failure != null && reason == null) failure.copy(progress = finalProgress, usage = state.usage)
+            else validated.copy(status = if (reason == null) KgExtractionStatus.SUCCESS else KgExtractionStatus.PARTIAL,
+                progress = finalProgress, usage = state.usage)
+        } finally {
+            if (docId != null && !budgetCleared) withContext(NonCancellable + dispatcher) {
+                mutex.withLock { try { persistBudget() } catch (_: Exception) { InfinityLogger.log("[KG] 预算账本写入失败") } }
+            }
+        }
     }
 
-    private fun checkpointIdentity(text: String, contentHash: String) =
-        GraphCheckpointIdentity(contentHash, kgSha256(text), modelId, kgSha256(systemPrompt), chunkSize, chunkOverlap)
+    fun clearCheckpoints(docId: String) {
+        pendingCommits.keys.removeAll { it.first == docId }
+        checkpoints.clear(docId)
+    }
 
-    fun estimate(text: String): KgExtractionEstimate = budget.estimate(text, chunkSize, chunkOverlap, systemPrompt)
+    fun clearCommittedCheckpoints(text: String, docId: String, contentHash: String, runId: String? = null) {
+        val completed = runId?.let { pendingCommits.remove(docId to it) }
+        if (completed != null) {
+            checkpoints.clear(docId, completed.first, completed.second)
+            return
+        }
+        val limits = modelLimits()
+        val limit = KgWindowing.effectiveOutputLimit(budget.requestMaxOutputTokens, limits)
+        val window = KgWindowing.effectiveWindowChars(chunkSize, limits, limit, systemPrompt)
+        val identity = checkpointIdentity(text, contentHash, window)
+        checkpoints.clear(docId, identity, runId?.let { ledgerRunId(it, identity, limits) })
+    }
 
-    /** 遗留任务生命周期清理只作用于该文档，不执行全局清孤儿。 */
+    private fun checkpointIdentity(text: String, contentHash: String, windowChars: Int) =
+        GraphCheckpointIdentity(contentHash, kgSha256(text), modelId, kgSha256(systemPrompt), windowChars, gleaningPasses)
+
+    private fun ledgerRunId(runId: String, identity: GraphCheckpointIdentity, limits: KgModelLimits?): String =
+        kgSha256("$runId|$identity|$limits|$budget|$concurrency|$timeoutMs")
+
+    fun estimate(text: String): KgExtractionEstimate = budget.estimate(text, chunkSize, gleaningPasses, modelLimits(), systemPrompt)
+
     suspend fun clearPersistedGraphForDoc(docId: String) {
         graphStore.clearGraphForDoc(docId)
         clearCheckpoints(docId)
     }
+
+    private fun compactGraph(result: ExtractionResult): String = buildJsonObject {
+        put("nodes", buildJsonArray { result.nodes.forEach { node -> add(buildJsonObject {
+            put("name", node.name); put("type", node.type)
+            node.metadata?.let { value -> runCatching { Json.parseToJsonElement(value) }.getOrNull()?.let { put("metadata", it) } }
+        }) } })
+        put("edges", buildJsonArray { result.edges.forEach { edge -> add(buildJsonObject {
+            put("source", edge.source); put("target", edge.target); put("relation", edge.relation)
+            put("weight", edge.weight.takeIf { it.isFinite() } ?: 1.0)
+        }) } })
+    }.toString()
 
     /** 在原分块内优先按中点附近的段落、句末边界切分，并保留全部字符。 */
     private fun splitForRetry(text: String): Pair<String, String> {
@@ -223,40 +295,24 @@ class GraphExtractor(
         return text.substring(0, split) to text.substring(split)
     }
 
-    private fun splitText(text: String): Sequence<String> = sequence {
-        if (text.isBlank()) return@sequence
-        var start = 0
-        while (start < text.length) {
-            val end = (start + chunkSize).coerceAtMost(text.length)
-            yield(text.substring(start, end))
-            if (end == text.length) break
-            start += chunkSize - chunkOverlap
-        }
-    }
-
     companion object {
+        const val GLEANING_PROMPT = "Find only entities and relationships omitted from the preceding extraction. Use the same JSON format, do not repeat existing nodes, and edges may refer to node names from earlier responses. Return JSON only."
         const val DEFAULT_KG_PROMPT = """You are an expert Knowledge Graph extractor.
-Extract the most important entities and their relationships from the user provided text.
+Extract every named person, organization, location, event and named item that plays a role in the text, together with its core concepts and meaningful relationships. The number depends on the content. Skip generic terms and fleeting mentions unrelated to other entities. Keep names in the original language.
 
-## Quality First
-- Focus on CENTRAL entities that are core to the narrative or topic.
-- Skip minor mentions, generic descriptors, abstract concepts, and fleeting references.
-- Aim for 10-25 key entities and 15-35 relationships per chunk.
-- Fewer high-quality extractions are better than many low-quality ones.
-
-## Entity Types (use the most specific type that fits)
+## Entity Types
 - person: Named characters or real people
 - organization: Groups, factions, companies, teams
 - location: Named places, cities, regions, buildings
 - event: Specific plot events, historical incidents, milestones
 - item: Named objects, artifacts, technologies, tools
-- concept: Core themes, systems, rules, or doctrines (use sparingly)
+- concept: Core themes, systems, rules, or doctrines
 
 ## Output Format
 Return a valid JSON object:
 {
   "nodes": [
-    { "name": "Exact Name", "type": "EntityType", "metadata": { "description": "one short sentence" } }
+    { "name": "Exact Name", "type": "EntityType", "metadata": { "description": "one short sentence", "aliases": ["other name"] } }
   ],
   "edges": [
     { "source": "SourceNodeName", "target": "TargetNodeName", "relation": "relationship_verb", "weight": 0.8 }
@@ -264,11 +320,9 @@ Return a valid JSON object:
 }
 
 ## Rules
-1. Each "name" must be unique within nodes.
-2. "source" and "target" in edges MUST match an existing node "name" exactly.
-3. "relation" should be a concise verb phrase (e.g. "allies_with", "located_in", "leads_to").
-4. "weight" (0.0-1.0): 0.9+=core relationship, 0.5-0.8=notable, below 0.5=skip it.
-5. Do NOT extract every named entity — only those with meaningful relationships.
-6. Return JSON only. No markdown code blocks, no explanation text."""
+1. Give each entity one canonical name; when the text uses multiple names, use the most complete name and list the other forms in metadata.aliases.
+2. Each node name must be unique. Edge source and target MUST match node names exactly.
+3. Relation should be a concise verb phrase. Weight from 0.0 to 1.0 expresses relationship strength.
+4. Return JSON only, without markdown or explanation."""
     }
 }

@@ -272,7 +272,8 @@ class BackupPreferenceInventoryTest {
     @Test fun `KG数字预算可备份且本机用量与认证令牌不可迁移`() {
         listOf("kg_retrieval_hops", "kg_max_seeds", "kg_max_nodes", "kg_max_edges", "kg_context_max_tokens",
             "kg_jit_fallback", "kg_session_extraction", "memory_state_extraction", "kg_jit_min_seeds", "kg_max_calls", "kg_max_output_tokens", "kg_request_max_output_tokens",
-            "kg_max_duration_seconds", "kg_large_document_confirm_calls").forEach { key ->
+            "kg_max_duration_seconds", "kg_large_document_confirm_calls", "kg_window_chars", "kg_concurrency", "kg_gleaning_passes",
+            "kg_request_max_output_tokens_default_v2", "kg_budget_defaults_v3").forEach { key ->
             assertWithMessage(key).that(BackupPreferencePolicy.isAllowed("rag", key)).isTrue()
         }
         listOf("kg_token", "kg_api_key", "kg_access_token").forEach { key ->

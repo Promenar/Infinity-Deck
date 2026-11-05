@@ -16,6 +16,7 @@ data class KgTokenUsage(
 @Serializable
 enum class KgExtractionStopReason { CALLS, OUTPUT_TOKENS, DURATION, CONFIRMATION_REQUIRED }
 
+/** processedChunks 与 totalChunks 分别表示已完成及全部图谱窗口数。 */
 @Serializable
 data class KgExtractionProgress(
     val processedChunks: Int,
@@ -34,14 +35,15 @@ data class KgExtractionEstimate(
     val outputTokenLimit: Long,
     val budgetedCalls: Int,
     val requiresConfirmation: Boolean,
+    val windows: Int = calls,
 )
 
-/** 预算作用于同一文档版本；断点恢复沿用已发生的调用、输出与活跃耗时。 */
+/** 预算作用于单次运行，进程恢复时沿用同一运行的账本。 */
 data class KgExtractionBudget(
-    val maxCalls: Int = 32,
-    val maxOutputTokens: Int = 32_768,
-    val requestMaxOutputTokens: Int = 4_096,
-    val maxDurationMs: Long = 180_000,
+    val maxCalls: Int = 64,
+    val maxOutputTokens: Int = 262_144,
+    val requestMaxOutputTokens: Int = 16_384,
+    val maxDurationMs: Long = 600_000,
     val largeDocumentConfirmCalls: Int = 16,
 ) {
     init {
@@ -50,16 +52,25 @@ data class KgExtractionBudget(
         }
     }
 
-    fun estimate(text: String, chunkSize: Int, chunkOverlap: Int, systemPrompt: String = GraphExtractor.DEFAULT_KG_PROMPT): KgExtractionEstimate {
-        val calls = chunkCount(text, chunkSize, chunkOverlap)
-        val repeatedCharacters = text.length.toLong() + (calls - 1).coerceAtLeast(0).toLong() * chunkOverlap + systemPrompt.length.toLong() * calls
+    fun estimate(text: String, windowChars: Int = 16000, gleaningPasses: Int = 1,
+                 modelLimits: KgModelLimits? = null, systemPrompt: String = GraphExtractor.DEFAULT_KG_PROMPT): KgExtractionEstimate {
+        val limit = KgWindowing.effectiveOutputLimit(requestMaxOutputTokens, modelLimits)
+        val effectiveWindow = KgWindowing.effectiveWindowChars(windowChars, modelLimits, limit, systemPrompt)
+        val windows = KgWindowing.split(text, effectiveWindow)
+        val passes = gleaningPasses.coerceIn(0, 2)
+        val calls = windows.size * (1 + passes)
+        val input = windows.sumOf { window ->
+            (0..passes).sumOf { pass ->
+                window.length.toLong() + systemPrompt.length + pass.toLong() * (limit + GraphExtractor.GLEANING_PROMPT.length)
+            }
+        }
         return KgExtractionEstimate(
             calls = calls,
-            // 字符估算不依赖提供商分词器；确认界面明确标为估算。
-            inputTokens = (repeatedCharacters + 1) / 2,
-            outputTokenLimit = calls.toLong() * requestMaxOutputTokens,
+            inputTokens = input,
+            outputTokenLimit = calls.toLong() * limit,
             budgetedCalls = minOf(calls, maxCalls),
             requiresConfirmation = calls > largeDocumentConfirmCalls,
+            windows = windows.size,
         )
     }
 
@@ -74,13 +85,7 @@ data class KgExtractionBudget(
             largeDocumentConfirmCalls = config.kgLargeDocumentConfirmCalls.coerceAtLeast(1),
         )
 
-        fun chunkCount(text: String, chunkSize: Int, chunkOverlap: Int): Int {
-            require(chunkSize > 0 && chunkOverlap in 0 until chunkSize) { "知识图谱切块参数无效" }
-            if (text.isBlank()) return 0
-            if (text.length <= chunkSize) return 1
-            val step = chunkSize - chunkOverlap
-            return 1 + ((text.length.toLong() - chunkSize + step - 1) / step).toInt()
-        }
+        fun chunkCount(text: String, windowChars: Int): Int = KgWindowing.split(text, windowChars).size
     }
 }
 

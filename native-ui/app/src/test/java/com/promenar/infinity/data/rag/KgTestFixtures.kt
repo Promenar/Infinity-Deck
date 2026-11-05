@@ -40,7 +40,8 @@ internal fun TestScope.testGraphExtractor(
     timeoutMs: Long = 120_000,
     checkpointRoot: java.io.File? = null,
 ): GraphExtractor = GraphExtractor(testKgClient(protocol), graphStore, modelId, systemPrompt,
-    chunkSize, chunkOverlap, timeoutMs, checkpointRoot, dispatcher = StandardTestDispatcher(testScheduler))
+    chunkSize, chunkOverlap, timeoutMs, checkpointRoot, dispatcher = StandardTestDispatcher(testScheduler),
+    concurrency = 1, gleaningPasses = 0)
 
 internal fun TestScope.testMicroExtractor(
     protocol: LlmProtocol,

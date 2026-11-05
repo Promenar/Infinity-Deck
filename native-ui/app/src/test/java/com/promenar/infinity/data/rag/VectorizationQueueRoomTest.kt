@@ -57,12 +57,15 @@ class VectorizationQueueRoomTest {
     @Test
     fun `真实Room中的失败任务更换活动标识且不触发主键冲突`() = runTest {
         seedFileAndTask("failed")
+        val old = checkNotNull(database.vectorizationTaskDao().getById(TASK))
+        database.vectorizationTaskDao().update(old.copy(assistantMessageId = "old-run"))
         val queue = queue(StandardTestDispatcher(TestCoroutineScheduler()))
 
         val id = queue.enqueueDocumentReference(ROOT, DOC, source.name, "text/plain", "hash-v1", 2)
 
         assertThat(id).isNotEqualTo(TASK)
         assertThat(database.vectorizationTaskDao().getById(id)?.status).isEqualTo("pending")
+        assertThat(database.vectorizationTaskDao().getById(id)?.assistantMessageId).isNotEqualTo("old-run")
         assertThat(queue.getQueueLength()).isEqualTo(1)
         queue.shutdown()
     }
@@ -71,7 +74,7 @@ class VectorizationQueueRoomTest {
     fun `进程重启后立即恢复未超过三十秒的向量化任务`() = runTest {
         seedFileAndTask("vectorizing")
         val existing = checkNotNull(database.vectorizationTaskDao().getById(TASK))
-        database.vectorizationTaskDao().update(existing.copy(updatedAt = System.currentTimeMillis()))
+        database.vectorizationTaskDao().update(existing.copy(updatedAt = System.currentTimeMillis(), assistantMessageId = "resume-run"))
         val service = BlockingDocumentIndexService()
         val queue = queue(StandardTestDispatcher(testScheduler), documentIndexService = service)
         try {
@@ -79,6 +82,7 @@ class VectorizationQueueRoomTest {
             // Room 写入在真实线程上完成，等待服务实际被调用，而不是只推进虚拟调度器。
             service.firstStarted.await()
             assertThat(service.firstStarted.isCompleted).isTrue()
+            assertThat(service.firstRunId).isEqualTo("resume-run")
         } finally {
             queue.shutdown()
         }
@@ -1246,9 +1250,11 @@ class VectorizationQueueRoomTest {
         val firstStarted = CompletableDeferred<Unit>()
         val firstResult = CompletableDeferred<DocumentIndexResult>()
         val secondStarted = CompletableDeferred<Unit>()
+        var firstRunId: String? = null
 
         override suspend fun rebuild(event: FileIndexEvent): DocumentIndexResult {
             if (!firstStarted.isCompleted) {
+                firstRunId = (event as? FileIndexEvent.Changed)?.kgRunId
                 firstStarted.complete(Unit)
                 return firstResult.await()
             }
