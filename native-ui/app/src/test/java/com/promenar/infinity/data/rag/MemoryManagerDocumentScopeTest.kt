@@ -206,7 +206,8 @@ class MemoryManagerDocumentScopeTest {
         val keywords = manager.searchDocumentKeywords("alpha", DocumentReach.All, 10)
         assertThat(keywords.first { it.docId == "doc-a" }.fileUuid).isEqualTo("file-a")
         val result = retrieve(MemoryManager.RetrieveOptions(
-            enableMemory = false, enableDocs = true, documentScope = DocumentScope.ALL_INDEXED, sessionId = "session-a",
+            // 不在会话工作区也不属于资料合集的文件只能显式选择；按旧文档标识选择后引用记录真实文件标识。
+            enableMemory = false, enableDocs = true, activeDocIds = listOf("doc-a"), sessionId = "session-a",
         ))
         assertThat(result.references.first { it.content == "document alpha" }.documentId).isEqualTo("file-a")
     }
