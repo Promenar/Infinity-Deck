@@ -471,7 +471,7 @@ private fun FileList(state: FileManagerUiState, actions: FileManagerUiActions, m
             item(key = "..") { FileUpRow(parentTitle = state.parentFolderTitle(), onClick = controller::goUp) }
         }
         if (state.items.isEmpty()) {
-            item(key = "empty") { EmptyFolder() }
+            item(key = "empty") { EmptyFolder(state) }
         }
         items(state.items, key = { it.ref.listKey() }) { item ->
             FileRow(
@@ -502,7 +502,7 @@ private fun FileGrid(state: FileManagerUiState, actions: FileManagerUiActions, m
             item(key = "..") { FileUpTile(onClick = controller::goUp) }
         }
         if (state.items.isEmpty()) {
-            item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyFolder() }
+            item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyFolder(state) }
         }
         items(state.items, key = { it.ref.listKey() }) { item ->
             FileTile(
@@ -535,9 +535,11 @@ private fun LocationUnavailable(modifier: Modifier) {
 
 private const val LocationSettleMillis = 600L
 
+/** 空目录提示；“会话工作区”汇总根为空时说明绑定项目的会话文件在哪里，避免像是读取失败。 */
 @Composable
-private fun EmptyFolder() {
-    FolderStatusMessage(text = stringResource(R.string.fm_empty_folder), modifier = Modifier.testTag(UiTags.FM_EMPTY))
+private fun EmptyFolder(state: FileManagerUiState) {
+    val text = if (state.location?.id == "sessions") R.string.fm_empty_sessions else R.string.fm_empty_folder
+    FolderStatusMessage(text = stringResource(text), modifier = Modifier.testTag(UiTags.FM_EMPTY))
 }
 
 /** 搜索结果：副文字为所在路径，点结果定位到所在文件夹（文件同时打开预览）。 */

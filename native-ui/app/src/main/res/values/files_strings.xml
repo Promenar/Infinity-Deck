@@ -72,6 +72,7 @@
         <item quantity="other">%1$d files</item>
     </plurals>
     <string name="fm_empty_folder">This folder is empty</string>
+    <string name="fm_empty_sessions">No sessions use a private workspace. Files of sessions linked to a project are in that project.</string>
     <plurals name="fm_git_changes">
         <item quantity="one">%1$d change</item>
         <item quantity="other">%1$d changes</item>

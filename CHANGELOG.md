@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 变更
+
+- 资料页“会话工作区”没有使用私有工作区的会话时，不再只显示“这个文件夹是空的”，而是说明关联项目的会话文件在对应项目位置里。
+
 ## [0.29.2-beta] - 2026-11-06
 
 ### 修复
