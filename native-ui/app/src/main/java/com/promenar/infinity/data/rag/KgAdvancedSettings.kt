@@ -11,18 +11,22 @@ object KgAdvancedSettings {
 
     private fun migrateBudgetDefaults(preferences: SharedPreferences) {
         if (preferences.getBoolean(BUDGET_DEFAULTS_MIGRATED_KEY, false)) return
+        val oldRequestDefaults = if (preferences.getBoolean(REQUEST_OUTPUT_MIGRATED_KEY, false)) {
+            setOf(4096)
+        } else {
+            setOf(2048, 4096)
+        }
         val defaults = mapOf(
-            REQUEST_OUTPUT_KEY to (setOf(2048, 4096) to REQUEST_OUTPUT_DEFAULT),
+            REQUEST_OUTPUT_KEY to (oldRequestDefaults to REQUEST_OUTPUT_DEFAULT),
             "kg_max_output_tokens" to (setOf(32768) to 262144),
             "kg_max_calls" to (setOf(32) to 64),
             "kg_max_duration_seconds" to (setOf(180) to 600),
         )
         val changes = defaults.filter { (key, values) -> preferences.contains(key) && preferences.getInt(key, -1) in values.first }
-        if (changes.isEmpty()) return
         val editor = preferences.edit()
         changes.forEach { (key, values) -> editor.putInt(key, values.second) }
-        editor.putBoolean(REQUEST_OUTPUT_MIGRATED_KEY, true)
-            .putBoolean(BUDGET_DEFAULTS_MIGRATED_KEY, true).apply()
+        if (changes.isNotEmpty()) editor.putBoolean(REQUEST_OUTPUT_MIGRATED_KEY, true)
+        editor.putBoolean(BUDGET_DEFAULTS_MIGRATED_KEY, true).apply()
     }
 
     fun load(base: RagConfiguration, preferences: SharedPreferences): RagConfiguration = run {

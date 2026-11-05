@@ -65,7 +65,10 @@ internal class DefaultFileOperations(
         val normalized = normalizeFilePath(path)
         if (locationId == "sessions") {
             if (normalized != "/") throw FileOpException(FileOpCode.NOT_FOUND)
-            val rows = sessions().filter { !isSystemSession(it) && !it.workspaceRootUuid.isNullOrBlank() }
+            val rows = sessions().filter {
+                !isSystemSession(it) && !it.workspaceRootUuid.isNullOrBlank() &&
+                    it.workspaceId == null && it.worktreeDirectory == null
+            }
             val names = sessionFolderNames(rows)
             return@io rows.sortedBy { names[it.id]?.lowercase() }.map { row ->
                 FileItem(FileRef("session:${row.id}", "/"), names.getValue(row.id), true, 0, row.updatedAt)

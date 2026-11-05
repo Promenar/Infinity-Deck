@@ -4,6 +4,7 @@ import com.promenar.infinity.domain.files.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -39,6 +40,10 @@ class DefaultFileManagerController(
     private var pickerJob: Job? = null
     private var pickerCreateJob: Job? = null
     private var pinJob: Job? = null
+    private var sessionLocationJob: Job? = null
+    private var watchedSessionLocationId: String? = null
+    @Volatile private var sessionLocation: FileLocation? = null
+    private var sessionLocationVersion = 0L
     private var loadVersion = 0L
     private var searchVersion = 0L
     private var previewVersion = 0L
@@ -120,26 +125,26 @@ class DefaultFileManagerController(
             clearNavigation()
             return
         }
-        val existing = values.firstOrNull { it.id == current.location?.id }
+        val existing = current.location?.id?.let(::findLocation)
         if (existing != null) {
             if (existing.accessLost != current.location?.accessLost) {
                 navigate(existing, current.path)
                 return
             }
             val picker = current.targetPicker
-            val pickerLocation = values.firstOrNull { it.id == picker?.locationId && !it.accessLost }
+            val pickerLocation = picker?.locationId?.let(::findLocation)?.takeUnless { it.accessLost }
             val pickerInvalid = picker != null && (pickerLocation == null || picker.sources.any { source ->
-                values.none { it.id == source.locationId && !it.accessLost }
+                findLocation(source.locationId)?.accessLost != false
             })
             val previewInvalid = current.previewItem?.ref?.let { preview ->
-                values.none { it.id == preview.locationId && !it.accessLost }
+                findLocation(preview.locationId)?.accessLost != false
             } == true
             if (pickerInvalid) cancelPickerJobs()
             if (previewInvalid) cancelPreview()
             mutableState.update { old ->
                 old.copy(
                     location = existing,
-                    crumbs = FileListing.crumbs(existing, old.path),
+                    crumbs = navigationCrumbs(existing, old.path),
                     targetPicker = if (!pickerInvalid && picker != null && pickerLocation != null) {
                         picker.copy(crumbs = FileListing.crumbs(pickerLocation, picker.path))
                     } else null,
@@ -155,12 +160,19 @@ class DefaultFileManagerController(
         }
         val requested = if (!initialHandled) initial else null
         initialHandled = true
+        if (requested != null && requested.locationId.startsWith("session:") &&
+            values.none { it.id == requested.locationId } && values.any { it.id == "sessions" }) {
+            navigate(values.first { it.id == "sessions" }, "/")
+            openSessionLocation(requested.locationId, requested.path)
+            return
+        }
         val selected = values.firstOrNull { it.id == requested?.locationId } ?: values.first()
         val path = if (selected.id == requested?.locationId) requested?.path ?: "/" else "/"
         navigate(selected, path)
     }
 
     private fun clearNavigation() {
+        cancelSessionLocation()
         cancelLoad()
         cancelSearch()
         cancelPreview()
@@ -176,6 +188,7 @@ class DefaultFileManagerController(
     }
 
     private fun navigate(location: FileLocation, path: String) {
+        if (watchedSessionLocationId != null && watchedSessionLocationId != location.id) cancelSessionLocation()
         val normalized = normalizeFilePath(path)
         cancelLoad()
         cancelSearch()
@@ -186,13 +199,86 @@ class DefaultFileManagerController(
         if (location.accessLost) blockedLocations.update { it + location.id }
         mutableState.update {
             it.copy(
-                location = location, path = normalized, crumbs = FileListing.crumbs(location, normalized),
+                location = location, path = normalized, crumbs = navigationCrumbs(location, normalized),
                 items = emptyList(), loading = !location.accessLost,
                 loadError = if (location.accessLost) FileOpCode.PERMISSION_LOST else null, selection = emptySet(), search = null,
                 previewItem = null, preview = null, previewLoading = false, targetPicker = null, pinned = ref in pins,
             )
         }
         if (!location.accessLost) load(ref)
+    }
+
+    private fun findLocation(id: String): FileLocation? =
+        state.value.locations.firstOrNull { it.id == id }
+            ?: sessionLocation?.takeIf { it.id == id && state.value.locations.any { parent -> parent.id == "sessions" } }
+
+    private fun navigationCrumbs(location: FileLocation, path: String): List<FileCrumb> {
+        val crumbs = FileListing.crumbs(location, path)
+        val parent = state.value.locations.firstOrNull { it.id == "sessions" }
+        return if (watchedSessionLocationId == location.id && parent != null) {
+            listOf(FileCrumb(parent.title, "/"), crumbs.first().copy(path = SESSION_ROOT_CRUMB)) + crumbs.drop(1)
+        } else crumbs
+    }
+
+    private fun cancelSessionLocation() {
+        sessionLocationVersion++
+        sessionLocationJob?.cancel()
+        sessionLocationJob = null
+        watchedSessionLocationId = null
+        sessionLocation = null
+    }
+
+    private fun sessionLocationUnavailable(id: String) {
+        if (state.value.location?.id == id) {
+            val parent = state.value.locations.firstOrNull { it.id == "sessions" }
+            if (parent != null) navigate(parent, "/") else clearNavigation()
+        } else cancelSessionLocation()
+    }
+
+    private fun openSessionLocation(locationId: String, path: String, preview: FileItem? = null) {
+        val sessionId = locationId.removePrefix("session:").takeIf { locationId.startsWith("session:") && it.isNotBlank() }
+            ?: return
+        val parent = state.value.locations.firstOrNull { it.id == "sessions" } ?: return
+        if (watchedSessionLocationId != null && watchedSessionLocationId != locationId) navigate(parent, "/")
+        cancelSessionLocation()
+        watchedSessionLocationId = locationId
+        val version = sessionLocationVersion
+        var pendingNavigation = true
+        sessionLocationJob = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                services.locations.observeSessionLocations(sessionId).flowOn(io).collect { values ->
+                    synchronized(this@DefaultFileManagerController) {
+                        if (version != sessionLocationVersion) return@synchronized
+                        val resolved = values.firstOrNull { it.id == locationId && !it.accessLost }
+                        if (resolved == null) {
+                            sessionLocationUnavailable(locationId)
+                        } else {
+                            sessionLocation = resolved
+                            if (pendingNavigation) {
+                                pendingNavigation = false
+                                navigate(resolved, path)
+                                preview?.let(::showPreview)
+                            } else if (state.value.location?.id == locationId) {
+                                mutableState.update {
+                                    val picker = it.targetPicker
+                                    it.copy(location = resolved, crumbs = navigationCrumbs(resolved, it.path),
+                                        targetPicker = if (picker?.locationId == locationId) {
+                                            picker.copy(crumbs = FileListing.crumbs(resolved, picker.path))
+                                        } else picker)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                synchronized(this@DefaultFileManagerController) {
+                    if (version == sessionLocationVersion) sessionLocationUnavailable(locationId)
+                }
+            }
+        }
+        sessionLocationJob?.start()
     }
 
     private fun cancelLoad() { loadVersion++; loadJob?.cancel(); loadJob = null }
@@ -256,12 +342,17 @@ class DefaultFileManagerController(
 
     @Synchronized
     override fun openLocation(locationId: String, path: String) {
-        val location = state.value.locations.firstOrNull { it.id == locationId } ?: return
-        navigate(location, path)
+        val location = findLocation(locationId)
+        if (location != null) navigate(location, path) else openSessionLocation(locationId, path)
     }
 
     @Synchronized
     override fun open(item: FileItem) {
+        if (state.value.location?.id == "sessions" && item.isDirectory &&
+            state.value.items.any { it.ref == item.ref } && item.ref.locationId.startsWith("session:")) {
+            openSessionLocation(item.ref.locationId, item.ref.path)
+            return
+        }
         if (!isAllowed(item.ref)) return
         if (item.isDirectory) openLocation(item.ref.locationId, item.ref.path) else showPreview(item)
     }
@@ -269,12 +360,17 @@ class DefaultFileManagerController(
     @Synchronized
     override fun goUp() {
         val current = state.value
-        if (current.canGoUp) goTo(parentFilePath(current.path))
+        val location = current.location ?: return
+        if (!current.canGoUp) return
+        if (current.path == "/" && watchedSessionLocationId == location.id) openLocation("sessions")
+        else navigate(location, parentFilePath(current.path))
     }
 
     @Synchronized
     override fun goTo(path: String) {
-        state.value.location?.let { navigate(it, path) }
+        val location = state.value.location ?: return
+        if (watchedSessionLocationId == location.id && path == "/") openLocation("sessions")
+        else navigate(location, if (watchedSessionLocationId == location.id && path == SESSION_ROOT_CRUMB) "/" else path)
     }
 
     @Synchronized
@@ -400,7 +496,13 @@ class DefaultFileManagerController(
 
     @Synchronized
     override fun reveal(hit: FileSearchHit) {
-        val location = state.value.locations.firstOrNull { it.id == hit.item.ref.locationId && !it.accessLost } ?: return
+        val location = findLocation(hit.item.ref.locationId)?.takeUnless { it.accessLost }
+        if (location == null) {
+            if (state.value.location?.id == "sessions" && state.value.search?.hits?.contains(hit) == true) {
+                openSessionLocation(hit.item.ref.locationId, hit.parentPath, hit.item.takeUnless { it.isDirectory })
+            }
+            return
+        }
         navigate(location, hit.parentPath)
         if (!hit.item.isDirectory) showPreview(hit.item)
     }
@@ -441,7 +543,7 @@ class DefaultFileManagerController(
     }
 
     private fun isLocationAvailable(ref: FileRef): Boolean =
-        state.value.locations.any { it.id == ref.locationId && !it.accessLost }
+        findLocation(ref.locationId)?.accessLost == false
 
     private fun isAllowed(ref: FileRef): Boolean =
         isLocationAvailable(ref) && ref.locationId !in blockedLocations.value
@@ -608,7 +710,7 @@ class DefaultFileManagerController(
     }
 
     private fun loadPicker(locationId: String, path: String) {
-        val location = state.value.locations.firstOrNull { it.id == locationId && !it.accessLost } ?: return
+        val location = findLocation(locationId)?.takeUnless { it.accessLost } ?: return
         if (!isAllowed(FileRef(locationId, path))) return
         val normalized = normalizeFilePath(path)
         val existing = state.value.targetPicker ?: return
@@ -752,6 +854,11 @@ class DefaultFileManagerController(
 
     @Synchronized
     override fun consumeNotice() { mutableState.update { it.copy(notice = null) } }
+
+    private companion object {
+        // 面包屑共用路径回调，双斜线仅标识会话根，不传入文件后端。
+        const val SESSION_ROOT_CRUMB = "//"
+    }
 }
 
 internal fun currentRef(state: FileManagerUiState): FileRef? = state.location?.let { FileRef(it.id, state.path) }

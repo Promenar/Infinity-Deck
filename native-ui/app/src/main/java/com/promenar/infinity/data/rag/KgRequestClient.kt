@@ -43,6 +43,8 @@ class KgRequestClient(
     ): ExtractionResult =
         withContext(dispatcher) {
             require(maxOutputTokens > 0) { "知识图谱请求输出上限必须大于 0" }
+            val estimatedInputTokens = (systemPrompt.length.toLong() + text.length +
+                historyMessages.sumOf { it.content.length.toLong() } + 1) / 2
             var attemptedModelId: String? = null
             var reportedUsage: KgTokenUsage? = null
             try {
@@ -74,7 +76,7 @@ class KgRequestClient(
                     reportedUsage = response.usage?.let {
                         KgTokenUsage(it.input.coerceAtLeast(0).toLong(), it.output.coerceAtLeast(0).toLong())
                     } ?: KgTokenUsage(
-                        inputTokens = (systemPrompt.length.toLong() + text.length + historyMessages.sumOf { it.content.length.toLong() } + 1) / 2,
+                        inputTokens = estimatedInputTokens,
                         outputTokens = (response.content.length.toLong() + 1) / 2,
                         estimated = true,
                     )
@@ -85,7 +87,10 @@ class KgRequestClient(
             } catch (finished: com.promenar.infinity.data.remote.protocol.AbnormalFinishException) {
                 // 输出达到上限时 JSON 必然不完整，按解析失败处理，由抽取器把分块拆开重抽。
                 if (finished.error.code == com.promenar.infinity.domain.generation.GenerationFailureCode.OUTPUT_LIMIT) {
+                    val usage = KgTokenUsage(estimatedInputTokens, maxOutputTokens.toLong(), estimated = true)
+                    reportedUsage = usage
                     ExtractionResult.failure(KgExtractionStatus.PARSE_FAILURE, "知识图谱输出达到上限被截断")
+                        .copy(usage = usage)
                 } else ExtractionResult.failure(KgExtractionStatus.PROVIDER_ERROR, "知识图谱提供商请求失败")
             } catch (_: java.net.SocketTimeoutException) {
                 ExtractionResult.failure(KgExtractionStatus.TIMEOUT, "知识图谱提供商请求超时")

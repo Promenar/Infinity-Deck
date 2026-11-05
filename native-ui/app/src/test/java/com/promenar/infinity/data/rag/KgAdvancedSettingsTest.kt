@@ -13,6 +13,66 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class KgAdvancedSettingsTest {
+    @Test fun `v2 标记存在时保留用户选择的 2048 并迁移其他旧默认值`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-preserve-v2", Context.MODE_PRIVATE)
+        prefs.edit().clear().putBoolean("kg_request_max_output_tokens_default_v2", true)
+            .putInt("kg_request_max_output_tokens", 2048).putInt("kg_max_output_tokens", 32768)
+            .putInt("kg_max_calls", 32).putInt("kg_max_duration_seconds", 180).commit()
+
+        val migrated = KgAdvancedSettings.load(RagConfiguration(), prefs)
+
+        assertThat(migrated.kgRequestMaxOutputTokens).isEqualTo(2048)
+        assertThat(migrated.kgMaxOutputTokens).isEqualTo(262144)
+        assertThat(migrated.kgMaxCalls).isEqualTo(64)
+        assertThat(migrated.kgMaxDurationSeconds).isEqualTo(600)
+        assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
+    }
+
+    @Test fun `v2 标记不存在时旧默认值 2048 迁移`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-without-v2", Context.MODE_PRIVATE)
+        prefs.edit().clear().putInt("kg_request_max_output_tokens", 2048).commit()
+
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(16384)
+        assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
+    }
+
+    @Test fun `4096 在 v2 标记真假两种情况下均迁移`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-4096", Context.MODE_PRIVATE)
+        for (v2 in listOf(false, true)) {
+            prefs.edit().clear().putBoolean("kg_request_max_output_tokens_default_v2", v2)
+                .putInt("kg_request_max_output_tokens", 4096).commit()
+            assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(16384)
+            assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
+        }
+    }
+
+    @Test fun `没有旧默认值时也完成 v3 标记并且之后不再迁移`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-no-matches", Context.MODE_PRIVATE)
+        prefs.edit().clear().putInt("kg_request_max_output_tokens", 1024).commit()
+
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(1024)
+        assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
+        prefs.edit().putInt("kg_request_max_output_tokens", 4096).putInt("kg_max_calls", 32).commit()
+        val restored = KgAdvancedSettings.load(RagConfiguration(), prefs)
+        assertThat(restored.kgRequestMaxOutputTokens).isEqualTo(4096)
+        assertThat(restored.kgMaxCalls).isEqualTo(32)
+    }
+
+    @Test fun `用户保存预算后匹配旧默认值也不再迁移`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-user-save", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        KgAdvancedSettings.save(RagConfiguration(kgRequestMaxOutputTokens = 2048, kgMaxOutputTokens = 32768,
+            kgMaxCalls = 32, kgMaxDurationSeconds = 180), prefs)
+
+        val restored = KgAdvancedSettings.load(RagConfiguration(), prefs)
+
+        assertThat(restored.kgRequestMaxOutputTokens).isEqualTo(2048)
+        assertThat(restored.kgMaxOutputTokens).isEqualTo(32768)
+        assertThat(restored.kgMaxCalls).isEqualTo(32)
+        assertThat(restored.kgMaxDurationSeconds).isEqualTo(180)
+        assertThat(prefs.getBoolean("kg_budget_defaults_v3", false)).isTrue()
+    }
+
     @Test fun `v3 只迁移匹配的旧默认值并保留其他设置`() {
         val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-v3-defaults", Context.MODE_PRIVATE)
         prefs.edit().clear().putInt("kg_request_max_output_tokens", 4096)
