@@ -2897,6 +2897,26 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             }
         }
 
+    /** 合集与多选的批量抽取：每次按当前模型、提示词与预算构造。 */
+    fun kgBatchExtraction() = com.promenar.infinity.data.rag.KgBatchExtraction(
+        database, graphExtractor, vectorizationQueue, ragConfigPersistence.loadFullConfig(),
+    )
+
+    /** 实体合并：只在用户点击“检查合并”时调用图谱模型。 */
+    fun kgEntityResolution() = com.promenar.infinity.data.rag.KgEntityResolutionStore(
+        database, com.promenar.infinity.data.rag.KgEntityResolutionModel(createKgRequestClient()),
+    )
+
+    /** 图谱模型 id 与显示名；未配置时为 null。 */
+    fun kgModelId(): String? = kgExtractionSettings().modelId
+
+    fun kgModelLabel(): String? = kgModelId()?.let { id ->
+        ProviderManager.getInstance().providerModels.value.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() }
+            ?: id.substringAfter("::", id)
+    }
+
+    fun kgRequestMaxOutputTokens(): Int = ragConfigPersistence.loadFullConfig().kgRequestMaxOutputTokens.coerceIn(128, 65536)
+
     fun rebuildGraphExtractor() {
         synchronized(kgExtractorLock) {
             _graphExtractor = null

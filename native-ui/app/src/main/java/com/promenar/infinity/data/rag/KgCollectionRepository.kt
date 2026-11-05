@@ -8,6 +8,8 @@ import com.promenar.infinity.data.model.GraphBinding
 import com.promenar.infinity.data.model.GraphBindingMode
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
@@ -49,6 +51,29 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
     suspend fun moveArticle(collectionId: String, docId: String, targetIndex: Int) = database.withTransaction {
         KgCollectionOrder(database).move(collectionId, docId, targetIndex)
         KgTimelineStore(database).recompute(collectionId)
+    }
+
+    /** 放弃手动篇序，回到按名称的自然顺序；只重算时间线，不调用模型。 */
+    suspend fun resetNaturalOrder(collectionId: String) = database.withTransaction {
+        KgCollectionOrder(database).resetNatural(collectionId)
+        KgTimelineStore(database).recompute(collectionId)
+    }
+
+    /** 文件夹里的文档按当前设置归入的图谱合集（并入上级、通用知识或独立作品）。 */
+    suspend fun folderCollection(folderId: String): String = database.withTransaction {
+        val folder = requireNotNull(database.fileEntryDao().findActiveByUuid(folderId)?.takeIf { it.isDirectory }) { "文件夹不存在" }
+        folderDescriptor(folder).id
+    }
+
+    /** 文件夹（含子文件夹）中可抽取图谱的文档。 */
+    suspend fun folderDocumentIds(folderId: String): List<String> = withContext(Dispatchers.IO) {
+        val supported = DocumentReferenceExtractor.SUPPORTED_MIME_TYPES.toList()
+        database.query(SimpleSQLiteQuery(
+            "WITH RECURSIVE tree(id) AS (SELECT uuid FROM workspace_files WHERE uuid=? AND is_directory=1 AND in_recycle_bin=0 " +
+                "UNION SELECT w.uuid FROM workspace_files w JOIN tree t ON w.parent_uuid=t.id WHERE w.in_recycle_bin=0) " +
+                "SELECT w.uuid FROM workspace_files w JOIN tree t ON w.uuid=t.id WHERE w.is_directory=0 AND w.mime_type IN (${supported.joinToString { "?" }}) ORDER BY w.uuid",
+            (listOf<Any>(folderId) + supported).toTypedArray(),
+        )).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
     }
 
     suspend fun refreshNaturalOrder(collectionId: String) = database.withTransaction {
@@ -213,13 +238,18 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
     private suspend fun documentDescriptor(docId: String): Descriptor {
         val file = database.fileEntryDao().findActiveByUuid(docId)?.takeUnless { it.isDirectory }
             ?: return Descriptor("work:$docId", "work", docId, docId)
-        var folder = file.parentUuid?.let { database.fileEntryDao().findActiveByUuid(it) }
+        val folder = file.parentUuid?.let { database.fileEntryDao().findActiveByUuid(it) }
             ?.takeIf { it.isDirectory && it.uuid != file.workspaceRootUuid }
             ?: return Descriptor("work:$docId", "work", file.name, docId)
+        return folderDescriptor(folder)
+    }
+
+    private suspend fun folderDescriptor(start: com.promenar.infinity.data.local.db.entity.FileEntry): Descriptor {
+        var folder = start
         val visited = mutableSetOf<String>()
         while (readFolderSetting(folder.uuid) == KgFolderSetting.MERGE_PARENT && visited.add(folder.uuid)) {
             val parent = folder.parentUuid?.let { database.fileEntryDao().findActiveByUuid(it) }
-                ?.takeIf { it.isDirectory && it.workspaceRootUuid == file.workspaceRootUuid && it.uuid != file.workspaceRootUuid }
+                ?.takeIf { it.isDirectory && it.workspaceRootUuid == start.workspaceRootUuid && it.uuid != start.workspaceRootUuid }
                 ?: break
             folder = parent
         }

@@ -258,6 +258,23 @@ fun KnowledgeGraphScreen(
                     onToggle = viewModel::toggleTypeFilter,
                 )
             }
+            // 合集至少两篇时显示时间轴：按篇目顺序看某一篇末尾的图谱。
+            val ticks by viewModel.timelineTicks.collectAsState()
+            val asOfOrdinal by viewModel.asOfOrdinal.collectAsState()
+            AnimatedVisibility(
+                visible = viewMode == KgViewMode.GLOBAL && ticks.size >= 2,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                if (ticks.size >= 2) {
+                    KnowledgeGraphTimelineRow(
+                        ticks = ticks,
+                        asOfOrdinal = asOfOrdinal,
+                        onCommit = viewModel::setAsOf,
+                        modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
+                    )
+                }
+            }
             AnimatedVisibility(visible = nodes.size >= MAX_GRAPH_NODE_LIMIT, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
                 Text(
                     stringResource(R.string.kg_graph_display_limit),

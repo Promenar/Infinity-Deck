@@ -82,7 +82,7 @@ class KnowledgeGraphViewModelTest {
             total = 301,
         )
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         assertThat(vm.nodes.value.size).isAtMost(300)
         assertThat(vm.totalNodeCount.value).isEqualTo(301)
@@ -94,7 +94,7 @@ class KnowledgeGraphViewModelTest {
         val edges = listOf(dataEdge(id = "e1", sourceId = "n1", targetId = "n2"))
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns subgraph(nodes, edges)
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         assertThat(vm.nodes.value).hasSize(1)
         assertThat(vm.nodes.value[0].id).isEqualTo("n1")
@@ -112,7 +112,7 @@ class KnowledgeGraphViewModelTest {
         )
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns subgraph(nodes, emptyList())
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         assertThat(vm.nodes.value).hasSize(4)
     }
@@ -123,7 +123,7 @@ class KnowledgeGraphViewModelTest {
     fun `isLoading is false after loadGraph completes`() = runTest {
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns subgraph(emptyList(), emptyList())
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         assertThat(vm.isLoading.value).isFalse()
     }
@@ -132,7 +132,7 @@ class KnowledgeGraphViewModelTest {
     fun `loadGraph handles exception gracefully`() = runTest {
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } throws RuntimeException("db error")
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         assertThat(vm.nodes.value).isEmpty()
         assertThat(vm.isLoading.value).isFalse()
@@ -144,7 +144,7 @@ class KnowledgeGraphViewModelTest {
             IllegalStateException("private document option detail")
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns subgraph(emptyList(), emptyList())
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         assertThat(vm.documentOptions.value).isEmpty()
         assertThat(vm.documentOptionsError.value?.code)
@@ -160,7 +160,7 @@ class KnowledgeGraphViewModelTest {
             IllegalStateException("first failure") andThen
             listOf(KgDocumentOption(docId = "doc-a", title = "Alpha"))
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns subgraph(emptyList(), emptyList())
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.retryDocumentOptions()
 
@@ -175,7 +175,7 @@ class KnowledgeGraphViewModelTest {
             listOf(dataNode(id = "global")),
             emptyList(),
         )
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.setViewMode(KgViewMode.DOCUMENT)
 
@@ -200,7 +200,7 @@ class KnowledgeGraphViewModelTest {
             listOf(dataNode(id = "doc-b-node")),
             emptyList(),
         )
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.loadGraphByDoc("doc-a")
         assertThat(vm.nodes.value.map { it.id }).containsExactly("doc-a-1")
@@ -227,7 +227,7 @@ class KnowledgeGraphViewModelTest {
         )
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(docId = "doc-b")) } throws
             IllegalStateException("private database detail")
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         vm.loadGraphByDoc("doc-a")
 
         vm.loadGraphByDoc("doc-b")
@@ -246,7 +246,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(docId = "doc-a")) } returns
             subgraph(listOf(dataNode(id = "last-good")), emptyList()) andThenThrows
             IllegalStateException("refresh failed")
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         vm.loadGraphByDoc("doc-a")
 
         vm.refreshCurrentScope()
@@ -268,7 +268,7 @@ class KnowledgeGraphViewModelTest {
             releaseB.await()
             subgraph(listOf(dataNode(id = "doc-b-node")), emptyList())
         }
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         vm.loadGraphByDoc("doc-a")
 
         vm.loadGraphByDoc("doc-b")
@@ -292,7 +292,7 @@ class KnowledgeGraphViewModelTest {
             listOf(dataNode(id = "doc-b-node")),
             emptyList(),
         )
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.loadGraphByDoc("doc-a")
         vm.loadGraphByDoc("doc-b")
@@ -313,7 +313,7 @@ class KnowledgeGraphViewModelTest {
             withContext(NonCancellable) { releaseDocument.await() }
             subgraph(listOf(dataNode(id = "doc-a-node")), emptyList())
         }
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.loadGraphByDoc("doc-a")
         vm.setViewMode(KgViewMode.GLOBAL)
@@ -327,7 +327,7 @@ class KnowledgeGraphViewModelTest {
     fun `会话模式未选会话时要求选择且不复用全局图`() = runTest {
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns
             subgraph(listOf(dataNode(id = "global-node")), emptyList())
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.setViewMode(KgViewMode.SESSION)
 
@@ -347,7 +347,7 @@ class KnowledgeGraphViewModelTest {
             KgSessionTurn("m2", 2, 20L, listOf("a", "b"), listOf("b")),
         )
         coEvery { graphStore.searchGraphEntities(GraphEntitySearchRequest("a", sessionId = "s1")) } returns listOf(dataNode("a"))
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.loadGraphBySession("s1")
         vm.searchEntities("a")
@@ -366,7 +366,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.getGraphSubgraph(any()) } returns subgraph(listOf(dataNode("a")), emptyList())
         coEvery { graphStore.getSessionTurns("s1") } returns listOf(KgSessionTurn("m1", 1, 10L, listOf("a"), listOf("a")))
         coEvery { graphStore.getEntitySources("a") } returns KgEntitySources(emptyList(), emptyList())
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         vm.loadGraphBySession("s1")
 
         vm.selectTurn("m1")
@@ -395,7 +395,7 @@ class KnowledgeGraphViewModelTest {
         )
         coEvery { graphStore.getEntitySources("a") } returns sources
         coEvery { graphStore.getEntitySources("b") } throws IllegalStateException("db")
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.selectEntity("a")
         assertThat(vm.selectedEntity.value).isEqualTo(KgEntityDetail("a", sources, isLoading = false))
@@ -411,7 +411,7 @@ class KnowledgeGraphViewModelTest {
     fun `画布点实体选中并请求居中，再点同一实体取消且不再移动视角`() = runTest {
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns subgraph(listOf(dataNode("a")), emptyList())
         coEvery { graphStore.getEntitySources("a") } returns KgEntitySources(emptyList(), emptyList())
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         val before = vm.centerRequest.value.key
 
         vm.tapEntity("a")
@@ -429,7 +429,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.getGraphSubgraph(match { it.expandNodeId == "far" }) } returns
             subgraph(listOf(dataNode("root"), dataNode("far")), emptyList())
         coEvery { graphStore.getEntitySources(any()) } returns KgEntitySources(emptyList(), emptyList())
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         val before = vm.centerRequest.value.key
 
         vm.focusEntity("far")
@@ -450,7 +450,7 @@ class KnowledgeGraphViewModelTest {
             subgraph(listOf(dataNode("root")), emptyList(), total = 500)
         coEvery { graphStore.getGraphSubgraph(match { it.expandNodeId == "root" && it.retainedNodeIds == listOf("root") && it.nodeLimit <= 300 }) } returns
             subgraph(listOf(dataNode("root"), dataNode("neighbor")), listOf(dataEdge(sourceId = "root", targetId = "neighbor")), total = 500)
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
 
         vm.expandNode("root")
 
@@ -464,7 +464,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.getGraphSubgraph(any()) } returns subgraph(emptyList(), emptyList())
         coEvery { graphStore.searchGraphEntities(GraphEntitySearchRequest("人工", docId = "doc-a")) } returns
             listOf(dataNode("found", "人工智能"))
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { emptyList() }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { emptyList() }
         vm.loadGraphByDoc("doc-a")
 
         vm.searchEntities("人工")
@@ -490,7 +490,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "shared")) } returns
             subgraph(listOf(dataNode("fact", "常识")), emptyList())
 
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) { collections }
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) { collections }
 
         assertThat(vm.collectionOptions.value.map { it.id }).containsExactly("shared", "work:a", "work:b").inOrder()
         assertThat(vm.selectedCollectionId.value).isEqualTo("work:a")
@@ -508,7 +508,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.getGraphSubgraph(any()) } returns subgraph(emptyList(), emptyList())
         coEvery { graphStore.searchGraphEntities(GraphEntitySearchRequest("主", collectionId = "work:a")) } returns
             listOf(dataNode("hero", "主角"))
-        val vm = KnowledgeGraphViewModel(repo, graphStore, app) {
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) {
             listOf(KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300))
         }
 
@@ -517,6 +517,43 @@ class KnowledgeGraphViewModelTest {
         runCurrent()
 
         assertThat(vm.searchResults.value.map { it.id }).containsExactly("hero")
+    }
+
+    @Test
+    fun `时间轴把篇目时间点交给子图与实体状态变化，滑到最后一篇回到最新`() = runTest {
+        val ticks = (1..3).map { com.promenar.infinity.data.rag.KgCollectionArticle("d$it", "第${it}章", "$it", "natural", it) }
+        val asOfCalls = mutableListOf<Int?>()
+        val timeline = object : KgGraphTimelineSource {
+            override suspend fun ticks(collectionId: String) = if (collectionId == "work:p") ticks else emptyList()
+            override suspend fun history(collectionId: String, nodeId: String, ticks: List<com.promenar.infinity.data.rag.KgCollectionArticle>, asOfOrdinal: Int?): List<KgEntityHistoryLine> {
+                asOfCalls += asOfOrdinal
+                return listOf(KgEntityHistoryLine("e", "甲", "同盟", "乙", 1, asOfOrdinal, false))
+            }
+        }
+        coEvery { graphStore.getGraphSubgraph(any()) } returns subgraph(listOf(dataNode("a")), emptyList())
+        coEvery { graphStore.getEntitySources("a") } returns KgEntitySources(emptyList(), emptyList())
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, timeline) { emptyList() }
+        vm.loadGraphByCollection("work:p")
+        assertThat(vm.timelineTicks.value.map { it.ordinal }).containsExactly(1, 2, 3).inOrder()
+
+        vm.selectEntity("a")
+        assertThat(vm.selectedEntity.value?.history?.single()?.endOrdinal).isNull()
+        vm.setAsOf(2)
+        assertThat(vm.asOfOrdinal.value).isEqualTo(2)
+        assertThat(vm.graphState.value.scopeKey).isEqualTo("collection:work:p@2")
+        coVerify { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "work:p", asOf = com.promenar.infinity.data.rag.KgAsOf.Ordinal(2))) }
+        // 选中的实体在新时间点重新读取状态变化。
+        assertThat(vm.selectedEntity.value?.nodeId).isEqualTo("a")
+        assertThat(asOfCalls).containsExactly(null, 2).inOrder()
+
+        vm.setAsOf(3)
+        assertThat(vm.asOfOrdinal.value).isNull()
+        assertThat(vm.graphState.value.scopeKey).isEqualTo("collection:work:p")
+        // 换合集时间点清空。
+        vm.setAsOf(1)
+        vm.loadGraphByCollection("shared")
+        assertThat(vm.asOfOrdinal.value).isNull()
+        assertThat(vm.timelineTicks.value).isEmpty()
     }
 
     private fun subgraph(nodes: List<KgNode>, edges: List<KgEdge>, total: Int = nodes.size) =

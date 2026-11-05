@@ -57,6 +57,12 @@ internal class KgCollectionOrder(private val database: InfinityDatabase) {
         current.forEachIndexed { index, item -> writeRank(item.docId, step * BigInteger.valueOf(index + 1L), "manual") }
     }
 
+    /** 清除手动顺序，按文件名自然顺序重排。 */
+    suspend fun resetNatural(collectionId: String) = database.withTransaction {
+        database.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET order_source='natural' WHERE collection_id=?", arrayOf(collectionId))
+        refresh(collectionId)
+    }
+
     private suspend fun rows(collectionId: String): List<KgCollectionArticle> {
         val current = persistedRows(collectionId)
         val pending = current.filter { it.orderKey == null } + discovered(collectionId)

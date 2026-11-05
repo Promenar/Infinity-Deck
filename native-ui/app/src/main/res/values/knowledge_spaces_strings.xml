@@ -30,8 +30,6 @@
     <string name="ks_graph_rebind_desc">A session uses one graph at a time. Content written earlier stays in its original graph.</string>
     <string name="ks_graph_rebind_adds_docs">After binding, documents in “%1$s” are added to this session\'s document scope.</string>
     <string name="ks_graph_rebind_confirm">Bind</string>
-    <string name="ks_folder_action">Graph settings</string>
-    <string name="ks_folder_title">Graph for “%1$s”</string>
     <string name="ks_folder_desc">Decides which graph the documents in this folder belong to. Switching only regroups extracted entities; the model is not called again.</string>
     <string name="ks_folder_mode_work">Standalone work (default)</string>
     <string name="ks_folder_mode_work_desc">Same-name entities merge only within this folder and never mix with other works</string>

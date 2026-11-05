@@ -30,8 +30,6 @@
     <string name="ks_graph_rebind_desc">一个会话同时只用一张图谱。改绑后，之前写入的内容留在原图谱。</string>
     <string name="ks_graph_rebind_adds_docs">绑定后，「%1$s」的文档会自动加入本会话的资料范围。</string>
     <string name="ks_graph_rebind_confirm">绑定</string>
-    <string name="ks_folder_action">图谱设置</string>
-    <string name="ks_folder_title">「%1$s」的图谱</string>
     <string name="ks_folder_desc">决定这个文件夹里的文档归入哪张图谱。切换只重新归类已抽取的实体，不重新调用模型。</string>
     <string name="ks_folder_mode_work">独立作品（默认）</string>
     <string name="ks_folder_mode_work_desc">只在本文件夹内合并同名实体，不与其它作品串线</string>

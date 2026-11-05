@@ -287,6 +287,7 @@ object UiTags {
     const val KG_SESSION_OPTIONS_EMPTY = "KG_SESSION_OPTIONS_EMPTY"
     const val KG_TURN_STRIP = "KG_TURN_STRIP"
     const val KG_ENTITY_DETAIL = "KG_ENTITY_DETAIL"
+    const val KG_TIMELINE = "KG_TIMELINE"
     const val KG_FIT_VIEW = "KG_FIT_VIEW"
     private const val KG_SESSION_OPTION_PREFIX = "KG_SESSION_OPTION:"
     private const val KG_TURN_PREFIX = "KG_TURN:"

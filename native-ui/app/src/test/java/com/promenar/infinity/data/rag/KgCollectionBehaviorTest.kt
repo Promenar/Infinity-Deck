@@ -69,6 +69,40 @@ class KgCollectionBehaviorTest {
         assertThat(afterInsert.single { it.docId == "第3章" }.orderSource).isEqualTo("natural")
     }
 
+    @Test fun `恢复自然篇序并按文件夹设置解析合集与可抽取文档`() = runBlocking<Unit> {
+        folder("p", null); folder("q", "p")
+        listOf("第2章", "第1章").forEach { file(it, "p"); write(it) }
+        collections.moveArticle("work:p", "第2章", 0)
+        assertThat(collections.listArticles("work:p").map { it.title }).containsExactly("第2章", "第1章").inOrder()
+        collections.resetNaturalOrder("work:p")
+        val natural = collections.listArticles("work:p")
+        assertThat(natural.map { it.title }).containsExactly("第1章", "第2章").inOrder()
+        assertThat(natural.map { it.orderSource }.distinct()).containsExactly("natural")
+        assertThat(collections.folderCollection("q")).isEqualTo("work:q")
+        collections.setFolderSetting("q", KgFolderSetting.MERGE_PARENT)
+        assertThat(collections.folderCollection("q")).isEqualTo("work:p")
+        collections.setFolderSetting("p", KgFolderSetting.SHARED)
+        assertThat(collections.folderCollection("q")).isEqualTo("shared")
+        db.fileEntryDao().insert(FileEntry(uuid = "txt", workspaceRootUuid = "root", parentUuid = "q", name = "a.txt",
+            hash = "h", physicalRootPath = "/fixture", materializedPath = "/p/q/a.txt", mimeType = "text/plain", createdAt = 1, updatedAt = 1))
+        assertThat(collections.folderDocumentIds("p")).containsExactly("txt")
+    }
+
+    @Test fun `合集设置按文件夹当前类型读取篇目与合并状态`() = runBlocking<Unit> {
+        folder("p", null); folder("q", "p")
+        listOf("第2章", "第1章").forEach { file(it, "q"); write(it) }
+        val own = com.promenar.infinity.ui.library.loadKgCollectionSettings(db, folderId = "q", collectionId = null)
+        assertThat(own.collectionId).isEqualTo("work:q")
+        assertThat(own.folderMode).isEqualTo(com.promenar.infinity.ui.library.FolderGraphMode.WORK)
+        assertThat(own.articles.map { it.title }).containsExactly("第1章", "第2章").inOrder()
+        assertThat(own.names.values).containsAtLeast("共同人物", "目标")
+        collections.setFolderSetting("q", KgFolderSetting.MERGE_PARENT)
+        val merged = com.promenar.infinity.ui.library.loadKgCollectionSettings(db, folderId = "q", collectionId = null)
+        assertThat(merged.collectionId).isEqualTo("work:p")
+        assertThat(merged.folderMode).isEqualTo(com.promenar.infinity.ui.library.FolderGraphMode.MERGE_PARENT)
+        assertThat(com.promenar.infinity.ui.library.loadKgCollectionSettings(db, folderId = null, collectionId = "work:p").folderMode).isNull()
+    }
+
     @Test fun `合集篇序包含尚未抽取的文档`() = runBlocking<Unit> {
         folder("p", null)
         listOf("第1章", "第2章", "第10章").forEach { file(it, "p") }

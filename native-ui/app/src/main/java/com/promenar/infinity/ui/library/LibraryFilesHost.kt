@@ -7,22 +7,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
-import com.promenar.infinity.data.rag.KgCollectionRepository
-import com.promenar.infinity.data.rag.KgFolderSetting
 import com.promenar.infinity.ui.files.FileHostAction
 import com.promenar.infinity.ui.files.FileHostActionScope
-import com.promenar.infinity.utils.InfinityLogger
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -58,9 +52,11 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
         val current = controller.state.value
         if (current.location?.id != ref.locationId || current.path != ref.path) controller.openLocation(ref.locationId, ref.path)
     }
-    // 资料库文件夹的图谱归属设置：记录文件夹 uuid 与名称，面板关闭时清空。
-    var graphFolder by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
-    val graphSettingLabel = stringResource(R.string.ks_folder_action)
+    // 资料库文件夹的合集设置与批量抽取；面板关闭时清空。
+    var settingsFolder by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
+    var batchTarget by remember { mutableStateOf<KgBatchTarget?>(null) }
+    val settingsLabel = stringResource(R.string.kgc_action_settings)
+    val extractLabel = stringResource(R.string.kgc_action_extract)
     Box(Modifier.fillMaxSize().statusBarsPadding().testTag(LibraryTags.page("browse"))) {
         FileManagerPane(
             controller = controller,
@@ -69,13 +65,29 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                 showPin = true,
                 hostActions = listOf(
                     FileHostAction(
-                        id = "library-folder-graph", icon = Icons.Rounded.Hub, label = graphSettingLabel,
+                        id = "library-folder-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
+                        appliesTo = setOf(FileHostActionScope.FOLDER),
+                        visibleFor = { items -> items.singleOrNull()?.knowledge?.folderId != null },
+                        onInvoke = { items -> items.singleOrNull()?.knowledge?.folderId?.let { batchTarget = KgBatchTarget.Folder(it) } },
+                    ),
+                    FileHostAction(
+                        id = "library-folder-graph", icon = Icons.Rounded.Hub, label = settingsLabel,
                         appliesTo = setOf(FileHostActionScope.FOLDER),
                         visibleFor = { items -> items.singleOrNull()?.knowledge?.folderId != null },
                         onInvoke = { items ->
                             items.singleOrNull()?.let { item ->
-                                item.knowledge?.folderId?.let { graphFolder = it to item.name }
+                                item.knowledge?.folderId?.let { settingsFolder = it to item.name }
                             }
+                        },
+                    ),
+                    // 多选跨合集时各篇仍归入各自的合集，一起抽取不会合并实体。
+                    FileHostAction(
+                        id = "library-multi-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
+                        appliesTo = setOf(FileHostActionScope.MULTI),
+                        visibleFor = { items -> items.any { it.knowledge?.documentId != null } },
+                        onInvoke = { items ->
+                            val ids = items.mapNotNull { it.knowledge?.documentId }.distinct()
+                            if (ids.isNotEmpty()) batchTarget = KgBatchTarget.Documents(ids)
                         },
                     ),
                 ),
@@ -83,39 +95,11 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
             modifier = Modifier.fillMaxSize(),
         )
     }
-    graphFolder?.let { (folderId, folderName) -> FolderGraphSettingHost(app, folderId, folderName) { graphFolder = null } }
-}
-
-/** 读取并写入文件夹的图谱归属；切换只按已有证据重新归类，不调用模型。 */
-@Composable
-private fun FolderGraphSettingHost(app: InfinityApplication, folderId: String, folderName: String, onDismiss: () -> Unit) {
-    val repository = androidx.compose.runtime.remember(app) { KgCollectionRepository(app.database) }
-    val scope = rememberCoroutineScope()
-    val selected by produceState<FolderGraphMode?>(null, folderId) {
-        value = runCatching { withContext(Dispatchers.IO) { repository.readFolderSetting(folderId) } }
-            .getOrDefault(KgFolderSetting.AUTO).toMode()
+    settingsFolder?.let { (folderId, folderName) ->
+        KgCollectionSettingsHost(app, folderName, folderId = folderId, collectionId = null) { settingsFolder = null }
     }
-    FolderGraphSettingSheet(
-        folderName = folderName,
-        selected = selected,
-        onSelect = { mode ->
-            scope.launch {
-                runCatching { withContext(Dispatchers.IO) { repository.setFolderSetting(folderId, mode.toSetting()) } }
-                    .onFailure { InfinityLogger.logError("[Library] 文件夹图谱设置写入失败", it) }
-            }
-        },
-        onDismiss = onDismiss,
-    )
+    batchTarget?.let { target ->
+        KgBatchExtractionHost(app, target, onQueued = host.viewModel::reportGraphQueued) { batchTarget = null }
+    }
 }
 
-private fun KgFolderSetting.toMode() = when (this) {
-    KgFolderSetting.SHARED -> FolderGraphMode.SHARED
-    KgFolderSetting.MERGE_PARENT -> FolderGraphMode.MERGE_PARENT
-    KgFolderSetting.AUTO, KgFolderSetting.WORK -> FolderGraphMode.WORK
-}
-
-private fun FolderGraphMode.toSetting() = when (this) {
-    FolderGraphMode.WORK -> KgFolderSetting.AUTO
-    FolderGraphMode.SHARED -> KgFolderSetting.SHARED
-    FolderGraphMode.MERGE_PARENT -> KgFolderSetting.MERGE_PARENT
-}

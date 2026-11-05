@@ -58,6 +58,8 @@ data class KgEntityDetail(
     val sources: KgEntitySources? = null,
     val isLoading: Boolean = true,
     val failed: Boolean = false,
+    /** 合集范围下按阅读顺序的状态变化；其它范围为空。 */
+    val history: List<KgEntityHistoryLine> = emptyList(),
 )
 
 /** 请求画布把某实体移到视野中央；[key] 每次请求递增。 */
@@ -88,9 +90,23 @@ class KnowledgeGraphViewModel(
     private val repo: IKnowledgeGraphRepository,
     private val graphStore: GraphStore,
     private val application: Application,
+    /** 时间轴读取；为空且读本机图谱列表时读本机数据库，测试注入列表时不读时间轴。 */
+    timelineSource: KgGraphTimelineSource? = null,
     /** 图谱列表读取；为空时读本机数据库（测试注入固定列表）。 */
     private val collectionLoader: (suspend () -> List<com.promenar.infinity.data.rag.KgCollectionSummary>)? = null,
 ) : ViewModel() {
+
+    private val timeline: KgGraphTimelineSource? = timelineSource
+        ?: if (collectionLoader == null) DatabaseKgGraphTimelineSource((application as InfinityApplication).database) else null
+
+    /** 当前合集的篇目刻度；少于两篇时不显示时间轴。 */
+    private val _timelineTicks = MutableStateFlow<List<com.promenar.infinity.data.rag.KgCollectionArticle>>(emptyList())
+    val timelineTicks: StateFlow<List<com.promenar.infinity.data.rag.KgCollectionArticle>> = _timelineTicks.asStateFlow()
+
+    /** 时间轴所选篇目序号；为空表示最新。 */
+    private val _asOfOrdinal = MutableStateFlow<Int?>(null)
+    val asOfOrdinal: StateFlow<Int?> = _asOfOrdinal.asStateFlow()
+    private var ticksJob: Job? = null
 
     private val _nodes = MutableStateFlow<List<GraphNode>>(emptyList())
     val nodes: StateFlow<List<GraphNode>> = _nodes.asStateFlow()
@@ -219,11 +235,52 @@ class KnowledgeGraphViewModel(
         clearSearch()
         clearScopeFocus()
         _viewMode.value = KgViewMode.GLOBAL
+        if (_selectedCollectionId.value != collectionId) {
+            _asOfOrdinal.value = null
+            _timelineTicks.value = emptyList()
+        }
         _selectedCollectionId.value = collectionId
         _documentSelectionRequired.value = false
         _sessionSelectionRequired.value = false
         _loadError.value = null
-        loadGraphInternal(scope = KgScope.Collection(collectionId), preserveSameScope = false)
+        loadGraphInternal(scope = KgScope.Collection(collectionId, _asOfOrdinal.value), preserveSameScope = false)
+        loadTimelineTicks(collectionId)
+    }
+
+    /** 拖动时间轴：[ordinal] 为空或到最后一篇时回到最新。 */
+    fun setAsOf(ordinal: Int?) {
+        val collectionId = _selectedCollectionId.value ?: return
+        val last = _timelineTicks.value.lastOrNull()?.ordinal
+        val next = ordinal?.takeIf { last != null && it in 1 until last }
+        if (next == _asOfOrdinal.value) return
+        _asOfOrdinal.value = next
+        if (_viewMode.value != KgViewMode.GLOBAL) return
+        // 选中的实体在新时间点仍存在时重新选中，状态变化按新时间点读取。
+        _selectedEntity.value?.nodeId?.let { selected ->
+            selectEntity(null)
+            pendingFocusId = selected
+        }
+        loadGraphInternal(scope = KgScope.Collection(collectionId, next), preserveSameScope = false)
+    }
+
+    private fun loadTimelineTicks(collectionId: String) {
+        val source = timeline ?: return
+        ticksJob?.cancel()
+        ticksJob = viewModelScope.launch {
+            val ticks = try {
+                source.ticks(collectionId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                InfinityLogger.logError("[KG] timeline ticks failed", failure)
+                emptyList()
+            }
+            if (_selectedCollectionId.value != collectionId) return@launch
+            _timelineTicks.value = ticks
+            // 篇目被删除后原时间点越界时回到最新。
+            val point = _asOfOrdinal.value
+            if (point != null && (ticks.size < 2 || point >= ticks.last().ordinal)) setAsOf(null)
+        }
     }
 
     fun loadSessionOptions() {
@@ -285,11 +342,23 @@ class KnowledgeGraphViewModel(
             return
         }
         _selectedEntity.value = KgEntityDetail(nodeId)
+        val collectionId = _selectedCollectionId.value.takeIf { _viewMode.value == KgViewMode.GLOBAL }
+        val ticks = _timelineTicks.value
+        val asOf = _asOfOrdinal.value
         entitySourcesJob = viewModelScope.launch {
             try {
                 val sources = graphStore.getEntitySources(nodeId)
                 if (generation != entitySourcesGeneration) return@launch
-                _selectedEntity.value = KgEntityDetail(nodeId, sources, isLoading = false)
+                val history = if (collectionId == null || ticks.size < 2) emptyList() else try {
+                    timeline?.history(collectionId, nodeId, ticks, asOf).orEmpty()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    InfinityLogger.logError("[KG] entity history failed", failure)
+                    emptyList()
+                }
+                if (generation != entitySourcesGeneration) return@launch
+                _selectedEntity.value = KgEntityDetail(nodeId, sources, isLoading = false, history = history)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -416,7 +485,7 @@ class KnowledgeGraphViewModel(
         _viewMode.value = KgViewMode.GLOBAL
         _documentSelectionRequired.value = false
         _sessionSelectionRequired.value = false
-        _selectedCollectionId.value?.let { loadGraphInternal(scope = KgScope.Collection(it), preserveSameScope = false) }
+        _selectedCollectionId.value?.let { loadGraphInternal(scope = KgScope.Collection(it, _asOfOrdinal.value), preserveSameScope = false) }
             ?: loadCollectionOptions(loadDefault = true)
     }
 
@@ -439,7 +508,10 @@ class KnowledgeGraphViewModel(
     fun refreshCurrentScope() {
         reloadCurrentScope(preserveSameScope = true)
         if (_viewMode.value == KgViewMode.SESSION) loadSessionOptions()
-        if (_viewMode.value == KgViewMode.GLOBAL) loadCollectionOptions()
+        if (_viewMode.value == KgViewMode.GLOBAL) {
+            loadCollectionOptions()
+            _selectedCollectionId.value?.let(::loadTimelineTicks)
+        }
     }
 
     fun searchEntities(query: String) {
@@ -487,6 +559,7 @@ class KnowledgeGraphViewModel(
                 docId = (scope as? KgScope.Document)?.docId,
                 sessionId = (scope as? KgScope.Session)?.sessionId,
                 collectionId = (scope as? KgScope.Collection)?.collectionId,
+                asOf = (scope as? KgScope.Collection)?.asOfRequest(),
                 nodeLimit = (_nodes.value.size + GRAPH_EXPANSION_BATCH_SIZE + 1).coerceAtMost(MAX_GRAPH_NODE_LIMIT),
                 edgeLimit = maxOf(DEFAULT_GRAPH_EDGE_LIMIT, (_nodes.value.size + GRAPH_EXPANSION_BATCH_SIZE) * 4).coerceAtMost(MAX_GRAPH_EDGE_LIMIT),
                 retainedNodeIds = _nodes.value.map { it.id },
@@ -506,7 +579,7 @@ class KnowledgeGraphViewModel(
 
     /** 当前视角对应的查询范围；文档或会话未选定时为 null。 */
     private fun currentScope(): KgScope? = when (_viewMode.value) {
-        KgViewMode.GLOBAL -> _selectedCollectionId.value?.let(KgScope::Collection)
+        KgViewMode.GLOBAL -> _selectedCollectionId.value?.let { KgScope.Collection(it, _asOfOrdinal.value) }
         KgViewMode.DOCUMENT -> _selectedDocumentId.value?.let(KgScope::Document)
         KgViewMode.SESSION -> _selectedSessionId.value?.let(KgScope::Session)
     }
@@ -654,9 +727,10 @@ private sealed interface KgScope {
     fun request(): GraphSubgraphRequest
 
     /** 一张图谱（作品或通用知识）；图谱之间实体互不合并，不再提供跨图谱的全局视图。 */
-    data class Collection(val collectionId: String) : KgScope {
-        override val key get() = "collection:$collectionId"
-        override fun request() = GraphSubgraphRequest(collectionId = collectionId)
+    data class Collection(val collectionId: String, val asOfOrdinal: Int? = null) : KgScope {
+        override val key get() = "collection:$collectionId" + (asOfOrdinal?.let { "@$it" } ?: "")
+        override fun request() = GraphSubgraphRequest(collectionId = collectionId, asOf = asOfRequest())
+        fun asOfRequest() = asOfOrdinal?.let { com.promenar.infinity.data.rag.KgAsOf.Ordinal(it) }
     }
 
     data class Document(val docId: String) : KgScope {

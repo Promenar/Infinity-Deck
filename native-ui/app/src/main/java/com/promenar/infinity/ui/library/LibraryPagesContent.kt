@@ -1,5 +1,13 @@
 package com.promenar.infinity.ui.library
 
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.rag.KgCollectionRepository
+import com.promenar.infinity.data.rag.KgDocumentCollectionInfo
+import com.promenar.infinity.utils.InfinityLogger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import com.promenar.infinity.ui.common.bettboxListGroupItem
@@ -951,6 +959,20 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         is DocumentGraphState.ConfirmationRequired -> stringResource(R.string.library_graph_state_confirm)
         is DocumentGraphState.Failed -> graph.reason
     }
+    val app = LocalContext.current.applicationContext as InfinityApplication
+    var reextract by remember(info.documentId) { mutableStateOf(false) }
+    var openSettings by remember(info.documentId) { mutableStateOf(false) }
+    // 所属合集与篇序随图谱状态刷新：抽取完成后文档才写入合集成员。
+    val collection by produceState<KgDocumentCollectionInfo?>(null, info.documentId, graph) {
+        value = try {
+            withContext(Dispatchers.IO) { KgCollectionRepository(app.database).documentInfo(info.documentId) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            InfinityLogger.logError("[Library] 读取所属合集失败", failure)
+            null
+        }
+    }
     InspectorRow(stringResource(R.string.library_graph_row), text)
     // 文档还在排队、索引或解析失败时，先处理索引本身。
     val indexBusy = pending?.kind in setOf(PendingKind.QUEUED, PendingKind.INDEXING, PendingKind.FAILED)
@@ -960,7 +982,9 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
                 { host.viewModel.requestGraphExtraction(info.documentId, info.name) }
         is DocumentGraphState.Partial, is DocumentGraphState.Failed ->
             R.string.library_action_retry_graph to { host.viewModel.retry(info.documentId) }
-        is DocumentGraphState.Extracting, is DocumentGraphState.Complete -> null
+        // 换了模型或提示词后可重新抽取，与批量抽取走同一个用量确认；旧图谱在新结果提交前保留。
+        is DocumentGraphState.Complete -> R.string.kgc_action_reextract to { reextract = true }
+        is DocumentGraphState.Extracting -> null
     }
     if (action != null) {
         FilledTonalButton(
@@ -968,6 +992,42 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
             enabled = enabled,
             modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
         ) { Text(stringResource(action.first), maxLines = 1) }
+    }
+    collection?.let { current ->
+        val ordinal = current.ordinal
+        InspectorLinkRow(
+            label = stringResource(R.string.kgc_doc_collection_row),
+            value = if (ordinal != null) stringResource(R.string.kgc_doc_collection_value, current.title, ordinal) else current.title,
+            onClick = { openSettings = true },
+            modifier = Modifier.testTag("library_doc_collection"),
+        )
+        if (openSettings) {
+            KgCollectionSettingsHost(app, current.title, folderId = null, collectionId = current.collectionId) { openSettings = false }
+        }
+    }
+    if (reextract) {
+        KgBatchExtractionHost(app, KgBatchTarget.Documents(listOf(info.documentId)), onQueued = host.viewModel::reportGraphQueued) {
+            reextract = false
+        }
+    }
+}
+
+/** 可点的检查行：右侧箭头提示进入下一层设置。 */
+@Composable
+private fun InspectorLinkRow(label: String, value: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .clickable(onClick = onClick)
+            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

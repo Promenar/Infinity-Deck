@@ -178,6 +178,12 @@ class LibraryViewModel(
         _graphRequest.value = null
     }
 
+    /** 批量抽取面板提交后的提示；[failure] 为失败原因，成功时为 null。 */
+    fun reportGraphQueued(failure: String?) {
+        _notice.value = if (failure == null) LibraryNotice.ActionDone(LibraryNotice.Kind.GRAPH)
+            else LibraryNotice.ActionFailed(LibraryNotice.Kind.GRAPH, failure.takeIf { it.isNotBlank() })
+    }
+
     private fun runDocumentAction(documentId: String, kind: LibraryNotice.Kind, action: suspend () -> LibraryActionResult) {
         if (documentId in _busyDocuments.value) return
         _busyDocuments.value = _busyDocuments.value + documentId

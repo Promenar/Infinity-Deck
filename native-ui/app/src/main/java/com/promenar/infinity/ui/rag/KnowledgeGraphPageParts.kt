@@ -53,10 +53,15 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -430,7 +435,74 @@ internal fun KnowledgeGraphEntityPanel(
                     relations.forEach { item -> KgRelationChip(item, onPickEntity) }
                 }
             }
+            if (detail.history.isNotEmpty()) {
+                KgPanelSectionLabel(R.string.kg_entity_history)
+                detail.history.forEach { line -> KgHistoryRow(line) }
+            }
         }
+    }
+}
+
+/** 状态变化一行：关系与篇目区间；倒叙段落单独标出，不改变当时状态。 */
+@Composable
+private fun KgHistoryRow(line: KgEntityHistoryLine) {
+    val range = when {
+        line.flashback -> stringResource(R.string.kg_history_flashback, line.startOrdinal)
+        line.endOrdinal == null -> stringResource(R.string.kg_history_since, line.startOrdinal)
+        line.endOrdinal == line.startOrdinal -> stringResource(R.string.kg_history_at, line.startOrdinal)
+        else -> stringResource(R.string.kg_history_range, line.startOrdinal, line.endOrdinal)
+    }
+    Column(Modifier.fillMaxWidth().padding(end = InfinitySpacing.Small, bottom = InfinitySpacing.Small)) {
+        Text(
+            stringResource(R.string.kg_history_relation, line.source, line.relation, line.target),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (line.endOrdinal == null || line.flashback) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(range, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+    }
+}
+
+/**
+ * 合集时间轴：刻度为篇目顺序，松手后按所选篇目末尾读取图谱；滑到最后一篇即最新。
+ * 拖动中只更新标签，避免每个刻度都重新加载画布。
+ */
+@Composable
+internal fun KnowledgeGraphTimelineRow(
+    ticks: List<com.promenar.infinity.data.rag.KgCollectionArticle>,
+    asOfOrdinal: Int?,
+    onCommit: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val first = ticks.first().ordinal
+    val last = ticks.last().ordinal
+    var position by remember(asOfOrdinal, first, last) { mutableFloatStateOf((asOfOrdinal ?: last).coerceIn(first, last).toFloat()) }
+    val shown = position.roundToInt().coerceIn(first, last)
+    val title = ticks.firstOrNull { it.ordinal == shown }?.title.orEmpty()
+    Column(modifier.fillMaxWidth().testTag(UiTags.KG_TIMELINE)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (shown == last) stringResource(R.string.kg_timeline_latest, ticks.size)
+                else stringResource(R.string.kg_timeline_as_of, shown, title),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(R.string.kg_timeline_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        Slider(
+            value = position,
+            onValueChange = { position = it },
+            onValueChangeFinished = { onCommit(position.roundToInt().takeIf { it < last }) },
+            valueRange = first.toFloat()..last.toFloat(),
+            steps = (last - first - 1).coerceAtLeast(0),
+            modifier = Modifier.semantics { contentDescription = title },
+        )
     }
 }
 
