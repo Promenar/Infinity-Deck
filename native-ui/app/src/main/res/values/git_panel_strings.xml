@@ -95,4 +95,13 @@
         <item quantity="other">%d changes</item>
     </plurals>
     <string name="git_top_bar_cd">Open Git panel: %1$s</string>
+    <string name="git_panel_status_refreshing">Refreshing</string>
+    <plurals name="git_panel_status_seconds">
+        <item quantity="one">Status %d second ago</item>
+        <item quantity="other">Status %d seconds ago</item>
+    </plurals>
+    <plurals name="git_panel_status_minutes">
+        <item quantity="one">Status %d minute ago</item>
+        <item quantity="other">Status %d minutes ago</item>
+    </plurals>
 </resources>

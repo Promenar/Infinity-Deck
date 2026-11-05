@@ -55,6 +55,11 @@ class GitPanelViewModel(
         refresh()
     }
 
+    /** 回到前台：缓存订阅已停止时重新订阅，先显示缓存再按需刷新。 */
+    fun resumeStatus() {
+        if (statusCache != null && statusJob?.isActive != true) loadStatus()
+    }
+
     fun close() {
         statusJob?.cancel()
         statusJob = null
@@ -165,7 +170,11 @@ class GitPanelViewModel(
             } else {
                 cache.observe(sessionId).collect { snapshot ->
                     _state.update { state ->
-                        state.copy(status = snapshot.result?.toLoad() ?: GitLoad.Loading, refreshing = snapshot.refreshing)
+                        state.copy(
+                            status = snapshot.result?.toLoad() ?: GitLoad.Loading,
+                            refreshing = snapshot.refreshing,
+                            statusReadAtMillis = snapshot.readAtMillis,
+                        )
                     }
                 }
             }

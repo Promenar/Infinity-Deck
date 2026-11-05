@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.map
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
@@ -771,12 +772,16 @@ fun ChatRoute(
             liveOutput = { job -> RunningToolLiveOutput(job.liveOutputKey, showStop = false) },
         )
     }
-    // 会话顶栏持续观察缓存，生成结束后重新订阅。
+    // 会话顶栏在前台时观察缓存，生成结束后重新订阅；退到后台即停止轮询仓库元数据。
+    // 顶栏只看分支与改动数，写入由工具结束与手动刷新失效，不靠 30 秒过期反复启动解释器。
+    val gitLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(sessionId, boundWorkspaceId, workspaceRefresh, uiState.isGenerating, gitRefresh) {
         if (uiState.isGenerating) return@LaunchedEffect
-        application.gitStatusCache.observe(sessionId).collect { snapshot ->
-            snapshot.result?.let { status ->
-                gitSummary = com.promenar.infinity.ui.git.GitEntrySummary.from(status) as? com.promenar.infinity.ui.git.GitEntrySummary.Repository
+        gitLifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            application.gitStatusCache.observe(sessionId, GIT_HEADER_MAX_AGE_MILLIS).collect { snapshot ->
+                snapshot.result?.let { status ->
+                    gitSummary = com.promenar.infinity.ui.git.GitEntrySummary.from(status) as? com.promenar.infinity.ui.git.GitEntrySummary.Repository
+                }
             }
         }
     }
@@ -1410,3 +1415,6 @@ private val RunModePopoverWidth = 300.dp
 @Composable
 fun ChatScreen(sessionId: String, onNavigateBack: () -> Unit = {}) =
     ChatRoute(sessionId, onNavigateBack)
+
+/** 会话顶栏的 Git 状态最长复用时间：仓库元数据变化与工具写入另行失效。 */
+private const val GIT_HEADER_MAX_AGE_MILLIS = 5 * 60_000L

@@ -56,10 +56,11 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -143,7 +144,11 @@ fun GitChangesPage(
         key = "git-panel-$sessionId",
         factory = GitPanelViewModel.factory(sessionId, application.gitChangesService, application.branchControls::listWorktrees, application.gitStatusCache),
     )
-    DisposableEffect(viewModel) { onDispose { viewModel.close() } }
+    // 页面在前台时才观察状态缓存；切到后台或离开即停止轮询。
+    androidx.lifecycle.compose.LifecycleStartEffect(viewModel) {
+        viewModel.resumeStatus()
+        onStopOrDispose { viewModel.close() }
+    }
     LaunchedEffect(viewModel) { viewModel.open() }
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler(enabled = state.detail != null) { viewModel.back() }
@@ -320,7 +325,7 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
                                 modifier = Modifier.semantics { heading() },
                             )
                         } else {
-                            BranchHeader(status, nowMillis)
+                            BranchHeader(status, nowMillis, shown.refreshing, shown.statusReadAtMillis)
                         }
                     }
                     is GitPanelDetail.Change -> HeaderTitles(
@@ -397,7 +402,7 @@ private fun HeaderTitles(title: String, subtitle: String, identifier: Boolean) {
  * 旧检查端不输出仓库名时以分支为标题。上游在本地不存在属于异常，单独一行以错误色提示。
  */
 @Composable
-private fun BranchHeader(status: GitStatus, nowMillis: Long?) {
+private fun BranchHeader(status: GitStatus, nowMillis: Long?, refreshing: Boolean = false, readAtMillis: Long? = null) {
     val repository = status.repositoryName?.takeIf { it.isNotBlank() }
     val branch = branchLabel(status.branch, status.detached, status.head?.take(7), status.unborn)
     Row(
@@ -426,7 +431,15 @@ private fun BranchHeader(status: GitStatus, nowMillis: Long?) {
     val tracking = status.tracking
     val upstream = tracking.upstream
     val missing = tracking.upstreamMissing == true && upstream != null
-    val now = nowMillis ?: remember(status) { System.currentTimeMillis() }
+    // 显示缓存结果时每秒走一次时钟，“N 秒前”随之更新；截图测试传入固定时刻。
+    val ticking by produceState(System.currentTimeMillis(), status, readAtMillis, nowMillis) {
+        if (nowMillis != null || readAtMillis == null) return@produceState
+        while (true) {
+            delay(1_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    val now = nowMillis ?: ticking
     val meta = listOfNotNull(
         when {
             status.detached || missing -> null
@@ -436,6 +449,7 @@ private fun BranchHeader(status: GitStatus, nowMillis: Long?) {
         // 分离 HEAD 的分支标签已含提交号，不再重复。
         status.head?.take(7)?.takeUnless { status.detached },
         fetchAgeLabel(gitFetchAge(status.lastFetchSeconds, now)),
+        statusFreshnessLabel(gitStatusFreshness(refreshing, readAtMillis, now)),
     )
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -493,6 +507,14 @@ internal fun fetchAgeLabel(age: GitFetchAge): String = when (age) {
     is GitFetchAge.Minutes -> pluralStringResource(R.plurals.git_panel_fetch_minutes, age.value, age.value)
     is GitFetchAge.Hours -> pluralStringResource(R.plurals.git_panel_fetch_hours, age.value, age.value)
     is GitFetchAge.Days -> pluralStringResource(R.plurals.git_panel_fetch_days, age.value, age.value)
+}
+
+@Composable
+private fun statusFreshnessLabel(freshness: GitStatusFreshness?): String? = when (freshness) {
+    null -> null
+    GitStatusFreshness.Refreshing -> stringResource(R.string.git_panel_status_refreshing)
+    is GitStatusFreshness.Seconds -> pluralStringResource(R.plurals.git_panel_status_seconds, freshness.value, freshness.value)
+    is GitStatusFreshness.Minutes -> pluralStringResource(R.plurals.git_panel_status_minutes, freshness.value, freshness.value)
 }
 
 /** 领先、落后两枚标签；都为 0 时不占位，计数无法确定时显示一枚中性提示。 */

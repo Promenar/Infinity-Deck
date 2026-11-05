@@ -144,7 +144,27 @@ data class GitPanelUiState(
     val detail: GitPanelDetail? = null,
     /** 已有内容时的后台刷新。 */
     val refreshing: Boolean = false,
+    /** 当前状态的读取时间（墙钟毫秒）；来自应用缓存时可能早于打开页面。 */
+    val statusReadAtMillis: Long? = null,
 )
+
+/** 页头状态新鲜度：刷新中优先；读取不足 10 秒视为最新，不显示。 */
+sealed interface GitStatusFreshness {
+    data object Refreshing : GitStatusFreshness
+    data class Seconds(val value: Int) : GitStatusFreshness
+    data class Minutes(val value: Int) : GitStatusFreshness
+}
+
+fun gitStatusFreshness(refreshing: Boolean, readAtMillis: Long?, nowMillis: Long): GitStatusFreshness? {
+    if (refreshing) return GitStatusFreshness.Refreshing
+    readAtMillis ?: return null
+    val seconds = ((nowMillis - readAtMillis) / 1000).coerceAtLeast(0)
+    return when {
+        seconds < 10 -> null
+        seconds < 60 -> GitStatusFreshness.Seconds(seconds.toInt())
+        else -> GitStatusFreshness.Minutes((seconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+    }
+}
 
 data class GitPanelActions(
     val onRefresh: () -> Unit = {},

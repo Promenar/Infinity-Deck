@@ -84,4 +84,11 @@
         <item quantity="other">%d 处改动</item>
     </plurals>
     <string name="git_top_bar_cd">打开 Git 面板：%1$s</string>
+    <string name="git_panel_status_refreshing">刷新中</string>
+    <plurals name="git_panel_status_seconds">
+        <item quantity="other">状态 %d 秒前</item>
+    </plurals>
+    <plurals name="git_panel_status_minutes">
+        <item quantity="other">状态 %d 分钟前</item>
+    </plurals>
 </resources>
