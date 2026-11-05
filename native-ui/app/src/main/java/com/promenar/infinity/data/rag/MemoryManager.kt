@@ -335,6 +335,7 @@ class MemoryManager(
         }
 
         val recallRanks = uniqueResults.withIndex().associate { (index, result) -> result.id to index + 1 }
+        val citationForReference = currentCoroutineContext()[KnowledgeCitationScope]?.citation
         val references = combinedResults.mapIndexed { finalIndex, r ->
             val type = parseTypeFromMetadata(r.metadata)
             val recallRank = recallRanks[r.id]
@@ -353,7 +354,8 @@ class MemoryManager(
                 score = if (reranked) r.originalSimilarity ?: r.similarity else r.similarity,
                 rerankScore = if (reranked) r.similarity else null,
                 rankChange = if (reranked) recallRank?.let { it - (finalIndex + 1) } else null,
-                documentId = r.docId,
+                documentId = r.fileUuid ?: r.docId,
+                chunkIndex = documentChunkIndexFromVectorMetadata(r.metadata) ?: 0,
                 documentContentHash = r.documentContentHash ?: documentContentHashFromVectorMetadata(r.metadata),
                 recallRank = recallRank,
                 kind = when (type) {
@@ -363,6 +365,7 @@ class MemoryManager(
                     else -> null
                 },
                 occurredAt = occurredAt[r.id],
+                citationId = citationForReference?.invoke(r.id),
             )
         } + states.map { state ->
             RagReference(
@@ -372,6 +375,7 @@ class MemoryManager(
                 // 当前状态不按相关度入选，不显示相似度。
                 kind = RagReferenceKind.STATE,
                 occurredAt = state.fact.occurredAt,
+                citationId = citationForReference?.invoke(state.fact.rowId),
             )
         }
         val memoryCount = combinedResults.count { parseTypeFromMetadata(it.metadata) in CONVERSATION_RECORD_TYPES } + states.size
@@ -415,6 +419,21 @@ class MemoryManager(
     /** 嵌入模型可用（远程已配置或有本地模型）时才能写入对话记忆。 */
     val canEmbed: Boolean
         get() = embeddingClient.isConfigured || embeddingClient.hasLocalFallback
+
+    /** 已解析的文档范围复用对话检索的向量、关键词和融合逻辑。 */
+    suspend fun searchResolvedDocuments(
+        query: String,
+        queryEmbedding: FloatArray,
+        reach: DocumentReach,
+        limit: Int,
+    ): ResolvedDocumentSearch {
+        val vector = vectorStore.searchDocuments(queryEmbedding, reach, limit, ragConfig.docThreshold)
+        val keywords = keywordSearcher.searchScoped(query, limit, null, reach)
+        return ResolvedDocumentSearch(vector, keywords, rrfFusion(vector, keywords, ragConfig))
+    }
+
+    suspend fun searchDocumentKeywords(query: String, reach: DocumentReach, limit: Int): List<SearchResult> =
+        keywordSearcher.searchScoped(query, limit, null, reach)
 
     suspend fun addTurnToMemory(
         sessionId: String,
@@ -564,7 +583,7 @@ class MemoryManager(
         return blocks.joinToString("\n\n")
     }
 
-    private fun rrfFusion(
+    internal fun rrfFusion(
         vectorResults: List<SearchResult>,
         keywordResults: List<SearchResult>,
         config: RagConfiguration

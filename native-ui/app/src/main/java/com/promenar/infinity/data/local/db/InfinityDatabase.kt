@@ -70,6 +70,8 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         com.promenar.infinity.data.local.db.entity.ScheduledTaskEntity::class,
         AgentEntity::class,
         com.promenar.infinity.data.memory.LongTermMemoryEntity::class,
+        com.promenar.infinity.data.library.ask.KnowledgeCitationEntity::class,
+        com.promenar.infinity.data.library.ask.MemoryEmbeddingEntity::class,
         SessionEntity::class,
         MessageEntity::class,
         AttachmentEntity::class,
@@ -103,11 +105,12 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         ParameterSchemeEntity::class,
         com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity::class,
     ],
-    version = 32,
+    version = 33,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class InfinityDatabase : RoomDatabase() {
+    abstract fun knowledgeCitationDao(): com.promenar.infinity.data.library.ask.KnowledgeCitationDao
     abstract fun longTermMemoryDao(): com.promenar.infinity.data.memory.LongTermMemoryDao
     abstract fun scheduledTaskDao(): com.promenar.infinity.data.local.db.dao.ScheduledTaskDao
     abstract fun agentDao(): AgentDao
@@ -220,3 +223,4 @@ internal const val INFINITY_SCHEMA_V30_IDENTITY_HASH = "ccac3b935d14b59073477904
 internal const val INFINITY_SCHEMA_V31_IDENTITY_HASH = "f4d6fe7e2fb95b1bb98f165bb840d058"
 
 internal const val INFINITY_SCHEMA_V32_IDENTITY_HASH = "1ecb27d0ac1c4dbf13e23fd519b8cfe3"
+internal const val INFINITY_SCHEMA_V33_IDENTITY_HASH = "2f0e094301cf97331d95b088d15627b0"

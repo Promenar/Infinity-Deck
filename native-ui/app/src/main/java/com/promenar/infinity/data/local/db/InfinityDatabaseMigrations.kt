@@ -11,8 +11,31 @@ val INFINITY_DATABASE_MIGRATIONS: Array<Migration>
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_18, MIGRATION_17_18,
         MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24,
         MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
-        MIGRATION_30_31, MIGRATION_31_32,
+        MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
     )
+
+/** 引用记录随来源删除；记忆向量仅是可重建缓存。 */
+val MIGRATION_32_33 = object : Migration(32, 33) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS `knowledge_citations` (
+            `id` TEXT NOT NULL, `document_id` TEXT NOT NULL, `chunk_index` INTEGER,
+            `vector_id` TEXT, `source_kind` TEXT NOT NULL, `session_id` TEXT,
+            `message_id` TEXT, `ask_query` TEXT, `label` TEXT NOT NULL, `cited_at` INTEGER NOT NULL,
+            PRIMARY KEY(`id`),
+            FOREIGN KEY(`document_id`) REFERENCES `workspace_files`(`uuid`) ON UPDATE NO ACTION ON DELETE CASCADE,
+            FOREIGN KEY(`session_id`) REFERENCES `sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+            FOREIGN KEY(`message_id`) REFERENCES `messages`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+        )""".trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_citations_document_id_cited_at` ON `knowledge_citations` (`document_id`, `cited_at`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_citations_session_id` ON `knowledge_citations` (`session_id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_citations_message_id` ON `knowledge_citations` (`message_id`)")
+        db.execSQL("""CREATE TABLE IF NOT EXISTS `memory_embedding_cache` (
+            `memory_id` TEXT NOT NULL, `content_hash` TEXT NOT NULL, `model_id` TEXT NOT NULL,
+            `embedding` BLOB NOT NULL, PRIMARY KEY(`memory_id`),
+            FOREIGN KEY(`memory_id`) REFERENCES `long_term_memories`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+        )""".trimIndent())
+    }
+}
 
 /** 模型侧轮次上下文与生成提醒分别保存原文，历史消息保持为空。 */
 val MIGRATION_31_32 = object : Migration(31, 32) {

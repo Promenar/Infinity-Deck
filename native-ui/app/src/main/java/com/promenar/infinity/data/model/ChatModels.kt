@@ -163,6 +163,8 @@ data class RagReference(
     val documentContentHash: String? = null,
     /** 对话记录所属消息的发生时间，状态为其最近一次更新的时间；文档为 null。 */
     val occurredAt: Long? = null,
+    /** 本轮实际分配的引用编号，供中断恢复时还原映射。 */
+    val citationId: String? = null,
 )
 
 object RagReferenceKind {

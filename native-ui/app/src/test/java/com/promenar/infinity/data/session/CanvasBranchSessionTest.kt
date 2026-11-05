@@ -68,6 +68,24 @@ class CanvasBranchSessionTest {
 
     @After fun tearDown() { database.close() }
 
+    @Test fun `会话分支仅复制前缀引用并在来源会话删除后保留`() = runBlocking {
+        database.fileEntryDao().insert(com.promenar.infinity.data.local.db.entity.FileEntry(
+            uuid = "document", parentUuid = null, name = "示例文档", hash = "", physicalRootPath = "",
+            materializedPath = "example.txt", createdAt = 1, updatedAt = 1,
+        ))
+        database.knowledgeCitationDao().insertAll(listOf(
+            com.promenar.infinity.data.library.ask.KnowledgeCitationEntity("c1", "document", 1, "v1", "CHAT", "source", "first", null, "K1", 1),
+            com.promenar.infinity.data.library.ask.KnowledgeCitationEntity("c2", "document", 2, "v2", "CHAT", "source", "later", null, "K2", 2),
+        ))
+        var serial = 0
+        val result = BranchSessionUseCase(database, newId = { "copy-${serial++}" }).branch("source", "first") as BranchSessionResult.Success
+        val copied = database.knowledgeCitationDao().forSession(result.sessionId)
+        assertThat(copied.map { it.messageId }).containsExactly("copy-1")
+        assertThat(copied.single().label).isEqualTo("K1")
+        database.sessionDao().deleteById("source")
+        assertThat(database.knowledgeCitationDao().forSession(result.sessionId).map { it.messageId }).containsExactly("copy-1")
+    }
+
     @Test fun `分支复制前缀与用户收录的文件快照并映射消息`() = runBlocking {
         val resolver = object : com.promenar.infinity.domain.media.WorkspaceMediaResolver {
             override suspend fun resolve(sessionId: String, path: String): com.promenar.infinity.domain.media.MediaResolution =

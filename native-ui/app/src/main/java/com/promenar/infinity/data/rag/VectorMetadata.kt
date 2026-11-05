@@ -1,9 +1,11 @@
 package com.promenar.infinity.data.rag
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 
 private val vectorMetadataJson = Json { ignoreUnknownKeys = true }
@@ -43,3 +45,6 @@ private fun vectorMetadataObject(metadata: String?) = try {
 
 internal fun documentContentHashFromVectorMetadata(metadata: String?): String? =
     vectorMetadataObject(metadata)?.get("contentHash")?.jsonPrimitive?.content?.takeIf(String::isNotBlank)
+
+internal fun documentChunkIndexFromVectorMetadata(metadata: String?): Int? =
+    (vectorMetadataObject(metadata)?.get("chunkIndex") as? JsonPrimitive)?.intOrNull

@@ -49,6 +49,7 @@ internal const val ROOM_SCHEMA_V27_IDENTITY_HASH = com.promenar.infinity.data.lo
 internal const val ROOM_SCHEMA_V28_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V28_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V29_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V29_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V32_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V32_IDENTITY_HASH
+internal const val ROOM_SCHEMA_V33_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V33_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V31_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V31_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V30_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V30_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V25_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V25_IDENTITY_HASH
@@ -186,6 +187,25 @@ class RoomBackupDataSource(
         if (table in BackupLayerPolicy.CORE_TABLES) return if (BackupLayer.CORE in layers) "" else " WHERE 0"
         if (table == "tags" || table == "document_tags") return if (BackupLayer.KNOWLEDGE in layers) "" else " WHERE 0"
         val knowledge = BackupLayer.KNOWLEDGE in layers
+        if (table == "knowledge_citations") {
+            val workspaces = BackupLayer.WORKSPACE_FILES in layers
+            val roots = "SELECT workspace_root_uuid FROM sessions WHERE agent_id = '__system__' AND workspace_root_uuid IS NOT NULL"
+            val fileFilter = when {
+                knowledge && workspaces -> "1"
+                knowledge -> "workspace_root_uuid IN ($roots)"
+                workspaces -> "workspace_root_uuid NOT IN ($roots)"
+                else -> "0"
+            }
+            val sessions = BackupLayer.SESSIONS in layers
+            val sessionFilter = when {
+                knowledge && sessions -> "1"
+                knowledge -> "agent_id = '__system__'"
+                sessions -> "agent_id != '__system__'"
+                else -> "0"
+            }
+            return " WHERE (source_kind = 'CHAT' AND session_id IN (SELECT id FROM sessions WHERE $sessionFilter))" +
+                " OR (source_kind = 'ASK' AND document_id IN (SELECT uuid FROM workspace_files WHERE $fileFilter))"
+        }
         val other = (if (table == FILE_TABLE) BackupLayer.WORKSPACE_FILES else BackupLayer.SESSIONS) in layers
         if (knowledge && other) return ""
         if (!knowledge && !other) return " WHERE 0"
@@ -249,11 +269,18 @@ class RoomBackupDataSource(
             skipped += avatar.skipped
             avatar.blobs.forEach { (id, blob) -> entries += BackupSourceEntry("avatars/$id", BackupLayer.CORE, blob) }
             val fileIds = fileRows.map { it.requiredString("uuid") }.toSet()
+            val messageIds = payload.rows("messages").map { it.requiredString("id") }.toSet()
             payload.tables.forEach { (table, rows) ->
                 layers.forEach layerLoop@ { layer ->
                     if (BackupLayerPolicy.tableLayer(table, layer) != layer) return@layerLoop
                     val selected = rows.asSequence().filter { policy.layer(table, it) == layer }.filter { row ->
-                        table != "document_tags" || row.requiredString("doc_id") in fileIds && row.requiredString("doc_id") !in skippedIds
+                        when (table) {
+                            "document_tags" -> row.requiredString("doc_id") in fileIds && row.requiredString("doc_id") !in skippedIds
+                            "knowledge_citations" -> if (row.requiredString("source_kind") == "CHAT") {
+                                row.optionalString("message_id") in messageIds
+                            } else row.requiredString("document_id") in fileIds
+                            else -> true
+                        }
                     }.map { row ->
                         when {
                             table == FILE_TABLE && BackupLayer.SESSIONS !in layers -> BackupLayerPolicy.clear(row, "last_write_session_id", "locked_by_session_id", "lock_expires_at")
@@ -800,12 +827,16 @@ class RoomBackupDataSource(
             return if ("agent_rule_revisions" in backupTables() && "agent_rule_revisions" !in parsed.tables)
                 parsed.copy(tables = parsed.tables + ("agent_rule_revisions" to emptyList())) else parsed
         }
-        if (validated.manifest.databaseSchemaVersion != DATABASE_SCHEMA_VERSION) throw BackupValidationException("数据库备份版本不兼容")
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val tableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
+        if (validated.manifest.databaseSchemaVersion == 13 && "knowledge_citations" in tableEntries) {
+            throw BackupValidationException("v13 备份不应包含引用表")
+        }
         if (tableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
         val layers = validated.manifest.layers.keys
         backupTables().forEach { table -> layers.forEach { layer ->
-            if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer }) {
+            if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer } &&
+                !(table == "knowledge_citations" && validated.manifest.databaseSchemaVersion == 13)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
             }
         } }
@@ -823,8 +854,40 @@ class RoomBackupDataSource(
 
     private fun mergeLayers(imported: DatabaseBackupPayload, local: DatabaseBackupPayload, layers: Set<BackupLayer>, validated: ValidatedBackup): DatabaseBackupPayload {
         val policy = BackupLayerPolicy.Index(local.tables)
+        val replacedSessions = local.rows("sessions").filter { policy.layer("sessions", it) in layers }
+            .map { it.requiredString("id") }.toSet() + imported.rows("sessions").map { it.requiredString("id") }
+        val degraded = mutableMapOf<String, Int>()
+        fun record(category: String) { degraded[category] = (degraded[category] ?: 0) + 1 }
+        val legacyWithoutCitations = validated.manifest.databaseSchemaVersion == 13
+        val unchangedLegacySessions = if (legacyWithoutCitations) {
+            val relevant = local.rows("knowledge_citations").mapNotNull { it.optionalString("session_id") }
+                .filter { it in replacedSessions }.toSet()
+            val fields = listOf("id", "session_id", "role", "content", "parent_message_id", "rag_references",
+                "execution_steps", "tool_calls", "tool_call_id", "name", "created_at")
+            fun fingerprints(rows: List<JsonObject>) = rows.asSequence()
+                .filter { it.requiredString("session_id") in relevant }
+                .groupBy { it.requiredString("session_id") }
+                .mapValues { (_, messages) -> messages.sortedBy { it.requiredString("id") }
+                    .map { message -> fields.map { message[it] ?: JsonNull } } }
+            val before = fingerprints(local.rows("messages"))
+            val after = fingerprints(imported.rows("messages"))
+            relevant.filterTo(hashSetOf()) { it in before && before[it] == after[it] }
+        } else emptySet()
+        if (legacyWithoutCitations) local.rows("knowledge_citations").forEach { row ->
+            val session = row.optionalString("session_id")
+            if (session != null && session in replacedSessions && session !in unchangedLegacySessions) {
+                record("legacy_citation_source_changed")
+            }
+        }
         val tables = backupTables().associateWith { table ->
-            BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { policy.layer(table, it) !in layers }, imported.rows(table))
+            BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { row ->
+                if (table == "knowledge_citations" && legacyWithoutCitations) {
+                    val session = row.optionalString("session_id")
+                    session == null || session !in replacedSessions || session in unchangedLegacySessions
+                } else if (table == "knowledge_citations" && row.optionalString("session_id") != null) {
+                    row.optionalString("session_id") !in replacedSessions
+                } else policy.layer(table, row) !in layers
+            }, imported.rows(table))
         }.toMutableMap()
         // 日期序号跨层共享，保留两端较大值以避免保留文件的名称被复用。
         val localSeq = local.rows("workspace_seq").associateBy { it.requiredString("date_key") }
@@ -839,10 +902,22 @@ class RoomBackupDataSource(
             })
         } + localSeq.filterKeys { key -> tables.getValue("workspace_seq").none { it.requiredString("date_key") == key } }.values
         val fileIds = tables.getValue(FILE_TABLE).map { it.requiredString("uuid") }.toSet()
-        val degraded = mutableMapOf<String, Int>()
-        fun record(category: String) { degraded[category] = (degraded[category] ?: 0) + 1 }
         val agentIds = tables.getValue("agents").map { it.requiredString("id") }.toSet()
         val workspaceIds = tables.getValue(WORKSPACE_TABLE).map { it.requiredString("id") }.toSet()
+        val mergedSessions = tables.getValue("sessions").map { it.requiredString("id") }.toSet()
+        val mergedMessages = tables.getValue("messages").associate { it.requiredString("id") to it.requiredString("session_id") }
+        fun validCitationSource(row: JsonObject): Boolean {
+            val session = row.optionalString("session_id")
+            val message = row.optionalString("message_id")
+            return session == null && message == null || session in mergedSessions && message != null && mergedMessages[message] == session
+        }
+        imported.rows("knowledge_citations").forEach { if (!validCitationSource(it)) throw BackupValidationException("引用记录的来源不存在") }
+        tables.getValue("knowledge_citations").forEach { row ->
+            if (row.requiredString("document_id") !in fileIds) record("citation_document_unavailable")
+        }
+        tables["knowledge_citations"] = BackupDatabaseRows.select(tables.getValue("knowledge_citations")) {
+            validCitationSource(it) && it.requiredString("document_id") in fileIds
+        }
         tables.getValue("document_tags").forEach { if (it.requiredString("doc_id") !in fileIds) record("document_tag_file_unavailable") }
         val sessionsBefore = tables.getValue("sessions")
         sessionsBefore.forEach { row ->
@@ -888,7 +963,10 @@ class RoomBackupDataSource(
             Deletion(columns, local.rows(table).asSequence().filter { previous.layer(table, it) in layers }
                 .map { row -> columns.map { row.requiredString(it) } }.toList())
         }
-        val selected = payload.copy(tables = payload.tables.mapValues { (table, rows) -> BackupDatabaseRows.select(rows) { next.layer(table, it) in layers } })
+        val selected = payload.copy(tables = payload.tables.mapValues { (table, rows) ->
+            // 本机引用可能依赖即将被替换的父行，必须在删除前完整读取。
+            if (table == "knowledge_citations") rows.map { it } else BackupDatabaseRows.select(rows) { next.layer(table, it) in layers }
+        })
         val retainedSessions = payload.rows("sessions").asSequence().filter { next.layer("sessions", it) !in layers }.map { row ->
             arrayOf<Any?>(row.optionalString("workspace_root_uuid"), row.optionalString("workspace_path"), row.requiredString("id"))
         }.toList()
@@ -909,6 +987,8 @@ class RoomBackupDataSource(
         }
         deletions.getValue("messages").keys.forEach { id -> sqlite.execSQL("DELETE FROM kg_evidence WHERE message_id = ?", arrayOf<Any?>(id.single())) }
         sqlite.execSQL("DELETE FROM mcp_tool_snapshots")
+        // 任一父表的分层替换都可能级联引用，先清空并在所有父表恢复后重建合并结果。
+        sqlite.execSQL("DELETE FROM knowledge_citations")
         backupTables().reversed().forEach { table ->
             val deletion = deletions.getValue(table)
             val statement = "DELETE FROM `$table` WHERE " + deletion.columns.joinToString(" AND ") { "`$it` = ?" }
@@ -935,6 +1015,10 @@ class RoomBackupDataSource(
         }
         val upgraded = when (decoded.schemaVersion) {
             DATABASE_SCHEMA_VERSION -> return decoded
+            13 -> {
+                if ("knowledge_citations" in decoded.tables) throw BackupValidationException("v13 备份不应包含引用表")
+                decoded.copy(tables = decoded.tables + ("knowledge_citations" to emptyList()))
+            }
             12 -> decoded
             11 -> decoded
             10 -> upgradeV10Payload(decoded)
@@ -957,6 +1041,7 @@ class RoomBackupDataSource(
         } else upgraded
         val messages = current.tables["messages"] ?: throw BackupValidationException("数据库 payload 缺少表: messages")
         return current.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = current.tables +
+            ("knowledge_citations" to current.tables["knowledge_citations"].orEmpty()) +
             ("messages" to messages.map { row -> JsonObject(mapOf("quotes" to JsonNull, "turn_context" to JsonNull, "request_instruction" to JsonNull) + row) }))
     }
 
@@ -1156,6 +1241,7 @@ class RoomBackupDataSource(
         validateUnique(payload, "agents", "id")
         validateUnique(payload, "sessions", "id")
         validateUnique(payload, "messages", "id")
+        validateUnique(payload, "knowledge_citations", "id")
         validateUnique(payload, "attachments", "id")
         validateUnique(payload, "artifacts", "id")
         validateUnique(payload, "context_summaries", "id")
@@ -1192,6 +1278,20 @@ class RoomBackupDataSource(
             .forEach { requireReference(it, "agent_id", agents, "Agent") }
         val messageRows = payload.rows("messages")
         val messageById = messageRows.associate { it.requiredString("id") to it.requiredString("session_id") }
+        payload.rows("knowledge_citations").forEach { row ->
+            if (!allowMissingWorkspaceRoots || row.requiredString("source_kind") != "CHAT") {
+                requireReference(row, "document_id", fileIds, "引用文档")
+            }
+            val session = row.optionalString("session_id")
+            val message = row.optionalString("message_id")
+            when (row.requiredString("source_kind")) {
+                "CHAT" -> if (session == null || message == null || messageById[message] != session) {
+                    throw BackupValidationException("对话引用的会话或消息无效")
+                }
+                "ASK" -> if (session != null || message != null) throw BackupValidationException("问资料引用的来源无效")
+                else -> throw BackupValidationException("引用来源类型无效")
+            }
+        }
         messageRows.forEach { row ->
             requireReference(row, "session_id", sessions, "Session")
             row.optionalString("parent_message_id")?.let { parentId ->
@@ -1321,8 +1421,8 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        if (sqlite.version != 32 || identityHash != ROOM_SCHEMA_V32_IDENTITY_HASH) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v32")
+        if (sqlite.version != 33 || identityHash != ROOM_SCHEMA_V33_IDENTITY_HASH) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v33")
         }
         backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
@@ -2203,10 +2303,11 @@ class RoomBackupDataSource(
             PARAMETER_SCHEME_TABLE,
             FILE_TABLE,
             "workspace_seq",
+            "knowledge_citations",
         )
         val DELETE_ORDER = INSERT_ORDER.reversed()
         val DERIVED_DELETE_ORDER = listOf(
-            "external_snapshots",
+            "memory_embedding_cache", "external_snapshots",
             "mcp_tool_snapshots", "workspace_mutations", "tool_execution_ledger", "file_versions", "vectorization_tasks",
             "kg_evidence", "kg_jit_cache_sources", "kg_edges", "kg_nodes", "kg_jit_cache", "vectors_fts", "vectors", "audit_logs",
         )

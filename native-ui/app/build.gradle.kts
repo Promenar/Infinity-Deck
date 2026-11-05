@@ -32,8 +32,8 @@ abstract class GenerateCurrentRoomSchemaContracts : DefaultTask() {
         val schemas = schemaFiles.files.map { file ->
             (JsonSlurper().parseText(file.readText()) as Map<*, *>).objectMap("database")
         }.sortedBy { (it.requiredValue("version") as Number).toInt() }
-        require(schemas.map { (it.requiredValue("version") as Number).toInt() } == (18..32).toList()) {
-            "完整数据库校验必须包含 v18 至 v32 的导出合同"
+        require(schemas.map { (it.requiredValue("version") as Number).toInt() } == (18..33).toList()) {
+            "完整数据库校验必须包含 v18 至 v33 的导出合同"
         }
         val source = buildString {
             appendLine("package com.promenar.infinity.data.local.db")
@@ -185,8 +185,8 @@ val launcherIconTask = tasks.register("generateInfinityLauncherIcons") {
 }
 val currentRoomSchemaContracts = tasks.register<GenerateCurrentRoomSchemaContracts>("generateCurrentRoomSchemaContracts") {
     group = "build setup"
-    description = "依据 v18 至 v32 导出版本生成完整数据库结构校验合同。"
-    schemaFiles.from((18..32).map { version ->
+    description = "依据 v18 至 v33 导出版本生成完整数据库结构校验合同。"
+    schemaFiles.from((18..33).map { version ->
         layout.projectDirectory.file("schemas/com.promenar.infinity.data.local.db.InfinityDatabase/$version.json")
     })
     outputDirectory.set(layout.buildDirectory.dir("generated/sources/currentRoomSchemaContracts"))

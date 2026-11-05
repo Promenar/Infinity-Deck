@@ -120,6 +120,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -1317,6 +1318,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             attachmentWorkspaceStore = userAttachmentWorkspaceStore,
             branchService = { branchService }, branchPlans = branchPlans, sessionMailbox = sessionMailbox,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
+            chatCitationRecorder = com.promenar.infinity.data.library.ask.ChatCitationRecorder(roomKnowledgeCitationRepository),
         )
     }
     val generationCoordinator: com.promenar.infinity.domain.generation.GenerationCoordinator by lazy {
@@ -1708,6 +1710,58 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
 
     val longTermMemoryRepository: com.promenar.infinity.data.memory.LongTermMemoryRepository by lazy {
         com.promenar.infinity.data.memory.RoomLongTermMemoryRepository(database)
+    }
+    private val roomKnowledgeCitationRepository by lazy {
+        com.promenar.infinity.data.library.ask.RoomKnowledgeCitationRepository(database)
+    }
+    val knowledgeCitationRepository: com.promenar.infinity.domain.library.KnowledgeCitationRepository by lazy {
+        roomKnowledgeCitationRepository
+    }
+    val libraryAskService: com.promenar.infinity.domain.library.LibraryAskService by lazy {
+        val backend = com.promenar.infinity.data.library.ask.RoomLibraryAskBackend(
+            database = database,
+            manager = ProviderManager.getInstance(),
+            preferences = getSharedPreferences("infinity_settings", MODE_PRIVATE),
+            embedding = { libraryAskEmbeddingClient },
+            embeddingSlotChanges = if (localInferenceRuntimeGate.isAvailable) {
+                localInferenceEngine.embeddingSlot.map { Unit }
+            } else kotlinx.coroutines.flow.flowOf(Unit),
+            memoryManager = { memoryManager },
+            memories = longTermMemoryRepository,
+            citations = roomKnowledgeCitationRepository,
+            libraryLocation = { getString(R.string.library_ask_location_library) },
+            workspaceLocation = { getString(R.string.library_ask_location_workspace, it) },
+            memoryLocation = { getString(R.string.library_ask_location_memory) },
+            entityLocation = { getString(R.string.library_ask_location_entity, it) },
+            answerStream = { modelId, prompt ->
+                kotlinx.coroutines.flow.flow {
+                    val route = providerRequestRouter.requireModelRoute(modelId, ::modelRouteError)
+                    val protocol = createRoutedModelProtocol(route)
+                    var completed = false
+                    protocol.sendPrompt(com.promenar.infinity.data.remote.protocol.PromptRequest(
+                        model = route.remoteModelId,
+                        messages = listOf(
+                            com.promenar.infinity.data.remote.protocol.ProtocolMessage("system", prompt.system),
+                            com.promenar.infinity.data.remote.protocol.ProtocolMessage("user", prompt.user),
+                        ),
+                        maxTokens = 1024,
+                        stream = true,
+                    )).collect { chunk ->
+                        when (chunk) {
+                            is com.promenar.infinity.data.remote.protocol.StreamChunk.TextDelta -> emit(chunk.content)
+                            is com.promenar.infinity.data.remote.protocol.StreamChunk.Error -> error("问资料模型请求失败")
+                            is com.promenar.infinity.data.remote.protocol.StreamChunk.Completed -> {
+                                check(chunk.reason == com.promenar.infinity.domain.generation.CompletionReason.END_TURN)
+                                completed = true
+                            }
+                            else -> Unit
+                        }
+                    }
+                    check(completed) { "问资料模型未返回完成信号" }
+                }
+            },
+        )
+        com.promenar.infinity.data.library.ask.DefaultLibraryAskService(backend)
     }
     val longTermMemoryAccess: com.promenar.infinity.data.memory.LongTermMemoryAccess by lazy {
         com.promenar.infinity.data.memory.RoomLongTermMemoryAccess(
@@ -2586,10 +2640,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private fun buildEmbeddingClient(): EmbeddingClient = EmbeddingClient(
         baseUrl = "",
         apiKey = "",
-        clientResolver = ::buildCurrentEmbeddingClient,
+        clientResolver = { http -> buildCurrentEmbeddingClient(http) },
     )
 
-    private fun buildCurrentEmbeddingClient(httpClient: io.ktor.client.HttpClient): EmbeddingClient {
+    private val libraryAskEmbeddingClient by lazy {
+        EmbeddingClient(baseUrl = "", apiKey = "",
+            clientResolver = { http -> buildCurrentEmbeddingClient(http, allowLocalFallback = false) })
+    }
+
+    private fun buildCurrentEmbeddingClient(httpClient: io.ktor.client.HttpClient, allowLocalFallback: Boolean = true): EmbeddingClient {
         val manager = ProviderManager.getInstance()
         val presetModel = manager.embeddingModelId.value
         val manualBase = prefs.getString("embedding_base_url", "").orEmpty()
@@ -2602,6 +2661,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             model = if (routeModel.isBlank()) manualModel else "",
             httpClient = httpClient,
             localEngine = localInferenceRuntimeGate.createIfAvailable { localInferenceEngine },
+            allowLocalFallback = allowLocalFallback,
             modelRouteResolver = if (routeModel.isNotBlank()) {
                 { resolveAuxiliaryModel(routeModel, allowLocal = true) }
             } else null,

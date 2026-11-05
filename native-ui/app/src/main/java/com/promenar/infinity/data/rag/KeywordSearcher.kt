@@ -199,7 +199,8 @@ class KeywordSearcher(
             startMessageId = row.startMessageId,
             endMessageId = row.endMessageId,
             createdAt = row.createdAt,
-            similarity = similarity
+            similarity = similarity,
+            fileUuid = row.fileUuid,
         )
     }
 

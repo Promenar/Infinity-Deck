@@ -69,6 +69,7 @@ internal class DefaultChatGenerationRunnerFactory(
     private val knowledgeCatalog: com.promenar.infinity.data.knowledge.KnowledgeCatalogSource? = null,
     private val knowledgeAccessPlanner: com.promenar.infinity.data.knowledge.KnowledgeAccessPlanner? = null,
     private val knowledgeTurns: com.promenar.infinity.data.knowledge.KnowledgeTurnState? = null,
+    private val chatCitationRecorder: com.promenar.infinity.data.library.ask.ChatCitationRecorder? = null,
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
     private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
@@ -125,6 +126,7 @@ internal class DefaultChatGenerationRunnerFactory(
             subagentCompletions = subagentCompletions,
             branchService = branchService, branchPlans = branchPlans, sessionMailbox = sessionMailbox,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
+            chatCitationRecorder = chatCitationRecorder,
         )
     }
 }

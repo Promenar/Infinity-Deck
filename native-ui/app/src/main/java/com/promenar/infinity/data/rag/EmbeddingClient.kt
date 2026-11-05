@@ -15,6 +15,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.utils.io.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 
 class EmbeddingClient(
@@ -33,9 +34,47 @@ class EmbeddingClient(
     private val modelRouteResolver: (() -> ResolvedProviderModel)? = null,
     /** 长期持有的应用入口按次取得当前配置，子客户端共享 HTTP 传输。 */
     private val clientResolver: ((HttpClient) -> EmbeddingClient)? = null,
+    /** 显式禁用手动远程配置的本地降级，确保同一检索使用同一向量空间。 */
+    private val allowLocalFallback: Boolean = true,
 ) {
     private val httpClient = httpClient.withModelTimeoutSupport()
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** 固定当前远端路由，避免一次检索中的多个请求跨向量空间。 */
+    internal fun frozen(): EmbeddingClient {
+        clientResolver?.let { return it(httpClient).frozen() }
+        val resolved = modelRouteResolver?.invoke() ?: return this
+        return EmbeddingClient(baseUrl, apiKey, model, httpClient, localEngine,
+            modelRouteResolver = { resolved }, allowLocalFallback = allowLocalFallback)
+    }
+
+    /** 仅输出摘要；端点和本地路径不会写入缓存键。 */
+    internal fun vectorSpaceKey(): String? {
+        clientResolver?.let { return it(httpClient).vectorSpaceKey() }
+        val route = modelRouteResolver?.let { runCatching { it() }.getOrNull() ?: return null }
+        val parts = if (route?.config?.protocolType == ProtocolType.Local) {
+            val slot = localEngine?.embeddingSlot?.value ?: return null
+            val path = slot.modelPath?.takeIf { slot.isLoaded && !slot.isLoading } ?: return null
+            val file = java.io.File(path)
+            listOf("local", path, file.length().toString(), file.lastModified().toString(), slot.backendType.toString())
+        } else if (route != null) {
+            val usable = runCatching { route.requireOpenAiModelRoute() }.getOrNull() ?: return null
+            listOf("remote", usable.providerId, usable.remoteModelId, usable.config.baseUrl.trim().trimEnd('/'), usable.config.protocolType.persistedId)
+        } else {
+            if (!isConfigured || model.isBlank()) return null
+            listOf("manual", model, baseUrl.trim().trimEnd('/'))
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(parts.joinToString("\u0000").toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    /** 本地模型装卸的单调代次用于发现一次检索期间的往返切换。 */
+    internal fun localModelGeneration(): Long? {
+        clientResolver?.let { return it(httpClient).localModelGeneration() }
+        val route = modelRouteResolver?.let { runCatching { it() }.getOrNull() }
+        return if (route?.config?.protocolType == ProtocolType.Local) localEngine?.embeddingModelGeneration else null
+    }
 
     /** 远程 Embedding 是否已配置（baseUrl 和 apiKey 均非空） */
     val isConfigured: Boolean
@@ -49,6 +88,7 @@ class EmbeddingClient(
     val hasLocalFallback: Boolean
         get() {
             clientResolver?.let { return it(httpClient).hasLocalFallback }
+            if (!allowLocalFallback && modelRouteResolver == null) return false
             modelRouteResolver?.let { resolve ->
                 if (!runCatching { resolve().config.protocolType == ProtocolType.Local }.getOrDefault(false)) return false
             }
@@ -90,7 +130,7 @@ class EmbeddingClient(
             }
         }
         // 如果远程未配置但有本地引擎，直接走本地通道
-        if (!isConfigured && localEngine != null) {
+        if (!isConfigured && localEngine != null && allowLocalFallback) {
             return localEngine.embedBatch(texts).fold(
                 onSuccess = { EmbeddingResult(embeddings = it, usage = null) },
                 onFailure = { throw IllegalStateException(diagnosticMessage()) }
@@ -99,7 +139,8 @@ class EmbeddingClient(
         return try {
             embedViaRemote(texts)
         } catch (e: Exception) {
-            if (localEngine != null) {
+            if (e is CancellationException) throw e
+            if (localEngine != null && allowLocalFallback) {
                 localEngine.embedBatch(texts).fold(
                     onSuccess = { EmbeddingResult(embeddings = it, usage = null) },
                     onFailure = { throw e }
@@ -135,7 +176,7 @@ class EmbeddingClient(
             return result.embeddings.first() to result.usage
         }
         // 如果远程未配置但有本地引擎，直接走本地通道
-        if (!isConfigured && localEngine != null) {
+        if (!isConfigured && localEngine != null && allowLocalFallback) {
             return localEngine.embed(text).fold(
                 onSuccess = { Pair(it, null) },
                 onFailure = { throw IllegalStateException(diagnosticMessage()) }
@@ -145,7 +186,8 @@ class EmbeddingClient(
             val result = embedDocuments(listOf(text))
             Pair(result.embeddings.first(), result.usage)
         } catch (e: Exception) {
-            if (localEngine != null) {
+            if (e is CancellationException) throw e
+            if (localEngine != null && allowLocalFallback) {
                 localEngine.embed(text).fold(
                     onSuccess = { Pair(it, null) },
                     onFailure = { throw e }
