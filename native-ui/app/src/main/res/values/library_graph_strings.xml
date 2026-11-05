@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_graph_attention">Graph needs attention</string>
+    <string name="library_graph_error">Graph extraction failed. You can retry it separately.</string>
+    <string name="library_graph_error_parse">The graph response was invalid. You can retry extraction.</string>
+    <string name="library_graph_error_timeout">Graph extraction timed out. You can retry extraction.</string>
+    <string name="library_graph_error_provider">The graph model request failed. You can retry extraction.</string>
+    <string name="library_graph_budget_calls">The graph request limit was reached.</string>
+    <string name="library_graph_budget_output">The graph output limit was reached.</string>
+    <string name="library_graph_budget_duration">The graph time limit was reached.</string>
+</resources>

@@ -16,7 +16,7 @@ object KgAdvancedSettings {
         kgJitMinSeeds = preferences.getInt("kg_jit_min_seeds", 2).coerceIn(1, 32),
         kgMaxCalls = preferences.getInt("kg_max_calls", 32).coerceIn(1, 1024),
         kgMaxOutputTokens = preferences.getInt("kg_max_output_tokens", 32768).coerceIn(256, 1048576),
-        kgRequestMaxOutputTokens = preferences.getInt("kg_request_max_output_tokens", 2048).coerceIn(128, 16384),
+        kgRequestMaxOutputTokens = preferences.getInt("kg_request_max_output_tokens", 4096).coerceIn(128, 16384),
         kgMaxDurationSeconds = preferences.getInt("kg_max_duration_seconds", 180).coerceIn(5, 3600),
         kgLargeDocumentConfirmCalls = preferences.getInt("kg_large_document_confirm_calls", 16).coerceIn(1, 128),
     )

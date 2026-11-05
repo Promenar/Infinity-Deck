@@ -180,6 +180,56 @@ class VectorizationQueueRoomTest {
     }
 
     @Test
+    fun `图谱失败时仅重试已提交向量的图谱`() = runTest {
+        seedFileAndTask("partial")
+        updateTarget("hash-v1", 2, vectorizedAt = 2)
+        val original = database.vectorizationTaskDao().getById(TASK)!!
+        database.vectorizationTaskDao().update(original.copy(error = VectorizationQueue.KG_FAILED + ".parse", kgStrategy = "full"))
+        val queue = queue(StandardTestDispatcher(testScheduler))
+
+        val id = queue.retryDocumentReferenceTask(ROOT, DOC)
+
+        val retried = database.vectorizationTaskDao().getById(id!!)!!
+        assertThat(retried.skipVectorization).isTrue()
+        assertThat(retried.kgStrategy).isEqualTo("full")
+        queue.shutdown()
+    }
+
+    @Test
+    fun `图谱调用预算耗尽时只重试图谱`() = runTest {
+        seedFileAndTask("partial")
+        updateTarget("hash-v1", 2, vectorizedAt = 2)
+        val original = database.vectorizationTaskDao().getById(TASK)!!
+        database.vectorizationTaskDao().update(original.copy(error = "kg.budget.calls", kgStrategy = "full"))
+        val queue = queue(StandardTestDispatcher(testScheduler))
+
+        val id = queue.retryDocumentReferenceTask(ROOT, DOC)
+
+        assertThat(database.vectorizationTaskDao().getById(id!!)!!.skipVectorization).isTrue()
+        queue.shutdown()
+    }
+
+    @Test
+    fun `图谱确认必须显式授权且文件变化后重试须重新向量化`() = runTest {
+        seedFileAndTask("partial")
+        val original = database.vectorizationTaskDao().getById(TASK)!!
+        database.vectorizationTaskDao().update(original.copy(error = VectorizationQueue.KG_CONFIRMATION_REQUIRED,
+            kgStrategy = KgExtractionBudget.CONFIRMED_STRATEGY))
+        val queue = queue(StandardTestDispatcher(testScheduler))
+        assertThat(queue.retryDocumentReferenceTask(ROOT, DOC)).isNull()
+        updateTarget("hash-v2", 3, vectorizedAt = 2)
+        database.vectorizationTaskDao().update(original.copy(error = "kg.budget.calls", kgStrategy = KgExtractionBudget.CONFIRMED_STRATEGY,
+            skipVectorization = true))
+
+        val id = queue.retryDocumentReferenceTask(ROOT, DOC)
+
+        val retried = database.vectorizationTaskDao().getById(id!!)!!
+        assertThat(retried.skipVectorization).isFalse()
+        assertThat(retried.kgStrategy).isEqualTo("full")
+        queue.shutdown()
+    }
+
+    @Test
     fun `双库恢复hold阻止启动自动索引且显式重试会解除`() = runTest {
         seedFilesWithoutTask()
         database.vectorizationTaskDao().insert(

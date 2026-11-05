@@ -22,6 +22,10 @@ import com.promenar.infinity.data.repository.SecureWorkspaceFileOps
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.domain.library.PendingKind
 import com.promenar.infinity.domain.library.PendingStage
+import com.promenar.infinity.domain.library.GraphEstimate
+import com.promenar.infinity.domain.library.DocumentGraphState
+import com.promenar.infinity.domain.library.GraphStopReason
+import com.promenar.infinity.domain.library.LibraryActionResult
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -47,6 +51,8 @@ class LibraryKnowledgeSourceTest {
     private lateinit var source: DefaultLibraryKnowledgeSource
     private var now = 1_000_000_000L
     private var retryFailure: Exception? = null
+    private var estimate: GraphEstimate? = GraphEstimate(3, 3, 12_288, false, "示例模型")
+    private val graphRequests = mutableListOf<Boolean>()
     private val sessionGate = SessionExecutionGate()
     private val queue = MutableStateFlow(VectorizationQueue.QueueState(emptyList(), null, false))
     private val root = file("root", "/", directory = true)
@@ -72,6 +78,8 @@ class LibraryKnowledgeSourceTest {
             memoryBusyReason = { "片段正在处理，请稍后重试" },
             sessionGate = sessionGate,
             now = { now },
+            estimateGraph = { estimate },
+            enqueueGraph = { _, _, confirmed -> graphRequests += confirmed; true },
         )
     }
 
@@ -139,12 +147,57 @@ class LibraryKnowledgeSourceTest {
 
     @Test
     fun `需要图谱预算确认的任务给出明确原因`() = runBlocking {
-        db.fileEntryDao().insert(file("doc", "/doc.txt"))
+        db.fileEntryDao().insert(file("doc", "/doc.txt").copy(vectorizedAt = 20))
         val task = task("doc", "partial", 1).copy(error = VectorizationQueue.KG_CONFIRMATION_REQUIRED)
         queue.value = VectorizationQueue.QueueState(listOf(task), task, false)
         assertThat(source.observePending().first().single().reason).isEqualTo("需要确认用量")
-        retryFailure = LibraryKgConfirmationRequired()
+        assertThat(source.observePending().first().single().kind).isEqualTo(PendingKind.GRAPH_ATTENTION)
         assertThat(source.retry("doc")).isEqualTo(com.promenar.infinity.domain.library.LibraryActionResult.Failed("需要确认用量"))
+    }
+
+    @Test
+    fun `估算和单独图谱抽取遵循确认结果`() = runBlocking {
+        db.fileEntryDao().insert(file("doc", "/doc.txt").copy(vectorizedAt = 20))
+        val expected = GraphEstimate(17, 17, 69_632, true, "示例模型")
+        estimate = expected
+        assertThat(source.graphEstimate("doc")).isEqualTo(expected)
+        assertThat(source.extractGraph("doc", false)).isEqualTo(LibraryActionResult.Failed("需要确认用量"))
+        assertThat(graphRequests).isEmpty()
+        assertThat(source.extractGraph("doc", true)).isEqualTo(LibraryActionResult.Done)
+        estimate = expected.copy(requiresConfirmation = false)
+        assertThat(source.extractGraph("doc", false)).isEqualTo(LibraryActionResult.Done)
+        assertThat(graphRequests).containsExactly(true, false).inOrder()
+        estimate = null
+        assertThat(source.graphEstimate("doc")).isNull()
+        assertThat(source.graphEstimate("missing")).isNull()
+    }
+
+    @Test
+    fun `已索引资料的图谱状态和待处理原因独立于向量索引`() = runBlocking {
+        db.fileEntryDao().insert(file("doc", "/doc.txt").copy(vectorizedAt = 20))
+        assertThat(source.observeOverview().first().indexedDocuments).isEqualTo(1)
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.NotExtracted)
+        fun setTask(status: String, error: String?) {
+            val item = task("doc", status, 1).copy(error = error, totalChunks = 4, lastChunkIndex = 2)
+            queue.value = VectorizationQueue.QueueState(listOf(item), item, status == "extracting")
+        }
+        setTask("extracting", null)
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Extracting(2, 4))
+        setTask("partial", "kg.budget.calls")
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Partial(2, 4, GraphStopReason.CALLS))
+        assertThat(source.observePending().first().single().kind).isEqualTo(PendingKind.GRAPH_ATTENTION)
+        setTask("partial", "kg.budget.output_tokens")
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Partial(2, 4, GraphStopReason.OUTPUT_TOKENS))
+        setTask("partial", "kg.budget.duration")
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Partial(2, 4, GraphStopReason.DURATION))
+        setTask("partial", VectorizationQueue.KG_FAILED + ".timeout")
+        assertThat(source.insight("doc")!!.graph).isInstanceOf(DocumentGraphState.Failed::class.java)
+        setTask("partial", VectorizationQueue.KG_CONFIRMATION_REQUIRED)
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.ConfirmationRequired(estimate!!))
+        assertThat(source.observeOverview().first().indexedDocuments).isEqualTo(1)
+        queue.value = VectorizationQueue.QueueState(emptyList(), null, false)
+        db.fileEntryDao().update(db.fileEntryDao().getActiveByUuid("root", "doc")!!.copy(kgExtractedAt = 20))
+        assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Complete(0, 0))
     }
 
     @Test
@@ -411,7 +464,7 @@ class LibraryKnowledgeSourceTest {
 
     @Test
     fun `文档实体按索引分块中的出现次数排序`() = runBlocking {
-        db.fileEntryDao().insert(file("doc", "/doc.txt"))
+        db.fileEntryDao().insert(file("doc", "/doc.txt").copy(vectorizedAt = 2, kgExtractedAt = 2))
         db.vectorDao().insert(vector("chunk", null, "document", 1).copy(
             docId = "doc", fileUuid = "doc", content = "甲 乙 乙 乙",
         ))
@@ -422,9 +475,11 @@ class LibraryKnowledgeSourceTest {
                 contentHash = "fixture-hash", taskId = "task", createdAt = 1, workspaceDocument = true,
             ))
         }
+        com.promenar.infinity.data.rag.GraphStore(db).createEdge("甲", "乙", "认识", "doc")
         val insight = source.insight("doc")!!
         assertThat(insight.entities).containsExactly("乙", "甲").inOrder()
         assertThat(insight.chunkCount).isEqualTo(1)
+        assertThat(insight.graph).isEqualTo(DocumentGraphState.Complete(2, 1))
     }
 
     @Test

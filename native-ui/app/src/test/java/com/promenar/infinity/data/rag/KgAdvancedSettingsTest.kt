@@ -13,6 +13,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class KgAdvancedSettingsTest {
+    @Test fun `默认输出上限调整但已保存值保持不变`() {
+        val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("kg-output-default-test", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(4096)
+        prefs.edit().putInt("kg_request_max_output_tokens", 2048).commit()
+        assertThat(KgAdvancedSettings.load(RagConfiguration(), prefs).kgRequestMaxOutputTokens).isEqualTo(2048)
+        prefs.edit().clear().commit()
+    }
+
     @Test fun `状态记忆抽取默认关闭且开关经真实持久层双向恢复`() {
         val prefs = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("state-memory-settings-test", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()

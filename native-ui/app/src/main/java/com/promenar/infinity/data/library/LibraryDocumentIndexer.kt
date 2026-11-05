@@ -34,6 +34,18 @@ class LibraryDocumentIndexer(
         )
     }
 
+    suspend fun enqueueGraph(root: String, entry: FileEntry, confirmed: Boolean): Boolean {
+        val mime = entry.mimeType ?: return false
+        if (mime !in DocumentReferenceExtractor.SUPPORTED_MIME_TYPES) return false
+        queue().enqueueDocumentReference(
+            workspaceRootUuid = root, docId = entry.uuid, docTitle = entry.name,
+            sourceMimeType = mime, targetContentHash = entry.hash, targetEpoch = entry.updatedAt,
+            kgStrategy = if (confirmed) KgExtractionBudget.CONFIRMED_STRATEGY else "full",
+            skipVectorization = true,
+        )
+        return true
+    }
+
     suspend fun retryLegacy(root: String, entry: FileEntry): Boolean {
         StartupWriteBarrier.requireWritable(rootId = root, subsystem = StartupSubsystem.VECTOR_QUEUE)
         return sessionGate.withWorkspaceAdmission(root) {

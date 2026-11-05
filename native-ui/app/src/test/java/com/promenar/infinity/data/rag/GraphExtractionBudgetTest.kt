@@ -51,7 +51,7 @@ class GraphExtractionBudgetTest {
         val result = testKgClient(protocol).extract("owner::model", "提取实体", "甲与乙认识", 1000)
 
         assertThat(result.isSuccess).isTrue()
-        assertThat(sent!!.maxTokens).isEqualTo(2048)
+        assertThat(sent!!.maxTokens).isEqualTo(4096)
     }
 
     @Test
@@ -203,6 +203,8 @@ class GraphExtractionBudgetTest {
         assertThat(large.calls).isEqualTo(1_429)
         assertThat(large.requiresConfirmation).isTrue()
         assertThat(large.budgetedCalls).isEqualTo(32)
+        assertThat(large.outputTokenLimit).isEqualTo(1_429L * 4096)
+        assertThat(budget.copy(requestMaxOutputTokens = 2048).estimate("a".repeat(11_301), 800, 100).requiresConfirmation).isTrue()
     }
 
     private fun TestScope.extractor(

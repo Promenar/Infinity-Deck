@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_graph_attention">图谱需要处理</string>
+    <string name="library_graph_error">图谱抽取失败，可单独重试。</string>
+    <string name="library_graph_error_parse">图谱响应格式无效，可重试抽取。</string>
+    <string name="library_graph_error_timeout">图谱抽取超时，可重试抽取。</string>
+    <string name="library_graph_error_provider">图谱模型请求失败，可重试抽取。</string>
+    <string name="library_graph_budget_calls">图谱抽取已达到调用次数上限。</string>
+    <string name="library_graph_budget_output">图谱抽取已达到输出额度上限。</string>
+    <string name="library_graph_budget_duration">图谱抽取已达到时长上限。</string>
+</resources>

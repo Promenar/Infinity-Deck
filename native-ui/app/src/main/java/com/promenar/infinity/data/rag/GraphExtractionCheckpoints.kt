@@ -18,10 +18,12 @@ internal data class GraphCheckpointIdentity(
 )
 
 @Serializable
-private data class GraphChunkCheckpoint(
+internal data class GraphChunkCheckpoint(
     val identity: GraphCheckpointIdentity,
     val chunkHash: String,
-    val result: ExtractionResult,
+    val result: ExtractionResult? = null,
+    val splitPaths: Set<String> = emptySet(),
+    val parts: Map<String, ExtractionResult> = emptyMap(),
 )
 
 @Serializable
@@ -31,14 +33,18 @@ private data class GraphBudgetCheckpoint(val contentHash: String, val state: Gra
 internal class GraphExtractionCheckpoints(private val root: File, private val budgetRoot: File = root) {
     fun directory(docId: String): File = File(root, kgSha256(docId))
 
-    fun load(docId: String, identity: GraphCheckpointIdentity, index: Int, chunk: String): ExtractionResult? = try {
+    fun loadCheckpoint(docId: String, identity: GraphCheckpointIdentity, index: Int, chunk: String): GraphChunkCheckpoint? = try {
         val file = chunkFile(docId, identity, index)
         if (!file.isFile) null else {
             val saved = Json.decodeFromString<GraphChunkCheckpoint>(file.readText())
-            if (saved.identity == identity && saved.chunkHash == kgSha256(chunk) && saved.result.isSuccess) saved.result
+            if (saved.identity == identity && saved.chunkHash == kgSha256(chunk) &&
+                (saved.result == null || saved.result.isSuccess) && saved.parts.values.all { it.isSuccess }) saved
             else { file.delete(); null }
         }
     } catch (_: Exception) { null }
+
+    fun load(docId: String, identity: GraphCheckpointIdentity, index: Int, chunk: String): ExtractionResult? =
+        loadCheckpoint(docId, identity, index, chunk)?.result
 
     fun prepare(docId: String, identity: GraphCheckpointIdentity) {
         legacyDirectory(docId)?.deleteRecursively()
@@ -51,6 +57,10 @@ internal class GraphExtractionCheckpoints(private val root: File, private val bu
     fun save(docId: String, identity: GraphCheckpointIdentity, index: Int, chunk: String, result: ExtractionResult) {
         val file = chunkFile(docId, identity, index)
         writeAtomically(file, Json.encodeToString(GraphChunkCheckpoint.serializer(), GraphChunkCheckpoint(identity, kgSha256(chunk), result)))
+    }
+
+    fun saveCheckpoint(docId: String, identity: GraphCheckpointIdentity, index: Int, checkpoint: GraphChunkCheckpoint) {
+        writeAtomically(chunkFile(docId, identity, index), Json.encodeToString(GraphChunkCheckpoint.serializer(), checkpoint))
     }
 
     fun loadBudget(docId: String, identity: GraphCheckpointIdentity): GraphExtractionBudgetState? {
