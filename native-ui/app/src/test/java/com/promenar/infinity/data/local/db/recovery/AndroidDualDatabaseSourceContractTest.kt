@@ -40,7 +40,7 @@ class AndroidDualDatabaseSourceContractTest {
             20 to CURRENT_V20_IDENTITY, 21 to CURRENT_V21_IDENTITY, 22 to CURRENT_V22_IDENTITY,
             23 to CURRENT_V23_IDENTITY, 24 to CURRENT_V24_IDENTITY, 25 to CURRENT_V25_IDENTITY,
             26 to CURRENT_V26_IDENTITY, 27 to CURRENT_V27_IDENTITY, 28 to CURRENT_V28_IDENTITY,
-            29 to CURRENT_V29_IDENTITY, 30 to CURRENT_V30_IDENTITY, 31 to CURRENT_V31_IDENTITY, 32 to CURRENT_V32_IDENTITY, 33 to CURRENT_V33_IDENTITY, 34 to CURRENT_V34_IDENTITY)
+            29 to CURRENT_V29_IDENTITY, 30 to CURRENT_V30_IDENTITY, 31 to CURRENT_V31_IDENTITY, 32 to CURRENT_V32_IDENTITY, 33 to CURRENT_V33_IDENTITY, 34 to CURRENT_V34_IDENTITY, 35 to CURRENT_V35_IDENTITY)
         identities.forEach { (version, identity) ->
             assertThat(requiresDualDatabaseRecovery(source(version, identity))).isFalse()
             identities.filterKeys { it != version }.values.forEach { other ->

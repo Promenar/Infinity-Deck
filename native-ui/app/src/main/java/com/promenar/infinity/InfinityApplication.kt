@@ -2750,6 +2750,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             kgNodeDao = database.kgNodeDao(),
             kgEdgeDao = database.kgEdgeDao(),
             kgEvidenceDao = database.kgEvidenceDao(),
+            database = database,
         )
     }
 

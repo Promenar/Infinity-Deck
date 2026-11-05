@@ -9,6 +9,7 @@ import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.MIGRATION_32_33
 import com.promenar.infinity.data.local.db.MIGRATION_33_34
+import com.promenar.infinity.data.local.db.MIGRATION_34_35_TIMELINE
 import com.promenar.infinity.data.model.RagReference
 import java.io.File
 import java.util.UUID
@@ -51,7 +52,7 @@ class KnowledgeCitationMigrationTest {
                 sqlite.version = 32
             }
             val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_32_33, MIGRATION_33_34).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35_TIMELINE).allowMainThreadQueries().build()
             try {
                 val sqlite = db.openHelper.writableDatabase
                 assertThat(sqlite.version).isEqualTo(34)

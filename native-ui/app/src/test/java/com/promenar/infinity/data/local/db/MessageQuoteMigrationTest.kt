@@ -47,10 +47,10 @@ class MessageQuoteMigrationTest {
                 sqlite.version = 30
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35_TIMELINE).allowMainThreadQueries().build()
             try {
                 val sqlite = room.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(34)
+                assertThat(sqlite.version).isEqualTo(35)
                 sqlite.query("PRAGMA table_info(messages)").use { cursor ->
                     val columns = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
                     assertThat(columns).contains("quotes")

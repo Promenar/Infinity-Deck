@@ -119,6 +119,30 @@ internal fun prepareRestoredGraphAndVectors(
     val usedCollections = usedNodes.mapNotNull { nodes[it] }.toSet()
     tables["kg_collections"] = BackupDatabaseRows.select(rows("kg_collections")) { string(it, "id") == "shared" || string(it, "id") in usedCollections }
     tables["kg_collection_members"] = BackupDatabaseRows.select(rows("kg_collection_members")) { string(it, "doc_id") in files && string(it, "collection_id") in usedCollections }
+    val memberCollections = tables.getValue("kg_collection_members").associate { string(it, "doc_id") to string(it, "collection_id") }
+    val edgeCollections = tables.getValue("kg_edges").associate { string(it, "id") to string(it, "collection_id") }
+    val evidenceById = evidence.associateBy { string(it, "id") }
+    tables["kg_edge_mentions"] = BackupDatabaseRows.select(rows("kg_edge_mentions")) { row ->
+        val edge = string(row, "edge_id")
+        val source = evidenceById[string(row, "evidence_id")]
+        edge != null && edge in usedEdges && source != null && string(source, "edge_id") == edge &&
+            listOf("doc_id", "task_id", "content_hash").all { field -> string(row, field) != null && string(row, field) == string(source, field) } &&
+            memberCollections[string(row, "doc_id")] == edgeCollections[edge]
+    }
+    tables["kg_edge_validity"] = BackupDatabaseRows.select(rows("kg_edge_validity")) { row ->
+        val edge = string(row, "edge_id")
+        val collection = string(row, "collection_id")
+        val toDoc = string(row, "to_doc_id")
+        edge != null && edge in usedEdges && collection == edgeCollections[edge] &&
+            memberCollections[string(row, "from_doc_id")] == collection && (toDoc == null || memberCollections[toDoc] == collection)
+    }
+    tables["kg_entity_links"] = BackupDatabaseRows.select(rows("kg_entity_links")) { row ->
+        val collection = string(row, "collection_id")
+        val from = string(row, "from_node")
+        val to = string(row, "to_node")
+        collection != null && from != null && to != null && from != to && from in usedNodes && to in usedNodes &&
+            nodes[from] == collection && nodes[to] == collection && string(row, "verdict") in setOf("same", "different")
+    }
 
     val compatible = embedding != null && embedding.dimension in 1..65_536 && embedding.modelId == targetModel && embedding.spaceKey == currentSpace &&
         (targetDimension == null || embedding.dimension == targetDimension)

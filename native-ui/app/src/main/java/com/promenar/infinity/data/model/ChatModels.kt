@@ -262,6 +262,10 @@ data class KgPath(
     val distance: Int = 1,
     val truncated: Boolean = false,
     val omittedPathCount: Int = 0,
+    val narrativeEventOrdinal: Int? = null,
+    val narrativeEventDocId: String? = null,
+    val narrativeEventWindow: Int? = null,
+    val narrativeEventOffset: Int? = null,
 )
 
 @Serializable

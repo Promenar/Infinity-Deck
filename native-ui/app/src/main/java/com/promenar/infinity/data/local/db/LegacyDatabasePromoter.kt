@@ -36,7 +36,7 @@ internal object LegacyDatabasePromoter {
         val currentMain = databaseDirectory.resolve(CURRENT_NAME)
         if (Files.exists(currentMain) && Files.exists(legacyMain)) {
             val currentVersion = validateCurrentDatabase(currentMain)
-            if (currentVersion in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34)) {
+            if (currentVersion in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35)) {
                 return LegacyDatabasePromotionResult.CurrentDatabaseExists
             }
             validatePublishedV17WithoutSourceWrites(legacyMain)

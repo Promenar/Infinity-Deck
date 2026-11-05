@@ -14,7 +14,7 @@ internal object BackupLayerPolicy {
         in CORE_TABLES -> BackupLayer.CORE
         "tags", "document_tags" -> BackupLayer.KNOWLEDGE
         "workspace_files", "kg_folder_settings" -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES }
-        "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "vectors" ->
+        "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "kg_edge_mentions", "kg_edge_validity", "kg_entity_links", "vectors" ->
             declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES || it == BackupLayer.SESSIONS }
         "knowledge_citations" -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES || it == BackupLayer.SESSIONS }
         in SESSION_TABLES -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.SESSIONS }
@@ -40,11 +40,13 @@ internal object BackupLayerPolicy {
                 else -> fileLayer(string(row, "root_ref"))
             }
         }
+        private val edgeCollections = tables["kg_edges"].orEmpty().associate { string(it, "id") to string(it, "collection_id") }
         fun layer(table: String, row: JsonObject): BackupLayer {
             if (table == "kg_folder_settings") return if (fileRoots[string(row, "folder_id")] in roots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES
             if (table == "workspace_files") return if (string(row, "workspace_root_uuid") in roots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES
             if (table == "kg_collections") return collectionLayers[string(row, "id")] ?: BackupLayer.WORKSPACE_FILES
-            if (table in setOf("kg_collection_members", "kg_nodes", "kg_edges")) return collectionLayers[string(row, "collection_id")] ?: BackupLayer.WORKSPACE_FILES
+            if (table in setOf("kg_collection_members", "kg_nodes", "kg_edges", "kg_edge_validity", "kg_entity_links")) return collectionLayers[string(row, "collection_id")] ?: BackupLayer.WORKSPACE_FILES
+            if (table == "kg_edge_mentions") return collectionLayers[edgeCollections[string(row, "edge_id")]] ?: BackupLayer.WORKSPACE_FILES
             if (table == "kg_evidence") {
                 val session = string(row, "session_id")
                 val doc = string(row, "doc_id")

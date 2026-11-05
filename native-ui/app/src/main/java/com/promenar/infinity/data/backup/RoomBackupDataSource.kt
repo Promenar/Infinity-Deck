@@ -51,6 +51,7 @@ internal const val ROOM_SCHEMA_V29_IDENTITY_HASH = com.promenar.infinity.data.lo
 internal const val ROOM_SCHEMA_V32_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V32_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V33_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V33_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V34_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V34_IDENTITY_HASH
+internal const val ROOM_SCHEMA_V35_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V35_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V31_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V31_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V30_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V30_IDENTITY_HASH
 internal const val ROOM_SCHEMA_V25_IDENTITY_HASH = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V25_IDENTITY_HASH
@@ -211,7 +212,8 @@ class RoomBackupDataSource(
             fun collectionLayer(alias: String) = "CASE WHEN $alias.kind='shared' THEN 'KNOWLEDGE' WHEN $alias.kind='session' THEN (${sessionLayer("substr($alias.id,9)")}) ELSE (${fileLayer("$alias.root_ref")}) END"
             val expression = when (table) {
                 "kg_collections" -> collectionLayer("kg_collections")
-                "kg_nodes", "kg_edges", "kg_collection_members" -> "COALESCE((SELECT ${collectionLayer("c")} FROM kg_collections c WHERE c.id=$table.collection_id),'WORKSPACE_FILES')"
+                "kg_nodes", "kg_edges", "kg_collection_members", "kg_edge_validity", "kg_entity_links" -> "COALESCE((SELECT ${collectionLayer("c")} FROM kg_collections c WHERE c.id=$table.collection_id),'WORKSPACE_FILES')"
+                "kg_edge_mentions" -> "COALESCE((SELECT ${collectionLayer("c")} FROM kg_edges e JOIN kg_collections c ON c.id=e.collection_id WHERE e.id=kg_edge_mentions.edge_id),'WORKSPACE_FILES')"
                 "kg_evidence" -> "CASE WHEN source_type IN ('session','jit') AND session_id IS NOT NULL THEN (${sessionLayer("kg_evidence.session_id")}) WHEN doc_id IS NOT NULL THEN (${fileLayer("kg_evidence.doc_id")}) WHEN session_id IS NOT NULL THEN (${sessionLayer("kg_evidence.session_id")}) ELSE 'KNOWLEDGE' END"
                 else -> "CASE WHEN COALESCE(file_uuid,doc_id) IS NOT NULL THEN (${fileLayer("COALESCE(vectors.file_uuid,vectors.doc_id)")}) ELSE (${sessionLayer("vectors.session_id")}) END"
             }
@@ -567,6 +569,10 @@ class RoomBackupDataSource(
                 sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
                 sqlite.execSQL("INSERT INTO vectors_fts(vectors_fts) VALUES('rebuild')")
                 com.promenar.infinity.data.rag.KgCollectionRepository(database).reconcileDocuments()
+                val graphIds = sqlite.query("SELECT id FROM kg_collections").use { cursor ->
+                    buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                }
+                graphIds.forEach { com.promenar.infinity.data.rag.KgCollectionRepository(database).refreshNaturalOrder(it) }
                 record.skills?.let { skillRestore!!.commit(restoreId, it) }
                 record.avatars?.let { requireAvatarRestore().commit(restoreId, it) }
                 preferences.commitPrepared(restoreId)
@@ -878,7 +884,7 @@ class RoomBackupDataSource(
             return if ("agent_rule_revisions" in backupTables() && "agent_rule_revisions" !in parsed.tables)
                 parsed.copy(tables = parsed.tables + ("agent_rule_revisions" to emptyList())) else parsed
         }
-        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
         if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
         val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
@@ -891,6 +897,7 @@ class RoomBackupDataSource(
             if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer } &&
                 !(table == "knowledge_citations" && validated.manifest.databaseSchemaVersion == 13) &&
                 !(table in GRAPH_VECTOR_TABLES && validated.manifest.databaseSchemaVersion < 16) &&
+                !(table in TIMELINE_TABLES && validated.manifest.databaseSchemaVersion < 17) &&
                 !(table == "kg_folder_settings" && validated.manifest.databaseSchemaVersion < 15)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
             }
@@ -1046,7 +1053,7 @@ class RoomBackupDataSource(
         // 图谱按备份内容整体替换，向量保留未选层；先冻结并清除依赖，再插入合并结果。
         sqlite.execSQL("DELETE FROM kg_jit_cache_sources")
         sqlite.execSQL("DELETE FROM kg_jit_cache")
-        listOf("kg_evidence", "kg_edges", "kg_nodes", "kg_collection_members", "kg_collections", "vectors_fts", "vectors").forEach { sqlite.execSQL("DELETE FROM `$it`") }
+        listOf("kg_edge_mentions", "kg_edge_validity", "kg_entity_links", "kg_evidence", "kg_edges", "kg_nodes", "kg_collection_members", "kg_collections", "vectors_fts", "vectors").forEach { sqlite.execSQL("DELETE FROM `$it`") }
         val fileIds = deletions.getValue(FILE_TABLE).keys.map { it.single() }.toSet() + selected.rows(FILE_TABLE).map { it.requiredString("uuid") }
         fileIds.forEach { id ->
             sqlite.execSQL("DELETE FROM file_versions WHERE file_uuid = ?", arrayOf<Any?>(id))
@@ -1090,6 +1097,8 @@ class RoomBackupDataSource(
         }
         val upgraded = when (decoded.schemaVersion) {
             DATABASE_SCHEMA_VERSION -> return filterFolderSettings(decoded)
+            16 -> return filterFolderSettings(decoded.copy(schemaVersion = DATABASE_SCHEMA_VERSION,
+                tables = decoded.tables + TIMELINE_TABLES.associateWith { emptyList() }))
             14, 15 -> decoded
             13 -> {
                 if ("knowledge_citations" in decoded.tables) throw BackupValidationException("v13 备份不应包含引用表")
@@ -1503,8 +1512,8 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        if (sqlite.version != 34 || identityHash != ROOM_SCHEMA_V34_IDENTITY_HASH) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v34")
+        if (sqlite.version != 35 || identityHash != ROOM_SCHEMA_V35_IDENTITY_HASH) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v35")
         }
         backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
@@ -2389,6 +2398,9 @@ class RoomBackupDataSource(
             "kg_edges",
             "kg_evidence",
             "kg_collection_members",
+            "kg_edge_mentions",
+            "kg_edge_validity",
+            "kg_entity_links",
             "vectors",
             "workspace_seq",
             "knowledge_citations",
@@ -2399,7 +2411,8 @@ class RoomBackupDataSource(
             "mcp_tool_snapshots", "workspace_mutations", "tool_execution_ledger", "file_versions", "vectorization_tasks",
             "kg_jit_cache_sources", "kg_jit_cache", "vectors_fts", "audit_logs",
         )
-        val GRAPH_TABLES = setOf("kg_collections", "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members")
+        val TIMELINE_TABLES = setOf("kg_edge_mentions", "kg_edge_validity", "kg_entity_links")
+        val GRAPH_TABLES = setOf("kg_collections", "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members") + TIMELINE_TABLES
         val GRAPH_VECTOR_TABLES = GRAPH_TABLES + "vectors"
     }
 }

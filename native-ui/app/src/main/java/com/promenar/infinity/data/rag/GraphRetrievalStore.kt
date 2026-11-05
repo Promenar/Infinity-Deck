@@ -24,6 +24,7 @@ data class KgRetrievalScope(
     /** 保留调用方兼容；不限制绑定图谱内的存活证据。 */
     val allowConversation: Boolean = true,
     val collectionId: String = KgCollectionRepository.sessionCollectionId(sessionId),
+    val asOf: KgAsOf? = null,
 ) {
     companion object {
         fun of(scope: ResolvedRetrievalScope) = KgRetrievalScope(
@@ -35,7 +36,12 @@ data class KgRetrievalScope(
     }
 }
 
-data class PersistentGraphResult(val seedCount: Int, val paths: List<KgPath>)
+sealed interface KgAsOf {
+    data class Document(val docId: String) : KgAsOf
+    data class Ordinal(val ordinal: Int) : KgAsOf
+}
+
+data class PersistentGraphResult(val seedCount: Int, val paths: List<KgPath>, val temporalRestricted: Boolean = false)
 
 /** 图谱种子与关系扩展都限定在同一图谱中。 */
 class GraphRetrievalStore(private val database: InfinityDatabase) {
@@ -46,34 +52,62 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
         config: RagConfiguration = RagConfiguration(),
     ): PersistentGraphResult = withContext(Dispatchers.IO) {
         database.withTransaction {
+            val (visibleCte, visibleArgs) = scopeQuery(scope)
+            val visibleDocs = database.query(SimpleSQLiteQuery("$visibleCte SELECT id FROM visible_docs", visibleArgs.toTypedArray())).use { cursor ->
+                buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+            }
+            val articles = KgTimelineStore(database).ticks(scope.collectionId)
+            val queryChapter = KgNaturalOrder.chapterNumber(query)
+            val requested = when (val asOf = scope.asOf) {
+                is KgAsOf.Document -> asOf.docId
+                is KgAsOf.Ordinal -> requireNotNull(articles.firstOrNull { it.ordinal == asOf.ordinal }) { "篇目序号不存在" }.docId
+                null -> queryChapter?.let { wanted ->
+                    val matches = articles.filter { it.docId in visibleDocs && wanted in KgNaturalOrder.chapterNumbers(it.title) }
+                    (if (wanted.second == "卷") matches.lastOrNull() else matches.singleOrNull())?.docId
+                }
+            }
+            val timeline = KgTimelineStore(database).snapshot(scope.collectionId, visibleDocs, requested)
+            // 即时抽取没有位置元数据，不能用于覆盖已经建立的时间线或明确的时间点。
+            val temporalRestricted = timeline.knownEdgeIds.isNotEmpty() || queryChapter != null || scope.asOf != null
+            val current = timeline.states.associateBy { it.edgeId }
+            val events = timeline.events.groupBy { it.edgeId }
+            val unresolvedChapter = scope.asOf == null && queryChapter != null && requested == null
+            val allowedEdges = if (unresolvedChapter) timeline.unknownEdgeIds else current.keys + events.keys + timeline.unknownEdgeIds
             val (seedSql, seedArgs) = seedQuery(query, scope, ragDocumentIds, config.kgMaxSeeds.coerceIn(1, 32))
-            val seeds = database.query(SimpleSQLiteQuery(seedSql, seedArgs.toTypedArray())).use { cursor ->
+            val rawSeeds = database.query(SimpleSQLiteQuery(seedSql, seedArgs.toTypedArray())).use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
             }
-            if (seeds.isEmpty()) return@withTransaction PersistentGraphResult(0, emptyList())
+            val canonical = KgEntityResolutionStore(database).canonicalIds(scope.collectionId)
+            val groups = canonical.entries.groupBy({ it.value }, { it.key })
+            val seeds = rawSeeds.map { canonical[it] ?: it }.distinct()
+            if (seeds.isEmpty()) return@withTransaction PersistentGraphResult(0, emptyList(), temporalRestricted)
             val nodeLimit = config.kgMaxNodes.coerceIn(2, 256)
             val edgeLimit = config.kgMaxEdges.coerceIn(1, 32)
             val acceptedNodes = seeds.take(nodeLimit).toMutableSet()
-            var frontier = acceptedNodes.toList()
+            var frontier = acceptedNodes.flatMap { groups[it] ?: listOf(it) }.distinct()
             val paths = mutableListOf<KgPath>()
             val seenEdges = hashSetOf<String>()
+            val relevantDocs = articles.filter { it.docId in visibleDocs && (timeline.asOfOrdinal == null || it.ordinal <= timeline.asOfOrdinal) }.map { it.docId }
             for (distance in 1..config.kgRetrievalHops.coerceIn(1, 2)) {
-                if (frontier.isEmpty() || paths.size == edgeLimit) break
+                if (frontier.isEmpty()) break
                 val (cte, args) = scopeQuery(scope)
-                val ids = placeholders(frontier.size)
+                val ids = sqlList(frontier)
                 val sql = "$cte SELECT e.id,e.source_id,e.target_id,e.relation,MAX(COALESCE(p.weight,0))," +
                     "COUNT(p.id)," +
                     "(0.35*COUNT(p.id)/(COUNT(p.id)+1.0)+0.65*MAX(COALESCE(p.weight,0))) AS score " +
                     "FROM kg_edges e JOIN kg_evidence p ON p.edge_id=e.id " +
                     "WHERE e.id IN (SELECT id FROM kg_edges WHERE source_id IN ($ids) UNION SELECT id FROM kg_edges WHERE target_id IN ($ids)) " +
-                    "AND e.collection_id=? AND ${visibleEvidence()} GROUP BY e.id ORDER BY score DESC,e.id LIMIT ?"
+                    "AND e.collection_id=? AND e.id IN (${sqlList(allowedEdges)}) AND ${visibleEvidence()} " +
+                    "AND (e.id NOT IN (${sqlList(timeline.knownEdgeIds)}) OR p.doc_id IN (${sqlList(relevantDocs)})) GROUP BY e.id ORDER BY score DESC,e.id LIMIT ?"
                 val next = linkedSetOf<String>()
-                database.query(SimpleSQLiteQuery(sql, (args + frontier + frontier + listOf(scope.collectionId, edgeLimit * 8)).toTypedArray())).use { cursor ->
-                    while (cursor.moveToNext() && paths.size < edgeLimit) {
+                database.query(SimpleSQLiteQuery(sql, (args + listOf(scope.collectionId, edgeLimit * 8)).toTypedArray())).use { cursor ->
+                    while (cursor.moveToNext()) {
                         val id = cursor.getString(0)
                         if (!seenEdges.add(id)) continue
-                        val source = cursor.getString(1)
-                        val target = cursor.getString(2)
+                        val rawSource = cursor.getString(1)
+                        val rawTarget = cursor.getString(2)
+                        val source = canonical[rawSource] ?: rawSource
+                        val target = canonical[rawTarget] ?: rawTarget
                         val added = listOf(source, target).filterNot { it in acceptedNodes }.distinct()
                         if (acceptedNodes.size + added.size > nodeLimit) continue
                         val nodes = listOf(source, target).distinct().mapNotNull { database.kgNodeDao().getRawById(it) }
@@ -82,24 +116,55 @@ class GraphRetrievalStore(private val database: InfinityDatabase) {
                             KgNode(it.id, it.name, it.type)
                         }
                         if (nodes.map { it.id }.toSet().containsAll(listOf(source, target))) {
+                            val knownFilter = if (id in timeline.knownEdgeIds) " AND p.doc_id IN (${sqlList(relevantDocs)})" else ""
                             val documents = database.query(SimpleSQLiteQuery(
-                                "$cte SELECT DISTINCT p.doc_id FROM kg_evidence p WHERE p.edge_id=? AND p.doc_id IS NOT NULL AND ${visibleEvidence()} ORDER BY p.doc_id",
+                                "$cte SELECT DISTINCT p.doc_id FROM kg_evidence p WHERE p.edge_id=? AND p.doc_id IS NOT NULL AND ${visibleEvidence()}$knownFilter ORDER BY p.doc_id",
                                 (args + id).toTypedArray(),
                             )).use { sources -> buildList { while (sources.moveToNext()) add(sources.getString(0)) } }
-                            paths += KgPath(queryKeywords = listOf(query.take(512)), nodes = nodes,
+                            val basePath = KgPath(queryKeywords = listOf(query.take(512)), nodes = nodes,
                                 edges = listOf(KgEdge(source, target, cursor.getString(3), cursor.getDouble(4))),
                                 sourceDocumentIds = documents,
                                 origins = listOf("persistent"), score = cursor.getDouble(6) / distance,
                                 evidenceCount = cursor.getInt(5), distance = distance)
+                            current[id]?.let { state ->
+                                paths += basePath.copy(reasoning = timelineDescription(id, state, null, false))
+                            }
+                            events[id].orEmpty().take(edgeLimit).forEach { event ->
+                                paths += basePath.copy(
+                                    reasoning = timelineDescription(id, null, event, false), sourceDocumentIds = listOf(event.docId),
+                                    narrativeEventOrdinal = event.startOrdinal, narrativeEventDocId = event.docId,
+                                    narrativeEventWindow = event.windowIndex, narrativeEventOffset = event.charStart,
+                                )
+                            }
+                            if (id in timeline.unknownEdgeIds) {
+                                paths += basePath.copy(reasoning = timelineDescription(id, null, null, true))
+                            }
                             acceptedNodes += added
-                            next += added
+                            added.forEach { next += groups[it] ?: listOf(it) }
                         }
                     }
                 }
                 frontier = next.toList()
             }
-            PersistentGraphResult(seeds.size, paths)
+            PersistentGraphResult(seeds.size, paths.sortedWith(compareBy<KgPath> { it.narrativeEventOrdinal != null }
+                .thenByDescending { it.narrativeEventOrdinal ?: Int.MIN_VALUE }
+                .thenByDescending { it.narrativeEventWindow ?: Int.MIN_VALUE }
+                .thenByDescending { it.narrativeEventOffset ?: Int.MIN_VALUE }).take(edgeLimit), temporalRestricted)
         }
+    }
+
+    private fun timelineDescription(id: String, state: KgTimelineCurrent?, event: KgTimelineHistory?, unknown: Boolean): String? {
+        if (unknown) return "位置未知"
+        if (event != null) return "事件，第 ${event.startOrdinal} 篇"
+        if (state == null || state.edgeId != id) return null
+        val history = state.history.joinToString("；") { previous ->
+            val range = previous.endOrdinal?.let { end -> if (end == previous.startOrdinal) "${previous.startOrdinal}" else "${previous.startOrdinal}–$end" }
+                ?: previous.startOrdinal.toString()
+            "${previous.relation}，第 $range 篇"
+        }
+        val flashbacks = state.flashbacks.joinToString("；") { "倒叙：${it.relation}，第 ${it.startOrdinal} 篇" }
+        return "第 ${state.startOrdinal} 篇起" + (if (history.isEmpty()) "" else "；此前：$history") +
+            (if (flashbacks.isEmpty()) "" else "；$flashbacks")
     }
 
     internal suspend fun explainSeedQuery(query: String, scope: KgRetrievalScope): List<String> = withContext(Dispatchers.IO) {

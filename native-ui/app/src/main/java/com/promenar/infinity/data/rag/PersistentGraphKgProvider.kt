@@ -54,7 +54,7 @@ class PersistentGraphKgProvider(
         }
         val persistent = retrieval.retrieve(query, scope, visibleReferences.mapNotNull { it.documentId }, config)
         val needsJit = persistent.seedCount < config.kgJitMinSeeds.coerceIn(1, 32) || persistent.paths.isEmpty()
-        val instant = if (allowJit && config.kgJitFallbackEnabled && needsJit && visibleReferences.isNotEmpty()) {
+        val instant = if (allowJit && !persistent.temporalRestricted && config.kgJitFallbackEnabled && needsJit && visibleReferences.isNotEmpty()) {
             try {
                 (if (jit is MicroGraphKgAdapter) jit.extractForGraph(query, sessionId, visibleReferences, scope.collectionId)
                     else jit.extractContext(query, sessionId, visibleReferences))?.takeIf { it.status == KgExtractionStatus.SUCCESS && it.error == null }

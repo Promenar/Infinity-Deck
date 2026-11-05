@@ -48,12 +48,33 @@ class BackupGraphVectorPolicyTest {
             "sessions" to listOf(row("""{"id":"ks","agent_id":"__system__","workspace_root_uuid":"kr"}"""), row("""{"id":"s","agent_id":"agent"}""")),
             "workspace_files" to listOf(row("""{"uuid":"doc","workspace_root_uuid":"kr"}""")),
             "kg_collections" to listOf(row("""{"id":"work:doc","kind":"work","root_ref":"doc"}""")),
+            "kg_edges" to listOf(row("""{"id":"edge","collection_id":"work:doc"}""")),
         )
         val index = BackupLayerPolicy.Index(tables)
         assertThat(index.layer("kg_nodes", row("""{"collection_id":"work:doc"}"""))).isEqualTo(BackupLayer.KNOWLEDGE)
+        assertThat(index.layer("kg_edge_mentions", row("""{"edge_id":"edge"}"""))).isEqualTo(BackupLayer.KNOWLEDGE)
+        assertThat(index.layer("kg_edge_validity", row("""{"collection_id":"work:doc"}"""))).isEqualTo(BackupLayer.KNOWLEDGE)
+        assertThat(index.layer("kg_entity_links", row("""{"collection_id":"work:doc"}"""))).isEqualTo(BackupLayer.KNOWLEDGE)
         assertThat(index.layer("kg_evidence", row("""{"source_type":"jit","doc_id":"doc","session_id":"s"}"""))).isEqualTo(BackupLayer.SESSIONS)
         assertThat(index.layer("kg_evidence", row("""{"source_type":"legacy"}"""))).isEqualTo(BackupLayer.KNOWLEDGE)
         assertThat(index.layer("vectors", row("""{"doc_id":"doc","session_id":"s"}"""))).isEqualTo(BackupLayer.KNOWLEDGE)
+    }
+
+    @Test
+    fun `恢复时丢弃与证据来源不一致的出现记录`() {
+        val tables = mapOf(
+            "workspace_files" to listOf(row("""{"uuid":"d1"}"""), row("""{"uuid":"d2"}""")),
+            "kg_collections" to listOf(row("""{"id":"work:p"}""")),
+            "kg_collection_members" to listOf(row("""{"doc_id":"d1","collection_id":"work:p"}"""), row("""{"doc_id":"d2","collection_id":"work:p"}""")),
+            "kg_nodes" to listOf(row("""{"id":"a","collection_id":"work:p"}"""), row("""{"id":"b","collection_id":"work:p"}""")),
+            "kg_edges" to listOf(row("""{"id":"e","source_id":"a","target_id":"b","collection_id":"work:p"}""")),
+            "kg_evidence" to listOf(row("""{"id":"p","edge_id":"e","doc_id":"d1","task_id":"t","content_hash":"h"}""")),
+            "kg_edge_mentions" to listOf(row("""{"id":"good","edge_id":"e","evidence_id":"p","doc_id":"d1","task_id":"t","content_hash":"h"}"""),
+                row("""{"id":"bad","edge_id":"e","evidence_id":"p","doc_id":"d2","task_id":"t","content_hash":"h"}""")),
+        )
+        val payload = DatabaseBackupPayload(17, tables)
+        val restored = prepareRestoredGraphAndVectors(payload, payload, null, 17, null, null, null)
+        assertThat(restored.tables.getValue("kg_edge_mentions").map { it.getValue("id").jsonPrimitive.content }).containsExactly("good")
     }
 
     @Test

@@ -43,7 +43,7 @@ class ParameterSchemeMigrationTest {
                 seed(database, "sessions", mapOf("id" to "broken", "agent_id" to "agent", "title" to "损坏", "inference_params" to "not json"))
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
+                .addMigrations(MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35_TIMELINE)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -61,7 +61,7 @@ class ParameterSchemeMigrationTest {
                 room.parameterSchemeDao().upsert(ParameterSchemeEntity("s2", "p::other", "别的模型", "{}", 2, 2))
                 assertThat(room.parameterSchemeDao().observeForModel("p::m").first().map { it.name }).containsExactly("写代码")
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(34, INFINITY_SCHEMA_V34_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(35, INFINITY_SCHEMA_V35_IDENTITY_HASH)
                 }).isTrue()
             } finally {
                 room.close()

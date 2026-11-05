@@ -46,6 +46,9 @@ import com.promenar.infinity.data.local.db.entity.ExternalSnapshotEntity
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.local.db.entity.FileVersionEntity
 import com.promenar.infinity.data.local.db.entity.KgEdgeEntity
+import com.promenar.infinity.data.local.db.entity.KgEdgeMentionEntity
+import com.promenar.infinity.data.local.db.entity.KgEdgeValidityEntity
+import com.promenar.infinity.data.local.db.entity.KgEntityLinkEntity
 import com.promenar.infinity.data.local.db.entity.KgJitCacheEntity
 import com.promenar.infinity.data.local.db.entity.KgNodeEntity
 import com.promenar.infinity.data.local.db.entity.KgEvidenceEntity
@@ -82,6 +85,9 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         DocumentTagEntity::class,
         KgNodeEntity::class,
         KgEdgeEntity::class,
+        KgEdgeMentionEntity::class,
+        KgEdgeValidityEntity::class,
+        KgEntityLinkEntity::class,
         com.promenar.infinity.data.local.db.entity.KgCollectionEntity::class,
         com.promenar.infinity.data.local.db.entity.KgFolderSettingEntity::class,
         com.promenar.infinity.data.local.db.entity.KgCollectionMemberEntity::class,
@@ -108,7 +114,7 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         ParameterSchemeEntity::class,
         com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity::class,
     ],
-    version = 34,
+    version = 35,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -228,3 +234,4 @@ internal const val INFINITY_SCHEMA_V31_IDENTITY_HASH = "f4d6fe7e2fb95b1bb98f165b
 internal const val INFINITY_SCHEMA_V32_IDENTITY_HASH = "1ecb27d0ac1c4dbf13e23fd519b8cfe3"
 internal const val INFINITY_SCHEMA_V33_IDENTITY_HASH = "2f0e094301cf97331d95b088d15627b0"
 internal const val INFINITY_SCHEMA_V34_IDENTITY_HASH = "055dbc210dde0552322f3e8615f95568"
+internal const val INFINITY_SCHEMA_V35_IDENTITY_HASH = "4bd3127129d24454710d8c9737971961"

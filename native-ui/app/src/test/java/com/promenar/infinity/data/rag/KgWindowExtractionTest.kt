@@ -23,6 +23,25 @@ class KgWindowExtractionTest {
     private val base = """{"nodes":[{"name":"甲","type":"person"},{"name":"乙","type":"person"}],"edges":[{"source":"甲","target":"乙","relation":"认识"}]}"""
     private val extra = """{"nodes":[{"name":"丙","type":"person"}],"edges":[{"source":"甲","target":"丙","relation":"认识"}]}"""
 
+    @Test fun `并发窗口按原文定位并保留关系出现`() = runTest {
+        val protocol = mockk<LlmProtocol>()
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            val input = firstArg<PromptRequest>().messages[1].content
+            val quote = if (input.startsWith("a")) "甲乙结盟" else "不存在的引文"
+            PromptResponse("""{"nodes":[{"name":"甲","type":"person","evidence":"甲乙"},{"name":"乙","type":"person"}],"edges":[{"source":"甲","target":"乙","relation":"盟友","kind":"state","family":"relationship","evidence":"$quote"}]}""")
+        }
+        val extractor = GraphExtractor(testKgClient(protocol), mockk(relaxed = true), "owner::model",
+            chunkSize = 10, concurrency = 2, gleaningPasses = 0, dispatcher = StandardTestDispatcher(testScheduler))
+        val result = extractor.extractCandidate("aaaa甲乙结盟xxbbbb甲乙反目yy")
+        val appearances = result.edges.sortedBy { it.windowIndex }
+        assertThat(appearances.map { it.windowIndex }).containsExactly(0, 1).inOrder()
+        assertThat(appearances[0].charStart).isEqualTo(4)
+        assertThat(appearances[0].charEnd).isEqualTo(8)
+        assertThat(appearances[0].positionCoarse).isFalse()
+        assertThat(appearances[1].charStart).isEqualTo(0)
+        assertThat(appearances[1].positionCoarse).isTrue()
+    }
+
     @Test fun `追加请求携带规范化首轮历史并合并结果`() = runTest {
         val protocol = mockk<LlmProtocol>()
         val sent = mutableListOf<PromptRequest>()

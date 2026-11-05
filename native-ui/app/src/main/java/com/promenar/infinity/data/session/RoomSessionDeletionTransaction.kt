@@ -2,6 +2,7 @@ package com.promenar.infinity.data.session
 
 import androidx.room.withTransaction
 import com.promenar.infinity.data.local.db.InfinityDatabase
+import com.promenar.infinity.data.rag.GraphStore
 import com.promenar.infinity.data.local.db.entity.WorkspaceMutationPayloadCodec
 import com.promenar.infinity.data.local.db.entity.WorkspaceMutationPayloadResult
 import com.promenar.infinity.data.local.db.entity.WorkspaceMutationStage
@@ -29,7 +30,7 @@ class RoomSessionDeletionTransaction(private val database: InfinityDatabase) {
         dao.deleteAuditLogs(sessionId)
         dao.deleteVectorizationTasksBySession(sessionId)
         dao.deleteVectorsBySession(sessionId)
-        database.kgEvidenceDao().clearSession(sessionId)
+        GraphStore(database).clearSessionGraph(sessionId)
         dao.invalidateKgJitCache()
         dao.deleteFileVersionsBySession(sessionId)
         dao.deleteMessages(sessionId)
@@ -50,8 +51,8 @@ class RoomSessionDeletionTransaction(private val database: InfinityDatabase) {
             dao.deleteVectorizationTasks(target.sessionId, target.workspaceRootUuid)
             dao.deleteVectors(target.sessionId, target.fileUuids)
             dao.deleteDocumentTags(target.fileUuids)
-            database.kgEvidenceDao().clearSession(target.sessionId)
-            target.fileUuids.forEach { database.kgEvidenceDao().clearDocument(it) }
+            GraphStore(database).clearSessionGraph(target.sessionId)
+            target.fileUuids.forEach { GraphStore(database).clearGraphForDoc(it) }
             dao.invalidateKgJitCache()
             dao.deleteFileVersions(target.sessionId, target.workspaceRootUuid)
             dao.deleteMessages(target.sessionId)

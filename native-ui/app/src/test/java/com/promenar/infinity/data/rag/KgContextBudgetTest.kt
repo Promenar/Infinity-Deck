@@ -36,6 +36,20 @@ class KgContextBudgetTest {
         assertThat(fitted.paths.single().omittedPathCount).isEqualTo(1)
     }
 
+    @Test fun `事件上下文按出现位置倒序并带事件标识`() {
+        val early = path("甲", "乙", "相遇", 0.9).copy(narrativeEventOrdinal = 3)
+        val late = path("甲", "乙", "救援", 0.2).copy(narrativeEventOrdinal = 9)
+        val fitted = KgContextBudget.fit(listOf(early, late), 2048)
+        assertThat(fitted.paths.map { it.edges.single().relation }).containsExactly("救援", "相遇").inOrder()
+        assertThat(fitted.context.lines().all { it.contains("事件：") }).isTrue()
+    }
+
+    @Test fun `同一关系的不同事件出现不被融合`() {
+        val early = path("甲", "乙", "救出", 0.9).copy(narrativeEventOrdinal = 3, narrativeEventDocId = "d3", narrativeEventWindow = 0, narrativeEventOffset = 1)
+        val late = path("甲", "乙", "救出", 0.9).copy(narrativeEventOrdinal = 9, narrativeEventDocId = "d9", narrativeEventWindow = 0, narrativeEventOffset = 2)
+        assertThat(KgContextBudget.fuse(listOf(early, late), emptyList()).map { it.narrativeEventOrdinal }).containsExactly(9, 3).inOrder()
+    }
+
     @Test fun `重复标签不同类型不合并且结果输入重排确定`() {
         val a = path("甲", "乙", "关系", 0.8)
         val b = a.copy(nodes = a.nodes.map { it.copy(type = "person") })

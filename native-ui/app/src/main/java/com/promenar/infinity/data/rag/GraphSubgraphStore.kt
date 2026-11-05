@@ -21,6 +21,7 @@ data class GraphSubgraphRequest(
     val expandNodeId: String? = null,
     val sessionId: String? = null,
     val collectionId: String? = null,
+    val asOf: KgAsOf? = null,
 ) {
     init { require(docId == null || sessionId == null) { "文档与会话范围不能同时指定" } }
 }
@@ -55,7 +56,25 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
                 sessionId = null,
                 collectionId = collectionId,
             )
-            val predicate = activeNode(bounded.docId, bounded.conceptOnly, bounded.sessionId, bounded.collectionId)
+            val timelineStore = KgTimelineStore(database)
+            val articles = collectionId?.let { timelineStore.ticks(it) }.orEmpty()
+            val visible = if (bounded.docId == null) articles.map { it.docId }.toSet() else setOf(bounded.docId)
+            val asOfDoc = when (val point = bounded.asOf) {
+                is KgAsOf.Document -> point.docId
+                is KgAsOf.Ordinal -> requireNotNull(articles.firstOrNull { it.ordinal == point.ordinal }) { "篇目序号不存在" }.docId
+                null -> null
+            }
+            val timeline = collectionId?.let { timelineStore.snapshot(it, visible, asOfDoc) }
+            val allowed = timeline?.let { it.states.map { state -> state.edgeId }.toSet() + it.events.map { event -> event.edgeId } + it.unknownEdgeIds }
+            val eligibleDocs = articles.filter { it.docId in visible && (timeline?.asOfOrdinal == null || it.ordinal <= timeline.asOfOrdinal) }.map { it.docId }.toSet()
+            val basePredicate = activeNode(bounded.docId, bounded.conceptOnly, bounded.sessionId, bounded.collectionId)
+            val predicate = if (bounded.asOf == null || collectionId == null || allowed == null) basePredicate else {
+                val visibleNode = "(EXISTS (SELECT 1 FROM kg_evidence p WHERE p.node_id=n.id AND $ACTIVE_KG_EVIDENCE AND " +
+                    "(p.doc_id IS NULL OR p.doc_id IN (${sqlTextList(eligibleDocs)}) OR p.doc_id NOT IN " +
+                    "(SELECT doc_id FROM kg_collection_members WHERE collection_id=?))) OR EXISTS " +
+                    "(SELECT 1 FROM kg_edges e WHERE (e.source_id=n.id OR e.target_id=n.id) AND e.id IN (${sqlTextList(allowed)})))"
+                SqlPredicate("${basePredicate.sql} AND $visibleNode", basePredicate.args + collectionId)
+            }
             val count = query("SELECT COUNT(*) AS total FROM kg_nodes n WHERE ${predicate.sql}", predicate.args) {
                 getLong(getColumnIndexOrThrow("total")).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             }.single()
@@ -74,12 +93,23 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
                     val focus = existing[focusId] ?: readNodesByIds(listOf(focusId), predicate).firstOrNull()
                     if (focus != null && (focus.id in selected || selected.size < bounded.nodeLimit)) {
                         selected[focus.id] = focus
-                        addNeighbours(focus.id, selected, bounded, predicate)
+                        addNeighbours(focus.id, selected, bounded, predicate, allowed)
                     }
                 }
             }
-            val edges = readEdges(selected.keys.toList(), bounded)
-            GraphSubgraph(GraphData(selected.values.toList(), edges), count)
+            val edges = readEdges(selected.keys.toList(), bounded, allowed, timeline?.knownEdgeIds.orEmpty(), eligibleDocs)
+            if (collectionId == null) return@withTransaction GraphSubgraph(GraphData(selected.values.toList(), edges), count)
+            val canonical = KgEntityResolutionStore(database).canonicalIds(collectionId)
+            val mappedNodes = selected.values.map { node ->
+                val id = canonical[node.id] ?: node.id
+                if (id == node.id) node else database.kgNodeDao().getRawById(id)?.let {
+                    KgNode(it.id, it.name, it.type, it.metadata, "full", it.createdAt)
+                } ?: node
+            }.distinctBy { it.id }.map { if (bounded.asOf == null) it else it.copy(metadata = null) }
+            val mappedEdges = edges.map { edge ->
+                edge.copy(sourceId = canonical[edge.sourceId] ?: edge.sourceId, targetId = canonical[edge.targetId] ?: edge.targetId)
+            }
+            GraphSubgraph(GraphData(mappedNodes, mappedEdges), count)
         }
     }
 
@@ -97,13 +127,20 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
                     "ORDER BY CASE WHEN n.normalized_name = ? THEN 0 ELSE 1 END, n.normalized_name, n.type, n.id LIMIT ?",
                 predicate.args + listOf(term, upper, term, limit),
             )
-            if (prefix.size == limit) return@withTransaction prefix
-            val contained = readNodes(
+            val contained = if (prefix.size == limit) emptyList() else readNodes(
                 "SELECT n.* FROM kg_nodes n WHERE ${predicate.sql} AND instr(n.normalized_name, ?) > 0 " +
                     "AND NOT (n.normalized_name >= ? AND n.normalized_name < ?) ORDER BY n.normalized_name, n.type, n.id LIMIT ?",
                 predicate.args + listOf(term, term, upper, limit - prefix.size),
             )
-            prefix + contained
+            val results = prefix + contained
+            if (collectionId == null) return@withTransaction results
+            val canonical = KgEntityResolutionStore(database).canonicalIds(collectionId)
+            results.map { node ->
+                val id = canonical[node.id] ?: node.id
+                if (id == node.id) node else database.kgNodeDao().getRawById(id)?.let {
+                    KgNode(it.id, it.name, it.type, it.metadata, "full", it.createdAt)
+                } ?: node
+            }.distinctBy { it.id }
         }
     }
 
@@ -112,6 +149,7 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
         selected: LinkedHashMap<String, KgNode>,
         request: GraphSubgraphRequest,
         nodePredicate: SqlPredicate,
+        allowed: Set<String>?,
     ) {
         val targetSize = minOf(request.nodeLimit, selected.size + GRAPH_EXPANSION_BATCH_SIZE)
         val edgePredicate = activeEvidence("edge_id", "e.id", request.docId, request.sessionId)
@@ -120,7 +158,8 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
         while (selected.size < targetSize) {
             val batch = readNodes(
                 "SELECT DISTINCT n.* FROM kg_edges e JOIN kg_nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END " +
-                    "WHERE (e.source_id = ? OR e.target_id = ?) AND ${edgePredicate.sql} AND ${nodePredicate.sql} " +
+                    "WHERE (e.source_id = ? OR e.target_id = ?) AND ${edgePredicate.sql} " +
+                    (allowed?.let { "AND e.id IN (${sqlTextList(it)}) " } ?: "") + "AND ${nodePredicate.sql} " +
                     "ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id LIMIT ? OFFSET ?",
                 listOf(focusId, focusId, focusId) + edgePredicate.args + nodePredicate.args + listOf(128, offset),
             )
@@ -142,7 +181,8 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
             )
         }
 
-    private suspend fun readEdges(ids: List<String>, request: GraphSubgraphRequest): List<KgEdge> {
+    private suspend fun readEdges(ids: List<String>, request: GraphSubgraphRequest, allowed: Set<String>?,
+                                  known: Set<String>, eligibleDocs: Set<String>): List<KgEdge> {
         if (ids.isEmpty()) return emptyList()
         val predicate = activeEvidence("edge_id", "e.id", request.docId, request.sessionId)
         val selected = linkedMapOf<String, KgEdgeEntity>()
@@ -153,7 +193,8 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
                 coroutineContext.ensureActive()
                 query(
                     "SELECT e.* FROM kg_edges e WHERE e.source_id IN (${placeholders(sources.size)}) " +
-                        "AND e.target_id IN (${placeholders(targets.size)}) AND ${predicate.sql} ORDER BY e.created_at DESC, e.id LIMIT ?",
+                        "AND e.target_id IN (${placeholders(targets.size)}) AND ${predicate.sql} " +
+                        (allowed?.let { "AND e.id IN (${sqlTextList(it)}) " } ?: "") + "ORDER BY e.created_at DESC, e.id LIMIT ?",
                     sources + targets + predicate.args + (request.edgeLimit - selected.size),
                 ) {
                     KgEdgeEntity(string("id"), string("source_id"), string("target_id"), string("relation"),
@@ -177,7 +218,7 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
             }
         }
         val evidence = selected.keys.toList().chunked(400).flatMap { database.kgEvidenceDao().getActiveForEdges(it) }
-            .filter { request.docId == null || it.docId == request.docId }.groupBy { it.edgeId }
+            .filter { (request.docId == null || it.docId == request.docId) && (it.edgeId !in known || it.docId in eligibleDocs) }.groupBy { it.edgeId }
         return selected.values.map { edge ->
             val sources = evidence[edge.id].orEmpty()
             val documents = sources.mapNotNull { it.docId }.distinct().sorted()
@@ -230,6 +271,10 @@ class GraphSubgraphStore(private val database: InfinityDatabase) {
 
     private fun Cursor.string(column: String): String = getString(getColumnIndexOrThrow(column))
     private fun Cursor.nullableString(column: String): String? = getColumnIndexOrThrow(column).let { if (isNull(it)) null else getString(it) }
+    private fun sqlTextList(values: Collection<String>): String = if (values.isEmpty()) "SELECT NULL WHERE 0" else values.joinToString { value ->
+        val hex = value.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it.toInt() and 255) }
+        "CAST(X'$hex' AS TEXT)"
+    }
     private fun placeholders(size: Int): String = List(size) { "?" }.joinToString(",")
     private data class SqlPredicate(val sql: String, val args: List<Any?> = emptyList())
 }

@@ -73,7 +73,8 @@ object KgGraphValidation {
             ExtractionResult(
                 nodes = nodes.take(MAX_RAW_NODES).mapNotNull { value ->
                     val node = value as? JsonObject ?: return@mapNotNull null
-                    ExtractedNode(node.string("name"), node.string("type").ifBlank { "concept" }, node["metadata"]?.toString())
+                    ExtractedNode(node.string("name"), node.string("type").ifBlank { "concept" }, node["metadata"]?.toString(),
+                        windowIndex = node.int("windowIndex", "window_index"), evidence = node.quote())
                 },
                 edges = edges.take(MAX_RAW_EDGES).mapNotNull { value ->
                     val edge = value as? JsonObject ?: return@mapNotNull null
@@ -81,6 +82,10 @@ object KgGraphValidation {
                         edge.string("source"), edge.string("target"), edge.string("relation"),
                         if ("weight" in edge) edge.string("weight").toDoubleOrNull() ?: Double.NaN else 1.0,
                         edge.string("sourceType").takeIf { it.isNotBlank() }, edge.string("targetType").takeIf { it.isNotBlank() },
+                        windowIndex = edge.int("windowIndex", "window_index"), evidence = edge.quote(),
+                        kind = edge.string("kind").takeIf { it in setOf("state", "event") },
+                        family = edge.string("family").takeIf { it in KgNarrativeTimeline.families },
+                        flashback = (edge["flashback"] as? JsonPrimitive)?.booleanOrNull == true,
                     )
                 },
             )
@@ -90,5 +95,12 @@ object KgGraphValidation {
     }
 
     private fun JsonObject.string(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
+    private fun JsonObject.int(vararg keys: String): Int? = keys.firstNotNullOfOrNull { key ->
+        (this[key] as? JsonPrimitive)?.intOrNull?.takeIf { it >= 0 }
+    }
+    private fun JsonObject.quote(): String? = string("evidence").takeIf { it.isNotBlank() }?.let { value ->
+        val end = value.offsetByCodePoints(0, minOf(30, value.codePointCount(0, value.length)))
+        value.substring(0, end)
+    }
     private fun parseFailure() = ExtractionResult.failure(KgExtractionStatus.PARSE_FAILURE, "知识图谱响应不是有效的 nodes/edges JSON")
 }
