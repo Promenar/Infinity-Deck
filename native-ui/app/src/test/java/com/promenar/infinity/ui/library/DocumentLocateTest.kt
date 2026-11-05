@@ -72,4 +72,23 @@ class DocumentLocateTest {
         assertNull(locateBody(body, emptyList(), markdown = true))
         assertNull(locateBody(body, listOf(IntRange.EMPTY, 999..1000), markdown = true))
     }
+    @Test
+    fun `CRLF 空行也算段落边界`() {
+        val crlf = "第一段内容\r\n\r\n第二段命中这里\r\n\r\n第三段"
+        val start = crlf.indexOf("命中")
+        val (from, to) = paragraphBounds(crlf, start until start + 2)
+        assertEquals("第二段命中这里", crlf.substring(from, to).trim())
+    }
+
+    @Test
+    fun `没有空行的长文只扩展到命中所在行而不是整篇`() {
+        val lines = (1..400).map { "第${it}行：这是一段用于测试的较长正文内容，单换行分隔，没有空行。" }
+        val long = lines.joinToString("\n")
+        val target = lines[200]
+        val start = long.indexOf(target)
+        val (from, to) = paragraphBounds(long, start until start + target.length)
+        assertEquals(target, long.substring(from, to))
+        val located = locateBody(long, listOf(start until start + target.length), markdown = false)!!
+        assertEquals(target, located.segments.single { it.hitOrdinal == 0 }.text)
+    }
 }

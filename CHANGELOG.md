@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.27.2-beta] - 2026-11-05
+
+### 修复
+
+- 从问资料或对话引用打开长文档时，高亮与滚动落在命中段落：Windows 换行（CRLF）或只含空白的空行也算段落分隔；没有空行的长文只高亮命中所在行，不再把整篇当成一段高亮并停在文首。
+
 ## [0.27.1-beta] - 2026-11-05
 
 ### 新增

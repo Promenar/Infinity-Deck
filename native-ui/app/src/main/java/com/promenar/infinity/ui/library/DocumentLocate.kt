@@ -12,14 +12,31 @@ internal data class BodySegment(val text: String, val hitOrdinal: Int?)
 /** 定位结果：片段与命中段数量；[plainText] 为真表示 Markdown 无法安全切分，按纯文本渲染。 */
 internal data class LocatedBody(val segments: List<BodySegment>, val hitCount: Int, val plainText: Boolean)
 
-/** 把 [range] 向两侧扩展到段落边界（空行或正文首尾），返回半开区间的起止下标。 */
+/** 空行：两个换行之间只有空白（兼容 CRLF 与全角空格）。 */
+private val BlankLine = Regex("\n[ \t\r\u3000]*\n")
+
+/** 段落超过该长度且远大于命中区间时，改为只扩展到命中所在的行，避免整篇被当成一段高亮。 */
+private const val MAX_PARAGRAPH_CHARS = 2_000
+
+/**
+ * 把 [range] 向两侧扩展到段落边界（空行或正文首尾），返回半开区间的起止下标。
+ * 没有空行的长文（单换行分隔）扩展结果过长时，退回到命中区间所在行的起止。
+ */
 internal fun paragraphBounds(body: String, range: IntRange): Pair<Int, Int> {
     val first = range.first.coerceIn(0, body.length)
     val last = range.last.coerceIn(first - 1, body.length - 1)
-    val before = body.lastIndexOf("\n\n", (first - 1).coerceAtLeast(0))
-    val start = if (first == 0 || before < 0) 0 else before + 2
-    val after = body.indexOf("\n\n", (last + 1).coerceAtLeast(start))
-    val end = if (after < 0) body.length else after
+    var start = 0
+    for (match in BlankLine.findAll(body)) {
+        if (match.range.last + 1 > first) break
+        start = match.range.last + 1
+    }
+    val end = BlankLine.find(body, (last + 1).coerceIn(start, body.length))?.range?.first ?: body.length
+    val span = maxOf(end, start) - start
+    if (span > MAX_PARAGRAPH_CHARS && span > (last - first + 1) * 2) {
+        val lineStart = body.lastIndexOf('\n', (first - 1).coerceAtLeast(0)).let { if (first == 0 || it < 0) 0 else it + 1 }
+        val lineEnd = body.indexOf('\n', (last + 1).coerceAtLeast(lineStart)).let { if (it < 0) body.length else it }
+        return lineStart to maxOf(lineEnd, lineStart).let { e -> if (e > lineStart && body[e - 1] == '\r') e - 1 else e }
+    }
     return start to maxOf(end, start)
 }
 
