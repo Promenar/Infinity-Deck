@@ -14,7 +14,7 @@
     <string name="library_page_overview">概览</string>
     <string name="library_page_recent">最近</string>
     <string name="library_page_pending">待处理</string>
-    <string name="library_page_memory">长期记忆</string>
+    <string name="library_page_memory">主动记忆</string>
     <string name="library_page_fragments">对话片段</string>
     <string name="library_page_graph">知识图谱</string>
     <string name="library_page_files">文件</string>
@@ -26,7 +26,7 @@
     <string name="library_location_access_lost">授权已失效</string>
 
     <string name="library_kpi_documents">已索引文档</string>
-    <string name="library_kpi_memories">长期记忆</string>
+    <string name="library_kpi_memories">主动记忆</string>
     <string name="library_kpi_memories_new">%1$d 条新</string>
     <string name="library_kpi_graph">图谱实体</string>
     <string name="library_kpi_graph_relations">%1$d 条关系</string>
@@ -102,7 +102,7 @@
     </plurals>
 
     <string name="library_memory_search">搜索记忆</string>
-    <string name="library_memory_disabled">长期记忆已关闭，智能体不会新记住内容。可在设置中打开。</string>
+    <string name="library_memory_disabled">主动记忆已关闭，智能体不会新记住内容。可在设置中打开。</string>
     <string name="library_memory_manage_section">记忆内容</string>
     <string name="library_memory_manage">在资料中管理</string>
     <string name="library_memory_manage_desc">查看、编辑与删除智能体记住的内容</string>

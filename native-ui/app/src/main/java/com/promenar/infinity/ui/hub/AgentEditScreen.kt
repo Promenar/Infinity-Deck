@@ -69,6 +69,10 @@ fun AgentEditScreen(
     val defaultWorkspaceId by viewModel.defaultWorkspaceId.collectAsState()
     val defaultWorkspace by viewModel.defaultWorkspace.collectAsState()
     val memoryPolicy by viewModel.memoryPolicy.collectAsState()
+    val libraryCollections by androidx.compose.runtime.produceState(emptyList<com.promenar.infinity.data.rag.KgCollectionSummary>()) {
+        val app = context.applicationContext as? com.promenar.infinity.InfinityApplication ?: return@produceState
+        value = runCatching { com.promenar.infinity.data.rag.loadLibraryCollections(app.database) }.getOrDefault(emptyList())
+    }
     val subagentModels by viewModel.subagentModels.collectAsState()
     val agentSampling by viewModel.sampling.collectAsState()
     val agentReasoningEffort by viewModel.reasoningEffort.collectAsState()
@@ -573,7 +577,7 @@ fun AgentEditScreen(
             }
 
             item {
-                AgentScopeSection(memoryPolicy, viewModel::updateMemoryPolicy, onNavigateToKnowledgeSettings)
+                AgentScopeSection(memoryPolicy, viewModel::updateMemoryPolicy, onNavigateToKnowledgeSettings, libraryCollections)
             }
 
             item {

@@ -680,6 +680,7 @@ private fun SettingsPanel(
         graphQueue = graphQueue,
         graphBinding = graphBinding,
         graphChoices = graphChoices,
+        libraryCollections = graphData?.collections.orEmpty().filter { it.kind != "session" },
         onGraphRebind = { choice -> chatViewModel.updateGraphBinding(choice.id, readOnly = graphBinding?.readOnly ?: false) },
         onGraphReadOnlyChange = { readOnly -> chatViewModel.updateGraphBinding(graphBinding?.current?.id, readOnly) },
         onGraphRetract = {
@@ -713,6 +714,7 @@ internal fun SessionContextPanelContent(
     /** 会话绑定的图谱；读取中为 null。 */
     graphBinding: SessionGraphBindingUi? = null,
     graphChoices: List<GraphChoice> = emptyList(),
+    libraryCollections: List<com.promenar.infinity.data.rag.KgCollectionSummary> = emptyList(),
     onGraphRebind: (GraphChoice) -> Unit = {},
     onGraphReadOnlyChange: (Boolean) -> Unit = {},
     onGraphRetract: () -> Unit = {},
@@ -752,7 +754,8 @@ internal fun SessionContextPanelContent(
             SettingsToggle(stringResource(R.string.sheet_settings_kg), checked = ragOptions.enableKnowledgeGraph ?: false, icon = Icons.Rounded.Psychology,
                 onCheckedChange = { onRagOptionsChange { current -> current.withRetrievalToggle(SessionRetrievalToggle.KnowledgeGraph, it) } })
         }
-        SessionScopeSection(ragOptions, memoryPolicy, onRagOptionsChange, reachStats, onOpenAgentSettings)
+        SessionScopeSection(ragOptions, memoryPolicy, onRagOptionsChange, reachStats, onOpenAgentSettings,
+            collections = libraryCollections)
         SessionGraphBindingSection(
             enabled = ragOptions.enableKnowledgeGraph == true,
             binding = graphBinding,

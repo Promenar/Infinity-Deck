@@ -14,7 +14,7 @@
     <string name="library_page_overview">Overview</string>
     <string name="library_page_recent">Recent</string>
     <string name="library_page_pending">Needs attention</string>
-    <string name="library_page_memory">Long-term memory</string>
+    <string name="library_page_memory">Active memory</string>
     <string name="library_page_fragments">Conversation snippets</string>
     <string name="library_page_graph">Knowledge graph</string>
     <string name="library_page_files">Files</string>
@@ -26,7 +26,7 @@
     <string name="library_location_access_lost">Access lost</string>
 
     <string name="library_kpi_documents">Indexed documents</string>
-    <string name="library_kpi_memories">Long-term memories</string>
+    <string name="library_kpi_memories">Active memories</string>
     <string name="library_kpi_memories_new">%1$d new</string>
     <string name="library_kpi_graph">Graph entities</string>
     <string name="library_kpi_graph_relations">%1$d relations</string>
@@ -103,7 +103,7 @@
     </plurals>
 
     <string name="library_memory_search">Search memories</string>
-    <string name="library_memory_disabled">Long-term memory is off, so agents won\'t remember anything new. Turn it on in Settings.</string>
+    <string name="library_memory_disabled">Active memory is off, so agents won\'t remember anything new. Turn it on in Settings.</string>
     <string name="library_memory_manage_section">Memories</string>
     <string name="library_memory_manage">Manage in Library</string>
     <string name="library_memory_manage_desc">View, edit and delete what agents remember</string>

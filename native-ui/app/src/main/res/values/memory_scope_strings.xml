@@ -12,13 +12,13 @@
     <string name="memory_scope_all_agents">All agents</string>
     <string name="memory_scope_session_desc">Only memory written in this conversation</string>
     <string name="memory_scope_agent_desc">Memory from every session of this agent</string>
-    <string name="memory_scope_all_agents_desc">Also memory shared by other agents; private agents are excluded</string>
+    <string name="memory_scope_all_agents_desc">Also memory from other agents</string>
     <string name="graph_scope_session">This session only</string>
     <string name="graph_scope_agent">Across sessions</string>
     <string name="graph_scope_all_agents">Across agents</string>
     <string name="graph_scope_session_desc">The graph only uses evidence extracted from this conversation</string>
     <string name="graph_scope_agent_desc">Evidence from every session of this agent</string>
-    <string name="graph_scope_all_agents_desc">Also evidence shared by other agents; private agents are excluded</string>
+    <string name="graph_scope_all_agents_desc">Also evidence from other agents</string>
     <string name="document_scope_workspace">Session workspace</string>
     <string name="document_scope_knowledge_base">Workspace and knowledge base</string>
     <string name="document_scope_all">All indexed documents</string>
@@ -26,8 +26,6 @@
     <string name="document_scope_knowledge_base_desc">Also documents in the knowledge base</string>
     <string name="document_scope_all_desc">Includes files in other sessions\' workspaces</string>
     <string name="agent_memory_section">Retrieval scope</string>
-    <string name="agent_memory_private">Private agent</string>
-    <string name="agent_memory_private_desc">Keeps chat memory to itself and skips long-term memory; agents set to “All agents” can\'t read its memory either</string>
     <string name="agent_memory_default_heading">New session default</string>
     <string name="agent_memory_cap_heading">Session limit</string>
     <string name="agent_memory_default_value">New sessions: %1$s</string>

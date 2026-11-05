@@ -470,11 +470,51 @@ class RagSettingsAccessibilityTest {
         rule.onNodeWithTag("agent_edit_file_access_always").performClick()
         rule.runOnIdle { assertThat(access).isEqualTo(com.promenar.infinity.data.agent.KnowledgeFileAccess.ALWAYS) }
 
-        rule.onNodeWithTag("agent_memory_private")
-            .assertIsToggleable()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+        // 私密智能体已取消：会话默认互不可见，跨会话读取改由全局记忆控制。
+        rule.onNodeWithTag("agent_memory_private").assertDoesNotExist()
+    }
+
+    @Test
+    fun agentPermissionSheetsUseRadioChoicesAndCollectionChecklist() {
+        var policy by mutableStateOf(com.promenar.infinity.data.agent.AgentMemoryPolicy())
+        val collections = listOf(
+            com.promenar.infinity.data.rag.KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300),
+            com.promenar.infinity.data.rag.KgCollectionSummary("shared", "shared", "通用知识", null, 3, 5, 2),
+        )
+        rule.setContent {
+            InfinityTheme(
+                preferences = InfinityThemePreferences(mode = InfinityThemeMode.LIGHT, colorSource = InfinityColorSource.INFINITY),
+            ) {
+                com.promenar.infinity.ui.hub.AgentScopeSection(
+                    policy = policy,
+                    onPolicyChange = { transform -> policy = transform(policy) },
+                    collections = collections,
+                )
+            }
+        }
+
+        rule.onNodeWithTag("agent_perm_global_memory").assertHeightIsAtLeast(48.dp).performClick()
+        rule.onNodeWithTag("agent_perm_global_0")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
             .performClick()
-        rule.runOnIdle { assertThat(policy.shareWithOtherAgents).isFalse() }
+        rule.runOnIdle { assertThat(policy.globalMemory).isEqualTo(com.promenar.infinity.data.agent.GlobalMemoryPolicy.FORBID) }
+        rule.onNodeWithTag("agent_perm_global_2").performClick()
+        rule.onNodeWithTag("agent_perm_reach_0").performClick()
+        rule.runOnIdle {
+            assertThat(policy.globalMemory).isEqualTo(com.promenar.infinity.data.agent.GlobalMemoryPolicy.ALLOW_DEFAULT_ON)
+            assertThat(policy.memoryCap).isEqualTo(com.promenar.infinity.data.model.ConversationScope.AGENT)
+        }
+        androidx.test.espresso.Espresso.pressBack()
+
+        rule.onNodeWithTag("agent_perm_collections").performClick()
+        rule.onNodeWithTag("agent_perm_collections_all").assertIsToggleable().performClick()
+        rule.runOnIdle { assertThat(policy.allowedCollectionIds).containsExactly("work:a", "shared") }
+        rule.onNodeWithTag("agent_perm_collection_shared")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
+            .performClick()
+        rule.runOnIdle { assertThat(policy.allowedCollectionIds).containsExactly("work:a") }
+        rule.onNodeWithTag("agent_perm_default_1").performScrollTo().performClick()
+        rule.runOnIdle { assertThat(policy.defaultCollectionIds).isEmpty() }
     }
 
 }

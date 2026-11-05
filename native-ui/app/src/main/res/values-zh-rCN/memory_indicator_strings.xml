@@ -10,9 +10,8 @@
     </plurals>
     <string name="turn_memory_visibility_title">可检索范围</string>
     <string name="turn_memory_visibility_session">始终可检索</string>
-    <string name="turn_memory_visibility_agent">对话记忆范围为“本智能体”或“全部智能体”时可检索</string>
-    <string name="turn_memory_visibility_shared">对话记忆范围为“全部智能体”时可检索</string>
-    <string name="turn_memory_visibility_private">不可检索，本智能体为私密智能体</string>
+    <string name="turn_memory_visibility_agent">开启全局记忆后可检索（本智能体的会话或全部会话）</string>
+    <string name="turn_memory_visibility_shared">开启全局记忆且范围为“全部会话”时可检索</string>
     <string name="turn_memory_chunks_title">已写入的片段</string>
     <string name="turn_memory_writing_hint">正在把本轮写入记忆…</string>
     <string name="turn_memory_removed_hint">本轮不在记忆中，聊天记录保留。</string>

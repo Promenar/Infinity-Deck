@@ -340,7 +340,7 @@ internal fun TurnMemorySheetContent(
             VisibilityRow(stringResource(R.string.turn_memory_visibility_label_agent), stringResource(R.string.turn_memory_visibility_agent))
             VisibilityRow(
                 stringResource(R.string.turn_memory_visibility_label_others),
-                stringResource(if (details?.shareWithOtherAgents != false) R.string.turn_memory_visibility_shared else R.string.turn_memory_visibility_private),
+                stringResource(R.string.turn_memory_visibility_shared),
             )
         }
 

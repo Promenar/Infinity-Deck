@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.chat.components
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import com.promenar.infinity.R
+import com.promenar.infinity.data.model.GraphBindingMode
 import com.promenar.infinity.data.model.RagReference
 import com.promenar.infinity.data.model.RagReferenceKind
 import com.promenar.infinity.data.model.ConversationScope
@@ -86,8 +87,29 @@ internal fun ragTraceSummary(trace: RagRetrievalTrace): RagTraceSummary {
                     if (scope == ConversationScope.ALL_AGENTS) trace.memoryAgentCount?.let { add(plural(R.plurals.rag_trace_reach_agents, it)) }
                 })
             }
-            trace.graphScope?.let { add(listOf(RagText(R.string.rag_trace_scope_graph), RagText(it.labelRes(ScopeResource.Graph)))) }
-            trace.documentScope?.let { add(listOf(RagText(R.string.rag_trace_scope_documents), RagText(it.labelRes()))) }
+            if (trace.graphCollectionId != null) {
+                add(buildList {
+                    add(RagText(R.string.rag_trace_scope_bound_graph))
+                    add(graphTitleText(trace.graphCollectionId, trace.graphTitle))
+                    trace.graphBindingMode?.let { mode ->
+                        add(RagText(if (mode == GraphBindingMode.READ_ONLY) R.string.ks_graph_mode_read_only else R.string.ks_graph_mode_read_write))
+                    }
+                    if (trace.graphRestriction != null) add(RagText(R.string.ks_graph_lock_agent))
+                })
+            } else {
+                // 单图谱绑定之前的旧轨迹仍按范围档位显示。
+                trace.graphScope?.let { add(listOf(RagText(R.string.rag_trace_scope_graph), RagText(it.labelRes(ScopeResource.Graph)))) }
+            }
+            trace.documentScope?.let {
+                add(buildList {
+                    add(RagText(R.string.rag_trace_scope_documents))
+                    if (trace.effectiveCollectionIds.isNotEmpty()) {
+                        add(plural(R.plurals.perm_docs_value_count, trace.effectiveCollectionIds.size))
+                    } else {
+                        add(RagText(it.labelRes()))
+                    }
+                })
+            }
         }
         if (scopes.isNotEmpty()) add(RagTraceRow(R.string.rag_trace_label_scope, scopes))
         if (searched) {
@@ -105,6 +127,13 @@ internal fun ragTraceSummary(trace: RagRetrievalTrace): RagTraceSummary {
         if (trace.searchTimeMs > 0) add(RagTraceRow(R.string.rag_trace_label_time, listOf(listOf(RagText(R.string.rag_trace_duration, listOf(trace.searchTimeMs))))))
     }
     return RagTraceSummary(headline, hint, rows)
+}
+
+/** 绑定图谱的显示名：通用知识用本地化名称，会话图谱标注“会话”。 */
+private fun graphTitleText(collectionId: String, title: String?): RagText = when {
+    collectionId == "shared" -> RagText(R.string.kg_spaces_shared_collection_title)
+    collectionId.startsWith("session:") -> RagText(R.string.rag_trace_graph_session, listOf(title?.takeIf(String::isNotBlank) ?: collectionId.removePrefix("session:")))
+    else -> RagText(R.string.rag_trace_graph_name, listOf(title?.takeIf(String::isNotBlank) ?: collectionId))
 }
 
 /** 检索卡摘要中的范围段：优先说明对话记忆档位，未检索记忆时说明文档档位。 */

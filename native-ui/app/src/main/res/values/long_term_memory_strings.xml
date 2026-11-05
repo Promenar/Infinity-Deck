@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ltm_title">Long-term memory</string>
+    <string name="ltm_title">Active memory</string>
     <string name="settings_long_term_memory_summary">What agents remember across chats</string>
     <string name="ltm_search_placeholder">Search memories</string>
     <string name="ltm_section_switch">Memory</string>
     <string name="ltm_enabled">Let agents remember</string>
-    <string name="ltm_enabled_desc">Shared by non-private agents and added to every turn</string>
-    <string name="ltm_switch_footer">Agents save things worth keeping across chats, like your preferences and project facts. Private agents never read or write these memories.</string>
+    <string name="ltm_enabled_desc">Read and written per each session\'s active memory mode, added to every turn</string>
+    <string name="ltm_switch_footer">Agents save things worth keeping across chats, like your preferences and project facts. Sessions set to isolated keep their records to themselves.</string>
     <string name="ltm_empty">No memories yet. When an agent learns something worth keeping, it shows up here.</string>
     <string name="ltm_search_empty">No memories match.</string>
     <string name="ltm_group_title">%1$s · %2$d</string>
@@ -38,7 +38,7 @@
     <string name="chat_memory_undo">Undo</string>
     <string name="chat_memory_undone">Undone</string>
     <string name="chat_memory_undo_cd">Undo memory change: %1$s</string>
-    <plurals name="chat_step_memory_write_done"><item quantity="one">Updated long-term memory</item><item quantity="other">Updated long-term memory %1$d times</item></plurals>
-    <string name="chat_step_memory_write_running">Updating long-term memory…</string>
-    <string name="chat_step_memory_write_name">Long-term memory</string>
+    <plurals name="chat_step_memory_write_done"><item quantity="one">Updated active memory</item><item quantity="other">Updated active memory %1$d times</item></plurals>
+    <string name="chat_step_memory_write_running">Updating active memory…</string>
+    <string name="chat_step_memory_write_name">Active memory</string>
 </resources>

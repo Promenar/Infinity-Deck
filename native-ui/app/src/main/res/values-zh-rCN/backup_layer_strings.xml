@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="backup_layer_core">核心</string>
-    <string name="backup_layer_core_desc">设置、提供商、智能体与提示词历史、长期记忆、头像、技能包</string>
+    <string name="backup_layer_core_desc">设置、提供商、智能体与提示词历史、主动记忆、头像、技能包</string>
     <string name="backup_layer_knowledge_desc">知识库文档与标签</string>
     <string name="backup_layer_sessions_desc">会话、消息、产物与任务记录</string>
     <string name="backup_layer_files">工作区文件</string>

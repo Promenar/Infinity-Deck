@@ -11,9 +11,8 @@
     </plurals>
     <string name="turn_memory_visibility_title">Who can retrieve it</string>
     <string name="turn_memory_visibility_session">Always</string>
-    <string name="turn_memory_visibility_agent">When their memory scope is “This agent” or “All agents”</string>
-    <string name="turn_memory_visibility_shared">When their memory scope is “All agents”</string>
-    <string name="turn_memory_visibility_private">Never, because this agent is private</string>
+    <string name="turn_memory_visibility_agent">When they turn on global memory</string>
+    <string name="turn_memory_visibility_shared">When they turn on global memory with “All sessions”</string>
     <string name="turn_memory_chunks_title">Saved chunks</string>
     <string name="turn_memory_writing_hint">Saving this turn to memory…</string>
     <string name="turn_memory_removed_hint">This turn is not in memory. Its messages are kept.</string>

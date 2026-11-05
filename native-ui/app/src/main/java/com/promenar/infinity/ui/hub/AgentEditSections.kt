@@ -159,7 +159,7 @@ internal fun AgentNewSessionDefaultsSection(
     AgentMcpSheet(show = showMcp, rows = mcpRows, onToggle = onMcpToggle, onDismiss = { showMcp = false })
 }
 
-/** “知识与记忆”：检索方式、知识库文件访问（两项互不联动）与私密智能体。 */
+/** “知识与记忆”：检索方式与知识库文件访问（两项互不联动）。 */
 @Composable
 internal fun AgentKnowledgeMemorySection(
     retrievalMode: AgentRetrievalMode,
@@ -189,7 +189,6 @@ internal fun AgentKnowledgeMemorySection(
             onClick = { showAccess = true },
             modifier = Modifier.testTag("agent_edit_file_access"),
         )
-        AgentPrivateToggle(policy, onPolicyChange)
     }
     AgentChoiceSheet(
         show = showMode,

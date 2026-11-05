@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ltm_title">长期记忆</string>
+    <string name="ltm_title">主动记忆</string>
     <string name="settings_long_term_memory_summary">智能体跨会话记住的信息</string>
     <string name="ltm_search_placeholder">搜索记忆</string>
     <string name="ltm_section_switch">记忆</string>
     <string name="ltm_enabled">允许智能体主动记忆</string>
-    <string name="ltm_enabled_desc">非私密智能体共享，每轮放进提示词</string>
-    <string name="ltm_switch_footer">智能体会记下值得跨会话保留的信息，比如你的偏好和项目事实。私密智能体不读也不写这些记忆。</string>
+    <string name="ltm_enabled_desc">按会话的主动记忆模式读写，每轮放进提示词</string>
+    <string name="ltm_switch_footer">智能体会记下值得跨会话保留的信息，比如你的偏好和项目事实。会话设为隔离时，记录只属于该会话。</string>
     <string name="ltm_empty">还没有记忆。智能体遇到值得长期记住的内容时会记在这里。</string>
     <string name="ltm_search_empty">没有匹配的记忆。</string>
     <string name="ltm_group_title">%1$s · %2$d</string>
@@ -37,7 +37,7 @@
     <string name="chat_memory_undo">撤销</string>
     <string name="chat_memory_undone">已撤销</string>
     <string name="chat_memory_undo_cd">撤销记忆改动：%1$s</string>
-    <plurals name="chat_step_memory_write_done"><item quantity="other">更新了长期记忆</item></plurals>
-    <string name="chat_step_memory_write_running">正在更新长期记忆…</string>
-    <string name="chat_step_memory_write_name">长期记忆</string>
+    <plurals name="chat_step_memory_write_done"><item quantity="other">更新了主动记忆</item></plurals>
+    <string name="chat_step_memory_write_running">正在更新主动记忆…</string>
+    <string name="chat_step_memory_write_name">主动记忆</string>
 </resources>

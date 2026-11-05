@@ -104,6 +104,48 @@ fun sessionGraphReadOnlyEnglishPreview() = SessionGraphFrame(dark = false) {
     )
 }
 
+@PreviewTest
+@Preview(name = "会话检索范围 全局记忆 合集受限 深色", widthDp = 411, heightDp = 380, locale = "zh-rCN")
+@Composable
+fun sessionPermissionScopePreview() = SessionGraphFrame {
+    SessionScopeSection(
+        ragOptions = RagOptions(
+            enableMemory = true, enableDocs = true, globalMemoryEnabled = true,
+            globalMemoryScope = com.promenar.infinity.data.model.ConversationScope.ALL_AGENTS,
+            selectedCollectionIds = listOf("work:a", "work:b"),
+            activeMemoryMode = com.promenar.infinity.data.model.ActiveMemoryMode.ISOLATED,
+        ),
+        policy = com.promenar.infinity.data.agent.AgentMemoryPolicy(
+            memoryCap = com.promenar.infinity.data.model.ConversationScope.AGENT,
+            allowedCollectionIds = listOf("work:a"),
+        ),
+        onRagOptionsChange = {},
+        collections = permissionPreviewCollections,
+    )
+}
+
+@PreviewTest
+@Preview(name = "Agent permissions English 360dp font130", widthDp = 360, heightDp = 480, locale = "en", fontScale = 1.3f)
+@Composable
+fun agentPermissionScopeEnglishPreview() = SessionGraphFrame(dark = false) {
+    com.promenar.infinity.ui.hub.AgentScopeSection(
+        policy = com.promenar.infinity.data.agent.AgentMemoryPolicy(
+            globalMemory = com.promenar.infinity.data.agent.GlobalMemoryPolicy.ALLOW_DEFAULT_ON,
+            allowedCollectionIds = listOf("work:a", "shared"),
+            defaultCollectionIds = emptyList(),
+        ),
+        onPolicyChange = {},
+        onOpenKnowledgeSettings = {},
+        collections = permissionPreviewCollections,
+    )
+}
+
+private val permissionPreviewCollections = listOf(
+    com.promenar.infinity.data.rag.KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300),
+    com.promenar.infinity.data.rag.KgCollectionSummary("work:b", "work", "短篇集", "资料库/短篇集", 6, 58, 40),
+    com.promenar.infinity.data.rag.KgCollectionSummary("shared", "shared", "通用知识", null, 3, 5, 2),
+)
+
 @Composable
 private fun GraphFooterStates() {
     val stored = TurnMemoryState(TurnMemoryState.Status.STORED, chunkCount = 2)

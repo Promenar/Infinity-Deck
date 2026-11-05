@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="perm_global_memory">全局记忆</string>
+    <string name="perm_global_forbid">禁止</string>
+    <string name="perm_global_forbid_desc">会话只检索本会话的对话</string>
+    <string name="perm_global_allow_off">允许，默认关闭</string>
+    <string name="perm_global_allow_off_desc">新会话默认关闭，可在会话设置中开启</string>
+    <string name="perm_global_allow_on">允许，默认开启</string>
+    <string name="perm_global_allow_on_desc">新会话同时检索其它会话的对话</string>
+    <string name="perm_global_heading">权限</string>
+    <string name="perm_reach_heading">可达范围上限</string>
+    <string name="perm_reach_agent">本智能体的会话</string>
+    <string name="perm_reach_agent_desc">本智能体其它会话的对话</string>
+    <string name="perm_reach_all">全部会话</string>
+    <string name="perm_reach_all_desc">所有智能体全部会话的对话</string>
+    <string name="perm_reach_value">上限：%1$s</string>
+    <string name="perm_global_footer">全局记忆只作用于对话片段；知识图谱在会话设置中单独绑定。</string>
+    <string name="perm_active_memory">主动记忆</string>
+    <string name="perm_active_shared">共享</string>
+    <string name="perm_active_shared_desc">写入共享池，所有共享模式的会话都能读取</string>
+    <string name="perm_active_isolated">隔离</string>
+    <string name="perm_active_isolated_desc">记录只属于本会话，也看不到共享池</string>
+    <string name="perm_active_switch_note">切换后，已写入的记录留在原来的位置。</string>
+    <string name="perm_collections">可用资料</string>
+    <string name="perm_collections_all">全部资料库</string>
+    <string name="perm_collections_all_desc">包括以后新增的合集</string>
+    <plurals name="perm_collections_count">
+        <item quantity="other">%1$d 个合集</item>
+    </plurals>
+    <string name="perm_collections_pick_heading">允许的合集</string>
+    <string name="perm_collections_default_heading">新会话</string>
+    <string name="perm_default_all">全部可用合集</string>
+    <string name="perm_default_all_desc">检索会话工作区与所有允许的合集</string>
+    <string name="perm_default_none">仅工作区</string>
+    <string name="perm_default_none_desc">不预选合集，可在会话设置中勾选</string>
+    <string name="perm_default_value">新会话：%1$s</string>
+    <string name="perm_collections_empty">资料库还没有合集</string>
+    <string name="perm_session_only">仅本会话</string>
+    <string name="perm_global_value">全局 · %1$s</string>
+    <string name="perm_global_forbidden">智能体禁止全局记忆</string>
+    <string name="perm_global_toggle_desc">同时检索其它会话的对话片段</string>
+    <string name="perm_docs_value_all">工作区 + 全部资料库</string>
+    <string name="perm_docs_value_none">仅工作区</string>
+    <plurals name="perm_docs_value_count">
+        <item quantity="other">工作区 + %1$d 个合集</item>
+    </plurals>
+    <string name="perm_docs_footer">本会话工作区的文件始终包含；绑定作品图谱时，该作品的文档自动加入。</string>
+    <string name="rag_trace_scope_bound_graph">图谱</string>
+    <string name="rag_trace_graph_name">%1$s</string>
+    <string name="rag_trace_graph_session">会话 · %1$s</string>
+</resources>

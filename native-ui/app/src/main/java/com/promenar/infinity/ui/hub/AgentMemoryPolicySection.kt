@@ -1,8 +1,6 @@
 package com.promenar.infinity.ui.hub
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,80 +19,159 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.res.pluralStringResource
+import com.promenar.infinity.data.agent.GlobalMemoryPolicy
+import com.promenar.infinity.data.rag.KgCollectionSummary
+import com.promenar.infinity.ui.common.CollectionCheckList
+import com.promenar.infinity.ui.common.PermissionChoice
+import com.promenar.infinity.ui.common.PermissionChoiceList
+import com.promenar.infinity.ui.common.PermissionHeading
+import com.promenar.infinity.ui.common.activeMemoryChoices
+import com.promenar.infinity.ui.common.activeMemoryLabel
+import com.promenar.infinity.ui.common.globalMemoryChoices
+import com.promenar.infinity.ui.common.globalMemoryLabel
+import com.promenar.infinity.ui.common.reachChoices
+import com.promenar.infinity.ui.common.reachLabel
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.data.agent.AgentMemoryPolicy
 import com.promenar.infinity.data.model.ConversationScope
-import com.promenar.infinity.data.model.DocumentScope
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityValueRow
-import com.promenar.infinity.ui.common.ScopeChoiceList
-import com.promenar.infinity.ui.common.ScopeResource
 import com.promenar.infinity.ui.common.SettingsToggle
-import com.promenar.infinity.ui.common.scopeLabelRes
-
-/** 私密智能体：不向其他智能体共享对话记忆，也不读写用户级长期记忆。放在“知识与记忆”分组。 */
-@Composable
-internal fun AgentPrivateToggle(
-    policy: AgentMemoryPolicy,
-    onPolicyChange: ((AgentMemoryPolicy) -> AgentMemoryPolicy) -> Unit,
-) {
-    SettingsToggle(
-        title = stringResource(R.string.agent_memory_private),
-        description = stringResource(R.string.agent_memory_private_desc),
-        checked = !policy.shareWithOtherAgents,
-        icon = Icons.Rounded.Lock,
-        onCheckedChange = { private -> onPolicyChange { it.copy(shareWithOtherAgents = !private) } },
-        modifier = Modifier.testTag("agent_memory_private"),
-    )
-}
 
 /**
- * 智能体检索范围：三类资源的会话上限与新会话默认档位，单独成组。
- * 每类资源一行，值显示上限、副标题显示默认；点开在同一面板里先选上限、再选默认。
+ * 智能体检索权限：全局记忆（三档与可达上限）、主动记忆默认模式与可用资料。会话创建时继承，
+ * 之后在这里的允许范围内调整；收紧时会话按上限执行、保存的选择不变，放宽后自动恢复。
  */
 @Composable
 internal fun AgentScopeSection(
     policy: AgentMemoryPolicy,
     onPolicyChange: ((AgentMemoryPolicy) -> AgentMemoryPolicy) -> Unit,
     onOpenKnowledgeSettings: (() -> Unit)? = null,
+    collections: List<KgCollectionSummary> = emptyList(),
 ) {
-    var editing by remember { mutableStateOf<ScopeResource?>(null) }
+    var editing by remember { mutableStateOf<AgentPermission?>(null) }
     InfinitySettingsSection(
         title = stringResource(R.string.agent_memory_section),
         linkedFooter = agentScopeFooter(onOpenKnowledgeSettings),
     ) {
-        // 图谱不再设范围档位：每个会话绑定一张图谱，在会话设置中改绑。
-        ScopeResource.entries.filter { it != ScopeResource.Graph }.forEach { resource ->
-            val (default, cap) = policy.ordinals(resource)
-            InfinityValueRow(
-                title = stringResource(resource.titleRes),
-                value = stringResource(scopeLabelRes(resource, cap)),
-                subtitle = stringResource(R.string.agent_memory_default_value, stringResource(scopeLabelRes(resource, default))),
-                onClick = { editing = resource },
-                modifier = Modifier.testTag("agent_memory_${resource.name.lowercase()}"),
+        InfinityValueRow(
+            title = stringResource(R.string.perm_global_memory),
+            value = stringResource(globalMemoryLabel(policy.globalMemory)),
+            subtitle = if (policy.globalMemory == GlobalMemoryPolicy.FORBID) null
+                else stringResource(R.string.perm_reach_value, stringResource(reachLabel(policy.memoryCap))),
+            onClick = { editing = AgentPermission.GlobalMemory },
+            modifier = Modifier.testTag("agent_perm_global_memory"),
+        )
+        InfinityValueRow(
+            title = stringResource(R.string.perm_active_memory),
+            value = stringResource(activeMemoryLabel(policy.activeMemoryDefault)),
+            onClick = { editing = AgentPermission.ActiveMemory },
+            modifier = Modifier.testTag("agent_perm_active_memory"),
+        )
+        val allowed = policy.allowedCollectionIds
+        InfinityValueRow(
+            title = stringResource(R.string.perm_collections),
+            value = if (allowed == null) stringResource(R.string.perm_collections_all)
+                else pluralStringResource(R.plurals.perm_collections_count, allowed.size, allowed.size),
+            subtitle = stringResource(
+                R.string.perm_default_value,
+                stringResource(if (policy.defaultCollectionIds?.isEmpty() == true) R.string.perm_default_none else R.string.perm_default_all),
+            ),
+            onClick = { editing = AgentPermission.Collections },
+            modifier = Modifier.testTag("agent_perm_collections"),
+        )
+    }
+    when (editing) {
+        AgentPermission.GlobalMemory -> InfinityBottomSheet(
+            show = true, onDismiss = { editing = null }, title = stringResource(R.string.perm_global_memory), scrollContent = true,
+        ) {
+            PermissionHeading(stringResource(R.string.perm_global_heading))
+            PermissionChoiceList(
+                choices = globalMemoryChoices,
+                selected = policy.globalMemory,
+                onSelect = { value -> onPolicyChange { it.copy(globalMemory = value) } },
+                testTagPrefix = "agent_perm_global",
+            )
+            PermissionHeading(stringResource(R.string.perm_reach_heading))
+            PermissionChoiceList(
+                choices = reachChoices(),
+                selected = if (policy.memoryCap == ConversationScope.ALL_AGENTS) ConversationScope.ALL_AGENTS else ConversationScope.AGENT,
+                // 新会话的全局记忆范围取上限。
+                onSelect = { value -> onPolicyChange { it.copy(memoryCap = value, memoryDefault = value).normalized() } },
+                testTagPrefix = "agent_perm_reach",
+                enabled = policy.globalMemory != GlobalMemoryPolicy.FORBID,
+            )
+            PermissionNote(stringResource(R.string.perm_global_footer))
+        }
+        AgentPermission.ActiveMemory -> InfinityBottomSheet(
+            show = true, onDismiss = { editing = null }, title = stringResource(R.string.perm_active_memory), scrollContent = true,
+        ) {
+            PermissionChoiceList(
+                choices = activeMemoryChoices,
+                selected = policy.activeMemoryDefault,
+                onSelect = { value -> onPolicyChange { it.copy(activeMemoryDefault = value) } },
+                testTagPrefix = "agent_perm_active",
+            )
+            PermissionNote(stringResource(R.string.perm_active_switch_note))
+        }
+        AgentPermission.Collections -> InfinityBottomSheet(
+            show = true, onDismiss = { editing = null }, title = stringResource(R.string.perm_collections), scrollContent = true,
+        ) {
+            val allowed = policy.allowedCollectionIds
+            SettingsToggle(
+                title = stringResource(R.string.perm_collections_all),
+                description = stringResource(R.string.perm_collections_all_desc),
+                checked = allowed == null,
+                onCheckedChange = { all ->
+                    onPolicyChange { it.copy(allowedCollectionIds = if (all) null else collections.map(KgCollectionSummary::id)) }
+                },
+                modifier = Modifier.testTag("agent_perm_collections_all"),
+            )
+            AnimatedVisibility(visible = allowed != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+                Column {
+                    PermissionHeading(stringResource(R.string.perm_collections_pick_heading))
+                    CollectionCheckList(
+                        collections = collections,
+                        checked = allowed.orEmpty().toSet(),
+                        onToggle = { id, on ->
+                            onPolicyChange { current ->
+                                val ids = current.allowedCollectionIds.orEmpty()
+                                current.copy(allowedCollectionIds = if (on) (ids + id).distinct() else ids - id)
+                            }
+                        },
+                        testTagPrefix = "agent_perm_collection",
+                    )
+                }
+            }
+            PermissionHeading(stringResource(R.string.perm_collections_default_heading))
+            PermissionChoiceList(
+                choices = listOf(
+                    PermissionChoice(false, R.string.perm_default_all, R.string.perm_default_all_desc),
+                    PermissionChoice(true, R.string.perm_default_none, R.string.perm_default_none_desc),
+                ),
+                selected = policy.defaultCollectionIds?.isEmpty() == true,
+                onSelect = { none -> onPolicyChange { it.copy(defaultCollectionIds = if (none) emptyList() else null) } },
+                testTagPrefix = "agent_perm_default",
             )
         }
+        null -> Unit
     }
-    editing?.let { resource ->
-        val (default, cap) = policy.ordinals(resource)
-        InfinityBottomSheet(show = true, onDismiss = { editing = null }, title = stringResource(resource.titleRes), scrollContent = true) {
-            ScopeHeading(stringResource(R.string.agent_memory_cap_heading))
-            ScopeChoiceList(
-                resource = resource,
-                selectedOrdinal = cap,
-                onSelect = { ordinal -> onPolicyChange { it.withOrdinals(resource, cap = ordinal) } },
-                testTagPrefix = "agent_memory_cap_${resource.name.lowercase()}",
-            )
-            ScopeHeading(stringResource(R.string.agent_memory_default_heading))
-            ScopeChoiceList(
-                resource = resource,
-                selectedOrdinal = default,
-                maxOrdinal = cap,
-                onSelect = { ordinal -> onPolicyChange { it.withOrdinals(resource, default = ordinal) } },
-                testTagPrefix = "agent_memory_default_${resource.name.lowercase()}",
-            )
-        }
-    }
+}
+
+private enum class AgentPermission { GlobalMemory, ActiveMemory, Collections }
+
+@Composable
+private fun PermissionNote(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+    )
 }
 
 /** 页脚中的“知识库设置”可点；没有跳转时只显示文字。 */
@@ -120,32 +197,4 @@ private fun agentScopeFooter(onOpenKnowledgeSettings: (() -> Unit)?): AnnotatedS
             }
         }
     }
-}
-
-@Composable
-private fun ScopeHeading(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-    )
-}
-
-private fun AgentMemoryPolicy.ordinals(resource: ScopeResource): Pair<Int, Int> = when (resource) {
-    ScopeResource.Memory -> memoryDefault.ordinal to memoryCap.ordinal
-    ScopeResource.Graph -> graphDefault.ordinal to graphCap.ordinal
-    ScopeResource.Documents -> documentDefault.ordinal to documentCap.ordinal
-}
-
-/** 只改给出的一项；上限调低后由 [AgentMemoryPolicy.normalized] 收紧默认值。 */
-internal fun AgentMemoryPolicy.withOrdinals(resource: ScopeResource, default: Int? = null, cap: Int? = null): AgentMemoryPolicy {
-    val (currentDefault, currentCap) = ordinals(resource)
-    val d = default ?: currentDefault
-    val c = cap ?: currentCap
-    return when (resource) {
-        ScopeResource.Memory -> copy(memoryDefault = ConversationScope.entries[d], memoryCap = ConversationScope.entries[c])
-        ScopeResource.Graph -> copy(graphDefault = ConversationScope.entries[d], graphCap = ConversationScope.entries[c])
-        ScopeResource.Documents -> copy(documentDefault = DocumentScope.entries[d], documentCap = DocumentScope.entries[c])
-    }.normalized()
 }

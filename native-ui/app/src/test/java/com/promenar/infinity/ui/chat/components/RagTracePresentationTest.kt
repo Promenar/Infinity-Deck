@@ -182,4 +182,36 @@ class RagTracePresentationTest {
         val roundTrip = json.decodeFromString<RagMetadata>(json.encodeToString(decoded.copy(trace = hit)))
         assertThat(roundTrip.trace).isEqualTo(hit)
     }
+
+    @Test
+    fun `绑定图谱轨迹显示图谱名与读写模式且合集计数取代旧文档档位`() {
+        val bound = hit.copy(
+            graphCollectionId = "work:a",
+            graphTitle = "长夜行",
+            graphBindingMode = com.promenar.infinity.data.model.GraphBindingMode.READ_ONLY,
+            graphScope = ConversationScope.AGENT,
+            documentScope = DocumentScope.KNOWLEDGE_BASE,
+            effectiveCollectionIds = listOf("work:a", "shared"),
+        )
+        val lines = ragTraceSummary(bound).rows.first { it.label == R.string.rag_trace_label_scope }.lines
+        assertThat(lines).contains(listOf(
+            RagText(R.string.rag_trace_scope_bound_graph),
+            RagText(R.string.rag_trace_graph_name, listOf("长夜行")),
+            RagText(R.string.ks_graph_mode_read_only),
+        ))
+        assertThat(lines).contains(listOf(
+            RagText(R.string.rag_trace_scope_documents),
+            RagText(R.plurals.perm_docs_value_count, listOf(2), quantity = 2),
+        ))
+        assertThat(lines.flatten()).doesNotContain(RagText(R.string.rag_trace_scope_graph))
+
+        val restricted = ragTraceSummary(bound.copy(graphCollectionId = "session:s", graphTitle = "周报", graphRestriction = "受智能体资料限制"))
+            .rows.first { it.label == R.string.rag_trace_label_scope }.lines.first { it.first() == RagText(R.string.rag_trace_scope_bound_graph) }
+        assertThat(restricted).containsExactly(
+            RagText(R.string.rag_trace_scope_bound_graph),
+            RagText(R.string.rag_trace_graph_session, listOf("周报")),
+            RagText(R.string.ks_graph_mode_read_only),
+            RagText(R.string.ks_graph_lock_agent),
+        ).inOrder()
+    }
 }

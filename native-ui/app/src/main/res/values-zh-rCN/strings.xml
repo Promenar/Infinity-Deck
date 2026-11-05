@@ -590,7 +590,7 @@
     <string name="session_settings_label_short">短</string>
     <string name="session_settings_label_long">长</string>
     <string name="session_settings_section_rag">RAG 设置</string>
-    <string name="session_settings_memory">长期记忆</string>
+    <string name="session_settings_memory">主动记忆</string>
     <string name="session_settings_kg">知识图谱抽取</string>
     <string name="session_settings_kg_desc">从对话中提取实体和关系</string>
     <string name="session_settings_kb">资料</string>
