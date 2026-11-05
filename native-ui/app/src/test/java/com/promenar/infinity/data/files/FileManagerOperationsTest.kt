@@ -167,6 +167,18 @@ class FileManagerOperationsTest {
         assertFalse(folders.any { it.name == "系统" })
     }
 
+    @Test fun `绑定项目或分支的会话不列入私有会话汇总`() = runBlocking {
+        val rows = listOf(
+            session("private", "私有", "root-private"),
+            session("project", "项目", "root-project").copy(workspaceId = "workspace-example"),
+            session("branch", "分支", "root-branch").copy(worktreeDirectory = "/fixture/branch"),
+        )
+
+        val folders = operations(emptyMap(), rows).list("sessions", "/")
+
+        assertEquals(listOf("session:private"), folders.map { it.ref.locationId })
+    }
+
     private fun session(id: String, title: String, root: String?, agent: String = "fictional") = SessionEntity(
         id = id, agentId = agent, title = title, workspaceRootUuid = root, createdAt = 1, updatedAt = 1,
     )

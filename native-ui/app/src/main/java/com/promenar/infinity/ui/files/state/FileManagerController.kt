@@ -78,7 +78,9 @@ data class FileManagerUiState(
     val pinned: Boolean = false,
     val notice: FileManagerNotice? = null,
 ) {
-    val canGoUp: Boolean get() = path != "/" && search == null
+    val canGoUp: Boolean get() = search == null && (path != "/" ||
+        (location?.id?.startsWith("session:") == true && locations.any { it.id == "sessions" } &&
+            locations.none { it.id == location?.id }))
     val selecting: Boolean get() = selection.isNotEmpty()
 }
 

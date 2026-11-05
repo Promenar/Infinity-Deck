@@ -2,9 +2,13 @@ package com.promenar.infinity.data.rag
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.remote.protocol.LlmProtocol
+import com.promenar.infinity.data.remote.protocol.AbnormalFinishException
 import com.promenar.infinity.data.remote.protocol.PromptRequest
 import com.promenar.infinity.data.remote.protocol.PromptResponse
+import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.data.remote.protocol.ProtocolUsage
+import com.promenar.infinity.data.remote.protocol.StreamChunk
+import com.promenar.infinity.domain.generation.GenerationFailureCode
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.delay
@@ -197,6 +201,59 @@ class GraphExtractionBudgetTest {
     }
 
     @Test
+    fun `输出截断的请求返回并记录同一估算用量`() = runTest {
+        val protocol = mockk<LlmProtocol>()
+        coEvery { protocol.sendPromptSync(any()) } answers { throw outputLimit() }
+        val usageStore = TestKgUsageStore()
+        val client = KgRequestClient(testKgRouter(), { protocol }, StandardTestDispatcher(testScheduler), usageStore)
+
+        val result = client.extract(
+            "owner::model", "abcd", "efghij", 1000, maxOutputTokens = 4,
+            historyMessages = listOf(ProtocolMessage("user", "klmn")),
+        )
+
+        assertThat(result.status).isEqualTo(KgExtractionStatus.PARSE_FAILURE)
+        assertThat(result.usage).isEqualTo(KgTokenUsage(7, 4, estimated = true))
+        assertThat(usageStore.records.single().usage).isEqualTo(result.usage)
+    }
+
+    @Test
+    fun `单次截断按请求上限计入预算并停止`() = runTest {
+        val protocol = mockk<LlmProtocol>()
+        val limits = mutableListOf<Int?>()
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            limits += firstArg<PromptRequest>().maxTokens
+            throw outputLimit()
+        }
+
+        val result = extractor(protocol, KgExtractionBudget(maxOutputTokens = 4, requestMaxOutputTokens = 4))
+            .extractCandidate("abcdefgh")
+
+        assertThat(limits).containsExactly(4)
+        assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.OUTPUT_TOKENS)
+        assertThat(result.usage.outputTokens).isEqualTo(4)
+        assertThat(result.usage.estimated).isTrue()
+    }
+
+    @Test
+    fun `连续截断拆块重抽累计输出预算直至耗尽`() = runTest {
+        val protocol = mockk<LlmProtocol>()
+        val limits = mutableListOf<Int?>()
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            limits += firstArg<PromptRequest>().maxTokens
+            throw outputLimit()
+        }
+
+        val result = extractor(protocol, KgExtractionBudget(maxOutputTokens = 8, requestMaxOutputTokens = 4))
+            .extractCandidate("abcdefgh")
+
+        assertThat(limits).containsExactly(4, 4).inOrder()
+        assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.OUTPUT_TOKENS)
+        assertThat(result.progress!!.calls).isEqualTo(2)
+        assertThat(result.usage.outputTokens).isEqualTo(8)
+    }
+
+    @Test
     fun `估算按窗口与追加轮计算确认阈值`() {
         val budget = KgExtractionBudget()
         assertThat(budget.estimate("a".repeat(128_000)).requiresConfirmation).isFalse()
@@ -217,6 +274,8 @@ class GraphExtractionBudgetTest {
         checkpointRoot = root, dispatcher = StandardTestDispatcher(testScheduler), budget = budget,
         nowMs = { testScheduler.currentTime }, concurrency = 1, gleaningPasses = 0,
     )
+
+    private fun outputLimit() = AbnormalFinishException(StreamChunk.Error(code = GenerationFailureCode.OUTPUT_LIMIT))
 
     companion object {
         private const val GRAPH = """{"nodes":[{"name":"甲","type":"person"},{"name":"乙","type":"person"}],"edges":[{"source":"甲","target":"乙","relation":"认识"}]}"""
