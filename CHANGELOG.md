@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 文档页“知识图谱”一行在抽取结束、提交索引的十几秒里回落为“抽取中 0 / N”：提交阶段现在显示全部窗口已完成。
+
 ## [0.29.1-beta] - 2026-11-05
 
 ### 修复

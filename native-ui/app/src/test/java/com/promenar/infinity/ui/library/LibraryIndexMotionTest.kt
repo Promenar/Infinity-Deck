@@ -89,6 +89,13 @@ class LibraryIndexMotionTest {
     }
 
     @Test
+    fun graphRowShowsAllWindowsDoneWhileSavingAfterExtraction() {
+        // 提交阶段的待处理项不带总数，快照仍停在打开页面时的 0 / 13。
+        val saving = doc(PendingKind.INDEXING, PendingStage.SAVING)
+        assertEquals(13 to 13, liveGraphProgress(0, 13, saving))
+    }
+
+    @Test
     fun graphRowHidesCountsWithoutTotalAndClampsOverflow() {
         assertNull(liveGraphProgress(0, null, null))
         assertNull(liveGraphProgress(0, 0, doc(PendingKind.INDEXING, PendingStage.EXTRACTING_GRAPH, processed = 0, total = 0)))

@@ -34,11 +34,14 @@ internal fun PendingDocument.indexMotionState(): IndexMotionState? {
 
 /**
  * 文档页“知识图谱”行在抽取中显示的已处理 / 总窗口数。文档快照只在阶段变化时重读，
- * 实时数字取自正在抽取图谱的待处理项；没有实时数字时沿用快照。总数缺失或为 0 时返回 null。
+ * 实时数字取自正在抽取图谱的待处理项；抽取后进入提交阶段时窗口已全部完成；其它情况沿用快照。
+ * 总数缺失或为 0 时返回 null。
  */
 internal fun liveGraphProgress(snapshotProcessed: Int?, snapshotTotal: Int?, pending: PendingDocument?): Pair<Int, Int>? {
-    val live = pending?.takeIf { it.kind == PendingKind.INDEXING && it.stage == PendingStage.EXTRACTING_GRAPH }
+    val indexing = pending?.takeIf { it.kind == PendingKind.INDEXING }
+    val live = indexing?.takeIf { it.stage == PendingStage.EXTRACTING_GRAPH }
     val total = (live?.total ?: snapshotTotal)?.takeIf { it > 0 } ?: return null
+    if (indexing?.stage == PendingStage.SAVING) return total to total
     val processed = live?.processed ?: snapshotProcessed ?: return null
     return processed.coerceIn(0, total) to total
 }
