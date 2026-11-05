@@ -24,5 +24,8 @@ class BackupLayerPolicyTest {
         assertEquals(BackupLayer.WORKSPACE_FILES, policy.layer("knowledge_citations", row("document_id" to "chat-doc")))
         assertEquals(BackupLayer.SESSIONS, policy.layer("knowledge_citations", row("source_kind" to "CHAT", "session_id" to "chat", "document_id" to "kb-doc")))
         assertEquals(BackupLayer.KNOWLEDGE, policy.layer("knowledge_citations", row("source_kind" to "CHAT", "session_id" to "knowledge", "document_id" to "chat-doc")))
+        assertEquals(BackupLayer.CORE, policy.layer("long_term_memories", row("id" to "shared")))
+        assertEquals(BackupLayer.SESSIONS, policy.layer("long_term_memories", row("id" to "chat-memory", "owner_session_id" to "chat")))
+        assertEquals(BackupLayer.KNOWLEDGE, policy.layer("long_term_memories", row("id" to "knowledge-memory", "owner_session_id" to "knowledge")))
     }
 }

@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.agent.AgentMemoryPolicy
 import com.promenar.infinity.data.agent.AgentRetrievalConfig
+import com.promenar.infinity.data.agent.GlobalMemoryPolicy
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.AgentEntity
 import com.promenar.infinity.data.local.db.entity.FileEntry
@@ -17,6 +18,8 @@ import com.promenar.infinity.data.local.db.entity.VectorEntity
 import com.promenar.infinity.data.model.ConversationScope
 import com.promenar.infinity.data.model.DocumentScope
 import com.promenar.infinity.data.model.RagOptions
+import com.promenar.infinity.data.model.GraphBinding
+import com.promenar.infinity.data.model.GraphBindingMode
 import java.nio.ByteBuffer
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -74,14 +77,72 @@ class RetrievalScopeTest {
     fun tearDown() = db.close()
 
     @Test
+    fun `会话记忆按智能体上限收紧但保存选择不变`() = runBlocking<Unit> {
+        val saved = RagOptions(globalMemoryEnabled = true, globalMemoryScope = ConversationScope.ALL_AGENTS)
+        val limited = AgentMemoryPolicy(globalMemory = GlobalMemoryPolicy.ALLOW_DEFAULT_OFF, memoryCap = ConversationScope.AGENT)
+        val agent = db.agentDao().getById("A")!!
+        db.agentDao().update(agent.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy = limited)))
+        assertThat(resolver.resolve("a1", saved).memory).isEqualTo(ConversationReach.Agent("A"))
+        assertThat(saved.globalMemoryScope).isEqualTo(ConversationScope.ALL_AGENTS)
+        val forbidden = limited.copy(globalMemory = GlobalMemoryPolicy.FORBID)
+        db.agentDao().update(agent.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy = forbidden)))
+        assertThat(resolver.resolve("a1", saved).memory).isEqualTo(ConversationReach.Session("a1"))
+        db.agentDao().update(agent.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy = limited.copy(memoryCap = ConversationScope.ALL_AGENTS))))
+        assertThat(resolver.resolve("a1", saved).memory
+            .allows("p1", "P")).isTrue()
+    }
+
+    @Test
+    fun `合集限制覆盖文档关键词和图谱绑定并随改绑变化`() = runBlocking<Unit> {
+        val dbSql = db.openHelper.writableDatabase
+        dbSql.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('f-kb','work:f-kb')")
+        dbSql.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('f-b1','work:f-b1')")
+        val agent = db.agentDao().getById("A")!!
+        db.agentDao().update(agent.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy =
+            AgentMemoryPolicy(allowedCollectionIds = listOf("work:f-kb")))))
+        val excluded = RagOptions(selectedCollectionIds = listOf("work:f-b1"),
+            activeDocIds = listOf("f-b1"), graphBinding = GraphBinding("work:f-b1", GraphBindingMode.READ_ONLY))
+        val blocked = resolver.resolve("a1", excluded)
+        assertThat(db.vectorDao().documentRows(blocked.documents).map { it.docId }).doesNotContain("f-b1")
+        assertThat(db.vectorDao().documentFts(blocked.documents, "needle").map { it.docId }).doesNotContain("f-b1")
+        assertThat(blocked.graphRestriction).isNotNull()
+        assertThat(GraphRetrievalStore(db).retrieve("乙f-b1", KgRetrievalScope.of(blocked)).seedCount).isEqualTo(0)
+        val allowed = resolver.resolve("a1", excluded.copy(selectedCollectionIds = emptyList(), activeDocIds = emptyList(),
+            graphBinding = GraphBinding("work:f-kb", GraphBindingMode.READ_ONLY)))
+        assertThat(db.vectorDao().documentRows(allowed.documents).map { it.docId }).contains("f-kb")
+        val own = resolver.resolve("a1", excluded.copy(selectedCollectionIds = emptyList(), activeDocIds = emptyList(),
+            graphBinding = GraphBinding()))
+        assertThat(db.vectorDao().documentRows(own.documents).map { it.docId }).doesNotContain("f-kb")
+    }
+
+    @Test
+    fun `联合即时抽取的任一文档不可见时整个结果不可见`() = runBlocking<Unit> {
+        db.kgNodeDao().insert(KgNodeEntity("mixed", "联合事实", createdAt = 1, collectionId = "session:a1"))
+        for (doc in listOf("f-kb", "f-b1")) db.kgEvidenceDao().insert(KgEvidenceEntity(
+            id = "mixed-$doc", nodeId = "mixed", sourceType = "jit", docId = doc,
+            sessionId = "a1", contentHash = "", taskId = "mixed-task", createdAt = 1))
+        val scope = KgRetrievalScope(sessionId = "a1", documents = DocumentReach.Scoped(emptySet(), setOf("f-kb")))
+        val store = GraphRetrievalStore(db)
+        assertThat(store.retrieve("联合事实", scope).seedCount).isEqualTo(0)
+        val both = scope.copy(documents = DocumentReach.Scoped(emptySet(), setOf("f-kb", "f-b1")))
+        assertThat(store.retrieve("联合事实", both).seedCount).isEqualTo(1)
+        assertThat(store.retrieve("联合事实", both.copy(allowConversation = false)).seedCount).isEqualTo(1)
+        db.kgEvidenceDao().insert(KgEvidenceEntity(id = "mixed-chat", nodeId = "mixed", sourceType = "jit",
+            sessionId = "a1", contentHash = "", taskId = "mixed-task", createdAt = 1))
+        assertThat(store.retrieve("联合事实", both.copy(allowConversation = false)).seedCount).isEqualTo(0)
+        assertThat(store.retrieve("联合事实", both).seedCount).isEqualTo(1)
+    }
+
+
+    @Test
     fun `对话记忆三档改变向量和关键词范围而图谱保持本会话绑定`() = runBlocking<Unit> {
         val expected = mapOf(
             ConversationScope.SESSION to setOf("a1"),
             ConversationScope.AGENT to setOf("a1", "a2"),
-            ConversationScope.ALL_AGENTS to setOf("a1", "a2", "b1"),
+            ConversationScope.ALL_AGENTS to setOf("a1", "a2", "b1", "p1"),
         )
         expected.forEach { (scope, sessions) ->
-            val resolved = resolver.resolve("a1", RagOptions(memoryScope = scope, graphScope = scope))
+            val resolved = resolver.resolve("a1", RagOptions(globalMemoryEnabled = scope != ConversationScope.SESSION, globalMemoryScope = scope, graphScope = scope))
             assertThat(db.vectorDao().conversationRows(resolved.memory, "memory").map { it.sessionId }).containsExactlyElementsIn(sessions)
             assertThat(db.vectorDao().conversationFts(resolved.memory, "needle").map { it.sessionId }).containsExactlyElementsIn(sessions)
             assertThat(graphSessions(resolved)).containsExactly("a1")
@@ -89,12 +150,12 @@ class RetrievalScopeTest {
     }
 
     @Test
-    fun `私密助手不被其他助手的全部助手档读取，自身仍可读取`() = runBlocking<Unit> {
-        val fromB = resolver.resolve("b1", RagOptions(memoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.ALL_AGENTS))
-        assertThat(db.vectorDao().conversationRows(fromB.memory, "memory").map { it.sessionId }).doesNotContain("p1")
+    fun `旧私密标记不影响显式启用的全局记忆`() = runBlocking<Unit> {
+        val fromB = resolver.resolve("b1", RagOptions(globalMemoryEnabled = true, globalMemoryScope = ConversationScope.ALL_AGENTS))
+        assertThat(db.vectorDao().conversationRows(fromB.memory, "memory").map { it.sessionId }).contains("p1")
         assertThat(graphSessions(fromB)).doesNotContain("p1")
 
-        val fromP = resolver.resolve("p1", RagOptions(memoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.ALL_AGENTS))
+        val fromP = resolver.resolve("p1", RagOptions(globalMemoryEnabled = true, globalMemoryScope = ConversationScope.ALL_AGENTS))
         assertThat(db.vectorDao().conversationRows(fromP.memory, "memory").map { it.sessionId })
             .containsExactly("a1", "a2", "b1", "p1")
         assertThat(graphSessions(fromP)).containsExactly("p1")
@@ -103,12 +164,14 @@ class RetrievalScopeTest {
     @Test
     fun `文档三档在向量、关键词、图谱三条路径一致`() = runBlocking<Unit> {
         val expected = mapOf(
-            DocumentScope.WORKSPACE to setOf("f-a1"),
-            DocumentScope.KNOWLEDGE_BASE to setOf("f-a1", "f-kb"),
-            DocumentScope.ALL_INDEXED to setOf("f-a1", "f-kb", "f-b1", "legacy-doc"),
+            emptyList<String>() to setOf("f-a1"),
+            listOf("work:f-kb") to setOf("f-a1", "f-kb"),
+            listOf("work:f-kb", "work:f-b1", "work:legacy-doc") to setOf("f-a1", "f-kb", "f-b1", "legacy-doc"),
         )
-        expected.forEach { (scope, docs) ->
-            val resolved = resolver.resolve("a1", RagOptions(documentScope = scope))
+        for (doc in listOf("f-kb", "f-b1", "legacy-doc")) db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collection_members(doc_id,collection_id) VALUES(?,?)", arrayOf(doc, "work:$doc"))
+        expected.forEach { (selected, docs) ->
+            val resolved = resolver.resolve("a1", RagOptions(selectedCollectionIds = selected))
             assertThat(db.vectorDao().documentRows(resolved.documents).map { it.docId }).containsExactlyElementsIn(docs)
             assertThat(db.vectorDao().documentFts(resolved.documents, "needle").map { it.docId }).containsExactlyElementsIn(docs)
             assertThat(GraphRetrievalStore(db).visibleDocumentIds(KgRetrievalScope.of(resolved))).containsExactlyElementsIn(docs)
@@ -123,26 +186,51 @@ class RetrievalScopeTest {
             physicalRootPath = "/tmp/scope-fixture", materializedPath = "/folder/x.md", createdAt = 1, updatedAt = 1))
         db.vectorDao().insert(vector("doc-f-folder", sessionId = null, docId = "f-folder", metadata = "{\"type\":\"document\"}"))
 
-        val selected = resolver.resolve("a1", RagOptions(documentScope = DocumentScope.WORKSPACE,
+        val selected = resolver.resolve("a1", RagOptions(documentScope = DocumentScope.WORKSPACE, selectedCollectionIds = emptyList(),
             activeDocIds = listOf("legacy-doc"), activeFolderIds = listOf("folder")))
         assertThat(db.vectorDao().documentRows(selected.documents).map { it.docId })
             .containsExactly("f-a1", "legacy-doc", "f-folder")
 
         db.sessionDao().insert(SessionEntity("bare", "A", createdAt = 1, updatedAt = 1))
-        val empty = resolver.resolve("bare", RagOptions(documentScope = DocumentScope.WORKSPACE))
+        val empty = resolver.resolve("bare", RagOptions(documentScope = DocumentScope.WORKSPACE, selectedCollectionIds = emptyList()))
         assertThat(db.vectorDao().documentRows(empty.documents)).isEmpty()
         assertThat(db.vectorDao().documentFts(empty.documents, "needle")).isEmpty()
+    }
+
+    @Test fun `显式选择旧文档ID时按向量文件身份解析合集权限`() = runBlocking<Unit> {
+        db.openHelper.writableDatabase.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('f-kb','work:f-kb')")
+        db.vectorDao().insert(vector("alias-vector", null, "legacy-alias", "{\"type\":\"document\"}").copy(fileUuid = "f-kb"))
+        val agent = db.agentDao().getById("A")!!
+        db.agentDao().update(agent.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy = AgentMemoryPolicy(allowedCollectionIds = listOf("work:f-kb")))))
+        val resolved = resolver.resolve("a1", RagOptions(selectedCollectionIds = emptyList(), activeDocIds = listOf("legacy-alias")))
+        assertThat(db.vectorDao().documentRows(resolved.documents).map { it.id }).contains("alias-vector")
+    }
+
+    @Test fun `旧文档ID跨允许和禁止合集冲突时不能读取禁止文件`() = runBlocking<Unit> {
+        for (doc in listOf("f-kb", "f-b1")) db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO kg_collection_members(doc_id,collection_id) VALUES(?,?)", arrayOf(doc, "work:$doc"))
+        db.vectorDao().insert(vector("allow-alias", null, "same-id", "{\"type\":\"document\"}").copy(fileUuid = "f-kb"))
+        db.vectorDao().insert(vector("deny-alias", null, "same-id", "{\"type\":\"document\"}").copy(fileUuid = "f-b1"))
+        db.vectorDao().insert(vector("old-allow", null, "stale-id", "{\"type\":\"document\"}").copy(fileUuid = "f-kb", stale = true))
+        db.vectorDao().insert(vector("active-deny", null, "stale-id", "{\"type\":\"document\"}").copy(fileUuid = "f-b1"))
+        val agent = db.agentDao().getById("A")!!
+        db.agentDao().update(agent.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy = AgentMemoryPolicy(allowedCollectionIds = listOf("work:f-kb")))))
+        val resolved = resolver.resolve("a1", RagOptions(selectedCollectionIds = emptyList(), activeDocIds = listOf("same-id", "stale-id")))
+        assertThat(db.vectorDao().documentRows(resolved.documents).map { it.id }).contains("allow-alias")
+        assertThat(db.vectorDao().documentRows(resolved.documents).map { it.id }).containsNoneOf("deny-alias", "active-deny")
+        assertThat(db.vectorDao().documentFts(resolved.documents, "needle").map { it.id }).containsNoneOf("deny-alias", "active-deny")
+        val staleOnly = resolver.resolve("a1", RagOptions(selectedCollectionIds = emptyList(), activeDocIds = listOf("stale-id")))
+        assertThat(db.vectorDao().documentRows(staleOnly.documents).map { it.id }).containsNoneOf("old-allow", "active-deny", "allow-alias")
     }
 
     @Test
     fun `范围统计与检索读取的会话集合一致`() = runBlocking<Unit> {
         fun stats(session: String, scope: ConversationScope) = runBlocking {
-            resolver.stats(resolver.resolve(session, RagOptions(memoryScope = scope)).memory)
+            resolver.stats(resolver.resolve(session, RagOptions(globalMemoryEnabled = scope != ConversationScope.SESSION, globalMemoryScope = scope)).memory)
         }
         assertThat(stats("a1", ConversationScope.SESSION)).isEqualTo(ConversationReachStats(1, 1))
         assertThat(stats("a1", ConversationScope.AGENT)).isEqualTo(ConversationReachStats(2, 1))
-        // 全部助手档排除私密助手 P，包含 A、B 与知识库会话所属的系统助手。
-        assertThat(stats("a1", ConversationScope.ALL_AGENTS)).isEqualTo(ConversationReachStats(4, 3))
+        assertThat(stats("a1", ConversationScope.ALL_AGENTS)).isEqualTo(ConversationReachStats(5, 4))
         assertThat(stats("p1", ConversationScope.ALL_AGENTS)).isEqualTo(ConversationReachStats(5, 4))
     }
 
@@ -157,11 +245,11 @@ class RetrievalScopeTest {
 
         val policy = AgentMemoryPolicy(memoryCap = ConversationScope.AGENT, graphCap = ConversationScope.SESSION,
             documentCap = DocumentScope.WORKSPACE)
-        val clamped = policy.clamp(RagOptions(memoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.AGENT,
+        val clamped = policy.clamp(RagOptions(globalMemoryEnabled = true, globalMemoryScope = ConversationScope.ALL_AGENTS, graphScope = ConversationScope.AGENT,
             documentScope = DocumentScope.ALL_INDEXED))
         assertThat(clamped.memoryScope).isEqualTo(ConversationScope.AGENT)
         assertThat(clamped.graphScope).isEqualTo(ConversationScope.AGENT)
-        assertThat(clamped.documentScope).isEqualTo(DocumentScope.WORKSPACE)
+        assertThat(clamped.documentScope).isEqualTo(DocumentScope.ALL_INDEXED)
         assertThat(policy.clamp(RagOptions(memoryScope = ConversationScope.SESSION)).memoryScope).isEqualTo(ConversationScope.SESSION)
 
         val normalized = AgentMemoryPolicy(memoryDefault = ConversationScope.ALL_AGENTS, memoryCap = ConversationScope.SESSION).normalized()

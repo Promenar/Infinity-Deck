@@ -31,7 +31,7 @@ private const val CONVERSATION_ROW = "vectors.doc_id IS NULL AND vectors.stale =
 private const val SESSIONS_OF_AGENT = "vectors.session_id IN (SELECT id FROM sessions WHERE agent_id = :agentId)"
 private const val SESSIONS_OF_SHARED_AGENTS = "vectors.session_id IN (SELECT id FROM sessions WHERE agent_id = :agentId OR agent_id NOT IN (:privateAgentIds))"
 private const val DOCUMENT_ROW = "vectors.doc_id IS NOT NULL AND vectors.stale = 0"
-private const val DOCUMENT_IN_SCOPE = "(vectors.doc_id IN (:documentIds) OR EXISTS (SELECT 1 FROM workspace_files AS scope_file WHERE scope_file.workspace_root_uuid IN (:rootUuids) AND scope_file.in_recycle_bin = 0 AND scope_file.uuid = CASE WHEN vectors.file_uuid IS NOT NULL THEN vectors.file_uuid ELSE vectors.doc_id END))"
+private const val DOCUMENT_IN_SCOPE = "(COALESCE(vectors.file_uuid, vectors.doc_id) IN (:documentIds) OR EXISTS (SELECT 1 FROM workspace_files AS scope_file WHERE scope_file.workspace_root_uuid IN (:rootUuids) AND scope_file.in_recycle_bin = 0 AND scope_file.uuid = COALESCE(vectors.file_uuid, vectors.doc_id)))"
 private const val FTS_JOIN = "SELECT vectors.* FROM vectors_fts JOIN vectors ON vectors.rowid = vectors_fts.rowid WHERE vectors_fts MATCH :query AND "
 
 @Dao

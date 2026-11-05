@@ -108,6 +108,7 @@ data class RagRetrievalResult(
     val references: List<RagReference>,
     val usage: RagUsage?,
     val trace: RagRetrievalTrace? = null,
+    val resolvedScope: com.promenar.infinity.data.rag.ResolvedRetrievalScope? = null,
 )
 
 interface RagProvider {
@@ -139,6 +140,10 @@ data class KgContextResult(
 )
 
 interface KgProvider {
+    suspend fun retrieveWithScope(query: String, sessionId: String, topKResults: List<RagReference>,
+        options: com.promenar.infinity.data.model.RagOptions, scope: com.promenar.infinity.data.rag.ResolvedRetrievalScope?,
+        forTool: Boolean): KgContextResult? = if (forTool) retrieveForTool(query, sessionId, topKResults, options)
+            else retrieveContext(query, sessionId, topKResults, options)
     /** 未声明支持持久图读取的提供者不参与工具检索，避免间接触发抽取。 */
     suspend fun retrieveForTool(
         query: String,
@@ -196,7 +201,7 @@ class ContextBuilder(
             try {
                 if (longTermMemoryAccess.isEnabled(params.session)) {
                     longTermMemoryContext(
-                        longTermMemoryRepository.getAll(),
+                        longTermMemoryRepository.getAllForOwner(longTermMemoryAccess.ownerForSession(params.session.id)),
                         canReadFullContent = params.availableToolNames?.contains("memory_read") == true,
                     )
                 } else ""
@@ -256,7 +261,9 @@ class ContextBuilder(
         val (kgContext, kgPaths) = if (kgProvider != null && kgEnabled) {
             try {
                 params.onRagProgress?.invoke("KG retrieval", 95, null)
-                val kgResult = kgProvider.retrieveContext(params.content, params.sessionId, ragResult.references, effectiveRagOptions)
+                val kgResult = if (ragResult.resolvedScope == null)
+                    kgProvider.retrieveContext(params.content, params.sessionId, ragResult.references, effectiveRagOptions)
+                else kgProvider.retrieveWithScope(params.content, params.sessionId, ragResult.references, effectiveRagOptions, ragResult.resolvedScope, false)
                 if (kgResult == null || kgResult.status != com.promenar.infinity.data.rag.KgExtractionStatus.SUCCESS || kgResult.error != null) {
                     params.onRagProgress?.invoke("KG failed", 95, kgResult?.status?.name ?: "PROVIDER_ERROR")
                     "" to emptyList<com.promenar.infinity.data.model.KgPath>()
@@ -289,7 +296,7 @@ class ContextBuilder(
             kgPaths = kgPaths,
             // 未配置嵌入模型或没有检索范围时检索并未执行：不记录轨迹，回复中不出现检索步骤。
             ragTrace = ragResult.trace?.takeUnless { it.isSkipped }?.copy(
-                memoryScope = effectiveRagOptions.effectiveMemoryScope.takeIf { effectiveRagOptions.enableMemory },
+                memoryScope = (ragResult.trace?.memoryScope ?: effectiveRagOptions.effectiveMemoryScope).takeIf { effectiveRagOptions.enableMemory },
                 graphScope = effectiveRagOptions.effectiveGraphScope.takeIf { kgEnabled },
                 documentScope = effectiveRagOptions.effectiveDocumentScope.takeIf { effectiveRagOptions.enableDocs },
                 jitExtractionCount = jitExtractionCount,

@@ -11,6 +11,7 @@ internal object BackupLayerPolicy {
     val CORE_TABLES = setOf("workspaces", "agents", "agent_rule_revisions", "long_term_memories", "parameter_schemes", "mcp_servers", "custom_skills", "workspace_seq")
     val SESSION_TABLES = setOf("sessions", "messages", "attachments", "artifacts", "context_summaries", "task_nodes", "state_board_versions")
     fun tableLayer(table: String, declared: BackupLayer? = null): BackupLayer? = when (table) {
+        "long_term_memories" -> declared?.takeIf { it in setOf(BackupLayer.CORE, BackupLayer.KNOWLEDGE, BackupLayer.SESSIONS) }
         in CORE_TABLES -> BackupLayer.CORE
         "tags", "document_tags" -> BackupLayer.KNOWLEDGE
         "workspace_files", "kg_folder_settings" -> declared?.takeIf { it == BackupLayer.KNOWLEDGE || it == BackupLayer.WORKSPACE_FILES }
@@ -41,6 +42,7 @@ internal object BackupLayerPolicy {
             }
         }
         fun layer(table: String, row: JsonObject): BackupLayer {
+            if (table == "long_term_memories") return string(row, "owner_session_id")?.let(::sessionLayer) ?: BackupLayer.CORE
             if (table == "kg_folder_settings") return if (fileRoots[string(row, "folder_id")] in roots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES
             if (table == "workspace_files") return if (string(row, "workspace_root_uuid") in roots) BackupLayer.KNOWLEDGE else BackupLayer.WORKSPACE_FILES
             if (table == "kg_collections") return collectionLayers[string(row, "id")] ?: BackupLayer.WORKSPACE_FILES

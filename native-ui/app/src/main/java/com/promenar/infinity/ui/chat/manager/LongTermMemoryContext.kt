@@ -7,7 +7,7 @@ import java.util.Locale
 internal fun longTermMemoryContext(memories: List<LongTermMemory>, canReadFullContent: Boolean): String {
     if (memories.isEmpty()) return ""
     return buildString {
-        appendLine("### Long-term memory")
+        appendLine("### Active memory")
         var remainingContentChars = 6000
         var titlesOnly = false
         for (memory in memories.sortedByDescending { it.updatedAt }) {

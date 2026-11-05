@@ -1354,7 +1354,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(16)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(17)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -1370,6 +1370,75 @@ class RoomBackupDataSourceTest {
         }
         db.sessionDao().deleteById("session-1")
         assertThat(rowCount("long_term_memories")).isEqualTo(1)
+    }
+
+    @Test fun `备份恢复保留主动记忆隔离归属`() = runBlocking<Unit> {
+        seedCompleteGraph()
+        insertMemory("memory-1", sourceSessionId = "session-1")
+        db.openHelper.writableDatabase.execSQL("UPDATE long_term_memories SET owner_session_id=? WHERE id=?", arrayOf("session-1", memoryId("memory-1")))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        db.clearAllTables()
+        newDataSource().restore(validated(snapshot))
+        assertThat(db.longTermMemoryDao().get(memoryId("memory-1"))!!.ownerSessionId).isEqualTo("session-1")
+    }
+
+    @Test fun `旧分层会话备份恢复保留本机隔离记忆`() = runBlocking<Unit> {
+        seedCompleteGraph()
+        val cache = Files.createTempDirectory(sourceBase, "old-memory-layer")
+        val source = newDataSource()
+        val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.SESSIONS), cache)
+        try {
+            insertMemory("isolated", sourceSessionId = "session-1")
+            db.openHelper.writableDatabase.execSQL("UPDATE long_term_memories SET owner_session_id=? WHERE id=?", arrayOf("session-1", memoryId("isolated")))
+            val entries = snapshot.streamEntries.filterNot { it.path.startsWith("database/long_term_memories/") && it.layer == BackupLayer.SESSIONS }
+            val manifest = BackupManifest(formatVersion = 3, databaseSchemaVersion = 16, appVersion = snapshot.appVersion,
+                createdAt = snapshot.createdAt, encrypted = false, containsSecrets = false,
+                layers = mapOf(BackupLayer.CORE to BackupLayerStats(), BackupLayer.SESSIONS to BackupLayerStats()),
+                entries = entries.map { BackupManifestEntry(it.path, it.blob.size, BackupStreams.digest(it.blob), it.layer) })
+            ValidatedBackup(manifest = manifest, blobs = entries.associate { it.path to it.blob }).use { source.restore(it) }
+            assertThat(db.longTermMemoryDao().get(memoryId("isolated"))!!.ownerSessionId).isEqualTo("session-1")
+        } finally { snapshot.wipe(); BackupStreams.deleteTree(cache) }
+    }
+
+    @Test fun `旧资料层恢复保留归属会话在备份中缺失的隔离记忆`() = runBlocking<Unit> {
+        seedCompleteGraph()
+        val cache = Files.createTempDirectory(sourceBase, "old-knowledge-memory")
+        val source = newDataSource()
+        val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.KNOWLEDGE), cache)
+        try {
+            db.sessionDao().insert(SessionEntity("knowledge-owner", BackupLayerPolicy.KNOWLEDGE_AGENT, createdAt = 1, updatedAt = 1))
+            insertMemory("isolated", sourceSessionId = "knowledge-owner")
+            db.openHelper.writableDatabase.execSQL("UPDATE long_term_memories SET owner_session_id=? WHERE id=?", arrayOf("knowledge-owner", memoryId("isolated")))
+            val entries = snapshot.streamEntries.filterNot { it.path.startsWith("database/long_term_memories/") && it.layer == BackupLayer.KNOWLEDGE }
+            val manifest = BackupManifest(formatVersion = 3, databaseSchemaVersion = 16, appVersion = snapshot.appVersion,
+                createdAt = snapshot.createdAt, encrypted = false, containsSecrets = false,
+                layers = mapOf(BackupLayer.CORE to BackupLayerStats(), BackupLayer.KNOWLEDGE to BackupLayerStats()),
+                entries = entries.map { BackupManifestEntry(it.path, it.blob.size, BackupStreams.digest(it.blob), it.layer) })
+            ValidatedBackup(manifest = manifest, blobs = entries.associate { it.path to it.blob }).use { source.restore(it) }
+            assertThat(db.longTermMemoryDao().get(memoryId("isolated"))!!.ownerSessionId).isEqualTo("knowledge-owner")
+        } finally { snapshot.wipe(); BackupStreams.deleteTree(cache) }
+    }
+
+    @Test fun `v16备份恢复将历史会话和主动记忆迁移到新权限`() = runBlocking<Unit> {
+        seedCompleteGraph()
+        insertMemory("memory-1", sourceSessionId = "session-1")
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("UPDATE agents SET retrieval_config=? WHERE id=?", arrayOf("""{"memoryPolicy":{"shareWithOtherAgents":false,"memoryCap":"AGENT"}}""", "agent-1"))
+        sqlite.execSQL("UPDATE sessions SET rag_options=? WHERE id=?", arrayOf("""{"memoryScope":"ALL_AGENTS","isGlobal":true}""", "session-1"))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val root = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val tables = root.getValue("tables").jsonObject
+        val memories = JsonArray(tables.getValue("long_term_memories").jsonArray.map { JsonObject(it.jsonObject - "owner_session_id") })
+        val old = JsonObject(root + mapOf("schemaVersion" to JsonPrimitive(16), "tables" to JsonObject(tables + ("long_term_memories" to memories))))
+        db.clearAllTables()
+        newDataSource().restore(validated(snapshot, database = old.toString().toByteArray()))
+        val policy = db.agentDao().getById("agent-1")!!.retrievalConfig!!.memoryPolicy
+        assertThat(policy.globalMemory.name).isEqualTo("FORBID")
+        assertThat(policy.activeMemoryDefault.name).isEqualTo("ISOLATED")
+        val options = db.sessionDao().getById("session-1")!!.toDomain().ragOptions!!
+        assertThat(options.globalMemoryEnabled).isFalse()
+        assertThat(options.effectiveMemoryScope.name).isEqualTo("SESSION")
+        assertThat(db.longTermMemoryDao().get(memoryId("memory-1"))!!.ownerSessionId).isNull()
     }
 
     @Test
@@ -1957,8 +2026,8 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(16)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("16")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(17)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("17")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",

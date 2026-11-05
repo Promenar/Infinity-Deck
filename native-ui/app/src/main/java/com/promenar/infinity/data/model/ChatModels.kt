@@ -201,6 +201,12 @@ data class RagRetrievalTrace(
     /** 对话记忆范围覆盖的会话数与助手数；未检索对话记忆时为 null。 */
     val memorySessionCount: Int? = null,
     val memoryAgentCount: Int? = null,
+    val effectiveDocumentIds: List<String> = emptyList(),
+    val effectiveCollectionIds: List<String> = emptyList(),
+    val graphCollectionId: String? = null,
+    val graphTitle: String? = null,
+    val graphBindingMode: GraphBindingMode? = null,
+    val graphRestriction: String? = null,
     /** 图谱覆盖不足时临时抽取（JIT）的次数与所用模型。 */
     val jitExtractionCount: Int = 0,
     val jitModel: String? = null,
@@ -423,6 +429,9 @@ data class ApprovalRequest(
 @Serializable
 enum class ConversationScope { SESSION, AGENT, ALL_AGENTS }
 
+@Serializable
+enum class ActiveMemoryMode { SHARED, ISOLATED }
+
 /** 文档检索范围，按声明顺序逐级扩大。 */
 @Serializable
 enum class DocumentScope {
@@ -455,6 +464,11 @@ data class RagOptions(
     val memoryScope: ConversationScope? = null,
     val graphScope: ConversationScope? = null,
     val graphBinding: GraphBinding? = null,
+    val globalMemoryEnabled: Boolean = false,
+    val globalMemoryScope: ConversationScope = ConversationScope.AGENT,
+    val activeMemoryMode: ActiveMemoryMode? = null,
+    /** null 表示选择智能体允许的全部合集。 */
+    val selectedCollectionIds: List<String>? = null,
     val documentScope: DocumentScope? = null,
     val enableKnowledgeGraph: Boolean? = null,
     val enableRerank: Boolean = true,

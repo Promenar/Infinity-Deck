@@ -29,6 +29,8 @@ data class ResolvedGraphBinding(val collectionId: String, val mode: GraphBinding
 
 /** 图谱归属、绑定和无模型重建的统一入口。 */
 class KgCollectionRepository(private val database: InfinityDatabase) {
+    /** 不写入成员表，按当前文件与文件夹设置计算资料归属。 */
+    suspend fun documentCollectionIdForRead(docId: String): String = memberCollection(docId) ?: documentDescriptor(docId).id
     suspend fun collectionIdsForDocuments(docIds: Collection<String>): List<String> = database.withTransaction {
         docIds.distinct().chunked(400).flatMap { chunk ->
             val sql = "SELECT DISTINCT collection_id FROM kg_collection_members WHERE doc_id IN (${chunk.joinToString { "?" }})"

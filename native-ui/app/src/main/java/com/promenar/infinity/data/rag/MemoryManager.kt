@@ -40,6 +40,7 @@ class MemoryManager(
         val configOverride: RagConfiguration? = null,
         /** 工具已提供检索语句时关闭改写，避免隐含模型请求。 */
         val allowQueryRewrite: Boolean = true,
+        val ragOptions: RagOptions? = null,
     )
 
     data class RetrieveResult(
@@ -48,6 +49,7 @@ class MemoryManager(
         val metadata: RetrieveMetadata,
         /** 检索过程记录；null 表示未执行检索。 */
         val trace: RagRetrievalTrace? = null,
+        val resolvedScope: ResolvedRetrievalScope? = null,
     )
 
     data class RetrieveMetadata(
@@ -82,25 +84,23 @@ class MemoryManager(
         val canRerank = options.enableRerank && effectiveConfig.enableRerank && rerankClient != null
         InfinityLogger.log("[$TAG] canRerank=$canRerank (options.enableRerank=${options.enableRerank} && effectiveConfig.enableRerank=${effectiveConfig.enableRerank} && rerankClient=${if (rerankClient != null) "configured" else "null"})")
 
-        if (!canSearchMemory && !options.enableDocs) {
-            InfinityLogger.log("[$TAG] No search enabled, returning empty")
-            return emptyResult(0, RagRetrievalTrace.OUTCOME_NO_SCOPE)
-        }
-
-        if (!embeddingClient.isConfigured && !embeddingClient.hasLocalFallback) {
-            InfinityLogger.log("[$TAG] embedding unavailable, skip retrieval: ${embeddingClient.diagnosticMessage().lineSequence().firstOrNull().orEmpty()}")
-            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_UNAVAILABLE)
-        }
-
         val scope = scopeResolver.resolve(
             sessionId,
-            RagOptions(
+            options.ragOptions ?: RagOptions(
                 activeDocIds = options.activeDocIds,
                 activeFolderIds = options.activeFolderIds,
                 memoryScope = options.memoryScope,
                 documentScope = options.documentScope,
+                selectedCollectionIds = if (options.documentScope == DocumentScope.WORKSPACE) emptyList() else null,
+                globalMemoryEnabled = options.memoryScope != ConversationScope.SESSION,
+                globalMemoryScope = options.memoryScope,
             ),
         )
+        if (!canSearchMemory && !options.enableDocs) return emptyResult(0, RagRetrievalTrace.OUTCOME_NO_SCOPE, scope = scope)
+        if (!embeddingClient.isConfigured && !embeddingClient.hasLocalFallback) {
+            InfinityLogger.log("[$TAG] embedding unavailable, skip retrieval: ${embeddingClient.diagnosticMessage().lineSequence().firstOrNull().orEmpty()}")
+            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_UNAVAILABLE, scope = scope)
+        }
         val documentReach = scope.documents
         // 覆盖范围计数只用于展示，失败时不影响检索本身。
         val memoryStats = if (!canSearchMemory) null else try {
@@ -117,7 +117,7 @@ class MemoryManager(
         InfinityLogger.log("[$TAG] canSearch: memory=$canSearchMemory docs=$canSearchDocs memoryReach=${scope.memory::class.simpleName} documentReach=${documentReach::class.simpleName}")
         if (!canSearchMemory && !canSearchDocs) {
             InfinityLogger.log("[$TAG] No document scope, returning empty")
-            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_NO_SCOPE)
+            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_NO_SCOPE, scope = scope)
         }
 
         onProgress?.invoke("Embedding query", 10, "Sending query to embedding model")
@@ -149,7 +149,7 @@ class MemoryManager(
         }
         if (queryEmbeddings.isEmpty()) {
             // 嵌入模型已配置但请求全部失败（网络、鉴权、模型名等），属于真正的检索失败。
-            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_FAILED)
+            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_FAILED, scope = scope)
         }
         onProgress?.invoke("Embedding done", 25, "${queryEmbeddings.first().second.size}d vector in ${firstEmbedMs}ms")
 
@@ -269,7 +269,7 @@ class MemoryManager(
         onProgress?.invoke("Ranking results", 90, "${finalResults.size} candidates found")
         if (finalResults.isEmpty() && inRangeResults.isEmpty() && states.isEmpty()) {
             InfinityLogger.log("[$TAG] No results after fusion, returning empty")
-            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_EMPTY, memoryStats)
+            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_EMPTY, memoryStats, scope)
         }
 
         val uniqueResults = finalResults
@@ -413,7 +413,19 @@ class MemoryManager(
                 documentCount = documentCount,
                 memorySessionCount = memoryStats?.sessionCount,
                 memoryAgentCount = memoryStats?.agentCount,
+                memoryScope = when (scope.memory) {
+                    is ConversationReach.Session -> ConversationScope.SESSION
+                    is ConversationReach.Agent -> ConversationScope.AGENT
+                    is ConversationReach.SharedAgents -> ConversationScope.ALL_AGENTS
+                }.takeIf { canSearchMemory },
+                effectiveDocumentIds = scope.documents.let { if (it is DocumentReach.Scoped) it.documentIds.sorted() else emptyList() },
+                effectiveCollectionIds = scope.selectedCollectionIds.sorted(),
+                graphCollectionId = scope.graphBinding.collectionId,
+                graphTitle = scope.graphTitle,
+                graphBindingMode = scope.graphBinding.mode,
+                graphRestriction = scope.graphRestriction,
             ),
+            resolvedScope = scope,
         )
     }
 
@@ -671,7 +683,7 @@ class MemoryManager(
         return if (type == "document") "doc" else type
     }
 
-    private fun emptyResult(searchTimeMs: Long, outcome: String, memoryStats: ConversationReachStats? = null) = RetrieveResult(
+    private fun emptyResult(searchTimeMs: Long, outcome: String, memoryStats: ConversationReachStats? = null, scope: ResolvedRetrievalScope? = null) = RetrieveResult(
         context = "",
         references = emptyList(),
         metadata = RetrieveMetadata(searchTimeMs = searchTimeMs),
@@ -680,6 +692,13 @@ class MemoryManager(
             searchTimeMs = searchTimeMs,
             memorySessionCount = memoryStats?.sessionCount,
             memoryAgentCount = memoryStats?.agentCount,
+            effectiveDocumentIds = (scope?.documents as? DocumentReach.Scoped)?.documentIds?.sorted().orEmpty(),
+            effectiveCollectionIds = scope?.selectedCollectionIds?.sorted().orEmpty(),
+            graphCollectionId = scope?.graphBinding?.collectionId,
+            graphTitle = scope?.graphTitle,
+            graphBindingMode = scope?.graphBinding?.mode,
+            graphRestriction = scope?.graphRestriction,
         ),
+        resolvedScope = scope,
     )
 }

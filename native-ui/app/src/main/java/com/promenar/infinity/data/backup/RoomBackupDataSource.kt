@@ -5,6 +5,9 @@ import android.database.Cursor
 import androidx.room.withTransaction
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.resetSessionSamplingJson
+import com.promenar.infinity.data.local.db.legacyPrivateAgent
+import com.promenar.infinity.data.local.db.migrateLegacyRetrievalConfig
+import com.promenar.infinity.data.local.db.migrateLegacyRagOptions
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.memory.LongTermMemoryKind
 import com.promenar.infinity.data.memory.LongTermMemoryValidation
@@ -217,6 +220,13 @@ class RoomBackupDataSource(
             }
             val allowed = layers.filter { it in setOf(BackupLayer.KNOWLEDGE, BackupLayer.SESSIONS, BackupLayer.WORKSPACE_FILES) }
             return if (allowed.isEmpty()) " WHERE 0" else " WHERE ($expression) IN (${allowed.joinToString(",") { "'${it.name}'" }})"
+        }
+        if (table == LONG_TERM_MEMORY_TABLE) {
+            val terms = mutableListOf<String>()
+            if (BackupLayer.CORE in layers) terms += "owner_session_id IS NULL"
+            if (BackupLayer.KNOWLEDGE in layers) terms += "owner_session_id IN (SELECT id FROM sessions WHERE agent_id='__system__')"
+            if (BackupLayer.SESSIONS in layers) terms += "owner_session_id IS NOT NULL AND owner_session_id NOT IN (SELECT id FROM sessions WHERE agent_id='__system__')"
+            return if (terms.isEmpty()) " WHERE 0" else " WHERE " + terms.joinToString(" OR ") { "($it)" }
         }
         if (table in BackupLayerPolicy.CORE_TABLES) return if (BackupLayer.CORE in layers) "" else " WHERE 0"
         if (table == "tags" || table == "document_tags") return if (BackupLayer.KNOWLEDGE in layers) "" else " WHERE 0"
@@ -562,7 +572,7 @@ class RoomBackupDataSource(
                 if (layerSet == null) {
                     clearAllRestorableTables()
                     insertPayload(transformed)
-                } else replaceLayers(transformed, local!!, layerSet)
+                } else replaceLayers(transformed, local!!, layerSet, validated.manifest.databaseSchemaVersion < 17)
                 val sqlite = database.openHelper.writableDatabase
                 sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
                 sqlite.execSQL("INSERT INTO vectors_fts(vectors_fts) VALUES('rebuild')")
@@ -878,7 +888,7 @@ class RoomBackupDataSource(
             return if ("agent_rule_revisions" in backupTables() && "agent_rule_revisions" !in parsed.tables)
                 parsed.copy(tables = parsed.tables + ("agent_rule_revisions" to emptyList())) else parsed
         }
-        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
         if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
         val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
@@ -890,6 +900,7 @@ class RoomBackupDataSource(
         backupTables().forEach { table -> layers.forEach { layer ->
             if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer } &&
                 !(table == "knowledge_citations" && validated.manifest.databaseSchemaVersion == 13) &&
+                !(table == LONG_TERM_MEMORY_TABLE && layer != BackupLayer.CORE && validated.manifest.databaseSchemaVersion < 17) &&
                 !(table in GRAPH_VECTOR_TABLES && validated.manifest.databaseSchemaVersion < 16) &&
                 !(table == "kg_folder_settings" && validated.manifest.databaseSchemaVersion < 15)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
@@ -906,7 +917,7 @@ class RoomBackupDataSource(
                 if (index.layer(table, row) != entry.layer) throw BackupValidationException("数据库记录与层归属不一致")
             }
         } }
-        return filterFolderSettings(payload)
+        return filterFolderSettings(if (validated.manifest.databaseSchemaVersion < 17) upgradeRetrievalPermissions(payload) else payload)
     }
 
     private fun filterFolderSettings(payload: DatabaseBackupPayload): DatabaseBackupPayload {
@@ -947,7 +958,9 @@ class RoomBackupDataSource(
                 if (validated.manifest.databaseSchemaVersion >= 16) imported.rows(table) else local.rows(table)
             }
             else BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { row ->
-                if (table == "knowledge_citations" && legacyWithoutCitations) {
+                if (table == LONG_TERM_MEMORY_TABLE && validated.manifest.databaseSchemaVersion < 17 && row.optionalString("owner_session_id") != null) {
+                    true
+                } else if (table == "knowledge_citations" && legacyWithoutCitations) {
                     val session = row.optionalString("session_id")
                     session == null || session !in replacedSessions || session in unchangedLegacySessions
                 } else if (table == "knowledge_citations" && row.optionalString("session_id") != null) {
@@ -1016,10 +1029,13 @@ class RoomBackupDataSource(
         return imported.copy(tables = tables)
     }
 
-    private fun replaceLayers(payload: DatabaseBackupPayload, local: DatabaseBackupPayload, layers: Set<BackupLayer>) {
+    private fun replaceLayers(payload: DatabaseBackupPayload, local: DatabaseBackupPayload, layers: Set<BackupLayer>, preserveLegacyMemory: Boolean) {
         val sqlite = database.openHelper.writableDatabase
         val previous = BackupLayerPolicy.Index(local.tables)
         val next = BackupLayerPolicy.Index(payload.tables)
+        val retainedMemoryIds = if (preserveLegacyMemory) local.rows(LONG_TERM_MEMORY_TABLE).filter {
+            it.optionalString("owner_session_id") != null && previous.layer(LONG_TERM_MEMORY_TABLE, it) in layers
+        }.mapTo(hashSetOf()) { it.requiredString("id") } else emptySet()
         data class Deletion(val columns: List<String>, val keys: List<List<String>>)
         // 删除消息父节点会级联删除子节点，主键清单必须先冻结。
         val deletions = backupTables().associateWith { table ->
@@ -1035,7 +1051,8 @@ class RoomBackupDataSource(
             // 本机引用可能依赖即将被替换的父行，必须在删除前完整读取。
             if (table == "knowledge_citations") rows.map { it }
             else if (table in GRAPH_VECTOR_TABLES) rows
-            else BackupDatabaseRows.select(rows) { next.layer(table, it) in layers }
+            else BackupDatabaseRows.select(rows) { next.layer(table, it) in layers ||
+                (table == LONG_TERM_MEMORY_TABLE && it.requiredString("id") in retainedMemoryIds) }
         })
         val retainedSessions = payload.rows("sessions").asSequence().filter { next.layer("sessions", it) !in layers }.map { row ->
             arrayOf<Any?>(row.optionalString("workspace_root_uuid"), row.optionalString("workspace_path"), row.requiredString("id"))
@@ -1090,6 +1107,7 @@ class RoomBackupDataSource(
         }
         val upgraded = when (decoded.schemaVersion) {
             DATABASE_SCHEMA_VERSION -> return filterFolderSettings(decoded)
+            16 -> return filterFolderSettings(upgradeRetrievalPermissions(decoded))
             14, 15 -> decoded
             13 -> {
                 if ("knowledge_citations" in decoded.tables) throw BackupValidationException("v13 备份不应包含引用表")
@@ -1117,10 +1135,22 @@ class RoomBackupDataSource(
         } else upgraded
         val messages = current.tables["messages"] ?: throw BackupValidationException("数据库 payload 缺少表: messages")
         val legacyTables = current.tables - GRAPH_VECTOR_TABLES
-        return filterFolderSettings(current.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = legacyTables + GRAPH_VECTOR_TABLES.associateWith { emptyList() } +
+        return filterFolderSettings(upgradeRetrievalPermissions(current.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = legacyTables + GRAPH_VECTOR_TABLES.associateWith { emptyList() } +
             ("knowledge_citations" to current.tables["knowledge_citations"].orEmpty()) +
             ("kg_folder_settings" to current.tables["kg_folder_settings"].orEmpty()) +
-            ("messages" to messages.map { row -> JsonObject(mapOf("quotes" to JsonNull, "turn_context" to JsonNull, "request_instruction" to JsonNull) + row) })))
+            ("messages" to messages.map { row -> JsonObject(mapOf("quotes" to JsonNull, "turn_context" to JsonNull, "request_instruction" to JsonNull) + row) }))))
+    }
+
+    private fun upgradeRetrievalPermissions(payload: DatabaseBackupPayload): DatabaseBackupPayload {
+        val agents = payload.tables["agents"].orEmpty()
+        val privateAgents = agents.filter { legacyPrivateAgent(it.optionalString("retrieval_config")) }.map { it.requiredString("id") }.toSet()
+        return payload.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = payload.tables + mapOf(
+            "agents" to agents.map { row -> JsonObject(row + ("retrieval_config" to JsonPrimitive(migrateLegacyRetrievalConfig(row.optionalString("retrieval_config"))))) },
+            "sessions" to payload.tables["sessions"].orEmpty().map { row ->
+                JsonObject(row + ("rag_options" to JsonPrimitive(migrateLegacyRagOptions(row.optionalString("rag_options"), row.requiredString("agent_id") in privateAgents))))
+            },
+            LONG_TERM_MEMORY_TABLE to payload.tables[LONG_TERM_MEMORY_TABLE].orEmpty().map { row -> JsonObject(row + ("owner_session_id" to JsonNull)) },
+        ))
     }
 
     /** 历史包没有运行模式，恢复为未确定状态，首次进入会话时再检查。 */
@@ -1503,8 +1533,8 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        if (sqlite.version != 34 || identityHash != ROOM_SCHEMA_V34_IDENTITY_HASH) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v34")
+        if (sqlite.version != 35 || identityHash != com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V35_IDENTITY_HASH) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v35")
         }
         backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->

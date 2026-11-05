@@ -33,7 +33,7 @@ class SessionMountNormalizationTest {
         }) { room ->
             val dao = room.externalMountDao()
             val all = dao.all()
-            assertThat(room.openHelper.writableDatabase.version).isEqualTo(34)
+            assertThat(room.openHelper.writableDatabase.version).isEqualTo(35)
             assertThat(all).hasSize(6)
             assertThat(all.map { it.id }.distinct()).hasSize(6)
             assertThat(all.map { it.id }).containsNoneOf("global", "global-2")
@@ -141,7 +141,7 @@ class SessionMountNormalizationTest {
                 db.version = 27
             }
             fun open() = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34).addCallback(SessionMountNormalizationCallback { throw it }).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35).addCallback(SessionMountNormalizationCallback { throw it }).allowMainThreadQueries().build()
             if (reopen || afterFirstOpen != null) {
                 val first = open()
                 try { afterFirstOpen?.invoke(first.openHelper.writableDatabase) ?: first.openHelper.writableDatabase } finally { first.close() }

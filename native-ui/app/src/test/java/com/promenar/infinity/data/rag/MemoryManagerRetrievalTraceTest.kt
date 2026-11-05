@@ -105,6 +105,10 @@ class MemoryManagerRetrievalTraceTest {
         assertThat(trace.documentCount).isEqualTo(3)
         assertThat(trace.scoring).isEqualTo(RagRetrievalTrace.SCORING_VECTOR)
         assertThat(trace.rerank).isEqualTo(RagRetrievalTrace.RERANK_OFF)
+        assertThat(trace.effectiveDocumentIds).containsAtLeast("doc-1", "doc-2", "doc-3")
+        assertThat(trace.graphCollectionId).isEqualTo("session:s1")
+        assertThat(trace.graphTitle).isEqualTo(database.sessionDao().getById("s1")!!.title)
+        assertThat(trace.graphBindingMode).isEqualTo(com.promenar.infinity.data.model.GraphBindingMode.READ_WRITE)
     }
 
     @Test

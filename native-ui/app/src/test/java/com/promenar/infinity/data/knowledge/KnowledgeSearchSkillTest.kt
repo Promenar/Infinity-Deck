@@ -8,6 +8,7 @@ import com.promenar.infinity.domain.tool.*
 import com.promenar.infinity.ui.chat.manager.*
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import com.promenar.infinity.ui.chat.manager.skills.*
+import com.promenar.infinity.data.rag.*
 import io.mockk.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
@@ -26,6 +27,8 @@ class KnowledgeSearchSkillTest {
     private val options = mutableListOf<RagOptions>()
     private var refs = listOf(RagReference(id = "r", content = "命中正文", source = "文档", kind = RagReferenceKind.DOCUMENT, documentId = "doc", score = .8f))
     private var trace: RagRetrievalTrace? = null
+    private var resolvedScope: ResolvedRetrievalScope? = null
+    private var graphScope: ResolvedRetrievalScope? = null
     private var automaticCalls = 0
     private var toolCalls = 0
     private var kgCalls = 0
@@ -35,13 +38,18 @@ class KnowledgeSearchSkillTest {
         override suspend fun retrieveForTool(query: String, sessionId: String, options: RagOptions,
             onProgress: ((String, Int, String?) -> Unit)?): RagRetrievalResult {
             toolCalls++; this@KnowledgeSearchSkillTest.options += options
-            return RagRetrievalResult("context", refs, RagUsage(10, true), trace)
+            return RagRetrievalResult("context", refs, RagUsage(10, true), trace, resolvedScope)
         }
     }
     private val kg = object : KgProvider {
         override suspend fun extractContext(query: String, sessionId: String, topKResults: List<RagReference>): KgContextResult? = error("工具触发了抽取")
         override suspend fun retrieveForTool(query: String, sessionId: String, topKResults: List<RagReference>, options: RagOptions): KgContextResult {
             kgCalls++; return KgContextResult("", listOf(KgPath()))
+        }
+        override suspend fun retrieveWithScope(query: String, sessionId: String, topKResults: List<RagReference>,
+            options: RagOptions, scope: ResolvedRetrievalScope?, forTool: Boolean): KgContextResult {
+            graphScope = scope
+            return retrieveForTool(query, sessionId, topKResults, options)
         }
     }
     private fun context(step: String = "step") = object : SkillExecutionContext {
@@ -55,6 +63,14 @@ class KnowledgeSearchSkillTest {
     private fun skill() = KnowledgeSearchSkill({ session }, { config }, catalog, rag, kg, turns)
     private suspend fun search(step: String = "step", args: String = """{"query":"完整问题"}""") = skill().execute(Json.parseToJsonElement(args).jsonObject, context(step))
     private fun ToolResult.body() = json.decodeFromString<KnowledgeSearchData>(requireNotNull(data))
+
+    @Test fun `工具检索把向量检索同一生效范围交给图谱`() = runTest {
+        val scope = ResolvedRetrievalScope("s", ConversationReach.Session("s"), ConversationReach.Session("s"),
+            DocumentReach.Scoped(emptySet(), setOf("doc")), ResolvedGraphBinding("work:a", GraphBindingMode.READ_ONLY))
+        resolvedScope = scope
+        assertThat(search().status).isEqualTo("success")
+        assertThat(graphScope).isSameInstanceAs(scope)
+    }
 
     @Test fun automaticCitationMappingSurvivesColdRestore() {
         session = session.copy(messages = session.messages.map {

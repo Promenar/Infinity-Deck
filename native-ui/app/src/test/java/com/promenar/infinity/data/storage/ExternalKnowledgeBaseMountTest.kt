@@ -40,10 +40,23 @@ class ExternalKnowledgeBaseMountTest {
     private val workspace = mockk<IWorkspaceRepository> { coEvery { getByUuid("kb-root", "kb-root") } answers { rootEntry } }
     private val context = mockk<Context> { every { noBackupFilesDir } returns File(temporary, "backup") }
     private val fileSystem = JvmBoundRealPathFileSystem()
+    private var knowledgeAllowed = true
     private val manager = ExternalFolderManager(context, dao, workspace, FileIndexEventSink.None,
-        knowledgeBaseRoots = { setOf("kb-root") }, backendOverride = { fileSystem.backend(root) })
+        knowledgeBaseRoots = { setOf("kb-root") }, knowledgeBaseAllowed = { _, _ -> knowledgeAllowed }, backendOverride = { fileSystem.backend(root) })
 
     @After fun cleanup() { temporary.deleteRecursively() }
+
+    @Test fun `已批准挂载随权限收紧拒绝读取且放宽后恢复`() = runBlocking<Unit> {
+        File(root, "note.md").writeText("全文")
+        manager.addKnowledgeBase("knowledge", "session", "kb-root")
+        assertThat(manager.read("session", "/mnt/knowledge/note.md").toString(Charsets.UTF_8)).isEqualTo("全文")
+        knowledgeAllowed = false
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { manager.read("session", "/mnt/knowledge/note.md") }
+        }.code).isEqualTo("ACCESS_DENIED")
+        knowledgeAllowed = true
+        assertThat(manager.read("session", "/mnt/knowledge/note.md").toString(Charsets.UTF_8)).isEqualTo("全文")
+    }
 
     @Test fun `知识库根UUID适配目录后端并持久化只读标志且同根不重复挂载`() = runBlocking {
         File(root, "note.md").writeText("全文")

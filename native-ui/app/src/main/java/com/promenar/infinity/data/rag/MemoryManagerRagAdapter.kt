@@ -44,6 +44,7 @@ class MemoryManagerRagAdapter(
             sessionId = sessionId,
             enableRerank = options.enableRerank,
             allowQueryRewrite = allowQueryRewrite,
+            ragOptions = options,
             configOverride = global.copy(
                 enableMemory = options.enableMemory,
                 enableDocs = options.enableDocs,
@@ -66,6 +67,6 @@ class MemoryManagerRagAdapter(
             null
         }
 
-        return RagRetrievalResult(result.context, result.references, usage, result.trace)
+        return RagRetrievalResult(result.context, result.references, usage, result.trace, result.resolvedScope)
     }
 }

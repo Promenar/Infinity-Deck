@@ -27,20 +27,26 @@ class PersistentGraphKgProvider(
     override suspend fun retrieveForTool(query: String, sessionId: String, topKResults: List<RagReference>, options: RagOptions): KgContextResult =
         retrieve(query, sessionId, topKResults, options, allowJit = false)
 
+    override suspend fun retrieveWithScope(query: String, sessionId: String, topKResults: List<RagReference>, options: RagOptions,
+        scope: ResolvedRetrievalScope?, forTool: Boolean): KgContextResult =
+        retrieve(query, sessionId, topKResults, options, allowJit = !forTool, scope = scope)
+
     private suspend fun retrieve(
         query: String,
         sessionId: String,
         topKResults: List<RagReference>,
         options: RagOptions,
         allowJit: Boolean = true,
+        scope: ResolvedRetrievalScope? = null,
     ): KgContextResult {
         if (options.enableKnowledgeGraph != true) return KgContextResult("")
         val config = configProvider()
-        val resolvedScope = KgRetrievalScope.of(scopeResolver.resolve(sessionId, options))
+        val resolvedScope = KgRetrievalScope.of(scope ?: scopeResolver.resolve(sessionId, options))
+        if (resolvedScope.restriction != null) return KgContextResult("")
         // 文档范围决定即时抽取输入；持久图始终读取绑定图谱中的存活证据。
-        val scope = if (allowJit) resolvedScope else resolvedScope.copy(
-            documents = if (options.enableDocs) resolvedScope.documents else DocumentReach.Scoped(emptySet(), emptySet()),
-            allowConversation = options.enableMemory,
+        val scope = resolvedScope.copy(
+            documents = if (allowJit || options.enableDocs) resolvedScope.documents else DocumentReach.Scoped(emptySet(), emptySet()),
+            allowConversation = allowJit || options.enableMemory,
         )
         val documents = retrieval.visibleDocumentIds(scope)
         val visibleReferences = withContext(Dispatchers.IO) {
