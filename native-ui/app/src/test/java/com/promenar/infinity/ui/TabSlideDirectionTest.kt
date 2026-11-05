@@ -24,5 +24,17 @@ class TabSlideDirectionTest {
         assertThat(tabSlideVertical(shouldUseNavigationRail(599.dp))).isFalse()
     }
 
+    @Test
+    fun `资料次级页不显示底栏，资料首页、两列与其它标签照常显示`() {
+        assertThat(bottomDockVisible(AppTab.LIBRARY, emptyList(), libraryTwoPane = false)).isTrue()
+        assertThat(bottomDockVisible(AppTab.LIBRARY, listOf("doc:1"), libraryTwoPane = false)).isFalse()
+        assertThat(bottomDockVisible(AppTab.LIBRARY, listOf("files", "doc:1"), libraryTwoPane = false)).isFalse()
+        // 两列时左列就是资料导航，底栏布局下也不隐藏。
+        assertThat(bottomDockVisible(AppTab.LIBRARY, listOf("overview", "doc:1"), libraryTwoPane = true)).isTrue()
+        // 离开资料页时保留的资料层级不影响其它标签。
+        assertThat(bottomDockVisible(AppTab.CHAT, listOf("doc:1"), libraryTwoPane = false)).isTrue()
+        assertThat(bottomDockVisible(AppTab.SETTINGS, listOf("doc:1"), libraryTwoPane = false)).isTrue()
+    }
+
     private val Int.dp get() = androidx.compose.ui.unit.Dp(toFloat())
 }

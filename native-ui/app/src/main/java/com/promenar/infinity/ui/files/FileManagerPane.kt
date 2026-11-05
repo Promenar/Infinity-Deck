@@ -301,11 +301,11 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                 contentKey = { it.listingKey() },
                 transitionSpec = {
                     if (initialState.search != null || targetState.search != null ||
-                        initialState.location?.id != targetState.location?.id
+                        !sameHierarchy(initialState, targetState)
                     ) {
                         InfinityMotion.fadeThrough()
                     } else {
-                        hierarchicalTransition { it.pathDepth() }
+                        hierarchicalTransition { it.crumbs.size }
                     }
                 },
                 // 共享轴只滑动一小段，裁在列表区内，双栏时不压到分隔线与预览。
@@ -420,7 +420,17 @@ private fun FileManagerUiState.compactPreviewItem(): FileItem? = previewItem?.ta
 private fun FileManagerUiState.listingKey(): String =
     if (search != null) "search" else "${location?.id}\u0000$path"
 
-private fun FileManagerUiState.pathDepth(): Int = path.split('/').count { it.isNotEmpty() }
+/**
+ * 两个列表是否处在同一条层级链上：同一位置，或资料页里“会话工作区”与其下某个会话的工作区。
+ * 同一层级链按面包屑层数横向滑动，换到别的位置则交叉淡入。
+ */
+internal fun sameHierarchy(from: FileManagerUiState, to: FileManagerUiState): Boolean {
+    val a = from.location?.id
+    val b = to.location?.id
+    if (a == b) return true
+    return (a == "sessions" && b?.startsWith("session:") == true && to.crumbs.size > 1) ||
+        (b == "sessions" && a?.startsWith("session:") == true && from.crumbs.size > 1)
+}
 
 /**
  * 进入或返回文件夹时，新目录还在读取的这一小段里继续显示旧列表，读完后再整页滑入，

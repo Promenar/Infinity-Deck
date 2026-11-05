@@ -8,6 +8,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.onSelectionIndicator
 import com.promenar.infinity.ui.theme.selectionIndicator
@@ -74,6 +76,13 @@ internal fun tabSlideDirection(from: AppTab, to: AppTab): Int = to.ordinal.compa
 
 /** 竖排的导航轨按标签顺序纵向滑动，外屏底栏横向滑动。 */
 internal fun tabSlideVertical(navigationRail: Boolean): Boolean = navigationRail
+
+/**
+ * 底栏布局下是否显示主导航底栏。资料页单列时空栈是资料首页，栈里有页面即为文档、图谱等次级页，
+ * 与对话会话、设置子页一样整页显示、不带底栏；资料页两列时左列就是导航，底栏照常。
+ */
+internal fun bottomDockVisible(selectedTab: AppTab, libraryStack: List<String>, libraryTwoPane: Boolean): Boolean =
+    !(selectedTab == AppTab.LIBRARY && !libraryTwoPane && libraryStack.isNotEmpty())
 
 /**
  * 主标签页的状态：当前标签、宽屏设置右列的层级与内屏首页会话列。由导航图持有，窗口变宽时导航图据此把整页设置子页、整页会话收回右列。
@@ -332,6 +341,7 @@ fun MainTabScaffold(
             selectedTab = selectedTab,
             onTabSelected = state::selectTab,
             railShift = railShift,
+            dockVisible = bottomDockVisible(selectedTab, state.libraryStack, libraryTwoPane),
         ) {
             AnimatedContent(
                 targetState = selectedTab,
@@ -403,6 +413,8 @@ internal fun AdaptiveNavigationFrame(
     selectedTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
     railShift: (() -> Float)? = null,
+    /** 只作用于底栏布局：为 false 时底栏随次级页推入向下滑出并收起占位，返回时滑回。 */
+    dockVisible: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     if (expanded) {
@@ -461,10 +473,21 @@ internal fun AdaptiveNavigationFrame(
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
-                FloatingNavigationDock(
-                    selectedTab = selectedTab,
-                    onTabSelected = onTabSelected,
-                )
+                // 只动画高度：底栏贴着屏幕底边被裁切，看起来是向下滑出、向上滑回，内容区底边同步伸缩，
+                // 不在动画结束时跳变；再叠加位移会让底栏以两倍速度消失。曲线与页面推入、返回一致。
+                AnimatedVisibility(
+                    visible = dockVisible,
+                    enter = expandVertically(InfinityMotion.pageSpec(pop = true), expandFrom = Alignment.Top) +
+                        fadeIn(tween(InfinityMotion.DurationMedium)),
+                    exit = shrinkVertically(InfinityMotion.pageSpec(pop = false), shrinkTowards = Alignment.Top) +
+                        fadeOut(tween(InfinityMotion.DurationMedium)),
+                    label = "main-bottom-dock",
+                ) {
+                    FloatingNavigationDock(
+                        selectedTab = selectedTab,
+                        onTabSelected = onTabSelected,
+                    )
+                }
             },
         ) { paddingValues ->
             Box(
