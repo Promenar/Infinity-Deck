@@ -88,6 +88,7 @@ class DefaultBackupPackageCodec private constructor(
                     containsSecrets = entries.any { it.first == SECRETS_PATH },
                     kdf = kdf,
                     skills = snapshot.skills?.metadata,
+                    embedding = snapshot.embedding,
                 )
                 val manifestBytes = json.encodeToString(manifest).toByteArray()
                 try {

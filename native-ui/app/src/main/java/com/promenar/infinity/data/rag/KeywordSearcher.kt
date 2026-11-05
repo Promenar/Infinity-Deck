@@ -58,14 +58,15 @@ class KeywordSearcher(
         limit: Int,
         memory: ConversationReach?,
         documents: DocumentReach?,
+        expectedDimension: Int? = null,
     ): List<SearchResult> {
         if (query.isBlank() || (memory == null && documents == null)) return emptyList()
         val effectiveQuery = query.take(60)
         val rows = try {
             // 两类各自取上限，避免文档命中挤掉记忆命中。
             buildList {
-                memory?.let { addAll(vectorDao.conversationFts(it, effectiveQuery).take(limit)) }
-                documents?.let { addAll(vectorDao.documentFts(it, effectiveQuery).take(limit)) }
+                memory?.let { addAll(vectorDao.conversationFts(it, effectiveQuery).filter { row -> expectedDimension == null || row.embedding.size.toLong() == expectedDimension.toLong() * 4 }.take(limit)) }
+                documents?.let { addAll(vectorDao.documentFts(it, effectiveQuery).filter { row -> expectedDimension == null || row.embedding.size.toLong() == expectedDimension.toLong() * 4 }.take(limit)) }
             }.map { rowToSearchResult(it, 1.0f) }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -76,7 +77,7 @@ class KeywordSearcher(
                 memory?.let { reach -> CONVERSATION_TYPES.forEach { addAll(vectorDao.conversationRows(reach, it)) } }
                 documents?.let { addAll(vectorDao.documentRows(it)) }
             }
-            candidates.mapNotNull { row ->
+            candidates.filter { row -> expectedDimension == null || row.embedding.size.toLong() == expectedDimension.toLong() * 4 }.mapNotNull { row ->
                 val content = row.content.lowercase()
                 val score = keywords.count { content.contains(it) }.toFloat()
                 if (score > 0f) rowToSearchResult(row, score) else null

@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /** 可移植数据库备份结构版本，独立于 Room 数据库版本。 */
-internal const val DATABASE_BACKUP_SCHEMA_VERSION = 15
+internal const val DATABASE_BACKUP_SCHEMA_VERSION = 16
 
 enum class BackupContent {
     DATABASE,
@@ -73,6 +73,7 @@ data class BackupSnapshot(
     val streamEntries: List<BackupSourceEntry> = emptyList(),
     val skipped: List<BackupSkippedItem> = emptyList(),
     val ownedDirectory: java.nio.file.Path? = null,
+    val embedding: BackupEmbeddingMetadata? = null,
 )
 
 class ValidatedBackup(
@@ -123,7 +124,12 @@ data class BackupManifest(
     val skills: SkillBackupMetadata? = null,
     val layers: Map<BackupLayer, BackupLayerStats>? = null,
     val skipped: List<BackupSkippedItem> = emptyList(),
+    val embedding: BackupEmbeddingMetadata? = null,
 )
+
+/** spaceKey 为不可逆的向量空间摘要；dimension 以备份中的实际字节长度确认。 */
+@Serializable
+data class BackupEmbeddingMetadata(val modelId: String, val spaceKey: String, val dimension: Int)
 
 data class SkillBackupPartition(
     val files: Map<String, ByteArray>,

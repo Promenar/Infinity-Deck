@@ -121,16 +121,16 @@ class VectorStore(
         return searchInMemory(queryEmbedding, rows, threshold, limit, onWarning)
     }
 
-    /** 按范围读取一类对话行的全部可见行，附与查询向量的相似度；维度不符的行记为 0。 */
+    /** 按范围读取一类对话行，计算与查询向量同维度的可见行的相似度。 */
     suspend fun conversationRowsScored(
         queryEmbedding: FloatArray,
         reach: ConversationReach,
         type: String,
     ): List<Pair<VectorEntity, Float>> {
         val queryMag = magnitude(queryEmbedding)
-        return vectorDao.conversationRows(reach, type).map { row ->
+        return vectorDao.conversationRows(reach, type).mapNotNull { row ->
             val vec = fromBlob(row.embedding)
-            row to if (vec.size == queryEmbedding.size) cosineSimilarity(queryEmbedding, vec, queryMag) else 0f
+            if (vec.size == queryEmbedding.size) row to cosineSimilarity(queryEmbedding, vec, queryMag) else null
         }
     }
 

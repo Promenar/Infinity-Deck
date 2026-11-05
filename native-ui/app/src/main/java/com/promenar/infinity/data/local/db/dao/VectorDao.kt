@@ -22,8 +22,8 @@ private const val STATE_MEMORY_ROW = "(substr(COALESCE(vectors.metadata, ''), 1,
 private const val TURN_MEMORY_ROW = "($MEMORY_ROW OR $STATE_MEMORY_ROW)"
 private const val MEMORY_TURN_PRESENT = "((vectors.start_message_id IS NULL OR EXISTS (SELECT 1 FROM messages turn_message WHERE turn_message.id = vectors.start_message_id)) AND (vectors.end_message_id IS NULL OR EXISTS (SELECT 1 FROM messages turn_message WHERE turn_message.id = vectors.end_message_id)))"
 private const val MEMORY_VISIBLE = "(NOT ($TURN_MEMORY_ROW) OR $MEMORY_TURN_PRESENT)"
-private const val ACTIVE_VECTOR = "($ACTIVE_FILE_VECTOR AND $MEMORY_VISIBLE)"
-private const val ACTIVE_VECTOR_ALIAS = "($ACTIVE_FILE_VECTOR_ALIAS AND $MEMORY_VISIBLE)"
+private const val ACTIVE_VECTOR = "(vectors.stale = 0 AND $ACTIVE_FILE_VECTOR AND $MEMORY_VISIBLE)"
+private const val ACTIVE_VECTOR_ALIAS = "(vectors.stale = 0 AND $ACTIVE_FILE_VECTOR_ALIAS AND $MEMORY_VISIBLE)"
 
 // 检索范围过滤（见 data/rag/RetrievalScope.kt）：对话行按所属会话的助手判定，文档行按工作区根与显式文档判定。
 private const val TYPE_IS = "substr(vectors.metadata, 1, length('{\"type\":\"') + length(:type) + 1) = '{\"type\":\"' || :type || '\"'"
@@ -168,7 +168,7 @@ interface VectorDao {
     @Query("SELECT vectors.* FROM vectors_fts JOIN vectors ON vectors.rowid = vectors_fts.rowid WHERE vectors_fts MATCH :query AND vectors.doc_id IN (:docIds) AND " + ACTIVE_VECTOR_ALIAS)
     suspend fun searchFtsByDocIds(query: String, docIds: List<String>): List<VectorEntity>
 
-    @Query("SELECT vectors.* FROM vectors_fts JOIN vectors ON vectors.rowid = vectors_fts.rowid WHERE vectors_fts MATCH :query AND vectors.doc_id IS NULL AND " + MEMORY_VISIBLE)
+    @Query("SELECT vectors.* FROM vectors_fts JOIN vectors ON vectors.rowid = vectors_fts.rowid WHERE vectors_fts MATCH :query AND vectors.doc_id IS NULL AND vectors.stale = 0 AND " + MEMORY_VISIBLE)
     suspend fun searchFtsExcludeDocs(query: String): List<VectorEntity>
 
     @Query("SELECT * FROM vectors WHERE content LIKE '%' || :keyword || '%' AND " + ACTIVE_VECTOR)

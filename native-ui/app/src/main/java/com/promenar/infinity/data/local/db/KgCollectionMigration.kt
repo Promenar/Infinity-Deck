@@ -7,6 +7,8 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 /** 将 v33 的来源拆入独立图谱；临时映射留在 SQLite，不将整库载入内存。 */
 val MIGRATION_33_34 = object : Migration(33, 34) {
@@ -57,6 +59,7 @@ val MIGRATION_33_34 = object : Migration(33, 34) {
         db.execSQL("CREATE UNIQUE INDEX index_kg_nodes_collection_id_id ON kg_nodes_new(collection_id,id)")
         db.execSQL("""INSERT INTO kg_nodes_new SELECT m.new_id,n.name,n.type,n.metadata,n.created_at,n.updated_at,n.normalized_name,m.collection_id
             FROM kg_migration_node_map m JOIN kg_nodes n ON n.id=m.old_id""".trimIndent())
+        restoreV18SourceMetadata(db)
 
         db.execSQL("CREATE TEMP TABLE kg_migration_edge_groups (old_id TEXT NOT NULL, collection_id TEXT NOT NULL, PRIMARY KEY(old_id,collection_id))")
         db.execSQL("INSERT OR IGNORE INTO kg_migration_edge_groups SELECT p.edge_id,t.collection_id FROM kg_evidence p JOIN kg_migration_targets t ON t.evidence_id=p.id WHERE p.edge_id IS NOT NULL")
@@ -89,6 +92,47 @@ val MIGRATION_33_34 = object : Migration(33, 34) {
         // 旧缓存键不含图谱，无法安全复用；证据本身保留。
         db.execSQL("DELETE FROM kg_jit_cache")
         listOf("kg_migration_documents", "kg_migration_targets", "kg_migration_node_groups", "kg_migration_node_map", "kg_migration_edge_groups", "kg_migration_edge_map").forEach { db.execSQL("DROP TABLE $it") }
+        listOf("kg_v18_node_metadata", "kg_v18_edge_nodes", "kg_v18_attached_nodes").forEach { db.execSQL("DROP TABLE IF EXISTS temp.$it") }
+    }
+
+    private fun restoreV18SourceMetadata(db: SupportSQLiteDatabase) {
+        val hasV18Mapping = db.query("SELECT COUNT(*) FROM sqlite_temp_master WHERE type='table' AND name IN ('kg_v18_node_metadata','kg_v18_edge_nodes')").use {
+            it.moveToFirst() && it.getInt(0) == 2
+        }
+        if (!hasV18Mapping) return
+        // v18 的实体及关系证据使用原 ID 标记任务；只合并目标图谱对应的来源。
+        val sql = """SELECT DISTINCT m.new_id,v.old_id,v.metadata
+            FROM kg_migration_node_map m
+            JOIN kg_v18_node_metadata v ON v.mapped_id=m.old_id
+            JOIN kg_evidence p ON p.node_id=m.old_id
+            JOIN kg_migration_targets t ON t.evidence_id=p.id AND t.collection_id=m.collection_id
+            WHERE p.task_id='migration-v18:node:' || v.old_id
+                OR (p.task_id LIKE 'migration-v18:edge:%' AND EXISTS (
+                    SELECT 1 FROM kg_v18_edge_nodes x
+                    WHERE x.old_id=substr(p.task_id,length('migration-v18:edge:')+1)
+                        AND (v.old_id=x.source_old_id OR v.old_id=x.target_old_id)))
+            ORDER BY m.new_id,v.old_id""".trimIndent()
+        var currentId: String? = null
+        var metadata: String? = null
+        fun flush() {
+            currentId?.let { db.execSQL("UPDATE kg_nodes_new SET metadata=? WHERE id=?", arrayOf<Any?>(metadata, it)) }
+        }
+        fun metadataObject(value: String?) =
+            runCatching { Json.parseToJsonElement(value.orEmpty()).jsonObject }.getOrDefault(JsonObject(emptyMap()))
+        db.query(sql).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(0)
+                val value = if (cursor.isNull(2)) null else cursor.getString(2)
+                if (id != currentId) {
+                    flush()
+                    currentId = id
+                    metadata = value
+                } else {
+                    metadata = JsonObject(metadataObject(metadata) + metadataObject(value)).toString()
+                }
+            }
+        }
+        flush()
     }
 
     private fun copyEvidence(db: SupportSQLiteDatabase) {

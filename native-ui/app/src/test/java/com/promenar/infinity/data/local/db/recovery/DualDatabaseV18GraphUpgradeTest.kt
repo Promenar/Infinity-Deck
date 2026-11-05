@@ -44,6 +44,10 @@ class DualDatabaseV18GraphUpgradeTest {
                     val collections = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
                     assertThat(collections).containsExactly("work:doc", "work:$mappedDoc")
                 }
+                upgraded.openHelper.readableDatabase.query("SELECT collection_id,metadata FROM kg_nodes WHERE normalized_name='共同人物'").use { cursor ->
+                    val owners = buildMap { while (cursor.moveToNext()) put(cursor.getString(0), Json.parseToJsonElement(cursor.getString(1)).jsonObject["owner"]?.jsonPrimitive?.content) }
+                    assertThat(owners).containsExactly("work:doc", "current", "work:$mappedDoc", "legacy")
+                }
                 upgraded.openHelper.readableDatabase.query("SELECT COUNT(*) FROM kg_edges").use {
                     check(it.moveToFirst()); assertThat(it.getInt(0)).isEqualTo(2)
                 }
@@ -80,7 +84,7 @@ class DualDatabaseV18GraphUpgradeTest {
         db.execSQL("INSERT INTO sessions(id,agent_id,title,unread,is_pinned,workspace_root_uuid,created_at,updated_at) VALUES('session','__system__',?,0,0,'root',1,1)", arrayOf(label))
         db.execSQL("INSERT INTO workspace_files(uuid,workspace_root_uuid,parent_uuid,name,hash,size_bytes,is_directory,physical_root_path,materialized_path,vector_version,kg_version,in_recycle_bin,created_at,updated_at) VALUES('root','root',NULL,'root','root-hash',0,1,?,'/',1,1,0,1,1)", arrayOf("/fixture/$label"))
         db.execSQL("INSERT INTO workspace_files(uuid,workspace_root_uuid,parent_uuid,name,hash,size_bytes,is_directory,physical_root_path,materialized_path,vector_version,kg_version,in_recycle_bin,created_at,updated_at) VALUES('doc','root','root','doc','h',1,0,?,'/doc',1,1,0,1,1)", arrayOf("/fixture/$label"))
-        db.execSQL("INSERT INTO kg_nodes(id,name,type,metadata,source_type,created_at,file_uuid) VALUES('a','共同人物','person','{}','full',1,'doc'),('b','目标','person','{}','full',1,'doc')")
+        db.execSQL("INSERT INTO kg_nodes(id,name,type,metadata,source_type,created_at,file_uuid) VALUES('a','共同人物','person',?,'full',1,'doc'),('b','目标','person','{}','full',1,'doc')", arrayOf("{\"owner\":\"$label\"}"))
         db.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,doc_id,source_type,created_at,file_uuid) VALUES('e','a','b','认识',0.8,'doc','full',1,'doc')")
     }
 }

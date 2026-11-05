@@ -72,6 +72,7 @@ class RoomBackupDataSource(
     private val restoreFileOperations: RestoreFileOperations = SecureBackupFileOps,
     userSkillsRoot: Path? = null,
     private val avatarRoot: Path? = null,
+    private val embeddingSpaceKey: () -> String? = { null },
 ) : BackupDataSource {
     private val trustedSourceBases = trustedSourceBases.map(FileRestoreJournal::requireTrustedDirectory)
     private val restoreParent = FileRestoreJournal.requireTrustedDirectory(trustedRestoreBase)
@@ -86,6 +87,9 @@ class RoomBackupDataSource(
     private val skillSnapshotter = userSkillsRoot?.let(::SkillBackupSnapshotter)
     private val skillRestore = userSkillsRoot?.let { SkillRestoreTransaction(it, restoreFileOperations, crashHook) }
     private val avatarRestore = avatarRoot?.let { SkillRestoreTransaction(it, restoreFileOperations, crashHook, "avatars") }
+
+    private fun embeddingMetadata(payload: DatabaseBackupPayload, preferences: BackupPreferenceSnapshot): BackupEmbeddingMetadata? =
+        com.promenar.infinity.data.backup.embeddingMetadata(payload, preferences, runCatching(embeddingSpaceKey).getOrNull())
 
     private fun backupTables(): List<String> = INSERT_ORDER + if (database.openHelper.writableDatabase.query(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_rule_revisions'",
@@ -159,12 +163,15 @@ class RoomBackupDataSource(
         throw BackupValidationException("提供商配置在备份期间变化，请重试")
     }
 
-    private fun cursorRow(cursor: Cursor): JsonObject = JsonObject(cursor.columnNames.mapIndexed { index, name ->
+    private fun cursorRow(cursor: Cursor, table: String): JsonObject = JsonObject(cursor.columnNames.mapIndexed { index, name ->
         name to when (cursor.getType(index)) {
             Cursor.FIELD_TYPE_NULL -> JsonNull
             Cursor.FIELD_TYPE_INTEGER -> JsonPrimitive(cursor.getLong(index))
             Cursor.FIELD_TYPE_FLOAT -> JsonPrimitive(cursor.getDouble(index))
             Cursor.FIELD_TYPE_STRING -> JsonPrimitive(cursor.getString(index))
+            Cursor.FIELD_TYPE_BLOB -> if (table == "vectors" && name == "embedding")
+                JsonPrimitive(java.util.Base64.getEncoder().encodeToString(cursor.getBlob(index)))
+            else throw BackupValidationException("备份表包含不支持的 BLOB 字段")
             else -> throw BackupValidationException("备份表包含不支持的字段")
         }
     }.toMap())
@@ -177,7 +184,7 @@ class RoomBackupDataSource(
                 override val size get() = ids.size
                 override fun get(index: Int): JsonObject = sqlite.query("SELECT * FROM `$table` WHERE rowid = ?", arrayOf<Any>(ids[index])).use { cursor ->
                     if (!cursor.moveToFirst()) throw BackupValidationException("恢复验证期间本机记录发生变化")
-                    cursorRow(cursor)
+                    cursorRow(cursor, table)
                 }
             }
         })
@@ -197,6 +204,20 @@ class RoomBackupDataSource(
             return " WHERE folder_id IN (SELECT uuid FROM workspace_files WHERE is_directory=1 AND ($filter))"
         }
         if (layers == null) return ""
+        if (table in GRAPH_VECTOR_TABLES) {
+            val roots = "SELECT workspace_root_uuid FROM sessions WHERE agent_id='__system__' AND workspace_root_uuid IS NOT NULL"
+            fun fileLayer(id: String) = "CASE WHEN EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=$id AND f.workspace_root_uuid IN ($roots)) THEN 'KNOWLEDGE' ELSE 'WORKSPACE_FILES' END"
+            fun sessionLayer(id: String) = "CASE WHEN EXISTS (SELECT 1 FROM sessions s WHERE s.id=$id AND s.agent_id='__system__') THEN 'KNOWLEDGE' ELSE 'SESSIONS' END"
+            fun collectionLayer(alias: String) = "CASE WHEN $alias.kind='shared' THEN 'KNOWLEDGE' WHEN $alias.kind='session' THEN (${sessionLayer("substr($alias.id,9)")}) ELSE (${fileLayer("$alias.root_ref")}) END"
+            val expression = when (table) {
+                "kg_collections" -> collectionLayer("kg_collections")
+                "kg_nodes", "kg_edges", "kg_collection_members" -> "COALESCE((SELECT ${collectionLayer("c")} FROM kg_collections c WHERE c.id=$table.collection_id),'WORKSPACE_FILES')"
+                "kg_evidence" -> "CASE WHEN source_type IN ('session','jit') AND session_id IS NOT NULL THEN (${sessionLayer("kg_evidence.session_id")}) WHEN doc_id IS NOT NULL THEN (${fileLayer("kg_evidence.doc_id")}) WHEN session_id IS NOT NULL THEN (${sessionLayer("kg_evidence.session_id")}) ELSE 'KNOWLEDGE' END"
+                else -> "CASE WHEN COALESCE(file_uuid,doc_id) IS NOT NULL THEN (${fileLayer("COALESCE(vectors.file_uuid,vectors.doc_id)")}) ELSE (${sessionLayer("vectors.session_id")}) END"
+            }
+            val allowed = layers.filter { it in setOf(BackupLayer.KNOWLEDGE, BackupLayer.SESSIONS, BackupLayer.WORKSPACE_FILES) }
+            return if (allowed.isEmpty()) " WHERE 0" else " WHERE ($expression) IN (${allowed.joinToString(",") { "'${it.name}'" }})"
+        }
         if (table in BackupLayerPolicy.CORE_TABLES) return if (BackupLayer.CORE in layers) "" else " WHERE 0"
         if (table == "tags" || table == "document_tags") return if (BackupLayer.KNOWLEDGE in layers) "" else " WHERE 0"
         val knowledge = BackupLayer.KNOWLEDGE in layers
@@ -235,7 +256,7 @@ class RoomBackupDataSource(
     private fun readDiskPayload(directory: Path, layers: Set<BackupLayer>? = null): DatabaseBackupPayload {
         val tables = backupTables().associateWith { table ->
             val entries = database.openHelper.writableDatabase.query("SELECT * FROM `$table`" + selectedRowsSql(table, layers)).use { cursor ->
-                BackupDatabaseRows.write(sequence { while (cursor.moveToNext()) yield(cursorRow(cursor)) }, directory, table, BackupLayer.CORE)
+                BackupDatabaseRows.write(sequence { while (cursor.moveToNext()) yield(cursorRow(cursor, table)) }, directory, table, BackupLayer.CORE)
             }
             BackupDatabaseRows.read(entries.map { it.blob })
         }
@@ -327,7 +348,7 @@ class RoomBackupDataSource(
             skills?.allBlobs()?.forEach { (path, blob) -> entries += BackupSourceEntry("skills/$path", BackupLayer.CORE, blob) }
             if (entries.sumOf { it.blob.size } > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("内容超过整包容量", reason = BackupFailureReason.CAPACITY_EXCEEDED)
             return BackupSnapshot(databaseSchemaVersion = DATABASE_SCHEMA_VERSION, appVersion = appVersion, layers = layers,
-                streamEntries = entries, skills = skills, skipped = skipped, ownedDirectory = root)
+                streamEntries = entries, skills = skills, skipped = skipped, ownedDirectory = root, embedding = embeddingMetadata(payload, prefs))
         } catch (error: Throwable) { BackupStreams.deleteTree(root); throw error }
     }
 
@@ -410,6 +431,7 @@ class RoomBackupDataSource(
                 appVersion = appVersion,
                 skills = skillSnapshot,
                 avatars = avatars,
+                embedding = embeddingMetadata(avatarSnapshot.payload, avatarSnapshot.preferences),
             )
         } catch (error: Throwable) {
             files.values.forEach { it.fill(0) }
@@ -439,6 +461,8 @@ class RoomBackupDataSource(
         if (journal.read() != null) throw BackupValidationException("存在未恢复的 restore journal，请先执行 recoverInterruptedRestore")
         validateAvatarPartition(validated)
         val imported = parseValidatedDatabase(validated)
+        if (imported.tables.keys != backupTables().toSet()) throw BackupValidationException("数据库 payload 表清单不完整或包含未知表")
+        validateRowsAgainstRoomSchema(imported)
         val avatarPlan = AvatarBackupFiles.planRestoreBlobs(
             imported, parseValidatedPreferences(validated), validated.avatarBlobs(),
             avatarRoot, validated.manifest.formatVersion >= 3,
@@ -447,8 +471,8 @@ class RoomBackupDataSource(
         val importedPayload = avatarPlan.payload
         val localRoot = if (layerSet != null) Files.createTempDirectory(restoreParent, ".merge-") else null
         try {
-        val local = localRoot?.let { database.withTransaction { readLivePayload() } }
-        val parsedPayload = if (local == null) importedPayload else mergeLayers(importedPayload, local, layerSet!!, validated)
+        val local = localRoot?.let { database.withTransaction { readDiskPayload(it) } }
+        val mergedPayload = if (local == null) importedPayload else mergeLayers(importedPayload, local, layerSet!!, validated)
         val fileBlobs = if (local == null) validated.fileBlobs() else {
             val policy = BackupLayerPolicy.Index(local.tables)
             local.rows(FILE_TABLE).asSequence().filter { policy.layer(FILE_TABLE, it) !in layerSet!! && !it.requiredBoolean("is_directory") }
@@ -456,6 +480,14 @@ class RoomBackupDataSource(
         }
         val importedFileIds = importedPayload.rows(FILE_TABLE).map { it.requiredString("uuid") }.toSet()
         val preferenceSnapshot = avatarPlan.preferences
+        val beforePreferences = preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES)
+        val unchangedEmbeddingSettings = sameEmbeddingSettings(beforePreferences, preferenceSnapshot)
+        val currentEmbeddingSpace = if (unchangedEmbeddingSettings) runCatching(embeddingSpaceKey).getOrNull() else null
+        val parsedPayload = prepareRestoredGraphAndVectors(
+            mergedPayload, importedPayload, layerSet, validated.manifest.databaseSchemaVersion,
+            validated.manifest.embedding, embeddingModelId(preferenceSnapshot), currentEmbeddingSpace,
+            embeddingConfiguredDimension(preferenceSnapshot), unchangedEmbeddingSettings,
+        )
         if (layerSet == null) validatePayload(parsedPayload, fileBlobs)
         validateSecrets(validated.secrets, preferenceSnapshot.providerIds)
         val payload = if (layerSet == null) normalizeBranchSessions(parsedPayload) else parsedPayload
@@ -472,7 +504,6 @@ class RoomBackupDataSource(
         val plannedAvatars = avatarPlan.blobs.takeIf { avatarRoot != null && (layerSet != null || it.isNotEmpty()) }?.let {
             requireAvatarRestore().plan(restoreId)
         }
-        val beforePreferences = preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES)
         preferences.preflightRestore(restoreId, beforePreferences, preferenceSnapshot)
         val eligibleIds = eligibleSecretIds(preferenceSnapshot.providerIds + beforePreferences.providerIds)
         val includeSecretLayer = validated.manifest.containsSecrets
@@ -532,6 +563,9 @@ class RoomBackupDataSource(
                     clearAllRestorableTables()
                     insertPayload(transformed)
                 } else replaceLayers(transformed, local!!, layerSet)
+                val sqlite = database.openHelper.writableDatabase
+                sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
+                sqlite.execSQL("INSERT INTO vectors_fts(vectors_fts) VALUES('rebuild')")
                 record.skills?.let { skillRestore!!.commit(restoreId, it) }
                 record.avatars?.let { requireAvatarRestore().commit(restoreId, it) }
                 preferences.commitPrepared(restoreId)
@@ -636,12 +670,12 @@ class RoomBackupDataSource(
         val sqlite = database.openHelper.writableDatabase
         val budget = MaterializationBudget(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
         val tables = backupTables().associateWith { table ->
-            sqlite.query("SELECT * FROM `$table`" + selectedRowsSql(table, null)).use { cursor -> cursorRows(cursor, budget) }
+            sqlite.query("SELECT * FROM `$table`" + selectedRowsSql(table, null)).use { cursor -> cursorRows(cursor, budget, table) }
         }
         return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables).also(::validateLongTermMemories)
     }
 
-    private fun cursorRows(cursor: Cursor, budget: MaterializationBudget): List<JsonObject> = buildList {
+    private fun cursorRows(cursor: Cursor, budget: MaterializationBudget, table: String): List<JsonObject> = buildList {
         while (cursor.moveToNext()) {
             add(JsonObject(buildMap {
                 cursor.columnNames.forEachIndexed { index, name ->
@@ -650,7 +684,8 @@ class RoomBackupDataSource(
                         Cursor.FIELD_TYPE_INTEGER -> JsonPrimitive(cursor.getLong(index))
                         Cursor.FIELD_TYPE_FLOAT -> JsonPrimitive(cursor.getDouble(index))
                         Cursor.FIELD_TYPE_STRING -> JsonPrimitive(cursor.getString(index))
-                        Cursor.FIELD_TYPE_BLOB -> throw BackupValidationException("用户源表不允许未声明的 BLOB 字段: $name")
+                        Cursor.FIELD_TYPE_BLOB -> if (table == "vectors" && name == "embedding") JsonPrimitive(java.util.Base64.getEncoder().encodeToString(cursor.getBlob(index)))
+                            else throw BackupValidationException("用户源表不允许未声明的 BLOB 字段: $name")
                         else -> throw BackupValidationException("无法备份数据库字段: $name")
                     }
                     budget.consume(name.toByteArray().size.toLong() + value.toString().toByteArray().size + 32L)
@@ -842,8 +877,10 @@ class RoomBackupDataSource(
             return if ("agent_rule_revisions" in backupTables() && "agent_rule_revisions" !in parsed.tables)
                 parsed.copy(tables = parsed.tables + ("agent_rule_revisions" to emptyList())) else parsed
         }
-        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
-        val tableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
+        val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
+        if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
+        val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
         if (validated.manifest.databaseSchemaVersion == 13 && "knowledge_citations" in tableEntries) {
             throw BackupValidationException("v13 备份不应包含引用表")
         }
@@ -852,6 +889,7 @@ class RoomBackupDataSource(
         backupTables().forEach { table -> layers.forEach { layer ->
             if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer } &&
                 !(table == "knowledge_citations" && validated.manifest.databaseSchemaVersion == 13) &&
+                !(table in GRAPH_VECTOR_TABLES && validated.manifest.databaseSchemaVersion < 16) &&
                 !(table == "kg_folder_settings" && validated.manifest.databaseSchemaVersion < 15)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
             }
@@ -904,7 +942,10 @@ class RoomBackupDataSource(
             }
         }
         val tables = backupTables().associateWith { table ->
-            BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { row ->
+            if (table in GRAPH_TABLES) {
+                if (validated.manifest.databaseSchemaVersion >= 16) imported.rows(table) else local.rows(table)
+            }
+            else BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { row ->
                 if (table == "knowledge_citations" && legacyWithoutCitations) {
                     val session = row.optionalString("session_id")
                     session == null || session !in replacedSessions || session in unchangedLegacySessions
@@ -991,7 +1032,9 @@ class RoomBackupDataSource(
         }
         val selected = payload.copy(tables = payload.tables.mapValues { (table, rows) ->
             // 本机引用可能依赖即将被替换的父行，必须在删除前完整读取。
-            if (table == "knowledge_citations") rows.map { it } else BackupDatabaseRows.select(rows) { next.layer(table, it) in layers }
+            if (table == "knowledge_citations") rows.map { it }
+            else if (table in GRAPH_VECTOR_TABLES) rows
+            else BackupDatabaseRows.select(rows) { next.layer(table, it) in layers }
         })
         val retainedSessions = payload.rows("sessions").asSequence().filter { next.layer("sessions", it) !in layers }.map { row ->
             arrayOf<Any?>(row.optionalString("workspace_root_uuid"), row.optionalString("workspace_path"), row.requiredString("id"))
@@ -999,34 +1042,33 @@ class RoomBackupDataSource(
         val retainedArtifacts = payload.rows("artifacts").asSequence().filter { next.layer("artifacts", it) !in layers }.map { row ->
             arrayOf<Any?>(row.optionalString("workspace_path"), row.requiredString("id"))
         }.toList()
-        // 未选层的索引和完成标记共同保留；选中源的向量、证据和版本缓存按稳定ID失效。
+        // 图谱按备份内容整体替换，向量保留未选层；先冻结并清除依赖，再插入合并结果。
+        sqlite.execSQL("DELETE FROM kg_jit_cache_sources")
+        sqlite.execSQL("DELETE FROM kg_jit_cache")
+        listOf("kg_evidence", "kg_edges", "kg_nodes", "kg_collection_members", "kg_collections", "vectors_fts", "vectors").forEach { sqlite.execSQL("DELETE FROM `$it`") }
         val fileIds = deletions.getValue(FILE_TABLE).keys.map { it.single() }.toSet() + selected.rows(FILE_TABLE).map { it.requiredString("uuid") }
         fileIds.forEach { id ->
-            sqlite.execSQL("DELETE FROM vectors WHERE doc_id = ? OR file_uuid = ?", arrayOf<Any?>(id, id))
-            sqlite.execSQL("DELETE FROM kg_jit_cache WHERE cache_key IN (SELECT cache_key FROM kg_jit_cache_sources WHERE doc_id = ?)", arrayOf<Any?>(id))
-            sqlite.execSQL("DELETE FROM kg_evidence WHERE doc_id = ? OR (source_type='jit' AND task_id IN (SELECT task_id FROM kg_evidence WHERE source_type='jit' AND doc_id=?))", arrayOf<Any?>(id, id))
             sqlite.execSQL("DELETE FROM file_versions WHERE file_uuid = ?", arrayOf<Any?>(id))
-            sqlite.execSQL("DELETE FROM kg_collection_members WHERE doc_id = ?", arrayOf<Any?>(id))
         }
-        val sessionIds = deletions.getValue("sessions").keys.map { it.single() }.toSet() + selected.rows("sessions").map { it.requiredString("id") }
-        sessionIds.forEach { id ->
-            sqlite.execSQL("DELETE FROM kg_jit_cache WHERE cache_key IN (SELECT task_id FROM kg_evidence WHERE session_id = ? AND source_type = 'jit')", arrayOf<Any?>(id))
-            sqlite.execSQL("DELETE FROM kg_evidence WHERE session_id = ?", arrayOf<Any?>(id))
-        }
-        deletions.getValue("messages").keys.forEach { id -> sqlite.execSQL("DELETE FROM kg_evidence WHERE message_id = ?", arrayOf<Any?>(id.single())) }
-        sqlite.execSQL("DELETE FROM kg_edges WHERE NOT EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id=kg_edges.id)")
-        sqlite.execSQL("DELETE FROM kg_nodes WHERE NOT EXISTS (SELECT 1 FROM kg_evidence p WHERE p.node_id=kg_nodes.id) AND NOT EXISTS (SELECT 1 FROM kg_edges e WHERE e.source_id=kg_nodes.id OR e.target_id=kg_nodes.id)")
-        sqlite.execSQL("DELETE FROM kg_collections WHERE id!='shared' AND NOT EXISTS (SELECT 1 FROM kg_nodes n WHERE n.collection_id=kg_collections.id) AND NOT EXISTS (SELECT 1 FROM kg_edges e WHERE e.collection_id=kg_collections.id) AND NOT EXISTS (SELECT 1 FROM kg_collection_members m WHERE m.collection_id=kg_collections.id)")
-        sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
         sqlite.execSQL("DELETE FROM mcp_tool_snapshots")
         // 任一父表的分层替换都可能级联引用，先清空并在所有父表恢复后重建合并结果。
         sqlite.execSQL("DELETE FROM knowledge_citations")
-        backupTables().reversed().forEach { table ->
+        backupTables().reversed().filterNot { it in GRAPH_VECTOR_TABLES }.forEach { table ->
             val deletion = deletions.getValue(table)
             val statement = "DELETE FROM `$table` WHERE " + deletion.columns.joinToString(" AND ") { "`$it` = ?" }
             deletion.keys.forEach { sqlite.execSQL(statement, it.toTypedArray()) }
         }
         insertPayload(selected)
+        payload.rows(FILE_TABLE).forEach { row ->
+            sqlite.execSQL("UPDATE workspace_files SET vectorized_at=?,kg_extracted_at=? WHERE uuid=?", arrayOf<Any?>(
+                (row["vectorized_at"] as? JsonPrimitive)?.longOrNull,
+                (row["kg_extracted_at"] as? JsonPrimitive)?.longOrNull,
+                row.requiredString("uuid"),
+            ))
+        }
+        payload.rows("messages").forEach { row ->
+            sqlite.execSQL("UPDATE messages SET vectorization_status=? WHERE id=?", arrayOf<Any?>(row.optionalString("vectorization_status"), row.requiredString("id")))
+        }
         retainedSessions.forEach { sqlite.execSQL("UPDATE sessions SET workspace_root_uuid = ?, workspace_path = ? WHERE id = ?", it) }
         retainedArtifacts.forEach { sqlite.execSQL("UPDATE artifacts SET workspace_path = ? WHERE id = ?", it) }
     }
@@ -1047,7 +1089,7 @@ class RoomBackupDataSource(
         }
         val upgraded = when (decoded.schemaVersion) {
             DATABASE_SCHEMA_VERSION -> return filterFolderSettings(decoded)
-            14 -> decoded
+            14, 15 -> decoded
             13 -> {
                 if ("knowledge_citations" in decoded.tables) throw BackupValidationException("v13 备份不应包含引用表")
                 decoded.copy(tables = decoded.tables + ("knowledge_citations" to emptyList()))
@@ -1073,7 +1115,8 @@ class RoomBackupDataSource(
             ))))
         } else upgraded
         val messages = current.tables["messages"] ?: throw BackupValidationException("数据库 payload 缺少表: messages")
-        return filterFolderSettings(current.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = current.tables +
+        val legacyTables = current.tables - GRAPH_VECTOR_TABLES
+        return filterFolderSettings(current.copy(schemaVersion = DATABASE_SCHEMA_VERSION, tables = legacyTables + GRAPH_VECTOR_TABLES.associateWith { emptyList() } +
             ("knowledge_citations" to current.tables["knowledge_citations"].orEmpty()) +
             ("kg_folder_settings" to current.tables["kg_folder_settings"].orEmpty()) +
             ("messages" to messages.map { row -> JsonObject(mapOf("quotes" to JsonNull, "turn_context" to JsonNull, "request_instruction" to JsonNull) + row) })))
@@ -1545,6 +1588,8 @@ class RoomBackupDataSource(
                 primitive.isString
             column.affinity.contains("REAL") || column.affinity.contains("FLOA") || column.affinity.contains("DOUB") ->
                 !primitive.isString && primitive.doubleOrNull != null
+            column.affinity.contains("BLOB") && table == "vectors" && column.name == "embedding" ->
+                primitive.isString && runCatching { java.util.Base64.getDecoder().decode(primitive.content) }.isSuccess
             column.affinity.contains("BLOB") || column.affinity.isBlank() -> false
             else -> !primitive.isString && primitive.doubleOrNull != null
         }
@@ -1588,8 +1633,6 @@ class RoomBackupDataSource(
             val token = rootTokens[logicalRoot(row)] ?: return@map row
             val rewritten = row + mapOf(
                     "physical_root_path" to JsonPrimitive(finalRoot.resolve(token).toString()),
-                    "vectorized_at" to JsonNull,
-                    "kg_extracted_at" to JsonNull,
                 )
             JsonObject(
                 if (row.requiredString("uuid") == row.requiredString("workspace_root_uuid") &&
@@ -1597,9 +1640,6 @@ class RoomBackupDataSource(
                 ) rewritten + ("hash" to JsonPrimitive(rootIdentities.getValue(logicalRoot(row))))
                 else rewritten
             )
-        }
-        transformedTables["messages"] = BackupDatabaseRows.map(payload.rows("messages")) { row ->
-            JsonObject(row + ("vectorization_status" to JsonNull))
         }
         val targetRoots = transformedTables.getValue(FILE_TABLE).filter { it.requiredString("uuid") == it.requiredString("workspace_root_uuid") }
             .associate { it.requiredString("uuid") to Paths.get(it.requiredString("physical_root_path")) }
@@ -1718,8 +1758,6 @@ class RoomBackupDataSource(
     private fun clearAllRestorableTables() {
         val sqlite = database.openHelper.writableDatabase
         (DERIVED_DELETE_ORDER + backupTables().reversed()).forEach { sqlite.execSQL("DELETE FROM `$it`") }
-        sqlite.execSQL("DELETE FROM kg_collections WHERE id!='shared'")
-        sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
     }
 
     private fun insertPayload(payload: DatabaseBackupPayload) {
@@ -1736,6 +1774,7 @@ class RoomBackupDataSource(
                     when (value) {
                         JsonNull -> values.putNull(column)
                         is JsonPrimitive -> when {
+                            value.isString && table == "vectors" && column == "embedding" -> values.put(column, java.util.Base64.getDecoder().decode(value.content))
                             value.isString -> values.put(column, value.content)
                             value.booleanOrNull != null -> values.put(column, if (value.booleanOrNull == true) 1L else 0L)
                             value.content.contains('.') || value.content.contains('e', true) ->
@@ -1882,7 +1921,7 @@ class RoomBackupDataSource(
     private fun currentOldRootIdentity(layers: Set<BackupLayer>? = null): String {
         if (layers != null && BackupLayer.KNOWLEDGE !in layers && BackupLayer.WORKSPACE_FILES !in layers) return ""
         val budget = MaterializationBudget(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
-        val rows = database.openHelper.writableDatabase.query("SELECT * FROM `$FILE_TABLE`").use { cursorRows(it, budget) }
+        val rows = database.openHelper.writableDatabase.query("SELECT * FROM `$FILE_TABLE`").use { cursorRows(it, budget, FILE_TABLE) }
         val knowledgeRoots = database.openHelper.writableDatabase.query("SELECT workspace_root_uuid FROM sessions WHERE agent_id = '__system__'")
             .use { cursor -> buildSet { while (cursor.moveToNext()) if (!cursor.isNull(0)) add(cursor.getString(0)) } }
         fun selected(row: JsonObject) = layers == null ||
@@ -2320,7 +2359,8 @@ class RoomBackupDataSource(
         const val MAX_COMPLETED_RECEIPTS = 64
         val OPERATION_ID = Regex("[A-Za-z0-9-]{1,64}")
 
-        // 用户源数据。明确排除 vectors/FTS/KG/JIT/vectorization_tasks/audit_logs/
+        // 可移植数据包含向量与图谱；全文索引和即时抽取缓存仍由本地重建或失效。
+        // 明确排除 FTS/JIT/vectorization_tasks/audit_logs/
         // tool_execution_ledger/file_versions，它们均为可重建派生数据、运行态账本或版本缓存。
         // external_mounts/external_snapshots 依赖本机目录授权，不进入可移植备份。
         // workspaces 只是目录登记：恢复后目录不存在时由使用方显示不可用，不随备份携带目录内容。
@@ -2343,6 +2383,12 @@ class RoomBackupDataSource(
             PARAMETER_SCHEME_TABLE,
             FILE_TABLE,
             "kg_folder_settings",
+            "kg_collections",
+            "kg_nodes",
+            "kg_edges",
+            "kg_evidence",
+            "kg_collection_members",
+            "vectors",
             "workspace_seq",
             "knowledge_citations",
         )
@@ -2350,7 +2396,9 @@ class RoomBackupDataSource(
         val DERIVED_DELETE_ORDER = listOf(
             "memory_embedding_cache", "external_snapshots",
             "mcp_tool_snapshots", "workspace_mutations", "tool_execution_ledger", "file_versions", "vectorization_tasks",
-            "kg_evidence", "kg_jit_cache_sources", "kg_edges", "kg_nodes", "kg_jit_cache", "kg_collection_members", "vectors_fts", "vectors", "audit_logs",
+            "kg_jit_cache_sources", "kg_jit_cache", "vectors_fts", "audit_logs",
         )
+        val GRAPH_TABLES = setOf("kg_collections", "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members")
+        val GRAPH_VECTOR_TABLES = GRAPH_TABLES + "vectors"
     }
 }

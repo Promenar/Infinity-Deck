@@ -55,7 +55,7 @@ internal class StreamingBackupCodec(private val crypto: BackupCrypto) {
                     BackupLayerStats(subset.size, subset.sumOf { it.sizeBytes })
                 }
                 val manifest = BackupManifest(3, snapshot.databaseSchemaVersion, snapshot.appVersion, snapshot.createdAt,
-                    entries, encrypted, options.includeSecrets, kdf, snapshot.skills?.metadata, stats, snapshot.skipped)
+                    entries, encrypted, options.includeSecrets, kdf, snapshot.skills?.metadata, stats, snapshot.skipped, snapshot.embedding)
                 val bytes = json.encodeToString(manifest).toByteArray()
                 try {
                     if (bytes.size > BackupPackageLimits.MAX_MANIFEST_BYTES) capacity()

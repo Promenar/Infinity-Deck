@@ -154,7 +154,7 @@ class RoomConversationMemoryLifecycle(
     } }
 
     override suspend fun turnChunkCount(sessionId: String, assistantMessageId: String): Int = mutex.withLock { withContext(Dispatchers.IO) {
-        databaseProvider().vectorDao().getMemoryByAssistantMessage(sessionId, assistantMessageId).size
+        databaseProvider().vectorDao().getMemoryByAssistantMessage(sessionId, assistantMessageId).count { !it.stale }
     } }
 
     /** 编辑后重写的结果：写入失败为 null，记为失败以便重试；正文为空等无可写内容时为移除。 */

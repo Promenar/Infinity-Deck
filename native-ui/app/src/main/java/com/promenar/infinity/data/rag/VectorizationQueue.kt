@@ -589,7 +589,7 @@ class VectorizationQueue(
         notifyStateChange()
 
         InfinityLogger.log("[VectorQueue] Memory embedding: ${chunks.size} chunks")
-        val embeddingResult = embeddingClient.embedDocuments(chunks)
+        val (embeddingResult, embeddingSpace) = embeddingClient.embedDocumentsForIndex(chunks)
 
         task.status = "saving"
         task.progress = 80.0
@@ -601,7 +601,7 @@ class VectorizationQueue(
                 sessionId = sessionId,
                 content = chunk,
                 embedding = embeddingResult.embeddings[i],
-                metadata = """{"type":"memory","chunkIndex":$i}""",
+                metadata = withVectorSpaceMetadata("""{"type":"memory","chunkIndex":$i}""", embeddingSpace),
                 startMessageId = task.userMessageId,
                 endMessageId = task.assistantMessageId
             )
@@ -775,7 +775,7 @@ class VectorizationQueue(
             notifyStateChange()
 
             InfinityLogger.log("[VectorQueue] Document embedding: ${chunks.size} chunks for doc=$docTitle")
-            val embeddingResult = embeddingClient.embedDocuments(chunks)
+            val (embeddingResult, embeddingSpace) = embeddingClient.embedDocumentsForIndex(chunks)
 
             task.status = "saving"
             task.progress = 70.0
@@ -789,7 +789,7 @@ class VectorizationQueue(
                     sessionId = null,
                     content = chunk,
                     embedding = embeddingResult.embeddings[i],
-                    metadata = documentVectorMetadata(docId, i, docTitle),
+                    metadata = withVectorSpaceMetadata(documentVectorMetadata(docId, i, docTitle), embeddingSpace),
                     startMessageId = docId,
                     endMessageId = docId
                 )

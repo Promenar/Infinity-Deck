@@ -217,14 +217,15 @@ class RoomSessionStateProcessor(
             result.event?.let { add("event" to (it to "{\"type\":\"summary\",\"kind\":\"event\"}")) }
             result.states.forEach { add(it.key to (it.content to it.metadata())) }
         }
-        val embeddings = if (records.isEmpty()) emptyList() else embeddingClient().embedDocuments(records.map { it.second.first }).embeddings
+        val embedded = if (records.isEmpty()) null else embeddingClient().embedDocumentsForIndex(records.map { it.second.first })
+        val embeddings = embedded?.first?.embeddings.orEmpty()
         check(embeddings.size == records.size && embeddings.all { it.isNotEmpty() && it.all(Float::isFinite) }) { "状态记忆嵌入结果无效" }
         val rows = records.mapIndexed { index, (key, record) ->
             val embedding = embeddings[index]
             val blob = ByteBuffer.allocate(embedding.size * 4).apply { asFloatBuffer().put(embedding) }.array()
             VectorEntity(
                 id = "session-state-" + UUID.nameUUIDFromBytes("$assistantId\u001f$key".toByteArray(Charsets.UTF_8)),
-                sessionId = sessionId, content = record.first, embedding = blob, metadata = record.second,
+                sessionId = sessionId, content = record.first, embedding = blob, metadata = withVectorSpaceMetadata(record.second, embedded?.second),
                 startMessageId = turn.user.id, endMessageId = assistantId, createdAt = turn.user.createdAt,
             )
         }

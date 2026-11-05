@@ -203,7 +203,7 @@ class WorkspaceDocumentIndexCandidateBuilder(
                     docId = event.fileUuid,
                     content = content,
                     embedding = embedding[index].toBlob(),
-                    metadata = documentVectorMetadata(event.fileUuid, index, entry.name, event.contentHash),
+                    metadata = withVectorSpaceMetadata(documentVectorMetadata(event.fileUuid, index, entry.name, event.contentHash), embeddingIdentity?.modelKey),
                     startMessageId = event.fileUuid,
                     endMessageId = event.fileUuid,
                     createdAt = timestamp,

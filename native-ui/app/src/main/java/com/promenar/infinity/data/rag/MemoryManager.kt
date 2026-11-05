@@ -251,6 +251,7 @@ class MemoryManager(
                         limit = effectiveConfig.rerankTopK,
                         memory = scope.memory.takeIf { canSearchMemory },
                         documents = documentReach.takeIf { canSearchDocs },
+                        expectedDimension = queryEmbeddings.first().second.size,
                     )
                 }
                 val fused = rrfFusion(results, keywordResults, effectiveConfig)
@@ -428,7 +429,7 @@ class MemoryManager(
         limit: Int,
     ): ResolvedDocumentSearch {
         val vector = vectorStore.searchDocuments(queryEmbedding, reach, limit, ragConfig.docThreshold)
-        val keywords = keywordSearcher.searchScoped(query, limit, null, reach)
+        val keywords = keywordSearcher.searchScoped(query, limit, null, reach, queryEmbedding.size)
         return ResolvedDocumentSearch(vector, keywords, rrfFusion(vector, keywords, ragConfig))
     }
 
@@ -473,7 +474,7 @@ class MemoryManager(
         }
 
         InfinityLogger.log("[MemoryManager] addTurnToMemory: chunking=${chunks.size} chunks, session=$sessionId, chunkSize=${ragConfig.memoryChunkSize}")
-        val embeddingResult = embeddingClient.embedDocuments(chunks)
+        val (embeddingResult, embeddingSpace) = embeddingClient.embedDocumentsForIndex(chunks)
         InfinityLogger.log("[MemoryManager] addTurnToMemory: embedding done, dim=${embeddingResult.embeddings.firstOrNull()?.size}, chunks=${chunks.size}")
 
         val vectors = chunks.mapIndexed { i, chunk ->
@@ -481,7 +482,7 @@ class MemoryManager(
                 sessionId = sessionId,
                 content = chunk,
                 embedding = embeddingResult.embeddings[i],
-                metadata = """{"type":"memory","chunkIndex":$i}""",
+                metadata = withVectorSpaceMetadata("""{"type":"memory","chunkIndex":$i}""", embeddingSpace),
                 startMessageId = userMessageId,
                 endMessageId = assistantMessageId
             )

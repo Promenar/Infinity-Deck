@@ -288,6 +288,7 @@ class BackupRepository internal constructor(
                 journalAuthenticator = AndroidRestoreJournalAuthenticator(),
                 userSkillsRoot = app.filesDir.resolve("agent_skills").toPath(),
                 avatarRoot = app.filesDir.resolve("avatars").toPath(),
+                embeddingSpaceKey = { app.embeddingClient.vectorSpaceKey() },
             )
         }
     }

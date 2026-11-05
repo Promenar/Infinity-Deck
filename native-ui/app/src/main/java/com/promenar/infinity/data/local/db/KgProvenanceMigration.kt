@@ -32,6 +32,15 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
         db.execSQL("CREATE INDEX index_kg_jit_cache_sources_doc_id ON kg_jit_cache_sources(doc_id)")
         // 历史缓存没有可核验的配置与文档依赖，作为派生缓存失效，不影响旧图证据。
         db.execSQL("DELETE FROM kg_jit_cache")
+        // 后续升级需要在按证据分图时恢复 v18 每个实体的原始 metadata。
+        // TEMP 表只存在于这次 Room 升级连接，不改变任何历史版本的持久 schema。
+        db.execSQL("CREATE TEMP TABLE kg_v18_node_metadata (old_id TEXT NOT NULL PRIMARY KEY, mapped_id TEXT NOT NULL, metadata TEXT)")
+        db.execSQL("CREATE INDEX kg_v18_node_metadata_mapped ON kg_v18_node_metadata(mapped_id)")
+        db.execSQL("CREATE TEMP TABLE kg_v18_edge_nodes (old_id TEXT NOT NULL PRIMARY KEY, source_old_id TEXT NOT NULL, target_old_id TEXT NOT NULL)")
+        db.execSQL("INSERT INTO kg_v18_edge_nodes SELECT id,source_id,target_id FROM kg_edges_v18")
+        db.execSQL("CREATE TEMP TABLE kg_v18_attached_nodes (old_id TEXT NOT NULL PRIMARY KEY)")
+        db.execSQL("INSERT OR IGNORE INTO kg_v18_attached_nodes SELECT source_old_id FROM kg_v18_edge_nodes")
+        db.execSQL("INSERT OR IGNORE INTO kg_v18_attached_nodes SELECT target_old_id FROM kg_v18_edge_nodes")
         db.execSQL("CREATE TABLE kg_migration_node_map (old_id TEXT NOT NULL PRIMARY KEY, new_id TEXT NOT NULL)")
         migrateNodes(db)
         migrateEdges(db)
@@ -63,9 +72,12 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
                 db.execSQL("UPDATE kg_nodes SET metadata=? WHERE id=?", arrayOf(merged, mapped))
             }
             db.execSQL("INSERT INTO kg_migration_node_map(old_id,new_id) VALUES(?,?)", arrayOf(id, mapped))
+            db.execSQL("INSERT INTO kg_v18_node_metadata(old_id,mapped_id,metadata) VALUES(?,?,?)", arrayOf<Any?>(id, mapped, cursor.text("metadata")))
             val doc = cursor.text("file_uuid")
             val session = cursor.text("session_id")
-            if (doc != null || session != null) addEvidence(db, mapped, null, doc, session, cursor.text("source_type"), "node:$id", created)
+            val unattached = doc == null && session == null &&
+                db.query("SELECT 1 FROM kg_v18_attached_nodes WHERE old_id=?", arrayOf(id)).use { !it.moveToFirst() }
+            if (doc != null || session != null || unattached) addEvidence(db, mapped, null, doc, session, cursor.text("source_type"), "node:$id", created)
         }
     }
 

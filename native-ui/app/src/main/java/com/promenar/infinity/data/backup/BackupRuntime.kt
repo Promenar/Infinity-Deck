@@ -156,6 +156,7 @@ class BackupRuntime internal constructor(
                     journalAuthenticator = AndroidRestoreJournalAuthenticator(),
                     userSkillsRoot = userSkillsRoot,
                     avatarRoot = appContext.filesDir.resolve("avatars").toPath(),
+                    embeddingSpaceKey = { (appContext as? com.promenar.infinity.InfinityApplication)?.embeddingClient?.vectorSpaceKey() },
                 )
             return BackupRuntime(
                 dataSource = dataSource,

@@ -67,6 +67,15 @@ class ConversationMemoryLifecycleTest {
     }
 
     @Test
+    fun `模型不兼容的恢复向量不计入可用片段也不会被撤销操作复活`() = runTest {
+        seedTurn()
+        database.openHelper.writableDatabase.execSQL("UPDATE vectors SET stale=2 WHERE id='mem'")
+        assertThat(lifecycle.turnChunkCount("s1", "a1")).isEqualTo(0)
+        assertThat(database.vectorDao().reviveRestoredMemory()).isEqualTo(0)
+        assertThat(database.vectorDao().searchFts("needle")).isEmpty()
+    }
+
+    @Test
     fun `删除回复后该轮记忆在向量与关键词检索中都不可见，恢复后重新可见`() = runTest {
         seedTurn()
         val dao = database.vectorDao()

@@ -41,7 +41,7 @@ class ImageService(
             val description = describeImageInternal(base64, language)
 
             val chunks = textSplitter.splitText(description)
-            val embeddings = embeddingClient.embedDocuments(chunks)
+            val (embeddings, embeddingSpace) = embeddingClient.embedDocumentsForIndex(chunks)
 
             val vectors = chunks.zip(embeddings.embeddings).map { (chunk, embedding) ->
                 VectorStore.NewVectorRecord(
@@ -49,7 +49,7 @@ class ImageService(
                     sessionId = metadata.sessionId,
                     content = chunk,
                     embedding = embedding,
-                    metadata = "type=image&mime=${metadata.mimeType}${metadata.title?.let { "&title=$it" } ?: ""}"
+                    metadata = withVectorSpaceMetadata("type=image&mime=${metadata.mimeType}${metadata.title?.let { "&title=$it" } ?: ""}", embeddingSpace)
                 )
             }
             vectorStore.addVectorRecords(vectors)
@@ -69,7 +69,7 @@ class ImageService(
             val description = describeImageInternal(base64Image, language)
 
             val chunks = textSplitter.splitText(description)
-            val embeddings = embeddingClient.embedDocuments(chunks)
+            val (embeddings, embeddingSpace) = embeddingClient.embedDocumentsForIndex(chunks)
 
             val vectors = chunks.zip(embeddings.embeddings).map { (chunk, embedding) ->
                 VectorStore.NewVectorRecord(
@@ -77,7 +77,7 @@ class ImageService(
                     sessionId = metadata.sessionId,
                     content = chunk,
                     embedding = embedding,
-                    metadata = "type=image&mime=${metadata.mimeType}${metadata.title?.let { "&title=$it" } ?: ""}"
+                    metadata = withVectorSpaceMetadata("type=image&mime=${metadata.mimeType}${metadata.title?.let { "&title=$it" } ?: ""}", embeddingSpace)
                 )
             }
             vectorStore.addVectorRecords(vectors)

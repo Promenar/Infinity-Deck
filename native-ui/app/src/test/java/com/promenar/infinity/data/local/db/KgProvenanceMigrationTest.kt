@@ -22,8 +22,8 @@ class KgProvenanceMigrationTest {
         val name = "kg-migration-${System.nanoTime()}.db"
         createV18(context, name).use { old ->
             old.execSQL("INSERT INTO kg_nodes(id,name,type,session_id,source_type,created_at,stale) VALUES('a1',' Ａlice ','PERSON','s1','full',1,0),('a2','alice','person','s2','full',2,0),('b','Bob','person',NULL,'full',1,0),('unknown','Unknown','concept',NULL,'full',1,0)")
-            old.execSQL("UPDATE kg_nodes SET metadata=? WHERE id='a1'", arrayOf("""{"first":"value-a"}"""))
-            old.execSQL("UPDATE kg_nodes SET metadata=? WHERE id='a2'", arrayOf("""{"second":"value-b"}"""))
+            old.execSQL("UPDATE kg_nodes SET metadata=? WHERE id='a1'", arrayOf("""{"first":"value-a","title":"来源一"}"""))
+            old.execSQL("UPDATE kg_nodes SET metadata=? WHERE id='a2'", arrayOf("""{"second":"value-b","title":"来源二"}"""))
             old.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,doc_id,session_id,source_type,created_at,stale) VALUES('e1','a1','b','knows',0.5,'external-doc',NULL,'full',1,0),('e2','a2','b',' KNOWS ',0.9,NULL,'s2','jit',2,0)")
         }
         val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
@@ -32,15 +32,15 @@ class KgProvenanceMigrationTest {
             val sqlite = db.openHelper.writableDatabase
             assertThat(count(db, "kg_nodes")).isEqualTo(6)
             assertThat(count(db, "kg_edges")).isEqualTo(2)
-            sqlite.query("SELECT metadata FROM kg_nodes WHERE normalized_name='alice'").use {
-                var copies = 0
-                while (it.moveToNext()) {
-                    val metadata = Json.parseToJsonElement(it.getString(0)).jsonObject
-                    assertThat(metadata["first"]?.jsonPrimitive?.content).isEqualTo("value-a")
-                    assertThat(metadata["second"]?.jsonPrimitive?.content).isEqualTo("value-b")
-                    copies++
-                }
-                assertThat(copies).isEqualTo(3)
+            sqlite.query("SELECT collection_id,metadata FROM kg_nodes WHERE normalized_name='alice'").use {
+                val metadata = mutableMapOf<String, kotlinx.serialization.json.JsonObject>()
+                while (it.moveToNext()) metadata[it.getString(0)] = Json.parseToJsonElement(it.getString(1)).jsonObject
+                assertThat(metadata.keys).containsExactly("session:s1", "session:s2", "work:external-doc")
+                assertThat(metadata.getValue("session:s1")["title"]?.jsonPrimitive?.content).isEqualTo("来源一")
+                assertThat(metadata.getValue("work:external-doc")["title"]?.jsonPrimitive?.content).isEqualTo("来源一")
+                assertThat(metadata.getValue("session:s2")["title"]?.jsonPrimitive?.content).isEqualTo("来源二")
+                assertThat(metadata.getValue("session:s1").containsKey("second")).isFalse()
+                assertThat(metadata.getValue("session:s2").containsKey("first")).isFalse()
             }
             sqlite.query("SELECT collection_id,weight FROM kg_edges ORDER BY collection_id").use {
                 check(it.moveToFirst()); assertThat(it.getString(0)).isEqualTo("session:s2"); assertThat(it.getDouble(1)).isEqualTo(0.9)
@@ -62,6 +62,22 @@ class KgProvenanceMigrationTest {
             assertThat(count(db, "kg_edges")).isEqualTo(0)
             assertThat(db.kgNodeDao().getById("unknown")).isNotNull()
             sqlite.query("PRAGMA foreign_key_check").use { assertThat(it.moveToFirst()).isFalse() }
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
+    @Test fun `v18同名无来源实体仍在通用图谱保留各自来源数据`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "kg-migration-unattributed-${System.nanoTime()}.db"
+        createV18(context, name).use { old ->
+            old.execSQL("INSERT INTO kg_nodes(id,name,type,session_id,metadata,source_type,created_at,stale) VALUES('a','同名','person','s1','{\"owner\":\"会话\"}','full',1,0),('b','同名','person',NULL,'{\"owner\":\"无来源\"}','full',2,0)")
+        }
+        val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
+            .addMigrations(*INFINITY_DATABASE_MIGRATIONS).allowMainThreadQueries().build()
+        try {
+            val rows = db.openHelper.readableDatabase.query("SELECT collection_id,metadata FROM kg_nodes WHERE normalized_name='同名'").use { cursor ->
+                buildMap { while (cursor.moveToNext()) put(cursor.getString(0), Json.parseToJsonElement(cursor.getString(1)).jsonObject["owner"]?.jsonPrimitive?.content) }
+            }
+            assertThat(rows).containsExactly("session:s1", "会话", "shared", "无来源")
         } finally { db.close(); context.deleteDatabase(name) }
     }
 

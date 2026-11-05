@@ -89,6 +89,162 @@ import kotlinx.serialization.json.jsonPrimitive
 @Config(sdk = [33])
 class RoomBackupDataSourceTest {
     @Test
+    fun `完整备份保留图谱来源向量字节全文索引和完成标记`() = runBlocking {
+        seedCompleteGraph()
+        val sqlite = db.openHelper.writableDatabase
+        preferences.snapshot = preferences.snapshot.copy(entries = preferences.snapshot.entries +
+            BackupPreferenceEntry("settings", "preset_embedding_model", "model-fixture"))
+        sqlite.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:file-1','work','文档','file-1',100)")
+        sqlite.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('file-1','work:file-1')")
+        sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('n1','甲','person','甲',100,'work:file-1'),('n2','乙','person','乙',100,'work:file-1')")
+        sqlite.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at,collection_id) VALUES('e1','n1','n2','认识',0.8,'认识',100,'work:file-1')")
+        sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('p1','n1','document','file-1','','doc-task',100,1),('p2','n2','document','file-1','','doc-task',100,1)")
+        sqlite.execSQL("INSERT INTO kg_evidence(id,edge_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('p3','e1','document','file-1','','doc-task',100,1)")
+        val embedding = byteArrayOf(0, 0, 0, 1, 2, 3, 4, 5)
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES(?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v1", "file-1", "file-1", "restorable keyword", embedding, "{\"type\":\"document\",\"embeddingSpaceKey\":\"fixture-space\"}", 100L))
+        sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,metadata,start_message_id,end_message_id,created_at,stale,version) VALUES(?,?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v2", "session-1", "memory keyword", embedding, "{\"type\":\"memory\",\"embeddingSpaceKey\":\"fixture-space\"}", "message-1", "message-1", 100L))
+        val source = newDataSource()
+        val snapshot = source.snapshot(CANONICAL_CONTENT)
+        assertThat(snapshot.embedding?.modelId).isEqualTo("model-fixture")
+        assertThat(snapshot.embedding?.dimension).isEqualTo(2)
+        db.clearAllTables()
+        source.restore(validated(snapshot))
+        assertThat(rowCount("kg_nodes")).isEqualTo(2)
+        assertThat(rowCount("kg_edges")).isEqualTo(1)
+        sqlite.query("SELECT id FROM kg_evidence ORDER BY id").use { cursor ->
+            val ids = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+            assertThat(ids).containsExactly("p1", "p2", "p3")
+        }
+        sqlite.query("SELECT embedding FROM vectors WHERE id='v1'").use { cursor ->
+            assertThat(cursor.moveToFirst()).isTrue()
+            assertThat(cursor.getBlob(0)).isEqualTo(embedding)
+        }
+        assertThat(rowCount("vectors")).isEqualTo(2)
+        sqlite.query("SELECT COUNT(*) FROM vectors_fts WHERE vectors_fts MATCH 'keyword'").use { cursor ->
+            check(cursor.moveToFirst()); assertThat(cursor.getInt(0)).isEqualTo(2)
+        }
+        assertThat(db.fileEntryDao().getByUuid("root-1", "file-1")!!.vectorizedAt).isEqualTo(100L)
+        assertThat(db.fileEntryDao().getByUuid("root-1", "file-1")!!.kgExtractedAt).isEqualTo(100L)
+        assertThat(db.messageDao().getById("message-1")!!.vectorizationStatus).isEqualTo("completed")
+        val events = mutableListOf<com.promenar.infinity.data.rag.FileIndexEvent>()
+        val file = db.fileEntryDao().getByUuid("root-1", "file-1")!!
+        val fileOperations = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao(), TestWorkspaceFileOps(),
+            indexEventSink = com.promenar.infinity.data.rag.FileIndexEventSink { events += it })
+        assertThat(fileOperations.writeFileAtomic("root-1", "file-1", "complete-graph", "session-1", file.hash)).isInstanceOf(WriteResult.Success::class.java)
+        assertThat(events).isEmpty()
+        snapshot.wipe()
+    }
+
+    @Test
+    fun `仅恢复知识层丢弃会话来源证据和向量并回收孤立实体`() = runBlocking {
+        seedCompleteGraph()
+        val knowledgeRoot = Files.createDirectory(sourceBase.resolve("knowledge-root"))
+        val bytes = "knowledge contents".toByteArray()
+        Files.write(knowledgeRoot.resolve("note.txt"), bytes)
+        db.sessionDao().insert(SessionEntity("knowledge-session", BackupLayerPolicy.KNOWLEDGE_AGENT,
+            workspacePath = knowledgeRoot.toString(), workspaceRootUuid = "knowledge-root", createdAt = 100, updatedAt = 100))
+        db.fileEntryDao().insert(FileEntry(uuid = "knowledge-root", workspaceRootUuid = "knowledge-root", parentUuid = null, name = "资料库",
+            hash = "", isDirectory = true, physicalRootPath = knowledgeRoot.toString(), materializedPath = "/", createdAt = 100, updatedAt = 100))
+        db.fileEntryDao().insert(FileEntry(uuid = "knowledge-file", workspaceRootUuid = "knowledge-root", parentUuid = "knowledge-root", name = "note.txt",
+            hash = sha256(bytes), sizeBytes = bytes.size.toLong(), physicalRootPath = knowledgeRoot.toString(), materializedPath = "/note.txt", vectorizedAt = 100, kgExtractedAt = 100, createdAt = 100, updatedAt = 100))
+        preferences.snapshot = preferences.snapshot.copy(entries = preferences.snapshot.entries + BackupPreferenceEntry("settings", "preset_embedding_model", "model-fixture"))
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("INSERT INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('work:knowledge-file','work','资料','knowledge-file',100)")
+        sqlite.execSQL("INSERT INTO kg_collection_members(doc_id,collection_id) VALUES('knowledge-file','work:knowledge-file')")
+        sqlite.execSQL("INSERT INTO kg_nodes(id,name,type,normalized_name,created_at,collection_id) VALUES('doc-node','文档','concept','文档',100,'work:knowledge-file'),('session-node','会话','concept','会话',100,'work:knowledge-file')")
+        sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('doc-proof','doc-node','document','knowledge-file','','doc-task',100,1)")
+        sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,session_id,message_id,content_hash,task_id,created_at,workspace_document) VALUES('session-proof','session-node','session','session-1','message-1','','turn-task',100,0)")
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES('doc-vector','knowledge-file','knowledge-file','keyword',X'00000001',?,100,0,1)", arrayOf("{\"type\":\"document\",\"embeddingSpaceKey\":\"fixture-space\"}"))
+        sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,created_at,stale,version) VALUES('memory-vector','session-1','memory',X'00000001',100,0,1)")
+        val cache = Files.createTempDirectory(sourceBase, "knowledge-graph-backup")
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.KNOWLEDGE), cache)
+            val file = cache.resolve("knowledge.iwb")
+            try { Files.newOutputStream(file).use { DefaultBackupPackageCodec().encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+            finally { snapshot.wipe() }
+            db.clearAllTables()
+            Files.newInputStream(file).use { DefaultBackupPackageCodec().decodeFrom(it, null, cache).use { backup -> source.restore(backup) } }
+            sqlite.query("SELECT id FROM kg_nodes").use { cursor ->
+                val ids = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                assertThat(ids).containsExactly("doc-node")
+            }
+            sqlite.query("SELECT id FROM kg_evidence").use { cursor ->
+                val ids = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                assertThat(ids).containsExactly("doc-proof")
+            }
+            sqlite.query("SELECT id FROM vectors").use { cursor ->
+                val ids = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                assertThat(ids).containsExactly("doc-vector")
+            }
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
+    @Test
+    fun `嵌入模型不一致时恢复向量不参与检索并清除完成标记`() = runBlocking {
+        seedCompleteGraph()
+        preferences.snapshot = preferences.snapshot.copy(entries = preferences.snapshot.entries + BackupPreferenceEntry("settings", "preset_embedding_model", "model-a"))
+        val sqlite = db.openHelper.writableDatabase
+        sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES('v1','file-1','file-1','keyword',X'00000001',?,100,0,1)", arrayOf("{\"type\":\"document\",\"embeddingSpaceKey\":\"fixture-space\"}"))
+        sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,metadata,start_message_id,end_message_id,created_at,stale,version) VALUES('v2','session-1','memory',X'00000001',?,'message-1','message-1',100,0,1)", arrayOf("{\"type\":\"memory\",\"embeddingSpaceKey\":\"fixture-space\"}"))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val backup = validated(snapshot)
+        val mismatched = ValidatedBackup(backup.manifest.copy(embedding = snapshot.embedding!!.copy(modelId = "model-b")),
+            backup.database, backup.preferences, backup.files, backup.secrets)
+        db.clearAllTables()
+        newDataSource().restore(mismatched)
+        assertThat(db.vectorDao().getByDocId("file-1")).isEmpty()
+        assertThat(db.fileEntryDao().getByUuid("root-1", "file-1")!!.vectorizedAt).isNull()
+        assertThat(db.vectorDao().reviveRestoredMemory()).isEqualTo(0)
+        assertThat(db.vectorDao().getBySessionId("session-1")).isEmpty()
+        sqlite.query("SELECT stale,hex(embedding) FROM vectors WHERE id='v2'").use {
+            check(it.moveToFirst()); assertThat(it.getInt(0)).isEqualTo(2); assertThat(it.getString(1)).isEqualTo("00000001")
+        }
+        snapshot.wipe()
+    }
+
+    @Test
+    fun `备份校验接受图谱向量表并拒绝未知表`() = runBlocking {
+        seedCompleteGraph()
+        val source = newDataSource()
+        val snapshot = source.snapshot(CANONICAL_CONTENT)
+        source.validateStaged(validated(snapshot))
+        val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val tables = payload.getValue("tables").jsonObject
+        val altered = JsonObject(payload + ("tables" to JsonObject(tables + ("unknown_table" to JsonArray(emptyList())))))
+        assertThat(runCatching { source.validateStaged(validated(snapshot, database = altered.toString().toByteArray())) }.exceptionOrNull())
+            .isInstanceOf(BackupValidationException::class.java)
+        val missing = JsonObject(payload + ("tables" to JsonObject(tables - "kg_nodes")))
+        assertThat(runCatching { source.restore(validated(snapshot, database = missing.toString().toByteArray())) }.exceptionOrNull())
+            .isInstanceOf(BackupValidationException::class.java)
+        snapshot.wipe()
+    }
+
+    @Test
+    fun `v15备份仍清空原有图谱向量和完成标记`() = runBlocking {
+        seedCompleteGraph()
+        val source = newDataSource()
+        val snapshot = source.snapshot(CANONICAL_CONTENT)
+        val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val newTables = setOf("kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "vectors")
+        val old = JsonObject(payload + mapOf(
+            "schemaVersion" to JsonPrimitive(15),
+            "tables" to JsonObject(payload.getValue("tables").jsonObject - newTables),
+        ))
+        seedDerivedRows()
+        val current = validated(snapshot, database = old.toString().toByteArray())
+        val legacy = ValidatedBackup(current.manifest.copy(databaseSchemaVersion = 15, embedding = null),
+            current.database, current.preferences, current.files, current.secrets)
+        source.restore(legacy)
+        assertThat(rowCount("kg_nodes")).isEqualTo(0)
+        assertThat(rowCount("kg_edges")).isEqualTo(0)
+        assertThat(rowCount("kg_evidence")).isEqualTo(0)
+        assertThat(rowCount("vectors")).isEqualTo(0)
+        assertThat(db.fileEntryDao().getByUuid("root-1", "file-1")!!.vectorizedAt).isNull()
+        snapshot.wipe()
+    }
+
+    @Test
     fun `完整备份只往返存在的文件夹图谱设置`() = runBlocking {
         seedCompleteGraph()
         val sqlite = db.openHelper.writableDatabase
@@ -316,7 +472,7 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `核心恢复保留未选源的向量图谱与完成标记`() = runBlocking {
+    fun `核心恢复清除图谱并保留未选层既有向量`() = runBlocking {
         seedCompleteGraph()
         val sqlite = db.openHelper.writableDatabase
         sqlite.execSQL("INSERT INTO vectors(id,doc_id,content,embedding,created_at,stale,version) VALUES(?,?,?,?,?,?,?)", arrayOf<Any?>("retained-vector", "file-1", "索引", byteArrayOf(1, 2), 100L, 0, 1))
@@ -334,11 +490,11 @@ class RoomBackupDataSourceTest {
             finally { snapshot.wipe() }
             Files.newInputStream(file).use { codec.decodeFrom(it, null, cache).use { source.restore(it) } }
             assertThat(rowCount("vectors")).isEqualTo(1)
-            assertThat(rowCount("kg_evidence")).isEqualTo(1)
+            assertThat(rowCount("kg_evidence")).isEqualTo(0)
             sqlite.query("SELECT vectorized_at,kg_extracted_at FROM workspace_files WHERE uuid = 'file-1'").use { cursor ->
                 assertThat(cursor.moveToFirst()).isTrue()
-                assertThat(cursor.getLong(0)).isEqualTo(100)
-                assertThat(cursor.getLong(1)).isEqualTo(100)
+                assertThat(cursor.getLong(0)).isEqualTo(100L)
+                assertThat(cursor.isNull(1)).isTrue()
             }
         } finally { BackupStreams.deleteTree(cache) }
     }
@@ -1193,7 +1349,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(15)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(16)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -1796,16 +1952,16 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(15)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("15")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(16)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("16")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
                 "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
-                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings",
+                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings", "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "vectors",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(
-                "vectors", "vectors_fts", "kg_nodes", "kg_edges", "kg_evidence", "kg_jit_cache", "kg_jit_cache_sources",
+                "vectors_fts", "kg_jit_cache", "kg_jit_cache_sources",
                 "vectorization_tasks", "audit_logs", "tool_execution_ledger", "file_versions",
                 "workspace_mutations", "mcp_tool_snapshots", "memory_embedding_cache",
             ).forEach { assertThat(text).doesNotContain("\"$it\"") }
@@ -3279,6 +3435,7 @@ class RoomBackupDataSourceTest {
         userSkillsRoot: Path? = null,
         avatarRoot: Path? = null,
         trustedBases: Set<Path> = setOf(sourceBase),
+        embeddingSpaceKey: () -> String? = { "fixture-space" },
     ): RoomBackupDataSource = RoomBackupDataSource(
         database = db,
         preferences = preferenceStore,
@@ -3295,6 +3452,7 @@ class RoomBackupDataSourceTest {
         restoreFileOperations = fileOperations,
         userSkillsRoot = userSkillsRoot,
         avatarRoot = avatarRoot,
+        embeddingSpaceKey = embeddingSpaceKey,
     )
 
     private suspend fun emptyWorkspaceBackup(): BackupSnapshot {
@@ -3330,6 +3488,7 @@ class RoomBackupDataSourceTest {
             entries = manifestEntries,
             encrypted = false,
             containsSecrets = snapshot.secrets.isNotEmpty(),
+            embedding = snapshot.embedding,
         ),
         database = database.copyOf(),
         preferences = preferencesBytes.copyOf(),

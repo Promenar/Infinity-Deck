@@ -13,6 +13,16 @@ class KeywordSearcherTest {
     private val vectorDao = mockk<VectorDao>()
 
     @Test
+    fun `混合检索在截断之前排除不同维度的向量`() = runTest {
+        coEvery { vectorDao.searchFtsDocuments("needle") } returns listOf(
+            VectorEntity("wrong", "doc-1", content = "needle", embedding = ByteArray(4), createdAt = 1),
+            VectorEntity("right", "doc-2", content = "needle", embedding = ByteArray(8), createdAt = 1),
+        )
+        val results = KeywordSearcher(vectorDao).searchScoped("needle", 1, null, DocumentReach.All, expectedDimension = 2)
+        assertThat(results.map { it.id }).containsExactly("right")
+    }
+
+    @Test
     fun `FTS失败但LIKE回退成功时outcome仍明确标记degraded`() = runTest {
         coEvery { vectorDao.searchFts("needle") } throws IllegalStateException("fts unavailable")
         coEvery { vectorDao.getAll() } returns listOf(
