@@ -81,6 +81,11 @@ class KgRequestClient(
                 } ?: ExtractionResult.failure(KgExtractionStatus.TIMEOUT, "知识图谱抽取超时")
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (finished: com.promenar.infinity.data.remote.protocol.AbnormalFinishException) {
+                // 输出达到上限时 JSON 必然不完整，按解析失败处理，由抽取器把分块拆开重抽。
+                if (finished.error.code == com.promenar.infinity.domain.generation.GenerationFailureCode.OUTPUT_LIMIT) {
+                    ExtractionResult.failure(KgExtractionStatus.PARSE_FAILURE, "知识图谱输出达到上限被截断")
+                } else ExtractionResult.failure(KgExtractionStatus.PROVIDER_ERROR, "知识图谱提供商请求失败")
             } catch (_: java.net.SocketTimeoutException) {
                 ExtractionResult.failure(KgExtractionStatus.TIMEOUT, "知识图谱提供商请求超时")
             } catch (failure: Exception) {

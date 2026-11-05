@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.28.1-beta] - 2026-11-05
+
+### 修复
+
+- 图谱模型输出达到单次上限时，同步请求把截断（`finish_reason: length` 及各协议的同类原因）当成提供商错误，抽取直接失败，拆块重抽从未触发；现在 OpenAI、OpenAI 兼容、Responses、Anthropic 与 Gemini/Vertex 的同步响应都把输出截断识别为截断，图谱抽取据此把分块对半拆开重抽。
+- 文档页“知识图谱”行与原“图谱实体”行重复显示“尚未抽取”：合并为一行，抽取完成后实体以标签列在该行下方。
+- 索引指示等待确认与失败时改用主题的警示琥珀色，此前显示为第二强调色。
+
 ## [0.28.0-beta] - 2026-11-05
 
 ### 新增

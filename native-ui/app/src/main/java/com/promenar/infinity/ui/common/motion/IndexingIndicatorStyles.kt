@@ -7,6 +7,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -268,6 +270,8 @@ internal class IndexIndicatorPainter {
         strokeCap = Paint.Cap.ROUND
     }
     var glowBlur = -1f
+    /** 等待确认与失败用的琥珀色，取主题的警示色，不随主色变化。 */
+    var amber: Color = Color.Unspecified
 }
 
 /** 以画布中心为原点绘制索引指示；[k] 为每 dp 的像素数，已含调用方缩放。 */
@@ -278,7 +282,9 @@ internal fun DrawScope.drawIndexingIndicator(
     k: Float,
     palette: MotionPalette,
     painter: IndexIndicatorPainter,
+    amber: Color = palette.b,
 ) {
+    painter.amber = amber
     val n = kind.trackUnits
     val separate = kind.separateTracks
     indexTrackLevels(state, graphTrack = false, separate = separate, n = n, t = time, outLevel = painter.levels, outColor = painter.colors)
@@ -302,7 +308,7 @@ internal fun DrawScope.drawIndexingIndicator(
     }
 }
 
-private fun MotionPalette.indexColors() = listOf(a, mid, b, hot)
+private fun MotionPalette.indexColors(amber: Color) = listOf(a, mid, amber.takeOrElse { b }, hot)
 
 private fun LedBatch.unit(level: Float, color: Int, x: Float, y: Float, w: Float, h: Float, glowPad: Float) {
     if (level < IndexLedOff) offRect(x, y, w, h) else rect(color, level, x, y, w, h, glowPad)
@@ -310,7 +316,7 @@ private fun LedBatch.unit(level: Float, color: Int, x: Float, y: Float, w: Float
 
 private fun DrawScope.flush(painter: IndexIndicatorPainter, k: Float, palette: MotionPalette) {
     drawIntoCanvas {
-        painter.leds.draw(it.nativeCanvas, palette.indexColors(), palette.dark, blur = 3f * k, offColor = palette.off, whitenFrom = 4)
+        painter.leds.draw(it.nativeCanvas, palette.indexColors(painter.amber), palette.dark, blur = 3f * k, offColor = palette.off, whitenFrom = 4)
     }
 }
 
@@ -431,7 +437,7 @@ private fun DrawScope.drawInfinityBeads(cx: Float, cy: Float, k: Float, palette:
 private fun DrawScope.drawInfinityTrace(cx: Float, cy: Float, k: Float, palette: MotionPalette, painter: IndexIndicatorPainter) {
     val a = 20f * k
     val segments = 28
-    val colors = palette.indexColors()
+    val colors = palette.indexColors(painter.amber)
     if (painter.glowBlur != 2.5f * k) {
         painter.glowPaint.maskFilter = BlurMaskFilter(2.5f * k, BlurMaskFilter.Blur.NORMAL)
         painter.glowBlur = 2.5f * k

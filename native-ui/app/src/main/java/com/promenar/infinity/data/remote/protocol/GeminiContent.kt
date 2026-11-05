@@ -326,7 +326,10 @@ internal object GeminiContentCodec {
         val candidate = parsed["candidates"]?.jsonArray?.firstOrNull()?.jsonObject
             ?: throw Exception("$label returned no candidates")
         val finishReason = candidate.string("finishReason")
-        if (finishReason != "STOP") throw Exception("$label response finished with reason: $finishReason")
+        if (finishReason != "STOP") {
+            throwIfAbnormalSyncFinish(label, finishReason)
+            throw Exception("$label response finished with reason: $finishReason")
+        }
 
         val state = GeminiStreamState()
         val content = StringBuilder()

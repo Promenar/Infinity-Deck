@@ -453,6 +453,10 @@ class OpenAIResponsesProtocol(
         (root["error"] as? JsonObject)?.let {
             ProtocolContextLimit.throwIfPresent(ProtocolContextLimit.fromError(protocolType, it))
         }
+        if (root.stringField("status") == "incomplete") {
+            (root["incomplete_details"] as? JsonObject)?.stringField("reason")
+                ?.let { throwIfAbnormalSyncFinish("Responses", it) }
+        }
         check(root.stringField("status") == "completed") {
             "Responses sync response did not complete successfully"
         }

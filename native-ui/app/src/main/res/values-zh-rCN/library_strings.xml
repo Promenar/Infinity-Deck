@@ -81,8 +81,6 @@
     <string name="library_doc_status">状态</string>
     <string name="library_doc_status_indexed">已索引</string>
     <string name="library_doc_chunks">索引段数</string>
-    <string name="library_doc_entities">图谱实体</string>
-    <string name="library_doc_entities_none">尚未抽取</string>
     <string name="library_doc_location">位置</string>
     <string name="library_doc_source">来源</string>
     <string name="library_doc_versions">历史版本</string>

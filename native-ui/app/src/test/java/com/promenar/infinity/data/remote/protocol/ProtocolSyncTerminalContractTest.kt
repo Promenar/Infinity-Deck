@@ -121,6 +121,24 @@ class ProtocolSyncTerminalContractTest {
         }
     }
 
+    @Test
+    fun `同步响应输出达到上限时抛出带 OUTPUT_LIMIT 的非正常结束`() = runBlocking {
+        val cases = listOf<Pair<LlmProtocol, String>>(
+            openAi("""{"choices":[{"finish_reason":"length","message":{"content":"{\"nodes\":["}}]}""") to "OpenAI",
+            generic("""{"choices":[{"finish_reason":"length","message":{"content":"{\"nodes\":["}}]}""") to "Generic",
+            anthropic("""{"stop_reason":"max_tokens","content":[{"type":"text","text":"{"}]}""") to "Anthropic",
+            responses("""{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}""") to "Responses",
+            vertex("MAX_TOKENS") to "Vertex",
+        )
+        cases.forEach { (protocol, label) ->
+            val failure = runCatching { protocol.sendPromptSync(request()) }.exceptionOrNull()
+            assertThat(failure).isInstanceOf(AbnormalFinishException::class.java)
+            assertThat((failure as AbnormalFinishException).error.code)
+                .isEqualTo(com.promenar.infinity.domain.generation.GenerationFailureCode.OUTPUT_LIMIT)
+            assertThat(label).isNotEmpty()
+        }
+    }
+
     private fun request() = PromptRequest(
         messages = listOf(ProtocolMessage("user", "test")),
         model = "model",

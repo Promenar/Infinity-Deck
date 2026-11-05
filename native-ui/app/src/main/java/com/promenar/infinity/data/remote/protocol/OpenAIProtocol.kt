@@ -499,7 +499,10 @@ class OpenAIProtocol(
         val completionReason = when (val finishReason = choice.stringField("finish_reason")) {
             "stop" -> CompletionReason.END_TURN
             "tool_calls" -> CompletionReason.TOOL_CALLS
-            else -> throw IllegalStateException("Unknown OpenAI finish_reason: $finishReason")
+            else -> {
+                throwIfAbnormalSyncFinish("OpenAI", finishReason)
+                throw IllegalStateException("Unknown OpenAI finish_reason: $finishReason")
+            }
         }
         requireValidSyncCompletion(completionReason, toolCalls)
 

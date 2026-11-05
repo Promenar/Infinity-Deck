@@ -507,6 +507,11 @@ internal fun abnormalFinishError(label: String, reason: String): StreamChunk.Err
 /** 流解析过程中遇到非正常结束原因时携带对应失败，由流循环直接发出。 */
 internal class AbnormalFinishException(val error: StreamChunk.Error) : Exception(error.technical)
 
+/** 同步响应以可识别的非正常原因结束时（输出截断、内容过滤等）抛出带失败码的异常，调用方可据此区分截断与请求失败。 */
+internal fun throwIfAbnormalSyncFinish(label: String, reason: String) {
+    abnormalFinishError(label, reason)?.let { throw AbnormalFinishException(it) }
+}
+
 /**
  * 流内错误事件（HTTP 200 后在 SSE 里返回 `error` 对象）：按事件自带的状态码与说明分类并保留服务商原因。
  * 无法归类的按可重试的服务端错误处理，由生成层自动重发本轮。

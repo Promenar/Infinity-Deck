@@ -693,7 +693,10 @@ class AnthropicProtocol(
         val completionReason = when (val stopReason = parsed.stringField("stop_reason")) {
             "end_turn" -> CompletionReason.END_TURN
             "tool_use" -> CompletionReason.TOOL_CALLS
-            else -> throw IllegalStateException("Unknown Anthropic stop_reason: $stopReason")
+            else -> {
+                throwIfAbnormalSyncFinish("Anthropic", stopReason)
+                throw IllegalStateException("Unknown Anthropic stop_reason: $stopReason")
+            }
         }
         requireValidSyncCompletion(completionReason, toolCalls)
 

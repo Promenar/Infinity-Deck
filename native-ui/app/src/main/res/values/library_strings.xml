@@ -81,8 +81,6 @@
     <string name="library_doc_status">Status</string>
     <string name="library_doc_status_indexed">Indexed</string>
     <string name="library_doc_chunks">Indexed passages</string>
-    <string name="library_doc_entities">Graph entities</string>
-    <string name="library_doc_entities_none">None extracted yet</string>
     <string name="library_doc_location">Location</string>
     <string name="library_doc_source">Source</string>
     <string name="library_doc_versions">Earlier versions</string>

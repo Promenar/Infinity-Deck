@@ -187,6 +187,35 @@ class GraphExtractorTest {
     }
 
     @Test
+    fun `输出达到上限被协议判为非正常结束时也拆半重抽`() = runTest {
+        val received = mutableListOf<String>()
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            val text = firstArg<PromptRequest>().messages.last().content
+            received += text
+            if (received.size == 1) {
+                throw com.promenar.infinity.data.remote.protocol.AbnormalFinishException(
+                    com.promenar.infinity.data.remote.protocol.StreamChunk.Error(
+                        code = com.promenar.infinity.domain.generation.GenerationFailureCode.OUTPUT_LIMIT,
+                        technical = "OpenAI-compatible finished with reason: length",
+                    ),
+                )
+            }
+            val (a, b) = if (received.size == 2) "甲" to "乙" else "丙" to "丁"
+            PromptResponse("""{"nodes":[{"name":"$a"},{"name":"$b"}],"edges":[{"source":"$a","target":"$b","relation":"关联"}]}""",
+                usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(2, 1))
+        }
+        val extractor = testGraphExtractor(protocol, graphStore, chunkSize = 20, chunkOverlap = 0)
+
+        val result = extractor.extractCandidate("甲乙内容\n\n丙丁内容", "truncated-doc")
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.status).isEqualTo(KgExtractionStatus.SUCCESS)
+        assertThat(received).containsExactly("甲乙内容\n\n丙丁内容", "甲乙内容\n\n", "丙丁内容").inOrder()
+        assertThat(result.nodes.map { it.name }).containsExactly("甲", "乙", "丙", "丁")
+        assertThat(result.progress!!.calls).isEqualTo(3)
+    }
+
+    @Test
     fun `分半请求消耗实际输出预算`() = runTest {
         val limits = mutableListOf<Int?>()
         coEvery { protocol.sendPromptSync(any()) } answers {

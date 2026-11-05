@@ -890,21 +890,21 @@ private fun DocumentInspector(info: DocumentInsight, livePending: PendingDocumen
         }
         InspectorRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
         DocumentGraphRow(info, pending, enabled = info.documentId !in busy, host)
-        Column(Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)) {
-            Text(stringResource(R.string.library_doc_entities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (info.entities.isEmpty()) {
-                Text(stringResource(R.string.library_doc_entities_none), style = MaterialTheme.typography.bodyMedium)
-            } else {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-                    info.entities.forEach { entity ->
-                        Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Text(
-                                entity,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = InfinitySpacing.Small, vertical = InfinitySpacing.XSmall),
-                            )
-                        }
+        // 图谱实体以标签列在“知识图谱”行下方；尚未抽取时由该行说明状态，不再重复一行。
+        if (info.entities.isNotEmpty()) {
+            FlowRow(
+                modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+            ) {
+                info.entities.forEach { entity ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
+                        Text(
+                            entity,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = InfinitySpacing.Small, vertical = InfinitySpacing.XSmall),
+                        )
                     }
                 }
             }

@@ -511,7 +511,10 @@ class GenericOpenAICompatProtocol(
         val completionReason = when (val finishReason = choice.stringField("finish_reason")) {
             "stop", "completed" -> CompletionReason.END_TURN
             "tool_calls" -> CompletionReason.TOOL_CALLS
-            else -> throw IllegalStateException("Unknown compatible finish_reason: $finishReason")
+            else -> {
+                throwIfAbnormalSyncFinish("OpenAI-compatible", finishReason)
+                throw IllegalStateException("Unknown compatible finish_reason: $finishReason")
+            }
         }
         requireValidSyncCompletion(completionReason, toolCalls)
 
