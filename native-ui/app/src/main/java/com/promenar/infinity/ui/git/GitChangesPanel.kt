@@ -56,6 +56,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -140,8 +141,9 @@ fun GitChangesPage(
     val application = LocalContext.current.applicationContext as InfinityApplication
     val viewModel: GitPanelViewModel = viewModel(
         key = "git-panel-$sessionId",
-        factory = GitPanelViewModel.factory(sessionId, application.gitChangesService, application.branchControls::listWorktrees),
+        factory = GitPanelViewModel.factory(sessionId, application.gitChangesService, application.branchControls::listWorktrees, application.gitStatusCache),
     )
+    DisposableEffect(viewModel) { onDispose { viewModel.close() } }
     LaunchedEffect(viewModel) { viewModel.open() }
     val state by viewModel.state.collectAsStateWithLifecycle()
     BackHandler(enabled = state.detail != null) { viewModel.back() }

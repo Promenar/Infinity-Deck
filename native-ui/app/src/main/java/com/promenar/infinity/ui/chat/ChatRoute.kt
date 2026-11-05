@@ -422,7 +422,10 @@ fun ChatRoute(
         val pages = restoreChatPages(chatPagesToken)
         chatPagesToken = saveChatPages(next)
         // 离开 Git 后刷新顶栏与资源管理器入口的分支与改动；离开资源管理器后不再定位目录。
-        if (ChatPage.Git in pages && ChatPage.Git !in next) gitRefresh++
+        if (ChatPage.Git in pages && ChatPage.Git !in next) {
+            application.gitStatusCache.invalidate(sessionId)
+            gitRefresh++
+        }
         if (ChatPage.Explorer !in next) workspaceLocatePath = null
     }
     val openChatPage: (ChatPage) -> Unit = { page -> setChatPages(openChatPageRoot(page)) }
@@ -768,12 +771,14 @@ fun ChatRoute(
             liveOutput = { job -> RunningToolLiveOutput(job.liveOutputKey, showStop = false) },
         )
     }
-    // 会话工作区是 Git 仓库时顶栏显示分支与改动；进入会话、切换工作区、每轮生成结束与关闭 Git 面板时各读一次。
+    // 会话顶栏持续观察缓存，生成结束后重新订阅。
     LaunchedEffect(sessionId, boundWorkspaceId, workspaceRefresh, uiState.isGenerating, gitRefresh) {
         if (uiState.isGenerating) return@LaunchedEffect
-        // 工作区解析与 .git 判定含文件访问，整体放到 IO。
-        val status = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { application.gitChangesService.status(sessionId) }
-        gitSummary = com.promenar.infinity.ui.git.GitEntrySummary.from(status) as? com.promenar.infinity.ui.git.GitEntrySummary.Repository
+        application.gitStatusCache.observe(sessionId).collect { snapshot ->
+            snapshot.result?.let { status ->
+                gitSummary = com.promenar.infinity.ui.git.GitEntrySummary.from(status) as? com.promenar.infinity.ui.git.GitEntrySummary.Repository
+            }
+        }
     }
     // 本会话打开过 Agent 浏览器时才有状态；顶栏入口、检视器页签与浏览器步骤行据此显示。
     val browserIds by application.agentBrowser.sessionIds.collectAsStateWithLifecycle()

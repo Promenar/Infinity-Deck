@@ -1236,7 +1236,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             grantVerifier = this::verifyTargetGrant,
             liveOutput = toolLiveOutputStore,
             unavailableLedgerMessage = { getString(com.promenar.infinity.R.string.startup_isolation_tool_ledger_diagnostics_only) },
-            afterTools = ::reconcileBranchWorkspace,
+            afterTools = { sessionId ->
+                try { reconcileBranchWorkspace(sessionId) } finally { runCatching { gitStatusCache.invalidateAll() } }
+            },
         )
     }
     private val generationPostProcessor by lazy {
@@ -1320,7 +1322,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     val generationCoordinator: com.promenar.infinity.domain.generation.GenerationCoordinator by lazy {
         com.promenar.infinity.data.generation.DefaultGenerationCoordinator(
             applicationScope = generationScope,
-            runnerFactory = generationRunnerFactory,
+            runnerFactory = com.promenar.infinity.data.generation.GenerationRunnerFactory { request, taskId ->
+                com.promenar.infinity.data.git.GitInvalidatingGenerationRunner(
+                    generationRunnerFactory.create(request, taskId), gitStatusCache::invalidateAll,
+                )
+            },
             presentationStore = generationPresentationStore,
             executionGate = sessionExecutionGate,
             compactionService = contextCompactionService,
@@ -1606,6 +1612,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 outputDirectory = { File(cacheDir, "git-inspect") },
             ),
         )
+    }
+
+    val gitStatusCache: com.promenar.infinity.data.git.DefaultGitStatusCache by lazy {
+        com.promenar.infinity.data.git.DefaultGitStatusCache(gitChangesService::resolveWorkspace, gitChangesService::statusTarget)
     }
 
     override val execRunRegistry: com.promenar.infinity.data.exec.ExecRunRegistry by lazy {
