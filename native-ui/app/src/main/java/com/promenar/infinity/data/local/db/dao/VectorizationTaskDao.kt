@@ -406,8 +406,18 @@ interface VectorizationTaskDao {
         SET status = 'interrupted'
         WHERE status IN ('processing', 'extracting_source', 'chunking', 'vectorizing', 'saving', 'extracting')
           AND updated_at < :staleThreshold
+          AND (:activeTaskId IS NULL OR id != :activeTaskId)
     """)
-    suspend fun markStaleAsInterrupted(staleThreshold: Long)
+    suspend fun markStaleAsInterrupted(staleThreshold: Long, activeTaskId: String?)
+
+    @Query("""
+        UPDATE vectorization_tasks
+        SET status = 'interrupted'
+        WHERE type = 'document_reference'
+          AND status IN ('processing', 'extracting_source', 'chunking', 'vectorizing', 'saving', 'extracting')
+          AND (:activeTaskId IS NULL OR id != :activeTaskId)
+    """)
+    suspend fun recoverDocumentReferenceProcessing(activeTaskId: String?): Int
 
     @Query("""
         UPDATE vectorization_tasks

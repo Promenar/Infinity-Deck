@@ -18,10 +18,12 @@ import kotlinx.coroutines.withContext
 import com.promenar.infinity.utils.InfinityLogger
 
 private val noGraphCommit: suspend () -> Unit = {}
+private val noIndexValidation: () -> Unit = {}
 
 interface DocumentIndexService {
     suspend fun rebuild(event: FileIndexEvent): DocumentIndexResult
     suspend fun delete(workspaceRootUuid: String, fileUuid: String): DocumentIndexResult
+    suspend fun clearEmbeddingCheckpoints(workspaceRootUuid: String, fileUuid: String) = Unit
     suspend fun prepareLegacyRetry(
         workspaceRootUuid: String,
         fileUuid: String,
@@ -48,10 +50,13 @@ data class DocumentIndexCandidate(
     val kgProgress: KgExtractionProgress? = null,
     val preserveExistingGraph: Boolean = false,
     val onGraphCommitted: suspend () -> Unit = noGraphCommit,
+    val onEmbeddingCommitted: suspend () -> Unit = noGraphCommit,
+    val validateBeforeCommit: () -> Unit = noIndexValidation,
 )
 
 fun interface DocumentIndexCandidateBuilder {
     suspend fun build(event: FileIndexEvent.Changed): DocumentIndexCandidate
+    suspend fun clearEmbeddingCheckpoints(workspaceRootUuid: String, fileUuid: String) = Unit
 }
 
 fun interface KnowledgeGraphCandidateBuilder {
@@ -89,7 +94,16 @@ class WorkspaceDocumentIndexCandidateBuilder(
     private val now: () -> Long = System::currentTimeMillis,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val graphCandidateBuilder: KnowledgeGraphCandidateBuilder? = null,
+    private val checkpointRoot: File? = null,
 ) : DocumentIndexCandidateBuilder {
+    private fun checkpoints() = EmbeddingCheckpoints(checkpointRoot ?: File(
+        com.promenar.infinity.InfinityApplication.instance.cacheDir, "embedding_checkpoint",
+    ))
+
+    override suspend fun clearEmbeddingCheckpoints(workspaceRootUuid: String, fileUuid: String) = withContext(dispatcher) {
+        checkpoints().clear(workspaceRootUuid, fileUuid)
+    }
+
     override suspend fun build(event: FileIndexEvent.Changed): DocumentIndexCandidate = withContext(dispatcher) {
         val entry = fileEntryDao.getActiveByUuid(event.workspaceRootUuid, event.fileUuid)
             ?: throw java.io.FileNotFoundException("索引文件不存在")
@@ -102,12 +116,35 @@ class WorkspaceDocumentIndexCandidateBuilder(
             chunkSize = ragConfig.docChunkSize,
             chunkOverlap = ragConfig.chunkOverlap,
         ).extract(entry)
+        var embeddingIdentity: EmbeddingCheckpointIdentity? = null
+        var validateEmbeddingModel: () -> Unit = noIndexValidation
         val embedding = if (event.skipVectorization || extraction.chunks.isEmpty()) emptyList()
-        else embeddingClient.embedDocuments(extraction.chunks).embeddings
+        else {
+            val client = embeddingClient.frozenForIndex()
+            val modelKey = client.vectorSpaceKey() ?: throw IllegalStateException(client.diagnosticMessage())
+            val generation = client.localModelGeneration()
+            val identity = EmbeddingCheckpointIdentity(event.contentHash, modelKey, ragConfig.docChunkSize, ragConfig.chunkOverlap)
+            embeddingIdentity = identity
+            fun checkModel() {
+                check(embeddingClient.vectorSpaceKey() == modelKey && embeddingClient.localModelGeneration() == generation) {
+                    "向量模型在索引期间发生变化"
+                }
+            }
+            validateEmbeddingModel = ::checkModel
+            checkModel()
+            CheckpointedEmbeddingRunner(checkpoints()) { batch ->
+                checkModel()
+                val result = client.embedDocuments(batch).embeddings
+                checkModel()
+                result
+            }.embed(event.workspaceRootUuid, event.fileUuid, identity, extraction.chunks, event.onEmbeddingProgress)
+                .also { checkModel() }
+        }
         require(event.skipVectorization || embedding.size == extraction.chunks.size) { "Embedding 数量与切块不一致" }
         val shouldExtractGraph = event.kgStrategy != null ||
             (event.useConfiguredKgStrategy && ragConfig.enableKnowledgeGraph)
         val graph = if (shouldExtractGraph) {
+            event.onGraphStart()
             val builder = requireNotNull(graphCandidateBuilder) { "启用知识图谱后必须配置候选构建器" }
             val estimate = builder.estimate(extraction.graphText, ragConfig)
             val result = if (estimate.requiresConfirmation && event.kgStrategy != KgExtractionBudget.CONFIRMED_STRATEGY) {
@@ -130,6 +167,10 @@ class WorkspaceDocumentIndexCandidateBuilder(
                     graphCandidateBuilder?.onCommitted(extraction.graphText, event.fileUuid, event.contentHash)
                 }
             },
+            onEmbeddingCommitted = {
+                embeddingIdentity?.let { checkpoints().clear(event.workspaceRootUuid, event.fileUuid, it) }
+            },
+            validateBeforeCommit = validateEmbeddingModel,
             contentTruncated = extraction.truncated,
             vectors = if (event.skipVectorization) emptyList() else extraction.chunks.mapIndexed { index, content ->
                 VectorEntity(
@@ -199,6 +240,8 @@ class RoomDocumentIndexService(
     private val candidateBuilder: DocumentIndexCandidateBuilder,
 ) : DocumentIndexService {
     private val artifacts = RoomDocumentArtifacts(database)
+    override suspend fun clearEmbeddingCheckpoints(workspaceRootUuid: String, fileUuid: String) =
+        candidateBuilder.clearEmbeddingCheckpoints(workspaceRootUuid, fileUuid)
     override suspend fun rebuild(event: FileIndexEvent): DocumentIndexResult {
         if (event is FileIndexEvent.Deleted) return delete(event.workspaceRootUuid, event.fileUuid)
         event as FileIndexEvent.Changed
@@ -214,6 +257,7 @@ class RoomDocumentIndexService(
             return DocumentIndexResult.Failed(failure)
         }
         return try {
+            event.onSaving()
             val result = withWorkspaceAdmission(event.workspaceRootUuid) {
                 database.withTransaction {
                 val current = database.fileEntryDao().getActiveByUuid(event.workspaceRootUuid, event.fileUuid)
@@ -233,6 +277,7 @@ class RoomDocumentIndexService(
                 ) {
                     return@withTransaction DocumentIndexResult.HashChanged(current.hash)
                 }
+                candidate.validateBeforeCommit()
                 artifacts.clear(event.workspaceRootUuid, event.fileUuid, deleteTags = false,
                     clearVectors = !event.skipVectorization, clearGraph = !candidate.preserveExistingGraph)
                 if (candidate.vectors.isNotEmpty()) database.vectorDao().insertAll(candidate.vectors)
@@ -281,6 +326,7 @@ class RoomDocumentIndexService(
             }
             if (result is DocumentIndexResult.Rebuilt) {
                 withContext(NonCancellable + Dispatchers.IO) {
+                    try { candidate.onEmbeddingCommitted() } catch (_: Exception) { InfinityLogger.log("[向量] 已提交断点清理失败") }
                     try { candidate.onGraphCommitted() } catch (_: Exception) { InfinityLogger.log("[KG] 已提交断点清理失败") }
                 }
             }
@@ -300,6 +346,10 @@ class RoomDocumentIndexService(
             DocumentIndexResult.Deleted(fileUuid)
             }
             onDeleted(fileUuid)
+            withContext(NonCancellable + Dispatchers.IO) {
+                try { clearEmbeddingCheckpoints(workspaceRootUuid, fileUuid) }
+                catch (_: Exception) { InfinityLogger.log("[向量] 删除后的断点清理失败") }
+            }
             result
         }
     } catch (cancelled: kotlinx.coroutines.CancellationException) {

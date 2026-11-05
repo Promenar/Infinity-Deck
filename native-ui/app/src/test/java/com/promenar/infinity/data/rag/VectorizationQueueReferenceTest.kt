@@ -11,6 +11,7 @@ import io.mockk.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runCurrent
@@ -18,6 +19,32 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class VectorizationQueueReferenceTest {
+    @Test
+    fun `记忆索引的限流错误按 Retry-After 重试`() = runTest {
+        var calls = 0
+        val embedding = mockk<EmbeddingClient>()
+        coEvery { embedding.embedDocuments(any()) } coAnswers {
+            if (++calls == 1) throw EmbeddingBatchException("HTTP 429：服务限流", true, 429, 7_000)
+            EmbeddingResult(firstArg<List<String>>().map { floatArrayOf(1f) })
+        }
+        val queue = VectorizationQueue(
+            vectorStore = mockk(relaxed = true), embeddingClient = embedding, graphExtractor = null,
+            vectorDao = mockk(relaxed = true), vectorizationTaskDao = mockk(relaxed = true),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+        try {
+            queue.enqueueMemory("session", "user", "assistant", "u", "a")
+            runCurrent()
+            assertThat(calls).isEqualTo(1)
+            advanceTimeBy(6_999)
+            runCurrent()
+            assertThat(calls).isEqualTo(1)
+            advanceTimeBy(2)
+            runCurrent()
+            assertThat(calls).isEqualTo(2)
+        } finally { queue.shutdown() }
+    }
+
     @Test
     fun `session delete barrier取消并等待memory worker且持有期间拒绝重新入队`() = runTest {
         val taskDao = mockk<VectorizationTaskDao>(relaxed = true)
@@ -379,7 +406,8 @@ class VectorizationQueueReferenceTest {
         val failed = entity("doc-ref-failed").copy(status = "failed", error = "embedding unavailable")
         coEvery { taskDao.getCompletedDocumentReferenceTasks() } returns emptyList()
         coJustRun { taskDao.deleteCompletedNonReferenceTasks() }
-        coJustRun { taskDao.markStaleAsInterrupted(any()) }
+        coJustRun { taskDao.markStaleAsInterrupted(any(), any()) }
+        coEvery { taskDao.recoverDocumentReferenceProcessing(any()) } returns 0
         coEvery { taskDao.deleteOrphanSessionStateTasks() } returns 0
         coEvery { taskDao.recoverSessionStateProcessing(any()) } returns 0
         coEvery { taskDao.getRecoverableTasks() } returns emptyList()
@@ -422,7 +450,8 @@ class VectorizationQueueReferenceTest {
         )
         coEvery { taskDao.getCompletedDocumentReferenceTasks() } returns emptyList()
         coJustRun { taskDao.deleteCompletedNonReferenceTasks() }
-        coJustRun { taskDao.markStaleAsInterrupted(any()) }
+        coJustRun { taskDao.markStaleAsInterrupted(any(), any()) }
+        coEvery { taskDao.recoverDocumentReferenceProcessing(any()) } returns 0
         coEvery { taskDao.deleteOrphanSessionStateTasks() } returns 0
         coEvery { taskDao.recoverSessionStateProcessing(any()) } returns 0
         coEvery { taskDao.getRecoverableTasks() } returns emptyList()

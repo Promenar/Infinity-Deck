@@ -20,6 +20,7 @@ import com.promenar.infinity.domain.library.LibraryKnowledgeSource
 import com.promenar.infinity.domain.library.LibraryOverview
 import com.promenar.infinity.domain.library.PendingDocument
 import com.promenar.infinity.domain.library.PendingKind
+import com.promenar.infinity.domain.library.PendingStage
 import com.promenar.infinity.domain.workspace.WorkspaceInternalPaths
 import com.promenar.infinity.data.repository.WorkspaceTextContentPolicy
 import com.promenar.infinity.data.session.SessionExecutionGate
@@ -300,17 +301,19 @@ private data class LibraryTask(
     val docId: String,
     val status: String,
     val error: String?,
+    val processed: Int,
+    val total: Int?,
     val targetEpoch: Long,
     val createdAt: Long,
     val updatedAt: Long,
 )
 
 private fun VectorizationTaskEntity.libraryTask(): LibraryTask? = docId?.let {
-    LibraryTask(id, it, status, error, targetEpoch, createdAt, updatedAt)
+    LibraryTask(id, it, status, error, lastChunkIndex, totalChunks, targetEpoch, createdAt, updatedAt)
 }
 
 private fun VectorizationTask.libraryTask(): LibraryTask? = docId?.let {
-    LibraryTask(id, it, status, error, targetEpoch, createdAt, updatedAt)
+    LibraryTask(id, it, status, error, lastChunkIndex, totalChunks, targetEpoch, createdAt, updatedAt)
 }
 
 internal fun pendingDocuments(
@@ -343,9 +346,21 @@ internal fun pendingDocuments(
             else -> null
         } ?: return@mapNotNull null
         val summary = entry.toSummary(label)
+        val stage = if (kind == PendingKind.INDEXING) when (task?.status) {
+            "vectorizing" -> PendingStage.VECTORIZING
+            "extracting" -> PendingStage.EXTRACTING_GRAPH
+            "saving" -> PendingStage.SAVING
+            else -> PendingStage.PREPARING
+        } else null
+        val total = task?.total?.takeUnless { stage == PendingStage.PREPARING || stage == PendingStage.SAVING }
         PendingDocument(entry.uuid, summary.ref, entry.name, summary.folderPath, kind,
             reason = if (kind != PendingKind.FAILED) null else if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else failedReason,
-            queuePosition = if (kind == PendingKind.QUEUED) task?.let { positions[it.id] ?: waitingStored[it.id] } else null)
+            queuePosition = if (kind == PendingKind.QUEUED) task?.let { positions[it.id] ?: waitingStored[it.id] } else null,
+            stage = stage,
+            processed = total?.let { task?.processed },
+            total = total,
+            lastError = task?.error?.takeUnless { it.startsWith("kg.") },
+        )
     }.sortedWith(compareBy<PendingDocument> { when (it.kind) {
         PendingKind.FAILED -> 0
         PendingKind.INDEXING -> 1

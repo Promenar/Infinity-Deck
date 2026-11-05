@@ -21,6 +21,7 @@ import com.promenar.infinity.data.repository.PersistentFileIdentity
 import com.promenar.infinity.data.repository.SecureWorkspaceFileOps
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.domain.library.PendingKind
+import com.promenar.infinity.domain.library.PendingStage
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -108,6 +109,32 @@ class LibraryKnowledgeSourceTest {
         assertThat(source.documentIdFor(FileRef("kb", "/项目/failed.txt"))).isEqualTo("failed")
         assertThat(source.documentIdFor(FileRef("other", "/项目/failed.txt"))).isNull()
         assertThat(source.documentIdFor(FileRef("kb", "/项目/../failed.txt"))).isNull()
+    }
+
+    @Test
+    fun `待处理映射当前阶段批次进度和最近错误`() {
+        val entry = file("doc", "/doc.txt")
+        val task = task("doc", "vectorizing", 1).copy(totalChunks = 35, lastChunkIndex = 16, error = "HTTP 429：限流")
+        fun pending(current: VectorizationTask) = pendingDocuments("root", listOf(entry), emptyList(),
+            VectorizationQueue.QueueState(listOf(current), current, true), "资料库", "索引失败", "需要确认").single()
+
+        val vectorizing = pending(task)
+        assertThat(vectorizing.stage).isEqualTo(PendingStage.VECTORIZING)
+        assertThat(vectorizing.processed).isEqualTo(16)
+        assertThat(vectorizing.total).isEqualTo(35)
+        assertThat(vectorizing.lastError).isEqualTo("HTTP 429：限流")
+        assertThat(pending(task.copy(status = "extracting_source")).stage).isEqualTo(PendingStage.PREPARING)
+        assertThat(pending(task.copy(status = "extracting")).stage).isEqualTo(PendingStage.EXTRACTING_GRAPH)
+        val saving = pending(task.copy(status = "saving"))
+        assertThat(saving.stage).isEqualTo(PendingStage.SAVING)
+        assertThat(saving.processed).isNull()
+        assertThat(saving.total).isNull()
+        assertThat(pending(task.copy(status = "extracting_source")).total).isNull()
+        val failed = pending(task.copy(status = "failed"))
+        assertThat(failed.stage).isNull()
+        assertThat(failed.processed).isEqualTo(16)
+        assertThat(failed.total).isEqualTo(35)
+        assertThat(failed.lastError).isEqualTo("HTTP 429：限流")
     }
 
     @Test
