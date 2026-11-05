@@ -42,7 +42,10 @@ class GraphExtractionBudgetTest {
 
         assertThat(requests).isEqualTo(64)
         assertThat(result.status.name).isEqualTo("PARTIAL")
-        assertThat(result.edges).hasSize(1)
+        // 每个窗口的关系出现都单独保留，供叙事时间线记录出现位置。
+        assertThat(result.edges).hasSize(64)
+        assertThat(result.edges.map { it.windowIndex }.distinct()).hasSize(64)
+        assertThat(result.edges.map { Triple(it.source, it.target, it.relation) }.distinct()).hasSize(1)
     }
 
     @Test

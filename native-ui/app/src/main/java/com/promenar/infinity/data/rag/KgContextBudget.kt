@@ -20,7 +20,9 @@ object KgContextBudget {
                 val source = nodes[edge.sourceId] ?: return@forEach
                 val target = nodes[edge.targetId] ?: return@forEach
                 val key = listOf(KgIdentity.normalize(source.label), KgIdentity.normalize(source.type),
-                    KgIdentity.normalize(target.label), KgIdentity.normalize(target.type), KgIdentity.normalize(edge.relation))
+                    KgIdentity.normalize(target.label), KgIdentity.normalize(target.type), KgIdentity.normalize(edge.relation)) +
+                    if (path.narrativeEventOrdinal == null) emptyList() else listOf("event", path.narrativeEventOrdinal.toString(), path.narrativeEventDocId.orEmpty(),
+                        path.narrativeEventWindow.toString(), path.narrativeEventOffset.toString())
                 val old = merged[key]
                 val incomingScore = path.score.takeIf { it > 0.0 } ?: (
                     0.35 * path.evidenceCount / (path.evidenceCount + 1.0) + 0.65 * edge.weight
@@ -28,6 +30,8 @@ object KgContextBudget {
                 val canonical = listOf(source.copy(id = "source", metadata = null), target.copy(id = "target", metadata = null))
                 val winner = if (old == null || edge.weight > old.edges.single().weight) edge else old.edges.single()
                 merged[key] = path.copy(nodes = canonical, edges = listOf(winner.copy(sourceId = "source", targetId = "target")),
+                    reasoning = old?.reasoning ?: path.reasoning,
+                    narrativeEventOrdinal = old?.narrativeEventOrdinal ?: path.narrativeEventOrdinal,
                     origins = ((old?.origins.orEmpty()) + path.origins).distinct().sorted(),
                     sourceDocumentIds = (old?.sourceDocumentIds.orEmpty() + path.sourceDocumentIds).distinct().sorted(),
                     score = maxOf(old?.score ?: 0.0, incomingScore),
@@ -37,7 +41,10 @@ object KgContextBudget {
                     omittedPathCount = maxOf(old?.omittedPathCount ?: 0, path.omittedPathCount))
             }
         }
-        return merged.values.sortedWith(compareByDescending<KgPath> { it.score }.thenBy { identity(it) })
+        return merged.values.sortedWith(compareBy<KgPath> { it.narrativeEventOrdinal != null }
+            .thenByDescending { it.narrativeEventOrdinal ?: Int.MIN_VALUE }
+            .thenByDescending { it.narrativeEventWindow ?: Int.MIN_VALUE }
+            .thenByDescending { it.narrativeEventOffset ?: Int.MIN_VALUE }.thenByDescending { it.score }.thenBy { identity(it) })
     }
 
     fun fit(paths: List<KgPath>, maxTokens: Int): BudgetedKgContext {
@@ -76,8 +83,9 @@ object KgContextBudget {
             val source = nodes[edge.sourceId] ?: return@mapNotNull null
             val target = nodes[edge.targetId] ?: return@mapNotNull null
             val origin = path.origins.joinToString("+") { if (it == "persistent") "持久图" else "即时抽取" }
-            "- [$origin] ${label(source)} —${edge.relation.line()}→ ${label(target)}" +
-                "（置信度 ${"%.2f".format(java.util.Locale.ROOT, edge.weight)}，证据 ${path.evidenceCount}，距离 ${path.distance}）"
+            "- [$origin] ${if (path.narrativeEventOrdinal != null) "事件：" else ""}${label(source)} —${edge.relation.line()}→ ${label(target)}" +
+                "（置信度 ${"%.2f".format(java.util.Locale.ROOT, edge.weight)}，证据 ${path.evidenceCount}，距离 ${path.distance}" +
+                (path.reasoning?.let { "，${it.line()}" } ?: "") + "）"
         }
     }.joinToString("\n")
 

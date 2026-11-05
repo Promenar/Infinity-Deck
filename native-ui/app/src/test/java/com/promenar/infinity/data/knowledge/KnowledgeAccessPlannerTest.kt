@@ -69,7 +69,7 @@ class KnowledgeAccessPlannerTest {
     @Test
     fun `批准后范围收紧或资料目标变化要求重新申请`() = runTest {
         val approved = planner.preview("s")
-        config = config.copy(memoryPolicy = AgentMemoryPolicy(documentCap = DocumentScope.WORKSPACE))
+        config = config.copy(knowledgeFileAccess = KnowledgeFileAccess.OFF)
         assertThat(assertThrows<ExternalFolderException> { planner.mount(approved) }.code).isEqualTo("APPROVAL_TARGET_CHANGED")
         config = AgentRetrievalConfig()
         roots = listOf(KnowledgeBaseSummary("other", "默认资料", 3, true))

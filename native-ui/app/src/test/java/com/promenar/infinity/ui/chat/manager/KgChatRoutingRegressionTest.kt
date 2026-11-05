@@ -23,7 +23,7 @@ class KgChatRoutingRegressionTest {
         }
         ContextBuilder(kgProvider = provider).buildContext(ContextBuilderParams(
             sessionId = "s", content = "问题", assistantMsgId = "m", session = Session(id = "s", agentId = "a",
-                ragOptions = RagOptions(enableDocs = false, enableMemory = false, isGlobal = true, activeDocIds = listOf("d"), enableKnowledgeGraph = true)),
+                ragOptions = RagOptions(enableDocs = false, enableMemory = false, globalMemoryEnabled = true, activeDocIds = listOf("d"), enableKnowledgeGraph = true)),
 
         ))
         assertThat(captured?.graphScope).isNull()

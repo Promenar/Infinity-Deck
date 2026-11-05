@@ -69,12 +69,17 @@ class RoomConversationMemoryLifecycle(
         database.withTransaction {
             database.vectorDao().markOrphanMemory(clock())
             invalidateSessionJit(database, sessionId)
+            GraphStore(database).recomputeSessionGraph(sessionId)
         }
         Unit
     } }
 
     override suspend fun onMessagesRestored(sessionId: String) = mutex.withLock { withContext(Dispatchers.IO) {
-        databaseProvider().vectorDao().reviveRestoredMemory()
+        val database = databaseProvider()
+        database.withTransaction {
+            database.vectorDao().reviveRestoredMemory()
+            GraphStore(database).recomputeSessionGraph(sessionId)
+        }
         Unit
     } }
 
@@ -176,7 +181,7 @@ class RoomConversationMemoryLifecycle(
         vectors.markOrphanMemory(now)
         vectors.purgeOrphanMemory(now - undoWindowMillis)
         // 撤销缓冲只在进程内；记忆片段过窗删除后，同一轮的图谱证据随之物理删除。
-        val (edges, nodes) = database.kgEvidenceDao().purgeOrphanTurns()
+        val (edges, nodes) = GraphStore(database).purgeOrphanTurns()
         val tasks = database.vectorizationTaskDao().deleteOrphanSessionGraphTasks()
         database.vectorizationTaskDao().deleteOrphanSessionStateTasks()
         if (edges > 0 || nodes > 0 || tasks > 0) {
@@ -195,11 +200,11 @@ class RoomConversationMemoryLifecycle(
         message: com.promenar.infinity.data.local.db.entity.MessageEntity,
     ) {
         try {
-            val evidence = database.kgEvidenceDao()
+            val graph = GraphStore(database)
             when (MessageRole.fromSerializedName(message.role)) {
-                MessageRole.USER -> turnAssistantIds(database, sessionId, message.id).forEach { evidence.clearMessage(it) }
+                MessageRole.USER -> turnAssistantIds(database, sessionId, message.id).forEach { graph.clearMessageGraph(it) }
                 MessageRole.ASSISTANT -> {
-                    val (edges, nodes) = evidence.clearMessage(message.id)
+                    val (edges, nodes) = graph.clearMessageGraph(message.id)
                     val hadGraph = edges > 0 || nodes > 0 || database.vectorizationTaskDao()
                         .getById(VectorizationQueue.sessionGraphTaskId(message.id)) != null
                     if (hadGraph) sessionGraph?.schedule(sessionId, message.id, userMessageId = null)
@@ -259,7 +264,7 @@ class RoomConversationMemoryLifecycle(
     }
 
     private suspend fun invalidateSessionJit(database: InfinityDatabase, sessionId: String) {
-        val (edges, nodes) = database.kgEvidenceDao().clearSessionMemoryJit(sessionId)
+        val (edges, nodes) = GraphStore(database).clearSessionMemoryJit(sessionId)
         // 缓存键以检索正文计算，不含会话维度；与删除会话一致，整体失效以免命中含已删内容的结果。
         database.kgJitCacheDao().deleteAll()
         if (edges > 0 || nodes > 0) {

@@ -39,6 +39,8 @@ class RagConfigPersistenceTest {
         val editor = mockk<SharedPreferences.Editor>(relaxed = true)
         every { prefs.edit() } returns editor
         every { editor.putInt(any(), any()) } returns editor
+        // 预算默认值迁移已完成，读取不产生写入。
+        every { prefs.getBoolean("kg_budget_defaults_v3", false) } returns true
         val persistence = RagConfigPersistence(prefs)
         assertThat(persistence.loadRetrievalDepth()).isEqualTo(com.promenar.infinity.data.rag.RetrievalDepth.BALANCED)
         persistence.saveRetrievalDepth(com.promenar.infinity.data.rag.RetrievalDepth.LEAN)

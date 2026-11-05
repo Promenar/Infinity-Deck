@@ -90,7 +90,7 @@ class RequestKnowledgeAccessSkillTest {
     @Test
     fun `批准后智能体范围收紧则拒绝且不写入挂载`() = runTest {
         val approved = encode(planner.preview("s"))
-        config = config.copy(memoryPolicy = AgentMemoryPolicy(documentCap = DocumentScope.WORKSPACE))
+        config = config.copy(knowledgeFileAccess = KnowledgeFileAccess.OFF)
         val result = skill.execute(args, context(true, approved))
         assertThat(result.status).isEqualTo("error")
         assertThat(writes).isEqualTo(0)

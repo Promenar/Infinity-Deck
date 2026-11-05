@@ -100,6 +100,16 @@ class RoomBackupDataSourceTest {
         sqlite.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,normalized_relation,created_at,collection_id) VALUES('e1','n1','n2','认识',0.8,'认识',100,'work:file-1')")
         sqlite.execSQL("INSERT INTO kg_evidence(id,node_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('p1','n1','document','file-1','','doc-task',100,1),('p2','n2','document','file-1','','doc-task',100,1)")
         sqlite.execSQL("INSERT INTO kg_evidence(id,edge_id,source_type,doc_id,content_hash,task_id,created_at,workspace_document) VALUES('p3','e1','document','file-1','','doc-task',100,1)")
+        sqlite.execSQL("INSERT INTO kg_edge_mentions(id,edge_id,evidence_id,doc_id,window_index,char_start,char_end,kind,family,quote,task_id,content_hash,position_coarse,flashback) VALUES('mention','e1','p3','file-1',0,1,3,'state','relationship','认识','doc-task','',0,0)")
+        sqlite.execSQL("INSERT INTO kg_edge_validity(id,edge_id,collection_id,from_doc_id,from_window,from_char) VALUES('validity','e1','work:file-1','file-1',0,1)")
+        sqlite.execSQL("INSERT INTO kg_entity_links(id,collection_id,from_node,to_node,verdict,decided_by,created_at) VALUES('link','work:file-1','n1','n2','same','user',100)")
+        com.promenar.infinity.data.rag.KgTimelineStore(db).recompute("work:file-1")
+        fun timelineRows(): Map<String, List<List<String?>>> = listOf("kg_edge_mentions", "kg_edge_validity", "kg_entity_links").associateWith { table ->
+            sqlite.query("SELECT * FROM `$table` ORDER BY id").use { cursor -> buildList {
+                while (cursor.moveToNext()) add((0 until cursor.columnCount).map { index -> if (cursor.isNull(index)) null else cursor.getString(index) })
+            } }
+        }
+        val beforeTimeline = timelineRows()
         val embedding = byteArrayOf(0, 0, 0, 1, 2, 3, 4, 5)
         sqlite.execSQL("INSERT INTO vectors(id,doc_id,file_uuid,content,embedding,metadata,created_at,stale,version) VALUES(?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v1", "file-1", "file-1", "restorable keyword", embedding, "{\"type\":\"document\"}", 100L))
         sqlite.execSQL("INSERT INTO vectors(id,session_id,content,embedding,metadata,start_message_id,end_message_id,created_at,stale,version) VALUES(?,?,?,?,?,?,?,?,0,1)", arrayOf<Any?>("v2", "session-1", "memory keyword", embedding, "{\"type\":\"memory\",\"embeddingSpaceKey\":\"fixture-space\"}", "message-1", "message-1", 100L))
@@ -111,6 +121,10 @@ class RoomBackupDataSourceTest {
         source.restore(validated(snapshot))
         assertThat(rowCount("kg_nodes")).isEqualTo(2)
         assertThat(rowCount("kg_edges")).isEqualTo(1)
+        assertThat(rowCount("kg_edge_mentions")).isEqualTo(1)
+        assertThat(rowCount("kg_edge_validity")).isEqualTo(1)
+        assertThat(rowCount("kg_entity_links")).isEqualTo(1)
+        assertThat(timelineRows()).isEqualTo(beforeTimeline)
         sqlite.query("SELECT id FROM kg_evidence ORDER BY id").use { cursor ->
             val ids = buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
             assertThat(ids).containsExactly("p1", "p2", "p3")
@@ -1354,7 +1368,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(17)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(18)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -2026,13 +2040,13 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(17)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("17")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(18)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("18")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
                 "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
-                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings", "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "vectors",
+                "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings", "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "kg_edge_mentions", "kg_edge_validity", "kg_entity_links", "vectors",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(
                 "vectors_fts", "kg_jit_cache", "kg_jit_cache_sources",

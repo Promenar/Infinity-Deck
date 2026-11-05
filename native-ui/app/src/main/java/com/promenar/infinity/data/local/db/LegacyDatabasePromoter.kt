@@ -36,7 +36,7 @@ internal object LegacyDatabasePromoter {
         val currentMain = databaseDirectory.resolve(CURRENT_NAME)
         if (Files.exists(currentMain) && Files.exists(legacyMain)) {
             val currentVersion = validateCurrentDatabase(currentMain)
-            if (currentVersion in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35)) {
+            if (currentVersion in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)) {
                 return LegacyDatabasePromotionResult.CurrentDatabaseExists
             }
             validatePublishedV17WithoutSourceWrites(legacyMain)
@@ -143,7 +143,7 @@ internal object LegacyDatabasePromoter {
             val exactContract = when (version) {
                 5 -> identity == CURRENT_V5_IDENTITY_HASH && commonContract &&
                     !sqlite.hasColumn("messages", "legacy_attachments")
-                18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35 -> sqlite.hasCompleteCurrentRoomSchema(version, identity)
+                18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36 -> sqlite.hasCompleteCurrentRoomSchema(version, identity)
                 else -> false
             }
             if (!exactContract) {

@@ -55,14 +55,14 @@ class SshHostMigrationTest {
                     "alias" to "docs", "source_type" to "saf_tree", "source_id" to "content://test/tree/docs", "scope_key" to "session"))
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_5_18, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
+                .addMigrations(MIGRATION_5_18, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE)
                 .allowMainThreadQueries()
                 .build()
             try {
                 val database = room.openHelper.writableDatabase
                 database.query("PRAGMA user_version").use { cursor ->
                     check(cursor.moveToFirst())
-                    assertThat(cursor.getInt(0)).isEqualTo(35)
+                    assertThat(cursor.getInt(0)).isEqualTo(36)
                 }
                 database.query("SELECT name FROM agents WHERE id='ssh-migration-agent'").use { cursor ->
                     check(cursor.moveToFirst())

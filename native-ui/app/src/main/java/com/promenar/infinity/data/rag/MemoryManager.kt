@@ -84,6 +84,12 @@ class MemoryManager(
         val canRerank = options.enableRerank && effectiveConfig.enableRerank && rerankClient != null
         InfinityLogger.log("[$TAG] canRerank=$canRerank (options.enableRerank=${options.enableRerank} && effectiveConfig.enableRerank=${effectiveConfig.enableRerank} && rerankClient=${if (rerankClient != null) "configured" else "null"})")
 
+        // 无需检索时不解析范围，避免为跳过的检索查询数据库。
+        if (!canSearchMemory && !options.enableDocs) return emptyResult(0, RagRetrievalTrace.OUTCOME_NO_SCOPE)
+        if (!embeddingClient.isConfigured && !embeddingClient.hasLocalFallback) {
+            InfinityLogger.log("[$TAG] embedding unavailable, skip retrieval: ${embeddingClient.diagnosticMessage().lineSequence().firstOrNull().orEmpty()}")
+            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_UNAVAILABLE)
+        }
         val scope = scopeResolver.resolve(
             sessionId,
             options.ragOptions ?: RagOptions(
@@ -96,11 +102,6 @@ class MemoryManager(
                 globalMemoryScope = options.memoryScope,
             ),
         )
-        if (!canSearchMemory && !options.enableDocs) return emptyResult(0, RagRetrievalTrace.OUTCOME_NO_SCOPE, scope = scope)
-        if (!embeddingClient.isConfigured && !embeddingClient.hasLocalFallback) {
-            InfinityLogger.log("[$TAG] embedding unavailable, skip retrieval: ${embeddingClient.diagnosticMessage().lineSequence().firstOrNull().orEmpty()}")
-            return emptyResult(System.currentTimeMillis() - startTime, RagRetrievalTrace.OUTCOME_UNAVAILABLE, scope = scope)
-        }
         val documentReach = scope.documents
         // 覆盖范围计数只用于展示，失败时不影响检索本身。
         val memoryStats = if (!canSearchMemory) null else try {

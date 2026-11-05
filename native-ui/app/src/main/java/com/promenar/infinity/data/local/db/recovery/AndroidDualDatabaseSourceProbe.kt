@@ -27,7 +27,7 @@ internal val CURRENT_RECOVERY_SOURCE_IDENTITIES = setOf(
     18 to CURRENT_V18_IDENTITY, 19 to CURRENT_V19_IDENTITY, 20 to CURRENT_V20_IDENTITY,
     21 to CURRENT_V21_IDENTITY, 22 to CURRENT_V22_IDENTITY, 23 to CURRENT_V23_IDENTITY,
     24 to CURRENT_V24_IDENTITY, 25 to CURRENT_V25_IDENTITY, 26 to CURRENT_V26_IDENTITY, 27 to CURRENT_V27_IDENTITY,
-    28 to CURRENT_V28_IDENTITY, 29 to CURRENT_V29_IDENTITY, 30 to CURRENT_V30_IDENTITY, 31 to CURRENT_V31_IDENTITY, 32 to CURRENT_V32_IDENTITY, 33 to CURRENT_V33_IDENTITY, 34 to CURRENT_V34_IDENTITY, 35 to CURRENT_V35_IDENTITY,
+    28 to CURRENT_V28_IDENTITY, 29 to CURRENT_V29_IDENTITY, 30 to CURRENT_V30_IDENTITY, 31 to CURRENT_V31_IDENTITY, 32 to CURRENT_V32_IDENTITY, 33 to CURRENT_V33_IDENTITY, 34 to CURRENT_V34_IDENTITY, 35 to CURRENT_V35_IDENTITY, 36 to CURRENT_V36_IDENTITY,
 )
 
 /** 测试hook只用于注入真实文件系统变化，不替换生产descriptor实现。 */
@@ -110,7 +110,7 @@ internal class AndroidDualDatabaseSourceProbe(
         check(source.node(CURRENT_DATABASE_NAME) == before) { "当前数据库头读取期间身份变化" }
         requireBinding(source)
         val magic = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
-        return header.array().copyOfRange(0, magic.size).contentEquals(magic) && header.getInt(60) in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35)
+        return header.array().copyOfRange(0, magic.size).contentEquals(magic) && header.getInt(60) in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
     }
 
     private fun requireBinding(source: SnapshotDirectory) {
@@ -184,7 +184,7 @@ internal class AndroidDualDatabaseSourceProbe(
             val contract = sqlite.version to sqlite.roomIdentity()
             check(contract in accepted) { "${name}版本或Room identity不属于已验证公开合同" }
             validatePublishedShape(sqlite, role, contract.first)
-            if (role == "current" && contract.first !in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35) && sqlite.hasTable("workspace_mutations")) {
+            if (role == "current" && contract.first !in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36) && sqlite.hasTable("workspace_mutations")) {
                 sqlite.rawQuery("SELECT 1 FROM workspace_mutations LIMIT 1", null).use {
                     check(!it.moveToFirst()) { "当前数据库存在尚未完成的工作区文件 journal" }
                 }
@@ -212,7 +212,7 @@ internal class AndroidDualDatabaseSourceProbe(
                     !has("messages", "attachments") && !has("messages", "legacy_attachments") &&
                         has("agents", "name_customized") && has("workspace_files", "workspace_root_uuid") &&
                         has("vectorization_tasks", "workspace_root_uuid")
-                role == "current" && version in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35) ->
+                role == "current" && version in setOf(18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36) ->
                     sqlite.hasCompleteCurrentRoomSchema(version, sqlite.roomIdentity())
                 else -> false
             }

@@ -211,7 +211,12 @@ data class ExtractionResult(
 data class ExtractedNode(
     val name: String,
     val type: String,
-    val metadata: String? = null
+    val metadata: String? = null,
+    val windowIndex: Int? = null,
+    val evidence: String? = null,
+    val charStart: Int? = null,
+    val charEnd: Int? = null,
+    val positionCoarse: Boolean = false,
 )
 
 @Serializable
@@ -222,6 +227,14 @@ data class ExtractedEdge(
     val weight: Double = 1.0,
     val sourceType: String? = null,
     val targetType: String? = null,
+    val windowIndex: Int? = null,
+    val evidence: String? = null,
+    val charStart: Int? = null,
+    val charEnd: Int? = null,
+    val positionCoarse: Boolean = false,
+    val kind: String? = null,
+    val family: String? = null,
+    val flashback: Boolean = false,
 )
 
 @Serializable

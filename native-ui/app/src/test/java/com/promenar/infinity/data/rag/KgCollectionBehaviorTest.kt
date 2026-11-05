@@ -50,6 +50,91 @@ class KgCollectionBehaviorTest {
 
     @After fun close() = db.close()
 
+    @Test fun `合集自然顺序和手动顺序在新增文档后保持`() = runBlocking<Unit> {
+        folder("p", null)
+        listOf("第2章", "第10章", "第1章").forEach { file(it, "p"); write(it) }
+        assertThat(collections.listArticles("work:p").map { it.title })
+            .containsExactly("第1章", "第2章", "第10章").inOrder()
+        assertThat(collections.documentInfo("第2章").ordinal).isEqualTo(2)
+        collections.moveArticle("work:p", "第10章", 0)
+        val moved = collections.listArticles("work:p")
+        assertThat(moved.map { it.title }).containsExactly("第10章", "第1章", "第2章").inOrder()
+        val manual = moved.associate { it.docId to it.orderKey }
+        collections.refreshNaturalOrder("work:p")
+        assertThat(collections.listArticles("work:p").associate { it.docId to it.orderKey }).isEqualTo(manual)
+        file("第3章", "p"); write("第3章")
+        val afterInsert = collections.listArticles("work:p")
+        assertThat(afterInsert.filter { it.docId in manual }.map { it.docId })
+            .containsExactly("第10章", "第1章", "第2章").inOrder()
+        assertThat(afterInsert.single { it.docId == "第3章" }.orderSource).isEqualTo("natural")
+    }
+
+    @Test fun `合集篇序包含尚未抽取的文档`() = runBlocking<Unit> {
+        folder("p", null)
+        listOf("第1章", "第2章", "第10章").forEach { file(it, "p") }
+        write("第2章")
+        assertThat(collections.listArticles("work:p").map { it.title })
+            .containsExactly("第1章", "第2章", "第10章").inOrder()
+        assertThat(collections.documentInfo("第10章").ordinal).isEqualTo(3)
+        file("第3章", "p")
+        assertThat(collections.listArticles("work:p").map { it.title })
+            .containsExactly("第1章", "第2章", "第3章", "第10章").inOrder()
+    }
+
+    @Test fun `重新抽取替换证据时保留手动篇序`() = runBlocking<Unit> {
+        folder("p", null)
+        listOf("第1章", "第2章", "第3章").forEach { file(it, "p"); write(it) }
+        collections.moveArticle("work:p", "第3章", 0)
+        val before = collections.listArticles("work:p").associate { it.docId to it.orderKey }
+        store.clearGraphForDoc("第3章", preserveOrder = true)
+        write("第3章")
+        assertThat(collections.listArticles("work:p").associate { it.docId to it.orderKey }).isEqualTo(before)
+    }
+
+    @Test fun `明确声明的别名在同一合集跨文档归一`() = runBlocking<Unit> {
+        folder("p", null); folder("q", null); file("one", "p"); file("two", "p"); file("other", "q")
+        collections.resolveDocumentForWrite("one"); collections.resolveDocumentForWrite("two"); collections.resolveDocumentForWrite("other")
+        val full = store.upsertNode("青禾先生", "person", """{"aliases":["青禾"]}""",
+            KgScope(docId = "one", contentHash = "h", workspaceDocument = true), collectionId = "work:p")
+        val alias = store.upsertNode("青禾", "person", scope = KgScope(docId = "two", contentHash = "h", workspaceDocument = true), collectionId = "work:p")
+        val foreign = store.upsertNode("青禾", "person", scope = KgScope(docId = "other", contentHash = "h", workspaceDocument = true), collectionId = "work:q")
+        assertThat(alias).isEqualTo(full)
+        assertThat(foreign).isNotEqualTo(full)
+    }
+
+    @Test fun `已存在的两个实体在后续声明别名后归一且可撤销`() = runBlocking<Unit> {
+        folder("p", null); file("one", "p"); write("one")
+        val first = store.upsertNode("青禾", "person", collectionId = "work:p")
+        val second = store.upsertNode("青禾先生", "person", collectionId = "work:p")
+        store.upsertNode("青禾先生", "person", """{"aliases":["青禾"]}""", collectionId = "work:p")
+        val resolution = KgEntityResolutionStore(db)
+        assertThat(resolution.canonicalIds("work:p")[first]).isEqualTo(resolution.canonicalIds("work:p")[second])
+        resolution.revoke("work:p", resolution.listLinks("work:p").single().id)
+        assertThat(resolution.canonicalIds("work:p")[first]).isNotEqualTo(resolution.canonicalIds("work:p")[second])
+    }
+
+    @Test fun `手动相邻序值之间插入自然篇目也不改动手动值`() = runBlocking<Unit> {
+        folder("p", null)
+        listOf("第1章", "第3章").forEach { file(it, "p"); write(it) }
+        db.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET order_key='000000000000000000000000000001',order_source='manual' WHERE doc_id='第1章'")
+        db.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET order_key='000000000000000000000000000002',order_source='manual' WHERE doc_id='第3章'")
+        val before = collections.listArticles("work:p").associate { it.docId to it.orderKey }
+        file("第2章", "p"); write("第2章")
+        val after = collections.listArticles("work:p")
+        assertThat(after.map { it.title }).containsExactly("第1章", "第2章", "第3章").inOrder()
+        assertThat(after.filter { it.docId in before }.associate { it.docId to it.orderKey }).isEqualTo(before)
+    }
+
+    @Test fun `相邻序值可以重复细分`() {
+        val left = "000000000000000000000000000001"
+        var right = "000000000000000000000000000002"
+        repeat(200) {
+            val middle = orderKeyBetween(left, right)
+            assertThat(middle > left && middle < right).isTrue()
+            right = middle
+        }
+    }
+
     @Test fun `外层事务内图谱绑定与文档归属不会等待自身连接`() = runBlocking<Unit> {
         db.sessionDao().insert(SessionEntity("s", "agent", createdAt = 1, updatedAt = 1))
         folder("p", null); file("one", "p")

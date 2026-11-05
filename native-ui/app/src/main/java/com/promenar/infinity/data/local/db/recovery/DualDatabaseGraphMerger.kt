@@ -243,6 +243,10 @@ internal class DualDatabaseGraphMerger(
                     val id = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
                         .joinToString("") { "%02x".format(it.toInt() and 255) }
                     values.put("id", id)
+                    stringRow["id"]?.let { oldId ->
+                        @Suppress("UNCHECKED_CAST")
+                        (mappings[ColumnKey("kg_evidence", "id")] as? MutableMap<String, String>)?.put(oldId, id)
+                    }
                 }
                 if (table in setOf("kg_nodes", "kg_edges")) {
                     val inserted = db.insertWithOnConflict(table, null, values, SQLiteDatabase.CONFLICT_IGNORE)
@@ -256,7 +260,7 @@ internal class DualDatabaseGraphMerger(
                     if (table == "kg_edges" && values.containsKey("weight")) {
                         db.execSQL("UPDATE kg_edges SET weight=MAX(weight,?) WHERE id=?", arrayOf(values.getAsDouble("weight"), values.getAsString("id")))
                     }
-                } else if (table in setOf("kg_collections", "kg_evidence")) {
+                } else if (table in setOf("kg_collections", "kg_evidence", "kg_entity_links")) {
                     db.insertWithOnConflict(table, null, values, SQLiteDatabase.CONFLICT_IGNORE)
                     if (table == "kg_evidence" && values.getAsDouble("weight") != null) {
                         db.execSQL("UPDATE kg_evidence SET weight=MAX(COALESCE(weight,0),?) WHERE id=?", arrayOf(values.getAsDouble("weight"), values.getAsString("id")))
@@ -299,12 +303,12 @@ internal class DualDatabaseGraphMerger(
         unresolved: MutableList<String>,
     ): String {
         if (value.isBlank()) return value
-        if (table == "kg_evidence" && column == "task_id") {
+        if (table in setOf("kg_evidence", "kg_edge_mentions") && column == "task_id") {
             return mappings[ColumnKey("vectorization_tasks", "id")]?.get(value)
                 ?: RecoveryStableId.map("kg_extraction_tasks", "id", value)
         }
         if (table == "kg_collections" && column == "root_ref") return mappedDocumentId(value, mappings)
-        if (table in setOf("kg_nodes", "kg_edges", "kg_collection_members") && column == "collection_id") {
+        if (table in setOf("kg_nodes", "kg_edges", "kg_collection_members", "kg_edge_validity", "kg_entity_links") && column == "collection_id") {
             return mappings[ColumnKey("kg_collections", "id")]?.get(value) ?: mappedGraphId(value, mappings)
         }
         if (table == "sessions" && column == "agent_id" && value == RAG_SYSTEM_AGENT_ID) return value
@@ -324,12 +328,13 @@ internal class DualDatabaseGraphMerger(
             val key = if (workspaceReference) ColumnKey("workspace_files", "uuid") else RAG_DOCUMENT_KEY
             return mappings[key]?.get(value) ?: value.also { unresolved += "required:$table.$column=$value" }
         }
-        if ((column == "doc_id" && table in setOf("kg_edges", "kg_evidence")) ||
+        if ((column == "doc_id" && table in setOf("kg_edges", "kg_evidence", "kg_edge_mentions")) ||
             (column == "file_uuid" && table in setOf("kg_nodes", "kg_edges"))) {
             return mappings[ColumnKey("workspace_files", "uuid")]?.get(value)
                 ?: mappings[RAG_DOCUMENT_KEY]?.get(value)
                 ?: value.also { unresolved += "required:$table.$column=$value" }
         }
+        if (table == "kg_edge_validity" && column in setOf("from_doc_id", "to_doc_id")) return mappedDocumentId(value, mappings)
         val target = EXPLICIT_REFERENCES[ColumnKey(table, column)] ?: foreignTarget
         if (target != null) {
             return mappings[target]?.get(value) ?: value.also {
@@ -563,6 +568,7 @@ internal class DualDatabaseGraphMerger(
             "agents", "custom_skills", "mcp_servers", "mcp_tool_snapshots", "sessions", "messages",
             "attachments", "vectors", "context_summaries", "tags", "document_tags", "workspace_files",
             "kg_collections", "kg_folder_settings", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence",
+            "kg_edge_mentions", "kg_edge_validity", "kg_entity_links",
             "audit_logs", "artifacts", "task_nodes", "tool_execution_ledger",
             "file_versions", "vectorization_tasks",
         )

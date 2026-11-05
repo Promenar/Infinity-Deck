@@ -23,6 +23,8 @@ data class KgCollectionSummary(
     val edgeCount: Int,
 )
 
+data class KgDocumentCollectionInfo(val collectionId: String, val title: String, val ordinal: Int?, val documentCount: Int, val orderSource: String?)
+
 data class ResolvedGraphBinding(val collectionId: String, val mode: GraphBindingMode) {
     val writable: Boolean get() = mode == GraphBindingMode.READ_WRITE
 }
@@ -31,6 +33,29 @@ data class ResolvedGraphBinding(val collectionId: String, val mode: GraphBinding
 class KgCollectionRepository(private val database: InfinityDatabase) {
     /** 不写入成员表，按当前文件与文件夹设置计算资料归属。 */
     suspend fun documentCollectionIdForRead(docId: String): String = memberCollection(docId) ?: documentDescriptor(docId).id
+    suspend fun collectionForDocument(docId: String): String = documentDescriptor(docId).id
+    suspend fun documentInfo(docId: String): KgDocumentCollectionInfo = database.withTransaction {
+        val descriptor = documentDescriptor(docId)
+        val id = memberCollection(docId) ?: descriptor.id
+        val title = database.query(SimpleSQLiteQuery("SELECT title FROM kg_collections WHERE id=?", arrayOf(id))).use {
+            if (it.moveToFirst()) it.getString(0) else descriptor.title
+        }
+        val rows = KgCollectionOrder(database).list(id)
+        val article = rows.firstOrNull { it.docId == docId }
+        KgDocumentCollectionInfo(id, title, article?.ordinal, rows.size, article?.orderSource)
+    }
+    suspend fun listArticles(collectionId: String): List<KgCollectionArticle> = KgCollectionOrder(database).list(collectionId)
+
+    suspend fun moveArticle(collectionId: String, docId: String, targetIndex: Int) = database.withTransaction {
+        KgCollectionOrder(database).move(collectionId, docId, targetIndex)
+        KgTimelineStore(database).recompute(collectionId)
+    }
+
+    suspend fun refreshNaturalOrder(collectionId: String) = database.withTransaction {
+        KgCollectionOrder(database).refresh(collectionId)
+        KgTimelineStore(database).recompute(collectionId)
+    }
+
     suspend fun collectionIdsForDocuments(docIds: Collection<String>): List<String> = database.withTransaction {
         docIds.distinct().chunked(400).flatMap { chunk ->
             val sql = "SELECT DISTINCT collection_id FROM kg_collection_members WHERE doc_id IN (${chunk.joinToString { "?" }})"
@@ -111,6 +136,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         }
         rows.map { it.id }.chunked(400).forEach { evidence.deleteByIds(it) }
         evidence.collectEdges(); evidence.collectNodes(); collectEmptyCollections()
+        KgTimelineStore(database).recompute(collectionId)
         rows.size
     }
 
@@ -137,6 +163,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         ensureCollection(descriptor)
         database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_collection_members(doc_id,collection_id,order_key,order_source) VALUES(?,?,NULL,NULL)", arrayOf(docId, descriptor.id))
         database.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET collection_id=? WHERE doc_id=?", arrayOf(descriptor.id, docId))
+        KgCollectionOrder(database).refresh(descriptor.id)
         descriptor.id
     }
 
@@ -157,7 +184,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         if (file == null || file.isDirectory) {
             val knownWorkspace = database.query(SimpleSQLiteQuery("SELECT 1 FROM workspace_files WHERE uuid=? UNION SELECT 1 FROM kg_evidence WHERE doc_id=? AND workspace_document=1 LIMIT 1", arrayOf(docId, docId))).use { it.moveToFirst() }
             if (knownWorkspace) {
-                database.kgEvidenceDao().clearDocument(docId)
+                GraphStore(database).clearGraphForDoc(docId)
                 database.openHelper.writableDatabase.execSQL("DELETE FROM kg_collection_members WHERE doc_id=?", arrayOf(docId))
                 return
             }
@@ -167,14 +194,18 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
     }
 
     private suspend fun relocateDocument(docId: String, target: Descriptor) {
+        val previousCollection = memberCollection(docId)
         ensureCollection(target)
         val evidence = database.kgEvidenceDao()
         val rows = evidence.relocatableDocumentEvidence(docId, target.id)
         val store = GraphStore(database)
         rows.forEach { store.relocateEvidence(it, target.id) }
         rows.map { it.id }.chunked(400).forEach { evidence.deleteByIds(it) }
-        database.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET collection_id=? WHERE doc_id=?", arrayOf(target.id, docId))
+        database.openHelper.writableDatabase.execSQL("UPDATE kg_collection_members SET collection_id=?,order_key=NULL,order_source=NULL WHERE doc_id=?", arrayOf(target.id, docId))
         evidence.collectEdges(); evidence.collectNodes()
+        previousCollection?.let { KgCollectionOrder(database).refresh(it); KgTimelineStore(database).recompute(it) }
+        KgCollectionOrder(database).refresh(target.id)
+        KgTimelineStore(database).recompute(target.id)
     }
 
     private fun memberCollection(docId: String): String? = database.query(SimpleSQLiteQuery("SELECT collection_id FROM kg_collection_members WHERE doc_id=?", arrayOf(docId))).use { if (it.moveToFirst()) it.getString(0) else null }
@@ -197,7 +228,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
     }
 
     private fun ensureCollection(descriptor: Descriptor) {
-        database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,?)", arrayOf(descriptor.id, descriptor.kind, descriptor.title, descriptor.rootRef, System.currentTimeMillis()))
+        database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,?)", arrayOf<Any?>(descriptor.id, descriptor.kind, descriptor.title, descriptor.rootRef, System.currentTimeMillis()))
     }
 
     private fun collectEmptyCollections() {

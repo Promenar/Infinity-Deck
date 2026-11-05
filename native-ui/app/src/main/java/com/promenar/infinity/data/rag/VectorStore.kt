@@ -4,6 +4,8 @@ import com.promenar.infinity.data.local.db.dao.KgEdgeDao
 import com.promenar.infinity.data.local.db.dao.KgNodeDao
 import com.promenar.infinity.data.local.db.dao.VectorDao
 import com.promenar.infinity.data.local.db.entity.VectorEntity
+import com.promenar.infinity.data.local.db.InfinityDatabase
+import androidx.room.withTransaction
 import com.promenar.infinity.utils.InfinityLogger
 import java.nio.ByteBuffer
 import java.util.UUID
@@ -13,6 +15,7 @@ class VectorStore(
     private val kgNodeDao: KgNodeDao,
     private val kgEdgeDao: KgEdgeDao,
     private val kgEvidenceDao: com.promenar.infinity.data.local.db.dao.KgEvidenceDao,
+    private val database: InfinityDatabase? = null,
 ) {
     private fun toBlob(embedding: FloatArray): ByteArray {
         val buffer = ByteBuffer.allocate(embedding.size * 4)
@@ -248,13 +251,26 @@ class VectorStore(
     }
 
     suspend fun pruneOrphanSessions(activeSessionIds: List<String>) {
-        if (activeSessionIds.isEmpty()) vectorDao.deleteAllMemoryVectors()
-        else vectorDao.deleteOrphanBySessionIds(activeSessionIds)
-        kgEvidenceDao.pruneSessions(activeSessionIds)
+        suspend fun prune() {
+            val affected = database?.let { GraphStore(it).collectionsForEvidence(kgEvidenceDao.orphanSessionEvidence(activeSessionIds)) }.orEmpty()
+            if (activeSessionIds.isEmpty()) vectorDao.deleteAllMemoryVectors()
+            else vectorDao.deleteOrphanBySessionIds(activeSessionIds)
+            kgEvidenceDao.pruneSessions(activeSessionIds)
+            database?.let { db -> affected.forEach { KgTimelineStore(db).recompute(it) } }
+        }
+        if (database == null) prune() else database.withTransaction { prune() }
     }
 
-    suspend fun pruneOrphanDocumentKG(activeDocIds: List<String>): Pair<Int, Int> =
-        kgEvidenceDao.pruneDocuments(activeDocIds)
+    suspend fun pruneOrphanDocumentKG(activeDocIds: List<String>): Pair<Int, Int> {
+        val db = database ?: return kgEvidenceDao.pruneDocuments(activeDocIds)
+        return db.withTransaction {
+            val docs = kgEvidenceDao.orphanWorkspaceDocumentIds(activeDocIds)
+            val affected = KgCollectionRepository(db).collectionIdsForDocuments(docs)
+            val result = kgEvidenceDao.pruneDocuments(activeDocIds)
+            affected.forEach { KgTimelineStore(db).recompute(it) }
+            result
+        }
+    }
 
     // ── P0 诊断方法: 支持 MemoryManager 精准定位 "0 results" 根因 ──
 

@@ -533,8 +533,8 @@ class ContextBuilderTest {
             documentScope = com.promenar.infinity.data.model.DocumentScope.KNOWLEDGE_BASE,
         ))
         val capped = params.copy(
-            session = session.copy(ragOptions = RagOptions(enableMemory = true, enableDocs = false,
-                memoryScope = com.promenar.infinity.data.model.ConversationScope.ALL_AGENTS)),
+            session = session.copy(ragOptions = RagOptions(enableMemory = true, enableDocs = false, globalMemoryEnabled = true,
+                globalMemoryScope = com.promenar.infinity.data.model.ConversationScope.ALL_AGENTS)),
             agentMemoryPolicy = com.promenar.infinity.data.agent.AgentMemoryPolicy(memoryCap = com.promenar.infinity.data.model.ConversationScope.AGENT),
         )
         assertThat(builder.buildContext(capped).ragTrace?.let { it.memoryScope to it.documentScope })

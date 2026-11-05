@@ -80,7 +80,7 @@ class BranchLinuxFileNamespaceTest {
         coEvery { stat("/") } returns ExternalFolderEntry("/", "", true, 0, 1, identity = "rootfs-identity")
     }
     private val original = ExternalFolderManager(context, dao, workspace, FileIndexEventSink.None, resolver,
-        userSkillsDirectory = skills, knowledgeBaseRoots = { setOf("knowledge-root") }, backendOverride = {
+        userSkillsDirectory = skills, knowledgeBaseRoots = { setOf("knowledge-root") }, knowledgeBaseAllowed = { _, _ -> true }, backendOverride = {
             when { it.id == "builtin:skills" -> fileSystem.backend(skills)
                 it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE -> fileSystem.backend(knowledge)
                 else -> null }

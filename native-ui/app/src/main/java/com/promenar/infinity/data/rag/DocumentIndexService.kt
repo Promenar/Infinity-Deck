@@ -54,6 +54,18 @@ data class DocumentIndexCandidate(
     val onGraphCommitted: suspend () -> Unit = noGraphCommit,
     val onEmbeddingCommitted: suspend () -> Unit = noGraphCommit,
     val validateBeforeCommit: () -> Unit = noIndexValidation,
+    val edgeMentions: Map<String, KgCandidateMention> = emptyMap(),
+)
+
+data class KgCandidateMention(
+    val windowIndex: Int,
+    val charStart: Int,
+    val charEnd: Int,
+    val kind: String,
+    val family: String?,
+    val quote: String?,
+    val positionCoarse: Boolean,
+    val flashback: Boolean,
 )
 
 fun interface DocumentIndexCandidateBuilder {
@@ -182,6 +194,21 @@ class WorkspaceDocumentIndexCandidateBuilder(
             ?: KgExtractionStatus.PROVIDER_ERROR.takeIf { graph != null && !graphComplete && graph.progress?.reason == null }
         val validated = graph?.let { ValidatedGraph.from(it.nodes, it.edges) }
         val nodeIds = validated?.nodes.orEmpty().associate { ValidatedGraph.identity(it.name, it.type) to UUID.randomUUID().toString() }
+        val candidateEdges = validated?.edges.orEmpty().mapNotNull { edge ->
+            val source = validated?.resolveEndpoint(edge.source, edge.sourceType)
+            val target = validated?.resolveEndpoint(edge.target, edge.targetType)
+            val sourceId = source?.let { nodeIds[ValidatedGraph.identity(it.name, it.type)] }
+            val targetId = target?.let { nodeIds[ValidatedGraph.identity(it.name, it.type)] }
+            if (sourceId == null || targetId == null) null else {
+                val stored = KgEdgeEntity(UUID.randomUUID().toString(), sourceId, targetId, edge.relation, edge.weight, timestamp)
+                val mention = if (edge.windowIndex != null && edge.charStart != null && edge.charEnd != null &&
+                    (edge.kind == "event" || edge.kind == "state" && edge.family in KgNarrativeTimeline.families)) {
+                    KgCandidateMention(edge.windowIndex, edge.charStart, edge.charEnd, edge.kind!!, edge.family,
+                        edge.evidence, edge.positionCoarse, edge.flashback)
+                } else null
+                stored to mention
+            }
+        }
         DocumentIndexCandidate(
             graphExtracted = graphComplete,
             kgProgress = graph?.progress,
@@ -224,20 +251,8 @@ class WorkspaceDocumentIndexCandidateBuilder(
                     )
                 }
             },
-            edges = validated?.edges.orEmpty().mapNotNull { edge ->
-                val source = validated?.resolveEndpoint(edge.source, edge.sourceType)
-                val target = validated?.resolveEndpoint(edge.target, edge.targetType)
-                val sourceId = source?.let { nodeIds[ValidatedGraph.identity(it.name, it.type)] }
-                val targetId = target?.let { nodeIds[ValidatedGraph.identity(it.name, it.type)] }
-                if (sourceId == null || targetId == null) null else KgEdgeEntity(
-                    id = UUID.randomUUID().toString(),
-                    sourceId = sourceId,
-                    targetId = targetId,
-                    relation = edge.relation,
-                    weight = edge.weight,
-                    createdAt = timestamp,
-                )
-            },
+            edges = candidateEdges.map { it.first },
+            edgeMentions = candidateEdges.mapNotNull { (edge, mention) -> mention?.let { edge.id to it } }.toMap(),
         )
     }
 
@@ -306,7 +321,7 @@ class RoomDocumentIndexService(
                 }
                 candidate.validateBeforeCommit()
                 artifacts.clear(event.workspaceRootUuid, event.fileUuid, deleteTags = false,
-                    clearVectors = !event.skipVectorization, clearGraph = !candidate.preserveExistingGraph)
+                    clearVectors = !event.skipVectorization, clearGraph = !candidate.preserveExistingGraph, preserveGraphOrder = true)
                 if (candidate.vectors.isNotEmpty()) database.vectorDao().insertAll(candidate.vectors)
                 GraphStore(database).commitCandidate(candidate, KgSource(
                     type = "document", docId = event.fileUuid, contentHash = event.contentHash,
@@ -429,9 +444,10 @@ private const val DOCUMENT_REFERENCE_TYPE = "document_reference"
 class RoomDocumentArtifacts(
     private val database: InfinityDatabase,
 ) {
-    suspend fun clear(workspaceRootUuid: String, fileUuid: String, deleteTags: Boolean, clearVectors: Boolean = true, clearGraph: Boolean = true) {
+    suspend fun clear(workspaceRootUuid: String, fileUuid: String, deleteTags: Boolean, clearVectors: Boolean = true,
+                      clearGraph: Boolean = true, preserveGraphOrder: Boolean = false) {
         if (clearVectors) database.vectorDao().deleteByDocId(fileUuid)
-        if (clearGraph) database.kgEvidenceDao().clearDocument(fileUuid)
+        if (clearGraph) GraphStore(database).clearGraphForDoc(fileUuid, preserveOrder = preserveGraphOrder)
         if (deleteTags) database.documentTagDao().deleteByDocId(fileUuid)
     }
 }

@@ -78,6 +78,26 @@ class KgIndexPipelineTest {
     }
 
     @Test
+    fun `文档提交持久化关系出现与证据关联`() = runTest {
+        val file = register("timeline.txt", "text/plain", "甲乙结盟".toByteArray())
+        val (queue, _) = pipeline { _, _, _ ->
+            ExtractionResult(listOf(ExtractedNode("甲", "person"), ExtractedNode("乙", "person")),
+                listOf(ExtractedEdge("甲", "乙", "同盟", windowIndex = 1, evidence = "甲乙结盟",
+                    charStart = 2, charEnd = 6, kind = "state", family = "relationship")))
+        }
+        enqueue(queue, file)
+        advanceUntilIdle()
+        queue.awaitSettled()
+        database.openHelper.readableDatabase.query("SELECT m.window_index,m.char_start,m.char_end,m.kind,m.family,m.quote FROM kg_edge_mentions m JOIN kg_evidence p ON p.id=m.evidence_id WHERE p.doc_id=?", arrayOf(file.uuid)).use { c ->
+            assertThat(c.moveToFirst()).isTrue()
+            assertThat(listOf(c.getInt(0), c.getInt(1), c.getInt(2))).containsExactly(1, 2, 6).inOrder()
+            assertThat(listOf(c.getString(3), c.getString(4), c.getString(5))).containsExactly("state", "relationship", "甲乙结盟").inOrder()
+            assertThat(c.moveToNext()).isFalse()
+        }
+        queue.shutdown()
+    }
+
+    @Test
     fun `文档清理不删除其它任务尚未连边的节点`() = runTest {
         val file = register("cleanup.txt", "text/plain", "text".toByteArray())
         seedOld(file)

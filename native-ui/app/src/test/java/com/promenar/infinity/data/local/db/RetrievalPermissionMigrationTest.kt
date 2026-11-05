@@ -67,10 +67,10 @@ class RetrievalPermissionMigrationTest {
                 sqlite.execSQL("INSERT INTO long_term_memories(id,kind,title,content,source_agent_id,source_session_id,source_message_id,created_at,updated_at) VALUES('m','user','偏好','测试','a','s',NULL,1,1)")
                 sqlite.version = 34
             }
-            val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_34_35).allowMainThreadQueries().build()
+            val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
             try {
                 val sqlite = room.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(35)
+                assertThat(sqlite.version).isEqualTo(36)
                 assertThat(room.agentDao().getById("private-a")!!.retrievalConfig!!.memoryPolicy.globalMemory.name).isEqualTo("FORBID")
                 assertThat(room.agentDao().getById("private-a")!!.retrievalConfig!!.memoryPolicy.activeMemoryDefault.name).isEqualTo("ISOLATED")
                 assertThat(room.agentDao().getById("normal-a")!!.retrievalConfig!!.memoryPolicy.memoryCap.name).isEqualTo("ALL_AGENTS")

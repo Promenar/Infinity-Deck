@@ -106,6 +106,7 @@ class KgApplicationRoutingTest {
             .allowMainThreadQueries().setQueryExecutor { it.run() }.setTransactionExecutor { it.run() }.build()
         every { app.graphStore } returns GraphStore(database)
         every { app.database } returns database
+        database.sessionDao().insert(com.promenar.infinity.data.local.db.entity.SessionEntity("s", "a", createdAt = 1, updatedAt = 1))
         database.fileEntryDao().insert(com.promenar.infinity.data.local.db.entity.FileEntry(
             uuid = "doc", workspaceRootUuid = "root", parentUuid = "root", name = "doc.txt", hash = "doc-hash",
             physicalRootPath = "/tmp/kg-routing-fixture", materializedPath = "/doc.txt",

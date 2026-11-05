@@ -102,7 +102,7 @@ class PersistentGraphRetrievalTest {
         assertThat(all).containsNoneOf("recycled", "root")
     }
 
-    @Test fun `绑定图谱内联合JIT不受文档选择范围限制`() = runBlocking<Unit> {
+    @Test fun `联合JIT来源须全部在文档范围内`() = runBlocking<Unit> {
         val docs = (0..400).map { "joint-$it" }
         val first = KgScope(sessionId = "s", docId = docs.first(), taskId = "joint-task")
         val last = first.copy(docId = docs.last())
@@ -112,7 +112,7 @@ class PersistentGraphRetrievalTest {
         store.createEdge(a, b, "联合关系", scope = last, sourceType = "jit", collectionId = "session:s")
         val retrieval = GraphRetrievalStore(db)
         assertThat(retrieval.retrieve("联合甲", KgRetrievalScope("s", docs)).paths).hasSize(1)
-        assertThat(retrieval.retrieve("联合甲", KgRetrievalScope("s", docs.dropLast(1))).paths).hasSize(1)
+        assertThat(retrieval.retrieve("联合甲", KgRetrievalScope("s", docs.dropLast(1))).paths).isEmpty()
     }
 
     @Test fun `索引种子匹配中英文大小写包含与分词`() = runBlocking<Unit> {
@@ -165,6 +165,11 @@ class PersistentGraphRetrievalTest {
     }
 
     @Test fun `持久图充足不调用JIT不足才调用且可关闭`() = runBlocking<Unit> {
+        db.sessionDao().insert(com.promenar.infinity.data.local.db.entity.SessionEntity(
+            "s", "agent", createdAt = 1, updatedAt = 1))
+        db.vectorDao().insert(com.promenar.infinity.data.local.db.entity.VectorEntity(
+            id = "doc-chunk", docId = "doc", content = "片段", embedding = byteArrayOf(), createdAt = 1,
+        ))
         val scope = KgScope(sessionId = "s")
         val a = store.upsertNode("甲", scope = scope, collectionId = "session:s")
         val b = store.upsertNode("乙", scope = scope, collectionId = "session:s")
@@ -192,6 +197,11 @@ class PersistentGraphRetrievalTest {
     }
 
     @Test fun `工具检索返回持久图但种子不足时也不调用JIT`() = runBlocking<Unit> {
+        db.sessionDao().insert(com.promenar.infinity.data.local.db.entity.SessionEntity(
+            "s", "agent", createdAt = 1, updatedAt = 1))
+        db.vectorDao().insert(com.promenar.infinity.data.local.db.entity.VectorEntity(
+            id = "doc-chunk", docId = "doc", content = "片段", embedding = byteArrayOf(), createdAt = 1,
+        ))
         val scope = KgScope(sessionId = "s")
         val a = store.upsertNode("甲", scope = scope, collectionId = "session:s")
         val b = store.upsertNode("乙", scope = scope, collectionId = "session:s")
@@ -221,7 +231,10 @@ class PersistentGraphRetrievalTest {
         assertThat(calls).isEqualTo(1)
     }
 
-    @Test fun `工具与自动图谱均只按绑定图谱过滤存活证据`() = runBlocking<Unit> {
+    @Test fun `工具图谱遵守会话资料与记忆开关而自动图谱读取全部可见证据`() = runBlocking<Unit> {
+        db.vectorDao().insert(com.promenar.infinity.data.local.db.entity.VectorEntity(
+            id = "doc-chunk", docId = "doc", content = "片段", embedding = byteArrayOf(), createdAt = 1,
+        ))
         db.sessionDao().insert(com.promenar.infinity.data.local.db.entity.SessionEntity(
             "s", "agent", createdAt = 1, updatedAt = 1))
         KgCollectionRepository(db).setBinding("s", GraphBinding("shared"))
@@ -238,7 +251,7 @@ class PersistentGraphRetrievalTest {
                 error("不应调用即时抽取")
             }
         }) { RagConfiguration(kgJitFallbackEnabled = false) }
-        val options = RagOptions(activeDocIds = listOf("doc"), enableKnowledgeGraph = true)
+        val options = RagOptions(activeDocIds = listOf("doc"), enableKnowledgeGraph = true, graphBinding = GraphBinding("shared"))
 
         fun KgContextResult.relations() = paths.flatMap { it.edges }.map { it.relation }
         val documents = provider.retrieveForTool("来源", "s", emptyList(), options.copy(enableMemory = false))
@@ -246,9 +259,9 @@ class PersistentGraphRetrievalTest {
         val neither = provider.retrieveForTool("来源", "s", emptyList(), options.copy(enableDocs = false, enableMemory = false))
         val automatic = provider.retrieveContext("来源", "s", emptyList(), options.copy(enableDocs = false, enableMemory = false))
 
-        assertThat(documents.relations()).containsExactly("文档关系", "历史关系")
-        assertThat(history.relations()).containsExactly("文档关系", "历史关系")
-        assertThat(neither.relations()).containsExactly("文档关系", "历史关系")
+        assertThat(documents.relations()).containsExactly("文档关系")
+        assertThat(history.relations()).containsExactly("历史关系")
+        assertThat(neither.relations()).isEmpty()
         assertThat(automatic.relations()).containsExactly("文档关系", "历史关系")
     }
 }

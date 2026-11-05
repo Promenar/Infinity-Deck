@@ -144,13 +144,30 @@ class GraphExtractor(
                     catch (_: Exception) { InfinityLogger.log("[KG] 断点写入失败") }
                 }
             }
-            suspend fun extractPart(part: String, path: String, depth: Int): ExtractionResult {
-                checkpoint.parts[path]?.let { return it }
+            fun locate(result: ExtractionResult, part: String, offset: Int): ExtractionResult {
+                fun position(quote: String?): Triple<Int, Int, Boolean> {
+                    val found = quote?.let(part::indexOf) ?: -1
+                    return if (found < 0) Triple(0, 0, true)
+                    else Triple(offset + found, offset + found + quote!!.length, false)
+                }
+                return result.copy(
+                    nodes = result.nodes.map { node ->
+                        val (start, end, coarse) = position(node.evidence)
+                        node.copy(windowIndex = index, charStart = start, charEnd = end, positionCoarse = coarse)
+                    },
+                    edges = result.edges.map { edge ->
+                        val (start, end, coarse) = position(edge.evidence)
+                        edge.copy(windowIndex = index, charStart = start, charEnd = end, positionCoarse = coarse)
+                    },
+                )
+            }
+            suspend fun extractPart(part: String, path: String, depth: Int, offset: Int): ExtractionResult {
+                checkpoint.parts[path]?.let { return locate(it, part, offset) }
                 if (path in checkpoint.splitPaths) {
                     val (left, right) = splitForRetry(part)
-                    val first = extractPart(left, path + "0", depth + 1)
+                    val first = extractPart(left, path + "0", depth + 1, offset)
                     if (!first.isSuccess || first.progress?.isPartial == true) return first
-                    val second = extractPart(right, path + "1", depth + 1)
+                    val second = extractPart(right, path + "1", depth + 1, offset + left.length)
                     if (!second.isSuccess || second.progress?.isPartial == true) return second
                     return ExtractionResult(first.nodes + second.nodes, first.edges + second.edges)
                 }
@@ -160,15 +177,15 @@ class GraphExtractor(
                 if (split) {
                     checkpoint = checkpoint.copy(splitPaths = checkpoint.splitPaths + path)
                     save()
-                    return extractPart(part, path, depth)
+                    return extractPart(part, path, depth, offset)
                 }
                 if (response.isSuccess && response.progress?.isPartial != true) {
                     checkpoint = checkpoint.copy(parts = checkpoint.parts + (path to response))
                     save()
                 }
-                return response
+                return locate(response, part, offset)
             }
-            val base = extractPart(window, "", 0)
+            val base = extractPart(window, "", 0, 0)
             if (!base.isSuccess || base.progress?.isPartial == true) return base
             val results = mutableListOf(base)
             val history = mutableListOf<ProtocolMessage>()
@@ -182,7 +199,7 @@ class GraphExtractor(
                     }
                 }
                 if (!extra.isSuccess || extra.progress?.isPartial == true) break
-                results += extra
+                results += locate(extra, window, 0)
             }
             return ExtractionResult(results.flatMap { it.nodes }, results.flatMap { it.edges })
         }
@@ -313,10 +330,10 @@ Extract every named person, organization, location, event and named item that pl
 Return a valid JSON object:
 {
   "nodes": [
-    { "name": "Exact Name", "type": "EntityType", "metadata": { "description": "one short sentence", "aliases": ["other name"] } }
+    { "name": "Exact Name", "type": "EntityType", "metadata": { "description": "one short sentence", "aliases": ["other name"] }, "evidence": "原文短引用" }
   ],
   "edges": [
-    { "source": "SourceNodeName", "sourceType": "SourceEntityType", "target": "TargetNodeName", "targetType": "TargetEntityType", "relation": "relationship_verb", "weight": 0.8 }
+    { "source": "SourceNodeName", "sourceType": "SourceEntityType", "target": "TargetNodeName", "targetType": "TargetEntityType", "relation": "relationship_verb", "weight": 0.8, "kind": "state", "family": "relationship", "evidence": "原文短引用", "flashback": false }
   ]
 }
 
@@ -324,6 +341,9 @@ Return a valid JSON object:
 1. Give each entity one canonical name; when the text uses multiple names, use the most complete name and list the other forms in metadata.aliases.
 2. Identify each node by its name and type. Each edge's source and target names and types MUST match its endpoint nodes exactly.
 3. Relation should be a concise verb phrase. Weight from 0.0 to 1.0 expresses relationship strength.
-4. Return JSON only, without markdown or explanation."""
+4. 每条实体和关系的 evidence 给出不超过 30 字的连续原文。每次关系出现分别输出。
+5. kind 使用 state（同一槽位只有一个当前值）或 event（累积发生的事件）；state 的 family 只能使用 relationship、location、allegiance、role、life_status、possession、other_state，event 的 family 留空。
+6. 明确的回忆或倒叙片段设置 flashback 为 true，其余设置为 false。
+7. Return JSON only, without markdown or explanation."""
     }
 }

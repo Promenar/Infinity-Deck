@@ -33,7 +33,9 @@ class GraphStore(internal val database: InfinityDatabase) {
     suspend fun upsertNode(name: String, type: String = "concept", metadata: String? = null,
         scope: KgScope? = null, sourceType: String = "full", collectionId: String): String = database.withTransaction {
         require(collections.collectionExists(collectionId)) { "图谱不存在" }
-        putNode(collectionId, name, type, metadata, source(scope, null, sourceType))
+        val id = putNode(collectionId, name, type, metadata, source(scope, null, sourceType))
+        KgTimelineStore(database).recompute(collectionId)
+        id
     }
 
     private suspend fun putNode(collectionId: String, name: String, type: String, metadata: String?, source: KgSource): String {
@@ -41,10 +43,22 @@ class GraphStore(internal val database: InfinityDatabase) {
         val normalizedType = KgIdentity.normalize(type).ifBlank { "concept" }
         require(normalized.isNotBlank() && normalized.length <= 512 && normalizedType.length <= 512) { "实体身份无效" }
         val now = System.currentTimeMillis()
-        nodes.insert(KgNodeEntity(UUID.randomUUID().toString(), KgIdentity.display(name), normalizedType, metadata,
+        val exact = nodes.findIdentity(collectionId, normalized, normalizedType)
+        val incomingAliases = declaredAliases(metadata).map(KgIdentity::normalize).toSet()
+        val aliasMatches = nodes.getByCollection(collectionId).filter { candidate ->
+            candidate.id != exact?.id &&
+            candidate.type == normalizedType &&
+                (normalized in declaredAliases(candidate.metadata).map(KgIdentity::normalize) || candidate.normalizedName in incomingAliases)
+        }
+        val aliasMatch = if (exact == null) aliasMatches.singleOrNull() else null
+        if (exact == null && aliasMatch == null) nodes.insert(KgNodeEntity(UUID.randomUUID().toString(), KgIdentity.display(name), normalizedType, metadata,
             now, now, normalized, collectionId))
-        val stored = requireNotNull(nodes.findIdentity(collectionId, normalized, normalizedType))
-        nodes.update(stored.copy(metadata = mergeMetadata(stored.metadata, metadata), updatedAt = now))
+        val stored = exact ?: aliasMatch ?: requireNotNull(nodes.findIdentity(collectionId, normalized, normalizedType))
+        val mergedMetadata = mergeMetadata(stored.metadata, metadata, extraAlias = name.takeIf { normalized != stored.normalizedName })
+        nodes.update(stored.copy(metadata = mergedMetadata, updatedAt = now))
+        aliasMatches.filter { it.id != stored.id }.forEach {
+            KgEntityResolutionStore(database).linkAlias(collectionId, stored.id, it.id)
+        }
         addEvidence(source, nodeId = stored.id)
         return stored.id
     }
@@ -78,9 +92,20 @@ class GraphStore(internal val database: InfinityDatabase) {
         val collectionId = collections.resolveDocumentForWrite(requireNotNull(source.docId) { "文档图谱缺少文档 ID" })
         val mapping = candidate.nodes.associate { it.id to putNode(collectionId, it.name, it.type, it.metadata, source) }
         candidate.edges.forEach { edge ->
-            putEdge(collectionId, requireNotNull(mapping[edge.sourceId]) { "候选关系缺少源节点" },
+            val storedEdge = putEdge(collectionId, requireNotNull(mapping[edge.sourceId]) { "候选关系缺少源节点" },
                 requireNotNull(mapping[edge.targetId]) { "候选关系缺少目标节点" }, edge.relation, edge.weight, source)
+            candidate.edgeMentions[edge.id]?.let { mention ->
+                val evidenceId = evidenceId(source, edgeId = storedEdge)
+                val parts = listOf(storedEdge, evidenceId, mention.windowIndex.toString(), mention.charStart.toString(),
+                    mention.charEnd.toString(), mention.kind, mention.family.orEmpty(), mention.quote.orEmpty(), mention.flashback.toString())
+                val id = kgSha256(Json.encodeToString(ListSerializer(), parts))
+                database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_edge_mentions(id,edge_id,evidence_id,doc_id,window_index,char_start,char_end,kind,family,quote,task_id,content_hash,position_coarse,flashback) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(id, storedEdge, evidenceId, source.docId, mention.windowIndex, mention.charStart,
+                        mention.charEnd, mention.kind, mention.family, mention.quote, source.taskId, source.contentHash,
+                        if (mention.positionCoarse) 1 else 0, if (mention.flashback) 1 else 0))
+            }
         }
+        KgTimelineStore(database).recompute(collectionId)
     }
 
     /**
@@ -104,6 +129,7 @@ class GraphStore(internal val database: InfinityDatabase) {
                     ids.getValue(ValidatedGraph.identity(to.name, to.type)), edge.relation, edge.weight, source)
             }
             evidence.collectAffected(previous)
+            KgTimelineStore(database).recompute(binding.collectionId)
             true
         }
 
@@ -168,6 +194,7 @@ class GraphStore(internal val database: InfinityDatabase) {
         val target = nodes.findIdentity(current.collectionId, KgIdentity.normalize(name), type)
         if (target != null && target.id != id) mergeInto(id, target)
         else nodes.update(current.copy(name = name, type = type, normalizedName = KgIdentity.normalize(name), updatedAt = System.currentTimeMillis()))
+        KgTimelineStore(database).recompute(current.collectionId)
     }
 
     suspend fun mergeNodes(sourceId: String, targetName: String) = database.withTransaction {
@@ -176,6 +203,7 @@ class GraphStore(internal val database: InfinityDatabase) {
         val target = nodes.findIdentity(source.collectionId, KgIdentity.normalize(targetName), source.type)
             ?: throw IllegalArgumentException("目标实体不存在或类型不一致")
         if (sourceId != target.id) mergeInto(sourceId, target)
+        KgTimelineStore(database).recompute(source.collectionId)
     }
 
     private suspend fun mergeInto(sourceId: String, target: KgNodeEntity) {
@@ -198,7 +226,25 @@ class GraphStore(internal val database: InfinityDatabase) {
     }
 
     private suspend fun copyEvidence(row: KgEvidenceEntity, nodeId: String? = null, edgeId: String? = null) {
-        addEvidence(KgSource(row.sourceType, row.docId, row.sessionId, row.contentHash, row.taskId, row.workspaceDocument, row.messageId), nodeId, edgeId, row.createdAt, row.weight)
+        val source = KgSource(row.sourceType, row.docId, row.sessionId, row.contentHash, row.taskId, row.workspaceDocument, row.messageId)
+        addEvidence(source, nodeId, edgeId, row.createdAt, row.weight)
+        if (edgeId != null && row.edgeId != null) {
+            val nextEvidence = evidenceId(source, edgeId = edgeId)
+            database.query(androidx.sqlite.db.SimpleSQLiteQuery(
+                "SELECT doc_id,window_index,char_start,char_end,kind,family,quote,task_id,content_hash,position_coarse,flashback FROM kg_edge_mentions WHERE evidence_id=?",
+                arrayOf(row.id),
+            )).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val parts = listOf(edgeId, nextEvidence, cursor.getInt(1).toString(), cursor.getInt(2).toString(),
+                        cursor.getInt(3).toString(), cursor.getString(4), if (cursor.isNull(5)) "" else cursor.getString(5),
+                        if (cursor.isNull(6)) "" else cursor.getString(6), (cursor.getInt(10) != 0).toString())
+                    database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_edge_mentions(id,edge_id,evidence_id,doc_id,window_index,char_start,char_end,kind,family,quote,task_id,content_hash,position_coarse,flashback) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        arrayOf<Any?>(kgSha256(Json.encodeToString(ListSerializer(), parts)), edgeId, nextEvidence, cursor.getString(0),
+                            cursor.getInt(1), cursor.getInt(2), cursor.getInt(3), cursor.getString(4), if (cursor.isNull(5)) null else cursor.getString(5),
+                            if (cursor.isNull(6)) null else cursor.getString(6), cursor.getString(7), cursor.getString(8), cursor.getInt(9), cursor.getInt(10)))
+                }
+            }
+        }
     }
 
     /** 只移动已有证据，并保留身份与元数据；调用方在同一事务中删除旧证据。 */
@@ -225,6 +271,7 @@ class GraphStore(internal val database: InfinityDatabase) {
     }
 
     suspend fun deleteNode(id: String) = database.withTransaction {
+        val collectionId = nodes.getRawById(id)?.collectionId
         val attached = edges.getRawByNodeId(id)
         val affected = evidence.getForNode(id) + attached.map { it.id }.chunked(400).flatMap { evidence.getForEdges(it) }
         attached.forEach { edges.deleteById(it.id) }
@@ -232,6 +279,7 @@ class GraphStore(internal val database: InfinityDatabase) {
         evidence.collectNodes()
         affected.mapNotNull { it.docId }.distinct().forEach { evidence.collectDocumentMember(it) }
         evidence.collectEmptyCollections()
+        collectionId?.let { KgTimelineStore(database).recompute(it) }
         Unit
     }
 
@@ -249,22 +297,87 @@ class GraphStore(internal val database: InfinityDatabase) {
             edges.update(target.copy(weight = maxOf(target.weight, weight)))
             edges.deleteById(id)
         } else edges.update(current.copy(relation = relation, normalizedRelation = KgIdentity.normalize(relation), weight = weight))
+        KgTimelineStore(database).recompute(current.collectionId)
     }
 
-    suspend fun clearGraphForDoc(docId: String) { evidence.clearDocument(docId) }
+    suspend fun clearGraphForDoc(docId: String, preserveOrder: Boolean = false) = database.withTransaction {
+        val affected = collections.collectionIdsForDocuments(listOf(docId))
+        val saved = if (!preserveOrder) null else database.query(androidx.sqlite.db.SimpleSQLiteQuery(
+            "SELECT c.id,c.kind,c.title,c.root_ref,c.created_at,m.order_key,m.order_source FROM kg_collection_members m " +
+                "JOIN kg_collections c ON c.id=m.collection_id WHERE m.doc_id=?", arrayOf(docId),
+        )).use { cursor ->
+            if (!cursor.moveToFirst()) null else arrayOf<Any?>(cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                if (cursor.isNull(3)) null else cursor.getString(3), cursor.getLong(4),
+                if (cursor.isNull(5)) null else cursor.getString(5), if (cursor.isNull(6)) null else cursor.getString(6))
+        }
+        evidence.clearDocument(docId)
+        if (saved != null) {
+            database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES(?,?,?,?,?)", saved.copyOfRange(0, 5))
+            database.openHelper.writableDatabase.execSQL("INSERT OR IGNORE INTO kg_collection_members(doc_id,collection_id,order_key,order_source) VALUES(?,?,?,?)",
+                arrayOf<Any?>(docId, saved[0], saved[5], saved[6]))
+        }
+        affected.forEach { KgTimelineStore(database).recompute(it) }
+    }
+
+    internal suspend fun collectionsForEvidence(rows: List<KgEvidenceEntity>): Set<String> {
+        val edgeCollections = rows.mapNotNull { it.edgeId }.distinct().mapNotNull { edges.getRawById(it)?.collectionId }
+        val nodeCollections = rows.mapNotNull { it.nodeId }.distinct().mapNotNull { nodes.getRawById(it)?.collectionId }
+        return (edgeCollections + nodeCollections).toSet()
+    }
+
+    suspend fun recomputeSessionGraph(sessionId: String) = database.withTransaction {
+        collectionsForEvidence(evidence.affectedBySession(sessionId)).forEach { KgTimelineStore(database).recompute(it) }
+    }
+
+    suspend fun clearSessionGraph(sessionId: String) = database.withTransaction {
+        val affected = collectionsForEvidence(evidence.affectedBySession(sessionId))
+        evidence.clearSession(sessionId)
+        affected.forEach { KgTimelineStore(database).recompute(it) }
+    }
+
+    suspend fun clearMessageGraph(messageId: String): Pair<Int, Int> = database.withTransaction {
+        val affected = collectionsForEvidence(evidence.affectedByMessage(messageId))
+        val result = evidence.clearMessage(messageId)
+        affected.forEach { KgTimelineStore(database).recompute(it) }
+        result
+    }
+
+    suspend fun clearSessionMemoryJit(sessionId: String): Pair<Int, Int> = database.withTransaction {
+        val affected = collectionsForEvidence(evidence.affectedBySessionMemoryJit(sessionId))
+        val result = evidence.clearSessionMemoryJit(sessionId)
+        affected.forEach { KgTimelineStore(database).recompute(it) }
+        result
+    }
+
+    suspend fun purgeOrphanTurns(): Pair<Int, Int> = database.withTransaction {
+        val affected = collectionsForEvidence(evidence.orphanTurnEvidence())
+        val result = evidence.purgeOrphanTurns()
+        affected.forEach { KgTimelineStore(database).recompute(it) }
+        result
+    }
     suspend fun deleteEdge(id: String) = database.withTransaction {
+        val collectionId = edges.getRawById(id)?.collectionId
         val affected = evidence.getForEdges(listOf(id))
         edges.deleteById(id)
         evidence.collectNodes()
         affected.mapNotNull { it.docId }.distinct().forEach { evidence.collectDocumentMember(it) }
         evidence.collectEmptyCollections()
+        collectionId?.let { KgTimelineStore(database).recompute(it) }
         Unit
     }
     suspend fun getAllNodes(): List<KgNode> = database.withTransaction {
-        nodes.getAll().map { it.toModel() }
+        val rows = nodes.getAll()
+        val mappings = rows.map { it.collectionId }.distinct().associateWith { KgEntityResolutionStore(database).canonicalIds(it) }
+        val byId = rows.associateBy { it.id }
+        rows.map { row -> (mappings[row.collectionId]?.get(row.id)?.let(byId::get) ?: row).toModel() }.distinctBy { it.id }
     }
     suspend fun getEdgesForNode(nodeId: String): List<KgEdge> = database.withTransaction {
-        modelEdges(edges.getByNodeId(nodeId))
+        val node = nodes.getRawById(nodeId) ?: return@withTransaction emptyList()
+        val canonical = KgEntityResolutionStore(database).canonicalIds(node.collectionId)
+        val root = canonical[nodeId] ?: nodeId
+        val ids = canonical.filterValues { it == root }.keys.ifEmpty { setOf(nodeId) }
+        val rows = ids.flatMap { edges.getByNodeId(it) }.distinctBy { it.id }
+        mergeResolvedEdges(modelEdges(rows), canonical)
     }
 
     suspend fun getGraphData(docIds: List<String>? = null, sessionId: String? = null): GraphData = database.withTransaction {
@@ -281,8 +394,25 @@ class GraphStore(internal val database: InfinityDatabase) {
             boundCollection != null -> nodes.getByCollection(boundCollection)
             else -> nodes.getAll()
         }
-        GraphData(selectedNodes.map { it.toModel() }, modelEdges(selectedEdges, docIds))
+        val mappings = (selectedNodes.map { it.collectionId } + selectedEdges.map { it.collectionId }).distinct()
+            .associateWith { KgEntityResolutionStore(database).canonicalIds(it) }
+        val allNodes = selectedNodes.associateBy { it.id }
+        val mappedNodes = selectedNodes.map { node ->
+            val id = mappings[node.collectionId]?.get(node.id) ?: node.id
+            (allNodes[id] ?: nodes.getRawById(id) ?: node).toModel()
+        }.distinctBy { it.id }
+        val edgeCollections = selectedEdges.associate { it.id to it.collectionId }
+        val canonical = mappings.values.flatMap { it.entries }.associate { it.key to it.value }
+        GraphData(mappedNodes, mergeResolvedEdges(modelEdges(selectedEdges, docIds), canonical, edgeCollections))
     }
+
+    private fun mergeResolvedEdges(rows: List<KgEdge>, canonical: Map<String, String>, collections: Map<String, String> = emptyMap()): List<KgEdge> =
+        rows.map { it.copy(sourceId = canonical[it.sourceId] ?: it.sourceId, targetId = canonical[it.targetId] ?: it.targetId) }
+            .groupBy { listOf(collections[it.id].orEmpty(), it.sourceId, it.targetId, KgIdentity.normalize(it.relation)) }
+            .values.map { group ->
+                val documents = group.flatMap { it.documentIds }.distinct().sorted()
+                group.first().copy(weight = group.maxOf { it.weight }, docId = documents.singleOrNull(), documentIds = documents)
+            }
 
     suspend fun getDocumentOptions(): List<KgDocumentOption> = database.withTransaction {
         edges.getActiveDocumentOptions().map { KgDocumentOption(it.docId, it.title) }
@@ -301,12 +431,16 @@ class GraphStore(internal val database: InfinityDatabase) {
 
     private suspend fun addEvidence(source: KgSource, nodeId: String? = null, edgeId: String? = null, createdAt: Long = System.currentTimeMillis(), weight: Double? = null) {
         require((nodeId == null) != (edgeId == null))
-        // 消息 id 只在存在时参与证据身份，既有证据的 id 保持不变。
-        val key = Json.encodeToString(ListSerializer(), listOf(nodeId.orEmpty(), edgeId.orEmpty(), source.type,
-            source.docId.orEmpty(), source.sessionId.orEmpty(), source.contentHash, source.taskId) + listOfNotNull(source.messageId))
-        evidence.insert(KgEvidenceEntity(kgSha256(key), nodeId, edgeId, source.type, source.docId, source.sessionId,
+        val id = evidenceId(source, nodeId, edgeId)
+        evidence.insert(KgEvidenceEntity(id, nodeId, edgeId, source.type, source.docId, source.sessionId,
             source.contentHash, source.taskId, createdAt, source.workspaceDocument, weight, source.messageId))
-        if (weight != null) evidence.increaseWeight(kgSha256(key), weight)
+        if (weight != null) evidence.increaseWeight(id, weight)
+    }
+
+    private fun evidenceId(source: KgSource, nodeId: String? = null, edgeId: String? = null): String {
+        val parts = listOf(nodeId.orEmpty(), edgeId.orEmpty(), source.type, source.docId.orEmpty(),
+            source.sessionId.orEmpty(), source.contentHash, source.taskId) + listOfNotNull(source.messageId)
+        return kgSha256(Json.encodeToString(ListSerializer(), parts))
     }
 
     private fun source(scope: KgScope?, docId: String?, type: String): KgSource {
@@ -316,9 +450,17 @@ class GraphStore(internal val database: InfinityDatabase) {
             scope?.messageId.takeIf { document == null })
     }
 
-    private fun mergeMetadata(old: String?, added: String?): String {
+    private fun declaredAliases(metadata: String?): List<String> = runCatching {
+        (Json.parseToJsonElement(metadata.orEmpty()).jsonObject["aliases"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
+    }.getOrDefault(emptyList())
+
+    private fun mergeMetadata(old: String?, added: String?, extraAlias: String? = null): String {
         fun parse(value: String?) = runCatching { Json.parseToJsonElement(value.orEmpty()).jsonObject }.getOrDefault(JsonObject(emptyMap()))
-        return JsonObject(parse(old) + parse(added)).toString()
+        val merged = (parse(old) + parse(added)).toMutableMap()
+        val aliases = (declaredAliases(old) + declaredAliases(added) + listOfNotNull(extraAlias)).distinctBy(KgIdentity::normalize)
+        if (aliases.isNotEmpty()) merged["aliases"] = JsonArray(aliases.map(::JsonPrimitive))
+        return JsonObject(merged).toString()
     }
 
     private fun KgNodeEntity.toModel() = KgNode(id, name, type, metadata, "full", createdAt)
