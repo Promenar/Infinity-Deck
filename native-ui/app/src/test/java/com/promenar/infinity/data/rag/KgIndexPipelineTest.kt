@@ -142,7 +142,7 @@ class KgIndexPipelineTest {
     }
 
     @Test
-    fun `预算部分候选提交有效图并持久保留版本进度`() = runTest {
+    fun `预算耗尽保留旧图和进度`() = runTest {
         val file = register("partial.txt", "text/plain", "Alpha knows Beta".toByteArray())
         seedOld(file)
         val (queue, _) = pipeline { _, _, _ ->
@@ -162,12 +162,41 @@ class KgIndexPipelineTest {
         assertThat(task.lastChunkIndex).isEqualTo(2)
         assertThat(task.totalChunks).isEqualTo(5)
         assertThat(task.progress).isEqualTo(40.0)
-        assertThat(database.kgEdgeDao().getByDocId(file.uuid)).hasSize(1)
+        assertThat(database.kgEdgeDao().getByDocId(file.uuid).single().id).isEqualTo("edge-${file.uuid}")
         assertThat(database.vectorDao().getByDocId(file.uuid).single().id).isEqualTo("old-${file.uuid}")
         val persisted = database.fileEntryDao().getByUuid("root", file.uuid)!!
-        assertThat(persisted.kgExtractedAt).isNull()
-        assertThat(persisted.kgStrategy).startsWith("partial:2:5:")
-        assertThat(persisted.kgStrategy).endsWith(":${persisted.updatedAt}")
+        assertThat(persisted.kgExtractedAt).isEqualTo(1)
+        queue.shutdown()
+    }
+
+    @Test
+    fun `图谱失败仍提交向量并保留旧图谱和可重试任务`() = runTest {
+        val file = register("graph-failure.txt", "text/plain", "Alpha knows Beta".toByteArray())
+        seedOld(file)
+        var fail = true
+        val (queue, _) = pipeline { _, _, _ ->
+            if (fail) ExtractionResult(
+                listOf(ExtractedNode("Partial", "concept")), emptyList(), "内部请求详情",
+                KgExtractionStatus.PROVIDER_ERROR, progress = KgExtractionProgress(1, 2),
+            ) else ExtractionResult(emptyList(), emptyList())
+        }
+        enqueue(queue, file, skipVectorization = false)
+        advanceUntilIdle()
+        queue.awaitSettled()
+
+        val task = database.vectorizationTaskDao().getByDocId(file.uuid).single()
+        assertThat(task.status).isEqualTo("partial")
+        assertThat(task.error).startsWith(VectorizationQueue.KG_FAILED)
+        assertThat(task.subStatus).doesNotContain("内部请求详情")
+        assertThat(database.vectorDao().getByDocId(file.uuid).single().content).isEqualTo("Alpha knows Beta")
+        assertThat(database.kgEdgeDao().getByDocId(file.uuid).single().id).isEqualTo("edge-${file.uuid}")
+        assertThat(database.fileEntryDao().getByUuid("root", file.uuid)!!.vectorizedAt).isNotNull()
+
+        fail = false
+        assertThat(queue.retryDocumentReference("root", file.uuid)).isTrue()
+        advanceUntilIdle()
+        queue.awaitSettled()
+        coVerify(exactly = 1) { embedding.embedDocuments(any()) }
         queue.shutdown()
     }
 

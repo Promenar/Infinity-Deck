@@ -35,6 +35,7 @@ sealed interface DocumentIndexResult {
     data class Rebuilt(
         val fileUuid: String, val contentTruncated: Boolean = false,
         val kgProgress: KgExtractionProgress? = null,
+        val kgFailure: KgExtractionStatus? = null,
     ) : DocumentIndexResult
     data class Deleted(val fileUuid: String) : DocumentIndexResult
     data class HashChanged(val currentHash: String?) : DocumentIndexResult
@@ -48,6 +49,7 @@ data class DocumentIndexCandidate(
     val graphExtracted: Boolean = false,
     val contentTruncated: Boolean = false,
     val kgProgress: KgExtractionProgress? = null,
+    val kgFailure: KgExtractionStatus? = null,
     val preserveExistingGraph: Boolean = false,
     val onGraphCommitted: suspend () -> Unit = noGraphCommit,
     val onEmbeddingCommitted: suspend () -> Unit = noGraphCommit,
@@ -143,7 +145,7 @@ class WorkspaceDocumentIndexCandidateBuilder(
         require(event.skipVectorization || embedding.size == extraction.chunks.size) { "Embedding 数量与切块不一致" }
         val shouldExtractGraph = event.kgStrategy != null ||
             (event.useConfiguredKgStrategy && ragConfig.enableKnowledgeGraph)
-        val graph = if (shouldExtractGraph) {
+        val graph = if (shouldExtractGraph) try {
             event.onGraphStart()
             val builder = requireNotNull(graphCandidateBuilder) { "启用知识图谱后必须配置候选构建器" }
             val estimate = builder.estimate(extraction.graphText, ragConfig)
@@ -151,19 +153,28 @@ class WorkspaceDocumentIndexCandidateBuilder(
                 ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
                     progress = KgExtractionProgress(0, estimate.calls, KgExtractionStopReason.CONFIRMATION_REQUIRED))
             } else builder.build(extraction.graphText, event.fileUuid, event.contentHash, event.onKgProgress)
-            check(result.isSuccess) { "知识图谱候选构建失败（${result.status}）：${result.error}" }
             result.progress?.let { event.onKgProgress(it) }
-            ValidatedGraph.from(result.nodes, result.edges).let { result.copy(nodes = it.nodes, edges = it.edges) }
+            if (!result.isSuccess || result.status == KgExtractionStatus.PARTIAL || result.progress?.isPartial == true) {
+                result.copy(nodes = emptyList(), edges = emptyList())
+            } else ValidatedGraph.from(result.nodes, result.edges).let { result.copy(nodes = it.nodes, edges = it.edges) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ExtractionResult.failure(KgExtractionStatus.PROVIDER_ERROR, "知识图谱抽取失败")
         } else null
         require(file.sha256() == event.contentHash) { "候选构建期间文件内容已变化" }
         val timestamp = now()
+        val graphComplete = graph != null && graph.isSuccess && graph.status == KgExtractionStatus.SUCCESS && graph.progress?.isPartial != true
+        val graphFailure = graph?.takeUnless { it.isSuccess }?.status
+            ?: KgExtractionStatus.PROVIDER_ERROR.takeIf { graph != null && !graphComplete && graph.progress?.reason == null }
         val nodeIds = graph?.nodes.orEmpty().associate { ValidatedGraph.identity(it.name) to UUID.randomUUID().toString() }
         DocumentIndexCandidate(
-            graphExtracted = shouldExtractGraph && (graph?.progress?.let { !it.isPartial || it.processedChunks > 0 } ?: true),
+            graphExtracted = graphComplete,
             kgProgress = graph?.progress,
-            preserveExistingGraph = graph?.progress?.let { it.isPartial && it.processedChunks == 0 } == true,
+            kgFailure = graphFailure,
+            preserveExistingGraph = graph != null && !graphComplete,
             onGraphCommitted = {
-                if (graph != null && graph.progress?.isPartial != true) {
+                if (graphComplete) {
                     graphCandidateBuilder?.onCommitted(extraction.graphText, event.fileUuid, event.contentHash)
                 }
             },
@@ -301,7 +312,7 @@ class RoomDocumentIndexService(
                     },
                 ))
                 val kgProgress = candidate.kgProgress
-                val partial = candidate.contentTruncated || kgProgress?.isPartial == true
+                val partial = candidate.contentTruncated || kgProgress?.isPartial == true || candidate.kgFailure != null
                 // 图谱、文档标记与任务终态一起提交，提交后的进程死亡不会重新消费整份预算。
                 check(database.vectorizationTaskDao().update(activeTask.copy(
                     status = if (partial) "partial" else "completed",
@@ -309,19 +320,19 @@ class RoomDocumentIndexService(
                     lastChunkIndex = kgProgress?.processedChunks ?: activeTask.lastChunkIndex,
                     progress = if (kgProgress?.isPartial == true && kgProgress.totalChunks > 0) {
                         100.0 * kgProgress.processedChunks / kgProgress.totalChunks
-                    } else if (kgProgress?.isPartial == true) 0.0 else 100.0,
-                    error = when (kgProgress?.reason) {
+                    } else if (kgProgress?.isPartial == true) 0.0 else if (candidate.kgFailure != null) activeTask.progress else 100.0,
+                    error = candidate.kgFailure?.let { VectorizationQueue.graphFailureCode(it) } ?: when (kgProgress?.reason) {
                         KgExtractionStopReason.CONFIRMATION_REQUIRED -> VectorizationQueue.KG_CONFIRMATION_REQUIRED
                         KgExtractionStopReason.CALLS -> "kg.budget.calls"
                         KgExtractionStopReason.OUTPUT_TOKENS -> "kg.budget.output_tokens"
                         KgExtractionStopReason.DURATION -> "kg.budget.duration"
                         else -> null
                     },
-                    subStatus = kgProgress?.description ?: "处理完成",
+                    subStatus = if (candidate.kgFailure != null) "知识图谱抽取失败，可单独重试" else kgProgress?.description ?: "处理完成",
                     contentTruncated = candidate.contentTruncated,
                     updatedAt = timestamp,
                 )) == 1) { "索引任务终态提交失败" }
-                DocumentIndexResult.Rebuilt(event.fileUuid, candidate.contentTruncated, candidate.kgProgress)
+                DocumentIndexResult.Rebuilt(event.fileUuid, candidate.contentTruncated, candidate.kgProgress, candidate.kgFailure)
                 }
             }
             if (result is DocumentIndexResult.Rebuilt) {

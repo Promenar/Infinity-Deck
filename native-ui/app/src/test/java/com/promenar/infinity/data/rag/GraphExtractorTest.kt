@@ -162,6 +162,145 @@ class GraphExtractorTest {
     }
 
     @Test
+    fun `无效响应按段落分半抽取并合并图谱`() = runTest {
+        val received = mutableListOf<String>()
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            val text = firstArg<PromptRequest>().messages.last().content
+            received += text
+            val body = when (received.size) {
+                1 -> "{\"nodes\":["
+                2 -> """{"nodes":[{"name":"甲"},{"name":"乙"}],"edges":[{"source":"甲","target":"乙","relation":"关联"}]}"""
+                3 -> """{"nodes":[{"name":"丙"},{"name":"丁"}],"edges":[{"source":"丙","target":"丁","relation":"关联"}]}"""
+                else -> """{"nodes":[{"name":"戊"},{"name":"己"}],"edges":[{"source":"戊","target":"己","relation":"关联"}]}"""
+            }
+            PromptResponse(body, usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(2, 1))
+        }
+        val extractor = testGraphExtractor(protocol, graphStore, chunkSize = 10, chunkOverlap = 0)
+
+        val result = extractor.extractCandidate("甲乙内容\n\n丙丁内容后续正文123456", "split-doc")
+
+        assertThat(received).containsExactly("甲乙内容\n\n丙丁内容", "甲乙内容\n\n", "丙丁内容", "后续正文123456").inOrder()
+        assertThat(result.nodes.map { it.name }).containsExactly("甲", "乙", "丙", "丁", "戊", "己")
+        assertThat(result.edges).hasSize(3)
+        assertThat(result.progress!!.calls).isEqualTo(4)
+        assertThat(result.usage.outputTokens).isEqualTo(4)
+    }
+
+    @Test
+    fun `分半请求消耗实际输出预算`() = runTest {
+        val limits = mutableListOf<Int?>()
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            limits += firstArg<PromptRequest>().maxTokens
+            if (limits.size == 1) PromptResponse("{", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 2))
+            else PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
+        }
+        val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 20, chunkOverlap = 0,
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler),
+            budget = KgExtractionBudget(maxOutputTokens = 3, requestMaxOutputTokens = 3))
+
+        val result = extractor.extractCandidate("abcdefgh", "output-split")
+
+        assertThat(limits).containsExactly(3, 1).inOrder()
+        assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.OUTPUT_TOKENS)
+        assertThat(result.usage.outputTokens).isEqualTo(3)
+    }
+
+    @Test
+    fun `分半请求消耗剩余时长预算`() = runTest {
+        var calls = 0
+        coEvery { protocol.sendPromptSync(any()) } coAnswers {
+            calls++
+            kotlinx.coroutines.delay(80)
+            PromptResponse(if (calls == 1) "{" else """{"nodes":[],"edges":[]}""",
+                usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
+        }
+        val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 20, chunkOverlap = 0,
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxDurationMs = 200),
+            nowMs = { testScheduler.currentTime })
+
+        val result = extractor.extractCandidate("abcdefgh", "time-split")
+
+        assertThat(calls).isEqualTo(3)
+        assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.DURATION)
+        assertThat(testScheduler.currentTime).isEqualTo(200)
+    }
+
+    @Test
+    fun `分半请求消耗同一调用预算`() = runTest {
+        coEvery { protocol.sendPromptSync(any()) } returnsMany listOf(
+            PromptResponse("{", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1)),
+            PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1)),
+        )
+        val extractor = GraphExtractor(testKgClient(protocol), graphStore, "owner::model", chunkSize = 20, chunkOverlap = 0,
+            dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 2))
+
+        val result = extractor.extractCandidate("abcdefgh", "budget-split")
+
+        assertThat(result.status).isEqualTo(KgExtractionStatus.PARTIAL)
+        assertThat(result.progress!!.reason).isEqualTo(KgExtractionStopReason.CALLS)
+        assertThat(result.progress!!.calls).isEqualTo(2)
+        coVerify(exactly = 2) { protocol.sendPromptSync(any()) }
+    }
+
+    @Test
+    fun `四分之一分块仍无效时返回解析失败`() = runTest {
+        coEvery { protocol.sendPromptSync(any()) } returns PromptResponse("{", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
+        val result = testGraphExtractor(protocol, graphStore, chunkSize = 20, chunkOverlap = 0)
+            .extractCandidate("abcdefgh", "quarter-failure")
+
+        assertThat(result.status).isEqualTo(KgExtractionStatus.PARSE_FAILURE)
+        assertThat(result.progress!!.calls).isEqualTo(3)
+        coVerify(exactly = 3) { protocol.sendPromptSync(any()) }
+    }
+
+    @Test
+    fun `恢复分块断点时不重复成功子块或已拆分的父块`() = runTest {
+        val requests = mutableListOf<String>()
+        var failRight = true
+        coEvery { protocol.sendPromptSync(any()) } answers {
+            val text = firstArg<PromptRequest>().messages.last().content
+            requests += text
+            when {
+                text == "abcdefgh" -> PromptResponse("{", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
+                text == "efgh" && failRight -> throw IllegalStateException("fixture")
+                else -> PromptResponse("""{"nodes":[],"edges":[]}""", usage = com.promenar.infinity.data.remote.protocol.ProtocolUsage(1, 1))
+            }
+        }
+        val extractor = testGraphExtractor(protocol, graphStore, chunkSize = 20, chunkOverlap = 0)
+
+        assertThat(extractor.extractCandidate("abcdefgh", "resume-split").status).isEqualTo(KgExtractionStatus.PROVIDER_ERROR)
+        failRight = false
+        val result = extractor.extractCandidate("abcdefgh", "resume-split")
+
+        assertThat(result.status).isEqualTo(KgExtractionStatus.SUCCESS)
+        assertThat(requests).containsExactly("abcdefgh", "abcd", "efgh", "efgh").inOrder()
+        assertThat(result.progress!!.calls).isEqualTo(4)
+    }
+
+    @Test
+    fun `旧格式整块断点仍可读取并恢复`() = runTest {
+        val root = File(tempDir, "legacy-chunks")
+        val text = "abcdefgh"
+        val identity = GraphCheckpointIdentity(kgSha256(text), kgSha256(text), "owner::model",
+            kgSha256(GraphExtractor.DEFAULT_KG_PROMPT), 20, 0)
+        val store = GraphExtractionCheckpoints(root)
+        store.save("legacy-doc", identity, 0, text, ExtractionResult(
+            listOf(ExtractedNode("甲", "person"), ExtractedNode("乙", "person")),
+            listOf(ExtractedEdge("甲", "乙", "认识")),
+        ))
+        val saved = root.walkTopDown().first { it.name == "chunk_0.json" }.readText()
+        assertThat(saved).doesNotContain("splitPaths")
+        assertThat(saved).doesNotContain("parts")
+
+        val result = testGraphExtractor(protocol, graphStore, chunkSize = 20, chunkOverlap = 0, checkpointRoot = root)
+            .extractCandidate(text, "legacy-doc")
+
+        assertThat(result.status).isEqualTo(KgExtractionStatus.SUCCESS)
+        assertThat(result.edges).hasSize(1)
+        coVerify(exactly = 0) { protocol.sendPromptSync(any()) }
+    }
+
+    @Test
     fun `chunk取消必须透传且不得进入图谱写入`() = runTest {
         coEvery { protocol.sendPromptSync(any()) } throws CancellationException("deleted")
         val extractor = testGraphExtractor(protocol, graphStore)

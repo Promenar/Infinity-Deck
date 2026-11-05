@@ -115,7 +115,7 @@ class LibraryViewModel(
     /** 待处理文档的主动作：失败重试，过旧重建；排队与索引中不提供动作。 */
     fun resolve(document: PendingDocument) {
         when (document.kind) {
-            PendingKind.FAILED -> retry(document.documentId)
+            PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> retry(document.documentId)
             PendingKind.STALE -> rebuild(document.documentId)
             PendingKind.QUEUED, PendingKind.INDEXING -> Unit
         }

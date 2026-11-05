@@ -32,7 +32,7 @@ class KgRequestClient(
     },
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val usageStore: KgUsageStore = KgUsageStore.None,
-    private val defaultMaxOutputTokens: Int = 2_048,
+    private val defaultMaxOutputTokens: Int = 4_096,
 ) {
     suspend fun extract(
         modelId: String?, systemPrompt: String, text: String, timeoutMs: Long,

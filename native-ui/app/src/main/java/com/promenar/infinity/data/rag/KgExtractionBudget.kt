@@ -40,7 +40,7 @@ data class KgExtractionEstimate(
 data class KgExtractionBudget(
     val maxCalls: Int = 32,
     val maxOutputTokens: Int = 32_768,
-    val requestMaxOutputTokens: Int = 2_048,
+    val requestMaxOutputTokens: Int = 4_096,
     val maxDurationMs: Long = 180_000,
     val largeDocumentConfirmCalls: Int = 16,
 ) {

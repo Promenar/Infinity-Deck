@@ -375,7 +375,11 @@ class VectorizationQueue(
             TYPE_DOCUMENT_REFERENCE,
         ) ?: return null
         if (existing.status !in setOf("failed", "partial", "interrupted")) return null
+        if (existing.error == KG_CONFIRMATION_REQUIRED) return null
         val entry = requireNotNull(fileEntryDao).getActiveByUuid(workspaceRootUuid, docId) ?: return null
+        val graphRetry = isGraphRetryError(existing.error)
+        val retryGraphOnly = graphRetry && entry.vectorizedAt != null &&
+            entry.vectorizedAt >= entry.updatedAt && existing.targetContentHash == entry.hash && existing.targetEpoch == entry.updatedAt
         return enqueueDocumentReference(
             workspaceRootUuid = workspaceRootUuid,
             docId = docId,
@@ -386,8 +390,8 @@ class VectorizationQueue(
             kgStrategy = existing.kgStrategy?.takeUnless {
                 it == KgExtractionBudget.CONFIRMED_STRATEGY &&
                     (existing.targetContentHash != entry.hash || existing.targetEpoch != entry.updatedAt)
-            } ?: "full".takeIf { existing.kgStrategy != null },
-            skipVectorization = existing.skipVectorization,
+            } ?: "full".takeIf { existing.kgStrategy != null || retryGraphOnly },
+            skipVectorization = if (graphRetry) retryGraphOnly else existing.skipVectorization,
         )
     }
 
@@ -713,6 +717,11 @@ class VectorizationQueue(
                         }
                         task.subStatus = progress.description
                     }
+                }
+                result.kgFailure?.let { failure ->
+                    task.status = "partial"
+                    task.error = graphFailureCode(failure)
+                    task.subStatus = "知识图谱抽取失败，可单独重试"
                 }
                 return
             }
@@ -1555,6 +1564,16 @@ class VectorizationQueue(
 
     companion object {
         const val KG_CONFIRMATION_REQUIRED = "kg.confirmation_required"
+        const val KG_FAILED = "kg.failed"
+        fun isGraphRetryError(error: String?): Boolean =
+            error?.startsWith(KG_FAILED) == true || error?.startsWith("kg.budget.") == true
+
+        fun graphFailureCode(status: KgExtractionStatus): String = when (status) {
+            KgExtractionStatus.PARSE_FAILURE -> "$KG_FAILED.parse"
+            KgExtractionStatus.TIMEOUT -> "$KG_FAILED.timeout"
+            KgExtractionStatus.PROVIDER_ERROR -> "$KG_FAILED.provider"
+            else -> KG_FAILED
+        }
         private const val MAX_RETRIES = 3
         const val TYPE_DOCUMENT_REFERENCE = "document_reference"
         const val TYPE_SESSION_GRAPH = "session_graph"

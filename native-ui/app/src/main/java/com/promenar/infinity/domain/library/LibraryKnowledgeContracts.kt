@@ -20,8 +20,28 @@ data class LibraryOverview(
     val fragments: Int,
 )
 
-enum class PendingKind { FAILED, QUEUED, INDEXING, STALE }
+enum class PendingKind { FAILED, QUEUED, INDEXING, STALE, GRAPH_ATTENTION }
 enum class PendingStage { PREPARING, VECTORIZING, EXTRACTING_GRAPH, SAVING }
+
+/** 全量图谱抽取的基础调用估算；解析失败后的拆分请求会产生额外用量。 */
+data class GraphEstimate(
+    val chunks: Int,
+    val calls: Int,
+    val maxOutputTokens: Long,
+    val requiresConfirmation: Boolean,
+    val modelDisplayName: String?,
+)
+
+enum class GraphStopReason { CALLS, OUTPUT_TOKENS, DURATION }
+
+sealed interface DocumentGraphState {
+    data object NotExtracted : DocumentGraphState
+    data class Extracting(val processed: Int?, val total: Int?) : DocumentGraphState
+    data class Complete(val entities: Int, val relations: Int) : DocumentGraphState
+    data class Partial(val processed: Int, val total: Int, val reason: GraphStopReason) : DocumentGraphState
+    data class ConfirmationRequired(val estimate: GraphEstimate) : DocumentGraphState
+    data class Failed(val reason: String) : DocumentGraphState
+}
 
 /** 需要用户处理或正在处理的资料库文档。 */
 data class PendingDocument(
@@ -72,6 +92,7 @@ data class DocumentInsight(
     val source: String?,
     /** 历史版本数，没有版本记录时为 0。 */
     val versionCount: Int,
+    val graph: DocumentGraphState = DocumentGraphState.NotExtracted,
 )
 
 /** 可阅读的正文；PDF、DOCX 等为提取后的文本。 */
@@ -116,6 +137,12 @@ interface LibraryKnowledgeSource {
 
     /** 内容已改动但索引过旧的文档重建索引。 */
     suspend fun rebuild(documentId: String): LibraryActionResult
+
+    /** 估算该文档全量抽取图谱的调用次数与输出上限；文档未索引或无正文时为 null。 */
+    suspend fun graphEstimate(documentId: String): GraphEstimate?
+
+    /** 只抽取图谱，不重新向量化；confirmed 为真时越过大文档确认门槛。 */
+    suspend fun extractGraph(documentId: String, confirmed: Boolean): LibraryActionResult
 
     suspend fun insight(documentId: String): DocumentInsight?
     suspend fun body(documentId: String, maxChars: Int = 200_000): DocumentBody?

@@ -457,6 +457,8 @@ internal fun LibraryEmptyText(text: String) {
 private fun pendingStatusText(doc: PendingDocument): String = when (doc.kind) {
     PendingKind.FAILED -> doc.reason?.let { stringResource(R.string.library_notice_with_reason, stringResource(R.string.library_pending_failed), it) }
         ?: stringResource(R.string.library_pending_failed)
+    PendingKind.GRAPH_ATTENTION -> doc.reason?.let { stringResource(R.string.library_notice_with_reason, stringResource(R.string.library_graph_attention), it) }
+        ?: stringResource(R.string.library_graph_attention)
     PendingKind.QUEUED -> doc.queuePosition?.let { stringResource(R.string.library_pending_queued, it) } ?: stringResource(R.string.library_pending_queued_plain)
     PendingKind.INDEXING -> indexingStatusText(doc)
     PendingKind.STALE -> stringResource(R.string.library_pending_stale)
@@ -484,7 +486,7 @@ private fun indexingStatusText(doc: PendingDocument): String {
 @Composable
 private fun PendingRow(doc: PendingDocument, busy: Boolean, onOpen: () -> Unit, onResolve: () -> Unit) {
     val icon = when (doc.kind) {
-        PendingKind.FAILED -> Icons.Rounded.ErrorOutline
+        PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> Icons.Rounded.ErrorOutline
         PendingKind.QUEUED -> Icons.Rounded.HourglassTop
         PendingKind.INDEXING -> Icons.Rounded.Sync
         PendingKind.STALE -> Icons.Rounded.Edit
@@ -507,7 +509,7 @@ private fun PendingRow(doc: PendingDocument, busy: Boolean, onOpen: () -> Unit, 
             Text(doc.folderPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val action = when (doc.kind) {
-            PendingKind.FAILED -> R.string.library_action_retry
+            PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> R.string.library_action_retry
             PendingKind.STALE -> R.string.library_action_rebuild
             else -> null
         }
@@ -841,13 +843,13 @@ private fun DocumentInspector(info: DocumentInsight, host: LibraryPageHost) {
         } ?: stringResource(R.string.library_doc_status_indexed)
         InspectorRow(stringResource(R.string.library_doc_status), status)
         val action = when (info.pending) {
-            PendingKind.FAILED -> R.string.library_action_retry
+            PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> R.string.library_action_retry
             PendingKind.STALE -> R.string.library_action_rebuild
             else -> null
         }
         if (action != null) {
             FilledTonalButton(
-                onClick = { if (info.pending == PendingKind.FAILED) host.viewModel.retry(info.documentId) else host.viewModel.rebuild(info.documentId) },
+                onClick = { if (info.pending == PendingKind.FAILED || info.pending == PendingKind.GRAPH_ATTENTION) host.viewModel.retry(info.documentId) else host.viewModel.rebuild(info.documentId) },
                 enabled = info.documentId !in busy,
                 modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
             ) { Text(stringResource(action), maxLines = 1) }

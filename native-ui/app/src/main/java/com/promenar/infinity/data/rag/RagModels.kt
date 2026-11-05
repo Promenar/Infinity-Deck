@@ -114,7 +114,7 @@ data class RagConfiguration(
     val kgJitMinSeeds: Int = 2,
     val kgMaxCalls: Int = 32,
     val kgMaxOutputTokens: Int = 32768,
-    val kgRequestMaxOutputTokens: Int = 2048,
+    val kgRequestMaxOutputTokens: Int = 4096,
     val kgMaxDurationSeconds: Int = 180,
     val kgLargeDocumentConfirmCalls: Int = 16,
     val costStrategy: String = "on-demand",

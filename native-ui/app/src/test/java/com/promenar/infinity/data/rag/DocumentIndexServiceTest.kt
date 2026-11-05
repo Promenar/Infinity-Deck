@@ -549,6 +549,39 @@ class DocumentIndexServiceTest {
     }
 
     @Test
+    fun `图谱失败时完整向量候选不包含半张图并保留旧图`() = runTest {
+        seedFileAndOldArtifacts()
+        val text = "Alpha knows Beta"
+        val file = File.createTempFile("infinity-index-kg-failure", ".txt").apply { writeText(text) }
+        try {
+            val hash = com.promenar.infinity.infra.util.Sha256Utils.hash(text)
+            val current = database.fileEntryDao().getByUuid(ROOT, FILE)!!
+            database.fileEntryDao().update(current.copy(physicalRootPath = file.parentFile!!.absolutePath,
+                materializedPath = "/${file.name}", hash = hash))
+            val embedding = mockIndexEmbedding()
+            coEvery { embedding.embedDocuments(any()) } answers {
+                EmbeddingResult(firstArg<List<String>>().map { floatArrayOf(1f, 0f) })
+            }
+            val builder = WorkspaceDocumentIndexCandidateBuilder(
+                database.fileEntryDao(), embedding, RagConfiguration(enableKnowledgeGraph = true, docChunkSize = 8, chunkOverlap = 0),
+                checkpointRoot = checkpointRoot,
+                graphCandidateBuilder = { _, _, _ -> ExtractionResult(
+                    listOf(ExtractedNode("Partial", "concept")), emptyList(), "fixture",
+                    KgExtractionStatus.PARSE_FAILURE, KgExtractionProgress(1, 2),
+                ) },
+            )
+
+            val candidate = builder.build(FileIndexEvent.Changed(ROOT, FILE, hash, current.updatedAt))
+
+            assertThat(candidate.vectors).hasSize(2)
+            assertThat(candidate.nodes).isEmpty()
+            assertThat(candidate.edges).isEmpty()
+            assertThat(candidate.preserveExistingGraph).isTrue()
+            assertThat(candidate.kgFailure).isEqualTo(KgExtractionStatus.PARSE_FAILURE)
+        } finally { file.delete() }
+    }
+
+    @Test
     fun `任务选项优先于全局配置且跳过向量与图谱`() = runTest {
         seedFileAndOldArtifacts()
         val file = File.createTempFile("infinity-index-options", ".txt").apply { writeText("plain") }

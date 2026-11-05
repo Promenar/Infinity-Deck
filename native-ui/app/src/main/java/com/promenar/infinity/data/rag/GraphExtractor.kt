@@ -80,30 +80,54 @@ class GraphExtractor(
                 onProgress(progress())
                 for ((index, chunk) in splitText(text).withIndex()) {
                     currentCoroutineContext().ensureActive()
-                    val cached = docId?.let { store?.load(it, identity, index, chunk) }
-                    val result = if (cached != null) {
-                        // 旧断点没有预算账本时，成功分块也必须计入文档预算。
+                    var checkpoint = docId?.let { store?.loadCheckpoint(it, identity, index, chunk) }
+                        ?: GraphChunkCheckpoint(identity, kgSha256(chunk))
+                    fun saveCheckpoint() {
+                        if (docId == null) return
+                        try {
+                            store?.saveCheckpoint(docId, identity, index, checkpoint)
+                        } catch (_: Exception) {
+                            // 断点是可丢弃缓存，失败不改变候选结果或旧图谱。
+                            InfinityLogger.log("[KG] 断点写入失败")
+                        }
+                    }
+                    fun chargeLegacy(result: ExtractionResult) {
                         if (savedBudget == null) state = state.copy(
                             calls = state.calls + 1,
-                            outputTokens = state.outputTokens + cached.usage.outputTokens.takeIf { it > 0 }.let { it ?: budget.requestMaxOutputTokens.toLong() },
-                            usage = state.usage + cached.usage,
+                            outputTokens = state.outputTokens + result.usage.outputTokens.takeIf { it > 0 }
+                                .let { it ?: budget.requestMaxOutputTokens.toLong() },
+                            usage = state.usage + result.usage,
                         )
-                        cached
-                    } else {
+                    }
+                    suspend fun extractPart(part: String, path: String, depth: Int): ExtractionResult {
+                        currentCoroutineContext().ensureActive()
+                        checkpoint.parts[path]?.let { cached ->
+                            chargeLegacy(cached)
+                            return cached
+                        }
+                        if (path in checkpoint.splitPaths) {
+                            val (left, right) = splitForRetry(part)
+                            val first = extractPart(left, path + "0", depth + 1)
+                            if (!first.isSuccess || first.progress?.isPartial == true) return first
+                            val second = extractPart(right, path + "1", depth + 1)
+                            if (!second.isSuccess || second.progress?.isPartial == true) return second
+                            return ExtractionResult(first.nodes + second.nodes, first.edges + second.edges,
+                                usage = first.usage + second.usage)
+                        }
                         val reason = when {
                             state.calls >= budget.maxCalls -> KgExtractionStopReason.CALLS
                             state.outputTokens >= budget.maxOutputTokens -> KgExtractionStopReason.OUTPUT_TOKENS
                             elapsed() >= budget.maxDurationMs -> KgExtractionStopReason.DURATION
                             else -> null
                         }
-                        if (reason != null) return@withContext finish(reason)
+                        if (reason != null) return ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
+                            progress = progress(reason))
                         val requestLimit = minOf(budget.requestMaxOutputTokens.toLong(), budget.maxOutputTokens - state.outputTokens).toInt()
                         val remainingMs = (budget.maxDurationMs - elapsed()).coerceAtLeast(1)
-                        // 请求前预留最坏输出，失败或进程中断也不能悄悄重置已发生的费用。
+                        // 请求前预留输出和在途时长，响应后结算已发生的费用。
                         state = state.copy(calls = state.calls + 1, outputTokens = state.outputTokens + requestLimit)
-                        // 在途请求先预留超时时长，硬终止进程也不会获得新的时长额度。
                         persistBudget(minOf(timeoutMs, remainingMs))
-                        val response = requestClient.extract(modelId, systemPrompt, chunk, minOf(timeoutMs, remainingMs), requestLimit, sessionId = sessionId)
+                        val response = requestClient.extract(modelId, systemPrompt, part, minOf(timeoutMs, remainingMs), requestLimit, sessionId = sessionId)
                         currentCoroutineContext().ensureActive()
                         val hasResponse = response.isSuccess || response.status == KgExtractionStatus.PARSE_FAILURE
                         val chargedOutput = if (hasResponse) {
@@ -113,21 +137,40 @@ class GraphExtractor(
                             outputTokens = state.outputTokens - requestLimit + chargedOutput,
                             usage = state.usage + if (hasResponse) response.usage else KgTokenUsage(estimated = true),
                         )
+                        val shouldSplit = response.status == KgExtractionStatus.PARSE_FAILURE && depth < 2 &&
+                            part.length > 1 && !(part.length == 2 && part[0].isHighSurrogate() && part[1].isLowSurrogate())
+                        // 先保存已完成的子块或拆分决定；进程中断时预算仍保留请求前的保守预留。
+                        if (shouldSplit) {
+                            checkpoint = checkpoint.copy(splitPaths = checkpoint.splitPaths + path)
+                            saveCheckpoint()
+                        } else if (response.isSuccess) {
+                            checkpoint = checkpoint.copy(parts = checkpoint.parts + (path to response))
+                            saveCheckpoint()
+                        }
                         persistBudget()
                         if (response.status == KgExtractionStatus.TIMEOUT && elapsed() >= budget.maxDurationMs) {
-                            return@withContext finish(KgExtractionStopReason.DURATION)
+                            return ExtractionResult(emptyList(), emptyList(), status = KgExtractionStatus.PARTIAL,
+                                progress = progress(KgExtractionStopReason.DURATION))
                         }
-                        response
+                        if (shouldSplit) return extractPart(part, path, depth)
+                        return response
                     }
+                    val cached = checkpoint.result
+                    val result = if (cached != null) {
+                        // 旧断点没有预算账本时，成功分块也必须计入文档预算。
+                        if (checkpoint.parts.isEmpty()) chargeLegacy(cached) else if (savedBudget == null) {
+                            checkpoint.parts.values.forEach(::chargeLegacy)
+                            state = state.copy(calls = state.calls + checkpoint.splitPaths.size,
+                                outputTokens = state.outputTokens + checkpoint.splitPaths.size.toLong() * budget.requestMaxOutputTokens)
+                        }
+                        cached
+                    } else extractPart(chunk, "", 0)
                     currentCoroutineContext().ensureActive()
+                    result.progress?.reason?.let { return@withContext finish(it) }
                     if (!result.isSuccess) return@withContext result.copy(progress = progress(), usage = state.usage)
                     if (cached == null && docId != null) {
-                        try {
-                            store?.save(docId, identity, index, chunk, result)
-                        } catch (_: Exception) {
-                            // 断点是可丢弃缓存，失败不改变候选结果或旧图谱。
-                            InfinityLogger.log("[KG] 断点写入失败")
-                        }
+                        checkpoint = checkpoint.copy(result = result)
+                        saveCheckpoint()
                     }
                     nodes += result.nodes.take((KgGraphValidation.MAX_RAW_NODES - nodes.size).coerceAtLeast(0))
                     edges += result.edges.take((KgGraphValidation.MAX_RAW_EDGES - edges.size).coerceAtLeast(0))
@@ -160,6 +203,24 @@ class GraphExtractor(
     suspend fun clearPersistedGraphForDoc(docId: String) {
         graphStore.clearGraphForDoc(docId)
         clearCheckpoints(docId)
+    }
+
+    /** 在原分块内优先按中点附近的段落、句末边界切分，并保留全部字符。 */
+    private fun splitForRetry(text: String): Pair<String, String> {
+        val midpoint = text.length / 2
+        val candidates = (text.length / 4).coerceAtLeast(1)..((text.length * 3L / 4).toInt().coerceAtMost(text.length - 1))
+        fun closest(predicate: (Int) -> Boolean): Int? = candidates.filter(predicate)
+            .minByOrNull { kotlin.math.abs(it - midpoint) }
+        val paragraph = Regex("\\n[\\t \\r]*\\n").findAll(text).map { it.range.last + 1 }
+            .filter { it in candidates }.minByOrNull { kotlin.math.abs(it - midpoint) }
+            ?: closest { index -> text[index - 1] == '\n' }
+        val sentence = closest { index -> text[index - 1] in "。！？.!?；;" }
+        var split = paragraph ?: sentence ?: midpoint.coerceIn(1, text.length - 1)
+        if (text[split - 1].isHighSurrogate() && text[split].isLowSurrogate()) {
+            split = if (split + 1 < text.length) split + 1 else split - 1
+        }
+        if (split <= 0 || split >= text.length) split = midpoint.coerceIn(1, text.length - 1)
+        return text.substring(0, split) to text.substring(split)
     }
 
     private fun splitText(text: String): Sequence<String> = sequence {

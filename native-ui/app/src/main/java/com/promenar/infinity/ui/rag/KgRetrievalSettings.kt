@@ -59,7 +59,7 @@ internal fun ColumnScope.KgBudgetRows(
     KgIntegerSetting(R.string.settings_retrieval_kg_output_title, config.kgMaxOutputTokens, 256, 1048576, 32768, listOf(256, 8192, 32768, 131072, 1048576)) { value ->
         onChanged { copy(kgMaxOutputTokens = value) }
     }
-    KgIntegerSetting(R.string.settings_retrieval_kg_request_output_title, config.kgRequestMaxOutputTokens, 128, 16384, 2048, listOf(128, 1024, 2048, 8192, 16384)) { value ->
+    KgIntegerSetting(R.string.settings_retrieval_kg_request_output_title, config.kgRequestMaxOutputTokens, 128, 16384, 4096, listOf(128, 1024, 2048, 4096, 8192, 16384)) { value ->
         onChanged { copy(kgRequestMaxOutputTokens = value) }
     }
     KgIntegerSetting(R.string.settings_retrieval_kg_duration_title, config.kgMaxDurationSeconds, 5, 3600, 180, listOf(5, 60, 180, 600, 3600)) { value ->

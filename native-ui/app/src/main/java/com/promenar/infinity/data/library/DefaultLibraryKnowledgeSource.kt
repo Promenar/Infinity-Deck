@@ -13,6 +13,9 @@ import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.domain.library.ConversationFragment
 import com.promenar.infinity.domain.library.DocumentBody
 import com.promenar.infinity.domain.library.DocumentInsight
+import com.promenar.infinity.domain.library.DocumentGraphState
+import com.promenar.infinity.domain.library.GraphEstimate
+import com.promenar.infinity.domain.library.GraphStopReason
 import com.promenar.infinity.domain.library.FragmentGroup
 import com.promenar.infinity.domain.library.LibraryActionResult
 import com.promenar.infinity.domain.library.LibraryDocumentSummary
@@ -50,7 +53,6 @@ data class LibraryChunkRow(val id: String, val content: String, val metadata: St
 
 data class LibraryExtractedText(val text: String, val truncated: Boolean)
 
-internal class LibraryKgConfirmationRequired : Exception()
 class LibraryFragmentsBusyException(message: String) : IllegalStateException(message)
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,6 +72,9 @@ class DefaultLibraryKnowledgeSource internal constructor(
     private val now: () -> Long = System::currentTimeMillis,
     private val sessionGate: SessionExecutionGate,
     private val extractDocument: suspend (FileEntry, Int) -> LibraryExtractedText? = { _, _ -> null },
+    private val estimateGraph: suspend (FileEntry) -> GraphEstimate? = { null },
+    private val enqueueGraph: suspend (String, FileEntry, Boolean) -> Boolean = { _, _, _ -> false },
+    private val graphReason: (String?) -> String = { failedReason() },
 ) : LibraryKnowledgeSource {
     init {
         synchronized(preferences) {
@@ -100,7 +105,7 @@ class DefaultLibraryKnowledgeSource internal constructor(
     override fun observePending(): Flow<List<PendingDocument>> = rootId().flatMapLatest { root ->
         combine(database.fileEntryDao().observeLibraryFiles(root),
             database.vectorizationTaskDao().observeLibraryTasks(root), queueState) { entries, stored, queue ->
-            pendingDocuments(root, entries, stored, queue, libraryLabel(), failedReason(), confirmationReason())
+            pendingDocuments(root, entries, stored, queue, libraryLabel(), failedReason(), confirmationReason(), graphReason)
         }.distinctUntilChanged()
     }
 
@@ -108,8 +113,17 @@ class DefaultLibraryKnowledgeSource internal constructor(
         entries.take(limit.coerceAtLeast(0)).map { it.toSummary(libraryLabel()) }
     }.distinctUntilChanged()
 
-    override suspend fun retry(documentId: String): LibraryActionResult = action(documentId) { root, entry ->
-        retryIndex(root, entry)
+    override suspend fun retry(documentId: String): LibraryActionResult = withContext(Dispatchers.IO) {
+        try {
+            val root = ensureRoot().uuid
+            if (latestTask(root, documentId)?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) {
+                LibraryActionResult.Failed(confirmationReason())
+            } else action(documentId) { workspace, entry -> retryIndex(workspace, entry) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            LibraryActionResult.Failed(actionFailedReason())
+        }
     }
 
     override suspend fun rebuild(documentId: String): LibraryActionResult = action(documentId) { root, entry ->
@@ -126,12 +140,54 @@ class DefaultLibraryKnowledgeSource internal constructor(
                 if (block(root, entry)) LibraryActionResult.Done else LibraryActionResult.Failed(actionFailedReason())
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: LibraryKgConfirmationRequired) {
-                LibraryActionResult.Failed(confirmationReason())
             } catch (_: Exception) {
                 LibraryActionResult.Failed(actionFailedReason())
             }
         }
+
+    override suspend fun graphEstimate(documentId: String): GraphEstimate? = withContext(Dispatchers.IO) {
+        try {
+            val root = ensureRoot().uuid
+            val entry = database.fileEntryDao().getActiveByUuid(root, documentId)?.takeUnless { it.isDirectory }
+                ?: return@withContext null
+            if (entry.vectorizedAt == null) return@withContext null
+            estimateGraph(entry)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override suspend fun extractGraph(documentId: String, confirmed: Boolean): LibraryActionResult = withContext(Dispatchers.IO) {
+        try {
+            val root = ensureRoot().uuid
+            val entry = database.fileEntryDao().getActiveByUuid(root, documentId)?.takeUnless { it.isDirectory }
+                ?: return@withContext LibraryActionResult.Failed(actionFailedReason())
+            if (entry.vectorizedAt == null) {
+                return@withContext LibraryActionResult.Failed(actionFailedReason())
+            }
+            val estimate = estimateGraph(entry) ?: return@withContext LibraryActionResult.Failed(actionFailedReason())
+            if (estimate.requiresConfirmation && !confirmed) return@withContext LibraryActionResult.Failed(confirmationReason())
+            if (enqueueGraph(root, entry, confirmed)) LibraryActionResult.Done else LibraryActionResult.Failed(actionFailedReason())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            LibraryActionResult.Failed(actionFailedReason())
+        }
+    }
+
+    private suspend fun latestTask(root: String, documentId: String): LibraryTask? {
+        val stored = database.vectorizationTaskDao().getByDocId(documentId)
+            .filter { it.workspaceRootUuid == root && it.type in setOf("document", VectorizationQueue.TYPE_DOCUMENT_REFERENCE) }
+            .mapNotNull { it.libraryTask() }
+        val live = queueState.value.queue.filter {
+            it.workspaceRootUuid == root && it.docId == documentId && it.type in setOf("document", VectorizationQueue.TYPE_DOCUMENT_REFERENCE)
+        }.mapNotNull { it.libraryTask() }
+        return (stored + live).associateBy { it.id }.values.maxWithOrNull(
+            compareBy<LibraryTask> { it.targetEpoch }.thenBy { it.updatedAt }.thenBy { it.createdAt },
+        )
+    }
 
     override suspend fun insight(documentId: String): DocumentInsight? = withContext(Dispatchers.IO) {
         val root = ensureRoot().uuid
@@ -143,6 +199,27 @@ class DefaultLibraryKnowledgeSource internal constructor(
         val entities = database.kgNodeDao().getLibraryDocumentEntityNames(documentId).distinct()
             .sortedWith(compareByDescending<String> { name -> chunks.sumOf { countMentions(it.content, name) } }
                 .thenBy { it }).take(30)
+        val task = latestTask(root, documentId)
+        val graph = when {
+            task?.status == "extracting" -> DocumentGraphState.Extracting(task.processed, task.total)
+            task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED ->
+                graphEstimate(documentId)?.let { DocumentGraphState.ConfirmationRequired(it) }
+                    ?: DocumentGraphState.Failed(actionFailedReason())
+            task?.error?.startsWith("kg.budget.") == true -> {
+                val reason = when (task.error) {
+                    "kg.budget.calls" -> GraphStopReason.CALLS
+                    "kg.budget.output_tokens" -> GraphStopReason.OUTPUT_TOKENS
+                    else -> GraphStopReason.DURATION
+                }
+                DocumentGraphState.Partial(task.processed, task.total ?: 0, reason)
+            }
+            task?.error?.startsWith(VectorizationQueue.KG_FAILED) == true -> DocumentGraphState.Failed(graphReason(task.error))
+            entry.kgExtractedAt != null && entry.kgExtractedAt >= entry.updatedAt -> DocumentGraphState.Complete(
+                database.kgNodeDao().getByDocIds(listOf(documentId)).size,
+                database.kgEdgeDao().getByDocIds(listOf(documentId)).size,
+            )
+            else -> DocumentGraphState.NotExtracted
+        }
         DocumentInsight(
             documentId = entry.uuid, ref = summary.ref, name = entry.name, folderPath = summary.folderPath,
             mimeType = entry.mimeType, sizeBytes = entry.sizeBytes, lastModified = entry.updatedAt,
@@ -150,6 +227,7 @@ class DefaultLibraryKnowledgeSource internal constructor(
             chunkCount = chunks.size,
             entities = entities,
             source = null, versionCount = database.fileVersionDao().getByFile(root, documentId).size,
+            graph = graph,
         )
     }
 
@@ -324,6 +402,7 @@ internal fun pendingDocuments(
     label: String,
     failedReason: String,
     confirmationReason: String,
+    graphReason: (String?) -> String = { failedReason },
 ): List<PendingDocument> {
     val live = queue.queue.filter { it.workspaceRootUuid == root && it.type in setOf("document", VectorizationQueue.TYPE_DOCUMENT_REFERENCE) }
     val tasks = (stored.mapNotNull { it.libraryTask() } + live.mapNotNull { it.libraryTask() })
@@ -338,6 +417,8 @@ internal fun pendingDocuments(
     return entries.mapNotNull { entry ->
         val task = tasks[entry.uuid]
         val kind = when {
+            entry.vectorizedAt != null && task?.status in setOf("failed", "partial", "interrupted") &&
+                (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED || VectorizationQueue.isGraphRetryError(task?.error)) -> PendingKind.GRAPH_ATTENTION
             task?.status in setOf("failed", "partial", "interrupted") -> PendingKind.FAILED
             task != null && queue.isProcessing && task.id == queue.currentTask?.id -> PendingKind.INDEXING
             task?.status == "pending" -> PendingKind.QUEUED
@@ -354,7 +435,11 @@ internal fun pendingDocuments(
         } else null
         val total = task?.total?.takeUnless { stage == PendingStage.PREPARING || stage == PendingStage.SAVING }
         PendingDocument(entry.uuid, summary.ref, entry.name, summary.folderPath, kind,
-            reason = if (kind != PendingKind.FAILED) null else if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else failedReason,
+            reason = when (kind) {
+                PendingKind.GRAPH_ATTENTION -> if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else graphReason(task?.error)
+                PendingKind.FAILED -> if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else failedReason
+                else -> null
+            },
             queuePosition = if (kind == PendingKind.QUEUED) task?.let { positions[it.id] ?: waitingStored[it.id] } else null,
             stage = stage,
             processed = total?.let { task?.processed },
@@ -363,6 +448,7 @@ internal fun pendingDocuments(
         )
     }.sortedWith(compareBy<PendingDocument> { when (it.kind) {
         PendingKind.FAILED -> 0
+        PendingKind.GRAPH_ATTENTION -> 0
         PendingKind.INDEXING -> 1
         PendingKind.QUEUED -> 2
         PendingKind.STALE -> 3

@@ -55,6 +55,15 @@ class RagImportRetrievalPipelineTest {
 
     @Test
     fun `工作区文件经真实索引检索进入提示词并随消息引用往返`() = runTest {
+        verifyImportRetrieval(graphFails = false)
+    }
+
+    @Test
+    fun `图谱抽取失败后已提交向量仍可检索进入提示词`() = runTest {
+        verifyImportRetrieval(graphFails = true)
+    }
+
+    private suspend fun verifyImportRetrieval(graphFails: Boolean) {
         val sessionId = "rag-pipeline-session"
         val fileId = "rag-pipeline-file"
         val fileName = "infinity-release-fact.txt"
@@ -101,6 +110,7 @@ class RagImportRetrievalPipelineTest {
             docThreshold = 0.1f,
             docChunkSize = 256,
             chunkOverlap = 16,
+            enableKnowledgeGraph = graphFails,
         )
         val indexService = RoomDocumentIndexService(
             database = database,
@@ -109,6 +119,9 @@ class RagImportRetrievalPipelineTest {
                 embedding,
                 config,
                 checkpointRoot = kotlin.io.path.createTempDirectory("embedding-checkpoints").toFile(),
+                graphCandidateBuilder = if (graphFails) KnowledgeGraphCandidateBuilder { _, _, _ ->
+                    ExtractionResult.failure(KgExtractionStatus.PARSE_FAILURE, "fixture")
+                } else null,
             ),
         )
         database.vectorizationTaskDao().insert(VectorizationTaskEntity(
@@ -132,7 +145,13 @@ class RagImportRetrievalPipelineTest {
             activeTaskId = "pipeline-index-task",
         ))
 
-        assertThat(indexed).isEqualTo(DocumentIndexResult.Rebuilt(fileId))
+        assertThat(indexed).isEqualTo(DocumentIndexResult.Rebuilt(fileId,
+            kgFailure = KgExtractionStatus.PARSE_FAILURE.takeIf { graphFails }))
+        if (graphFails) {
+            val task = database.vectorizationTaskDao().getById("pipeline-index-task")!!
+            assertThat(task.status).isEqualTo("partial")
+            assertThat(task.error).startsWith(VectorizationQueue.KG_FAILED)
+        }
         assertThat(database.fileEntryDao().getByUuid(root.uuid, fileId)!!.vectorizedAt).isNotNull()
         assertThat(database.vectorDao().getByDocId(fileId)).isNotEmpty()
 
