@@ -41,6 +41,8 @@ data class FileTargetPickerState(
     val crumbs: List<FileCrumb>,
     val folders: List<FileItem>,
     val loading: Boolean = false,
+    /** 当前目标位置；从会话工作区进入的会话不在位置列表里，界面以它取标题与可写性。 */
+    val location: FileLocation? = null,
 )
 
 /** 操作结束后给用户的一次性提示。 */
@@ -132,6 +134,8 @@ interface FileManagerController {
     fun openTargetPicker(mode: FileTransferMode, items: List<FileItem> = emptyList())
     fun pickerOpenLocation(locationId: String)
     fun pickerGoTo(path: String)
+    /** 进入目标选择器列出的子文件夹；会话工作区汇总根里的条目会切到对应会话。 */
+    fun pickerOpenFolder(folder: FileItem)
     fun pickerCreateFolder(name: String)
     fun confirmTargetPicker()
     fun dismissTargetPicker()

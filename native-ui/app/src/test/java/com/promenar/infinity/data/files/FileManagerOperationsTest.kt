@@ -179,6 +179,15 @@ class FileManagerOperationsTest {
         assertEquals(listOf("session:private"), folders.map { it.ref.locationId })
     }
 
+    @Test
+    fun privateSessionFolderExcludesBoundWorktreeSystemAndRootlessSessions() {
+        assertTrue(isPrivateSessionFolder(session("a", "甲", "root-a")))
+        assertFalse(isPrivateSessionFolder(session("b", "乙", null)))
+        assertFalse(isPrivateSessionFolder(session("c", "丙", "root-c").copy(workspaceId = "project")))
+        assertFalse(isPrivateSessionFolder(session("d", "丁", "root-d").copy(worktreeDirectory = "branch")))
+        assertFalse(isPrivateSessionFolder(session("e", "戊", "root-e", agent = "__system__")))
+    }
+
     private fun session(id: String, title: String, root: String?, agent: String = "fictional") = SessionEntity(
         id = id, agentId = agent, title = title, workspaceRootUuid = root, createdAt = 1, updatedAt = 1,
     )

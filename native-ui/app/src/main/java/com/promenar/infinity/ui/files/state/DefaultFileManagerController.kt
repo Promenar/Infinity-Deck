@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -44,6 +45,9 @@ class DefaultFileManagerController(
     private var watchedSessionLocationId: String? = null
     @Volatile private var sessionLocation: FileLocation? = null
     private var sessionLocationVersion = 0L
+    /** 目标选择器从“会话工作区”汇总根进入的会话位置；不在位置列表里，只在选择器内按需解析一次。 */
+    @Volatile private var pickerSessionLocation: FileLocation? = null
+    private var pickerResolveJob: Job? = null
     private var loadVersion = 0L
     private var searchVersion = 0L
     private var previewVersion = 0L
@@ -210,15 +214,25 @@ class DefaultFileManagerController(
 
     private fun findLocation(id: String): FileLocation? =
         state.value.locations.firstOrNull { it.id == id }
-            ?: sessionLocation?.takeIf { it.id == id && state.value.locations.any { parent -> parent.id == "sessions" } }
+            ?: listOfNotNull(sessionLocation, pickerSessionLocation)
+                .firstOrNull { it.id == id && state.value.locations.any { parent -> parent.id == SESSIONS_ID } }
 
-    private fun navigationCrumbs(location: FileLocation, path: String): List<FileCrumb> {
+    private fun navigationCrumbs(location: FileLocation, path: String): List<FileCrumb> =
+        sessionCrumbs(location, path, hidden = watchedSessionLocationId == location.id)
+
+    /** 隐藏会话的面包屑以“会话工作区”开头，会话名一级用 [SESSION_ROOT_CRUMB] 标识会话根。 */
+    private fun sessionCrumbs(location: FileLocation, path: String, hidden: Boolean): List<FileCrumb> {
         val crumbs = FileListing.crumbs(location, path)
-        val parent = state.value.locations.firstOrNull { it.id == "sessions" }
-        return if (watchedSessionLocationId == location.id && parent != null) {
+        val parent = state.value.locations.firstOrNull { it.id == SESSIONS_ID }
+        return if (hidden && parent != null) {
             listOf(FileCrumb(parent.title, "/"), crumbs.first().copy(path = SESSION_ROOT_CRUMB)) + crumbs.drop(1)
         } else crumbs
     }
+
+    private fun isHiddenSession(id: String) = id.startsWith("session:") && state.value.locations.none { it.id == id }
+
+    private fun pickerCrumbs(location: FileLocation, path: String) =
+        sessionCrumbs(location, path, hidden = isHiddenSession(location.id))
 
     private fun cancelSessionLocation() {
         sessionLocationVersion++
@@ -263,7 +277,7 @@ class DefaultFileManagerController(
                                     val picker = it.targetPicker
                                     it.copy(location = resolved, crumbs = navigationCrumbs(resolved, it.path),
                                         targetPicker = if (picker?.locationId == locationId) {
-                                            picker.copy(crumbs = FileListing.crumbs(resolved, picker.path))
+                                            picker.copy(location = resolved, crumbs = pickerCrumbs(resolved, picker.path))
                                         } else picker)
                                 }
                             }
@@ -288,8 +302,10 @@ class DefaultFileManagerController(
         pickerVersion++
         pickerJob?.cancel()
         pickerCreateJob?.cancel()
+        pickerResolveJob?.cancel()
         pickerJob = null
         pickerCreateJob = null
+        pickerResolveJob = null
     }
 
     private fun withListing(current: FileManagerUiState): FileManagerUiState {
@@ -423,7 +439,8 @@ class DefaultFileManagerController(
     @Synchronized
     override fun toggleSelection(item: FileItem) {
         mutableState.update { current ->
-            if (current.search != null || current.items.none { it.ref == item.ref }) current
+            // 汇总根的条目都是各会话的根（路径同为 "/"），只能进入，不能选择。
+            if (current.search != null || current.location?.id == SESSIONS_ID || current.items.none { it.ref == item.ref }) current
             else current.copy(selection = if (item.ref.path in current.selection) current.selection - item.ref.path else current.selection + item.ref.path)
         }
     }
@@ -431,7 +448,8 @@ class DefaultFileManagerController(
     @Synchronized
     override fun selectAll() {
         mutableState.update { current ->
-            if (current.search != null) current else current.copy(selection = current.items.mapTo(mutableSetOf()) { it.ref.path })
+            if (current.search != null || current.location?.id == SESSIONS_ID) current
+            else current.copy(selection = current.items.mapTo(mutableSetOf()) { it.ref.path })
         }
     }
 
@@ -688,10 +706,16 @@ class DefaultFileManagerController(
         val location = current.location ?: return
         val sources = selected(items)
         if (sources.isEmpty()) return
+        // 会话工作区汇总根里的条目是整个会话目录，后端不支持复制或移动位置根。
+        if (location.id == SESSIONS_ID) {
+            mutableState.update { it.copy(notice = FileManagerNotice.Failed(mode.noticeKind(), FileOpCode.UNSUPPORTED, sources.size, sources.size)) }
+            return
+        }
         if (!ensureAllowed(listOf(FileRef(location.id, current.path)) + sources, mode.noticeKind(), sources.size)) return
         cancelPickerJobs()
+        pickerSessionLocation = null
         mutableState.update {
-            it.copy(targetPicker = FileTargetPickerState(mode, sources, location.id, current.path, FileListing.crumbs(location, current.path), emptyList(), true))
+            it.copy(targetPicker = FileTargetPickerState(mode, sources, location.id, current.path, pickerCrumbs(location, current.path), emptyList(), true, location))
         }
         loadPicker(location.id, current.path)
     }
@@ -706,7 +730,52 @@ class DefaultFileManagerController(
     override fun pickerGoTo(path: String) {
         val picker = state.value.targetPicker ?: return
         if (pickerCreateJob?.isActive == true) return
+        if (isHiddenSession(picker.locationId)) {
+            when (path) {
+                "/" -> return loadPicker(SESSIONS_ID, "/")
+                SESSION_ROOT_CRUMB -> return loadPicker(picker.locationId, "/")
+            }
+        }
         loadPicker(picker.locationId, path)
+    }
+
+    @Synchronized
+    override fun pickerOpenFolder(folder: FileItem) {
+        val picker = state.value.targetPicker ?: return
+        if (pickerCreateJob?.isActive == true) return
+        val target = folder.ref.locationId
+        if (target == picker.locationId) return loadPicker(target, folder.ref.path)
+        if (picker.locationId != SESSIONS_ID || !target.startsWith("session:")) return
+        if (findLocation(target)?.accessLost == false) return loadPicker(target, folder.ref.path)
+        val sessionId = target.removePrefix("session:")
+        pickerJob?.cancel()
+        pickerResolveJob?.cancel()
+        val version = ++pickerVersion
+        mutableState.update { it.copy(targetPicker = picker.copy(loading = true)) }
+        pickerResolveJob = scope.launch {
+            val resolved = try {
+                services.locations.observeSessionLocations(sessionId).flowOn(io).first()
+                    .firstOrNull { it.id == target && !it.accessLost }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            synchronized(this@DefaultFileManagerController) {
+                val current = state.value.targetPicker
+                if (version != pickerVersion || current == null) return@synchronized
+                pickerResolveJob = null
+                if (resolved == null) {
+                    mutableState.update {
+                        it.copy(targetPicker = current.copy(loading = false),
+                            notice = FileManagerNotice.Failed(current.mode.noticeKind(), FileOpCode.NOT_FOUND, current.sources.size, current.sources.size))
+                    }
+                } else {
+                    pickerSessionLocation = resolved
+                    loadPicker(target, "/")
+                }
+            }
+        }
     }
 
     private fun loadPicker(locationId: String, path: String) {
@@ -716,8 +785,9 @@ class DefaultFileManagerController(
         val existing = state.value.targetPicker ?: return
         pickerJob?.cancel()
         pickerCreateJob?.cancel()
+        pickerResolveJob?.cancel()
         val version = ++pickerVersion
-        mutableState.update { it.copy(targetPicker = existing.copy(locationId = locationId, path = normalized, crumbs = FileListing.crumbs(location, normalized), folders = emptyList(), loading = true)) }
+        mutableState.update { it.copy(targetPicker = existing.copy(locationId = locationId, path = normalized, crumbs = pickerCrumbs(location, normalized), folders = emptyList(), loading = true, location = location)) }
         pickerJob = scope.launch {
             try {
                 val items = withContext(io) {
@@ -858,6 +928,7 @@ class DefaultFileManagerController(
     private companion object {
         // 面包屑共用路径回调，双斜线仅标识会话根，不传入文件后端。
         const val SESSION_ROOT_CRUMB = "//"
+        const val SESSIONS_ID = "sessions"
     }
 }
 

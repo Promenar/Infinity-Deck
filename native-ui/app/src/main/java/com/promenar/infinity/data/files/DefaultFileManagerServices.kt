@@ -58,7 +58,7 @@ class DefaultFileManagerServices(
                 app.workspaceRepository, app.database.vectorizationTaskDao(), app.pendingDocumentIndexCoordinator, guard,
                 pendingTargets = app.pendingDocumentIndexCoordinator::snapshot)
             val validLocations = combine(locations.observeLibraryLocationIds(), sessions) { ids, rows ->
-                ids + rows.filterNot(::isSystemSession).map { "session:${it.id}" }
+                ids + rows.filter(::isPrivateSessionFolder).map { "session:${it.id}" }
             }
             val pins = DefaultPinnedFolderStore(
                 PreferencesPinPersistence(app.getSharedPreferences("infinity_settings", Context.MODE_PRIVATE)), validLocations,

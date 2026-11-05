@@ -189,7 +189,7 @@ internal fun libraryPageTitle(page: LibraryPage, host: LibraryPageHost): String 
         val locations by host.viewModel.locations.collectAsStateWithLifecycle()
         val location = locations.locations.firstOrNull { it.id == page.ref.locationId }
         if (page.ref.path == "/" || page.ref.path.isEmpty()) {
-            location?.title ?: stringResource(R.string.library_page_files)
+            location?.title ?: locations.sessionNames[page.ref.locationId] ?: stringResource(R.string.library_page_files)
         } else {
             pinTitle(page.ref)
         }

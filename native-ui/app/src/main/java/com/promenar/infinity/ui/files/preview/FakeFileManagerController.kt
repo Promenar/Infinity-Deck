@@ -336,6 +336,8 @@ internal class FakeFileManagerController(
         s.copy(targetPicker = pickerAt(picker.mode, picker.sources, picker.locationId, path))
     }
 
+    override fun pickerOpenFolder(folder: FileItem) = pickerGoTo(folder.ref.path)
+
     override fun pickerCreateFolder(name: String) {
         val picker = _state.value.targetPicker ?: return
         val item = addItem(FileRef(picker.locationId, picker.path), name, isDirectory = true) ?: return

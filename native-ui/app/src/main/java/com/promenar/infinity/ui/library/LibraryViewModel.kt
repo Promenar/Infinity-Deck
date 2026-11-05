@@ -24,6 +24,7 @@ import com.promenar.infinity.domain.library.LibraryOverview
 import com.promenar.infinity.domain.library.PendingDocument
 import com.promenar.infinity.domain.library.PendingKind
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 资料页给用户的一次性提示。 */
 sealed interface LibraryNotice {
@@ -49,6 +51,8 @@ data class GraphExtractionRequest(val documentId: String, val name: String, val 
 data class LibraryLocations(
     val locations: List<FileLocation> = emptyList(),
     val pins: List<FileRef> = emptyList(),
+    /** 固定的会话文件夹所属会话名，键为 `session:<id>`；会话不在位置列表里，侧栏靠它显示名称。 */
+    val sessionNames: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -97,12 +101,23 @@ class LibraryViewModel(
     val locations: StateFlow<LibraryLocations> = combine(
         files.locations.observeLibraryLocations(),
         files.pins.observePins(),
-    ) { locations, pins -> LibraryLocations(locations, pins) }
+    ) { locations, pins ->
+        val names = if (pins.any { it.locationId.startsWith("session:") }) sessionNames() else emptyMap()
+        LibraryLocations(locations, pins, names)
+    }
         .catch { error ->
             com.promenar.infinity.utils.InfinityLogger.logError("LibraryViewModel.locations", error)
             emit(LibraryLocations())
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), LibraryLocations())
+
+    private suspend fun sessionNames(): Map<String, String> = try {
+        withContext(Dispatchers.IO) { files.operations.list("sessions", "/") }.associate { it.ref.locationId to it.name }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        emptyMap()
+    }
 
     private val _notice = MutableStateFlow<LibraryNotice?>(null)
     val notice: StateFlow<LibraryNotice?> = _notice.asStateFlow()

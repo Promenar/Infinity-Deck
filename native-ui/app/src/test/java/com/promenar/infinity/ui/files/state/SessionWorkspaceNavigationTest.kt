@@ -158,7 +158,72 @@ class SessionWorkspaceNavigationTest {
         runCurrent()
         assertThat(controller.state.value.location).isEqualTo(updated)
         assertThat(controller.state.value.crumbs.map { it.title }).containsExactly("会话工作区", "会话新名", "docs").inOrder()
-        assertThat(controller.state.value.targetPicker!!.crumbs.first().title).isEqualTo("会话新名")
+        assertThat(controller.state.value.targetPicker!!.crumbs.map { it.title })
+            .containsExactly("会话工作区", "会话新名", "docs").inOrder()
+        assertThat(controller.state.value.targetPicker!!.location).isEqualTo(updated)
+    }
+
+    @Test fun `其它位置的目标选择器可经会话工作区进入会话并作为目标`() = runTest {
+        val services = services()
+        val source = file("/a.txt")
+        services.operations.listings[FileRef("library", "/")] = listOf(source)
+        var transfer: Pair<List<FileRef>, FileRef>? = null
+        services.operations.copyHandler = { refs, target ->
+            transfer = refs to target
+            FileOpOutcome(listOf(FileRef(target.locationId, "${target.path}/a.txt")), emptyList())
+        }
+        val controller = controller(services, FileRef("library", "/"))
+        runCurrent()
+        controller.openTargetPicker(FileTransferMode.COPY, listOf(source))
+        runCurrent()
+        controller.pickerOpenLocation("sessions")
+        runCurrent()
+        assertThat(controller.state.value.targetPicker!!.folders).containsExactly(entry)
+
+        controller.pickerOpenFolder(entry)
+        runCurrent()
+        var picker = controller.state.value.targetPicker!!
+        assertThat(picker.locationId).isEqualTo(session.id)
+        assertThat(picker.location).isEqualTo(session)
+        assertThat(picker.folders).containsExactly(folder)
+        assertThat(picker.crumbs.map { it.title }).containsExactly("会话工作区", "会话甲").inOrder()
+
+        controller.pickerOpenFolder(folder)
+        runCurrent()
+        picker = controller.state.value.targetPicker!!
+        assertThat(picker.path).isEqualTo("/docs")
+        assertThat(picker.crumbs.map { it.title }).containsExactly("会话工作区", "会话甲", "docs").inOrder()
+
+        controller.pickerGoTo(picker.crumbs[1].path)
+        runCurrent()
+        assertThat(controller.state.value.targetPicker!!.locationId).isEqualTo(session.id)
+        assertThat(controller.state.value.targetPicker!!.path).isEqualTo("/")
+        controller.pickerGoTo(controller.state.value.targetPicker!!.crumbs[0].path)
+        runCurrent()
+        assertThat(controller.state.value.targetPicker!!.locationId).isEqualTo("sessions")
+
+        controller.pickerOpenFolder(entry)
+        runCurrent()
+        controller.pickerOpenFolder(folder)
+        runCurrent()
+        controller.confirmTargetPicker()
+        runCurrent()
+        assertThat(transfer).isEqualTo(listOf(source.ref) to FileRef(session.id, "/docs"))
+        assertThat(controller.state.value.notice).isEqualTo(FileManagerNotice.Done(FileManagerNotice.Kind.COPY, 1, "/docs"))
+    }
+
+    @Test fun `会话工作区汇总根的条目不能选择也不能复制`() = runTest {
+        val controller = controller(services())
+        runCurrent()
+        controller.toggleSelection(entry)
+        controller.selectAll()
+        assertThat(controller.state.value.selection).isEmpty()
+
+        controller.openTargetPicker(FileTransferMode.COPY, listOf(entry))
+        runCurrent()
+        assertThat(controller.state.value.targetPicker).isNull()
+        assertThat(controller.state.value.notice)
+            .isEqualTo(FileManagerNotice.Failed(FileManagerNotice.Kind.COPY, FileOpCode.UNSUPPORTED, 1, 1))
     }
 
     @Test fun `会话位置内复制和移动目标选择器可进入子目录`() = runTest {

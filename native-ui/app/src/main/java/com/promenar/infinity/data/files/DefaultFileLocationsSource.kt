@@ -189,6 +189,14 @@ internal class DefaultFileLocationsSource(
 
 internal fun isSystemSession(session: SessionEntity) = session.agentId == "__system__"
 
+/**
+ * “会话工作区”汇总根列出的会话：普通会话、有私有工作区、未绑定项目或分支工作区。
+ * 绑定项目或分支的会话，其文件在对应的项目位置里；固定文件夹的有效性校验用同一规则，改绑后旧置顶随之失效。
+ */
+internal fun isPrivateSessionFolder(session: SessionEntity) =
+    !isSystemSession(session) && !session.workspaceRootUuid.isNullOrBlank() &&
+        session.workspaceId == null && session.worktreeDirectory == null
+
 /** 汇总名称按稳定会话 id 排序去重，路径片段始终可通过后端校验。 */
 internal fun sessionFolderNames(rows: List<SessionEntity>): Map<String, String> {
     val result = linkedMapOf<String, String>()

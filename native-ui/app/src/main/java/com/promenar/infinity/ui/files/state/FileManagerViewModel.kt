@@ -63,6 +63,7 @@ class FileManagerViewModel(
     override fun openTargetPicker(mode: FileTransferMode, items: List<FileItem>) = controller.openTargetPicker(mode, items)
     override fun pickerOpenLocation(locationId: String) = controller.pickerOpenLocation(locationId)
     override fun pickerGoTo(path: String) = controller.pickerGoTo(path)
+    override fun pickerOpenFolder(folder: FileItem) = controller.pickerOpenFolder(folder)
     override fun pickerCreateFolder(name: String) = controller.pickerCreateFolder(name)
     override fun confirmTargetPicker() = controller.confirmTargetPicker()
     override fun dismissTargetPicker() = controller.dismissTargetPicker()

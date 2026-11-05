@@ -337,6 +337,8 @@ internal fun MenuAction(
 internal fun ColumnScope.FileItemMenu(item: FileItem, state: FileManagerUiState, actions: FileManagerUiActions, dismiss: () -> Unit) {
     val controller = actions.controller
     val writable = state.writable()
+    // 会话工作区汇总根的条目是整个会话目录：只能打开或看详情，复制、移动与宿主动作都不适用。
+    val sessionEntry = state.location?.id == SESSIONS_LOCATION_ID
     InfinityMenuHeader(item.name)
     if (item.isDirectory) {
         MenuAction(Icons.Rounded.FolderOpen, R.string.fm_open, UiTags.FM_ITEM_OPEN) {
@@ -355,9 +357,11 @@ internal fun ColumnScope.FileItemMenu(item: FileItem, state: FileManagerUiState,
             actions.openDialog(FileManagerDialog.Rename(item))
         }
     }
-    MenuAction(Icons.Rounded.ContentCopy, R.string.fm_copy_to, UiTags.FM_ITEM_COPY) {
-        dismiss()
-        controller.openTargetPicker(FileTransferMode.COPY, listOf(item))
+    if (!sessionEntry) {
+        MenuAction(Icons.Rounded.ContentCopy, R.string.fm_copy_to, UiTags.FM_ITEM_COPY) {
+            dismiss()
+            controller.openTargetPicker(FileTransferMode.COPY, listOf(item))
+        }
     }
     if (writable) {
         MenuAction(Icons.AutoMirrored.Rounded.DriveFileMove, R.string.fm_move_to, UiTags.FM_ITEM_MOVE) {
@@ -371,7 +375,7 @@ internal fun ColumnScope.FileItemMenu(item: FileItem, state: FileManagerUiState,
             actions.share(listOf(item))
         }
     }
-    actions.host.actionsFor(listOf(item)).forEach { action ->
+    if (!sessionEntry) actions.host.actionsFor(listOf(item)).forEach { action ->
         InfinityMenuItem(
             text = { Text(action.label) },
             leadingIcon = { Icon(action.icon, contentDescription = null, modifier = Modifier.size(MenuIconSize)) },

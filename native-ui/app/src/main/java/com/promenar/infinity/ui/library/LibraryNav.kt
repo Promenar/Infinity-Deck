@@ -111,6 +111,23 @@ internal fun FileLocation.navIcon(): ImageVector = when (kind) {
 
 internal fun pinTitle(ref: FileRef): String = ref.path.trimEnd('/').substringAfterLast('/').ifEmpty { ref.path }
 
+/**
+ * 固定文件夹在侧栏的标题与副标题。会话文件夹不在位置列表里：会话根以会话名为标题、“会话工作区”为副标题；
+ * 子文件夹的副标题为“会话工作区 · 会话名”。
+ */
+internal fun pinLabels(ref: FileRef, locations: LibraryLocations): Pair<String, String?> {
+    val listed = locations.locations.firstOrNull { it.id == ref.locationId }
+    val session = locations.sessionNames[ref.locationId]
+    val parent = locations.locations.firstOrNull { it.id == "sessions" }?.title
+    val root = ref.path.trimEnd('/').isEmpty()
+    return when {
+        listed != null -> (if (root) listed.title else pinTitle(ref)) to listed.title.takeUnless { root }
+        session != null && root -> session to parent
+        session != null -> pinTitle(ref) to listOfNotNull(parent, session).joinToString(" · ")
+        else -> pinTitle(ref) to null
+    }
+}
+
 /** 左列四组导航。“智能体常用”需要引用回链，等后续工作提供数据后再加入视图组。 */
 @Composable
 internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGroup> {
@@ -118,7 +135,6 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
     val overview by host.viewModel.overview.collectAsStateWithLifecycle()
     val locations by host.viewModel.locations.collectAsStateWithLifecycle()
     val newBadge = overview?.newLongTermMemories?.takeIf { it > 0 }?.toString()
-    val locationTitles = locations.locations.associate { it.id to it.title }
     val accessLost = stringResource(R.string.library_location_access_lost)
     return listOf(
         LibraryNavGroup(
@@ -150,11 +166,12 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
         LibraryNavGroup(
             title = stringResource(R.string.library_group_pins),
             entries = locations.pins.map { ref ->
+                val (title, subtitle) = pinLabels(ref, locations)
                 LibraryNavEntry(
                     key = LibraryPageKeys.browse(ref),
                     icon = Icons.Rounded.PushPin,
-                    title = pinTitle(ref),
-                    subtitle = locationTitles[ref.locationId],
+                    title = title,
+                    subtitle = subtitle,
                 )
             },
         ),

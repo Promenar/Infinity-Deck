@@ -428,8 +428,8 @@ internal fun sameHierarchy(from: FileManagerUiState, to: FileManagerUiState): Bo
     val a = from.location?.id
     val b = to.location?.id
     if (a == b) return true
-    return (a == "sessions" && b?.startsWith("session:") == true && to.crumbs.size > 1) ||
-        (b == "sessions" && a?.startsWith("session:") == true && from.crumbs.size > 1)
+    return (a == SESSIONS_LOCATION_ID && b?.startsWith("session:") == true && to.crumbs.size > 1) ||
+        (b == SESSIONS_LOCATION_ID && a?.startsWith("session:") == true && from.crumbs.size > 1)
 }
 
 /**
@@ -538,7 +538,7 @@ private const val LocationSettleMillis = 600L
 /** 空目录提示；“会话工作区”汇总根为空时说明绑定项目的会话文件在哪里，避免像是读取失败。 */
 @Composable
 private fun EmptyFolder(state: FileManagerUiState) {
-    val text = if (state.location?.id == "sessions") R.string.fm_empty_sessions else R.string.fm_empty_folder
+    val text = if (state.location?.id == SESSIONS_LOCATION_ID) R.string.fm_empty_sessions else R.string.fm_empty_folder
     FolderStatusMessage(text = stringResource(text), modifier = Modifier.testTag(UiTags.FM_EMPTY))
 }
 

@@ -53,6 +53,9 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
  * 窄窗口为底部面板，宽窗口由 InfinityModalSheet 改为居中对话框。
  */
 
+/** “会话工作区”汇总位置：只读，条目是各会话的根目录。 */
+internal const val SESSIONS_LOCATION_ID = "sessions"
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun FileTargetPickerSheet(
@@ -67,6 +70,7 @@ internal fun FileTargetPickerSheet(
             locations = locations,
             onLocation = controller::pickerOpenLocation,
             onGo = controller::pickerGoTo,
+            onOpenFolder = controller::pickerOpenFolder,
             onNewFolder = { actions.openDialog(FileManagerDialog.PickerNewFolder) },
             onCancel = controller::dismissTargetPicker,
             onConfirm = controller::confirmTargetPicker,
@@ -87,9 +91,13 @@ internal fun FileTargetPickerContent(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenFolder: (FileItem) -> Unit = { onGo(it.ref.path) },
 ) {
     val count = picker.sources.size
-    val targetLocation = locations.firstOrNull { it.id == picker.locationId }
+    val listed = locations.firstOrNull { it.id == picker.locationId }
+    val targetLocation = listed ?: picker.location
+    // 从会话工作区进入的会话不在位置列表里，此时“会话工作区”保持选中。
+    val selectedId = if (listed == null && picker.locationId.startsWith("session:")) SESSIONS_LOCATION_ID else picker.locationId
     val writable = targetLocation?.capabilities?.writable ?: true
     Column(modifier.fillMaxWidth().testTag(UiTags.FM_TARGET_SHEET)) {
         Text(
@@ -106,13 +114,14 @@ internal fun FileTargetPickerContent(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                 locations.forEach { location ->
                     FilterChip(
-                        selected = location.id == picker.locationId,
+                        selected = location.id == selectedId,
                         onClick = { if (location.id != picker.locationId) onLocation(location.id) },
                         label = { Text(location.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingIcon = {
                             Icon(locationKindIcon(location.kind), contentDescription = null, modifier = Modifier.size(18.dp))
                         },
-                        enabled = location.capabilities.writable,
+                        // 会话工作区本身只读，但可以进入其中的会话作为目标。
+                        enabled = location.capabilities.writable || location.id == SESSIONS_LOCATION_ID,
                         modifier = Modifier.testTag(UiTags.fmTargetLocation(location.id)),
                     )
                 }
@@ -137,7 +146,7 @@ internal fun FileTargetPickerContent(
                 }
                 else -> LazyColumn(Modifier.fillMaxWidth()) {
                     items(picker.folders, key = { it.ref.listKey() }) { folder ->
-                        TargetFolderRow(folder, onClick = { onGo(folder.ref.path) })
+                        TargetFolderRow(folder, onClick = { onOpenFolder(folder) })
                     }
                 }
             }
@@ -176,7 +185,8 @@ private fun TargetFolderRow(folder: FileItem, onClick: () -> Unit) {
             .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 56.dp)
             .padding(horizontal = InfinitySpacing.XSmall)
-            .testTag(UiTags.fmTargetFolder(folder.ref.path)),
+            // 会话工作区汇总根的条目路径都是 "/"，以位置区分。
+            .testTag(UiTags.fmTargetFolder(if (folder.ref.path == "/") folder.ref.locationId else folder.ref.path)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FileTypeBadge(folder, size = 36.dp)
