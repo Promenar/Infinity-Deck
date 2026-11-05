@@ -19,11 +19,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.model.Document
 import com.promenar.infinity.ui.testing.UiTags
@@ -136,6 +140,22 @@ internal fun RagSearchResults(
     }
 }
 
+private const val RAG_SEARCH_SNIPPET_MAX_LINES = 2
+
+/**
+ * 搜索结果行最小高度。列表各项等高：有摘要时按 Material 三行列表项排版——
+ * 上下内边距 12dp×2 + 标题 bodyLarge 一行 + 摘要 bodyMedium 两行，默认 24 + 22 + 40 = 86dp，不低于规范的 88dp；
+ * 行高随字号实算。没有任何摘要时保持 48dp 触控高度。
+ */
+@Composable
+private fun ragSearchResultMinHeight(withSnippet: Boolean): Dp {
+    if (!withSnippet) return InfinitySpacing.MinimumTouchTarget
+    val typography = MaterialTheme.typography
+    return with(LocalDensity.current) {
+        maxOf(88.dp, 24.dp + typography.bodyLarge.lineHeight.toDp() + typography.bodyMedium.lineHeight.toDp() * RAG_SEARCH_SNIPPET_MAX_LINES)
+    }
+}
+
 @Composable
 private fun RagSearchResultList(
     items: List<RagSearchResult>,
@@ -152,6 +172,8 @@ private fun RagSearchResultList(
         }
         return
     }
+    // 列表各项等高：惰性列表看不到屏幕外的行，按全部结果算出是否有摘要；有则无摘要的结果也按带摘要的高度排版。
+    val rowMinHeight = ragSearchResultMinHeight(withSnippet = items.any { it.snippet != null })
     LazyColumn(
         modifier = modifier
             .fillMaxWidth()
@@ -166,12 +188,13 @@ private fun RagSearchResultList(
             ListItem(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .sizeIn(minHeight = InfinitySpacing.MinimumTouchTarget)
+                    .sizeIn(minHeight = rowMinHeight)
                     .semantics { contentDescription = "${item.document.title}, $matchLabel" }
                     .clickable(role = Role.Button) { onOpenDocument(item.document.id) }
                     .testTag(UiTags.RAG_SEARCH_RESULT_PREFIX + item.document.id),
+                // 列表各项等高：标题限一行、摘要固定最多两行，完整标题见无障碍描述。
                 headlineContent = {
-                    Text(item.document.title, style = MaterialTheme.typography.bodyLarge)
+                    Text(item.document.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
                 supportingContent = item.snippet?.let { snippet ->
                     {
@@ -179,6 +202,8 @@ private fun RagSearchResultList(
                             text = snippet,
                             style = MaterialTheme.typography.bodyMedium.forReading(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = RAG_SEARCH_SNIPPET_MAX_LINES,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },

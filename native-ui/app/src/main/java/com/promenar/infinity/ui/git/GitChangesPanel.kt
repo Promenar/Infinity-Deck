@@ -66,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -608,12 +609,14 @@ private fun ChangesContent(load: GitLoad<GitStatus>, actions: GitPanelActions) =
                     if (value.unborn) stringResource(R.string.git_panel_empty_repository) else null,
                     readonlyHint,
                 )
+                // 列表各项等高：惰性列表看不到屏幕外的行，按三组全部变更算出是否有带路径第二行的项。
+                val twoLine = GitChangeGroup.entries.any { group -> value.group(group).entries.any { it.hasSecondaryLine() } }
                 LazyColumn(modifier = Modifier.fillMaxSize().testTag(GitPanelTags.CHANGES_LIST)) {
                     if (hint.isNotEmpty()) {
                         item(key = "hint", contentType = "hint") { PanelHint(text = hint.joinToString("\n")) }
                     }
                     GitChangeGroup.entries.forEach { group ->
-                        changeGroup(group, value.group(group), actions)
+                        changeGroup(group, value.group(group), actions, twoLine)
                     }
                 }
             }
@@ -621,7 +624,7 @@ private fun ChangesContent(load: GitLoad<GitStatus>, actions: GitPanelActions) =
     }
 }
 
-private fun LazyListScope.changeGroup(group: GitChangeGroup, list: GitChangeList, actions: GitPanelActions) {
+private fun LazyListScope.changeGroup(group: GitChangeGroup, list: GitChangeList, actions: GitPanelActions, twoLine: Boolean) {
     if (list.entries.isEmpty()) return
     item(key = "header-${group.name}", contentType = "header") {
         GroupHeader(
@@ -644,6 +647,7 @@ private fun LazyListScope.changeGroup(group: GitChangeGroup, list: GitChangeList
             untracked = group == GitChangeGroup.UNTRACKED,
             onClick = { actions.onOpenChange(group, change) },
             modifier = Modifier.testTag(GitPanelTags.change(group, change.path)),
+            twoLine = twoLine,
         )
     }
     if (list.truncated) {
@@ -687,7 +691,13 @@ private fun FooterNote(text: String) {
 }
 
 @Composable
-private fun ChangeRow(change: GitFileChange, onClick: () -> Unit, modifier: Modifier = Modifier, untracked: Boolean = false) {
+private fun ChangeRow(
+    change: GitFileChange,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    untracked: Boolean = false,
+    twoLine: Boolean = change.hasSecondaryLine(),
+) {
     val kindLabel = if (untracked) stringResource(R.string.git_panel_group_untracked) else changeKindLabel(change.kind)
     val linesA11y = if (change.addedLines != null && change.removedLines != null) {
         stringResource(R.string.git_panel_lines_a11y, change.addedLines, change.removedLines)
@@ -697,7 +707,7 @@ private fun ChangeRow(change: GitFileChange, onClick: () -> Unit, modifier: Modi
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .heightIn(min = changeRowMinHeight(twoLine || change.hasSecondaryLine()))
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClickLabel = change.path, onClick = onClick)
             .semantics { contentDescription = listOfNotNull(kindLabel, change.path, linesA11y).joinToString(" ") }
@@ -707,12 +717,13 @@ private fun ChangeRow(change: GitFileChange, onClick: () -> Unit, modifier: Modi
     ) {
         ChangeKindBadge(change.kind, untracked)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.RowTwoLineGap)) {
+            // 列表各项等高：文件名与路径各限一行，中间省略保留扩展名与末级目录；完整路径见无障碍描述。
             InfinityIdentifierText(
                 text = name,
                 style = InfinityTypography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
             )
             val secondary = when {
                 change.kind == GitChangeKind.RENAMED && change.oldPath != null ->
@@ -725,8 +736,8 @@ private fun ChangeRow(change: GitFileChange, onClick: () -> Unit, modifier: Modi
                     text = secondary,
                     style = InfinityTypography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
+                    overflow = TextOverflow.MiddleEllipsis,
                 )
             }
         }
@@ -741,6 +752,25 @@ private fun ChangeRow(change: GitFileChange, onClick: () -> Unit, modifier: Modi
             )
         }
     }
+}
+
+/** 变更行是否带第二行（重命名来源或所在目录），与 [ChangeRow] 内 secondary 的判定一致。 */
+private fun GitFileChange.hasSecondaryLine(): Boolean =
+    (kind == GitChangeKind.RENAMED && oldPath != null) || path.substringBeforeLast('/', missingDelimiterValue = "").isNotEmpty()
+
+/**
+ * 变更行最小高度。列表各项等高：同列表有双行项时，单行项也取双行高并垂直居中。
+ * 双行高 = 上下内边距 8dp×2 + 文件名 bodyMedium 一行 + 行距 2dp + 路径 bodySmall 一行，
+ * 默认字号下为 16 + 20 + 2 + 18 = 56dp；行高按当前字号缩放实算，大字号下仍与双行项一致。
+ */
+@Composable
+private fun changeRowMinHeight(twoLine: Boolean): Dp = with(LocalDensity.current) {
+    val text = if (twoLine) {
+        InfinityTypography.bodyMedium.lineHeight.toDp() + InfinitySpacing.RowTwoLineGap + InfinityTypography.bodySmall.lineHeight.toDp()
+    } else {
+        InfinityTypography.bodyMedium.lineHeight.toDp()
+    }
+    maxOf(InfinitySpacing.MinimumTouchTarget, text + InfinitySpacing.Small * 2)
 }
 
 /** 行数统计：只显示非零的一侧；二进制文件写明，其它无法统计的情况不显示。 */
@@ -989,6 +1019,8 @@ private fun CommitDetailContent(detail: GitPanelDetail.Commit, actions: GitPanel
             }
             is GitLoad.Ready -> {
                 val list = files.value.files
+                // 列表各项等高：按全部提交文件算出是否有带第二行的项。
+                val twoLine = list.entries.any { it.hasSecondaryLine() }
                 item(key = "files-header", contentType = "header") {
                     GroupHeader(
                         if (list.entries.isEmpty()) {
@@ -999,7 +1031,7 @@ private fun CommitDetailContent(detail: GitPanelDetail.Commit, actions: GitPanel
                     )
                 }
                 items(list.entries, key = { "file:${it.path}" }, contentType = { "change" }) { change ->
-                    ChangeRow(change = change, onClick = { actions.onOpenCommitFile(change) })
+                    ChangeRow(change = change, onClick = { actions.onOpenCommitFile(change) }, twoLine = twoLine)
                 }
                 if (list.truncated) {
                     item(key = "files-truncated", contentType = "footer") {

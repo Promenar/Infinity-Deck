@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -45,11 +47,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.takeOrElse
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
@@ -134,6 +139,11 @@ internal fun LinuxPackagesContent(state: LinuxPackagesUiState, actions: LinuxPac
     LaunchedEffect(state.operation) { state.operation?.let { lastOperation = it } }
     val searchOnly = searchOnlyResults(state.searchResults, state.installed)
     val installed = state.visibleInstalled
+    // 列表各项等高：惰性列表看不到屏幕外的行，按搜索结果与已安装两段的全部数据算出最高档。
+    val listed = (if (searchOnly != null || state.searching) searchOnly.orEmpty() else emptyList()) +
+        (if (state.installed != null) installed else emptyList())
+    val listHasSubtitle = listed.any { it.hasSubtitleLine() }
+    val listHasAction = listed.any { it.hasActionButton() }
     Column(modifier.fillMaxSize()) {
         LinuxPackagesProgress(state.operation)
         Column(
@@ -189,7 +199,7 @@ internal fun LinuxPackagesContent(state: LinuxPackagesUiState, actions: LinuxPac
                         LinuxPackagesEmpty(stringResource(R.string.linux_packages_search_empty, state.query.trim()))
                     }
                     else -> items(searchOnly.orEmpty(), key = { "s-${it.name}" }) { pkg ->
-                        LinuxPackageRow(pkg, state.operation, actions, onRequestRemove = { removing = it })
+                        LinuxPackageRow(pkg, state.operation, actions, onRequestRemove = { removing = it }, listHasSubtitle = listHasSubtitle, listHasAction = listHasAction)
                     }
                 }
             }
@@ -201,7 +211,7 @@ internal fun LinuxPackagesContent(state: LinuxPackagesUiState, actions: LinuxPac
                     item(key = "installed-empty") { LinuxPackagesEmpty(stringResource(R.string.linux_packages_empty)) }
                 }
                 items(installed, key = { "i-${it.name}" }) { pkg ->
-                    LinuxPackageRow(pkg, state.operation, actions, onRequestRemove = { removing = it })
+                    LinuxPackageRow(pkg, state.operation, actions, onRequestRemove = { removing = it }, listHasSubtitle = listHasSubtitle, listHasAction = listHasAction)
                 }
             }
         }
@@ -265,10 +275,16 @@ private fun LinuxPackageRow(
     operation: LinuxPackageOperation?,
     actions: LinuxPackagesActions,
     onRequestRemove: (String) -> Unit,
+    listHasSubtitle: Boolean = false,
+    listHasAction: Boolean = false,
 ) {
     val busyHere = operation != null && (pkg.name in operation.names || (operation.action == LinuxPackageAction.UPGRADE && operation.names.isEmpty() && pkg.availableVersion != null))
+    val minHeight = linuxPackageRowMinHeight(
+        subtitle = listHasSubtitle || pkg.hasSubtitleLine(),
+        action = listHasAction || pkg.hasActionButton(),
+    )
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = InfinitySpacing.Large, vertical = 10.dp).testTag(UiTags.linuxPackageRow(pkg.name)),
+        Modifier.fillMaxWidth().heightIn(min = minHeight).padding(horizontal = InfinitySpacing.Large, vertical = 10.dp).testTag(UiTags.linuxPackageRow(pkg.name)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
     ) {
@@ -281,8 +297,9 @@ private fun LinuxPackageRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // 列表各项等高：第三行限一行省略，长描述不把个别行撑高。
             packageSubtitle(pkg)?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         val enabled = operation == null
@@ -309,6 +326,30 @@ private fun LinuxPackageRow(
     }
 }
 
+/** 是否有第三行，与 [packageSubtitle] 返回非 null 的条件一致。 */
+private fun LinuxPackage.hasSubtitleLine(): Boolean =
+    origin != null || (installed && !explicit) || !description.isNullOrBlank() || installedSizeBytes != null
+
+/** 行尾是否有安装、更新或移除按钮（进行中时换成同位置的进度提示）。 */
+private fun LinuxPackage.hasActionButton(): Boolean = !installed || availableVersion != null || explicit
+
+/**
+ * 软件包行最小高度。列表各项等高：上下内边距 10dp×2 + 文字区与行尾按钮中的较高者。
+ * 文字区 = 包名 bodyLarge + 版本 bodySmall，有第三行再加 bodySmall 一行，默认 22 + 18 (+ 18)；
+ * 按钮取 40dp 按钮高与最小触控尺寸 48dp 的较大者。默认依次为 64（下限）、68、78dp；行高随字号实算。
+ */
+@Composable
+private fun linuxPackageRowMinHeight(subtitle: Boolean, action: Boolean): Dp {
+    val typography = MaterialTheme.typography
+    val touch = LocalMinimumInteractiveComponentSize.current.takeOrElse { 0.dp }
+    return with(LocalDensity.current) {
+        var text = typography.bodyLarge.lineHeight.toDp() + typography.bodySmall.lineHeight.toDp()
+        if (subtitle) text += typography.bodySmall.lineHeight.toDp()
+        val trailing = if (action) maxOf(ButtonDefaults.MinHeight, touch) else 0.dp
+        maxOf(64.dp, maxOf(text, trailing) + 20.dp)
+    }
+}
+
 /** 第三行：来源、描述与大小；没有可说明的内容时为 null。 */
 @Composable
 private fun packageSubtitle(pkg: LinuxPackage): String? {
@@ -321,7 +362,7 @@ private fun packageSubtitle(pkg: LinuxPackage): String? {
         null -> if (pkg.installed && !pkg.explicit) stringResource(R.string.linux_packages_dependency) else null
     }
     val size = pkg.installedSizeBytes?.let { linuxBytes(it) }
-    return listOfNotNull(origin, pkg.description?.takeIf(String::isNotBlank), size).joinToString(" · ").ifEmpty { null }  // wrap-check: allow 含可能很长的软件包描述，按两行省略
+    return listOfNotNull(origin, pkg.description?.takeIf(String::isNotBlank), size).joinToString(" · ").ifEmpty { null }  // wrap-check: allow 含可能很长的软件包描述，按一行省略
 }
 
 @Composable

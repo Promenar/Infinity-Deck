@@ -37,6 +37,13 @@
     <string name="library_pending_queued">排队中 · 第 %1$d 位</string>
     <string name="library_pending_queued_plain">排队中</string>
     <string name="library_pending_indexing">索引中</string>
+    <string name="library_pending_preparing">准备中</string>
+    <string name="library_pending_vectorizing">向量化中</string>
+    <string name="library_pending_vectorizing_progress">向量化 %1$d / %2$d</string>
+    <string name="library_pending_retrying">重试中 · %1$s</string>
+    <string name="library_pending_graph">抽取知识图谱中</string>
+    <string name="library_pending_graph_progress">抽取知识图谱 %1$d / %2$d</string>
+    <string name="library_pending_saving">正在保存索引</string>
     <string name="library_pending_stale">已改动待重建</string>
     <string name="library_pending_empty">没有需要处理的文档，全部已索引。</string>
     <string name="library_view_all">查看全部</string>

@@ -136,7 +136,8 @@ private fun FolderEntryRows(
     dividers: Boolean,
 ) {
     val context = LocalContext.current
-    ProvideGroupedPress {
+    // 目录行无副标题、文件行带大小：只要有文件，目录行也按双行高排版。
+    ProvideGroupedPress { ProvideUniformRowHeight(twoLine = entries.any { !it.isDirectory }) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -191,7 +192,7 @@ private fun FolderEntryRows(
                 }
             } }
         }
-    }
+    } }
 }
 
 /** 空列表与读取失败的居中提示，图标弱化，文字可读。 */

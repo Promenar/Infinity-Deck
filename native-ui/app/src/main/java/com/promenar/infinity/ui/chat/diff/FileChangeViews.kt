@@ -54,6 +54,8 @@ import com.promenar.infinity.data.model.FileChangeHunkOmission
 import com.promenar.infinity.data.model.FileChangeSummary
 import com.promenar.infinity.data.model.FileChangeType
 import com.promenar.infinity.ui.common.InfinityIdentifierText
+import com.promenar.infinity.ui.common.ProvideUniformRowHeight
+import com.promenar.infinity.ui.common.uniformRowMinHeight
 import com.promenar.infinity.ui.common.diff.FileDiffView
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -102,7 +104,10 @@ internal fun FileChangeList(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth().testTag("CHAT_FILE_CHANGES")) {
-        changes.forEach { change -> FileChangeRow(change, onClick = { onOpen(change) }) }
+        // 列表各项等高：任一文件带“移自”第二行时，其余文件行也按双行高排版。
+        ProvideUniformRowHeight(twoLine = changes.any { it.fromPath != null }) {
+            changes.forEach { change -> FileChangeRow(change, onClick = { onOpen(change) }) }
+        }
     }
 }
 
@@ -116,10 +121,14 @@ internal fun FileChangeRow(change: FileChangeSummary, onClick: () -> Unit, modif
         stringResource(R.string.file_change_badge_binary).takeIf { change.binary },
         stringResource(R.string.file_change_badge_large).takeIf { change.large },
     ).joinToString(stringResource(R.string.chat_step_summary_separator))
+    val pathStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace)
+    val fromStyle = MaterialTheme.typography.labelSmall
+    // 双行高 = 上下内边距 6dp×2 + 路径一行 + “移自”一行，默认字号下 12 + 18 + 16 = 46dp；行高随字号实算。
+    val twoLineHeight = with(LocalDensity.current) { 12.dp + pathStyle.lineHeight.toDp() + fromStyle.lineHeight.toDp() }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
+            .then(uniformRowMinHeight(hasSubtitle = change.fromPath != null, singleLine = 40.dp, twoLine = twoLineHeight))
             .clip(RoundedCornerShape(8.dp))
             .clickable(
                 role = Role.Button,
@@ -141,16 +150,16 @@ internal fun FileChangeRow(change: FileChangeSummary, onClick: () -> Unit, modif
         Column(Modifier.weight(1f)) {
             InfinityIdentifierText(
                 text = change.path,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
+                style = pathStyle,
                 color = MaterialTheme.colorScheme.onSurface,
-                // 深层路径在大字号下也尽量完整显示到文件名。
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+                // 列表各项等高：路径限一行；中间省略，深层路径在大字号下也保留文件名，完整路径见无障碍描述。
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
             )
             change.fromPath?.let { from ->
                 InfinityIdentifierText(
                     text = stringResource(R.string.file_change_moved_from, from),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = fromStyle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

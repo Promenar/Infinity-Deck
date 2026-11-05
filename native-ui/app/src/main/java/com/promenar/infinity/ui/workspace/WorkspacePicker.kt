@@ -50,6 +50,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,13 +61,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -477,48 +481,52 @@ fun WorkspacePickerContent(
         label = "workspace_picker_page",
     ) { state ->
         val page = state.page
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().testTag("workspace_picker_list"),
-            contentPadding = PaddingValues(bottom = InfinitySpacing.Large),
-        ) {
-            when (page) {
-                WorkspacePickerPage.Home -> homeItems(state, volumeLabels, onNavigate, onPickRegistered, onPickPrivate, onPickLinuxHome, onGrantPermission)
-                WorkspacePickerPage.Projects -> folderItems(state, onRetry, emptyText = R.string.workspace_picker_projects_empty) { folder ->
-                    InfinitySettingsItem(
-                        title = folder.name,
-                        onClick = { onSelectProject(folder.name) },
-                        role = Role.RadioButton,
-                        selected = state.selectedProject == folder.name,
-                        horizontalPadding = 0.dp,
-                        leadingContent = { Icon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary) },
-                        trailingContent = if (state.selectedProject == folder.name) ({
-                            Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
-                        }) else null,
-                        modifier = Modifier.testTag("workspace_picker_project_${folder.name}"),
-                    )
-                }
-                is WorkspacePickerPage.Shared -> folderItems(state, onRetry, emptyText = R.string.workspace_picker_folder_empty) { folder ->
-                    InfinitySettingsItem(
-                        title = folder.name,
-                        onClick = { onNavigate(page.copy(path = folder.path)) },
-                        showChevron = true,
-                        horizontalPadding = 0.dp,
-                        leadingContent = { Icon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary) },
-                    )
-                }
-                is WorkspacePickerPage.Linux -> folderItems(state, onRetry, emptyText = R.string.workspace_picker_folder_empty) { folder ->
-                    val path = folder.path.path
-                    InfinitySettingsItem(
-                        // 起点列表显示完整路径（/root、/home），子目录只显示名称。
-                        title = if (page.path == null) path else folder.name,
-                        onClick = { onNavigate(WorkspacePickerPage.Linux(path)) },
-                        showChevron = true,
-                        horizontalPadding = 0.dp,
-                        leadingContent = {
-                            Icon(if (path == LINUX_HOME_DIRECTORY) Icons.Rounded.Home else Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary)
-                        },
-                        modifier = Modifier.testTag("workspace_picker_linux_folder_$path"),
-                    )
+        // 列表各项等高：起始页按完整数据算出最高档，惰性列表屏幕外的行也按同一高度排版。
+        val rowLines = if (page == WorkspacePickerPage.Home) homeRowLines(state) else null
+        CompositionLocalProvider(LocalWorkspaceRowLines provides rowLines) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag("workspace_picker_list"),
+                contentPadding = PaddingValues(bottom = InfinitySpacing.Large),
+            ) {
+                when (page) {
+                    WorkspacePickerPage.Home -> homeItems(state, volumeLabels, onNavigate, onPickRegistered, onPickPrivate, onPickLinuxHome, onGrantPermission)
+                    WorkspacePickerPage.Projects -> folderItems(state, onRetry, emptyText = R.string.workspace_picker_projects_empty) { folder ->
+                        InfinitySettingsItem(
+                            title = folder.name,
+                            onClick = { onSelectProject(folder.name) },
+                            role = Role.RadioButton,
+                            selected = state.selectedProject == folder.name,
+                            horizontalPadding = 0.dp,
+                            leadingContent = { Icon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary) },
+                            trailingContent = if (state.selectedProject == folder.name) ({
+                                Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
+                            }) else null,
+                            modifier = Modifier.testTag("workspace_picker_project_${folder.name}"),
+                        )
+                    }
+                    is WorkspacePickerPage.Shared -> folderItems(state, onRetry, emptyText = R.string.workspace_picker_folder_empty) { folder ->
+                        InfinitySettingsItem(
+                            title = folder.name,
+                            onClick = { onNavigate(page.copy(path = folder.path)) },
+                            showChevron = true,
+                            horizontalPadding = 0.dp,
+                            leadingContent = { Icon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary) },
+                        )
+                    }
+                    is WorkspacePickerPage.Linux -> folderItems(state, onRetry, emptyText = R.string.workspace_picker_folder_empty) { folder ->
+                        val path = folder.path.path
+                        InfinitySettingsItem(
+                            // 起点列表显示完整路径（/root、/home），子目录只显示名称。
+                            title = if (page.path == null) path else folder.name,
+                            onClick = { onNavigate(WorkspacePickerPage.Linux(path)) },
+                            showChevron = true,
+                            horizontalPadding = 0.dp,
+                            leadingContent = {
+                                Icon(if (path == LINUX_HOME_DIRECTORY) Icons.Rounded.Home else Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.testTag("workspace_picker_linux_folder_$path"),
+                        )
+                    }
                 }
             }
         }
@@ -719,6 +727,35 @@ private fun monospaceArgument(@StringRes template: Int, path: String): Annotated
     }
 }
 
+/** 起始页一行带哪些附加行：说明一行、标签一排。 */
+private data class WorkspaceRowLines(val subtitle: Boolean, val tags: Boolean)
+
+/** 同一列表的最高档；为 null 时各行只按自身内容取最小高度。 */
+private val LocalWorkspaceRowLines = staticCompositionLocalOf<WorkspaceRowLines?> { null }
+
+/**
+ * 起始页列表的最高档。“共享文件夹”入口始终带说明与标签，因此常规起始页取满档；
+ * 仅选挂载路径时只列存储卷，带说明、不带标签。
+ */
+private fun homeRowLines(state: WorkspacePickerUiState): WorkspaceRowLines =
+    if (state.sharedOnly) WorkspaceRowLines(subtitle = state.sharedRoots.isNotEmpty(), tags = false)
+    else WorkspaceRowLines(subtitle = true, tags = true)
+
+/**
+ * 行最小高度：上下内边距 12dp×2 + 标题一行，有说明加 2dp 行距与说明一行，有标签加 6dp 间距与标签一排（标签文字一行 + 上下 2dp）。
+ * 默认字号下依次为 64（下限）、66、72、92dp；行高随字号实算。
+ */
+@Composable
+private fun workspaceRowMinHeight(lines: WorkspaceRowLines): Dp {
+    val typography = MaterialTheme.typography
+    return with(LocalDensity.current) {
+        var height = InfinitySpacing.RowTwoLineVertical * 2 + typography.bodyLarge.lineHeight.toDp()
+        if (lines.subtitle) height += InfinitySpacing.RowTwoLineGap + typography.bodySmall.lineHeight.toDp()
+        if (lines.tags) height += (InfinitySpacing.Small - 2.dp) + typography.labelSmall.lineHeight.toDp() + 4.dp
+        maxOf(InfinitySpacing.RowTwoLineHeight, height)
+    }
+}
+
 /**
  * 起始页的一行：标题、说明与两条标签（进不进备份、何时消失）。
  * [selected] 非 null 为单选行，选中时带勾；为 null 为入口行，可用时带箭头。
@@ -737,6 +774,14 @@ private fun WorkspaceOptionRow(
     enabled: Boolean = true,
 ) {
     val haptics = LocalInfinityHaptics.current
+    // 列表各项等高：取自身与同列表最高档中的较高者，内容在行内垂直居中。
+    val listLines = LocalWorkspaceRowLines.current
+    val minHeight = workspaceRowMinHeight(
+        WorkspaceRowLines(
+            subtitle = subtitle != null || listLines?.subtitle == true,
+            tags = showTags || listLines?.tags == true,
+        ),
+    )
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -746,7 +791,7 @@ private fun WorkspaceOptionRow(
                 onClick()
             }
             .alpha(if (enabled) 1f else 0.38f)
-            .heightIn(min = InfinitySpacing.RowTwoLineHeight)
+            .heightIn(min = minHeight)
             .padding(vertical = InfinitySpacing.RowTwoLineVertical),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -754,11 +799,12 @@ private fun WorkspaceOptionRow(
             Box(Modifier.size(InfinitySpacing.RowIconSize), contentAlignment = Alignment.Center) { leading() }
         }
         Column(Modifier.weight(1f)) {
+            // 列表各项等高：标题与说明各限一行，避免换行把个别行撑高。
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {
@@ -767,7 +813,7 @@ private fun WorkspaceOptionRow(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -36,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.forInput
@@ -52,11 +55,15 @@ fun InfinitySearchBar(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    val borderColor = if (isFocused) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.outlineVariant
-    }
+    // 聚焦时亮边渐亮（强调减速），失焦时按标准曲线渐暗，避免亮边瞬间亮灭。
+    val borderColor by animateColorAsState(
+        targetValue = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = tween(
+            durationMillis = InfinityMotion.DurationMedium,
+            easing = if (isFocused) InfinityMotion.EmphasizedDecelerate else InfinityMotion.Standard,
+        ),
+        label = "searchBarBorder",
+    )
 
     Surface(
         modifier = modifier

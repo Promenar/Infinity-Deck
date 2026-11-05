@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,7 +54,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import android.text.format.Formatter
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -294,7 +297,25 @@ private fun FinishedJobRow(
 
 private val JobGroupShape = RoundedCornerShape(14.dp)
 
-/** [sessionTitle] 仅在跨会话列表中给出，追加在说明行末尾。 */
+/**
+ * 后台任务行标题区的最小高度（不含行上下 8dp 内边距）。列表各项等高：
+ * 已结束 = 任务名 bodyMedium 一行 + 说明 labelSmall 一行（默认 20 + 16 = 36dp）；
+ * 有运行中任务时不低于停止按钮的 48dp 触控高度；
+ * 有运行中传输时再加 4dp 间距 + 4dp 进度条 + 4dp 间距 + 进度说明 labelSmall 一行（默认 64dp）。行高随字号实算。
+ */
+@Composable
+private fun backgroundJobHeaderMinHeight(running: Boolean, transfer: Boolean): Dp = with(LocalDensity.current) {
+    var height = InfinityTypography.bodyMedium.lineHeight.toDp() + InfinityTypography.labelSmall.lineHeight.toDp()
+    if (transfer) height += InfinitySpacing.XSmall * 3 + 4.dp + InfinityTypography.labelSmall.lineHeight.toDp()
+    if (running) height = maxOf(height, InfinitySpacing.MinimumTouchTarget)
+    height
+}
+
+/**
+ * [sessionTitle] 仅在跨会话列表中给出，追加在说明行末尾。
+ * [listHasRunning]、[listHasTransfer] 由调用方按同列表全部任务给出：列表各项等高，
+ * 有运行中任务（带停止按钮）或运行中传输（多一行进度）时，其余行的标题区也按同一高度排版。
+ */
 @Composable
 internal fun BackgroundJobRow(
     job: BackgroundJob,
@@ -305,8 +326,14 @@ internal fun BackgroundJobRow(
     onOpenLog: (() -> Unit)?,
     liveOutput: @Composable () -> Unit,
     sessionTitle: String? = null,
+    listHasRunning: Boolean = false,
+    listHasTransfer: Boolean = false,
 ) {
     val running = !job.state.isTerminal
+    val headerMinHeight = backgroundJobHeaderMinHeight(
+        running = running || listHasRunning,
+        transfer = (running && job.transfer != null) || listHasTransfer,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -314,21 +341,22 @@ internal fun BackgroundJobRow(
             .padding(start = InfinitySpacing.Large, end = InfinitySpacing.Small, top = InfinitySpacing.Small, bottom = InfinitySpacing.Small)
             .testTag(UiTags.backgroundJob(job.id)),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.heightIn(min = headerMinHeight), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                 if (running) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 else JobStateIcon(job, Modifier.size(18.dp))
             }
             Spacer(Modifier.width(InfinitySpacing.Medium))
             Column(Modifier.weight(1f)) {
-                JobLabel(job)
+                // 列表各项等高：任务名与进度说明各限一行。
+                JobLabel(job, maxLines = 1)
                 Text(
                     text = (jobMetaSegments(job, nowMillis) + listOfNotNull(sessionTitle)).joinToString(" · "),  // wrap-check: allow 单行显示
                     style = InfinityTypography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
-                if (running) job.transfer?.let { SftpTransferProgress(it, Modifier.padding(top = InfinitySpacing.XSmall)) }
+                if (running) job.transfer?.let { SftpTransferProgress(it, Modifier.padding(top = InfinitySpacing.XSmall), metaMaxLines = 1) }
             }
             if (running) {
                 FilledTonalIconButton(onClick = onStop, modifier = Modifier.testTag(UiTags.backgroundJobStop(job.id))) {
@@ -389,7 +417,7 @@ private fun transferMetaSegments(job: BackgroundJob): List<String> {
 
 /** 运行中的传输：确定进度条（总大小未知时为不定进度）加一行已传 / 总量、速度与剩余时间。 */
 @Composable
-private fun SftpTransferProgress(transfer: SftpTransfer, modifier: Modifier = Modifier) {
+private fun SftpTransferProgress(transfer: SftpTransfer, modifier: Modifier = Modifier, metaMaxLines: Int = Int.MAX_VALUE) {
     val context = LocalContext.current
     val fraction = transfer.progressFraction()
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
@@ -405,6 +433,7 @@ private fun SftpTransferProgress(transfer: SftpTransfer, modifier: Modifier = Mo
             ),
             style = InfinityTypography.labelSmall.copy(fontFeatureSettings = "tnum"),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = metaMaxLines,
         )
     }
 }
@@ -477,8 +506,8 @@ private fun durationText(duration: CompactDuration): String = when {
 
 /**
  * 本会话的定时任务：名称、触发规则、下次触发与最近结果，开关暂停，删除前确认。
- * [exactAlarmAvailable] 为 false（Play）时标题旁显示“系统择时”标签；侧载版缺少精确闹钟授权时，
- * 受影响的条目各自显示一枚可点的授权标签。
+ * [exactAlarmAvailable] 为 false（Play）时标题旁显示“系统择时”标签；侧载版缺少精确闹钟授权且有任务
+ * 请求精确触发时，标题旁显示一枚可点的授权标签（授权属于整个应用，不放进单个条目）。
  */
 @Composable
 internal fun ScheduledTasksContent(
@@ -491,9 +520,11 @@ internal fun ScheduledTasksContent(
     modifier: Modifier = Modifier,
 ) {
     var deleting by remember { mutableStateOf<ScheduledTask?>(null) }
+    val grantExact = onGrantExact?.takeIf { exactAlarmAvailable && tasks.any { it.exactRequested && !it.exactEffective } }
     LazyColumn(modifier = modifier.fillMaxWidth().testTag(UiTags.SCHEDULED_TASKS_SHEET)) {
         item(key = "header") {
             SheetHeader(title = stringResource(R.string.agent_schedules_title)) {
+                if (grantExact != null) GrantExactChip(grantExact)
                 if (!exactAlarmAvailable) {
                     ChannelLimitChip(
                         label = stringResource(R.string.agent_schedules_limit_label),
@@ -513,7 +544,6 @@ internal fun ScheduledTasksContent(
                 nowMillis = nowMillis,
                 onToggle = { onToggle(task.id, it) },
                 onDelete = { deleting = task },
-                onGrantExact = onGrantExact?.takeIf { exactAlarmAvailable && task.exactRequested && !task.exactEffective },
             )
         }
     }
@@ -531,19 +561,20 @@ internal fun ScheduledTasksContent(
     }
 }
 
+/** 定时任务行：三行文字固定行高，列表各项等高；精确闹钟授权属于整个应用，由列表标题或设置项提供。 */
 @Composable
 internal fun ScheduledTaskRow(
     task: ScheduledTask,
     nowMillis: Long,
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit,
-    onGrantExact: (() -> Unit)?,
     sessionTitle: String? = null,
 ) {
     val stateText = stringResource(if (task.enabled) R.string.agent_schedules_enabled else R.string.agent_schedules_paused)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = scheduledTaskRowMinHeight())
             .padding(start = InfinitySpacing.Large, end = InfinitySpacing.Small, top = InfinitySpacing.Small, bottom = InfinitySpacing.Small)
             .testTag(UiTags.scheduledTask(task.id)),
         verticalAlignment = Alignment.CenterVertically,
@@ -568,22 +599,6 @@ internal fun ScheduledTaskRow(
                 )
                 if (task.exactEffective) SmallTag(stringResource(R.string.agent_schedules_exact), MaterialTheme.colorScheme.secondaryContainer)
             }
-            // 授权入口单独一行，不挤占状态文字。
-            if (onGrantExact != null) {
-                Row(Modifier.padding(top = 2.dp)) {
-                    Surface(
-                        onClick = onGrantExact,
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    ) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.AlarmOff, contentDescription = null, modifier = Modifier.size(12.dp))
-                            Text(stringResource(R.string.agent_schedules_grant_exact), style = InfinityTypography.labelSmall, modifier = Modifier.padding(start = 4.dp))
-                        }
-                    }
-                }
-            }
         }
         Switch(
             checked = task.enabled,
@@ -598,6 +613,33 @@ internal fun ScheduledTaskRow(
                 contentDescription = stringResource(R.string.agent_schedules_delete_title),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * 定时任务行最小高度。列表各项等高：上下内边距 8dp×2 + 名称 titleSmall + 2dp + 触发 labelMedium + 2dp
+ * + 状态行（取“精确”标签高：labelSmall + 上下 2dp），默认 16 + 20 + 2 + 16 + 2 + 20 = 76dp。行高随字号实算。
+ */
+@Composable
+private fun scheduledTaskRowMinHeight(): Dp = with(LocalDensity.current) {
+    InfinitySpacing.Small * 2 + InfinityTypography.titleSmall.lineHeight.toDp() + 2.dp +
+        InfinityTypography.labelMedium.lineHeight.toDp() + 2.dp + InfinityTypography.labelSmall.lineHeight.toDp() + 4.dp
+}
+
+/** 精确闹钟授权标签：放在定时任务列表标题旁，点按打开系统授权页；可点区域不小于最小触控尺寸。 */
+@Composable
+private fun GrantExactChip(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+    ) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AlarmOff, contentDescription = null, modifier = Modifier.size(12.dp))
+            Text(stringResource(R.string.agent_schedules_grant_exact), style = InfinityTypography.labelSmall, maxLines = 1,
+                modifier = Modifier.padding(start = 4.dp))
         }
     }
 }
@@ -693,13 +735,13 @@ private fun SmallTag(
  * 没有标题时从左往右显示命令原文，最多两行，不按规则猜“主命令”。
  */
 @Composable
-private fun JobLabel(job: BackgroundJob, modifier: Modifier = Modifier, showCommand: Boolean = false) {
+private fun JobLabel(job: BackgroundJob, modifier: Modifier = Modifier, showCommand: Boolean = false, maxLines: Int = 2) {
     val title = job.title?.takeIf(String::isNotBlank)
     Column(modifier) {
         Text(
             text = title ?: job.summary,
             style = if (title != null) InfinityTypography.bodyMedium else InfinityTypography.bodyMedium.copy(fontFamily = InfinityMonospace),
-            maxLines = 2,
+            maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
         )
         if (title != null && showCommand) {

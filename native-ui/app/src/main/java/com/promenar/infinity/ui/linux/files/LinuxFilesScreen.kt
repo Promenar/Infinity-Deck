@@ -638,7 +638,8 @@ private fun LinuxUpRow(enabled: Boolean, modifier: Modifier = Modifier, onClick:
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            // 与带元信息第二行的文件行同高，列表各项等高。
+            .heightIn(min = 60.dp)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .alpha(if (enabled) 1f else 0.38f)
             .padding(horizontal = InfinitySpacing.Large, vertical = 6.dp)

@@ -326,7 +326,7 @@ private fun AnswerAction(icon: ImageVector, label: String, onClick: () -> Unit) 
 private fun AnswerText(text: String, hitCount: Int, onSelect: (Int?) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val chip = SpanStyle(background = scheme.primary.copy(alpha = 0.16f), color = scheme.primary, fontWeight = FontWeight.SemiBold)
-    val annotated = remember(text, hitCount, chip) { citationAnnotated(text, hitCount, chip, onSelect) }
+    val annotated = remember(text, hitCount, chip) { citationAnnotated(plainAnswer(text), hitCount, chip, onSelect) }
     Text(annotated, style = MaterialTheme.typography.bodyLarge.forReading(), color = scheme.onSurface)
 }
 
@@ -347,8 +347,18 @@ internal fun citationAnnotated(text: String, hitCount: Int, chip: SpanStyle, onS
     append(text.substring(cursor))
 }
 
-/** 复制与朗读用的纯文本：去掉 `[n]` 编号。 */
-internal fun stripCitations(text: String): String = text.replace(CitationPattern, "").replace(Regex(" {2,}"), " ").trim()
+/** 复制与朗读用的纯文本：去掉 `[n]` 编号与 Markdown 标记。 */
+internal fun stripCitations(text: String): String = plainAnswer(text).replace(Regex("""[ \t]*\[\d{1,2}]"""), "").replace(Regex(" {2,}"), " ").trim()
+
+private val BoldMarker = Regex("""\*\*(.+?)\*\*""")
+private val CodeMarker = Regex("""`([^`\n]+)`""")
+private val HeadingMarker = Regex("""(?m)^#{1,6}\s+""")
+
+/** 答案按纯文本显示：模型仍写了 Markdown 时去掉粗体、行内代码与标题标记，保留文字。 */
+internal fun plainAnswer(text: String): String = text
+    .replace(BoldMarker) { it.groupValues[1] }
+    .replace(CodeMarker) { it.groupValues[1] }
+    .replace(HeadingMarker, "")
 
 @Composable
 private fun askErrorText(code: AskErrorCode?): String = stringResource(

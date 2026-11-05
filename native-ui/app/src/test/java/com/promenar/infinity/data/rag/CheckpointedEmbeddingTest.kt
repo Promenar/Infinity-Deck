@@ -94,7 +94,7 @@ class CheckpointedEmbeddingTest {
         assertThat(delays).containsExactly(7_000L)
         assertThat(progress.any { it.isRetrying && it.lastError?.contains("429") == true }).isTrue()
         assertThat(progress.last().isRetrying).isFalse()
-        assertThat(progress.last().lastError).contains("429")
+        assertThat(progress.last().lastError).isNull()
     }
 
     @Test

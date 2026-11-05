@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.ui.text.style.TextOverflow
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityPillButton
@@ -579,9 +580,19 @@ private fun SshHostRow(
     val forward = forwardPort?.let { stringResource(R.string.settings_batch1_ssh_forward_running_summary, it) }
     InfinitySettingsItem(
         title = host.alias,
-        subtitleSegments = listOfNotNull(address, auth, trust, forward),
-        // 分段排版放不下时整段省略，放宽到三行让信任与转发状态都能显示。
-        subtitleMaxLines = 3,
+        // 固定两行副标题，各主机行等高：地址单行、过长时省略中段；认证、指纹与转发状态另起一行。
+        subtitleContent = {
+            Column {
+                Text(address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+                InfinityMetaLine(
+                    segments = listOfNotNull(auth, trust, forward),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        },
         onClick = onOpen,
         enabled = enabled,
         onClickLabel = stringResource(R.string.ssh_host_actions),

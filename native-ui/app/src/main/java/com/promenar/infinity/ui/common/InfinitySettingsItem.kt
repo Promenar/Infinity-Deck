@@ -49,6 +49,8 @@ fun InfinitySettingsItem(
     subtitleMaxLines: Int = 1,
     /** 多段元数据副标题：非空时以 [InfinityMetaLine] 排版并取代 [subtitle]。 */
     subtitleSegments: List<String>? = null,
+    /** 自定义副标题：非空时取代 [subtitle] 与 [subtitleSegments]，由调用方固定行数以保持列表等高。 */
+    subtitleContent: (@Composable () -> Unit)? = null,
 ) {
     val haptics = LocalInfinityHaptics.current
     // 单选行在选中项变化时轻振；按钮行是导航或打开面板，不振动。
@@ -72,6 +74,7 @@ fun InfinitySettingsItem(
         horizontalPadding = horizontalPadding,
         subtitleMaxLines = subtitleMaxLines,
         subtitleSegments = subtitleSegments,
+        subtitleContent = subtitleContent,
         trailingContent = when {
             trailingContent != null -> trailingContent
             showChevron -> ({ Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant) })
@@ -114,12 +117,14 @@ internal fun InfinitySettingsRowLayout(
     val marquee = marqueeTitle && rememberAnimationsEnabled()
     val segments = subtitleSegments?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() }
     val hasSubtitle = subtitle != null || segments != null || subtitleContent != null
+    // 同组有双行项时，单行项也取双行高，标题在行内垂直居中。
+    val rowHeight = uniformRowMinHeight(hasSubtitle, InfinitySpacing.RowSingleLineHeight, InfinitySpacing.RowTwoLineHeight)
     BoxWithConstraints(modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.38f)) {
         val trailingMaxWidth = maxWidth * trailingMaxWidthFraction
         val expandTitle = maxWidth < 280.dp || LocalDensity.current.fontScale > 1f
         Row(
             Modifier.fillMaxWidth()
-                .heightIn(min = if (!hasSubtitle) InfinitySpacing.RowSingleLineHeight else InfinitySpacing.RowTwoLineHeight)
+                .then(rowHeight)
                 .padding(horizontal = horizontalPadding, vertical = if (!hasSubtitle) 0.dp else InfinitySpacing.RowTwoLineVertical),
             verticalAlignment = Alignment.CenterVertically,
         ) {

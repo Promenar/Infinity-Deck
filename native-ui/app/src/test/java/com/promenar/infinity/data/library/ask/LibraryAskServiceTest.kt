@@ -145,6 +145,30 @@ class LibraryAskServiceTest {
         assertThat(parser.citedIndexes).containsExactly(1, 0).inOrder()
     }
 
+    @Test fun groupedCitationsSplitIntoSingleNumbers() {
+        val parser = AnswerParser(setOf(0, 1, 2))
+        parser.append("甲 [2, 3]，乙 [1，9]、丙 [3、1] 丁 [a, 1] 戊 [2 ]")
+        parser.finish()
+        assertThat(parser.text).isEqualTo("甲 [2][3]，乙 [1]、丙 [3][1] 丁 [a, 1] 戊 [2]")
+        assertThat(parser.citedIndexes).containsExactly(1, 2, 0).inOrder()
+    }
+
+    @Test fun groupedCitationSplitAcrossChunksWaitsForClosingBracket() {
+        val parser = AnswerParser(setOf(0, 1))
+        val out = listOf("结论 [1", ", ", "2] 完").joinToString("|") { parser.append(it) }
+        parser.finish()
+        assertThat(out).isEqualTo("结论 ||[1][2] 完")
+        assertThat(parser.citedIndexes).containsExactly(0, 1).inOrder()
+    }
+
+    @Test fun unclosedBracketAtEndStaysLiteral() {
+        val parser = AnswerParser(setOf(0))
+        parser.append("数组 [1, 2")
+        parser.finish()
+        assertThat(parser.text).isEqualTo("数组 [1, 2")
+        assertThat(parser.citedIndexes).isEmpty()
+    }
+
     @Test fun fusionRetainsBothSimilarityAndCapsDocuments() {
         val shared = doc("shared", "d", 0.82f)
         val otherChunks = (1..4).map { doc("d$it", "d", 0.7f) }

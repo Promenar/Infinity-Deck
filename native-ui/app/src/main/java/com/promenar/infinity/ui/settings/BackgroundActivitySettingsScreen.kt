@@ -223,6 +223,9 @@ internal fun BackgroundActivitySettingsContent(
             footer = stringResource(R.string.settings_background_jobs_footer),
         ) {
             if (jobs.isEmpty()) EmptyRow(stringResource(R.string.settings_background_jobs_empty))
+            // 列表各项等高：按全部任务算出是否有运行中任务、运行中传输。
+            val listHasRunning = jobs.any { !it.state.isTerminal }
+            val listHasTransfer = jobs.any { !it.state.isTerminal && it.transfer != null }
             jobs.forEach { job ->
                 BackgroundJobRow(
                     job = job,
@@ -233,6 +236,8 @@ internal fun BackgroundActivitySettingsContent(
                     onOpenLog = null,
                     liveOutput = {},
                     sessionTitle = sessionTitles[job.sessionId]?.takeIf(String::isNotBlank) ?: untitled,
+                    listHasRunning = listHasRunning,
+                    listHasTransfer = listHasTransfer,
                 )
             }
         }
@@ -241,15 +246,13 @@ internal fun BackgroundActivitySettingsContent(
             footer = stringResource(R.string.settings_background_schedules_footer),
         ) {
             if (schedules.isEmpty()) EmptyRow(stringResource(R.string.settings_background_schedules_empty))
+            // 精确闹钟授权由本页上方的“精确闹钟”设置项提供，任务行保持等高。
             schedules.forEach { task ->
                 ScheduledTaskRow(
                     task = task,
                     nowMillis = nowMillis,
                     onToggle = { actions.onToggleSchedule(task.id, it) },
                     onDelete = { deleting = task },
-                    onGrantExact = actions.onGrantExact.takeIf {
-                        conditions.exactAlarmAvailable && !conditions.exactAlarmGranted && task.exactRequested && !task.exactEffective
-                    },
                     sessionTitle = sessionTitles[task.sessionId]?.takeIf(String::isNotBlank) ?: untitled,
                 )
             }

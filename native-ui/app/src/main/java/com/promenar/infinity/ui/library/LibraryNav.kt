@@ -196,10 +196,13 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
                 item(key = "group-${group.title}") { LibraryNavGroupTitle(group.title) }
                 val folded = group.foldable && !locationsExpanded && group.entries.size > VISIBLE_LOCATIONS
                 val visible = if (folded) group.entries.take(VISIBLE_LOCATIONS) else group.entries
+                // 同组只要有一项带第二行（如 Git 分支），整组都按双行高排版。
+                val twoLine = group.entries.any { it.subtitle != null }
                 items(visible, key = { "nav-${group.title}-${it.key}" }) { entry ->
                     LibraryNavRow(
                         entry,
                         selected = entry.key == selected,
+                        twoLine = twoLine,
                         onClick = { host.navigator.openRoot(entry.key) },
                         modifier = Modifier.animateItem(),
                     )
@@ -208,6 +211,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
                     item(key = "fold-${group.title}") {
                         LibraryFoldRow(
                             modifier = Modifier.animateItem(),
+                            twoLine = twoLine,
                             text = if (locationsExpanded) {
                                 stringResource(R.string.library_locations_less)
                             } else {
@@ -239,7 +243,13 @@ private fun LibraryNavGroupTitle(title: String) {
 }
 
 @Composable
-internal fun LibraryNavRow(entry: LibraryNavEntry, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun LibraryNavRow(
+    entry: LibraryNavEntry,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    twoLine: Boolean = entry.subtitle != null,
+) {
     // 选中高亮随切换渐变，与设置页左列一致。
     val container by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.selectionIndicator(MaterialTheme.colorScheme.surface) else MaterialTheme.colorScheme.surface,
@@ -258,7 +268,7 @@ internal fun LibraryNavRow(entry: LibraryNavEntry, selected: Boolean, onClick: (
             .clip(MaterialTheme.shapes.large)
             .background(container)
             .clickable(role = Role.Tab, onClick = onClick)
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .heightIn(min = navRowHeight(twoLine))
             .padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Small)
             .testTag(LibraryTags.navItem(entry.key)),
         verticalAlignment = Alignment.CenterVertically,
@@ -282,7 +292,7 @@ internal fun LibraryNavRow(entry: LibraryNavEntry, selected: Boolean, onClick: (
 }
 
 @Composable
-private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, twoLine: Boolean = false) {
     val rotation by animateFloatAsState(if (expanded) 180f else 0f, tween(InfinityMotion.DurationMedium), label = "fold-arrow")
     Row(
         modifier = modifier
@@ -290,7 +300,7 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit,
             .padding(horizontal = InfinitySpacing.Small)
             .clip(MaterialTheme.shapes.large)
             .clickable(role = Role.Button, onClick = onClick)
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .heightIn(min = navRowHeight(twoLine))
             .padding(horizontal = InfinitySpacing.Medium),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
@@ -467,3 +477,8 @@ internal fun LibraryLocationRows(host: LibraryPageHost) {
         }
     }
 }
+
+/** 导航行高：单行为最小触控高度；双行为标题加一行小字再加上下内边距。 */
+private fun navRowHeight(twoLine: Boolean) = if (twoLine) NAV_ROW_TWO_LINE_HEIGHT else InfinitySpacing.MinimumTouchTarget
+
+private val NAV_ROW_TWO_LINE_HEIGHT = 56.dp

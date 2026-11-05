@@ -31,7 +31,8 @@ fun BettboxListGroup(
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        ProvideGroupedPress { Column(content = content) }
+        // 组内行等高：有一行带副标题，其余单行项也取双行高。
+        ProvideGroupedPress { ProvideUniformRowHeight { Column(content = content) } }
     }
 }
 

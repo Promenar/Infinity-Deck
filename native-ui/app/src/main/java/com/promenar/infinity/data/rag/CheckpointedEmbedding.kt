@@ -186,7 +186,9 @@ internal class CheckpointedEmbeddingRunner(
             val expectedDimension = vectors.firstOrNull()?.size ?: result.firstOrNull()?.size
             check(result.all { it.size == expectedDimension }) { "Embedding 向量维度不一致" }
             vectors.addAll(result)
-            onProgress(EmbeddingBatchProgress(vectors.size, chunks.size, lastError))
+            // 本批已成功：清除重试期间的错误，避免界面在恢复后仍显示“重试中”。
+            lastError = null
+            onProgress(EmbeddingBatchProgress(vectors.size, chunks.size))
         }
         vectors
     }

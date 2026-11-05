@@ -98,6 +98,7 @@ import com.promenar.infinity.domain.library.LibraryDocumentSummary
 import com.promenar.infinity.domain.library.LibraryOverview
 import com.promenar.infinity.domain.library.PendingDocument
 import com.promenar.infinity.domain.library.PendingKind
+import com.promenar.infinity.domain.library.PendingStage
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.common.InfinityBackButton
@@ -457,8 +458,27 @@ private fun pendingStatusText(doc: PendingDocument): String = when (doc.kind) {
     PendingKind.FAILED -> doc.reason?.let { stringResource(R.string.library_notice_with_reason, stringResource(R.string.library_pending_failed), it) }
         ?: stringResource(R.string.library_pending_failed)
     PendingKind.QUEUED -> doc.queuePosition?.let { stringResource(R.string.library_pending_queued, it) } ?: stringResource(R.string.library_pending_queued_plain)
-    PendingKind.INDEXING -> stringResource(R.string.library_pending_indexing)
+    PendingKind.INDEXING -> indexingStatusText(doc)
     PendingKind.STALE -> stringResource(R.string.library_pending_stale)
+}
+
+@Composable
+private fun indexingStatusText(doc: PendingDocument): String {
+    val processed = doc.processed
+    val total = doc.total?.takeIf { it > 0 }
+    return when (doc.stage) {
+        PendingStage.VECTORIZING -> when {
+            doc.lastError != null -> stringResource(R.string.library_pending_retrying, doc.lastError)
+            total != null && processed != null -> stringResource(R.string.library_pending_vectorizing_progress, processed, total)
+            else -> stringResource(R.string.library_pending_vectorizing)
+        }
+        PendingStage.EXTRACTING_GRAPH ->
+            if (total != null && processed != null) stringResource(R.string.library_pending_graph_progress, processed, total)
+            else stringResource(R.string.library_pending_graph)
+        PendingStage.SAVING -> stringResource(R.string.library_pending_saving)
+        PendingStage.PREPARING -> stringResource(R.string.library_pending_preparing)
+        null -> stringResource(R.string.library_pending_indexing)
+    }
 }
 
 @Composable
@@ -482,7 +502,8 @@ private fun PendingRow(doc: PendingDocument, busy: Boolean, onOpen: () -> Unit, 
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(InfinitySpacing.RowIconSize))
         Column(Modifier.weight(1f)) {
             Text(doc.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(pendingStatusText(doc), style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // 状态单行：列表各项等高，完整错误进文档页查看。
+            Text(pendingStatusText(doc), style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(doc.folderPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val action = when (doc.kind) {
@@ -520,6 +541,8 @@ private fun DocumentRow(doc: LibraryDocumentSummary, onOpen: () -> Unit) {
                 ),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
+                // 元数据单行：长路径不把个别行撑高，列表各项等高。
+                maxLines = 1,
             )
         }
     }

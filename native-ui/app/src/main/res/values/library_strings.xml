@@ -37,6 +37,13 @@
     <string name="library_pending_queued">Queued · #%1$d</string>
     <string name="library_pending_queued_plain">Queued</string>
     <string name="library_pending_indexing">Indexing</string>
+    <string name="library_pending_preparing">Preparing</string>
+    <string name="library_pending_vectorizing">Embedding</string>
+    <string name="library_pending_vectorizing_progress">Embedding %1$d / %2$d</string>
+    <string name="library_pending_retrying">Retrying · %1$s</string>
+    <string name="library_pending_graph">Extracting graph</string>
+    <string name="library_pending_graph_progress">Extracting graph %1$d / %2$d</string>
+    <string name="library_pending_saving">Saving index</string>
     <string name="library_pending_stale">Changed since indexing</string>
     <string name="library_pending_empty">Nothing needs attention. Every document is indexed.</string>
     <string name="library_view_all">View all</string>
