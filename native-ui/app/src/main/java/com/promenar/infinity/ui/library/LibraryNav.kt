@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.FolderShared
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.PushPin
@@ -59,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -124,6 +126,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
             entries = listOf(
                 LibraryNavEntry(LibraryPageKeys.OVERVIEW, Icons.Rounded.Dashboard, stringResource(R.string.library_page_overview)),
                 LibraryNavEntry(LibraryPageKeys.RECENT, Icons.Rounded.Schedule, stringResource(R.string.library_page_recent)),
+                LibraryNavEntry(LibraryPageKeys.CITED, Icons.Rounded.Insights, stringResource(R.string.library_page_cited)),
                 LibraryNavEntry(
                     LibraryPageKeys.PENDING,
                     Icons.Rounded.ReportProblem,
@@ -182,6 +185,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,
+            onSearch = host.ask.onSearch,
             modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
         )
         LazyColumn(
@@ -346,12 +350,18 @@ internal fun LibraryStrip(host: LibraryPageHost) {
     }
 }
 
-/** 问资料输入框：与全站搜索同一原子组件，输入即在右列（外屏为整页）显示结果。 */
+/** 问资料输入框：与全站搜索同一原子组件，输入即在右列（外屏为整页）显示关键词结果，按搜索键语义检索并作答。 */
 @Composable
-internal fun LibraryAskField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun LibraryAskField(query: String, onQueryChange: (String) -> Unit, onSearch: () -> Unit, modifier: Modifier = Modifier) {
+    val focusManager = LocalFocusManager.current
     InfinitySearchBar(
         value = query,
         onValueChange = onQueryChange,
+        // 按搜索键后收起键盘，让答案与结果露出来。
+        onSearch = {
+            focusManager.clearFocus()
+            onSearch()
+        },
         placeholder = stringResource(R.string.library_ask_placeholder),
         // 整条搜索框（含清空按钮）点按时保持焦点，框外点按才退出输入。
         modifier = modifier.keepsFocusOnTap(),

@@ -1711,7 +1711,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     val longTermMemoryRepository: com.promenar.infinity.data.memory.LongTermMemoryRepository by lazy {
         com.promenar.infinity.data.memory.RoomLongTermMemoryRepository(database)
     }
-    private val roomKnowledgeCitationRepository by lazy {
+    internal val roomKnowledgeCitationRepository by lazy {
         com.promenar.infinity.data.library.ask.RoomKnowledgeCitationRepository(database)
     }
     val knowledgeCitationRepository: com.promenar.infinity.domain.library.KnowledgeCitationRepository by lazy {

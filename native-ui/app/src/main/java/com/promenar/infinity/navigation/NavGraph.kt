@@ -58,6 +58,7 @@ object NavDestinations {
     const val PROVIDER_MODELS = "provider_models/{providerId}"
     const val AGENT_EDIT = "agent_edit/{agentId}"
     const val DOC_EDITOR = "doc_editor/{workspaceRootUuid}/{docId}"
+    const val LIBRARY_DOCUMENT = "library_document/{docId}"
     const val KNOWLEDGE_GRAPH = "knowledge_graph"
     const val KNOWLEDGE_GRAPH_ROUTE = "knowledge_graph?query={query}"
     const val SUBAGENT_VIEWER_ROUTE = "subagent/{sessionId}/{stepId}/{index}"
@@ -104,6 +105,7 @@ object NavDestinations {
         if (providerId != null) "provider_form?providerId=$providerId" else "provider_form"
     fun providerModels(providerId: String) = "provider_models/$providerId"
     fun docEditor(workspaceRootUuid: String, docId: String) = "doc_editor/$workspaceRootUuid/$docId"
+    fun libraryDocument(docId: String) = "library_document/${android.net.Uri.encode(docId)}"
     @Suppress("UNUSED_PARAMETER")
     fun knowledgeGraph(query: String) = "knowledge_graph?query=${android.net.Uri.encode(query)}"
     fun linuxTerminal(sessionId: String? = null, directory: String? = null, command: String? = null) =
@@ -311,6 +313,19 @@ fun InfinityNavGraph(
             )
         }
 
+        composablePage(
+            route = NavDestinations.LIBRARY_DOCUMENT,
+            arguments = listOf(navArgument("docId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val docId = backStackEntry.arguments?.getString("docId") ?: ""
+            com.promenar.infinity.ui.library.LibraryDocumentRoute(
+                documentId = docId,
+                onBack = { navController.popBackStack() },
+                onNavigateToSecondary = { route -> navController.navigate(route) { launchSingleTop = true } },
+                onOpenSession = { sessionId -> navController.navigate(NavDestinations.chatHero(sessionId)) },
+            )
+        }
+
         settingsDestinations(SettingsNavigator(navController), openLibraryMemory)
 
         composablePage(
@@ -450,9 +465,17 @@ private fun ChatHeroDestination(
             },
         )
     }
+    // 对话“本轮用到的资料”的文档行：整页打开资料文档并定位到被引用的段落。
+    val openLibraryDocument: (String, String?) -> Unit = remember(navController) {
+        { documentId, chunkContent ->
+            com.promenar.infinity.ui.library.LibraryLocateHandoff.put(documentId, chunkContent)
+            navController.navigate(NavDestinations.libraryDocument(documentId))
+        }
+    }
     CompositionLocalProvider(
         com.promenar.infinity.ui.linux.LocalLinuxNavigation provides linuxNavigation,
         com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation provides sessionSettingsNavigation,
+        com.promenar.infinity.ui.library.LocalOpenLibraryDocument provides openLibraryDocument,
     ) {
         chatDestination(
             sessionId,

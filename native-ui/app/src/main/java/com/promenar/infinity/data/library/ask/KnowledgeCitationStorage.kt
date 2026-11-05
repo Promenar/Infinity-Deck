@@ -91,6 +91,15 @@ interface KnowledgeCitationDao {
     @Query("SELECT * FROM knowledge_citations WHERE session_id = :sessionId AND source_kind = 'CHAT'")
     suspend fun forSession(sessionId: String): List<KnowledgeCitationEntity>
 
+    @Query("SELECT * FROM knowledge_citations WHERE message_id IN (:messageIds) AND source_kind = 'CHAT'")
+    suspend fun forMessages(messageIds: List<String>): List<KnowledgeCitationEntity>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM messages WHERE id = :messageId AND session_id = :sessionId)")
+    suspend fun messageExists(messageId: String, sessionId: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissing(citations: List<KnowledgeCitationEntity>)
+
     @Query("SELECT EXISTS(SELECT 1 FROM workspace_files WHERE uuid = :id AND in_recycle_bin = 0)")
     suspend fun activeDocumentExists(id: String): Boolean
 
@@ -105,11 +114,11 @@ interface KnowledgeCitationDao {
 
     @Query("""SELECT c.document_id AS documentId, f.name AS name, COUNT(*) AS count,
         MAX(c.cited_at) AS lastCitedAt,
-        (SELECT s.title FROM knowledge_citations last LEFT JOIN sessions s ON s.id = last.session_id
-            WHERE last.document_id = c.document_id ORDER BY last.cited_at DESC, last.id DESC LIMIT 1) AS lastSessionTitle,
-        (SELECT a.name FROM knowledge_citations last LEFT JOIN sessions s ON s.id = last.session_id
+        (SELECT s.title FROM knowledge_citations latest LEFT JOIN sessions s ON s.id = latest.session_id
+            WHERE latest.document_id = c.document_id ORDER BY latest.cited_at DESC, latest.id DESC LIMIT 1) AS lastSessionTitle,
+        (SELECT a.name FROM knowledge_citations latest LEFT JOIN sessions s ON s.id = latest.session_id
             LEFT JOIN agents a ON a.id = s.agent_id
-            WHERE last.document_id = c.document_id ORDER BY last.cited_at DESC, last.id DESC LIMIT 1) AS lastAgentName
+            WHERE latest.document_id = c.document_id ORDER BY latest.cited_at DESC, latest.id DESC LIMIT 1) AS lastAgentName
         FROM knowledge_citations c JOIN workspace_files f ON f.uuid = c.document_id
         WHERE f.in_recycle_bin = 0 GROUP BY c.document_id, f.name
         ORDER BY lastCitedAt DESC, c.document_id ASC LIMIT :limit""")
@@ -117,11 +126,11 @@ interface KnowledgeCitationDao {
 
     @Query("""SELECT c.document_id AS documentId, f.name AS name, COUNT(*) AS count,
         MAX(c.cited_at) AS lastCitedAt,
-        (SELECT s.title FROM knowledge_citations last LEFT JOIN sessions s ON s.id = last.session_id
-            WHERE last.document_id = c.document_id ORDER BY last.cited_at DESC, last.id DESC LIMIT 1) AS lastSessionTitle,
-        (SELECT a.name FROM knowledge_citations last LEFT JOIN sessions s ON s.id = last.session_id
+        (SELECT s.title FROM knowledge_citations latest LEFT JOIN sessions s ON s.id = latest.session_id
+            WHERE latest.document_id = c.document_id ORDER BY latest.cited_at DESC, latest.id DESC LIMIT 1) AS lastSessionTitle,
+        (SELECT a.name FROM knowledge_citations latest LEFT JOIN sessions s ON s.id = latest.session_id
             LEFT JOIN agents a ON a.id = s.agent_id
-            WHERE last.document_id = c.document_id ORDER BY last.cited_at DESC, last.id DESC LIMIT 1) AS lastAgentName
+            WHERE latest.document_id = c.document_id ORDER BY latest.cited_at DESC, latest.id DESC LIMIT 1) AS lastAgentName
         FROM knowledge_citations c JOIN workspace_files f ON f.uuid = c.document_id
         WHERE f.in_recycle_bin = 0 GROUP BY c.document_id, f.name
         ORDER BY count DESC, lastCitedAt DESC, c.document_id ASC LIMIT :limit""")
@@ -160,6 +169,24 @@ class RoomKnowledgeCitationRepository(private val database: InfinityDatabase) : 
         }
     }
 
+    /** 删除消息前保存其对话引用，供撤销删除时放回。 */
+    suspend fun snapshotChat(messageIds: Collection<String>): List<KnowledgeCitationEntity> =
+        if (messageIds.isEmpty()) emptyList() else messageIds.chunked(SQL_IN_CHUNK).flatMap { dao.forMessages(it) }
+
+    /** 撤销删除：消息已重新写入后放回引用；文档已删除或消息未恢复的引用跳过。 */
+    suspend fun restoreChat(citations: List<KnowledgeCitationEntity>) {
+        if (citations.isEmpty()) return
+        StartupWriteBarrier.requireWritable()
+        database.withTransaction {
+            val restorable = citations.filter { row ->
+                val message = row.messageId
+                val session = row.sessionId
+                message != null && session != null && dao.messageExists(message, session) && dao.activeDocumentExists(row.documentId)
+            }
+            if (restorable.isNotEmpty()) dao.insertMissing(restorable)
+        }
+    }
+
     suspend fun recordAsk(citations: List<KnowledgeCitationEntity>) {
         StartupWriteBarrier.requireWritable()
         database.withTransaction {
@@ -172,5 +199,7 @@ class RoomKnowledgeCitationRepository(private val database: InfinityDatabase) : 
 private fun CitedDocumentRow.toDomain() = CitedDocument(
     documentId, name, count, lastCitedAt, lastSessionTitle, lastAgentName,
 )
+
+private const val SQL_IN_CHUNK = 500
 
 internal fun citationId(): String = UUID.randomUUID().toString()

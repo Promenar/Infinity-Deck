@@ -96,7 +96,7 @@ The built-in agent browser lets you watch, take over and hand control back. Pass
 
 ## Knowledge in, results out
 
-- **Knowledge in.** The library combines vector and full-text retrieval with reranking and citations, and can build a knowledge graph. Chat memory is searchable along a timeline, and long-term memory keeps your preferences and project facts across chats.
+- **Knowledge in.** The library combines vector and full-text retrieval with reranking and citations, and can build a knowledge graph. Ask the library searches documents, long-term memories and graph entities together, and a quick model answers with numbered citations that open the source with the matching passage highlighted. The library also records which documents agents have cited. Chat memory is searchable along a timeline, and long-term memory keeps your preferences and project facts across chats.
 - **Results out.** Agents build canvas pages and clickable multi-screen prototypes with a presentation mode, and the reports and files they deliver are saved as versioned artifacts.
 - **Rich output.** Markdown, LaTeX, Mermaid and ECharts, inline images, video and audio, plus image generation with a drawing board for markup, masks and sketches.
 - **Export and usage.** Export a chat as HTML, paginated A4 PDF or a long PNG. The usage page estimates cost and tracks the input cache hit rate.
@@ -118,7 +118,7 @@ The built-in agent browser lets you watch, take over and hand control back. Pass
 
 **Install:** Download the APK and its `.sha256` file from [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases), check the SHA-256 and install it. Public releases can lag behind the source tree. Do not install CI artifacts, debug APKs or repackaged builds from other sources.
 
-The source tree is at `v0.26.0-beta` (versionCode `69`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.27.0-beta` (versionCode `70`). See the [changelog](CHANGELOG.md) for what changed.
 
 ## Build from source
 

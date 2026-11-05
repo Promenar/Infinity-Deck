@@ -51,4 +51,12 @@
         <item quantity="one">%d document tag points to an unavailable file</item>
         <item quantity="other">%d document tags point to unavailable files</item>
     </plurals>
+    <plurals name="backup_degraded_citation_source">
+        <item quantity="one">%d citation record was dropped because its conversation changed</item>
+        <item quantity="other">%d citation records were dropped because their conversations changed</item>
+    </plurals>
+    <plurals name="backup_degraded_citation_document">
+        <item quantity="one">%d citation record points to an unavailable document</item>
+        <item quantity="other">%d citation records point to unavailable documents</item>
+    </plurals>
 </resources>

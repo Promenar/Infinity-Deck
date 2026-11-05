@@ -68,7 +68,7 @@ class CanvasBranchSessionTest {
 
     @After fun tearDown() { database.close() }
 
-    @Test fun `会话分支仅复制前缀引用并在来源会话删除后保留`() = runBlocking {
+    @Test fun `会话分支仅复制前缀引用并在来源会话删除后保留`() = runBlocking<Unit> {
         database.fileEntryDao().insert(com.promenar.infinity.data.local.db.entity.FileEntry(
             uuid = "document", parentUuid = null, name = "示例文档", hash = "", physicalRootPath = "",
             materializedPath = "example.txt", createdAt = 1, updatedAt = 1,

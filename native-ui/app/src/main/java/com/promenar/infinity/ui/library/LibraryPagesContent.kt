@@ -69,6 +69,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -106,7 +111,6 @@ import com.promenar.infinity.ui.memory.LongTermMemoryEditSheet
 import com.promenar.infinity.ui.memory.LongTermMemorySourceLabel
 import com.promenar.infinity.ui.memory.LongTermMemoryViewModel
 import com.promenar.infinity.ui.rag.KnowledgeGraphScreen
-import com.promenar.infinity.ui.rag.RagSearchResults
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
@@ -140,6 +144,7 @@ internal fun LibraryPageContent(
                 LibraryPage.Overview -> LibraryOverviewContent(host, padding, entryCards = false)
                 LibraryPage.Recent -> LibraryRecentContent(host, padding)
                 LibraryPage.Pending -> LibraryPendingContent(host, padding)
+                LibraryPage.Cited -> LibraryCitedContent(host, padding)
                 LibraryPage.Fragments -> LibraryFragmentsContent(host, padding)
                 LibraryPage.Files -> LibraryFilesContent(host, padding)
                 LibraryPage.Ask -> LibraryAskContent(host, padding)
@@ -155,6 +160,7 @@ internal fun libraryPageTitle(page: LibraryPage, host: LibraryPageHost): String 
     LibraryPage.Overview -> stringResource(R.string.library_page_overview)
     LibraryPage.Recent -> stringResource(R.string.library_page_recent)
     LibraryPage.Pending -> stringResource(R.string.library_page_pending)
+    LibraryPage.Cited -> stringResource(R.string.library_page_cited)
     LibraryPage.Memory -> stringResource(R.string.library_page_memory)
     LibraryPage.Fragments -> stringResource(R.string.library_page_fragments)
     LibraryPage.Graph -> stringResource(R.string.library_page_graph)
@@ -221,6 +227,7 @@ internal fun LibraryHome(host: LibraryPageHost) {
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,
+            onSearch = host.ask.onSearch,
             modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
         )
         Box(Modifier.weight(1f)) {
@@ -270,6 +277,7 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                 }
             },
             { CollectCard(host) },
+            { RecentCitedCard(host) },
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -283,17 +291,23 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                 }
             }
             if (wide) {
-                // 宽版：待处理与最近并排，收集卡在下。
+                // 宽版：待处理与最近并排，“智能体最近用到”与收集卡在下并排。
                 item(key = "pair") {
                     Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
                         Box(Modifier.weight(1f)) { sections[0]() }
                         Box(Modifier.weight(1f)) { sections[1]() }
                     }
                 }
-                item(key = "collect") { sections[2]() }
+                item(key = "pair2") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+                        Box(Modifier.weight(1f)) { sections[3]() }
+                        Box(Modifier.weight(1f)) { sections[2]() }
+                    }
+                }
             } else {
                 item(key = "pending") { sections[0]() }
                 item(key = "recent") { sections[1]() }
+                item(key = "cited") { sections[3]() }
                 item(key = "collect") { sections[2]() }
             }
         }
@@ -404,7 +418,7 @@ private fun KpiTile(
 }
 
 @Composable
-private fun LibraryCard(
+internal fun LibraryCard(
     title: String,
     count: Int? = null,
     onViewAll: (() -> Unit)? = null,
@@ -429,7 +443,7 @@ private fun LibraryCard(
 }
 
 @Composable
-private fun LibraryEmptyText(text: String) {
+internal fun LibraryEmptyText(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.bodyMedium,
@@ -638,39 +652,6 @@ private fun LibraryFilesContent(host: LibraryPageHost, padding: PaddingValues) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 问资料
-
-@Composable
-private fun LibraryAskContent(host: LibraryPageHost, padding: PaddingValues) {
-    val searchState by host.ragViewModel.searchState.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
-        if (!host.navigator.twoPane) {
-            LibraryAskField(
-                query = host.askQuery,
-                onQueryChange = host.ask.onQueryChange,
-                modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
-            )
-        }
-        AnimatedContent(
-            targetState = host.askQuery.isBlank(),
-            transitionSpec = { InfinityMotion.fadeThrough() },
-            modifier = Modifier.fillMaxSize(),
-            label = "ask-results",
-        ) { blank ->
-            if (blank) {
-                LibraryEmptyText(stringResource(R.string.library_ask_hint))
-            } else {
-                RagSearchResults(
-                    state = searchState,
-                    onOpenDocument = { docId -> host.navigator.push(LibraryPageKeys.document(docId)) },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
 // 文档详情：阅读优先，“智能体视角”在宽版为右侧检视器、窄版在正文下方。
 
 private sealed interface Loaded<out T> {
@@ -695,6 +676,29 @@ private fun LibraryDocumentPage(
     }
     val rootUuid by host.ragViewModel.workspaceRootUuid.collectAsStateWithLifecycle()
     val resolvedTitle = (insight as? Loaded.Ready)?.value?.name ?: title
+    // 从问资料结果进入：定位到本篇的命中段落；从对话引用进入：定位到被引用的段落。
+    val askState by host.askViewModel.state.collectAsStateWithLifecycle()
+    val fromAsk = LibraryPageKeys.ASK in host.navigator.stack
+    val request = host.locateRequest?.takeIf { it.documentId == documentId }
+        ?: if (fromAsk) DocumentLocateRequest.fromAsk(documentId, askState.hitsForDocument(documentId)) else null
+    val readyBody = (body as? Loaded.Ready)?.value
+    val located = remember(readyBody, request) {
+        if (readyBody == null || request == null) null else locateRequest(readyBody, request, host.chunkLocator)
+    }
+    var focus by rememberSaveable(documentId, located?.hitCount) { mutableIntStateOf(0) }
+    val bodyScroll = rememberScrollState()
+    var viewportTop by remember { mutableFloatStateOf(0f) }
+    val locateBar: @Composable () -> Unit = {
+        if (located != null && request != null) {
+            DocumentLocateBar(
+                hitCount = located.hitCount,
+                focus = focus,
+                cited = !request.fromAsk,
+                onMove = { delta -> focus = (focus + delta).mod(located.hitCount) },
+            )
+        }
+    }
+    val bodyModifier = Modifier.onGloballyPositioned { viewportTop = it.positionInRoot().y }.verticalScroll(bodyScroll)
     LibraryPageFrame(
         title = resolvedTitle,
         leading = leading,
@@ -720,22 +724,31 @@ private fun LibraryDocumentPage(
             val info = (currentInsight as? Loaded.Ready)?.value
             if (wide) {
                 Row(Modifier.fillMaxSize()) {
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(padding)) {
-                        DocumentBodyView(body)
+                    Column(Modifier.weight(1f)) {
+                        locateBar()
+                        Column(Modifier.weight(1f).then(bodyModifier).padding(padding)) {
+                            DocumentBodyView(body, located, focus, bodyScroll) { viewportTop }
+                        }
                     }
                     Column(
                         Modifier
                             .width(280.dp)
                             .verticalScroll(rememberScrollState())
                             .padding(top = padding.calculateTopPadding(), end = InfinitySpacing.ScreenHorizontal, bottom = padding.calculateBottomPadding()),
+                        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
                     ) {
                         info?.let { DocumentInspector(it, host) }
+                        DocumentCitationsCard(documentId, host)
                     }
                 }
             } else {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-                    DocumentBodyView(body)
-                    info?.let { DocumentInspector(it, host) }
+                Column(Modifier.fillMaxSize()) {
+                    locateBar()
+                    Column(Modifier.weight(1f).then(bodyModifier).padding(padding), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+                        DocumentBodyView(body, located, focus, bodyScroll) { viewportTop }
+                        info?.let { DocumentInspector(it, host) }
+                        DocumentCitationsCard(documentId, host)
+                    }
                 }
             }
         }
@@ -743,14 +756,26 @@ private fun LibraryDocumentPage(
 }
 
 @Composable
-private fun DocumentBodyView(body: Loaded<DocumentBody>) {
+private fun DocumentBodyView(
+    body: Loaded<DocumentBody>,
+    located: LocatedBody?,
+    focus: Int,
+    scroll: ScrollState,
+    viewportTop: () -> Float,
+) {
     AnimatedContent(targetState = body, contentKey = { it is Loaded.Loading }, transitionSpec = { InfinityMotion.fadeThrough() }, label = "doc-body") {
-        DocumentBodyState(it)
+        DocumentBodyState(it, located, focus, scroll, viewportTop)
     }
 }
 
 @Composable
-private fun DocumentBodyState(body: Loaded<DocumentBody>) {
+private fun DocumentBodyState(
+    body: Loaded<DocumentBody>,
+    located: LocatedBody?,
+    focus: Int,
+    scroll: ScrollState,
+    viewportTop: () -> Float,
+) {
     when (body) {
         Loaded.Loading -> Box(Modifier.fillMaxWidth().heightIn(min = 120.dp), contentAlignment = Alignment.Center) {
             com.promenar.infinity.ui.common.InfinityLoadingIndicator()
@@ -766,7 +791,9 @@ private fun DocumentBodyState(body: Loaded<DocumentBody>) {
                     Text(stringResource(R.string.library_doc_extracted), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 SelectionContainer {
-                    if (value.markdown) {
+                    if (located != null) {
+                        LocatedBodySegments(located, markdown = value.markdown && !located.plainText, focus = focus, scroll = scroll, viewportTop = viewportTop)
+                    } else if (value.markdown) {
                         MarkdownText(markdown = value.text, modifier = Modifier.fillMaxWidth())
                     } else {
                         Text(value.text, style = MaterialTheme.typography.bodyMedium)

@@ -44,4 +44,10 @@
     <plurals name="backup_degraded_document_tag">
         <item quantity="other">%d 个文档标签关联的文件不可用</item>
     </plurals>
+    <plurals name="backup_degraded_citation_source">
+        <item quantity="other">%d 条引用记录所属的对话已变化，未保留</item>
+    </plurals>
+    <plurals name="backup_degraded_citation_document">
+        <item quantity="other">%d 条引用记录对应的文档不可用</item>
+    </plurals>
 </resources>

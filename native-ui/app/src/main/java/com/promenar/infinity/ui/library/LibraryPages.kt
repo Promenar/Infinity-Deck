@@ -11,6 +11,9 @@ object LibraryPageKeys {
     const val OVERVIEW = "overview"
     const val RECENT = "recent"
     const val PENDING = "pending"
+
+    /** 智能体常用：按被回答引用的次数排列的文档。 */
+    const val CITED = "cited"
     const val MEMORY = "memory"
     const val FRAGMENTS = "frag"
     const val GRAPH = "graph"
@@ -35,6 +38,7 @@ object LibraryPageKeys {
         key == OVERVIEW -> LibraryPage.Overview
         key == RECENT -> LibraryPage.Recent
         key == PENDING -> LibraryPage.Pending
+        key == CITED -> LibraryPage.Cited
         key == MEMORY -> LibraryPage.Memory
         key == FRAGMENTS -> LibraryPage.Fragments
         key == GRAPH -> LibraryPage.Graph
@@ -59,6 +63,7 @@ sealed interface LibraryPage {
     data object Overview : LibraryPage
     data object Recent : LibraryPage
     data object Pending : LibraryPage
+    data object Cited : LibraryPage
     data object Memory : LibraryPage
     data object Fragments : LibraryPage
     data class FragmentSession(val sessionId: String) : LibraryPage

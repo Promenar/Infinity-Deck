@@ -32,7 +32,7 @@ private fun OverviewSample(mode: InfinityThemeMode, query: String) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                LibraryAskField(query = query, onQueryChange = {})
+                LibraryAskField(query = query, onQueryChange = {}, onSearch = {})
                 LibraryKpiGrid(SAMPLE, entryCards = true, wide = false) { _, _ -> }
             }
         }

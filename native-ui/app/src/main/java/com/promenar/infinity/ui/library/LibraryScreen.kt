@@ -19,10 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.domain.library.ChunkLocator
 import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.ui.common.FocusDismissArea
 import com.promenar.infinity.ui.MainTabsState
@@ -106,28 +104,31 @@ fun LibraryScreen(
     val ragViewModel: RagViewModel = viewModel(factory = RagViewModel.factory(app))
     val twoPane = layout is LibraryLayout.TwoPane
     val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
-    var askQuery by rememberSaveable { mutableStateOf("") }
+    val askViewModel: LibraryAskViewModel = viewModel(factory = LibraryAskViewModel.factory(app))
+    val askState by askViewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     // 外屏的“文件”中转页在两列里没有对应导航项；展开折叠屏时去掉它，左列才能高亮当前位置。
     LaunchedEffect(twoPane) { if (twoPane) state.normalizeLibraryForTwoPane() }
 
-    // 问资料：有查询时压上结果页；结果页被弹出（返回或“‹ 上一页”）即清空查询。
+    // 问资料：有查询时压上结果页；结果页被弹出（返回或“‹ 上一页”）即清空查询与结果。
     val askInStack = LibraryPageKeys.ASK in navigator.stack
-    val ask = remember(ragViewModel, navigator) {
+    val ask = remember(askViewModel, navigator) {
         LibraryAsk(
             onQueryChange = { text ->
-                askQuery = text
-                ragViewModel.search(text)
+                askViewModel.onQueryChange(text)
                 if (text.isNotBlank() && LibraryPageKeys.ASK !in navigator.stack) navigator.push(LibraryPageKeys.ASK)
                 if (text.isBlank()) navigator.dropAsk()
+            },
+            onSearch = {
+                if (askViewModel.state.value.query.isNotBlank()) {
+                    if (LibraryPageKeys.ASK !in navigator.stack) navigator.push(LibraryPageKeys.ASK)
+                    askViewModel.submit()
+                }
             },
         )
     }
     LaunchedEffect(askInStack) {
-        if (!askInStack && askQuery.isNotEmpty()) {
-            askQuery = ""
-            ragViewModel.search("")
-        }
+        if (!askInStack && askViewModel.state.value.query.isNotEmpty()) askViewModel.clear()
     }
 
     BackHandler(enabled = navigator.handlesBack) { navigator.handleBack() }
@@ -137,10 +138,12 @@ fun LibraryScreen(
         viewModel = viewModel,
         ragViewModel = ragViewModel,
         navigator = navigator,
-        askQuery = askQuery,
+        askViewModel = askViewModel,
+        askQuery = askState.query,
         ask = ask,
         onNavigateToSecondary = onNavigateToSecondary,
         onOpenSession = onOpenSession,
+        chunkLocator = com.promenar.infinity.data.library.ask.DefaultChunkLocator,
     )
 
     // Surface 提供内容色：点按反馈取内容色绘制，裸 Box 下默认黑色，在深色主题里看不见。
@@ -159,18 +162,23 @@ fun LibraryScreen(
 
 /** 问资料输入的回调集合，左列、外屏首页与结果页共用。 */
 @Stable
-internal class LibraryAsk(val onQueryChange: (String) -> Unit)
+internal class LibraryAsk(val onQueryChange: (String) -> Unit, val onSearch: () -> Unit)
 
 /** 各页面需要的依赖与回调。 */
 @Stable
 internal class LibraryPageHost(
     val viewModel: LibraryViewModel,
     val ragViewModel: RagViewModel,
+    val askViewModel: LibraryAskViewModel,
     val navigator: LibraryNavigator,
     val askQuery: String,
     val ask: LibraryAsk,
     val onNavigateToSecondary: (String) -> Unit,
     val onOpenSession: (String) -> Unit,
+    /** 在正文中定位分块；来自数据层的默认实现。 */
+    val chunkLocator: ChunkLocator,
+    /** 从对话引用打开的文档页要定位的段落；资料页内导航为 null。 */
+    val locateRequest: DocumentLocateRequest? = null,
 )
 
 @Composable

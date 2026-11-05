@@ -9,7 +9,10 @@ import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileManagerServices
 import com.promenar.infinity.domain.files.FileOpException
 import com.promenar.infinity.domain.files.FileRef
+import com.promenar.infinity.domain.library.CitedDocument
 import com.promenar.infinity.domain.library.ConversationFragment
+import com.promenar.infinity.domain.library.DocumentCitation
+import com.promenar.infinity.domain.library.KnowledgeCitationRepository
 import com.promenar.infinity.domain.library.DocumentBody
 import com.promenar.infinity.domain.library.DocumentInsight
 import com.promenar.infinity.domain.library.FragmentGroup
@@ -51,6 +54,7 @@ data class LibraryLocations(
 class LibraryViewModel(
     private val knowledge: LibraryKnowledgeSource,
     private val files: FileManagerServices,
+    private val citations: KnowledgeCitationRepository,
 ) : ViewModel() {
 
     val overview: StateFlow<LibraryOverview?> = knowledge.observeOverview()
@@ -72,6 +76,19 @@ class LibraryViewModel(
     val newMemoryIds: StateFlow<Set<String>> = knowledge.observeNewMemoryIds()
         .catch { emit(emptySet()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptySet())
+
+    /** 概览“智能体最近用到”。 */
+    val recentCited: StateFlow<List<CitedDocument>> = citations.observeRecentDocuments(OVERVIEW_CITED_LIMIT)
+        .catch { emit(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
+
+    /** 视图“智能体常用”。 */
+    val topCited: StateFlow<List<CitedDocument>> = citations.observeTopDocuments()
+        .catch { emit(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
+
+    /** 文档页“智能体怎么用它”。 */
+    fun citationsFor(documentId: String): Flow<List<DocumentCitation>> = citations.observeForDocument(documentId).catch { emit(emptyList()) }
 
     val locations: StateFlow<LibraryLocations> = combine(
         files.locations.observeLibraryLocations(),
@@ -195,6 +212,7 @@ class LibraryViewModel(
     companion object {
         private const val STOP_TIMEOUT_MS = 5_000L
         private const val RECENT_LIMIT = 50
+        private const val OVERVIEW_CITED_LIMIT = 5
         val LIBRARY_ROOT = FileRef(LIBRARY_LOCATION_ID, "/")
         private val EMPTY_OVERVIEW = LibraryOverview(0, 0, 0, 0, 0, 0)
 
@@ -203,6 +221,7 @@ class LibraryViewModel(
             override fun <T : ViewModel> create(modelClass: Class<T>): T = LibraryViewModel(
                 knowledge = LibraryKnowledgeModule.create(application),
                 files = application.fileManagerServices,
+                citations = application.knowledgeCitationRepository,
             ) as T
         }
     }

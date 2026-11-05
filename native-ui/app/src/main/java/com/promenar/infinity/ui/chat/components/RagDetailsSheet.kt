@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.TrendingDown
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -438,10 +439,27 @@ private fun RetrievedReferenceRow(
     scoring: String?,
     hit: com.promenar.infinity.data.knowledge.KnowledgeSearchHit? = null,
 ) {
+    // 文档引用可点：打开资料文档并定位到这段；对话记忆等其它来源不可点。
+    val openDocument = com.promenar.infinity.ui.library.LocalOpenLibraryDocument.current
+    val documentId = reference.documentId?.takeIf {
+        it.isNotBlank() && (reference.kind == null || reference.kind == com.promenar.infinity.data.model.RagReferenceKind.DOCUMENT)
+    }
+    val open = if (openDocument != null && documentId != null) ({ openDocument(documentId, reference.content) }) else null
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(UiTags.ragDetailsReferenceItem(index))
+            .then(
+                if (open != null) {
+                    Modifier.clickable(
+                        role = androidx.compose.ui.semantics.Role.Button,
+                        onClickLabel = stringResource(R.string.library_open_source),
+                        onClick = open,
+                    )
+                } else {
+                    Modifier
+                },
+            )
             .padding(vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -455,13 +473,24 @@ private fun RetrievedReferenceRow(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                InfinityIdentifierText(
-                    text = reference.source.substringAfterLast('/').ifBlank {
-                        stringResource(R.string.rag_details_unknown_source)
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    InfinityIdentifierText(
+                        text = reference.source.substringAfterLast('/').ifBlank {
+                            stringResource(R.string.rag_details_unknown_source)
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (open != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (open != null) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
                 val parts = ragReferenceParts(reference, scoring)
                 val change = reference.rankChange
                 if (parts.isNotEmpty()) {

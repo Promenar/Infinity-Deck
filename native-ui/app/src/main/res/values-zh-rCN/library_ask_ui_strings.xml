@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 问资料（语义检索与资料里的答案）、文档定位与引用记录。 -->
+<resources>
+    <string name="library_ask_hint_full">输入时只按关键词实时匹配；按键盘的搜索键做语义检索并生成答案。</string>
+    <string name="library_ask_hint_no_quick">输入时只按关键词匹配；按搜索键做语义检索。未设快速模型，不生成答案。</string>
+    <string name="library_ask_hint_keyword">未设置向量模型，只按关键词匹配。</string>
+
+    <string name="library_ask_answer_title">资料里的答案</string>
+    <string name="library_ask_answer_model">快速模型 · %1$s</string>
+    <string name="library_ask_answer_model_plain">快速模型</string>
+    <string name="library_ask_retrieving">正在检索资料…</string>
+    <string name="library_ask_answering">正在生成答案…</string>
+    <plurals name="library_ask_answer_basis">
+        <item quantity="other">依据 %d 条资料 · 点编号定位</item>
+    </plurals>
+    <string name="library_ask_no_answer_tip">可以换个说法再问，下面是最接近的结果。</string>
+    <string name="library_ask_copy">复制</string>
+    <string name="library_ask_regenerate">重新生成</string>
+    <string name="library_ask_retry">重试</string>
+
+    <string name="library_ask_no_quick_body">设置快速模型后，这里会根据下面的资料直接写出答案。</string>
+    <string name="library_ask_set_quick">去设置快速模型</string>
+    <string name="library_ask_keyword_title">只按关键词匹配</string>
+    <string name="library_ask_keyword_body">没有设置向量模型，结果只包含字面命中的段落，也不会生成答案。</string>
+    <string name="library_ask_set_embedding">去设置向量模型</string>
+
+    <string name="library_ask_failed_embedding">向量模型没有响应。</string>
+    <string name="library_ask_failed_model">快速模型没有响应。</string>
+    <string name="library_ask_failed_network">网络错误。</string>
+    <string name="library_ask_failed_unknown">出了点问题。</string>
+    <string name="library_ask_no_results">资料里没有匹配的内容。</string>
+
+    <string name="library_ask_filter_all">全部 %1$d</string>
+    <string name="library_ask_filter_documents">文档 %1$d</string>
+    <string name="library_ask_filter_memories">记忆 %1$d</string>
+    <string name="library_ask_filter_graph">图谱 %1$d</string>
+    <string name="library_ask_match_semantic">语义 %1$s</string>
+    <string name="library_ask_match_keyword">关键词</string>
+    <string name="library_ask_match_both">语义 + 关键词</string>
+    <string name="library_ask_scope">范围：%1$s</string>
+    <string name="library_ask_scope_all">全部已索引</string>
+    <string name="library_ask_scope_library">资料库</string>
+    <string name="library_ask_kind_document">文档</string>
+    <string name="library_ask_kind_memory">记忆</string>
+    <string name="library_ask_kind_entity">图谱实体</string>
+
+    <plurals name="library_doc_locate_count">
+        <item quantity="other">问资料命中 %1$d 处 · 第 %2$d 处</item>
+    </plurals>
+    <string name="library_doc_locate_cited">被引用的段落</string>
+    <string name="library_doc_locate_prev">上一处</string>
+    <string name="library_doc_locate_next">下一处</string>
+
+    <string name="library_doc_cited_title">智能体怎么用它</string>
+    <string name="library_doc_cited_empty">还没有回答引用过这篇文档。</string>
+    <string name="library_cite_label">引用 [%1$s]</string>
+    <string name="library_cite_ask_title">问资料：%1$s</string>
+    <string name="library_cite_ask_label">答案引用 [%1$s]</string>
+    <string name="library_cited_recent_title">智能体最近用到</string>
+    <string name="library_cited_empty">回答引用过的文档会出现在这里。</string>
+    <plurals name="library_cited_count">
+        <item quantity="other">%d 次</item>
+    </plurals>
+    <string name="library_page_cited">智能体常用</string>
+    <string name="library_open_source">打开原文</string>
+</resources>

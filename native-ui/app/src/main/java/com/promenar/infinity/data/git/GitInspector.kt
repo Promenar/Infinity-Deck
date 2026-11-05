@@ -166,7 +166,6 @@ class GitInspector(
         val message = "status " + stages.joinToString(" ") { "$it=${number("timings_ms", it)}" } +
             " elapsed=$elapsedMillis " + counts.joinToString(" ") { "${it}_files=${number("file_counts", it)}" }
         runCatching { InfinityLogger.log("[InfinityGit] $message") }
-        runCatching { android.util.Log.i("InfinityGit", message) }
     }
 
     companion object {

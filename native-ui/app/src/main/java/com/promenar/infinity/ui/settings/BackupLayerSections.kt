@@ -164,6 +164,8 @@ private fun degradedText(reference: BackupDegradedReference): String {
         "artifact_workspace_unavailable" -> R.plurals.backup_degraded_artifact_workspace
         "knowledge_document_unavailable" -> R.plurals.backup_degraded_knowledge_document
         "document_tag_file_unavailable" -> R.plurals.backup_degraded_document_tag
+        "legacy_citation_source_changed" -> R.plurals.backup_degraded_citation_source
+        "citation_document_unavailable" -> R.plurals.backup_degraded_citation_document
         else -> null
     }
     return plural?.let { pluralStringResource(it, reference.count, reference.count) } ?: "${reference.category}: ${reference.count}"

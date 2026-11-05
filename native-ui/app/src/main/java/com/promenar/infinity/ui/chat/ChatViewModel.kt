@@ -3167,18 +3167,23 @@ class ChatViewModel(
 
     private val lastDeletedMessages = mutableListOf<Pair<String, Message>>()
     private var lastDeletedStateVersions = emptyList<com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity>()
+    private var lastDeletedCitations = emptyList<com.promenar.infinity.data.library.ask.KnowledgeCitationEntity>()
+    private val citationStore get() = (application as InfinityApplication).roomKnowledgeCitationRepository
 
     fun undoLastDeletion() {
         _deletionUndo.value = null
         if (lastDeletedMessages.isEmpty()) return
         val stateVersions = lastDeletedStateVersions
         lastDeletedStateVersions = emptyList()
+        val citations = lastDeletedCitations
+        lastDeletedCitations = emptyList()
         val restored = lastDeletedMessages.toList()
         lastDeletedMessages.clear()
         viewModelScope.launch {
             restored.groupBy({ it.first }, { it.second }).forEach { (sid, messages) ->
                 messageManager.restoreMessages(sid, messages.sortedBy { it.createdAt })
                 stateBoardRepository.restoreVersions(stateVersions.filter { it.sessionId == sid })
+                runCatching { citationStore.restoreChat(citations.filter { it.sessionId == sid }) }
             }
         }
     }
@@ -3312,6 +3317,8 @@ class ChatViewModel(
             val current = store.getSession(sessionId)?.messages.orEmpty()
             val removalIds = targetIds.flatMapTo(linkedSetOf()) { messageRemovalIds(current, it) }
             val messagesToRestore = current.filter { it.id in removalIds }
+            // 删除会级联删掉这些回答的引用记录，先保存一份供撤销放回。
+            val citations = runCatching { citationStore.snapshotChat(removalIds) }.getOrDefault(emptyList())
             val stateVersions = messageManager.deleteMessagesWithStateUndo(sessionId, targetIds) { targetSession ->
                 if (_currentSessionId.value == targetSession) stopGeneration()
                 else {
@@ -3324,6 +3331,7 @@ class ChatViewModel(
                 }
             }
             lastDeletedStateVersions = stateVersions
+            lastDeletedCitations = citations
             lastDeletedMessages.clear()
             messagesToRestore.forEach { lastDeletedMessages.add(sessionId to it) }
             _deletionUndo.value = DeletionUndo(
