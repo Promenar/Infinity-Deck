@@ -62,6 +62,8 @@ data class PendingDocument(
     val total: Int? = null,
     /** 最近一次可读错误，重试期间仍可展示。 */
     val lastError: String? = null,
+    /** [PendingKind.GRAPH_ATTENTION] 中属于“图谱等待确认用量”的一类；为假时是图谱失败或预算停止。 */
+    val graphConfirmation: Boolean = false,
 )
 
 data class LibraryDocumentSummary(

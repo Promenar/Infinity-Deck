@@ -43,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Hub
@@ -79,12 +80,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -103,6 +106,9 @@ import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.IndexingIndicator
+import com.promenar.infinity.domain.library.DocumentGraphState
+import com.promenar.infinity.domain.library.GraphStopReason
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.LocalInfinitySettingsLeading
@@ -486,7 +492,8 @@ private fun indexingStatusText(doc: PendingDocument): String {
 @Composable
 private fun PendingRow(doc: PendingDocument, busy: Boolean, onOpen: () -> Unit, onResolve: () -> Unit) {
     val icon = when (doc.kind) {
-        PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> Icons.Rounded.ErrorOutline
+        PendingKind.FAILED -> Icons.Rounded.ErrorOutline
+        PendingKind.GRAPH_ATTENTION -> Icons.Rounded.Hub
         PendingKind.QUEUED -> Icons.Rounded.HourglassTop
         PendingKind.INDEXING -> Icons.Rounded.Sync
         PendingKind.STALE -> Icons.Rounded.Edit
@@ -504,12 +511,13 @@ private fun PendingRow(doc: PendingDocument, busy: Boolean, onOpen: () -> Unit, 
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(InfinitySpacing.RowIconSize))
         Column(Modifier.weight(1f)) {
             Text(doc.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            // 状态单行：列表各项等高，完整错误进文档页查看。
-            Text(pendingStatusText(doc), style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // 状态单行：索引指示在前、文字在后，列表各项等高；完整错误进文档页查看。
+            PendingStatusLine(doc, tint)
             Text(doc.folderPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val action = when (doc.kind) {
-            PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> R.string.library_action_retry
+            PendingKind.FAILED -> R.string.library_action_retry
+            PendingKind.GRAPH_ATTENTION -> if (doc.graphConfirmation) R.string.library_action_confirm_graph else R.string.library_action_retry_graph
             PendingKind.STALE -> R.string.library_action_rebuild
             else -> null
         }
@@ -518,6 +526,22 @@ private fun PendingRow(doc: PendingDocument, busy: Boolean, onOpen: () -> Unit, 
         }
     }
 }
+
+/** 一行状态：有索引进度时先画与生成指示同风格的索引指示；行高固定，有无指示的行一样高。 */
+@Composable
+private fun PendingStatusLine(doc: PendingDocument, color: Color, style: TextStyle = MaterialTheme.typography.labelMedium) {
+    Row(
+        Modifier.heightIn(min = PendingStatusLineHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    ) {
+        doc.indexMotionState()?.let { IndexingIndicator(it) }
+        Text(pendingStatusText(doc), style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** 最高的索引指示（两种 ∞）为 16dp。 */
+private val PendingStatusLineHeight = 18.dp
 
 @Composable
 private fun DocumentRow(doc: LibraryDocumentSummary, onOpen: () -> Unit) {
@@ -693,7 +717,10 @@ private fun LibraryDocumentPage(
     uplinkTitle: String?,
     onUplink: () -> Unit,
 ) {
-    val insight by produceState<Loaded<DocumentInsight>>(Loaded.Loading, documentId) {
+    val pendingList by host.viewModel.pending.collectAsStateWithLifecycle()
+    val livePending = pendingList.firstOrNull { it.documentId == documentId }
+    // 阶段变化（含离开待处理列表）时重读快照，图谱状态与实体随之更新；进度数字不触发重读。
+    val insight by produceState<Loaded<DocumentInsight>>(Loaded.Loading, documentId, livePending?.kind, livePending?.stage) {
         value = Loaded.Ready(host.viewModel.insight(documentId))
     }
     val body by produceState<Loaded<DocumentBody>>(Loaded.Loading, documentId) {
@@ -762,7 +789,7 @@ private fun LibraryDocumentPage(
                             .padding(top = padding.calculateTopPadding(), end = InfinitySpacing.ScreenHorizontal, bottom = padding.calculateBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
                     ) {
-                        info?.let { DocumentInspector(it, host) }
+                        info?.let { DocumentInspector(it, livePending, host) }
                         DocumentCitationsCard(documentId, host)
                     }
                 }
@@ -771,7 +798,7 @@ private fun LibraryDocumentPage(
                     locateBar()
                     Column(Modifier.weight(1f).then(bodyModifier).padding(padding), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
                         DocumentBodyView(body, located, focus, bodyScroll) { viewportTop }
-                        info?.let { DocumentInspector(it, host) }
+                        info?.let { DocumentInspector(it, livePending, host) }
                         DocumentCitationsCard(documentId, host)
                     }
                 }
@@ -834,27 +861,35 @@ private fun DocumentBodyState(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DocumentInspector(info: DocumentInsight, host: LibraryPageHost) {
+private fun DocumentInspector(info: DocumentInsight, livePending: PendingDocument?, host: LibraryPageHost) {
     val context = LocalContext.current
     val busy by host.viewModel.busyDocuments.collectAsStateWithLifecycle()
     LibraryCard(title = stringResource(R.string.library_doc_agent_view)) {
-        val status = info.pending?.let {
-            pendingStatusText(PendingDocument(info.documentId, info.ref, info.name, info.folderPath, it, info.failureReason))
-        } ?: stringResource(R.string.library_doc_status_indexed)
-        InspectorRow(stringResource(R.string.library_doc_status), status)
-        val action = when (info.pending) {
-            PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> R.string.library_action_retry
+        // 进度随待处理列表实时更新；列表里没有这篇时按快照显示。
+        val pending = livePending
+            ?: info.pending?.let { PendingDocument(info.documentId, info.ref, info.name, info.folderPath, it, info.failureReason) }
+        Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)) {
+            Text(stringResource(R.string.library_doc_status), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (pending != null) {
+                PendingStatusLine(pending, MaterialTheme.colorScheme.onSurface, MaterialTheme.typography.bodyMedium)
+            } else {
+                Text(stringResource(R.string.library_doc_status_indexed), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        val action = when (pending?.kind) {
+            PendingKind.FAILED -> R.string.library_action_retry
             PendingKind.STALE -> R.string.library_action_rebuild
             else -> null
         }
         if (action != null) {
             FilledTonalButton(
-                onClick = { if (info.pending == PendingKind.FAILED || info.pending == PendingKind.GRAPH_ATTENTION) host.viewModel.retry(info.documentId) else host.viewModel.rebuild(info.documentId) },
+                onClick = { if (pending?.kind == PendingKind.FAILED) host.viewModel.retry(info.documentId) else host.viewModel.rebuild(info.documentId) },
                 enabled = info.documentId !in busy,
                 modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
             ) { Text(stringResource(action), maxLines = 1) }
         }
         InspectorRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
+        DocumentGraphRow(info, pending, enabled = info.documentId !in busy, host)
         Column(Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)) {
             Text(stringResource(R.string.library_doc_entities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (info.entities.isEmpty()) {
@@ -886,6 +921,53 @@ private fun DocumentInspector(info: DocumentInsight, host: LibraryPageHost) {
         )
         info.source?.let { InspectorRow(stringResource(R.string.library_doc_source), it) }
         if (info.versionCount > 0) InspectorRow(stringResource(R.string.library_doc_versions), info.versionCount.toString())
+    }
+}
+
+/** 文档的知识图谱状态与对应动作：抽取、确认用量或重试。抽取中的进度由上方状态行的索引指示表达。 */
+@Composable
+private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
+    val graph = info.graph
+    val text = when (graph) {
+        DocumentGraphState.NotExtracted -> stringResource(R.string.library_graph_state_none)
+        is DocumentGraphState.Extracting -> {
+            val total = graph.total?.takeIf { it > 0 }
+            if (total != null && graph.processed != null) stringResource(R.string.library_graph_state_extracting_progress, graph.processed, total)
+            else stringResource(R.string.library_graph_state_extracting)
+        }
+        is DocumentGraphState.Complete -> stringResource(R.string.library_graph_state_complete, graph.entities, graph.relations)
+        is DocumentGraphState.Partial -> stringResource(
+            R.string.library_graph_state_partial,
+            graph.processed,
+            graph.total,
+            stringResource(
+                when (graph.reason) {
+                    GraphStopReason.CALLS -> R.string.library_graph_budget_calls
+                    GraphStopReason.OUTPUT_TOKENS -> R.string.library_graph_budget_output
+                    GraphStopReason.DURATION -> R.string.library_graph_budget_duration
+                },
+            ),
+        )
+        is DocumentGraphState.ConfirmationRequired -> stringResource(R.string.library_graph_state_confirm)
+        is DocumentGraphState.Failed -> graph.reason
+    }
+    InspectorRow(stringResource(R.string.library_graph_row), text)
+    // 文档还在排队、索引或解析失败时，先处理索引本身。
+    val indexBusy = pending?.kind in setOf(PendingKind.QUEUED, PendingKind.INDEXING, PendingKind.FAILED)
+    val action: Pair<Int, () -> Unit>? = if (indexBusy) null else when (graph) {
+        DocumentGraphState.NotExtracted, is DocumentGraphState.ConfirmationRequired ->
+            (if (graph is DocumentGraphState.ConfirmationRequired) R.string.library_action_confirm_graph else R.string.library_action_extract_graph) to
+                { host.viewModel.requestGraphExtraction(info.documentId, info.name) }
+        is DocumentGraphState.Partial, is DocumentGraphState.Failed ->
+            R.string.library_action_retry_graph to { host.viewModel.retry(info.documentId) }
+        is DocumentGraphState.Extracting, is DocumentGraphState.Complete -> null
+    }
+    if (action != null) {
+        FilledTonalButton(
+            onClick = action.second,
+            enabled = enabled,
+            modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
+        ) { Text(stringResource(action.first), maxLines = 1) }
     }
 }
 

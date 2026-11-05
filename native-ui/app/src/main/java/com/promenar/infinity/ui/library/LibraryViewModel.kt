@@ -16,6 +16,7 @@ import com.promenar.infinity.domain.library.KnowledgeCitationRepository
 import com.promenar.infinity.domain.library.DocumentBody
 import com.promenar.infinity.domain.library.DocumentInsight
 import com.promenar.infinity.domain.library.FragmentGroup
+import com.promenar.infinity.domain.library.GraphEstimate
 import com.promenar.infinity.domain.library.LibraryActionResult
 import com.promenar.infinity.domain.library.LibraryDocumentSummary
 import com.promenar.infinity.domain.library.LibraryKnowledgeSource
@@ -38,8 +39,11 @@ sealed interface LibraryNotice {
     data class ActionDone(val kind: Kind) : LibraryNotice
     data class ActionFailed(val kind: Kind, val reason: String?) : LibraryNotice
 
-    enum class Kind { RETRY, REBUILD, IMPORT, NOTE, CLEAR_FRAGMENTS, DELETE_FRAGMENT }
+    enum class Kind { RETRY, REBUILD, GRAPH, IMPORT, NOTE, CLEAR_FRAGMENTS, DELETE_FRAGMENT }
 }
+
+/** 抽取知识图谱前展示给用户确认的用量估算。 */
+data class GraphExtractionRequest(val documentId: String, val name: String, val estimate: GraphEstimate)
 
 /** 左列与外屏“文件”页的位置分组：位置、固定的文件夹。 */
 data class LibraryLocations(
@@ -115,7 +119,9 @@ class LibraryViewModel(
     /** 待处理文档的主动作：失败重试，过旧重建；排队与索引中不提供动作。 */
     fun resolve(document: PendingDocument) {
         when (document.kind) {
-            PendingKind.FAILED, PendingKind.GRAPH_ATTENTION -> retry(document.documentId)
+            PendingKind.GRAPH_ATTENTION ->
+                if (document.graphConfirmation) requestGraphExtraction(document.documentId, document.name) else retry(document.documentId)
+            PendingKind.FAILED -> retry(document.documentId)
             PendingKind.STALE -> rebuild(document.documentId)
             PendingKind.QUEUED, PendingKind.INDEXING -> Unit
         }
@@ -123,6 +129,39 @@ class LibraryViewModel(
 
     fun retry(documentId: String) = runDocumentAction(documentId, LibraryNotice.Kind.RETRY) { knowledge.retry(documentId) }
     fun rebuild(documentId: String) = runDocumentAction(documentId, LibraryNotice.Kind.REBUILD) { knowledge.rebuild(documentId) }
+
+    private val _graphRequest = MutableStateFlow<GraphExtractionRequest?>(null)
+
+    /** 等待用户确认的图谱抽取；为 null 时不显示确认框。 */
+    val graphRequest: StateFlow<GraphExtractionRequest?> = _graphRequest.asStateFlow()
+
+    /**
+     * 抽取知识图谱的入口：先按当前图谱设置估算用量，交给确认框展示，用户确认后才发起请求。
+     * 无论文档是否超过大文档门槛都先确认，抽取总会产生模型费用。
+     */
+    fun requestGraphExtraction(documentId: String, name: String) {
+        if (documentId in _busyDocuments.value) return
+        _busyDocuments.value = _busyDocuments.value + documentId
+        viewModelScope.launch {
+            try {
+                val estimate = runCatchingCancellable { knowledge.graphEstimate(documentId) }
+                if (estimate == null) _notice.value = LibraryNotice.ActionFailed(LibraryNotice.Kind.GRAPH, null)
+                else _graphRequest.value = GraphExtractionRequest(documentId, name, estimate)
+            } finally {
+                _busyDocuments.value = _busyDocuments.value - documentId
+            }
+        }
+    }
+
+    fun confirmGraphExtraction() {
+        val request = _graphRequest.value ?: return
+        _graphRequest.value = null
+        runDocumentAction(request.documentId, LibraryNotice.Kind.GRAPH) { knowledge.extractGraph(request.documentId, confirmed = true) }
+    }
+
+    fun dismissGraphExtraction() {
+        _graphRequest.value = null
+    }
 
     private fun runDocumentAction(documentId: String, kind: LibraryNotice.Kind, action: suspend () -> LibraryActionResult) {
         if (documentId in _busyDocuments.value) return

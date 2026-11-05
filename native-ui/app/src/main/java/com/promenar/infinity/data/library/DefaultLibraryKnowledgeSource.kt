@@ -445,6 +445,7 @@ internal fun pendingDocuments(
             processed = total?.let { task?.processed },
             total = total,
             lastError = task?.error?.takeUnless { it.startsWith("kg.") },
+            graphConfirmation = kind == PendingKind.GRAPH_ATTENTION && task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED,
         )
     }.sortedWith(compareBy<PendingDocument> { when (it.kind) {
         PendingKind.FAILED -> 0

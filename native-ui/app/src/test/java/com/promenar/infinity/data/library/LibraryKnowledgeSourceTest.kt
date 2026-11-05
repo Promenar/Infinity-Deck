@@ -152,6 +152,7 @@ class LibraryKnowledgeSourceTest {
         queue.value = VectorizationQueue.QueueState(listOf(task), task, false)
         assertThat(source.observePending().first().single().reason).isEqualTo("需要确认用量")
         assertThat(source.observePending().first().single().kind).isEqualTo(PendingKind.GRAPH_ATTENTION)
+        assertThat(source.observePending().first().single().graphConfirmation).isTrue()
         assertThat(source.retry("doc")).isEqualTo(com.promenar.infinity.domain.library.LibraryActionResult.Failed("需要确认用量"))
     }
 
@@ -186,6 +187,7 @@ class LibraryKnowledgeSourceTest {
         setTask("partial", "kg.budget.calls")
         assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Partial(2, 4, GraphStopReason.CALLS))
         assertThat(source.observePending().first().single().kind).isEqualTo(PendingKind.GRAPH_ATTENTION)
+        assertThat(source.observePending().first().single().graphConfirmation).isFalse()
         setTask("partial", "kg.budget.output_tokens")
         assertThat(source.insight("doc")!!.graph).isEqualTo(DocumentGraphState.Partial(2, 4, GraphStopReason.OUTPUT_TOKENS))
         setTask("partial", "kg.budget.duration")

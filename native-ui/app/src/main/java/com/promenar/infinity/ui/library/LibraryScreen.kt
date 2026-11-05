@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.domain.library.ChunkLocator
 import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.ui.common.FocusDismissArea
@@ -133,6 +134,7 @@ fun LibraryScreen(
 
     BackHandler(enabled = navigator.handlesBack) { navigator.handleBack() }
     LibraryNoticeEffect(viewModel, snackbar)
+    LibraryGraphConfirmDialog(viewModel)
 
     val host = LibraryPageHost(
         viewModel = viewModel,
@@ -276,12 +278,35 @@ internal sealed interface LibraryLeading {
 /** 标题下方“‹ 上一页名称”：[key] 为上一页的键。 */
 internal data class LibraryUplink(val key: String, val onClick: () -> Unit)
 
+/** 抽取知识图谱前的用量确认：模型、分块数、调用次数与输出上限。 */
+@Composable
+private fun LibraryGraphConfirmDialog(viewModel: LibraryViewModel) {
+    val request by viewModel.graphRequest.collectAsStateWithLifecycle()
+    val current = request ?: return
+    val estimate = current.estimate
+    val model = estimate.modelDisplayName ?: stringResource(R.string.library_graph_confirm_model_unknown)
+    InfinityConfirmDialog(
+        title = stringResource(R.string.library_graph_confirm_title),
+        message = stringResource(
+            R.string.library_graph_confirm_message,
+            model,
+            estimate.chunks,
+            estimate.calls,
+            java.text.NumberFormat.getIntegerInstance().format(estimate.maxOutputTokens),
+        ),
+        confirmText = stringResource(R.string.library_graph_confirm_start),
+        onConfirm = viewModel::confirmGraphExtraction,
+        onCancel = viewModel::dismissGraphExtraction,
+    )
+}
+
 @Composable
 private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarHostState) {
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val doneTexts = mapOf(
         LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_done),
         LibraryNotice.Kind.REBUILD to stringResource(R.string.library_notice_rebuild_done),
+        LibraryNotice.Kind.GRAPH to stringResource(R.string.library_notice_graph_done),
         LibraryNotice.Kind.IMPORT to stringResource(R.string.library_notice_import_done),
         LibraryNotice.Kind.NOTE to stringResource(R.string.library_notice_note_done),
         LibraryNotice.Kind.CLEAR_FRAGMENTS to stringResource(R.string.library_notice_clear_done),
@@ -289,6 +314,7 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
     val failedTexts = mapOf(
         LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_failed),
         LibraryNotice.Kind.REBUILD to stringResource(R.string.library_notice_rebuild_failed),
+        LibraryNotice.Kind.GRAPH to stringResource(R.string.library_notice_graph_failed),
         LibraryNotice.Kind.IMPORT to stringResource(R.string.library_notice_import_failed),
         LibraryNotice.Kind.NOTE to stringResource(R.string.library_notice_note_failed),
         LibraryNotice.Kind.CLEAR_FRAGMENTS to stringResource(R.string.library_notice_clear_failed),
