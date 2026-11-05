@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.rag
 
 import com.promenar.infinity.data.remote.ModelHttp
+import com.promenar.infinity.data.remote.ModelRequestTimeouts
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
 import com.promenar.infinity.data.remote.withModelTimeoutSupport
@@ -11,12 +12,30 @@ import com.promenar.infinity.data.remote.protocol.ProtocolType
 import io.ktor.client.*
 import io.ktor.client.call.body
 import io.ktor.client.plugins.*
+import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.Base64
+import java.util.Locale
+import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
+
+internal open class EmbeddingBatchException(
+    message: String,
+    val retryable: Boolean,
+    val httpStatus: Int? = null,
+    val retryAfterMillis: Long? = null,
+) : IllegalStateException(message)
+
+internal class EmbeddingTimeoutException : EmbeddingBatchException("向量请求超时，请检查服务响应时间", true)
 
 class EmbeddingClient(
     private val baseUrl: String,
@@ -39,20 +58,37 @@ class EmbeddingClient(
 ) {
     private val httpClient = httpClient.withModelTimeoutSupport()
     private val json = Json { ignoreUnknownKeys = true }
+    private var floatOnlySpaces: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    private fun resolvedClient(resolver: (HttpClient) -> EmbeddingClient): EmbeddingClient =
+        resolver(httpClient).also { it.floatOnlySpaces = floatOnlySpaces }
+
+    private fun shareEncodingState(client: EmbeddingClient): EmbeddingClient =
+        client.also { it.floatOnlySpaces = floatOnlySpaces }
 
     /** 固定当前远端路由，避免一次检索中的多个请求跨向量空间。 */
     internal fun frozen(): EmbeddingClient {
-        clientResolver?.let { return it(httpClient).frozen() }
+        clientResolver?.let { return resolvedClient(it).frozen() }
         val resolved = modelRouteResolver?.invoke() ?: return this
-        return EmbeddingClient(baseUrl, apiKey, model, httpClient, localEngine,
-            modelRouteResolver = { resolved }, allowLocalFallback = allowLocalFallback)
+        return shareEncodingState(EmbeddingClient(baseUrl, apiKey, model, httpClient, localEngine,
+            modelRouteResolver = { resolved }, allowLocalFallback = allowLocalFallback))
+    }
+
+    /** 索引候选的每批必须处于同一个向量空间。 */
+    internal fun frozenForIndex(): EmbeddingClient {
+        clientResolver?.let { return resolvedClient(it).frozenForIndex() }
+        val route = modelRouteResolver?.invoke()
+        val fallback = route == null && !isConfigured && allowLocalFallback
+        return shareEncodingState(EmbeddingClient(baseUrl, apiKey, model, httpClient, localEngine,
+            modelRouteResolver = route?.let { fixed -> { fixed } }, allowLocalFallback = fallback))
     }
 
     /** 仅输出摘要；端点和本地路径不会写入缓存键。 */
     internal fun vectorSpaceKey(): String? {
         clientResolver?.let { return it(httpClient).vectorSpaceKey() }
         val route = modelRouteResolver?.let { runCatching { it() }.getOrNull() ?: return null }
-        val parts = if (route?.config?.protocolType == ProtocolType.Local) {
+        val parts = if (route?.config?.protocolType == ProtocolType.Local ||
+            (route == null && !isConfigured && allowLocalFallback)) {
             val slot = localEngine?.embeddingSlot?.value ?: return null
             val path = slot.modelPath?.takeIf { slot.isLoaded && !slot.isLoading } ?: return null
             val file = java.io.File(path)
@@ -73,7 +109,8 @@ class EmbeddingClient(
     internal fun localModelGeneration(): Long? {
         clientResolver?.let { return it(httpClient).localModelGeneration() }
         val route = modelRouteResolver?.let { runCatching { it() }.getOrNull() }
-        return if (route?.config?.protocolType == ProtocolType.Local) localEngine?.embeddingModelGeneration else null
+        return if (route?.config?.protocolType == ProtocolType.Local ||
+            (route == null && !isConfigured && allowLocalFallback)) localEngine?.embeddingModelGeneration else null
     }
 
     /** 远程 Embedding 是否已配置（baseUrl 和 apiKey 均非空） */
@@ -118,15 +155,17 @@ class EmbeddingClient(
         }
     }
 
-    suspend fun embedDocuments(texts: List<String>): EmbeddingResult {
+    suspend fun embedDocuments(texts: List<String>): EmbeddingResult = embedDocuments(texts, isQuery = false)
+
+    private suspend fun embedDocuments(texts: List<String>, isQuery: Boolean): EmbeddingResult {
         if (texts.isEmpty()) throw IllegalArgumentException("No texts provided for embedding")
-        clientResolver?.let { return it(httpClient).embedDocuments(texts) }
+        clientResolver?.let { return resolvedClient(it).embedDocuments(texts, isQuery) }
         modelRouteResolver?.let { resolve ->
             val route = resolve()
             return if (route.config.protocolType == ProtocolType.Local) {
                 requireNotNull(localEngine).embedBatch(texts).getOrThrow().let { EmbeddingResult(it, null) }
             } else {
-                embedViaRemote(texts, route.requireOpenAiModelRoute())
+                embedViaRemote(texts, route.requireOpenAiModelRoute(), isQuery)
             }
         }
         // 如果远程未配置但有本地引擎，直接走本地通道
@@ -137,7 +176,7 @@ class EmbeddingClient(
             )
         }
         return try {
-            embedViaRemote(texts)
+            embedViaRemote(texts, isQuery = isQuery)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (localEngine != null && allowLocalFallback) {
@@ -151,14 +190,13 @@ class EmbeddingClient(
         }
     }
 
-    private suspend fun embedViaRemote(texts: List<String>, route: ResolvedProviderModel? = null): EmbeddingResult {
-        val batchSize = 50
+    private suspend fun embedViaRemote(texts: List<String>, route: ResolvedProviderModel? = null, isQuery: Boolean): EmbeddingResult {
         val allEmbeddings = mutableListOf<FloatArray>()
         var totalTokens = 0
 
-        for (i in texts.indices step batchSize) {
-            val batch = texts.subList(i, minOf(i + batchSize, texts.size))
-            val result = embedBatch(batch, route)
+        for (range in embeddingBatchRanges(texts)) {
+            val batch = texts.slice(range)
+            val result = embedBatch(batch, route, isQuery)
             allEmbeddings.addAll(result.embeddings)
             totalTokens += result.usage?.totalTokens ?: 0
         }
@@ -170,9 +208,9 @@ class EmbeddingClient(
     }
 
     suspend fun embedQuery(text: String): Pair<FloatArray, EmbeddingUsage?> {
-        clientResolver?.let { return it(httpClient).embedQuery(text) }
+        clientResolver?.let { return resolvedClient(it).embedQuery(text) }
         if (modelRouteResolver != null) {
-            val result = embedDocuments(listOf(text))
+            val result = embedDocuments(listOf(text), isQuery = true)
             return result.embeddings.first() to result.usage
         }
         // 如果远程未配置但有本地引擎，直接走本地通道
@@ -183,7 +221,7 @@ class EmbeddingClient(
             )
         }
         return try {
-            val result = embedDocuments(listOf(text))
+            val result = embedDocuments(listOf(text), isQuery = true)
             Pair(result.embeddings.first(), result.usage)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -198,7 +236,7 @@ class EmbeddingClient(
         }
     }
 
-    private suspend fun embedBatch(texts: List<String>, route: ResolvedProviderModel? = null): EmbeddingResult {
+    private suspend fun embedBatch(texts: List<String>, route: ResolvedProviderModel? = null, isQuery: Boolean): EmbeddingResult {
         val baseUrl = route?.config?.baseUrl ?: baseUrl
         val apiKey = route?.config?.apiKey ?: apiKey
         val model = route?.remoteModelId ?: model
@@ -212,46 +250,75 @@ class EmbeddingClient(
             "$cleanBase/v1/embeddings"
         }
 
-        val requestBody = buildJsonObject {
-            put("model", model)
-            put("input", buildJsonArray { texts.forEach { add(it) } })
-        }
+        val encodingKey = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("$cleanBase\u0000$model".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        var useBase64 = encodingKey !in floatOnlySpaces
+        while (true) {
+            val requestBody = buildJsonObject {
+                put("model", model)
+                put("input", buildJsonArray { texts.forEach { add(it) } })
+                if (useBase64) put("encoding_format", "base64")
+            }
+            val (response, responseText) = try {
+                val response = httpClient.post(endpoint) {
+                    expectSuccess = false
+                    if (isQuery) applyModelTimeout(ModelTimeoutKind.EMBEDDING) else {
+                        val idle = ModelRequestTimeouts.socketMillis(ModelTimeoutKind.EMBEDDING)
+                        timeout {
+                            socketTimeoutMillis = idle
+                            requestTimeoutMillis = maxOf(120_000L, idle * 4)
+                        }
+                    }
+                    contentType(ContentType.Application.Json)
+                    header("Authorization", "Bearer $cleanApiKey")
+                    setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+                }
+                response to response.bodyAsText()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: IOException) {
+                if (failure is java.net.SocketTimeoutException || failure is HttpRequestTimeoutException) {
+                    throw EmbeddingTimeoutException()
+                }
+                throw EmbeddingBatchException("向量请求网络错误，请检查连接", true)
+            }
 
-        val response: HttpResponse = httpClient.post(endpoint) {
-            applyModelTimeout(ModelTimeoutKind.EMBEDDING)
-            contentType(ContentType.Application.Json)
-            header("Authorization", "Bearer $cleanApiKey")
-            setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+            if (!response.status.isSuccess()) {
+                val errObj = runCatching { json.parseToJsonElement(responseText).jsonObject }.getOrNull()
+                val detail = errObj?.get("error") as? JsonObject
+                val serverError = (detail?.get("message") as? JsonPrimitive)?.contentOrNull
+                    ?: (errObj?.get("message") as? JsonPrimitive)?.contentOrNull
+                val errorParameter = (detail?.get("param") as? JsonPrimitive)?.contentOrNull
+                val errorCode = (detail?.get("code") as? JsonPrimitive)?.contentOrNull
+                val status = response.status.value
+                if (useBase64 && status in 400..499 && status != 429 &&
+                    unsupportedEncodingFormat(serverError, errorParameter, errorCode)) {
+                    floatOnlySpaces.add(encodingKey)
+                    useBase64 = false
+                    continue
+                }
+                throw EmbeddingBatchException(
+                    "HTTP $status：${summarizeEmbeddingError(serverError, status)}",
+                    status == 429 || status in 500..599, status,
+                    retryAfterMillis = parseEmbeddingRetryAfter(response.headers[HttpHeaders.RetryAfter]),
+                )
+            }
+            val jsonResponse = try { json.parseToJsonElement(responseText).jsonObject }
+                catch (_: IllegalArgumentException) { throw IllegalStateException("Embedding 响应格式无效") }
+            val data = jsonResponse["data"] as? JsonArray ?: throw IllegalStateException(
+                runCatching {
+                    jsonResponse["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
+                        ?: jsonResponse["message"]?.jsonPrimitive?.content
+                }.getOrNull()?.let { summarizeEmbeddingError(it, null) } ?: "Missing data array in embedding response"
+            )
+            val (embeddings, returnedFloats) = parseEmbeddingData(data, texts.size)
+            if (useBase64 && returnedFloats) floatOnlySpaces.add(encodingKey)
+            val usage = (jsonResponse["usage"] as? JsonObject)?.let { usageObj ->
+                EmbeddingUsage((usageObj["total_tokens"] as? JsonPrimitive)?.intOrNull ?: 0)
+            }
+            return EmbeddingResult(embeddings = embeddings, usage = usage)
         }
-
-        val responseText = response.bodyAsText()
-        if (!response.status.isSuccess()) {
-            val serverError = runCatching {
-                val errObj = json.parseToJsonElement(responseText).jsonObject
-                errObj["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
-                    ?: errObj["message"]?.jsonPrimitive?.content
-            }.getOrNull()
-            throw IllegalStateException(serverError ?: "Embedding 请求失败 (${response.status.value}): ${responseText.take(120)}")
-        }
-        val jsonResponse = json.parseToJsonElement(responseText).jsonObject
-
-        val data = jsonResponse["data"]?.jsonArray ?: throw IllegalStateException(
-            runCatching {
-                jsonResponse["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
-                    ?: jsonResponse["message"]?.jsonPrimitive?.content
-            }.getOrNull() ?: "Missing data array in embedding response"
-        )
-        val embeddings = data.map { item ->
-            val embeddingArray = item.jsonObject["embedding"]?.jsonArray
-                ?: throw IllegalStateException("Missing embedding array")
-            FloatArray(embeddingArray.size) { i -> embeddingArray[i].jsonPrimitive.float }
-        }
-
-        val usage = jsonResponse["usage"]?.jsonObject?.let { usageObj ->
-            EmbeddingUsage(usageObj["total_tokens"]?.jsonPrimitive?.int ?: 0)
-        }
-
-        return EmbeddingResult(embeddings = embeddings, usage = usage)
     }
 
     suspend fun embedLocal(text: String): Result<FloatArray> {
@@ -267,4 +334,82 @@ class EmbeddingClient(
             ?: return Result.failure(IllegalStateException("Local engine not configured"))
         return engine.embedBatch(texts)
     }
+}
+
+private fun unsupportedEncodingFormat(message: String?, parameter: String?, code: String?): Boolean {
+    val text = listOfNotNull(message, code).joinToString(" ").lowercase(Locale.ROOT)
+    return (parameter?.equals("encoding_format", ignoreCase = true) == true || "encoding_format" in text) && listOf(
+        "unsupported", "not support", "not supported", "unknown", "unrecognized", "unrecognised",
+        "not allowed", "not permitted", "extra", "invalid", "not implemented", "不支持", "未知",
+    ).any { it in text }
+}
+
+/** 上游可能回显正文或凭据，只把可识别的错误类别映射为固定文案。 */
+private fun summarizeEmbeddingError(message: String?, status: Int?): String {
+    val text = message?.lowercase(Locale.ROOT).orEmpty()
+    return when {
+        status == 429 || "rate limit" in text || "限流" in text -> "服务限流"
+        status == 401 || status == 403 -> "服务认证或访问权限不足"
+        listOf("too long", "context length", "maximum context", "token limit", "输入过长", "超出长度").any { it in text } -> "输入过长或超过模型上下文限制"
+        listOf("quota", "insufficient balance", "额度不足", "余额不足").any { it in text } -> "服务额度不足"
+        listOf("model not found", "unknown model", "invalid model", "模型不存在").any { it in text } -> "模型不可用或不存在"
+        listOf("overload", "server busy", "服务繁忙").any { it in text } -> "服务繁忙"
+        status != null && status >= 500 -> "上游服务发生错误"
+        else -> "上游拒绝请求"
+    }
+}
+
+private fun parseEmbeddingData(data: JsonArray, expectedCount: Int): Pair<List<FloatArray>, Boolean> {
+    check(data.size == expectedCount) { "Embedding 数量与切块不一致" }
+    val items = data.map { it as? JsonObject ?: throw IllegalStateException("Embedding 数据格式无效") }
+    val indexes = items.map { item -> (item["index"] as? JsonPrimitive)?.intOrNull }
+    val ordered = if (items.any { it.containsKey("index") }) {
+        check(indexes.all { it != null } && indexes.filterNotNull().sorted() == items.indices.toList()) {
+            "Embedding 响应索引无效"
+        }
+        items.zip(indexes).sortedBy { it.second }.map { it.first }
+    } else items
+    var returnedFloats = false
+    val embeddings = ordered.map { item ->
+        val vector = when (val value = item["embedding"]) {
+            is JsonArray -> {
+                returnedFloats = true
+                check(value.size in 1..65_536) { "Embedding 向量维度无效" }
+                FloatArray(value.size) { i ->
+                    val element = value[i] as? JsonPrimitive
+                    check(element != null && !element.isString) { "Embedding 数值无效" }
+                    element.floatOrNull ?: throw IllegalStateException("Embedding 数值无效")
+                }
+            }
+            is JsonPrimitive -> {
+                check(value.isString) { "Embedding 响应格式无效" }
+                val bytes = try { Base64.getDecoder().decode(value.content) }
+                    catch (_: IllegalArgumentException) { throw IllegalStateException("Embedding base64 响应无效") }
+                check(bytes.isNotEmpty() && bytes.size <= 65_536 * Float.SIZE_BYTES && bytes.size % Float.SIZE_BYTES == 0) {
+                    "Embedding base64 字节长度无效"
+                }
+                val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                FloatArray(bytes.size / Float.SIZE_BYTES) { buffer.float }
+            }
+            else -> throw IllegalStateException("Missing embedding array")
+        }
+        check(vector.all(Float::isFinite)) { "Embedding 数值无效" }
+        vector
+    }
+    return embeddings to returnedFloats
+}
+
+private fun parseEmbeddingRetryAfter(value: String?): Long? {
+    val input = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    input.toLongOrNull()?.let { seconds ->
+        if (seconds < 0 || seconds > Long.MAX_VALUE / 1_000) return null
+        return seconds * 1_000
+    }
+    return runCatching {
+        val parser = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).apply {
+            isLenient = false
+            timeZone = TimeZone.getTimeZone("GMT")
+        }
+        (checkNotNull(parser.parse(input)).time - System.currentTimeMillis()).coerceAtLeast(0)
+    }.getOrNull()
 }

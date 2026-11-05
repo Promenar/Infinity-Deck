@@ -1,6 +1,5 @@
 package com.promenar.infinity.data.rag
 
-import android.util.Log
 import com.promenar.infinity.data.local.db.dao.VectorDao
 import com.promenar.infinity.data.local.db.dao.VectorizationTaskDao
 import com.promenar.infinity.data.local.db.dao.VectorizationTaskTargetUpsertOutcome
@@ -423,6 +422,7 @@ class VectorizationQueue(
             task.status = if (task.contentTruncated || graphPartial) "partial" else "completed"
             retryCountMap.remove(retryKey)
             if (!graphPartial) {
+                task.error = null
                 task.progress = 100.0
                 task.subStatus = if (task.contentTruncated) "已完成安全前缀索引（内容截断）" else "处理完成"
             }
@@ -447,10 +447,10 @@ class VectorizationQueue(
         } catch (error: Exception) {
             val msg = error.message?.lowercase() ?: ""
 
-            val isRetryable = msg.contains("network") ||
-                msg.contains("timeout") ||
-                msg.contains("fetch failed") ||
-                msg.contains("5")
+            val isRetryable = if (error is EmbeddingBatchException) {
+                task.type != TYPE_DOCUMENT_REFERENCE && error.retryable
+            } else msg.contains("network") || msg.contains("timeout") ||
+                msg.contains("fetch failed") || msg.contains("5")
 
             val currentRetries = retryCountMap[retryKey] ?: 0
 
@@ -467,7 +467,8 @@ class VectorizationQueue(
                     InfinityLogger.logError("VectorQueue.processNext", error)
                     InfinityLogger.log("[VectorQueue] 可重试错误 (${currentRetries + 1}/$MAX_RETRIES): ${error.message?.take(100)}")
                     notifyStateChange()
-                    val delayMs = minOf(3000L * (1L shl currentRetries), 15000L)
+                    val delayMs = maxOf(minOf(3000L * (1L shl currentRetries), 15000L),
+                        (error as? EmbeddingBatchException)?.retryAfterMillis ?: 0L)
                     beforeRetryDelayForTest()
                     delay(delayMs)
                     delegatedRetry = true
@@ -642,6 +643,7 @@ class VectorizationQueue(
         task.subStatus = "正在构建事务索引候选..."
         saveTaskToDb(task)
         notifyStateChange()
+        var lastEmbeddingWrite = System.nanoTime() / 1_000_000
         when (val result = service.rebuild(FileIndexEvent.Changed(
             workspaceRootUuid = workspaceRootUuid,
             fileUuid = docId,
@@ -651,6 +653,39 @@ class VectorizationQueue(
             kgStrategy = task.kgStrategy,
             useConfiguredKgStrategy = false,
             activeTaskId = task.id,
+            onEmbeddingProgress = { progress ->
+                currentCoroutineContext().ensureActive()
+                task.status = "vectorizing"
+                task.totalChunks = progress.total
+                task.lastChunkIndex = progress.processed
+                task.progress = if (progress.total == 0) 100.0 else 100.0 * progress.processed / progress.total
+                task.error = progress.lastError
+                task.subStatus = if (progress.isRetrying) "向量批次重试中：${progress.lastError}"
+                    else "正在向量化 ${progress.processed}/${progress.total}"
+                val now = System.nanoTime() / 1_000_000
+                if (now - lastEmbeddingWrite >= 1_000) {
+                    saveTaskToDb(task)
+                    lastEmbeddingWrite = now
+                }
+                notifyStateChange()
+            },
+            onGraphStart = {
+                currentCoroutineContext().ensureActive()
+                task.status = "extracting"
+                task.totalChunks = null
+                task.lastChunkIndex = 0
+                task.progress = 0.0
+                task.subStatus = "正在抽取知识图谱"
+                saveTaskToDb(task)
+                notifyStateChange()
+            },
+            onSaving = {
+                currentCoroutineContext().ensureActive()
+                task.status = "saving"
+                task.subStatus = "正在提交文档索引"
+                saveTaskToDb(task)
+                notifyStateChange()
+            },
             onKgProgress = { progress ->
                 currentCoroutineContext().ensureActive()
                 task.status = "extracting"
@@ -778,8 +813,7 @@ class VectorizationQueue(
     fun getQueueLength(): Int = synchronized(queueLock) { queue.size }
 
     fun snapshotState(): QueueState = synchronized(queueLock) {
-        val snapshot = queue + retainedAttention
-        QueueState(snapshot, snapshot.firstOrNull(), isProcessing, restored, queue.mapTo(mutableSetOf()) { it.id })
+        snapshotVectorizationQueueState(queue + retainedAttention, isProcessing, restored, queue.mapTo(mutableSetOf()) { it.id })
     }
 
     suspend fun cancelAndJoin(workspaceRootUuid: String, docIds: Collection<String>) {
@@ -1004,8 +1038,10 @@ class VectorizationQueue(
         try {
             cleanupCompletedTasks()
             vectorizationTaskDao.deleteOrphanSessionStateTasks()
-            vectorizationTaskDao.markStaleAsInterrupted(System.currentTimeMillis() - 30_000)
-            vectorizationTaskDao.recoverSessionStateProcessing(synchronized(queueLock) { processingTask?.id })
+            val activeTaskId = synchronized(queueLock) { processingTask?.id }
+            vectorizationTaskDao.markStaleAsInterrupted(System.currentTimeMillis() - 30_000, activeTaskId)
+            vectorizationTaskDao.recoverDocumentReferenceProcessing(activeTaskId)
+            vectorizationTaskDao.recoverSessionStateProcessing(activeTaskId)
             val interruptedTasks = normalizeRecoverableTasks(
                 vectorizationTaskDao.getRecoverableTasks(),
             )
@@ -1287,6 +1323,7 @@ class VectorizationQueue(
     }
 
     private fun getFriendlyErrorMessage(error: Throwable): String {
+        if (error is EmbeddingBatchException) return error.message ?: "向量请求失败"
         val msg = error.message?.lowercase() ?: ""
         return when {
             msg.contains("api key") || msg.contains("401") -> "API key invalid"
@@ -1330,6 +1367,8 @@ class VectorizationQueue(
             targets.forEach { target ->
                 runCatching { graphExtractor?.clearCheckpoints(target.docId) }
                     .onFailure { InfinityLogger.log("[KG] 删除后的断点清理失败") }
+                runCatching { documentIndexService?.clearEmbeddingCheckpoints(target.workspaceRootUuid, target.docId) }
+                    .onFailure { InfinityLogger.log("[向量] 删除后的断点清理失败") }
             }
             synchronized(queueLock) {
                 fencedTargets.removeAll(targets)

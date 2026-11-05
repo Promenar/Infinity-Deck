@@ -68,6 +68,104 @@ class VectorizationQueueRoomTest {
     }
 
     @Test
+    fun `进程重启后立即恢复未超过三十秒的向量化任务`() = runTest {
+        seedFileAndTask("vectorizing")
+        val existing = checkNotNull(database.vectorizationTaskDao().getById(TASK))
+        database.vectorizationTaskDao().update(existing.copy(updatedAt = System.currentTimeMillis()))
+        val service = BlockingDocumentIndexService()
+        val queue = queue(StandardTestDispatcher(testScheduler), documentIndexService = service)
+        try {
+            assertThat(queue.resumeInterruptedTasks().isSuccess).isTrue()
+            // Room 写入在真实线程上完成，等待服务实际被调用，而不是只推进虚拟调度器。
+            service.firstStarted.await()
+            assertThat(service.firstStarted.isCompleted).isTrue()
+        } finally {
+            queue.shutdown()
+        }
+    }
+
+    @Test
+    fun `恢复扫描不把运行中的慢批次标为中断`() = runTest {
+        seedFileAndTask("vectorizing")
+        val dao = database.vectorizationTaskDao()
+        val task = checkNotNull(dao.getById(TASK))
+        dao.update(task.copy(updatedAt = 1))
+
+        dao.markStaleAsInterrupted(2, TASK)
+        assertThat(dao.getById(TASK)?.status).isEqualTo("vectorizing")
+        dao.markStaleAsInterrupted(2, null)
+        assertThat(dao.getById(TASK)?.status).isEqualTo("interrupted")
+    }
+
+    @Test
+    fun `向量批次进度和重试错误发布为独立状态快照`() = runTest {
+        seedFilesWithoutTask()
+        val ready = CompletableDeferred<Unit>()
+        val advance = CompletableDeferred<Unit>()
+        val updated = CompletableDeferred<Unit>()
+        val service = object : DocumentIndexService {
+            override suspend fun rebuild(event: FileIndexEvent): DocumentIndexResult {
+                event as FileIndexEvent.Changed
+                event.onEmbeddingProgress(EmbeddingBatchProgress(0, 35))
+                ready.complete(Unit)
+                advance.await()
+                event.onEmbeddingProgress(EmbeddingBatchProgress(16, 35, "HTTP 429：限流"))
+                updated.complete(Unit)
+                awaitCancellation()
+            }
+            override suspend fun delete(workspaceRootUuid: String, fileUuid: String) = DocumentIndexResult.Deleted(fileUuid)
+        }
+        val queue = queue(StandardTestDispatcher(testScheduler), documentIndexService = service)
+        try {
+            queue.enqueueDocumentReference(ROOT, DOC, source.name, "text/plain", "hash-v1", 2)
+            ready.await()
+            val previous = queue.state.value
+            assertThat(previous.currentTask?.lastChunkIndex).isEqualTo(0)
+            advance.complete(Unit)
+            updated.await()
+            val current = queue.state.value
+            assertThat(current.currentTask?.status).isEqualTo("vectorizing")
+            assertThat(current.currentTask?.lastChunkIndex).isEqualTo(16)
+            assertThat(current.currentTask?.totalChunks).isEqualTo(35)
+            assertThat(current.currentTask?.error).isEqualTo("HTTP 429：限流")
+            assertThat(previous.currentTask?.lastChunkIndex).isEqualTo(0)
+            assertThat(current).isNotEqualTo(previous)
+        } finally {
+            queue.shutdown()
+        }
+    }
+
+    @Test
+    fun `批次重试耗尽后队列不再整任务重试并保留错误摘要`() = runTest {
+        seedFilesWithoutTask()
+        var calls = 0
+        val service = object : DocumentIndexService {
+            override suspend fun rebuild(event: FileIndexEvent): DocumentIndexResult {
+                calls++
+                return DocumentIndexResult.Failed(EmbeddingBatchException("HTTP 503：服务繁忙", true, 503))
+            }
+            override suspend fun delete(workspaceRootUuid: String, fileUuid: String) = DocumentIndexResult.Deleted(fileUuid)
+        }
+        val queue = queue(StandardTestDispatcher(testScheduler), documentIndexService = service)
+        try {
+            val id = queue.enqueueDocumentReference(ROOT, DOC, source.name, "text/plain", "hash-v1", 2)
+            // 失败状态由 Room 在真实线程写入；按真实时间等到终态，期间队列的退避延时仍由虚拟时间跳过。
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(10_000) {
+                    while (database.vectorizationTaskDao().getById(id)?.status != "failed") kotlinx.coroutines.delay(20)
+                }
+            }
+            advanceUntilIdle()
+            val task = checkNotNull(database.vectorizationTaskDao().getById(id))
+            assertThat(calls).isEqualTo(1)
+            assertThat(task.status).isEqualTo("failed")
+            assertThat(task.error).isEqualTo("HTTP 503：服务繁忙")
+        } finally {
+            queue.shutdown()
+        }
+    }
+
+    @Test
     fun `启动恢复会把missing scan发现的失败任务重置并重新入队`() = runTest {
         seedFileAndTask("failed")
         val queue = queue(StandardTestDispatcher(TestCoroutineScheduler()))

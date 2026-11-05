@@ -90,6 +90,9 @@ class RagImportRetrievalPipelineTest {
         coEvery { embedding.embedQuery(query) } returns (floatArrayOf(1f, 0f) to null)
         every { embedding.isConfigured } returns true
         every { embedding.hasLocalFallback } returns false
+        every { embedding.frozenForIndex() } returns embedding
+        every { embedding.vectorSpaceKey() } returns "test-space"
+        every { embedding.localModelGeneration() } returns null
         val config = RagConfiguration(
             enableMemory = false,
             enableDocs = true,
@@ -105,6 +108,7 @@ class RagImportRetrievalPipelineTest {
                 database.fileEntryDao(),
                 embedding,
                 config,
+                checkpointRoot = kotlin.io.path.createTempDirectory("embedding-checkpoints").toFile(),
             ),
         )
         database.vectorizationTaskDao().insert(VectorizationTaskEntity(

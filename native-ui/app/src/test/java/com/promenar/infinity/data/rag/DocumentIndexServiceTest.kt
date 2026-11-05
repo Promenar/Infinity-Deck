@@ -26,12 +26,14 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class DocumentIndexServiceTest {
     private lateinit var database: InfinityDatabase
+    private lateinit var checkpointRoot: File
 
     @Before
     fun setUp() {
@@ -39,10 +41,14 @@ class DocumentIndexServiceTest {
         database = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        checkpointRoot = File(context.cacheDir, "embedding-test-${java.util.UUID.randomUUID()}")
     }
 
     @After
-    fun tearDown() = database.close()
+    fun tearDown() {
+        database.close()
+        checkpointRoot.deleteRecursively()
+    }
 
     @Test
     fun `候选构建失败时旧索引保持可检索`() = runTest {
@@ -55,6 +61,31 @@ class DocumentIndexServiceTest {
         assertThat(database.vectorDao().getByDocId(FILE).map { it.id }).containsExactly(OLD_VECTOR)
         assertThat(database.vectorDao().searchByKeyword("old searchable").map { it.id })
             .containsExactly(OLD_VECTOR)
+    }
+
+    @Test
+    fun `提交前模型校验失败时旧索引保留且不清理向量检查点`() = runTest {
+        seedFileAndOldArtifacts()
+        var cleaned = false
+        val service = RoomDocumentIndexService(database) {
+            candidate().copy(validateBeforeCommit = { error("向量模型已变化") }, onEmbeddingCommitted = { cleaned = true })
+        }
+        assertThat(service.rebuild(changed())).isInstanceOf(DocumentIndexResult.Failed::class.java)
+        assertThat(database.vectorDao().getByDocId(FILE).map { it.id }).containsExactly(OLD_VECTOR)
+        assertThat(cleaned).isFalse()
+    }
+
+    @Test
+    fun `向量检查点仅在事务提交后清理`() = runTest {
+        seedFileAndOldArtifacts()
+        var statusAtCleanup: String? = null
+        val service = RoomDocumentIndexService(database) {
+            candidate().copy(onEmbeddingCommitted = {
+                statusAtCleanup = database.vectorizationTaskDao().getById(TASK)?.status
+            })
+        }
+        assertThat(service.rebuild(changed())).isInstanceOf(DocumentIndexResult.Rebuilt::class.java)
+        assertThat(statusAtCleanup).isEqualTo("completed")
     }
 
     @Test
@@ -431,12 +462,13 @@ class DocumentIndexServiceTest {
                 materializedPath = "/${file.name}",
                 hash = com.promenar.infinity.infra.util.Sha256Utils.hash("candidate text"),
             ))
-            val embedding = mockk<EmbeddingClient>()
+            val embedding = mockIndexEmbedding()
             coEvery { embedding.embedDocuments(any()) } answers {
                 EmbeddingResult(firstArg<List<String>>().map { floatArrayOf(1f, 0f) })
             }
             val builder = WorkspaceDocumentIndexCandidateBuilder(
                 database.fileEntryDao(), embedding, RagConfiguration(docChunkSize = 100, chunkOverlap = 10),
+                checkpointRoot = checkpointRoot,
             )
             val hash = database.fileEntryDao().getByUuid(ROOT, FILE)!!.hash
 
@@ -451,6 +483,31 @@ class DocumentIndexServiceTest {
     }
 
     @Test
+    fun `跳过向量化的图谱提交不清理已有向量检查点`() = runTest {
+        seedFileAndOldArtifacts()
+        val file = File.createTempFile("infinity-index-skip", ".txt").apply { writeText("plain") }
+        try {
+            val hash = com.promenar.infinity.infra.util.Sha256Utils.hash("plain")
+            val current = database.fileEntryDao().getByUuid(ROOT, FILE)!!
+            database.fileEntryDao().update(current.copy(
+                physicalRootPath = file.parentFile!!.absolutePath,
+                materializedPath = "/${file.name}", hash = hash,
+            ))
+            val checkpoints = EmbeddingCheckpoints(checkpointRoot)
+            val identity = EmbeddingCheckpointIdentity(hash, "test-model", 800, 100)
+            checkpoints.save(ROOT, FILE, identity, 0, listOf("plain"), listOf(floatArrayOf(1f)))
+            val builder = WorkspaceDocumentIndexCandidateBuilder(
+                database.fileEntryDao(), mockk(), RagConfiguration(), checkpointRoot = checkpointRoot,
+            )
+            val candidate = builder.build(FileIndexEvent.Changed(
+                ROOT, FILE, hash, current.updatedAt, skipVectorization = true, useConfiguredKgStrategy = false,
+            ))
+            candidate.onEmbeddingCommitted()
+            assertThat(checkpoints.load(ROOT, FILE, identity, 0, listOf("plain"))).isNotNull()
+        } finally { file.delete() }
+    }
+
+    @Test
     fun `启用知识图谱时候选构建器同时生成隔离节点与边`() = runTest {
         seedFileAndOldArtifacts()
         val file = File.createTempFile("infinity-index-kg", ".txt").apply { writeText("Alice knows Bob") }
@@ -462,7 +519,7 @@ class DocumentIndexServiceTest {
                 materializedPath = "/${file.name}",
                 hash = hash,
             ))
-            val embedding = mockk<EmbeddingClient>()
+            val embedding = mockIndexEmbedding()
             coEvery { embedding.embedDocuments(any()) } returns EmbeddingResult(listOf(floatArrayOf(1f, 0f)))
             val graphRequests = mutableListOf<Triple<String, String, String>>()
             val graphBuilder = KnowledgeGraphCandidateBuilder { text, fileUuid, contentHash ->
@@ -477,6 +534,7 @@ class DocumentIndexServiceTest {
                 embedding,
                 RagConfiguration(enableKnowledgeGraph = true, docChunkSize = 100, chunkOverlap = 10),
                 graphCandidateBuilder = graphBuilder,
+                checkpointRoot = checkpointRoot,
             )
 
             val candidate = builder.build(FileIndexEvent.Changed(ROOT, FILE, hash, current.updatedAt))
@@ -611,6 +669,12 @@ class DocumentIndexServiceTest {
         nodes = listOf(node("new-source"), node("new-target")),
         edges = listOf(edge(NEW_EDGE, "new-source", "new-target")),
     )
+
+    private fun mockIndexEmbedding(): EmbeddingClient = mockk<EmbeddingClient>().also { client ->
+        every { client.frozenForIndex() } returns client
+        every { client.vectorSpaceKey() } returns "test-model"
+        every { client.localModelGeneration() } returns null
+    }
 
     private fun vector(id: String, content: String) = VectorEntity(
         id = id, docId = FILE, content = content, embedding = byteArrayOf(0, 0, 0, 0),

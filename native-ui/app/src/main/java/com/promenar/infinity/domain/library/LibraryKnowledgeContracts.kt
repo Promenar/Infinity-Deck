@@ -21,6 +21,7 @@ data class LibraryOverview(
 )
 
 enum class PendingKind { FAILED, QUEUED, INDEXING, STALE }
+enum class PendingStage { PREPARING, VECTORIZING, EXTRACTING_GRAPH, SAVING }
 
 /** 需要用户处理或正在处理的资料库文档。 */
 data class PendingDocument(
@@ -34,6 +35,13 @@ data class PendingDocument(
     val reason: String? = null,
     /** 排队位置，从 1 开始；非排队状态为 null。 */
     val queuePosition: Int? = null,
+    /** 正在执行的索引阶段；非进行中为 null。 */
+    val stage: PendingStage? = null,
+    /** 当前阶段已处理和总切块数；无法确定时为 null。 */
+    val processed: Int? = null,
+    val total: Int? = null,
+    /** 最近一次可读错误，重试期间仍可展示。 */
+    val lastError: String? = null,
 )
 
 data class LibraryDocumentSummary(

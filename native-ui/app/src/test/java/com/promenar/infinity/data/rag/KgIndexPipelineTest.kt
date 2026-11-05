@@ -65,6 +65,10 @@ class KgIndexPipelineTest {
             isDirectory = true, physicalRootPath = root.path, materializedPath = "/", createdAt = 1, updatedAt = 1,
         ))
         coEvery { embedding.embedDocuments(any()) } answers { EmbeddingResult(firstArg<List<String>>().map { floatArrayOf(1f, 0f) }) }
+
+        every { embedding.frozenForIndex() } returns embedding
+        every { embedding.vectorSpaceKey() } returns "test-space"
+        every { embedding.localModelGeneration() } returns null
     }
 
     @After
@@ -183,7 +187,7 @@ class KgIndexPipelineTest {
             dispatcher = StandardTestDispatcher(testScheduler), budget = KgExtractionBudget(maxCalls = 3),
             nowMs = { testScheduler.currentTime })
         val builder = WorkspaceDocumentIndexCandidateBuilder(database.fileEntryDao(), embedding, RagConfiguration(),
-            dispatcher = StandardTestDispatcher(testScheduler), graphCandidateBuilder = GraphExtractorKnowledgeGraphCandidateBuilder(extractor))
+            dispatcher = StandardTestDispatcher(testScheduler), checkpointRoot = File(root, "embedding-checkpoints"), graphCandidateBuilder = GraphExtractorKnowledgeGraphCandidateBuilder(extractor))
         var failCommit = true
         val service = RoomDocumentIndexService(database) { event ->
             builder.build(event).let { candidate ->
@@ -345,7 +349,7 @@ class KgIndexPipelineTest {
         val file = register("failed.txt", "text/plain", "Alpha Beta".toByteArray())
         seedOld(file)
         val builder = WorkspaceDocumentIndexCandidateBuilder(database.fileEntryDao(), embedding, RagConfiguration(),
-            dispatcher = StandardTestDispatcher(testScheduler), graphCandidateBuilder = { _, _, _ -> ExtractionResult(emptyList(), emptyList()) })
+            dispatcher = StandardTestDispatcher(testScheduler), checkpointRoot = File(root, "embedding-checkpoints"), graphCandidateBuilder = { _, _, _ -> ExtractionResult(emptyList(), emptyList()) })
         val service = RoomDocumentIndexService(database) { event ->
             builder.build(event).copy(edges = listOf(KgEdgeEntity("bad", "missing", "missing2", "knows", weight = 0.7, createdAt = 1)))
         }
@@ -362,7 +366,7 @@ class KgIndexPipelineTest {
 
     private fun TestScope.pipeline(graph: KnowledgeGraphCandidateBuilder): Pair<VectorizationQueue, DocumentIndexService> {
         val builder = WorkspaceDocumentIndexCandidateBuilder(database.fileEntryDao(), embedding, RagConfiguration(docChunkSize = 800, chunkOverlap = 100),
-            dispatcher = StandardTestDispatcher(testScheduler), graphCandidateBuilder = graph)
+            dispatcher = StandardTestDispatcher(testScheduler), checkpointRoot = File(root, "embedding-checkpoints"), graphCandidateBuilder = graph)
         val service = RoomDocumentIndexService(database, candidateBuilder = builder)
         return queue(service) to service
     }

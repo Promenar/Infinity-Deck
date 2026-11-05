@@ -84,10 +84,16 @@ class AuxiliaryModelRouteTest {
 
     @Test fun `Embedding批次共享一次解析快照`() = runTest {
         var resolutions = 0
-        val http = http("""{"data":[{"embedding":[1.0]}]}""")
+        // 每请求至多 16 个切块：17 条拆成 16 + 1 两批，响应条数与请求一致。
+        val http = HttpClient(MockEngine { request ->
+            requests += request
+            val count = Json.parseToJsonElement((request.body as TextContent).text).jsonObject["input"]!!.jsonArray.size
+            respond("""{"data":[${List(count) { """{"embedding":[1.0]}""" }.joinToString(",")}]}""",
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+        })
         try {
             val client = EmbeddingClient("", "", httpClient = http, modelRouteResolver = { resolutions++; route() })
-            client.embedDocuments(List(51) { "text-$it" })
+            client.embedDocuments(List(17) { "text-$it" })
             assertThat(resolutions).isEqualTo(1)
             assertThat(requests).hasSize(2)
             assertRequest(0, "extra", "embeddings")
