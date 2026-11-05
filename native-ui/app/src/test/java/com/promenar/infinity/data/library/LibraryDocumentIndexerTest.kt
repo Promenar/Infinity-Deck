@@ -36,6 +36,27 @@ class LibraryDocumentIndexerTest {
     }
 
     @Test
+    fun `旧图谱失败任务迁移后只抽图并保留已有向量`() = runBlocking {
+        val indexed = entry.copy(vectorizedAt = 2)
+        coEvery { queue.acquireDeleteBarrier("root", listOf("doc")) } returns barrier
+        coEvery { fileDao.getActiveByUuid("root", "doc") } returns indexed
+        coEvery { taskDao.getByWorkspaceFile("root", "doc", "document_reference") } returns null
+        coEvery { taskDao.getByWorkspaceFile("root", "doc", "document") } returns VectorizationTaskEntity(
+            id = "legacy", type = "document", status = "partial", workspaceRootUuid = "root", docId = "doc",
+            error = "kg.budget.calls", targetContentHash = "hash", targetEpoch = 1, createdAt = 1, updatedAt = 1,
+        )
+        val replacement = slot<VectorizationTaskEntity>()
+        coEvery { taskDao.migrateLegacyToTarget("legacy", capture(replacement)) } returns
+            com.promenar.infinity.data.local.db.dao.VectorizationTaskTargetUpsertResult(
+                com.promenar.infinity.data.local.db.dao.VectorizationTaskTargetUpsertOutcome.INSERTED, "new",
+            )
+
+        assertThat(indexer.retryLegacy("root", indexed)).isTrue()
+        assertThat(replacement.captured.skipVectorization).isTrue()
+        assertThat(replacement.captured.kgStrategy).isEqualTo("full")
+    }
+
+    @Test
     fun `不支持的文件类型保留旧失败任务`() = runBlocking {
         coEvery { queue.acquireDeleteBarrier("root", listOf("doc")) } returns barrier
         coEvery { fileDao.getActiveByUuid("root", "doc") } returns entry.copy(mimeType = "application/x-unknown")

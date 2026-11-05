@@ -66,6 +66,10 @@ class LibraryDocumentIndexer(
                 val legacy = taskDao.getByWorkspaceFile(root, entry.uuid, "document")
                     ?.takeIf { it.status in setOf("failed", "partial", "interrupted") }
                     ?: return@withWorkspaceAdmission false
+                val graphRetry = VectorizationQueue.isGraphRetryError(legacy.error)
+                val retryGraphOnly = graphRetry && current.vectorizedAt != null && current.vectorizedAt >= current.updatedAt &&
+                    (legacy.targetContentHash == null || legacy.targetContentHash == current.hash) &&
+                    (legacy.targetEpoch == 0L || legacy.targetEpoch == current.updatedAt)
                 val now = System.currentTimeMillis()
                 val replacement = VectorizationTaskEntity(
                     id = "library-retry-${UUID.randomUUID()}", type = VectorizationQueue.TYPE_DOCUMENT_REFERENCE,
@@ -74,8 +78,8 @@ class LibraryDocumentIndexer(
                     kgStrategy = legacy.kgStrategy?.takeUnless {
                         it == KgExtractionBudget.CONFIRMED_STRATEGY &&
                             (legacy.targetContentHash != current.hash || legacy.targetEpoch != current.updatedAt)
-                    } ?: "full".takeIf { legacy.kgStrategy != null },
-                    skipVectorization = legacy.skipVectorization, createdAt = now, updatedAt = now,
+                    } ?: "full".takeIf { legacy.kgStrategy != null || graphRetry },
+                    skipVectorization = if (graphRetry) retryGraphOnly else legacy.skipVectorization, createdAt = now, updatedAt = now,
                 )
                 (taskDao.migrateLegacyToTarget(legacy.id, replacement) != null).also { success ->
                     if (success) migrated = replacement
