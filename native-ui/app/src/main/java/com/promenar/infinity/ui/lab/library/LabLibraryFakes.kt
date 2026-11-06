@@ -124,8 +124,9 @@ internal class LabLibraryAsk(private val text: LabLibraryText) : LibraryAskServi
     }
 }
 
-/** 文档页的所属合集与合集归属：文档都跟随顶层文件夹 starlog 这部作品。 */
+/** 文档页的所属合集与合集归属：文档都跟随顶层文件夹 starlog 这部作品；点按不打开会写本机库的面板。 */
 internal class LabLibraryCollections(private val text: LabLibraryText) : LibraryDocumentCollections {
+    override val editable: Boolean = false
     override suspend fun info(documentId: String): KgDocumentCollectionInfo = text.collectionInfo(documentId)
     override suspend fun assignment(documentId: String): KgDocumentAssignment = text.collectionAssignment
 }
