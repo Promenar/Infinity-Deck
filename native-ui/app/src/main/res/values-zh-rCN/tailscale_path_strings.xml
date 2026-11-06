@@ -9,9 +9,9 @@
     <string name="tailscale_path_wan">公网</string>
     <string name="tailscale_latency_ms">%1$s ms</string>
     <string name="tailscale_path_direct_desc">%1$s · UDP 点对点</string>
-    <string name="tailscale_path_derp_desc">经 DERP %1$s 中转，尚未打通直连。</string>
-    <string name="tailscale_path_peer_relay_desc">经 tailnet 内另一台设备中继。</string>
-    <string name="tailscale_path_idle_desc">有流量时 Tailscale 才会建立路径，Ping 一下即可检测。</string>
+    <string name="tailscale_path_derp_desc">DERP 中转 · %1$s</string>
+    <string name="tailscale_path_peer_relay_desc">tailnet 设备中继</string>
+    <string name="tailscale_path_idle_desc">无近期流量，可 Ping 检测</string>
     <string name="tailscale_path_no_reply_desc">对方可能已休眠，或防火墙拦截了 UDP。</string>
     <string name="tailscale_peer_path_title">连接路径</string>
     <string name="tailscale_ping">Ping</string>

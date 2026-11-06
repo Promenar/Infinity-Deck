@@ -65,7 +65,7 @@
     <string name="subagent_event_parent_message">From main session · New instruction · %1$s</string>
     <string name="subagent_event_wrap_up">From main session · Wrap up · %1$s</string>
     <string name="subagent_event_resume">From main session · Continue · %1$s</string>
-    <string name="subagent_event_detach_user">You moved it to the background · %1$s</string>
+    <string name="subagent_event_detach_user">Moved to background · %1$s</string>
     <string name="subagent_event_detach_timeout">Wait timed out · main session continued · %1$s</string>
     <string name="subagent_event_detach_parent">Main session turn ended · subagent continues · %1$s</string>
     <string name="subagent_event_stop_user">You stopped the subagent · %1$s</string>

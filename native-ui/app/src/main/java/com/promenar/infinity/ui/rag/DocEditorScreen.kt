@@ -1101,7 +1101,7 @@ private fun LoadingState(modifier: Modifier = Modifier) {
     StatePanel(
         icon = null,
         title = stringResource(R.string.doc_editor_loading),
-        description = stringResource(R.string.doc_editor_loading_description),
+        description = null,
         tag = UiTags.DOC_EDITOR_STATE_LOADING,
         modifier = modifier,
     ) {
@@ -1114,7 +1114,7 @@ private fun LoadErrorState(onRetry: () -> Unit, modifier: Modifier = Modifier) {
     StatePanel(
         icon = Icons.Rounded.ErrorOutline,
         title = stringResource(R.string.doc_editor_load_failed_title),
-        description = stringResource(R.string.doc_editor_load_failed_description),
+        description = null,
         tag = UiTags.DOC_EDITOR_STATE_LOAD_ERROR,
         modifier = modifier,
     ) {
@@ -1245,7 +1245,7 @@ private fun DocumentIdentityReadOnly(editor: DocEditorUiState) {
 private fun StatePanel(
     icon: ImageVector?,
     title: String,
-    description: String,
+    description: String?,
     tag: String,
     modifier: Modifier = Modifier,
     action: @Composable (() -> Unit)? = null,
@@ -1280,12 +1280,14 @@ private fun StatePanel(
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.height(InfinitySpacing.Small))
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            description?.let {
+                Spacer(Modifier.height(InfinitySpacing.Small))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             action?.let {
                 Spacer(Modifier.height(InfinitySpacing.Large))
                 it()

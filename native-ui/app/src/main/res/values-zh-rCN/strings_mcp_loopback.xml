@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="mcp_bearer_token">Bearer 访问令牌（可选）</string>
-    <string name="mcp_bearer_token_storage">令牌加密保存在本机。如需更换，请删除后重新添加。</string>
-    <string name="mcp_invalid_endpoint">请输入有效的 HTTP 或 HTTPS 地址。</string>
-    <string name="mcp_bearer_required">请输入有效的 Bearer 令牌，不含空格、换行或 Bearer 前缀。</string>
-    <string name="mcp_config_save_failed">无法保存 MCP 配置或访问凭据，请重试。</string>
+    <string name="mcp_bearer_token_storage">加密保存在本机；更换需删除后重新添加</string>
+    <string name="mcp_invalid_endpoint">输入有效的 HTTP 或 HTTPS 地址</string>
+    <string name="mcp_bearer_required">令牌无效：不能含空格、换行或 Bearer 前缀</string>
+    <string name="mcp_config_save_failed">MCP 配置保存失败，请重试</string>
     <string name="mcp_config_saving">正在保存…</string>
 </resources>

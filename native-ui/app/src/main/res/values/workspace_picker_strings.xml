@@ -48,7 +48,7 @@
         <item quantity="other">%1$d</item>
     </plurals>
     <string name="workspace_kb_entry_empty">None</string>
-    <string name="workspace_kb_empty">No workspaces yet. Choose one in a chat\'s resource explorer.</string>
+    <string name="workspace_kb_empty">No workspaces yet</string>
     <string name="workspace_kb_more">More actions: %1$s</string>
     <string name="workspace_kb_rename">Change display name</string>
     <string name="workspace_kb_display_name">Display name</string>
@@ -62,7 +62,7 @@
     <string name="workspace_kb_imported">Added to the Library; indexing</string>
     <string name="workspace_kb_import_failed">Could not add to the Library: %1$s</string>
     <string name="workspace_kb_import_info">Copies the current content; later changes aren\'t synced.</string>
-    <string name="workspace_kb_preview_binary">This file type cannot be previewed as text.</string>
+    <string name="workspace_kb_preview_binary">Can\'t preview this type</string>
     <string name="workspace_kb_preview_too_large">Text preview is limited to 256 KB.</string>
     <string name="workspace_kb_preview_failed">Cannot preview the file: %1$s</string>
     <string name="workspace_picker_use_named">Use %1$s</string>

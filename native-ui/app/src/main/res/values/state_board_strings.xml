@@ -4,7 +4,7 @@
     <string name="state_edit">Edit %1$s</string>
     <string name="state_remove">Remove panel</string>
     <string name="state_remove_title">Remove state panel?</string>
-    <string name="state_remove_body">The panel will disappear from this conversation. Removing its message also rolls back this change.</string>
+    <string name="state_remove_body">Removing its message also restores it</string>
     <string name="state_save">Save</string>
     <string name="state_cancel">Cancel</string>
     <string name="state_value">Value</string>
@@ -14,8 +14,8 @@
     <string name="state_add_item">Add item</string>
     <string name="state_remove_item">Remove item %1$d</string>
     <string name="state_board_empty_value">Empty</string>
-    <string name="state_invalid_value">A value is out of range or too long. Check it.</string>
-    <string name="state_save_failed">Could not save. The panel may have changed. Close the editor and open it again.</string>
+    <string name="state_invalid_value">Value out of range or too long</string>
+    <string name="state_save_failed">Couldn\'t save. Reopen the editor</string>
     <string name="state_created">State panel created: %1$s</string>
     <string name="state_defined">State panel defined: %1$s</string>
     <string name="state_updated">State updated: %1$s</string>

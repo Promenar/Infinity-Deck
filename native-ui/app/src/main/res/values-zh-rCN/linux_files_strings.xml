@@ -49,15 +49,15 @@
     <string name="linux_files_empty">此目录为空</string>
     <string name="linux_files_load_failed">无法读取目录：%1$s</string>
     <string name="linux_files_not_ready_title">Linux 环境尚未就绪</string>
-    <string name="linux_files_not_ready_message">安装或修复 Linux 环境后即可浏览其中的文件。</string>
-    <string name="linux_files_not_ready_installing">Linux 环境正在安装，完成后即可浏览文件。</string>
+    <string name="linux_files_not_ready_message">需先安装或修复 Linux 环境</string>
+    <string name="linux_files_not_ready_installing">正在安装 Linux 环境</string>
     <string name="linux_files_not_ready_unavailable">当前版本或设备不提供 Linux 环境。</string>
     <string name="linux_files_open_environment">前往 Linux 环境</string>
-    <string name="linux_files_binding_notice">“%1$s”指向 %2$s。该路径只在命令运行时绑定，不在 Linux 文件中。</string>
+    <string name="linux_files_binding_notice">“%1$s”指向 %2$s，仅在命令运行时可用</string>
     <string name="linux_files_name_label">名称</string>
     <string name="linux_files_create">创建</string>
     <string name="linux_files_compress_title">压缩为 .tar.gz</string>
-    <string name="linux_files_compress_hint">压缩包放在第一项所在的目录。</string>
+    <string name="linux_files_compress_hint">保存到第一项所在目录</string>
     <string name="linux_files_chmod_owner">属主</string>
     <string name="linux_files_chmod_group">属组</string>
     <string name="linux_files_chmod_others">其他</string>
@@ -85,7 +85,7 @@
     <string name="linux_file_reload">重新加载</string>
     <string name="linux_file_run">在终端运行</string>
     <string name="linux_file_edit">编辑</string>
-    <string name="linux_file_truncated">文件较大，只读显示前 %1$s（共 %2$s）。</string>
+    <string name="linux_file_truncated">只读 · 显示前 %1$s，共 %2$s</string>
     <string name="linux_file_binary">二进制文件，可在“十六进制”页查看。</string>
     <string name="linux_file_empty">空文件</string>
     <string name="linux_file_load_failed">无法读取文件：%1$s</string>
@@ -110,7 +110,7 @@
     <string name="linux_file_link">符号链接</string>
     <string name="linux_file_special">特殊文件</string>
     <string name="linux_file_conflict_title">文件已在别处修改</string>
-    <string name="linux_file_conflict_message">打开后，这个文件被其他程序或命令改动过。重新加载会放弃你的修改；覆盖会用你的版本替换磁盘上的内容。</string>
+    <string name="linux_file_conflict_message">重新加载将放弃你的修改；覆盖将替换磁盘上的版本。</string>
     <string name="linux_file_conflict_reload">重新加载</string>
     <string name="linux_file_conflict_overwrite">覆盖</string>
     <string name="linux_file_conflict_keep_editing">继续编辑</string>

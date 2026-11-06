@@ -105,7 +105,6 @@ internal fun AgentScopeSection(
                 testTagPrefix = "agent_perm_reach",
                 enabled = policy.globalMemory != GlobalMemoryPolicy.FORBID,
             )
-            PermissionNote(stringResource(R.string.perm_global_footer))
         }
         AgentPermission.ActiveMemory -> InfinityBottomSheet(
             show = true, onDismiss = { editing = null }, title = stringResource(R.string.perm_active_memory), scrollContent = true,

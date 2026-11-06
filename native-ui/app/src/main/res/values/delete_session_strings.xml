@@ -9,6 +9,6 @@
     <string name="delete_session_drop_files">Delete them too</string>
     <string name="delete_session_kept">Files saved to %1$s: %2$s</string>
     <string name="delete_session_remove_worktree">Also remove worktree %1$s</string>
-    <string name="delete_session_remove_worktree_detail">Runs git worktree remove. If it has uncommitted changes, Git refuses and the worktree stays as is.</string>
+    <string name="delete_session_remove_worktree_detail">Not removed if it has uncommitted changes</string>
     <string name="delete_session_worktree_failed">Worktree not removed: %1$s</string>
 </resources>

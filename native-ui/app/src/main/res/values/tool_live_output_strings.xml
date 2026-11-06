@@ -4,5 +4,5 @@
     <string name="chat_tool_live_stop">Stop</string>
     <string name="chat_tool_live_stopping">Stopping…</string>
     <string name="chat_tool_live_waiting">Waiting for output…</string>
-    <string name="chat_tool_live_unsupported">This backend has no live output; results appear when the command finishes.</string>
+    <string name="chat_tool_live_unsupported">No live output; results appear when done</string>
 </resources>

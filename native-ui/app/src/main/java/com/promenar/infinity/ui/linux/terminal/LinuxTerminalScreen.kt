@@ -346,11 +346,11 @@ private fun OpeningOrFailed(opening: Boolean, failed: Boolean, onRetry: () -> Un
 private fun ColumnScope.EnvironmentNotReady(runtime: LinuxRuntimeState?, onOpenEnvironment: () -> Unit) {
     val (title, description) = when (runtime) {
         null -> R.string.linux_terminal_state_checking to null
-        is LinuxRuntimeState.NotInstalled -> R.string.linux_terminal_state_not_installed to R.string.linux_terminal_state_not_installed_desc
-        is LinuxRuntimeState.Installing -> R.string.linux_terminal_state_installing to R.string.linux_terminal_state_installing_desc
-        is LinuxRuntimeState.InstallInterrupted -> R.string.linux_terminal_state_interrupted to R.string.linux_terminal_state_interrupted_desc
+        is LinuxRuntimeState.NotInstalled -> R.string.linux_terminal_state_not_installed to null
+        is LinuxRuntimeState.Installing -> R.string.linux_terminal_state_installing to null
+        is LinuxRuntimeState.InstallInterrupted -> R.string.linux_terminal_state_interrupted to null
         is LinuxRuntimeState.Maintaining -> R.string.linux_terminal_state_maintaining to null
-        is LinuxRuntimeState.Broken -> R.string.linux_terminal_state_broken to R.string.linux_terminal_state_broken_desc
+        is LinuxRuntimeState.Broken -> R.string.linux_terminal_state_broken to null
         is LinuxRuntimeState.Unavailable -> when (runtime.reason) {
             LinuxUnavailableReason.DISTRIBUTION -> R.string.linux_terminal_state_distribution to R.string.linux_terminal_state_distribution_desc
             LinuxUnavailableReason.UNSUPPORTED_ABI -> R.string.linux_terminal_state_abi to null

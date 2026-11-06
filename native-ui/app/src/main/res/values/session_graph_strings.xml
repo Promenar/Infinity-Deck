@@ -13,9 +13,9 @@
     <string name="turn_graph_entities_title">Entities</string>
     <string name="turn_graph_relations_title">Relations</string>
     <string name="turn_graph_relation">%1$s → %2$s → %3$s</string>
-    <string name="turn_graph_empty">No entities or relations were extracted from this turn.</string>
-    <string name="turn_graph_pending_hint">This turn is queued for extraction. Entities and relations appear here when it finishes.</string>
-    <string name="turn_graph_partial_hint">The extraction budget was reached, so only part of this turn was extracted.</string>
+    <string name="turn_graph_empty">No entities or relations</string>
+    <string name="turn_graph_pending_hint">Queued for extraction</string>
+    <string name="turn_graph_partial_hint">Budget reached; partially extracted</string>
     <string name="turn_graph_failed_hint">Reason: %1$s</string>
     <string name="turn_graph_retry">Extract again</string>
     <string name="turn_graph_open_graph">View in graph</string>

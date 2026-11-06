@@ -4,5 +4,5 @@
     <string name="chat_tool_live_stop">停止</string>
     <string name="chat_tool_live_stopping">正在停止…</string>
     <string name="chat_tool_live_waiting">等待输出…</string>
-    <string name="chat_tool_live_unsupported">该执行方式不提供实时输出，命令结束后显示结果。</string>
+    <string name="chat_tool_live_unsupported">无实时输出，结束后显示结果</string>
 </resources>

@@ -29,7 +29,7 @@
     <string name="prompt_editor_cd_undo">撤销</string>
     <string name="prompt_editor_cd_redo">重做</string>
     <string name="prompt_editor_discard_title">放弃未保存的修改？</string>
-    <string name="prompt_editor_discard_message">关闭后，这次对提示词的修改将丢失。</string>
+    <string name="prompt_editor_discard_message">修改将丢失</string>
     <string name="prompt_editor_discard_confirm">放弃修改</string>
     <string name="prompt_editor_discard_keep">继续编辑</string>
 
@@ -53,13 +53,13 @@
     <string name="common_cd_save">保存</string>
     <string name="common_cd_clear">清除</string>
     <string name="common_retry">重试</string>
-    <string name="agent_edit_error_load">无法加载此智能体。</string>
-    <string name="agent_edit_error_save">无法保存此智能体。</string>
-    <string name="agent_edit_error_delete">无法删除此智能体。</string>
-    <string name="agent_edit_error_avatar">无法将此图片设为头像。</string>
+    <string name="agent_edit_error_load">无法加载智能体</string>
+    <string name="agent_edit_error_save">无法保存智能体</string>
+    <string name="agent_edit_error_delete">无法删除智能体</string>
+    <string name="agent_edit_error_avatar">无法设为头像</string>
     <string name="settings_error_token_load">无法刷新 Token 用量。</string>
     <string name="settings_error_token_clear">无法清除 Token 用量。</string>
-    <string name="settings_error_avatar">无法保存此头像图片。</string>
+    <string name="settings_error_avatar">头像保存失败</string>
     <string name="common_cd_collapse">收起</string>
     <string name="common_cd_expand">展开</string>
     <string name="common_state_collapsed">已折叠</string>
@@ -79,10 +79,10 @@
     <string name="params_scheme_rename">重命名</string>
     <string name="params_scheme_delete">删除方案</string>
     <string name="params_scheme_delete_title">删除方案“%1$s”？</string>
-    <string name="params_scheme_delete_message">删除后不能再选用此方案，已在使用的不受影响。</string>
+    <string name="params_scheme_delete_message">使用中的会话不受影响</string>
     <string name="params_scheme_name_title">方案名称</string>
     <string name="params_scheme_name_placeholder">例如：写代码</string>
-    <string name="params_no_model">先选择模型，再按模型保存参数方案。</string>
+    <string name="params_no_model">先选择模型</string>
     <string name="params_scheme_section">参数方案</string>
     <string name="params_scheme_diff">与“%1$s”不同：%2$s</string>
     <string name="params_scheme_revert">还原</string>
@@ -91,10 +91,9 @@
     <plurals name="params_not_applicable_count">
         <item quantity="other">%1$d 项不适用于此模型</item>
     </plurals>
-    <string name="params_not_applicable_desc">官方接口对此模型不接受或会忽略这些参数，请求中不会发送。</string>
+    <string name="params_not_applicable_desc">不随请求发送</string>
     <string name="params_list_separator">、</string>
     <string name="agent_edit_default_params">默认参数</string>
-    <string name="agent_edit_default_params_desc">本智能体的新会话和未单独设置的会话沿用这些参数。</string>
     <string name="agent_edit_reasoning_effort">推理强度</string>
     <plurals name="agent_edit_params_count">
         <item quantity="other">%1$d 项参数</item>
@@ -139,13 +138,13 @@
     <string name="secret_field_show">临时显示完整密钥</string>
     <string name="secret_field_hide">隐藏密钥</string>
     <string name="secret_field_clear">清除已保存密钥</string>
-    <string name="provider_form_http_url_required">请输入有效的 HTTP 或 HTTPS 地址。</string>
-    <string name="provider_form_protocol_unsupported">该历史提供商协议已停止支持。</string>
+    <string name="provider_form_http_url_required">输入有效的 HTTP 或 HTTPS 地址</string>
+    <string name="provider_form_protocol_unsupported">协议已停用</string>
     <string name="settings_provider_protocol_unsupported">协议不受支持</string>
-    <string name="provider_form_legacy_migration_required">请选择受支持的提供商，并替换或明确清除已保存凭证后再保存。</string>
-    <string name="provider_form_credential_kind_changed">该协议使用不同类型的凭证。保存前请填写新凭证，或明确清除已保存凭证。</string>
+    <string name="provider_form_legacy_migration_required">选择受支持的提供商，并替换或清除已保存凭证</string>
+    <string name="provider_form_credential_kind_changed">凭证类型不同：填写新凭证或清除已保存凭证</string>
     <string name="provider_form_saving">正在安全保存…</string>
-    <string name="provider_form_save_failed">无法保存提供商设置，原配置保持不变。</string>
+    <string name="provider_form_save_failed">保存失败，原配置未变</string>
     <string name="provider_form_protocol_type">协议类型</string>
     <string name="workbench_refresh">刷新</string>
 
@@ -174,10 +173,10 @@
     <string name="startup_recovering_title">正在安全恢复数据</string>
     <string name="startup_recovering_message">正在恢复上次未完成的操作，请勿关闭。</string>
     <string name="startup_blocked_title">安全恢复需要处理</string>
-    <string name="startup_blocked_message">&brand; 暂时无法完成本地数据恢复。你的数据仍受保护，应用功能保持锁定。</string>
+    <string name="startup_blocked_message">本地数据恢复未完成。数据仍受保护，功能已锁定</string>
     <string name="startup_blocked_icon_description">安全恢复已阻塞</string>
     <string name="restore_not_applied_title">备份未能恢复</string>
-    <string name="restore_not_applied_message">备份恢复未完成，数据保持原样。可在“设置 → 备份”重新导入。</string>
+    <string name="restore_not_applied_message">数据保持原样，可在设置 → 备份重新导入</string>
     <string name="restore_not_applied_dismiss">知道了</string>
     <string name="startup_dual_database_title">发现两份本地数据库</string>
     <string name="startup_dual_database_icon_description">需要合并两份本地数据库</string>
@@ -199,7 +198,7 @@
     <string name="share_import_cancel_message">已导入的文件保留，其余需要重新分享。</string>
     <string name="share_import_cancel_confirm">删除暂存副本</string>
     <string name="share_import_cancel_back">继续保留</string>
-    <string name="share_import_pending_banner">有 %1$d 个分享导入待处理 · 点按继续</string>
+    <string name="share_import_pending_banner">%1$d 个分享待导入</string>
     <string name="share_import_retry">重试失败项</string>
     <string name="share_import_importing">正在导入…</string>
     <string name="share_import_action">导入</string>
@@ -209,7 +208,7 @@
     <string name="share_import_status_created">已导入</string>
     <string name="share_import_status_index_pending">已导入 · 等待索引</string>
     <string name="share_import_status_index_partial">已导入 · 部分索引</string>
-    <string name="share_import_status_index_failed">已导入 · 索引失败，可重试</string>
+    <string name="share_import_status_index_failed">已导入 · 索引失败</string>
     <string name="share_import_status_index_completed">已导入 · 已完成索引</string>
     <string name="share_import_status_rejected">已拒绝</string>
     <string name="share_import_reason_target">请先选择导入位置</string>
@@ -227,7 +226,7 @@
     <string name="share_import_reason_batch_large">本批文件总量超过 100 MiB</string>
     <string name="share_import_reason_read">读取文件失败</string>
     <string name="share_import_reason_write">保存文件失败</string>
-    <string name="share_import_reason_index">索引任务无法持久化，文件未导入</string>
+    <string name="share_import_reason_index">未导入：索引任务保存失败</string>
     <string name="resource_explorer_title">资源管理器</string>
     <string name="files_session_workspaces_title">会话工作区</string>
     <string name="shared_confirm_delete_title">确认删除</string>
@@ -241,7 +240,6 @@
     <string name="hub_search_placeholder">搜索智能体…</string>
     <string name="hub_btn_add_agent">添加智能体</string>
     <string name="hub_empty_title">还没有智能体</string>
-    <string name="hub_empty_subtitle">创建一个智能体，开始第一段对话</string>
     <string name="hub_dialog_add_title">创建新智能体</string>
     <string name="hub_dialog_label_name">名称</string>
     <string name="hub_dialog_label_desc">描述</string>
@@ -255,7 +253,7 @@
 
     <!-- 预置助手（本地化展示；DB 保存种子文本，叠加层解析为资源） -->
     <string name="preset_agent_default_name">通用智能体</string>
-    <string name="preset_agent_default_desc">通用智能体，支持流式对话与知识检索</string>
+    <string name="preset_agent_default_desc">通用对话与知识检索</string>
     <string name="preset_agent_coder_name">编程专家</string>
     <string name="preset_agent_coder_desc">精通全栈开发与架构设计</string>
     <string name="preset_agent_writer_name">创意写作</string>
@@ -291,7 +289,7 @@
     <string name="agent_edit_section_danger">危险区</string>
     <string name="agent_edit_delete_btn">删除智能体</string>
     <string name="agent_edit_delete_title">删除智能体</string>
-    <string name="agent_edit_delete_message">确定要删除此智能体吗？此操作无法撤销。</string>
+    <string name="agent_edit_delete_message">删除后无法恢复</string>
     <string name="agent_edit_delete_confirm">删除</string>
     <string name="chat_confirm_delete_session_message">您确定要删除此会话吗？此操作不可撤销。</string>
 
@@ -343,7 +341,7 @@
     <string name="settings_haptic">触觉反馈</string>
     <string name="settings_section_model_presets">模型预设</string>
     <string name="settings_model_summary">快速模型</string>
-    <string name="settings_model_quick_description">快速模型用于生成标题和抽取知识图谱，也是新会话、新智能体的默认模型。</string>
+    <string name="settings_model_quick_description">快速模型：生成标题、抽取图谱，也是新会话与新智能体的默认模型</string>
     <string name="settings_model_image">图像模型</string>
     <string name="settings_model_embedding">嵌入模型</string>
     <string name="settings_model_rerank">重排模型</string>
@@ -379,7 +377,7 @@
     <string name="settings_provider_empty">暂无提供商配置\n点击上方按钮添加</string>
     <string name="settings_add_provider">添加提供商</string>
     <string name="settings_delete_provider_title">删除提供商</string>
-    <string name="settings_delete_provider_message">确定要删除此提供商吗？此操作无法撤销。</string>
+    <string name="settings_delete_provider_message">删除后无法恢复</string>
     <string name="settings_manage_models">管理模型</string>
     <string name="settings_provider_status_summary">%1$s · %2$s</string>
     <string name="settings_provider_state_enabled">已启用</string>
@@ -434,12 +432,12 @@
     <string name="chat_menu_attach_document">文本文档（完整上下文）</string>
     <string name="chat_document_only_prompt">请阅读附件文档。</string>
     <string name="chat_document_importing">正在导入文档…</string>
-    <string name="chat_document_import_in_progress">请等待所选文档导入完成后再发送。</string>
+    <string name="chat_document_import_in_progress">文档导入中，完成后再发送</string>
     <string name="chat_cd_remove_document">移除文档</string>
     <string name="chat_document_workspace_badge">工作区</string>
     <string name="chat_draft_budget_exceeded">超出可用上下文，约 %1$s / %2$s</string>
     <string name="chat_draft_budget_combined">附件合计超出可用上下文，约 %1$s / %2$s</string>
-    <string name="chat_draft_budget_compactable">超出可用上下文，约 %1$s / %2$s，发送时会先压缩较早对话</string>
+    <string name="chat_draft_budget_compactable">超出可用上下文，约 %1$s / %2$s · 发送时先压缩</string>
     <string name="chat_draft_budget_unknown_window">当前模型未提供上下文窗口</string>
     <string name="chat_draft_budget_save">存入工作区</string>
     <string name="chat_draft_budget_switch_model">换模型</string>
@@ -449,7 +447,7 @@
     <string name="chat_draft_save_failed_conflict">工作区已有同名文件。</string>
     <string name="chat_action_branch">从此消息创建分支</string>
     <string name="chat_branch_failed">无法从此消息创建分支。</string>
-    <string name="chat_branch_failed_unstable">该消息尚未完成，暂时无法创建分支。</string>
+    <string name="chat_branch_failed_unstable">消息未完成，无法创建分支</string>
     <string name="chat_branch_title">%1$s · 分支</string>
     <string name="chat_document_error_unsupported">仅支持 TXT、MD 或 MARKDOWN 文本文档。</string>
     <string name="chat_document_error_empty">所选文档为空，未添加。</string>
@@ -457,13 +455,13 @@
     <string name="chat_document_error_binary">所选文件包含二进制内容，无法作为文本文档读取。</string>
     <string name="chat_document_error_encoding">文档编码无法识别，请转换为 UTF-8 后重试。</string>
     <string name="chat_document_error_read">无法读取所选文档，请重新选择。</string>
-    <string name="chat_document_error_unknown_capacity">当前模型的上下文容量未知，无法安全发送完整文档。请把文档存入工作区，或先配置模型容量。</string>
-    <string name="chat_document_error_invalid_estimate">无法计算完整文档所需的上下文容量，请移除文档后重试。</string>
-    <string name="chat_document_error_over_capacity">完整上下文需要 %1$d Token，当前可用 %2$d。请把文档存入工作区按需读取，或移除部分文档。</string>
-    <string name="chat_context_error_over_capacity">上下文需要 %1$d Token，当前可用 %2$d。请立即压缩上下文，或开启新会话。</string>
-    <string name="chat_context_error_turn_documents">本轮消息与附件需要 %1$d Token，模型可用 %2$d，压缩历史也放不下。请把附件存入工作区，或换用上下文更大的模型。</string>
+    <string name="chat_document_error_unknown_capacity">模型上下文容量未知，请把文档存入工作区或配置容量</string>
+    <string name="chat_document_error_invalid_estimate">无法估算文档所需上下文，请移除后重试</string>
+    <string name="chat_document_error_over_capacity">需要 %1$d Token，可用 %2$d。请把文档存入工作区或移除部分文档</string>
+    <string name="chat_context_error_over_capacity">上下文需要 %1$d Token，可用 %2$d。请压缩上下文或新建会话</string>
+    <string name="chat_context_error_turn_documents">消息与附件需要 %1$d Token，模型可用 %2$d。请把附件存入工作区或换用更大上下文的模型</string>
     <string name="chat_context_error_turn">本轮消息需要 %1$d Token，模型可用 %2$d。请缩短消息，或换用上下文更大的模型。</string>
-    <string name="chat_context_error_upstream">服务端报告输入超出模型上下文上限。请压缩上下文、把大附件存入工作区，或开启新会话。</string>
+    <string name="chat_context_error_upstream">输入超出模型上下文上限。请压缩上下文、把大附件存入工作区或新建会话</string>
     <string name="chat_session_prompt_title">会话提示词</string>
     <string name="chat_session_prompt_placeholder">添加仅适用于当前会话的指令…</string>
     <string name="chat_approval_arguments">参数</string>
@@ -474,7 +472,7 @@
     <string name="chat_status_completed">已完成</string>
     <string name="chat_status_error">生成失败</string>
     <string name="chat_confirm_truncate_title">确认抛弃后续内容？</string>
-    <string name="chat_confirm_truncate_message">此操作将永久删除当前位置之后的所有对话记录。确认继续吗？</string>
+    <string name="chat_confirm_truncate_message">此处之后的消息将被永久删除</string>
     <string name="chat_undo_truncate">已抛弃后续内容</string>
     <string name="chat_btn_undo">撤销</string>
     <string name="chat_context_usage_title">上下文用量</string>
@@ -515,7 +513,7 @@
     <string name="chat_context_usage_total">%1$s / %2$s Token</string>
     <string name="chat_context_usage_percent">已使用模型上下文的 %1$d%%</string>
     <string name="chat_context_threshold">自动压缩阈值：%1$d%%</string>
-    <string name="chat_context_compress_unavailable_generating">正在生成回复，完成后可立即压缩</string>
+    <string name="chat_context_compress_unavailable_generating">生成中，完成后可压缩</string>
     <string name="chat_context_compress_unavailable_running">正在压缩上下文，请稍候</string>
     <string name="chat_context_nothing_to_compress">暂无可压缩内容，最近 %1$d 轮始终保留</string>
     <string name="chat_context_compaction_result">已折叠 %1$d 条工具结果，总结 %2$d 轮；估算上下文 %3$d → %4$d Token</string>
@@ -637,7 +635,7 @@
     <string name="sheet_settings_keep_recent_turns">保留最近轮次</string>
     <string name="sheet_settings_turns_value">%1$d 轮</string>
     <string name="sheet_settings_compact_now_description">折叠较早的工具结果并总结历史，保留最近 %1$d 轮。</string>
-    <string name="sheet_settings_context_description">超过阈值时压缩较早的对话，保留最近 %1$d 轮，聊天记录不受影响。</string>
+    <string name="sheet_settings_context_description">超过阈值时压缩较早对话，保留最近 %1$d 轮；聊天记录不变</string>
     <string name="sheet_settings_top_p">Top P</string>
     <string name="sheet_settings_max_tokens">最大 Token 数</string>
     <string name="sheet_settings_memory">对话记忆</string>
@@ -731,7 +729,7 @@
     <string name="backup_save_config">保存配置</string>
     <string name="backup_reset_webdav_security">重置 WebDAV 配置</string>
     <string name="backup_remote_refresh">刷新远程备份</string>
-    <string name="backup_remote_empty">暂无远程备份，请配置 WebDAV 后刷新。</string>
+    <string name="backup_remote_empty">暂无远程备份</string>
     <string name="backup_password_export_title">加密导出的备份</string>
     <string name="backup_password_upload_title">上传前加密备份</string>
     <string name="backup_password_restore_title">恢复本地备份</string>
@@ -741,7 +739,7 @@
     <string name="backup_password_confirm_label">确认密码</string>
     <string name="backup_password_confirm_hint">再次输入相同密码</string>
     <string name="backup_password_mismatch">两次输入的密码不一致</string>
-    <string name="backup_restore_password_optional">无加密密钥的备份可留空。</string>
+    <string name="backup_restore_password_optional">不含密钥的备份可留空</string>
     <string name="backup_status_initializing">正在读取备份配置…</string>
     <string name="backup_status_saving_config">正在保存 WebDAV 配置…</string>
     <string name="backup_status_testing">正在测试连接…</string>
@@ -758,22 +756,22 @@
     <string name="backup_status_connection_success">连接测试成功</string>
     <string name="backup_status_export_success">备份已导出</string>
     <string name="backup_status_upload_success">备份已上传</string>
-    <string name="backup_status_success_cleanup_warning">备份已上传，但部分旧远程备份未能清理。</string>
-    <string name="backup_error_password_required">加密备份时必须输入并确认相同密码。</string>
+    <string name="backup_status_success_cleanup_warning">已上传，部分旧备份未清理</string>
+    <string name="backup_error_password_required">输入并确认相同密码</string>
     <string name="backup_error_configuration_missing">请先配置 WebDAV。</string>
     <string name="backup_error_connection">WebDAV 连接失败，请检查配置。</string>
     <string name="backup_error_remote_list">无法读取远程备份。</string>
     <string name="backup_error_stale_selection">远程选择已失效，请刷新后重新选择。</string>
     <string name="backup_error_export">导出备份失败。</string>
     <string name="backup_error_upload">上传备份失败。</string>
-    <string name="backup_error_restore">备份校验或恢复暂存失败。</string>
+    <string name="backup_error_restore">备份恢复失败</string>
     <string name="backup_error_restart">重启失败，请重试或取消恢复。</string>
-    <string name="backup_error_cleanup">取消恢复失败，为保护数据暂时不能修改数据。</string>
-    <string name="backup_error_document_create">无法创建或写入所选备份文件。</string>
-    <string name="backup_error_document_open">无法读取所选备份文件。</string>
-    <string name="backup_error_reason_capacity">备份内容超过 512 MiB 上限或手机可用空间不足，无法生成备份。可取消较大的层（如工作区文件）或释放存储空间后重试。</string>
-    <string name="backup_error_reason_workspace_mismatch">有会话文件已被删除或在应用外被修改，与记录不一致，无法生成备份。</string>
-    <string name="backup_error_reason_skill_content">技能目录含有无法备份的内容（特殊文件、含冒号或反斜杠的文件名，或总量超过 512 MiB），无法生成备份。</string>
+    <string name="backup_error_cleanup">取消恢复失败，数据已锁定</string>
+    <string name="backup_error_document_create">无法写入所选文件</string>
+    <string name="backup_error_document_open">无法读取所选文件</string>
+    <string name="backup_error_reason_capacity">超过 512 MiB 上限或存储空间不足。取消较大的层（如工作区文件）或释放空间后重试</string>
+    <string name="backup_error_reason_workspace_mismatch">会话文件在应用外被删除或修改，无法备份</string>
+    <string name="backup_error_reason_skill_content">技能目录含无法备份的内容（特殊文件、文件名含冒号或反斜杠，或超过 512 MiB）</string>
 
     <!-- LocalModelsScreen -->
     <string name="local_models_title">本地模型</string>
@@ -818,7 +816,7 @@
     <string name="provider_form_default_provider">设为默认</string>
     <string name="provider_form_btn_test">测试连接</string>
     <string name="provider_form_testing">正在测试连接…</string>
-    <string name="provider_form_connection_unavailable">此提供商不支持连接测试，可直接保存并手动添加模型。</string>
+    <string name="provider_form_connection_unavailable">不支持连接测试，保存后手动添加模型</string>
     <string name="provider_form_test_failed_auth">鉴权未通过，请检查凭据</string>
     <string name="provider_form_test_failed_network">网络无法连接或端点超时</string>
     <string name="provider_form_test_failed_endpoint">端点地址无效</string>
@@ -837,7 +835,7 @@
     <string name="provider_models_disable_all">全部禁用</string>
     <string name="provider_models_delete_all">全部删除</string>
     <string name="provider_models_delete_all_title">删除所有模型</string>
-    <string name="provider_models_delete_all_message">确定要删除所有模型配置吗？已启用的模型将无法使用。</string>
+    <string name="provider_models_delete_all_message">已启用的模型将不可用</string>
     <string name="provider_models_test_success">连接成功 · %1$s 延迟</string>
     <string name="provider_models_test_error">错误：无效的 API Key 或配额不足</string>
     <string name="provider_models_add_custom">添加自定义模型</string>
@@ -902,7 +900,7 @@
     <string name="skills_mcp_url_placeholder">服务器 URL</string>
     <string name="skills_mcp_add_btn">添加服务器</string>
     <string name="skills_mcp_call_interval">调用间隔</string>
-    <string name="skills_mcp_legacy_unsupported">旧版配置：仅可查看、迁移或删除，不能同步和执行。</string>
+    <string name="skills_mcp_legacy_unsupported">旧版配置，仅可迁移或删除</string>
     <string name="skills_mcp_sync_error">同步失败：%1$s</string>
     <string name="skills_mcp_modern_transport">MCP 2026-07-28 · HTTP/HTTPS</string>
     <string name="skills_mcp_enabled">已启用</string>
@@ -953,11 +951,11 @@
     <string name="skills_configure">配置</string>
     <string name="skills_edit_skill">编辑技能配置</string>
     <string name="skills_edit_custom">编辑自定义技能</string>
-    <string name="skills_mcp_empty">暂无 MCP 服务器\n添加后智能体可使用服务器提供的工具</string>
+    <string name="skills_mcp_empty">暂无 MCP 服务器</string>
     <string name="search_engine_select">选择搜索引擎</string>
     <string name="search_engine_keenable">Keenable</string>
     <string name="search_api_key_optional">API Key（可选）</string>
-    <string name="search_keenable_keyless_hint">不填密钥时使用公共额度。</string>
+    <string name="search_keenable_keyless_hint">留空使用公共额度</string>
     <string name="search_engine_tavily">Tavily（需 API Key）</string>
     <string name="search_engine_searxng">SearXNG（需实例地址）</string>
     <string name="search_engine_duckduckgo">DuckDuckGo（免费）</string>
@@ -997,7 +995,7 @@
     <string name="token_in_short">输入: %1$s</string>
     <string name="token_out_short">输出: %1$s</string>
     <string name="token_active_model">活跃模型</string>
-    <string name="token_no_data">暂无 Token 使用数据。开始对话后将显示统计。</string>
+    <string name="token_no_data">暂无用量数据</string>
     <string name="token_top_sessions">会话排行</string>
     <string name="token_7day_trend">7 日趋势</string>
     <string name="token_input_label">输入</string>
@@ -1017,7 +1015,7 @@
 
     <!-- RagHomeScreen -->
     <string name="rag_home_subtitle">文档、文件夹与对话记忆，可在对话中检索。</string>
-    <string name="rag_search_fts_warning">全文搜索暂不可用，仅显示标题匹配。</string>
+    <string name="rag_search_fts_warning">全文搜索不可用，仅显示标题匹配</string>
     <string name="rag_search_empty">没有匹配的文档</string>
     <string name="rag_search_body_match">正文命中</string>
     <string name="rag_search_title_fallback">标题回退</string>
@@ -1041,7 +1039,7 @@
     <string name="kg_view_global">图谱</string>
     <string name="kg_view_session">会话</string>
     <string name="kg_view_document">文档</string>
-    <string name="kg_empty_graph">暂无图谱。在文档菜单中选择“抽取知识图谱”。</string>
+    <string name="kg_empty_graph">暂无图谱，在文档菜单中抽取</string>
     <string name="rag_home_vectorizing">正在向量化…</string>
     <string name="rag_home_extract_kg">抽取知识图谱</string>
     <string name="rag_home_extract_kg_full">全量抽取（所有分块）</string>
@@ -1056,42 +1054,40 @@
     <string name="doc_editor_title_input_description">文档标题</string>
     <string name="doc_editor_content_input_description">文档正文</string>
     <string name="doc_editor_preview">预览</string>
-    <string name="doc_editor_preview_truncated">文档较大，预览已截断，编辑和保存不受影响。</string>
+    <string name="doc_editor_preview_truncated">预览已截断，不影响编辑和保存</string>
     <string name="doc_editor_performance_protected_title">性能保护模式</string>
-    <string name="doc_editor_performance_protected_description">文档较长，只预览前约 1.6 万字。保存和复制不受影响。</string>
+    <string name="doc_editor_performance_protected_description">仅预览前约 1.6 万字，保存和复制使用全文</string>
     <string name="doc_editor_copy_full_content">复制完整全文</string>
     <string name="doc_editor_performance_protected_status">性能保护 · 约前 16K 字符预览</string>
     <string name="doc_editor_edit">编辑</string>
     <string name="doc_editor_split">分屏</string>
     <string name="doc_editor_loading">正在加载文档</string>
-    <string name="doc_editor_loading_description">安全读取完成后才会显示编辑器。</string>
     <string name="doc_editor_load_failed_title">无法加载文档</string>
-    <string name="doc_editor_load_failed_description">文档读取失败。</string>
     <string name="doc_editor_retry_load">重试</string>
     <string name="doc_editor_not_found_title">未找到文档</string>
-    <string name="doc_editor_not_found_description">该文档已不在当前工作区中。</string>
+    <string name="doc_editor_not_found_description">已不在当前工作区</string>
     <string name="doc_editor_saving">正在保存…</string>
-    <string name="doc_editor_saving_back_feedback">正在保存，请稍候。</string>
-    <string name="doc_editor_save_cancelled_description">保存已中断，本地修改仍保留，可以重试。</string>
+    <string name="doc_editor_saving_back_feedback">正在保存</string>
+    <string name="doc_editor_save_cancelled_description">保存已中断，本地修改仍在</string>
     <string name="doc_editor_save_failed_title">保存失败</string>
-    <string name="doc_editor_save_failed_description">本地修改仍被保留，可以稍后重试。</string>
-    <string name="doc_editor_title_rename_failed">标题未能安全保存，本地修改仍被保留。</string>
+    <string name="doc_editor_save_failed_description">本地修改仍在</string>
+    <string name="doc_editor_title_rename_failed">标题保存失败，本地修改仍在</string>
     <string name="doc_editor_retry_save">重试保存</string>
     <string name="doc_editor_conflict_title">存在更新的版本</string>
-    <string name="doc_editor_conflict_description">文档已在别处修改。你的内容仍在，可复制后重新加载。</string>
+    <string name="doc_editor_conflict_description">你的内容仍在，可复制后重新加载</string>
     <string name="doc_editor_title_conflict_title">工作区标题已变更</string>
-    <string name="doc_editor_title_conflict_description">当前工作区标题为“%1$s”。请选择要保留的标题；正文修改仍会保留。</string>
+    <string name="doc_editor_title_conflict_description">工作区标题为“%1$s”，正文修改仍保留</string>
     <string name="doc_editor_use_workspace_title">使用工作区标题</string>
     <string name="doc_editor_retry_my_title">重试我的标题</string>
     <string name="doc_editor_copy_local">复制本地内容</string>
     <string name="doc_editor_clipboard_label">本地文档内容</string>
     <string name="doc_editor_reload_latest">重新加载最新版</string>
     <string name="doc_editor_missing_after_save_title">保存期间文档已消失</string>
-    <string name="doc_editor_missing_after_save_description">本地内容已保留，但工作区中的原文档已不存在。</string>
+    <string name="doc_editor_missing_after_save_description">本地内容仍在</string>
     <string name="doc_editor_large_file_warning">文件过大，未加载正文。</string>
-    <string name="doc_editor_unsupported_content_warning">此文件类型仅支持只读使用，请使用兼容的查看器或导入工具。</string>
+    <string name="doc_editor_unsupported_content_warning">此类型仅可只读查看</string>
     <string name="doc_editor_large_file_read_only_title">大文件安全模式</string>
-    <string name="doc_editor_large_file_read_only_description">文档 %1$s，超过 1 MiB，只能查看信息，不能编辑。</string>
+    <string name="doc_editor_large_file_read_only_description">%1$s，超过 1 MiB，不可编辑</string>
     <string name="doc_editor_large_file_status">大文件 · 仅元数据</string>
     <string name="doc_editor_dismiss">关闭警告</string>
     <string name="doc_editor_typing_placeholder">开始输入…</string>
@@ -1102,20 +1098,20 @@
     <string name="doc_editor_editing">编辑中</string>
     <string name="doc_editor_readonly">预览 · 只读</string>
     <string name="doc_editor_discard_title">放弃本地修改？</string>
-    <string name="doc_editor_discard_description">尚未保存的标题和正文修改将丢失。</string>
+    <string name="doc_editor_discard_description">未保存的修改将丢失</string>
     <string name="doc_editor_discard_confirm">放弃并返回</string>
     <string name="doc_editor_reload_title">重新加载最新版？</string>
-    <string name="doc_editor_reload_description">重新加载会放弃编辑器中当前显示的本地内容。</string>
+    <string name="doc_editor_reload_description">本地修改将丢失</string>
     <string name="doc_editor_reload_confirm">放弃并重新加载</string>
 
     <!-- KnowledgeGraphScreen -->
     <string name="kg_title">知识图谱</string>
-    <string name="kg_load_failed">图谱加载失败，请重试。</string>
-    <string name="kg_load_failed_stale">图谱更新失败，仍显示最近一次成功结果。</string>
+    <string name="kg_load_failed">图谱加载失败</string>
+    <string name="kg_load_failed_stale">图谱更新失败，显示上次结果</string>
     <string name="kg_select_document">选择文档</string>
-    <string name="kg_document_options_empty">暂无包含图谱关系的已索引文档。</string>
-    <string name="kg_document_options_load_failed">文档列表加载失败，请重试。</string>
-    <string name="kg_document_required">请先选择一个文档，再查看对应图谱。</string>
+    <string name="kg_document_options_empty">暂无含图谱的文档</string>
+    <string name="kg_document_options_load_failed">文档列表加载失败</string>
+    <string name="kg_document_required">选择文档</string>
     <string name="kg_open_accessibility_list">打开无障碍关系列表</string>
     <string name="kg_accessibility_title">节点与关系</string>
     <string name="kg_nodes_section">节点</string>
@@ -1232,7 +1228,7 @@
     <string name="retrieval_enable_docs_desc">在搜索结果中包含资料中的文档</string>
     <string name="rag_config_clear_vectors">清除向量数据</string>
     <string name="rag_config_clean_orphans">清理孤立数据</string>
-    <string name="rag_config_clear_message">清除后需要重新索引才能检索，原始文档保留。</string>
+    <string name="rag_config_clear_message">清除后需重新索引，原始文档保留</string>
     <string name="rag_config_clear_only_vectors">仅清除向量</string>
     <string name="rag_config_clear_with_kg">同时清除图谱数据</string>
     <string name="rag_config_clear_all">全部清除</string>
@@ -1299,10 +1295,10 @@
     <string name="chat_menu_rename">重命名</string>
     <string name="chat_menu_delete_session">删除会话</string>
     <string name="chat_dialog_clear_history_title">清除历史记录？</string>
-    <string name="chat_dialog_clear_history_msg">此操作将删除当前会话中的所有消息，且无法撤回。</string>
+    <string name="chat_dialog_clear_history_msg">所有消息将被删除，无法恢复</string>
     <string name="chat_dialog_delete_session_title">删除会话？</string>
     <string name="chat_dialog_delete_session_msg">消息和设置将被永久删除。</string>
-    <string name="chat_delete_session_failed">会话删除失败，数据已保留，请重试。</string>
+    <string name="chat_delete_session_failed">会话删除失败，请重试</string>
     <string name="chat_dialog_rename_title">重命名会话</string>
     <string name="chat_dialog_rename_placeholder">输入新名称...</string>
     <string name="chat_hint_select_model">请先点击顶部配置会话模型</string>
@@ -1317,10 +1313,10 @@
     <string name="generation_notification_current_session">当前会话 · 已生成 %1$d 字</string>
     <string name="generation_notification_stop">停止</string>
     <string name="exec_notification_channel">命令执行</string>
-    <string name="exec_notification_channel_description">显示正在运行的 shell_exec / python_exec 命令与停止按钮</string>
+    <string name="exec_notification_channel_description">运行中的命令与停止按钮</string>
     <string name="exec_notification_title">正在运行命令</string>
     <string name="exec_notification_title_many">正在运行 %1$d 个命令</string>
-    <string name="exec_notification_public">&brand; 正在运行命令</string>
+    <string name="exec_notification_public">正在运行命令</string>
     <string name="exec_notification_kind_shell">Shell</string>
     <string name="exec_notification_kind_python">Python</string>
     <string name="exec_notification_kind_linux">Linux</string>
@@ -1328,10 +1324,10 @@
     <string name="exec_notification_kind_terminal">终端</string>
     <string name="exec_notification_stop">停止</string>
     <string name="exec_notification_stop_all">全部停止</string>
-    <string name="generation_background_unavailable">当前回复仍在生成，但离开应用后可能中断。</string>
-    <string name="generation_notifications_unavailable">通知已关闭，看不到后台生成进度。</string>
+    <string name="generation_background_unavailable">离开应用后可能中断生成</string>
+    <string name="generation_notifications_unavailable">通知已关闭，不显示后台进度</string>
     <string name="generation_notification_permission_title">保持后台生成可见</string>
-    <string name="generation_notification_permission_explanation">允许通知后，可在通知栏查看进度并停止生成。不影响当前回复。</string>
+    <string name="generation_notification_permission_explanation">用于在通知栏查看进度和停止生成，不影响当前回复</string>
     <string name="generation_notification_permission_continue">允许通知</string>
     <string name="generation_background_service_stopped">后台服务启动失败，本次生成已停止。</string>
 
@@ -1352,7 +1348,7 @@
     <string name="rag_details_keywords">关键词：%1$s</string>
     <string name="rag_details_open_link">打开链接</string>
     <string name="rag_details_unknown_source">未知来源</string>
-    <string name="rag_details_link_error">无法打开此链接。</string>
+    <string name="rag_details_link_error">无法打开链接</string>
     <string name="rag_details_retry">重试</string>
     <string name="chat_rag_summary_hit">命中 %1$d 条</string>
     <string name="chat_rag_summary_empty">未命中</string>
@@ -1363,10 +1359,10 @@
     <string name="rag_trace_title">检索过程</string>
     <string name="chat_rag_summary_reranked">已重排</string>
     <string name="chat_rag_summary_rerank_failed">重排失败</string>
-    <string name="rag_trace_empty_hint">检索过的记忆和文档里，没有与这个问题足够相似的内容。</string>
-    <string name="rag_trace_unavailable_hint">未选择嵌入模型，本次没有检索记忆与资料。可在 设置 → 默认模型 中选择。</string>
-    <string name="rag_trace_no_scope_hint">本会话未开启记忆，也没有选择可检索的文档。</string>
-    <string name="rag_trace_failed_hint">资料检索出错，本次回复未使用资料。</string>
+    <string name="rag_trace_empty_hint">没有足够相似的内容</string>
+    <string name="rag_trace_unavailable_hint">未选择嵌入模型，在 设置 › 默认模型 中选择</string>
+    <string name="rag_trace_no_scope_hint">未开启记忆，也未选择文档</string>
+    <string name="rag_trace_failed_hint">资料检索失败，本次未使用资料</string>
     <string name="rag_details_kind_memory">记忆</string>
     <string name="rag_details_kind_document">文档</string>
     <string name="rag_details_kind_summary">事件</string>
@@ -1396,7 +1392,7 @@
 
     <!-- 发行可达的检索能力状态 -->
     <string name="sheet_tool_gemini_grounding">Gemini 联网搜索</string>
-    <string name="sheet_settings_rerank_unavailable">需要先在“默认模型”中设置重排模型。</string>
+    <string name="sheet_settings_rerank_unavailable">未设置重排模型，在默认模型中设置</string>
     <string name="retrieval_rerank_model_unconfigured">未配置模型</string>
     <string name="retrieval_rerank_model_unavailable_message">需要先在“默认模型”中设置重排模型。</string>
 
@@ -1408,15 +1404,15 @@
     <string name="generation_failure_quota">提供商额度已用尽，请检查账户限额。</string>
     <string name="generation_failure_timeout">请求超时，请重试。</string>
     <string name="generation_failure_invalid_request">当前请求无法处理，请调整后重试。</string>
-    <string name="generation_failure_provider_detail">服务商返回：%1$s</string>
-    <string name="generation_failure_output_limit">回复达到模型单次输出上限被截断。可在会话参数中调大最大 Token 数，或让 AI 分步完成。</string>
+    <string name="generation_failure_provider_detail">提供商返回：%1$s</string>
+    <string name="generation_failure_output_limit">回复达到输出上限被截断。调大会话参数中的最大 Token 数，或分步完成</string>
     <string name="generation_failure_content_filtered">回复被提供商的内容安全策略拦截，请调整内容后重试。</string>
     <string name="generation_failure_server">提供商暂时不可用，请稍后重试。</string>
     <string name="generation_failure_busy">其他会话正在生成，请在完成后重试。</string>
     <string name="generation_failure_persistence">回复保存失败，请重试。</string>
-    <string name="generation_failure_tool_budget">本轮工具调用次数已用完，模型没有给出总结。发送消息即可继续。</string>
-    <string name="generation_failure_tailnet_disabled">内置 Tailscale 未开启，消息未发出。开启后重试即可。</string>
-    <string name="generation_failure_tailnet_needs_login">内置 Tailscale 需要登录，登录后重试即可。</string>
+    <string name="generation_failure_tool_budget">本轮工具调用次数已用完。发送消息继续</string>
+    <string name="generation_failure_tailnet_disabled">内置 Tailscale 未开启，消息未发出。开启后重试</string>
+    <string name="generation_failure_tailnet_needs_login">内置 Tailscale 未登录，登录后重试</string>
     <string name="generation_failure_tailnet_failed">内置 Tailscale 无法连接，消息未发出。</string>
     <string name="generation_failure_tailnet_timeout">内置 Tailscale 连接超时，消息未发出。</string>
     <string name="network_lights_label">网络</string>
@@ -1460,30 +1456,28 @@
     <string name="tailnet_failure_action_login">去登录</string>
     <string name="tailnet_failure_action_enable">去开启</string>
     <string name="provider_api_source_title">API 源</string>
-    <string name="provider_api_source_footer">通过内置 Tailscale 访问 tailnet 内的接口，无需安装官方 App。</string>
+    <string name="provider_api_source_footer">经内置 Tailscale 访问 tailnet 内接口</string>
     <string name="provider_api_source_public">公网</string>
     <string name="provider_api_source_tailnet">Tailscale 内网</string>
     <string name="provider_tailnet_status_connected">内置 Tailscale 已连接</string>
     <string name="provider_tailnet_status_connecting">内置 Tailscale 正在连接</string>
     <string name="provider_tailnet_status_needs_login">内置 Tailscale 需要登录</string>
-    <string name="provider_tailnet_status_needs_login_detail">登录后才能访问 tailnet 内的地址。</string>
     <string name="provider_tailnet_status_failed">内置 Tailscale 连接失败</string>
     <string name="provider_tailnet_status_disabled">内置 Tailscale 未开启</string>
-    <string name="provider_tailnet_status_disabled_detail">开启并登录后才能访问此地址。</string>
     <string name="provider_tailnet_status_unavailable">此安装包不含内置 Tailscale</string>
-    <string name="provider_tailnet_status_unavailable_detail">在系统里运行官方 Tailscale App 时可直接连接 tailnet 内的地址。</string>
+    <string name="provider_tailnet_status_unavailable_detail">可改用官方 Tailscale App</string>
     <string name="provider_tailnet_action_enable">去开启</string>
     <string name="provider_tailnet_action_login">去登录</string>
     <string name="provider_tailnet_action_settings">设置</string>
-    <string name="provider_address_hint_recognized">已识别为 Tailscale 内网地址，经内置 Tailscale 发送</string>
-    <string name="provider_address_hint_is_tailnet">这是 Tailscale 内网地址，经公网无法访问。</string>
+    <string name="provider_address_hint_recognized">Tailscale 地址，经内置 Tailscale 发送</string>
+    <string name="provider_address_hint_is_tailnet">Tailscale 地址，公网无法访问</string>
     <string name="provider_address_hint_use_tailnet">改用 Tailscale</string>
-    <string name="provider_address_hint_is_public">该地址不在 tailnet 内，请求会经公网发出。</string>
+    <string name="provider_address_hint_is_public">不在 tailnet 内，经公网发送</string>
     <string name="provider_address_hint_use_public">改用公网</string>
     <string name="provider_tailnet_peer_field_label">tailnet 设备</string>
     <string name="provider_tailnet_peer_field_placeholder">选择设备，自动填入地址</string>
     <string name="provider_tailnet_peer_sheet_title">选择 tailnet 设备</string>
-    <string name="provider_tailnet_peer_sheet_footer">选中后改用该设备的地址，路径不变。</string>
+    <string name="provider_tailnet_peer_sheet_footer">改用所选设备地址，路径不变</string>
     <string name="provider_tailnet_peer_offline">离线</string>
     <string name="generation_failure_unknown">生成失败，请重试。</string>
 
@@ -1502,7 +1496,7 @@
     <string name="rag_index_phase_saving">正在保存向量数据…</string>
     <string name="rag_index_phase_extracting_kg">正在构建知识图谱…</string>
     <string name="rag_index_phase_completed">索引已完成</string>
-    <string name="rag_index_phase_partial">文件过大，仅完成安全前缀索引</string>
+    <string name="rag_index_phase_partial">文件过大，仅索引前段</string>
     <string name="rag_index_phase_warning">索引已完成，但存在警告</string>
     <string name="rag_index_phase_failed">索引失败，请检查嵌入模型后重试</string>
     <string name="rag_index_phase_unknown">暂时无法获取索引状态</string>
@@ -1537,7 +1531,7 @@
     <string name="chat_approval_preview_create_directory">新建目录</string>
     <string name="chat_approval_preview_script">执行脚本</string>
     <string name="skill_create_file">新建文件</string>
-    <string name="skill_create_file_desc">在工作区新建文本文件，可附带初始内容</string>
+    <string name="skill_create_file_desc">在工作区新建文本文件</string>
     <string name="skill_create_directory">新建目录</string>
     <string name="skill_create_directory_desc">在工作区新建目录</string>
     <string name="skill_move_file">移动 / 重命名</string>
@@ -1550,7 +1544,7 @@
     <string name="skill_python_sandbox">Python 沙箱</string>
     <string name="skill_python_sandbox_desc">在隔离环境运行 Python，默认不联网（仅 arm64 设备）</string>
     <string name="agent_skills_intro">技能包是可复用的任务指令（SKILL.md）。启用后，智能体只在任务与技能描述相符时加载其指令与参考文件；技能包不会执行代码。</string>
-    <string name="agent_skills_empty">尚未安装技能包。可导入 .zip 或 SKILL.md，或新建一个。</string>
+    <string name="agent_skills_empty">还没有技能包</string>
     <string name="agent_skills_import">导入</string>
     <string name="agent_skills_create">新建技能</string>
     <string name="agent_skills_edit">编辑技能</string>
@@ -1559,7 +1553,7 @@
     <string name="agent_skills_description_hint">描述：做什么、何时使用</string>
     <string name="agent_skills_body_hint">指令（Markdown）</string>
     <string name="agent_skills_conflict_title">替换已有技能？</string>
-    <string name="agent_skills_conflict_message">已安装名为 %1$s 的技能，替换后将覆盖其现有文件。</string>
+    <string name="agent_skills_conflict_message">将覆盖已安装的 %1$s</string>
     <string name="agent_skills_replace">替换</string>
     <string name="agent_skills_import_failed">技能安装失败：%1$s</string>
     <string name="agent_skills_delete_title">删除技能 %1$s？</string>
@@ -1589,8 +1583,8 @@
     <string name="tailscale_section_node">内置 Tailscale</string>
     <string name="tailscale_enable">启用 Tailscale</string>
     <string name="tailscale_enable_desc">不占用系统 VPN，可与其它 VPN 同时使用</string>
-    <string name="tailscale_node_footer">登录后，模型、SSH 和命令工具可访问 tailnet 设备，网页读取仍只走公网。仅在 &brand; 运行时在线。</string>
-    <string name="tailscale_unavailable_desc">当前安装包未包含内置 Tailscale。</string>
+    <string name="tailscale_node_footer">模型、SSH 与命令工具可访问 tailnet；仅在应用运行时在线</string>
+    <string name="tailscale_unavailable_desc">此版本未内置 Tailscale</string>
     <string name="tailscale_phase_unavailable">当前安装包未包含</string>
     <string name="tailscale_phase_disabled">未启用</string>
     <string name="tailscale_phase_stopped">未运行</string>
@@ -1602,7 +1596,7 @@
     <string name="tailscale_phase_exited">进程意外退出</string>
     <string name="tailscale_section_status">状态</string>
     <string name="tailscale_login">在浏览器中登录</string>
-    <string name="tailscale_login_desc">打开 Tailscale 登录页，批准本设备后返回即可</string>
+    <string name="tailscale_login_desc">批准本设备后返回</string>
     <string name="tailscale_logout">退出登录</string>
     <string name="tailscale_logout_desc">从 tailnet 注销本设备，并删除已保存的 auth key</string>
     <string name="tailscale_refresh">刷新状态</string>
@@ -1613,9 +1607,9 @@
     <string name="tailscale_peer_offline">离线</string>
     <string name="tailscale_section_login">高级</string>
     <string name="tailscale_auth_key">Auth key</string>
-    <string name="tailscale_auth_key_desc">可选。用于免浏览器登录；加密保存在本机，不进入备份。</string>
+    <string name="tailscale_auth_key_desc">免浏览器登录 · 加密存于本机，不进备份</string>
     <string name="tailscale_control_url">控制服务器</string>
-    <string name="tailscale_control_url_desc">留空使用官方服务器，自建可填 Headscale 地址。更换后需要重新登录。</string>
+    <string name="tailscale_control_url_desc">留空用官方服务器；更换后需重新登录</string>
     <string name="tailscale_control_url_invalid">请输入不含凭据、查询参数与片段的 http(s) 地址。</string>
     <string name="tailscale_ephemeral">临时节点</string>
     <string name="tailscale_ephemeral_desc">离线后自动从 tailnet 移除，下次登录生效</string>
@@ -1635,8 +1629,8 @@
     <string name="tailscale_auth_key_hint">粘贴以 tskey- 开头的 auth key</string>
     <string name="common_mode_workspace">命令需批准</string>
     <string name="common_mode_full_access">免批准</string>
-    <string name="common_mode_workspace_desc">文件工具在工作区内直接读写；每条命令执行前都会问你。</string>
-    <string name="common_mode_full_access_desc">命令也直接执行，不再问你；命令以本应用权限运行，能读写全部应用数据。</string>
+    <string name="common_mode_workspace_desc">工作区内文件直接读写，命令逐条确认</string>
+    <string name="common_mode_full_access_desc">命令直接执行，可读写全部应用数据</string>
     <string name="chat_runtime_changes_title">改动了运行时关键数据</string>
     <plurals name="chat_runtime_changes_more">
         <item quantity="other">另有 %d 项</item>
@@ -1648,7 +1642,6 @@
 
     <!-- 外观：生成动效与自定义取色 -->
     <string name="motion_section_title">生成动效</string>
-    <string name="motion_section_footer">颜色跟随强调色。</string>
     <string name="motion_composer_title">输入框流光</string>
     <string name="motion_indicator_title">生成状态指示</string>
     <string name="motion_empty_chat_title">空会话动画</string>
@@ -1660,43 +1653,30 @@
     <string name="motion_phase_approval">等待审批</string>
     <string name="motion_phase_retry">重试等待</string>
     <string name="motion_composer_aurora">极光环行</string>
-    <string name="motion_composer_aurora_desc">光带绕输入框环行，外圈带柔和光晕。</string>
     <string name="motion_composer_breathe">潮汐呼吸</string>
-    <string name="motion_composer_breathe_desc">整圈描边随呼吸节奏涨落，安静不抢眼。</string>
     <string name="motion_composer_mesh">网孔背光</string>
-    <string name="motion_composer_mesh_desc">右半像服务器冲孔网罩，状态灯在网后闪烁。</string>
     <string name="motion_composer_bottom_strip">底沿数据流</string>
-    <string name="motion_composer_bottom_strip_desc">底沿两排细灯，数据包从左往右流过。</string>
     <string name="motion_composer_material_only">仅材质光</string>
-    <string name="motion_composer_material_only_desc">不加流光，生成状态由浮岛材质与运行坞点阵屏表达。</string>
+    <string name="motion_composer_material_only_desc">无流光</string>
     <string name="motion_composer_sweep_grid">扫光点阵</string>
-    <string name="motion_composer_sweep_grid_desc">一道光带扫过输入框里隐藏的灯珠墙。</string>
     <string name="motion_indicator_wave">波浪跳跃</string>
-    <string name="motion_indicator_wave_desc">三点依次上浮。</string>
     <string name="motion_indicator_ports">端口灯</string>
-    <string name="motion_indicator_ports_desc">三组网口灯，右灯高频闪烁表示正在吐字。</string>
     <string name="motion_indicator_matrix">运算矩阵</string>
-    <string name="motion_indicator_matrix_desc">10×3 点阵按负载亮灭，像 CPU 负载灯。</string>
     <string name="motion_indicator_stacked">交换机口</string>
-    <string name="motion_indicator_stacked_desc">上下两排 16 个口在高频收发。</string>
     <string name="motion_indicator_bays">硬盘位</string>
-    <string name="motion_indicator_bays_desc">四个盘位的活动灯随读写闪烁。</string>
     <string name="motion_indicator_infinity_line">∞ 描线</string>
-    <string name="motion_indicator_infinity_line_desc">两道光迹沿 ∞ 反向追逐，在中心交汇闪一下。</string>
     <string name="motion_indicator_infinity_led">∞ 灯珠</string>
-    <string name="motion_indicator_infinity_led_desc">数据包沿 ∞ 排开的灯珠跑圈。</string>
     <string name="motion_empty_flow">流场字标</string>
-    <string name="motion_empty_flow_desc">粒子拼成字标，环境粒子沿流场漂移。</string>
     <string name="motion_empty_led_wordmark">灯珠字标</string>
-    <string name="motion_empty_led_wordmark_desc">字标排成灯珠点阵，数据光带扫过；点按发出波纹。</string>
+    <string name="motion_empty_led_wordmark_desc">点按出波纹</string>
     <string name="motion_empty_mobius">粒子流环</string>
-    <string name="motion_empty_mobius_desc">粒子沿 ∞ 形莫比乌斯带流动；拖动可转视角。</string>
+    <string name="motion_empty_mobius_desc">拖动旋转</string>
     <string name="motion_empty_mobius_led">灯珠环</string>
-    <string name="motion_empty_mobius_led_desc">莫比乌斯带上的灯珠随数据光带闪烁；拖动可转视角。</string>
+    <string name="motion_empty_mobius_led_desc">拖动旋转</string>
     <string name="motion_empty_morph">字标变形</string>
-    <string name="motion_empty_morph_desc">粒子在字标与莫比乌斯带之间往复变形；点按切到下一形态。</string>
+    <string name="motion_empty_morph_desc">点按切换形态</string>
     <string name="motion_empty_led_globe">灯珠星球</string>
-    <string name="motion_empty_led_globe_desc">灯珠排成缓缓自转的球，数据环带扫过；拖动可转视角。</string>
+    <string name="motion_empty_led_globe_desc">拖动旋转</string>
     <string name="theme_scheme_style">配色风格</string>
     <string name="theme_scheme_style_dynamic_note">跟随系统取色时不可用</string>
     <string name="theme_scheme_tonal_spot">柔和</string>

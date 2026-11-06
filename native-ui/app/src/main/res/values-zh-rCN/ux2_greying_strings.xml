@@ -4,7 +4,7 @@
     <string name="ux2_unavailable_text_scale_off">开启自定义文字大小后可调</string>
     <string name="ux2_unavailable_pure_black_mode">仅在深色模式下生效</string>
     <string name="ux2_unavailable_ssh_public_key">仅密钥认证的主机可用</string>
-    <string name="ux2_unavailable_ssh_forward">未设置转发端口，编辑主机时填写后可用</string>
+    <string name="ux2_unavailable_ssh_forward">未设置转发端口</string>
     <string name="ux2_unavailable_tailscale_logout">尚未登录 Tailnet</string>
     <string name="ux2_unavailable_webdav_off">开启 WebDAV 后可用</string>
     <string name="ux2_unavailable_cloud_restore_none">请先选择一份云端备份</string>
@@ -13,6 +13,6 @@
     <string name="ux2_unavailable_reasoning_no_model">选择模型后可调整推理强度</string>
     <string name="ux2_unavailable_reasoning_unsupported">当前模型不支持调整推理强度</string>
     <string name="ux2_unavailable_linux_channel">Play 版不提供</string>
-    <string name="ux2_unavailable_termux_key">先添加 SSH 主机后才能复用其密钥</string>
+    <string name="ux2_unavailable_termux_key">需先添加 SSH 主机</string>
     <string name="ux2_unavailable_linux_environment_channel">Play 版不包含 Linux 环境</string>
 </resources>

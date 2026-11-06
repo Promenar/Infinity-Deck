@@ -4,7 +4,7 @@
     <string name="perm_global_forbid">Off</string>
     <string name="perm_global_forbid_desc">Sessions search only their own conversation</string>
     <string name="perm_global_allow_off">Allowed, off by default</string>
-    <string name="perm_global_allow_off_desc">New sessions start with it off; each session can turn it on</string>
+    <string name="perm_global_allow_off_desc">Each session can turn it on</string>
     <string name="perm_global_allow_on">Allowed, on by default</string>
     <string name="perm_global_allow_on_desc">New sessions also search other sessions\' conversations</string>
     <string name="perm_global_heading">Permission</string>
@@ -14,13 +14,12 @@
     <string name="perm_reach_all">All sessions</string>
     <string name="perm_reach_all_desc">Conversations from every session of every agent</string>
     <string name="perm_reach_value">Limit: %1$s</string>
-    <string name="perm_global_footer">Global memory covers conversation snippets only. The knowledge graph is set per session.</string>
     <string name="perm_active_memory">Active memory</string>
     <string name="perm_active_shared">Shared</string>
-    <string name="perm_active_shared_desc">Saved to the shared pool and readable by every shared session</string>
+    <string name="perm_active_shared_desc">Readable by every shared session</string>
     <string name="perm_active_isolated">Isolated</string>
-    <string name="perm_active_isolated_desc">Records belong to this session only; the shared pool stays hidden</string>
-    <string name="perm_active_switch_note">Switching keeps records where they were saved.</string>
+    <string name="perm_active_isolated_desc">This session only; shared pool hidden</string>
+    <string name="perm_active_switch_note">Saved records stay where they are</string>
     <string name="perm_collections">Available library</string>
     <string name="perm_collections_all">Whole library</string>
     <string name="perm_collections_all_desc">Includes collections added later</string>
@@ -33,7 +32,7 @@
     <string name="perm_default_all">All available collections</string>
     <string name="perm_default_all_desc">Search the session workspace and every allowed collection</string>
     <string name="perm_default_none">Workspace only</string>
-    <string name="perm_default_none_desc">Collections are not preselected; pick them in session settings</string>
+    <string name="perm_default_none_desc">No collections preselected</string>
     <string name="perm_default_value">New sessions: %1$s</string>
     <string name="perm_collections_empty">The library has no collections yet</string>
     <string name="perm_session_only">This session only</string>
@@ -46,7 +45,7 @@
         <item quantity="one">Workspace + %1$d collection</item>
         <item quantity="other">Workspace + %1$d collections</item>
     </plurals>
-    <string name="perm_docs_footer">This session\'s workspace files are always included. Binding a work graph adds that work\'s documents.</string>
+    <string name="perm_docs_footer">Always includes this session\'s workspace</string>
     <string name="rag_trace_scope_bound_graph">Graph</string>
     <string name="rag_trace_graph_name">%1$s</string>
     <string name="rag_trace_graph_session">Session · %1$s</string>

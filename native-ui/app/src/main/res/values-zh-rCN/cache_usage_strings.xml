@@ -13,7 +13,7 @@
     <plurals name="token_cache_unreported_requests">
         <item quantity="other">%1$d 次请求未报告缓存，未计入命中率</item>
     </plurals>
-    <string name="token_cache_none_reported">所用服务商还没有报告缓存数据</string>
+    <string name="token_cache_none_reported">提供商未报告缓存数据</string>
     <string name="token_cache_hit_short">缓存命中 %1$s</string>
     <string name="token_cost_no_cache_discount">未计缓存折扣</string>
     <string name="token_cost_partial_cache_discount">部分模型未计缓存折扣</string>

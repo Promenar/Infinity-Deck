@@ -5,7 +5,7 @@
     <string name="git_panel_refresh">Refresh</string>
     <string name="git_panel_tab_changes">Changes</string>
     <string name="git_panel_tab_commits">Commits</string>
-    <string name="git_panel_readonly_hint">Read-only. Ask the agent to commit, push and so on.</string>
+    <string name="git_panel_readonly_hint">Read-only · Ask the agent to commit or push</string>
     <string name="git_panel_branch_detached">Detached HEAD %1$s</string>
     <string name="git_panel_branch_unknown">Unknown branch</string>
     <string name="git_panel_branch_unborn">%1$s · no commits yet</string>
@@ -54,7 +54,7 @@
     <string name="git_panel_diff_unstaged">Unstaged · index → working tree</string>
     <string name="git_panel_diff_untracked">Untracked · new file</string>
     <string name="git_panel_diff_commit">%1$s · compared with parent</string>
-    <string name="git_panel_error_python">Git info can\'t be shown on this device. Ask the agent to run git through Termux or SSH.</string>
+    <string name="git_panel_error_python">Can\'t show Git info here. Run git through Termux or SSH.</string>
     <string name="git_panel_error_not_repository">The current workspace is not a Git repository</string>
     <string name="git_panel_error_workspace">The session workspace is unavailable</string>
     <string name="git_panel_error_timeout">Reading Git data timed out</string>

@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="legacy_root_marker_workspace_unavailable">Workspace identity verification or initialization failed. File access is unavailable. You can still open this conversation and chat.</string>
+    <string name="legacy_root_marker_workspace_unavailable">Workspace unavailable. File access is off; you can keep chatting.</string>
 </resources>

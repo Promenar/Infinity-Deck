@@ -30,7 +30,7 @@
 
     <!-- 知识库设置 -->
     <string name="settings_ia_new_session_section">新会话默认</string>
-    <string name="settings_ia_new_session_footer">只影响之后新建的会话。已有会话在会话设置 › 上下文中调整。</string>
+    <string name="settings_ia_new_session_footer">只影响新会话；已有会话在会话设置 › 上下文中调整</string>
     <string name="settings_ia_rerank">重排序</string>
     <string name="settings_ia_rerank_no_model">未设置重排模型</string>
     <string name="settings_ia_retrieval_section">检索</string>
@@ -43,8 +43,7 @@
     <string name="settings_ia_hybrid_title">混合搜索</string>
     <string name="settings_ia_hybrid_desc">融合向量与关键词检索</string>
     <string name="settings_ia_rewrite_title">查询改写</string>
-    <string name="settings_ia_retrieval_footer">档位越高，每轮带入的资料越多，消耗的上下文也越多。</string>
-    <string name="settings_ia_retrieval_footer_custom">当前数值在“调试与高级”中单独改过，点选一个档位即可恢复。</string>
+    <string name="settings_ia_retrieval_footer_custom">已在调试与高级中自定义，选择档位可恢复</string>
     <string name="settings_ia_embedding_model">嵌入模型</string>
     <string name="settings_ia_rerank_model">重排模型</string>
     <string name="settings_ia_kg_model">图谱抽取模型</string>
@@ -52,28 +51,28 @@
     <string name="settings_ia_model_follow_fast">跟随快速模型</string>
     <string name="settings_ia_model_follow_fast_desc">使用“默认模型”中的快速模型</string>
     <string name="settings_ia_model_unset">未设置</string>
-    <string name="settings_ia_models_footer">嵌入与重排模型在“默认模型”中设置，点按会跳转。</string>
+    <string name="settings_ia_models_footer">嵌入与重排模型在默认模型中设置</string>
     <string name="settings_ia_extraction_section">每轮抽取</string>
     <string name="settings_ia_extra_call">每轮额外调用一次模型</string>
-    <string name="settings_ia_extraction_footer">每轮回复后在后台运行。提取事件与状态需开启对话记忆；图谱抽取的模型与预算沿用知识图谱设置。</string>
+    <string name="settings_ia_extraction_footer">每轮回复后在后台运行；事件与状态需开启对话记忆</string>
 
     <!-- 知识图谱 -->
     <plurals name="settings_ia_kg_entities">
         <item quantity="other">%d 个实体</item>
     </plurals>
     <string name="settings_ia_kg_budget_section">文档抽取预算</string>
-    <string name="settings_ia_kg_budget_footer">按单个文档计算；预计调用超过确认阈值时先询问你。达到预算时保留已处理的部分。</string>
+    <string name="settings_ia_kg_budget_footer">按文档计；超过确认阈值先询问，用完预算保留已处理部分</string>
     <string name="settings_ia_kg_window_section">抽取窗口</string>
-    <string name="settings_ia_kg_window_footer">文档按段落切成这一长度的窗口，窗口越大调用越少；长度会按图谱模型的上下文与输出上限自动收窄。每轮补抽会让模型对每个窗口再找一次遗漏的实体。</string>
+    <string name="settings_ia_kg_window_footer">窗口越大调用越少，按图谱模型上限自动收窄；每轮补抽对每个窗口多调用一次</string>
     <string name="settings_ia_kg_extraction_model">抽取模型</string>
     <string name="settings_ia_kg_more">抽取超时与提示词</string>
     <string name="settings_ia_kg_more_desc">在调试与高级中调整</string>
 
     <!-- 调试与高级 -->
     <string name="settings_ia_chunk_notice_title">分块设置已修改</string>
-    <string name="settings_ia_chunk_notice_body">新设置只对之后导入的文档生效。要让已有 %1$s 个分块按新设置重建，需全部重新向量化，期间会调用嵌入模型。</string>
+    <string name="settings_ia_chunk_notice_body">只对之后导入的文档生效；重建已有 %1$s 个分块需全部重新向量化，会调用嵌入模型</string>
     <string name="settings_ia_index_section">索引数据</string>
-    <string name="settings_ia_index_footer">清除后需要重新索引才能检索，原始文档保留。</string>
+    <string name="settings_ia_index_footer">清除后需重新索引，原始文档保留</string>
     <string name="settings_ia_vector_stats">向量统计</string>
     <plurals name="settings_ia_vector_chunks">
         <item quantity="other">%d 个分块</item>
@@ -87,7 +86,7 @@
     <string name="settings_ia_advanced_params">高级参数</string>
     <string name="settings_ia_advanced_collapsed_desc">分块、阈值、召回与图谱检索等</string>
     <string name="settings_ia_advanced_expanded_desc">多数情况用“检索深度”档位即可</string>
-    <string name="settings_ia_advanced_footer">阈值与嵌入模型的分数分布相关，换嵌入模型后需重新判断。改动检索数量会让“检索深度”显示为自定义。</string>
+    <string name="settings_ia_advanced_footer">换嵌入模型后需重新调整阈值</string>
     <string name="settings_ia_group_chunking">分块</string>
     <string name="settings_ia_group_counts">检索数量</string>
     <string name="settings_ia_group_thresholds">相似度阈值</string>
@@ -98,7 +97,7 @@
     <string name="settings_ia_chunk_size">分块大小</string>
     <string name="settings_ia_chunk_overlap">重叠</string>
     <string name="settings_ia_memory_chunk_size">记忆分块大小</string>
-    <string name="settings_ia_chunk_desc">修改后只对之后导入的文档生效，已有文档需全部重新向量化。</string>
+    <string name="settings_ia_chunk_desc">只对之后导入的文档生效</string>
     <string name="settings_ia_summary_prompt">摘要提示词</string>
     <string name="settings_ia_prompt_default">默认</string>
     <string name="settings_ia_prompt_custom">自定义</string>
@@ -113,13 +112,13 @@
     <string name="settings_ia_keyword_weight">关键词权重</string>
     <string name="settings_ia_keyword_weight_desc">关键词（BM25）命中的加权倍数。</string>
     <string name="settings_ia_rewrite_variants">改写变体数</string>
-    <string name="settings_ia_rewrite_variants_desc">多查询策略下生成的查询变体数，每多一条多一次嵌入请求。</string>
+    <string name="settings_ia_rewrite_variants_desc">每条变体多一次嵌入请求</string>
     <string name="settings_ia_extraction_timeout">抽取超时（秒）</string>
     <string name="settings_ia_extraction_prompt">抽取提示词</string>
 
     <!-- 内置工具与 Web 搜索 -->
     <string name="settings_ia_knowledge_search_title">知识检索</string>
-    <string name="settings_ia_knowledge_search_desc">knowledge_search · 由智能体的检索方式决定是否提供</string>
+    <string name="settings_ia_knowledge_search_desc">knowledge_search · 跟随智能体检索方式</string>
     <string name="settings_ia_domain_section">域名过滤</string>
     <string name="settings_ia_domain_include">只搜索这些域名</string>
     <string name="settings_ia_domain_exclude">排除这些域名</string>
@@ -128,14 +127,13 @@
     <plurals name="settings_ia_domain_count">
         <item quantity="other">%d 个</item>
     </plurals>
-    <string name="settings_ia_domain_footer">两项都设置时先限定范围再排除。</string>
+    <string name="settings_ia_domain_footer">两项都设置时先限定再排除</string>
     <string name="settings_ia_domain_dialog_hint">每行一个域名</string>
 
     <!-- 会话设置面板 -->
     <string name="settings_ia_keep_web_search">关闭工具时保留联网搜索</string>
     <string name="settings_ia_keep_web_search_desc">工具关闭后仍可调用 Web 搜索</string>
-    <string name="settings_ia_tools_off_web_only">工具已关闭，本会话只保留 Web 搜索。</string>
-    <string name="settings_ia_tools_off_none">工具已关闭，本会话不调用任何工具。</string>
+    <string name="settings_ia_tools_off_web_only">仅保留 Web 搜索</string>
     <string name="settings_ia_skills_section">技能</string>
     <plurals name="settings_ia_skills_enabled">
         <item quantity="other">用户技能 %d 个已启用</item>
@@ -144,17 +142,17 @@
         <item quantity="other">项目技能 %d 个</item>
     </plurals>
     <string name="settings_ia_project_skills_in">%1$s · %2$s</string>
-    <string name="settings_ia_skills_footer">技能启用名单是全局设置，点按到技能包中修改。</string>
+    <string name="settings_ia_skills_footer">全局设置，在技能包中修改</string>
     <string name="settings_ia_session_options">会话选项</string>
     <string name="settings_ia_doc_scope_workspace_desc">本会话工作区中的文件</string>
     <string name="settings_ia_doc_scope_kb">工作区与知识库</string>
     <string name="settings_ia_doc_scope_kb_desc">另含知识库中的文档</string>
     <string name="settings_ia_scope_footer">范围上限与新会话默认在%1$s中调整。</string>
     <string name="settings_ia_scope_footer_link">智能体设置</string>
-    <string name="settings_ia_scope_above_cap">超出本智能体的上限，可在智能体设置中调高</string>
+    <string name="settings_ia_scope_above_cap">超出智能体上限，在智能体设置中调高</string>
     <string name="settings_ia_message_font">消息字号</string>
     <string name="settings_ia_message_font_desc">只影响本会话的消息正文</string>
-    <string name="settings_ia_message_font_footer">整体界面缩放在设置 › 外观 › 文字大小中调整。</string>
+    <string name="settings_ia_message_font_footer">全局文字大小：设置 › 外观 › 文字大小</string>
     <string name="settings_ia_param_presence_penalty">话题新鲜度</string>
     <string name="settings_ia_param_frequency_penalty">词频惩罚</string>
 

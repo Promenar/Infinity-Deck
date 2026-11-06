@@ -434,12 +434,7 @@ private fun GeneratedPane(
             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = stringResource(R.string.agent_avatar_generated_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
+            Spacer(Modifier.weight(1f))
             InfinityPillButton(
                 text = stringResource(R.string.agent_avatar_shuffle),
                 onClick = onShuffle,

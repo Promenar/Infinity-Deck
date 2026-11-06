@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="exec_steer_empty_reply">模型没有返回内容，请重试生成。</string>
+    <string name="exec_steer_empty_reply">模型未返回内容，请重试</string>
     <string name="exec_steer_move_to_background">转入后台</string>
     <string name="exec_steer_check_now">立即检查</string>
     <string name="exec_steer_empty_reply_retry">重试</string>

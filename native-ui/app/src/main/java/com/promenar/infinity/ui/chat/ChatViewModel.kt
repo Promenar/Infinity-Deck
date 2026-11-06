@@ -572,19 +572,19 @@ class ChatViewModel(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     suspend fun saveImageAnnotation(export: ImageAnnotationExport): Uri {
-        val sessionId = _currentSessionId.value ?: error("请先打开会话，再保存画板。")
-        val session = store.getSession(sessionId) ?: error("当前会话已不存在，无法保存画板。")
+        val sessionId = _currentSessionId.value ?: error("未打开会话")
+        val session = store.getSession(sessionId) ?: error("会话已不存在")
         val protectedUris = composerImages.map(Uri::toString) + _restoredDraftImages.value.orEmpty() +
             generationPresentationStore.composerAttachments(sessionId)?.imageUris.orEmpty() +
             generationPresentationStore.submittedDraft(sessionId)?.imageUris.orEmpty() + composerDraftRecovery.imageUris(sessionId)
         val cleanupAllowed = pendingQueueWrites[sessionId] == null && sessionId !in preparingSessions
-        check(annotationSavingSessions.add(sessionId)) { "画板正在保存，请稍后再试。" }
+        check(annotationSavingSessions.add(sessionId)) { "上次保存尚未完成" }
         return try {
             val file = annotationStore.save(sessionId, export, ImageAnnotationContext.from(session))
             val current = store.getSession(sessionId)
             check(_currentSessionId.value == sessionId && current?.workspaceId == session.workspaceId &&
                 current?.executionMode == session.executionMode && current?.runMode == session.runMode && current?.worktreeDirectory == session.worktreeDirectory) {
-                "保存期间会话或工作区已切换，请在当前会话重新打开画板。"
+                "会话或工作区已切换，请重新打开画板"
             }
             if (cleanupAllowed) {
                 try {
@@ -599,7 +599,7 @@ class ChatViewModel(
             Uri.fromFile(file)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
-            throw IllegalStateException("画板保存失败：${failure.message ?: "请检查工作区目录与授权。"}", failure)
+            throw IllegalStateException(failure.message ?: "请检查工作区目录与授权", failure)
         } finally { annotationSavingSessions.remove(sessionId) }
     }
 
@@ -1801,7 +1801,7 @@ class ChatViewModel(
                         throw cancelled
                     } catch (_: Exception) {
                         if (_currentSessionId.value == pending.sessionId) {
-                            _error.update { "无法安全删除旧回复，已取消重试。" }
+                            _error.update { "旧回复删除失败，已取消重试" }
                             _generationStatus.update { GenerationStatus.ERROR }
                             _isGenerating.update { false }
                         }
@@ -3432,7 +3432,7 @@ class ChatViewModel(
                     throw cancelled
                 } catch (_: Exception) {
                     _replacingMessageIds.value = emptySet()
-                    _error.update { "无法安全删除旧回复，已取消重试。" }
+                    _error.update { "旧回复删除失败，已取消重试" }
                     _generationStatus.update { GenerationStatus.ERROR }
                     _isGenerating.update { false }
                 }

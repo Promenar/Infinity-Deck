@@ -10,11 +10,11 @@
     <string name="slash_cmd_new_name">新会话</string>
     <string name="slash_cmd_new_desc">用当前智能体新建一个会话</string>
     <string name="slash_cmd_rename_name">重命名</string>
-    <string name="slash_cmd_rename_desc">重命名会话，可直接在后面写新标题</string>
+    <string name="slash_cmd_rename_desc">重命名会话，可附新标题</string>
     <string name="slash_cmd_prompt_name">会话提示词</string>
-    <string name="slash_cmd_prompt_desc">设置会话提示词，不写内容时打开编辑器</string>
+    <string name="slash_cmd_prompt_desc">设置会话提示词</string>
     <string name="slash_cmd_compact_name">压缩上下文</string>
-    <string name="slash_cmd_compact_desc">把较早的对话压缩成摘要，腾出上下文空间</string>
+    <string name="slash_cmd_compact_desc">将较早对话压缩为摘要</string>
     <string name="slash_cmd_clear_name">清空历史</string>
     <string name="slash_cmd_clear_desc">确认后删除本会话的全部消息</string>
     <string name="slash_cmd_mode_name">审批</string>
@@ -22,7 +22,7 @@
     <string name="slash_cmd_tools_name">工具调用</string>
     <string name="slash_cmd_tools_desc">为本会话开启或关闭工具调用</string>
     <string name="slash_cmd_export_name">导出会话</string>
-    <string name="slash_cmd_export_desc">选择格式和包含内容；加 md、txt、html、pdf 或 png 直接导出</string>
+    <string name="slash_cmd_export_desc">导出会话，可附 md、txt、html、pdf 或 png</string>
 
     <!-- 执行结果 -->
     <string name="slash_feedback_renamed">已重命名为“%1$s”</string>

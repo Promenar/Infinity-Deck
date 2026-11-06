@@ -110,7 +110,6 @@ internal fun AgentNewSessionDefaultsSection(
     val selectedMcp = mcpRows.count { it.checked && it.available }
     InfinitySettingsSection(
         title = stringResource(R.string.agent_edit_section_new_session),
-        footer = stringResource(R.string.agent_edit_new_session_footer),
     ) {
         InfinityValueRow(
             icon = Icons.Rounded.Shield,
@@ -122,7 +121,6 @@ internal fun AgentNewSessionDefaultsSection(
         AgentDefaultWorkspaceRow(workspaceId = workspaceId, workspace = workspace, onChoose = onChooseWorkspace)
         SettingsToggle(
             title = stringResource(R.string.ux2_agent_tools_default),
-            description = stringResource(R.string.ux2_agent_tools_default_desc),
             icon = Icons.Rounded.Build,
             checked = toolsEnabledByDefault,
             onCheckedChange = onToolsEnabledByDefaultChange,

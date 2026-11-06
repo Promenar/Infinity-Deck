@@ -35,20 +35,19 @@
     <string name="agent_config_field_skills">启用的技能</string>
     <string name="agent_config_field_mcp">启用的 MCP</string>
     <plurals name="agent_config_impact_agent_prompt">
-        <item quantity="other">影响“%1$s”的全部 %2$d 个会话，从各会话下一轮生效。修改前的内容会存为历史版本，可在编辑页恢复。</item>
+        <item quantity="other">影响“%1$s”的 %2$d 个会话，下一轮生效；旧版本可恢复</item>
     </plurals>
     <plurals name="agent_config_impact_agent_fields">
-        <item quantity="other">影响“%1$s”的全部 %2$d 个会话，从各会话下一轮生效；新会话默认值只影响之后新建的会话。</item>
+        <item quantity="other">影响“%1$s”的 %2$d 个会话，下一轮生效；新会话默认值仅用于新建会话</item>
     </plurals>
-    <string name="agent_config_impact_new_agent">只新建智能体，不会发起对话。审批方式为“命令需批准”，可在编辑页修改。</string>
-    <string name="agent_config_impact_new_session">只新建会话，不会发起对话，也不会切换到该会话。</string>
-    <string name="agent_config_impact_current_session">本会话从下一轮生效；其它会话不受影响。</string>
-    <string name="agent_config_impact_other_session">该会话从下一轮生效；本会话不受影响。</string>
+    <string name="agent_config_impact_new_agent">仅新建智能体，审批方式为“命令需批准”</string>
+    <string name="agent_config_impact_new_session">仅新建会话，不切换</string>
+    <string name="agent_config_impact_current_session">仅本会话，下一轮生效</string>
+    <string name="agent_config_impact_other_session">仅该会话，下一轮生效</string>
     <string name="agent_config_approve_once">仅批准这一次</string>
-    <string name="agent_config_approve_once_hint">修改智能体与会话每次都需批准，不提供“10 分钟内同类免审批”。</string>
     <!-- 编辑页：与智能体工具写入的冲突处理 -->
-    <string name="agent_edit_conflict_field">智能体刚修改了%1$s，而你也改了这里。选择要保留哪一份：</string>
-    <string name="agent_edit_conflict_prompt">智能体刚修改了提示词，而你也在编辑这里。选择要保留哪一份：</string>
+    <string name="agent_edit_conflict_field">智能体也修改了%1$s</string>
+    <string name="agent_edit_conflict_prompt">智能体也修改了提示词</string>
     <string name="agent_edit_conflict_mine">你的：%1$s</string>
     <string name="agent_edit_conflict_theirs">智能体的：%1$s</string>
     <string name="agent_edit_conflict_local_value">你的未保存修改</string>
@@ -57,12 +56,12 @@
     <string name="agent_edit_conflict_hide_diff">收起差异</string>
     <string name="agent_edit_conflict_adopt">采用新内容</string>
     <string name="agent_edit_conflict_keep">保留我的</string>
-    <string name="agent_edit_conflict_diff_caption">你的草稿 → 智能体的版本。无论选哪一份，被放弃的那份都存为历史版本。</string>
-    <string name="agent_edit_notice_adopted_prompt">已采用智能体的版本；你的未保存内容存为一个历史版本。</string>
-    <string name="agent_edit_notice_kept_prompt">已保留你的版本并保存；智能体的版本存为历史版本，可随时恢复。</string>
-    <string name="agent_edit_notice_adopted">已采用智能体的修改。</string>
-    <string name="agent_edit_notice_kept">已保留你的修改并保存。</string>
-    <string name="agent_edit_notice_restored">已恢复所选版本，从各会话下一轮生效。</string>
+    <string name="agent_edit_conflict_diff_caption">你的草稿 → 智能体的版本；未采用的一份存入历史</string>
+    <string name="agent_edit_notice_adopted_prompt">已采用智能体的版本，草稿已存入历史</string>
+    <string name="agent_edit_notice_kept_prompt">已保存你的版本，智能体的版本已存入历史</string>
+    <string name="agent_edit_notice_adopted">已采用智能体的修改</string>
+    <string name="agent_edit_notice_kept">已保存你的修改</string>
+    <string name="agent_edit_notice_restored">已恢复，下一轮生效</string>
 
     <!-- 提示词历史版本 -->
     <string name="agent_prompt_history_row">历史版本</string>
@@ -71,8 +70,8 @@
         <item quantity="other">%1$d 个版本</item>
     </plurals>
     <string name="agent_prompt_history_title">提示词历史版本</string>
-    <string name="agent_prompt_history_caption">保留最近 20 版。智能体修改、你在编辑页保存、恢复操作都会记一版。</string>
-    <string name="agent_prompt_history_empty">还没有历史版本。保存或修改提示词后会出现在这里。</string>
+    <string name="agent_prompt_history_caption">保留最近 20 版</string>
+    <string name="agent_prompt_history_empty">还没有历史版本</string>
     <string name="agent_prompt_history_empty_content">（空提示词）</string>
     <string name="agent_prompt_history_current">当前</string>
     <string name="agent_prompt_history_sheet_title">%1$s（%2$s）</string>
@@ -82,9 +81,9 @@
     <string name="agent_prompt_history_source_user">我</string>
     <string name="agent_prompt_history_source_agent">智能体</string>
     <string name="agent_prompt_history_source_rollback">恢复</string>
-    <string name="agent_prompt_history_is_current">这是当前使用的版本。</string>
+    <string name="agent_prompt_history_is_current">当前版本</string>
     <string name="agent_prompt_history_diff_caption">当前内容 → 此版本</string>
     <string name="agent_prompt_history_close">关闭</string>
     <string name="agent_prompt_history_restore">恢复此版本</string>
-    <string name="agent_prompt_history_restore_caption">恢复后从各会话下一轮生效；当前内容仍保留在历史中。</string>
+    <string name="agent_prompt_history_restore_caption">下一轮生效，当前内容保留在历史中</string>
 </resources>

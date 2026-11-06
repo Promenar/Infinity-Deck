@@ -8,7 +8,7 @@
     <string name="touch_lock_slide_hint">Slide the lock to unlock</string>
     <string name="touch_lock_unlock_action">Unlock</string>
     <string name="touch_lock_setting_title">Unlock touch lock</string>
-    <string name="touch_lock_setting_footer">The screen stays on while a reply is generating. The lock next to the run status (on the composer, or in the side inspector on wide screens) ignores every touch except the lock itself, so you can put your phone in a pocket while the task keeps running.</string>
+    <string name="touch_lock_setting_footer">Screen stays on while generating; when locked, only the lock responds</string>
     <string name="touch_lock_unlock_hold">Hold the lock</string>
     <string name="touch_lock_unlock_hold_desc">Press and hold for 1.5 seconds</string>
     <string name="touch_lock_unlock_slide">Slide the lock</string>

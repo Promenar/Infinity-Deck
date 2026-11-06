@@ -3,22 +3,22 @@
     <string name="startup_issues_view">查看</string>
     <string name="startup_issues_handle">处理</string>
     <string name="startup_issues_title">启动自检问题</string>
-    <string name="startup_issues_intro">只有受影响的工作区、会话或功能暂停使用。可以重试，或让智能体帮忙诊断。</string>
-    <string name="startup_issues_none">没有未处理的问题。</string>
+    <string name="startup_issues_intro">仅受影响的工作区、会话或功能暂停</string>
+    <string name="startup_issues_none">没有未处理的问题</string>
     <string name="startup_issues_retry">重试</string>
     <string name="startup_issues_abandon">放弃这次操作</string>
     <string name="startup_issues_abandon_title">放弃未完成的操作？</string>
-    <string name="startup_issues_abandon_message">文件保持现在的样子，应用只收尾这条记录，然后重新检查工作区；仍不一致时继续暂停写入。</string>
+    <string name="startup_issues_abandon_message">文件保持现状，只收尾这条记录并重新检查工作区；仍不一致时继续暂停写入</string>
     <string name="startup_issues_diagnose">让智能体诊断</string>
-    <string name="startup_issues_diagnose_unavailable">先创建一个智能体，才能让它诊断。</string>
+    <string name="startup_issues_diagnose_unavailable">需要先创建智能体</string>
     <string name="startup_issues_records">诊断记录</string>
     <string name="startup_issues_records_note">已脱敏：不含密钥、消息内容与文件内容。</string>
-    <string name="startup_issues_no_records">暂无记录。</string>
+    <string name="startup_issues_no_records">暂无记录</string>
     <string name="startup_issues_export">导出</string>
-    <string name="startup_issues_exported">诊断已导出。</string>
-    <string name="startup_issues_export_failed">诊断导出失败。</string>
-    <string name="startup_issues_resolved">问题已解决。</string>
-    <string name="startup_issues_failed">问题仍未解决。</string>
+    <string name="startup_issues_exported">诊断已导出</string>
+    <string name="startup_issues_export_failed">诊断导出失败</string>
+    <string name="startup_issues_resolved">问题已解决</string>
+    <string name="startup_issues_failed">仍未解决</string>
     <string name="startup_issue_title_data">数据恢复没有完成</string>
     <string name="startup_issue_title_inventory">无法检查工作区</string>
     <string name="startup_issue_title_adoption">旧工作区接管失败</string>
@@ -37,8 +37,8 @@
     <plurals name="startup_issues_banner_title">
         <item quantity="other">%1$d 个启动自检问题</item>
     </plurals>
-    <string name="startup_issues_banner_detail">相关范围已暂停写入，其它功能不受影响</string>
+    <string name="startup_issues_banner_detail">相关范围已暂停写入</string>
     <string name="startup_issues_session_paused_title">这个工作区暂停写入</string>
-    <string name="startup_issues_session_paused_detail">可以查看文件，智能体不能修改</string>
+    <string name="startup_issues_session_paused_detail">智能体暂不能修改文件</string>
     <string name="startup_issues_abandon_short">放弃</string>
 </resources>

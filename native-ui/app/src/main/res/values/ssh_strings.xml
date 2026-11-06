@@ -2,14 +2,13 @@
 <resources>
     <!-- SSH 页面使用独立资源文件，默认语言为英文。 -->
     <string name="ssh_settings_title">SSH hosts</string>
-    <string name="ssh_settings_description">The agent sees host aliases only, never passwords or keys.</string>
+    <string name="ssh_settings_description">The agent sees host IDs only, never passwords or keys</string>
     <string name="ssh_backup_notice">Hosts and credentials aren\'t included in backups.</string>
     <string name="ssh_add_host">Add host</string>
     <string name="ssh_edit_host">Edit host</string>
-    <string name="ssh_no_hosts">No SSH hosts configured.</string>
+    <string name="ssh_no_hosts">No SSH hosts yet</string>
     <string name="ssh_alias">Host ID (used by the agent)</string>
-    <string name="ssh_alias_help">The agent refers to this host by its ID. Start with a lowercase letter; digits, _ and - allowed; up to 48 characters. Leave empty to generate one from the hostname.</string>
-    <string name="ssh_alias_suggestion">Leave empty to use %1$s.</string>
+    <string name="ssh_alias_help">Start with a lowercase letter; digits, _ and - allowed; up to 48 characters. Leave empty to generate.</string>
     <string name="ssh_hostname">Hostname or IP address</string>
     <string name="ssh_port">SSH port</string>
     <string name="ssh_username">Username</string>
@@ -19,11 +18,11 @@
     <string name="ssh_password">Password</string>
     <string name="ssh_passphrase">Private key passphrase (optional)</string>
     <string name="ssh_import_key">Import key file</string>
-    <string name="ssh_key_import_help">Choose an OpenSSH private key file, or copy the whole key and paste it from the clipboard.</string>
-    <string name="ssh_key_imported">Private key loaded in memory. Save to store it securely on this device.</string>
+    <string name="ssh_key_import_help">OpenSSH private key file or clipboard</string>
+    <string name="ssh_key_imported">Key loaded. Saving stores it encrypted on this device.</string>
     <string name="ssh_generate_save_copy">Generate key, save and copy public key</string>
     <string name="ssh_generate_help">After saving, add the public key to the server\'s authorized_keys.</string>
-    <string name="ssh_keep_credential_hint">Leave credential fields empty to keep the saved credential. Import or generate a key to replace it.</string>
+    <string name="ssh_keep_credential_hint">Leave empty to keep the saved credential</string>
     <string name="ssh_open_terminal">Open terminal</string>
     <string name="ssh_verify">Verify fingerprint</string>
     <string name="ssh_trusted">Host fingerprint saved</string>
@@ -31,7 +30,7 @@
     <string name="ssh_copy_public_key">Copy public key</string>
     <string name="ssh_public_key_label">SSH public key</string>
     <string name="ssh_public_key_copied">Public key copied.</string>
-    <string name="ssh_fingerprint_matches">The presented host fingerprint matches the saved fingerprint.</string>
+    <string name="ssh_fingerprint_matches">Fingerprint matches</string>
     <string name="ssh_trust_title">Trust this host fingerprint?</string>
     <string name="ssh_changed_title">Host fingerprint changed</string>
     <string name="ssh_compare_fingerprint">Check this fingerprint against the server. A changed fingerprint may mean a different server.</string>
@@ -51,7 +50,7 @@
     <string name="ssh_agent_manage_title">Let agents manage SSH hosts</string>
     <string name="ssh_agent_manage_summary_on">Every change needs your approval</string>
     <string name="ssh_agent_manage_summary_off">Agents can only connect to configured hosts</string>
-    <string name="ssh_agent_manage_description">On by default. Agents need your approval every time they save or delete a host or install a public key. You always enter passwords and confirm fingerprints yourself.</string>
+    <string name="ssh_agent_manage_description">Saving or deleting hosts and installing keys need your approval. You enter passwords and confirm fingerprints.</string>
     <string name="ssh_cancel">Cancel</string>
     <string name="ssh_forward_configure">Local port forwarding</string>
     <string name="ssh_forward_loopback_only">Only this device can reach this port.</string>
@@ -64,7 +63,7 @@
     <string name="ssh_forward_start">Start forwarding</string>
     <string name="ssh_forward_stop">Stop forwarding</string>
     <string name="ssh_terminal_connecting">Connecting…</string>
-    <string name="ssh_terminal_truncated">Some output was dropped by the session limit. Reconnect if the screen is incomplete.</string>
+    <string name="ssh_terminal_truncated">Some output was dropped. Reconnect if the screen is incomplete.</string>
     <string name="ssh_terminal_accessibility">Interactive SSH terminal. Tap to type; swipe vertically to review scrollback.</string>
     <string name="ssh_terminal_bottom">Latest output</string>
     <string name="ssh_terminal_disconnect">Disconnect</string>
@@ -72,24 +71,24 @@
     <!-- 主机编辑与操作的错误文案；代码映射见 SshErrorMessages。 -->
     <string name="ssh_paste_key">Paste private key from clipboard</string>
     <string name="ssh_key_more_cd">Other key sources</string>
-    <string name="ssh_key_pasted">Private key loaded from the clipboard, and the clipboard was cleared. Save to store it securely on this device.</string>
-    <string name="ssh_error_alias_invalid">The host ID must start with a lowercase letter and use only lowercase letters, digits, _ and -, up to 48 characters. Leave it empty and fill in the hostname to generate one.</string>
-    <string name="ssh_error_alias_taken">Another host already uses this ID. Choose a different one.</string>
+    <string name="ssh_key_pasted">Key loaded; clipboard cleared</string>
+    <string name="ssh_error_alias_invalid">Host ID must start with a lowercase letter and use only lowercase letters, digits, _ and -, up to 48 characters</string>
+    <string name="ssh_error_alias_taken">This host ID is already in use</string>
     <string name="ssh_error_alias_immutable">The ID of a saved host can\'t be changed.</string>
     <string name="ssh_error_host_invalid">Enter a hostname or IP address without spaces.</string>
     <string name="ssh_error_port_invalid">The SSH port must be a number from 1 to 65535.</string>
     <string name="ssh_error_username_invalid">Enter a username.</string>
     <string name="ssh_error_forward_invalid">Forwarding ports must be from 1 to 65535, and the target hostname can\'t contain spaces.</string>
-    <string name="ssh_error_key_required">Import or paste a private key first, or use Generate key, save and copy public key.</string>
+    <string name="ssh_error_key_required">Import, paste or generate a private key</string>
     <string name="ssh_error_password_required">Enter a password.</string>
     <string name="ssh_error_key_read_failed">Couldn\'t read the private key file.</string>
     <string name="ssh_error_key_too_large">The private key is larger than 64 KB. Make sure you chose a private key file.</string>
     <string name="ssh_error_key_empty">The private key is empty.</string>
     <string name="ssh_error_key_clipboard_empty">The clipboard has no text. Copy the whole private key first.</string>
-    <string name="ssh_error_credential_missing">This host has no saved credential. Edit the host to import a key or enter a password.</string>
+    <string name="ssh_error_credential_missing">No saved credential. Edit the host to add a key or password.</string>
     <string name="ssh_error_host_changed_retry">The host was just changed. Try again.</string>
     <string name="ssh_error_host_not_found">This host no longer exists.</string>
-    <string name="ssh_error_unsupported_key_format">Only OpenSSH private keys (starting with BEGIN OPENSSH PRIVATE KEY) are supported. Convert other formats on a computer with ssh-keygen -p -f keyfile.</string>
+    <string name="ssh_error_unsupported_key_format">Only OpenSSH private keys are supported. Convert others with ssh-keygen -p -f keyfile.</string>
     <string name="ssh_error_invalid_private_key">The private key is invalid or incomplete. Copy the whole key.</string>
     <string name="ssh_error_invalid_key_passphrase">The key passphrase is incorrect.</string>
     <string name="ssh_error_unsupported_user_key">This key type or encryption isn\'t supported. Use an Ed25519, ECDSA or RSA key.</string>
@@ -104,7 +103,7 @@
     <string name="ssh_error_host_key_untrusted">This host\'s fingerprint isn\'t trusted yet. Verify the fingerprint first.</string>
     <string name="ssh_error_unsupported_host_key">The server\'s host key type isn\'t supported.</string>
     <string name="ssh_error_connection_limit">Too many connections are open. Close some terminals or forwards first.</string>
-    <string name="ssh_error_foreground_service">Couldn\'t start the foreground service that keeps connections alive.</string>
+    <string name="ssh_error_foreground_service">Couldn\'t start the foreground service</string>
     <string name="ssh_error_forward_not_configured">This host has no port forwarding configured.</string>
     <string name="ssh_error_host_unavailable">SSH is temporarily unavailable. Try again later.</string>
     <string name="ssh_error_unknown">The operation failed (%1$s).</string>

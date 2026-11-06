@@ -1007,10 +1007,7 @@ internal fun SshHostEditorForm(
                     SshEditorField(
                         fields.alias, { fields.alias = SshHostDraft.normalizeAliasInput(it) }, R.string.ssh_alias,
                         enabled = !busy && existing == null,
-                        supportingText = listOfNotNull(
-                            stringResource(R.string.ssh_alias_help),
-                            aliasSuggestion?.let { stringResource(R.string.ssh_alias_suggestion, it) },
-                        ).joinToString("\n"),
+                        supportingText = stringResource(R.string.ssh_alias_help),
                         placeholder = aliasSuggestion,
                         isError = errorCode in SshErrorMessages.ALIAS_CODES,
                         testTag = "ssh_editor_alias",

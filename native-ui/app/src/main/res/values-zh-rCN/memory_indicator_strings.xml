@@ -10,14 +10,14 @@
     </plurals>
     <string name="turn_memory_visibility_title">可检索范围</string>
     <string name="turn_memory_visibility_session">始终可检索</string>
-    <string name="turn_memory_visibility_agent">开启全局记忆后可检索（本智能体的会话或全部会话）</string>
-    <string name="turn_memory_visibility_shared">开启全局记忆且范围为“全部会话”时可检索</string>
+    <string name="turn_memory_visibility_agent">开启全局记忆后可检索</string>
+    <string name="turn_memory_visibility_shared">全局记忆范围为“全部会话”时可检索</string>
     <string name="turn_memory_chunks_title">已写入的片段</string>
     <string name="turn_memory_writing_hint">正在把本轮写入记忆…</string>
-    <string name="turn_memory_removed_hint">本轮不在记忆中，聊天记录保留。</string>
-    <string name="turn_memory_failed_hint">本轮未能写入记忆。请检查嵌入模型后重试。</string>
+    <string name="turn_memory_removed_hint">消息仍保留</string>
+    <string name="turn_memory_failed_hint">请检查嵌入模型后重试</string>
     <string name="turn_memory_remove">从记忆中移除本轮</string>
-    <string name="turn_memory_remove_hint">只移除记忆，不删除消息。</string>
+    <string name="turn_memory_remove_hint">不删除消息</string>
     <string name="turn_memory_readd">重新记入记忆</string>
     <string name="turn_memory_retry">重试</string>
     <string name="turn_memory_remove_failed">未能从记忆中移除本轮</string>
@@ -46,7 +46,7 @@
     <plurals name="memory_scope_reach_sessions">
         <item quantity="other">可检索 %d 个会话</item>
     </plurals>
-    <string name="rag_trace_headline_hit">找到 %1$d 条相关内容，采用 %2$d 条</string>
+    <string name="rag_trace_headline_hit">找到 %1$d 条，采用 %2$d 条</string>
     <string name="rag_trace_headline_empty">没有找到相关内容</string>
     <string name="rag_trace_label_sources">来源</string>
     <string name="rag_trace_label_scope">范围</string>

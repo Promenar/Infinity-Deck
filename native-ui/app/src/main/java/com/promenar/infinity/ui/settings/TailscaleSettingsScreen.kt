@@ -428,10 +428,7 @@ private fun TailscalePeersSection(
         footer = if (peers.isEmpty()) {
             stringResource(R.string.tailscale_peers_empty)
         } else {
-            listOfNotNull(
-                pluralStringResource(R.plurals.tailscale_peers_summary, peers.size, online, peers.size),
-                if (candidates.isNotEmpty()) stringResource(R.string.ssh_tailnet_add_host_hint) else null,
-            ).joinToString(" ")
+            pluralStringResource(R.plurals.tailscale_peers_summary, peers.size, online, peers.size)
         },
     ) {
         peers.sortedForDisplay().forEach { peer ->

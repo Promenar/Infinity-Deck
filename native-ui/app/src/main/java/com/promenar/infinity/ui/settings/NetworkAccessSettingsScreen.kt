@@ -76,7 +76,6 @@ internal fun NetworkAccessSettingsContent(
         }
         InfinitySettingsSection(
             title = stringResource(R.string.network_section_matrix),
-            footer = networkMatrixFooter(),
         ) {
             NetworkAccessRows(snapshot)
         }

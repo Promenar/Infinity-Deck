@@ -13,9 +13,9 @@
     <string name="turn_graph_entities_title">实体</string>
     <string name="turn_graph_relations_title">关系</string>
     <string name="turn_graph_relation">%1$s → %2$s → %3$s</string>
-    <string name="turn_graph_empty">本轮没有抽取到实体或关系。</string>
-    <string name="turn_graph_pending_hint">本轮正在后台排队抽取，完成后在这里显示实体与关系。</string>
-    <string name="turn_graph_partial_hint">已达到抽取预算上限，本轮只抽取了一部分。</string>
+    <string name="turn_graph_empty">未抽取到实体或关系</string>
+    <string name="turn_graph_pending_hint">排队抽取中</string>
+    <string name="turn_graph_partial_hint">已达抽取预算上限，仅抽取部分</string>
     <string name="turn_graph_failed_hint">原因：%1$s</string>
     <string name="turn_graph_retry">重新抽取</string>
     <string name="turn_graph_open_graph">在图谱中查看</string>

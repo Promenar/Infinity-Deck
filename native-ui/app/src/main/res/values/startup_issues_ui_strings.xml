@@ -3,22 +3,22 @@
     <string name="startup_issues_view">View</string>
     <string name="startup_issues_handle">Handle</string>
     <string name="startup_issues_title">Startup check problems</string>
-    <string name="startup_issues_intro">Only the affected workspaces, sessions or features are paused. Retry, or let an agent look into it.</string>
-    <string name="startup_issues_none">No open problems.</string>
+    <string name="startup_issues_intro">Only affected workspaces, sessions or features are paused</string>
+    <string name="startup_issues_none">No open problems</string>
     <string name="startup_issues_retry">Retry</string>
     <string name="startup_issues_abandon">Discard this operation</string>
     <string name="startup_issues_abandon_title">Discard the unfinished operation?</string>
-    <string name="startup_issues_abandon_message">Your files stay exactly as they are now. The app only closes out the record, then checks the workspace again. If it still isn\'t consistent, it stays paused.</string>
+    <string name="startup_issues_abandon_message">Files stay as they are. Only this record is closed and the workspace rechecked; writing stays paused if it\'s still inconsistent</string>
     <string name="startup_issues_diagnose">Let an agent diagnose</string>
-    <string name="startup_issues_diagnose_unavailable">Create an agent first to diagnose with it.</string>
+    <string name="startup_issues_diagnose_unavailable">Create an agent first</string>
     <string name="startup_issues_records">Diagnostic records</string>
     <string name="startup_issues_records_note">Redacted: no keys, message content or file content.</string>
-    <string name="startup_issues_no_records">No records yet.</string>
+    <string name="startup_issues_no_records">No records yet</string>
     <string name="startup_issues_export">Export</string>
-    <string name="startup_issues_exported">Diagnostics exported.</string>
-    <string name="startup_issues_export_failed">Couldn\'t export diagnostics.</string>
-    <string name="startup_issues_resolved">Problem resolved.</string>
-    <string name="startup_issues_failed">Still not resolved.</string>
+    <string name="startup_issues_exported">Diagnostics exported</string>
+    <string name="startup_issues_export_failed">Couldn\'t export diagnostics</string>
+    <string name="startup_issues_resolved">Problem resolved</string>
+    <string name="startup_issues_failed">Still not resolved</string>
     <string name="startup_issue_title_data">Data recovery didn\'t finish</string>
     <string name="startup_issue_title_inventory">Couldn\'t check workspaces</string>
     <string name="startup_issue_title_adoption">Couldn\'t take over an old workspace</string>
@@ -38,8 +38,8 @@
         <item quantity="one">%1$d startup check problem</item>
         <item quantity="other">%1$d startup check problems</item>
     </plurals>
-    <string name="startup_issues_banner_detail">The affected parts are paused for writing; everything else works.</string>
+    <string name="startup_issues_banner_detail">Affected parts paused for writing</string>
     <string name="startup_issues_session_paused_title">This workspace is paused for writing</string>
-    <string name="startup_issues_session_paused_detail">You can view files, but the agent can\'t change them.</string>
+    <string name="startup_issues_session_paused_detail">Agent can\'t change files</string>
     <string name="startup_issues_abandon_short">Discard</string>
 </resources>

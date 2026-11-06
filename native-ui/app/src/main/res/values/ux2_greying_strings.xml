@@ -4,7 +4,7 @@
     <string name="ux2_unavailable_text_scale_off">Turn on custom text size to adjust</string>
     <string name="ux2_unavailable_pure_black_mode">Only applies in dark mode</string>
     <string name="ux2_unavailable_ssh_public_key">Only available for hosts using key authentication</string>
-    <string name="ux2_unavailable_ssh_forward">No forwarding port is set; add one when editing the host</string>
+    <string name="ux2_unavailable_ssh_forward">No forwarding port set</string>
     <string name="ux2_unavailable_tailscale_logout">Not signed in to a tailnet</string>
     <string name="ux2_unavailable_webdav_off">Turn on WebDAV to use this</string>
     <string name="ux2_unavailable_cloud_restore_none">Select a cloud backup first</string>
@@ -13,6 +13,6 @@
     <string name="ux2_unavailable_reasoning_no_model">Choose a model to adjust reasoning effort</string>
     <string name="ux2_unavailable_reasoning_unsupported">The current model doesn\'t support adjusting reasoning effort</string>
     <string name="ux2_unavailable_linux_channel">Not available in the Play edition</string>
-    <string name="ux2_unavailable_termux_key">Add an SSH host first to reuse its key</string>
+    <string name="ux2_unavailable_termux_key">Add an SSH host first</string>
     <string name="ux2_unavailable_linux_environment_channel">The Linux environment isn\'t included in the Play edition</string>
 </resources>

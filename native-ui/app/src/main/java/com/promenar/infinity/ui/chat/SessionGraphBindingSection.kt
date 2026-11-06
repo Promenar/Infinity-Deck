@@ -88,7 +88,7 @@ internal fun SessionGraphBindingSection(
     val footer = when {
         !enabled || binding == null -> null
         binding.readOnly -> stringResource(R.string.ks_graph_hint_read_only)
-        binding.current.group == GraphGroup.Session -> stringResource(R.string.ks_graph_hint_own)
+        binding.current.group == GraphGroup.Session -> null
         else -> stringResource(R.string.ks_graph_hint_merge, binding.current.title)
     }
     InfinitySettingsSection(title = stringResource(R.string.ks_graph_section), footer = footer) {

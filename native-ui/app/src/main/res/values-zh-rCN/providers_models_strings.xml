@@ -32,25 +32,24 @@
         <item quantity="other">%1$d/%2$d 个模型</item>
     </plurals>
     <string name="provider_list_tailnet_tag">内网</string>
-    <string name="provider_list_unsupported_hint">此协议已不再支持，打开后可迁移或删除。</string>
+    <string name="provider_list_unsupported_hint">打开以迁移或删除</string>
     <string name="provider_list_empty_title">还没有提供商</string>
-    <string name="provider_list_empty_body">添加一个提供商，智能体才能使用模型。</string>
 
     <!-- 提供商编辑 -->
     <string name="provider_form_group_provider">提供商</string>
     <string name="provider_form_group_interface">接口</string>
     <string name="provider_form_group_credentials">凭证</string>
-    <string name="provider_form_credentials_footer">密钥保存在本机安全存储中，列表只显示是否已配置。</string>
+    <string name="provider_form_credentials_footer">密钥加密保存在本机</string>
     <string name="provider_form_group_advanced">高级</string>
     <string name="provider_form_session_header_description">每次请求附带会话 ID</string>
-    <string name="provider_form_session_header_footer">让提供商把同一会话的请求归为一组，例如用于复用提示词缓存。</string>
+    <string name="provider_form_session_header_footer">供提供商复用提示词缓存</string>
     <string name="provider_form_connection_ok">连接正常</string>
     <string name="provider_form_delete">删除提供商</string>
 
     <!-- 模型列表 -->
     <string name="provider_models_enabled_count">已启用 %1$d / %2$d</string>
-    <string name="provider_models_last_sync">%s从服务商同步</string>
-    <string name="provider_models_never_synced">尚未从服务商同步</string>
+    <string name="provider_models_last_sync">%s从提供商同步</string>
+    <string name="provider_models_never_synced">未从提供商同步</string>
     <string name="provider_models_syncing">正在同步…</string>
     <string name="provider_models_sync_action">同步</string>
     <string name="provider_models_retry">重试</string>
@@ -64,10 +63,10 @@
     <!-- 模型编辑 -->
     <string name="model_editor_group_identity">基本信息</string>
     <string name="model_editor_group_specs">规格</string>
-    <string name="model_editor_specs_footer">点按数值可手动设置，手动值优先于规格库数据。</string>
+    <string name="model_editor_specs_footer">点按数值手动设置，优先于规格库</string>
     <string name="model_editor_capabilities_selected">已选 %d 项</string>
     <string name="model_editor_group_test">测试</string>
-    <string name="model_editor_test_idle">发送一条简短请求，检查模型能否响应</string>
+    <string name="model_editor_test_idle">未测试</string>
     <string name="model_editor_test_running">正在测试…</string>
     <string name="model_editor_test_action">测试</string>
     <string name="model_editor_delete">删除模型</string>

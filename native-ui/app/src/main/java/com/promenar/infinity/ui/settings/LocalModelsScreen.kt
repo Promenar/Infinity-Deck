@@ -147,7 +147,6 @@ internal fun LocalModelsScreenContent(
             item {
                 InfinitySettingsSection(
                     title = stringResource(R.string.local_models_engine_status),
-                    footer = stringResource(R.string.settings_batch1_local_models_footer),
                 ) {
                     SettingsToggle(
                         title = stringResource(R.string.local_models_enable_engine),

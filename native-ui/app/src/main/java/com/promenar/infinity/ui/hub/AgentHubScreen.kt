@@ -500,11 +500,6 @@ private fun AgentTypeSelector(
                 }
             }
         }
-        Text(
-            text = stringResource(R.string.ux2_agent_type_params_footer),
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.outline,
-        )
     }
 }
 
@@ -1428,14 +1423,6 @@ private fun EmptyAgentState(
                 text = stringResource(R.string.hub_empty_title),
                 style = InfinityTypography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.hub_empty_subtitle),
-                style = InfinityTypography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(modifier = Modifier.height(24.dp))
             FilledTonalButton(

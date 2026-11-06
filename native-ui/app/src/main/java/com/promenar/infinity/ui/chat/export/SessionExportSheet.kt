@@ -104,10 +104,10 @@ internal fun SessionExportFormat.labelRes(): Int = when (this) {
 }
 
 @StringRes
-private fun SessionExportFormat.footerRes(): Int = when (this) {
-    SessionExportFormat.MARKDOWN -> R.string.session_export_footer_markdown
+private fun SessionExportFormat.footerRes(): Int? = when (this) {
+    SessionExportFormat.MARKDOWN -> null
     SessionExportFormat.TXT -> R.string.session_export_footer_txt
-    SessionExportFormat.HTML -> R.string.session_export_footer_html
+    SessionExportFormat.HTML -> null
     SessionExportFormat.PDF -> R.string.session_export_footer_pdf
     SessionExportFormat.PNG -> R.string.session_export_footer_png
 }
@@ -231,12 +231,14 @@ fun SessionExportSheetContent(
                 modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(SessionExportTags.SHARE),
             ) { Text(stringResource(R.string.session_export_share), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
-        Text(
-            text = stringResource(state.format.footerRes()),
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = InfinitySpacing.Small),
-        )
+        state.format.footerRes()?.let { footer ->
+            Text(
+                text = stringResource(footer),
+                style = InfinityTypography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = InfinitySpacing.Small),
+            )
+        }
     }
 }
 

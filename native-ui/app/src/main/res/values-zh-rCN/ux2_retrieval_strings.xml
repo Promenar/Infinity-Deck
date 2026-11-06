@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ux2_rewrite_footnote">改写会在自动检索前多一次模型调用，增加首字等待；工具检索不做改写。</string>
+    <string name="ux2_rewrite_footnote">自动检索前多一次模型调用</string>
 </resources>

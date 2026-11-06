@@ -148,9 +148,7 @@ private fun BuiltInTailscaleRow(
     val detail = when (status) {
         BuiltInTailscaleStatus.CONNECTED ->
             listOfNotNull(tailnet.selfName, tailnet.tailnetName).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行省略
-        BuiltInTailscaleStatus.DISABLED -> stringResource(R.string.provider_tailnet_status_disabled_detail)
         BuiltInTailscaleStatus.UNAVAILABLE -> stringResource(R.string.provider_tailnet_status_unavailable_detail)
-        BuiltInTailscaleStatus.NEEDS_LOGIN -> stringResource(R.string.provider_tailnet_status_needs_login_detail)
         else -> null
     }
     val action = when (status) {

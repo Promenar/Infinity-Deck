@@ -47,7 +47,7 @@
         <item quantity="other">%1$d 个</item>
     </plurals>
     <string name="workspace_kb_entry_empty">无</string>
-    <string name="workspace_kb_empty">还没有工作区。在会话的资源管理器中选择一个。</string>
+    <string name="workspace_kb_empty">还没有工作区</string>
     <string name="workspace_kb_more">更多操作：%1$s</string>
     <string name="workspace_kb_rename">修改显示名称</string>
     <string name="workspace_kb_display_name">显示名称</string>
@@ -61,7 +61,7 @@
     <string name="workspace_kb_imported">已加入资料，正在索引</string>
     <string name="workspace_kb_import_failed">加入资料失败：%1$s</string>
     <string name="workspace_kb_import_info">复制当前内容，之后的修改不会同步。</string>
-    <string name="workspace_kb_preview_binary">此类型无法进行文本预览。</string>
+    <string name="workspace_kb_preview_binary">无法预览此类型</string>
     <string name="workspace_kb_preview_too_large">文本预览上限为 256 KB。</string>
     <string name="workspace_kb_preview_failed">无法预览文件：%1$s</string>
     <string name="workspace_picker_use_named">使用 %1$s</string>

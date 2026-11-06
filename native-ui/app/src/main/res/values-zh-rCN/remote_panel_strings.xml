@@ -7,14 +7,14 @@
     <string name="remote_segment_git">Git 凭据</string>
     <string name="remote_segment_tailscale">Tailscale</string>
     <string name="remote_segment_network">网络</string>
-    <string name="remote_linux_git_hint">本会话在 Linux 中运行。原生 git 的 HTTPS 推拉使用这里保存的凭据，与内置模式共用；git@主机: / ssh:// 远端在 Linux 中不经 SSH 桥，需要时切到内置模式。</string>
-    <string name="remote_linux_network_hint">Linux 环境中的命令可直接访问局域网，不受此白名单限制。</string>
+    <string name="remote_linux_git_hint">Linux 中 HTTPS 使用此处凭据；SSH 远端需切到内置模式</string>
+    <string name="remote_linux_network_hint">Linux 命令不受此白名单限制</string>
     <string name="remote_more_settings">更多设置</string>
     <string name="remote_link_linux">Linux 环境</string>
     <string name="remote_link_termux">Termux</string>
     <string name="remote_link_background">后台与定时</string>
     <string name="remote_agent_section">智能体正在使用</string>
-    <string name="remote_agent_footer">只读：可以查看输出、停止命令，不能向智能体的会话输入。</string>
+    <string name="remote_agent_footer">只读 · 可查看输出与停止命令</string>
     <string name="remote_agent_view_in_terminal">在终端中查看</string>
     <string name="remote_agent_session">交互会话</string>
     <string name="remote_agent_jobs">后台任务</string>
@@ -23,7 +23,7 @@
     </plurals>
     <string name="remote_agent_jobs_open">打开后台任务列表</string>
     <string name="remote_conn_section">活动连接</string>
-    <string name="remote_conn_footer">终端会一直保持连接，直到你断开、从最近任务划掉应用或退出应用。</string>
+    <string name="remote_conn_footer">断开或退出应用前保持连接</string>
     <string name="remote_conn_since">%1$s 起</string>
     <string name="remote_conn_disconnect">断开 %1$s</string>
     <string name="remote_conn_kind_terminal">终端</string>
@@ -39,6 +39,6 @@
     <string name="ssh_term_tab_session_n">交互会话 %1$d · 只读</string>
     <string name="ssh_term_closed_banner">连接已断开</string>
     <string name="ssh_term_running">运行中：%1$s</string>
-    <string name="ssh_term_readonly">只读：智能体的交互会话，不能输入。</string>
+    <string name="ssh_term_readonly">只读 · 智能体会话</string>
     <string name="ssh_term_stop">停止</string>
 </resources>

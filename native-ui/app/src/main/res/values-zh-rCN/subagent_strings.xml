@@ -65,7 +65,7 @@
     <string name="subagent_event_parent_message">来自主会话 · 追加指令 · %1$s</string>
     <string name="subagent_event_wrap_up">来自主会话 · 请收尾 · %1$s</string>
     <string name="subagent_event_resume">来自主会话 · 继续 · %1$s</string>
-    <string name="subagent_event_detach_user">你把它转入后台 · 主会话继续 · %1$s</string>
+    <string name="subagent_event_detach_user">已转入后台 · %1$s</string>
     <string name="subagent_event_detach_timeout">等待超时 · 主会话继续 · %1$s</string>
     <string name="subagent_event_detach_parent">主会话本轮结束 · 子代理继续 · %1$s</string>
     <string name="subagent_event_stop_user">你停止了子代理 · %1$s</string>

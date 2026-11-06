@@ -33,7 +33,7 @@
     <string name="prompt_editor_cd_undo">Undo</string>
     <string name="prompt_editor_cd_redo">Redo</string>
     <string name="prompt_editor_discard_title">Discard unsaved changes?</string>
-    <string name="prompt_editor_discard_message">Your edits to this prompt will be lost.</string>
+    <string name="prompt_editor_discard_message">Your changes will be lost</string>
     <string name="prompt_editor_discard_confirm">Discard</string>
     <string name="prompt_editor_discard_keep">Keep editing</string>
 
@@ -57,13 +57,13 @@
     <string name="common_cd_save">Save</string>
     <string name="common_cd_clear">Clear</string>
     <string name="common_retry">Retry</string>
-    <string name="agent_edit_error_load">Unable to load this agent.</string>
-    <string name="agent_edit_error_save">Unable to save this agent.</string>
-    <string name="agent_edit_error_delete">Unable to delete this agent.</string>
-    <string name="agent_edit_error_avatar">Unable to use this image as the avatar.</string>
+    <string name="agent_edit_error_load">Couldn\'t load the agent</string>
+    <string name="agent_edit_error_save">Couldn\'t save the agent</string>
+    <string name="agent_edit_error_delete">Couldn\'t delete the agent</string>
+    <string name="agent_edit_error_avatar">Couldn\'t set the avatar</string>
     <string name="settings_error_token_load">Unable to refresh token usage.</string>
     <string name="settings_error_token_clear">Unable to clear token usage.</string>
-    <string name="settings_error_avatar">Unable to save this avatar image.</string>
+    <string name="settings_error_avatar">Couldn\'t save the avatar</string>
     <string name="common_cd_collapse">Collapse</string>
     <string name="common_cd_expand">Expand</string>
     <string name="common_state_collapsed">Collapsed</string>
@@ -83,10 +83,10 @@
     <string name="params_scheme_rename">Rename</string>
     <string name="params_scheme_delete">Delete scheme</string>
     <string name="params_scheme_delete_title">Delete “%1$s”?</string>
-    <string name="params_scheme_delete_message">This scheme can\'t be chosen after deletion. Chats already using it keep it.</string>
+    <string name="params_scheme_delete_message">Chats already using it keep it</string>
     <string name="params_scheme_name_title">Scheme name</string>
     <string name="params_scheme_name_placeholder">e.g. Coding</string>
-    <string name="params_no_model">Choose a model to save parameter schemes for it.</string>
+    <string name="params_no_model">Choose a model first</string>
     <string name="params_scheme_section">Parameter schemes</string>
     <string name="params_scheme_diff">Differs from “%1$s”: %2$s</string>
     <string name="params_scheme_revert">Revert</string>
@@ -96,10 +96,9 @@
         <item quantity="one">%1$d parameter doesn\'t apply to this model</item>
         <item quantity="other">%1$d parameters don\'t apply to this model</item>
     </plurals>
-    <string name="params_not_applicable_desc">The official API rejects or ignores these for this model, so they aren\'t sent.</string>
+    <string name="params_not_applicable_desc">Not sent with requests</string>
     <string name="params_list_separator">", "</string>
     <string name="agent_edit_default_params">Default parameters</string>
-    <string name="agent_edit_default_params_desc">New chats with this agent, and chats without their own settings, use these values.</string>
     <string name="agent_edit_reasoning_effort">Reasoning effort</string>
     <plurals name="agent_edit_params_count">
         <item quantity="one">%1$d parameter</item>
@@ -145,13 +144,13 @@
     <string name="secret_field_show">Temporarily show full secret</string>
     <string name="secret_field_hide">Hide secret</string>
     <string name="secret_field_clear">Clear saved secret</string>
-    <string name="provider_form_http_url_required">Enter a valid HTTP or HTTPS URL.</string>
-    <string name="provider_form_protocol_unsupported">This historical provider protocol is no longer supported.</string>
+    <string name="provider_form_http_url_required">Enter a valid HTTP or HTTPS URL</string>
+    <string name="provider_form_protocol_unsupported">Protocol no longer supported</string>
     <string name="settings_provider_protocol_unsupported">Protocol is not supported</string>
-    <string name="provider_form_legacy_migration_required">Select a supported provider and replace or explicitly clear the stored credential before saving.</string>
-    <string name="provider_form_credential_kind_changed">This protocol uses a different credential type. Enter a replacement or explicitly clear the saved credential before saving.</string>
+    <string name="provider_form_legacy_migration_required">Choose a supported provider and replace or clear the saved credential</string>
+    <string name="provider_form_credential_kind_changed">Different credential type: enter a new one or clear the saved one</string>
     <string name="provider_form_saving">Saving securely…</string>
-    <string name="provider_form_save_failed">Provider settings could not be saved. The previous configuration is unchanged.</string>
+    <string name="provider_form_save_failed">Couldn\'t save. Previous settings unchanged</string>
     <string name="provider_form_protocol_type">Protocol type</string>
     <string name="workbench_refresh">Refresh</string>
 
@@ -180,10 +179,10 @@
     <string name="startup_recovering_title">Safe recovery in progress</string>
     <string name="startup_recovering_message">Finishing interrupted work. Keep this screen open.</string>
     <string name="startup_blocked_title">Safe recovery needs attention</string>
-    <string name="startup_blocked_message">&brand; could not finish restoring local data. Your data remains protected and app features stay locked.</string>
+    <string name="startup_blocked_message">Local data recovery couldn\'t finish. Your data is protected; features are locked</string>
     <string name="startup_blocked_icon_description">Safe recovery blocked</string>
     <string name="restore_not_applied_title">Restore did not complete</string>
-    <string name="restore_not_applied_message">The backup wasn\'t restored and your data is unchanged. Import it again from Settings → Backup.</string>
+    <string name="restore_not_applied_message">Your data is unchanged. Import again from Settings → Backup</string>
     <string name="restore_not_applied_dismiss">Got it</string>
     <string name="startup_dual_database_title">Two local databases were found</string>
     <string name="startup_dual_database_icon_description">Two local databases need recovery</string>
@@ -205,7 +204,7 @@
     <string name="share_import_cancel_message">Imported files stay. Share the rest again.</string>
     <string name="share_import_cancel_confirm">Delete staged copy</string>
     <string name="share_import_cancel_back">Keep it</string>
-    <string name="share_import_pending_banner">%1$d shared import(s) waiting · Tap to continue</string>
+    <string name="share_import_pending_banner">%1$d shared item(s) to import</string>
     <string name="share_import_retry">Retry failed</string>
     <string name="share_import_importing">Importing…</string>
     <string name="share_import_action">Import</string>
@@ -215,7 +214,7 @@
     <string name="share_import_status_created">Imported</string>
     <string name="share_import_status_index_pending">Imported · Waiting for indexing</string>
     <string name="share_import_status_index_partial">Imported · Partially indexed</string>
-    <string name="share_import_status_index_failed">Imported · Indexing failed, tap Retry</string>
+    <string name="share_import_status_index_failed">Imported · Indexing failed</string>
     <string name="share_import_status_index_completed">Imported · Indexed</string>
     <string name="share_import_status_rejected">Rejected</string>
     <string name="share_import_reason_target">Select a destination first</string>
@@ -233,7 +232,7 @@
     <string name="share_import_reason_batch_large">The selected batch exceeds 100 MiB</string>
     <string name="share_import_reason_read">The file could not be read</string>
     <string name="share_import_reason_write">The file could not be saved</string>
-    <string name="share_import_reason_index">The file was not imported because its indexing task could not be saved</string>
+    <string name="share_import_reason_index">Not imported: indexing task couldn\'t be saved</string>
     <string name="resource_explorer_title">Resource Explorer</string>
     <string name="files_session_workspaces_title">Session Workspaces</string>
     <string name="shared_confirm_delete_title">Confirm Delete</string>
@@ -247,7 +246,6 @@
     <string name="hub_search_placeholder">Search agents…</string>
     <string name="hub_btn_add_agent">Add Agent</string>
     <string name="hub_empty_title">No Agents Yet</string>
-    <string name="hub_empty_subtitle">Create an agent to start your first chat</string>
     <string name="hub_dialog_add_title">Add New Agent</string>
     <string name="hub_dialog_label_name">Name</string>
     <string name="hub_dialog_label_desc">Description</string>
@@ -261,7 +259,7 @@
 
     <!-- Preset agents (localized display; DB stores seed text, overlay resolves to these) -->
     <string name="preset_agent_default_name">General Agent</string>
-    <string name="preset_agent_default_desc">General agent with streaming chat and knowledge retrieval</string>
+    <string name="preset_agent_default_desc">General chat and knowledge retrieval</string>
     <string name="preset_agent_coder_name">Coding Expert</string>
     <string name="preset_agent_coder_desc">Full-stack development and architecture design</string>
     <string name="preset_agent_writer_name">Creative Writing</string>
@@ -297,7 +295,7 @@
     <string name="agent_edit_section_danger">Danger Zone</string>
     <string name="agent_edit_delete_btn">Delete Agent</string>
     <string name="agent_edit_delete_title">Delete Agent</string>
-    <string name="agent_edit_delete_message">Are you sure you want to delete this agent? This action cannot be undone.</string>
+    <string name="agent_edit_delete_message">This can\'t be undone</string>
     <string name="agent_edit_delete_confirm">Delete</string>
 
     <!-- ============ RAG Config ============ -->
@@ -343,7 +341,7 @@
     <string name="settings_haptic">Haptic Feedback</string>
     <string name="settings_section_model_presets">Model Presets</string>
     <string name="settings_model_summary">Quick Model</string>
-    <string name="settings_model_quick_description">The quick model writes titles and extracts the knowledge graph, and is the default for new chats and agents.</string>
+    <string name="settings_model_quick_description">Quick model: titles, graph extraction, and the default for new chats and agents</string>
     <string name="settings_model_image">Image Model</string>
     <string name="settings_model_embedding">Embedding Model</string>
     <string name="settings_model_rerank">Rerank Model</string>
@@ -379,7 +377,7 @@
     <string name="settings_provider_empty">No providers configured yet.\nTap the button above to add one.</string>
     <string name="settings_add_provider">Add Provider</string>
     <string name="settings_delete_provider_title">Delete Provider</string>
-    <string name="settings_delete_provider_message">Are you sure you want to delete this provider? This action cannot be undone.</string>
+    <string name="settings_delete_provider_message">This can\'t be undone</string>
     <string name="settings_manage_models">Manage Models</string>
     <string name="settings_provider_status_summary">%1$s · %2$s</string>
     <string name="settings_provider_state_enabled">Enabled</string>
@@ -434,12 +432,12 @@
     <string name="chat_menu_attach_document">Text document (full context)</string>
     <string name="chat_document_only_prompt">Please read the attached document.</string>
     <string name="chat_document_importing">Importing document…</string>
-    <string name="chat_document_import_in_progress">Wait for the selected documents to finish importing before sending.</string>
+    <string name="chat_document_import_in_progress">Documents are importing. Send when done</string>
     <string name="chat_cd_remove_document">Remove document</string>
     <string name="chat_document_workspace_badge">Workspace</string>
     <string name="chat_draft_budget_exceeded">Over the available context, about %1$s of %2$s</string>
     <string name="chat_draft_budget_combined">Attachments together exceed the available context, about %1$s of %2$s</string>
-    <string name="chat_draft_budget_compactable">Over the available context, about %1$s of %2$s; earlier messages will be compacted when you send</string>
+    <string name="chat_draft_budget_compactable">Over the available context, about %1$s of %2$s · Compacts on send</string>
     <string name="chat_draft_budget_unknown_window">This model doesn\'t report a context window</string>
     <string name="chat_draft_budget_save">Save to workspace</string>
     <string name="chat_draft_budget_switch_model">Switch model</string>
@@ -449,7 +447,7 @@
     <string name="chat_draft_save_failed_conflict">A file with this name already exists in the workspace.</string>
     <string name="chat_action_branch">Branch from this message</string>
     <string name="chat_branch_failed">Unable to create a branch from this message.</string>
-    <string name="chat_branch_failed_unstable">This message is not complete yet and cannot be branched.</string>
+    <string name="chat_branch_failed_unstable">Message incomplete; can\'t branch</string>
     <string name="chat_branch_title">%1$s · Branch</string>
     <string name="chat_document_error_unsupported">Only TXT, MD, and MARKDOWN text documents are supported.</string>
     <string name="chat_document_error_empty">The selected document is empty and was not added.</string>
@@ -457,13 +455,13 @@
     <string name="chat_document_error_binary">The selected file contains binary data and cannot be read as text.</string>
     <string name="chat_document_error_encoding">The document encoding is not supported. Convert it to UTF-8 and try again.</string>
     <string name="chat_document_error_read">The selected document could not be read. Please select it again.</string>
-    <string name="chat_document_error_unknown_capacity">This model\'s context capacity is unknown, so full documents can\'t be sent safely. Save them to the workspace, or configure the model\'s capacity first.</string>
-    <string name="chat_document_error_invalid_estimate">The full-document context size could not be calculated. Remove the document and try again.</string>
-    <string name="chat_document_error_over_capacity">Full context requires %1$d tokens, but only %2$d are available. Save documents to the workspace to read on demand, or remove some of them.</string>
-    <string name="chat_context_error_over_capacity">Context requires %1$d tokens, but only %2$d are available. Compact the context now or start a new chat.</string>
-    <string name="chat_context_error_turn_documents">This message and its attachments need %1$d tokens, but the model has %2$d. Compacting history won\'t help; save attachments to the workspace or switch to a model with a larger context.</string>
+    <string name="chat_document_error_unknown_capacity">Model context size unknown. Save documents to the workspace or set the capacity</string>
+    <string name="chat_document_error_invalid_estimate">Couldn\'t estimate document context. Remove it and try again</string>
+    <string name="chat_document_error_over_capacity">Needs %1$d tokens, %2$d available. Save documents to the workspace or remove some</string>
+    <string name="chat_context_error_over_capacity">Context needs %1$d tokens, %2$d available. Compact it or start a new chat</string>
+    <string name="chat_context_error_turn_documents">Message and attachments need %1$d tokens; the model has %2$d. Save attachments to the workspace or switch to a larger-context model</string>
     <string name="chat_context_error_turn">This message needs %1$d tokens, but the model has %2$d. Shorten it or switch to a model with a larger context.</string>
-    <string name="chat_context_error_upstream">The provider reported that the input exceeds the model\'s context limit. Compact the context, save large attachments to the workspace, or start a new chat.</string>
+    <string name="chat_context_error_upstream">Input exceeds the model\'s context limit. Compact the context, save large attachments to the workspace or start a new chat</string>
     <string name="chat_session_prompt_title">Session Prompt</string>
     <string name="chat_session_prompt_placeholder">Add session-specific instructions…</string>
     <string name="chat_approval_arguments">Arguments</string>
@@ -474,7 +472,7 @@
     <string name="chat_status_completed">Completed</string>
     <string name="chat_status_error">Generation failed</string>
     <string name="chat_confirm_truncate_title">Confirm Truncate?</string>
-    <string name="chat_confirm_truncate_message">This will permanently delete all messages after this point. Continue?</string>
+    <string name="chat_confirm_truncate_message">Messages after this point will be permanently deleted</string>
     <string name="chat_undo_truncate">Truncated history</string>
     <string name="chat_btn_undo">Undo</string>
 
@@ -516,7 +514,7 @@
     <string name="chat_context_usage_total">%1$s / %2$s tokens</string>
     <string name="chat_context_usage_percent">%1$d%% of model context used</string>
     <string name="chat_context_threshold">Auto-compaction threshold: %1$d%%</string>
-    <string name="chat_context_compress_unavailable_generating">A response is being generated. Compact context after it finishes.</string>
+    <string name="chat_context_compress_unavailable_generating">Generating. Compact after it finishes</string>
     <string name="chat_context_compress_unavailable_running">Context is being compacted. Please wait.</string>
     <string name="chat_context_nothing_to_compress">Nothing to compact. The most recent %1$d turns are always retained.</string>
     <string name="chat_context_compaction_result">Folded %1$d tool results and summarized %2$d turns; estimated context: %3$d → %4$d tokens</string>
@@ -641,7 +639,7 @@
     <string name="sheet_settings_keep_recent_turns">Retained turns</string>
     <string name="sheet_settings_turns_value">%1$d turns</string>
     <string name="sheet_settings_compact_now_description">Fold earlier tool results and summarize history while retaining the most recent %1$d turns.</string>
-    <string name="sheet_settings_context_description">Past the threshold, older turns are compacted and the latest %1$d are kept. Chat history is unaffected.</string>
+    <string name="sheet_settings_context_description">Past the threshold, older turns are compacted, keeping the latest %1$d. Chat history is unchanged</string>
     <string name="sheet_settings_top_p">Top P</string>
     <string name="sheet_settings_max_tokens">Max Tokens</string>
     <string name="sheet_settings_unlimited">Unlimited</string>
@@ -732,7 +730,7 @@
     <string name="backup_save_config">Save Configuration</string>
     <string name="backup_reset_webdav_security">Reset WebDAV settings</string>
     <string name="backup_remote_refresh">Refresh remote backups</string>
-    <string name="backup_remote_empty">No remote backups found. Refresh after configuring WebDAV.</string>
+    <string name="backup_remote_empty">No remote backups</string>
     <string name="backup_password_export_title">Encrypt exported backup</string>
     <string name="backup_password_upload_title">Encrypt backup before upload</string>
     <string name="backup_password_restore_title">Restore local backup</string>
@@ -742,7 +740,7 @@
     <string name="backup_password_confirm_label">Confirm password</string>
     <string name="backup_password_confirm_hint">Enter the same password again</string>
     <string name="backup_password_mismatch">Passwords do not match</string>
-    <string name="backup_restore_password_optional">Leave empty for a backup that does not contain encrypted keys.</string>
+    <string name="backup_restore_password_optional">Optional for backups without keys</string>
     <string name="backup_status_initializing">Loading backup settings…</string>
     <string name="backup_status_saving_config">Saving WebDAV settings…</string>
     <string name="backup_status_testing">Testing connection…</string>
@@ -759,22 +757,22 @@
     <string name="backup_status_connection_success">Connection test succeeded</string>
     <string name="backup_status_export_success">Backup exported</string>
     <string name="backup_status_upload_success">Backup uploaded</string>
-    <string name="backup_status_success_cleanup_warning">Backup uploaded, but some old remote backups could not be pruned.</string>
-    <string name="backup_error_password_required">Encryption requires a password and matching confirmation.</string>
+    <string name="backup_status_success_cleanup_warning">Uploaded; some old backups weren\'t pruned</string>
+    <string name="backup_error_password_required">Enter and confirm the same password</string>
     <string name="backup_error_configuration_missing">Set up WebDAV first.</string>
     <string name="backup_error_connection">WebDAV connection failed. Check the settings.</string>
     <string name="backup_error_remote_list">Remote backups could not be loaded.</string>
     <string name="backup_error_stale_selection">The remote selection expired. Refresh and select it again.</string>
     <string name="backup_error_export">Backup export failed.</string>
     <string name="backup_error_upload">Backup upload failed.</string>
-    <string name="backup_error_restore">Backup validation or restore staging failed.</string>
+    <string name="backup_error_restore">Backup restore failed</string>
     <string name="backup_error_restart">Restart failed. Retry or cancel the restore.</string>
-    <string name="backup_error_cleanup">Couldn\'t cancel the restore. Changes are blocked to protect your data.</string>
-    <string name="backup_error_document_create">The selected backup document could not be created or opened for writing.</string>
-    <string name="backup_error_document_open">The selected backup document could not be opened for reading.</string>
-    <string name="backup_error_reason_capacity">The backup exceeds the 512 MiB limit or there isn\'t enough free storage, so it could not be created. Turn off large layers such as workspace files, or free up storage, and try again.</string>
-    <string name="backup_error_reason_workspace_mismatch">Some session files were deleted or changed outside the app and no longer match their records, so the backup could not be created.</string>
-    <string name="backup_error_reason_skill_content">The skills folder contains content that cannot be backed up (special files, file names with colons or backslashes, or more than 512 MiB in total), so the backup could not be created.</string>
+    <string name="backup_error_cleanup">Couldn\'t cancel the restore. Data is locked</string>
+    <string name="backup_error_document_create">Couldn\'t write to the selected file</string>
+    <string name="backup_error_document_open">Couldn\'t read the selected file</string>
+    <string name="backup_error_reason_capacity">Over the 512 MiB limit or not enough storage. Turn off large layers such as workspace files, or free up space, and retry</string>
+    <string name="backup_error_reason_workspace_mismatch">Session files were deleted or changed outside the app, so the backup failed</string>
+    <string name="backup_error_reason_skill_content">The skills folder has content that can\'t be backed up (special files, names with colons or backslashes, or over 512 MiB)</string>
 
     <!-- LocalModelsScreen -->
     <string name="local_models_title">Local Models</string>
@@ -819,7 +817,7 @@
     <string name="provider_form_default_provider">Set as Default</string>
     <string name="provider_form_btn_test">Test Connection</string>
     <string name="provider_form_testing">Testing connection…</string>
-    <string name="provider_form_connection_unavailable">This provider can\'t be tested. Save it and add models manually.</string>
+    <string name="provider_form_connection_unavailable">Connection test unavailable. Save and add models manually</string>
     <string name="provider_form_test_failed_auth">Authentication failed (check credentials)</string>
     <string name="provider_form_test_failed_network">Network unavailable or connection timeout</string>
     <string name="provider_form_test_failed_endpoint">Invalid endpoint URL</string>
@@ -838,7 +836,7 @@
     <string name="provider_models_disable_all">Disable All</string>
     <string name="provider_models_delete_all">Delete All</string>
     <string name="provider_models_delete_all_title">Delete All Models</string>
-    <string name="provider_models_delete_all_message">Are you sure you want to delete all model configurations? Enabled models will become unavailable.</string>
+    <string name="provider_models_delete_all_message">Enabled models will become unavailable</string>
     <string name="provider_models_test_success">Connection successful · %1$s latency</string>
     <string name="provider_models_test_error">Error: Invalid API Key or insufficient quota</string>
     <string name="provider_models_add_custom">Add Custom Model</string>
@@ -903,7 +901,7 @@
     <string name="skills_mcp_url_placeholder">Server URL</string>
     <string name="skills_mcp_add_btn">Add Server</string>
     <string name="skills_mcp_call_interval">Call Interval</string>
-    <string name="skills_mcp_legacy_unsupported">Legacy configuration: visible for migration or deletion, but cannot sync or execute.</string>
+    <string name="skills_mcp_legacy_unsupported">Legacy config: migrate or delete only</string>
     <string name="skills_mcp_sync_error">Sync failed: %1$s</string>
     <string name="skills_mcp_modern_transport">MCP 2026-07-28 · HTTP/HTTPS</string>
     <string name="skills_mcp_enabled">Enabled</string>
@@ -953,13 +951,13 @@
     <string name="skill_drop_plan_desc">Cancel the plan</string>
     <string name="skills_configure">Configure</string>
     <string name="skills_edit_skill">Edit Skill Config</string>
-    <string name="skills_mcp_empty">No MCP servers yet.\nAdd one to give the agent its tools.</string>
+    <string name="skills_mcp_empty">No MCP servers yet</string>
     <string name="skills_edit_custom">Edit Custom Skill</string>
     <string name="search_engine_select">Select Search Engine</string>
     <string name="search_engine_duckduckgo">DuckDuckGo (free)</string>
     <string name="search_engine_keenable">Keenable</string>
     <string name="search_api_key_optional">API Key (optional)</string>
-    <string name="search_keenable_keyless_hint">Without a key, the shared public quota is used.</string>
+    <string name="search_keenable_keyless_hint">Leave empty to use the shared quota</string>
     <string name="search_engine_tavily">Tavily (API key)</string>
     <string name="search_engine_searxng">SearXNG (instance URL)</string>
     <string name="search_count_label">Result Count</string>
@@ -996,7 +994,7 @@
     <string name="token_in_short">In: %1$s</string>
     <string name="token_out_short">Out: %1$s</string>
     <string name="token_active_model">Active Model</string>
-    <string name="token_no_data">No token usage data yet. Start a conversation to see stats.</string>
+    <string name="token_no_data">No usage data yet</string>
     <string name="token_top_sessions">Top Sessions</string>
     <string name="token_7day_trend">7-Day Trend</string>
     <string name="token_input_label">Input</string>
@@ -1016,7 +1014,7 @@
 
     <!-- RagHomeScreen -->
     <string name="rag_home_subtitle">Documents, folders, and conversation memory you can search in chats.</string>
-    <string name="rag_search_fts_warning">Full-text search is unavailable. Showing title matches only.</string>
+    <string name="rag_search_fts_warning">Full-text search unavailable. Showing title matches only</string>
     <string name="rag_search_empty">No matching documents</string>
     <string name="rag_search_body_match">Body match</string>
     <string name="rag_search_title_fallback">Title fallback</string>
@@ -1040,7 +1038,7 @@
     <string name="kg_view_global">Graph</string>
     <string name="kg_view_session">Session</string>
     <string name="kg_view_document">Document</string>
-    <string name="kg_empty_graph">No graph yet. Choose Extract knowledge graph in a document\'s menu.</string>
+    <string name="kg_empty_graph">No graph yet. Extract it from the document menu</string>
     <string name="rag_home_vectorizing">Vectorizing…</string>
     <string name="rag_home_extract_kg">Extract Knowledge Graph</string>
     <string name="rag_home_extract_kg_full">Full Extraction (all chunks)</string>
@@ -1055,42 +1053,40 @@
     <string name="doc_editor_title_input_description">Document title</string>
     <string name="doc_editor_content_input_description">Document content</string>
     <string name="doc_editor_preview">Preview</string>
-    <string name="doc_editor_preview_truncated">Large document: preview truncated; editing and saving are unaffected.</string>
+    <string name="doc_editor_preview_truncated">Preview truncated; editing and saving unaffected</string>
     <string name="doc_editor_performance_protected_title">Performance protection</string>
-    <string name="doc_editor_performance_protected_description">Long document: only about the first 16K characters are previewed. Saving and copying use the full text.</string>
+    <string name="doc_editor_performance_protected_description">Previews the first ~16K characters; saving and copying use the full text</string>
     <string name="doc_editor_copy_full_content">Copy full content</string>
     <string name="doc_editor_performance_protected_status">Performance protection · Approx. 16K-character preview</string>
     <string name="doc_editor_edit">Edit</string>
     <string name="doc_editor_split">Split</string>
     <string name="doc_editor_loading">Loading document</string>
-    <string name="doc_editor_loading_description">The editor will appear after the document is loaded safely.</string>
     <string name="doc_editor_load_failed_title">Unable to load document</string>
-    <string name="doc_editor_load_failed_description">The document couldn\'t be read.</string>
     <string name="doc_editor_retry_load">Retry</string>
     <string name="doc_editor_not_found_title">Document not found</string>
-    <string name="doc_editor_not_found_description">This document no longer exists in the workspace.</string>
+    <string name="doc_editor_not_found_description">No longer in this workspace</string>
     <string name="doc_editor_saving">Saving…</string>
-    <string name="doc_editor_saving_back_feedback">Saving in progress. Please wait.</string>
-    <string name="doc_editor_save_cancelled_description">Saving was interrupted. Your local changes are still available to retry.</string>
+    <string name="doc_editor_saving_back_feedback">Saving</string>
+    <string name="doc_editor_save_cancelled_description">Saving interrupted. Local changes kept</string>
     <string name="doc_editor_save_failed_title">Save failed</string>
-    <string name="doc_editor_save_failed_description">Your local changes are still available. Retry when ready.</string>
-    <string name="doc_editor_title_rename_failed">The title could not be saved safely. Your local changes are still available.</string>
+    <string name="doc_editor_save_failed_description">Local changes kept</string>
+    <string name="doc_editor_title_rename_failed">Title not saved. Local changes kept</string>
     <string name="doc_editor_retry_save">Retry save</string>
     <string name="doc_editor_conflict_title">A newer version exists</string>
-    <string name="doc_editor_conflict_description">The document changed elsewhere. Your text is still here; copy it, then reload.</string>
+    <string name="doc_editor_conflict_description">Your text is still here; copy it, then reload</string>
     <string name="doc_editor_title_conflict_title">Title changed in the workspace</string>
-    <string name="doc_editor_title_conflict_description">The current workspace title is “%1$s”. Choose which title to keep; your content edits will remain.</string>
+    <string name="doc_editor_title_conflict_description">Workspace title: “%1$s”. Content edits are kept</string>
     <string name="doc_editor_use_workspace_title">Use workspace title</string>
     <string name="doc_editor_retry_my_title">Retry my title</string>
     <string name="doc_editor_copy_local">Copy local content</string>
     <string name="doc_editor_clipboard_label">Local document content</string>
     <string name="doc_editor_reload_latest">Reload latest</string>
     <string name="doc_editor_missing_after_save_title">Document disappeared while saving</string>
-    <string name="doc_editor_missing_after_save_description">Your local content is preserved, but the workspace document no longer exists.</string>
+    <string name="doc_editor_missing_after_save_description">Local content kept</string>
     <string name="doc_editor_large_file_warning">The file is too large to load.</string>
-    <string name="doc_editor_unsupported_content_warning">This file type is read-only here. Use a compatible viewer or import tool.</string>
+    <string name="doc_editor_unsupported_content_warning">Read-only for this file type</string>
     <string name="doc_editor_large_file_read_only_title">Large file safety mode</string>
-    <string name="doc_editor_large_file_read_only_description">This %1$s document is over 1 MiB, so it can be viewed but not edited.</string>
+    <string name="doc_editor_large_file_read_only_description">%1$s, over 1 MiB; not editable</string>
     <string name="doc_editor_large_file_status">Large file · Metadata only</string>
     <string name="doc_editor_dismiss">Dismiss warning</string>
     <string name="doc_editor_typing_placeholder">Start typing…</string>
@@ -1101,20 +1097,20 @@
     <string name="doc_editor_editing">Editing</string>
     <string name="doc_editor_readonly">Preview · Read-only</string>
     <string name="doc_editor_discard_title">Discard local changes?</string>
-    <string name="doc_editor_discard_description">Unsaved title and content changes will be lost.</string>
+    <string name="doc_editor_discard_description">Unsaved changes will be lost</string>
     <string name="doc_editor_discard_confirm">Discard and leave</string>
     <string name="doc_editor_reload_title">Reload the latest version?</string>
-    <string name="doc_editor_reload_description">Reloading will discard the local content currently shown in the editor.</string>
+    <string name="doc_editor_reload_description">Local changes will be lost</string>
     <string name="doc_editor_reload_confirm">Discard and reload</string>
 
     <!-- KnowledgeGraphScreen -->
     <string name="kg_title">Knowledge Graph</string>
-    <string name="kg_load_failed">Couldn’t load the graph. Try again.</string>
-    <string name="kg_load_failed_stale">Couldn’t refresh the graph. The last successful view remains visible.</string>
+    <string name="kg_load_failed">Couldn\'t load the graph</string>
+    <string name="kg_load_failed_stale">Couldn\'t refresh. Showing the last result</string>
     <string name="kg_select_document">Select a document</string>
-    <string name="kg_document_options_empty">No indexed documents contain graph relationships yet.</string>
-    <string name="kg_document_options_load_failed">Couldn’t load the document list. Try again.</string>
-    <string name="kg_document_required">Select a document to view its graph.</string>
+    <string name="kg_document_options_empty">No documents with graphs yet</string>
+    <string name="kg_document_options_load_failed">Couldn\'t load the document list</string>
+    <string name="kg_document_required">Select a document</string>
     <string name="kg_open_accessibility_list">Open accessible relationship list</string>
     <string name="kg_accessibility_title">Nodes and relationships</string>
     <string name="kg_nodes_section">Nodes</string>
@@ -1226,7 +1222,7 @@
     <string name="rag_config_rerank_max_per_call_desc">Usually 32–100, depending on the model</string>
     <string name="rag_config_clear_vectors">Clear Vector Data</string>
     <string name="rag_config_clean_orphans">Clean Orphans</string>
-    <string name="rag_config_clear_message">Search needs reindexing after clearing. Original documents are kept.</string>
+    <string name="rag_config_clear_message">Requires reindexing; original documents are kept</string>
     <string name="rag_config_clear_only_vectors">Only Clear Vectors</string>
     <string name="rag_config_clear_with_kg">Also Clear KG Data</string>
     <string name="rag_config_clear_all">Clear All</string>
@@ -1298,10 +1294,10 @@
     <string name="chat_menu_rename">Rename</string>
     <string name="chat_menu_delete_session">Delete Session</string>
     <string name="chat_dialog_clear_history_title">Clear History?</string>
-    <string name="chat_dialog_clear_history_msg">This will delete all messages in this session. This action cannot be undone.</string>
+    <string name="chat_dialog_clear_history_msg">All messages will be deleted. This can\'t be undone</string>
     <string name="chat_dialog_delete_session_title">Delete Session?</string>
     <string name="chat_dialog_delete_session_msg">Messages and settings will be deleted permanently.</string>
-    <string name="chat_delete_session_failed">Could not delete the session. Your data was kept; please try again.</string>
+    <string name="chat_delete_session_failed">Couldn\'t delete the session. Try again</string>
     <string name="chat_dialog_rename_title">Rename Session</string>
     <string name="chat_dialog_rename_placeholder">Enter new name...</string>
     <string name="chat_confirm_delete_session_message">Are you sure you want to delete this session? This action cannot be undone.</string>
@@ -1322,10 +1318,10 @@
     <string name="generation_notification_current_session">Current session · %1$d characters</string>
     <string name="generation_notification_stop">Stop</string>
     <string name="exec_notification_channel">Command execution</string>
-    <string name="exec_notification_channel_description">Shows running shell_exec / python_exec commands with a stop button</string>
+    <string name="exec_notification_channel_description">Running commands with a stop button</string>
     <string name="exec_notification_title">Running a command</string>
     <string name="exec_notification_title_many">Running %1$d commands</string>
-    <string name="exec_notification_public">&brand; is running a command</string>
+    <string name="exec_notification_public">Running a command</string>
     <string name="exec_notification_kind_shell">Shell</string>
     <string name="exec_notification_kind_python">Python</string>
     <string name="exec_notification_kind_linux">Linux</string>
@@ -1333,10 +1329,10 @@
     <string name="exec_notification_kind_terminal">Terminal</string>
     <string name="exec_notification_stop">Stop</string>
     <string name="exec_notification_stop_all">Stop all</string>
-    <string name="generation_background_unavailable">This response is still generating, but it may stop if you leave the app.</string>
-    <string name="generation_notifications_unavailable">Notifications are off, so background progress isn\'t shown.</string>
+    <string name="generation_background_unavailable">Generation may stop if you leave the app</string>
+    <string name="generation_notifications_unavailable">Notifications off; background progress hidden</string>
     <string name="generation_notification_permission_title">Keep generation visible</string>
-    <string name="generation_notification_permission_explanation">Allow notifications to see progress and stop generation from the notification. This reply continues either way.</string>
+    <string name="generation_notification_permission_explanation">Shows progress and a stop button in notifications. This reply continues either way</string>
     <string name="generation_notification_permission_continue">Allow notifications</string>
     <string name="generation_background_service_stopped">The background service failed to start, so this generation has stopped.</string>
 
@@ -1357,7 +1353,7 @@
     <string name="rag_details_keywords">Keywords: %1$s</string>
     <string name="rag_details_open_link">Open link</string>
     <string name="rag_details_unknown_source">Unknown source</string>
-    <string name="rag_details_link_error">Couldn’t open this link.</string>
+    <string name="rag_details_link_error">Couldn\'t open the link</string>
     <string name="rag_details_retry">Retry</string>
     <string name="chat_rag_summary_hit">%1$d matches</string>
     <string name="chat_rag_summary_empty">No matches</string>
@@ -1368,10 +1364,10 @@
     <string name="rag_trace_title">How results were picked</string>
     <string name="chat_rag_summary_reranked">Reranked</string>
     <string name="chat_rag_summary_rerank_failed">Rerank failed</string>
-    <string name="rag_trace_empty_hint">Nothing in the searched memory or documents was similar enough to this question.</string>
-    <string name="rag_trace_unavailable_hint">No embedding model is selected, so memory and the Library were not searched. Choose one in Settings → Default Models.</string>
-    <string name="rag_trace_no_scope_hint">Memory is off and no documents are selected for this chat.</string>
-    <string name="rag_trace_failed_hint">Library search failed, so this reply didn\'t use it.</string>
+    <string name="rag_trace_empty_hint">Nothing similar enough</string>
+    <string name="rag_trace_unavailable_hint">No embedding model selected. Choose one in Settings › Default Models</string>
+    <string name="rag_trace_no_scope_hint">Memory off and no documents selected</string>
+    <string name="rag_trace_failed_hint">Library search failed; not used in this reply</string>
     <string name="rag_details_kind_memory">Memory</string>
     <string name="rag_details_kind_document">Document</string>
     <string name="rag_details_kind_summary">Event</string>
@@ -1401,7 +1397,7 @@
 
     <!-- Release-reachable retrieval availability -->
     <string name="sheet_tool_gemini_grounding">Gemini web search</string>
-    <string name="sheet_settings_rerank_unavailable">Set a rerank model in Default models first.</string>
+    <string name="sheet_settings_rerank_unavailable">No rerank model. Set one in Default models</string>
     <string name="retrieval_rerank_model_unconfigured">Model not configured</string>
     <string name="retrieval_rerank_model_unavailable_message">Set a rerank model in Default models first.</string>
 
@@ -1414,14 +1410,14 @@
     <string name="generation_failure_timeout">The request timed out. Please retry.</string>
     <string name="generation_failure_invalid_request">This request could not be processed. Adjust it and retry.</string>
     <string name="generation_failure_provider_detail">Provider said: %1$s</string>
-    <string name="generation_failure_output_limit">The reply hit the model\'s output limit and was cut off. Raise Max tokens in session parameters, or ask for the work in smaller steps.</string>
+    <string name="generation_failure_output_limit">Reply cut off at the output limit. Raise Max tokens in session parameters, or split the work</string>
     <string name="generation_failure_content_filtered">The provider\'s content policy stopped this reply. Adjust the request and retry.</string>
     <string name="generation_failure_server">The provider is temporarily unavailable. Please retry.</string>
     <string name="generation_failure_busy">Another conversation is generating. Retry after it finishes.</string>
     <string name="generation_failure_persistence">The response could not be saved. Please retry.</string>
-    <string name="generation_failure_tool_budget">The tool budget for this turn is used up and the model gave no summary. Send a message to continue.</string>
-    <string name="generation_failure_tailnet_disabled">Built-in Tailscale is off, so the message wasn\'t sent. Turn it on and retry.</string>
-    <string name="generation_failure_tailnet_needs_login">Built-in Tailscale needs sign-in. Sign in and retry.</string>
+    <string name="generation_failure_tool_budget">Tool budget for this turn used up. Send a message to continue</string>
+    <string name="generation_failure_tailnet_disabled">Built-in Tailscale is off; message not sent. Turn it on and retry</string>
+    <string name="generation_failure_tailnet_needs_login">Built-in Tailscale isn\'t signed in. Sign in and retry</string>
     <string name="generation_failure_tailnet_failed">Built-in Tailscale couldn\'t connect, so the message wasn\'t sent.</string>
     <string name="generation_failure_tailnet_timeout">Built-in Tailscale timed out, so the message wasn\'t sent.</string>
     <string name="network_lights_label">Network</string>
@@ -1465,30 +1461,28 @@
     <string name="tailnet_failure_action_login">Sign in</string>
     <string name="tailnet_failure_action_enable">Turn on</string>
     <string name="provider_api_source_title">API source</string>
-    <string name="provider_api_source_footer">Reach endpoints in your tailnet through built-in Tailscale, without the official app.</string>
+    <string name="provider_api_source_footer">Reach tailnet endpoints through built-in Tailscale</string>
     <string name="provider_api_source_public">Internet</string>
     <string name="provider_api_source_tailnet">Tailscale</string>
     <string name="provider_tailnet_status_connected">Built-in Tailscale connected</string>
     <string name="provider_tailnet_status_connecting">Built-in Tailscale connecting</string>
     <string name="provider_tailnet_status_needs_login">Built-in Tailscale needs sign-in</string>
-    <string name="provider_tailnet_status_needs_login_detail">Sign in to reach addresses in your tailnet.</string>
     <string name="provider_tailnet_status_failed">Built-in Tailscale failed to connect</string>
     <string name="provider_tailnet_status_disabled">Built-in Tailscale is off</string>
-    <string name="provider_tailnet_status_disabled_detail">Turn it on and sign in to reach this address.</string>
     <string name="provider_tailnet_status_unavailable">This build has no built-in Tailscale</string>
-    <string name="provider_tailnet_status_unavailable_detail">Addresses in your tailnet are reachable while the official Tailscale app is running.</string>
+    <string name="provider_tailnet_status_unavailable_detail">Use the official Tailscale app instead</string>
     <string name="provider_tailnet_action_enable">Turn on</string>
     <string name="provider_tailnet_action_login">Sign in</string>
     <string name="provider_tailnet_action_settings">Settings</string>
-    <string name="provider_address_hint_recognized">Recognized as a Tailscale address, sent through built-in Tailscale</string>
-    <string name="provider_address_hint_is_tailnet">This is a Tailscale address and can\'t be reached over the internet.</string>
+    <string name="provider_address_hint_recognized">Tailscale address, sent via built-in Tailscale</string>
+    <string name="provider_address_hint_is_tailnet">Tailscale address; not reachable over the internet</string>
     <string name="provider_address_hint_use_tailnet">Use Tailscale</string>
-    <string name="provider_address_hint_is_public">This address isn\'t in your tailnet, so requests go over the internet.</string>
+    <string name="provider_address_hint_is_public">Not in your tailnet; sent over the internet</string>
     <string name="provider_address_hint_use_public">Use internet</string>
     <string name="provider_tailnet_peer_field_label">Tailnet device</string>
     <string name="provider_tailnet_peer_field_placeholder">Choose a device to fill in the address</string>
     <string name="provider_tailnet_peer_sheet_title">Choose a tailnet device</string>
-    <string name="provider_tailnet_peer_sheet_footer">Switches to the device\'s address and keeps the path.</string>
+    <string name="provider_tailnet_peer_sheet_footer">Uses the device\'s address; path unchanged</string>
     <string name="provider_tailnet_peer_offline">Offline</string>
     <string name="generation_failure_unknown">Generation failed. Please retry.</string>
 
@@ -1507,7 +1501,7 @@
     <string name="rag_index_phase_saving">Saving vector data…</string>
     <string name="rag_index_phase_extracting_kg">Building the knowledge graph…</string>
     <string name="rag_index_phase_completed">Indexing complete</string>
-    <string name="rag_index_phase_partial">Only a safe prefix was indexed because the file is too large</string>
+    <string name="rag_index_phase_partial">File too large; only the beginning was indexed</string>
     <string name="rag_index_phase_warning">Indexing completed with warnings</string>
     <string name="rag_index_phase_failed">Indexing failed. Check the embedding model and retry.</string>
     <string name="rag_index_phase_unknown">Indexing status is temporarily unavailable</string>
@@ -1543,7 +1537,7 @@
     <string name="chat_approval_preview_create_directory">Create folder</string>
     <string name="chat_approval_preview_script">Run script</string>
     <string name="skill_create_file">Create File</string>
-    <string name="skill_create_file_desc">Create a new text file in the workspace, optionally with content</string>
+    <string name="skill_create_file_desc">Create a text file in the workspace</string>
     <string name="skill_create_directory">Create Folder</string>
     <string name="skill_create_directory_desc">Create a new folder in the workspace</string>
     <string name="skill_move_file">Move / Rename</string>
@@ -1556,7 +1550,7 @@
     <string name="skill_python_sandbox">Python sandbox</string>
     <string name="skill_python_sandbox_desc">Run Python in an isolated sandbox, offline by default (arm64 devices)</string>
     <string name="agent_skills_intro">Skill packs are reusable task instructions (SKILL.md). When enabled, the agent loads a skill\'s instructions and reference files only when a task matches it. Skill packs never run code.</string>
-    <string name="agent_skills_empty">No skill packs yet. Import a .zip or SKILL.md, or create one.</string>
+    <string name="agent_skills_empty">No skill packs yet</string>
     <string name="agent_skills_import">Import</string>
     <string name="agent_skills_create">New skill</string>
     <string name="agent_skills_edit">Edit skill</string>
@@ -1565,7 +1559,7 @@
     <string name="agent_skills_description_hint">Description: what it does and when to use it</string>
     <string name="agent_skills_body_hint">Instructions (Markdown)</string>
     <string name="agent_skills_conflict_title">Replace existing skill?</string>
-    <string name="agent_skills_conflict_message">A skill named %1$s is already installed. Replacing it overwrites its current files.</string>
+    <string name="agent_skills_conflict_message">Overwrites the installed %1$s</string>
     <string name="agent_skills_replace">Replace</string>
     <string name="agent_skills_import_failed">Could not install the skill: %1$s</string>
     <string name="agent_skills_delete_title">Delete skill %1$s?</string>
@@ -1596,8 +1590,8 @@
     <string name="tailscale_section_node">Built-in Tailscale</string>
     <string name="tailscale_enable">Enable Tailscale</string>
     <string name="tailscale_enable_desc">Runs alongside other VPNs</string>
-    <string name="tailscale_node_footer">Once signed in, models, SSH and command tools can reach tailnet devices; web reading stays on the public internet. Online only while &brand; runs.</string>
-    <string name="tailscale_unavailable_desc">This build does not include built-in Tailscale.</string>
+    <string name="tailscale_node_footer">Models, SSH and command tools can reach your tailnet. Online only while the app runs.</string>
+    <string name="tailscale_unavailable_desc">This build has no built-in Tailscale</string>
     <string name="tailscale_phase_unavailable">Not included in this build</string>
     <string name="tailscale_phase_disabled">Off</string>
     <string name="tailscale_phase_stopped">Not running</string>
@@ -1609,7 +1603,7 @@
     <string name="tailscale_phase_exited">Stopped unexpectedly</string>
     <string name="tailscale_section_status">Status</string>
     <string name="tailscale_login">Sign in with browser</string>
-    <string name="tailscale_login_desc">Approve this device in the browser</string>
+    <string name="tailscale_login_desc">Approve this device, then return</string>
     <string name="tailscale_logout">Sign out</string>
     <string name="tailscale_logout_desc">Removes this device and its saved auth key</string>
     <string name="tailscale_refresh">Refresh status</string>
@@ -1620,9 +1614,9 @@
     <string name="tailscale_peer_offline">Offline</string>
     <string name="tailscale_section_login">Advanced</string>
     <string name="tailscale_auth_key">Auth key</string>
-    <string name="tailscale_auth_key_desc">Optional. Signs in without a browser. Stored encrypted on this device and never backed up.</string>
+    <string name="tailscale_auth_key_desc">Signs in without a browser · Encrypted on this device, not backed up</string>
     <string name="tailscale_control_url">Control server</string>
-    <string name="tailscale_control_url_desc">Leave empty for the official server, or enter a Headscale URL. Changing it signs you out.</string>
+    <string name="tailscale_control_url_desc">Leave empty for the official server. Changing it signs you out.</string>
     <string name="tailscale_control_url_invalid">Enter an http(s) URL without credentials, query or fragment.</string>
     <string name="tailscale_ephemeral">Ephemeral node</string>
     <string name="tailscale_ephemeral_desc">Removed when offline (from next sign-in)</string>
@@ -1642,8 +1636,8 @@
     <string name="tailscale_auth_key_hint">Paste an auth key starting with tskey-</string>
     <string name="common_mode_workspace">Ask for commands</string>
     <string name="common_mode_full_access">No approvals</string>
-    <string name="common_mode_workspace_desc">File tools work freely inside the workspace; every command asks first.</string>
-    <string name="common_mode_full_access_desc">Commands also run without asking, with this app\'s permissions and access to all app data.</string>
+    <string name="common_mode_workspace_desc">Files read and write freely in the workspace; each command needs approval</string>
+    <string name="common_mode_full_access_desc">Commands run without approval and can access all app data</string>
     <string name="chat_runtime_changes_title">Critical app data changed</string>
     <plurals name="chat_runtime_changes_more">
         <item quantity="one">%d more</item>
@@ -1656,7 +1650,6 @@
 
     <!-- 外观：生成动效与自定义取色 -->
     <string name="motion_section_title">Generation motion</string>
-    <string name="motion_section_footer">Colors follow your accent color.</string>
     <string name="motion_composer_title">Composer glow</string>
     <string name="motion_indicator_title">Generating indicator</string>
     <string name="motion_empty_chat_title">Empty chat animation</string>
@@ -1668,43 +1661,30 @@
     <string name="motion_phase_approval">Awaiting approval</string>
     <string name="motion_phase_retry">Retry wait</string>
     <string name="motion_composer_aurora">Aurora orbit</string>
-    <string name="motion_composer_aurora_desc">A light band orbits the composer with a soft halo.</string>
     <string name="motion_composer_breathe">Tidal breath</string>
-    <string name="motion_composer_breathe_desc">The outline swells and fades with a slow breathing rhythm.</string>
     <string name="motion_composer_mesh">Mesh backlight</string>
-    <string name="motion_composer_mesh_desc">Status lights flicker behind a perforated server grille.</string>
     <string name="motion_composer_bottom_strip">Data strip</string>
-    <string name="motion_composer_bottom_strip_desc">Packets stream along two rows of LEDs on the bottom edge.</string>
     <string name="motion_composer_material_only">Material only</string>
-    <string name="motion_composer_material_only_desc">No light trail. The island material and the run dock screen show progress.</string>
+    <string name="motion_composer_material_only_desc">No light trail</string>
     <string name="motion_composer_sweep_grid">Sweep grid</string>
-    <string name="motion_composer_sweep_grid_desc">A light band sweeps across a hidden wall of LEDs.</string>
     <string name="motion_indicator_wave">Wave</string>
-    <string name="motion_indicator_wave_desc">Three dots rise in turn.</string>
     <string name="motion_indicator_ports">Port lights</string>
-    <string name="motion_indicator_ports_desc">Three port pairs; the activity lights flicker fast.</string>
     <string name="motion_indicator_matrix">Load matrix</string>
-    <string name="motion_indicator_matrix_desc">A 10×3 matrix lights up with load.</string>
     <string name="motion_indicator_stacked">Switch ports</string>
-    <string name="motion_indicator_stacked_desc">Two rows of 16 ports busy sending and receiving.</string>
     <string name="motion_indicator_bays">Drive bays</string>
-    <string name="motion_indicator_bays_desc">Four drive bays blink with read and write activity.</string>
     <string name="motion_indicator_infinity_line">Infinity trace</string>
-    <string name="motion_indicator_infinity_line_desc">Two light trails chase each other around an infinity loop.</string>
     <string name="motion_indicator_infinity_led">Infinity LEDs</string>
-    <string name="motion_indicator_infinity_led_desc">Packets race around an infinity loop of LEDs.</string>
     <string name="motion_empty_flow">Flow wordmark</string>
-    <string name="motion_empty_flow_desc">Particles form the wordmark and drift in a flow field.</string>
     <string name="motion_empty_led_wordmark">LED wordmark</string>
-    <string name="motion_empty_led_wordmark_desc">The wordmark as LED beads with a passing data band. Tap for a ripple.</string>
+    <string name="motion_empty_led_wordmark_desc">Tap for a ripple</string>
     <string name="motion_empty_mobius">Möbius flow</string>
-    <string name="motion_empty_mobius_desc">Particles flow along an infinity-shaped Möbius band. Drag to rotate.</string>
+    <string name="motion_empty_mobius_desc">Drag to rotate</string>
     <string name="motion_empty_mobius_led">LED Möbius</string>
-    <string name="motion_empty_mobius_led_desc">LED beads on the Möbius band flicker as data passes. Drag to rotate.</string>
+    <string name="motion_empty_mobius_led_desc">Drag to rotate</string>
     <string name="motion_empty_morph">Morph</string>
-    <string name="motion_empty_morph_desc">Particles morph between the wordmark and the Möbius band. Tap to skip ahead.</string>
+    <string name="motion_empty_morph_desc">Tap to switch shape</string>
     <string name="motion_empty_led_globe">LED globe</string>
-    <string name="motion_empty_led_globe_desc">LED beads form a spinning globe swept by data rings. Drag to rotate.</string>
+    <string name="motion_empty_led_globe_desc">Drag to rotate</string>
     <string name="theme_scheme_style">Color style</string>
     <string name="theme_scheme_style_dynamic_note">Unavailable while using dynamic color</string>
     <string name="theme_scheme_tonal_spot">Soft</string>

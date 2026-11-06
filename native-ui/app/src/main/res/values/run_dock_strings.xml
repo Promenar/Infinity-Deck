@@ -34,8 +34,8 @@
     <string name="state_board_more">More options</string>
     <string name="state_board_tag_manual">Edited by you</string>
     <string name="state_board_tag_recent">Just updated</string>
-    <string name="state_board_manual_note">The agent sees your edits before it updates those fields again.</string>
-    <string name="state_board_edit_note">Tap a field to edit it.</string>
+    <string name="state_board_manual_note">The agent reads your edits first</string>
+    <string name="state_board_edit_note">Tap a field to edit it</string>
     <plurals name="run_detail_jobs_running">
         <item quantity="one">%1$d background task running</item>
         <item quantity="other">%1$d background tasks running</item>

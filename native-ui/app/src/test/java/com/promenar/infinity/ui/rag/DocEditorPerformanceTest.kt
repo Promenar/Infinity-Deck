@@ -154,16 +154,16 @@ class DocEditorPerformanceTest {
         val chinese = resourceFile("values-zh-rCN/strings.xml").readText()
 
         assertThat(english).contains(
-            "<string name=\"doc_editor_preview_truncated\">Large document: preview truncated; editing and saving are unaffected.</string>",
+            "<string name=\"doc_editor_preview_truncated\">Preview truncated; editing and saving unaffected</string>",
         )
         assertThat(chinese).contains(
-            "<string name=\"doc_editor_preview_truncated\">文档较大，预览已截断，编辑和保存不受影响。</string>",
+            "<string name=\"doc_editor_preview_truncated\">预览已截断，不影响编辑和保存</string>",
         )
         assertThat(english).contains(
-            "only about the first 16K characters are previewed. Saving and copying use the full text.",
+            "Previews the first ~16K characters; saving and copying use the full text",
         )
         assertThat(chinese).contains(
-            "只预览前约 1.6 万字。保存和复制不受影响。",
+            "仅预览前约 1.6 万字，保存和复制使用全文",
         )
     }
 

@@ -9,9 +9,9 @@
     <string name="tailscale_path_wan">Internet</string>
     <string name="tailscale_latency_ms">%1$s ms</string>
     <string name="tailscale_path_direct_desc">%1$s · peer-to-peer UDP</string>
-    <string name="tailscale_path_derp_desc">Through the %1$s DERP relay. No direct path yet.</string>
-    <string name="tailscale_path_peer_relay_desc">Relayed by another device in your tailnet.</string>
-    <string name="tailscale_path_idle_desc">Tailscale sets up a path once traffic flows. Ping to check it.</string>
+    <string name="tailscale_path_derp_desc">DERP relay · %1$s</string>
+    <string name="tailscale_path_peer_relay_desc">Relayed by a tailnet device</string>
+    <string name="tailscale_path_idle_desc">No recent traffic. Ping to check.</string>
     <string name="tailscale_path_no_reply_desc">The device may be asleep, or a firewall is blocking UDP.</string>
     <string name="tailscale_peer_path_title">Connection path</string>
     <string name="tailscale_ping">Ping</string>

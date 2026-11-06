@@ -32,16 +32,12 @@
     <string name="linux_terminal_open_environment">Go to Linux environment</string>
     <string name="linux_terminal_state_checking">Checking Linux environment…</string>
     <string name="linux_terminal_state_not_installed">Linux environment isn\'t installed</string>
-    <string name="linux_terminal_state_not_installed_desc">Install it to open a local terminal here.</string>
     <string name="linux_terminal_state_installing">Linux environment is installing</string>
-    <string name="linux_terminal_state_installing_desc">The terminal opens once installation finishes.</string>
     <string name="linux_terminal_state_interrupted">Installation was interrupted</string>
-    <string name="linux_terminal_state_interrupted_desc">Resume installation on the Linux environment page.</string>
     <string name="linux_terminal_state_maintaining">Resetting or removing the Linux environment…</string>
     <string name="linux_terminal_state_broken">Linux environment needs repair</string>
-    <string name="linux_terminal_state_broken_desc">Reset or reinstall it on the Linux environment page.</string>
     <string name="linux_terminal_state_distribution">This version doesn\'t include a Linux environment</string>
-    <string name="linux_terminal_state_distribution_desc">The built-in Linux environment is only in the sideload version.</string>
+    <string name="linux_terminal_state_distribution_desc">Sideload version only</string>
     <string name="linux_terminal_state_abi">This device doesn\'t support the Linux environment</string>
 
     <!-- 命令完整输出 -->
@@ -68,11 +64,11 @@
     <string name="linux_output_search_count">%1$d/%2$d</string>
     <string name="linux_output_search_previous">Previous match</string>
     <string name="linux_output_search_next">Next match</string>
-    <string name="linux_output_truncated_tail">%1$s exceeded the saved limit; only the last %2$s characters were kept (originally %3$s).</string>
-    <string name="linux_output_truncated_summary">Failed commands keep only a summary: %1$s has its last %2$s characters (originally %3$s).</string>
-    <string name="linux_output_truncated_log">Background job status returns only the last %1$s characters of the log.</string>
-    <string name="linux_output_truncated_log_path">Background job status returns only the last %1$s characters; the full log is at %2$s in the workspace.</string>
-    <string name="linux_output_footer_complete">— Full output shown, %1$s bytes —</string>
+    <string name="linux_output_truncated_tail">%1$s: last %2$s of %3$s characters kept</string>
+    <string name="linux_output_truncated_summary">Failure summary: %1$s keeps the last %2$s of %3$s characters</string>
+    <string name="linux_output_truncated_log">Showing the last %1$s characters of the log</string>
+    <string name="linux_output_truncated_log_path">Showing the last %1$s characters · Full log: %2$s</string>
+    <string name="linux_output_footer_complete">— Full output · %1$s bytes —</string>
     <string name="linux_output_footer_partial">— Only the retained tail is shown above —</string>
     <string name="linux_output_empty">(no output)</string>
     <string name="linux_output_copy">Copy</string>
@@ -82,11 +78,11 @@
     <string name="linux_output_share_title">Share command output</string>
     <string name="linux_output_copied">Copied</string>
     <string name="linux_output_saved">Saved to workspace: %1$s</string>
-    <string name="linux_output_save_unsupported">This chat uses a chosen folder, so the output was shared instead.</string>
+    <string name="linux_output_save_unsupported">Shared via the system instead</string>
     <string name="linux_output_save_failed">Couldn\'t save the output</string>
     <string name="linux_output_loading">Loading output…</string>
-    <string name="linux_output_pending">The command is still running or awaiting approval. Full output is available when it finishes.</string>
-    <string name="linux_output_not_found">This command\'s output wasn\'t found. The message may have been deleted.</string>
+    <string name="linux_output_pending">Command running or awaiting approval</string>
+    <string name="linux_output_not_found">Output not found. The message may have been deleted.</string>
     <string name="linux_output_failed">Couldn\'t read the output.</string>
     <string name="linux_output_retry">Retry</string>
 </resources>

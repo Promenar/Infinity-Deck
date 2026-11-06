@@ -7,14 +7,14 @@
     <string name="remote_segment_git">Git credentials</string>
     <string name="remote_segment_tailscale">Tailscale</string>
     <string name="remote_segment_network">Network</string>
-    <string name="remote_linux_git_hint">This session runs in Linux. Native git uses the credentials saved here for HTTPS push and pull, shared with built-in mode. git@host: and ssh:// remotes do not use the SSH bridge in Linux; switch to built-in mode when needed.</string>
-    <string name="remote_linux_network_hint">Commands in the Linux environment can reach the local network directly and are not limited by this allowlist.</string>
+    <string name="remote_linux_git_hint">In Linux, HTTPS uses these credentials; SSH remotes need built-in mode</string>
+    <string name="remote_linux_network_hint">Linux commands aren\'t limited by this allowlist</string>
     <string name="remote_more_settings">More settings</string>
     <string name="remote_link_linux">Linux environment</string>
     <string name="remote_link_termux">Termux</string>
     <string name="remote_link_background">Background &amp; schedules</string>
     <string name="remote_agent_section">Agent is using</string>
-    <string name="remote_agent_footer">Read-only: you can watch output and stop commands, but not type into the agent\'s sessions.</string>
+    <string name="remote_agent_footer">Read-only · View output and stop commands</string>
     <string name="remote_agent_view_in_terminal">View in terminal</string>
     <string name="remote_agent_session">Interactive session</string>
     <string name="remote_agent_jobs">Background jobs</string>
@@ -24,7 +24,7 @@
     </plurals>
     <string name="remote_agent_jobs_open">Open background jobs</string>
     <string name="remote_conn_section">Active connections</string>
-    <string name="remote_conn_footer">Terminals stay connected until you disconnect, swipe the app away from recents, or exit the app.</string>
+    <string name="remote_conn_footer">Stays connected until you disconnect or exit the app</string>
     <string name="remote_conn_since">Since %1$s</string>
     <string name="remote_conn_disconnect">Disconnect %1$s</string>
     <string name="remote_conn_kind_terminal">Terminal</string>
@@ -40,6 +40,6 @@
     <string name="ssh_term_tab_session_n">Session %1$d · read-only</string>
     <string name="ssh_term_closed_banner">Connection closed</string>
     <string name="ssh_term_running">Running: %1$s</string>
-    <string name="ssh_term_readonly">Read-only: the agent\'s interactive session, input is disabled.</string>
+    <string name="ssh_term_readonly">Read-only · Agent session</string>
     <string name="ssh_term_stop">Stop</string>
 </resources>

@@ -10,11 +10,11 @@
     <string name="slash_cmd_new_name">New chat</string>
     <string name="slash_cmd_new_desc">Start a new chat with this agent</string>
     <string name="slash_cmd_rename_name">Rename</string>
-    <string name="slash_cmd_rename_desc">Rename this chat; add the new title after the command</string>
+    <string name="slash_cmd_rename_desc">Rename this chat; add a title after it</string>
     <string name="slash_cmd_prompt_name">Chat prompt</string>
-    <string name="slash_cmd_prompt_desc">Set this chat\'s prompt; opens the editor without text</string>
+    <string name="slash_cmd_prompt_desc">Set this chat\'s prompt</string>
     <string name="slash_cmd_compact_name">Compact context</string>
-    <string name="slash_cmd_compact_desc">Summarize earlier turns to free up context</string>
+    <string name="slash_cmd_compact_desc">Summarize earlier turns</string>
     <string name="slash_cmd_clear_name">Clear history</string>
     <string name="slash_cmd_clear_desc">Delete all messages in this chat after you confirm</string>
     <string name="slash_cmd_mode_name">Approvals</string>
@@ -22,7 +22,7 @@
     <string name="slash_cmd_tools_name">Tool use</string>
     <string name="slash_cmd_tools_desc">Turn tool use on or off for this chat</string>
     <string name="slash_cmd_export_name">Export chat</string>
-    <string name="slash_cmd_export_desc">Choose a format and what to include; add md, txt, html, pdf or png to export directly</string>
+    <string name="slash_cmd_export_desc">Export this chat; add md, txt, html, pdf or png</string>
 
     <!-- 执行结果 -->
     <string name="slash_feedback_renamed">Renamed to “%1$s”</string>

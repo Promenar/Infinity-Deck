@@ -10,13 +10,12 @@
     <string name="settings_batch1_generation_template">生成模板</string>
     <string name="settings_batch1_network_forwarding">网络转发</string>
     <string name="settings_batch1_backup_options">归档选项</string>
-    <string name="settings_batch1_termux_intro_footer">按步骤把命令粘贴到 Termux 执行；SSH 和文件夹按需配置。</string>
+    <string name="settings_batch1_termux_intro_footer">逐条粘贴到 Termux 执行；SSH 与文件夹可选</string>
     <string name="settings_batch1_termux_permission_footer">没有弹出授权时，到应用详情“权限 → 其它权限”中开启。</string>
     <string name="settings_batch1_termux_ssh_setup_footer">whoami 输出的就是用户名；密码登录需先运行 passwd。</string>
     <string name="settings_batch1_termux_ssh_host_footer">添加 127.0.0.1:8022，填写 whoami 的用户名并选择密码或密钥认证。</string>
     <string name="settings_batch1_termux_key_section">公钥登录</string>
-    <string name="settings_batch1_backup_local_footer">WebDAV 只在你手动操作时备份或恢复。</string>
-    <string name="settings_batch1_local_models_footer">模型在本机运行，对话不离开设备。</string>
+    <string name="settings_batch1_backup_local_footer">WebDAV 不自动备份</string>
     <string name="settings_batch1_agent_skills_footer">任务匹配时加载 SKILL.md 指令与参考资料；技能包本身不执行代码。</string>
     <string name="settings_batch1_termux_enable_diagnostic_summary">开启后可运行诊断</string>
 </resources>

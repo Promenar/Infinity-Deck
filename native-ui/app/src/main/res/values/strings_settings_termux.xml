@@ -31,9 +31,9 @@
     <string name="termux_install_description">Install 0.109 or newer from F-Droid or GitHub, then open it once.</string>
     <string name="termux_fdroid">F-Droid</string>
     <string name="termux_github">GitHub</string>
-    <string name="termux_external_apps_description">Run the command above in Termux so &brand; can send it commands.</string>
-    <string name="termux_external_apps_verified">The diagnostic test confirmed external app access and result delivery.</string>
-    <string name="termux_external_apps_unverified">After running the command, use the diagnostic test above to verify this step.</string>
+    <string name="termux_external_apps_description">Run the command above in Termux</string>
+    <string name="termux_external_apps_verified">Verified by diagnostic</string>
+    <string name="termux_external_apps_unverified">Run the diagnostic to verify</string>
     <string name="termux_permission_description">Allow &brand; to run commands in the Termux environment. If no system prompt appears, open App info → Permissions → Other permissions. Status refreshes when you return to this page.</string>
     <string name="termux_request_permission">Request command permission</string>
     <string name="termux_app_details">&brand; app info</string>
@@ -43,10 +43,10 @@
     <string name="termux_ssh_host_description">Add an SSH host at 127.0.0.1 on port 8022, enter the username shown by whoami, and choose password or key authentication. Verify the host fingerprint before the first connection.</string>
     <string name="termux_sshd_description">For connections on this device only, start sshd with this command to listen on the loopback address.</string>
     <string name="termux_open_ssh">Open SSH host settings</string>
-    <string name="termux_key_missing">To sign in with a public key, first save a key in SSH host settings.</string>
+    <string name="termux_key_missing">Save a key in SSH hosts first</string>
     <string name="termux_key_available">Saved key available</string>
     <string name="termux_reuse_key">Reuse a saved SSH key</string>
-    <string name="termux_key_copy_description">Copy the public key or the command that adds it to authorized_keys, then paste it in Termux.</string>
+    <string name="termux_key_copy_description">Paste and run it in Termux</string>
     <string name="termux_copy_public_key">Copy public key</string>
     <string name="termux_copy_key_command">Copy authorized_keys command</string>
     <string name="termux_picker_hint">If the picker does not open in Termux, select Termux in its sidebar. Choose another alias if the name is already in use.</string>
@@ -56,8 +56,8 @@
     <string name="termux_background_description">From Android 12, the system may end long tasks (signal 9). Some Android 14 devices offer “Disable child process restrictions” in Developer options.</string>
     <string name="termux_wake_lock_description">For long tasks, run termux-wake-lock to stay awake and termux-wake-unlock when done. Uses more battery.</string>
     <string name="termux_background_hint">If tasks stop in the background, allow full background activity for both &brand; and Termux.</string>
-    <string name="termux_diagnostic_success">Diagnostic passed. The command result was delivered.</string>
-    <string name="termux_diagnostic_failure">Diagnostic failed. Check the details below.</string>
+    <string name="termux_diagnostic_success">Diagnostic passed</string>
+    <string name="termux_diagnostic_failure">Diagnostic failed</string>
     <string name="termux_exit_code">Exit code: %1$s</string>
     <string name="termux_not_returned">Not returned</string>
     <string name="termux_diagnostic_timeout">Result delivery timed out. Check Termux background execution before retrying.</string>
@@ -67,7 +67,7 @@
     <string name="termux_stderr">Error output</string>
     <string name="termux_diagnostic_expected">Expected output: INFINITY_TERMUX_OK, with exit code 0.</string>
     <string name="termux_guidance_not_installed">Install Termux from F-Droid or GitHub, then open it once to finish initialization.</string>
-    <string name="termux_guidance_version">Install Termux 0.109 or newer with a recognizable version number to receive command results.</string>
+    <string name="termux_guidance_version">Install Termux 0.109 or newer</string>
     <string name="termux_guidance_permission">Grant RUN_COMMAND permission on this page or in the &brand; system app permissions.</string>
     <string name="termux_guidance_external_apps">Set allow-external-apps=true in ~/.termux/termux.properties, run termux-reload-settings, and retry the diagnostic test.</string>
     <string name="termux_guidance_internal">Termux didn\'t finish. Open Termux to check.</string>
@@ -108,6 +108,6 @@
     <string name="termux_command_password" translatable="false">passwd</string>
     <string name="termux_command_sshd" translatable="false">sshd -o ListenAddress=127.0.0.1</string>
     <string name="termux_command_wake_lock" translatable="false">termux-wake-lock\ntermux-wake-unlock</string>
-    <string name="termux_step_files">5 · Let the Agent use Termux files</string>
-    <string name="termux_files_description">Authorize the Termux folder from a chat\'s External folders. File tools then use /mnt/alias/; Termux commands keep using the Termux home folder.</string>
+    <string name="termux_step_files">5 · Termux file access</string>
+    <string name="termux_files_description">Authorize the Termux folder from a chat\'s External folders</string>
 </resources>

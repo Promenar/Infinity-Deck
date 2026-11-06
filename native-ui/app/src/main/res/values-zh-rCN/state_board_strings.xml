@@ -4,7 +4,7 @@
     <string name="state_edit">编辑%1$s</string>
     <string name="state_remove">移除面板</string>
     <string name="state_remove_title">移除状态面板？</string>
-    <string name="state_remove_body">面板将从此会话中隐藏，撤销所属消息时会一并回滚此改动。</string>
+    <string name="state_remove_body">撤销所属消息时会一并恢复</string>
     <string name="state_save">保存</string>
     <string name="state_cancel">取消</string>
     <string name="state_value">当前值</string>
@@ -14,8 +14,8 @@
     <string name="state_add_item">添加条目</string>
     <string name="state_remove_item">移除条目 %1$d</string>
     <string name="state_board_empty_value">空</string>
-    <string name="state_invalid_value">数值超出范围或内容过长，请检查。</string>
-    <string name="state_save_failed">保存失败，面板可能已更新，请关闭编辑后重新打开。</string>
+    <string name="state_invalid_value">数值超出范围或内容过长</string>
+    <string name="state_save_failed">保存失败，请重新打开编辑</string>
     <string name="state_created">已创建状态面板：%1$s</string>
     <string name="state_defined">已定义状态面板：%1$s</string>
     <string name="state_updated">状态更新：%1$s</string>

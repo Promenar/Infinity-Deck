@@ -7,15 +7,14 @@
     <string name="canvas_open">Open</string>
     <string name="canvas_preview">Artifact preview</string>
     <string name="canvas_empty_title">No artifacts yet</string>
-    <string name="canvas_empty_description">Ask AI to create a chart, dashboard or interactive tool.</string>
     <string name="canvas_copy_source">Copy HTML source</string>
     <string name="canvas_close">Close artifact</string>
     <string name="canvas_follow_latest">Follow latest · version %1$d</string>
     <string name="canvas_history_version">Version %1$d · read only</string>
-    <string name="canvas_history_notice">History is read only. It cannot add text to your draft.</string>
+    <string name="canvas_history_notice">History is read-only</string>
     <string name="canvas_loading">Loading artifact…</string>
     <string name="canvas_load_error">Could not load artifact</string>
-    <string name="canvas_scripts_unavailable">Static preview. Update Android System WebView to make it interactive.</string>
+    <string name="canvas_scripts_unavailable">Static preview · Update WebView to interact</string>
     <string name="canvas_tool_create">Create artifact</string>
     <string name="canvas_tool_create_description">Create a versioned HTML chart, dashboard or interactive tool.</string>
     <string name="canvas_tool_update">Update artifact</string>

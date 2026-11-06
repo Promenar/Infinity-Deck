@@ -3,9 +3,9 @@
 <resources>
     <string name="session_header_title">Session headers</string>
     <string name="session_header_name">Session header name</string>
-    <string name="session_header_name_error">Use a valid HTTP field name without spaces, colons or non-ASCII characters. Authentication, client and transport headers are reserved.</string>
+    <string name="session_header_name_error">No spaces, colons or non-ASCII characters; reserved names not allowed</string>
     <string name="session_header_provider_help">For requests linked to a conversation, send an anonymous stable session ID and the &brand; client version. Models can override this setting.</string>
-    <string name="session_header_model_help">Applies only to requests linked to a conversation. Connection tests and model discovery do not send session headers.</string>
+    <string name="session_header_model_help">Sent only with chat requests</string>
     <string name="session_header_inherit">Follow provider</string>
     <string name="session_header_on">On</string>
     <string name="session_header_off">Off</string>

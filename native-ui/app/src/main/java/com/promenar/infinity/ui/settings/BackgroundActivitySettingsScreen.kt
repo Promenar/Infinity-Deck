@@ -164,7 +164,7 @@ internal fun BackgroundActivitySettingsContent(
                         ChannelLimitChip(
                             label = stringResource(R.string.agent_jobs_limit_label),
                             title = stringResource(R.string.agent_jobs_limit_title),
-                            body = stringResource(R.string.agent_jobs_limit_body),
+                            body = null,
                             icon = Icons.Rounded.Visibility,
                         )
                     }

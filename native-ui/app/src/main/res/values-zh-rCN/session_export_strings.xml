@@ -20,7 +20,7 @@
     <string name="session_export_thinking">思考过程</string>
     <string name="session_export_thinking_desc">模型的推理内容</string>
     <string name="session_export_tools">工具调用</string>
-    <string name="session_export_tools_desc">只列工具名和结果摘要；命令输出可能含路径或密钥，不会导出</string>
+    <string name="session_export_tools_desc">工具名与结果摘要，不含命令输出</string>
     <string name="session_export_attachments">附件</string>
     <string name="session_export_attachments_desc_text">文本附件内联；图片和其它文件打包为同名 .zip</string>
     <string name="session_export_attachments_desc_snapshot">图片直接画进页面，其它文件只列文件名</string>
@@ -44,11 +44,9 @@
     <string name="session_export_estimate_join">%1$s，%2$s</string>
 
     <!-- 各格式说明 -->
-    <string name="session_export_footer_markdown">“分享”打开系统分享面板，可直接发到其它应用。</string>
-    <string name="session_export_footer_txt">纯文本不保留格式和图片。</string>
-    <string name="session_export_footer_html">用浏览器打开，代码块和图表保持原样。</string>
-    <string name="session_export_footer_pdf">按 A4 竖版分页，适合打印和归档。</string>
-    <string name="session_export_footer_png">长对话会切成多张图片，按编号顺序分享。</string>
+    <string name="session_export_footer_txt">不保留格式和图片</string>
+    <string name="session_export_footer_pdf">A4 竖版分页</string>
+    <string name="session_export_footer_png">长对话切为多张图片</string>
 
     <!-- 操作与结果 -->
     <string name="session_export_save">保存到…</string>

@@ -616,7 +616,6 @@ internal fun ChatInspectorRunTab(
             if (hasRunContent) content() else InspectorEmpty(
                 icon = Icons.Rounded.Checklist,
                 title = stringResource(R.string.chat_inspector_run_empty_title),
-                detail = stringResource(R.string.chat_inspector_run_empty_detail),
             )
         }
     }
@@ -627,11 +626,10 @@ internal fun ChatInspectorRunTab(
 internal fun ChatInspectorCanvasEmpty() = InspectorEmpty(
     icon = ChatPage.Canvas.icon,
     title = stringResource(R.string.canvas_empty_title),
-    detail = stringResource(R.string.canvas_empty_description),
 )
 
 @Composable
-private fun InspectorEmpty(icon: ImageVector, title: String, detail: String, iconSize: Dp = 32.dp) {
+private fun InspectorEmpty(icon: ImageVector, title: String, detail: String? = null, iconSize: Dp = 32.dp) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = InfinitySpacing.XLarge),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -640,15 +638,17 @@ private fun InspectorEmpty(icon: ImageVector, title: String, detail: String, ico
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(iconSize))
         Spacer(Modifier.height(InfinitySpacing.Medium))
         Text(title, style = InfinityTypography.titleSmall, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(InfinitySpacing.XSmall))
-        Text(
-            detail,
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (detail != null) {
+            Spacer(Modifier.height(InfinitySpacing.XSmall))
+            Text(
+                detail,
+                style = InfinityTypography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

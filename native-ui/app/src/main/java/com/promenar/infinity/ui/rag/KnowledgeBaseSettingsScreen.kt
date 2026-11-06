@@ -150,9 +150,7 @@ internal fun KnowledgeBaseSettingsContent(
             val custom = selectedRetrievalDepthChoice(config) == RetrievalDepthChoice.Custom
             InfinitySettingsSection(
                 title = stringResource(R.string.settings_ia_retrieval_section),
-                footer = stringResource(
-                    if (custom) R.string.settings_ia_retrieval_footer_custom else R.string.settings_ia_retrieval_footer,
-                ),
+                footer = if (custom) stringResource(R.string.settings_ia_retrieval_footer_custom) else null,
             ) {
                 RetrievalDepthControl(config, actions.onDepthSelected)
                 SettingsToggle(

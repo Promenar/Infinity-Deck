@@ -4,9 +4,9 @@
     <string name="kg_graph_search_entities">Search entity names</string>
     <string name="kg_graph_searching">Searching entities…</string>
     <string name="kg_graph_search_empty">No matching entities</string>
-    <string name="kg_graph_search_failed">Entity search failed. Edit the query to retry.</string>
+    <string name="kg_graph_search_failed">Entity search failed</string>
     <string name="kg_graph_expand_neighbors">Expand neighbors</string>
     <string name="kg_graph_expand_entity">Expand neighbors of %1$s</string>
     <string name="kg_graph_reset_view">Reset view</string>
-    <string name="kg_graph_display_limit">Display limit reached. Refresh or switch scope to explore other entities.</string>
+    <string name="kg_graph_display_limit">Display limit reached. Switch scope to see more</string>
 </resources>

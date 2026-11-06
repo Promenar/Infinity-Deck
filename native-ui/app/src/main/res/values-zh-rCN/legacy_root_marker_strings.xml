@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="legacy_root_marker_workspace_unavailable">工作区身份校验或初始化失败，文件访问暂不可用。你仍可打开会话并继续对话。</string>
+    <string name="legacy_root_marker_workspace_unavailable">工作区不可用，文件访问暂停，可继续对话</string>
 </resources>

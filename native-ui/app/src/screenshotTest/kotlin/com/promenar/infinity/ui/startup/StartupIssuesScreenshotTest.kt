@@ -64,7 +64,7 @@ fun startupIssuesDarkPreview() = StartupPreview(InfinityThemeMode.DARK) {
     // 面板外壳给出 24dp 水平留白。
     Column(Modifier.padding(horizontal = 24.dp)) {
         StartupIssuesSheetContent(
-            SampleRows, busyIssueId = null, message = "问题仍未解决。文件 journal 无法安全放弃", messageIssueId = "issue-journal",
+            SampleRows, busyIssueId = null, message = "仍未解决", messageIssueId = "issue-journal",
             canDiagnose = true, onAction = { _, _ -> }, onDiagnose = {}, onViewRecords = {}, onExport = {},
         )
     }

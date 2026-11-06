@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="branch_auto_processing_paused">已暂停自动处理，等你回来继续。</string>
-    <string name="branch_worktree_failed">分支已停止，工作目录准备失败：%1$s</string>
+    <string name="branch_worktree_failed">工作目录准备失败：%1$s</string>
     <string name="branch_system_message">来自「%1$s」的会话消息</string>
 </resources>

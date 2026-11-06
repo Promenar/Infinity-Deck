@@ -13,8 +13,8 @@
     <string name="agent_reach_workspace_unavailable">The workspace is unavailable</string>
 
     <string name="agent_reach_section_paths">File locations</string>
-    <string name="agent_reach_paths_footer_linux">File tools and Linux commands use the same paths. Other paths belong to the Linux system and are cleared when Linux is reset.</string>
-    <string name="agent_reach_paths_footer_builtin">These are the paths file tools see. Built-in commands see real paths on the phone; the workspace is at %1$s.</string>
+    <string name="agent_reach_paths_footer_linux">Other paths are cleared when Linux is reset</string>
+    <string name="agent_reach_paths_footer_builtin">Built-in commands use real paths; the workspace is %1$s</string>
     <string name="agent_reach_path_workspace">Current workspace</string>
     <string name="agent_reach_path_workspace_desc">Commands start here by default</string>
     <string name="agent_reach_path_session_desc">Reach it here when it isn\'t the workspace</string>
@@ -30,7 +30,7 @@
     <string name="agent_reach_runner_linux">Linux commands</string>
     <string name="agent_reach_runner_linux_scope">Run in Alpine with every path above</string>
     <string name="agent_reach_runner_builtin">Built-in commands</string>
-    <string name="agent_reach_backend_builtin_scope">Run with this app\'s permissions, can read and write all app data, not limited to the workspace</string>
+    <string name="agent_reach_backend_builtin_scope">Runs with this app\'s permissions; can read and write all app data</string>
     <string name="agent_reach_runner_sandbox">Sandboxed scripts</string>
     <string name="agent_reach_backend_sandbox_scope">Workspace only; network access is declared per call</string>
     <string name="agent_reach_runner_termux">Termux</string>

@@ -186,7 +186,6 @@ fun ThemeScreenContent(
             item("motion") {
                 InfinitySettingsSection(
                     title = stringResource(R.string.motion_section_title),
-                    footer = stringResource(R.string.motion_section_footer),
                 ) {
                     MotionStyleRows(
                         motion = preferences.motion,

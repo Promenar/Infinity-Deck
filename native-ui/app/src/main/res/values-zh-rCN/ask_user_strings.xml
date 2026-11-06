@@ -3,7 +3,7 @@
     <string name="ask_user_tool_name">向用户提问</string>
     <string name="ask_user_tool_description">在方案、范围或偏好需要你决定时暂停并提问。</string>
     <string name="ask_user_notification_title">需要你的回答</string>
-    <string name="ask_user_notification_text">打开会话选择选项、自由回答或跳过。</string>
+    <string name="ask_user_notification_text">打开会话回答</string>
     <string name="ask_user_answer_failed">回答保存失败，请重试。</string>
-    <string name="ask_user_resume_failed">回答已保存，重新打开此会话可续跑。</string>
+    <string name="ask_user_resume_failed">回答已保存，重新打开会话继续</string>
 </resources>

@@ -2,5 +2,5 @@
 <resources>
     <string name="resource_explorer_directory_badge">%1$s · %2$s</string>
     <string name="resource_explorer_unavailable_title">Workspace unavailable</string>
-    <string name="resource_explorer_unavailable_help">Check the folder and access permission, or choose another workspace above.</string>
+    <string name="resource_explorer_unavailable_help">Check the folder and permission, or choose another workspace</string>
 </resources>

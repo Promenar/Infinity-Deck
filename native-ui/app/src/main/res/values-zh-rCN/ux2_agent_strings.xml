@@ -3,13 +3,11 @@
     <string name="ux2_agent_dialog_type">类型</string>
     <string name="ux2_agent_type_chat">对话型</string>
     <string name="ux2_agent_type_agent">智能体型</string>
-    <string name="ux2_agent_type_chat_desc">普通对话：新会话默认关闭工具，每轮回复前自动检索知识。</string>
-    <string name="ux2_agent_type_agent_desc">带工具工作：新会话默认开启工具，由智能体按需检索知识。</string>
-    <string name="ux2_agent_type_params_footer">只是创建时的起始模板，之后可在智能体设置里逐项修改。</string>
+    <string name="ux2_agent_type_chat_desc">默认关闭工具，每轮自动检索</string>
+    <string name="ux2_agent_type_agent_desc">默认开启工具，按需检索</string>
     <string name="ux2_agent_param_tools">新会话工具</string>
     <string name="ux2_agent_param_on">开启</string>
     <string name="ux2_agent_param_off">关闭</string>
     <string name="ux2_agent_dialog_prompt_optional">系统提示词（可选）</string>
     <string name="ux2_agent_tools_default">新会话默认开启工具</string>
-    <string name="ux2_agent_tools_default_desc">新会话创建时工具默认开启，仍可在会话内单独开关。关闭工具后，检索方式按“每轮自动”执行。</string>
 </resources>

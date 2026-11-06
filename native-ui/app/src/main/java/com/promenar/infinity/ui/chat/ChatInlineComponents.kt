@@ -1475,14 +1475,7 @@ internal fun ColumnScope.ApprovalMoreMenuItems(
     onApproveOnce?.let { handler ->
         InfinityMenuItem(
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(stringResource(R.string.agent_config_approve_once), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                    Text(
-                        stringResource(R.string.agent_config_approve_once_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(stringResource(R.string.agent_config_approve_once), style = MaterialTheme.typography.labelLarge, maxLines = 1)
             },
             leadingIcon = { Icon(Icons.Rounded.Done, contentDescription = null) },
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),

@@ -31,9 +31,9 @@
     <string name="termux_install_description">从 F-Droid 或 GitHub 安装 0.109 以上版本，装好后打开一次。</string>
     <string name="termux_fdroid">F-Droid</string>
     <string name="termux_github">GitHub</string>
-    <string name="termux_external_apps_description">在 Termux 中运行上方命令，让 &brand; 能向 Termux 发送命令。</string>
-    <string name="termux_external_apps_verified">诊断已确认外部应用调用与结果回传。</string>
-    <string name="termux_external_apps_unverified">执行命令后，请运行上方诊断测试确认此步骤。</string>
+    <string name="termux_external_apps_description">在 Termux 中运行上方命令</string>
+    <string name="termux_external_apps_verified">诊断已通过</string>
+    <string name="termux_external_apps_unverified">执行后运行诊断确认</string>
     <string name="termux_permission_description">允许 &brand; 使用“在 Termux 环境中运行命令”权限。若系统没有弹出申请，请在应用详情的“权限 → 其它权限”中查找。返回此页会自动刷新状态。</string>
     <string name="termux_request_permission">申请运行命令权限</string>
     <string name="termux_app_details">&brand; 应用详情</string>
@@ -43,10 +43,10 @@
     <string name="termux_ssh_host_description">在 SSH 主机设置中添加地址 127.0.0.1、端口 8022，填写 whoami 显示的用户名，并选择密码或密钥认证。首次连接前核对主机指纹。</string>
     <string name="termux_sshd_description">仅供同机连接时，使用以下 sshd 命令启动服务并限制监听环回地址。</string>
     <string name="termux_open_ssh">打开 SSH 主机设置</string>
-    <string name="termux_key_missing">如需公钥登录，请先在 SSH 主机设置中保存一份密钥。</string>
+    <string name="termux_key_missing">需先在 SSH 主机中保存密钥</string>
     <string name="termux_key_available">有可复用密钥</string>
     <string name="termux_reuse_key">复用已保存的 SSH 密钥</string>
-    <string name="termux_key_copy_description">复制公钥或写入 authorized_keys 的命令，到 Termux 中粘贴执行。</string>
+    <string name="termux_key_copy_description">复制后在 Termux 中粘贴执行</string>
     <string name="termux_copy_public_key">复制公钥</string>
     <string name="termux_copy_key_command">复制公钥写入命令</string>
     <string name="termux_picker_hint">如果选择器未自动定位，请在侧栏中选择 Termux。别名冲突时请换一个名称。</string>
@@ -56,8 +56,8 @@
     <string name="termux_background_description">Android 12 起，系统可能结束长任务（显示 signal 9）。部分 Android 14 设备可在开发者选项中开启“停用子进程限制”。</string>
     <string name="termux_wake_lock_description">长任务可运行 termux-wake-lock 防止休眠，结束后运行 termux-wake-unlock。会增加耗电。</string>
     <string name="termux_background_hint">任务在后台中断时，请把 &brand; 和 Termux 都设为“完全允许后台行为”。</string>
-    <string name="termux_diagnostic_success">诊断成功，命令结果已回传。</string>
-    <string name="termux_diagnostic_failure">诊断未通过，请按下方提示检查配置。</string>
+    <string name="termux_diagnostic_success">诊断通过</string>
+    <string name="termux_diagnostic_failure">诊断未通过</string>
     <string name="termux_exit_code">退出码：%1$s</string>
     <string name="termux_not_returned">未返回</string>
     <string name="termux_diagnostic_timeout">等待结果超时。请检查 Termux 后台运行状态后重试。</string>
@@ -67,7 +67,7 @@
     <string name="termux_stderr">错误输出</string>
     <string name="termux_diagnostic_expected">预期输出为 INFINITY_TERMUX_OK，且退出码为 0。</string>
     <string name="termux_guidance_not_installed">请从 F-Droid 或 GitHub 安装 Termux，并打开一次完成初始化。</string>
-    <string name="termux_guidance_version">请安装可识别版本号的 Termux 0.109 或更高版本，以接收命令结果。</string>
+    <string name="termux_guidance_version">请安装 Termux 0.109 或更高版本</string>
     <string name="termux_guidance_permission">请在此页或 &brand; 的系统应用权限页授予 RUN_COMMAND 权限。</string>
     <string name="termux_guidance_external_apps">请在 Termux 的 ~/.termux/termux.properties 设置 allow-external-apps=true，执行 termux-reload-settings 后重试诊断。</string>
     <string name="termux_guidance_internal">Termux 未完成执行，请打开 Termux 检查。</string>
@@ -102,6 +102,6 @@
     <string name="termux_error_picker">无法打开文件选择器，请确认已安装并打开过 Termux。</string>
     <string name="termux_error_key_code">无法读取 SSH 公钥（%1$s），请在 SSH 主机设置中检查密钥。</string>
     <string name="termux_error_system_permission">系统拒绝了所需权限，请在应用详情中检查授权后重试。</string>
-    <string name="termux_step_files">5 · 让智能体访问 Termux 文件</string>
-    <string name="termux_files_description">在会话的“外部文件夹”中授权 Termux 目录后，文件工具经 /mnt/别名/ 访问；Termux 命令仍使用其自己的主目录。</string>
+    <string name="termux_step_files">5 · Termux 文件访问</string>
+    <string name="termux_files_description">在会话的外部文件夹中授权 Termux 目录</string>
 </resources>

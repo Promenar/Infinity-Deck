@@ -73,12 +73,10 @@ internal fun AgentDefaultParamsContent(
 ) {
     val scrollState = rememberScrollState()
     Column(modifier.fillMaxWidth().verticalScroll(scrollState)) {
-        Text(stringResource(R.string.agent_edit_default_params), style = MaterialTheme.typography.titleMedium)
         Text(
-            stringResource(R.string.agent_edit_default_params_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+            stringResource(R.string.agent_edit_default_params),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 12.dp),
         )
         if (reasoning != null) {
             var menuOpen by remember { mutableStateOf(false) }

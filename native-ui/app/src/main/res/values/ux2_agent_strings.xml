@@ -3,13 +3,11 @@
     <string name="ux2_agent_dialog_type">Type</string>
     <string name="ux2_agent_type_chat">Chat</string>
     <string name="ux2_agent_type_agent">Agent</string>
-    <string name="ux2_agent_type_chat_desc">Plain conversation: tools are off in new sessions and knowledge is retrieved automatically before each reply.</string>
-    <string name="ux2_agent_type_agent_desc">Works with tools: tools are on in new sessions and the agent decides when to search knowledge.</string>
-    <string name="ux2_agent_type_params_footer">Only a starting template. You can change all three in the agent\'s settings afterwards.</string>
+    <string name="ux2_agent_type_chat_desc">Tools off by default; searches every turn</string>
+    <string name="ux2_agent_type_agent_desc">Tools on by default; searches when needed</string>
     <string name="ux2_agent_param_tools">Tools in new sessions</string>
     <string name="ux2_agent_param_on">On</string>
     <string name="ux2_agent_param_off">Off</string>
     <string name="ux2_agent_dialog_prompt_optional">System prompt (optional)</string>
     <string name="ux2_agent_tools_default">Tools on in new sessions</string>
-    <string name="ux2_agent_tools_default_desc">New sessions start with tools enabled. You can still switch tools per session. Turning tools off also makes retrieval run automatically each turn.</string>
 </resources>

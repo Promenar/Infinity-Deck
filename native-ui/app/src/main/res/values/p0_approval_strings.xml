@@ -4,8 +4,8 @@
 ]>
 <resources>
     <string name="chat_approval_execution_target">Target: %1$s</string>
-    <string name="chat_approval_execution_target_unknown">The execution target could not be confirmed.</string>
-    <string name="chat_approval_high_risk_target_warning">Deletion and process commands can change or remove data. Check the target.</string>
+    <string name="chat_approval_execution_target_unknown">Unknown target</string>
+    <string name="chat_approval_high_risk_target_warning">May change or remove data. Check the target</string>
     <string name="chat_approval_title_python">Run Python</string>
     <string name="chat_approval_title_js">Run JavaScript</string>
     <string name="chat_approval_title_ssh_host_save">Save SSH host</string>
@@ -14,15 +14,15 @@
     <string name="chat_approval_title_ssh_install_key">Install SSH key</string>
     <string name="chat_approval_title_mcp">MCP tool</string>
     <string name="chat_approval_kind_builtin_command">Built-in command</string>
-    <string name="chat_approval_kind_builtin_command_detail">Runs with this app\'s permissions and can access all app data, not limited to the workspace. Deleted files can\'t be recovered.</string>
+    <string name="chat_approval_kind_builtin_command_detail">Runs with app permissions and can access all app data. Deletions can\'t be undone</string>
     <string name="chat_approval_kind_termux_command">Termux command</string>
-    <string name="chat_approval_kind_termux_command_detail">Runs as Termux and reaches only Termux files and shared storage it was granted.</string>
+    <string name="chat_approval_kind_termux_command_detail">Runs as Termux; reaches only Termux files and granted storage</string>
     <string name="chat_approval_kind_ssh_command">Remote command</string>
-    <string name="chat_approval_kind_ssh_command_detail">Runs on the remote host with the signed-in account\'s permissions.</string>
+    <string name="chat_approval_kind_ssh_command_detail">Runs with the remote account\'s permissions</string>
     <string name="chat_approval_kind_file_transfer">File transfer</string>
     <string name="chat_approval_kind_upload_detail">Uploads to %1$s.</string>
     <string name="chat_approval_kind_download_detail">Downloads from %1$s.</string>
     <string name="chat_approval_kind_tool">Built-in tool</string>
-    <string name="chat_approval_kind_tool_detail">&brand; carries it out under fixed rules; it doesn\'t run arbitrary commands.</string>
+    <string name="chat_approval_kind_tool_detail">Runs under fixed rules; no arbitrary commands</string>
     <string name="chat_approval_title_required">Needs approval: %1$s</string>
 </resources>

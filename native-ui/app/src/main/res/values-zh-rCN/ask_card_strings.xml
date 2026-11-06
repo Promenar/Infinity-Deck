@@ -16,7 +16,7 @@
     <string name="ask_card_answered_title_skipped">未回答</string>
     <string name="ask_card_answered_other">其他回答</string>
     <string name="ask_card_answered_skipped_head">提问</string>
-    <string name="ask_card_answered_skipped">你跳过了，智能体按自己的判断继续</string>
+    <string name="ask_card_answered_skipped">已跳过</string>
     <string name="ask_card_input_placeholder">输入其他回答…</string>
     <string name="ask_card_send_other_cd">作为其他回答发送</string>
     <string name="ask_card_status_waiting">待回答</string>

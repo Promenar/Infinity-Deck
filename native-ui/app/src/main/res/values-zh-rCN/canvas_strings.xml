@@ -7,15 +7,14 @@
     <string name="canvas_open">打开</string>
     <string name="canvas_preview">产物预览</string>
     <string name="canvas_empty_title">还没有产物</string>
-    <string name="canvas_empty_description">请 AI 创建图表、数据看板或交互小工具。</string>
     <string name="canvas_copy_source">复制 HTML 源码</string>
     <string name="canvas_close">关闭产物</string>
     <string name="canvas_follow_latest">跟随最新 · 第 %1$d 版</string>
     <string name="canvas_history_version">第 %1$d 版 · 只读</string>
-    <string name="canvas_history_notice">历史版本只读，不能向输入框添加内容。</string>
+    <string name="canvas_history_notice">历史版本只读</string>
     <string name="canvas_loading">正在加载产物…</string>
     <string name="canvas_load_error">无法加载产物</string>
-    <string name="canvas_scripts_unavailable">静态预览。更新 Android System WebView 后可交互。</string>
+    <string name="canvas_scripts_unavailable">静态预览 · 更新 WebView 后可交互</string>
     <string name="canvas_tool_create">创建产物</string>
     <string name="canvas_tool_create_description">创建有版本记录的 HTML 图表、看板或交互工具。</string>
     <string name="canvas_tool_update">更新产物</string>

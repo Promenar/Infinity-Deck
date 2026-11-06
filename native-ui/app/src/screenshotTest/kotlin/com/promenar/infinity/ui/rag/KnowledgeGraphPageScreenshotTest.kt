@@ -57,7 +57,7 @@ fun knowledgeGraphSessionOptionsDarkPreview() = KgPageFrame {
         onSelect = {},
     )
     KnowledgeGraphCanvasMessage(
-        text = "选择一个会话查看它的图谱。",
+        text = "选择会话",
         actionLabel = "选择会话",
         modifier = Modifier.padding(top = 24.dp),
     )

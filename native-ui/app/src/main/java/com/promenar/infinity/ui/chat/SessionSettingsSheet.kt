@@ -553,8 +553,7 @@ internal fun SessionToolsContent(
             title = stringResource(R.string.sheet_tool_section_usage),
             footer = when (toolsOffState(options, toolCallingSupported)) {
                 ToolsOffState.WebSearchOnly -> stringResource(R.string.settings_ia_tools_off_web_only)
-                ToolsOffState.NoTools -> stringResource(R.string.settings_ia_tools_off_none)
-                null -> null
+                ToolsOffState.NoTools, null -> null
             },
         ) {
             SettingsToggle(

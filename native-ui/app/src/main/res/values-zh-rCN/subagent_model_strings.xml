@@ -3,15 +3,15 @@
     <string name="subagent_model_unavailable">子代理模型 %1$s 当前不可用，没有改用其它模型。</string>
 
     <string name="subagent_model_section">子代理</string>
-    <string name="subagent_model_section_footer">对这个智能体之后启动的子代理生效；恢复运行的子代理沿用原来的模型。</string>
+    <string name="subagent_model_section_footer">对之后启动的子代理生效</string>
     <string name="subagent_model_follow">跟随会话模型</string>
     <string name="subagent_model_follow_desc">子代理和当前会话用同一个模型</string>
     <string name="subagent_model_fixed">指定模型</string>
     <string name="subagent_model_fixed_desc">适合把检索交给便宜的模型</string>
     <string name="subagent_model_picker_title">子代理模型</string>
     <string name="subagent_model_allow_per_task">允许智能体按任务换模型</string>
-    <string name="subagent_model_allow_per_task_desc">只能从下面勾选的模型里选；不支持工具调用的模型不能添加</string>
-    <string name="subagent_model_selectable_empty">还没有可选模型，添加之前智能体不能换模型。</string>
+    <string name="subagent_model_allow_per_task_desc">仅限下方勾选的模型</string>
+    <string name="subagent_model_selectable_empty">还没有可选模型</string>
     <string name="subagent_model_add">添加</string>
     <string name="subagent_model_add_cd">添加智能体可选的模型</string>
     <string name="subagent_model_remove_cd">移除 %1$s</string>

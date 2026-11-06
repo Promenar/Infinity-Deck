@@ -5,7 +5,7 @@
     <string name="git_panel_refresh">刷新</string>
     <string name="git_panel_tab_changes">变更</string>
     <string name="git_panel_tab_commits">提交</string>
-    <string name="git_panel_readonly_hint">只读。提交、推送等操作请交给智能体。</string>
+    <string name="git_panel_readonly_hint">只读 · 提交与推送交给智能体</string>
     <string name="git_panel_branch_detached">游离 HEAD %1$s</string>
     <string name="git_panel_branch_unknown">未知分支</string>
     <string name="git_panel_branch_unborn">%1$s · 尚无提交</string>
@@ -48,7 +48,7 @@
     <string name="git_panel_diff_unstaged">未暂存 · 索引 → 工作区</string>
     <string name="git_panel_diff_untracked">未跟踪 · 新文件</string>
     <string name="git_panel_diff_commit">%1$s · 相对父提交</string>
-    <string name="git_panel_error_python">此设备无法在这里显示 Git 信息，可让智能体通过 Termux 或 SSH 执行 git。</string>
+    <string name="git_panel_error_python">无法显示 Git 信息，可经 Termux 或 SSH 执行 git</string>
     <string name="git_panel_error_not_repository">当前工作区不是 Git 仓库</string>
     <string name="git_panel_error_workspace">会话工作区不可用</string>
     <string name="git_panel_error_timeout">读取 Git 信息超时</string>

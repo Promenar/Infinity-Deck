@@ -8,11 +8,10 @@
     <string name="run_mode_chip_unavailable_cd">运行模式：%1$s，环境不可用</string>
     <string name="run_mode_linux_desc">完整命令行，可安装软件包</string>
     <string name="run_mode_builtin_desc">受限工具，不能安装软件包</string>
-    <string name="run_mode_switch_note">切换不会搬动文件；本会话文件夹里的文件两种模式下都保留，Linux 中位于 /home/session。</string>
+    <string name="run_mode_switch_note">切换不移动文件；Linux 中会话文件夹位于 /home/session</string>
     <string name="run_mode_select_title">选择运行模式</string>
-    <string name="run_mode_select_body">这个会话还没有固定运行模式。选定后只在你手动切换时改变。</string>
     <string name="run_mode_unavailable_title">Linux 环境不可用</string>
-    <string name="run_mode_unavailable_body">这个会话固定在 Linux 模式运行。%1$s，需要处理后才能执行命令。</string>
+    <string name="run_mode_unavailable_body">%1$s，处理后才能执行命令</string>
     <string name="run_mode_reason_not_installed">Linux 环境还没有安装</string>
     <string name="run_mode_reason_interrupted">Linux 环境没有安装完成</string>
     <string name="run_mode_reason_broken">环境文件损坏</string>
@@ -27,7 +26,7 @@
     <string name="run_mode_working_reset">正在重置 Linux 环境…</string>
     <string name="run_mode_working_export">正在导出…</string>
     <string name="run_mode_repair_failed_title">无法无损修复</string>
-    <string name="run_mode_repair_failed_body">重置会清空 Linux 系统和 /root 下的项目。本会话文件夹（/home/session）不受影响。</string>
+    <string name="run_mode_repair_failed_body">重置会清空 Linux 系统和 /root；/home/session 保留</string>
     <string name="run_mode_rebuild_failed_title">Linux 环境无法重建</string>
     <string name="run_mode_rebuild_failed_body">需要的话先导出 /root 下的项目，再改用内置模式。</string>
     <string name="run_mode_loss_summary">将删除 Linux 系统（%1$s）、/root（%2$s）和其它主目录（%3$s）。</string>
@@ -49,7 +48,7 @@
         <item quantity="other">已导出 %1$d 个文件（%2$s）到%3$s</item>
     </plurals>
     <string name="run_mode_export_private_location">本会话文件夹</string>
-    <string name="run_mode_export_none">这个会话没有 Linux 主目录中的项目可导出。</string>
+    <string name="run_mode_export_none">没有可导出的项目</string>
     <string name="run_mode_export_failures">没有导出：</string>
     <string name="run_mode_export_reason_link">链接，已跳过</string>
     <string name="run_mode_export_reason_type">不支持的类型</string>
@@ -57,7 +56,7 @@
     <string name="run_mode_export_reason_changed">导出时被修改</string>
     <string name="run_mode_export_reason_source">来源不可用</string>
     <string name="run_mode_export_offer_title">导出 Linux 主目录中的项目？</string>
-    <string name="run_mode_export_offer_body">主工作区在 Linux 主目录中，内置模式无法使用。可以先把其中的项目导出到本会话文件夹。</string>
+    <string name="run_mode_export_offer_body">内置模式无法使用 Linux 主目录，可导出到本会话文件夹</string>
     <string name="run_mode_done">完成</string>
     <string name="run_mode_switch_failed">运行模式切换失败，请重试</string>
     <string name="run_mode_action_failed">没有完成，请重试</string>
@@ -68,6 +67,6 @@
     <string name="run_mode_folder_saf_hidden">Linux 中不可见</string>
     <string name="run_mode_startup_banner_title">Linux 环境不可用</string>
     <plurals name="run_mode_startup_banner_detail">
-        <item quantity="other">%1$d 个 Linux 会话需要处理后才能执行命令</item>
+        <item quantity="other">%1$d 个 Linux 会话待修复</item>
     </plurals>
 </resources>

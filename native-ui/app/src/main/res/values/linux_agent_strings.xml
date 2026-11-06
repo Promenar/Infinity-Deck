@@ -8,7 +8,7 @@
     <string name="linux_reach_broken">Environment needs repair</string>
     <string name="linux_reach_unavailable">Unavailable on this device</string>
     <string name="chat_approval_kind_linux_command">Linux command</string>
-    <string name="chat_approval_kind_linux_command_detail">Runs in Alpine with this app\'s permissions, with access to app data and the network. Files deleted outside the workspace can\'t be recovered.</string>
+    <string name="chat_approval_kind_linux_command_detail">Runs with app permissions; can access app data and the network. Deletions outside the workspace can\'t be undone</string>
     <string name="chat_tool_full_output">Full output</string>
     <string name="workspace_kind_linux_home">Linux environment</string>
     <string name="workspace_picker_linux_home">Home folder</string>
@@ -17,6 +17,6 @@
     <string name="workspace_picker_linux_not_ready">Install or repair the Linux environment first</string>
     <string name="workspace_tag_not_backed_up">Not backed up</string>
     <string name="workspace_tag_cleared_on_reset">Cleared when Linux is reset</string>
-    <string name="workspace_picker_linux_home_desc">%1$s · Every Linux chat can use it</string>
-    <string name="workspace_picker_linux_builtin_session">This chat uses built-in mode, so Linux folders aren\'t available</string>
+    <string name="workspace_picker_linux_home_desc">%1$s · Shared by all Linux chats</string>
+    <string name="workspace_picker_linux_builtin_session">Unavailable in built-in mode</string>
 </resources>

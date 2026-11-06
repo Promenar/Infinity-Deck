@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ux2_rewrite_footnote">Rewriting adds one model call before automatic retrieval, so the first word takes longer to appear. Tool-based retrieval never rewrites.</string>
+    <string name="ux2_rewrite_footnote">Adds a model call before automatic retrieval</string>
 </resources>

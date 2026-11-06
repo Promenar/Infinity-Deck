@@ -6,13 +6,12 @@
     <string name="network_access_title">Network access</string>
 
     <string name="network_section_controls">What you can change</string>
-    <string name="network_section_controls_footer">Internet, LAN and this device connect directly. Tailnet uses connected built-in Tailscale; access follows your tailnet ACL. HTTP and HTTPS are supported.</string>
+    <string name="network_section_controls_footer">Tailnet goes through built-in Tailscale; access follows your ACL</string>
     <string name="network_section_matrix">Network routes by tool</string>
-    <string name="network_section_matrix_footer">Built-in commands and Termux use the system network. SSH connects only to saved hosts.</string>
 
 
     <string name="network_tailnet_title">Tailnet</string>
-    <string name="network_tailnet_missing">This build has no built-in Tailscale</string>
+    <string name="network_tailnet_missing">No built-in Tailscale</string>
     <string name="network_tailnet_disabled">Built-in Tailscale is off</string>
     <string name="network_tailnet_offline">Built-in Tailscale is not connected</string>
     <string name="network_tailnet_running">Built-in Tailscale is connected</string>
@@ -34,19 +33,19 @@
     <string name="network_tool_web_fetch">Web reading web_fetch</string>
     <string name="network_tool_web_fetch_hint">Reads the main text of a page</string>
     <string name="network_tool_media_fetch">Media download media_fetch</string>
-    <string name="network_tool_media_fetch_hint">Saves images, audio and video to the workspace over HTTP or HTTPS</string>
+    <string name="network_tool_media_fetch_hint">Saves images, audio and video to the workspace</string>
     <string name="network_tool_script">Script networking exec_js · python_sandbox</string>
     <string name="network_tool_script_hint">Each call must also request allow_network</string>
     <string name="network_tool_mcp">MCP servers</string>
-    <string name="network_tool_mcp_hint">Only servers you added, over HTTP or HTTPS</string>
+    <string name="network_tool_mcp_hint">Only servers you added</string>
     <string name="network_tool_builtin">Built-in commands shell_exec · python_exec · git</string>
-    <string name="network_tool_builtin_hint">Uses the system network; tailnet goes through built-in Tailscale</string>
+    <string name="network_tool_builtin_hint">System network · tailnet via built-in Tailscale</string>
     <string name="network_tool_termux">Termux</string>
-    <string name="network_tool_termux_hint">Uses Termux\'s own network; built-in Tailscale does not apply</string>
+    <string name="network_tool_termux_hint">Termux\'s own network, not via built-in Tailscale</string>
     <string name="network_tool_ssh">SSH</string>
-    <string name="network_tool_ssh_hint">Only hosts saved in settings; tailnet hosts go through built-in Tailscale</string>
+    <string name="network_tool_ssh_hint">Saved hosts only · tailnet via built-in Tailscale</string>
     <string name="network_tool_linux">Linux commands shell_exec</string>
-    <string name="network_tool_linux_hint">Runs in Alpine on the system network; tailnet goes through the built-in Tailscale proxy</string>
+    <string name="network_tool_linux_hint">System network · tailnet via built-in Tailscale</string>
     <string name="network_access_entry_routes">Direct network and built-in Tailscale routes</string>
-    <string name="common_cleartext_url_hint">Unencrypted: http sends data in plain text that others on the network may see</string>
+    <string name="common_cleartext_url_hint">Unencrypted: others on the network may see the data</string>
 </resources>

@@ -22,5 +22,4 @@
     <string name="chat_inspector_approval_detail">The approval card is above the message box</string>
     <string name="chat_inspector_approval_action">Go to approval</string>
     <string name="chat_inspector_run_empty_title">Nothing is running</string>
-    <string name="chat_inspector_run_empty_detail">Once a reply starts, its plan, background jobs and state board show up here.</string>
 </resources>

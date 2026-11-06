@@ -7,20 +7,19 @@
     <string name="linux_run_mode_package_ripgrep_title">ripgrep (rg)</string>
     <string name="linux_run_mode_package_ripgrep_subtitle">Fast code and text search · needs about %1$s</string>
     <string name="linux_run_mode_package_nodejs_title">Node.js (with npm)</string>
-    <string name="linux_run_mode_package_nodejs_subtitle">Run JavaScript, install packages with npm · needs about %1$s</string>
+    <string name="linux_run_mode_package_nodejs_subtitle">JavaScript runtime · needs about %1$s</string>
     <string name="linux_run_mode_package_ffmpeg_title">FFmpeg</string>
     <string name="linux_run_mode_package_ffmpeg_subtitle">Convert and process audio and video · needs about %1$s</string>
     <string name="linux_run_mode_package_python_title">Python 3 (with pip)</string>
-    <string name="linux_run_mode_package_python_subtitle">Run scripts, install libraries with pip · needs about %1$s</string>
-    <string name="linux_run_mode_install_later_note">You can also add these later in Linux settings.</string>
+    <string name="linux_run_mode_package_python_subtitle">Run scripts · needs about %1$s</string>
 
     <!-- 新会话默认模式 -->
     <string name="linux_run_mode_default_title">Default mode for new sessions</string>
     <string name="linux_run_mode_linux_title">Linux</string>
-    <string name="linux_run_mode_linux_subtitle">Commands run in Alpine and can install packages with apk</string>
+    <string name="linux_run_mode_linux_subtitle">Alpine with apk packages</string>
     <string name="linux_run_mode_builtin_title">Built-in</string>
     <string name="linux_run_mode_builtin_subtitle">Uses only the limited built-in tools</string>
-    <string name="linux_run_mode_default_note">Only affects new sessions; switch an existing session from its session menu.</string>
+    <string name="linux_run_mode_default_note">Applies to new sessions only</string>
 
     <!-- 工具页入口 -->
     <string name="linux_run_mode_entry_ready_linux">Ready · New sessions use Linux</string>

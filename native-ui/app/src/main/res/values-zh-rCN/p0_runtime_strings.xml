@@ -6,14 +6,14 @@
     <string name="p0_runtime_limits">长任务控制</string>
     <string name="p0_token_limit">单任务 Token 上限</string>
     <string name="p0_repeat_limit">重复上限</string>
-    <string name="p0_runtime_limits_desc">单个任务所有请求的 Token 总和，超出后停止。</string>
+    <string name="p0_runtime_limits_desc">单个任务的 Token 上限</string>
     <string name="p0_reset_consent">重置授权</string>
     <string name="p0_decrease_setting">减少%1$s</string>
     <string name="p0_increase_setting">增加%1$s</string>
     <string name="p0_auto_confirm_title">允许不限轮次且免批准？</string>
-    <string name="p0_auto_confirm_body">命令将不再逐条确认，以应用身份连续运行。你可以随时停止，Token 上限仍然有效。</string>
+    <string name="p0_auto_confirm_body">命令不再逐条确认，以应用身份连续运行；Token 上限仍有效</string>
     <string name="p0_loop_title">检测到重复工具调用</string>
-    <string name="p0_loop_body">智能体在重复同一个调用，可能陷入了循环。</string>
+    <string name="p0_loop_body">可能陷入循环</string>
     <string name="p0_continue">继续</string>
     <string name="p0_progress">第 %1$d 轮，已调用 %2$d 次，共 %3$d Token%4$s</string>
     <string name="p0_estimated">（估算）</string>

@@ -107,10 +107,6 @@ private fun KgIntegerSetting(
         title = stringResource(label),
         value = value,
         spec = retrievalIntegerSpec(min, max, defaultValue, presets),
-        description = when (label) {
-            R.string.settings_retrieval_kg_context_title -> stringResource(R.string.settings_retrieval_kg_context_footer)
-            else -> null
-        },
         onValueChange = { onChanged(it.toInt()) },
     )
 }

@@ -37,25 +37,24 @@
         <item quantity="other">%1$d/%2$d models</item>
     </plurals>
     <string name="provider_list_tailnet_tag">Tailnet</string>
-    <string name="provider_list_unsupported_hint">This protocol is no longer supported. Open it to migrate or delete it.</string>
+    <string name="provider_list_unsupported_hint">Open to migrate or delete</string>
     <string name="provider_list_empty_title">No providers yet</string>
-    <string name="provider_list_empty_body">Add a provider to give Agents access to models.</string>
 
     <!-- 提供商编辑 -->
     <string name="provider_form_group_provider">Provider</string>
     <string name="provider_form_group_interface">Interface</string>
     <string name="provider_form_group_credentials">Credentials</string>
-    <string name="provider_form_credentials_footer">The key is kept in this device\'s secure storage. Lists only show whether it is set.</string>
+    <string name="provider_form_credentials_footer">The key is encrypted on this device</string>
     <string name="provider_form_group_advanced">Advanced</string>
     <string name="provider_form_session_header_description">Send the session ID with each request</string>
-    <string name="provider_form_session_header_footer">Lets the provider group requests from one session, for example to reuse prompt caching.</string>
+    <string name="provider_form_session_header_footer">Lets the provider reuse prompt caching</string>
     <string name="provider_form_connection_ok">Connection OK</string>
     <string name="provider_form_delete">Delete provider</string>
 
     <!-- 模型列表 -->
     <string name="provider_models_enabled_count">%1$d / %2$d enabled</string>
     <string name="provider_models_last_sync">Synced from provider %s</string>
-    <string name="provider_models_never_synced">Not yet synced from provider</string>
+    <string name="provider_models_never_synced">Not synced from provider</string>
     <string name="provider_models_syncing">Syncing…</string>
     <string name="provider_models_sync_action">Sync</string>
     <string name="provider_models_retry">Retry</string>
@@ -69,10 +68,10 @@
     <!-- 模型编辑 -->
     <string name="model_editor_group_identity">Identity</string>
     <string name="model_editor_group_specs">Specs</string>
-    <string name="model_editor_specs_footer">Tap a value to set it yourself. Your value overrides the spec library.</string>
+    <string name="model_editor_specs_footer">Tap a value to override the spec library</string>
     <string name="model_editor_capabilities_selected">%d selected</string>
     <string name="model_editor_group_test">Test</string>
-    <string name="model_editor_test_idle">Send a short request to check this model responds</string>
+    <string name="model_editor_test_idle">Not tested</string>
     <string name="model_editor_test_running">Testing…</string>
     <string name="model_editor_test_action">Test</string>
     <string name="model_editor_delete">Delete model</string>

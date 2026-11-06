@@ -2,10 +2,10 @@
 <resources>
     <string name="skills_runtime_section_user">用户技能</string>
     <string name="skills_runtime_section_project">项目技能</string>
-    <string name="skills_runtime_user_footer">所有会话共用，位于 /skills；智能体可在其中新建或修改技能。</string>
-    <string name="skills_runtime_project_footer">来自当前工作区的 .agents/skills，信任后模型才能使用。</string>
-    <string name="skills_runtime_user_empty">还没有技能。可以让智能体在 /skills 中创建，或在设置中导入。</string>
-    <string name="skills_runtime_project_empty">当前工作区的 .agents/skills 中没有技能。</string>
+    <string name="skills_runtime_user_footer">所有会话共用，位于 /skills，智能体可新建或修改</string>
+    <string name="skills_runtime_project_footer">来自工作区 .agents/skills，信任后才可使用</string>
+    <string name="skills_runtime_user_empty">还没有技能</string>
+    <string name="skills_runtime_project_empty">.agents/skills 中没有技能</string>
     <string name="skills_runtime_status_enabled">已启用</string>
     <string name="skills_runtime_status_disabled">已停用</string>
     <string name="skills_runtime_status_pending">待信任</string>
@@ -21,20 +21,20 @@
     <string name="skills_runtime_detail_path">路径</string>
     <string name="skills_runtime_detail_status">状态</string>
     <string name="skills_runtime_detail_files">附带文件</string>
-    <string name="skills_runtime_document_unavailable">无法读取 SKILL.md。</string>
+    <string name="skills_runtime_document_unavailable">无法读取 SKILL.md</string>
     <string name="skills_runtime_delete_title">删除技能 %1$s？</string>
     <string name="skills_runtime_error">技能操作失败：%1$s</string>
     <string name="sheet_tool_section_usage">工具使用</string>
     <string name="sheet_tool_tools_enabled">启用工具</string>
     <string name="skills_runtime_edit">编辑</string>
     <string name="skills_restore_notice_title">技能已恢复</string>
-    <string name="skills_restore_notice_git">以下技能的文件已恢复，但 Git 历史未恢复。需要同步时请重新 clone。</string>
+    <string name="skills_restore_notice_git">以下技能未恢复 Git 历史，需重新 clone 才能同步</string>
     <string name="skills_restore_notice_remote">远端：%1$s</string>
     <string name="skills_restore_notice_branch">分支 %1$s</string>
     <string name="skills_restore_notice_commit">提交 %1$s</string>
     <string name="skills_restore_notice_no_remote">未记录远端地址</string>
     <plurals name="skills_restore_notice_links">
-        <item quantity="other">备份时跳过了 %d 个符号链接。</item>
+        <item quantity="other">已跳过 %d 个符号链接</item>
     </plurals>
     <string name="skills_restore_notice_dismiss">知道了</string>
     <!-- 设置页技能包按来源分组；组标题计数与组名由 InfinityMetaLine 分段排版。 -->

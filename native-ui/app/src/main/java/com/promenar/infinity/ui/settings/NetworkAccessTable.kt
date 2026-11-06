@@ -109,11 +109,6 @@ private fun networkScopeLabel(scope: NetworkRowScope): String? = when (scope) {
     NetworkRowScope.BUILTIN_ONLY -> stringResource(R.string.ux2_network_scope_builtin_only)
 }
 
-/** 总表脚注：说明直连与内置 Tailscale 路径。 */
-@Composable
-internal fun networkMatrixFooter(): String =
-    stringResource(R.string.network_section_matrix_footer) + "\n" + stringResource(R.string.ux2_network_matrix_footer_linux)
-
 @Composable
 private fun targetLabel(target: NetworkTargetClass): String = stringResource(
     when (target) {
