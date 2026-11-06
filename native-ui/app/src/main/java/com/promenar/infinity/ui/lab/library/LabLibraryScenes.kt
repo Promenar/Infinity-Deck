@@ -63,7 +63,8 @@ private fun rememberLibraryText(): LabLibraryText {
 }
 
 /** 外屏资料子页的外壳：页头避开状态栏，底部留白由页面内边距按导航栏计算。 */
-private val PageInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+private val PageInsets: WindowInsets
+    @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
 
 @Composable
 private fun LabSceneScope.AskPage() {

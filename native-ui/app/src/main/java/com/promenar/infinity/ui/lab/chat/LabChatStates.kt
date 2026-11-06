@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.promenar.infinity.ui.lab.chat
 
 import androidx.compose.foundation.layout.fillMaxWidth
