@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 移除资料库文件夹时的引用提示改为不区分单复数的措辞，只有 1 个会话引用时不再显示“这些引用”。
+
 ## [0.31.1-beta] - 2026-11-06
 
 ### 修复
