@@ -91,7 +91,8 @@ class DocumentReferenceExtractorTest {
         val root = temporary.newFolder("doc-fixture")
         sample.openStream().use { input -> root.resolve("sample.doc").outputStream().use { input.copyTo(it) } }
         val text = DocumentReferenceExtractor(256, 0).extract(entry(root.path, "sample.doc", "application/msword")).graphText
-        assertThat(text.trim()).isNotEmpty()
+        assertThat(text).contains("林舟在码头的灯塔下等潮水退去")
+        assertThat(text).contains("The harbor bell rang twice.")
     }
 
     @Test
