@@ -2,11 +2,15 @@ package com.promenar.infinity.ui.lab.settings
 
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
+import com.promenar.infinity.data.tailnet.TailnetEndpoints
 import com.promenar.infinity.data.tailnet.TailnetPaths
 import com.promenar.infinity.data.tailnet.TailnetPhase
 import com.promenar.infinity.data.tailnet.TailnetPingResult
@@ -121,8 +125,8 @@ private fun LabSceneScope.TailscalePeersPage(state: PeersState) {
 private fun LabSceneScope.ProviderGatewayForm(pickerOpen: Boolean) {
     val zh = isChinese(LocalContext.current.resources)
     val peers = remember { LabTailnet.magicDnsPeers() }
-    val state = remember(zh) {
-        ProviderFormUiState(
+    var state by remember(zh) {
+        mutableStateOf(ProviderFormUiState(
             isEditing = true,
             isExistingProvider = true,
             name = if (zh) "家里的网关" else "Home gateway",
@@ -137,8 +141,19 @@ private fun LabSceneScope.ProviderGatewayForm(pickerOpen: Boolean) {
                 builtIn = BuiltInTailscaleStatus.CONNECTED,
             ),
             tailnetInfo = ProviderTailnetInfo(selfName = LabTailnet.SELF, tailnetName = LabTailnet.NAME, peers = peers),
+        ))
+    }
+    val actions = remember(zh) {
+        ProviderFormActions(
+            onBack = onExit,
+            // 与正式表单相同：选中设备后接口地址换成该设备，连接测试回到未测。
+            onTailnetPeerSelected = { peer ->
+                TailnetEndpoints.addressForPeer(peer, state.baseUrl)?.let { address ->
+                    state = state.copy(baseUrl = address, connectionTestState = ProviderConnectionTestState.Idle)
+                }
+            },
         )
     }
     // 打开态复用表单里真实的设备行与面板：量到设备行位置后打开，宽窗口贴着设备行弹出。
-    ProviderFormContent(state = state, actions = ProviderFormActions(onBack = onExit), initialPeerPickerOpen = pickerOpen)
+    ProviderFormContent(state = state, actions = actions, initialPeerPickerOpen = pickerOpen)
 }
