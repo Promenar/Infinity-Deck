@@ -26,7 +26,11 @@ import com.promenar.infinity.domain.files.FileLocationKind
 import com.promenar.infinity.domain.files.FileOpCode
 import com.promenar.infinity.domain.files.FileSortKey
 import com.promenar.infinity.domain.files.FileTypeFilter
+import com.promenar.infinity.domain.files.FileKnowledge
 import com.promenar.infinity.domain.files.KnowledgeIndexState
+import com.promenar.infinity.domain.library.PendingStage
+import com.promenar.infinity.ui.common.motion.IndexMotionPhase
+import com.promenar.infinity.ui.common.motion.IndexMotionState
 import com.promenar.infinity.ui.files.state.FileCrumb
 import com.promenar.infinity.ui.files.state.FileManagerNotice
 import com.promenar.infinity.ui.files.state.FileManagerUiState
@@ -186,6 +190,25 @@ internal fun knowledgeBadgeLabel(state: KnowledgeIndexState): Int? = when (state
     KnowledgeIndexState.STALE -> R.string.fm_knowledge_stale
     KnowledgeIndexState.INDEXING -> R.string.fm_knowledge_indexing
     KnowledgeIndexState.NONE, KnowledgeIndexState.INDEXED, KnowledgeIndexState.UNSUPPORTED -> null
+}
+
+/**
+ * 列表行的索引指示：排队与索引中显示与资料首页同一套索引动效，其它状态只用徽标文字。
+ * 进度取当前阶段的已处理 / 总数，没有总数时按 0 处理，指示只表达阶段。
+ */
+internal fun FileKnowledge.indexMotionState(): IndexMotionState? {
+    val fraction = total?.takeIf { it > 0 }?.let { (processed ?: 0).toFloat() / it }?.coerceIn(0f, 1f) ?: 0f
+    return when (state) {
+        KnowledgeIndexState.QUEUED -> IndexMotionState(IndexMotionPhase.QUEUED)
+        KnowledgeIndexState.INDEXING -> when (stage) {
+            PendingStage.VECTORIZING -> IndexMotionState(IndexMotionPhase.VECTORIZING, vectorProgress = fraction)
+            PendingStage.EXTRACTING_GRAPH ->
+                IndexMotionState(IndexMotionPhase.EXTRACTING_GRAPH, vectorProgress = 1f, graphProgress = fraction, withGraph = true)
+            PendingStage.SAVING -> IndexMotionState(IndexMotionPhase.SAVING, vectorProgress = 1f)
+            PendingStage.PREPARING, null -> IndexMotionState(IndexMotionPhase.PREPARING)
+        }
+        else -> null
+    }
 }
 
 /** 信息卡里的完整资料状态。 */

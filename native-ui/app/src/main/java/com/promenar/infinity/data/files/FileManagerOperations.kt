@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.files
 
+import com.promenar.infinity.domain.library.PendingStage
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
@@ -431,9 +432,17 @@ internal fun knowledgeOf(entry: FileEntry, tasks: List<com.promenar.infinity.dat
         entry.vectorizedAt != null && entry.updatedAt > entry.vectorizedAt -> KnowledgeIndexState.STALE
         else -> KnowledgeIndexState.INDEXED
     }
+    val stage = if (state == KnowledgeIndexState.INDEXING) when (active?.status) {
+        "vectorizing" -> PendingStage.VECTORIZING
+        "extracting" -> PendingStage.EXTRACTING_GRAPH
+        "saving" -> PendingStage.SAVING
+        else -> PendingStage.PREPARING
+    } else null
+    val total = active?.totalChunks?.takeIf { stage == PendingStage.VECTORIZING || stage == PendingStage.EXTRACTING_GRAPH }
     return FileKnowledge(state, documentId = entry.uuid.takeUnless { entry.isDirectory },
         folderId = entry.uuid.takeIf { entry.isDirectory },
-        failureReason = failed?.error.takeIf { state == KnowledgeIndexState.FAILED })
+        failureReason = failed?.error.takeIf { state == KnowledgeIndexState.FAILED },
+        stage = stage, processed = total?.let { active?.lastChunkIndex }, total = total)
 }
 
 internal fun mapped(error: Exception): FileOpException {

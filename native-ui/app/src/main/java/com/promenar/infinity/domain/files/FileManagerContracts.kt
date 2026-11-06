@@ -1,5 +1,6 @@
 package com.promenar.infinity.domain.files
 
+import com.promenar.infinity.domain.library.PendingStage
 import kotlinx.coroutines.flow.Flow
 
 /*
@@ -72,6 +73,11 @@ data class FileKnowledge(
     val chunkCount: Int? = null,
     /** 解析或索引失败的可读原因。 */
     val failureReason: String? = null,
+    /** 索引中的阶段；其它状态为 null。 */
+    val stage: PendingStage? = null,
+    /** 当前阶段已处理 / 总数，只在向量化与抽取图谱阶段有值。 */
+    val processed: Int? = null,
+    val total: Int? = null,
 )
 
 data class FileItem(

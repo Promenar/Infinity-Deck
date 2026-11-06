@@ -36,6 +36,8 @@ class DefaultFileManagerController(
     private var pins: List<FileRef> = emptyList()
     private var initialHandled = false
     private var loadJob: Job? = null
+    /** 列表里有排队或索引中的资料时，定时静默重读当前目录，让徽标跟上索引进度。 */
+    private var knowledgeJob: Job? = null
     private var searchJob: Job? = null
     private var previewJob: Job? = null
     private var pickerJob: Job? = null
@@ -295,7 +297,7 @@ class DefaultFileManagerController(
         sessionLocationJob?.start()
     }
 
-    private fun cancelLoad() { loadVersion++; loadJob?.cancel(); loadJob = null }
+    private fun cancelLoad() { loadVersion++; loadJob?.cancel(); loadJob = null; knowledgeJob?.cancel(); knowledgeJob = null }
     private fun cancelSearch() { searchVersion++; searchJob?.cancel(); searchJob = null }
     private fun cancelPreview() { previewVersion++; previewJob?.cancel(); previewJob = null }
     private fun cancelPickerJobs() {
@@ -314,10 +316,10 @@ class DefaultFileManagerController(
         return current.copy(items = visible, selection = current.selection.intersect(paths))
     }
 
-    private fun load(ref: FileRef) {
+    private fun load(ref: FileRef, silent: Boolean = false) {
         cancelLoad()
         val version = loadVersion
-        mutableState.update { it.copy(loading = true, loadError = null) }
+        if (!silent) mutableState.update { it.copy(loading = true, loadError = null) }
         loadJob = scope.launch {
             try {
                 val items = withContext(io) {
@@ -329,6 +331,14 @@ class DefaultFileManagerController(
                         blockedLocations.update { it - ref.locationId }
                         allItems = items
                         mutableState.update { withListing(it.copy(loading = false, loadError = null)) }
+                        if (items.any { it.knowledge?.state.isIndexingActive() }) {
+                            knowledgeJob = scope.launch {
+                                delay(KNOWLEDGE_REFRESH_MS)
+                                synchronized(this@DefaultFileManagerController) {
+                                    if (version == loadVersion && currentRef(state.value) == ref) load(ref, silent = true)
+                                }
+                            }
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -951,3 +961,9 @@ internal fun FileOpOutcome.toNotice(kind: FileManagerNotice.Kind, total: Int, ta
     val code = failed.groupingBy { it.code }.eachCount().maxByOrNull { it.value }!!.key
     return FileManagerNotice.Failed(kind, code, failed.size, total)
 }
+
+private const val KNOWLEDGE_REFRESH_MS = 2_000L
+
+/** 排队或索引中：列表需要继续跟踪的资料状态。 */
+internal fun KnowledgeIndexState?.isIndexingActive(): Boolean =
+    this == KnowledgeIndexState.QUEUED || this == KnowledgeIndexState.INDEXING

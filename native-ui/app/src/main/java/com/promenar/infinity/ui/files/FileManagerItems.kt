@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.files
 
+import com.promenar.infinity.ui.common.IndexingIndicator
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -131,7 +132,7 @@ private fun fileKindColors(kind: FileKind): Pair<Color, Color> {
     }
 }
 
-/** 资料状态徽标：只对解析失败、排队中、已改动待重建与索引中显示。 */
+/** 资料状态徽标：只对解析失败、排队中、已改动待重建与索引中显示；排队与索引中用资料首页同款索引指示代替圆点。 */
 @Composable
 internal fun KnowledgeBadge(knowledge: FileKnowledge?, modifier: Modifier = Modifier) {
     val state = knowledge?.state ?: return
@@ -142,7 +143,8 @@ internal fun KnowledgeBadge(knowledge: FileKnowledge?, modifier: Modifier = Modi
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Box(Modifier.size(7.dp).background(color, CircleShape))
+        val motion = knowledge.indexMotionState()
+        if (motion != null) IndexingIndicator(motion) else Box(Modifier.size(7.dp).background(color, CircleShape))
         Text(
             text = stringResource(label),
             style = MaterialTheme.typography.labelSmall,

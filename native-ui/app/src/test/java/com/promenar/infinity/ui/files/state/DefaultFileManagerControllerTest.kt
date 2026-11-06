@@ -45,6 +45,27 @@ class DefaultFileManagerControllerTest {
         assertThat(controller.state.value.items).containsExactly(fresh)
     }
 
+    @Test fun `有排队或索引中的资料时静默重读目录直到状态落定`() = runTest {
+        val services = FakeFileServices()
+        val root = FileRef("library", "/")
+        services.operations.listings[root] = listOf(file("/a.txt").copy(knowledge = FileKnowledge(KnowledgeIndexState.INDEXING)))
+        val controller = controller(services)
+        runCurrent()
+        assertThat(controller.state.value.items.single().knowledge?.state).isEqualTo(KnowledgeIndexState.INDEXING)
+        services.operations.listings[root] = listOf(file("/a.txt").copy(knowledge = FileKnowledge(KnowledgeIndexState.INDEXED)))
+        advanceTimeBy(1_999)
+        runCurrent()
+        assertThat(controller.state.value.items.single().knowledge?.state).isEqualTo(KnowledgeIndexState.INDEXING)
+        advanceTimeBy(2)
+        runCurrent()
+        assertThat(controller.state.value.items.single().knowledge?.state).isEqualTo(KnowledgeIndexState.INDEXED)
+        assertThat(controller.state.value.loading).isFalse()
+        val reads = services.operations.listCalls.size
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertThat(services.operations.listCalls).hasSize(reads)
+    }
+
     @Test fun `选择限定在当前目录并随切换和刷新清理`() = runTest {
         val services = FakeFileServices()
         val first = file("/a.txt")
