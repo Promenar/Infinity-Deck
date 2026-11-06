@@ -27,6 +27,8 @@ internal class LibraryRowKnowledge private constructor(
     private val counts: Map<String, Count> = buildMap {
         for (file in rows) {
             if (file.isDirectory || file.mimeType !in DocumentReferenceExtractor.SUPPORTED_MIME_TYPES) continue
+            // 索引失败的文档（如扫描版 PDF）无法抽取图谱，计入总数会让进度永远到不了满。
+            if (knowledgeOf(file, tasksByDoc[file.uuid].orEmpty()).state == KnowledgeIndexState.FAILED) continue
             val actual = documentDescriptor(file).id
             val extracting = tasksByDoc[file.uuid].orEmpty().any { it.type in setOf("document", "document_reference") && it.status == "extracting" }
             var parent = file.parentUuid

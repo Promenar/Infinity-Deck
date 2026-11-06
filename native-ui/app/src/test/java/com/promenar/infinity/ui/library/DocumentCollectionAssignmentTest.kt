@@ -25,6 +25,15 @@ class DocumentCollectionAssignmentTest {
             commonAssignment(listOf(assignment(KgDocumentSetting.FOLLOW_FOLDER, "work:a"), assignment(KgDocumentSetting.FOLLOW_FOLDER))))
     }
 
+    @Test fun `所选文档同在一个文件夹合集时不重复列出它，选中时保留`() {
+        val all = listOf(collection("work:folder"), collection("work:novel"))
+        val same = listOf(assignment(KgDocumentSetting.FOLLOW_FOLDER), assignment(KgDocumentSetting.SHARED))
+        assertEquals(listOf("work:novel"), joinableCollections(all, same, null).map { it.id })
+        assertEquals(listOf("work:folder", "work:novel"), joinableCollections(all, same, "work:folder").map { it.id })
+        val mixed = same + KgDocumentAssignment(KgDocumentSetting.FOLLOW_FOLDER, null, "work:other", "其它")
+        assertEquals(listOf("work:folder", "work:novel"), joinableCollections(all, mixed, null).map { it.id })
+    }
+
     @Test fun `可加入的合集排除所选文档自己的独立合集`() {
         val all = listOf(collection("work:first"), collection("work:second"), collection("work:novel"))
         assertEquals(listOf("work:novel"), assignableFor(all, listOf("first", "second")).map { it.id })

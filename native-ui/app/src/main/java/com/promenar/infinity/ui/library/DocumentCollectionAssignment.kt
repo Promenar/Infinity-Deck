@@ -68,6 +68,19 @@ internal fun assignableFor(collections: List<KgCollectionSummary>, documentIds: 
     return collections.filter { it.id !in own }
 }
 
+/**
+ * “选择合集”列出的合集：所选文档都在同一个文件夹合集里时，那个合集已由“跟随文件夹”表示，不再重复列出；
+ * 它正是当前选中的目标时保留，便于看清当前归属。
+ */
+internal fun joinableCollections(
+    collections: List<KgCollectionSummary>,
+    current: List<KgDocumentAssignment>,
+    target: String?,
+): List<KgCollectionSummary> {
+    val folder = current.map { it.folderCollectionId }.distinct().singleOrNull()
+    return collections.filter { it.id != folder || it.id == target }
+}
+
 @Composable
 internal fun DocumentCollectionAssignmentSheet(
     app: InfinityApplication,
@@ -172,10 +185,11 @@ internal fun DocumentCollectionAssignmentSheet(
                 onClick = { choose(KgDocumentSetting.SHARED) },
             )
             SectionHeader(R.string.kda_join_header)
-            if (current.collections.isEmpty()) {
+            val joinable = joinableCollections(current.collections, current.current, target)
+            if (joinable.isEmpty()) {
                 SheetNote(stringResource(R.string.kda_join_empty))
             }
-            current.collections.forEach { collection ->
+            joinable.forEach { collection ->
                 AssignmentOption(
                     title = collection.title,
                     subtitle = pluralStringResource(R.plurals.kda_collection_docs, collection.documentCount, collection.documentCount),

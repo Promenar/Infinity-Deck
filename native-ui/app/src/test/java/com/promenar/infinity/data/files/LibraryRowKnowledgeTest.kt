@@ -80,4 +80,12 @@ class LibraryRowKnowledgeTest {
         assertThat(row("a").folderCollection?.extracted).isEqualTo(0)
         assertThat(row("root").folderCollection).isNull()
     }
+    @Test fun `索引失败的文档不计入文件夹进度`() = runBlocking<Unit> {
+        add("root", null, true); add("a", "root", true); add("one", "a", false, true); add("scan", "a", false)
+        assertThat(row("a").folderCollection?.total).isEqualTo(2)
+        db.vectorizationTaskDao().insert(VectorizationTaskEntity(id = "failed", type = "document_reference", status = "failed",
+            docId = "scan", workspaceRootUuid = "root", error = "没有文字层", createdAt = 1, updatedAt = 1))
+        assertThat(row("a").folderCollection?.total).isEqualTo(1)
+        assertThat(row("a").folderCollection?.extracted).isEqualTo(1)
+    }
 }
