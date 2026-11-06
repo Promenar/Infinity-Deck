@@ -91,7 +91,7 @@ class LabIsolationGuardTest {
         val file = temporaryDirectory.resolve("Contract.kt").toFile()
         file.writeText("import com.promenar.infinity.domain.library.KnowledgeCitationRepository\nclass Fake : KnowledgeCitationRepository")
         assertThat(LabSourceIsolation.scan(temporaryDirectory.toFile())).isEmpty()
-        file.writeText("class Fake : KnowledgeCitationRepositoryImpl")
+        file.writeText("val real = RoomKnowledgeCitationRepository()")
         assertThat(LabSourceIsolation.scan(temporaryDirectory.toFile()).map { it.rule }).contains(LabSourceIsolation.STORAGE_RULE)
     }
 
