@@ -64,7 +64,7 @@ internal class FileManagerBackends(private val app: InfinityApplication) {
                 ?: throw FileOpException(FileOpCode.NOT_FOUND)
             if (mount.unavailableReason != null) throw FileOpException(FileOpCode.PERMISSION_LOST)
             val backend = app.externalFolderManager.backend(mount.sessionId, mapOf(mount.alias to mount.id))
-            FileBackendHandle(locationId, MountedBackend(backend, mount), listOf(mount.sessionId),
+            FileBackendHandle(locationId, MountedBackend(backend, mount), if (ExternalMountPaths.isLibraryScope(mount.sessionId)) emptyList() else listOf(mount.sessionId),
                 !mount.readOnly && mount.sourceType != "knowledge_base", mount = mount)
         }
         LocationKey.LinuxHome -> {

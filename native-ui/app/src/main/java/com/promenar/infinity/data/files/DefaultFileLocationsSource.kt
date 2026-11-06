@@ -6,6 +6,7 @@ import com.promenar.infinity.data.git.GitStatus
 import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.workspace.SessionWorkspace
+import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationCapabilities
 import com.promenar.infinity.domain.files.FileLocationKind
@@ -18,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.transformLatest
@@ -49,8 +49,7 @@ internal class DefaultFileLocationsSource(
     override fun refreshGitStatus() { invalidateGitStatus(); gitRefresh.value++ }
 
     private val mountSnapshot: Flow<List<ExternalMount>> = sessions.flatMapLatest { rows ->
-        if (rows.isEmpty()) flowOf(emptyList())
-        else combine(rows.map { mounts(it.id) }) { values -> values.flatMap { it } }
+        combine(listOf(mounts(ExternalMountPaths.LIBRARY_SCOPE)) + rows.filterNot(::isSystemSession).map { mounts(it.id) }) { values -> values.flatMap { it } }
     }
 
     /** 先发出不含 Git 信息的位置，避免逐个项目读取 Git 状态时侧栏长时间为空；随后补发带 Git 信息的结果。 */
@@ -94,7 +93,9 @@ internal class DefaultFileLocationsSource(
                 }
             }
             if (linux) result += linuxLocation()
-            result += attached.filter { it.sourceType in setOf("saf_tree", "real_path") }
+            val folders = attached.filter { it.sourceType in setOf("saf_tree", "real_path") }
+            val librarySources = folders.filter { ExternalMountPaths.isLibraryScope(it.sessionId) }.map { it.sourceType to it.sourceId }.toSet()
+            result += folders.filter { ExternalMountPaths.isLibraryScope(it.sessionId) || (it.sourceType to it.sourceId) !in librarySources }
                 .distinctBy { it.id }.map(::externalLocation)
             result
         }

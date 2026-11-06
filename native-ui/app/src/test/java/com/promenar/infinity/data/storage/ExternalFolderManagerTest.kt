@@ -20,6 +20,7 @@ import io.mockk.*
 import java.nio.file.Files
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -40,6 +41,7 @@ class ExternalFolderManagerTest {
         coEvery { get(id = any()) } answers { rows.value.firstOrNull { it.id == firstArg<String>() } }
         coEvery { delete(any()) } coAnswers { val id = firstArg<String>(); rows.value = rows.value.filterNot { it.id == id } }
         coEvery { update(any()) } coAnswers { val row = firstArg<ExternalMountEntity>(); rows.value = rows.value.map { if (it.id == row.id) row else it } }
+        coEvery { insert(any()) } coAnswers { rows.value = rows.value + firstArg<ExternalMountEntity>() }
     }
     private val workspace = mockk<IWorkspaceRepository>()
     private val memory = TransferMemoryBackend()
@@ -69,6 +71,73 @@ class ExternalFolderManagerTest {
     }
 
     @After fun cleanup() { directory.deleteRecursively() }
+
+    @Test fun `资料库挂载可新增访问并独立于会话删除`() = runBlocking {
+        mockkObject(RealPathMountSupport)
+        try {
+            rows.value = rows.value.map { it.copy(sourceType = "real_path") }
+            every { RealPathMountSupport.normalizeSource(any(), any()) } returns "/fictional/docs"
+            val library = ExternalMountPaths.LIBRARY_SCOPE
+            val mount = manager.addRealPath("docs", library, "/fictional/docs")
+            assertThat(manager.observeMounts(library).first().map { it.id }).containsExactly(mount.id)
+            assertThat(manager.visible(library).map { it.id }).containsExactly(mount.id)
+            assertThat(manager.list(library, "/mnt").map { it.name }).containsExactly("docs")
+            manager.write(library, "/mnt/docs/note.txt", "内容".toByteArray(), null, true)
+            assertThat(String(manager.read(library, "/mnt/docs/note.txt"))).isEqualTo("内容")
+            assertThat(manager.entry(library, "/mnt/docs/note.txt")?.name).isEqualTo("note.txt")
+            manager.deleteSessionMounts("session")
+            manager.deleteSessionMounts(library)
+            assertThat(rows.value.map { it.id }).containsExactly(mount.id)
+            assertThat(manager.workspaceMount(library)).isNull()
+            assertThat(assertThrows(ExternalFolderException::class.java) {
+                runBlocking { manager.addKnowledgeBase("kb", library, "root") }
+            }.code).isEqualTo("INVALID_SESSION")
+        } finally { unmockkObject(RealPathMountSupport) }
+    }
+
+    @Test fun `引用资料库来源复用行且移除资料库后会话仍可访问`() = runBlocking {
+        val library = ExternalMountPaths.LIBRARY_SCOPE
+        rows.value = listOf(ExternalMountEntity("library", "docs", "real_path", "/fictional/docs", library, true, 1))
+        memory.write("/note.txt", "hello".toByteArray())
+        val attached = manager.attachLibraryMount("session", "library")
+        assertThat(attached.id).isNotEqualTo("library")
+        assertThat(attached.sourceId).isEqualTo("/fictional/docs")
+        assertThat(attached.readOnly).isTrue()
+        assertThat(manager.attachLibraryMount("session", "library", "other").id).isEqualTo(attached.id)
+        assertThat(manager.libraryMountReferences("library")).isEqualTo(1)
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { manager.attachLibraryMount(library, "library") }
+        }.code).isEqualTo("INVALID_SESSION")
+        rows.value = rows.value + ExternalMountEntity("invalid", "kb", "knowledge_base", "root", library, true, 1)
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { manager.attachLibraryMount("session", "invalid") }
+        }.code).isEqualTo("UNSUPPORTED")
+        manager.remove("library")
+        assertThat(String(manager.read("session", "/mnt/docs/note.txt"))).isEqualTo("hello")
+    }
+
+    @Test fun `引用时别名冲突和不可用来源均拒绝插入`() = runBlocking {
+        rows.value = listOf(
+            ExternalMountEntity("library", "docs", "real_path", "/fictional/docs", ExternalMountPaths.LIBRARY_SCOPE, false, 1),
+            ExternalMountEntity("existing", "docs", "real_path", "/fictional/other", "session", false, 1),
+        )
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { manager.attachLibraryMount("session", "library") }
+        }.code).isEqualTo("CONFLICT")
+        unavailable = true
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { manager.attachLibraryMount("session", "library", "other") }
+        }.code).isEqualTo("UNAVAILABLE")
+        assertThat(rows.value).hasSize(2)
+    }
+
+    @Test fun `移除资料库 SAF 挂载时会话引用保留系统授权`() = runBlocking {
+        rows.value = listOf(ExternalMountEntity("library", "docs", "saf_tree", "content://test/tree/root", ExternalMountPaths.LIBRARY_SCOPE, false, 1))
+        val attached = manager.attachLibraryMount("session", "library")
+        manager.remove("library")
+        assertThat(rows.value.map { it.id }).containsExactly(attached.id)
+        verify(exactly = 0) { context.contentResolver }
+    }
 
     @Test fun `删除目录只清理可计算的当前版本键`() = runBlocking<Unit> {
         memory.createDirectory("/docs")

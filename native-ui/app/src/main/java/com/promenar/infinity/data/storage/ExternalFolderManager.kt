@@ -56,7 +56,10 @@ class ExternalFolderManager(
     override fun observeMounts(sessionId: String) = dao.observeVisible(sessionId).map { it.map(ExternalMountEntity::model) }
     override suspend fun visible(sessionId: String) = withContext(Dispatchers.IO) {
         // 历史保留别名仍可在管理入口移除，但不作为工具可达路径列出。
-        val models = dao.visible(sessionId).filterNot { it.alias == ExternalMountPaths.SKILLS_ALIAS }.map(ExternalMountEntity::model) + skillsMount(sessionId)
+        val library = ExternalMountPaths.isLibraryScope(sessionId)
+        val models = dao.visible(sessionId).filterNot { it.alias == ExternalMountPaths.SKILLS_ALIAS }
+            .filter { !library || it.sourceType in setOf("saf_tree", "real_path") }.map(ExternalMountEntity::model) +
+            if (library) emptyList() else listOf(skillsMount(sessionId))
         val bound = currentCoroutineContext()[ExternalMountOperationBindings]?.mountIds
         if (bound == null) models else models.filter { bound[it.alias] == it.id }
     }
@@ -68,6 +71,7 @@ class ExternalFolderManager(
         mount.takeIf { bound == null || bound[it.alias] == it.id }
     }
     private suspend fun currentWorkspaceMount(sessionId: String): ExternalMount? {
+        if (ExternalMountPaths.isLibraryScope(sessionId)) return null
         currentCoroutineContext()[com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation]
             ?.takeIf { it.sessionId == sessionId }?.let { return it.mount }
         return when (val current = workspaces?.resolve(sessionId) ?: return null) {
@@ -116,6 +120,7 @@ class ExternalFolderManager(
     override suspend fun addKnowledgeBase(alias: String, sessionId: String, rootUuid: String) =
         withContext(Dispatchers.IO) { mutex.withLock {
             requireSession(sessionId)
+            if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "知识库挂载必须属于会话")
             val mount = newMount(alias, ExternalMountPaths.KNOWLEDGE_BASE_SOURCE, rootUuid, sessionId).copy(readOnly = true)
             dao.visible(sessionId).firstOrNull {
                 it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == rootUuid
@@ -130,6 +135,34 @@ class ExternalFolderManager(
             mount
         } }
 
+    override suspend fun attachLibraryMount(sessionId: String, libraryMountId: String, alias: String?) =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            requireSession(sessionId)
+            if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "资料库不能引用自身的挂载")
+            val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料库挂载不存在")
+            if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || source.sourceType !in setOf("saf_tree", "real_path")) {
+                fail("UNSUPPORTED", "只能引用资料库中的外部文件夹")
+            }
+            requireDirectory(sourceBackend(source.model()).stat("/"))
+            dao.visible(sessionId).firstOrNull { it.sourceType == source.sourceType && it.sourceId == source.sourceId }
+                ?.let { return@withLock it.model() }
+            val mount = newMount(alias ?: source.alias, source.sourceType, source.sourceId, sessionId).copy(readOnly = source.readOnly)
+            checkAlias(mount)
+            dao.insert(mount.entity())
+            mount
+        } }
+
+    override suspend fun libraryMountReferences(libraryMountId: String): Int = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料库挂载不存在")
+            if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || source.sourceType !in setOf("saf_tree", "real_path")) {
+                fail("UNSUPPORTED", "只能查询资料库中的外部文件夹")
+            }
+            dao.all().count { it.scopeKey.isNotBlank() && !ExternalMountPaths.isLibraryScope(it.scopeKey) &&
+                it.sourceType == source.sourceType && it.sourceId == source.sourceId }
+        }
+    }
+
     override suspend fun remove(mountId: String) = withContext(Dispatchers.IO) { mutex.withLock {
         if (mountId == ExternalMountPaths.SKILLS_MOUNT_ID) fail("INVALID_PATH", "不能移除用户级技能根目录")
         val mount = dao.get(mountId) ?: return@withLock
@@ -138,7 +171,7 @@ class ExternalFolderManager(
     } }
 
     override suspend fun deleteSessionMounts(sessionId: String) = withContext(Dispatchers.IO) {
-        if (sessionId.isNotBlank()) dao.all().filter { it.scopeKey == sessionId }.forEach { remove(it.id) }
+        if (sessionId.isNotBlank() && !ExternalMountPaths.isLibraryScope(sessionId)) dao.all().filter { it.scopeKey == sessionId }.forEach { remove(it.id) }
     }
 
     override suspend fun reauthorize(mountId: String, treeUri: String, grantFlags: Int) = withContext(Dispatchers.IO) { mutex.withLock {
@@ -246,6 +279,7 @@ class ExternalFolderManager(
         } }
 
     override suspend fun importSnapshot(sessionId: String, workspaceRootUuid: String, virtualPath: String): String = withContext(Dispatchers.IO) {
+        if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "快照导入必须指定会话")
         val (mount, relative) = resolve(sessionId, virtualPath)
         mount.requireWritable()
         if (workspaceRootUuid in knowledgeBaseRoots() && knowledgeBaseOwnerRoot(sessionId) != workspaceRootUuid) {
@@ -424,7 +458,7 @@ class ExternalFolderManager(
     }
 
     private suspend fun branchWorkspacePaths(sessionId: String): Boolean =
-        currentCoroutineContext()[com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation]
+        !ExternalMountPaths.isLibraryScope(sessionId) && currentCoroutineContext()[com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation]
             ?.let { it.sessionId == sessionId && it.workspacePaths } == true
 
     private suspend fun resolve(sessionId: String, path: String): Pair<ExternalMount, String> {
@@ -439,8 +473,10 @@ class ExternalFolderManager(
             return root to normalized
         }
         val (alias, relative) = parsed
-        val mount = if (alias == ExternalMountPaths.SKILLS_ALIAS) skillsMount(sessionId)
+        if (ExternalMountPaths.isLibraryScope(sessionId) && alias == ExternalMountPaths.SKILLS_ALIAS) fail("NOT_FOUND", "资料库中没有该挂载")
+        val mount = if (alias == ExternalMountPaths.SKILLS_ALIAS && !ExternalMountPaths.isLibraryScope(sessionId)) skillsMount(sessionId)
             else dao.visible(sessionId).singleOrNull { it.alias == alias }?.model() ?: fail("NOT_FOUND", "挂载点不属于当前会话或已被移除")
+        if (ExternalMountPaths.isLibraryScope(sessionId) && mount.sourceType !in setOf("saf_tree", "real_path")) fail("UNSUPPORTED", "资料库只支持外部文件夹")
         val bound = currentCoroutineContext()[ExternalMountOperationBindings]?.mountIds
         if (bound != null && bound[alias] != mount.id) fail("CONFLICT", "操作期间挂载身份发生变化，请重新读取目标")
         return mount to relative
@@ -473,11 +509,11 @@ class ExternalFolderManager(
     }
     private suspend fun sourceBackend(mount: ExternalMount, sessionId: String? = null): ExternalFolderBackend {
         fun guarded(backend: ExternalFolderBackend, physicalRoot: File? = null): ExternalFolderBackend {
-            val startupGuard = if (sessionId == null) backend else com.promenar.infinity.startup.StartupGuardedExternalFolderBackend(backend, sessionId) { physicalRoot }
+            val startupGuard = if (sessionId == null || ExternalMountPaths.isLibraryScope(sessionId)) backend else com.promenar.infinity.startup.StartupGuardedExternalFolderBackend(backend, sessionId) { physicalRoot }
             return if (mount.readOnly || mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) ReadOnlyExternalFolderBackend(startupGuard) else startupGuard
         }
         currentCoroutineContext()[com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation]
-            ?.takeIf { it.sessionId == sessionId && it.mount.id == mount.id }
+            ?.takeIf { sessionId != null && !ExternalMountPaths.isLibraryScope(sessionId) && it.sessionId == sessionId && it.mount.id == mount.id }
             ?.let { return guarded(it.backend, it.baseRoot) }
         if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {
             if (sessionId != null && !knowledgeBaseAllowed(sessionId, mount.sourceId)) {

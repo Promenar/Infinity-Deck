@@ -8,6 +8,8 @@ import java.util.Base64
 import java.io.File
 
 object ExternalMountPaths {
+    const val LIBRARY_SCOPE = "__library__"
+    fun isLibraryScope(scope: String): Boolean = scope == LIBRARY_SCOPE
     const val ROOT_UUID = "external:root"
     const val SKILLS_ALIAS = "skills"
     const val SKILLS_MOUNT_ID = "builtin:skills"

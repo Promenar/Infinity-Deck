@@ -7,6 +7,8 @@ import com.promenar.infinity.data.git.GitStatus
 import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.workspace.SessionWorkspace
+import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.domain.storage.ExternalMount
 import java.io.File
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
@@ -22,6 +24,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DefaultFileLocationsSourceTest {
+    @Test fun `资料库挂载优先于同源会话引用且保留其他会话位置`() = runBlocking {
+        val library = ExternalMount("lib", "docs", "real_path", "/fictional/docs", ExternalMountPaths.LIBRARY_SCOPE, 1)
+        val reference = library.copy(id = "ref", sessionId = "session")
+        val other = reference.copy(id = "other", sourceId = "/fictional/other")
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(listOf(SessionEntity("session", "agent", createdAt = 1, updatedAt = 1))),
+            workspaces = flowOf(emptyList()), linuxReady = flowOf(false),
+            mounts = { flowOf(if (it == ExternalMountPaths.LIBRARY_SCOPE) listOf(library) else listOf(reference, other)) },
+            resolveSession = { SessionWorkspace.Private }, resolveWorkspace = { SessionWorkspace.Private },
+            mountAvailable = { true }, gitStatus = { GitInspectResult.Failure(GitInspectError.NotRepository) },
+            workspaceGitStatus = { GitInspectResult.Failure(GitInspectError.NotRepository) },
+            titles = LocationTitles("资料", "会话", "Linux"),
+        )
+        assertEquals(setOf("kb", "sessions", "external:lib", "external:other"), locations.observeLibraryLocationIds().first())
+        assertEquals(setOf("kb", "sessions", "external:lib", "external:other"), locations.observeLibraryLocations().first().map { it.id }.toSet())
+        assertEquals(setOf("session:session", "external:ref", "external:other"), locations.observeSessionLocations("session").first().map { it.id }.toSet())
+    }
     @Test fun `重新打开时先发出共享缓存并触发刷新`() = runBlocking {
         val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
         val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))
