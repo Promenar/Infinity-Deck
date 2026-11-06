@@ -57,7 +57,7 @@ fun LibraryDocumentRoute(
     val request = remember(documentId) { LibraryLocateHandoff.peek(documentId) }
     val host = LibraryPageHost(
         viewModel = viewModel,
-        ragViewModel = ragViewModel,
+        workspaceRootUuid = ragViewModel.workspaceRootUuid,
         askViewModel = askViewModel,
         navigator = navigator,
         askQuery = "",

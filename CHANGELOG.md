@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 改进
+
+- 视觉实验室的“问资料”与“原文定位”改为正式资料页：内屏显示导航轨与两列（左列分区与位置，右列问资料结果或文档），外屏为单页栈与底栏，资料、位置与引用记录均为虚构数据。
+- 中英文 README 改为使用场景、“你始终说了算”、全部功能表与三步上手的结构，正文不再区分发行渠道，版本徽章读取 GitHub Release。
+
 ## [0.33.4-beta] - 2026-11-06
 
 ### 修复

@@ -87,6 +87,15 @@ class LabIsolationGuardTest {
     }
 
     @Test
+    fun `只放行逐个点名的领域接口，其它 Repository 仍拦截`() {
+        val file = temporaryDirectory.resolve("Contract.kt").toFile()
+        file.writeText("import com.promenar.infinity.domain.library.KnowledgeCitationRepository\nclass Fake : KnowledgeCitationRepository")
+        assertThat(LabSourceIsolation.scan(temporaryDirectory.toFile())).isEmpty()
+        file.writeText("class Fake : KnowledgeCitationRepositoryImpl")
+        assertThat(LabSourceIsolation.scan(temporaryDirectory.toFile()).map { it.rule }).contains(LabSourceIsolation.STORAGE_RULE)
+    }
+
+    @Test
     fun `缺失目录与空目录均不得空扫描通过`() {
         assertThrows(IllegalArgumentException::class.java) { LabSourceIsolation.scan(temporaryDirectory.resolve("missing").toFile()) }
         assertThrows(IllegalArgumentException::class.java) { LabSourceIsolation.scan(temporaryDirectory.toFile()) }
@@ -127,6 +136,11 @@ internal object LabSourceIsolation {
         "GitStatus", "GitBranch", "GitBranchList", "GitChangeList", "GitTracking", "GitFileChange", "GitChangeKind", "GitChangeGroup",
         "GitCommitLog", "GitCommitSummary",
     )
+    /**
+     * `domain` 层的接口：名字以 Repository 结尾，但实验室只用固定的假数据实现它，不接触真实存储。
+     * 逐个点名放行；其余以 Repository 或 Dao 结尾的名字仍按持久化类型拦截。
+     */
+    private val DOMAIN_CONTRACT_TYPES = setOf("KnowledgeCitationRepository")
     private val GIT_VALUE_IMPORT = Regex("^\\s*import\\s+com\\.promenar\\.infinity\\.data\\.git\\.(\\w+)\\s*$")
     /** 会话顶栏的 Git 摘要 `GitEntrySummary.Repository` 是界面数据类，带限定名时不按持久化类型处理。 */
     private val GIT_SUMMARY_QUALIFIER = Regex("GitEntrySummary\\s*\\.\\s*$")
@@ -156,7 +170,7 @@ internal object LabSourceIsolation {
                     val name = match.value.removeSurrounding("`")
                     val qualifiedSummary = name == "Repository" && GIT_SUMMARY_QUALIFIER.containsMatchIn(source.substring(0, match.range.first))
                     val rule = when {
-                        qualifiedSummary -> null
+                        qualifiedSummary || name in DOMAIN_CONTRACT_TYPES -> null
                         name == "InfinityApplication" -> APPLICATION_RULE
                         name.endsWith("Repository") || name.endsWith("Dao") -> STORAGE_RULE
                         name in MODEL_TYPES -> MODEL_RULE

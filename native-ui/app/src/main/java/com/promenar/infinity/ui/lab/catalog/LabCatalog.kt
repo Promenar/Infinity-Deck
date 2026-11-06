@@ -96,8 +96,8 @@ object LabCatalog {
                 segment = "library",
                 title = R.string.lab_node_library,
                 children = listOf(
-                    LabVersion("ask", "library.state.ask", R.string.lab_v_library_ask, R.string.lab_v_library_ask_desc, LabVersionKind.STATE, LabScreenFit.OUTER),
-                    LabVersion("locate", "library.state.locate", R.string.lab_v_library_locate, R.string.lab_v_library_locate_desc, LabVersionKind.STATE, LabScreenFit.OUTER),
+                    LabVersion("ask", "library.state.ask", R.string.lab_v_library_ask, R.string.lab_v_library_ask_desc, LabVersionKind.STATE, LabScreenFit.ANY),
+                    LabVersion("locate", "library.state.locate", R.string.lab_v_library_locate, R.string.lab_v_library_locate_desc, LabVersionKind.STATE, LabScreenFit.ANY),
                 ),
             ),
             LabNode(

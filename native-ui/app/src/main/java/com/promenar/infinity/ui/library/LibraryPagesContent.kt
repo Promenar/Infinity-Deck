@@ -736,7 +736,7 @@ private fun LibraryDocumentPage(
     val body by produceState<Loaded<DocumentBody>>(Loaded.Loading, documentId) {
         value = Loaded.Ready(host.viewModel.body(documentId))
     }
-    val rootUuid by host.ragViewModel.workspaceRootUuid.collectAsStateWithLifecycle()
+    val rootUuid by host.workspaceRootUuid.collectAsStateWithLifecycle()
     val resolvedTitle = (insight as? Loaded.Ready)?.value?.name ?: title
     // 从问资料结果进入：定位到本篇的命中段落；从对话引用进入：定位到被引用的段落。
     val askState by host.askViewModel.state.collectAsStateWithLifecycle()
