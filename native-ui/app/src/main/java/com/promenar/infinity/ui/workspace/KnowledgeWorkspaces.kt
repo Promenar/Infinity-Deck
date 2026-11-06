@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.workspace
 
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
@@ -523,11 +524,13 @@ internal fun KnowledgeWorkspaceFileContent(
         onBack = onBack.takeUnless { busy },
         backButtonTag = "knowledge_workspace_file_back",
         supporting = {
-            InfinityMetaLine(
-                segments = listOf(entry.path.breakableIdentifier(), Formatter.formatShortFileSize(context, entry.size)),
+            // 路径单行，停在末尾露出文件名与大小。
+            InfinityHeaderTitle(
+                text = "${entry.path} · ${Formatter.formatShortFileSize(context, entry.size)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
+                alignEnd = true,
+                heading = false,
             )
         },
     )

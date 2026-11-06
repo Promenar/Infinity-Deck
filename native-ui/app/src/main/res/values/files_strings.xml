@@ -9,7 +9,6 @@
     <string name="fm_free_space">%1$s free</string>
     <string name="fm_switch_location">Switch location</string>
     <string name="fm_locations_title">Locations this session can access</string>
-    <string name="fm_crumbs_collapsed">Show hidden levels</string>
     <string name="fm_up_level">Up one level</string>
 
     <!-- 排序 -->

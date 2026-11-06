@@ -63,20 +63,17 @@ fun InfinityPageLayout(
             if (showTopBar) TopAppBar(
                 title = {
                     Column(modifier = Modifier.padding(start = if (onBack != null) 0.dp else 4.dp)) {
-                        Text(
+                        InfinityHeaderTitle(
                             text = title,
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                         if (subtitle != null) {
-                            Text(
+                            InfinityHeaderTitle(
                                 text = subtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                heading = false,
                             )
                         }
                     }

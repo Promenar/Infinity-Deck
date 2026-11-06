@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.files
 
+import com.promenar.infinity.ui.common.InfinityScrollingLine
 import com.promenar.infinity.ui.common.IndexingIndicator
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -10,8 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,7 +29,6 @@ import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -222,10 +220,9 @@ internal fun knowledgeStateColor(state: KnowledgeIndexState): Color = when (stat
 }
 
 /**
- * 面包屑：逐级可点，放不下时换行，不横向滚动。超过 4 级时中间收成“…”，点开列出被折叠的各级。
- * [crumbs] 含根目录，最后一级为当前目录，不可点。
+ * 面包屑：逐级可点，始终单行。层级深、放不下时停在末级（当前目录），开头一侧渐隐，可横向拖动查看完整路径；
+ * 进入下一级时自动滑到末尾。[crumbs] 含根目录，最后一级为当前目录，不可点。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun FileBreadcrumbs(
     crumbs: List<FileCrumb>,
@@ -234,21 +231,9 @@ internal fun FileBreadcrumbs(
     tagPrefix: String = UiTags.FM_CRUMB,
 ) {
     if (crumbs.isEmpty()) return
-    val collapsed = crumbs.size > 4
-    val head = if (collapsed) listOf(crumbs.first()) else crumbs.dropLast(1)
-    val hidden = if (collapsed) crumbs.subList(1, crumbs.size - 2) else emptyList()
-    val tail = if (collapsed) crumbs.subList(crumbs.size - 2, crumbs.size - 1) else emptyList()
     val current = crumbs.last()
-    FlowRow(modifier = modifier, verticalArrangement = Arrangement.Center) {
-        head.forEach { crumb ->
-            CrumbLink(crumb, onGo, tagPrefix)
-            CrumbSeparator()
-        }
-        if (hidden.isNotEmpty()) {
-            CollapsedCrumbs(hidden, onGo)
-            CrumbSeparator()
-        }
-        tail.forEach { crumb ->
+    InfinityScrollingLine(modifier = modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget), alignEnd = true) {
+        crumbs.dropLast(1).forEach { crumb ->
             CrumbLink(crumb, onGo, tagPrefix)
             CrumbSeparator()
         }
@@ -258,7 +243,7 @@ internal fun FileBreadcrumbs(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
             )
         }
     }
@@ -280,7 +265,7 @@ private fun CrumbLink(crumb: FileCrumb, onGo: (String) -> Unit, tagPrefix: Strin
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
         )
     }
 }
@@ -294,32 +279,6 @@ private fun CrumbSeparator() {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(16.dp),
         )
-    }
-}
-
-@Composable
-private fun CollapsedCrumbs(hidden: List<FileCrumb>, onGo: (String) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.FM_CRUMB_COLLAPSED)) {
-            Icon(
-                Icons.Rounded.MoreHoriz,
-                contentDescription = stringResource(R.string.fm_crumbs_collapsed),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
-        InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            hidden.forEach { crumb ->
-                InfinityMenuItem(
-                    text = { Text(crumb.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    onClick = {
-                        open = false
-                        onGo(crumb.path)
-                    },
-                )
-            }
-        }
     }
 }
 

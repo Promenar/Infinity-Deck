@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -30,7 +28,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,14 +108,12 @@ fun InfinityNavigationHeader(
                 transitionSpec = { InfinityMotion.sharedAxisY(forward = targetState.second >= initialState.second) },
                 label = "navigation_header_title",
             ) { (currentTitle, _) ->
-                Text(
+                InfinityHeaderTitle(
                     text = currentTitle,
                     style = titleStyle,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { heading() },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             supporting?.invoke()
@@ -162,18 +157,15 @@ fun FolderBreadcrumbsBar(
     )
 }
 
-/** 上级路径：逐级可点，路径过长时横向滚动并停在最近的上级。 */
+/** 上级路径：逐级可点，始终单行；过长时停在最近的上级，开头一侧渐隐，可横向拖动查看完整路径。 */
 @Composable
 private fun FolderAncestorTrail(ancestors: List<FolderCrumb>, onNavigateToCrumb: (Int) -> Unit) {
-    val scrollState = rememberScrollState()
-    LaunchedEffect(ancestors.size) { scrollState.animateScrollTo(scrollState.maxValue) }
-    Row(
+    InfinityScrollingLine(
         modifier = Modifier
             .fillMaxWidth()
             // 路径段自带的内边距向左抵消，使首段文字与标题对齐。
-            .offset(x = -InfinitySpacing.XSmall)
-            .horizontalScroll(scrollState),
-        verticalAlignment = Alignment.CenterVertically,
+            .offset(x = -InfinitySpacing.XSmall),
+        alignEnd = true,
     ) {
         ancestors.forEachIndexed { index, crumb ->
             if (index > 0) {
@@ -189,6 +181,7 @@ private fun FolderAncestorTrail(ancestors: List<FolderCrumb>, onNavigateToCrumb:
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
+                softWrap = false,
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .clickable(role = Role.Button) { onNavigateToCrumb(index) }

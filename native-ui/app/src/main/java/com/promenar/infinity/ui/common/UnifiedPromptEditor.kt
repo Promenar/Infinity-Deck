@@ -434,12 +434,10 @@ private fun PromptEditorTopBar(
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-        Text(
+        InfinityHeaderTitle(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         if (views.size > 1) {

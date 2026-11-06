@@ -89,11 +89,9 @@ fun InfinitySettingsPageLayout(
                 actions = actions,
             ) else if (showTopBar) TopAppBar(
                 title = {
-                    Text(
+                    InfinityHeaderTitle(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {

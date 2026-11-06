@@ -96,11 +96,9 @@ fun InfinitySearchTopBar(
                     )
                 } else {
                     title?.takeIf(String::isNotBlank)?.let {
-                        Text(
+                        InfinityHeaderTitle(
                             text = it,
                             style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }

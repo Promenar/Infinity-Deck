@@ -82,9 +82,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinitySlider
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -178,11 +178,9 @@ private fun EditorTopBar(saving: Boolean, doneEnabled: Boolean, onClose: () -> U
         IconButton(onClick = onClose) {
             Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.avatar_editor_close))
         }
-        Text(
+        InfinityHeaderTitle(
             text = stringResource(R.string.avatar_editor_title),
             style = MaterialTheme.typography.titleLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = 4.dp, end = 12.dp),
         )
         val savingDescription = stringResource(R.string.avatar_editor_saving)

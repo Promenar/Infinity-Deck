@@ -9,7 +9,6 @@
     <string name="fm_free_space">可用 %1$s</string>
     <string name="fm_switch_location">切换位置</string>
     <string name="fm_locations_title">这个会话能访问的位置</string>
-    <string name="fm_crumbs_collapsed">显示折叠的层级</string>
     <string name="fm_up_level">上一级</string>
 
     <!-- 排序 -->

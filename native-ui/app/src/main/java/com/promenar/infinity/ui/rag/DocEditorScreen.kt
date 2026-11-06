@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.tween
 import com.promenar.infinity.ui.theme.InfinityMotion
 import android.content.ClipData
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityTabSwitcher
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -380,12 +381,10 @@ fun DocEditorScreenContent(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
+                    InfinityHeaderTitle(
                         text = stringResource(R.string.doc_editor_screen_title),
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {

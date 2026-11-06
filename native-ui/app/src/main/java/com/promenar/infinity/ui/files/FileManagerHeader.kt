@@ -75,6 +75,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +84,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FileTypeFilter
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuHeader
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -141,6 +144,7 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
     ) {
         FileManagerLeadingButton(host.leading)
         FileHeaderTitle(state, actions, Modifier.weight(1f))
+        host.folderBadge?.let { HostBadge(it) }
         IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
             Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
         }
@@ -156,7 +160,10 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
     }
 }
 
-/** 标题与副标题；会话宿主可点标题区切换位置。 */
+/**
+ * 标题单行居中，过长时横滑并在右侧渐隐。副标题只在两种情况出现：会话宿主可切换位置时的“位置 ▾”，
+ * 以及位置根目录的剩余空间；子文件夹的位置名由页头下方的路径条给出。
+ */
 @Composable
 private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
     val host = actions.host
@@ -166,7 +173,7 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
     val freeBytes = state.location?.freeBytes
     val subtitle = when {
         switchable -> locationTitle
-        state.path != "/" -> locationTitle
+        state.path != "/" -> null
         freeBytes != null -> stringResource(R.string.fm_free_space, formatFileSize(freeBytes))
         else -> null
     }
@@ -189,18 +196,14 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
             verticalArrangement = Arrangement.Center,
         ) {
             AnimatedContent(targetState = title, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { text ->
-                Text(
+                InfinityHeaderTitle(
                     text = text,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
-            val hostSubtitle = host.folderSubtitle?.takeUnless { switchable }
-            if (hostSubtitle != null) {
-                HostSubtitle(hostSubtitle)
-            } else if (subtitle != null) {
+            if (subtitle != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = subtitle,
@@ -239,32 +242,42 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
     }
 }
 
-/** 宿主副标题：图标 + 一行文字，可点时整行是按钮。 */
+/** 宿主的页头小标签：图标 + 短文字，可点时是按钮；触控区不小于最小触控尺寸。 */
 @Composable
-private fun HostSubtitle(subtitle: FileHeaderSubtitle) {
-    val onClick = subtitle.onClick
-    Row(
+private fun HostBadge(badge: FileHeaderBadge) {
+    val onClick = badge.onClick
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .clip(RoundedCornerShape(16.dp))
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(role = Role.Button, onClickLabel = subtitle.onClickLabel, onClick = onClick)
+                    Modifier.clickable(role = Role.Button, onClickLabel = badge.onClickLabel, onClick = onClick)
                 } else {
                     Modifier
                 },
             )
-            .testTag(UiTags.FM_HOST_SUBTITLE),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .semantics(mergeDescendants = true) { contentDescription = badge.description }
+            .testTag(UiTags.FM_HOST_BADGE),
+        contentAlignment = Alignment.Center,
     ) {
-        subtitle.icon?.let { Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(14.dp)) }
-        Text(
-            text = subtitle.text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            badge.icon?.let { Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(16.dp)) }
+            Text(
+                text = badge.text,
+                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
     }
 }
 

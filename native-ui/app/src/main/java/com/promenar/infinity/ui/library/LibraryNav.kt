@@ -79,6 +79,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationKind
 import com.promenar.infinity.domain.files.FileRef
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
@@ -483,11 +484,9 @@ internal fun LibraryPageHeader(
                 is LibraryLeading.Back -> InfinityBackButton(onClick = leading.onBack)
             }
             Spacer(Modifier.width(InfinitySpacing.XSmall))
-            Text(
+            InfinityHeaderTitle(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             actions()

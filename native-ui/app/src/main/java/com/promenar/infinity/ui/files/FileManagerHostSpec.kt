@@ -72,7 +72,7 @@ data class FileFolderAction(
  * - [onOpenGit] 非 null 时根目录的 Git 状态条可点，打开宿主的 Git 面板；
  * - [folderHeader] 非 null 时作为列表首项（“..”之后）显示在当前文件夹顶部；
  *   多选与搜索时不显示。没有内容可显示时由宿主自己渲染为空；
- * - [folderSubtitle] 非 null 且标题不可切换位置时替换页头副标题，例如存储空间文件夹的合集与抽取进度。
+ * - [folderBadge] 非 null 时在页头搜索按钮前显示一枚小标签，例如存储空间文件夹的合集抽取进度“2/4”。
  */
 @Immutable
 data class FileManagerHostSpec(
@@ -85,13 +85,14 @@ data class FileManagerHostSpec(
     val backNavigatesUp: Boolean = true,
     val onOpenGit: (() -> Unit)? = null,
     val folderHeader: (@Composable (FileFolderHeaderScope) -> Unit)? = null,
-    val folderSubtitle: FileHeaderSubtitle? = null,
+    val folderBadge: FileHeaderBadge? = null,
 )
 
-/** 宿主给当前文件夹的副标题；[onClick] 非 null 时可点，[onClickLabel] 为无障碍动作名。 */
+/** 宿主给当前文件夹的页头小标签：[text] 为短文字，[description] 为读屏全文；[onClick] 非 null 时可点，[onClickLabel] 为无障碍动作名。 */
 @Immutable
-data class FileHeaderSubtitle(
+data class FileHeaderBadge(
     val text: String,
+    val description: String,
     val icon: ImageVector? = null,
     val onClickLabel: String? = null,
     val onClick: (() -> Unit)? = null,

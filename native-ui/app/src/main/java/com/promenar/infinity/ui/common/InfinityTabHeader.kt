@@ -83,15 +83,11 @@ fun InfinityTabHeader(
                 .padding(start = InfinitySpacing.ScreenHorizontal + InfinitySpacing.XSmall, end = InfinitySpacing.XSmall),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            InfinityHeaderTitle(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics { heading() },
+                modifier = Modifier.weight(1f),
             )
             if (onSearchActiveChange != null && !searchActive) {
                 IconButton(

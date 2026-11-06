@@ -47,6 +47,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.withRecordedUserEdits
 import com.promenar.infinity.domain.generation.GenerationFailureCode
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityChoiceChips
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -130,11 +131,9 @@ internal fun ModelEditorScreen(
         header = {
             TopAppBar(
                 title = {
-                    Text(
-                        stringResource(R.string.provider_models_editor_title),
+                    InfinityHeaderTitle(
+                        text = stringResource(R.string.provider_models_editor_title),
                         style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {

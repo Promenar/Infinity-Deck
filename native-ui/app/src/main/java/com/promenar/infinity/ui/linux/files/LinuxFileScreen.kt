@@ -74,6 +74,7 @@ import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.linux.LinuxFileEntry
 import com.promenar.infinity.domain.linux.LinuxFileType
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.FolderStatusMessage
 import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -187,12 +188,12 @@ internal fun LinuxFileContent(state: LinuxFileUiState, actions: LinuxFileActions
                 onBack = actions.onBack,
                 titleStyle = MaterialTheme.typography.titleLarge.copy(fontFamily = InfinityMonospace),
                 supporting = {
-                    Text(
-                        state.path,
+                    InfinityHeaderTitle(
+                        text = state.path,
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        alignEnd = true,
+                        heading = false,
                     )
                 },
                 actions = { LinuxFileMoreMenu(state, actions) },

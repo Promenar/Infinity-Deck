@@ -51,6 +51,7 @@ import coil3.compose.AsyncImage
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FilePreview
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -89,12 +90,11 @@ internal fun FilePreviewPane(state: FileManagerUiState, actions: FileManagerUiAc
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f).padding(vertical = InfinitySpacing.Small)) {
-                    Text(
+                    InfinityHeaderTitle(
                         text = item.name,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     InfinityMetaLine(
                         segments = fileMetaSegments(item),
@@ -140,20 +140,20 @@ internal fun FileCompactPreviewPage(
                 }
             }
             Column(Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small)) {
-                Text(
+                InfinityHeaderTitle(
                     text = item.name,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 if (!inner) {
-                    Text(
+                    InfinityHeaderTitle(
                         text = locationPathText(state),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        alignEnd = true,
+                        heading = false,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

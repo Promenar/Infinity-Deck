@@ -99,6 +99,7 @@ import com.promenar.infinity.data.git.GitTracking
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityBackButton
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityPanePresentation
@@ -319,11 +320,10 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
                     null -> {
                         val status = (shown.status as? GitLoad.Ready)?.value
                         if (status == null) {
-                            Text(
+                            InfinityHeaderTitle(
                                 text = stringResource(R.string.git_panel_title),
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.semantics { heading() },
                             )
                         } else {
                             BranchHeader(status, nowMillis, shown.refreshing, shown.statusReadAtMillis)
@@ -370,25 +370,13 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
 
 @Composable
 private fun HeaderTitles(title: String, subtitle: String, identifier: Boolean) {
-    if (identifier) {
-        InfinityIdentifierText(
-            text = title,
-            style = InfinityTypography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.semantics { heading() },
-        )
-    } else {
-        Text(
-            text = title,
-            style = InfinityTypography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.semantics { heading() },
-        )
-    }
+    // 路径类标题停在末尾，露出文件名；超出宽度时单行横滑。
+    InfinityHeaderTitle(
+        text = title,
+        style = InfinityTypography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        alignEnd = identifier,
+    )
     Text(
         text = subtitle,
         style = InfinityTypography.bodySmall,
@@ -420,13 +408,10 @@ private fun BranchHeader(status: GitStatus, nowMillis: Long?, refreshing: Boolea
                 modifier = Modifier.size(18.dp),
             )
         }
-        InfinityIdentifierText(
+        InfinityHeaderTitle(
             text = repository ?: branch,
             style = if (repository == null) InfinityTypography.titleMedium.copy(fontFamily = InfinityMonospace) else InfinityTypography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = if (repository == null) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.semantics { heading() },
         )
     }
     val tracking = status.tracking

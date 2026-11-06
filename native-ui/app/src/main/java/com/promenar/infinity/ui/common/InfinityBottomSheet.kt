@@ -256,7 +256,7 @@ fun InfinityBottomSheet(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 if (title != null) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    InfinityHeaderTitle(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 content()
@@ -308,10 +308,10 @@ fun InfinityBottomSheet(
                 .padding(bottom = 32.dp)
         ) {
             if (title != null) {
-                Text(
+                InfinityHeaderTitle(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }

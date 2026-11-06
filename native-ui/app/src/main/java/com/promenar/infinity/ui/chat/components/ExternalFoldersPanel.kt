@@ -102,6 +102,7 @@ import com.promenar.infinity.ui.workspace.KnowledgeReadOnlyTag
 import com.promenar.infinity.ui.workspace.SharedFolderPicker
 import com.promenar.infinity.ui.theme.breakableIdentifier
 import com.promenar.infinity.domain.storage.IExternalFolderManager
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.ConfirmDialog
 import com.promenar.infinity.ui.common.FolderBreadcrumbsBar
 import com.promenar.infinity.ui.common.FolderCrumb
@@ -873,10 +874,11 @@ internal fun ExternalMountFormContent(
         onBack = onBack.takeUnless { busy },
         depth = 1,
         supporting = {
-            Text(
-                stringResource(if (isSaf) R.string.mount_source_saf else R.string.mount_source_real_path),
+            InfinityHeaderTitle(
+                text = stringResource(if (isSaf) R.string.mount_source_saf else R.string.mount_source_real_path),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                heading = false,
             )
         },
     )

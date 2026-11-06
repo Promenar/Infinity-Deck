@@ -11,7 +11,7 @@ import androidx.compose.material.icons.rounded.Category
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FolderCollectionSummary
 import com.promenar.infinity.ui.files.FileFolderAction
-import com.promenar.infinity.ui.files.FileHeaderSubtitle
+import com.promenar.infinity.ui.files.FileHeaderBadge
 import com.promenar.infinity.ui.files.metaSegments
 import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.CancellationException
@@ -87,9 +87,10 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
             host = FileManagerHostSpec(
                 leading = leading.toFileManagerLeading(),
                 showPin = true,
-                folderSubtitle = current?.summary?.let { summary ->
-                    FileHeaderSubtitle(
-                        text = summary.metaSegments(resources).joinToString(" · "),
+                folderBadge = current?.summary?.let { summary ->
+                    FileHeaderBadge(
+                        text = "${summary.extracted}/${summary.total}",
+                        description = summary.metaSegments(resources).joinToString(" · "),
                         icon = Icons.Rounded.Hub,
                         onClickLabel = settingsLabel,
                         onClick = { settingsFolder = current.folderId to folderName },
