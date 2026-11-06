@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.31.1-beta] - 2026-11-06
+
+### 修复
+
+- 资料库文件夹面板的挂载行改为显示来源位置（如“内部存储/Documents/…”）和来源类型，不再显示只对会话有意义的 `/mnt/<别名>` 与命令可见性。
+- 移除资料库文件夹时，确认框会说明有几个会话引用了它，这些引用会保留并继续可用。
+
 ## [0.31.0-beta] - 2026-11-06
 
 ### 新增

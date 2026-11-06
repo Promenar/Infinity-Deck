@@ -7,4 +7,8 @@
     <string name="library_mounts_attach_section">From the library</string>
     <string name="library_mounts_attach_hint">Uses the library folder\'s existing access; nothing is picked again.</string>
     <string name="library_mounts_attach_desc">Use in this chat at /mnt/%1$s/</string>
+    <plurals name="library_mounts_remove_references">
+        <item quantity="one">%1$d chat uses this folder. Its reference stays and keeps working there.</item>
+        <item quantity="other">%1$d chats use this folder. Their references stay and keep working there.</item>
+    </plurals>
 </resources>

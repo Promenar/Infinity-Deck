@@ -7,4 +7,7 @@
     <string name="library_mounts_attach_section">从资料库引用</string>
     <string name="library_mounts_attach_hint">沿用资料库文件夹已有的授权，不用重新选择。</string>
     <string name="library_mounts_attach_desc">在本会话的 /mnt/%1$s/ 下使用</string>
+    <plurals name="library_mounts_remove_references">
+        <item quantity="other">有 %1$d 个会话引用了这个文件夹，这些引用会保留，仍可在会话里使用。</item>
+    </plurals>
 </resources>

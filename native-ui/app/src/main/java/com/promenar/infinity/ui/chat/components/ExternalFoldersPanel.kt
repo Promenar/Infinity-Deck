@@ -78,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -518,7 +519,25 @@ private fun ExternalFoldersPanelContent(
         }
     }
 
+    // 移除资料库文件夹前查出引用同一来源的会话数，提示这些引用会保留。
+    var removeReferences by remember { mutableStateOf(0) }
+    LaunchedEffect(removeMountId, libraryScope) {
+        val mountId = removeMountId
+        removeReferences = 0
+        if (!libraryScope || mountId == null) return@LaunchedEffect
+        removeReferences = try {
+            manager.libraryMountReferences(mountId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            0
+        }
+    }
     removeMountId?.let { mountId ->
+        val removeMessage = stringResource(R.string.mount_remove_message)
+        val referencesNote = if (removeReferences > 0) {
+            pluralStringResource(R.plurals.library_mounts_remove_references, removeReferences, removeReferences)
+        } else null
         ConfirmDialog(
             show = true,
             onDismiss = { if (!busy) removeMountId = null },
@@ -529,7 +548,7 @@ private fun ExternalFoldersPanelContent(
                 }
             },
             title = stringResource(R.string.mount_remove_title),
-            description = stringResource(R.string.mount_remove_message),
+            description = listOfNotNull(removeMessage, referencesNote).joinToString("\n\n"),
             confirmLabel = stringResource(R.string.mount_remove),
         )
     }
@@ -631,7 +650,7 @@ internal fun ExternalMountManagerContent(
                     )
                 } else {
                     mounts.forEach { mount ->
-                        key(mount.id) { ExternalMountRow(mount, busy, onBrowse, onReauthorize, onRemove, onGrantRealPath, linuxSession) }
+                        key(mount.id) { ExternalMountRow(mount, busy, onBrowse, onReauthorize, onRemove, onGrantRealPath, linuxSession, libraryScope) }
                     }
                 }
             }
@@ -733,15 +752,21 @@ private fun ExternalMountRow(
     onRemove: (ExternalMount) -> Unit,
     onGrantRealPath: (() -> Unit)?,
     linuxSession: Boolean = false,
+    /** 资料库挂载不属于任何会话：显示来源位置，不显示 /mnt 别名与命令可见性。 */
+    libraryScope: Boolean = false,
 ) {
     var menuOpen by remember(mount.id) { mutableStateOf(false) }
     val unavailable = mount.unavailableReason != null
     val unavailableLabel = stringResource(R.string.mount_unavailable)
     val knowledgeBase = mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE
-    val meta = listOfNotNull(
+    val sourceLabel = stringResource(if (mount.sourceType == "real_path") R.string.mount_source_real_path else R.string.mount_source_saf)
+    val primaryVolumeLabel = stringResource(R.string.workspace_picker_shared_volume)
+    val meta = if (libraryScope) listOfNotNull(
+        mountSourceLocationLabel(mount.sourceType, mount.sourceId, primaryVolumeLabel),
+        sourceLabel,
+    ) else listOfNotNull(
         "/mnt/" + mount.alias,
-        if (knowledgeBase) null
-        else stringResource(if (mount.sourceType == "real_path") R.string.mount_source_real_path else R.string.mount_source_saf),
+        sourceLabel.takeUnless { knowledgeBase },
         stringResource(when {
             linuxSession && mount.sourceType != "real_path" -> R.string.run_mode_folder_saf_hidden
             mount.commandAccessible -> R.string.agent_reach_mount_command_visible

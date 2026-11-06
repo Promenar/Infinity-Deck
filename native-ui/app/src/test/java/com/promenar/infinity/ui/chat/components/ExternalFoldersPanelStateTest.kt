@@ -139,6 +139,24 @@ class ExternalFoldersPanelStateTest {
         assertThat(safTreeFallbackName("primary:")).isNull()
     }
 
+    @Test
+    fun `资料库挂载行把真实路径和系统授权树转成可读位置`() {
+        assertThat(mountSourceLocationLabel("real_path", "/storage/emulated/0/Documents/a b", "内部存储"))
+            .isEqualTo("内部存储/Documents/a b")
+        assertThat(mountSourceLocationLabel("real_path", "/storage/emulated/0", "内部存储")).isEqualTo("内部存储")
+        assertThat(mountSourceLocationLabel("real_path", "/storage/1A2B-3C4D/Music", "内部存储"))
+            .isEqualTo("/storage/1A2B-3C4D/Music")
+        assertThat(mountSourceLocationLabel(
+            "saf_tree",
+            "content://com.android.externalstorage.documents/tree/primary%3ADocuments%2F%E7%AC%94%E8%AE%B0%2Bx",
+            "内部存储",
+        )).isEqualTo("内部存储/Documents/笔记+x")
+        assertThat(mountSourceLocationLabel("saf_tree", "content://com.termux.documents/tree/%2Fdata%2Fhome", "内部存储"))
+            .isNull()
+        assertThat(mountSourceLocationLabel("saf_tree", "not-a-uri", "内部存储")).isNull()
+        assertThat(mountSourceLocationLabel("knowledge_base", "uuid", "内部存储")).isNull()
+    }
+
     private fun mount(id: String, sessionId: String) = ExternalMount(
         id = id,
         alias = id,

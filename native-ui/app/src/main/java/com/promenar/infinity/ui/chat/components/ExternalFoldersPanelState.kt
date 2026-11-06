@@ -86,6 +86,31 @@ internal fun safTreeLocationLabel(authority: String?, treeDocumentId: String?, p
     return (listOf(if (volume == PRIMARY_VOLUME_ID) primaryLabel else volume) + segments).joinToString("/")
 }
 
+private const val PRIMARY_STORAGE_ROOT = "/storage/emulated/0"
+
+/**
+ * 资料库挂载行显示的来源位置：真实路径把主存储根换成可读卷名；
+ * 系统授权文件夹从树 URI（`content://<提供方>/tree/<编码后的文档 ID>`）解析文档 ID 再转可读位置。
+ * 非外部存储提供方或无法解析时返回 null，调用方只显示来源类型。
+ */
+internal fun mountSourceLocationLabel(sourceType: String, sourceId: String, primaryLabel: String): String? = when (sourceType) {
+    "real_path" -> when {
+        sourceId == PRIMARY_STORAGE_ROOT -> primaryLabel
+        sourceId.startsWith("$PRIMARY_STORAGE_ROOT/") -> primaryLabel + sourceId.removePrefix(PRIMARY_STORAGE_ROOT)
+        else -> sourceId.takeIf(String::isNotBlank)
+    }
+    "saf_tree" -> {
+        val rest = sourceId.removePrefix("content://").takeIf { it != sourceId }
+        val authority = rest?.substringBefore('/')
+        val encodedId = rest?.substringAfter("/tree/", "")?.substringBefore('/')?.takeIf(String::isNotEmpty)
+        val documentId = encodedId?.let {
+            runCatching { java.net.URLDecoder.decode(it.replace("+", "%2B"), Charsets.UTF_8.name()) }.getOrNull()
+        }
+        safTreeLocationLabel(authority, documentId, primaryLabel)
+    }
+    else -> null
+}
+
 /** 查不到显示名时用树文档 ID 的末段作目录名。 */
 internal fun safTreeFallbackName(treeDocumentId: String?): String? =
     treeDocumentId?.substringAfter(':')?.trimEnd('/')?.substringAfterLast('/')?.takeIf(String::isNotEmpty)
