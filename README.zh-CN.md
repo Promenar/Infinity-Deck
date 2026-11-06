@@ -5,7 +5,7 @@
 <h1 align="center">Infinity Workbench</h1>
 
 <p align="center">
-  口袋里的完整工作台：BYOK 原生 Android 客户端 · 真 Linux · Git 与 SSH · Tailscale 私网 · 折叠屏优化。
+  <b>把终端、代码仓库、服务器和你的 AI 一起装进手机。</b>
 </p>
 
 <p align="center">
@@ -13,11 +13,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Promenar/Infinity-Workbench/releases"><img src="https://img.shields.io/github/v/release/Promenar/Infinity-Workbench?include_prereleases&label=%E4%B8%8B%E8%BD%BD&color=6366F1" alt="下载最新版"></a>
+  <img src="https://img.shields.io/badge/Android-12%2B-green.svg" alt="Android 12+">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="许可证 GPL-3.0">
-  <img src="https://img.shields.io/badge/platform-Android%2012%2B-green.svg" alt="平台 Android 12+">
-  <img src="https://img.shields.io/badge/Kotlin-2.2-7F52FF.svg" alt="Kotlin 2.2">
-  <img src="https://img.shields.io/badge/Jetpack_Compose-Material3-4285F4.svg" alt="Jetpack Compose Material 3">
-  <img src="https://img.shields.io/badge/version-0.18.0--beta-6366F1.svg" alt="版本 0.18.0-beta">
 </p>
 
 https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
@@ -26,117 +24,107 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
   <img src="assets/screenshots/zh/hero.webp" alt="展开：会话旁边的 Git 面板列出提交记录；合上：外屏继续查看 502 排障报告" width="860">
 </p>
 
-## 口袋里的完整工作台
+用你自己的 API Key，接上 OpenAI、Claude、Gemini、DeepSeek 或家里跑着的模型。它会动手：在手机里的 Linux 里跑命令，改你的代码，登上你的服务器，替你操作网页，每一步都先给你看。
 
-Infinity Workbench 是用 Kotlin 与 Jetpack Compose 写成的原生 Android 客户端，模型自带密钥接入：OpenAI（Chat Completions 与 Responses）、Anthropic、Google Gemini、Vertex AI、DeepSeek、GLM、Kimi，或任意 OpenAI 兼容接口，会话中途也能切换模型。折叠屏展开后，首页分为导航、会话列表与会话三列，会话旁的浮动检视器随时打开任务、文件、Git、产物与浏览器；合上手机，外屏以单栏继续同一个会话。切到后台或锁屏，生成照常进行；打开触摸锁，屏幕全黑、只显示运行状态与进度并屏蔽触摸，手机可以直接揣进口袋。
+折叠屏展开是一张工作台，合上在外屏接着聊。
 
-<table>
-  <tr>
-    <td width="66%"><img src="assets/screenshots/zh/fold-inspector.webp" alt="展开：会话旁边的计划检视器列出已完成步骤、子代理与后台任务"></td>
-    <td width="34%"><img src="assets/screenshots/zh/outer-chat.webp" alt="外屏：同一会话里的 502 排障报告"></td>
-  </tr>
-</table>
-
-## 真 Linux，随任务取用（侧载版）
-
-侧载版一键安装 Alpine Linux：proot 运行，无需 root，也不依赖 Termux。`apk add` 能装任意软件包，安装时默认勾选 git、ripgrep、Python、Node.js 与 FFmpeg。Agent 执行命令的系统就是你在终端里打开的那一套，路径完全一致。不装 Linux 也有两个渠道都提供的隔离运行时：QuickJS 与沙箱 Python。文件放在三类工作区之一：会话专用空间、内置文件系统，以及侧载版的设备文件系统。
+## 它能帮你做什么
 
 <table>
   <tr>
-    <td width="66%"><img src="assets/screenshots/zh/linux-terminal.webp" alt="内置终端运行 fastfetch：Alpine Linux v3.24 aarch64，Oryon CPU"></td>
-    <td width="34%"><img src="assets/screenshots/zh/outer-terminal.webp" alt="外屏终端运行 fastfetch"></td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/ops-diagnosis.webp" alt="web-01 上的远程命令逐条等待批准">
+      <h3>在地铁上修好线上故障</h3>
+      网站报 502，你让它连上服务器去查。每条命令先给你过目，点一下才执行；修完它写好报告，合上手机在外屏接着看。
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/linux-terminal.webp" alt="内置终端里运行 fastfetch：Alpine Linux">
+      <h3>手机里有一台真 Linux</h3>
+      跑 Python 脚本、用 FFmpeg 转视频、<code>apk add</code> 装个工具，都在应用里完成。不用 root，也不用装 Termux。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/ade-branch.webp" alt="工作方案卡提议在新工作树里开分支会话">
+      <h3>代码随身改</h3>
+      主会话修 bug，补测试的活派给分支会话，各自在独立的工作树里改，互不打架。分支、差异、提交在 Git 面板里一目了然。
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/tailnet-gateway.webp" alt="提供商表单里从 tailnet 设备中选择模型网关">
+      <h3>用上家里的显卡</h3>
+      家里电脑跑着模型？连上 Tailscale，手机直接拿它聊天、做检索。不开公网端口，也不占系统 VPN。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/library-ask.webp" alt="问资料：带编号引用的答案与命中列表">
+      <h3>问你自己的资料</h3>
+      把论文、合同或整部小说的文件夹放进来，直接提问。答案标着出处，点一下跳到原文那一段。写长篇的，还能问“第 12 章时这两个人是什么关系”。
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/browser-agent.webp" alt="Agent 在 CI 页面上点击重跑失败的作业">
+      <h3>替你跑网页</h3>
+      让它去 CI 页面重跑失败的作业，你在旁边看着，随时接手。碰到登录页它会停下，密码由你自己输入，它看不到。
+    </td>
   </tr>
 </table>
 
-## 随身的版本管理与运维（Git · SSH）
+## 你始终说了算
 
-两个渠道都内置 git，侧载版的 Linux 里另有完整的 git 与 gh。Git 面板显示分支、相对上游的领先/落后、改动差异与最近提交；顺带的工作可以提成分支会话，在独立的 worktree 里进行。HTTPS 的 Git 凭据由应用的本机代理按命令注入，不写进仓库配置，也不进入模型上下文。
+- **每条命令先问你。** 默认要你批准才执行；删除文件无论哪一档都要你点头。
+- **密码不经过 AI。** 需要密码时弹出保密输入卡，内容直接存进凭据，不进对话，显示时禁止截屏。
+- **数据留在手机上。** 对话、文档和设置都在本机，模型请求直连你配置的服务商，不经过我们的服务器。
+- **备份你来管。** 存到本地文件或 WebDAV，可以加密。
+- **完全开源。** GPL-3.0。
 
-SSH 同样随身：生成 Ed25519 密钥，首次连接确认指纹，之后 Agent 只用主机别名执行命令、读写 SFTP，传输单文件最大 4 GiB 并在两端做 SHA-256 校验。你也可以打开真实的 PTY 终端或本地转发亲自接手。Agent 看不到密码和密钥；在“命令需批准”档下，每条远程命令都要等你批准。
+## 全部功能
 
-<table>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/zh/ade-git.webp" alt="Git 面板列出分支，以及各 worktree 由哪个会话使用"></td>
-    <td width="50%"><img src="assets/screenshots/zh/ade-branch.webp" alt="工作方案提议新建 worktree 的分支会话，可选在此执行或派发到分支"></td>
-  </tr>
-  <tr>
-    <td align="center">分支与 worktree 对应到会话</td>
-    <td align="center">顺带工作提成分支会话</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/zh/ops-diagnosis.webp" alt="web-01 上的远程命令排队等待批准：可逐条批准或拒绝，共 3 项"></td>
-    <td width="50%"><img src="assets/screenshots/zh/ops-detail.webp" alt="修复报告：config.toml 把数据库指向从未创建的目录，已恢复路径并重启 api"></td>
-  </tr>
-  <tr>
-    <td align="center">每条远程命令由你批准</td>
-    <td align="center">根因、修复与验证写进一份报告</td>
-  </tr>
-</table>
+| | |
+|---|---|
+| **模型** | 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口；聊到一半可以换模型 |
+| **Agent** | 先列计划再动手；最多 6 个子代理在后台并行；适合单独做的工作开成分支会话；慢命令转入后台，跑完再叫醒会话；定时任务；技能与 MCP |
+| **对话** | 最多 4 个会话同时生成；生成中的下一句可以排队或插队；需要你拍板时弹出提问卡；锁屏、切后台不中断；触摸锁让手机直接揣进口袋 |
+| **运行环境** | 一键安装 Alpine Linux；没装 Linux 也有内置命令、Python 和 JavaScript 沙箱；也能接 Termux |
+| **代码** | 内置 git；Git 面板看分支、差异和提交；Git 密码按命令注入，不写进仓库配置 |
+| **服务器** | SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB；真终端和端口转发随时接手 |
+| **私有网络** | 应用自带 Tailscale 节点，支持自建 Headscale；看得到每台设备是直连还是中继，可以持续 Ping；模型、SSH、MCP 都能直接访问 tailnet |
+| **资料** | 文档、长期记忆和知识图谱一起检索，答案带引用；挂载外部文件夹；图谱按作品分开，可按篇序查人物关系的变化；支持 PDF、Word、Markdown、HTML 等格式 |
+| **浏览器** | 多标签，手机版与桌面版网页切换；Agent 操作时你可以旁观、接手再交回 |
+| **产出** | 画布页面、可点击的多屏原型、带版本的产物；生图，可在画板上圈注和涂抹选区；会话导出为网页、A4 PDF 或长图 |
+| **折叠屏** | 内屏三列：导航、会话列表、会话；检视器常驻任务、文件、Git 与浏览器；开合屏会话无缝接续 |
 
-## 接入私有网络与私有算力（Tailscale）
-
-应用在自己的进程里运行一个 Tailscale 节点：不占用系统 VPN，可以和其它 VPN 同时使用，也支持自建的 Headscale。SSH 主机、命令、MCP 服务器与模型提供商都能直接访问 tailnet IP 和 MagicDNS 名称。添加提供商时，表单会识别接口地址属于 tailnet，还可以从 tailnet 设备里选一台网关，用家里或公司内网的模型网关驱动对话、向量化与重排。节点只在应用运行期间在线，退出即下线。
-
-## 像在电脑前一样干活的 Agent
-
-提一个需求，Agent 先列计划再动手。它可以在后台派出子代理（全应用最多 6 个并行），把顺带工作提成分支会话，把慢命令转成后台任务：默认最长 2 小时、上限 24 小时，结束后可唤醒会话继续。它也能创建单次、间隔或 cron 定时任务。最多 4 个会话同时生成；生成期间你可以继续写下一条排队，或者让它插队；需要你拍板时，Agent 会弹出提问卡。
-
-内置的 Agent 浏览器可以在旁观看，也可以随时接手再交回；密码、支付卡与验证码字段只能由你填写，Agent 看不到内容。技能分内置、用户级与项目级三层，用 `/技能名` 直接调用，也能接入 MCP 服务器。Agent 还能管理智能体本身，比如新建助手或改写提示词：每次写入都要你批准并显示差异，提示词保留最近 20 个版本。
-
-<table>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/zh/ade-subagents.webp" alt="两个子代理并行梳理代码与测试缺口，主会话等待汇总"></td>
-    <td width="50%"><img src="assets/screenshots/zh/ade-background.webp" alt="21 个测试通过后，400 万行的完整测试套件转入后台任务，对话继续进行"></td>
-  </tr>
-  <tr>
-    <td align="center">子代理并行梳理代码</td>
-    <td align="center">慢命令转为后台任务</td>
-  </tr>
-</table>
-
-## 知识进来，成果出去
-
-- **知识进来**：资料支持向量与全文混合检索、重排与引用，并可建知识图谱；“问资料”把文档、长期记忆与图谱实体放在一起检索，由快速模型给出带编号引用的答案，点按即打开原文并高亮命中段落，资料页还记录哪些文档被智能体引用过；对话记忆按时间线检索，长期记忆跨会话记住偏好与项目事实。
-- **成果出去**：Agent 可以做画布页面、可点击的多屏原型（带演示模式），交付的报告与文件登记为带版本的产物。
-- **富内容**：Markdown、LaTeX、Mermaid、ECharts，会话内直接显示图片、视频、音频，也能调用模型生图，并可在画板上圈注、涂抹选区或手绘草图作为生图入参。
-- **导出与用量**：会话可导出为 HTML、A4 分页 PDF 或长图 PNG；用量页给出费用估算与输入缓存命中率。
-
-## 一切由你掌控
-
-- **执行由你批准**：权限分“命令需批准”与“免批准”两档；“智能体可达范围”面板列出 Agent 此刻能碰到的目录、执行方与网络。
-- **秘密不进对话**：密码与令牌走专用的保密输入/输出卡，显示原文时禁止截屏录屏；API Key 由 Android Keystore 保护。
-- **本地优先**：会话、文档与配置存在本机，模型请求直连你配置的服务商，不经过我们的服务器。
-- **备份可加密**：分层备份到本地文件或 WebDAV，可用 AES-256-GCM 加密。
-- **出错不锁死**：启动自检某一步失败时，只隔离受影响的工作区、会话或子系统，其余照常使用。
-- **开源**：以 GPL-3.0 发布，代码全部公开。
+每一项的细节与边界见[功能详解](docs/guide/features.md)。
 
 ## 开始使用
 
-**运行要求**：Android 12（API 31）及以上。内置 Linux 需要侧载版和 arm64-v8a 设备，基础系统约占 64 MB，默认加装 git、ripgrep、Python、Node.js 与 FFmpeg 共约 470 MB，可按需取消。打包的 Python 同样只在 arm64-v8a 设备上提供。
+1. 从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 和对应的 `.sha256` 文件。
+2. 核对 SHA-256 后安装。只安装 Releases 里的正式包，不要用 CI 临时制品或来源不明的重打包版本。
+3. 在设置里添加一个模型提供商，就可以开始聊了。
 
-**两个渠道**：`sideload` 包含内置 Linux 与设备文件访问，`play` 不含这两项；Play 版的后台任务只在应用位于前台时保证运行。两者包名均为 `com.promenar.infinity`，可与旧版 Nexara 并存。
+需要 Android 12 及以上。内置 Linux 需要 arm64-v8a 设备，基础系统约 64 MB，加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。
 
-**安装**：从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 与对应 `.sha256` 文件，核对 SHA-256 后安装。公开发布可能落后于源码；不要安装 CI 临时制品、Debug APK 或来源不明的重打包版本。
+当前源码版本为 `v0.33.4-beta`（versionCode `93`），变更见[更新日志](CHANGELOG.md)。
 
-当前源码版本为 `v0.28.2-beta`（versionCode `75`），变更见[更新日志](CHANGELOG.md)。
-
-## 从源码构建
+<details>
+<summary><b>从源码构建</b></summary>
 
 需要 JDK 17 及以上、Android SDK、`PATH` 中的 `python3.14`（预编译打包 Python）和 Go 1.21 及以上（编译 Tailscale 库）。
 
 ```bash
 cd native-ui
-./gradlew :app:assembleSideloadDebug :app:assemblePlayDebug
+./gradlew :app:assembleSideloadDebug
 ./gradlew :app:testSideloadDebugUnitTest :app:lintSideloadDebug
 ```
 
-Debug APK 输出在 `native-ui/app/build/outputs/apk/<渠道>/debug/`。离线构建、签名与发行检查见[开发构建与发行验证](docs/guide/development.md)和[发行渠道构建](docs/distribution-builds.md)。
+Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线构建、签名与发行检查见[开发构建与发行验证](docs/guide/development.md)和[发行渠道构建](docs/distribution-builds.md)。
+
+</details>
 
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
-| [功能详解](docs/guide/features.md) | 对话与渲染、上下文管理、RAG、Agent 工具、子代理、浏览器、后台与定时任务、导出与备份 |
+| [功能详解](docs/guide/features.md) | 对话与渲染、上下文管理、资料与图谱、Agent 工具、子代理、浏览器、后台与定时任务、导出与备份 |
 | [密钥与隐私](docs/guide/security-privacy.md) | 密钥存储、备份加密、SSH/Git/Tailscale 凭据、网络安全、诊断事件 |
 | [执行环境](docs/guide/execution-environments.md) | 内置 Linux、Termux、隔离脚本运行时、SSH |
 | [工作区与外部文件夹](docs/guide/workspaces.md) | 工作区类型、Git、Agent 可达范围、文件夹挂载 |
