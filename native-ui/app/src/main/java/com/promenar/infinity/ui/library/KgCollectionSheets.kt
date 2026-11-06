@@ -55,6 +55,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forReading
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import com.promenar.infinity.utils.InfinityLogger
 import java.text.NumberFormat
 import kotlinx.coroutines.CancellationException
@@ -559,7 +560,7 @@ private fun SectionHeader(@StringRes label: Int, modifier: Modifier = Modifier) 
 @Composable
 private fun SheetNote(text: String, error: Boolean = false) {
     Text(
-        text,
+        text.keepCjkTailTogether(),
         // 多句说明按阅读段落断行；界面平衡断行会把整段压成窄列。
         style = MaterialTheme.typography.bodySmall.forReading(),
         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,

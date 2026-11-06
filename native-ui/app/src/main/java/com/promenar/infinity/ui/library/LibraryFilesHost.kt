@@ -80,10 +80,11 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                             }
                         },
                     ),
+                    // 单个文件与多选共用：选择模式里从 1 项加到多项时菜单不跳变。
                     // 多选跨合集时各篇仍归入各自的合集，一起抽取不会合并实体。
                     FileHostAction(
                         id = "library-multi-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
-                        appliesTo = setOf(FileHostActionScope.MULTI),
+                        appliesTo = setOf(FileHostActionScope.FILE, FileHostActionScope.MULTI),
                         visibleFor = { items -> items.any { it.knowledge?.documentId != null } },
                         onInvoke = { items ->
                             val ids = items.mapNotNull { it.knowledge?.documentId }.distinct()

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.rag
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.rounded.Check
 import android.app.Application
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -578,7 +580,13 @@ internal fun KnowledgeGraphDocumentOptionsContent(
                             )
                             .testTag(UiTags.kgDocumentOption(option.docId)),
                         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
-                        headlineContent = { Text(option.title) },
+                        // 与“选择图谱”面板同一写法：标题最多两行，选中项右侧打勾。
+                        headlineContent = { Text(option.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        trailingContent = if (option.docId == selectedDocumentId) {
+                            { Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                        } else {
+                            null
+                        },
                     )
                 }
             }

@@ -47,7 +47,6 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.CircularProgressIndicator
 import com.promenar.infinity.ui.common.InfinityChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -152,7 +151,8 @@ internal fun KnowledgeGraphScopeRow(
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
         val icon: ImageVector = when (viewMode) {
-            KgViewMode.GLOBAL -> Icons.Rounded.Public
+            // 与会话设置“知识图谱”分区同一图标：这里选的是一张图谱（合集、单篇或通用知识）。
+            KgViewMode.GLOBAL -> Icons.Rounded.Hub
             KgViewMode.DOCUMENT -> Icons.Rounded.Description
             KgViewMode.SESSION -> Icons.Rounded.ChatBubbleOutline
         }
