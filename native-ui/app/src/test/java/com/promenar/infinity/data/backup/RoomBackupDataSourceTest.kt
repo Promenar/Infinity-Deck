@@ -263,23 +263,26 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `完整备份只往返存在的文件夹图谱设置`() = runBlocking {
+    fun `完整备份往返文件夹和文档图谱设置`() = runBlocking {
         seedCompleteGraph()
         val sqlite = db.openHelper.writableDatabase
-        sqlite.execSQL("INSERT INTO kg_folder_settings(folder_id,mode) VALUES('root-1','SHARED'),('missing','WORK'),('file-1','WORK')")
+        sqlite.execSQL("INSERT INTO kg_folder_settings(folder_id,mode) VALUES('root-1','SHARED'),('missing','WORK'),('file-1','DOC_COLLECTION:work:root-1')")
         val source = newDataSource()
         val snapshot = source.snapshot(CANONICAL_CONTENT)
         val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
         val tables = payload.getValue("tables").jsonObject
-        assertThat(tables.getValue("kg_folder_settings").jsonArray).hasSize(1)
+        assertThat(tables.getValue("kg_folder_settings").jsonArray).hasSize(2)
         listOf("kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "vectors").forEach {
             assertThat(tables.containsKey(it)).isTrue()
         }
         assertThat(tables.containsKey("kg_jit_cache")).isFalse()
         db.clearAllTables()
         source.restore(validated(snapshot))
-        sqlite.query("SELECT folder_id,mode FROM kg_folder_settings").use {
+        sqlite.query("SELECT folder_id,mode FROM kg_folder_settings ORDER BY folder_id").use {
             assertThat(it.moveToFirst()).isTrue()
+            assertThat(it.getString(0)).isEqualTo("file-1")
+            assertThat(it.getString(1)).isEqualTo("DOC_COLLECTION:work:root-1")
+            assertThat(it.moveToNext()).isTrue()
             assertThat(it.getString(0)).isEqualTo("root-1")
             assertThat(it.getString(1)).isEqualTo("SHARED")
             assertThat(it.moveToNext()).isFalse()

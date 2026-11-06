@@ -64,6 +64,7 @@ class DocumentReferenceExtractor(
         PDDocument.load(file, MemoryUsageSetting.setupTempFileOnly()).use { document ->
             val stripper = PDFTextStripper().apply { sortByPosition = true }
             val writer = CollectorWriter(collector)
+            var completedPages = 0
             for (page in 1..document.numberOfPages) {
                 if (collector.truncated) break
                 stripper.startPage = page
@@ -74,9 +75,10 @@ class DocumentReferenceExtractor(
                     // 达到统一文本预算后停止当前 PDF；其它解析或 I/O 异常继续向上抛出。
                     break
                 }
+                completedPages++
                 collector.append("\n")
             }
-            if (!collector.truncated && writer.nonWhitespace < 200 && writer.nonWhitespace < document.numberOfPages * 20L) {
+            if (completedPages == document.numberOfPages && !collector.truncated && writer.nonWhitespace < 200 && writer.nonWhitespace < document.numberOfPages * 20L) {
                 throw DocumentFormatException(DocumentFormatError.PDF_NO_TEXT_LAYER)
             }
         }

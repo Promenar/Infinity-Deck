@@ -37,6 +37,7 @@ class DualDatabaseGraphMergerTest {
                     seed(db, if (path == current) "current" else "legacy")
                     db.execSQL("INSERT INTO kg_collections VALUES('work:file','work','作品','file',1)")
                     db.execSQL("INSERT INTO kg_collection_members VALUES('file','work:file',NULL,NULL)")
+                    db.execSQL("INSERT INTO kg_folder_settings VALUES('file','DOC_COLLECTION:work:file')")
                     db.execSQL("INSERT INTO kg_nodes VALUES('node','同名','person','{}',1,1,'同名','work:file')")
                     db.execSQL("INSERT INTO kg_evidence VALUES('evidence','node',NULL,'document','file',NULL,'h','task',1,1,NULL,NULL)")
                     db.execSQL("UPDATE sessions SET rag_options='{\"graphBinding\":{\"collectionId\":\"work:file\",\"mode\":\"READ_ONLY\"}}' WHERE id='same-session'")
@@ -48,6 +49,10 @@ class DualDatabaseGraphMergerTest {
                 val mappedSession = RecoveryStableId.map("sessions", "id", "same-session")
                 assertThat(count(db, "kg_nodes")).isEqualTo(2)
                 assertThat(count(db, "kg_collections")).isEqualTo(2)
+                db.rawQuery("SELECT mode FROM kg_folder_settings WHERE folder_id=?", arrayOf(mappedFile)).use { cursor ->
+                    assertThat(cursor.moveToFirst()).isTrue()
+                    assertThat(cursor.getString(0)).isEqualTo("DOC_COLLECTION:work:$mappedFile")
+                }
                 db.rawQuery("SELECT n.collection_id,p.id,p.node_id,p.edge_id,p.source_type,p.doc_id,p.session_id,p.content_hash,p.task_id,p.message_id FROM kg_evidence p JOIN kg_nodes n ON n.id=p.node_id WHERE p.doc_id=?", arrayOf(mappedFile)).use { cursor ->
                     check(cursor.moveToFirst())
                     assertThat(cursor.getString(0)).isEqualTo("work:$mappedFile")

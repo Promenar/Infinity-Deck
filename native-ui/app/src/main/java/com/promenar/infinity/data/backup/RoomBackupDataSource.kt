@@ -206,7 +206,7 @@ class RoomBackupDataSource(
                 workspaces -> "workspace_root_uuid NOT IN ($roots)"
                 else -> "0"
             }
-            return " WHERE folder_id IN (SELECT uuid FROM workspace_files WHERE is_directory=1 AND ($filter))"
+            return " WHERE folder_id IN (SELECT uuid FROM workspace_files WHERE in_recycle_bin=0 AND ($filter) AND ((is_directory=1 AND kg_folder_settings.mode IN ('AUTO','WORK','SHARED','MERGE_PARENT')) OR (is_directory=0 AND (kg_folder_settings.mode IN ('DOC_STANDALONE','DOC_SHARED') OR kg_folder_settings.mode LIKE 'DOC_COLLECTION:work:%'))))"
         }
         if (layers == null) return ""
         if (table in GRAPH_VECTOR_TABLES) {
@@ -316,14 +316,14 @@ class RoomBackupDataSource(
             skipped += avatar.skipped
             avatar.blobs.forEach { (id, blob) -> entries += BackupSourceEntry("avatars/$id", BackupLayer.CORE, blob) }
             val fileIds = fileRows.map { it.requiredString("uuid") }.toSet()
-            val folderIds = fileRows.filter { it.requiredBoolean("is_directory") }.map { it.requiredString("uuid") }.toSet()
+            val fileIndex = fileRows.associateBy { it.requiredString("uuid") }
             val messageIds = payload.rows("messages").map { it.requiredString("id") }.toSet()
             payload.tables.forEach { (table, rows) ->
                 layers.forEach layerLoop@ { layer ->
                     if (BackupLayerPolicy.tableLayer(table, layer) != layer) return@layerLoop
                     val selected = rows.asSequence().filter { policy.layer(table, it) == layer }.filter { row ->
                         when (table) {
-                            "kg_folder_settings" -> row.requiredString("folder_id") in folderIds
+                            "kg_folder_settings" -> validKgSetting(row, fileIndex)
                             "document_tags" -> row.requiredString("doc_id") in fileIds && row.requiredString("doc_id") !in skippedIds
                             "knowledge_citations" -> if (row.requiredString("source_kind") == "CHAT") {
                                 row.optionalString("message_id") in messageIds
@@ -917,21 +917,29 @@ class RoomBackupDataSource(
         val payload = DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, backupTables().associateWith { table ->
             BackupDatabaseRows.read(tableEntries[table].orEmpty().sortedBy { it.path }.map { validated.blobs.getValue(it.path) })
         })
-        val folderIds = payload.rows(FILE_TABLE).filter { it.requiredBoolean("is_directory") }.map { it.requiredString("uuid") }.toSet()
         val index = BackupLayerPolicy.Index(payload.tables)
+        val fileIndex = payload.rows(FILE_TABLE).associateBy { it.requiredString("uuid") }
         tableEntries.forEach { (table, entries) -> entries.forEach { entry ->
             BackupDatabaseRows.read(listOf(validated.blobs.getValue(entry.path))).forEach rowLoop@ { row ->
-                if (table == "kg_folder_settings" && row.requiredString("folder_id") !in folderIds) return@rowLoop
+                if (table == "kg_folder_settings" && !validKgSetting(row, fileIndex)) return@rowLoop
                 if (index.layer(table, row) != entry.layer) throw BackupValidationException("数据库记录与层归属不一致")
             }
         } }
         return filterFolderSettings(if (validated.manifest.databaseSchemaVersion < 17) upgradeRetrievalPermissions(payload) else payload)
     }
 
+    private fun validKgSetting(row: JsonObject, files: Map<String, JsonObject>): Boolean {
+        val file = files[row.requiredString("folder_id")] ?: return false
+        if (file.requiredBoolean("in_recycle_bin")) return false
+        val mode = row.requiredString("mode")
+        return if (file.requiredBoolean("is_directory")) mode in setOf("AUTO", "WORK", "SHARED", "MERGE_PARENT")
+        else mode in setOf("DOC_STANDALONE", "DOC_SHARED") || mode.startsWith("DOC_COLLECTION:work:") && mode.length > "DOC_COLLECTION:work:".length
+    }
+
     private fun filterFolderSettings(payload: DatabaseBackupPayload): DatabaseBackupPayload {
         if ("kg_folder_settings" !in payload.tables) return payload
-        val folders = payload.rows(FILE_TABLE).filter { it.requiredBoolean("is_directory") }.map { it.requiredString("uuid") }.toSet()
-        return payload.copy(tables = payload.tables + ("kg_folder_settings" to payload.rows("kg_folder_settings").filter { it.requiredString("folder_id") in folders }))
+        val files = payload.rows(FILE_TABLE).associateBy { it.requiredString("uuid") }
+        return payload.copy(tables = payload.tables + ("kg_folder_settings" to payload.rows("kg_folder_settings").filter { validKgSetting(it, files) }))
     }
 
     private fun mergeLayers(imported: DatabaseBackupPayload, local: DatabaseBackupPayload, layers: Set<BackupLayer>, validated: ValidatedBackup): DatabaseBackupPayload {
@@ -989,8 +997,8 @@ class RoomBackupDataSource(
             })
         } + localSeq.filterKeys { key -> tables.getValue("workspace_seq").none { it.requiredString("date_key") == key } }.values
         val fileIds = tables.getValue(FILE_TABLE).map { it.requiredString("uuid") }.toSet()
-        val folderIds = tables.getValue(FILE_TABLE).filter { it.requiredBoolean("is_directory") }.map { it.requiredString("uuid") }.toSet()
-        tables["kg_folder_settings"] = tables.getValue("kg_folder_settings").filter { it.requiredString("folder_id") in folderIds }
+        val fileIndex = tables.getValue(FILE_TABLE).associateBy { it.requiredString("uuid") }
+        tables["kg_folder_settings"] = tables.getValue("kg_folder_settings").filter { validKgSetting(it, fileIndex) }
         val agentIds = tables.getValue("agents").map { it.requiredString("id") }.toSet()
         val workspaceIds = tables.getValue(WORKSPACE_TABLE).map { it.requiredString("id") }.toSet()
         val mergedSessions = tables.getValue("sessions").map { it.requiredString("id") }.toSet()
@@ -1364,8 +1372,9 @@ class RoomBackupDataSource(
         validateUnique(payload, "messages", "id")
         validateUnique(payload, "knowledge_citations", "id")
         validateUnique(payload, "kg_folder_settings", "folder_id")
+        val settingFiles = payload.rows(FILE_TABLE).associateBy { it.requiredString("uuid") }
         payload.rows("kg_folder_settings").forEach { row ->
-            if (row.requiredString("mode") !in setOf("AUTO", "WORK", "SHARED", "MERGE_PARENT")) throw BackupValidationException("文件夹图谱设置无效")
+            if (!validKgSetting(row, settingFiles)) throw BackupValidationException("文件夹图谱设置无效")
         }
         validateUnique(payload, "attachments", "id")
         validateUnique(payload, "artifacts", "id")

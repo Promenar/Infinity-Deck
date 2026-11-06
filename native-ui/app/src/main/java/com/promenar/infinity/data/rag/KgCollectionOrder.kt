@@ -97,13 +97,14 @@ internal class KgCollectionOrder(private val database: InfinityDatabase) {
             args = arrayOf(root, root)
         } else return emptyList()
         val rootDocument = if (collectionId == "shared") "0" else "w.uuid=?"
+        val queryArgs = args + if (collectionId == "shared") "DOC_SHARED" else "DOC_COLLECTION:$collectionId"
         val sql = "WITH RECURSIVE folders(uuid) AS ($seeds UNION SELECT child.uuid FROM workspace_files child " +
             "JOIN folders parent ON child.parent_uuid=parent.uuid JOIN kg_folder_settings s ON s.folder_id=child.uuid " +
             "WHERE child.is_directory=1 AND child.in_recycle_bin=0 AND s.mode='MERGE_PARENT') " +
             "SELECT w.uuid,w.name FROM workspace_files w WHERE w.is_directory=0 AND w.in_recycle_bin=0 " +
-            "AND (w.parent_uuid IN (SELECT uuid FROM folders) OR $rootDocument) " +
+            "AND (w.parent_uuid IN (SELECT uuid FROM folders) OR $rootDocument OR EXISTS (SELECT 1 FROM kg_folder_settings ds WHERE ds.folder_id=w.uuid AND ds.mode=?)) " +
             "AND NOT EXISTS (SELECT 1 FROM kg_collection_members m WHERE m.doc_id=w.uuid) ORDER BY w.uuid"
-        val candidates = database.query(SimpleSQLiteQuery(sql, args)).use { c -> buildList {
+        val candidates = database.query(SimpleSQLiteQuery(sql, queryArgs)).use { c -> buildList {
             while (c.moveToNext()) add(KgCollectionArticle(c.getString(0), c.getString(1), null, null, 0))
         } }
         val repository = KgCollectionRepository(database)

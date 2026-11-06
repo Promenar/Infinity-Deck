@@ -47,7 +47,7 @@ class BranchSessionMigrationTest {
                 sqlite.version = 28
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
             try {
                 assertThat(room.openHelper.writableDatabase.version).isEqualTo(36)
                 val session = room.sessionDao().getById("old")!!

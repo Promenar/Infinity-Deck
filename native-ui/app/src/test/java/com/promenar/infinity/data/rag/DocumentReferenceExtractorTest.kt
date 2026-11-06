@@ -2,12 +2,36 @@ package com.promenar.infinity.data.rag
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.entity.FileEntry
+import io.mockk.every
+import io.mockk.mockk
+import org.junit.Before
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], application = android.app.Application::class)
 class DocumentReferenceExtractorTest {
     @get:Rule val temporary = TemporaryFolder()
+
+    @Before fun setupPdfResources() {
+        val classResource = requireNotNull(com.tom_roush.pdfbox.pdmodel.PDDocument::class.java.getResource("PDDocument.class"))
+        val dependencyJar = java.io.File((classResource.openConnection() as java.net.JarURLConnection).jarFileURL.toURI())
+        val transforms = generateSequence(dependencyJar.parentFile) { it.parentFile }.first { it.name == "transforms" }
+        val assetsRoot = transforms.listFiles().orEmpty().asSequence()
+            .flatMap { java.io.File(it, "transformed").listFiles().orEmpty().asSequence() }
+            .filter { it.name.contains("pdfbox") }.map { java.io.File(it, "assets") }
+            .first { java.io.File(it, "com/tom_roush/pdfbox/resources/afm/Times-Roman.afm").isFile }
+        val assets = mockk<android.content.res.AssetManager>()
+        every { assets.open(any()) } answers { java.io.File(assetsRoot, firstArg<String>()).inputStream() }
+        val context = mockk<android.content.Context>()
+        every { context.applicationContext } returns context
+        every { context.assets } returns assets
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+    }
 
     @Test fun `空白PDF识别为没有文字层`() {
         val root = temporary.newFolder("empty-pdf")
@@ -34,6 +58,40 @@ class DocumentReferenceExtractorTest {
         }
         root.resolve("binary").writeBytes(byteArrayOf(0, 1, 2, 0xff.toByte()))
         assertThat(runCatching { DocumentReferenceExtractor(64, 0).extract(entry(root.path, "binary", "text/plain")) }.exceptionOrNull()).isInstanceOf(DocumentFormatException::class.java)
+    }
+
+    @Test fun `GBK少量控制字符可识别而过多控制字符被拒绝`() {
+        val root = temporary.newFolder("gbk-controls")
+        val text = "虚构中文资料".repeat(30) + "\u0001"
+        root.resolve("valid.txt").writeBytes(text.toByteArray(java.nio.charset.Charset.forName("GBK")))
+        assertThat(DocumentReferenceExtractor(256, 0).extract(entry(root.path, "valid.txt", "text/plain")).graphText).isEqualTo(text)
+        root.resolve("bad.txt").writeBytes("中文\u0001\u0002".toByteArray(java.nio.charset.Charset.forName("GBK")))
+        assertThat(runCatching { DocumentReferenceExtractor(64, 0).extract(entry(root.path, "bad.txt", "text/plain")) }.exceptionOrNull()).isInstanceOf(DocumentFormatException::class.java)
+    }
+
+    @Test fun `文字PDF正常抽取`() {
+        val root = temporary.newFolder("text-pdf")
+        com.tom_roush.pdfbox.pdmodel.PDDocument().use { doc ->
+            val page = com.tom_roush.pdfbox.pdmodel.PDPage()
+            doc.addPage(page)
+            com.tom_roush.pdfbox.pdmodel.PDPageContentStream(doc, page).use { stream ->
+                stream.beginText()
+                stream.setFont(com.tom_roush.pdfbox.pdmodel.font.PDType1Font.HELVETICA, 12f)
+                stream.newLineAtOffset(40f, 700f)
+                stream.showText("A fictional document has enough readable text for extraction.")
+                stream.endText()
+            }
+            doc.save(root.resolve("text.pdf"))
+        }
+        assertThat(DocumentReferenceExtractor(128, 0).extract(entry(root.path, "text.pdf", "application/pdf")).graphText).contains("fictional document")
+    }
+
+    @Test fun `旧版Word样本可抽取正文`() {
+        val sample = requireNotNull(javaClass.classLoader?.getResource("library/sample.doc")) { "主控需要提供 src/test/resources/library/sample.doc" }
+        val root = temporary.newFolder("doc-fixture")
+        sample.openStream().use { input -> root.resolve("sample.doc").outputStream().use { input.copyTo(it) } }
+        val text = DocumentReferenceExtractor(256, 0).extract(entry(root.path, "sample.doc", "application/msword")).graphText
+        assertThat(text.trim()).isNotEmpty()
     }
 
     @Test
@@ -93,7 +151,7 @@ class DocumentReferenceExtractorTest {
     @Test
     fun `非法UTF8文本失败关闭而不是替换字符继续索引`() {
         val root = temporary.newFolder("invalid")
-        root.resolve("bad.txt").writeBytes(byteArrayOf(0x61, 0xC3.toByte(), 0x28))
+        root.resolve("bad.txt").writeBytes(byteArrayOf(0x61, 0xff.toByte(), 0x28))
 
         val failure = runCatching {
             DocumentReferenceExtractor(8, 2).extract(entry(root.path, "bad.txt", "text/plain"))
@@ -177,7 +235,7 @@ class DocumentReferenceExtractorTest {
     fun `HTML必须是合法UTF8且不会按平台默认编码替换`() {
         val root = temporary.newFolder("html-invalid")
         root.resolve("bad.html").writeBytes(
-            "<p>ok".toByteArray() + byteArrayOf(0xC3.toByte(), 0x28) + "</p>".toByteArray(),
+            "<p>ok".toByteArray() + byteArrayOf(0xff.toByte(), 0x28) + "</p>".toByteArray(),
         )
 
         val failure = runCatching {
@@ -241,10 +299,10 @@ class DocumentReferenceExtractorTest {
     }
 
     @Test
-    fun `HTML属于文件引用索引白名单且旧DOC不在承诺内`() {
+    fun `HTML与旧DOC属于文件引用索引白名单`() {
         assertThat(DocumentReferenceExtractor.SUPPORTED_MIME_TYPES).contains("text/html")
         assertThat(DocumentReferenceExtractor.SUPPORTED_MIME_TYPES).contains(DocumentReferenceExtractor.DOCX_MIME)
-        assertThat(DocumentReferenceExtractor.SUPPORTED_MIME_TYPES).doesNotContain("application/msword")
+        assertThat(DocumentReferenceExtractor.SUPPORTED_MIME_TYPES).contains("application/msword")
     }
 
     private fun entry(root: String, name: String, mime: String) = FileEntry(

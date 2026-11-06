@@ -1,19 +1,18 @@
 package com.promenar.infinity.data.library
 
+import com.promenar.infinity.data.rag.DocumentTextEncoding
 import com.promenar.infinity.data.local.db.dao.FileEntryDao
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.repository.SecureWorkspaceFileOps
 import com.promenar.infinity.data.repository.WorkspaceMutationCoordinator
 import com.promenar.infinity.data.repository.WorkspaceTextContentPolicy
 import com.promenar.infinity.domain.workspace.WorkspaceInternalPaths
-import java.io.InputStreamReader
 import java.io.Reader
-import java.nio.charset.CodingErrorAction
 import java.nio.file.Paths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 在受控根锁与安全文件句柄中读取有界 UTF-8 预览。 */
+/** 在受控根锁与安全文件句柄中读取有界文本预览。 */
 internal class LibraryTextReader(
     private val fileEntryDao: FileEntryDao,
     private val ensureRoot: suspend () -> FileEntry,
@@ -30,11 +29,10 @@ internal class LibraryTextReader(
                 ?: throw SecurityException("资料路径无效")
             require(path != "/" && !WorkspaceInternalPaths.containsReservedPath(path)) { "资料路径不可读取" }
             WorkspaceTextContentPolicy().requireSupportedType(entry.name, entry.mimeType)
-            fileOps.readStream(rootPath, path.trimStart('/').split('/'), Long.MAX_VALUE) { input ->
-                val decoder = Charsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                readLibraryTextPrefix(InputStreamReader(input, decoder), maxChars)
+            val parts = path.trimStart('/').split('/')
+            val encoding = DocumentTextEncoding.detect { check -> fileOps.readStream(rootPath, parts, Long.MAX_VALUE, check) }
+            fileOps.readStream(rootPath, parts, Long.MAX_VALUE) { input ->
+                readLibraryTextPrefix(DocumentTextEncoding.reader(input, encoding), maxChars)
             }
         }
     }
@@ -52,7 +50,7 @@ internal fun readLibraryTextPrefix(reader: Reader, maxChars: Int): LibraryExtrac
         text.append(buffer, 0, count)
     }
     val content = text.toString().removePrefix("\uFEFF")
-    require('\u0000' !in content) { "资料文件不是 UTF-8 文本" }
+    require('\u0000' !in content) { "资料文件不是文本" }
     val body = toDocumentBody(content, limit, markdown = false, extracted = false)
     return LibraryExtractedText(body.text, body.truncated)
 }

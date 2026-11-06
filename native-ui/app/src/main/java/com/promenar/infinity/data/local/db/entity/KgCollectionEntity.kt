@@ -20,13 +20,6 @@ data class KgFolderSettingEntity(
     val mode: String,
 )
 
-@Entity(tableName = "kg_document_settings")
-data class KgDocumentSettingEntity(
-    @PrimaryKey @ColumnInfo(name = "doc_id") val docId: String,
-    val mode: String,
-    @ColumnInfo(name = "target_collection_id") val targetCollectionId: String? = null,
-)
-
 @Entity(tableName = "kg_collection_members", indices = [Index("collection_id")])
 data class KgCollectionMemberEntity(
     @PrimaryKey @ColumnInfo(name = "doc_id") val docId: String,

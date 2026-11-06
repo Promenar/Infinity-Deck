@@ -12,44 +12,80 @@ class DocumentFormatException(val code: DocumentFormatError, cause: Throwable? =
 /** 逐流严格校验编码，再打开读取器；不缓存完整文件。 */
 internal object DocumentTextEncoding {
     fun open(file: File): java.io.Reader {
-        val prefix = file.inputStream().use { input ->
+        val encoding = detect { check -> file.inputStream().use(check) }
+        return reader(file.inputStream(), encoding)
+    }
+
+    data class Encoding(val charset: Charset, val skip: Int)
+
+    /** 通过可重新打开的受控输入逐次校验完整流。 */
+    fun detect(withStream: ((java.io.InputStream) -> Boolean) -> Boolean): Encoding {
+        var prefix = ByteArray(0)
+        withStream { input ->
             val bytes = ByteArray(3)
             var count = 0
             while (count < bytes.size) {
-                val read = input.read(bytes, count, bytes.size - count)
-                if (read < 0) break
-                if (read == 0) continue
-                count += read
+                val n = input.read(bytes, count, bytes.size - count)
+                if (n < 0) break
+                if (n > 0) count += n else { val b = input.read(); if (b < 0) break; bytes[count++] = b.toByte() }
             }
-            bytes.copyOf(count)
+            prefix = bytes.copyOf(count)
+            true
         }
+        return candidates(prefix).firstOrNull { encoding -> withStream { valid(it, encoding) } }
+            ?: throw DocumentFormatException(DocumentFormatError.TEXT_ENCODING_UNRECOGNIZED)
+    }
+
+    suspend fun detectSuspending(withStream: suspend ((java.io.InputStream) -> Boolean) -> Boolean): Encoding {
+        var prefix = ByteArray(0)
+        withStream { input ->
+            val bytes = ByteArray(3)
+            var count = 0
+            while (count < bytes.size) {
+                val n = input.read(bytes, count, bytes.size - count)
+                if (n < 0) break
+                if (n > 0) count += n else { val b = input.read(); if (b < 0) break; bytes[count++] = b.toByte() }
+            }
+            prefix = bytes.copyOf(count)
+            true
+        }
+        for (encoding in candidates(prefix)) if (withStream { valid(it, encoding) }) return encoding
+        throw DocumentFormatException(DocumentFormatError.TEXT_ENCODING_UNRECOGNIZED)
+    }
+
+    private fun candidates(prefix: ByteArray): List<Encoding> {
         val bom = when {
-            prefix.size >= 3 && prefix[0] == 0xef.toByte() && prefix[1] == 0xbb.toByte() && prefix[2] == 0xbf.toByte() -> Charsets.UTF_8 to 3
-            prefix.size >= 2 && prefix[0] == 0xff.toByte() && prefix[1] == 0xfe.toByte() -> Charsets.UTF_16LE to 2
-            prefix.size >= 2 && prefix[0] == 0xfe.toByte() && prefix[1] == 0xff.toByte() -> Charsets.UTF_16BE to 2
+            prefix.size >= 3 && prefix[0] == 0xef.toByte() && prefix[1] == 0xbb.toByte() && prefix[2] == 0xbf.toByte() -> Encoding(Charsets.UTF_8, 3)
+            prefix.size >= 2 && prefix[0] == 0xff.toByte() && prefix[1] == 0xfe.toByte() -> Encoding(Charsets.UTF_16LE, 2)
+            prefix.size >= 2 && prefix[0] == 0xfe.toByte() && prefix[1] == 0xff.toByte() -> Encoding(Charsets.UTF_16BE, 2)
             else -> null
         }
-        val candidates = bom?.let { listOf(it) } ?: listOf(Charsets.UTF_8 to 0, Charset.forName("GB18030") to 0)
-        val selected = candidates.firstOrNull { (charset, skip) -> valid(file, charset, skip) }
-            ?: throw DocumentFormatException(DocumentFormatError.TEXT_ENCODING_UNRECOGNIZED)
-        return reader(file, selected.first, selected.second)
+        return bom?.let { listOf(it) } ?: listOf(Encoding(Charsets.UTF_8, 0), Encoding(Charset.forName("GB18030"), 0))
     }
 
-    private fun reader(file: File, charset: Charset, skip: Int): java.io.Reader {
-        val input = file.inputStream().buffered()
-        repeat(skip) { if (input.read() < 0) throw DocumentFormatException(DocumentFormatError.TEXT_ENCODING_UNRECOGNIZED) }
-        return InputStreamReader(input, charset.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT))
+    fun reader(input: java.io.InputStream, encoding: Encoding): java.io.Reader {
+        val buffered = input.buffered()
+        repeat(encoding.skip) { if (buffered.read() < 0) throw DocumentFormatException(DocumentFormatError.TEXT_ENCODING_UNRECOGNIZED) }
+        return InputStreamReader(buffered, encoding.charset.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT))
     }
 
-    private fun valid(file: File, charset: Charset, skip: Int): Boolean = try {
-        reader(file, charset, skip).use { input ->
-            val buffer = CharArray(8192)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if ((0 until count).any { buffer[it] == '\u0000' }) return false
+    private fun valid(input: java.io.InputStream, encoding: Encoding): Boolean {
+        return try {
+        val reader = reader(input, encoding)
+        val buffer = CharArray(8192)
+        var total = 0L
+        var controls = 0L
+        while (true) {
+            val count = reader.read(buffer)
+            if (count < 0) break
+            for (i in 0 until count) {
+                val c = buffer[i]
+                if (c == '\u0000') return false
+                if (Character.isISOControl(c) && c !in "\t\n\r\u000c") controls++
             }
+            total += count
         }
-        true
-    } catch (_: CharacterCodingException) { false }
+        encoding.charset.name() != "GB18030" || controls * 100 <= total
+        } catch (_: CharacterCodingException) { false }
+    }
 }

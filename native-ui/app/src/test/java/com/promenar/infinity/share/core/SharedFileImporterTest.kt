@@ -198,7 +198,7 @@ class SharedFileImporterTest {
     @Test
     fun `真EOF留下不完整UTF8时仍拒绝`() = runTest {
         val uri = Uri.parse("content://fixture/truncated.txt")
-        val truncated = byteArrayOf(0xE4.toByte(), 0xB8.toByte())
+        val truncated = byteArrayOf(0xE4.toByte())
         val source = FakeSource(
             metadata = mapOf(uri to meta("truncated.txt", "text/plain", truncated.size.toLong())),
             bytes = mapOf(uri to truncated),
@@ -228,7 +228,7 @@ class SharedFileImporterTest {
     @Test
     fun `非法UTF8 NUL PDF与ZIP魔数不能伪装成文本`() = runTest {
         val fixtures = linkedMapOf(
-            Uri.parse("content://fixture/invalid.txt") to byteArrayOf(0x61, 0xC3.toByte(), 0x28),
+            Uri.parse("content://fixture/invalid.txt") to byteArrayOf(0x61, 0xff.toByte(), 0x28),
             Uri.parse("content://fixture/embedded-nul.txt") to byteArrayOf(0x61, 0x00, 0x62),
             Uri.parse("content://fixture/pdf.txt") to "%PDF-1.7".toByteArray(),
             Uri.parse("content://fixture/zip.txt") to byteArrayOf(0x50, 0x4B, 0x03, 0x04),
@@ -246,6 +246,15 @@ class SharedFileImporterTest {
         assertThat(result.rejected.map { it.reason }).containsExactlyElementsIn(
             List(fixtures.size) { ShareRejectReason.MimeMismatch },
         )
+    }
+
+    @Test
+    fun `分享导入GBK文本保留原字节`() = runTest {
+        val uri = Uri.parse("content://fixture/gbk.txt")
+        val bytes = "虚构中文资料".toByteArray(java.nio.charset.Charset.forName("GBK"))
+        val source = FakeSource(metadata = mapOf(uri to meta("gbk.txt", "text/plain", bytes.size.toLong())), bytes = mapOf(uri to bytes))
+        val result = SharedFileImporter(source, repository()).import(request(listOf(uri)), ROOT)
+        assertThat(result.created).hasSize(1)
     }
 
     @Test

@@ -94,6 +94,19 @@ class FileManagerOperationsTest {
         assertEquals("keep", backend.bytes("/keep.txt").decodeToString())
     }
 
+    @Test fun `文件管理器预览GBK和UTF16中文`() = runBlocking {
+        val chinese = "虚构中文资料"
+        val backend = MemoryFileBackend().apply {
+            addFile("/gbk.txt", chinese.toByteArray(java.nio.charset.Charset.forName("GBK")))
+            addFile("/utf16.txt", byteArrayOf(0xff.toByte(), 0xfe.toByte()) + chinese.toByteArray(Charsets.UTF_16LE))
+        }
+        val operations = operations(mapOf("external:test" to backend))
+        for (name in listOf("gbk.txt", "utf16.txt")) {
+            val preview = operations.preview(FileRef("external:test", "/$name"), 100) as FilePreview.Text
+            assertEquals(chinese, preview.content)
+        }
+    }
+
     @Test fun `搜索限制深度数量与筛选`() = runBlocking {
         val backend = MemoryFileBackend()
         backend.addFile("/Report.TXT", "a".toByteArray(), 200)

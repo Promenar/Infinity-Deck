@@ -147,9 +147,12 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
 
     suspend fun readDocumentSetting(docId: String): KgDocumentAssignment = database.withTransaction {
         val folder = folderDocumentDescriptor(docId)
-        val setting = database.query(SimpleSQLiteQuery("SELECT mode,target_collection_id FROM kg_document_settings WHERE doc_id=?", arrayOf(docId))).use { c ->
-            if (c.moveToFirst()) (runCatching { KgDocumentSetting.valueOf(c.getString(0)) }.getOrNull() ?: KgDocumentSetting.FOLLOW_FOLDER) to
-                (if (c.isNull(1)) null else c.getString(1)) else KgDocumentSetting.FOLLOW_FOLDER to null
+        val raw = database.kgNodeDao().folderSetting(docId)
+        val setting = when {
+            raw == "DOC_STANDALONE" -> KgDocumentSetting.STANDALONE to null
+            raw == "DOC_SHARED" -> KgDocumentSetting.SHARED to null
+            raw?.startsWith("DOC_COLLECTION:work:") == true -> KgDocumentSetting.COLLECTION to raw.removePrefix("DOC_COLLECTION:")
+            else -> KgDocumentSetting.FOLLOW_FOLDER to null
         }
         KgDocumentAssignment(setting.first, setting.second, folder.id, folder.title)
     }
@@ -160,8 +163,11 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
             require(!targetCollectionId.isNullOrBlank() && collectionKind(targetCollectionId) == "work" && targetCollectionId != "work:$docId") { "目标作品合集不存在或不可选" }
         }
         val sql = database.openHelper.writableDatabase
-        if (mode == KgDocumentSetting.FOLLOW_FOLDER) sql.execSQL("DELETE FROM kg_document_settings WHERE doc_id=?", arrayOf(docId))
-        else sql.execSQL("INSERT OR REPLACE INTO kg_document_settings(doc_id,mode,target_collection_id) VALUES(?,?,?)", arrayOf(docId, mode.name, if (mode == KgDocumentSetting.COLLECTION) targetCollectionId else null))
+        if (mode == KgDocumentSetting.FOLLOW_FOLDER) sql.execSQL("DELETE FROM kg_folder_settings WHERE folder_id=?", arrayOf(docId))
+        else {
+            val stored = if (mode == KgDocumentSetting.COLLECTION) "DOC_COLLECTION:$targetCollectionId" else "DOC_${mode.name}"
+            sql.execSQL("INSERT OR REPLACE INTO kg_folder_settings(folder_id,mode) VALUES(?,?)", arrayOf(docId, stored))
+        }
         if (memberCollection(docId) != null) reconcileDocument(docId)
         collectEmptyCollections()
     }
@@ -211,8 +217,10 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
             after = docs.last()
             if (docs.size < 400) break
         }
-        database.openHelper.writableDatabase.execSQL("DELETE FROM kg_folder_settings WHERE NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND f.is_directory=1)")
-        database.openHelper.writableDatabase.execSQL("DELETE FROM kg_document_settings WHERE NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=kg_document_settings.doc_id AND f.is_directory=0)")
+        database.openHelper.writableDatabase.execSQL("""DELETE FROM kg_folder_settings WHERE NOT EXISTS (
+            SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND f.in_recycle_bin=0 AND
+            ((f.is_directory=1 AND kg_folder_settings.mode IN ('AUTO','WORK','SHARED','MERGE_PARENT')) OR
+             (f.is_directory=0 AND (kg_folder_settings.mode IN ('DOC_STANDALONE','DOC_SHARED') OR kg_folder_settings.mode LIKE 'DOC_COLLECTION:work:%'))))""")
         collectEmptyCollections()
     }
 

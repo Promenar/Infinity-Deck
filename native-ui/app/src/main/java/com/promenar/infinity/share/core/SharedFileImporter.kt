@@ -11,10 +11,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.InputStream
+import com.promenar.infinity.data.rag.DocumentTextEncoding
 import java.io.OutputStream
-import java.nio.ByteBuffer
-import java.nio.CharBuffer
-import java.nio.charset.CodingErrorAction
 import java.util.UUID
 
 interface SharedContentSource {
@@ -157,6 +155,31 @@ class SharedFileImporter(
                     results += initial.reject(ShareRejectReason.MimeMismatch)
                     continue
                 }
+                var validatedDigest: ByteArray? = null
+                if (contentMime in TEXT_MIME_TYPES) {
+                    val limit = minOf(MAX_ITEM_BYTES, MAX_BATCH_BYTES - acceptedBytes)
+                    DocumentTextEncoding.detect { check ->
+                        openSource(uri).use { source ->
+                            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                            val limited = object : java.io.FilterInputStream(progressStream(source)) {
+                            private var consumed = 0L
+                            override fun read(): Int {
+                                val value = super.read()
+                                if (value >= 0 && ++consumed > limit) throw WorkspaceFileTooLargeException(limit)
+                                return value
+                            }
+                            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                                val count = super.read(buffer, offset, length)
+                                if (count > 0) { consumed += count; if (consumed > limit) throw WorkspaceFileTooLargeException(limit) }
+                                return count
+                            }
+                            }
+                            val valid = check(java.security.DigestInputStream(limited, digest))
+                            validatedDigest = digest.digest()
+                            valid
+                        }
+                    }
+                }
                 val remainingBatch = MAX_BATCH_BYTES - acceptedBytes
                 val itemLimit = minOf(MAX_ITEM_BYTES, remainingBatch)
                 val creation = createWithStableName(
@@ -169,8 +192,9 @@ class SharedFileImporter(
                     expectedHash = source.contentSha256(uri),
                 ) {
                     openSource(uri).use { input ->
-                        if (contentMime in TEXT_MIME_TYPES) copyUtf8Validated(input, it)
-                        else input.copyTo(it, DEFAULT_BUFFER_SIZE)
+                        val digest = java.security.MessageDigest.getInstance("SHA-256")
+                        java.security.DigestInputStream(progressStream(input), digest).copyTo(it, DEFAULT_BUFFER_SIZE)
+                        if (validatedDigest?.contentEquals(digest.digest()) == false) throw ShareContentMismatchException()
                     }
                 }
                 val entry = creation.entry
@@ -226,6 +250,8 @@ class SharedFileImporter(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (_: com.promenar.infinity.data.rag.DocumentFormatException) {
+                results += initial.reject(ShareRejectReason.MimeMismatch)
             } catch (_: ShareContentMismatchException) {
                 results += initial.reject(ShareRejectReason.MimeMismatch)
             } catch (_: WorkspaceFileTooLargeException) {
@@ -441,17 +467,25 @@ class SharedFileImporter(
             if (bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte() &&
                 bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
             ) return "application/zip"
-            if (bytes.any { it == 0.toByte() }) return "application/octet-stream"
+            // 样本末尾可能截断多字节字符，尝试去掉最多三个尾字节。
+            for (trim in 0..if (eof) 0 else minOf(3, bytes.size)) {
+                val sample = bytes.copyOf(bytes.size - trim)
+                if (sample.isNotEmpty() && runCatching {
+                    DocumentTextEncoding.detect { check -> sample.inputStream().use(check) }
+                }.isSuccess) return "text/plain"
+            }
+            return "application/octet-stream"
+        }
 
-            while (true) {
-                if (isValidUtf8(bytes)) return "text/plain"
-                if (eof || sampled.size() >= SNIFF_BYTES + MAX_UTF8_SEQUENCE_BYTES - 1) {
-                    return "application/octet-stream"
-                }
-                val count = readSome(input, sampled, 1)
-                if (count < 0) eof = true
-                bytes = sampled.toByteArray()
-                if (bytes.any { it == 0.toByte() }) return "application/octet-stream"
+        private fun progressStream(input: InputStream): InputStream = object : java.io.FilterInputStream(input) {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (length == 0) return 0
+                val count = super.read(buffer, offset, length)
+                if (count != 0) return count
+                val value = super.read()
+                if (value < 0) return -1
+                buffer[offset] = value.toByte()
+                return 1
             }
         }
 
@@ -463,52 +497,6 @@ class SharedFileImporter(
             val single = input.read()
             if (single >= 0) target.write(single)
             return if (single >= 0) 1 else -1
-        }
-
-        private fun isValidUtf8(bytes: ByteArray): Boolean = try {
-            Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-            true
-        } catch (_: java.nio.charset.CharacterCodingException) {
-            false
-        }
-
-        internal fun copyUtf8Validated(input: InputStream, output: OutputStream) {
-            val decoder = Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var carry = ByteArray(0)
-            while (true) {
-                var count = input.read(buffer)
-                if (count < 0) break
-                if (count == 0) {
-                    val byte = input.read()
-                    if (byte < 0) break
-                    buffer[0] = byte.toByte()
-                    count = 1
-                }
-                if (buffer.copyOfRange(0, count).any { it == 0.toByte() }) {
-                    throw InvalidShareTextException()
-                }
-                val combined = ByteArray(carry.size + count)
-                carry.copyInto(combined)
-                buffer.copyInto(combined, carry.size, 0, count)
-                val bytes = ByteBuffer.wrap(combined)
-                val chars = CharBuffer.allocate(combined.size.coerceAtLeast(1))
-                val result = decoder.decode(bytes, chars, false)
-                if (result.isError) throw InvalidShareTextException()
-                carry = ByteArray(bytes.remaining()).also { bytes.get(it) }
-                output.write(buffer, 0, count)
-            }
-            val bytes = ByteBuffer.wrap(carry)
-            val chars = CharBuffer.allocate(carry.size.coerceAtLeast(1))
-            val decoded = decoder.decode(bytes, chars, true)
-            if (decoded.isError) throw InvalidShareTextException()
-            val flushed = decoder.flush(chars)
-            if (flushed.isError) throw InvalidShareTextException()
         }
 
         internal fun mimeCompatible(declared: String, resolved: String, sniffed: String?, name: String): Boolean {
@@ -573,5 +561,3 @@ class SharedFileImporter(
         )
     }
 }
-
-internal class InvalidShareTextException : ShareContentMismatchException()

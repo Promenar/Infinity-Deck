@@ -507,6 +507,13 @@ class LibraryKnowledgeSourceTest {
             val preview = reader.read("root", "large", 5)
             assertThat(preview.text).isEqualTo("甲甲甲甲甲")
             assertThat(preview.truncated).isTrue()
+            val chinese = "虚构中文资料"
+            for ((id, bytes) in listOf("gbk" to chinese.toByteArray(java.nio.charset.Charset.forName("GBK")),
+                "utf16" to (byteArrayOf(0xff.toByte(), 0xfe.toByte()) + chinese.toByteArray(Charsets.UTF_16LE)))) {
+                java.nio.file.Files.write(directory.resolve("$id.txt"), bytes)
+                db.fileEntryDao().insert(file(id, "/$id.txt").copy(physicalRootPath = directory.toString()))
+                assertThat(reader.read("root", id, 50).text).isEqualTo(chinese)
+            }
             java.nio.file.Files.createSymbolicLink(directory.resolve("link.txt"), outside)
             db.fileEntryDao().insert(file("link", "/link.txt").copy(physicalRootPath = directory.toString()))
             var rejected = false

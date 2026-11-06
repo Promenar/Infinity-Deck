@@ -8,6 +8,7 @@ import androidx.core.content.FileProvider
 import com.promenar.infinity.data.local.db.dao.VectorizationTaskDao
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.rag.DocumentTextEncoding
 import com.promenar.infinity.data.rag.FileIndexEvent
 import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.WorkspaceLifecycleErrorCode
@@ -326,9 +327,19 @@ internal class DefaultFileOperations(
             type == FileTypeFilter.VIDEO -> FilePreview.Video(shareUri(ref), null)
             isTextFile(entry.name, mimeFor(entry.name)) -> {
                 if (maxTextBytes < 0 || maxTextBytes > MAX_PREVIEW_BYTES) throw FileOpException(FileOpCode.TOO_LARGE)
+                val encoding = DocumentTextEncoding.detectSuspending { check -> handle.backend.readStream(ref.path, Long.MAX_VALUE) { check(it) } }
                 val bytes = handle.backend.readStream(ref.path, Long.MAX_VALUE) { input -> readPreviewBytes(input, maxTextBytes + 1) }
-                FilePreview.Text(bytes.copyOf(minOf(bytes.size, maxTextBytes)).toString(Charsets.UTF_8),
-                    bytes.size > maxTextBytes, entry.name.endsWith(".md", true) || entry.name.endsWith(".markdown", true))
+                val size = minOf(bytes.size, maxTextBytes)
+                val offset = minOf(size, encoding.skip)
+                val decoder = encoding.charset.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                val chars = java.nio.CharBuffer.allocate(size.coerceAtLeast(1))
+                val result = decoder.decode(java.nio.ByteBuffer.wrap(bytes, offset, size - offset), chars, false)
+                if (result.isError) result.throwException()
+                chars.flip()
+                FilePreview.Text(chars.toString(), bytes.size > maxTextBytes,
+                    entry.name.endsWith(".md", true) || entry.name.endsWith(".markdown", true))
             }
             else -> FilePreview.Unsupported
         }

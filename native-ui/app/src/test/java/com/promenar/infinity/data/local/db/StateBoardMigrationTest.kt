@@ -54,7 +54,7 @@ class StateBoardMigrationTest {
                 seed("sessions", mapOf("id" to "s", "agent_id" to "a", "title" to "旧会话"))
                 seed("messages", mapOf("id" to "m", "session_id" to "s", "role" to "assistant", "content" to "保留正文"))
             }
-            val migrated = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS).allowMainThreadQueries().build()
+            val migrated = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
             try {
                 val db = migrated
                 val sqlite = db.openHelper.writableDatabase

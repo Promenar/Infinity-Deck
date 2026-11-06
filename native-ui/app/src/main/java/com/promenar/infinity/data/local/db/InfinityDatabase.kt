@@ -91,7 +91,6 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         com.promenar.infinity.data.local.db.entity.KgCollectionEntity::class,
         com.promenar.infinity.data.local.db.entity.KgFolderSettingEntity::class,
         com.promenar.infinity.data.local.db.entity.KgCollectionMemberEntity::class,
-        com.promenar.infinity.data.local.db.entity.KgDocumentSettingEntity::class,
         KgJitCacheEntity::class,
         KgEvidenceEntity::class,
         KgJitCacheSourceEntity::class,
@@ -115,7 +114,7 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         ParameterSchemeEntity::class,
         com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity::class,
     ],
-    version = 37,
+    version = 36,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

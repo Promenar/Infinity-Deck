@@ -91,6 +91,19 @@ class KgTimelineStoreTest {
         }
     }
 
+    @Test fun `修改文档归属后两侧证据与持久时间区间同步`() = runBlocking<Unit> {
+        fact(3, "同盟"); fact(15, "敌对")
+        collections.setDocumentSetting("doc15", KgDocumentSetting.STANDALONE)
+        val timeline = KgTimelineStore(db)
+        assertThat(timeline.snapshot("work:p", (1..20).map { "doc$it" }.toSet()).states.single().relation).isEqualTo("同盟")
+        assertThat(timeline.snapshot("work:doc15", setOf("doc15")).states.single().relation).isEqualTo("敌对")
+        db.openHelper.readableDatabase.query("SELECT collection_id,COUNT(*) FROM kg_edge_validity GROUP BY collection_id ORDER BY collection_id").use { c ->
+            val counts = buildMap { while (c.moveToNext()) put(c.getString(0), c.getInt(1)) }
+            assertThat(counts).containsEntry("work:p", 1)
+            assertThat(counts).containsEntry("work:doc15", 1)
+        }
+    }
+
     @Test fun `倒叙只作为历史以及旧边位置未知`() = runBlocking<Unit> {
         fact(3, "同盟"); fact(15, "敌对"); fact(19, "同盟", flashback = true)
         val ids = db.kgNodeDao().getByCollection("work:p").associateBy { it.name }

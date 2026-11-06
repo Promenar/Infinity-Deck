@@ -307,6 +307,10 @@ internal class DualDatabaseGraphMerger(
             return mappings[ColumnKey("vectorization_tasks", "id")]?.get(value)
                 ?: RecoveryStableId.map("kg_extraction_tasks", "id", value)
         }
+        if (table == "kg_folder_settings" && column == "mode" && value.startsWith("DOC_COLLECTION:")) {
+            val id = value.removePrefix("DOC_COLLECTION:")
+            return "DOC_COLLECTION:" + (mappings[ColumnKey("kg_collections", "id")]?.get(id) ?: mappedGraphId(id, mappings))
+        }
         if (table == "kg_collections" && column == "root_ref") return mappedDocumentId(value, mappings)
         if (table in setOf("kg_nodes", "kg_edges", "kg_collection_members", "kg_edge_validity", "kg_entity_links") && column == "collection_id") {
             return mappings[ColumnKey("kg_collections", "id")]?.get(value) ?: mappedGraphId(value, mappings)

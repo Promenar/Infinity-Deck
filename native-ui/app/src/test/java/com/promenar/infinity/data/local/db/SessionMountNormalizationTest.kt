@@ -141,7 +141,7 @@ class SessionMountNormalizationTest {
                 db.version = 27
             }
             fun open() = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS).addCallback(SessionMountNormalizationCallback { throw it }).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).addCallback(SessionMountNormalizationCallback { throw it }).allowMainThreadQueries().build()
             if (reopen || afterFirstOpen != null) {
                 val first = open()
                 try { afterFirstOpen?.invoke(first.openHelper.writableDatabase) ?: first.openHelper.writableDatabase } finally { first.close() }

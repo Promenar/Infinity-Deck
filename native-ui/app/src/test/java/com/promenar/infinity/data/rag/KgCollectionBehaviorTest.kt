@@ -62,10 +62,33 @@ class KgCollectionBehaviorTest {
         assertThat(collections.documentCollectionIdForRead("第1章")).isEqualTo("shared")
         collections.setDocumentSetting("第1章", KgDocumentSetting.FOLLOW_FOLDER)
         assertThat(collections.readDocumentSetting("第1章").mode).isEqualTo(KgDocumentSetting.FOLLOW_FOLDER)
-        assertThat(db.openHelper.readableDatabase.query("SELECT * FROM kg_document_settings WHERE doc_id='第1章'").use { it.count }).isEqualTo(0)
+        assertThat(db.openHelper.readableDatabase.query("SELECT * FROM kg_folder_settings WHERE folder_id='第1章'").use { it.count }).isEqualTo(0)
         assertThat(collections.collectionForDocument("第1章")).isEqualTo("work:p")
         db.openHelper.writableDatabase.execSQL("DELETE FROM kg_collections WHERE id='work:p'")
         assertThat(collections.collectionForDocument("第2章")).isEqualTo("work:第2章")
+    }
+
+    @Test fun `未抽取文档设置参与篇序且清理保留设置`() = runBlocking<Unit> {
+        folder("p", null); file("第1章", "p"); write("第1章")
+        file("第2章", null)
+        collections.setDocumentSetting("第2章", KgDocumentSetting.COLLECTION, "work:p")
+        assertThat(collections.listArticles("work:p").map { it.title }).containsExactly("第1章", "第2章").inOrder()
+        assertThat(collections.readFolderSetting("第2章")).isEqualTo(KgFolderSetting.AUTO)
+        collections.reconcileDocuments()
+        assertThat(collections.readDocumentSetting("第2章").mode).isEqualTo(KgDocumentSetting.COLLECTION)
+        db.openHelper.writableDatabase.execSQL("INSERT INTO kg_folder_settings(folder_id,mode) VALUES('p','DOC_SHARED')")
+        collections.reconcileDocuments()
+        assertThat(collections.readFolderSetting("p")).isEqualTo(KgFolderSetting.AUTO)
+    }
+
+    @Test fun `归属变化迁移证据并保留另一合集证据`() = runBlocking<Unit> {
+        folder("p", null); folder("q", null); file("one", "p"); file("two", "q")
+        write("one"); write("two")
+        val before = graphCounts("work:p").third + graphCounts("work:q").third
+        collections.setDocumentSetting("one", KgDocumentSetting.COLLECTION, "work:q")
+        assertThat(graphCounts("work:p").third).isEqualTo(0)
+        assertThat(graphCounts("work:q").third).isEqualTo(before)
+        assertThat(collections.collectionForDocument("one")).isEqualTo("work:q")
     }
 
     @Test fun `合集自然顺序和手动顺序在新增文档后保持`() = runBlocking<Unit> {
