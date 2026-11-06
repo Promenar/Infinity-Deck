@@ -1,8 +1,6 @@
 package com.promenar.infinity.ui.common
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.basicMarquee
-import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -83,11 +81,6 @@ fun InfinitySettingsItem(
     )
 }
 
-/** 单行标题跑马灯：停 1.5 秒后以 24dp/s 缓慢滚动，每轮之间再停 2 秒。 */
-private const val TitleMarqueeInitialDelayMillis = 1_500
-private const val TitleMarqueeRepeatDelayMillis = 2_000
-private val TitleMarqueeVelocity = 24.dp
-
 /** 所有设置行共享几何布局；交互与状态语义由包装控件提供。 */
 @Composable
 internal fun InfinitySettingsRowLayout(
@@ -106,15 +99,14 @@ internal fun InfinitySettingsRowLayout(
     horizontalPadding: Dp = InfinitySpacing.RowHorizontal,
     // 副标题默认单行；列表项需要完整说明时可放宽到两行。
     subtitleMaxLines: Int = 1,
-    /** 标题始终单行：放不下时缓慢横向滚动（系统关闭动画时改为省略号），列表行不会因长标题变成两行。 */
-    marqueeTitle: Boolean = false,
+    /** 标题始终单行（含窄屏与大字号），列表行不会因长标题变成两行。 */
+    singleLineTitle: Boolean = false,
     /** 多段元数据副标题：非空时以 [InfinityMetaLine] 排版并取代 [subtitle]，整段换行、分隔符不落行首行尾。 */
     subtitleSegments: List<String>? = null,
     /** 自定义副标题（如文字后跟状态标签）：非空时取代 [subtitle] 与 [subtitleSegments]。 */
     subtitleContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
-    val marquee = marqueeTitle && rememberAnimationsEnabled()
     val segments = subtitleSegments?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() }
     val hasSubtitle = subtitle != null || segments != null || subtitleContent != null
     // 同组有双行项时，单行项也取双行高，标题在行内垂直居中。
@@ -138,21 +130,22 @@ internal fun InfinitySettingsRowLayout(
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text(title, style = titleTextStyle ?: MaterialTheme.typography.bodyLarge,
-                    color = titleColor ?: MaterialTheme.colorScheme.onSurface,
-                    modifier = if (marquee) Modifier.basicMarquee(
-                        iterations = Int.MAX_VALUE,
-                        repeatDelayMillis = TitleMarqueeRepeatDelayMillis,
-                        initialDelayMillis = TitleMarqueeInitialDelayMillis,
-                        velocity = TitleMarqueeVelocity,
-                    ) else Modifier,
-                    maxLines = when {
-                        marqueeTitle -> 1
-                        expandTitle -> Int.MAX_VALUE
-                        !hasSubtitle -> 2
-                        else -> 1
-                    },
-                    overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis)
+                val titleStyle = titleTextStyle ?: MaterialTheme.typography.bodyLarge
+                val titleTextColor = titleColor ?: MaterialTheme.colorScheme.onSurface
+                val titleLines = when {
+                    singleLineTitle -> 1
+                    expandTitle -> Int.MAX_VALUE
+                    !hasSubtitle -> 2
+                    else -> 1
+                }
+                // 单行标题放不下时横滑查看、右侧渐隐，不用省略号。
+                if (titleLines == 1) {
+                    InfinityScrollingLine(Modifier.fillMaxWidth()) {
+                        Text(title, style = titleStyle, color = titleTextColor, maxLines = 1, softWrap = false)
+                    }
+                } else {
+                    Text(title, style = titleStyle, color = titleTextColor, maxLines = titleLines, overflow = TextOverflow.Ellipsis)
+                }
                 if (subtitleContent != null) {
                     Spacer(Modifier.height(InfinitySpacing.RowTwoLineGap))
                     subtitleContent()
@@ -167,10 +160,17 @@ internal fun InfinitySettingsRowLayout(
                     )
                 } else if (subtitle != null) {
                     Spacer(Modifier.height(InfinitySpacing.RowTwoLineGap))
-                    Text(if (subtitleIsIdentifier) subtitle.breakableIdentifier() else subtitle,
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = subtitleModifier,
-                        maxLines = subtitleMaxLines, overflow = TextOverflow.Ellipsis)
+                    if (subtitleMaxLines == 1) {
+                        InfinityScrollingLine(subtitleModifier.fillMaxWidth()) {
+                            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, softWrap = false)
+                        }
+                    } else {
+                        Text(if (subtitleIsIdentifier) subtitle.breakableIdentifier() else subtitle,
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = subtitleModifier,
+                            maxLines = subtitleMaxLines, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
             if (trailingContent != null) {

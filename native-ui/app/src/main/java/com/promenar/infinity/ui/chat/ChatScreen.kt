@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.promenar.infinity.data.chat.queue.ComposerQuotes
 import com.promenar.infinity.ui.chat.quote.ComposerQuoteArea
@@ -2507,16 +2508,14 @@ fun ChatTopBar(
                             .testTag("chat_top_branch"),
                     )
                 }
-                Text(
+                // 长标题单行横滑、右侧渐隐，不用省略号。
+                InfinityHeaderTitle(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .heightIn(min = if (statusLine) 32.dp else 48.dp)
                         .clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_menu_rename), onClick = onRename)
-                        .wrapContentHeight(Alignment.CenterVertically)
                         .testTag("chat_top_title"),
                 )
               }

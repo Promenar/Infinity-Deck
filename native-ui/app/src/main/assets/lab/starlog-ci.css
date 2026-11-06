@@ -1,0 +1,24 @@
+/* 视觉实验室浏览器版本的演示网页样式：模拟第三方站点，不跟随应用主题。 */
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,sans-serif;color:#1f2328;background:#fff}
+header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #e4e6eb}
+.logo{width:22px;height:22px;border-radius:6px;background:#2f3e9e}
+.brand{font-weight:600}
+main{padding:18px}
+h1{font-size:20px;margin:0 0 4px}
+.meta{color:#59636e;font-size:13px;margin-bottom:16px}
+.job{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #e4e6eb;border-radius:10px;margin-bottom:10px}
+.dot{width:10px;height:10px;border-radius:50%}
+.ok{background:#1a7f37}.fail{background:#cf222e}
+.job .name{flex:1;font-weight:500}
+.job .time{color:#59636e;font-size:13px;font-variant-numeric:tabular-nums}
+.log{font:12px/1.5 ui-monospace,monospace;background:#f6f8fa;border-radius:8px;padding:10px 12px;color:#59636e;margin:4px 0 16px;white-space:pre-wrap}
+.btn{display:inline-block;padding:10px 16px;border-radius:8px;font-weight:600;border:1px solid #d0d7de;background:#f6f8fa;color:#1f2328}
+.primary{background:#2f3e9e;border-color:#2f3e9e;color:#fff}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+label{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
+.field{width:100%;padding:11px 12px;border:1px solid #d0d7de;border-radius:8px;font-size:15px;min-height:44px;color:#1f2328}
+.card{max-width:380px;margin:28px auto;padding:22px;border:1px solid #e4e6eb;border-radius:14px}
+.hl{position:relative}
+.hl::after{content:'';position:absolute;left:-3px;top:-3px;right:-3px;bottom:-3px;border:2px solid var(--hl);border-radius:6px;pointer-events:none}
+.badge{position:absolute;left:-5px;top:-23px;padding:1px 6px;border-radius:6px;white-space:nowrap;font:600 11px/16px system-ui,sans-serif;color:#fff;background:var(--hl)}

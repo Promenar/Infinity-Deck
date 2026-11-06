@@ -16,7 +16,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 
@@ -35,12 +34,14 @@ fun InfinityValueRow(
         title = title, subtitle = subtitle, icon = icon, leadingSpacer = leadingSpacer, enabled = enabled,
         modifier = modifier.semantics { stateDescription = value }
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        trailingMaxWidthFraction = 0.4f,
+        trailingMaxWidthFraction = 0.5f,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(value, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false))
+            // 取值放不下时横滑查看、右侧渐隐，不用省略号。
+            InfinityScrollingLine(Modifier.weight(1f, fill = false)) {
+                Text(value, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+            }
             Spacer(Modifier.width(4.dp))
             Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.hub
 
+import com.promenar.infinity.ui.common.InfinityScrollingLine
 import androidx.compose.animation.Crossfade
 import com.promenar.infinity.domain.generation.GenerationPhase
 import com.promenar.infinity.domain.generation.GenerationTaskSnapshot
@@ -986,8 +987,8 @@ private fun HubSessionRow(
         InfinitySettingsRowLayout(
             title = session.title.ifBlank { stringResource(R.string.hub_session_untitled) },
             subtitle = subtitle,
-            // 会话行固定单行：长标题缓慢滚动，不折成两行撑高列表。
-            marqueeTitle = true,
+            // 会话行固定单行：长标题横滑查看，不折成两行撑高列表。
+            singleLineTitle = true,
             modifier = Modifier
                 .testTag(tag)
                 // 内屏三列：会话列正在显示的会话与设置目录的选中项同样高亮。
@@ -1292,23 +1293,11 @@ private fun HubRowLayout(
                     )
                     Spacer(Modifier.width(InfinitySpacing.XSmall))
                 }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = titleColor,
-                    maxLines = maxLines,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                HubRowText(title, MaterialTheme.typography.bodyLarge, titleColor, maxLines)
             }
             if (subtitle != null) {
                 Spacer(Modifier.height(InfinitySpacing.RowTwoLineGap))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = maxLines,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                HubRowText(subtitle, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant, maxLines)
             }
         }
         if (trailing != null) {
@@ -1319,6 +1308,18 @@ private fun HubRowLayout(
                 content = trailing,
             )
         }
+    }
+}
+
+/** 单行时放不下就横滑查看、右侧渐隐，不用省略号；大字号放宽到两行时按行数省略。 */
+@Composable
+private fun HubRowText(text: String, style: androidx.compose.ui.text.TextStyle, color: Color, maxLines: Int) {
+    if (maxLines == 1) {
+        InfinityScrollingLine(Modifier.fillMaxWidth()) {
+            Text(text = text, style = style, color = color, maxLines = 1, softWrap = false)
+        }
+    } else {
+        Text(text = text, style = style, color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
     }
 }
 

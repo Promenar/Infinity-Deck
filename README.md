@@ -118,7 +118,7 @@ The built-in agent browser lets you watch, take over and hand control back. Pass
 
 **Install:** Download the APK and its `.sha256` file from [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases), check the SHA-256 and install it. Public releases can lag behind the source tree. Do not install CI artifacts, debug APKs or repackaged builds from other sources.
 
-The source tree is at `v0.33.3-beta` (versionCode `92`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.33.4-beta` (versionCode `93`). See the [changelog](CHANGELOG.md) for what changed.
 
 ## Build from source
 

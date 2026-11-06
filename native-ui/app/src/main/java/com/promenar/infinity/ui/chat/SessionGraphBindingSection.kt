@@ -113,7 +113,7 @@ internal fun SessionGraphBindingSection(
                 subtitle = graphSubtitle(current),
                 icon = Icons.Rounded.Hub,
                 subtitleMaxLines = 2,
-                marqueeTitle = true,
+                singleLineTitle = true,
                 modifier = Modifier.testTag("session_graph_binding_current"),
                 trailingContent = {
                     FilledTonalButton(

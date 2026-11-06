@@ -195,13 +195,15 @@ class AgentHubScreenContractTest {
     }
 
     @Test
-    fun `会话行标题固定单行，过长时跑马灯滚动而不折行`() {
+    fun `会话行标题固定单行，过长时横滑渐隐而不折行或省略`() {
         val row = hubSource.readText().substringAfter("private fun HubSessionRow(").substringBefore("trailingContent = {")
-        assertThat(row).contains("marqueeTitle = true")
+        assertThat(row).contains("singleLineTitle = true")
         val layout = projectRoot.resolve("src/main/java/com/promenar/infinity/ui/common/InfinitySettingsItem.kt").readText()
             .substringAfter("internal fun InfinitySettingsRowLayout(")
         // 窄列（< 280dp）放开行数的规则不得覆盖单行标题。
-        assertThat(layout.indexOf("marqueeTitle -> 1")).isLessThan(layout.indexOf("expandTitle -> Int.MAX_VALUE"))
-        assertThat(layout).contains("basicMarquee(")
+        assertThat(layout.indexOf("singleLineTitle -> 1")).isLessThan(layout.indexOf("expandTitle -> Int.MAX_VALUE"))
+        // 单行标题走全站统一的横滑渐隐，不用跑马灯。
+        assertThat(layout).contains("InfinityScrollingLine(")
+        assertThat(layout).doesNotContain("basicMarquee(")
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.theme.InfinityFadeMaskOpaque
 
 /**
  * 单行横滑：内容永不换行、不省略，超出宽度时可横向拖动查看，被裁掉的一侧渐隐。
@@ -101,8 +102,8 @@ private fun Modifier.edgeFade(scroll: ScrollState, reversed: Boolean, fadeWidth:
         if (hiddenStart > 0f) {
             drawRect(
                 brush = Brush.horizontalGradient(
-                    0f to Color.Black.copy(alpha = 1f - hiddenStart),
-                    1f to Color.Black,
+                    0f to InfinityFadeMaskOpaque.copy(alpha = 1f - hiddenStart),
+                    1f to InfinityFadeMaskOpaque,
                     startX = 0f,
                     endX = width,
                 ),
@@ -113,8 +114,8 @@ private fun Modifier.edgeFade(scroll: ScrollState, reversed: Boolean, fadeWidth:
         if (hiddenEnd > 0f) {
             drawRect(
                 brush = Brush.horizontalGradient(
-                    0f to Color.Black,
-                    1f to Color.Black.copy(alpha = 1f - hiddenEnd),
+                    0f to InfinityFadeMaskOpaque,
+                    1f to InfinityFadeMaskOpaque.copy(alpha = 1f - hiddenEnd),
                     startX = size.width - width,
                     endX = size.width,
                 ),

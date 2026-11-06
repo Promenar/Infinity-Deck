@@ -262,3 +262,6 @@ val InfinityKgEntityLight = listOf(
 val InfinityAvatarInitialInk = Color.White
 val InfinityAvatarInitialShadow = Color.Black.copy(alpha = 0.18f)
 val InfinityAvatarHighlight = Color.White.copy(alpha = 0.35f)
+
+/** 渐隐遮罩（BlendMode.DstIn）只取 alpha：不透明处保留内容、透明处擦除，与主题无关。 */
+val InfinityFadeMaskOpaque = Color.Black

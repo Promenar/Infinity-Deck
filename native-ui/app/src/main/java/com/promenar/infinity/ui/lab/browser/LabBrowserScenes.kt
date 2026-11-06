@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import com.promenar.infinity.R
@@ -28,6 +30,8 @@ import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.theme.InfinityBrowserAgentHighlight
 import com.promenar.infinity.ui.theme.InfinityBrowserHandoffHighlight
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 浏览器目录下的版本：Agent 在 starlog 的 CI 页面上重跑失败的作业、用户接手，以及登录页交给用户输入密码。
@@ -36,15 +40,15 @@ import com.promenar.infinity.ui.theme.InfinityBrowserHandoffHighlight
  */
 internal val labBrowserScenes: Map<String, () -> LabScene> = mapOf(
     "browser.state.agent" to {
-        LabStateScene { LabBrowserPage(runsState(BrowserMode.AGENT), RUNS_URL) { runsHtml(highlight = AGENT_REF) } }
+        LabStateScene { LabBrowserPage(runsState(BrowserMode.AGENT), RUNS_URL) { runsHtml(it, highlight = AGENT_REF) } }
     },
     "browser.state.takeover" to {
-        LabStateScene { LabBrowserPage(runsState(BrowserMode.USER), RUNS_URL) { runsHtml(highlight = null) } }
+        LabStateScene { LabBrowserPage(runsState(BrowserMode.USER), RUNS_URL) { runsHtml(it, highlight = null) } }
     },
     "browser.state.login" to {
         LabStateScene {
             val badge = stringResource(R.string.browser_handoff_field_badge)
-            LabBrowserPage(loginState(), LOGIN_URL) { loginHtml(badge) }
+            LabBrowserPage(loginState(), LOGIN_URL) { loginHtml(it, badge) }
         }
     },
 )
@@ -84,7 +88,7 @@ private fun loginState() = BrowserUiState(
 
 /** 套用真实浏览器页的外壳 [browserPageModifier]；标签栏与地址栏的操作都是空操作，返回键接到版本页出口。 */
 @Composable
-private fun LabSceneScope.LabBrowserPage(state: BrowserUiState, baseUrl: String, html: () -> String) {
+private fun LabSceneScope.LabBrowserPage(state: BrowserUiState, baseUrl: String, html: (style: String) -> String) {
     var current by remember { mutableStateOf(state) }
     BrowserPageContent(
         state = current,
@@ -100,8 +104,11 @@ private fun LabSceneScope.LabBrowserPage(state: BrowserUiState, baseUrl: String,
         onNavigate = { _: String -> },
         tabActions = BrowserTabActions(onSelect = {}, onClose = {}, onNew = {}, onDisplayMode = {}),
     ) {
-        val page = remember { html() }
-        LabWebView(baseUrl, page)
+        val assets = LocalContext.current.assets
+        val page by produceState<String?>(null) {
+            value = withContext(Dispatchers.IO) { html(assets.open(PAGE_STYLE_ASSET).bufferedReader().use { it.readText() }) }
+        }
+        page?.let { LabWebView(baseUrl, it) }
     }
 }
 
@@ -127,40 +134,17 @@ private fun LabWebView(baseUrl: String, html: String) {
 
 private fun Color.css(): String = "#%06X".format(0xFFFFFF and toArgb())
 
-private val PAGE_STYLE = """
-    *{box-sizing:border-box}
-    body{margin:0;font:15px/1.45 system-ui,-apple-system,sans-serif;color:#1f2328;background:#fff}
-    header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #e4e6eb}
-    .logo{width:22px;height:22px;border-radius:6px;background:#2f3e9e}
-    .brand{font-weight:600}
-    main{padding:18px}
-    h1{font-size:20px;margin:0 0 4px}
-    .meta{color:#59636e;font-size:13px;margin-bottom:16px}
-    .job{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #e4e6eb;border-radius:10px;margin-bottom:10px}
-    .dot{width:10px;height:10px;border-radius:50%}
-    .ok{background:#1a7f37}.fail{background:#cf222e}
-    .job .name{flex:1;font-weight:500}
-    .job .time{color:#59636e;font-size:13px;font-variant-numeric:tabular-nums}
-    .log{font:12px/1.5 ui-monospace,monospace;background:#f6f8fa;border-radius:8px;padding:10px 12px;color:#59636e;margin:4px 0 16px;white-space:pre-wrap}
-    .btn{display:inline-block;padding:10px 16px;border-radius:8px;font-weight:600;border:1px solid #d0d7de;background:#f6f8fa;color:#1f2328}
-    .primary{background:#2f3e9e;border-color:#2f3e9e;color:#fff}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    label{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
-    .field{width:100%;padding:11px 12px;border:1px solid #d0d7de;border-radius:8px;font-size:15px;min-height:44px;color:#1f2328}
-    .card{max-width:380px;margin:28px auto;padding:22px;border:1px solid #e4e6eb;border-radius:14px}
-    .hl{position:relative}
-    .hl::after{content:'';position:absolute;left:-3px;top:-3px;right:-3px;bottom:-3px;border:2px solid var(--hl);border-radius:6px;pointer-events:none}
-    .badge{position:absolute;left:-5px;top:-23px;padding:1px 6px;border-radius:6px;white-space:nowrap;font:600 11px/16px system-ui,sans-serif;color:#fff;background:var(--hl)}
-""".trimIndent()
+/** 演示网页的样式表放在 assets：模拟第三方站点的固定配色，不跟随应用主题。 */
+private const val PAGE_STYLE_ASSET = "lab/starlog-ci.css"
 
-private fun page(title: String, body: String) = """
+private fun page(style: String, title: String, body: String) = """
     <!doctype html><html><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>$title</title><style>$PAGE_STYLE</style></head>
+    <title>$title</title><style>$style</style></head>
     <body><header><span class="logo"></span><span class="brand">starlog CI</span></header>$body</body></html>
 """.trimIndent()
 
-private fun runsHtml(highlight: String?): String {
+private fun runsHtml(style: String, highlight: String?): String {
     val color = InfinityBrowserAgentHighlight.css()
     val rerun = if (highlight != null) {
         """<span class="hl" style="--hl:$color"><span class="btn primary">$RERUN_LABEL</span><span class="badge">$highlight</span></span>"""
@@ -168,6 +152,7 @@ private fun runsHtml(highlight: String?): String {
         """<span class="btn primary">$RERUN_LABEL</span>"""
     }
     return page(
+        style,
         RUNS_TITLE,
         """
         <main>
@@ -184,9 +169,10 @@ TimeoutError: runner lost connection after 40s</div>
     )
 }
 
-private fun loginHtml(badge: String): String {
+private fun loginHtml(style: String, badge: String): String {
     val color = InfinityBrowserHandoffHighlight.css()
     return page(
+        style,
         "Sign in · starlog CI",
         """
         <div class="card">

@@ -42,6 +42,16 @@ class SettingsVisualPrimitivesContractTest {
     }
 
     @Test
+    fun `单行标题、副标题与取值放不下时横滑渐隐，不用省略号`() {
+        val item = source("InfinitySettingsItem.kt")
+        assertThat(item).contains("InfinityScrollingLine(Modifier.fillMaxWidth())")
+        assertThat(item).contains("InfinityScrollingLine(subtitleModifier.fillMaxWidth())")
+        val value = source("InfinityValueRow.kt").substringAfter("fun InfinityValueRow(").substringBefore("fun InfinityNumericSetting(")
+        assertThat(value).contains("InfinityScrollingLine(")
+        assertThat(value).doesNotContain("TextOverflow.Ellipsis")
+    }
+
+    @Test
     fun `settings rows preserve an optional localized click label`() {
         val source = source("InfinitySettingsItem.kt")
 
