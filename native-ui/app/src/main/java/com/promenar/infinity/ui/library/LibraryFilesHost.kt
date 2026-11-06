@@ -6,6 +6,15 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.rounded.Category
+import com.promenar.infinity.domain.files.FileItem
+import com.promenar.infinity.domain.files.FolderCollectionSummary
+import com.promenar.infinity.ui.files.FileFolderAction
+import com.promenar.infinity.ui.files.FileHeaderSubtitle
+import com.promenar.infinity.ui.files.metaSegments
+import com.promenar.infinity.utils.InfinityLogger
+import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +41,8 @@ import com.promenar.infinity.ui.files.state.FileManagerViewModel
 
 /*
  * 资料页里的资源管理器宿主：组件自带页头但不处理系统栏，资料页负责状态栏留白、最左侧按钮与能否固定到侧栏。
+ * 存储空间文件夹的合集与抽取进度放在页头副标题（点按打开合集设置），“更多”菜单与行菜单提供抽取图谱与合集设置，
+ * 多选可一起抽取或设置合集；各行的图谱状态与合集标签由资源管理器自己显示。
  */
 
 private const val LIBRARY_FILES_VIEW_MODEL_KEY = "library-files"
@@ -53,28 +64,47 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
         val current = controller.state.value
         if (current.location?.id != ref.locationId || current.path != ref.path) controller.openLocation(ref.locationId, ref.path)
     }
-    // 存储空间文件夹的合集设置与批量抽取；面板关闭时清空。
+    // 存储空间文件夹的合集设置、批量抽取与文档合集归属；面板关闭时清空。
     var settingsFolder by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     var batchTarget by remember { mutableStateOf<KgBatchTarget?>(null) }
-    // 合集设置关闭、批量抽取入队后递增，让文件夹顶部的合集条重读。
-    var stripRefresh by remember { mutableIntStateOf(0) }
+    var assignTarget by remember { mutableStateOf<List<AssignmentDocument>?>(null) }
+    // 合集设置关闭、批量抽取入队或归属变化后递增，让当前文件夹的合集副标题重读。
+    var refreshKey by remember { mutableIntStateOf(0) }
+    val fm by controller.state.collectAsState()
+    val current = rememberCurrentFolderCollection(app, fm.location?.id, fm.path, fm.items, refreshKey)
     val settingsLabel = stringResource(R.string.kgc_action_settings)
     val extractLabel = stringResource(R.string.kgc_action_extract)
+    val assignLabel = stringResource(R.string.lrc_assign_action)
+    val resources = LocalContext.current.resources
+    val folderName = fm.path.trimEnd('/').substringAfterLast('/')
+    fun refreshListing() {
+        refreshKey++
+        controller.refresh()
+    }
     Box(Modifier.fillMaxSize().statusBarsPadding().testTag(LibraryTags.page("browse"))) {
         FileManagerPane(
             controller = controller,
             host = FileManagerHostSpec(
                 leading = leading.toFileManagerLeading(),
                 showPin = true,
-                folderHeader = { header ->
-                    LibraryCollectionStrip(
-                        app = app,
-                        scope = header,
-                        refreshKey = stripRefresh,
-                        onSettings = { folderId, folderName -> settingsFolder = folderId to folderName },
-                        onExtract = { folderId -> batchTarget = KgBatchTarget.Folder(folderId) },
+                folderSubtitle = current?.summary?.let { summary ->
+                    FileHeaderSubtitle(
+                        text = summary.metaSegments(resources).joinToString(" · "),
+                        icon = Icons.Rounded.Hub,
+                        onClickLabel = settingsLabel,
+                        onClick = { settingsFolder = current.folderId to folderName },
                     )
                 },
+                folderActions = current?.let { folder ->
+                    listOf(
+                        FileFolderAction("library-current-extract", Icons.Rounded.AutoAwesome, extractLabel) { _, _ ->
+                            batchTarget = KgBatchTarget.Folder(folder.folderId)
+                        },
+                        FileFolderAction("library-current-settings", Icons.Rounded.Hub, settingsLabel) { _, _ ->
+                            settingsFolder = folder.folderId to folderName
+                        },
+                    )
+                }.orEmpty(),
                 hostActions = listOf(
                     FileHostAction(
                         id = "library-folder-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
@@ -97,10 +127,21 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                     FileHostAction(
                         id = "library-multi-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
                         appliesTo = setOf(FileHostActionScope.FILE, FileHostActionScope.MULTI),
-                        visibleFor = { items -> items.any { it.knowledge?.documentId != null } },
+                        visibleFor = { items -> items.any { it.knowledge?.graph != null } },
                         onInvoke = { items ->
-                            val ids = items.mapNotNull { it.knowledge?.documentId }.distinct()
+                            val ids = items.filter { it.knowledge?.graph != null }.mapNotNull { it.knowledge?.documentId }.distinct()
                             if (ids.isNotEmpty()) batchTarget = KgBatchTarget.Documents(ids)
+                        },
+                    ),
+                    FileHostAction(
+                        id = "library-multi-assign", icon = Icons.Rounded.Category, label = assignLabel,
+                        appliesTo = setOf(FileHostActionScope.FILE, FileHostActionScope.MULTI),
+                        visibleFor = { items -> items.any { it.knowledge?.graph != null } },
+                        onInvoke = { items ->
+                            val docs = items.mapNotNull { item ->
+                                item.knowledge?.takeIf { it.graph != null }?.documentId?.let { AssignmentDocument(it, item.name) }
+                            }.distinctBy { it.id }
+                            if (docs.isNotEmpty()) assignTarget = docs
                         },
                     ),
                 ),
@@ -108,17 +149,60 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
             modifier = Modifier.fillMaxSize(),
         )
     }
-    settingsFolder?.let { (folderId, folderName) ->
-        KgCollectionSettingsHost(app, folderName, folderId = folderId, collectionId = null) {
+    settingsFolder?.let { (folderId, name) ->
+        KgCollectionSettingsHost(app, name, folderId = folderId, collectionId = null) {
             settingsFolder = null
-            stripRefresh++
+            refreshListing()
         }
     }
     batchTarget?.let { target ->
         KgBatchExtractionHost(app, target, onQueued = host.viewModel::reportGraphQueued) {
             batchTarget = null
-            stripRefresh++
+            refreshListing()
         }
+    }
+    assignTarget?.let { docs ->
+        DocumentCollectionAssignmentSheet(
+            app = app,
+            documents = docs,
+            onChanged = ::refreshListing,
+            onDismiss = { assignTarget = null },
+        )
     }
 }
 
+/** 当前存储空间文件夹的 id 与合集进度；根目录与其它位置为 null。 */
+private data class CurrentFolderCollection(val folderId: String, val summary: FolderCollectionSummary?)
+
+/**
+ * 读取当前文件夹的合集与抽取进度。条目的索引与图谱状态变化（逐篇抽完）或 [refreshKey] 递增时重读；
+ * 路径变化时先清空，避免副标题停留在上一个文件夹。
+ */
+@Composable
+private fun rememberCurrentFolderCollection(
+    app: InfinityApplication,
+    locationId: String?,
+    path: String,
+    items: List<FileItem>,
+    refreshKey: Int,
+): CurrentFolderCollection? {
+    var current by remember(locationId, path) { mutableStateOf<CurrentFolderCollection?>(null) }
+    val signature = items.map { Triple(it.knowledge?.state, it.knowledge?.stage, it.knowledge?.graph) }
+    LaunchedEffect(locationId, path, signature, refreshKey) {
+        if (locationId != LIBRARY_LOCATION_ID || path == "/") {
+            current = null
+            return@LaunchedEffect
+        }
+        current = try {
+            app.fileManagerServices.operations.stat(FileRef(locationId, path))?.knowledge?.let { knowledge ->
+                knowledge.folderId?.let { CurrentFolderCollection(it, knowledge.folderCollection) }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            InfinityLogger.logError("[Library] 读取当前文件夹合集失败", error)
+            null
+        }
+    }
+    return current
+}

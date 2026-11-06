@@ -6,9 +6,11 @@ import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import com.promenar.infinity.data.local.db.dao.VectorizationTaskDao
+import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.rag.DocumentTextEncoding
+import com.promenar.infinity.data.rag.VectorizationTask
 import com.promenar.infinity.data.rag.FileIndexEvent
 import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.WorkspaceLifecycleErrorCode
@@ -60,6 +62,8 @@ internal class DefaultFileOperations(
     private val indexEvents: FileIndexEventSink,
     private val guard: FileMutationGuard,
     private val pendingTargets: () -> List<FileIndexEvent.Changed> = { emptyList() },
+    private val database: InfinityDatabase? = null,
+    private val liveTasks: () -> List<VectorizationTask> = { emptyList() },
 ) : FileOperations {
     private val importer = AndroidSafContentSource(context.contentResolver)
 
@@ -375,16 +379,20 @@ internal class DefaultFileOperations(
     }
 
     private suspend fun items(handle: FileBackendHandle, entries: List<ExternalFolderEntry>): List<FileItem> {
-        val rows = if (handle.locationId == "kb" && handle.roomRoot != null) entries.mapNotNull {
+        val snapshot = if (handle.locationId == "kb" && handle.roomRoot != null && database != null)
+            LibraryRowKnowledge.load(database, handle.roomRoot, liveTasks()) else null
+        val rows = snapshot?.rows?.associateBy { it.materializedPath } ?: if (handle.locationId == "kb" && handle.roomRoot != null) entries.mapNotNull {
             repository.getByMaterializedPath(handle.roomRoot, it.path)
         }.associateBy { it.materializedPath } else emptyMap()
-        val taskRows = if (handle.roomRoot != null && rows.isNotEmpty())
-            rows.values.map { it.uuid }.chunked(900).flatMap { tasks.getByWorkspaceFiles(handle.roomRoot, it) } else emptyList()
+        val taskRows = if (snapshot == null && handle.roomRoot != null && rows.isNotEmpty())
+            entries.mapNotNull { rows[it.path]?.uuid }.chunked(400).flatMap { tasks.getByWorkspaceFiles(handle.roomRoot, it) } else emptyList()
+        val groupedTasks = taskRows.groupBy { it.docId }
         val pending = pendingTargets().filter { it.workspaceRootUuid == handle.roomRoot }.map { it.fileUuid }.toSet()
         return entries.map { entry ->
             val row = rows[entry.path]
             val mime = row?.mimeType ?: mimeFor(entry.name)
-            val knowledge = row?.let { knowledgeOf(it, taskRows.filter { task -> task.docId == it.uuid }, it.uuid in pending) }
+            val knowledge = row?.let { snapshot?.enrich(it, knowledgeOf(it, snapshot.tasksFor(it.uuid), it.uuid in pending))
+                ?: knowledgeOf(it, groupedTasks[it.uuid].orEmpty(), it.uuid in pending) }
             FileItem(FileRef(handle.locationId, normalizeFilePath(entry.path)), entry.name, entry.isDirectory, entry.size,
                 entry.lastModified, mime, childCount = null, knowledge = knowledge)
         }
@@ -431,7 +439,8 @@ internal fun isTextFile(name: String, mime: String?): Boolean = classifyFile(nam
 internal fun knowledgeOf(entry: FileEntry, tasks: List<com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity>, pending: Boolean = false): FileKnowledge {
     val relevant = tasks.filter { it.type in setOf("document", "document_reference") }
     val active = relevant.firstOrNull { it.status !in setOf("failed", "partial", "completed", "interrupted") }
-    val failed = relevant.firstOrNull { it.status in setOf("failed", "partial") }
+    // 向量已重建、只有图谱未完成的任务记为 partial + kg.* 错误：它属于图谱状态，不算解析失败。
+    val failed = relevant.firstOrNull { it.status in setOf("failed", "partial") && !isGraphOnlyIssue(it.status, it.error) }
     val state = when {
         entry.isDirectory -> KnowledgeIndexState.NONE
         active?.status == "pending" -> KnowledgeIndexState.QUEUED
@@ -455,6 +464,11 @@ internal fun knowledgeOf(entry: FileEntry, tasks: List<com.promenar.infinity.dat
         failureReason = failed?.error.takeIf { state == KnowledgeIndexState.FAILED },
         stage = stage, processed = total?.let { active?.lastChunkIndex }, total = total)
 }
+
+/** 图谱确认、预算停止或抽取失败：这些任务的向量已经完成。 */
+internal fun isGraphOnlyIssue(status: String, error: String?): Boolean = status == "partial" &&
+    (error == com.promenar.infinity.data.rag.VectorizationQueue.KG_CONFIRMATION_REQUIRED ||
+        com.promenar.infinity.data.rag.VectorizationQueue.isGraphRetryError(error))
 
 internal fun mapped(error: Exception): FileOpException {
     if (error is FileOpException) return error

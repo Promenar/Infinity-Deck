@@ -657,6 +657,7 @@ object UiTags {
     const val FM_HEADER = "fm_header"
     const val FM_LEADING = "fm_leading"
     const val FM_TITLE = "fm_title"
+    const val FM_HOST_SUBTITLE = "fm_host_subtitle"
     const val FM_SEARCH = "fm_search"
     const val FM_MORE = "fm_more"
     const val FM_CRUMB = "fm_crumb"

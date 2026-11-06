@@ -50,6 +50,25 @@ class KgCollectionBehaviorTest {
 
     @After fun close() = db.close()
 
+    @Test fun `批量文档设置原子提交并拒绝自身合集`() = runBlocking<Unit> {
+        folder("batch", null); file("first", "batch"); file("second", "batch")
+        collections.setDocumentSettings(listOf("first", "second"), KgDocumentSetting.SHARED)
+        assertThat(collections.collectionForDocument("first")).isEqualTo("shared")
+        assertThat(collections.collectionForDocument("second")).isEqualTo("shared")
+        try {
+            collections.setDocumentSettings(listOf("first", "missing"), KgDocumentSetting.STANDALONE)
+            throw AssertionError("应拒绝不存在的文档")
+        } catch (_: IllegalArgumentException) { }
+        assertThat(collections.collectionForDocument("first")).isEqualTo("shared")
+        write("first")
+        collections.setDocumentSetting("first", KgDocumentSetting.STANDALONE)
+        try {
+            collections.setDocumentSettings(listOf("first", "second"), KgDocumentSetting.COLLECTION, "work:first")
+            throw AssertionError("应拒绝所选文档自身的合集")
+        } catch (_: IllegalArgumentException) { }
+        assertThat(collections.collectionForDocument("second")).isEqualTo("shared")
+    }
+
     @Test fun `文档级设置调整归属并恢复文件夹规则`() = runBlocking<Unit> {
         folder("p", null); file("第1章", "p"); write("第1章")
         file("第2章", null); write("第2章")

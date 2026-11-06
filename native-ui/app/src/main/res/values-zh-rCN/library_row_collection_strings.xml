@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 存储空间列表行：图谱状态、合集标签、文件夹合集进度与批量合集归属 -->
+    <string name="lrc_graph_extracted">已抽取图谱</string>
+    <string name="lrc_graph_partial">部分抽取</string>
+    <string name="lrc_graph_confirm">待确认</string>
+    <string name="lrc_graph_failed">图谱失败</string>
+    <string name="lrc_kind_work">作品</string>
+    <string name="lrc_kind_shared">通用知识</string>
+    <string name="lrc_extracted">已抽取 %1$d/%2$d</string>
+    <string name="lrc_assign_action">设置合集</string>
+    <plurals name="lrc_assign_title_multi">
+        <item quantity="other">合集归属 · %1$d 篇</item>
+    </plurals>
+    <string name="lrc_follow_multi_desc">各自所在文件夹</string>
+    <string name="lrc_standalone_multi_desc">每篇单独</string>
+</resources>

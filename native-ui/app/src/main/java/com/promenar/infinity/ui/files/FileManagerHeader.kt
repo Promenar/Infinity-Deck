@@ -197,7 +197,10 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (subtitle != null) {
+            val hostSubtitle = host.folderSubtitle?.takeUnless { switchable }
+            if (hostSubtitle != null) {
+                HostSubtitle(hostSubtitle)
+            } else if (subtitle != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = subtitle,
@@ -233,6 +236,35 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
                 )
             }
         }
+    }
+}
+
+/** 宿主副标题：图标 + 一行文字，可点时整行是按钮。 */
+@Composable
+private fun HostSubtitle(subtitle: FileHeaderSubtitle) {
+    val onClick = subtitle.onClick
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(role = Role.Button, onClickLabel = subtitle.onClickLabel, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .testTag(UiTags.FM_HOST_SUBTITLE),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        subtitle.icon?.let { Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(14.dp)) }
+        Text(
+            text = subtitle.text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

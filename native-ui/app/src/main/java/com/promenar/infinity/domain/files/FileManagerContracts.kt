@@ -78,6 +78,36 @@ data class FileKnowledge(
     /** 当前阶段已处理 / 总数，只在向量化与抽取图谱阶段有值。 */
     val processed: Int? = null,
     val total: Int? = null,
+    /** 存储空间文档的图谱抽取状态；文件夹、不能抽取的文件与其它位置为 null。 */
+    val graph: FileGraphState? = null,
+    /** 文档实际归入的合集与所在文件夹规则给出的合集不同时才有值，用作行内标签。 */
+    val collectionTag: FileCollectionTag? = null,
+    /** 存储空间文件夹：按文件夹规则归入的合集与抽取进度；没有可抽取文档或一篇都没抽取且不在抽取时为 null。 */
+    val folderCollection: FolderCollectionSummary? = null,
+)
+
+/** 单篇文档的图谱抽取状态，判定与文档页“知识图谱”行一致。抽取进行中由索引状态（阶段为抽取图谱）表达。 */
+enum class FileGraphState { NOT_EXTRACTED, EXTRACTED, PARTIAL, CONFIRMATION_REQUIRED, FAILED }
+
+/** 文档单独设置的归属：独立合集、通用知识或其它作品合集。 */
+enum class FileCollectionTagKind { STANDALONE, SHARED, COLLECTION }
+
+/** [title] 只在 [kind] 为 [FileCollectionTagKind.COLLECTION] 时用于显示。 */
+data class FileCollectionTag(val collectionId: String, val kind: FileCollectionTagKind, val title: String)
+
+/** 文件夹合集的来源：自身成为作品、并入上级文件夹的作品或通用知识。 */
+enum class FolderCollectionKind { WORK, MERGED, SHARED }
+
+/**
+ * 文件夹按自身规则归入的合集与抽取进度。[total] 与 [extracted] 只数这个文件夹（含子文件夹）里
+ * 实际归入该合集的可抽取文档；单篇改到别处的文档不计入。[title] 为合集名（并入时是上级作品名）。
+ */
+data class FolderCollectionSummary(
+    val collectionId: String,
+    val kind: FolderCollectionKind,
+    val title: String,
+    val extracted: Int,
+    val total: Int,
 )
 
 data class FileItem(

@@ -202,21 +202,22 @@ class DefaultLibraryKnowledgeSource internal constructor(
             .sortedWith(compareByDescending<String> { name -> chunks.sumOf { countMentions(it.content, name) } }
                 .thenBy { it }).take(30)
         val task = latestTask(root, documentId)
+        val completedGraph = graphStateFor(entry.kgExtractedAt, entry.updatedAt, task?.error)
         val graph = when {
             task?.status == "extracting" -> DocumentGraphState.Extracting(task.processed, task.total)
-            task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED ->
+            completedGraph == com.promenar.infinity.domain.files.FileGraphState.CONFIRMATION_REQUIRED ->
                 graphEstimate(documentId)?.let { DocumentGraphState.ConfirmationRequired(it) }
                     ?: DocumentGraphState.Failed(actionFailedReason())
-            task?.error?.startsWith("kg.budget.") == true -> {
-                val reason = when (task.error) {
+            completedGraph == com.promenar.infinity.domain.files.FileGraphState.PARTIAL -> {
+                val reason = when (task?.error) {
                     "kg.budget.calls" -> GraphStopReason.CALLS
                     "kg.budget.output_tokens" -> GraphStopReason.OUTPUT_TOKENS
                     else -> GraphStopReason.DURATION
                 }
-                DocumentGraphState.Partial(task.processed, task.total ?: 0, reason)
+                DocumentGraphState.Partial(task?.processed ?: 0, task?.total ?: 0, reason)
             }
-            task?.error?.startsWith(VectorizationQueue.KG_FAILED) == true -> DocumentGraphState.Failed(graphReason(task.error))
-            entry.kgExtractedAt != null && entry.kgExtractedAt >= entry.updatedAt -> DocumentGraphState.Complete(
+            completedGraph == com.promenar.infinity.domain.files.FileGraphState.FAILED -> DocumentGraphState.Failed(graphReason(task?.error))
+            completedGraph == com.promenar.infinity.domain.files.FileGraphState.EXTRACTED -> DocumentGraphState.Complete(
                 database.kgNodeDao().getByDocIds(listOf(documentId)).size,
                 database.kgEdgeDao().getByDocIds(listOf(documentId)).size,
             )

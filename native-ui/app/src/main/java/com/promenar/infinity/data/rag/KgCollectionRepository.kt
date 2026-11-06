@@ -157,20 +157,29 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         KgDocumentAssignment(setting.first, setting.second, folder.id, folder.title)
     }
 
-    suspend fun setDocumentSetting(docId: String, mode: KgDocumentSetting, targetCollectionId: String? = null) = database.withTransaction {
-        require(database.fileEntryDao().findActiveByUuid(docId)?.isDirectory == false) { "文档不存在" }
-        if (mode == KgDocumentSetting.COLLECTION) {
-            require(!targetCollectionId.isNullOrBlank() && collectionKind(targetCollectionId) == "work" && targetCollectionId != "work:$docId") { "目标作品合集不存在或不可选" }
+    suspend fun setDocumentSetting(docId: String, mode: KgDocumentSetting, targetCollectionId: String? = null) =
+        setDocumentSettings(listOf(docId), mode, targetCollectionId)
+
+    /** 一个事务内设置多篇文档的归属；任一篇校验失败整体回滚。调用方在 IO 线程调用，事务内不切换调度器。 */
+    suspend fun setDocumentSettings(docIds: Collection<String>, mode: KgDocumentSetting, targetCollectionId: String? = null) =
+        database.withTransaction {
+            val ids = docIds.distinct()
+            if (mode == KgDocumentSetting.COLLECTION && ids.isNotEmpty()) {
+                require(!targetCollectionId.isNullOrBlank() && collectionKind(targetCollectionId) == "work" &&
+                    ids.none { targetCollectionId == "work:$it" }) { "目标作品合集不存在或不可选" }
+            }
+            ids.forEach { docId ->
+                require(database.fileEntryDao().findActiveByUuid(docId)?.isDirectory == false) { "文档不存在" }
+                val sql = database.openHelper.writableDatabase
+                if (mode == KgDocumentSetting.FOLLOW_FOLDER) sql.execSQL("DELETE FROM kg_folder_settings WHERE folder_id=?", arrayOf(docId))
+                else {
+                    val stored = if (mode == KgDocumentSetting.COLLECTION) "DOC_COLLECTION:$targetCollectionId" else "DOC_${mode.name}"
+                    sql.execSQL("INSERT OR REPLACE INTO kg_folder_settings(folder_id,mode) VALUES(?,?)", arrayOf(docId, stored))
+                }
+                if (memberCollection(docId) != null) reconcileDocument(docId)
+            }
+            collectEmptyCollections()
         }
-        val sql = database.openHelper.writableDatabase
-        if (mode == KgDocumentSetting.FOLLOW_FOLDER) sql.execSQL("DELETE FROM kg_folder_settings WHERE folder_id=?", arrayOf(docId))
-        else {
-            val stored = if (mode == KgDocumentSetting.COLLECTION) "DOC_COLLECTION:$targetCollectionId" else "DOC_${mode.name}"
-            sql.execSQL("INSERT OR REPLACE INTO kg_folder_settings(folder_id,mode) VALUES(?,?)", arrayOf(docId, stored))
-        }
-        if (memberCollection(docId) != null) reconcileDocument(docId)
-        collectEmptyCollections()
-    }
 
     suspend fun listAssignableCollections(excludeDocId: String): List<KgCollectionSummary> = database.withTransaction {
         val sql = """SELECT c.id,c.kind,c.title,c.root_ref,

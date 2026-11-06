@@ -38,8 +38,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /*
- * 单篇文档的合集归属：默认跟随所在文件夹；也可以单独成为作品、归入通用知识，或手动加入另一部已有作品。
- * 已抽取的图谱随归属变化迁移，不重新调用模型。
+ * 文档的合集归属：默认跟随所在文件夹；也可以设为独立合集、归入通用知识，或加入另一部已有作品。
+ * 一次可设置一篇或多篇（资料页资源管理器的多选）。已抽取的图谱随归属变化迁移，不重新调用模型。
  */
 
 /** 文档详情“合集归属”行显示的当前方式。 */
@@ -51,7 +51,22 @@ internal fun KgDocumentSetting.rowLabel(): Int = when (this) {
     KgDocumentSetting.COLLECTION -> R.string.kda_mode_collection
 }
 
-private data class AssignmentData(val current: KgDocumentAssignment, val collections: List<KgCollectionSummary>)
+/** 要设置归属的一篇文档。 */
+internal data class AssignmentDocument(val id: String, val name: String)
+
+private data class AssignmentData(val current: List<KgDocumentAssignment>, val collections: List<KgCollectionSummary>)
+
+/** 多篇文档共同的归属方式与目标合集；方式不一致时为 null，面板里不预选任何一项。 */
+internal fun commonAssignment(current: List<KgDocumentAssignment>): Pair<KgDocumentSetting, String?>? {
+    val choices = current.map { it.mode to it.targetCollectionId.takeIf { _ -> it.mode == KgDocumentSetting.COLLECTION } }.distinct()
+    return choices.singleOrNull()
+}
+
+/** 可加入的作品合集：排除所选文档自己的独立合集。 */
+internal fun assignableFor(collections: List<KgCollectionSummary>, documentIds: Collection<String>): List<KgCollectionSummary> {
+    val own = documentIds.mapTo(HashSet()) { "work:$it" }
+    return collections.filter { it.id !in own }
+}
 
 @Composable
 internal fun DocumentCollectionAssignmentSheet(
@@ -60,17 +75,31 @@ internal fun DocumentCollectionAssignmentSheet(
     documentName: String,
     onChanged: () -> Unit,
     onDismiss: () -> Unit,
+) = DocumentCollectionAssignmentSheet(app, listOf(AssignmentDocument(documentId, documentName)), onChanged, onDismiss)
+
+/** 一篇或多篇文档的合集归属面板；多篇时一次写入，任一篇失败整体不变。 */
+@Composable
+internal fun DocumentCollectionAssignmentSheet(
+    app: InfinityApplication,
+    documents: List<AssignmentDocument>,
+    onChanged: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val repository = remember(app) { KgCollectionRepository(app.database) }
     val scope = rememberCoroutineScope()
-    var data by remember(documentId) { mutableStateOf<AssignmentData?>(null) }
-    var failure by remember(documentId) { mutableStateOf<String?>(null) }
+    val ids = remember(documents) { documents.map { it.id } }
+    val multiple = ids.size > 1
+    var data by remember(ids) { mutableStateOf<AssignmentData?>(null) }
+    var failure by remember(ids) { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableIntStateOf(0) }
-    LaunchedEffect(documentId, reloadKey) {
+    LaunchedEffect(ids, reloadKey) {
         try {
             data = withContext(Dispatchers.IO) {
-                AssignmentData(repository.readDocumentSetting(documentId), repository.listAssignableCollections(documentId))
+                AssignmentData(
+                    ids.map { repository.readDocumentSetting(it) },
+                    assignableFor(repository.listAssignableCollections(ids.first()), ids),
+                )
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -84,7 +113,10 @@ internal fun DocumentCollectionAssignmentSheet(
         busy = true
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { repository.setDocumentSetting(documentId, mode, target) }
+                withContext(Dispatchers.IO) {
+                    if (multiple) repository.setDocumentSettings(ids, mode, target)
+                    else repository.setDocumentSetting(ids.first(), mode, target)
+                }
                 failure = null
                 onChanged()
             } catch (cancelled: CancellationException) {
@@ -98,7 +130,9 @@ internal fun DocumentCollectionAssignmentSheet(
             }
         }
     }
-    InfinityBottomSheet(show = true, onDismiss = onDismiss, title = stringResource(R.string.kda_title, documentName), scrollContent = true) {
+    val title = if (multiple) pluralStringResource(R.plurals.lrc_assign_title_multi, ids.size, ids.size)
+        else stringResource(R.string.kda_title, documents.first().name)
+    InfinityBottomSheet(show = true, onDismiss = onDismiss, title = title, scrollContent = true) {
         Column(Modifier.fillMaxWidth().testTag("library_doc_assignment")) {
             AnimatedVisibility(visible = failure != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
                 SheetNote(stringResource(R.string.kgc_failed, failure.orEmpty()), error = true)
@@ -109,11 +143,13 @@ internal fun DocumentCollectionAssignmentSheet(
                 if (failure == null) CircularProgressIndicator(Modifier.padding(vertical = InfinitySpacing.Large).size(20.dp), strokeWidth = 2.dp)
                 return@Column
             }
-            val mode = current.current.mode
-            val target = current.current.targetCollectionId.takeIf { mode == KgDocumentSetting.COLLECTION }
+            val common = commonAssignment(current.current)
+            val mode = common?.first
+            val target = common?.second
             AssignmentOption(
                 title = stringResource(R.string.kda_mode_follow),
-                subtitle = stringResource(R.string.kda_follow_desc, current.current.folderCollectionTitle),
+                subtitle = if (multiple) stringResource(R.string.lrc_follow_multi_desc)
+                    else stringResource(R.string.kda_follow_desc, current.current.first().folderCollectionTitle),
                 selected = mode == KgDocumentSetting.FOLLOW_FOLDER,
                 enabled = !busy,
                 tag = "follow",
@@ -121,7 +157,7 @@ internal fun DocumentCollectionAssignmentSheet(
             )
             AssignmentOption(
                 title = stringResource(R.string.kda_mode_standalone),
-                subtitle = stringResource(R.string.kda_standalone_desc),
+                subtitle = stringResource(if (multiple) R.string.lrc_standalone_multi_desc else R.string.kda_standalone_desc),
                 selected = mode == KgDocumentSetting.STANDALONE,
                 enabled = !busy,
                 tag = "standalone",
@@ -143,7 +179,7 @@ internal fun DocumentCollectionAssignmentSheet(
                 AssignmentOption(
                     title = collection.title,
                     subtitle = pluralStringResource(R.plurals.kda_collection_docs, collection.documentCount, collection.documentCount),
-                    selected = target == collection.id,
+                    selected = mode == KgDocumentSetting.COLLECTION && target == collection.id,
                     enabled = !busy,
                     tag = "join_${collection.id}",
                     onClick = { choose(KgDocumentSetting.COLLECTION, collection.id) },

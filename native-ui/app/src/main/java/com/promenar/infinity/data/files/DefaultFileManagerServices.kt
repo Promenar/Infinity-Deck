@@ -56,7 +56,8 @@ class DefaultFileManagerServices(
             val guard = FileMutationGuard(app.sessionExecutionGate, isSessionBusy)
             val operations = DefaultFileOperations(app, backends::resolve, { app.database.sessionDao().getAll() },
                 app.workspaceRepository, app.database.vectorizationTaskDao(), app.pendingDocumentIndexCoordinator, guard,
-                pendingTargets = app.pendingDocumentIndexCoordinator::snapshot)
+                pendingTargets = app.pendingDocumentIndexCoordinator::snapshot, database = app.database,
+                liveTasks = { app.vectorizationQueueState.value.queue })
             val validLocations = combine(locations.observeLibraryLocationIds(), sessions) { ids, rows ->
                 ids + rows.filter(::isPrivateSessionFolder).map { "session:${it.id}" }
             }

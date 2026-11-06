@@ -27,6 +27,11 @@ import com.promenar.infinity.domain.files.FileOpCode
 import com.promenar.infinity.domain.files.FileSortKey
 import com.promenar.infinity.domain.files.FileTypeFilter
 import com.promenar.infinity.domain.files.FileKnowledge
+import com.promenar.infinity.domain.files.FileCollectionTag
+import com.promenar.infinity.domain.files.FileCollectionTagKind
+import com.promenar.infinity.domain.files.FileGraphState
+import com.promenar.infinity.domain.files.FolderCollectionKind
+import com.promenar.infinity.domain.files.FolderCollectionSummary
 import com.promenar.infinity.domain.files.KnowledgeIndexState
 import com.promenar.infinity.domain.library.PendingStage
 import com.promenar.infinity.ui.common.motion.IndexMotionPhase
@@ -191,6 +196,47 @@ internal fun knowledgeBadgeLabel(state: KnowledgeIndexState): Int? = when (state
     KnowledgeIndexState.INDEXING -> R.string.fm_knowledge_indexing
     KnowledgeIndexState.NONE, KnowledgeIndexState.INDEXED, KnowledgeIndexState.UNSUPPORTED -> null
 }
+
+/** 行尾状态位的内容：索引需要留意时显示索引徽标，否则显示图谱状态；都不需要时为 null。 */
+internal sealed interface FileRowStatus {
+    data class Index(val state: KnowledgeIndexState) : FileRowStatus
+    data class Graph(val state: FileGraphState) : FileRowStatus
+}
+
+internal fun FileKnowledge.rowStatus(): FileRowStatus? {
+    if (knowledgeBadgeLabel(state) != null) return FileRowStatus.Index(state)
+    return when (val g = graph) {
+        null, FileGraphState.NOT_EXTRACTED -> null
+        else -> FileRowStatus.Graph(g)
+    }
+}
+
+/** 图谱状态的短语；已抽取用图标表达，这里给的是它的无障碍描述。 */
+@StringRes
+internal fun graphStatusLabel(state: FileGraphState): Int? = when (state) {
+    FileGraphState.EXTRACTED -> R.string.lrc_graph_extracted
+    FileGraphState.PARTIAL -> R.string.lrc_graph_partial
+    FileGraphState.CONFIRMATION_REQUIRED -> R.string.lrc_graph_confirm
+    FileGraphState.FAILED -> R.string.lrc_graph_failed
+    FileGraphState.NOT_EXTRACTED -> null
+}
+
+/** 合集标签文字：独立合集与通用知识用固定名，其它合集用合集名。 */
+internal fun FileCollectionTag.label(resources: Resources): String = when (kind) {
+    FileCollectionTagKind.STANDALONE -> resources.getString(R.string.kda_mode_standalone)
+    FileCollectionTagKind.SHARED -> resources.getString(R.string.lrc_kind_shared)
+    FileCollectionTagKind.COLLECTION -> title
+}
+
+/** 文件夹合集的元信息段：类型（并入上级时为上级作品名）与“已抽取 n/m”。 */
+internal fun FolderCollectionSummary.metaSegments(resources: Resources): List<String> = listOf(
+    when (kind) {
+        FolderCollectionKind.WORK -> resources.getString(R.string.lrc_kind_work)
+        FolderCollectionKind.SHARED -> resources.getString(R.string.lrc_kind_shared)
+        FolderCollectionKind.MERGED -> title
+    },
+    resources.getString(R.string.lrc_extracted, extracted, total),
+)
 
 /**
  * 列表行的索引指示：排队与索引中显示与资料首页同一套索引动效，其它状态只用徽标文字。

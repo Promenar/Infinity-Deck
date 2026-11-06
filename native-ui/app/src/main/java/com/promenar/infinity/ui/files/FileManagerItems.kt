@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
@@ -47,6 +48,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Surface
+import com.promenar.infinity.domain.files.FileCollectionTag
+import com.promenar.infinity.domain.files.FileGraphState
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -150,6 +156,57 @@ internal fun KnowledgeBadge(knowledge: FileKnowledge?, modifier: Modifier = Modi
             style = MaterialTheme.typography.labelSmall,
             color = color,
             maxLines = 1,
+        )
+    }
+}
+
+/** 行尾状态位：索引需要留意时显示索引徽标，否则显示图谱状态（已抽取为图谱图标，其余为短语）。 */
+@Composable
+internal fun FileStatusBadge(knowledge: FileKnowledge?, modifier: Modifier = Modifier) {
+    when (val status = knowledge?.rowStatus()) {
+        null -> Unit
+        is FileRowStatus.Index -> KnowledgeBadge(knowledge, modifier)
+        is FileRowStatus.Graph -> GraphStatusBadge(status.state, modifier)
+    }
+}
+
+@Composable
+private fun GraphStatusBadge(state: FileGraphState, modifier: Modifier = Modifier) {
+    val label = graphStatusLabel(state) ?: return
+    if (state == FileGraphState.EXTRACTED) {
+        Icon(
+            Icons.Rounded.Hub,
+            contentDescription = stringResource(label),
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = modifier.padding(horizontal = InfinitySpacing.XSmall).size(18.dp),
+        )
+    } else {
+        Text(
+            text = stringResource(label),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.infinityDomainColors.warning,
+            maxLines = 1,
+            modifier = modifier.padding(horizontal = InfinitySpacing.XSmall),
+        )
+    }
+}
+
+/** 文档归属与所在文件夹不同时跟在文件名后的合集标签。 */
+@Composable
+internal fun FileCollectionTagChip(tag: FileCollectionTag, modifier: Modifier = Modifier) {
+    val resources = LocalContext.current.resources
+    Surface(
+        modifier = modifier.widthIn(max = 132.dp),
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Text(
+            text = tag.label(resources),
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
         )
     }
 }
@@ -337,10 +394,19 @@ internal fun FileSortButton(
     }
 }
 
-/** 条目元信息：文件为“大小 · 时间”，文件夹为“N 项 · 时间”（子项数未知时只显示时间）。 */
+/**
+ * 条目元信息：文件为“大小 · 时间”，文件夹为“N 项 · 时间”（子项数未知时只显示时间）。
+ * 存储空间文件夹有合集进度时，时间换成“作品 · 已抽取 n/m”。
+ */
 @Composable
 internal fun fileMetaSegments(item: FileItem): List<String> {
     val time = formatFileTime(item.lastModified)
+    val collection = item.knowledge?.folderCollection?.takeIf { item.isDirectory }
+    if (collection != null) {
+        val count = item.childCount
+        val head = if (count != null) listOf(androidx.compose.ui.res.pluralStringResource(R.plurals.fm_item_count, count, count)) else emptyList()
+        return head + collection.metaSegments(LocalContext.current.resources)
+    }
     return if (item.isDirectory) {
         val count = item.childCount
         if (count != null) {
@@ -420,13 +486,18 @@ internal fun FileRow(
         }
         Spacer(Modifier.width(InfinitySpacing.Small))
         Column(Modifier.weight(1f).padding(vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = item.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = scheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val tag = item.knowledge?.collectionTag
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (tag != null) FileCollectionTagChip(tag)
+            }
             if (location != null) {
                 Text(
                     text = location,
@@ -444,7 +515,7 @@ internal fun FileRow(
                 )
             }
         }
-        KnowledgeBadge(item.knowledge)
+        FileStatusBadge(item.knowledge)
         if (menu != null && !selecting) {
             RowMenuButton(item, menu)
         } else {
@@ -553,7 +624,8 @@ internal fun FileTile(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
         )
-        KnowledgeBadge(item.knowledge)
+        item.knowledge?.collectionTag?.let { FileCollectionTagChip(it) }
+        FileStatusBadge(item.knowledge)
     }
 }
 

@@ -3,6 +3,8 @@ package com.promenar.infinity.data.files
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity
 import com.promenar.infinity.domain.files.KnowledgeIndexState
+import com.promenar.infinity.domain.files.FileGraphState
+import com.promenar.infinity.data.library.graphStateFor
 import com.promenar.infinity.domain.library.PendingStage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -36,4 +38,22 @@ class FileKnowledgeTest {
         assertEquals(PendingStage.EXTRACTING_GRAPH, knowledgeOf(file, listOf(task("extracting"))).stage)
         assertNull(knowledgeOf(file, emptyList(), pending = true).stage)
     }
+    @Test fun `图谱状态优先级与时间判断`() {
+        assertEquals(FileGraphState.NOT_EXTRACTED, graphStateFor(null, 10, null))
+        assertEquals(FileGraphState.NOT_EXTRACTED, graphStateFor(9, 10, null))
+        assertEquals(FileGraphState.EXTRACTED, graphStateFor(10, 10, null))
+        assertEquals(FileGraphState.CONFIRMATION_REQUIRED, graphStateFor(11, 10, "kg.confirmation_required"))
+        assertEquals(FileGraphState.PARTIAL, graphStateFor(11, 10, "kg.budget.calls"))
+        assertEquals(FileGraphState.FAILED, graphStateFor(11, 10, "kg.failed.parse"))
+    }
+
+    @Test fun `只有图谱未完成的任务不算解析失败，真正的失败仍是解析失败`() {
+        val indexed = file.copy(vectorizedAt = 11)
+        listOf("kg.confirmation_required", "kg.budget.calls", "kg.failed.timeout").forEach { error ->
+            assertEquals(error, KnowledgeIndexState.INDEXED, knowledgeOf(indexed, listOf(task("partial").copy(error = error))).state)
+        }
+        assertEquals(KnowledgeIndexState.FAILED, knowledgeOf(indexed, listOf(task("partial"))).state)
+        assertEquals(KnowledgeIndexState.FAILED, knowledgeOf(indexed, listOf(task("failed").copy(error = "kg.failed"))).state)
+    }
+
 }

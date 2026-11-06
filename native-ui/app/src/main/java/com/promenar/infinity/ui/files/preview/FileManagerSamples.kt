@@ -2,6 +2,11 @@ package com.promenar.infinity.ui.files.preview
 
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FileKnowledge
+import com.promenar.infinity.domain.files.FileCollectionTag
+import com.promenar.infinity.domain.files.FileCollectionTagKind
+import com.promenar.infinity.domain.files.FileGraphState
+import com.promenar.infinity.domain.files.FolderCollectionKind
+import com.promenar.infinity.domain.files.FolderCollectionSummary
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationCapabilities
 import com.promenar.infinity.domain.files.FileLocationKind
@@ -86,8 +91,8 @@ internal object FileManagerSamples {
     private fun tree(english: Boolean): Map<FileRef, List<FileItem>> {
         val n = Names(english)
         val lib = LIBRARY_ID
-        fun dir(location: String, path: String, name: String, count: Int, ageHours: Long) =
-            FileItem(FileRef(location, path), name, isDirectory = true, sizeBytes = 0, lastModified = NOW - ageHours * HOUR, childCount = count)
+        fun dir(location: String, path: String, name: String, count: Int, ageHours: Long, knowledge: FileKnowledge? = null) =
+            FileItem(FileRef(location, path), name, isDirectory = true, sizeBytes = 0, lastModified = NOW - ageHours * HOUR, childCount = count, knowledge = knowledge)
         fun file(
             location: String,
             path: String,
@@ -105,11 +110,12 @@ internal object FileManagerSamples {
         val designs = "/" + n.t("设计稿", "Designs")
 
         val libraryRoot = listOf(
-            dir(lib, research, n.t("产品调研", "Product research"), 6, 3),
+            dir(lib, research, n.t("产品调研", "Product research"), 6, 3, FileKnowledge(KnowledgeIndexState.NONE, folderId = "folder-research",
+                folderCollection = FolderCollectionSummary("work:folder-research", FolderCollectionKind.WORK, n.t("产品调研", "Product research"), 2, 3))),
             dir(lib, meetings, n.t("会议纪要", "Meeting notes"), 3, 26),
             dir(lib, designs, n.t("设计稿", "Designs"), 0, 120),
             file(lib, markdownPath(english), n.t("离线模式架构决策.md", "Offline mode decision.md"), 12 * KB + 410, 2,
-                FileKnowledge(KnowledgeIndexState.INDEXED, documentId = "doc-1", chunkCount = 14), "text/markdown"),
+                FileKnowledge(KnowledgeIndexState.INDEXED, documentId = "doc-1", chunkCount = 14, graph = FileGraphState.EXTRACTED), "text/markdown"),
             file(lib, child("/", n.t("发布检查清单.pdf", "Release checklist.pdf")), n.t("发布检查清单.pdf", "Release checklist.pdf"), 2 * MB + 120 * KB, 30,
                 FileKnowledge(KnowledgeIndexState.FAILED, failureReason = n.t("嵌入表格未能提取正文", "Text inside embedded tables could not be extracted")), "application/pdf"),
             file(lib, child("/", n.t("定价策略草稿.md", "Pricing draft.md")), n.t("定价策略草稿.md", "Pricing draft.md"), 6 * KB, 120,
@@ -129,7 +135,9 @@ internal object FileManagerSamples {
             file(lib, child(research, n.t("白板照片.jpg", "Whiteboard photo.jpg")),
                 n.t("白板照片.jpg", "Whiteboard photo.jpg"), 3 * MB, 9, mime = "image/jpeg"),
             file(lib, child(research, n.t("调研提纲.txt", "Research outline.txt")),
-                n.t("调研提纲.txt", "Research outline.txt"), 2 * KB, 50, mime = "text/plain"),
+                n.t("调研提纲.txt", "Research outline.txt"), 2 * KB, 50,
+                FileKnowledge(KnowledgeIndexState.INDEXED, documentId = "doc-7", chunkCount = 2, graph = FileGraphState.EXTRACTED,
+                    collectionTag = FileCollectionTag("shared", FileCollectionTagKind.SHARED, "")), "text/plain"),
         )
         val olderItems = listOf(
             file(lib, child(older, n.t("访谈提纲 v1.txt", "Interview outline v1.txt")), n.t("访谈提纲 v1.txt", "Interview outline v1.txt"), 1 * KB, 900),
@@ -137,9 +145,10 @@ internal object FileManagerSamples {
         )
         val meetingItems = listOf(
             file(lib, child(meetings, n.t("周会纪要 11-03.md", "Weekly notes 11-03.md")), n.t("周会纪要 11-03.md", "Weekly notes 11-03.md"), 4 * KB, 6,
-                FileKnowledge(KnowledgeIndexState.INDEXED, chunkCount = 3)),
+                FileKnowledge(KnowledgeIndexState.INDEXED, chunkCount = 3, graph = FileGraphState.EXTRACTED)),
             file(lib, child(meetings, n.t("周会纪要 10-27.md", "Weekly notes 10-27.md")), n.t("周会纪要 10-27.md", "Weekly notes 10-27.md"), 5 * KB, 7L * 24,
-                FileKnowledge(KnowledgeIndexState.INDEXED, chunkCount = 4)),
+                FileKnowledge(KnowledgeIndexState.INDEXED, chunkCount = 4, graph = FileGraphState.CONFIRMATION_REQUIRED,
+                    collectionTag = FileCollectionTag("work:annual", FileCollectionTagKind.COLLECTION, n.t("年度规划", "Annual plan")))),
             file(lib, child(meetings, n.t("季度复盘.md", "Quarterly review.md")), n.t("季度复盘.md", "Quarterly review.md"), 9 * KB, 20L * 24),
         )
         val ws = WORKSPACE_ID

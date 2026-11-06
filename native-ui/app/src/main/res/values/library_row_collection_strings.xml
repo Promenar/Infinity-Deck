@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 存储空间列表行：图谱状态、合集标签、文件夹合集进度与批量合集归属 -->
+    <string name="lrc_graph_extracted">Graph extracted</string>
+    <string name="lrc_graph_partial">Partial graph</string>
+    <string name="lrc_graph_confirm">Confirm usage</string>
+    <string name="lrc_graph_failed">Graph failed</string>
+    <string name="lrc_kind_work">Work</string>
+    <string name="lrc_kind_shared">General knowledge</string>
+    <string name="lrc_extracted">%1$d/%2$d extracted</string>
+    <string name="lrc_assign_action">Set collection</string>
+    <plurals name="lrc_assign_title_multi">
+        <item quantity="one">Collection · %1$d document</item>
+        <item quantity="other">Collection · %1$d documents</item>
+    </plurals>
+    <string name="lrc_follow_multi_desc">Each document\'s folder</string>
+    <string name="lrc_standalone_multi_desc">One per document</string>
+</resources>

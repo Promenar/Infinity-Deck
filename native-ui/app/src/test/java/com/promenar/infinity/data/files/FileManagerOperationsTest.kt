@@ -72,6 +72,14 @@ class FileManagerOperationsTest {
         coVerify(exactly = 0) { repository.permanentDeleteIfHash(any(), any(), any()) }
     }
 
+    @Test fun `非存储空间条目不带图谱与合集数据`() = runBlocking {
+        val backend = MemoryFileBackend().apply { addFile("/other.txt", "内容".toByteArray()) }
+        val item = operations(mapOf("external:test" to backend)).list("external:test", "/").single()
+        assertEquals(null, item.knowledge?.graph)
+        assertEquals(null, item.knowledge?.collectionTag)
+        assertEquals(null, item.knowledge?.folderCollection)
+    }
+
     private fun roomOperations(backend: ExternalFolderBackend, repository: IWorkspaceRepository) = DefaultFileOperations(
         ApplicationProvider.getApplicationContext<Context>(),
         { FileBackendHandle("private", backend, emptyList(), true, roomRoot = "root") },
