@@ -165,16 +165,19 @@ fun GitChangesPage(
             onBack = { viewModel.back() },
             onExit = onExit,
         ),
-        modifier = Modifier
-            .fillMaxSize()
-            // 检视器是会话内的浮动卡片，不贴系统栏。
-            .then(
-                if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier.padding(top = InfinitySpacing.XSmall)
-                else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-            )
-            .padding(horizontal = InfinitySpacing.ScreenHorizontal),
+        modifier = gitPageModifier(),
     )
 }
+
+/** Git 页的边距外壳：检视器是会话内的浮动卡片，不贴系统栏；整页时避开系统栏。视觉实验室的 Git 版本复用同一外壳。 */
+@Composable
+internal fun gitPageModifier(): Modifier = Modifier
+    .fillMaxSize()
+    .then(
+        if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier.padding(top = InfinitySpacing.XSmall)
+        else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+    )
+    .padding(horizontal = InfinitySpacing.ScreenHorizontal)
 
 /** 无状态的面板内容；父容器必须给出有界高度（差异视图以 `Dp.Infinity` 视口填满剩余高度）。 */
 @Composable

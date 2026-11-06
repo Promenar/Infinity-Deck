@@ -174,8 +174,7 @@ fun LibraryScreen(
     )
     if (mountsOpen) LibraryMountsSheet(onDismiss = { mountsOpen = false })
 
-    // Surface 提供内容色：点按反馈取内容色绘制，裸 Box 下默认黑色，在深色主题里看不见。
-    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().testTag(LibraryTags.SCREEN)) {
+    LibrarySurface(Modifier.testTag(LibraryTags.SCREEN)) {
         FocusDismissArea(Modifier.fillMaxSize()) { area ->
             Box(area) {
                 when (layout) {
@@ -186,6 +185,15 @@ fun LibraryScreen(
             }
         }
     }
+}
+
+/**
+ * 资料页的整页外壳：铺满底色并提供内容色。页头标题与点按反馈都取内容色绘制，
+ * 裸 Box 下内容色默认黑色，在深色主题里看不见。视觉实验室的资料版本复用同一外壳。
+ */
+@Composable
+internal fun LibrarySurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize(), content = content)
 }
 
 /**

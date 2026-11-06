@@ -2,11 +2,8 @@ package com.promenar.infinity.ui.lab.settings
 
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
@@ -15,7 +12,6 @@ import com.promenar.infinity.data.tailnet.TailnetPhase
 import com.promenar.infinity.data.tailnet.TailnetPingResult
 import com.promenar.infinity.data.tailnet.TailnetSettings
 import com.promenar.infinity.data.tailnet.TailnetState
-import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.lab.chat.isChinese
 import com.promenar.infinity.ui.lab.stage.LabScene
@@ -35,11 +31,9 @@ import com.promenar.infinity.ui.settings.ProviderFormActions
 import com.promenar.infinity.ui.settings.ProviderFormContent
 import com.promenar.infinity.ui.settings.ProviderFormUiState
 import com.promenar.infinity.ui.settings.ProviderTailnetInfo
-import com.promenar.infinity.ui.settings.TailnetPeerOptions
 import com.promenar.infinity.ui.settings.TailscalePingRun
 import com.promenar.infinity.ui.settings.TailscaleSettingsContent
 import com.promenar.infinity.ui.settings.TailscaleSettingsUiState
-import com.promenar.infinity.ui.settings.selectableTailnetPeers
 
 /** 设置目录下的版本：内置 Tailscale 的设备与持续 Ping，以及把 gpu-box 上的网关登记为提供商。 */
 internal val labSettingsScenes: Map<String, () -> LabScene> = mapOf(
@@ -145,17 +139,6 @@ private fun LabSceneScope.ProviderGatewayForm(pickerOpen: Boolean) {
             tailnetInfo = ProviderTailnetInfo(selfName = LabTailnet.SELF, tailnetName = LabTailnet.NAME, peers = peers),
         )
     }
-    ProviderFormContent(state = state, actions = ProviderFormActions(onBack = onExit))
-    if (!pickerOpen) return
-    // 真实表单的设备行点按后打开同一面板；这里直接以打开态呈现，关闭后回到表单。
-    var open by remember { mutableStateOf(true) }
-    val usable = remember(peers) { selectableTailnetPeers(peers) }
-    InfinityBottomSheet(
-        show = open,
-        onDismiss = { open = false },
-        title = stringResource(R.string.provider_tailnet_peer_sheet_title),
-        scrollContent = true,
-    ) {
-        TailnetPeerOptions(peers = usable, selected = usable.first { it.name == LabTailnet.GPU_BOX }, onSelect = { open = false })
-    }
+    // 打开态复用表单里真实的设备行与面板：量到设备行位置后打开，宽窗口贴着设备行弹出。
+    ProviderFormContent(state = state, actions = ProviderFormActions(onBack = onExit), initialPeerPickerOpen = pickerOpen)
 }

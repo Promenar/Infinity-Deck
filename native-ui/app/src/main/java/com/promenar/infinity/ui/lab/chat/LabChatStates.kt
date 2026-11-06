@@ -1,17 +1,11 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-
 package com.promenar.infinity.ui.lab.chat
 
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import com.promenar.infinity.R
 import com.promenar.infinity.data.generation.TailnetWaitState
 import com.promenar.infinity.data.model.catalog.ModelCapability
 import com.promenar.infinity.data.model.catalog.ModelWorkload
@@ -35,9 +29,7 @@ import com.promenar.infinity.ui.chat.ChatUiState
 import com.promenar.infinity.ui.chat.ComposerQueueUiState
 import com.promenar.infinity.ui.chat.GenerationStatus
 import com.promenar.infinity.ui.chat.QueuedMessageUi
-import com.promenar.infinity.ui.common.InfinityModalSheet
-import com.promenar.infinity.ui.common.InfinitySheetHeight
-import com.promenar.infinity.ui.common.ModelPickerSheetContent
+import com.promenar.infinity.ui.common.ModelPicker
 import com.promenar.infinity.ui.common.ModelSelectionUiModel
 import com.promenar.infinity.ui.common.network.NetworkLightsState
 import com.promenar.infinity.ui.common.network.TailscaleLightStatus
@@ -102,24 +94,20 @@ internal val labChatStateScenes: Map<String, () -> LabScene> = mapOf(
             val text = rememberStatesText()
             AdeOverlay(ADE_DONE, AdeTimes.DONE + 60_000) { it }
             val models = remember(text) { pickerModels(text) }
-            InfinityModalSheet(onDismissRequest = onExit, height = InfinitySheetHeight.Full) {
-                ModelPickerSheetContent(
-                    title = stringResource(R.string.common_model_picker_title),
-                    searchQuery = "",
-                    onSearchQueryChange = {},
-                    models = models,
-                    currentModelId = models.first().selectionId,
-                    onSelect = { _, _ -> },
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    networkLights = NetworkLightsState(
-                        public = PublicNetworkStatus.CONNECTED,
-                        tailscale = TailscaleLightStatus.CONNECTED,
-                        tailnetProviderIds = setOf(GATEWAY_PROVIDER),
-                    ),
-                    onOpenTailscaleSettings = {},
-                    onRetryTailscale = {},
-                )
-            }
+            ModelPicker(
+                show = true,
+                onDismiss = onExit,
+                onSelect = { _, _ -> },
+                currentModelId = models.first().selectionId,
+                models = models,
+                onOpenTailscaleSettings = {},
+                networkLights = NetworkLightsState(
+                    public = PublicNetworkStatus.CONNECTED,
+                    tailscale = TailscaleLightStatus.CONNECTED,
+                    tailnetProviderIds = setOf(GATEWAY_PROVIDER),
+                ),
+                onRetryTailscale = {},
+            )
         }
     },
     // 发往 gpu-box 上的模型前，内置 Tailscale 还在接入 tailnet。

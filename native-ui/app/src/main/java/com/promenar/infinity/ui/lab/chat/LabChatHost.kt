@@ -1,15 +1,12 @@
 package com.promenar.infinity.ui.lab.chat
 
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import com.promenar.infinity.data.subagent.SubagentBatch
 import com.promenar.infinity.domain.branch.BranchSummary
 import com.promenar.infinity.domain.branch.PendingBranchPlan
@@ -28,9 +25,8 @@ import com.promenar.infinity.ui.chat.LocalSubagentControls
 import com.promenar.infinity.ui.chat.LocalSubagentRuns
 import com.promenar.infinity.ui.chat.LocalToolLiveOutput
 import com.promenar.infinity.ui.chat.components.LocalAgentActivity
-import com.promenar.infinity.ui.common.LocalInfinityInspectorLayout
+import com.promenar.infinity.ui.common.InfinityAdaptivePaneHost
 import com.promenar.infinity.ui.common.LocalLabSandbox
-import com.promenar.infinity.ui.common.infinityInspectorAvailable
 import com.promenar.infinity.ui.lab.fakes.LabFakes
 
 /**
@@ -93,6 +89,8 @@ internal fun LabChatHost(
     frame: LabChatFrame,
     actions: ChatScreenActions,
     inspectorPageContent: @Composable BoxScope.() -> Unit = {},
+    paneVisible: Boolean = false,
+    onPaneBack: () -> Unit = {},
 ) {
     val sessionId = frame.screen.uiState.session?.id ?: LAB_SESSION_ID
     val fakes = remember(sessionId) { LabFakes(sessionId = sessionId) }
@@ -128,11 +126,9 @@ internal fun LabChatHost(
         LocalAgentActivity provides activity,
         LocalChatBrowser provides ChatBrowserAccess(state = null, open = {}),
     ) {
-        // 与真实宿主相同：窗口够宽够高时，二级页面交给会话页的浮动检视器。
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            CompositionLocalProvider(LocalInfinityInspectorLayout provides infinityInspectorAvailable(maxWidth, maxHeight)) {
-                ChatScreenContent(state = frame.screen, actions = actions, inspectorPageContent = inspectorPageContent)
-            }
+        // 与真实宿主 ChatRoute 相同：同一份二级页面在窄窗口由整页宿主覆盖会话，窗口够宽够高时交给会话页的浮动检视器。
+        InfinityAdaptivePaneHost(paneVisible = paneVisible, onBack = onPaneBack, pane = inspectorPageContent) {
+            ChatScreenContent(state = frame.screen, actions = actions, inspectorPageContent = inspectorPageContent)
         }
     }
 }

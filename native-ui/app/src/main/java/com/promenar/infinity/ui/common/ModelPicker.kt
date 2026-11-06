@@ -52,9 +52,12 @@ fun ModelPicker(
     filterTag: String? = null,
     /** 所在页面能跳转 Tailscale 设置时传入；为 null 时 Tailscale 灯只在失败时可点（重试）。 */
     onOpenTailscaleSettings: (() -> Unit)? = null,
+    /** 网络灯与 Tailscale 重试；为 null 时读取本机网络与内置 Tailscale 的实时状态。视觉实验室传入脚本数据。 */
+    networkLights: NetworkLightsState? = null,
+    onRetryTailscale: (() -> Unit)? = null,
 ) {
     if (!show) return
-    val networkLights = rememberNetworkLightsState()
+    val lights = networkLights ?: rememberNetworkLightsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
@@ -84,8 +87,9 @@ fun ModelPicker(
             models = filteredModels,
             currentModelId = currentModelId,
             onSelect = onSelect,
-            networkLights = networkLights,
+            networkLights = lights,
             onOpenTailscaleSettings = onOpenTailscaleSettings,
+            onRetryTailscale = onRetryTailscale,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),

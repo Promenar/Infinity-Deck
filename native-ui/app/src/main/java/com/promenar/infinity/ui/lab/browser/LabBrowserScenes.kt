@@ -1,12 +1,7 @@
 package com.promenar.infinity.ui.lab.browser
 
 import android.webkit.WebView
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +22,7 @@ import com.promenar.infinity.data.browser.BrowserTabState
 import com.promenar.infinity.data.browser.BrowserUiState
 import com.promenar.infinity.ui.browser.BrowserPageContent
 import com.promenar.infinity.ui.browser.BrowserTabActions
+import com.promenar.infinity.ui.browser.browserPageModifier
 import com.promenar.infinity.ui.lab.stage.LabScene
 import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabStateScene
@@ -86,7 +82,7 @@ private fun loginState() = BrowserUiState(
     currentTabId = "lab-tab-runs",
 )
 
-/** 与真实浏览器页相同的外壳：整页铺满并避开系统栏；标签栏与地址栏的操作都是空操作，返回键接到版本页出口。 */
+/** 套用真实浏览器页的外壳 [browserPageModifier]；标签栏与地址栏的操作都是空操作，返回键接到版本页出口。 */
 @Composable
 private fun LabSceneScope.LabBrowserPage(state: BrowserUiState, baseUrl: String, html: () -> String) {
     var current by remember { mutableStateOf(state) }
@@ -100,10 +96,7 @@ private fun LabSceneScope.LabBrowserPage(state: BrowserUiState, baseUrl: String,
         onPageBack = {},
         onPageForward = {},
         onUpdateWebView = {},
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+        modifier = browserPageModifier(),
         onNavigate = { _: String -> },
         tabActions = BrowserTabActions(onSelect = {}, onClose = {}, onNew = {}, onDisplayMode = {}),
     ) {

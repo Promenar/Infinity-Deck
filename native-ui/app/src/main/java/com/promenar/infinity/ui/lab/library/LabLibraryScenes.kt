@@ -1,6 +1,5 @@
 package com.promenar.infinity.ui.lab.library
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,14 +42,16 @@ import com.promenar.infinity.ui.library.LibraryAskField
 import com.promenar.infinity.ui.library.LibraryAskResults
 import com.promenar.infinity.ui.library.LibraryLeading
 import com.promenar.infinity.ui.library.LibraryPageFrame
+import com.promenar.infinity.ui.library.LibrarySurface
 import com.promenar.infinity.ui.library.LocatedBodySegments
 import com.promenar.infinity.ui.library.locateBody
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /**
  * 存储空间目录下的版本：问资料的答案与命中列表，以及从答案点进文档后的命中段定位。
- * 资料与记忆都围绕 starlog 的 JSON 输出设计，全部虚构。两页按外屏的整页布局拼装（页头带返回），
- * 内屏打开时居中成最宽 640dp 的阅读列；内屏两列的资料页要等资料页可注入假数据后再接入。
+ * 资料与记忆都围绕 starlog 的 JSON 输出设计，全部虚构。两页套用资料页的整页外壳 [LibrarySurface]，
+ * 按外屏的整页布局拼装（页头带返回），内屏打开时居中成最宽 640dp 的阅读列；
+ * 内屏两列的资料页要等资料页可注入假数据后再接入。
  */
 internal val labLibraryScenes: Map<String, () -> LabScene> = mapOf(
     "library.state.ask" to { LabStateScene { AskPage() } },
@@ -70,13 +70,12 @@ private fun rememberLibraryText(): LabLibraryText {
 private val PageInsets: WindowInsets
     @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
 
-/** 外屏整页布局在内屏打开时最宽的阅读列；整页底色铺满，列居中。 */
+/** 外屏整页布局在内屏打开时最宽的阅读列；底色由外壳铺满，列居中。 */
 private val PageMaxWidth = 640.dp
 
 @Composable
 private fun pageModifier(): Modifier = Modifier
     .fillMaxSize()
-    .background(MaterialTheme.colorScheme.background)
     .windowInsetsPadding(PageInsets)
     .wrapContentWidth(Alignment.CenterHorizontally)
     .widthIn(max = PageMaxWidth)
@@ -97,23 +96,25 @@ private fun LabSceneScope.AskPage() {
             onCopy = {},
         )
     }
-    LibraryPageFrame(
-        title = stringResource(R.string.library_page_ask),
-        leading = LibraryLeading.Back(onExit),
-        crumbs = null,
-        modifier = pageModifier(),
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
-            LibraryAskField(
-                query = state.query,
-                onQueryChange = {},
-                onSearch = {},
-                modifier = Modifier.padding(
-                    horizontal = InfinitySpacing.ScreenHorizontal,
-                    vertical = InfinitySpacing.Small,
-                ),
-            )
-            LibraryAskResults(state, AskMode.FULL, actions, bottomPadding = padding.calculateBottomPadding(), modifier = Modifier.weight(1f))
+    LibrarySurface {
+        LibraryPageFrame(
+            title = stringResource(R.string.library_page_ask),
+            leading = LibraryLeading.Back(onExit),
+            crumbs = null,
+            modifier = pageModifier(),
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+                LibraryAskField(
+                    query = state.query,
+                    onQueryChange = {},
+                    onSearch = {},
+                    modifier = Modifier.padding(
+                        horizontal = InfinitySpacing.ScreenHorizontal,
+                        vertical = InfinitySpacing.Small,
+                    ),
+                )
+                LibraryAskResults(state, AskMode.FULL, actions, bottomPadding = padding.calculateBottomPadding(), modifier = Modifier.weight(1f))
+            }
         }
     }
 }
@@ -131,22 +132,24 @@ private fun LabSceneScope.LocatePage() {
     }
     var focus by remember(located) { mutableIntStateOf(0) }
     val scroll = rememberScrollState()
-    LibraryPageFrame(
-        title = text.docTitle,
-        leading = LibraryLeading.Back(onExit),
-        crumbs = null,
-        modifier = pageModifier(),
-    ) { padding ->
-        Column(Modifier.fillMaxSize()) {
-            DocumentLocateBar(
-                hitCount = located.hitCount,
-                focus = focus,
-                cited = false,
-                onMove = { delta -> focus = (focus + delta).mod(located.hitCount) },
-            )
-            Column(Modifier.weight(1f).verticalScroll(scroll).padding(padding)) {
-                SelectionContainer {
-                    LocatedBodySegments(located, markdown = true, focus = focus, scroll = scroll, viewportTop = { 0f })
+    LibrarySurface {
+        LibraryPageFrame(
+            title = text.docTitle,
+            leading = LibraryLeading.Back(onExit),
+            crumbs = null,
+            modifier = pageModifier(),
+        ) { padding ->
+            Column(Modifier.fillMaxSize()) {
+                DocumentLocateBar(
+                    hitCount = located.hitCount,
+                    focus = focus,
+                    cited = false,
+                    onMove = { delta -> focus = (focus + delta).mod(located.hitCount) },
+                )
+                Column(Modifier.weight(1f).verticalScroll(scroll).padding(padding)) {
+                    SelectionContainer {
+                        LocatedBodySegments(located, markdown = true, focus = focus, scroll = scroll, viewportTop = { 0f })
+                    }
                 }
             }
         }

@@ -142,6 +142,8 @@ internal fun LabSceneScope.LabChatScene(
     hub: LabHubStory? = null,
     expanded: Boolean = false,
     inspectorPageContent: @Composable BoxScope.() -> Unit = {},
+    paneVisible: Boolean = false,
+    onPaneBack: () -> Unit = {},
 ) {
     val anchor = anchorMs - nowScriptMs
     // 本场景里已经出现过的思考消息；从画面消失（倒退、重播）后移出，再次出现时重新计时。
@@ -159,12 +161,12 @@ internal fun LabSceneScope.LabChatScene(
         frame.atWallClock(anchor)
     }
     if (hub == null) {
-        LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent)
+        LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent, paneVisible, onPaneBack)
         return
     }
     val zh = isChinese(LocalContext.current.resources)
     val list = remember(hub, shifted, zh) { labHubList(hub, shifted, zh) }
     LabHubFrame(list, initialExpanded = expanded) {
-        LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent)
+        LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent, paneVisible, onPaneBack)
     }
 }
