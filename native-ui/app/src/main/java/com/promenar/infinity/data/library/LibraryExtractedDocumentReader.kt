@@ -28,7 +28,7 @@ internal class LibraryExtractedDocumentReader(
 ) {
     suspend fun read(entry: FileEntry, maxChars: Int): LibraryExtractedText = withContext(Dispatchers.IO) {
         val root = ensureRoot()
-        require(root.uuid == entry.workspaceRootUuid) { "资料库根已变化" }
+        require(root.uuid == entry.workspaceRootUuid) { "存储空间根已变化" }
         val snapshot = File.createTempFile("library-preview-", ".tmp", cacheDirectory)
         try {
             val current = WorkspaceMutationCoordinator.withBoundRoot(Paths.get(root.physicalRootPath), root.hash) {

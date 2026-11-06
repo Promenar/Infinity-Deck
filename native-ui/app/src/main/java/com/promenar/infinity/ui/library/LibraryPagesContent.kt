@@ -586,7 +586,7 @@ private fun DocumentRow(doc: LibraryDocumentSummary, onOpen: () -> Unit) {
     }
 }
 
-/** 收集卡：导入文件与新建笔记都放进资料库根目录。 */
+/** 收集卡：导入文件与新建笔记都放进存储空间根目录。 */
 @Composable
 private fun CollectCard(host: LibraryPageHost) {
     val vm = host.viewModel

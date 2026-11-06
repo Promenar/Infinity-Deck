@@ -53,12 +53,12 @@ class ShareImportTargetProviderTest {
     }
 
     @Test
-    fun `会话列表排除当前与资料库按更新时间倒序且不默认选择`() = runTest {
+    fun `会话列表排除当前与存储空间按更新时间倒序且不默认选择`() = runTest {
         val dao = mockk<SessionDao>()
         val workspace = mockk<IWorkspaceRepository>()
         coEvery { dao.getAll() } returns listOf(session("old", "旧").copy(updatedAt = 1),
             session("current", "当前").copy(updatedAt = 9), session("new", "新").copy(updatedAt = 8),
-            session(ShareImportTargetProvider.GLOBAL_KNOWLEDGE_SESSION_ID, "资料库"),
+            session(ShareImportTargetProvider.GLOBAL_KNOWLEDGE_SESSION_ID, "存储空间"),
             session("missing", "不可用").copy(worktreeDirectory = "/missing/worktree"))
         val provider = ShareImportTargetProvider(dao, workspace) { root("knowledge") }
         assertThat(provider.sessions("current").map { it.sessionId }).containsExactly("new", "old").inOrder()
@@ -68,7 +68,7 @@ class ShareImportTargetProviderTest {
     }
 
     @Test
-    fun `资料库只列直接可见子文件夹并按名称排序`() = runTest {
+    fun `存储空间只列直接可见子文件夹并按名称排序`() = runTest {
         val dao = mockk<SessionDao>()
         val workspace = mockk<IWorkspaceRepository>()
         val root = root("knowledge")

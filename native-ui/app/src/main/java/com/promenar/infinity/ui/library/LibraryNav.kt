@@ -176,7 +176,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
                 )
             },
             foldable = true,
-            // 资料库级外部文件夹：挂在资料库上，不随会话删除。
+            // 资料页级外部文件夹：挂在资料页上，不随会话删除。
             action = LibraryNavEntry(
                 key = LIBRARY_MOUNTS_ACTION_KEY,
                 icon = Icons.Rounded.CreateNewFolder,
@@ -358,7 +358,7 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit,
     }
 }
 
-/** 展开后的图标条：视图、资料库与智能体记住的；位置在“资料库”页里切换。 */
+/** 展开后的图标条：浏览、首个位置与智能体记住的。 */
 @Composable
 internal fun LibraryStrip(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)

@@ -203,7 +203,7 @@ class LibraryViewModel(
         }
     }
 
-    /** 概览“收集”卡：从设备导入到资料库根目录。 */
+    /** 概览“收集”卡：从设备导入到存储空间根目录。 */
     fun importToLibrary(uris: List<String>) {
         if (uris.isEmpty()) return
         launchNotice(LibraryNotice.Kind.IMPORT) {
@@ -212,7 +212,7 @@ class LibraryViewModel(
         }
     }
 
-    /** 概览“收集”卡：把一段文字存成资料库根目录下的笔记。 */
+    /** 概览“收集”卡：把一段文字存成存储空间根目录下的笔记。 */
     fun saveNote(name: String, text: String) {
         launchNotice(LibraryNotice.Kind.NOTE) {
             files.operations.importText(text, LIBRARY_ROOT, name)
@@ -287,5 +287,5 @@ class LibraryViewModel(
     }
 }
 
-/** 资料库位置的固定 id，见 files-core 的位置 id 规则。 */
+/** 存储空间位置的固定 id，见 files-core 的位置 id 规则。 */
 const val LIBRARY_LOCATION_ID = "kb"

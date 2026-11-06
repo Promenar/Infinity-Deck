@@ -28,7 +28,7 @@ class ExternalFoldersPanelStateTest {
     }
 
     @Test
-    fun `会话可引用的资料库文件夹排除已挂同源且 Linux 会话只列真实路径`() {
+    fun `会话可引用的存储空间文件夹排除已挂同源且 Linux 会话只列真实路径`() {
         val saf = mount("lib-saf", "__library__")
         val attached = mount("lib-attached", "__library__")
         val real = mount("lib-real", "__library__").copy(sourceType = "real_path", sourceId = "/storage/emulated/0/Notes")
@@ -140,7 +140,7 @@ class ExternalFoldersPanelStateTest {
     }
 
     @Test
-    fun `资料库挂载行把真实路径和系统授权树转成可读位置`() {
+    fun `存储空间挂载行把真实路径和系统授权树转成可读位置`() {
         assertThat(mountSourceLocationLabel("real_path", "/storage/emulated/0/Documents/a b", "内部存储"))
             .isEqualTo("内部存储/Documents/a b")
         assertThat(mountSourceLocationLabel("real_path", "/storage/emulated/0", "内部存储")).isEqualTo("内部存储")

@@ -9,7 +9,7 @@ import com.promenar.infinity.domain.files.FileSortKey
 import org.junit.Test
 
 class FileListingTest {
-    private val location = FileLocation("library", FileLocationKind.KNOWLEDGE_BASE, "资料库", FileLocationCapabilities(true, true, true))
+    private val location = FileLocation("library", FileLocationKind.KNOWLEDGE_BASE, "存储空间", FileLocationCapabilities(true, true, true))
     private val alpha = file("/alpha.txt", modified = 20, size = 5, mime = "text/plain")
     private val beta = file("/beta.pdf", modified = 10, size = 20, mime = "application/pdf")
     private val folder = file("/folder", directory = true, modified = 1, size = 1)
@@ -44,9 +44,9 @@ class FileListingTest {
         val hidden = file("/.secret")
         assertThat(FileListing.items(listOf(alpha, hidden), FileSort(), false)).containsExactly(alpha)
         assertThat(FileListing.items(listOf(alpha, hidden), FileSort(), true)).containsExactly(alpha, hidden)
-        assertThat(FileListing.crumbs(location, "/")).containsExactly(FileCrumb("资料库", "/"))
+        assertThat(FileListing.crumbs(location, "/")).containsExactly(FileCrumb("存储空间", "/"))
         assertThat(FileListing.crumbs(location, "/项目/文档")).containsExactly(
-            FileCrumb("资料库", "/"), FileCrumb("项目", "/项目"), FileCrumb("文档", "/项目/文档"),
+            FileCrumb("存储空间", "/"), FileCrumb("项目", "/项目"), FileCrumb("文档", "/项目/文档"),
         ).inOrder()
     }
 

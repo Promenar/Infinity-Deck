@@ -72,7 +72,7 @@ private fun PaneSample(
     FileManagerPane(controller = controller, host = host)
 }
 
-// ---------- 单列列表（资料库根目录） ----------
+// ---------- 单列列表（存储空间根目录） ----------
 
 @PreviewTest
 @Preview(name = "资源管理器 单列 深中411", widthDp = 411, heightDp = 860, locale = "zh-rCN")

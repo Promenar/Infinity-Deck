@@ -224,7 +224,7 @@ internal class LibraryPageHost(
     val chunkLocator: ChunkLocator,
     /** 从对话引用打开的文档页要定位的段落；资料页内导航为 null。 */
     val locateRequest: DocumentLocateRequest? = null,
-    /** 打开资料库级外部文件夹的管理面板。 */
+    /** 打开资料页级外部文件夹的管理面板。 */
     val onManageMounts: () -> Unit = {},
 )
 

@@ -14,12 +14,12 @@
     <string name="share_import_ext_target_linux_needs_install">The Linux environment is not installed yet</string>
     <string name="share_import_ext_target_linux_unsupported">The Linux environment is not available in this version or on this device</string>
     <string name="share_import_ext_linux_install">Install Linux</string>
-    <string name="share_import_ext_target_kb">Library…</string>
-    <string name="share_import_ext_target_kb_sub">Pick a Library folder; supported formats are indexed</string>
+    <string name="share_import_ext_target_kb">Storage…</string>
+    <string name="share_import_ext_target_kb_sub">Pick a folder; supported formats are indexed</string>
     <string name="share_import_ext_change">Change</string>
     <string name="share_import_ext_choose_session">Choose chat</string>
     <string name="share_import_ext_choose_folder">Choose folder</string>
-    <string name="share_import_ext_kb_root">Library root</string>
+    <string name="share_import_ext_kb_root">Storage root</string>
     <string name="share_import_ext_session_unselected">No chat selected</string>
     <string name="share_import_ext_result_title">Result</string>
     <string name="share_import_ext_note_current">Files are saved in this chat\'s folder. Supported formats are indexed; others are kept as-is for the agent to handle.</string>
@@ -29,7 +29,7 @@
     <string name="share_import_ext_note_kb">Saved to “%1$s”. Supported formats are indexed; others are only saved, and the agent can copy them into Linux when needed.</string>
     <string name="share_import_ext_session_picker_title">Choose a chat</string>
     <string name="share_import_ext_session_picker_empty">There are no other chats</string>
-    <string name="share_import_ext_folder_picker_title">Choose a Library folder</string>
+    <string name="share_import_ext_folder_picker_title">Choose a Storage folder</string>
     <string name="share_import_ext_linux_picker_title">Choose a Linux folder</string>
     <string name="share_import_ext_picker_use">Use this folder</string>
     <string name="share_import_ext_picker_up">Up one level</string>

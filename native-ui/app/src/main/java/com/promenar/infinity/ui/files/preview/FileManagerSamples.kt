@@ -36,7 +36,7 @@ internal object FileManagerSamples {
             FileLocation(
                 id = LIBRARY_ID,
                 kind = FileLocationKind.KNOWLEDGE_BASE,
-                title = n.t("资料库", "Library"),
+                title = n.t("存储空间", "Storage"),
                 capabilities = full,
                 freeBytes = 18_400 * MB,
             ),

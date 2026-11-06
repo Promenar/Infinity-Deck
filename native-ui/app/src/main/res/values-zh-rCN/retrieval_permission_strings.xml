@@ -22,7 +22,7 @@
     <string name="perm_active_isolated_desc">记录只属于本会话，也看不到共享池</string>
     <string name="perm_active_switch_note">切换后，已写入的记录留在原来的位置。</string>
     <string name="perm_collections">可用资料</string>
-    <string name="perm_collections_all">全部资料库</string>
+    <string name="perm_collections_all">全部合集</string>
     <string name="perm_collections_all_desc">包括以后新增的合集</string>
     <plurals name="perm_collections_count">
         <item quantity="other">%1$d 个合集</item>
@@ -34,12 +34,12 @@
     <string name="perm_default_none">仅工作区</string>
     <string name="perm_default_none_desc">不预选合集，可在会话设置中勾选</string>
     <string name="perm_default_value">新会话：%1$s</string>
-    <string name="perm_collections_empty">资料库还没有合集</string>
+    <string name="perm_collections_empty">还没有合集</string>
     <string name="perm_session_only">仅本会话</string>
     <string name="perm_global_value">全局 · %1$s</string>
     <string name="perm_global_forbidden">智能体禁止全局记忆</string>
     <string name="perm_global_toggle_desc">同时检索其它会话的对话片段</string>
-    <string name="perm_docs_value_all">工作区 + 全部资料库</string>
+    <string name="perm_docs_value_all">工作区 + 全部资料</string>
     <string name="perm_docs_value_none">仅工作区</string>
     <plurals name="perm_docs_value_count">
         <item quantity="other">工作区 + %1$d 个合集</item>

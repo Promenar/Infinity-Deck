@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
  * 快速模型为空时不生成答案；向量模型也未设置时只做关键词匹配。不回落到任何会话或智能体的模型。
  */
 
-/** 检索范围：默认全部已索引文档，可收窄到资料库或某个工作区根。 */
+/** 检索范围：默认全部已索引文档，可收窄到存储空间或某个工作区根。 */
 sealed interface AskScope {
     data object AllIndexed : AskScope
     data object Library : AskScope
@@ -26,7 +26,7 @@ data class AskHit(
     val key: String,
     val kind: AskHitKind,
     val title: String,
-    /** 位置描述，例如“资料库 · 架构”“工作区 Notes · 会议”“Infinity · 2 天前”。 */
+    /** 位置描述，例如“存储空间 · 架构”“工作区 Notes · 会议”“Infinity · 2 天前”。 */
     val location: String,
     /** 摘录，最多约 240 字。 */
     val snippet: String,

@@ -270,7 +270,7 @@ class ShareImportViewModelTest {
     )
 
     @Test
-    fun `有当前会话时默认选当前会话，没有时选资料库根目录`() = runTest(dispatcher) {
+    fun `有当前会话时默认选当前会话，没有时选存储空间根目录`() = runTest(dispatcher) {
         val withSession = selectionFixture(FakeTargets(options = { WITH_SESSION }))
         withSession.viewModel.presentNext()
         assertThat(withSession.viewModel.state.value.selectedKind).isEqualTo(ShareTargetKind.CurrentSession)
@@ -358,7 +358,7 @@ class ShareImportViewModelTest {
     }
 
     @Test
-    fun `资料库默认根目录，也能逐级选子文件夹`() = runTest(dispatcher) {
+    fun `存储空间默认根目录，也能逐级选子文件夹`() = runTest(dispatcher) {
         val fixture = selectionFixture(FakeTargets())
         fixture.viewModel.presentNext()
 

@@ -1,5 +1,5 @@
 <resources>
-    <string name="library_ask_location_library">资料库</string>
+    <string name="library_ask_location_library">存储空间</string>
     <string name="library_ask_location_workspace">工作区 %1$s</string>
     <string name="library_ask_location_memory">主动记忆</string>
     <string name="library_ask_location_entity">%1$d 篇来源文档</string>

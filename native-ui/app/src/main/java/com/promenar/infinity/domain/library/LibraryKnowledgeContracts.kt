@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
  */
 
 data class LibraryOverview(
-    /** 已完成索引的资料库文档数。 */
+    /** 已完成索引的存储空间文档数。 */
     val indexedDocuments: Int,
     val longTermMemories: Int,
     /** 近 7 天新增且用户尚未在资料页看过的长期记忆数。 */
@@ -43,12 +43,12 @@ sealed interface DocumentGraphState {
     data class Failed(val reason: String) : DocumentGraphState
 }
 
-/** 需要用户处理或正在处理的资料库文档。 */
+/** 需要用户处理或正在处理的存储空间文档。 */
 data class PendingDocument(
     val documentId: String,
     val ref: FileRef,
     val name: String,
-    /** 所在文件夹的显示路径，例如“资料库 › 产品调研”。 */
+    /** 所在文件夹的显示路径，例如“存储空间 › 产品调研”。 */
     val folderPath: String,
     val kind: PendingKind,
     /** 失败原因（可读）；其它状态为 null。 */
@@ -131,7 +131,7 @@ interface LibraryKnowledgeSource {
     fun observeOverview(): Flow<LibraryOverview>
     fun observePending(): Flow<List<PendingDocument>>
 
-    /** 资料库里最近修改或加入的文档，按时间降序。 */
+    /** 存储空间里最近修改或加入的文档，按时间降序。 */
     fun observeRecent(limit: Int = 50): Flow<List<LibraryDocumentSummary>>
 
     /** 失败文档重试解析与索引；可换用备用解析器。 */
@@ -149,7 +149,7 @@ interface LibraryKnowledgeSource {
     suspend fun insight(documentId: String): DocumentInsight?
     suspend fun body(documentId: String, maxChars: Int = 200_000): DocumentBody?
 
-    /** 文件引用对应的资料库文档 id；不在资料库或尚未登记时为 null。 */
+    /** 文件引用对应的存储空间文档 id；不在存储空间或尚未登记时为 null。 */
     suspend fun documentIdFor(ref: FileRef): String?
 
     fun observeFragmentGroups(): Flow<List<FragmentGroup>>

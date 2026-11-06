@@ -314,7 +314,7 @@ private fun ExternalFoldersPanelContent(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    // 会话面板额外列出资料库里的文件夹，供本会话引用同一授权；资料库面板自身不列。
+    // 会话面板额外列出资料页的外部文件夹，供本会话引用同一授权；资料页挂载面板自身不列。
     val libraryScope = ExternalMountPaths.isLibraryScope(sessionKey)
     var libraryMounts by remember { mutableStateOf<List<ExternalMount>>(emptyList()) }
     LaunchedEffect(manager, sessionKey) {
@@ -519,7 +519,7 @@ private fun ExternalFoldersPanelContent(
         }
     }
 
-    // 移除资料库文件夹前查出引用同一来源的会话数，提示这些引用会保留。
+    // 移除资料页外部文件夹前查出引用同一来源的会话数，提示这些引用会保留。
     var removeReferences by remember { mutableStateOf(0) }
     LaunchedEffect(removeMountId, libraryScope) {
         val mountId = removeMountId
@@ -608,9 +608,9 @@ internal fun ExternalMountManagerContent(
     onGrantRealPath: (() -> Unit)?,
     modifier: Modifier = Modifier,
     linuxSession: Boolean = false,
-    /** 资料库作用域：标题与说明改为资料库文件夹，不随会话删除。 */
+    /** 资料页作用域：标题与说明改为资料页的外部文件夹，不随会话删除。 */
     libraryScope: Boolean = false,
-    /** 本会话尚未引用的资料库文件夹。 */
+    /** 本会话尚未引用的资料页外部文件夹。 */
     libraryChoices: List<ExternalMount> = emptyList(),
     onAttachLibrary: (ExternalMount) -> Unit = {},
     /** 为空时不显示“挂载知识库”入口（无会话或无法取得预览）。 */
@@ -752,7 +752,7 @@ private fun ExternalMountRow(
     onRemove: (ExternalMount) -> Unit,
     onGrantRealPath: (() -> Unit)?,
     linuxSession: Boolean = false,
-    /** 资料库挂载不属于任何会话：显示来源位置，不显示 /mnt 别名与命令可见性。 */
+    /** 资料页挂载不属于任何会话：显示来源位置，不显示 /mnt 别名与命令可见性。 */
     libraryScope: Boolean = false,
 ) {
     var menuOpen by remember(mount.id) { mutableStateOf(false) }

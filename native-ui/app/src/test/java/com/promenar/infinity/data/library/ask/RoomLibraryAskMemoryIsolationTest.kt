@@ -55,7 +55,7 @@ class RoomLibraryAskMemoryIsolationTest {
                 ragConfig = RagConfiguration(enableQueryRewrite = false, docThreshold = 0.1f))
             val backend = RoomLibraryAskBackend(db, mockk<ProviderManager>(relaxed = true), mockk<SharedPreferences>(relaxed = true),
                 { embedding }, memoryManager = { memoryManager }, memories = repository, citations = RoomKnowledgeCitationRepository(db),
-                answerStream = { _, _ -> emptyFlow() }, libraryLocation = { "资料库" }, workspaceLocation = { it },
+                answerStream = { _, _ -> emptyFlow() }, libraryLocation = { "存储空间" }, workspaceLocation = { it },
                 memoryLocation = { "主动记忆" }, entityLocation = { "图谱" })
             val keyword = backend.keywords("needle", AskScope.AllIndexed, 10)
             assertThat(keyword.map { it.title }).contains("共享记忆")

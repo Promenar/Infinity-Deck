@@ -73,7 +73,7 @@ import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import java.util.Locale
 
-/** 会话列表、资料库文件夹与 Linux 目录三个选择器的回调；预览与截图测试传空实现。 */
+/** 会话列表、存储空间文件夹与 Linux 目录三个选择器的回调；预览与截图测试传空实现。 */
 data class ShareImportPickerActions(
     val onOpenSessionPicker: () -> Unit = {},
     val onPickSession: (ShareSessionChoice) -> Unit = {},
@@ -298,7 +298,7 @@ internal fun ColumnScope.ShareImportSheetContent(
     }
 }
 
-/** 四个导入位置，单选；选中的“其他会话 / Linux / 资料库”下方显示已选的会话或目录与更换按钮。 */
+/** 四个导入位置，单选；选中的“其他会话 / Linux / 存储空间”下方显示已选的会话或目录与更换按钮。 */
 @Composable
 private fun ShareImportTargets(
     state: ShareImportUiState,
@@ -508,7 +508,7 @@ private fun ShareImportNote(state: ShareImportUiState) {
     }
 }
 
-/** 资料库路径按“资料 / 财务”的层级写法显示。 */
+/** 存储空间路径按“资料 / 财务”的层级写法显示。 */
 internal fun knowledgeFolderLabel(path: String): String =
     path.split('/').filter(String::isNotBlank).joinToString(" / ")
 

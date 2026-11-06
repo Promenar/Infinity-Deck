@@ -89,7 +89,7 @@ internal fun safTreeLocationLabel(authority: String?, treeDocumentId: String?, p
 private const val PRIMARY_STORAGE_ROOT = "/storage/emulated/0"
 
 /**
- * 资料库挂载行显示的来源位置：真实路径把主存储根换成可读卷名；
+ * 资料页挂载行显示的来源位置：真实路径把主存储根换成可读卷名；
  * 系统授权文件夹从树 URI（`content://<提供方>/tree/<编码后的文档 ID>`）解析文档 ID 再转可读位置。
  * 非外部存储提供方或无法解析时返回 null，调用方只显示来源类型。
  */
@@ -117,7 +117,7 @@ internal fun safTreeFallbackName(treeDocumentId: String?): String? =
 
 /** 空会话不展示挂载，防止页面切换时展示其它会话的路径。 */
 /**
- * 会话可引用的资料库文件夹：排除本会话已挂载的同一来源；Linux 会话只能使用真实路径，
+ * 会话可引用的资料页外部文件夹：排除本会话已挂载的同一来源；Linux 会话只能使用真实路径，
  * 系统授权文件夹对其中的智能体不可见，因此不列出。
  */
 internal fun libraryMountChoices(library: List<ExternalMount>, session: List<ExternalMount>, linuxSession: Boolean): List<ExternalMount> {

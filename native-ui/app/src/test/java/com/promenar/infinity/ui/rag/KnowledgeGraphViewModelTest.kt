@@ -482,8 +482,8 @@ class KnowledgeGraphViewModelTest {
     fun `图谱视角默认打开实体最多的作品图谱且可切换到通用知识`() = runTest {
         val collections = listOf(
             KgCollectionSummary("shared", "shared", "通用知识", null, 3, 5, 2),
-            KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300),
-            KgCollectionSummary("work:b", "work", "短篇", "资料库/短篇", 2, 9, 4),
+            KgCollectionSummary("work:a", "work", "长夜行", "存储空间/长夜行", 20, 412, 300),
+            KgCollectionSummary("work:b", "work", "短篇", "存储空间/短篇", 2, 9, 4),
         )
         coEvery { graphStore.getGraphSubgraph(GraphSubgraphRequest(collectionId = "work:a")) } returns
             subgraph(listOf(dataNode("hero", "主角")), emptyList())
@@ -509,7 +509,7 @@ class KnowledgeGraphViewModelTest {
         coEvery { graphStore.searchGraphEntities(GraphEntitySearchRequest("主", collectionId = "work:a")) } returns
             listOf(dataNode("hero", "主角"))
         val vm = KnowledgeGraphViewModel(repo, graphStore, app, null) {
-            listOf(KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300))
+            listOf(KgCollectionSummary("work:a", "work", "长夜行", "存储空间/长夜行", 20, 412, 300))
         }
 
         vm.searchEntities("主")

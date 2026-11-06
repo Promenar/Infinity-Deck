@@ -5,7 +5,7 @@ import org.junit.Test
 
 class TabSlideDirectionTest {
     @Test
-    fun `按会话、资料库、设置的顺序判断滑动方向`() {
+    fun `按会话、存储空间、设置的顺序判断滑动方向`() {
         assertThat(tabSlideDirection(AppTab.CHAT, AppTab.LIBRARY)).isEqualTo(1)
         assertThat(tabSlideDirection(AppTab.CHAT, AppTab.SETTINGS)).isEqualTo(1)
         assertThat(tabSlideDirection(AppTab.LIBRARY, AppTab.SETTINGS)).isEqualTo(1)

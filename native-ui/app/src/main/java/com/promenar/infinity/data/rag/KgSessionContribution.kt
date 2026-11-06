@@ -40,7 +40,7 @@ internal fun sessionContribution(database: InfinityDatabase, sessionId: String, 
         ),
     ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) to cursor.getInt(1) else 0 to 0 }
 
-/** 资料库合集（作品图谱与通用知识），供权限设置与图谱页选择。只读。 */
+/** 图谱合集（作品与通用知识），供权限设置与图谱页选择。只读。 */
 suspend fun loadLibraryCollections(database: InfinityDatabase): List<KgCollectionSummary> = withContext(Dispatchers.IO) {
     KgCollectionRepository(database).listBindableCollections("").filter { it.kind != "session" }
 }

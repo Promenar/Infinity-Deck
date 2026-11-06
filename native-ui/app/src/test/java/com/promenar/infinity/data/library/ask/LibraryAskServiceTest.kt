@@ -33,7 +33,7 @@ class LibraryAskServiceTest {
             .isEqualTo(DocumentReach.Scoped(setOf("workspace"), emptySet()))
     }
     private fun doc(id: String, document: String = id, similarity: Float? = null) = AskHit(
-        key = id, kind = AskHitKind.DOCUMENT, title = document, location = "资料库",
+        key = id, kind = AskHitKind.DOCUMENT, title = document, location = "存储空间",
         snippet = "相关资料", highlightTerms = listOf("资料"),
         match = if (similarity == null) AskMatch.KEYWORD else AskMatch.SEMANTIC, similarity = similarity,
         documentId = document, chunkIndex = 0, chunkContent = "相关资料",

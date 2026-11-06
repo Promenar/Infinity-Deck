@@ -87,7 +87,7 @@ sealed interface ShareImportDestination {
         override val kind get() = ShareTargetKind.Linux
     }
 
-    /** 资料库里的文件夹；[folderUuid] 等于 [workspaceRootUuid] 表示根目录，[displayPath] 根目录为 "/"。 */
+    /** 存储空间里的文件夹；[folderUuid] 等于 [workspaceRootUuid] 表示根目录，[displayPath] 根目录为 "/"。 */
     data class KnowledgeFolder(
         val workspaceRootUuid: String,
         val folderUuid: String,
@@ -106,7 +106,7 @@ data class ShareSessionChoice(
 data class ShareKnowledgeFolder(
     val uuid: String,
     val name: String,
-    /** 资料库内路径，根目录为 "/"。 */
+    /** 存储空间内路径，根目录为 "/"。 */
     val path: String,
 )
 

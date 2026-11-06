@@ -3,18 +3,18 @@
     <!-- 单篇文档的图谱合集归属 -->
     <string name="kda_row">Collection assignment</string>
     <string name="kda_row_follow">Follow folder · %1$s</string>
-    <string name="kda_row_collection">Added to · %1$s</string>
+    <string name="kda_row_collection">Other collection · %1$s</string>
     <string name="kda_title">Collection · %1$s</string>
-    <string name="kda_desc">Choose which graph collection this document belongs to. An extracted graph moves along without calling the model again.</string>
+    <string name="kda_desc">An extracted graph moves with it; the model is not called again.</string>
     <string name="kda_mode_follow">Follow folder</string>
     <string name="kda_follow_desc">Currently: %1$s</string>
-    <string name="kda_mode_standalone">Standalone work</string>
-    <string name="kda_standalone_desc">Build a graph from this document alone, separate from the rest of its folder</string>
+    <string name="kda_mode_standalone">Own collection</string>
+    <string name="kda_standalone_desc">This document only</string>
     <string name="kda_mode_shared">General knowledge</string>
-    <string name="kda_shared_desc">Share one graph with the general-knowledge folders, suited to real-world material</string>
-    <string name="kda_mode_collection">Added to another work</string>
-    <string name="kda_join_header">Add to an existing work</string>
-    <string name="kda_join_empty">No other works yet. A folder becomes a work once one of its documents has a graph.</string>
+    <string name="kda_shared_desc">Shares one graph with general-knowledge folders</string>
+    <string name="kda_mode_collection">Other collection</string>
+    <string name="kda_join_header">Choose a collection</string>
+    <string name="kda_join_empty">No other collections yet</string>
     <plurals name="kda_collection_docs">
         <item quantity="one">%1$d document</item>
         <item quantity="other">%1$d documents</item>

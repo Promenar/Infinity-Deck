@@ -378,7 +378,7 @@ class RagViewModel(
             this.observedQueue = observedQueue
             queueStateObservation = observedQueue.setOnStateChange { allTasks, runningTask ->
                 if (this.observedQueue !== observedQueue) return@setOnStateChange
-                // 会话记忆与会话图谱抽取在聊天界面展示状态，不进入资料库的索引卡片与重试。
+                // 会话记忆与会话图谱抽取在聊天界面展示状态，不进入资料页的索引卡片与重试。
                 val conversationTypes = com.promenar.infinity.data.rag.VectorizationQueue.CONVERSATION_TASK_TYPES
                 val queue = allTasks.filter { it.type !in conversationTypes }
                 val currentTask = runningTask?.takeIf { it.type !in conversationTypes }

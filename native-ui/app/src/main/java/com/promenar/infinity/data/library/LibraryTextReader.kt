@@ -20,7 +20,7 @@ internal class LibraryTextReader(
 ) {
     suspend fun read(rootId: String, documentId: String, maxChars: Int): LibraryExtractedText = withContext(Dispatchers.IO) {
         val root = ensureRoot()
-        require(root.uuid == rootId) { "资料库根已变化" }
+        require(root.uuid == rootId) { "存储空间根已变化" }
         val rootPath = Paths.get(root.physicalRootPath)
         WorkspaceMutationCoordinator.withBoundRoot(rootPath, root.hash) {
             val entry = fileEntryDao.getActiveByUuid(rootId, documentId)?.takeUnless { it.isDirectory }

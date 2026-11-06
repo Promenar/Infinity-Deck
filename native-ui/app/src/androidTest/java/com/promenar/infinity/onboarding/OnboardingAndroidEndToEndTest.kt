@@ -255,7 +255,7 @@ class OnboardingAndroidEndToEndTest {
 
         rule.onNodeWithTag("main_navigation_tab_settings").performClick()
         rule.onNodeWithTag(UiTags.SETTINGS_ROOT).assertIsDisplayed()
-        // 设置页“知识”分组：资料库设置与知识图谱，各以只在目标页出现的分组/条目确认已进入。
+        // 设置页“知识”分组：存储空间设置与知识图谱，各以只在目标页出现的分组/条目确认已进入。
         val knowledgeBaseLabel = rule.activity.getString(R.string.settings_ia_kb_settings_title)
         rule.onNodeWithTag(UiTags.SETTINGS_APP_LIST)
             .performScrollToNode(hasText(knowledgeBaseLabel))

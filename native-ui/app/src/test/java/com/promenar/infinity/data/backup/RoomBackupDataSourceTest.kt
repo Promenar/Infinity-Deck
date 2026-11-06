@@ -158,7 +158,7 @@ class RoomBackupDataSourceTest {
         Files.write(knowledgeRoot.resolve("note.txt"), bytes)
         db.sessionDao().insert(SessionEntity("knowledge-session", BackupLayerPolicy.KNOWLEDGE_AGENT,
             workspacePath = knowledgeRoot.toString(), workspaceRootUuid = "knowledge-root", createdAt = 100, updatedAt = 100))
-        db.fileEntryDao().insert(FileEntry(uuid = "knowledge-root", workspaceRootUuid = "knowledge-root", parentUuid = null, name = "资料库",
+        db.fileEntryDao().insert(FileEntry(uuid = "knowledge-root", workspaceRootUuid = "knowledge-root", parentUuid = null, name = "存储空间",
             hash = "", isDirectory = true, physicalRootPath = knowledgeRoot.toString(), materializedPath = "/", createdAt = 100, updatedAt = 100))
         db.fileEntryDao().insert(FileEntry(uuid = "knowledge-file", workspaceRootUuid = "knowledge-root", parentUuid = "knowledge-root", name = "note.txt",
             hash = sha256(bytes), sizeBytes = bytes.size.toLong(), mimeType = "text/plain", physicalRootPath = knowledgeRoot.toString(), materializedPath = "/note.txt", vectorizedAt = 100, kgExtractedAt = 100, createdAt = 100, updatedAt = 100))

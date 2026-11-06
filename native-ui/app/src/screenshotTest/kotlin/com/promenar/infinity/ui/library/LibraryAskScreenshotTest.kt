@@ -35,7 +35,7 @@ private fun hits(zh: Boolean) = listOf(
     AskHit(
         key = "v1", kind = AskHitKind.DOCUMENT,
         title = if (zh) "离线同步方案.md" else "offline-sync.md",
-        location = if (zh) "资料库 · 架构" else "Library · architecture",
+        location = if (zh) "存储空间 · 架构" else "Storage · architecture",
         snippet = if (zh) "写操作先进入本地离线队列，联网后按入队顺序重放；遇到同步冲突以服务端版本为准，本地副本另存。" else "Writes go to a local offline queue and replay in order once online; on a sync conflict the server wins and the local copy is kept.",
         highlightTerms = if (zh) listOf("离线队列", "同步冲突") else listOf("offline queue", "sync conflict"),
         match = AskMatch.BOTH, similarity = 0.86f, documentId = "d1",

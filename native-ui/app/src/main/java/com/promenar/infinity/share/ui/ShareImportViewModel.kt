@@ -53,7 +53,7 @@ data class ShareSessionPickerState(
     val failed: Boolean = false,
 )
 
-/** 资料库文件夹选择器：[trail] 是根目录以下已进入的各级文件夹，空表示根目录。 */
+/** 存储空间文件夹选择器：[trail] 是根目录以下已进入的各级文件夹，空表示根目录。 */
 data class ShareFolderPickerState(
     val trail: List<ShareKnowledgeFolder> = emptyList(),
     val folders: List<ShareKnowledgeFolder> = emptyList(),
@@ -69,7 +69,7 @@ data class ShareImportUiState(
     /** 用户在会话列表里亲手选的会话；未选时“其他会话”不能导入。 */
     val otherSession: ShareSessionChoice? = null,
     val linuxDirectory: String? = null,
-    /** null 表示资料库根目录。 */
+    /** null 表示存储空间根目录。 */
     val knowledgeFolder: ShareKnowledgeFolder? = null,
     val sessionPicker: ShareSessionPickerState? = null,
     val folderPicker: ShareFolderPickerState? = null,
@@ -215,7 +215,7 @@ class ShareImportViewModel(
         _state.value = _state.value.copy(sessionPicker = null)
     }
 
-    /** 文件夹选择器总是从资料库根目录打开。 */
+    /** 文件夹选择器总是从存储空间根目录打开。 */
     fun openFolderPicker() = loadFolders(emptyList())
 
     fun enterFolder(folder: ShareKnowledgeFolder) {
@@ -285,7 +285,7 @@ class ShareImportViewModel(
 
     /**
      * 恢复收件箱里记录的落点（用户上次亲手选过的）；没有记录或记录已失效时，
-     * 有当前会话就选当前会话，否则选资料库根目录。“其他会话”从不在这里替用户挑选。
+     * 有当前会话就选当前会话，否则选存储空间根目录。“其他会话”从不在这里替用户挑选。
      */
     private suspend fun restoreSelection(base: ShareImportUiState, saved: ShareImportDestination?): ShareImportUiState {
         val options = base.options ?: return base

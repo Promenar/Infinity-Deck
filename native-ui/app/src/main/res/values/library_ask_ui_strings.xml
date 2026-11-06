@@ -40,7 +40,7 @@
     <string name="library_ask_match_both">Meaning + keyword</string>
     <string name="library_ask_scope">Scope: %1$s</string>
     <string name="library_ask_scope_all">All indexed</string>
-    <string name="library_ask_scope_library">Library</string>
+    <string name="library_ask_scope_library">Storage</string>
     <string name="library_ask_kind_document">Document</string>
     <string name="library_ask_kind_memory">Memory</string>
     <string name="library_ask_kind_entity">Graph entity</string>
@@ -53,17 +53,17 @@
     <string name="library_doc_locate_prev">Previous match</string>
     <string name="library_doc_locate_next">Next match</string>
 
-    <string name="library_doc_cited_title">How agents use it</string>
+    <string name="library_doc_cited_title">Cited</string>
     <string name="library_doc_cited_empty">No answer has cited this document yet.</string>
     <string name="library_cite_label">Cited [%1$s]</string>
     <string name="library_cite_ask_title">Ask: %1$s</string>
     <string name="library_cite_ask_label">Answer cited [%1$s]</string>
-    <string name="library_cited_recent_title">Recently used by agents</string>
-    <string name="library_cited_empty">Documents that answers cite will show up here.</string>
+    <string name="library_cited_recent_title">Recently cited</string>
+    <string name="library_cited_empty">No cited documents yet</string>
     <plurals name="library_cited_count">
         <item quantity="one">%d time</item>
         <item quantity="other">%d times</item>
     </plurals>
-    <string name="library_page_cited">Used most by agents</string>
+    <string name="library_page_cited">Most cited</string>
     <string name="library_open_source">Open the document</string>
 </resources>

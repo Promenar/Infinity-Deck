@@ -29,10 +29,10 @@ interface IExternalFolderManager {
     suspend fun addSaf(alias: String, sessionId: String, treeUri: String, grantFlags: Int): ExternalMount
     suspend fun addRealPath(alias: String, sessionId: String, source: String): ExternalMount
     suspend fun attachLibraryMount(sessionId: String, libraryMountId: String, alias: String? = null): ExternalMount {
-        throw ExternalFolderException("UNSUPPORTED", "该挂载管理器不支持资料库挂载引用")
+        throw ExternalFolderException("UNSUPPORTED", "该挂载管理器不支持资料页挂载引用")
     }
     suspend fun libraryMountReferences(libraryMountId: String): Int {
-        throw ExternalFolderException("UNSUPPORTED", "该挂载管理器不支持资料库挂载引用")
+        throw ExternalFolderException("UNSUPPORTED", "该挂载管理器不支持资料页挂载引用")
     }
     suspend fun addKnowledgeBase(alias: String, sessionId: String, rootUuid: String): ExternalMount {
         throw ExternalFolderException("UNSUPPORTED", "该挂载管理器不支持知识库挂载")

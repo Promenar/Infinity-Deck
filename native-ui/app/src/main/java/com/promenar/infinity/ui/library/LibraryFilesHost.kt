@@ -53,7 +53,7 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
         val current = controller.state.value
         if (current.location?.id != ref.locationId || current.path != ref.path) controller.openLocation(ref.locationId, ref.path)
     }
-    // 资料库文件夹的合集设置与批量抽取；面板关闭时清空。
+    // 存储空间文件夹的合集设置与批量抽取；面板关闭时清空。
     var settingsFolder by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     var batchTarget by remember { mutableStateOf<KgBatchTarget?>(null) }
     // 合集设置关闭、批量抽取入队后递增，让文件夹顶部的合集条重读。

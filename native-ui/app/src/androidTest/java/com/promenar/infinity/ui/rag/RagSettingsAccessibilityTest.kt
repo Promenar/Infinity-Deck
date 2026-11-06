@@ -478,7 +478,7 @@ class RagSettingsAccessibilityTest {
     fun agentPermissionSheetsUseRadioChoicesAndCollectionChecklist() {
         var policy by mutableStateOf(com.promenar.infinity.data.agent.AgentMemoryPolicy())
         val collections = listOf(
-            com.promenar.infinity.data.rag.KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300),
+            com.promenar.infinity.data.rag.KgCollectionSummary("work:a", "work", "长夜行", "存储空间/长夜行", 20, 412, 300),
             com.promenar.infinity.data.rag.KgCollectionSummary("shared", "shared", "通用知识", null, 3, 5, 2),
         )
         rule.setContent {

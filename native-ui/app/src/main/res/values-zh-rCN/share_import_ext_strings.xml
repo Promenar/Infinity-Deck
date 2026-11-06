@@ -14,12 +14,12 @@
     <string name="share_import_ext_target_linux_needs_install">Linux 环境还没有安装</string>
     <string name="share_import_ext_target_linux_unsupported">此版本或此设备不支持 Linux 环境</string>
     <string name="share_import_ext_linux_install">去安装</string>
-    <string name="share_import_ext_target_kb">资料库…</string>
-    <string name="share_import_ext_target_kb_sub">可选资料库里的文件夹；能解析的格式会建索引</string>
+    <string name="share_import_ext_target_kb">存储空间…</string>
+    <string name="share_import_ext_target_kb_sub">可选子文件夹，能解析的格式会建索引</string>
     <string name="share_import_ext_change">更换</string>
     <string name="share_import_ext_choose_session">选择会话</string>
     <string name="share_import_ext_choose_folder">选择文件夹</string>
-    <string name="share_import_ext_kb_root">资料库根目录</string>
+    <string name="share_import_ext_kb_root">存储空间根目录</string>
     <string name="share_import_ext_session_unselected">还没有选会话</string>
     <string name="share_import_ext_result_title">结果</string>
     <string name="share_import_ext_note_current">文件保存到本会话文件夹。能解析的格式会建索引，其它格式原样保存，由智能体自己处理。</string>
@@ -29,7 +29,7 @@
     <string name="share_import_ext_note_kb">保存到“%1$s”。能解析的格式会建索引；其它只保存，智能体需要时可以复制到 Linux 里处理。</string>
     <string name="share_import_ext_session_picker_title">选择会话</string>
     <string name="share_import_ext_session_picker_empty">没有其他会话</string>
-    <string name="share_import_ext_folder_picker_title">选择资料库文件夹</string>
+    <string name="share_import_ext_folder_picker_title">选择存储空间文件夹</string>
     <string name="share_import_ext_linux_picker_title">选择 Linux 目录</string>
     <string name="share_import_ext_picker_use">选这个目录</string>
     <string name="share_import_ext_picker_up">上一级</string>

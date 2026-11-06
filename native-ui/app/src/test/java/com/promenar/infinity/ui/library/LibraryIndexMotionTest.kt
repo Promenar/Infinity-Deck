@@ -22,7 +22,7 @@ class LibraryIndexMotionTest {
         documentId = "doc-1",
         ref = FileRef("kb", "/示例.txt"),
         name = "示例.txt",
-        folderPath = "资料库",
+        folderPath = "存储空间",
         kind = kind,
         stage = stage,
         processed = processed,

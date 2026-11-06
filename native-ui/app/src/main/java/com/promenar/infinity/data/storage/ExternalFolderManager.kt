@@ -138,10 +138,10 @@ class ExternalFolderManager(
     override suspend fun attachLibraryMount(sessionId: String, libraryMountId: String, alias: String?) =
         withContext(Dispatchers.IO) { mutex.withLock {
             requireSession(sessionId)
-            if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "资料库不能引用自身的挂载")
-            val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料库挂载不存在")
+            if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "资料页不能引用自身的挂载")
+            val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料页挂载不存在")
             if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || source.sourceType !in setOf("saf_tree", "real_path")) {
-                fail("UNSUPPORTED", "只能引用资料库中的外部文件夹")
+                fail("UNSUPPORTED", "只能引用资料页中的外部文件夹")
             }
             requireDirectory(sourceBackend(source.model()).stat("/"))
             dao.visible(sessionId).firstOrNull { it.sourceType == source.sourceType && it.sourceId == source.sourceId }
@@ -154,9 +154,9 @@ class ExternalFolderManager(
 
     override suspend fun libraryMountReferences(libraryMountId: String): Int = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料库挂载不存在")
+            val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料页挂载不存在")
             if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || source.sourceType !in setOf("saf_tree", "real_path")) {
-                fail("UNSUPPORTED", "只能查询资料库中的外部文件夹")
+                fail("UNSUPPORTED", "只能查询资料页中的外部文件夹")
             }
             dao.all().count { it.scopeKey.isNotBlank() && !ExternalMountPaths.isLibraryScope(it.scopeKey) &&
                 it.sourceType == source.sourceType && it.sourceId == source.sourceId }
@@ -473,10 +473,10 @@ class ExternalFolderManager(
             return root to normalized
         }
         val (alias, relative) = parsed
-        if (ExternalMountPaths.isLibraryScope(sessionId) && alias == ExternalMountPaths.SKILLS_ALIAS) fail("NOT_FOUND", "资料库中没有该挂载")
+        if (ExternalMountPaths.isLibraryScope(sessionId) && alias == ExternalMountPaths.SKILLS_ALIAS) fail("NOT_FOUND", "资料页中没有该挂载")
         val mount = if (alias == ExternalMountPaths.SKILLS_ALIAS && !ExternalMountPaths.isLibraryScope(sessionId)) skillsMount(sessionId)
             else dao.visible(sessionId).singleOrNull { it.alias == alias }?.model() ?: fail("NOT_FOUND", "挂载点不属于当前会话或已被移除")
-        if (ExternalMountPaths.isLibraryScope(sessionId) && mount.sourceType !in setOf("saf_tree", "real_path")) fail("UNSUPPORTED", "资料库只支持外部文件夹")
+        if (ExternalMountPaths.isLibraryScope(sessionId) && mount.sourceType !in setOf("saf_tree", "real_path")) fail("UNSUPPORTED", "资料页只支持外部文件夹")
         val bound = currentCoroutineContext()[ExternalMountOperationBindings]?.mountIds
         if (bound != null && bound[alias] != mount.id) fail("CONFLICT", "操作期间挂载身份发生变化，请重新读取目标")
         return mount to relative

@@ -52,7 +52,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /*
- * 资料库文件夹顶部的图谱合集条：合集名、类型、已抽取篇数与按篇序排列的分段进度，
+ * 存储空间文件夹顶部的图谱合集条：合集名、类型、已抽取篇数与按篇序排列的分段进度，
  * 以及“合集设置”“抽取图谱”。文件夹里还没有任何文档抽取过图谱时不显示，文件夹看起来与普通文件夹一致。
  */
 
@@ -105,7 +105,7 @@ internal suspend fun loadLibraryCollectionStrip(database: InfinityDatabase, fold
     }
 
 /**
- * 资料页资源管理器的页头插槽：解析当前路径对应的资料库文件夹，读到合集数据且已有抽取结果时显示合集条。
+ * 资料页资源管理器的页头插槽：解析当前路径对应的存储空间文件夹，读到合集数据且已有抽取结果时显示合集条。
  * [refreshKey] 由宿主在合集设置关闭、批量抽取入队后递增，强制重读。
  */
 @Composable

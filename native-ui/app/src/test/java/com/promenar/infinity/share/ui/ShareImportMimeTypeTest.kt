@@ -30,7 +30,7 @@ class ShareImportMimeTypeTest {
     }
 
     @Test
-    fun `资料库路径按层级显示`() {
+    fun `存储空间路径按层级显示`() {
         assertThat(knowledgeFolderLabel("/资料/财务")).isEqualTo("资料 / 财务")
         assertThat(knowledgeFolderLabel("/资料/")).isEqualTo("资料")
     }

@@ -77,7 +77,7 @@ fun turnGraphSheetFailedEnglishPreview() = SessionGraphFrame(dark = false) {
 @Preview(name = "会话知识图谱 并入作品 后台抽取 深色", widthDp = 411, heightDp = 420, locale = "zh-rCN")
 @Composable
 fun sessionGraphQueuePreview() = SessionGraphFrame {
-    val current = GraphChoice(id = "work:demo", group = GraphGroup.Collection, title = "长夜行", detail = "资料库/长夜行", documents = 20, entities = 412)
+    val current = GraphChoice(id = "work:demo", group = GraphGroup.Collection, title = "长夜行", detail = "存储空间/长夜行", documents = 20, entities = 412)
     SessionGraphBindingSection(
         enabled = true,
         binding = SessionGraphBindingUi(current = current, readOnly = false, contribution = 18 to 9),
@@ -141,8 +141,8 @@ fun agentPermissionScopeEnglishPreview() = SessionGraphFrame(dark = false) {
 }
 
 private val permissionPreviewCollections = listOf(
-    com.promenar.infinity.data.rag.KgCollectionSummary("work:a", "work", "长夜行", "资料库/长夜行", 20, 412, 300),
-    com.promenar.infinity.data.rag.KgCollectionSummary("work:b", "work", "短篇集", "资料库/短篇集", 6, 58, 40),
+    com.promenar.infinity.data.rag.KgCollectionSummary("work:a", "work", "长夜行", "存储空间/长夜行", 20, 412, 300),
+    com.promenar.infinity.data.rag.KgCollectionSummary("work:b", "work", "短篇集", "存储空间/短篇集", 6, 58, 40),
     com.promenar.infinity.data.rag.KgCollectionSummary("shared", "shared", "通用知识", null, 3, 5, 2),
 )
 

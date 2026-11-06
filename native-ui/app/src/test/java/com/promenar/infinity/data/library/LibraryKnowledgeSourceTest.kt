@@ -71,7 +71,7 @@ class LibraryKnowledgeSourceTest {
             retryIndex = { _, _ -> retryFailure?.let { throw it }; true },
             rebuildIndex = { _, _ -> },
             preferences = preferences,
-            libraryLabel = { "资料库" },
+            libraryLabel = { "存储空间" },
             failedReason = { "索引失败" },
             actionFailedReason = { "操作失败" },
             confirmationReason = { "需要确认用量" },
@@ -112,7 +112,7 @@ class LibraryKnowledgeSourceTest {
         assertThat(pending.map { it.kind }).containsExactly(PendingKind.FAILED, PendingKind.INDEXING, PendingKind.QUEUED, PendingKind.STALE).inOrder()
         assertThat(pending[0].reason).isEqualTo("索引失败")
         assertThat(pending[2].queuePosition).isEqualTo(1)
-        assertThat(pending[0].folderPath).isEqualTo("资料库 › 项目")
+        assertThat(pending[0].folderPath).isEqualTo("存储空间 › 项目")
         assertThat(pending[0].ref).isEqualTo(FileRef("kb", "/项目/failed.txt"))
         assertThat(source.documentIdFor(FileRef("kb", "/项目/failed.txt"))).isEqualTo("failed")
         assertThat(source.documentIdFor(FileRef("other", "/项目/failed.txt"))).isNull()
@@ -124,7 +124,7 @@ class LibraryKnowledgeSourceTest {
         val entry = file("doc", "/doc.txt")
         val task = task("doc", "vectorizing", 1).copy(totalChunks = 35, lastChunkIndex = 16, error = "HTTP 429：限流")
         fun pending(current: VectorizationTask) = pendingDocuments("root", listOf(entry), emptyList(),
-            VectorizationQueue.QueueState(listOf(current), current, true), "资料库", "索引失败", "需要确认").single()
+            VectorizationQueue.QueueState(listOf(current), current, true), "存储空间", "索引失败", "需要确认").single()
 
         val vectorizing = pending(task)
         assertThat(vectorizing.stage).isEqualTo(PendingStage.VECTORIZING)
@@ -151,7 +151,7 @@ class LibraryKnowledgeSourceTest {
         val formatText = mapOf(LibraryFormatErrors.PDF_NO_TEXT_LAYER to "PDF 没有文字层")
         fun pending(error: String?) = task("doc", "failed", 1).copy(error = error).let { current ->
             pendingDocuments("root", listOf(entry), emptyList(), VectorizationQueue.QueueState(listOf(current), null, false),
-                "资料库", "索引失败", "需要确认", formatReason = { formatText[it] }).single()
+                "存储空间", "索引失败", "需要确认", formatReason = { formatText[it] }).single()
         }
         assertThat(pending(LibraryFormatErrors.PDF_NO_TEXT_LAYER).reason).isEqualTo("PDF 没有文字层")
         assertThat(pending(LibraryFormatErrors.PDF_NO_TEXT_LAYER).lastError).isEqualTo("PDF 没有文字层")

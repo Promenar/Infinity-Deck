@@ -22,7 +22,7 @@
     <string name="perm_active_isolated_desc">Records belong to this session only; the shared pool stays hidden</string>
     <string name="perm_active_switch_note">Switching keeps records where they were saved.</string>
     <string name="perm_collections">Available library</string>
-    <string name="perm_collections_all">Whole library</string>
+    <string name="perm_collections_all">All collections</string>
     <string name="perm_collections_all_desc">Includes collections added later</string>
     <plurals name="perm_collections_count">
         <item quantity="one">%1$d collection</item>
@@ -35,12 +35,12 @@
     <string name="perm_default_none">Workspace only</string>
     <string name="perm_default_none_desc">Collections are not preselected; pick them in session settings</string>
     <string name="perm_default_value">New sessions: %1$s</string>
-    <string name="perm_collections_empty">The library has no collections yet</string>
+    <string name="perm_collections_empty">No collections yet</string>
     <string name="perm_session_only">This session only</string>
     <string name="perm_global_value">Global · %1$s</string>
     <string name="perm_global_forbidden">The agent doesn\'t allow global memory</string>
     <string name="perm_global_toggle_desc">Also search conversation snippets from other sessions</string>
-    <string name="perm_docs_value_all">Workspace + whole library</string>
+    <string name="perm_docs_value_all">Workspace + all of Library</string>
     <string name="perm_docs_value_none">Workspace only</string>
     <plurals name="perm_docs_value_count">
         <item quantity="one">Workspace + %1$d collection</item>

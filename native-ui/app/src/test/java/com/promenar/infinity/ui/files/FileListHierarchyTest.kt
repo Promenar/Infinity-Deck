@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 
 class FileListHierarchyTest {
     private val caps = FileLocationCapabilities(writable = true, deletable = true, archive = true)
-    private val library = FileLocation("kb", FileLocationKind.KNOWLEDGE_BASE, "资料库", caps)
+    private val library = FileLocation("kb", FileLocationKind.KNOWLEDGE_BASE, "存储空间", caps)
     private val sessions = FileLocation("sessions", FileLocationKind.SESSION_WORKSPACE, "会话工作区", caps)
     private val session = FileLocation("session:s1", FileLocationKind.SESSION_WORKSPACE, "示例会话", caps, sessionId = "s1")
 
@@ -19,7 +19,7 @@ class FileListHierarchyTest {
 
     @Test
     fun `同一位置内属于同一层级链`() {
-        assertThat(sameHierarchy(at(library, "资料库"), at(library, "资料库", "产品"))).isTrue()
+        assertThat(sameHierarchy(at(library, "存储空间"), at(library, "存储空间", "产品"))).isTrue()
     }
 
     @Test
@@ -34,7 +34,7 @@ class FileListHierarchyTest {
 
     @Test
     fun `换到其它位置交叉淡入`() {
-        assertThat(sameHierarchy(at(library, "资料库"), at(sessions, "会话工作区"))).isFalse()
+        assertThat(sameHierarchy(at(library, "存储空间"), at(sessions, "会话工作区"))).isFalse()
         // 会话作用域里会话工作区本身就是根位置，面包屑只有一层，不与汇总列表相连。
         assertThat(sameHierarchy(at(sessions, "会话工作区"), at(session, "示例会话"))).isFalse()
     }

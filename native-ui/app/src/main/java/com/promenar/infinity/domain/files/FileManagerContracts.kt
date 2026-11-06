@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 /** 位置类别；决定图标、默认能力与在导航中的分组。 */
 enum class FileLocationKind {
-    /** 全局资料库（系统会话的 Room 文件树），内容默认建索引。 */
+    /** 全局存储空间（系统会话的 Room 文件树），内容默认建索引。 */
     KNOWLEDGE_BASE,
 
     /** 普通会话的私有工作区（Room 文件树）。 */
@@ -66,9 +66,9 @@ enum class KnowledgeIndexState { NONE, QUEUED, INDEXING, INDEXED, FAILED, STALE,
 /** 条目在资料（知识层）里的状态；不在资料范围内的条目为 null。 */
 data class FileKnowledge(
     val state: KnowledgeIndexState,
-    /** 资料库文档 id，可打开文档页。 */
+    /** 存储空间文档 id，可打开文档页。 */
     val documentId: String? = null,
-    /** 资料库文件夹 id（工作区文件表主键），用于文件夹的图谱设置；文件为空。 */
+    /** 存储空间文件夹 id（工作区文件表主键），用于文件夹的图谱设置；文件为空。 */
     val folderId: String? = null,
     val chunkCount: Int? = null,
     /** 解析或索引失败的可读原因。 */
@@ -150,7 +150,7 @@ data class FileOpOutcome(
 
 /** 可访问的位置集合。 */
 interface FileLocationsSource {
-    /** 资料页：全部位置（资料库、会话工作区汇总、项目、Linux 主目录、外部文件夹、分支 worktree）。 */
+    /** 资料页：全部位置（存储空间、会话工作区汇总、项目、Linux 主目录、外部文件夹、分支 worktree）。 */
     fun observeLibraryLocations(): Flow<List<FileLocation>>
 
     /** 会话资源管理器：该会话可访问的工作区与挂载。 */

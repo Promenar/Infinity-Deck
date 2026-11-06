@@ -72,7 +72,7 @@ class ExternalFolderManagerTest {
 
     @After fun cleanup() { directory.deleteRecursively() }
 
-    @Test fun `资料库挂载可新增访问并独立于会话删除`() = runBlocking {
+    @Test fun `存储空间挂载可新增访问并独立于会话删除`() = runBlocking {
         mockkObject(RealPathMountSupport)
         try {
             rows.value = rows.value.map { it.copy(sourceType = "real_path") }
@@ -95,7 +95,7 @@ class ExternalFolderManagerTest {
         } finally { unmockkObject(RealPathMountSupport) }
     }
 
-    @Test fun `引用资料库来源复用行且移除资料库后会话仍可访问`() = runBlocking {
+    @Test fun `引用存储空间来源复用行且移除存储空间后会话仍可访问`() = runBlocking {
         val library = ExternalMountPaths.LIBRARY_SCOPE
         rows.value = listOf(ExternalMountEntity("library", "docs", "real_path", "/fictional/docs", library, true, 1))
         memory.write("/note.txt", "hello".toByteArray())
@@ -131,7 +131,7 @@ class ExternalFolderManagerTest {
         assertThat(rows.value).hasSize(2)
     }
 
-    @Test fun `移除资料库 SAF 挂载时会话引用保留系统授权`() = runBlocking {
+    @Test fun `移除存储空间 SAF 挂载时会话引用保留系统授权`() = runBlocking {
         rows.value = listOf(ExternalMountEntity("library", "docs", "saf_tree", "content://test/tree/root", ExternalMountPaths.LIBRARY_SCOPE, false, 1))
         val attached = manager.attachLibraryMount("session", "library")
         manager.remove("library")

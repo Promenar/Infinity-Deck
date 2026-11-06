@@ -691,7 +691,7 @@ class SettingsViewModel(
             SkillInfo("web_fetch", app.getString(R.string.skill_web_fetch), app.getString(R.string.skill_web_fetch_desc), enabledSet?.contains("web_fetch") ?: true),
             SkillInfo("calculator", app.getString(R.string.skill_calculator), app.getString(R.string.skill_calculator_desc), enabledSet?.contains("calculator") ?: true),
             SkillInfo("image_generation", app.getString(R.string.skill_image_generation), app.getString(R.string.skill_image_generation_desc), enabledSet?.contains("image_generation") ?: true),
-            SkillInfo("copy_knowledge_to_linux", "复制资料库到 Linux", "将已授权的资料库文件或目录复制到 Linux，默认 /home/session/inbox", BuiltinToolPreferences.isEnabled(prefs, "copy_knowledge_to_linux")),
+            SkillInfo("copy_knowledge_to_linux", "复制资料到 Linux", "将已授权的资料文件或目录复制到 Linux，默认 /home/session/inbox", BuiltinToolPreferences.isEnabled(prefs, "copy_knowledge_to_linux")),
             SkillInfo("file_read", app.getString(R.string.skill_file_read), app.getString(R.string.skill_file_read_desc), enabledSet?.contains("file_read") ?: true),
             SkillInfo("file_write", app.getString(R.string.skill_file_write), app.getString(R.string.skill_file_write_desc), enabledSet?.contains("file_write") ?: true),
             SkillInfo("file_list", app.getString(R.string.skill_file_list), app.getString(R.string.skill_file_list_desc), enabledSet?.contains("file_list") ?: true),

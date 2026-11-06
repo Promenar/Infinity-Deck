@@ -50,8 +50,8 @@ class CopyKnowledgeToLinuxSkill(
     override val name = id
     override val mcpServerId: String? = null
     override val risk = ToolRisk.FILE_WRITE
-    override val description = "把已获本会话只读挂载授权的资料库文件或目录复制到 Linux。资料库里应用不解析的格式（如 .sqlite、.epub），可先复制进 Linux 再用命令处理。source 使用 /mnt/<资料库别名>/...，未授权时先调用 request_knowledge_access。target 为目标目录，默认 /home/session/inbox；单次总量不超过100 MiB，不覆盖同名文件，目录中的符号链接会跳过。"
-    override val parametersSchema = """{"type":"object","properties":{"source":{"type":"string","description":"已获授权的资料库文件或目录路径，例如 /mnt/knowledge/data.sqlite"},"target":{"type":"string","description":"Linux 目标目录，默认 /home/session/inbox"}},"required":["source"],"additionalProperties":false}"""
+    override val description = "把已获本会话只读挂载授权的资料文件或目录复制到 Linux。资料里应用不解析的格式（如 .sqlite、.epub），可先复制进 Linux 再用命令处理。source 使用 /mnt/<资料别名>/...，未授权时先调用 request_knowledge_access。target 为目标目录，默认 /home/session/inbox；单次总量不超过100 MiB，不覆盖同名文件，目录中的符号链接会跳过。"
+    override val parametersSchema = """{"type":"object","properties":{"source":{"type":"string","description":"已获授权的资料文件或目录路径，例如 /mnt/knowledge/data.sqlite"},"target":{"type":"string","description":"Linux 目标目录，默认 /home/session/inbox"}},"required":["source"],"additionalProperties":false}"""
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
         var touchedPrivate = false
@@ -59,17 +59,17 @@ class CopyKnowledgeToLinuxSkill(
         val result = try {
             require(args.keys.all { it in setOf("source", "target") }) { "存在未支持的参数" }
             val session = loadSession(context.sessionId) ?: return@withContext error("会话不存在")
-            if (!KnowledgeLinuxCopyPolicy.allows(session, knowledgeAccessAllowed(session))) return@withContext error("当前会话未开放 Linux 资料库复制工具")
+            if (!KnowledgeLinuxCopyPolicy.allows(session, knowledgeAccessAllowed(session))) return@withContext error("当前会话未开放 Linux 资料复制工具")
             if (context.runMode != null && context.runMode != session.runMode) return@withContext error("会话模式已变化，请重新调用")
             if (!linuxReady()) return@withContext error("Linux 环境尚未就绪")
             val source = string(args, "source")?.takeIf { it.isNotBlank() } ?: return@withContext error("source 不能为空")
-            require(source.startsWith("/mnt/")) { "source 必须是已授权的资料库挂载路径，请先调用 request_knowledge_access" }
+            require(source.startsWith("/mnt/")) { "source 必须是已授权的资料挂载路径，请先调用 request_knowledge_access" }
             val normalizedSource = com.promenar.infinity.domain.storage.ExternalFolderPaths.normalize(source)
-            val (alias, _) = ExternalMountPaths.parse(normalizedSource) ?: return@withContext error("请先调用 request_knowledge_access 授权资料库")
+            val (alias, _) = ExternalMountPaths.parse(normalizedSource) ?: return@withContext error("请先调用 request_knowledge_access 授权资料")
             val mount = access.visible(session.id).singleOrNull {
                 it.alias == alias && it.sessionId == session.id && it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE &&
                     it.readOnly && it.unavailableReason == null
-            } ?: return@withContext error("source 未获本会话资料库授权，请先调用 request_knowledge_access")
+            } ?: return@withContext error("source 未获本会话资料授权，请先调用 request_knowledge_access")
             val currentTarget = com.promenar.infinity.data.generation.knowledgeLinuxCopyTarget(session, args, workspace, access)
                 ?: return@withContext error("无法确定复制目标或来源授权")
             if ((context.isApprovalBoundExecution || context.approvedExecutionTarget != null) && context.approvedExecutionTarget != currentTarget)
@@ -137,7 +137,7 @@ class CopyKnowledgeToLinuxSkill(
             }
             ToolResult(id, "已复制 $copied 个文件，共 $bytes 字节，目标目录：$target")
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: Exception) { error(failure.message ?: "资料库文件复制失败") }
+        catch (failure: Exception) { error(failure.message ?: "资料文件复制失败") }
         finally {
             if (touchedPrivate) withContext(NonCancellable) {
                 try { reconcile(context.sessionId) } catch (failure: Exception) { reconcileFailure = failure }
@@ -151,15 +151,15 @@ class CopyKnowledgeToLinuxSkill(
         var total = 0L
         suspend fun visit(path: String, depth: Int) {
             require(depth <= 64 && result.size < 10_000) { "目录层级或条目数超过复制上限" }
-            val entry = backend.stat(path) ?: throw IllegalArgumentException("资料库源不存在")
-            require(entry.path == path && (path == source || path.startsWith(source.trimEnd('/') + "/"))) { "资料库返回了越界路径" }
+            val entry = backend.stat(path) ?: throw IllegalArgumentException("资料源不存在")
+            require(entry.path == path && (path == source || path.startsWith(source.trimEnd('/') + "/"))) { "资料返回了越界路径" }
             require(SharedFileImporter.normalizeName(entry.name) == entry.name) { "源文件名无效" }
             require(entry.size >= 0 && (entry.isDirectory || total <= MAX_BYTES - entry.size)) { "复制总量超过100 MiB" }
             if (!entry.isDirectory) total += entry.size
             result += if (path == source) entry.copy(name = source.substringAfterLast('/')) else entry
             if (entry.isDirectory) backend.list(path).forEach { child ->
-                require(child.path == path.trimEnd('/') + "/" + child.name) { "资料库子路径越界" }
-                // 真实资料库后端在列举时已过滤符号链接，读取时也使用不跟随链接的句柄。
+                require(child.path == path.trimEnd('/') + "/" + child.name) { "资料子路径越界" }
+                // 真实资料后端在列举时已过滤符号链接，读取时也使用不跟随链接的句柄。
                 visit(child.path, depth + 1)
             }
         }

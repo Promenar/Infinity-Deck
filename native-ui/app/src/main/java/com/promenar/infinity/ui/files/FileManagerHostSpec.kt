@@ -48,7 +48,7 @@ data class FileHostAction(
     val label: String,
     val appliesTo: Set<FileHostActionScope>,
     val prominent: Boolean = false,
-    /** 额外的适用条件，例如只对资料库文件夹显示。 */
+    /** 额外的适用条件，例如只对存储空间文件夹显示。 */
     val visibleFor: (List<FileItem>) -> Boolean = { true },
     val onInvoke: (List<FileItem>) -> Unit,
 )
@@ -70,7 +70,7 @@ data class FileFolderAction(
  * - [allowLocationSwitch] 为 true 时标题下方显示“位置 ▾”下拉，可在 [com.promenar.infinity.ui.files.state.FileManagerUiState.locations] 间切换（会话）；
  * - [backNavigatesUp] 为 true 时系统返回在子文件夹里先回上一级，到根目录再交给宿主；
  * - [onOpenGit] 非 null 时根目录的 Git 状态条可点，打开宿主的 Git 面板；
- * - [folderHeader] 非 null 时作为列表首项（“..”之后）显示在当前文件夹顶部，例如资料库文件夹的图谱合集条；
+ * - [folderHeader] 非 null 时作为列表首项（“..”之后）显示在当前文件夹顶部，例如存储空间文件夹的图谱合集条；
  *   多选与搜索时不显示。没有内容可显示时由宿主自己渲染为空。
  */
 @Immutable

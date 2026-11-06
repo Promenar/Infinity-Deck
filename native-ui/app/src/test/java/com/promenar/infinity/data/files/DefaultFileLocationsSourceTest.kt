@@ -24,7 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DefaultFileLocationsSourceTest {
-    @Test fun `资料库挂载优先于同源会话引用且保留其他会话位置`() = runBlocking {
+    @Test fun `存储空间挂载优先于同源会话引用且保留其他会话位置`() = runBlocking {
         val library = ExternalMount("lib", "docs", "real_path", "/fictional/docs", ExternalMountPaths.LIBRARY_SCOPE, 1)
         val reference = library.copy(id = "ref", sessionId = "session")
         val other = reference.copy(id = "other", sourceId = "/fictional/other")

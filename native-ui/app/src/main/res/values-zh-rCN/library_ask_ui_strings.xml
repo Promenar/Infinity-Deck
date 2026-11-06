@@ -39,7 +39,7 @@
     <string name="library_ask_match_both">语义 + 关键词</string>
     <string name="library_ask_scope">范围：%1$s</string>
     <string name="library_ask_scope_all">全部已索引</string>
-    <string name="library_ask_scope_library">资料库</string>
+    <string name="library_ask_scope_library">存储空间</string>
     <string name="library_ask_kind_document">文档</string>
     <string name="library_ask_kind_memory">记忆</string>
     <string name="library_ask_kind_entity">图谱实体</string>
@@ -51,16 +51,16 @@
     <string name="library_doc_locate_prev">上一处</string>
     <string name="library_doc_locate_next">下一处</string>
 
-    <string name="library_doc_cited_title">智能体怎么用它</string>
+    <string name="library_doc_cited_title">被引用</string>
     <string name="library_doc_cited_empty">还没有回答引用过这篇文档。</string>
     <string name="library_cite_label">引用 [%1$s]</string>
     <string name="library_cite_ask_title">问资料：%1$s</string>
     <string name="library_cite_ask_label">答案引用 [%1$s]</string>
-    <string name="library_cited_recent_title">智能体最近用到</string>
-    <string name="library_cited_empty">回答引用过的文档会出现在这里。</string>
+    <string name="library_cited_recent_title">最近被引用</string>
+    <string name="library_cited_empty">还没有被引用的文档</string>
     <plurals name="library_cited_count">
         <item quantity="other">%d 次</item>
     </plurals>
-    <string name="library_page_cited">智能体常用</string>
+    <string name="library_page_cited">常被引用</string>
     <string name="library_open_source">打开原文</string>
 </resources>

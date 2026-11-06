@@ -1,5 +1,5 @@
 <resources>
-    <string name="file_manager_location_library">资料库</string>
+    <string name="file_manager_location_library">存储空间</string>
     <string name="file_manager_location_sessions">会话工作区</string>
     <string name="file_manager_location_linux">Linux 主目录</string>
 </resources>

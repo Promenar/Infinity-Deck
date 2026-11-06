@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 资料库级外部文件夹：资料页入口与挂载面板 -->
-    <string name="library_mounts_entry">外部文件夹</string>
-    <string name="library_mounts_title">资料库文件夹</string>
-    <string name="library_mounts_empty_hint">在这里添加的文件夹属于资料库，删除会话时保留。它们会出现在“位置”里，任何会话都能在自己的文件夹面板里引用。</string>
-    <string name="library_mounts_attach_section">从资料库引用</string>
-    <string name="library_mounts_attach_hint">沿用资料库文件夹已有的授权，不用重新选择。</string>
+    <!-- 资料页级外部文件夹：入口与挂载面板 -->
+    <string name="library_mounts_entry">添加外部文件夹</string>
+    <string name="library_mounts_title">外部文件夹</string>
+    <string name="library_mounts_empty_hint">删除会话时保留，任何会话都能引用。</string>
+    <string name="library_mounts_attach_section">从资料引用</string>
+    <string name="library_mounts_attach_hint">沿用已有授权</string>
     <string name="library_mounts_attach_desc">在本会话的 /mnt/%1$s/ 下使用</string>
     <plurals name="library_mounts_remove_references">
         <item quantity="other">有 %1$d 个会话引用了这个文件夹。会话里的引用会保留，仍可继续使用。</item>

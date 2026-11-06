@@ -2,9 +2,9 @@
 <!-- 资料页（左列导航、概览、文档、对话片段与问资料）。 -->
 <resources>
     <string name="library_ask_placeholder">Ask the library</string>
-    <string name="library_ask_hint">Search your library in plain language. Results show the matching passages.</string>
+    <string name="library_ask_hint">Search everything in plain language.</string>
 
-    <string name="library_group_views">Views</string>
+    <string name="library_group_views">Browse</string>
     <string name="library_group_locations">Locations</string>
     <string name="library_group_pins">Pinned folders</string>
     <string name="library_group_remembered">What agents remember</string>
@@ -51,10 +51,10 @@
     <string name="library_action_rebuild">Rebuild</string>
 
     <string name="library_recent_title">Recently added</string>
-    <string name="library_recent_empty">No documents yet. Import files or save a note to get started.</string>
+    <string name="library_recent_empty">No documents yet</string>
 
     <string name="library_collect_title">Collect</string>
-    <string name="library_collect_hint">Imported files go to the library root and are parsed and indexed automatically.</string>
+    <string name="library_collect_hint">Saved to the Storage root and indexed.</string>
     <string name="library_collect_import">Import files</string>
     <string name="library_collect_note">New note</string>
     <string name="library_note_title">New note</string>
@@ -65,7 +65,7 @@
 
     <string name="library_notice_retry_done">Parsing again</string>
     <string name="library_notice_rebuild_done">Rebuilding the index</string>
-    <string name="library_notice_import_done">Imported to the library</string>
+    <string name="library_notice_import_done">Imported to Storage</string>
     <string name="library_notice_note_done">Note saved</string>
     <string name="library_notice_clear_done">Snippets from this conversation cleared</string>
     <string name="library_notice_retry_failed">Retry failed</string>
@@ -77,7 +77,7 @@
     <string name="library_notice_with_reason">%1$s: %2$s</string>
 
     <string name="library_doc_edit">Edit</string>
-    <string name="library_doc_agent_view">What the agent sees</string>
+    <string name="library_doc_agent_view">Details</string>
     <string name="library_doc_status">Status</string>
     <string name="library_doc_status_indexed">Indexed</string>
     <string name="library_doc_chunks">Indexed passages</string>
@@ -87,7 +87,7 @@
     <string name="library_doc_body">Content</string>
     <string name="library_doc_extracted">Text extracted from the file</string>
     <string name="library_doc_truncated">This document is long. Only the beginning is shown.</string>
-    <string name="library_doc_not_found">This document is no longer in the library.</string>
+    <string name="library_doc_not_found">This document no longer exists</string>
     <string name="library_doc_no_body">No readable content.</string>
 
     <string name="library_fragments_desc">Raw passages agents saved during conversations, grouped by conversation. Deleting them doesn\'t touch the conversation itself.</string>

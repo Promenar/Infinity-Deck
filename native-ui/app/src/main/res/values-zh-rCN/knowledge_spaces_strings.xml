@@ -40,7 +40,7 @@
     <string name="ks_folder_saved">已更新图谱设置</string>
     <string name="ks_folder_failed">图谱设置未能更新</string>
     <string name="ks_graph_page_select">选择图谱</string>
-    <string name="ks_graph_page_options_empty">还没有图谱。在资料库中抽取文档后会生成作品图谱。</string>
+    <string name="ks_graph_page_options_empty">还没有图谱，先抽取文档。</string>
     <string name="ks_graph_page_option_meta">%1$d 篇文档 · %2$d 个实体</string>
     <plurals name="ks_graph_documents">
         <item quantity="other">%1$d 篇</item>

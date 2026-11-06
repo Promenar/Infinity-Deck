@@ -40,7 +40,7 @@
     <string name="ks_folder_saved">Graph setting updated</string>
     <string name="ks_folder_failed">Couldn\'t update the graph setting</string>
     <string name="ks_graph_page_select">Choose graph</string>
-    <string name="ks_graph_page_options_empty">No graph yet. Extract a document in the library to create its work graph.</string>
+    <string name="ks_graph_page_options_empty">No graphs yet. Extract a document first.</string>
     <string name="ks_graph_page_option_meta">%1$d documents · %2$d entities</string>
     <plurals name="ks_graph_documents">
         <item quantity="one">%1$d document</item>

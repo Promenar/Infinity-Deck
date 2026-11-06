@@ -26,7 +26,7 @@ class ShareImportDestinationsTest {
     }
 
     @Test
-    fun `两类会话落在各自根且资料库可选根或子文件夹`() = runTest {
+    fun `两类会话落在各自根且存储空间可选根或子文件夹`() = runTest {
         val fixture = ShareWorkspaceFixture(temporary.newFolder())
         val scheduler = mockk<ShareIndexScheduler>()
         val importer = SharedFileImporter(source(), fixture.repo, scheduler)
