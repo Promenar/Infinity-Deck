@@ -225,6 +225,8 @@ internal fun TailscaleSettingsContent(
     initialEditor: TailscaleEditor? = null,
     sshHosts: List<SshHost> = emptyList(),
     onAddSshHost: ((TailnetPeer) -> Unit)? = null,
+    /** 进入页面时已打开的设备面板（按设备名）；视觉实验室用它定格面板画面。 */
+    initialOpenPeer: String? = null,
 ) {
     val settings = state.settings
     val tailnet = state.tailnet
@@ -232,7 +234,7 @@ internal fun TailscaleSettingsContent(
     val enabled = state.available && settings.enabled
     var editor by remember { mutableStateOf(initialEditor) }
     // 设备面板按名称跟随节点列表刷新；设备从列表消失时面板随之关闭。
-    var openPeer by remember { mutableStateOf<String?>(null) }
+    var openPeer by remember { mutableStateOf(initialOpenPeer) }
     // 保存成功后由通知收起对应面板；失败时面板保持打开并在面板内提示。
     LaunchedEffect(state.notice) {
         val closes = when (state.notice) {

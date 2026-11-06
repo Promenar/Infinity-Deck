@@ -96,7 +96,7 @@ class LabTerminalScriptsTest {
         Math.ceil(LabApkAdd.COMMAND.length / LabApkAdd.TYPING_CHARS_PER_SECOND.toDouble() * 1000).toLong()
     private val enterAt = typingEnd + LabApkAdd.ENTER_PAUSE_MS
     private fun lineAt(index: Int) = enterAt + LabApkAdd.LINE_DELAYS_MS.take(index + 1).sum()
-    private fun textAt(t: Long) = ansiVisible(LabApkAdd.script(timeline.stateAt(t)))
+    private fun textAt(t: Long, columns: Int = 120) = ansiVisible(LabApkAdd.script(timeline.stateAt(t), columns))
 
     @Test
     fun `开头只有提示符`() {
@@ -123,15 +123,30 @@ class LabTerminalScriptsTest {
     }
 
     @Test
-    fun `结尾停在 OK 行和新提示符并停留约 2 秒`() {
+    fun `安装结束停在 OK 行和新提示符，停顿后再输入 fastfetch`() {
         val last = lineAt(LabApkAdd.OUTPUT.lastIndex)
+        assertThat(last).isEqualTo(LabApkAdd.INSTALL_DONE_AT)
         assertThat(textAt(last - 1)).doesNotContain("OK:")
         val end = textAt(last)
         assertThat(end).contains("(1/2) Installing hwdata-pci (0.408-r0)\r\n")
         assertThat(end).contains("(2/2) Installing fastfetch (2.64.2-r0)\r\n")
         assertThat(end).endsWith("OK: 122.2 MiB in 52 packages\r\nroot@localhost:~# ")
-        assertThat(timeline.durationMs).isEqualTo(last + 2_000)
-        assertThat(textAt(timeline.durationMs)).isEqualTo(end)
+        assertThat(textAt(LabApkAdd.FASTFETCH_TYPING_AT - 1)).isEqualTo(end)
+    }
+
+    @Test
+    fun `接着运行 fastfetch，输出与静态版本一致并停留 3 秒`() {
+        val typed = LabApkAdd.FASTFETCH_TYPING_AT + LabApkAdd.typingMs(LabApkAdd.FASTFETCH)
+        assertThat(textAt(typed)).endsWith("52 packages\r\nroot@localhost:~# fastfetch")
+        val outputAt = typed + LabApkAdd.ENTER_PAUSE_MS + LabApkAdd.FASTFETCH_OUTPUT_MS
+        assertThat(textAt(outputAt - 1)).doesNotContain("Packages:")
+        listOf(120, 36).forEach { columns ->
+            val final = textAt(outputAt, columns)
+            assertThat(final).endsWith(ansiVisible(LabFastfetch.script(columns)))
+            assertThat(final).contains("Packages: 52 (apk)")
+        }
+        assertThat(timeline.durationMs).isEqualTo(outputAt + LabApkAdd.HOLD_MS)
+        assertThat(textAt(timeline.durationMs)).isEqualTo(textAt(outputAt))
     }
 
     @Test
@@ -148,7 +163,7 @@ class LabTerminalScriptsTest {
 
     @Test
     fun `画面不含真实用户名、家目录或 IP 地址`() {
-        val all = listOf(LabFastfetch.script(120), LabFastfetch.script(36), LabApkAdd.script(timeline.stateAt(timeline.durationMs)))
+        val all = listOf(LabFastfetch.script(120), LabFastfetch.script(36), LabApkAdd.script(timeline.stateAt(timeline.durationMs), 120))
         all.forEach { text ->
             assertThat(text).doesNotContain("promenar")
             assertThat(text).doesNotContain("/home/")

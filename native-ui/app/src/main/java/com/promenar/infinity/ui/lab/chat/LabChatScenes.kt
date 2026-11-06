@@ -1,17 +1,12 @@
 package com.promenar.infinity.ui.lab.chat
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -26,17 +21,20 @@ import com.promenar.infinity.data.git.GitStatus
 import com.promenar.infinity.data.git.GitTracking
 import com.promenar.infinity.ui.chat.ChatPage
 import com.promenar.infinity.ui.chat.ChatScreenActions
+import com.promenar.infinity.ui.common.InfinityPaneLevel
+import com.promenar.infinity.ui.common.InfinityPanePresentation
+import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.infinityInspectorAvailable
 import com.promenar.infinity.ui.git.GitChangesPanel
 import com.promenar.infinity.ui.git.GitLoad
 import com.promenar.infinity.ui.git.GitPanelActions
 import com.promenar.infinity.ui.git.GitPanelTab
 import com.promenar.infinity.ui.git.GitPanelUiState
+import com.promenar.infinity.ui.git.gitPageModifier
 import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabScene
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.lab.stage.LabWorkflowScene
-import com.promenar.infinity.ui.theme.InfinitySpacing
 import java.time.Instant
 import java.time.ZoneId
 
@@ -124,37 +122,35 @@ private fun LabSceneScope.AdeStill(
             onOpenGit = { pages = listOf(ChatPage.Git) },
         )
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (!infinityInspectorAvailable(maxWidth, maxHeight) && pages.lastOrNull() == ChatPage.Git) {
-            BackHandler { pages = pages.dropLast(1) }
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                AdeGitPanel(
-                    text = text,
-                    initialTab = gitTab,
-                    onExit = { pages = pages.dropLast(1) },
-                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-                )
-            }
-            return@BoxWithConstraints
+    val popPage = { pages = pages.dropLast(1) }
+    // 与真实会话页相同：Git 页放在 InfinityPaneLevel 里，窄窗口由会话的整页宿主覆盖，宽窗口交给检视器。
+    val gitLevel: @Composable BoxScope.() -> Unit = {
+        val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
+        InfinityPaneLevel(key = ChatPage.Git.token, visible = pages.lastOrNull() == ChatPage.Git, top = true) {
+            AdeGitPanel(text, initialTab = gitTab, onExit = popPage.takeUnless { inInspector && pages.size == 1 })
         }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // 窄窗口没有检视器：运行页与真实应用一样换成运行详情面板，进入后递增请求号打开它。
+        val narrowRun = !infinityInspectorAvailable(maxWidth, maxHeight) && ChatPage.Run in initialPages
+        var runSheetRequest by remember { mutableIntStateOf(0) }
+        LaunchedEffect(narrowRun) { if (narrowRun) runSheetRequest++ }
         LabChatScene(
-            frame = frame.copy(screen = frame.screen.copy(inspectorPages = pages)),
+            frame = frame.copy(screen = frame.screen.copy(inspectorPages = pages, backgroundJobsRequest = runSheetRequest)),
             nowScriptMs = nowScriptMs,
             actions = actions,
             hub = LabHubStory.ADE,
             // 检视器要会话列够宽，内屏以展开态（图标条｜会话）开始。
             expanded = initialPages.isNotEmpty(),
-        ) {
-            if (pages.lastOrNull() == ChatPage.Git) {
-                AdeGitPanel(text, initialTab = gitTab, onExit = null, modifier = Modifier.padding(top = InfinitySpacing.XSmall))
-            }
-        }
+            inspectorPageContent = gitLevel,
+            paneVisible = pages.lastOrNull() == ChatPage.Git,
+            onPaneBack = popPage,
+        )
     }
 }
 
-/** 提交之后的仓库：main 干净、尚未设置上游；提交页是 starlog 的六次提交，分支页列出两个分支与各自在用的会话。 */
 @Composable
-private fun AdeGitPanel(text: LabAdeText, initialTab: GitPanelTab, onExit: (() -> Unit)?, modifier: Modifier) {
+private fun AdeGitPanel(text: LabAdeText, initialTab: GitPanelTab, onExit: (() -> Unit)?) {
     var tab by remember { mutableStateOf(initialTab) }
     val status = GitStatus(
         branch = "main",
@@ -185,10 +181,7 @@ private fun AdeGitPanel(text: LabAdeText, initialTab: GitPanelTab, onExit: (() -
         ),
         // 三个页签都可切换；提交详情不在脚本里，点提交不打开。
         actions = GitPanelActions(onSelectTab = { tab = it }, onExit = onExit),
-        // 与 GitChangesPage 的边距一致。
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = InfinitySpacing.ScreenHorizontal),
+        modifier = gitPageModifier(),
     )
 }
 

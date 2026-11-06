@@ -160,20 +160,26 @@ internal object LabFastfetch {
      */
     fun script(columns: Int): String = buildString {
         append(LAB_PROMPT).append("fastfetch").append(CRLF)
-        append("$ESC[?7l")
-        append(outputLines(layoutFor(columns)).joinToString(CRLF))
-        append("$ESC[?7h")
+        append(output(columns))
         append(CRLF).append(LAB_PROMPT)
     }
+
+    /** 命令回车后的整段输出，含关闭与恢复自动换行的控制序列。 */
+    fun output(columns: Int): String = "$ESC[?7l" + outputLines(layoutFor(columns)).joinToString(CRLF) + "$ESC[?7h"
 }
 
 // ── apk add 工作流版本 ──
 
-/** [typed] 为已打出的命令；[entered] 表示已回车；[outputLines] 为已出现的输出行数。 */
+/**
+ * [typed] 为已打出的命令；[entered] 表示已回车；[outputLines] 为已出现的输出行数。
+ * 安装完成后接着运行 fastfetch：[fastfetchTyped] 为已打出的部分，[fastfetchShown] 表示输出已出现。
+ */
 internal data class LabApkAddState(
     val typed: String = "",
     val entered: Boolean = false,
     val outputLines: Int = 0,
+    val fastfetchTyped: String = "",
+    val fastfetchShown: Boolean = false,
 )
 
 internal object LabApkAdd {
@@ -181,7 +187,12 @@ internal object LabApkAdd {
     const val TYPING_CHARS_PER_SECOND = 18f
     const val TYPING_START_MS = 600L
     const val ENTER_PAUSE_MS = 250L
-    const val HOLD_MS = 2_000L
+    const val HOLD_MS = 3_000L
+    const val FASTFETCH = "fastfetch"
+    /** 新提示符出现后停顿多久再输入 fastfetch。 */
+    const val FASTFETCH_PAUSE_MS = 900L
+    /** fastfetch 回车后到整段输出出现。 */
+    const val FASTFETCH_OUTPUT_MS = 180L
 
     private const val MIRROR = "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.24"
 
@@ -209,16 +220,30 @@ internal object LabApkAdd {
         LINE_DELAYS_MS.forEachIndexed { index, delay ->
             after(delay) { it.copy(outputLines = index + 1) }
         }
+        stream(at = FASTFETCH_TYPING_AT, charsPerSecond = TYPING_CHARS_PER_SECOND, text = FASTFETCH) { state, partial ->
+            state.copy(fastfetchTyped = partial)
+        }
+        after(ENTER_PAUSE_MS + FASTFETCH_OUTPUT_MS) { it.copy(fastfetchShown = true) }
         hold(HOLD_MS)
     }
 
-    /** 输出全部出现后，新提示符与最后一行同时出现，与真实 shell 一致。 */
-    fun script(state: LabApkAddState): String = buildString {
+    /** 按 [TYPING_CHARS_PER_SECOND] 打完 [text] 所需的毫秒数，与时间轴的流式帧一致。 */
+    fun typingMs(text: String): Long = Math.ceil(text.length / TYPING_CHARS_PER_SECOND.toDouble() * 1000).toLong()
+
+    /** 安装输出最后一行与新提示符出现的时刻。 */
+    val INSTALL_DONE_AT: Long = TYPING_START_MS + typingMs(COMMAND) + ENTER_PAUSE_MS + LINE_DELAYS_MS.sum()
+    val FASTFETCH_TYPING_AT: Long = INSTALL_DONE_AT + FASTFETCH_PAUSE_MS
+
+    /** 输出全部出现后，新提示符与最后一行同时出现，与真实 shell 一致；随后在新提示符后运行 fastfetch。 */
+    fun script(state: LabApkAddState, columns: Int): String = buildString {
         append(LAB_PROMPT).append(state.typed)
         if (!state.entered) return@buildString
         append(CRLF)
         val shown = state.outputLines.coerceIn(0, OUTPUT.size)
         OUTPUT.take(shown).forEach { append(it).append(CRLF) }
-        if (shown == OUTPUT.size) append(LAB_PROMPT)
+        if (shown < OUTPUT.size) return@buildString
+        append(LAB_PROMPT).append(state.fastfetchTyped)
+        if (!state.fastfetchShown) return@buildString
+        append(CRLF).append(LabFastfetch.output(columns)).append(CRLF).append(LAB_PROMPT)
     }
 }

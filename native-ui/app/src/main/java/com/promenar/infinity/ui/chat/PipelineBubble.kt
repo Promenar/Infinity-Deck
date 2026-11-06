@@ -917,6 +917,17 @@ internal class ThinkingClock(private val capacity: Int = 64) {
 
     @Synchronized fun duration(key: String): Long? = durations[key]
 
+    /** 直接写入一段已结束思考的时长，覆盖已有记录；视觉实验室用它给脚本消息定下思考时长。 */
+    @Synchronized fun record(key: String, durationMs: Long) {
+        durations[key] = durationMs.coerceAtLeast(0)
+    }
+
+    /** 清掉某条消息的起点与时长；视觉实验室重放同一条脚本消息前调用，计时从这次出现重新开始。 */
+    @Synchronized fun reset(key: String) {
+        starts.remove(key)
+        durations.remove(key)
+    }
+
     companion object {
         val shared = ThinkingClock()
     }

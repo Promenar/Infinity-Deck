@@ -656,6 +656,7 @@ internal fun ProviderFormContent(
     actions: ProviderFormActions,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
+    initialPeerPickerOpen: Boolean = false,
 ) {
     val title = when {
         state.isEditing && state.name.isNotBlank() -> state.name
@@ -709,7 +710,7 @@ internal fun ProviderFormContent(
                     }
                 } else {
                     animatedFormItem("interface-section") {
-                        ProviderInterfaceSection(state = state, actions = actions)
+                        ProviderInterfaceSection(state = state, actions = actions, initialPeerPickerOpen = initialPeerPickerOpen)
                     }
                     animatedFormItem("cloud-section") {
                         CloudProviderSection(state = state, actions = actions)
@@ -872,7 +873,11 @@ private fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean) {
 
 /** 接口：公网 / Tailscale 内网分段与状态行、tailnet 设备、接口地址与地址提示；仅内网时显示脚注。 */
 @Composable
-private fun ProviderInterfaceSection(state: ProviderFormUiState, actions: ProviderFormActions) {
+private fun ProviderInterfaceSection(
+    state: ProviderFormUiState,
+    actions: ProviderFormActions,
+    initialPeerPickerOpen: Boolean,
+) {
     val tailnet = state.apiSource?.selected == ProviderApiSource.TAILNET
     InfinitySettingsSection(
         title = stringResource(R.string.provider_form_group_interface),
@@ -893,6 +898,7 @@ private fun ProviderInterfaceSection(state: ProviderFormUiState, actions: Provid
                 peers = state.tailnetInfo.peers,
                 baseUrl = state.baseUrl,
                 onPeerSelected = actions.onTailnetPeerSelected,
+                initialOpen = initialPeerPickerOpen,
             )
             InfinityGroupDivider()
         }

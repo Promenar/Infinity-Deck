@@ -95,6 +95,7 @@ class LabChatScriptsTest {
         assertThat(panel.doneCount).isEqualTo(3)
         assertThat(panel.totalCount).isEqualTo(6)
         assertThat(panel.currentStepTitle).isEqualTo(text.planSteps[3])
+        assertThat(adeFrame(AdeState(text, stage = ADE_SUMMARY)).screen.taskPanel!!.isCompleted).isFalse()
         assertThat(adeFrame(AdeState(text, stage = ADE_DONE)).screen.taskPanel!!.isCompleted).isTrue()
     }
 

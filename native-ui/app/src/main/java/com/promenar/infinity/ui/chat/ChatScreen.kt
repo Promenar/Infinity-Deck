@@ -681,6 +681,20 @@ fun ChatScreenContent(
         withFrameNanos { }
         scrollItemAboveComposer(branchPlanItemIndex)
     }
+    // 提问卡与保密输入卡紧跟在消息（与上下文压缩反馈）之后：出现时同样滚到输入栏上方，
+    // 否则自动跟随只对齐最后一条消息，卡片会被输入栏盖住，只露出顶边。
+    val questionItemIndex = approvalItemIndex
+    LaunchedEffect(state.pendingQuestion?.toolCallId) {
+        if (state.pendingQuestion == null) return@LaunchedEffect
+        withFrameNanos { }
+        scrollItemAboveComposer(questionItemIndex)
+    }
+    val secretInputItemIndex = questionItemIndex + (if (state.pendingQuestion != null) 1 else 0)
+    LaunchedEffect(state.pendingSecretInput?.toolCallId) {
+        if (state.pendingSecretInput == null) return@LaunchedEffect
+        withFrameNanos { }
+        scrollItemAboveComposer(secretInputItemIndex)
+    }
 
     val latestAssistantMsg = uiState.messages.lastOrNull { it.role == MessageRole.ASSISTANT }
     val followContentLength = (latestAssistantMsg?.content?.length ?: 0) +

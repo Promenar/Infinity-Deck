@@ -26,10 +26,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -58,6 +60,7 @@ import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
 import com.promenar.infinity.ui.common.InfinityPopoverAlign
 import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityTabItem
+import kotlinx.coroutines.flow.first
 
 /** 内置 Tailscale 状态行所需的本机信息。 */
 data class ProviderTailnetInfo(
@@ -268,18 +271,26 @@ internal fun selectableTailnetPeers(peers: List<TailnetPeer>): List<TailnetPeer>
 
 /**
  * “tailnet 设备”选择行：显示接口地址当前对应的设备；点按打开底部面板选择设备，
- * 选中后把接口地址换成该设备的 https 全名。
+ * 选中后把接口地址换成该设备的 https 全名。[initialOpen] 为真时量到设备行位置后直接打开面板（视觉实验室用）。
  */
 @Composable
 internal fun TailnetPeerPicker(
     peers: List<TailnetPeer>,
     baseUrl: String,
     onPeerSelected: (TailnetPeer) -> Unit,
+    initialOpen: Boolean = false,
 ) {
     val usable = selectableTailnetPeers(peers)
     if (usable.isEmpty()) return
     var open by rememberSaveable { mutableStateOf(false) }
     val anchor = rememberInfinityPopoverAnchor()
+    // 等设备行量到位置再打开，宽窗口第一帧就是贴着设备行的弹出层。
+    LaunchedEffect(initialOpen) {
+        if (initialOpen) {
+            snapshotFlow { anchor.bounds }.first { it != null }
+            open = true
+        }
+    }
     val selected = usable.firstOrNull { TailnetEndpoints.matchesPeer(baseUrl, it) }
     val openLabel = stringResource(R.string.provider_tailnet_peer_sheet_title)
     InfinitySettingsRowLayout(

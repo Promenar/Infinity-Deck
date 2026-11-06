@@ -130,17 +130,21 @@ fun BrowserPage(sessionId: String, onBack: (() -> Unit)?) {
             onNew = { host.newTabByUser(sessionId) },
             onDisplayMode = { host.setDisplayModeByUser(sessionId, it) },
         ),
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .then(
-                if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier
-                else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
-            ),
+        modifier = browserPageModifier(),
     ) {
         session?.let { BrowserWebViewHost(it, state?.currentTabId, Modifier.fillMaxSize()) }
     }
 }
+
+/** 浏览器整页的外壳：铺满底色；整页打开时避开系统栏，在检视器里由检视器负责边距。视觉实验室的浏览器版本复用同一外壳。 */
+@Composable
+internal fun browserPageModifier(): Modifier = Modifier
+    .fillMaxSize()
+    .background(MaterialTheme.colorScheme.background)
+    .then(
+        if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier
+        else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+    )
 
 /** 标签栏与显示模式的用户操作；为空时不显示标签栏。 */
 class BrowserTabActions(

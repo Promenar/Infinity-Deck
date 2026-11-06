@@ -55,6 +55,12 @@ object LabCatalog {
                             LabVersion("branch-plan", "chat.state.branch-plan", R.string.lab_v_branch_plan, R.string.lab_v_branch_plan_desc, LabVersionKind.STATE),
                             LabVersion("ops-approval", "chat.state.ops-approval", R.string.lab_v_ops_approval, R.string.lab_v_ops_approval_desc, LabVersionKind.STATE),
                             LabVersion("ops-report", "chat.state.ops-report", R.string.lab_v_ops_report, R.string.lab_v_ops_report_desc, LabVersionKind.STATE),
+                            LabVersion("queue", "chat.state.queue", R.string.lab_v_queue, R.string.lab_v_queue_desc, LabVersionKind.STATE),
+                            LabVersion("ask-user", "chat.state.ask-user", R.string.lab_v_ask_user, R.string.lab_v_ask_user_desc, LabVersionKind.STATE),
+                            LabVersion("secret-input", "chat.state.secret-input", R.string.lab_v_secret_input, R.string.lab_v_secret_input_desc, LabVersionKind.STATE),
+                            LabVersion("touch-lock", "chat.state.touch-lock", R.string.lab_v_touch_lock, R.string.lab_v_touch_lock_desc, LabVersionKind.STATE),
+                            LabVersion("model-network", "chat.state.model-network", R.string.lab_v_model_network, R.string.lab_v_model_network_desc, LabVersionKind.STATE),
+                            LabVersion("tailnet-wait", "chat.state.tailnet-wait", R.string.lab_v_tailnet_wait, R.string.lab_v_tailnet_wait_desc, LabVersionKind.STATE),
                         ),
                     ),
                     LabNode(
@@ -63,7 +69,7 @@ object LabCatalog {
                         children = listOf(
                             LabVersion("git-worktrees", "inspector.state.git-worktrees", R.string.lab_v_git_worktrees, R.string.lab_v_git_worktrees_desc, LabVersionKind.STATE),
                             LabVersion("git-commits", "inspector.state.git-commits", R.string.lab_v_git_commits, R.string.lab_v_git_commits_desc, LabVersionKind.STATE),
-                            LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE, LabScreenFit.INNER),
+                            LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE),
                         ),
                     ),
                 ),
@@ -75,6 +81,32 @@ object LabCatalog {
                     LabVersion("fastfetch", "terminal.state.fastfetch", R.string.lab_v_fastfetch, R.string.lab_v_fastfetch_desc, LabVersionKind.STATE),
                     LabVersion("apk-add", "terminal.workflow.apk-add", R.string.lab_v_apk_add, R.string.lab_v_apk_add_desc, LabVersionKind.WORKFLOW),
                     LabVersion("ssh-web01", "terminal.state.ssh-web01", R.string.lab_v_ssh_web01, R.string.lab_v_ssh_web01_desc, LabVersionKind.STATE),
+                ),
+            ),
+            LabNode(
+                segment = "browser",
+                title = R.string.lab_node_browser,
+                children = listOf(
+                    LabVersion("agent", "browser.state.agent", R.string.lab_v_browser_agent, R.string.lab_v_browser_agent_desc, LabVersionKind.STATE),
+                    LabVersion("takeover", "browser.state.takeover", R.string.lab_v_browser_takeover, R.string.lab_v_browser_takeover_desc, LabVersionKind.STATE),
+                    LabVersion("login", "browser.state.login", R.string.lab_v_browser_login, R.string.lab_v_browser_login_desc, LabVersionKind.STATE),
+                ),
+            ),
+            LabNode(
+                segment = "library",
+                title = R.string.lab_node_library,
+                children = listOf(
+                    LabVersion("ask", "library.state.ask", R.string.lab_v_library_ask, R.string.lab_v_library_ask_desc, LabVersionKind.STATE, LabScreenFit.OUTER),
+                    LabVersion("locate", "library.state.locate", R.string.lab_v_library_locate, R.string.lab_v_library_locate_desc, LabVersionKind.STATE, LabScreenFit.OUTER),
+                ),
+            ),
+            LabNode(
+                segment = "settings",
+                title = R.string.lab_node_settings,
+                children = listOf(
+                    LabVersion("tailscale-peers", "settings.workflow.tailscale-peers", R.string.lab_v_tailscale_peers, R.string.lab_v_tailscale_peers_desc, LabVersionKind.WORKFLOW),
+                    LabVersion("provider-tailnet", "settings.state.provider-tailnet", R.string.lab_v_provider_tailnet, R.string.lab_v_provider_tailnet_desc, LabVersionKind.STATE),
+                    LabVersion("provider-gateway-picker", "settings.state.provider-gateway-picker", R.string.lab_v_provider_picker, R.string.lab_v_provider_picker_desc, LabVersionKind.STATE),
                 ),
             ),
         ),

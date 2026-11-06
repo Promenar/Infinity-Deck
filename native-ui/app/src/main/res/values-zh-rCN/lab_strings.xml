@@ -66,6 +66,42 @@
     <string name="lab_v_apk_add">apk add fastfetch</string>
     <string name="lab_v_apk_add_desc">安装输出逐行出现</string>
 
+    <string name="lab_node_browser">浏览器</string>
+    <string name="lab_node_library">存储空间</string>
+    <string name="lab_node_settings">设置</string>
+
+    <string name="lab_v_queue">排队消息</string>
+    <string name="lab_v_queue_desc">生成中写下的两条后续消息，一条已请求插队</string>
+    <string name="lab_v_ask_user">提问卡</string>
+    <string name="lab_v_ask_user_desc">动手前确认 JSON 形状（单选）与字段（多选）</string>
+    <string name="lab_v_secret_input">保密输入卡</string>
+    <string name="lab_v_secret_input_desc">推送需要的 GitHub 令牌直接存进 Git 凭据</string>
+    <string name="lab_v_touch_lock">触摸锁</string>
+    <string name="lab_v_touch_lock_desc">后台完整测试运行中锁定触摸</string>
+    <string name="lab_v_model_network">模型选择器网络灯</string>
+    <string name="lab_v_model_network_desc">公网灯与 Tailscale 灯，内网网关的模型带 Tailscale 标记</string>
+    <string name="lab_v_tailnet_wait">等待 Tailscale 接入</string>
+    <string name="lab_v_tailnet_wait_desc">发往 gpu-box 上的模型前，内置 Tailscale 正在接入</string>
+
+    <string name="lab_v_browser_agent">Agent 操作网页</string>
+    <string name="lab_v_browser_agent_desc">在 CI 页面点按“重跑失败的作业”，带标签栏</string>
+    <string name="lab_v_browser_takeover">用户接手</string>
+    <string name="lab_v_browser_takeover_desc">同一页面由你操作，可随时交还</string>
+    <string name="lab_v_browser_login">需要你登录</string>
+    <string name="lab_v_browser_login_desc">密码字段标出“仅你可输入”</string>
+
+    <string name="lab_v_library_ask">问资料</string>
+    <string name="lab_v_library_ask_desc">带编号引用的答案，文档、主动记忆与图谱命中</string>
+    <string name="lab_v_library_locate">原文定位</string>
+    <string name="lab_v_library_locate_desc">从答案打开文档，两处命中段高亮并可切换</string>
+
+    <string name="lab_v_tailscale_peers">Tailscale 设备与 Ping</string>
+    <string name="lab_v_tailscale_peers_desc">打开 gpu-box 每秒 Ping，从 DERP 中继转为直连</string>
+    <string name="lab_v_provider_tailnet">内网模型网关</string>
+    <string name="lab_v_provider_tailnet_desc">提供商的 API 源选 Tailscale 内网，设备为 gpu-box</string>
+    <string name="lab_v_provider_picker">tailnet 设备面板</string>
+    <string name="lab_v_provider_picker_desc">选中 gpu-box，离线设备排在后面</string>
+
     <!-- 版本舞台控制条 -->
     <string name="lab_ctrl_play">播放</string>
     <string name="lab_ctrl_pause">暂停</string>

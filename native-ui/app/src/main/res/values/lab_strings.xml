@@ -68,6 +68,42 @@
     <string name="lab_v_apk_add">apk add fastfetch</string>
     <string name="lab_v_apk_add_desc">Package install output line by line</string>
 
+    <string name="lab_node_browser">Browser</string>
+    <string name="lab_node_library">Storage</string>
+    <string name="lab_node_settings">Settings</string>
+
+    <string name="lab_v_queue">Queued messages</string>
+    <string name="lab_v_queue_desc">Two follow-ups written during generation, one set to steer</string>
+    <string name="lab_v_ask_user">Question card</string>
+    <string name="lab_v_ask_user_desc">Confirm the JSON shape (single choice) and fields (multiple choice)</string>
+    <string name="lab_v_secret_input">Secret input card</string>
+    <string name="lab_v_secret_input_desc">The GitHub token for the push goes straight into Git credentials</string>
+    <string name="lab_v_touch_lock">Touch lock</string>
+    <string name="lab_v_touch_lock_desc">Touch locked while the full test suite runs in the background</string>
+    <string name="lab_v_model_network">Model picker network lights</string>
+    <string name="lab_v_model_network_desc">Public and Tailscale lights; gateway models carry the Tailscale mark</string>
+    <string name="lab_v_tailnet_wait">Waiting for Tailscale</string>
+    <string name="lab_v_tailnet_wait_desc">Built-in Tailscale joins before sending to the model on gpu-box</string>
+
+    <string name="lab_v_browser_agent">Agent on a web page</string>
+    <string name="lab_v_browser_agent_desc">Clicks Re-run failed jobs on a CI page, with tabs</string>
+    <string name="lab_v_browser_takeover">You take over</string>
+    <string name="lab_v_browser_takeover_desc">The same page under your control, ready to hand back</string>
+    <string name="lab_v_browser_login">Sign-in needed</string>
+    <string name="lab_v_browser_login_desc">The password field is marked as yours to type</string>
+
+    <string name="lab_v_library_ask">Ask the library</string>
+    <string name="lab_v_library_ask_desc">Numbered citations over document, active memory and graph hits</string>
+    <string name="lab_v_library_locate">Locate in source</string>
+    <string name="lab_v_library_locate_desc">Open the document from the answer; two highlighted hits to step through</string>
+
+    <string name="lab_v_tailscale_peers">Tailscale devices and ping</string>
+    <string name="lab_v_tailscale_peers_desc">Ping gpu-box every second as it moves from a DERP relay to direct</string>
+    <string name="lab_v_provider_tailnet">Tailnet model gateway</string>
+    <string name="lab_v_provider_tailnet_desc">A provider whose API source is the tailnet, device gpu-box</string>
+    <string name="lab_v_provider_picker">Tailnet device panel</string>
+    <string name="lab_v_provider_picker_desc">gpu-box selected, offline devices last</string>
+
     <!-- 版本舞台控制条 -->
     <string name="lab_ctrl_play">Play</string>
     <string name="lab_ctrl_pause">Pause</string>

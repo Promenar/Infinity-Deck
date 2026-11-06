@@ -21,7 +21,7 @@ internal val labTerminalScenes: Map<String, () -> LabScene> = mapOf(
     "terminal.workflow.apk-add" to {
         LabWorkflowScene(
             timeline = { _ -> LabApkAdd.timeline() },
-            content = { state: LabApkAddState -> LabTerminalShell(onExit) { LabApkAdd.script(state) } },
+            content = { state: LabApkAddState -> LabTerminalShell(onExit) { columns -> LabApkAdd.script(state, columns) } },
         )
     },
 )
