@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -101,7 +102,14 @@ internal data class LibraryNavEntry(
 )
 
 @Immutable
-internal data class LibraryNavGroup(val title: String, val entries: List<LibraryNavEntry>, val foldable: Boolean = false)
+internal data class LibraryNavGroup(
+    val title: String,
+    val entries: List<LibraryNavEntry>,
+    val foldable: Boolean = false,
+    /** 组末的操作行（例如“外部文件夹”），不随折叠隐藏，点按执行 [onAction] 而不是打开页面。 */
+    val action: LibraryNavEntry? = null,
+    val onAction: () -> Unit = {},
+)
 
 /** 左列超过这个数量的位置折叠起来。 */
 private const val VISIBLE_LOCATIONS = 6
@@ -168,6 +176,13 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
                 )
             },
             foldable = true,
+            // 资料库级外部文件夹：挂在资料库上，不随会话删除。
+            action = LibraryNavEntry(
+                key = LIBRARY_MOUNTS_ACTION_KEY,
+                icon = Icons.Rounded.CreateNewFolder,
+                title = stringResource(R.string.library_mounts_entry),
+            ),
+            onAction = host.onManageMounts,
         ),
         LibraryNavGroup(
             title = stringResource(R.string.library_group_pins),
@@ -243,6 +258,11 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
                             expanded = locationsExpanded,
                             onClick = { locationsExpanded = !locationsExpanded },
                         )
+                    }
+                }
+                group.action?.let { action ->
+                    item(key = "action-${group.title}") {
+                        LibraryNavRow(action, selected = false, twoLine = twoLine, onClick = group.onAction, modifier = Modifier.animateItem())
                     }
                 }
             }
@@ -516,9 +536,21 @@ internal fun LibraryLocationRows(host: LibraryPageHost) {
                     modifier = Modifier.testTag(LibraryTags.navItem(entry.key)),
                 )
             }
+            group.action?.let { action ->
+                InfinitySettingsItem(
+                    icon = action.icon,
+                    title = action.title,
+                    onClick = group.onAction,
+                    showChevron = true,
+                    modifier = Modifier.testTag(LibraryTags.navItem(action.key)),
+                )
+            }
         }
     }
 }
+
+/** 位置分组末“外部文件夹”操作行的标识，只用于测试标签。 */
+internal const val LIBRARY_MOUNTS_ACTION_KEY = "action:mounts"
 
 /** 导航行高：单行为最小触控高度；双行为标题加一行小字再加上下内边距。 */
 private fun navRowHeight(twoLine: Boolean) = if (twoLine) NAV_ROW_TWO_LINE_HEIGHT else InfinitySpacing.MinimumTouchTarget

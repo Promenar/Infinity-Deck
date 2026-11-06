@@ -22,6 +22,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -149,6 +151,7 @@ fun LibraryScreen(
     LibraryNoticeEffect(viewModel, snackbar)
     LibraryGraphConfirmDialog(viewModel)
 
+    var mountsOpen by rememberSaveable { mutableStateOf(false) }
     val host = LibraryPageHost(
         viewModel = viewModel,
         ragViewModel = ragViewModel,
@@ -159,7 +162,9 @@ fun LibraryScreen(
         onNavigateToSecondary = onNavigateToSecondary,
         onOpenSession = onOpenSession,
         chunkLocator = com.promenar.infinity.data.library.ask.DefaultChunkLocator,
+        onManageMounts = { mountsOpen = true },
     )
+    if (mountsOpen) LibraryMountsSheet(onDismiss = { mountsOpen = false })
 
     // Surface 提供内容色：点按反馈取内容色绘制，裸 Box 下默认黑色，在深色主题里看不见。
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().testTag(LibraryTags.SCREEN)) {
@@ -216,6 +221,8 @@ internal class LibraryPageHost(
     val chunkLocator: ChunkLocator,
     /** 从对话引用打开的文档页要定位的段落；资料页内导航为 null。 */
     val locateRequest: DocumentLocateRequest? = null,
+    /** 打开资料库级外部文件夹的管理面板。 */
+    val onManageMounts: () -> Unit = {},
 )
 
 @Composable

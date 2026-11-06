@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 资料库级外部文件夹：资料页入口与挂载面板 -->
+    <string name="library_mounts_entry">External folders</string>
+    <string name="library_mounts_title">Library folders</string>
+    <string name="library_mounts_empty_hint">Folders added here belong to the library and stay when chats are deleted. They appear under Locations, and any chat can use them from its own folder panel.</string>
+    <string name="library_mounts_attach_section">From the library</string>
+    <string name="library_mounts_attach_hint">Uses the library folder\'s existing access; nothing is picked again.</string>
+    <string name="library_mounts_attach_desc">Use in this chat at /mnt/%1$s/</string>
+</resources>

@@ -91,6 +91,15 @@ internal fun safTreeFallbackName(treeDocumentId: String?): String? =
     treeDocumentId?.substringAfter(':')?.trimEnd('/')?.substringAfterLast('/')?.takeIf(String::isNotEmpty)
 
 /** 空会话不展示挂载，防止页面切换时展示其它会话的路径。 */
+/**
+ * 会话可引用的资料库文件夹：排除本会话已挂载的同一来源；Linux 会话只能使用真实路径，
+ * 系统授权文件夹对其中的智能体不可见，因此不列出。
+ */
+internal fun libraryMountChoices(library: List<ExternalMount>, session: List<ExternalMount>, linuxSession: Boolean): List<ExternalMount> {
+    val attached = session.mapTo(mutableSetOf()) { it.sourceType to it.sourceId }
+    return library.filter { (it.sourceType to it.sourceId) !in attached && (!linuxSession || it.sourceType == "real_path") }
+}
+
 internal fun visibleExternalMounts(mounts: List<ExternalMount>, sessionId: String?): List<ExternalMount> =
     mounts.filter { !sessionId.isNullOrBlank() && it.sessionId == sessionId }
 

@@ -28,6 +28,20 @@ class ExternalFoldersPanelStateTest {
     }
 
     @Test
+    fun `会话可引用的资料库文件夹排除已挂同源且 Linux 会话只列真实路径`() {
+        val saf = mount("lib-saf", "__library__")
+        val attached = mount("lib-attached", "__library__")
+        val real = mount("lib-real", "__library__").copy(sourceType = "real_path", sourceId = "/storage/emulated/0/Notes")
+        // 会话里已有与 attached 同源的一行（另一个 id），不应再列出。
+        val session = listOf(attached.copy(id = "session-copy", sessionId = "session-a"))
+
+        assertThat(libraryMountChoices(listOf(saf, attached, real), session, linuxSession = false).map { it.id })
+            .containsExactly("lib-saf", "lib-real").inOrder()
+        assertThat(libraryMountChoices(listOf(saf, attached, real), session, linuxSession = true).map { it.id })
+            .containsExactly("lib-real")
+    }
+
+    @Test
     fun `回退在挂载根停止且拒绝相似前缀和越界路径`() {
         assertThat(parentExternalFolderPath("/mnt/docs", "/mnt/docs/a/b")).isEqualTo("/mnt/docs/a")
         assertThat(parentExternalFolderPath("/mnt/docs", "/mnt/docs/a")).isEqualTo("/mnt/docs")

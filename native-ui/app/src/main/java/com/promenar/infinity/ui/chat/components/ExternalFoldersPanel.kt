@@ -313,6 +313,19 @@ private fun ExternalFoldersPanelContent(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    // 会话面板额外列出资料库里的文件夹，供本会话引用同一授权；资料库面板自身不列。
+    val libraryScope = ExternalMountPaths.isLibraryScope(sessionKey)
+    var libraryMounts by remember { mutableStateOf<List<ExternalMount>>(emptyList()) }
+    LaunchedEffect(manager, sessionKey) {
+        if (libraryScope || sessionKey.isBlank()) return@LaunchedEffect
+        try {
+            manager.observeMounts(ExternalMountPaths.LIBRARY_SCOPE).collect { libraryMounts = it }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            libraryMounts = emptyList()
+        }
+    }
     LaunchedEffect(manager, sessionKey) {
         currentRefresh()
         try {
@@ -421,7 +434,10 @@ private fun ExternalFoldersPanelContent(
                         onRemove = { removeMountId = it.id },
                         onGrantRealPath = openAccessSettings,
                         linuxSession = linuxSession,
-                        knowledgeMount = knowledgePreview?.let(::knowledgeMountOption),
+                        libraryScope = libraryScope,
+                        libraryChoices = libraryMountChoices(libraryMounts, mounts, linuxSession),
+                        onAttachLibrary = { library -> perform { manager.attachLibraryMount(sessionKey, library.id) } },
+                        knowledgeMount = knowledgePreview?.takeUnless { libraryScope }?.let(::knowledgeMountOption),
                         onMountKnowledge = {
                             val planner = app?.knowledgeAccessPlanner
                             if (planner != null && sessionKey.isNotBlank()) perform {
@@ -573,12 +589,17 @@ internal fun ExternalMountManagerContent(
     onGrantRealPath: (() -> Unit)?,
     modifier: Modifier = Modifier,
     linuxSession: Boolean = false,
+    /** 资料库作用域：标题与说明改为资料库文件夹，不随会话删除。 */
+    libraryScope: Boolean = false,
+    /** 本会话尚未引用的资料库文件夹。 */
+    libraryChoices: List<ExternalMount> = emptyList(),
+    onAttachLibrary: (ExternalMount) -> Unit = {},
     /** 为空时不显示“挂载知识库”入口（无会话或无法取得预览）。 */
     knowledgeMount: KnowledgeMountOption? = null,
     onMountKnowledge: () -> Unit = {},
 ) = Column(modifier.fillMaxSize()) {
     InfinityNavigationHeader(
-        title = stringResource(R.string.mount_title),
+        title = stringResource(if (libraryScope) R.string.library_mounts_title else R.string.mount_title),
         titleStyle = MaterialTheme.typography.titleLarge,
         actions = {
             MountRefreshAction(refreshing = loading || busy, onRefresh = onRefresh)
@@ -595,7 +616,11 @@ internal fun ExternalMountManagerContent(
     ) {
         InfinitySettingsSection(
             title = stringResource(R.string.mount_section_mounted),
-            footer = stringResource(R.string.mount_empty_hint).takeIf { mounts.isEmpty() && !loading },
+            footer = when {
+                libraryScope -> stringResource(R.string.library_mounts_empty_hint)
+                mounts.isEmpty() && !loading -> stringResource(R.string.mount_empty_hint)
+                else -> null
+            },
         ) {
             Column(Modifier.animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate))) {
                 if (mounts.isEmpty()) {
@@ -607,6 +632,27 @@ internal fun ExternalMountManagerContent(
                 } else {
                     mounts.forEach { mount ->
                         key(mount.id) { ExternalMountRow(mount, busy, onBrowse, onReauthorize, onRemove, onGrantRealPath, linuxSession) }
+                    }
+                }
+            }
+        }
+        if (libraryChoices.isNotEmpty()) {
+            InfinitySettingsSection(
+                title = stringResource(R.string.library_mounts_attach_section),
+                footer = stringResource(R.string.library_mounts_attach_hint),
+            ) {
+                libraryChoices.forEach { library ->
+                    key(library.id) {
+                        InfinitySettingsItem(
+                            title = library.alias,
+                            subtitle = stringResource(R.string.library_mounts_attach_desc, library.alias),
+                            onClick = { onAttachLibrary(library) },
+                            enabled = !busy && library.unavailableReason == null,
+                            leadingContent = {
+                                Icon(Icons.AutoMirrored.Rounded.LibraryBooks, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.testTag("external_mount_attach_library_${library.id}"),
+                        )
                     }
                 }
             }
