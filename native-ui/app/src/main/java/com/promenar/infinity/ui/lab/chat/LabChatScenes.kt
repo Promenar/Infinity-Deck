@@ -11,7 +11,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -137,8 +139,12 @@ private fun LabSceneScope.AdeStill(
             }
             return@BoxWithConstraints
         }
+        // 窄窗口没有检视器：运行页与真实应用一样换成运行详情面板，进入后递增请求号打开它。
+        val narrowRun = !infinityInspectorAvailable(maxWidth, maxHeight) && ChatPage.Run in initialPages
+        var runSheetRequest by remember { mutableIntStateOf(0) }
+        LaunchedEffect(narrowRun) { if (narrowRun) runSheetRequest++ }
         LabChatScene(
-            frame = frame.copy(screen = frame.screen.copy(inspectorPages = pages)),
+            frame = frame.copy(screen = frame.screen.copy(inspectorPages = pages, backgroundJobsRequest = runSheetRequest)),
             nowScriptMs = nowScriptMs,
             actions = actions,
             hub = LabHubStory.ADE,

@@ -148,6 +148,7 @@ internal fun opsFrame(s: OpsState): LabChatFrame {
                 approvalRequest = approval,
             ),
             modelDisplayNames = mapOf(LAB_MODEL to LAB_MODEL),
+            tokenState = labTokenState(s.stage, OPS_DONE, startTokens = 8_600, endTokens = 23_400),
             generationStartedAt = 0L.takeIf { generating },
             generationPhase = when {
                 !generating -> null

@@ -69,7 +69,7 @@ object LabCatalog {
                         children = listOf(
                             LabVersion("git-worktrees", "inspector.state.git-worktrees", R.string.lab_v_git_worktrees, R.string.lab_v_git_worktrees_desc, LabVersionKind.STATE),
                             LabVersion("git-commits", "inspector.state.git-commits", R.string.lab_v_git_commits, R.string.lab_v_git_commits_desc, LabVersionKind.STATE),
-                            LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE, LabScreenFit.INNER),
+                            LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE),
                         ),
                     ),
                 ),

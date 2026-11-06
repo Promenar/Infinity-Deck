@@ -12,6 +12,8 @@ import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.ToolCall
 import com.promenar.infinity.ui.chat.ChatScreenActions
+import com.promenar.infinity.ui.chat.ChatViewModel
+import com.promenar.infinity.ui.chat.ThinkingClock
 import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.timeline.LabTimelineBuilder
 
@@ -23,6 +25,18 @@ import com.promenar.infinity.ui.lab.timeline.LabTimelineBuilder
 
 internal const val LAB_MODEL = "DeepSeek V4.1 Flash"
 internal const val LAB_AGENT = "Infinity"
+
+/** 脚本里每段思考显示的时长。 */
+internal const val LAB_THOUGHT_MS = 6_000L
+
+/** 脚本模型的上下文窗口。 */
+internal const val LAB_CONTEXT_TOKENS = 131_072
+
+/** 输入框的上下文用量：从 [startTokens] 随阶段线性增长，到 [lastStage] 时为 [endTokens]。 */
+internal fun labTokenState(stage: Int, lastStage: Int, startTokens: Int = 9_800, endTokens: Int = 44_600): ChatViewModel.TokenIndicatorState {
+    val used = startTokens + (endTokens - startTokens) * stage.coerceIn(0, lastStage) / lastStage
+    return ChatViewModel.TokenIndicatorState(used = used, max = LAB_CONTEXT_TOKENS, systemTokens = 7_400, activeTokens = used - 7_400)
+}
 
 internal fun isChinese(resources: Resources): Boolean =
     resources.configuration.locales[0].language == "zh"
@@ -130,7 +144,13 @@ internal fun LabSceneScope.LabChatScene(
     inspectorPageContent: @Composable BoxScope.() -> Unit = {},
 ) {
     val anchor = anchorMs - nowScriptMs
-    val shifted = remember(frame, anchor) { frame.atWallClock(anchor) }
+    val shifted = remember(frame, anchor) {
+        // 思考时长由真实组件按进程内计时记录；脚本消息没有真实计时，先写入定好的时长。
+        frame.screen.uiState.messages.forEach { message ->
+            if (message.reasoning != null) ThinkingClock.shared.record(message.id, LAB_THOUGHT_MS)
+        }
+        frame.atWallClock(anchor)
+    }
     if (hub == null) {
         LabChatHost(shifted, actions.copy(onNavigateBack = onExit), inspectorPageContent)
         return

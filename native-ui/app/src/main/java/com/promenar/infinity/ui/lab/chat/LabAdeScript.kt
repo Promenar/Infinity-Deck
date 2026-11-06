@@ -247,6 +247,7 @@ internal fun adeFrame(s: AdeState): LabChatFrame {
             streamingContent = if (streaming) s.partial.orEmpty() else "",
         ),
         modelDisplayNames = mapOf(LAB_MODEL to LAB_MODEL),
+        tokenState = labTokenState(stage, ADE_DONE),
         taskPanel = if (stage >= ADE_PLAN) taskPanelUiState(adePlanTree(t, stage), generating, t.planTitle) else null,
         generationStartedAt = 0L.takeIf { generating },
         generationPhase = phase,
@@ -301,8 +302,10 @@ private fun taskArgs(t: LabAdeText): String =
 
 /** 计划各步骤在某一阶段的状态。 */
 private fun adePlanTree(t: LabAdeText, stage: Int): List<TaskStep> {
+    // 最后一步与生成结束同一帧完成：总结流式写出期间仍是进行中，计划完成与停止按钮不会同时出现。
     val done = when {
-        stage >= ADE_COMMITTED -> 6
+        stage >= ADE_DONE -> 6
+        stage >= ADE_COMMITTED -> 5
         stage >= ADE_JOB_DONE -> 4
         stage >= ADE_PLAN_UPDATE -> 3
         stage >= ADE_TASK_DONE -> 1
