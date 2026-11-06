@@ -29,24 +29,24 @@
 
     <!-- 不可用 -->
     <string name="linux_unavailable_distribution_title">此版本不包含</string>
-    <string name="linux_unavailable_distribution_body">Google Play 版不提供内置 Linux 环境，可改用 Termux 或 SSH 主机运行命令。</string>
+    <string name="linux_unavailable_distribution_body">Google Play 版不含内置 Linux，可改用 Termux 或 SSH</string>
     <string name="linux_unavailable_abi_title">此设备不支持</string>
-    <string name="linux_unavailable_abi_body">内置 Linux 环境需要 64 位 ARM（arm64-v8a）设备，可改用 Termux 或 SSH 主机运行命令。</string>
+    <string name="linux_unavailable_abi_body">需要 64 位 ARM（arm64-v8a）设备，可改用 Termux 或 SSH</string>
     <string name="linux_open_termux">设置 Termux</string>
     <string name="linux_open_ssh">SSH 主机</string>
 
     <!-- 安装引导 -->
     <string name="linux_install_hero_title">给智能体一套完整的 Linux</string>
-    <string name="linux_install_hero_body">在 &brand; 内运行 Alpine Linux。智能体的命令在其中执行，可用 apk 安装 Python、Node、git 等，也能在终端直接使用。无需 Termux 或 root。</string>
+    <string name="linux_install_hero_body">智能体命令在应用内的 Alpine 中运行，可用 apk 安装 Python、Node、git，无需 Termux 或 root</string>
     <string name="linux_install_contents">安装内容</string>
     <string name="linux_install_base_title">Alpine Linux %1$s</string>
-    <string name="linux_install_base_subtitle">随应用内置，解包后约 10 MB，可离线安装</string>
+    <string name="linux_install_base_subtitle">内置 · 解包后约 10 MB · 可离线安装</string>
     <string name="linux_install_space_title">可用空间</string>
     <string name="linux_install_space_ok">设备剩余 %1$s，足够</string>
     <string name="linux_install_space_low">设备只剩 %1$s，至少需要 %2$s</string>
-    <string name="linux_install_warning">命令以本应用权限运行，可访问应用数据和网络；“工作区”档位下每条命令都需你批准。</string>
+    <string name="linux_install_warning">命令以本应用权限运行，可访问应用数据与网络；“工作区”档位逐条审批</string>
     <string name="linux_install_action">安装</string>
-    <string name="linux_install_alternatives">也可以继续使用 Termux 或 SSH 主机</string>
+    <string name="linux_install_alternatives">其它方式</string>
 
     <!-- 安装进度 -->
     <string name="linux_step_unpack">解包 Alpine</string>
@@ -71,9 +71,9 @@
     <string name="linux_live_output">实时输出</string>
     <string name="linux_install_background">后台继续</string>
     <string name="linux_install_cancel">取消安装</string>
-    <string name="linux_install_cancel_note">取消后已解包的内容会保留，可从中断处继续</string>
+    <string name="linux_install_cancel_note">取消后保留进度</string>
     <string name="linux_install_resume">继续安装</string>
-    <string name="linux_install_paused_note">安装已取消，已完成的步骤会保留。</string>
+    <string name="linux_install_paused_note">已完成的步骤已保留</string>
     <string name="linux_progress_label">安装进度</string>
 
     <!-- 失败原因 -->
@@ -121,7 +121,6 @@
     <string name="linux_uninstall_confirm_title">卸载 Linux 环境？</string>
     <string name="linux_uninstall_confirm_body">整个环境都会被删除，包括已安装的软件包和 /root，工作区中的文件不受影响。</string>
     <string name="linux_uninstall_confirm_action">卸载</string>
-    <string name="linux_broken_body">环境已安装但无法启动，可重置或卸载。</string>
     <string name="linux_operation_failed">操作失败</string>
     <string name="linux_open_environment">前往 Linux 环境</string>
 
@@ -135,13 +134,13 @@
     <string name="linux_mirror_aliyun">阿里云</string>
     <string name="linux_mirror_official">Alpine 官方 CDN</string>
     <string name="linux_mirror_custom">自定义</string>
-    <string name="linux_mirror_custom_hint">请输入 HTTP 或 HTTPS 地址，也支持 tailnet 内的私有镜像</string>
+    <string name="linux_mirror_custom_hint">HTTP 或 HTTPS 地址，支持 tailnet 私有镜像</string>
     <string name="linux_mirror_custom_label">镜像地址</string>
     <string name="linux_mirror_custom_save">使用此镜像</string>
     <string name="linux_mirror_custom_invalid">请输入 HTTP 或 HTTPS 地址</string>
     <string name="linux_mirror_latency_failed">无法连接</string>
     <string name="linux_mirror_latency_unknown">未测速</string>
-    <string name="linux_mirrors_note">软件包始终用 Alpine 官方密钥校验签名；下载受“网络访问”设置约束。</string>
+    <string name="linux_mirrors_note">始终用 Alpine 官方密钥校验签名</string>
     <string name="linux_mirrors_done">完成</string>
 
     <!-- 软件包 -->

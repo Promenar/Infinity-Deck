@@ -4,7 +4,7 @@
     <string name="schedule_notification_channel">智能体动态</string>
     <string name="schedule_notification_channel_description">系统触发的回复和待处理请求</string>
     <string name="schedule_notification_needs_user">需要处理：%1$s</string>
-    <string name="schedule_notification_needs_user_text">等待你批准或回复，打开会话继续。</string>
+    <string name="schedule_notification_needs_user_text">等待批准或回复</string>
     <string name="schedule_notification_completed">已完成：%1$s</string>
     <string name="schedule_notification_failed">执行失败：%1$s</string>
     <string name="schedule_notification_reply">本轮已完成</string>
@@ -14,9 +14,9 @@
     <string name="schedule_interrupted">Android 中断了本轮定时任务，请打开会话检查进度。</string>
     <string name="schedule_approval_upcoming">触发于</string>
     <string name="schedule_approval_target">本会话</string>
-    <string name="schedule_approval_invalid">参数未通过校验，批准后也会被拒绝。</string>
+    <string name="schedule_approval_invalid">参数无效，批准后仍会被拒绝</string>
     <string name="schedule_approval_exact_denied_title">尚未授权精确闹钟</string>
-    <string name="schedule_approval_exact_denied_body">离开应用后可能延后执行；授权精确闹钟可按时执行。</string>
+    <string name="schedule_approval_exact_denied_body">离开应用后可能延后执行</string>
     <plurals name="schedule_approval_max_runs">
         <item quantity="other">最多 %1$d 次</item>
     </plurals>

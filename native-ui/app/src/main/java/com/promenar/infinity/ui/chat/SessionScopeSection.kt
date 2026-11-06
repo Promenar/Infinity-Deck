@@ -147,7 +147,6 @@ internal fun SessionScopeSection(
                 testTagPrefix = "session_scope_reach",
                 enabled = globalOn,
             )
-            SessionPermissionNote(stringResource(R.string.perm_global_footer))
         }
         SessionPermission.Documents -> InfinityBottomSheet(
             show = true, onDismiss = { editing = null }, title = stringResource(R.string.memory_scope_row_documents), scrollContent = true,

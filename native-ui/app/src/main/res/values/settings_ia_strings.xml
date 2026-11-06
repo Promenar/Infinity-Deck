@@ -31,7 +31,7 @@
 
     <!-- 知识库设置 -->
     <string name="settings_ia_new_session_section">New session defaults</string>
-    <string name="settings_ia_new_session_footer">Only affects sessions created later. Adjust existing sessions in Session settings › Context.</string>
+    <string name="settings_ia_new_session_footer">Only affects new sessions. For existing ones, use Session settings › Context</string>
     <string name="settings_ia_rerank">Reranking</string>
     <string name="settings_ia_rerank_no_model">No rerank model set</string>
     <string name="settings_ia_retrieval_section">Retrieval</string>
@@ -44,8 +44,7 @@
     <string name="settings_ia_hybrid_title">Hybrid search</string>
     <string name="settings_ia_hybrid_desc">Combines vector and keyword search</string>
     <string name="settings_ia_rewrite_title">Query rewriting</string>
-    <string name="settings_ia_retrieval_footer">A higher level brings more material into each turn and uses more context.</string>
-    <string name="settings_ia_retrieval_footer_custom">These values were changed in Debug &amp; advanced. Pick a level to go back to it.</string>
+    <string name="settings_ia_retrieval_footer_custom">Customized in Debug &amp; advanced. Pick a level to reset</string>
     <string name="settings_ia_embedding_model">Embedding model</string>
     <string name="settings_ia_rerank_model">Rerank model</string>
     <string name="settings_ia_kg_model">Graph extraction model</string>
@@ -53,10 +52,10 @@
     <string name="settings_ia_model_follow_fast">Follow fast model</string>
     <string name="settings_ia_model_follow_fast_desc">Uses the fast model from Default models</string>
     <string name="settings_ia_model_unset">Not set</string>
-    <string name="settings_ia_models_footer">Embedding and rerank models are set in Default models; tapping them opens that page.</string>
+    <string name="settings_ia_models_footer">Embedding and rerank models are set in Default models</string>
     <string name="settings_ia_extraction_section">Per-turn extraction</string>
     <string name="settings_ia_extra_call">One extra model call per turn</string>
-    <string name="settings_ia_extraction_footer">Runs in the background after each reply. Extracting events and state requires conversation memory; graph extraction uses the knowledge graph model and budget.</string>
+    <string name="settings_ia_extraction_footer">Runs after each reply. Events and state require conversation memory</string>
 
     <!-- 知识图谱 -->
     <plurals name="settings_ia_kg_entities">
@@ -64,18 +63,18 @@
         <item quantity="other">%d entities</item>
     </plurals>
     <string name="settings_ia_kg_budget_section">Document extraction budget</string>
-    <string name="settings_ia_kg_budget_footer">Counted per document; you are asked first when the estimated calls exceed the confirmation threshold. Work done so far is kept when the budget runs out.</string>
+    <string name="settings_ia_kg_budget_footer">Per document. Asks first above the confirmation threshold; work done is kept when the budget runs out</string>
     <string name="settings_ia_kg_window_section">Extraction windows</string>
-    <string name="settings_ia_kg_window_footer">Documents are split by paragraph into windows of this length; larger windows mean fewer calls. The length shrinks automatically to fit the graph model\'s context and output limits. Each follow-up pass asks the model once more per window for entities it missed.</string>
+    <string name="settings_ia_kg_window_footer">Larger windows mean fewer calls and shrink to fit the graph model. Each follow-up pass adds one call per window</string>
     <string name="settings_ia_kg_extraction_model">Extraction model</string>
     <string name="settings_ia_kg_more">Extraction timeout and prompt</string>
     <string name="settings_ia_kg_more_desc">Adjust in Debug &amp; advanced</string>
 
     <!-- 调试与高级 -->
     <string name="settings_ia_chunk_notice_title">Chunk settings changed</string>
-    <string name="settings_ia_chunk_notice_body">New settings only apply to documents imported from now on. To rebuild the existing %1$s chunks with them, re-vectorize everything; this calls the embedding model.</string>
+    <string name="settings_ia_chunk_notice_body">Applies to new imports only. Rebuilding the existing %1$s chunks re-vectorizes everything and calls the embedding model</string>
     <string name="settings_ia_index_section">Index data</string>
-    <string name="settings_ia_index_footer">After clearing, retrieval needs re-indexing. Source documents are kept.</string>
+    <string name="settings_ia_index_footer">Re-index after clearing. Source documents are kept</string>
     <string name="settings_ia_vector_stats">Vector stats</string>
     <plurals name="settings_ia_vector_chunks">
         <item quantity="one">%d chunk</item>
@@ -91,7 +90,7 @@
     <string name="settings_ia_advanced_params">Advanced parameters</string>
     <string name="settings_ia_advanced_collapsed_desc">Chunking, thresholds, candidates, graph retrieval and more</string>
     <string name="settings_ia_advanced_expanded_desc">Retrieval depth levels cover most needs</string>
-    <string name="settings_ia_advanced_footer">Thresholds depend on the embedding model\'s score distribution; check them again after switching models. Changing result counts makes Retrieval depth show Custom.</string>
+    <string name="settings_ia_advanced_footer">Re-tune thresholds after switching embedding models</string>
     <string name="settings_ia_group_chunking">Chunking</string>
     <string name="settings_ia_group_counts">Result counts</string>
     <string name="settings_ia_group_thresholds">Similarity thresholds</string>
@@ -102,7 +101,7 @@
     <string name="settings_ia_chunk_size">Chunk size</string>
     <string name="settings_ia_chunk_overlap">Overlap</string>
     <string name="settings_ia_memory_chunk_size">Memory chunk size</string>
-    <string name="settings_ia_chunk_desc">Only applies to documents imported later; re-vectorize to rebuild existing ones.</string>
+    <string name="settings_ia_chunk_desc">Applies to documents imported later</string>
     <string name="settings_ia_summary_prompt">Summary prompt</string>
     <string name="settings_ia_prompt_default">Default</string>
     <string name="settings_ia_prompt_custom">Custom</string>
@@ -117,13 +116,13 @@
     <string name="settings_ia_keyword_weight">Keyword weight</string>
     <string name="settings_ia_keyword_weight_desc">Multiplier for keyword (BM25) matches.</string>
     <string name="settings_ia_rewrite_variants">Rewrite variants</string>
-    <string name="settings_ia_rewrite_variants_desc">Query variants generated by the multi-query strategy; each one adds an embedding request.</string>
+    <string name="settings_ia_rewrite_variants_desc">Each variant adds an embedding request</string>
     <string name="settings_ia_extraction_timeout">Extraction timeout (sec)</string>
     <string name="settings_ia_extraction_prompt">Extraction prompt</string>
 
     <!-- 内置工具与 Web 搜索 -->
     <string name="settings_ia_knowledge_search_title">Knowledge search</string>
-    <string name="settings_ia_knowledge_search_desc">knowledge_search · Offered based on the Agent\'s retrieval mode</string>
+    <string name="settings_ia_knowledge_search_desc">knowledge_search · Follows the Agent\'s retrieval mode</string>
     <string name="settings_ia_domain_section">Domain filter</string>
     <string name="settings_ia_domain_include">Only search these domains</string>
     <string name="settings_ia_domain_exclude">Exclude these domains</string>
@@ -133,14 +132,13 @@
         <item quantity="one">%d domain</item>
         <item quantity="other">%d domains</item>
     </plurals>
-    <string name="settings_ia_domain_footer">When both are set, results are limited to the listed domains first, then exclusions apply.</string>
+    <string name="settings_ia_domain_footer">With both set, limits apply before exclusions</string>
     <string name="settings_ia_domain_dialog_hint">One domain per line</string>
 
     <!-- 会话设置面板 -->
     <string name="settings_ia_keep_web_search">Keep Web search when tools are off</string>
     <string name="settings_ia_keep_web_search_desc">Web search stays available after tools are turned off</string>
-    <string name="settings_ia_tools_off_web_only">Tools are off. This session keeps only Web search.</string>
-    <string name="settings_ia_tools_off_none">Tools are off. This session won\'t call any tools.</string>
+    <string name="settings_ia_tools_off_web_only">Only Web search stays on</string>
     <string name="settings_ia_skills_section">Skills</string>
     <plurals name="settings_ia_skills_enabled">
         <item quantity="one">%d user skill enabled</item>
@@ -151,17 +149,17 @@
         <item quantity="other">%d project skills</item>
     </plurals>
     <string name="settings_ia_project_skills_in">%1$s · %2$s</string>
-    <string name="settings_ia_skills_footer">Enabled skills are a global setting. Tap to change them in Skill packs.</string>
+    <string name="settings_ia_skills_footer">Global setting; change it in Skill packs</string>
     <string name="settings_ia_session_options">Session options</string>
     <string name="settings_ia_doc_scope_workspace_desc">Files in this session\'s workspace</string>
     <string name="settings_ia_doc_scope_kb">Workspace and knowledge base</string>
     <string name="settings_ia_doc_scope_kb_desc">Also documents in the knowledge base</string>
     <string name="settings_ia_scope_footer">Limits and new-session defaults are set in %1$s.</string>
     <string name="settings_ia_scope_footer_link">Agent settings</string>
-    <string name="settings_ia_scope_above_cap">Above this Agent\'s limit. Raise it in Agent settings.</string>
+    <string name="settings_ia_scope_above_cap">Above the Agent\'s limit. Raise it in Agent settings</string>
     <string name="settings_ia_message_font">Message text size</string>
     <string name="settings_ia_message_font_desc">Only affects message text in this session</string>
-    <string name="settings_ia_message_font_footer">Overall text size is in Settings › Appearance › Text size.</string>
+    <string name="settings_ia_message_font_footer">App-wide text size: Settings › Appearance › Text size</string>
     <string name="settings_ia_param_presence_penalty">Presence penalty</string>
     <string name="settings_ia_param_frequency_penalty">Frequency penalty</string>
 

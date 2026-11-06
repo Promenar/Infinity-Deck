@@ -5,5 +5,5 @@
     <string name="haptics_setting_summary">Vibrate on switch, send, approve and copy</string>
     <string name="haptics_status_setting_title">Status alerts</string>
     <string name="haptics_status_setting_summary">Vibrate for approvals, long replies, failures</string>
-    <string name="haptics_settings_footer">Off when system touch vibration is off. Long replies take more than 10 seconds.</string>
+    <string name="haptics_settings_footer">Off when system touch vibration is off. Long reply: over 10 seconds</string>
 </resources>

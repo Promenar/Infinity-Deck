@@ -129,7 +129,7 @@ private fun KnowledgeAccessApprovalPage(mode: InfinityThemeMode) {
 fun approvalCardKnowledgeAccessPreview() = KnowledgeAccessApprovalPage(InfinityThemeMode.DARK)
 
 // 批量修改技能：批准为分体按钮，主体“批准当前”，右侧相连箭头段打开“全部批准（3 项）”与
-// “批准，10 分钟内同类免审批”菜单（下方以静态浮层示意展开状态）；输入栏盾牌在授权期间带主色圆点。
+// “批准并免审批 10 分钟”菜单（下方以静态浮层示意展开状态）；输入栏盾牌在授权期间带主色圆点。
 @Composable
 private fun TimedGrantApprovalPage(mode: InfinityThemeMode) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {

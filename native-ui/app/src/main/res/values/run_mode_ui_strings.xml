@@ -8,11 +8,10 @@
     <string name="run_mode_chip_unavailable_cd">Run mode: %1$s, environment unavailable</string>
     <string name="run_mode_linux_desc">Full command line; can install packages</string>
     <string name="run_mode_builtin_desc">Limited tools; can\'t install packages</string>
-    <string name="run_mode_switch_note">Switching doesn\'t move files. Session files stay available in both modes; in Linux they are at /home/session.</string>
+    <string name="run_mode_switch_note">Switching doesn\'t move files. In Linux, session files are at /home/session</string>
     <string name="run_mode_select_title">Choose a run mode</string>
-    <string name="run_mode_select_body">This conversation has no run mode yet. After you choose, it changes only when you switch it.</string>
     <string name="run_mode_unavailable_title">Linux unavailable</string>
-    <string name="run_mode_unavailable_body">This conversation runs in Linux mode. %1$s Fix it before running commands.</string>
+    <string name="run_mode_unavailable_body">%1$s Fix it before running commands</string>
     <string name="run_mode_reason_not_installed">Linux isn\'t installed.</string>
     <string name="run_mode_reason_interrupted">Linux installation didn\'t finish.</string>
     <string name="run_mode_reason_broken">Environment files are damaged.</string>
@@ -27,7 +26,7 @@
     <string name="run_mode_working_reset">Resetting Linux…</string>
     <string name="run_mode_working_export">Exporting…</string>
     <string name="run_mode_repair_failed_title">Can\'t repair without data loss</string>
-    <string name="run_mode_repair_failed_body">Resetting erases the Linux system and projects under /root. The session folder /home/session is kept.</string>
+    <string name="run_mode_repair_failed_body">Resetting erases the Linux system and /root; /home/session is kept</string>
     <string name="run_mode_rebuild_failed_title">Linux can\'t be rebuilt</string>
     <string name="run_mode_rebuild_failed_body">Export the projects under /root if you need them, then switch to built-in mode.</string>
     <string name="run_mode_loss_summary">Deletes the Linux system (%1$s), /root (%2$s) and other home folders (%3$s).</string>
@@ -52,7 +51,7 @@
         <item quantity="other">Exported %1$d files (%2$s) to %3$s</item>
     </plurals>
     <string name="run_mode_export_private_location">session folder</string>
-    <string name="run_mode_export_none">This conversation has no Linux home projects to export.</string>
+    <string name="run_mode_export_none">No projects to export</string>
     <string name="run_mode_export_failures">Not exported:</string>
     <string name="run_mode_export_reason_link">link skipped</string>
     <string name="run_mode_export_reason_type">unsupported type</string>
@@ -60,7 +59,7 @@
     <string name="run_mode_export_reason_changed">changed during export</string>
     <string name="run_mode_export_reason_source">source unavailable</string>
     <string name="run_mode_export_offer_title">Export Linux home projects?</string>
-    <string name="run_mode_export_offer_body">The main workspace is in the Linux home folder, which built-in mode can\'t use. Export its projects to the session folder first.</string>
+    <string name="run_mode_export_offer_body">Built-in mode can\'t use the Linux home folder. Export projects to the session folder</string>
     <string name="run_mode_done">Done</string>
     <string name="run_mode_switch_failed">Couldn\'t switch the run mode. Try again.</string>
     <string name="run_mode_action_failed">Couldn\'t finish. Try again.</string>
@@ -71,7 +70,7 @@
     <string name="run_mode_folder_saf_hidden">Hidden in Linux</string>
     <string name="run_mode_startup_banner_title">Linux is unavailable</string>
     <plurals name="run_mode_startup_banner_detail">
-        <item quantity="one">%1$d Linux conversation needs attention before it can run commands.</item>
-        <item quantity="other">%1$d Linux conversations need attention before they can run commands.</item>
+        <item quantity="one">%1$d Linux conversation needs repair</item>
+        <item quantity="other">%1$d Linux conversations need repair</item>
     </plurals>
 </resources>

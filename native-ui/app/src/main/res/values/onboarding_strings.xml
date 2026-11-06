@@ -11,22 +11,22 @@
     <string name="onboarding_linux_space">%1$s free · needs about %2$s</string>
     <string name="onboarding_linux_install">Install and continue</string>
     <string name="onboarding_linux_skip">Skip for now</string>
-    <string name="onboarding_linux_background_note">Installation runs in the background while you continue. You can also install it later in Settings › Linux.</string>
+    <string name="onboarding_linux_background_note">Installs in the background. You can also install it later in Settings › Linux</string>
     <string name="onboarding_linux_capsule_running">Linux %1$d%%</string>
     <string name="onboarding_linux_capsule_preparing">Installing Linux</string>
     <string name="onboarding_linux_capsule_stopped">Linux stopped</string>
     <string name="onboarding_linux_capsule_ready">Linux ready</string>
     <string name="onboarding_linux_sheet_title">Linux environment</string>
     <string name="onboarding_linux_sheet_progress">%1$s · %2$d%%</string>
-    <string name="onboarding_linux_sheet_note_running">Leaving setup or closing this panel won\'t stop the install.</string>
-    <string name="onboarding_linux_sheet_note_stopped">Retrying continues where it stopped. Unpacked files are kept.</string>
+    <string name="onboarding_linux_sheet_note_running">Closing won\'t stop the install</string>
+    <string name="onboarding_linux_sheet_note_stopped">Retry resumes where it stopped</string>
     <string name="onboarding_linux_hide">Hide</string>
     <string name="onboarding_linux_retry">Retry from here</string>
     <string name="onboarding_linux_skip_install">Skip Linux</string>
     <string name="onboarding_linux_done">Done</string>
 
     <string name="onboarding_provider_title">Connect an AI provider</string>
-    <string name="onboarding_provider_desc">Enter the endpoint and key, then tap Connect once to save and verify. Your key stays on this device.</string>
+    <string name="onboarding_provider_desc">Your key stays on this device</string>
     <string name="onboarding_provider_service">Service</string>
     <string name="onboarding_provider_more">More services</string>
     <string name="onboarding_provider_more_count">%1$d more, searchable</string>
@@ -42,7 +42,7 @@
     <string name="onboarding_provider_custom_host">Use your own endpoint</string>
     <string name="onboarding_provider_local">On-device</string>
     <string name="onboarding_provider_local_host">Runs on this device</string>
-    <string name="onboarding_provider_local_desc">Uses the main model already loaded on this device. No key and no network needed.</string>
+    <string name="onboarding_provider_local_desc">Uses the loaded on-device model; no key or network</string>
     <string name="onboarding_provider_local_action">Use local model</string>
     <string name="onboarding_provider_connect">Connect</string>
     <string name="onboarding_provider_connecting">Connecting…</string>
@@ -50,13 +50,13 @@
     <string name="onboarding_provider_connected">Connected. Fetching models…</string>
     <string name="onboarding_provider_failed">%1$s: %2$s</string>
     <string name="onboarding_provider_failed_http">%1$s (HTTP %2$d): %3$s</string>
-    <string name="onboarding_provider_save_failed">The connection worked, but saving failed. Connect again.</string>
-    <string name="onboarding_provider_secret_missing">Enter a key before connecting.</string>
-    <string name="onboarding_local_model_unavailable">No loaded local chat model was found. Open Local Models, load a main model, then come back and connect.</string>
+    <string name="onboarding_provider_save_failed">Saving failed. Connect again</string>
+    <string name="onboarding_provider_secret_missing">Enter a key</string>
+    <string name="onboarding_local_model_unavailable">No local chat model loaded. Load a main model in Local Models first</string>
     <string name="local_inference_release_unavailable">This version doesn\'t support local models. Choose a cloud provider.</string>
 
     <string name="onboarding_model_title">Choose a model</string>
-    <string name="onboarding_model_desc">Pick a chat model for your first agent. Models marked “Needs check” get one tiny test request when you pick them.</string>
+    <string name="onboarding_model_desc">Picking a model marked “Needs check” sends one test request</string>
     <string name="onboarding_model_loading">Fetching models…</string>
     <string name="onboarding_model_tag_chat">Chat</string>
     <string name="onboarding_model_tag_reasoning">Reasoning</string>
@@ -65,13 +65,13 @@
     <string name="onboarding_model_tag_failed">Failed</string>
     <string name="onboarding_model_hidden">%1$d non-chat models hidden (embedding, image…)</string>
     <string name="onboarding_model_use">Use this model</string>
-    <string name="onboarding_model_empty">No chat models found. Refresh the list, or go back and connect the provider again.</string>
+    <string name="onboarding_model_empty">No chat models found. Refresh or reconnect</string>
     <string name="onboarding_model_refresh">Refresh list</string>
     <string name="onboarding_model_back_provider">Back to provider</string>
-    <string name="onboarding_model_probe_failed">This model failed the chat check. Pick another one.</string>
+    <string name="onboarding_model_probe_failed">This model failed the check. Pick another</string>
 
     <string name="onboarding_agent_title">Create your first agent</string>
-    <string name="onboarding_agent_desc">Give it a name. You can change its instructions, tools and knowledge later.</string>
+    <string name="onboarding_agent_desc">You can change these later</string>
     <string name="onboarding_agent_name">Agent name</string>
     <string name="onboarding_agent_default_name">My Agent</string>
     <string name="onboarding_agent_suggestion_research">Research aide</string>
@@ -81,22 +81,22 @@
     <string name="onboarding_agent_summary_env">Runs in</string>
     <string name="onboarding_agent_env_linux">Linux</string>
     <string name="onboarding_agent_env_builtin">Built-in</string>
-    <string name="onboarding_agent_env_installing">Built-in (new chats use Linux once it\'s installed)</string>
+    <string name="onboarding_agent_env_installing">Built-in · switches to Linux once installed</string>
     <string name="onboarding_agent_env_stopped">Built-in (Linux install stopped)</string>
     <string name="onboarding_agent_action">Create agent</string>
     <string name="onboarding_agent_creating">Creating…</string>
 
     <string name="onboarding_ready_title">You\'re all set</string>
-    <string name="onboarding_ready_desc">Send your first message. Setup finishes when the reply arrives.</string>
+    <string name="onboarding_ready_desc">Send your first message to finish setup</string>
     <string name="onboarding_ready_provider">Connected to %1$s</string>
     <string name="onboarding_ready_model">Model %1$s</string>
     <string name="onboarding_ready_agent">Agent “%1$s”</string>
-    <string name="onboarding_ready_linux_installing">Linux installing %1$d%%, new chats use it when ready</string>
-    <string name="onboarding_ready_linux_preparing">Linux is installing, new chats use it when ready</string>
+    <string name="onboarding_ready_linux_installing">Installing Linux %1$d%%</string>
+    <string name="onboarding_ready_linux_preparing">Installing Linux</string>
     <string name="onboarding_ready_linux_ok">Linux environment ready</string>
-    <string name="onboarding_ready_linux_skipped">Linux not installed. Add it from Settings anytime</string>
+    <string name="onboarding_ready_linux_skipped">Linux not installed</string>
     <string name="onboarding_ready_linux_stopped">Linux install stopped</string>
     <string name="onboarding_ready_linux_retry">Retry</string>
     <string name="onboarding_first_chat_action">Start your first chat</string>
-    <string name="onboarding_action_failed">That step could not be completed. Check the details and try again.</string>
+    <string name="onboarding_action_failed">Couldn\'t complete. Try again</string>
 </resources>

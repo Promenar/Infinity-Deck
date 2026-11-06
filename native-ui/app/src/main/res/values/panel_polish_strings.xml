@@ -5,6 +5,6 @@
     <!-- 检视器底栏放不下全部页签时的溢出菜单入口。 -->
     <string name="chat_inspector_more_tabs">More tabs</string>
     <!-- 可达范围面板：生成进行中时工作区切换停用的说明条。 -->
-    <string name="agent_reach_switch_busy_hint">A reply is still running. You can switch workspaces after it finishes.</string>
+    <string name="agent_reach_switch_busy_hint">Reply in progress; switch after it finishes</string>
     <string name="agent_reach_stop_generation">Stop generating</string>
 </resources>

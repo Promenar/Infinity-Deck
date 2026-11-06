@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="chat_approval_approve_timed">Approve, skip similar approvals for 10 min</string>
-    <string name="chat_approval_approve_timed_hint">Applies to %1$s in this session until it expires</string>
+    <string name="chat_approval_approve_timed">Approve, skip for 10 min</string>
+    <string name="chat_approval_approve_timed_hint">Applies to %1$s in this session</string>
     <string name="chat_approval_more_options_cd">More ways to approve</string>
     <string name="chat_timed_grant_skills">skill changes</string>
     <string name="chat_timed_grant_command">commands</string>

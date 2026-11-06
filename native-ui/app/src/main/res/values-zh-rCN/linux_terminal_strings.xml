@@ -32,16 +32,12 @@
     <string name="linux_terminal_open_environment">前往 Linux 环境</string>
     <string name="linux_terminal_state_checking">正在检查 Linux 环境…</string>
     <string name="linux_terminal_state_not_installed">尚未安装 Linux 环境</string>
-    <string name="linux_terminal_state_not_installed_desc">安装后即可在这里打开本地终端。</string>
     <string name="linux_terminal_state_installing">Linux 环境正在安装</string>
-    <string name="linux_terminal_state_installing_desc">安装完成后即可打开终端。</string>
     <string name="linux_terminal_state_interrupted">安装已中断</string>
-    <string name="linux_terminal_state_interrupted_desc">在 Linux 环境页继续安装。</string>
     <string name="linux_terminal_state_maintaining">正在重置或卸载 Linux 环境…</string>
     <string name="linux_terminal_state_broken">Linux 环境需要修复</string>
-    <string name="linux_terminal_state_broken_desc">在 Linux 环境页重置或重新安装。</string>
     <string name="linux_terminal_state_distribution">当前版本不提供 Linux 环境</string>
-    <string name="linux_terminal_state_distribution_desc">内置 Linux 环境只在侧载版提供。</string>
+    <string name="linux_terminal_state_distribution_desc">仅侧载版提供</string>
     <string name="linux_terminal_state_abi">此设备不支持 Linux 环境</string>
 
     <!-- 命令完整输出 -->
@@ -68,11 +64,11 @@
     <string name="linux_output_search_count">%1$d/%2$d</string>
     <string name="linux_output_search_previous">上一个匹配</string>
     <string name="linux_output_search_next">下一个匹配</string>
-    <string name="linux_output_truncated_tail">%1$s 超出保存上限，只保留了最后 %2$s 字符（原始 %3$s 字符）。</string>
-    <string name="linux_output_truncated_summary">命令失败时只保存摘要：%1$s 保留了最后 %2$s 字符（原始 %3$s 字符）。</string>
-    <string name="linux_output_truncated_log">后台任务状态只带回日志最后 %1$s 字符。</string>
-    <string name="linux_output_truncated_log_path">后台任务状态只带回日志最后 %1$s 字符，完整日志在工作区 %2$s。</string>
-    <string name="linux_output_footer_complete">— 已显示完整输出，共 %1$s 字节 —</string>
+    <string name="linux_output_truncated_tail">%1$s 仅保留最后 %2$s 字符（原始 %3$s）</string>
+    <string name="linux_output_truncated_summary">失败摘要：%1$s 仅保留最后 %2$s 字符（原始 %3$s）</string>
+    <string name="linux_output_truncated_log">仅显示日志最后 %1$s 字符</string>
+    <string name="linux_output_truncated_log_path">仅显示日志最后 %1$s 字符 · 完整日志：%2$s</string>
+    <string name="linux_output_footer_complete">— 完整输出 · %1$s 字节 —</string>
     <string name="linux_output_footer_partial">— 以上为保留下来的尾部 —</string>
     <string name="linux_output_empty">（无输出）</string>
     <string name="linux_output_copy">复制</string>
@@ -82,11 +78,11 @@
     <string name="linux_output_share_title">分享命令输出</string>
     <string name="linux_output_copied">已复制</string>
     <string name="linux_output_saved">已保存到工作区：%1$s</string>
-    <string name="linux_output_save_unsupported">该会话使用自选目录，已改为系统分享。</string>
+    <string name="linux_output_save_unsupported">已改用系统分享</string>
     <string name="linux_output_save_failed">保存失败</string>
     <string name="linux_output_loading">正在读取输出…</string>
-    <string name="linux_output_pending">命令仍在运行或等待审批，结束后可查看完整输出。</string>
-    <string name="linux_output_not_found">找不到这次命令的输出，消息可能已被删除。</string>
+    <string name="linux_output_pending">命令运行中或待审批</string>
+    <string name="linux_output_not_found">找不到输出，消息可能已删除</string>
     <string name="linux_output_failed">读取输出失败。</string>
     <string name="linux_output_retry">重试</string>
 </resources>

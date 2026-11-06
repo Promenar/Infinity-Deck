@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="file_diff_binary">二进制文件，无法显示差异</string>
+    <string name="file_diff_binary">二进制文件</string>
     <string name="file_diff_large_summary">大文件：%1$s</string>
     <string name="file_diff_complex_summary">变更过多，无法逐行显示：%1$s</string>
     <string name="file_diff_approximate_counts">约 %1$s</string>

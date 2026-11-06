@@ -298,7 +298,6 @@ private fun LinuxInstallGuideContent(
         LinuxHeroCard(stringResource(R.string.linux_install_hero_title), stringResource(R.string.linux_install_hero_body))
         InfinitySettingsSection(
             title = stringResource(R.string.linux_install_contents),
-            footer = stringResource(R.string.linux_run_mode_install_later_note),
         ) {
             InfinitySettingsRowLayout(
                 icon = Icons.Rounded.Inventory2,
@@ -595,12 +594,6 @@ private fun LinuxBrokenContent(
     ) {
         LinuxStatusLine(stringResource(R.string.linux_status_broken), dot = MaterialTheme.colorScheme.error)
         LinuxFailureCard(failure)
-        Text(
-            stringResource(R.string.linux_broken_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = InfinitySpacing.XSmall),
-        )
         LinuxDangerRows(
             uninstallSubtitle = stringResource(R.string.linux_uninstall_subtitle_plain),
             busy = busy,

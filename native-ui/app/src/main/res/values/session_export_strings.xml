@@ -21,7 +21,7 @@
     <string name="session_export_thinking">Thinking</string>
     <string name="session_export_thinking_desc">The model\'s reasoning</string>
     <string name="session_export_tools">Tool calls</string>
-    <string name="session_export_tools_desc">Only tool names and result summaries; command output may contain paths or keys and is never exported</string>
+    <string name="session_export_tools_desc">Tool names and result summaries; no command output</string>
     <string name="session_export_attachments">Attachments</string>
     <string name="session_export_attachments_desc_text">Text attachments inline; images and other files go into a .zip with the same name</string>
     <string name="session_export_attachments_desc_snapshot">Images are drawn into the pages; other files are listed by name</string>
@@ -48,11 +48,9 @@
     <string name="session_export_estimate_join">%1$s, %2$s</string>
 
     <!-- 各格式说明 -->
-    <string name="session_export_footer_markdown">Share opens the system share sheet so you can send it straight to another app.</string>
-    <string name="session_export_footer_txt">Plain text keeps no formatting or images.</string>
-    <string name="session_export_footer_html">Open it in a browser; code blocks and charts stay as they are.</string>
-    <string name="session_export_footer_pdf">Paginated as A4 portrait, for printing and archiving.</string>
-    <string name="session_export_footer_png">Long chats are split into several images, shared in order.</string>
+    <string name="session_export_footer_txt">No formatting or images</string>
+    <string name="session_export_footer_pdf">A4 portrait pages</string>
+    <string name="session_export_footer_png">Long chats split into multiple images</string>
 
     <!-- 操作与结果 -->
     <string name="session_export_save">Save to…</string>

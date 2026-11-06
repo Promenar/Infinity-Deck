@@ -486,7 +486,6 @@ fun AgentEditScreen(
             item {
                 InfinitySettingsSection(
                     title = stringResource(R.string.agent_edit_section_model),
-                    footer = stringResource(R.string.agent_edit_model_params_footer),
                 ) {
                     InfinitySettingsItem(
                         icon = Icons.Rounded.SmartToy,

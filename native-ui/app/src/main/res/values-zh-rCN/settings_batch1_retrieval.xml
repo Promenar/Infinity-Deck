@@ -12,7 +12,6 @@
     <string name="settings_retrieval_rerank_batch_title">单次重排文档上限</string>
     <string name="settings_retrieval_jit_short">图谱覆盖不足时补充</string>
     <string name="settings_retrieval_kg_context_title">上下文 Token 上限</string>
-    <string name="settings_retrieval_kg_context_footer">图谱上下文的 Token 用量采用保守估算。</string>
     <string name="settings_retrieval_kg_calls_title">文档调用上限</string>
     <string name="settings_retrieval_kg_output_title">文档输出 Token</string>
     <string name="settings_retrieval_kg_request_output_title">单次输出 Token</string>

@@ -5,10 +5,10 @@
     <string name="ltm_search_placeholder">Search memories</string>
     <string name="ltm_section_switch">Memory</string>
     <string name="ltm_enabled">Let agents remember</string>
-    <string name="ltm_enabled_desc">Read and written per each session\'s active memory mode, added to every turn</string>
-    <string name="ltm_switch_footer">Agents save things worth keeping across chats, like your preferences and project facts. Sessions set to isolated keep their records to themselves.</string>
-    <string name="ltm_empty">No memories yet. When an agent learns something worth keeping, it shows up here.</string>
-    <string name="ltm_search_empty">No memories match.</string>
+    <string name="ltm_enabled_desc">Memories are added to every turn</string>
+    <string name="ltm_switch_footer">Isolated chats keep their memories to themselves</string>
+    <string name="ltm_empty">No memories yet</string>
+    <string name="ltm_search_empty">No matching memories</string>
     <string name="ltm_group_title">%1$s · %2$d</string>
     <plurals name="ltm_count">
         <item quantity="one">%1$d memory, up to %2$d</item>
@@ -31,7 +31,7 @@
     <string name="ltm_save">Save</string>
     <string name="ltm_deleted">Memory deleted</string>
     <string name="ltm_undo">Undo</string>
-    <string name="ltm_save_failed">Couldn\'t save the memory.</string>
+    <string name="ltm_save_failed">Couldn\'t save the memory</string>
     <string name="chat_memory_saved">Remembered %1$s</string>
     <string name="chat_memory_updated">Updated memory %1$s</string>
     <string name="chat_memory_forgotten">Forgot %1$s</string>

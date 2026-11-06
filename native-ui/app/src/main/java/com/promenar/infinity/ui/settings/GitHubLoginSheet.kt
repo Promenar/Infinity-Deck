@@ -114,7 +114,6 @@ internal fun GitHubLoginContent(
             is GitHubLoginState.Success -> {
                 Outcome(Icons.Rounded.CheckCircle, MaterialTheme.infinityDomainColors.success,
                     stringResource(R.string.github_login_success_title), stringResource(R.string.github_login_success_detail, state.login))
-                Note(stringResource(R.string.github_login_success_note))
                 Buttons(primary = stringResource(R.string.github_login_done) to actions.onDone)
             }
             is GitHubLoginState.Failed -> {

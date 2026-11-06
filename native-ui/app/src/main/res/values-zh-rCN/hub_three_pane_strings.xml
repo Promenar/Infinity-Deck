@@ -3,5 +3,5 @@
     <string name="hub_pane_expand">展开会话</string>
     <string name="hub_pane_restore">显示导航与列表</string>
     <string name="hub_strip_open_list">展开会话列表</string>
-    <string name="hub_pane_empty">在左侧选择会话，或开始新对话</string>
+    <string name="hub_pane_empty">选择或新建会话</string>
 </resources>

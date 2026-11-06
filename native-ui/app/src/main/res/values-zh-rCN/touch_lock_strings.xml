@@ -8,7 +8,7 @@
     <string name="touch_lock_slide_hint">滑动锁解锁</string>
     <string name="touch_lock_unlock_action">解锁</string>
     <string name="touch_lock_setting_title">触摸锁解锁方式</string>
-    <string name="touch_lock_setting_footer">回复生成期间屏幕保持常亮。点运行状态旁的锁（手机在输入浮岛上，宽屏在右侧检视器）后，界面只响应锁本身，任务照常执行，适合把手机暂时放进口袋。</string>
+    <string name="touch_lock_setting_footer">生成期间屏幕常亮；锁定后只响应锁按钮</string>
     <string name="touch_lock_unlock_hold">长按锁</string>
     <string name="touch_lock_unlock_hold_desc">按住 1.5 秒</string>
     <string name="touch_lock_unlock_slide">滑动锁</string>

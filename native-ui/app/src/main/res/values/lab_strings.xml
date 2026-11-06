@@ -20,7 +20,7 @@
     <!-- 视觉实验室目录 -->
     <string name="lab_title">Visual Lab</string>
     <string name="lab_entry_desc">Open any page, state or workflow with scripted data</string>
-    <string name="lab_sandbox_note">Every version runs on scripted in-memory data. Nothing here reads or writes your chats, keys or workspaces, calls a model, or runs a command.</string>
+    <string name="lab_sandbox_note">Scripted in-memory data only. No chats, keys or workspaces are touched; no model calls or commands</string>
     <string name="lab_section_pages">Pages</string>
     <string name="lab_section_workflows">Workflows</string>
     <string name="lab_section_states">States</string>
@@ -32,7 +32,7 @@
     <string name="lab_kind_workflow">Workflow</string>
     <string name="lab_fit_inner">Inner screen</string>
     <string name="lab_fit_outer">Cover screen</string>
-    <string name="lab_version_pending">This version is wired up in the next build: it will render the real chat components with scripted data.</string>
+    <string name="lab_version_pending">Not wired up yet</string>
     <string name="lab_version_missing">This version no longer exists</string>
     <string name="lab_version_id">ID: %1$s</string>
 

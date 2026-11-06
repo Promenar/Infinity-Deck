@@ -10,7 +10,7 @@
     <string name="agent_avatar_tab_generated">生成</string>
     <string name="agent_avatar_tab_photo">照片</string>
     <string name="agent_avatar_search_placeholder">搜索，如 翻译、代码、猫</string>
-    <string name="agent_avatar_search_empty">没有匹配“%1$s”的符号。换个词试试，或切到“生成”。</string>
+    <string name="agent_avatar_search_empty">没有匹配“%1$s”的符号</string>
     <string name="agent_avatar_category_all">全部</string>
     <string name="agent_avatar_category_popular">常用</string>
     <string name="agent_avatar_category_general">通用</string>
@@ -22,11 +22,10 @@
     <string name="agent_avatar_category_life">生活</string>
     <string name="agent_avatar_category_nature">自然</string>
     <string name="agent_avatar_category_characters">角色</string>
-    <string name="agent_avatar_generated_hint">渐变与名称首字，每个智能体各不相同</string>
     <string name="agent_avatar_shuffle">换一批</string>
     <string name="agent_avatar_generated_variant">生成头像 %1$d</string>
     <string name="agent_avatar_photo_pick">从相册选择</string>
-    <string name="agent_avatar_photo_hint">照片会裁剪成圆形，保存在本机，导出备份时一并带上。</string>
+    <string name="agent_avatar_photo_hint">保存在本机，随备份导出</string>
     <string name="agent_avatar_color">颜色</string>
     <string name="agent_avatar_color_current">当前颜色</string>
     <string name="agent_avatar_color_indigo">靛蓝</string>

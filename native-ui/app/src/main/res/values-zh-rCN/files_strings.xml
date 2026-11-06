@@ -68,7 +68,7 @@
         <item quantity="other">%1$d 个文件</item>
     </plurals>
     <string name="fm_empty_folder">这个文件夹是空的</string>
-    <string name="fm_empty_sessions">没有使用私有工作区的会话。关联项目的会话，文件在对应项目里。</string>
+    <string name="fm_empty_sessions">没有使用私有工作区的会话</string>
     <plurals name="fm_git_changes">
         <item quantity="other">%1$d 处改动</item>
     </plurals>
@@ -113,15 +113,13 @@
     <!-- 预览 -->
     <string name="fm_preview_back">返回列表</string>
     <string name="fm_back_to_folder">‹ %1$s</string>
-    <string name="fm_preview_truncated">只显示了文件开头的一部分。</string>
+    <string name="fm_preview_truncated">仅显示开头部分</string>
     <string name="fm_preview_audio">音频</string>
     <string name="fm_preview_video">视频</string>
-    <string name="fm_preview_media_hint">用“打开方式”在其它应用里播放。</string>
     <string name="fm_preview_pdf">PDF 文档</string>
     <plurals name="fm_pdf_pages">
         <item quantity="other">%1$d 页</item>
     </plurals>
-    <string name="fm_preview_pdf_hint">用“打开方式”在 PDF 阅读器里查看。</string>
     <plurals name="fm_archive_entries">
         <item quantity="other">共 %1$d 项</item>
     </plurals>
@@ -129,7 +127,6 @@
         <item quantity="other">还有 %1$d 项</item>
     </plurals>
     <string name="fm_preview_unsupported">这类文件不能预览</string>
-    <string name="fm_preview_unsupported_hint">用“打开方式”在其它应用里查看。</string>
     <string name="fm_recent_changes">最近改动</string>
     <string name="fm_info_title">信息</string>
     <string name="fm_info_location">位置</string>

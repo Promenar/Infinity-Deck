@@ -9,11 +9,11 @@
     <string name="permanent_delete_skill_message">%1$s will be permanently deleted. This cannot be undone.</string>
     <string name="permanent_delete_tool_description">Permanently delete workspace files and folders with user approval</string>
     <string name="permanent_delete_approval_preview">Permanently delete</string>
-    <string name="permanent_delete_rag_failed">Some documents could not be deleted. Your selection is preserved for retry.</string>
+    <string name="permanent_delete_rag_failed">Some documents couldn\'t be deleted. Try again</string>
     <string name="permanent_delete_linux_message">These files will be permanently deleted. This cannot be undone.</string>
     <string name="permanent_delete_command_footer">Commands can permanently delete files.</string>
     <string name="file_cleanup_incomplete">File cleanup didn\'t finish</string>
-    <string name="permanent_delete_diff_omitted">Deleted content is not retained.</string>
+    <string name="permanent_delete_diff_omitted">Deleted content not kept</string>
     <plurals name="permanent_delete_success">
         <item quantity="one">Permanently deleted %1$d item</item>
         <item quantity="other">Permanently deleted %1$d items</item>

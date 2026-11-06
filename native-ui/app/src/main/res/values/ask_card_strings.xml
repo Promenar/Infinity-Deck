@@ -17,7 +17,7 @@
     <string name="ask_card_answered_title_skipped">Not answered</string>
     <string name="ask_card_answered_other">Your reply</string>
     <string name="ask_card_answered_skipped_head">Question</string>
-    <string name="ask_card_answered_skipped">You skipped it; the agent continued on its own judgment</string>
+    <string name="ask_card_answered_skipped">Skipped</string>
     <string name="ask_card_input_placeholder">Write another answer…</string>
     <string name="ask_card_send_other_cd">Send as your answer</string>
     <string name="ask_card_status_waiting">Awaiting answer</string>

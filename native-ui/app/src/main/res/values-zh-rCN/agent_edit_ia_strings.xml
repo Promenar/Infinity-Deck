@@ -2,43 +2,41 @@
 <resources>
     <!-- 智能体编辑页 -->
     <string name="agent_edit_label_color">颜色</string>
-    <string name="agent_edit_model_params_footer">新会话沿用这里的模型与参数；会话内可再单独调整。</string>
     <string name="agent_edit_section_new_session">新会话默认</string>
-    <string name="agent_edit_new_session_footer">只影响之后新建的会话，从首页和 /new 新建都会带入。</string>
     <string name="agent_edit_skills">技能</string>
     <plurals name="agent_edit_skills_value">
         <item quantity="other">用户技能 %d 个已启用</item>
     </plurals>
-    <string name="agent_edit_skills_desc">新会话使用全局已启用的技能，点按管理</string>
+    <string name="agent_edit_skills_desc">使用全局已启用的技能</string>
     <string name="agent_edit_mcp">MCP 服务器</string>
     <plurals name="agent_edit_mcp_value">
         <item quantity="other">%d 个</item>
     </plurals>
     <string name="agent_edit_mcp_none">未选择</string>
-    <string name="agent_edit_mcp_sheet_footer">新会话默认连接的 MCP 服务器。只列出全局已启用且允许连接的服务器。</string>
-    <string name="agent_edit_mcp_empty">还没有可用的 MCP 服务器，可在 设置 › MCP 服务器 中添加。</string>
+    <string name="agent_edit_mcp_sheet_footer">仅列出全局已启用的服务器</string>
+    <string name="agent_edit_mcp_empty">没有可用的 MCP 服务器，在 设置 › MCP 服务器 中添加</string>
     <string name="agent_edit_mcp_unavailable">不可用</string>
     <string name="agent_edit_section_knowledge_memory">知识与记忆</string>
-    <string name="agent_edit_knowledge_footer">会话关闭工具时，检索方式按“每轮自动”执行，知识库也不挂载。</string>
+    <string name="agent_edit_knowledge_footer">关闭工具时按“每轮自动”检索，不挂载知识库</string>
     <string name="agent_edit_retrieval_mode">检索方式</string>
     <string name="agent_edit_retrieval_auto">每轮自动</string>
-    <string name="agent_edit_retrieval_auto_desc">每轮回复前按你的原话检索一次。适合普通对话和不支持工具调用的模型。</string>
+    <string name="agent_edit_retrieval_auto_desc">每轮回复前检索一次，适合不支持工具的模型</string>
     <string name="agent_edit_retrieval_tool">智能体按需检索</string>
-    <string name="agent_edit_retrieval_tool_desc">不做前置检索，由智能体调用知识检索工具，首字更快；模型可能该查不查。</string>
+    <string name="agent_edit_retrieval_tool_desc">智能体调用检索工具，首字更快，可能漏查</string>
     <string name="agent_edit_retrieval_both">两者并用</string>
-    <string name="agent_edit_retrieval_both_desc">每轮先自动检索，智能体还能自拟查询词补查。首轮就有背景资料，首字不变快。</string>
+    <string name="agent_edit_retrieval_both_desc">每轮自动检索，智能体可再补查</string>
     <string name="agent_edit_file_access">知识库文件访问</string>
     <string name="agent_edit_file_access_off">关闭</string>
-    <string name="agent_edit_file_access_off_desc">不挂载知识库。你仍可在外部文件夹面板手动挂载。</string>
+    <string name="agent_edit_file_access_off_desc">不挂载，可在外部文件夹中手动挂载</string>
     <string name="agent_edit_file_access_on_request">按需申请</string>
-    <string name="agent_edit_file_access_on_request_desc">智能体需要全文时提出申请，你批准后只读挂载到本会话。</string>
+    <string name="agent_edit_file_access_on_request_desc">智能体申请，批准后只读挂载到本会话</string>
     <string name="agent_edit_file_access_always">始终挂载</string>
-    <string name="agent_edit_file_access_always_desc">新会话创建时自动只读挂载知识库，不再逐次申请。</string>
-    <string name="agent_scope_footer">右侧是会话可选的最大范围；新会话默认只影响之后新建的会话。检索参数统一在%1$s中调整。</string>
+    <string name="agent_edit_file_access_always_desc">新会话自动只读挂载，无需申请</string>
+    <string name="agent_scope_footer">右侧为会话可选的最大范围。检索参数在%1$s中调整</string>
     <string name="agent_scope_footer_link">知识库设置</string>
-    <string name="agent_edit_scheme_shared_footer">参数方案全局共享：按模型保存，重命名、覆盖或删除会影响所有使用该方案的智能体与会话。</string>
+    <string name="agent_edit_scheme_shared_footer">方案全局共享，修改或删除会影响所有使用它的智能体与会话</string>
     <plurals name="agent_delete_message_sessions">
-        <item quantity="other">将先关闭 %d 个会话，再删除智能体。此操作无法撤销。</item>
+        <item quantity="other">将关闭 %d 个会话并删除智能体，无法撤销</item>
     </plurals>
     <string name="knowledge_search_query_line">智能体检索 · 查询词：%1$s</string>
     <string name="knowledge_search_path_unmounted">知识库未挂载</string>
@@ -51,11 +49,11 @@
         <item quantity="other">%1$s（%2$d 个文档）</item>
     </plurals>
     <string name="knowledge_access_already_mounted">%1$s（已挂载）</string>
-    <string name="knowledge_access_read_only">只读 · 可读取该知识库全部文件，不能修改或删除。挂载只在本会话有效，可在外部文件夹面板随时移除。</string>
+    <string name="knowledge_access_read_only">只读 · 可读取知识库全部文件，仅本会话有效</string>
     <string name="knowledge_mount_read_only_tag">知识库 · 只读</string>
     <string name="knowledge_mount_add">挂载知识库</string>
     <string name="knowledge_mount_add_desc">只读挂载到 %1$s，仅本会话有效</string>
     <string name="knowledge_mount_add_mounted">已挂载到本会话</string>
-    <string name="knowledge_mount_add_unavailable">当前会话不能挂载：可能已关闭工具、资料检索或知识库文件访问</string>
+    <string name="knowledge_mount_add_unavailable">需开启工具、资料检索和知识库文件访问</string>
     <string name="settings_execution_limits_section">运行限制</string>
 </resources>

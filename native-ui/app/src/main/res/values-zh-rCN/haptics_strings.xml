@@ -5,5 +5,5 @@
     <string name="haptics_setting_summary">切换、发送、审批与复制时振动</string>
     <string name="haptics_status_setting_title">状态提醒</string>
     <string name="haptics_status_setting_summary">待审批、长回复完成或失败时振动</string>
-    <string name="haptics_settings_footer">系统关闭触摸振动时不生效。长回复指超过 10 秒的回复。</string>
+    <string name="haptics_settings_footer">系统触摸振动关闭时不生效；长回复指超过 10 秒</string>
 </resources>

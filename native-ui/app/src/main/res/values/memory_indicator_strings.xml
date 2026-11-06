@@ -11,14 +11,14 @@
     </plurals>
     <string name="turn_memory_visibility_title">Who can retrieve it</string>
     <string name="turn_memory_visibility_session">Always</string>
-    <string name="turn_memory_visibility_agent">When they turn on global memory</string>
-    <string name="turn_memory_visibility_shared">When they turn on global memory with “All sessions”</string>
+    <string name="turn_memory_visibility_agent">When global memory is on</string>
+    <string name="turn_memory_visibility_shared">When global memory covers “All sessions”</string>
     <string name="turn_memory_chunks_title">Saved chunks</string>
     <string name="turn_memory_writing_hint">Saving this turn to memory…</string>
-    <string name="turn_memory_removed_hint">This turn is not in memory. Its messages are kept.</string>
-    <string name="turn_memory_failed_hint">This turn couldn\'t be saved to memory. Check the embedding model, then try again.</string>
+    <string name="turn_memory_removed_hint">Messages kept</string>
+    <string name="turn_memory_failed_hint">Check the embedding model, then try again</string>
     <string name="turn_memory_remove">Remove this turn from memory</string>
-    <string name="turn_memory_remove_hint">Only the memory is removed; the messages stay.</string>
+    <string name="turn_memory_remove_hint">Messages stay</string>
     <string name="turn_memory_readd">Add back to memory</string>
     <string name="turn_memory_retry">Try again</string>
     <string name="turn_memory_remove_failed">Couldn\'t remove this turn from memory</string>
@@ -52,7 +52,7 @@
         <item quantity="one">Searchable: %d session</item>
         <item quantity="other">Searchable: %d sessions</item>
     </plurals>
-    <string name="rag_trace_headline_hit">Found %1$d relevant, used %2$d</string>
+    <string name="rag_trace_headline_hit">Found %1$d, used %2$d</string>
     <string name="rag_trace_headline_empty">Nothing relevant found</string>
     <string name="rag_trace_label_sources">Sources</string>
     <string name="rag_trace_label_scope">Scope</string>

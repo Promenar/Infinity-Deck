@@ -2,46 +2,44 @@
 <resources>
     <!-- Agent editor -->
     <string name="agent_edit_label_color">Color</string>
-    <string name="agent_edit_model_params_footer">New sessions use this model and these parameters; each session can still adjust them.</string>
     <string name="agent_edit_section_new_session">New session defaults</string>
-    <string name="agent_edit_new_session_footer">Only affects sessions created later, from Home or with /new.</string>
     <string name="agent_edit_skills">Skills</string>
     <plurals name="agent_edit_skills_value">
         <item quantity="one">%d user skill enabled</item>
         <item quantity="other">%d user skills enabled</item>
     </plurals>
-    <string name="agent_edit_skills_desc">New sessions use globally enabled skills. Tap to manage.</string>
+    <string name="agent_edit_skills_desc">Uses globally enabled skills</string>
     <string name="agent_edit_mcp">MCP servers</string>
     <plurals name="agent_edit_mcp_value">
         <item quantity="one">%d server</item>
         <item quantity="other">%d servers</item>
     </plurals>
     <string name="agent_edit_mcp_none">None</string>
-    <string name="agent_edit_mcp_sheet_footer">MCP servers that new sessions connect to by default. Only globally enabled and allowed servers are listed.</string>
-    <string name="agent_edit_mcp_empty">No MCP servers available yet. Add one in Settings › MCP servers.</string>
+    <string name="agent_edit_mcp_sheet_footer">Only globally enabled servers are listed</string>
+    <string name="agent_edit_mcp_empty">No MCP servers available. Add one in Settings › MCP servers</string>
     <string name="agent_edit_mcp_unavailable">Unavailable</string>
     <string name="agent_edit_section_knowledge_memory">Knowledge &amp; memory</string>
-    <string name="agent_edit_knowledge_footer">When a session turns tools off, retrieval runs every turn automatically and the knowledge base is not mounted.</string>
+    <string name="agent_edit_knowledge_footer">With tools off, retrieval runs every turn and the knowledge base isn\'t mounted</string>
     <string name="agent_edit_retrieval_mode">Retrieval</string>
     <string name="agent_edit_retrieval_auto">Every turn</string>
-    <string name="agent_edit_retrieval_auto_desc">Searches once with your exact words before each reply. Suits plain chat and models without tool calling.</string>
+    <string name="agent_edit_retrieval_auto_desc">Searches before each reply; suits models without tools</string>
     <string name="agent_edit_retrieval_tool">Agent searches when needed</string>
-    <string name="agent_edit_retrieval_tool_desc">No upfront search; the agent calls the knowledge search tool, so the first token arrives sooner. The model may skip a search it needs.</string>
+    <string name="agent_edit_retrieval_tool_desc">The agent calls the search tool; faster first token, may skip searches</string>
     <string name="agent_edit_retrieval_both">Both</string>
-    <string name="agent_edit_retrieval_both_desc">Searches every turn, and the agent can run its own follow-up queries. Background is there from the first turn; the first token is not faster.</string>
+    <string name="agent_edit_retrieval_both_desc">Searches every turn; the agent can search again</string>
     <string name="agent_edit_file_access">Knowledge base file access</string>
     <string name="agent_edit_file_access_off">Off</string>
-    <string name="agent_edit_file_access_off_desc">The knowledge base is not mounted. You can still mount it from the external folders panel.</string>
+    <string name="agent_edit_file_access_off_desc">Not mounted; mount manually from External folders</string>
     <string name="agent_edit_file_access_on_request">On request</string>
-    <string name="agent_edit_file_access_on_request_desc">The agent asks when it needs full documents; after you approve, the knowledge base is mounted read-only for this session.</string>
+    <string name="agent_edit_file_access_on_request_desc">The agent asks; once approved, mounted read-only for this chat</string>
     <string name="agent_edit_file_access_always">Always mounted</string>
-    <string name="agent_edit_file_access_always_desc">New sessions mount the knowledge base read-only when created, without asking each time.</string>
-    <string name="agent_scope_footer">The value on the right is the widest scope a session can choose; new session defaults only affect sessions created later. Retrieval parameters are set in %1$s.</string>
+    <string name="agent_edit_file_access_always_desc">New chats mount it read-only without asking</string>
+    <string name="agent_scope_footer">The right column is the widest scope a chat can choose. Retrieval parameters are in %1$s</string>
     <string name="agent_scope_footer_link">Knowledge base settings</string>
-    <string name="agent_edit_scheme_shared_footer">Parameter presets are shared globally and saved per model. Renaming, overwriting, or deleting one affects every agent and session using it.</string>
+    <string name="agent_edit_scheme_shared_footer">Presets are shared; changing or deleting one affects every agent and chat using it</string>
     <plurals name="agent_delete_message_sessions">
-        <item quantity="one">Closes %d session first, then deletes the agent. This can\'t be undone.</item>
-        <item quantity="other">Closes %d sessions first, then deletes the agent. This can\'t be undone.</item>
+        <item quantity="one">Closes %d chat and deletes the agent. This can\'t be undone</item>
+        <item quantity="other">Closes %d chats and deletes the agent. This can\'t be undone</item>
     </plurals>
     <string name="knowledge_search_query_line">Agent search · Query: %1$s</string>
     <string name="knowledge_search_path_unmounted">Knowledge base not mounted</string>
@@ -55,11 +53,11 @@
         <item quantity="other">%1$s (%2$d documents)</item>
     </plurals>
     <string name="knowledge_access_already_mounted">%1$s (already mounted)</string>
-    <string name="knowledge_access_read_only">Read-only · Can read every file in this knowledge base but can\'t change or delete them. The mount lasts only for this chat; remove it anytime from the external folders panel.</string>
+    <string name="knowledge_access_read_only">Read-only · Can read every file in the knowledge base, this chat only</string>
     <string name="knowledge_mount_read_only_tag">Knowledge base · Read-only</string>
     <string name="knowledge_mount_add">Mount knowledge base</string>
     <string name="knowledge_mount_add_desc">Read-only at %1$s, for this chat only</string>
     <string name="knowledge_mount_add_mounted">Already mounted in this chat</string>
-    <string name="knowledge_mount_add_unavailable">Can\'t mount in this chat: tools, document search, or knowledge file access may be off</string>
+    <string name="knowledge_mount_add_unavailable">Requires tools, document search and knowledge file access</string>
     <string name="settings_execution_limits_section">Run limits</string>
 </resources>

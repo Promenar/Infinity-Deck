@@ -336,13 +336,7 @@ private fun CandidatesSection(
                 text = stringResource(R.string.artifact_candidates_title),
                 style = InfinityTypography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                text = stringResource(R.string.artifact_candidates_description),
-                style = InfinityTypography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = InfinitySpacing.XSmall, bottom = InfinitySpacing.Small),
+                modifier = Modifier.semantics { heading() }.padding(bottom = InfinitySpacing.Small),
             )
         }
         Column(
@@ -407,11 +401,5 @@ private fun ArtifactsEmpty() {
     ) {
         Icon(Icons.Rounded.Dashboard, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
         Text(text = stringResource(R.string.canvas_empty_title), style = InfinityTypography.titleMedium, textAlign = TextAlign.Center)
-        Text(
-            text = stringResource(R.string.canvas_empty_description),
-            style = InfinityTypography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
     }
 }

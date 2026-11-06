@@ -11,12 +11,12 @@
     <string name="branch_mode_full_access">免批准</string>
     <string name="branch_mode_workspace">命令需批准</string>
     <string name="branch_mode_same_as_parent">%1$s · 沿用主会话</string>
-    <string name="branch_mode_differs_stricter">与主会话不同：分支里的每条命令都要你批准。</string>
-    <string name="branch_mode_differs_looser">与主会话不同：分支里的命令无需批准，并可访问全部应用数据。</string>
+    <string name="branch_mode_differs_stricter">与主会话不同：每条命令需批准</string>
+    <string name="branch_mode_differs_looser">与主会话不同：命令免批准，可访问全部应用数据</string>
     <string name="branch_option_toggle">切换</string>
     <string name="branch_worktree_line">基于 %1$s · %2$s</string>
     <string name="branch_worktree_reason">建议理由：%1$s%2$s</string>
-    <string name="branch_worktree_approve_note">批准即执行这条 git worktree add。</string>
+    <string name="branch_worktree_approve_note">批准后执行 git worktree add。</string>
     <string name="branch_plan_steps">工作步骤</string>
     <string name="branch_plan_exclusions">不做</string>
     <string name="branch_plan_communication">沟通约定</string>
@@ -35,7 +35,7 @@
     <string name="branch_activity_waiting_approval">等你批准</string>
     <string name="branch_activity_idle">未开始</string>
     <string name="branch_activity_round_done">第 %1$d 轮完成</string>
-    <string name="branch_auto_wake_paused">连续自动处理 %1$d 条消息后已暂停，等你回来继续。</string>
+    <string name="branch_auto_wake_paused">连续自动处理 %1$d 条后已暂停，发消息继续</string>
     <string name="branch_origin_from">由「%1$s」派发 · 工作方案</string>
     <string name="branch_origin_parent_deleted">原主会话已删除 · 工作方案</string>
     <string name="session_message_sent_to">已发给「%1$s」</string>
@@ -52,5 +52,5 @@
     <string name="git_worktree_unused">没有会话在用</string>
     <string name="git_worktree_current">正在查看</string>
     <string name="git_worktree_open_cd">查看这个 worktree</string>
-    <string name="git_worktree_note">合并、移除由会话里的智能体提议，按普通命令审批；删除分支会话时会问你是否一并移除它的 worktree。</string>
+    <string name="git_worktree_note">合并与移除交给智能体</string>
 </resources>

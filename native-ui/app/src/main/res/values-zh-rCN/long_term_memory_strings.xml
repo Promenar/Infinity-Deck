@@ -5,10 +5,10 @@
     <string name="ltm_search_placeholder">搜索记忆</string>
     <string name="ltm_section_switch">记忆</string>
     <string name="ltm_enabled">允许智能体主动记忆</string>
-    <string name="ltm_enabled_desc">按会话的主动记忆模式读写，每轮放进提示词</string>
-    <string name="ltm_switch_footer">智能体会记下值得跨会话保留的信息，比如你的偏好和项目事实。会话设为隔离时，记录只属于该会话。</string>
-    <string name="ltm_empty">还没有记忆。智能体遇到值得长期记住的内容时会记在这里。</string>
-    <string name="ltm_search_empty">没有匹配的记忆。</string>
+    <string name="ltm_enabled_desc">记忆每轮加入提示词</string>
+    <string name="ltm_switch_footer">隔离会话的记忆只属于该会话</string>
+    <string name="ltm_empty">还没有记忆</string>
+    <string name="ltm_search_empty">没有匹配的记忆</string>
     <string name="ltm_group_title">%1$s · %2$d</string>
     <plurals name="ltm_count">
         <item quantity="other">共 %1$d 条，上限 %2$d</item>
@@ -30,7 +30,7 @@
     <string name="ltm_save">保存</string>
     <string name="ltm_deleted">已删除记忆</string>
     <string name="ltm_undo">撤销</string>
-    <string name="ltm_save_failed">记忆没有保存成功。</string>
+    <string name="ltm_save_failed">记忆保存失败</string>
     <string name="chat_memory_saved">已记住 %1$s</string>
     <string name="chat_memory_updated">已更新记忆 %1$s</string>
     <string name="chat_memory_forgotten">已忘记 %1$s</string>

@@ -19,6 +19,6 @@
         <item quantity="other">updated %1$d seconds ago</item>
     </plurals>
     <string name="job_log_reading_slow">Still reading…</string>
-    <string name="job_log_read_cancelled">Reading was cancelled.</string>
-    <string name="job_log_refresh_failed">Could not refresh. Showing the last output read.</string>
+    <string name="job_log_read_cancelled">Reading cancelled</string>
+    <string name="job_log_refresh_failed">Refresh failed. Showing last output</string>
 </resources>

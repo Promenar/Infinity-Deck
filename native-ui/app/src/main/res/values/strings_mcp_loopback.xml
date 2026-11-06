@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="mcp_bearer_token">Bearer access token (optional)</string>
-    <string name="mcp_bearer_token_storage">The token is encrypted on this device. To change it, delete and add the server again.</string>
-    <string name="mcp_invalid_endpoint">Enter a valid HTTP or HTTPS address.</string>
-    <string name="mcp_bearer_required">Enter a valid Bearer token without spaces, line breaks, or a Bearer prefix.</string>
-    <string name="mcp_config_save_failed">Could not save the MCP configuration or credentials. Please try again.</string>
+    <string name="mcp_bearer_token_storage">Encrypted on this device. To change it, delete and re-add the server</string>
+    <string name="mcp_invalid_endpoint">Enter a valid HTTP or HTTPS address</string>
+    <string name="mcp_bearer_required">Invalid token: no spaces, line breaks, or Bearer prefix</string>
+    <string name="mcp_config_save_failed">Couldn\'t save the MCP configuration. Try again</string>
     <string name="mcp_config_saving">Saving…</string>
 </resources>

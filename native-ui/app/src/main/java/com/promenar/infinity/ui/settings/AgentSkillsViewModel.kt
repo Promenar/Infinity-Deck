@@ -117,7 +117,7 @@ class AgentSkillsViewModel(
                     val bytes = readAtMost(input, AgentSkillStore.MAX_FILE_BYTES)
                         ?: throw AgentSkillFormatException("SKILL.md 超过 ${AgentSkillStore.MAX_FILE_BYTES / 1024} KiB")
                     val text = AgentSkillStore.decodeText(bytes)
-                        ?: throw AgentSkillFormatException("所选文件既不是 ZIP 也不是 UTF-8 文本")
+                        ?: throw AgentSkillFormatException("不是 ZIP 或 UTF-8 文本")
                     store.installMarkdown(text, overwrite).name
                 }
             }

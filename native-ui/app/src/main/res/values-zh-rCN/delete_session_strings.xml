@@ -8,6 +8,6 @@
     <string name="delete_session_drop_files">一并删除</string>
     <string name="delete_session_kept">文件已存到%1$s：%2$s</string>
     <string name="delete_session_remove_worktree">同时移除 worktree %1$s</string>
-    <string name="delete_session_remove_worktree_detail">执行 git worktree remove。其中有未提交的改动时 Git 会拒绝移除，worktree 原样保留。</string>
+    <string name="delete_session_remove_worktree_detail">有未提交改动时不会移除</string>
     <string name="delete_session_worktree_failed">worktree 没有移除：%1$s</string>
 </resources>

@@ -3,7 +3,7 @@
     <string name="ask_user_tool_name">Ask the user</string>
     <string name="ask_user_tool_description">Pause to ask about choices, scope, or preferences.</string>
     <string name="ask_user_notification_title">Your answer is needed</string>
-    <string name="ask_user_notification_text">Open the conversation to choose, write an answer, or skip.</string>
+    <string name="ask_user_notification_text">Open the chat to answer</string>
     <string name="ask_user_answer_failed">Could not save your answer. Please try again.</string>
-    <string name="ask_user_resume_failed">Your answer is saved. Open this conversation again to resume.</string>
+    <string name="ask_user_resume_failed">Answer saved. Reopen the chat to continue</string>
 </resources>

@@ -19,7 +19,7 @@
     <!-- 视觉实验室目录 -->
     <string name="lab_title">视觉实验室</string>
     <string name="lab_entry_desc">用脚本数据打开任意页面、状态与工作流</string>
-    <string name="lab_sandbox_note">所有版本只使用内存中的脚本数据：不读写你的会话、密钥与工作区，不请求模型，也不执行命令。</string>
+    <string name="lab_sandbox_note">仅用内存脚本数据，不读写会话、密钥与工作区，不请求模型，不执行命令</string>
     <string name="lab_section_pages">页面</string>
     <string name="lab_section_workflows">工作流</string>
     <string name="lab_section_states">状态</string>
@@ -30,7 +30,7 @@
     <string name="lab_kind_workflow">工作流</string>
     <string name="lab_fit_inner">内屏</string>
     <string name="lab_fit_outer">外屏</string>
-    <string name="lab_version_pending">该版本将在下一版接入：用脚本数据渲染真实的会话组件。</string>
+    <string name="lab_version_pending">尚未接入</string>
     <string name="lab_version_missing">该版本已不存在</string>
     <string name="lab_version_id">ID：%1$s</string>
 

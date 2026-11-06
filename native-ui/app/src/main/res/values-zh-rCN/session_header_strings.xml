@@ -3,9 +3,9 @@
 <resources>
     <string name="session_header_title">会话请求头</string>
     <string name="session_header_name">会话请求头名称</string>
-    <string name="session_header_name_error">请输入合法的 HTTP 字段名，不含空格、冒号或非 ASCII 字符；认证、客户端及传输字段为保留名称。</string>
+    <string name="session_header_name_error">不能含空格、冒号或非 ASCII 字符，且不能用保留名</string>
     <string name="session_header_provider_help">对话关联的请求将发送稳定的匿名会话标识和 &brand; 客户端版本，模型可单独覆盖此设置。</string>
-    <string name="session_header_model_help">仅适用于关联对话的请求；连接测试和模型列表同步不发送会话请求头。</string>
+    <string name="session_header_model_help">仅随会话请求发送</string>
     <string name="session_header_inherit">跟随提供商</string>
     <string name="session_header_on">开启</string>
     <string name="session_header_off">关闭</string>

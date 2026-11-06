@@ -10,7 +10,7 @@
     <string name="agent_avatar_tab_generated">Generated</string>
     <string name="agent_avatar_tab_photo">Photo</string>
     <string name="agent_avatar_search_placeholder">Search, e.g. translate, code, cat</string>
-    <string name="agent_avatar_search_empty">No symbols match “%1$s”. Try another word, or switch to Generated.</string>
+    <string name="agent_avatar_search_empty">No symbols match “%1$s”</string>
     <string name="agent_avatar_category_all">All</string>
     <string name="agent_avatar_category_popular">Popular</string>
     <string name="agent_avatar_category_general">General</string>
@@ -22,11 +22,10 @@
     <string name="agent_avatar_category_life">Life</string>
     <string name="agent_avatar_category_nature">Nature</string>
     <string name="agent_avatar_category_characters">Characters</string>
-    <string name="agent_avatar_generated_hint">Gradient and initial, unique to this agent</string>
     <string name="agent_avatar_shuffle">Shuffle</string>
     <string name="agent_avatar_generated_variant">Generated avatar %1$d</string>
     <string name="agent_avatar_photo_pick">Choose from photos</string>
-    <string name="agent_avatar_photo_hint">The photo is cropped to a circle and stays on this device until you export a backup.</string>
+    <string name="agent_avatar_photo_hint">Stored on this device and included in backups</string>
     <string name="agent_avatar_color">Color</string>
     <string name="agent_avatar_color_current">Current color</string>
     <string name="agent_avatar_color_indigo">Indigo</string>

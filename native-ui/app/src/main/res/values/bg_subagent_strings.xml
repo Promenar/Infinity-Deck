@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
 <resources>
-    <string name="bg_subagent_notification_title">&brand; is working in the background</string>
+    <string name="bg_subagent_notification_title">Working in the background</string>
     <string name="bg_subagent_notification_starting">Preparing background subagents</string>
     <string name="bg_subagent_notification_stop_generations">Stop conversation generation</string>
     <string name="bg_subagent_notification_with_generations">%1$d subagents · %2$d conversations generating</string>
@@ -12,7 +12,7 @@
     <string name="bg_subagent_interrupted">The app process was interrupted. Resume with session_send.</string>
     <string name="bg_subagent_result_write_failed">Could not save the full conclusion. Its original text is retained in the subagent history.</string>
     <string name="bg_subagent_execution_failed">The background subagent failed.</string>
-    <string name="bg_subagent_persistence_failed">Could not persist the subagent record. Execution has ended and may appear interrupted after restart.</string>
-    <string name="bg_subagent_stop_persistence_failed">Execution was cancelled, but its stopped state could not be persisted.</string>
+    <string name="bg_subagent_persistence_failed">Couldn\'t save the subagent record. Execution ended</string>
+    <string name="bg_subagent_stop_persistence_failed">Cancelled; stopped state not saved</string>
     <string name="bg_subagent_context_limit">The subagent context exceeds the model window. Required system instructions, user messages or tool definitions cannot fit safely. Reduce the task scope.</string>
 </resources>

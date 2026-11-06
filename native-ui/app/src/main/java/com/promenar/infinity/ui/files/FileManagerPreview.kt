@@ -296,17 +296,14 @@ private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean)
         is FilePreview.Audio -> PreviewPlaceholder(
             icon = Icons.Rounded.AudioFile,
             title = formatMediaDuration(preview.durationMs) ?: stringResource(R.string.fm_preview_audio),
-            hint = stringResource(R.string.fm_preview_media_hint),
         )
         is FilePreview.Video -> PreviewPlaceholder(
             icon = Icons.Rounded.Movie,
             title = formatMediaDuration(preview.durationMs) ?: stringResource(R.string.fm_preview_video),
-            hint = stringResource(R.string.fm_preview_media_hint),
         )
         is FilePreview.Pdf -> PreviewPlaceholder(
             icon = Icons.Rounded.PictureAsPdf,
             title = preview.pageCount?.let { pluralStringResource(R.plurals.fm_pdf_pages, it, it) } ?: stringResource(R.string.fm_preview_pdf),
-            hint = stringResource(R.string.fm_preview_pdf_hint),
         )
         is FilePreview.Archive -> PreviewCard {
             Text(
@@ -335,13 +332,12 @@ private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean)
         FilePreview.Unsupported -> PreviewPlaceholder(
             icon = Icons.Rounded.VisibilityOff,
             title = stringResource(R.string.fm_preview_unsupported),
-            hint = stringResource(R.string.fm_preview_unsupported_hint),
         )
     }
 }
 
 @Composable
-private fun PreviewPlaceholder(icon: ImageVector, title: String, hint: String) {
+private fun PreviewPlaceholder(icon: ImageVector, title: String) {
     PreviewCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Large),
@@ -353,12 +349,6 @@ private fun PreviewPlaceholder(icon: ImageVector, title: String, hint: String) {
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = hint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }

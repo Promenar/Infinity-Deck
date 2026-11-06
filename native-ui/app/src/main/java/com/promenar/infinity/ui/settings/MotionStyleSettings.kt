@@ -73,30 +73,30 @@ import com.promenar.infinity.ui.theme.GenerationIndicatorStyle
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.InfinityMotionStyles
 
-/** 一个可选样式的名称与一句话说明。 */
-internal data class MotionStyleLabel(@StringRes val name: Int, @StringRes val description: Int)
+/** 一个可选样式的名称，以及可选的一句交互提示。 */
+internal data class MotionStyleLabel(@StringRes val name: Int, @StringRes val description: Int? = null)
 
 internal fun ComposerGlowStyle.label(): MotionStyleLabel = when (this) {
-    ComposerGlowStyle.AURORA -> MotionStyleLabel(R.string.motion_composer_aurora, R.string.motion_composer_aurora_desc)
-    ComposerGlowStyle.BREATHE -> MotionStyleLabel(R.string.motion_composer_breathe, R.string.motion_composer_breathe_desc)
-    ComposerGlowStyle.MESH -> MotionStyleLabel(R.string.motion_composer_mesh, R.string.motion_composer_mesh_desc)
-    ComposerGlowStyle.BOTTOM_STRIP -> MotionStyleLabel(R.string.motion_composer_bottom_strip, R.string.motion_composer_bottom_strip_desc)
+    ComposerGlowStyle.AURORA -> MotionStyleLabel(R.string.motion_composer_aurora)
+    ComposerGlowStyle.BREATHE -> MotionStyleLabel(R.string.motion_composer_breathe)
+    ComposerGlowStyle.MESH -> MotionStyleLabel(R.string.motion_composer_mesh)
+    ComposerGlowStyle.BOTTOM_STRIP -> MotionStyleLabel(R.string.motion_composer_bottom_strip)
     ComposerGlowStyle.MATERIAL_ONLY -> MotionStyleLabel(R.string.motion_composer_material_only, R.string.motion_composer_material_only_desc)
-    ComposerGlowStyle.SWEEP_GRID -> MotionStyleLabel(R.string.motion_composer_sweep_grid, R.string.motion_composer_sweep_grid_desc)
+    ComposerGlowStyle.SWEEP_GRID -> MotionStyleLabel(R.string.motion_composer_sweep_grid)
 }
 
 internal fun GenerationIndicatorStyle.label(): MotionStyleLabel = when (this) {
-    GenerationIndicatorStyle.WAVE -> MotionStyleLabel(R.string.motion_indicator_wave, R.string.motion_indicator_wave_desc)
-    GenerationIndicatorStyle.PORTS -> MotionStyleLabel(R.string.motion_indicator_ports, R.string.motion_indicator_ports_desc)
-    GenerationIndicatorStyle.MATRIX -> MotionStyleLabel(R.string.motion_indicator_matrix, R.string.motion_indicator_matrix_desc)
-    GenerationIndicatorStyle.STACKED -> MotionStyleLabel(R.string.motion_indicator_stacked, R.string.motion_indicator_stacked_desc)
-    GenerationIndicatorStyle.BAYS -> MotionStyleLabel(R.string.motion_indicator_bays, R.string.motion_indicator_bays_desc)
-    GenerationIndicatorStyle.INFINITY_LINE -> MotionStyleLabel(R.string.motion_indicator_infinity_line, R.string.motion_indicator_infinity_line_desc)
-    GenerationIndicatorStyle.INFINITY_LED -> MotionStyleLabel(R.string.motion_indicator_infinity_led, R.string.motion_indicator_infinity_led_desc)
+    GenerationIndicatorStyle.WAVE -> MotionStyleLabel(R.string.motion_indicator_wave)
+    GenerationIndicatorStyle.PORTS -> MotionStyleLabel(R.string.motion_indicator_ports)
+    GenerationIndicatorStyle.MATRIX -> MotionStyleLabel(R.string.motion_indicator_matrix)
+    GenerationIndicatorStyle.STACKED -> MotionStyleLabel(R.string.motion_indicator_stacked)
+    GenerationIndicatorStyle.BAYS -> MotionStyleLabel(R.string.motion_indicator_bays)
+    GenerationIndicatorStyle.INFINITY_LINE -> MotionStyleLabel(R.string.motion_indicator_infinity_line)
+    GenerationIndicatorStyle.INFINITY_LED -> MotionStyleLabel(R.string.motion_indicator_infinity_led)
 }
 
 internal fun EmptyChatStyle.label(): MotionStyleLabel = when (this) {
-    EmptyChatStyle.FLOW -> MotionStyleLabel(R.string.motion_empty_flow, R.string.motion_empty_flow_desc)
+    EmptyChatStyle.FLOW -> MotionStyleLabel(R.string.motion_empty_flow)
     EmptyChatStyle.LED_WORDMARK -> MotionStyleLabel(R.string.motion_empty_led_wordmark, R.string.motion_empty_led_wordmark_desc)
     EmptyChatStyle.MOBIUS -> MotionStyleLabel(R.string.motion_empty_mobius, R.string.motion_empty_mobius_desc)
     EmptyChatStyle.MOBIUS_LED -> MotionStyleLabel(R.string.motion_empty_mobius_led, R.string.motion_empty_mobius_led_desc)
@@ -213,7 +213,9 @@ private fun <T : Enum<T>> MotionStylePicker(
                         Row(Modifier.padding(start = 16.dp, end = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(stringResource(text.name), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                                Text(stringResource(text.description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                text.description?.let {
+                                    Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                             RadioButton(selected = isSelected, onClick = null)
                         }
@@ -244,12 +246,6 @@ private fun ComposerSurfaceOptions(motion: InfinityMotionStyles, onSelect: (Comp
             fillWidth = true,
             compact = true,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("theme_motion_surface"),
-        )
-        Text(
-            stringResource(R.string.motion_surface_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
         )
     }
     // 预览跑演示生成脚本：环境光的内部漫光与点阵屏只有生成中才看得出来。

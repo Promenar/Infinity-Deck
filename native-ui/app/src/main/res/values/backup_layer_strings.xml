@@ -5,8 +5,8 @@
     <string name="backup_layer_knowledge_desc">Knowledge base documents and tags</string>
     <string name="backup_layer_sessions_desc">Sessions, messages, artifacts and task records</string>
     <string name="backup_layer_files">Workspace files</string>
-    <string name="backup_layer_files_desc">Files in session workspaces; sync folder workspaces with Git</string>
-    <string name="backup_layer_keys_desc">Provider API keys and other secrets; requires encryption</string>
+    <string name="backup_layer_files_desc">Session workspace files, not folder workspaces</string>
+    <string name="backup_layer_keys_desc">API keys and other secrets; requires encryption</string>
     <string name="backup_layer_always">Always included</string>
     <string name="backup_layer_size">About %1$s</string>
     <string name="backup_layer_estimating">Calculating</string>
@@ -14,18 +14,18 @@
     <string name="backup_layer_separator">,\u0020</string>
     <string name="backup_layer_summary">%1$s · about %2$s</string>
     <string name="backup_encrypt_required">Required when keys are included</string>
-    <string name="backup_layers_footer">Restoring replaces only what the backup contains; anything not in it keeps the data on this device.</string>
-    <string name="backup_layers_footer_estimate">Estimated about %1$s. Restoring replaces only what the backup contains; anything not in it keeps the data on this device.</string>
+    <string name="backup_layers_footer">Restore replaces only what\'s in the backup; the rest stays on this device</string>
+    <string name="backup_layers_footer_estimate">About %1$s · Restore replaces only what\'s in the backup; the rest stays on this device</string>
     <string name="backup_export_result_title">Backup complete</string>
     <plurals name="backup_export_result_skipped">
         <item quantity="one">%d item was not backed up</item>
         <item quantity="other">%d items were not backed up</item>
     </plurals>
     <string name="backup_skip_reason_file">The file is missing, changed or unreadable</string>
-    <string name="backup_skip_reason_avatar">The avatar file is missing or outside the avatar folder; the reference was cleared</string>
+    <string name="backup_skip_reason_avatar">Avatar file missing; reference cleared</string>
     <string name="backup_result_done">Done</string>
     <string name="backup_restore_result_title">Restore complete</string>
-    <string name="backup_restore_result_layers">Replaced: %1$s. Anything not in the backup was kept as it was on this device.</string>
+    <string name="backup_restore_result_layers">Replaced: %1$s; everything else unchanged</string>
     <string name="backup_restore_result_attention">Needs your attention</string>
     <plurals name="backup_degraded_session_agent">
         <item quantity="one">%d session\'s agent is unavailable</item>
@@ -36,8 +36,8 @@
         <item quantity="other">%d sessions\' folder workspaces are unavailable</item>
     </plurals>
     <plurals name="backup_degraded_session_workspace">
-        <item quantity="one">%d session\'s workspace files are not in the backup and show as unavailable</item>
-        <item quantity="other">%d sessions\' workspace files are not in the backup and show as unavailable</item>
+        <item quantity="one">%d session\'s workspace files are unavailable</item>
+        <item quantity="other">%d sessions\' workspace files are unavailable</item>
     </plurals>
     <plurals name="backup_degraded_artifact_workspace">
         <item quantity="one">%d artifact\'s workspace file is unavailable</item>
@@ -52,8 +52,8 @@
         <item quantity="other">%d document tags point to unavailable files</item>
     </plurals>
     <plurals name="backup_degraded_citation_source">
-        <item quantity="one">%d citation record was dropped because its conversation changed</item>
-        <item quantity="other">%d citation records were dropped because their conversations changed</item>
+        <item quantity="one">%d citation record dropped (conversation changed)</item>
+        <item quantity="other">%d citation records dropped (conversations changed)</item>
     </plurals>
     <plurals name="backup_degraded_citation_document">
         <item quantity="one">%d citation record points to an unavailable document</item>

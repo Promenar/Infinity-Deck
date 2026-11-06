@@ -18,6 +18,6 @@
         <item quantity="other">%1$d 秒前更新</item>
     </plurals>
     <string name="job_log_reading_slow">仍在读取…</string>
-    <string name="job_log_read_cancelled">已取消读取。</string>
-    <string name="job_log_refresh_failed">刷新失败，显示的是上次读取的内容。</string>
+    <string name="job_log_read_cancelled">已取消读取</string>
+    <string name="job_log_refresh_failed">刷新失败，显示上次内容</string>
 </resources>

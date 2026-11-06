@@ -6,14 +6,14 @@
     <string name="p0_runtime_limits">Long task controls</string>
     <string name="p0_token_limit">Tokens per task</string>
     <string name="p0_repeat_limit">Repeat limit</string>
-    <string name="p0_runtime_limits_desc">Total tokens across all requests in a task. The task stops when it\'s reached.</string>
+    <string name="p0_runtime_limits_desc">Token limit per task</string>
     <string name="p0_reset_consent">Reset authorization</string>
     <string name="p0_decrease_setting">Decrease %1$s</string>
     <string name="p0_increase_setting">Increase %1$s</string>
     <string name="p0_auto_confirm_title">Allow unlimited rounds with no approvals?</string>
-    <string name="p0_auto_confirm_body">Commands will run back to back without asking, as the app itself. You can stop anytime, and token limits still apply.</string>
+    <string name="p0_auto_confirm_body">Commands run back to back as the app without asking. Token limits still apply</string>
     <string name="p0_loop_title">Repeated tool calls detected</string>
-    <string name="p0_loop_body">The agent keeps repeating the same call and may be stuck in a loop.</string>
+    <string name="p0_loop_body">It may be stuck in a loop</string>
     <string name="p0_continue">Continue</string>
     <string name="p0_progress">Round %1$d, %2$d calls, %3$d tokens%4$s</string>
     <string name="p0_estimated">" (estimated)"</string>

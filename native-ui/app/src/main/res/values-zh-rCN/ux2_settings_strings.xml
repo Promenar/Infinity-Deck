@@ -9,10 +9,9 @@
     <string name="ux2_settings_version_copy_text">&brand; %1$s\nversionCode：%2$d\n渠道：%3$s\n提交：%4$s</string>
     <string name="ux2_settings_version_copy_action">复制版本信息</string>
     <string name="ux2_settings_version_copied">已复制版本信息</string>
-    <string name="ux2_settings_github_open">在 GitHub 上打开 &brand;</string>
+    <string name="ux2_settings_github_open">在 GitHub 上查看</string>
 
     <!-- 网络访问适用范围（D8） -->
     <string name="ux2_network_scope_prefix">适用范围：%1$s</string>
     <string name="ux2_network_scope_builtin_only">仅内置模式</string>
-    <string name="ux2_network_matrix_footer_linux">Linux 命令使用系统网络，tailnet 经内置 Tailscale 代理。</string>
 </resources>

@@ -12,7 +12,6 @@
     <string name="settings_retrieval_rerank_batch_title">Documents per rerank call</string>
     <string name="settings_retrieval_jit_short">Fill gaps in graph coverage</string>
     <string name="settings_retrieval_kg_context_title">Context token limit</string>
-    <string name="settings_retrieval_kg_context_footer">Graph context tokens use a conservative estimate.</string>
     <string name="settings_retrieval_kg_calls_title">Document call limit</string>
     <string name="settings_retrieval_kg_output_title">Document output tokens</string>
     <string name="settings_retrieval_kg_request_output_title">Tokens per request</string>

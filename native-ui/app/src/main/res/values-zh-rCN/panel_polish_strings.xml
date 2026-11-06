@@ -5,6 +5,6 @@
     <!-- 检视器底栏放不下全部页签时的溢出菜单入口。 -->
     <string name="chat_inspector_more_tabs">更多页签</string>
     <!-- 可达范围面板：生成进行中时工作区切换停用的说明条。 -->
-    <string name="agent_reach_switch_busy_hint">本轮生成进行中，结束后才能切换工作区</string>
+    <string name="agent_reach_switch_busy_hint">回复生成中，结束后可切换</string>
     <string name="agent_reach_stop_generation">停止生成</string>
 </resources>

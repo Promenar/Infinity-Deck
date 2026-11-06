@@ -72,7 +72,7 @@
         <item quantity="other">%1$d files</item>
     </plurals>
     <string name="fm_empty_folder">This folder is empty</string>
-    <string name="fm_empty_sessions">No sessions use a private workspace. Files of sessions linked to a project are in that project.</string>
+    <string name="fm_empty_sessions">No sessions use a private workspace</string>
     <plurals name="fm_git_changes">
         <item quantity="one">%1$d change</item>
         <item quantity="other">%1$d changes</item>
@@ -119,16 +119,14 @@
     <!-- 预览 -->
     <string name="fm_preview_back">Back to list</string>
     <string name="fm_back_to_folder">‹ %1$s</string>
-    <string name="fm_preview_truncated">Only the beginning of this file is shown.</string>
+    <string name="fm_preview_truncated">Showing the beginning only</string>
     <string name="fm_preview_audio">Audio</string>
     <string name="fm_preview_video">Video</string>
-    <string name="fm_preview_media_hint">Use “Open with” to play it in another app.</string>
     <string name="fm_preview_pdf">PDF document</string>
     <plurals name="fm_pdf_pages">
         <item quantity="one">%1$d page</item>
         <item quantity="other">%1$d pages</item>
     </plurals>
-    <string name="fm_preview_pdf_hint">Use “Open with” to read it in a PDF viewer.</string>
     <plurals name="fm_archive_entries">
         <item quantity="one">%1$d entry</item>
         <item quantity="other">%1$d entries</item>
@@ -138,7 +136,6 @@
         <item quantity="other">%1$d more entries</item>
     </plurals>
     <string name="fm_preview_unsupported">No preview for this file</string>
-    <string name="fm_preview_unsupported_hint">Use “Open with” to view it in another app.</string>
     <string name="fm_recent_changes">Recently changed</string>
     <string name="fm_info_title">Info</string>
     <string name="fm_info_location">Location</string>

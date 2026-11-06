@@ -2,10 +2,10 @@
 <resources>
     <string name="skills_runtime_section_user">User skills</string>
     <string name="skills_runtime_section_project">Project skills</string>
-    <string name="skills_runtime_user_footer">Shared by all chats at /skills. The agent can create or edit skills there.</string>
-    <string name="skills_runtime_project_footer">From this workspace\'s .agents/skills. The model can use a project skill only after you trust it.</string>
-    <string name="skills_runtime_user_empty">No skills yet. Ask the agent to create one in /skills, or import one in Settings.</string>
-    <string name="skills_runtime_project_empty">This workspace has no skills in .agents/skills.</string>
+    <string name="skills_runtime_user_footer">Shared by all chats at /skills; the agent can create or edit them</string>
+    <string name="skills_runtime_project_footer">From this workspace\'s .agents/skills; usable once trusted</string>
+    <string name="skills_runtime_user_empty">No skills yet</string>
+    <string name="skills_runtime_project_empty">No skills in .agents/skills</string>
     <string name="skills_runtime_status_enabled">Enabled</string>
     <string name="skills_runtime_status_disabled">Off</string>
     <string name="skills_runtime_status_pending">Needs your trust</string>
@@ -21,21 +21,21 @@
     <string name="skills_runtime_detail_path">Path</string>
     <string name="skills_runtime_detail_status">Status</string>
     <string name="skills_runtime_detail_files">Bundled files</string>
-    <string name="skills_runtime_document_unavailable">SKILL.md cannot be read.</string>
+    <string name="skills_runtime_document_unavailable">Couldn\'t read SKILL.md</string>
     <string name="skills_runtime_delete_title">Delete %1$s?</string>
     <string name="skills_runtime_error">Skill action failed: %1$s</string>
     <string name="sheet_tool_section_usage">Tool use</string>
     <string name="sheet_tool_tools_enabled">Use tools</string>
     <string name="skills_runtime_edit">Edit</string>
     <string name="skills_restore_notice_title">Skills restored</string>
-    <string name="skills_restore_notice_git">These skills\' files are back, but their Git history isn\'t. Clone them again to keep syncing.</string>
+    <string name="skills_restore_notice_git">Git history wasn\'t restored for these skills. Clone again to sync</string>
     <string name="skills_restore_notice_remote">Remote: %1$s</string>
     <string name="skills_restore_notice_branch">Branch %1$s</string>
     <string name="skills_restore_notice_commit">Commit %1$s</string>
     <string name="skills_restore_notice_no_remote">No remote recorded</string>
     <plurals name="skills_restore_notice_links">
-        <item quantity="one">%d symbolic link was skipped during backup.</item>
-        <item quantity="other">%d symbolic links were skipped during backup.</item>
+        <item quantity="one">%d symbolic link skipped</item>
+        <item quantity="other">%d symbolic links skipped</item>
     </plurals>
     <string name="skills_restore_notice_dismiss">Got it</string>
     <!-- Settings skill packs grouped by source; the group name and count are laid out as InfinityMetaLine segments. -->

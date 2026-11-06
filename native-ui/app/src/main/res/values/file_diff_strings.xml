@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="file_diff_binary">Binary file; the diff cannot be shown.</string>
+    <string name="file_diff_binary">Binary file</string>
     <string name="file_diff_large_summary">Large file: %1$s</string>
     <string name="file_diff_complex_summary">Too many changes to show line by line: %1$s</string>
     <string name="file_diff_approximate_counts">about %1$s</string>

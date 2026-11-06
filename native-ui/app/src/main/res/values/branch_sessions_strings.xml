@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="branch_auto_processing_paused">Automatic processing is paused. Send a message to continue.</string>
-    <string name="branch_worktree_failed">The branch stopped because its worktree could not be prepared: %1$s</string>
+    <string name="branch_worktree_failed">Worktree setup failed: %1$s</string>
     <string name="branch_system_message">Session message from “%1$s”</string>
 </resources>

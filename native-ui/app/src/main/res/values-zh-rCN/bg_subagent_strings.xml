@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
 <resources>
-    <string name="bg_subagent_notification_title">&brand; 正在后台处理任务</string>
+    <string name="bg_subagent_notification_title">正在后台处理任务</string>
     <string name="bg_subagent_notification_starting">正在准备后台子代理</string>
     <string name="bg_subagent_notification_stop_generations">停止会话生成</string>
     <string name="bg_subagent_notification_with_generations">%1$d 个活跃子代理 · %2$d 个会话生成中</string>
@@ -11,7 +11,7 @@
     <string name="bg_subagent_interrupted">应用进程中断；可经 session_send 恢复。</string>
     <string name="bg_subagent_result_write_failed">完整结论文件写入失败；原文保留在子代理模型历史中。</string>
     <string name="bg_subagent_execution_failed">子代理后台执行失败。</string>
-    <string name="bg_subagent_persistence_failed">子代理记录持久化失败，执行已结束；重启后可能显示为中断。</string>
-    <string name="bg_subagent_stop_persistence_failed">停止状态持久化失败，执行已取消。</string>
+    <string name="bg_subagent_persistence_failed">子代理记录保存失败，执行已结束</string>
+    <string name="bg_subagent_stop_persistence_failed">已取消，停止状态未保存</string>
     <string name="bg_subagent_context_limit">子代理上下文超过模型可用窗口；必要系统约束、用户指令或工具定义无法安全容纳，请缩小任务或追加指令范围。</string>
 </resources>

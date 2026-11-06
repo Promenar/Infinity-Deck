@@ -4,12 +4,11 @@
     <string name="motion_surface_title">浮岛材质</string>
     <string name="motion_surface_frosted">毛玻璃</string>
     <string name="motion_surface_ambient">环境光</string>
-    <string name="motion_surface_desc">毛玻璃让对话内容模糊地透出来；环境光保持实色，生成时光在浮岛内部漫开。</string>
     <string name="motion_preview_backdrop">今天的天气简报：阴天，午后有小雨，气温约 18°C，湿度 70%。夜间转晴，最低 12°C。</string>
 
     <!-- 外观：空会话动画 -->
     <string name="motion_empty_led_morph">灯珠变形</string>
-    <string name="motion_empty_led_morph_desc">灯珠在字标与莫比乌斯灯珠环之间往复变形；点按切到下一形态，环上拖动可转视角。</string>
+    <string name="motion_empty_led_morph_desc">点按切换形态，拖动旋转</string>
     <!-- 设置首页：关于 -->
     <string name="settings_about_version">%1$s（%2$d）· %3$s</string>
     <string name="settings_about_commit">提交 %1$s</string>
@@ -23,8 +22,8 @@
     <string name="model_spec_version_unapplied">新版本未应用</string>
     <string name="model_spec_updated">规格库已更新到 %1$s 版</string>
     <string name="model_spec_up_to_date">规格库已是最新（%1$s 版）</string>
-    <string name="model_spec_failed_update">规格库更新失败：无法下载或校验新版本</string>
-    <string name="model_spec_failed_apply">新规格库已下载，但应用到模型时失败</string>
+    <string name="model_spec_failed_update">规格库更新失败</string>
+    <string name="model_spec_failed_apply">规格库应用失败</string>
     <string name="model_spec_kept">沿用 %1$s 版</string>
     <string name="model_spec_kept_bundled">沿用内置快照</string>
     <string name="model_spec_kept_unknown">沿用现有版本</string>

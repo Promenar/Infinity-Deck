@@ -148,7 +148,6 @@ internal fun GitCredentialSettingsContent(
                         InfinitySettingsItem(
                             icon = Icons.AutoMirrored.Rounded.Login,
                             title = stringResource(R.string.github_login_title),
-                            subtitle = stringResource(R.string.github_login_entry_summary),
                             onClick = actions.onStartGitHubLogin,
                             enabled = state.credentials != null,
                             showChevron = true,

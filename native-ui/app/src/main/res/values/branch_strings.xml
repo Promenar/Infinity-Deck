@@ -11,12 +11,12 @@
     <string name="branch_mode_full_access">No approvals</string>
     <string name="branch_mode_workspace">Ask for commands</string>
     <string name="branch_mode_same_as_parent">%1$s · same as main</string>
-    <string name="branch_mode_differs_stricter">Differs from the main session: every command in the branch needs your approval.</string>
-    <string name="branch_mode_differs_looser">Differs from the main session: the branch runs commands without approval and can access all app data.</string>
+    <string name="branch_mode_differs_stricter">Differs from main session: every command needs approval</string>
+    <string name="branch_mode_differs_looser">Differs from main session: commands run without approval and can access all app data</string>
     <string name="branch_option_toggle">Switch</string>
     <string name="branch_worktree_line">From %1$s · %2$s</string>
     <string name="branch_worktree_reason">Why: %1$s %2$s</string>
-    <string name="branch_worktree_approve_note">Approving runs this git worktree add.</string>
+    <string name="branch_worktree_approve_note">Approving runs git worktree add.</string>
     <string name="branch_plan_steps">Steps</string>
     <string name="branch_plan_exclusions">Out of scope</string>
     <string name="branch_plan_communication">Communication</string>
@@ -35,7 +35,7 @@
     <string name="branch_activity_waiting_approval">Waiting for your approval</string>
     <string name="branch_activity_idle">Not started</string>
     <string name="branch_activity_round_done">Round %1$d done</string>
-    <string name="branch_auto_wake_paused">Paused automatic handling after %1$d messages in a row. Send anything to continue.</string>
+    <string name="branch_auto_wake_paused">Paused after %1$d automatic messages. Send a message to continue</string>
     <string name="branch_origin_from">Dispatched from “%1$s” · work plan</string>
     <string name="branch_origin_parent_deleted">Main session deleted · work plan</string>
     <string name="session_message_sent_to">Sent to “%1$s”</string>
@@ -52,5 +52,5 @@
     <string name="git_worktree_unused">no session uses it</string>
     <string name="git_worktree_current">Viewing</string>
     <string name="git_worktree_open_cd">View this worktree</string>
-    <string name="git_worktree_note">Agents propose merges and removals as ordinary commands for approval; deleting a branch session asks whether to remove its worktree.</string>
+    <string name="git_worktree_note">Ask the agent to merge or remove</string>
 </resources>

@@ -415,7 +415,7 @@ fun RunModeCheckpointContent(
     ) {
         when (stage) {
             is RunModeCheckpointStage.Select -> {
-                Heading(R.string.run_mode_select_title, stringResource(R.string.run_mode_select_body))
+                Heading(R.string.run_mode_select_title, "")
                 RunModeOptions(selected = null, linuxSupported = stage.canChooseLinux, onSelect = actions.onChoose)
             }
             is RunModeCheckpointStage.Unavailable -> {

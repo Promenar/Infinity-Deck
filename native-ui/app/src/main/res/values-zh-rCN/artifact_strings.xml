@@ -18,14 +18,13 @@
     <string name="artifact_meta_version">v%1$d</string>
     <string name="artifact_category_empty">这个分类还没有产物</string>
     <string name="artifact_candidates_title">工作区新文件 · 未收录</string>
-    <string name="artifact_candidates_description">智能体在工作区写入或修改、但没有声明为产物的文件。收录后按类型归入上方分类。</string>
     <string name="artifact_candidate_claim">收录</string>
     <string name="artifact_candidate_ignore">忽略</string>
     <string name="artifact_candidate_claim_cd">把 %1$s 收录为产物</string>
     <string name="artifact_candidate_ignore_cd">忽略 %1$s</string>
     <string name="artifact_action_failed">操作未完成：%1$s</string>
     <plurals name="artifact_turn_candidates">
-        <item quantity="other">工作区另有 %d 个新文件未收录为产物</item>
+        <item quantity="other">%d 个新文件未收录</item>
     </plurals>
     <string name="artifact_turn_candidates_view">查看</string>
     <string name="artifact_open_with">用其它应用打开</string>

@@ -4,8 +4,8 @@
 ]>
 <resources>
     <string name="chat_approval_execution_target">执行目标：%1$s</string>
-    <string name="chat_approval_execution_target_unknown">未能确认执行目标。</string>
-    <string name="chat_approval_high_risk_target_warning">删除与进程命令可能更改或移除数据，请核对目标。</string>
+    <string name="chat_approval_execution_target_unknown">执行目标未知</string>
+    <string name="chat_approval_high_risk_target_warning">可能更改或删除数据，请核对目标</string>
     <string name="chat_approval_title_python">运行 Python</string>
     <string name="chat_approval_title_js">运行 JavaScript</string>
     <string name="chat_approval_title_ssh_host_save">保存 SSH 主机</string>
@@ -14,15 +14,15 @@
     <string name="chat_approval_title_ssh_install_key">安装 SSH 公钥</string>
     <string name="chat_approval_title_mcp">MCP 工具</string>
     <string name="chat_approval_kind_builtin_command">内置命令</string>
-    <string name="chat_approval_kind_builtin_command_detail">以本应用权限运行，可访问全部应用数据，不受工作区限制；删除的文件无法恢复。</string>
+    <string name="chat_approval_kind_builtin_command_detail">以应用权限运行，可访问全部应用数据；删除不可恢复</string>
     <string name="chat_approval_kind_termux_command">Termux 命令</string>
-    <string name="chat_approval_kind_termux_command_detail">以 Termux 身份运行，只能访问 Termux 自身文件和已授权的共享存储。</string>
+    <string name="chat_approval_kind_termux_command_detail">以 Termux 身份运行，仅访问 Termux 文件与已授权存储</string>
     <string name="chat_approval_kind_ssh_command">远程命令</string>
-    <string name="chat_approval_kind_ssh_command_detail">在远程主机上以登录账户的权限运行。</string>
+    <string name="chat_approval_kind_ssh_command_detail">以远程登录账户权限运行</string>
     <string name="chat_approval_kind_file_transfer">文件传输</string>
     <string name="chat_approval_kind_upload_detail">上传到 %1$s。</string>
     <string name="chat_approval_kind_download_detail">从 %1$s 下载。</string>
     <string name="chat_approval_kind_tool">内置工具</string>
-    <string name="chat_approval_kind_tool_detail">由 &brand; 按固定规则执行，不会运行任意命令。</string>
+    <string name="chat_approval_kind_tool_detail">按固定规则执行，不运行任意命令</string>
     <string name="chat_approval_title_required">需要批准：%1$s</string>
 </resources>

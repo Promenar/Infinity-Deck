@@ -355,7 +355,6 @@ private fun UnsupportedProviderCard(
 @Composable
 private fun ProviderEmptyState(compactHeight: Boolean, onAdd: () -> Unit) {
     val title = stringResource(R.string.provider_list_empty_title)
-    val body = stringResource(R.string.provider_list_empty_body)
     val addButton: @Composable () -> Unit = {
         FilledTonalButton(
             onClick = onAdd,
@@ -378,10 +377,7 @@ private fun ProviderEmptyState(compactHeight: Boolean, onAdd: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ProviderEmptyIcon(size = InfinitySpacing.MinimumTouchTarget)
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             addButton()
         }
     } else {
@@ -398,12 +394,6 @@ private fun ProviderEmptyState(compactHeight: Boolean, onAdd: () -> Unit) {
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.size(4.dp))

@@ -5,15 +5,15 @@
 
     <!-- 智能体设置“子代理”一节 -->
     <string name="subagent_model_section">Subagents</string>
-    <string name="subagent_model_section_footer">Applies to subagents this agent starts from now on. Subagents that are resumed keep the model they started with.</string>
+    <string name="subagent_model_section_footer">Applies to subagents started from now on</string>
     <string name="subagent_model_follow">Follow session model</string>
     <string name="subagent_model_follow_desc">Subagents use the same model as the session</string>
     <string name="subagent_model_fixed">Specific model</string>
     <string name="subagent_model_fixed_desc">Good for handing searches to a cheaper model</string>
     <string name="subagent_model_picker_title">Subagent model</string>
     <string name="subagent_model_allow_per_task">Let the agent pick a model per task</string>
-    <string name="subagent_model_allow_per_task_desc">Only from the models you check below. Models without tool calling can\'t be added.</string>
-    <string name="subagent_model_selectable_empty">No models yet. The agent can\'t switch models until you add some.</string>
+    <string name="subagent_model_allow_per_task_desc">Only the models checked below</string>
+    <string name="subagent_model_selectable_empty">No models yet</string>
     <string name="subagent_model_add">Add</string>
     <string name="subagent_model_add_cd">Add a model the agent can pick</string>
     <string name="subagent_model_remove_cd">Remove %1$s</string>

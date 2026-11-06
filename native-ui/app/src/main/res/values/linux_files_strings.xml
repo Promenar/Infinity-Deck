@@ -53,15 +53,15 @@
     <string name="linux_files_empty">This folder is empty</string>
     <string name="linux_files_load_failed">Couldn\'t read this folder: %1$s</string>
     <string name="linux_files_not_ready_title">The Linux environment isn\'t ready</string>
-    <string name="linux_files_not_ready_message">Install or repair the Linux environment to browse its files.</string>
-    <string name="linux_files_not_ready_installing">The Linux environment is installing. You can browse its files when it finishes.</string>
+    <string name="linux_files_not_ready_message">Install or repair the Linux environment first</string>
+    <string name="linux_files_not_ready_installing">Installing the Linux environment</string>
     <string name="linux_files_not_ready_unavailable">This version or device doesn\'t include the Linux environment.</string>
     <string name="linux_files_open_environment">Go to Linux environment</string>
-    <string name="linux_files_binding_notice">“%1$s” points to %2$s. That path is bound only while a command runs, so it isn\'t part of the Linux files.</string>
+    <string name="linux_files_binding_notice">“%1$s” points to %2$s, available only while a command runs</string>
     <string name="linux_files_name_label">Name</string>
     <string name="linux_files_create">Create</string>
     <string name="linux_files_compress_title">Compress to .tar.gz</string>
-    <string name="linux_files_compress_hint">The archive is saved next to the first item.</string>
+    <string name="linux_files_compress_hint">Saved next to the first item</string>
     <string name="linux_files_chmod_owner">Owner</string>
     <string name="linux_files_chmod_group">Group</string>
     <string name="linux_files_chmod_others">Others</string>
@@ -89,7 +89,7 @@
     <string name="linux_file_reload">Reload</string>
     <string name="linux_file_run">Run in terminal</string>
     <string name="linux_file_edit">Edit</string>
-    <string name="linux_file_truncated">Large file: showing the first %1$s of %2$s, read-only.</string>
+    <string name="linux_file_truncated">Read-only · first %1$s of %2$s</string>
     <string name="linux_file_binary">Binary file. View it on the Hex tab.</string>
     <string name="linux_file_empty">Empty file</string>
     <string name="linux_file_load_failed">Couldn\'t read this file: %1$s</string>
@@ -115,7 +115,7 @@
     <string name="linux_file_link">Symbolic link</string>
     <string name="linux_file_special">Special file</string>
     <string name="linux_file_conflict_title">File changed elsewhere</string>
-    <string name="linux_file_conflict_message">Another program or command changed this file after you opened it. Reload discards your edits; Overwrite replaces the file with your version.</string>
+    <string name="linux_file_conflict_message">Reload discards your edits; Overwrite replaces the file on disk.</string>
     <string name="linux_file_conflict_reload">Reload</string>
     <string name="linux_file_conflict_overwrite">Overwrite</string>
     <string name="linux_file_conflict_keep_editing">Keep editing</string>

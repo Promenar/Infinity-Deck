@@ -8,7 +8,7 @@
     <string name="linux_reach_broken">环境需要修复</string>
     <string name="linux_reach_unavailable">此设备不可用</string>
     <string name="chat_approval_kind_linux_command">Linux 命令</string>
-    <string name="chat_approval_kind_linux_command_detail">在 Alpine 中以本应用权限运行，可访问应用数据与网络；工作区外删除的文件无法恢复。</string>
+    <string name="chat_approval_kind_linux_command_detail">以应用权限运行，可访问应用数据与网络；工作区外删除不可恢复</string>
     <string name="chat_tool_full_output">完整输出</string>
     <string name="workspace_kind_linux_home">Linux 环境</string>
     <string name="workspace_picker_linux_home">主目录</string>
@@ -17,6 +17,6 @@
     <string name="workspace_picker_linux_not_ready">请先安装或修复 Linux 环境</string>
     <string name="workspace_tag_not_backed_up">不进备份</string>
     <string name="workspace_tag_cleared_on_reset">重置 Linux 时清空</string>
-    <string name="workspace_picker_linux_home_desc">%1$s · 所有 Linux 会话都能用</string>
-    <string name="workspace_picker_linux_builtin_session">本会话是内置模式，Linux 中的文件夹不可用</string>
+    <string name="workspace_picker_linux_home_desc">%1$s · 所有 Linux 会话共用</string>
+    <string name="workspace_picker_linux_builtin_session">内置模式下不可用</string>
 </resources>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_model_timeout_section">等待响应超时</string>
-    <string name="settings_model_timeout_footer">超过这个时间没有收到任何新数据才判定请求超时，持续输出的长回复不会被截断。接入较慢的网关时可调大。</string>
+    <string name="settings_model_timeout_footer">按无新数据的时长计，持续输出不会被截断</string>
     <string name="settings_model_timeout_llm">对话模型</string>
     <string name="settings_model_timeout_unit">秒</string>
-    <string name="settings_model_timeout_desc">多久收不到任何数据就判定请求失败。范围 5–1800 秒。</string>
+    <string name="settings_model_timeout_desc">范围 5–1800 秒</string>
 </resources>

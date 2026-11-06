@@ -1,30 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="onboarding_restore_entry_title">Restore from backup</string>
-    <string name="onboarding_restore_entry_subtitle">New phone or reinstall? Import a backup and skip setup</string>
+    <string name="onboarding_restore_entry_subtitle">Import a backup and skip setup</string>
     <string name="onboarding_restore_sheet_title">Restore from backup</string>
-    <string name="onboarding_restore_sheet_desc">Restoring replaces the agents, providers and settings here with those in the backup, then restarts the app.</string>
+    <string name="onboarding_restore_sheet_desc">Replaces current agents, providers and settings, then restarts</string>
     <string name="onboarding_restore_source_file">Choose a backup file</string>
-    <string name="onboarding_restore_source_file_desc">An .iwb file from Downloads, cloud storage or another app</string>
+    <string name="onboarding_restore_source_file_desc">.iwb file</string>
     <string name="onboarding_restore_source_webdav">Restore from WebDAV</string>
     <string name="onboarding_restore_source_webdav_desc">Enter your server to list cloud backups</string>
     <string name="onboarding_restore_webdav_list">List backups</string>
     <string name="onboarding_restore_webdav_backups">Cloud backups</string>
-    <string name="onboarding_restore_webdav_empty">No backups found on this server.</string>
+    <string name="onboarding_restore_webdav_empty">No backups on this server</string>
     <string name="onboarding_restore_reading">Reading backup details…</string>
     <string name="onboarding_restore_confirm_title">Restore this backup?</string>
     <string name="onboarding_restore_meta_version">From version %1$s</string>
     <string name="onboarding_restore_keys_missing">Keys not included</string>
-    <string name="onboarding_restore_encrypted_hint">This backup is encrypted. Enter the password set when it was exported.</string>
-    <string name="onboarding_restore_unknown_hint">Encryption can only be checked once the backup is read.</string>
+    <string name="onboarding_restore_encrypted_hint">Encrypted. Requires the export password</string>
+    <string name="onboarding_restore_unknown_hint">Encryption unknown</string>
     <string name="onboarding_restore_confirm">Restore and restart</string>
     <string name="onboarding_restore_change">Choose another</string>
     <string name="onboarding_restore_back">Back</string>
     <string name="onboarding_restore_progress_title">Restoring</string>
-    <string name="onboarding_restore_progress_note">If any step fails before the restart commits it, your current data stays as it is.</string>
+    <string name="onboarding_restore_progress_note">If it fails, current data stays unchanged</string>
     <string name="onboarding_restore_retry_restart">Retry restart</string>
     <string name="onboarding_restore_cancel_restore">Cancel restore</string>
-    <string name="onboarding_restore_result_keys_missing">The backup doesn\'t include provider keys. Providers without a key on this device need one before you can chat.</string>
+    <string name="onboarding_restore_result_keys_missing">Backup has no provider keys. Re-enter keys for providers that lack one</string>
     <string name="onboarding_restore_result_fill_keys">Add keys</string>
     <string name="onboarding_restore_result_later">Later</string>
 </resources>

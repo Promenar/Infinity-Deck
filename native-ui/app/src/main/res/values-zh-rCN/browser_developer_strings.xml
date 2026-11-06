@@ -2,7 +2,7 @@
 <resources>
     <string name="browser_dev_mobile">移动模式</string>
     <string name="browser_dev_desktop">桌面模式</string>
-    <string name="browser_dev_capacity">浏览器内存配额已满。请关闭一个页面或交回操作权后重试。</string>
+    <string name="browser_dev_capacity">关闭一个页面或交回操作权后重试</string>
     <string name="browser_cd_new_tab">新建标签</string>
     <string name="browser_cd_close_tab">关闭标签</string>
     <string name="browser_tab_untitled">新标签页</string>

@@ -19,15 +19,14 @@
     <string name="artifact_meta_version">v%1$d</string>
     <string name="artifact_category_empty">Nothing in this category yet</string>
     <string name="artifact_candidates_title">New workspace files · not added</string>
-    <string name="artifact_candidates_description">Files the agent created or changed in the workspace without publishing them. Add one to file it under its category above.</string>
     <string name="artifact_candidate_claim">Add</string>
     <string name="artifact_candidate_ignore">Ignore</string>
     <string name="artifact_candidate_claim_cd">Add %1$s as an artifact</string>
     <string name="artifact_candidate_ignore_cd">Ignore %1$s</string>
     <string name="artifact_action_failed">Couldn\'t complete that: %1$s</string>
     <plurals name="artifact_turn_candidates">
-        <item quantity="one">%d more new file in the workspace isn\'t an artifact yet</item>
-        <item quantity="other">%d more new files in the workspace aren\'t artifacts yet</item>
+        <item quantity="one">%d new file not added</item>
+        <item quantity="other">%d new files not added</item>
     </plurals>
     <string name="artifact_turn_candidates_view">View</string>
     <string name="artifact_open_with">Open with another app</string>

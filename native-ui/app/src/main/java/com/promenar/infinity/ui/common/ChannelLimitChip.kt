@@ -37,14 +37,14 @@ import kotlinx.coroutines.launch
 
 /**
  * 发行渠道之间的能力差异：只在受限的渠道显示一枚小标签，轻点弹出一句说明，不在页面里堆放解释文字。
- * [label] 是两到六个字的结论（如“仅前台运行”），[title] 与 [body] 只在气泡里出现。
+ * [label] 是两到六个字的结论（如“仅前台运行”），[title] 与可选的 [body] 只在气泡里出现。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChannelLimitChip(
     label: String,
     title: String,
-    body: String,
+    body: String?,
     icon: ImageVector,
     modifier: Modifier = Modifier,
 ) {
@@ -53,7 +53,7 @@ fun ChannelLimitChip(
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = {
-            RichTooltip(title = { Text(title) }) { Text(body) }
+            RichTooltip(title = { Text(title) }) { body?.let { Text(it) } }
         },
         state = state,
         modifier = modifier,

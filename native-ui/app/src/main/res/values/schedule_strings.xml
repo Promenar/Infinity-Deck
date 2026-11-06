@@ -4,7 +4,7 @@
     <string name="schedule_notification_channel">Agent activity</string>
     <string name="schedule_notification_channel_description">System-triggered replies and requests for your attention</string>
     <string name="schedule_notification_needs_user">Action required: %1$s</string>
-    <string name="schedule_notification_needs_user_text">Waiting for your approval or reply. Open the chat to continue.</string>
+    <string name="schedule_notification_needs_user_text">Waiting for approval or reply</string>
     <string name="schedule_notification_completed">Completed: %1$s</string>
     <string name="schedule_notification_failed">Failed: %1$s</string>
     <string name="schedule_notification_reply">The turn is complete</string>
@@ -14,9 +14,9 @@
     <string name="schedule_interrupted">Android interrupted this scheduled turn. Open the conversation to check its progress.</string>
     <string name="schedule_approval_upcoming">Runs at</string>
     <string name="schedule_approval_target">This chat</string>
-    <string name="schedule_approval_invalid">These settings fail validation; the task will be rejected even if approved.</string>
+    <string name="schedule_approval_invalid">Invalid settings; it will be rejected even if approved</string>
     <string name="schedule_approval_exact_denied_title">Exact alarms not granted</string>
-    <string name="schedule_approval_exact_denied_body">May run late after you leave the app. Grant exact alarms to run on time.</string>
+    <string name="schedule_approval_exact_denied_body">May run late after you leave the app</string>
     <plurals name="schedule_approval_max_runs">
         <item quantity="one">up to %1$d run</item>
         <item quantity="other">up to %1$d runs</item>

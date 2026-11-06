@@ -11,8 +11,8 @@
     <string name="agent_reach_workspace_unavailable">工作区当前不可用</string>
 
     <string name="agent_reach_section_paths">文件位置</string>
-    <string name="agent_reach_paths_footer_linux">文件工具和 Linux 命令用同一套路径。其它路径属于 Linux 系统本身，重置 Linux 时清空。</string>
-    <string name="agent_reach_paths_footer_builtin">以上是文件工具看到的路径。内置命令看到的是手机上的真实路径，工作区位置在 %1$s。</string>
+    <string name="agent_reach_paths_footer_linux">其它路径在重置 Linux 时清空</string>
+    <string name="agent_reach_paths_footer_builtin">内置命令使用真实路径，工作区为 %1$s</string>
     <string name="agent_reach_path_workspace">当前工作区</string>
     <string name="agent_reach_path_workspace_desc">命令默认从这里开始</string>
     <string name="agent_reach_path_session_desc">工作区不是它时，从这里访问</string>
@@ -28,7 +28,7 @@
     <string name="agent_reach_runner_linux">Linux 命令</string>
     <string name="agent_reach_runner_linux_scope">在 Alpine 中运行，可访问上方列出的路径</string>
     <string name="agent_reach_runner_builtin">内置命令</string>
-    <string name="agent_reach_backend_builtin_scope">以本应用权限运行，能读写全部应用数据，不受工作区限制</string>
+    <string name="agent_reach_backend_builtin_scope">以本应用权限运行，可读写全部应用数据</string>
     <string name="agent_reach_runner_sandbox">隔离脚本</string>
     <string name="agent_reach_backend_sandbox_scope">只能访问工作区；联网需逐次声明</string>
     <string name="agent_reach_runner_termux">Termux</string>

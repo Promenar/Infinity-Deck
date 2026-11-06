@@ -10,7 +10,7 @@
     <string name="browser_cd_back">后退</string>
     <string name="browser_loading">正在加载…</string>
     <string name="browser_empty_title">还没有打开网页</string>
-    <string name="browser_empty_detail">在上方输入网址或搜索，也可以让智能体打开网页；你可以随时旁观、接手或交回。</string>
+    <string name="browser_empty_detail">输入网址或搜索</string>
     <string name="browser_mode_agent">智能体操作中</string>
     <string name="browser_mode_user">你在操作</string>
     <string name="browser_mode_user_detail">智能体已暂停</string>
@@ -20,14 +20,14 @@
     <string name="browser_handoff_login">需要你登录</string>
     <string name="browser_handoff_payment">需要你填写支付信息</string>
     <string name="browser_handoff_verification">需要你输入验证码</string>
-    <string name="browser_handoff_detail">标出的字段由你填写，智能体看不到你输入的内容。</string>
+    <string name="browser_handoff_detail">智能体看不到你在标出字段中的输入</string>
     <string name="browser_handoff_field_badge">仅你可输入</string>
     <string name="browser_action_open">打开 %1$s</string>
     <string name="browser_action_snapshot">读取页面</string>
     <string name="browser_action_click">点击 %1$s「%2$s」</string>
     <string name="browser_action_type">输入「%1$s」</string>
     <string name="browser_unsupported_title">系统 WebView 版本过低</string>
-    <string name="browser_unsupported_detail">智能体浏览器需要支持独立配置文件的 WebView，才能把 Cookie 与其它应用隔开。当前版本：%1$s。</string>
+    <string name="browser_unsupported_detail">当前版本：%1$s</string>
     <string name="browser_unsupported_missing">无</string>
     <string name="browser_update_webview">前往更新</string>
     <string name="browser_step_open">打开网页</string>
@@ -46,13 +46,13 @@
     <string name="chat_inspector_browser_agent">智能体正在使用浏览器</string>
     <string name="chat_inspector_browser_needs_you">浏览器需要你处理</string>
     <string name="skill_browser_open">打开网页</string>
-    <string name="skill_browser_open_desc">在应用内的智能体浏览器打开网页，Cookie 与其它应用隔离</string>
+    <string name="skill_browser_open_desc">在智能体浏览器打开网页</string>
     <string name="skill_browser_snapshot">读取浏览器页面</string>
     <string name="skill_browser_snapshot_desc">列出页面的可操作元素并读取正文</string>
     <string name="skill_browser_click">在浏览器中点击</string>
     <string name="skill_browser_click_desc">点击当前页面上的链接或按钮</string>
     <string name="skill_browser_type">在浏览器中输入</string>
-    <string name="skill_browser_type_desc">填写文本框；密码、支付与验证码字段交给你填写</string>
+    <string name="skill_browser_type_desc">填写文本框；密码、支付、验证码由你填写</string>
     <plurals name="chat_step_browser_done">
         <item quantity="other">在浏览器中操作了 %1$d 步</item>
     </plurals>

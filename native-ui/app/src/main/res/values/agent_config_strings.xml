@@ -35,22 +35,21 @@
     <string name="agent_config_field_skills">Enabled skills</string>
     <string name="agent_config_field_mcp">Enabled MCP</string>
     <plurals name="agent_config_impact_agent_prompt">
-        <item quantity="one">Affects the %2$d chat of “%1$s” from its next turn. The previous prompt is kept as a version you can restore from the edit page.</item>
-        <item quantity="other">Affects all %2$d chats of “%1$s” from each chat\'s next turn. The previous prompt is kept as a version you can restore from the edit page.</item>
+        <item quantity="one">Affects %2$d chat of “%1$s” from the next turn; the old version can be restored</item>
+        <item quantity="other">Affects %2$d chats of “%1$s” from the next turn; the old version can be restored</item>
     </plurals>
     <plurals name="agent_config_impact_agent_fields">
-        <item quantity="one">Affects the %2$d chat of “%1$s” from its next turn; new-chat defaults only apply to chats created later.</item>
-        <item quantity="other">Affects all %2$d chats of “%1$s” from each chat\'s next turn; new-chat defaults only apply to chats created later.</item>
+        <item quantity="one">Affects %2$d chat of “%1$s” from the next turn; new-chat defaults apply only to new chats</item>
+        <item quantity="other">Affects %2$d chats of “%1$s” from the next turn; new-chat defaults apply only to new chats</item>
     </plurals>
-    <string name="agent_config_impact_new_agent">Only creates the agent; no conversation starts. Approvals are set to “Ask for commands” and can be changed on the edit page.</string>
-    <string name="agent_config_impact_new_session">Only creates the chat; no conversation starts and you stay in this chat.</string>
-    <string name="agent_config_impact_current_session">Applies to this chat from the next turn; other chats are unaffected.</string>
-    <string name="agent_config_impact_other_session">Applies to that chat from its next turn; this chat is unaffected.</string>
+    <string name="agent_config_impact_new_agent">Creates the agent only; approvals: “Ask for commands”</string>
+    <string name="agent_config_impact_new_session">Creates the chat only; you stay here</string>
+    <string name="agent_config_impact_current_session">This chat only, from the next turn</string>
+    <string name="agent_config_impact_other_session">That chat only, from its next turn</string>
     <string name="agent_config_approve_once">Approve once</string>
-    <string name="agent_config_approve_once_hint">Agent and chat changes need approval every time; they can\'t be skipped for 10 minutes.</string>
     <!-- Edit page: conflicts with agent tool writes -->
-    <string name="agent_edit_conflict_field">The agent just changed %1$s, which you also edited. Choose which one to keep:</string>
-    <string name="agent_edit_conflict_prompt">The agent just changed the prompt while you were editing it. Choose which one to keep:</string>
+    <string name="agent_edit_conflict_field">The agent also changed %1$s</string>
+    <string name="agent_edit_conflict_prompt">The agent also changed the prompt</string>
     <string name="agent_edit_conflict_mine">Yours: %1$s</string>
     <string name="agent_edit_conflict_theirs">Agent\'s: %1$s</string>
     <string name="agent_edit_conflict_local_value">Your unsaved change</string>
@@ -59,12 +58,12 @@
     <string name="agent_edit_conflict_hide_diff">Hide diff</string>
     <string name="agent_edit_conflict_adopt">Use theirs</string>
     <string name="agent_edit_conflict_keep">Keep mine</string>
-    <string name="agent_edit_conflict_diff_caption">Your draft → the agent\'s version. Whichever you drop is saved as a version in history.</string>
-    <string name="agent_edit_notice_adopted_prompt">Using the agent\'s version. Your unsaved draft was saved as a version in history.</string>
-    <string name="agent_edit_notice_kept_prompt">Kept and saved your version. The agent\'s version is in history and can be restored.</string>
-    <string name="agent_edit_notice_adopted">Using the agent\'s change.</string>
-    <string name="agent_edit_notice_kept">Kept and saved your change.</string>
-    <string name="agent_edit_notice_restored">Version restored. Takes effect from the next turn in each chat.</string>
+    <string name="agent_edit_conflict_diff_caption">Your draft → the agent\'s version; the one you drop goes to history</string>
+    <string name="agent_edit_notice_adopted_prompt">Using the agent\'s version. Draft saved to history</string>
+    <string name="agent_edit_notice_kept_prompt">Saved your version. The agent\'s version is in history</string>
+    <string name="agent_edit_notice_adopted">Using the agent\'s change</string>
+    <string name="agent_edit_notice_kept">Saved your change</string>
+    <string name="agent_edit_notice_restored">Restored. Applies from the next turn</string>
 
     <!-- Prompt version history -->
     <string name="agent_prompt_history_row">Version history</string>
@@ -74,8 +73,8 @@
         <item quantity="other">%1$d versions</item>
     </plurals>
     <string name="agent_prompt_history_title">Prompt history</string>
-    <string name="agent_prompt_history_caption">Keeps the last 20 versions. Agent changes, saves on this page and restores each add a version.</string>
-    <string name="agent_prompt_history_empty">No versions yet. They appear here after the prompt is saved or changed.</string>
+    <string name="agent_prompt_history_caption">Last 20 versions</string>
+    <string name="agent_prompt_history_empty">No versions yet</string>
     <string name="agent_prompt_history_empty_content">(Empty prompt)</string>
     <string name="agent_prompt_history_current">Current</string>
     <string name="agent_prompt_history_sheet_title">%1$s (%2$s)</string>
@@ -86,9 +85,9 @@
     <string name="agent_prompt_history_source_user">Me</string>
     <string name="agent_prompt_history_source_agent">Agent</string>
     <string name="agent_prompt_history_source_rollback">Restore</string>
-    <string name="agent_prompt_history_is_current">This is the version in use.</string>
+    <string name="agent_prompt_history_is_current">Current version</string>
     <string name="agent_prompt_history_diff_caption">Current → this version</string>
     <string name="agent_prompt_history_close">Close</string>
     <string name="agent_prompt_history_restore">Restore</string>
-    <string name="agent_prompt_history_restore_caption">Takes effect from the next turn in each chat. The current prompt stays in history.</string>
+    <string name="agent_prompt_history_restore_caption">Applies from the next turn; the current prompt stays in history</string>
 </resources>
