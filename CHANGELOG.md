@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.33.3-beta] - 2026-11-06
+
+### 修复
+
+- 内屏右列次级页头恢复会话页原先的纵向版式：标题行与信息行整块在页头行里居中，不再为与左列标题顶边对齐而整体下压，信息行与页头分割线之间留出原有间距；会话页顶栏同样回到原位。
+
 ## [0.33.2-beta] - 2026-11-06
 
 ### 变更
