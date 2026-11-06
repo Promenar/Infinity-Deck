@@ -1,6 +1,5 @@
 package com.promenar.infinity.ui.library
 
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.rag.KgDocumentSetting
 import com.promenar.infinity.data.rag.KgDocumentAssignment
@@ -132,6 +131,18 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityMetaSeparator
+import com.promenar.infinity.ui.common.InfinityPropertyDivider
+import com.promenar.infinity.ui.common.InfinityPropertyRow
+import com.promenar.infinity.ui.common.InfinityPropertySheet
+import com.promenar.infinity.ui.common.InfinityPropertyValueAligned
 
 /** 内容宽度达到这个值时使用宽版（文档正文 + 检视器、概览两列卡片）。 */
 private val WideContentWidth = 600.dp
@@ -439,6 +450,7 @@ internal fun LibraryCard(
     title: String,
     count: Int? = null,
     onViewAll: (() -> Unit)? = null,
+    titleStyle: TextStyle? = null,
     content: @Composable () -> Unit,
 ) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
@@ -447,7 +459,7 @@ internal fun LibraryCard(
                 Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).padding(start = InfinitySpacing.Large, end = InfinitySpacing.XSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(title, style = titleStyle ?: MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 count?.takeIf { it > 0 }?.let {
                     Text(it.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(InfinitySpacing.Small))
@@ -761,35 +773,59 @@ private fun LibraryDocumentPage(
     }
     val bodyModifier = Modifier.onGloballyPositioned { viewportTop = it.positionInRoot().y }.verticalScroll(bodyScroll)
     val readyInsight = (insight as? Loaded.Ready)?.value
-    LibraryPageFrame(
-        title = resolvedTitle,
-        leading = leading,
-        crumbs = crumbs,
-        modifier = Modifier.testTag(LibraryTags.page("document")),
-        meta = readyInsight?.let { info ->
-            {
-                Icon(Icons.Rounded.Hub, contentDescription = null, modifier = Modifier.size(13.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(documentGraphText(info.graph, livePending), softWrap = false, maxLines = 1)
-            }
-        },
-        actions = {
-            val root = rootUuid
-            if (root != null) {
-                IconButton(onClick = { host.onNavigateToSecondary(NavDestinations.docEditor(root, documentId)) }) {
-                    Icon(Icons.Rounded.Edit, contentDescription = stringResource(R.string.library_doc_edit))
+    val notFound = insight is Loaded.Ready && readyInsight == null
+    val busy by host.viewModel.busyDocuments.collectAsStateWithLifecycle()
+    val attention = readyInsight?.let { documentAttention(documentPending(it, livePending)?.kind, it.graph) }
+    // 提示条退场期间沿用最近一次的内容。
+    val heldAttention = remember(documentId) { LatestValue<DocumentAttention>() }
+    if (attention != null) heldAttention.value = attention
+    var showDetails by rememberSaveable(documentId) { mutableStateOf(false) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= WideContentWidth
+        LibraryPageFrame(
+            title = resolvedTitle,
+            leading = leading,
+            crumbs = crumbs,
+            modifier = Modifier.testTag(LibraryTags.page("document")),
+            meta = readyInsight?.let { info ->
+                {
+                    Icon(Icons.Rounded.Hub, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(documentGraphText(info.graph, livePending), softWrap = false, maxLines = 1)
                 }
+            },
+            actions = {
+                // 窄屏的详情与被引用收进底部面板，正文再长也能直接打开。
+                if (!wide && !notFound) {
+                    val attentionText = attention?.let { stringResource(documentAttentionText(it)) }
+                    IconButton(onClick = { showDetails = true }, modifier = Modifier.testTag("library_doc_details")) {
+                        BadgedBox(
+                            badge = {
+                                if (attentionText != null) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.semantics { contentDescription = attentionText },
+                                    )
+                                }
+                            },
+                        ) {
+                            Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.library_doc_details))
+                        }
+                    }
+                }
+                val root = rootUuid
+                if (root != null) {
+                    IconButton(onClick = { host.onNavigateToSecondary(NavDestinations.docEditor(root, documentId)) }) {
+                        Icon(Icons.Rounded.Edit, contentDescription = stringResource(R.string.library_doc_edit))
+                    }
+                }
+            },
+        ) { padding ->
+            if (notFound) {
+                LibraryEmptyText(stringResource(R.string.library_doc_not_found))
+                return@LibraryPageFrame
             }
-        },
-    ) { padding ->
-        val currentInsight = insight
-        if (currentInsight is Loaded.Ready && currentInsight.value == null) {
-            LibraryEmptyText(stringResource(R.string.library_doc_not_found))
-            return@LibraryPageFrame
-        }
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val wide = maxWidth >= WideContentWidth
-            val info = (currentInsight as? Loaded.Ready)?.value
+            val info = readyInsight
             if (wide) {
                 Row(Modifier.fillMaxSize()) {
                     Column(Modifier.weight(1f)) {
@@ -805,19 +841,46 @@ private fun LibraryDocumentPage(
                             .padding(top = padding.calculateTopPadding(), end = InfinitySpacing.ScreenHorizontal, bottom = padding.calculateBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
                     ) {
-                        info?.let { DocumentInspector(it, livePending, host) }
-                        DocumentCitationsCard(documentId, host)
+                        info?.let { DocumentDetailCard(it, livePending, host) }
+                        DocumentCitationsCard(documentId, host, titleStyle = MaterialTheme.typography.titleMedium)
                     }
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
                     locateBar()
-                    Column(Modifier.weight(1f).then(bodyModifier).padding(padding), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+                    AnimatedVisibility(visible = attention != null) {
+                        val shown = attention ?: heldAttention.value
+                        if (info != null && shown != null) {
+                            DocumentAttentionBar(
+                                attention = shown,
+                                enabled = info.documentId !in busy,
+                                onAction = { host.viewModel.resolveAttention(shown, info) },
+                                modifier = Modifier.padding(start = InfinitySpacing.ScreenHorizontal, end = InfinitySpacing.ScreenHorizontal, top = InfinitySpacing.Small),
+                            )
+                        }
+                    }
+                    Column(Modifier.weight(1f).then(bodyModifier).padding(padding)) {
                         DocumentBodyView(body, located, focus, bodyScroll) { viewportTop }
-                        info?.let { DocumentInspector(it, livePending, host) }
-                        DocumentCitationsCard(documentId, host)
                     }
                 }
+            }
+        }
+        InfinityBottomSheet(
+            show = showDetails && !wide && !notFound,
+            onDismiss = { showDetails = false },
+            title = stringResource(R.string.library_doc_agent_view),
+            scrollContent = true,
+            dragGesturesEnabled = false,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+                readyInsight?.let { info ->
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = InfinitySpacing.Small)) {
+                            DocumentDetailSheet(info, livePending, host)
+                        }
+                    }
+                }
+                DocumentCitationsCard(documentId, host, titleStyle = MaterialTheme.typography.titleMedium)
             }
         }
     }
@@ -875,50 +938,87 @@ private fun DocumentBodyState(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** 文档的索引状态：进度随待处理列表实时更新；列表里没有这篇时按快照显示。 */
+private fun documentPending(info: DocumentInsight, livePending: PendingDocument?): PendingDocument? =
+    livePending ?: info.pending?.let { PendingDocument(info.documentId, info.ref, info.name, info.folderPath, it, info.failureReason) }
+
+/** 宽屏右栏的详情卡。 */
 @Composable
-private fun DocumentInspector(info: DocumentInsight, livePending: PendingDocument?, host: LibraryPageHost) {
+private fun DocumentDetailCard(info: DocumentInsight, livePending: PendingDocument?, host: LibraryPageHost) {
+    LibraryCard(title = stringResource(R.string.library_doc_agent_view), titleStyle = MaterialTheme.typography.titleMedium) {
+        DocumentDetailSheet(info, livePending, host)
+    }
+}
+
+/** 文档详情属性表，分索引、图谱与合集、文件三段；宽屏右栏与窄屏底部面板共用。 */
+@Composable
+private fun DocumentDetailSheet(info: DocumentInsight, livePending: PendingDocument?, host: LibraryPageHost) {
     val context = LocalContext.current
     val busy by host.viewModel.busyDocuments.collectAsStateWithLifecycle()
-    LibraryCard(title = stringResource(R.string.library_doc_agent_view)) {
-        // 进度随待处理列表实时更新；列表里没有这篇时按快照显示。
-        val pending = livePending
-            ?: info.pending?.let { PendingDocument(info.documentId, info.ref, info.name, info.folderPath, it, info.failureReason) }
-        Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)) {
-            Text(stringResource(R.string.library_doc_status), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (pending != null) {
-                PendingStatusLine(pending, MaterialTheme.colorScheme.onSurface, MaterialTheme.typography.bodyMedium)
-            } else {
-                Text(stringResource(R.string.library_doc_status_indexed), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        val action = when (pending?.kind) {
-            PendingKind.FAILED -> R.string.library_action_retry
-            PendingKind.STALE -> R.string.library_action_rebuild
-            else -> null
-        }
-        if (action != null) {
-            FilledTonalButton(
-                onClick = { if (pending?.kind == PendingKind.FAILED) host.viewModel.retry(info.documentId) else host.viewModel.rebuild(info.documentId) },
-                enabled = info.documentId !in busy,
-                modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
-            ) { Text(stringResource(action), maxLines = 1) }
-        }
-        InspectorRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
-        DocumentGraphRow(info, pending, enabled = info.documentId !in busy, host)
-        InspectorRow(stringResource(R.string.library_doc_location), info.folderPath)
-        InfinityMetaLine(
-            listOf(
+    val enabled = info.documentId !in busy
+    val pending = documentPending(info, livePending)
+    InfinityPropertySheet {
+        DocumentStatusRow(info, pending, enabled, host)
+        InfinityPropertyRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
+        InfinityPropertyDivider()
+        DocumentGraphRows(info, pending, enabled, host)
+        InfinityPropertyDivider()
+        InfinityPropertyRow(
+            label = stringResource(R.string.library_doc_location),
+            value = info.folderPath,
+            supporting = listOf(
                 Formatter.formatShortFileSize(context, info.sizeBytes),
                 DateUtils.formatDateTime(context, info.lastModified, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME),
-            ),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
+            ).joinToString(" $InfinityMetaSeparator "),
         )
-        info.source?.let { InspectorRow(stringResource(R.string.library_doc_source), it) }
-        if (info.versionCount > 0) InspectorRow(stringResource(R.string.library_doc_versions), info.versionCount.toString())
+        info.source?.let { InfinityPropertyRow(stringResource(R.string.library_doc_source), it) }
+        if (info.versionCount > 0) InfinityPropertyRow(stringResource(R.string.library_doc_versions), info.versionCount.toString())
     }
+}
+
+/** 详情“状态”行的短状态；失败原因另起一行显示。 */
+@Composable
+private fun pendingStatusLabel(doc: PendingDocument): String = when (doc.kind) {
+    PendingKind.FAILED -> stringResource(R.string.library_pending_failed)
+    PendingKind.GRAPH_ATTENTION -> stringResource(R.string.library_graph_attention)
+    else -> pendingStatusText(doc)
+}
+
+/** “状态”行：已索引或进度（带索引指示）；失败或过期时取值用 error 色，行尾放重试或重建。 */
+@Composable
+private fun DocumentStatusRow(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
+    val problem = pending?.kind == PendingKind.FAILED || pending?.kind == PendingKind.STALE
+    val color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val action = when (pending?.kind) {
+        PendingKind.FAILED -> R.string.library_action_retry
+        PendingKind.STALE -> R.string.library_action_rebuild
+        else -> null
+    }
+    val reason = pending?.reason?.takeIf {
+        pending.kind == PendingKind.FAILED || pending.kind == PendingKind.STALE || pending.kind == PendingKind.GRAPH_ATTENTION
+    }
+    InfinityPropertyRow(
+        label = stringResource(R.string.library_doc_status),
+        valueContent = {
+            if (pending == null) {
+                Text(stringResource(R.string.library_doc_status_indexed), style = MaterialTheme.typography.bodyMedium, color = color)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+                    pending.indexMotionState()?.let { IndexingIndicator(it) }
+                    Text(pendingStatusLabel(pending), style = MaterialTheme.typography.bodyMedium, color = color)
+                }
+            }
+        },
+        supporting = reason,
+        trailing = if (action == null) null else {
+            {
+                FilledTonalButton(
+                    onClick = { if (pending?.kind == PendingKind.FAILED) host.viewModel.retry(info.documentId) else host.viewModel.rebuild(info.documentId) },
+                    enabled = enabled,
+                ) { Text(stringResource(action), maxLines = 1) }
+            }
+        },
+    )
 }
 
 /** 文档知识图谱状态的一行文字；文档详情“知识图谱”行与内屏页头信息行共用。 */
@@ -947,9 +1047,12 @@ internal fun documentGraphText(graph: DocumentGraphState, pending: PendingDocume
         is DocumentGraphState.Failed -> graph.reason
     }
 
-/** 文档的知识图谱状态与对应动作：抽取、确认用量或重试。抽取中的窗口数随待处理列表实时更新。 */
+/**
+ * 详情第二段：知识图谱状态与动作（抽取、确认用量或重试）、实体标签、所属合集与合集归属。
+ * 抽取中的窗口数随待处理列表实时更新。
+ */
 @Composable
-private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
+private fun DocumentGraphRows(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
     val graph = info.graph
     val text = documentGraphText(graph, pending)
     val app = LocalContext.current.applicationContext as InfinityApplication
@@ -991,32 +1094,26 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         is DocumentGraphState.Complete -> R.string.kgc_action_reextract to { reextract = host.collections.editable }
         is DocumentGraphState.Extracting -> null
     }
-    // 图谱状态与它的动作同处一行，实体标签紧随其下；“所属合集”另起一行，三者按图谱 → 实体 → 合集分组。
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(stringResource(R.string.library_graph_row), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text, style = MaterialTheme.typography.bodyMedium)
-        }
-        if (action != null) {
-            FilledTonalButton(onClick = action.second, enabled = enabled, modifier = Modifier.testTag("library_doc_graph_action")) {
-                Text(stringResource(action.first), maxLines = 1)
+    InfinityPropertyRow(
+        label = stringResource(R.string.library_graph_row),
+        value = text,
+        trailing = if (action == null) null else {
+            {
+                FilledTonalButton(onClick = action.second, enabled = enabled, modifier = Modifier.testTag("library_doc_graph_action")) {
+                    Text(stringResource(action.first), maxLines = 1)
+                }
             }
-        }
-    }
+        },
+    )
     // 尚未抽取时由上一行说明状态，不再重复一行。
     if (info.entities.isNotEmpty()) {
-        DocumentEntityChips(info.entities)
+        InfinityPropertyValueAligned(Modifier.padding(bottom = InfinitySpacing.Small)) {
+            DocumentEntityChips(info.entities)
+        }
     }
     collection?.let { current ->
         val ordinal = current.ordinal
-        InspectorLinkRow(
+        InfinityPropertyRow(
             label = stringResource(R.string.kgc_doc_collection_row),
             value = if (ordinal != null) stringResource(R.string.kgc_doc_collection_value, current.title, ordinal) else current.title,
             onClick = { openSettings = host.collections.editable },
@@ -1027,7 +1124,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         }
     }
     assignment?.let { current ->
-        InspectorLinkRow(
+        InfinityPropertyRow(
             label = stringResource(R.string.kda_row),
             value = when (current.mode) {
                 KgDocumentSetting.FOLLOW_FOLDER -> stringResource(R.string.kda_row_follow, current.folderCollectionTitle)
@@ -1059,7 +1156,6 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
 @Composable
 private fun DocumentEntityChips(entities: List<String>) {
     FlowRow(
-        modifier = Modifier.padding(start = InfinitySpacing.Large, end = InfinitySpacing.Large, bottom = InfinitySpacing.Small),
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
     ) {
@@ -1076,30 +1172,59 @@ private fun DocumentEntityChips(entities: List<String>) {
     }
 }
 
-/** 可点的检查行：右侧箭头提示进入下一层设置。 */
+/** 只保存最近一次非空值，供提示条退场动画期间继续显示原内容；不触发重组。 */
+private class LatestValue<T : Any> {
+    var value: T? = null
+}
+
+/** 窄屏正文上方的提示条：左侧状态文字，右侧对应动作；索引失败用 errorContainer 配色。 */
 @Composable
-private fun InspectorLinkRow(label: String, value: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .clickable(onClick = onClick)
-            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-        verticalAlignment = Alignment.CenterVertically,
+private fun DocumentAttentionBar(attention: DocumentAttention, enabled: Boolean, onAction: () -> Unit, modifier: Modifier = Modifier) {
+    val failed = attention == DocumentAttention.INDEX_FAILED
+    val container = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+    val content = if (failed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = container,
+        contentColor = content,
+        modifier = modifier.fillMaxWidth().testTag("library_doc_attention"),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(
+            Modifier
+                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                .padding(start = InfinitySpacing.Large, end = InfinitySpacing.XSmall, top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XSmall),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
+            Text(stringResource(documentAttentionText(attention)), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(
+                onClick = onAction,
+                enabled = enabled,
+                colors = ButtonDefaults.textButtonColors(contentColor = content),
+                modifier = Modifier.testTag("library_doc_attention_action"),
+            ) { Text(stringResource(documentAttentionAction(attention)), maxLines = 1) }
         }
-        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-@Composable
-private fun InspectorRow(label: String, value: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+private fun documentAttentionText(attention: DocumentAttention): Int = when (attention) {
+    DocumentAttention.INDEX_FAILED -> R.string.library_pending_failed
+    DocumentAttention.STALE -> R.string.library_pending_stale
+    DocumentAttention.GRAPH_CONFIRM -> R.string.library_graph_state_confirm
+}
+
+private fun documentAttentionAction(attention: DocumentAttention): Int = when (attention) {
+    DocumentAttention.INDEX_FAILED -> R.string.library_action_retry
+    DocumentAttention.STALE -> R.string.library_action_rebuild
+    DocumentAttention.GRAPH_CONFIRM -> R.string.library_action_confirm_graph
+}
+
+/** 提示条动作复用文档页已有的 ViewModel 调用。 */
+private fun LibraryViewModel.resolveAttention(attention: DocumentAttention, info: DocumentInsight) {
+    when (attention) {
+        DocumentAttention.INDEX_FAILED -> retry(info.documentId)
+        DocumentAttention.STALE -> rebuild(info.documentId)
+        DocumentAttention.GRAPH_CONFIRM -> requestGraphExtraction(info.documentId, info.name)
     }
 }
 

@@ -77,6 +77,7 @@
 
     <string name="library_doc_edit">编辑</string>
     <string name="library_doc_agent_view">详情</string>
+    <string name="library_doc_details">详情</string>
     <string name="library_doc_status">状态</string>
     <string name="library_doc_status_indexed">已索引</string>
     <string name="library_doc_chunks">索引段数</string>

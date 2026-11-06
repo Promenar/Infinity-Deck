@@ -77,6 +77,7 @@
 
     <string name="library_doc_edit">Edit</string>
     <string name="library_doc_agent_view">Details</string>
+    <string name="library_doc_details">Details</string>
     <string name="library_doc_status">Status</string>
     <string name="library_doc_status_indexed">Indexed</string>
     <string name="library_doc_chunks">Indexed passages</string>
