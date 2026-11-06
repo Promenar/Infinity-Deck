@@ -27,7 +27,7 @@ class KgProvenanceMigrationTest {
             old.execSQL("INSERT INTO kg_edges(id,source_id,target_id,relation,weight,doc_id,session_id,source_type,created_at,stale) VALUES('e1','a1','b','knows',0.5,'external-doc',NULL,'full',1,0),('e2','a2','b',' KNOWS ',0.9,NULL,'s2','jit',2,0)")
         }
         val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-            .addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS).allowMainThreadQueries().build()
         try {
             val sqlite = db.openHelper.writableDatabase
             assertThat(count(db, "kg_nodes")).isEqualTo(6)
@@ -96,7 +96,7 @@ class KgProvenanceMigrationTest {
         }
         val started = System.nanoTime()
         val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-            .addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS).allowMainThreadQueries().build()
         try {
             assertThat(count(db, "kg_nodes")).isEqualTo(2501)
             assertThat(count(db, "kg_edges")).isEqualTo(2500)

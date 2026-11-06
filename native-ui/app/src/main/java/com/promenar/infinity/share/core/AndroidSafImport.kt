@@ -76,6 +76,7 @@ class AndroidSafImportRequestFactory(
                     name?.endsWith(".htm", ignoreCase = true) == true -> "text/html"
                 name?.endsWith(".json", ignoreCase = true) == true -> "application/json"
                 name?.endsWith(".pdf", ignoreCase = true) == true -> "application/pdf"
+                name?.endsWith(".doc", ignoreCase = true) == true -> "application/msword"
                 name?.endsWith(".docx", ignoreCase = true) == true ->
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 else -> normalized ?: UNKNOWN_MIME

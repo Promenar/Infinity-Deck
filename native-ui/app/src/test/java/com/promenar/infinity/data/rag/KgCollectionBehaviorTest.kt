@@ -50,6 +50,24 @@ class KgCollectionBehaviorTest {
 
     @After fun close() = db.close()
 
+    @Test fun `文档级设置调整归属并恢复文件夹规则`() = runBlocking<Unit> {
+        folder("p", null); file("第1章", "p"); write("第1章")
+        file("第2章", null); write("第2章")
+        collections.setDocumentSetting("第2章", KgDocumentSetting.COLLECTION, "work:p")
+        assertThat(collections.listArticles("work:p").map { it.title }).containsExactly("第1章", "第2章").inOrder()
+        assertThat(collections.documentInfo("第2章").collectionId).isEqualTo("work:p")
+        collections.setDocumentSetting("第1章", KgDocumentSetting.STANDALONE)
+        assertThat(collections.collectionForDocument("第1章")).isEqualTo("work:第1章")
+        collections.setDocumentSetting("第1章", KgDocumentSetting.SHARED)
+        assertThat(collections.documentCollectionIdForRead("第1章")).isEqualTo("shared")
+        collections.setDocumentSetting("第1章", KgDocumentSetting.FOLLOW_FOLDER)
+        assertThat(collections.readDocumentSetting("第1章").mode).isEqualTo(KgDocumentSetting.FOLLOW_FOLDER)
+        assertThat(db.openHelper.readableDatabase.query("SELECT * FROM kg_document_settings WHERE doc_id='第1章'").use { it.count }).isEqualTo(0)
+        assertThat(collections.collectionForDocument("第1章")).isEqualTo("work:p")
+        db.openHelper.writableDatabase.execSQL("DELETE FROM kg_collections WHERE id='work:p'")
+        assertThat(collections.collectionForDocument("第2章")).isEqualTo("work:第2章")
+    }
+
     @Test fun `合集自然顺序和手动顺序在新增文档后保持`() = runBlocking<Unit> {
         folder("p", null)
         listOf("第2章", "第10章", "第1章").forEach { file(it, "p"); write(it) }

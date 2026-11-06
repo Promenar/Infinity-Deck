@@ -5,10 +5,10 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import org.apache.poi.xwpf.usermodel.XWPFDocument
+import org.apache.poi.hwpf.HWPFDocument
 import java.io.File
 import java.io.IOException
 import java.io.Writer
-import java.nio.charset.CodingErrorAction
 
 data class DocumentReferenceExtraction(
     val chunks: List<String>,
@@ -41,18 +41,16 @@ class DocumentReferenceExtractor(
         when (entry.mimeType) {
             "application/pdf" -> extractPdf(file, collector)
             DOCX_MIME -> extractDocx(file, collector)
+            DOC_MIME -> extractDoc(file, collector)
             HTML_MIME -> extractHtml(file, collector)
             in TEXT_MIME_TYPES -> extractText(file, collector)
-            else -> throw IllegalArgumentException("不支持索引 MIME: ${entry.mimeType}")
+            else -> throw DocumentFormatException(DocumentFormatError.UNSUPPORTED_FORMAT)
         }
         return collector.finish()
     }
 
     private fun extractText(file: File, collector: IncrementalCollector) {
-        val decoder = Charsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-        java.io.InputStreamReader(file.inputStream().buffered(), decoder).use { reader ->
+        DocumentTextEncoding.open(file).use { reader ->
             val buffer = CharArray(16 * 1024)
             while (!collector.truncated) {
                 val count = reader.read(buffer)
@@ -77,6 +75,9 @@ class DocumentReferenceExtractor(
                     break
                 }
                 collector.append("\n")
+            }
+            if (!collector.truncated && writer.nonWhitespace < 200 && writer.nonWhitespace < document.numberOfPages * 20L) {
+                throw DocumentFormatException(DocumentFormatError.PDF_NO_TEXT_LAYER)
             }
         }
     }
@@ -103,13 +104,35 @@ class DocumentReferenceExtractor(
         }
     }
 
+    private fun extractDoc(file: File, collector: IncrementalCollector) {
+        require(file.length() <= MAX_DOCX_SOURCE_BYTES) { "DOC 源文件超过安全阈值" }
+        try {
+            file.inputStream().buffered().use { input ->
+                HWPFDocument(input).use { document ->
+                    val range = document.range
+                    for (index in 0 until range.numParagraphs()) {
+                        if (collector.truncated) break
+                        collector.append(range.getParagraph(index).text())
+                    }
+                }
+            }
+        } catch (failure: Exception) {
+            throw DocumentFormatException(DocumentFormatError.DOC_INVALID, failure)
+        }
+    }
+
     private fun extractHtml(file: File, collector: IncrementalCollector) {
         require(file.length() <= MAX_HTML_SOURCE_BYTES) { "HTML 源文件超过安全阈值" }
-        val decoder = Charsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-        val html = file.inputStream().buffered().use { input ->
-            decoder.decode(java.nio.ByteBuffer.wrap(readHtmlSource(input))).toString()
+        val html = DocumentTextEncoding.open(file).use { reader ->
+            val result = StringBuilder()
+            val buffer = CharArray(8192)
+            while (true) {
+                val count = reader.read(buffer)
+                if (count < 0) break
+                require(result.length.toLong() + count <= MAX_HTML_SOURCE_BYTES) { "HTML 源文件超过安全阈值" }
+                result.append(buffer, 0, count)
+            }
+            result.toString()
         }
         collector.append(OfflineHtmlDocumentExtractor.extract(html))
     }
@@ -226,8 +249,11 @@ class DocumentReferenceExtractor(
     private class CollectorWriter(
         private val collector: IncrementalCollector,
     ) : Writer() {
+        var nonWhitespace: Long = 0
+            private set
         override fun write(cbuf: CharArray, off: Int, len: Int) {
             if (len == 0) return
+            nonWhitespace += (off until off + len).count { !cbuf[it].isWhitespace() }
             collector.append(String(cbuf, off, len))
             if (collector.truncated) throw ExtractionLimitReached()
         }
@@ -264,13 +290,14 @@ class DocumentReferenceExtractor(
         private const val MAX_DOCX_EXPANDED_BYTES = 64L * 1024 * 1024
         private const val MAX_DOCX_ENTRIES = 2_048
         const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        const val DOC_MIME = "application/msword"
         const val HTML_MIME = "text/html"
         val TEXT_MIME_TYPES = setOf("text/plain", "text/markdown", "text/csv", "application/json")
-        val SUPPORTED_MIME_TYPES = TEXT_MIME_TYPES + setOf("application/pdf", DOCX_MIME, HTML_MIME)
+        val SUPPORTED_MIME_TYPES = TEXT_MIME_TYPES + setOf("application/pdf", DOCX_MIME, DOC_MIME, HTML_MIME)
 
         fun supports(entry: FileEntry): Boolean = !entry.isDirectory && entry.mimeType in SUPPORTED_MIME_TYPES &&
             entry.sizeBytes <= when (entry.mimeType) {
-                DOCX_MIME -> MAX_DOCX_SOURCE_BYTES
+                DOCX_MIME, DOC_MIME -> MAX_DOCX_SOURCE_BYTES
                 HTML_MIME -> MAX_HTML_SOURCE_BYTES
                 else -> MAX_SOURCE_BYTES
             }

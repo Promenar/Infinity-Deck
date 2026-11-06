@@ -384,6 +384,7 @@ internal object WorkspaceCommandMimeTypes {
             "json" -> return "application/json"
             "html", "htm" -> return "text/html"
             "pdf" -> return "application/pdf"
+            "doc" -> return "application/msword"
             "docx" -> return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         }
         if (WorkspaceTextContentPolicy.isTextExtension(extension)) return "text/plain"

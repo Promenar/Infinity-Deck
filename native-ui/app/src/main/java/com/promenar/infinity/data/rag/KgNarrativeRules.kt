@@ -102,7 +102,7 @@ object KgNarrativeTimeline {
         return if (family == "relationship") {
             val (first, second) = listOf(mention.sourceId, mention.targetId).sorted()
             KgTimelineSlot(mention.collectionId, first, second, family)
-        } else KgTimelineSlot(mention.collectionId, mention.sourceId, null, family)
+        } else KgTimelineSlot(mention.collectionId, if (family == "possession") mention.targetId else mention.sourceId, null, family)
     }
 
     fun materialize(mentions: List<KgNarrativeMention>): KgNarrativeMaterialized {

@@ -70,7 +70,7 @@ class WorkspaceLibrary(
         if (original.isDirectory) throw ExternalFolderException("IS_DIRECTORY", "请选择单个文件加入资料")
         val mime = externalSnapshotMime(original.name)
         if (mime !in SharedFileImporter.SUPPORTED_MIME_TYPES) {
-            throw ExternalFolderException("UNSUPPORTED", "资料支持 TXT、Markdown、CSV、JSON、HTML、PDF 和 DOCX")
+            throw ExternalFolderException("UNSUPPORTED", "资料支持 TXT、Markdown、CSV、JSON、HTML、PDF、DOC 和 DOCX")
         }
         val bytes = backend.read(path, MAX_IMPORT_BYTES)
         val after = backend.stat(path) ?: throw ExternalFolderException("UNAVAILABLE", "读取后来源不可用")

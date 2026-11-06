@@ -654,6 +654,7 @@ dependencies {
     // ─── 文档解析 ───
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("org.apache.poi:poi-ooxml:5.2.5")
+    implementation("org.apache.poi:poi-scratchpad:5.2.5")
 
     // ─── 测试 ───
     // SSH 仅使用库内密码学实现，不替换 Android 系统的 BC Provider。

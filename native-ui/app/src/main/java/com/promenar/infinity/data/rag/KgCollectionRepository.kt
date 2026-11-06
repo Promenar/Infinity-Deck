@@ -14,6 +14,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
 enum class KgFolderSetting { AUTO, WORK, SHARED, MERGE_PARENT }
+enum class KgDocumentSetting { FOLLOW_FOLDER, STANDALONE, SHARED, COLLECTION }
+data class KgDocumentAssignment(val mode: KgDocumentSetting, val targetCollectionId: String?, val folderCollectionId: String, val folderCollectionTitle: String)
 
 data class KgCollectionSummary(
     val id: String,
@@ -34,11 +36,11 @@ data class ResolvedGraphBinding(val collectionId: String, val mode: GraphBinding
 /** 图谱归属、绑定和无模型重建的统一入口。 */
 class KgCollectionRepository(private val database: InfinityDatabase) {
     /** 不写入成员表，按当前文件与文件夹设置计算资料归属。 */
-    suspend fun documentCollectionIdForRead(docId: String): String = memberCollection(docId) ?: documentDescriptor(docId).id
+    suspend fun documentCollectionIdForRead(docId: String): String = documentDescriptor(docId).id
     suspend fun collectionForDocument(docId: String): String = documentDescriptor(docId).id
     suspend fun documentInfo(docId: String): KgDocumentCollectionInfo = database.withTransaction {
         val descriptor = documentDescriptor(docId)
-        val id = memberCollection(docId) ?: descriptor.id
+        val id = descriptor.id
         val title = database.query(SimpleSQLiteQuery("SELECT title FROM kg_collections WHERE id=?", arrayOf(id))).use {
             if (it.moveToFirst()) it.getString(0) else descriptor.title
         }
@@ -143,6 +145,38 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         return value?.let { runCatching { KgFolderSetting.valueOf(it) }.getOrNull() } ?: KgFolderSetting.AUTO
     }
 
+    suspend fun readDocumentSetting(docId: String): KgDocumentAssignment = database.withTransaction {
+        val folder = folderDocumentDescriptor(docId)
+        val setting = database.query(SimpleSQLiteQuery("SELECT mode,target_collection_id FROM kg_document_settings WHERE doc_id=?", arrayOf(docId))).use { c ->
+            if (c.moveToFirst()) (runCatching { KgDocumentSetting.valueOf(c.getString(0)) }.getOrNull() ?: KgDocumentSetting.FOLLOW_FOLDER) to
+                (if (c.isNull(1)) null else c.getString(1)) else KgDocumentSetting.FOLLOW_FOLDER to null
+        }
+        KgDocumentAssignment(setting.first, setting.second, folder.id, folder.title)
+    }
+
+    suspend fun setDocumentSetting(docId: String, mode: KgDocumentSetting, targetCollectionId: String? = null) = database.withTransaction {
+        require(database.fileEntryDao().findActiveByUuid(docId)?.isDirectory == false) { "文档不存在" }
+        if (mode == KgDocumentSetting.COLLECTION) {
+            require(!targetCollectionId.isNullOrBlank() && collectionKind(targetCollectionId) == "work" && targetCollectionId != "work:$docId") { "目标作品合集不存在或不可选" }
+        }
+        val sql = database.openHelper.writableDatabase
+        if (mode == KgDocumentSetting.FOLLOW_FOLDER) sql.execSQL("DELETE FROM kg_document_settings WHERE doc_id=?", arrayOf(docId))
+        else sql.execSQL("INSERT OR REPLACE INTO kg_document_settings(doc_id,mode,target_collection_id) VALUES(?,?,?)", arrayOf(docId, mode.name, if (mode == KgDocumentSetting.COLLECTION) targetCollectionId else null))
+        if (memberCollection(docId) != null) reconcileDocument(docId)
+        collectEmptyCollections()
+    }
+
+    suspend fun listAssignableCollections(excludeDocId: String): List<KgCollectionSummary> = database.withTransaction {
+        val sql = """SELECT c.id,c.kind,c.title,c.root_ref,
+            (SELECT COUNT(*) FROM kg_collection_members m WHERE m.collection_id=c.id),
+            (SELECT COUNT(*) FROM kg_nodes n WHERE n.collection_id=c.id AND (EXISTS (SELECT 1 FROM kg_evidence p WHERE p.node_id=n.id AND $ACTIVE_KG_EVIDENCE) OR EXISTS (SELECT 1 FROM kg_edges e JOIN kg_evidence p ON p.edge_id=e.id WHERE (e.source_id=n.id OR e.target_id=n.id) AND $ACTIVE_KG_EVIDENCE))),
+            (SELECT COUNT(*) FROM kg_edges e WHERE e.collection_id=c.id AND EXISTS (SELECT 1 FROM kg_evidence p WHERE p.edge_id=e.id AND $ACTIVE_KG_EVIDENCE))
+            FROM kg_collections c WHERE c.kind='work' AND c.id!=? ORDER BY c.title COLLATE NOCASE,c.id""".trimIndent()
+        database.query(SimpleSQLiteQuery(sql, arrayOf("work:$excludeDocId"))).use { c ->
+            buildList { while (c.moveToNext()) add(KgCollectionSummary(c.getString(0), c.getString(1), c.getString(2), if (c.isNull(3)) null else c.getString(3), c.getInt(4), c.getInt(5), c.getInt(6))) }
+        }
+    }
+
     suspend fun setFolderSetting(folderId: String, setting: KgFolderSetting) = database.withTransaction {
         val folder = database.fileEntryDao().findActiveByUuid(folderId)
         require(folder?.isDirectory == true) { "文件夹不存在" }
@@ -178,6 +212,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
             if (docs.size < 400) break
         }
         database.openHelper.writableDatabase.execSQL("DELETE FROM kg_folder_settings WHERE NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND f.is_directory=1)")
+        database.openHelper.writableDatabase.execSQL("DELETE FROM kg_document_settings WHERE NOT EXISTS (SELECT 1 FROM workspace_files f WHERE f.uuid=kg_document_settings.doc_id AND f.is_directory=0)")
         collectEmptyCollections()
     }
 
@@ -236,6 +271,23 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
     private fun memberCollection(docId: String): String? = database.query(SimpleSQLiteQuery("SELECT collection_id FROM kg_collection_members WHERE doc_id=?", arrayOf(docId))).use { if (it.moveToFirst()) it.getString(0) else null }
 
     private suspend fun documentDescriptor(docId: String): Descriptor {
+        val assignment = readDocumentSetting(docId)
+        val file = database.fileEntryDao().findActiveByUuid(docId)?.takeUnless { it.isDirectory }
+        when (assignment.mode) {
+            KgDocumentSetting.STANDALONE -> return Descriptor("work:$docId", "work", file?.name ?: docId, docId)
+            KgDocumentSetting.SHARED -> return Descriptor("shared", "shared", "通用知识", null)
+            KgDocumentSetting.COLLECTION -> {
+                val target = assignment.targetCollectionId
+                if (target != null) database.query(SimpleSQLiteQuery("SELECT id,kind,title,root_ref FROM kg_collections WHERE id=? AND kind='work'", arrayOf(target))).use { c ->
+                    if (c.moveToFirst()) return Descriptor(c.getString(0), c.getString(1), c.getString(2), if (c.isNull(3)) null else c.getString(3))
+                }
+            }
+            KgDocumentSetting.FOLLOW_FOLDER -> Unit
+        }
+        return folderDocumentDescriptor(docId)
+    }
+
+    private suspend fun folderDocumentDescriptor(docId: String): Descriptor {
         val file = database.fileEntryDao().findActiveByUuid(docId)?.takeUnless { it.isDirectory }
             ?: return Descriptor("work:$docId", "work", docId, docId)
         val folder = file.parentUuid?.let { database.fileEntryDao().findActiveByUuid(it) }

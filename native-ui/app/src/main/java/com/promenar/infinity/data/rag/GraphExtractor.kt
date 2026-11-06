@@ -342,7 +342,7 @@ Return a valid JSON object:
 2. Identify each node by its name and type. Each edge's source and target names and types MUST match its endpoint nodes exactly.
 3. Relation should be a concise verb phrase. Weight from 0.0 to 1.0 expresses relationship strength.
 4. 每条实体和关系的 evidence 给出不超过 30 字的连续原文。每次关系出现分别输出。
-5. kind 使用 state（同一槽位只有一个当前值）或 event（累积发生的事件）；state 的 family 只能使用 relationship、location、allegiance、role、life_status、possession、other_state，event 的 family 留空。
+5. kind 使用 state（同一槽位只有一个当前值）或 event（累积发生的事件）；state 的 family 只能使用 relationship、location、allegiance、role、life_status、possession、other_state，event 的 family 留空。possession 的 source 是持有者，target 是被持有的物品或资产。
 6. 明确的回忆或倒叙片段设置 flashback 为 true，其余设置为 false。
 7. Return JSON only, without markdown or explanation."""
     }

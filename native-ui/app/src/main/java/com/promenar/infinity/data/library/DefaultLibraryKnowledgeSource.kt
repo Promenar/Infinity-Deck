@@ -239,7 +239,7 @@ class DefaultLibraryKnowledgeSource internal constructor(
         if (path == "/" || WorkspaceInternalPaths.containsReservedPath(path)) return@withContext null
         val limit = maxChars.coerceAtLeast(0)
         val extension = entry.name.substringAfterLast('.', "").lowercase()
-        val isExtracted = entry.mimeType in EXTRACTED_MIMES || extension in setOf("pdf", "docx")
+        val isExtracted = entry.mimeType in EXTRACTED_MIMES || extension in setOf("pdf", "doc", "docx")
         if (isExtracted) {
             val chunks = database.vectorDao().getLibraryDocumentChunks(documentId)
             val chunksMatch = (entry.vectorizedAt == null || entry.updatedAt <= entry.vectorizedAt) &&
@@ -331,7 +331,7 @@ class DefaultLibraryKnowledgeSource internal constructor(
         private const val LOCATION_ID = "kb"
         private const val LAST_SEEN_KEY = "library_memories_last_seen"
         private const val SEVEN_DAYS = 7L * 24 * 60 * 60 * 1000
-        private val EXTRACTED_MIMES = setOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        private val EXTRACTED_MIMES = setOf("application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     }
 }
 

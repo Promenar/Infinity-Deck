@@ -361,6 +361,7 @@ class SharedFileImporter(
             "text/html",
             "application/json",
             "application/pdf",
+            "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
@@ -433,6 +434,7 @@ class SharedFileImporter(
             }
             if (sampled.size() == 0) return null
             var bytes = sampled.toByteArray()
+            if (bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(byteArrayOf(0xd0.toByte(), 0xcf.toByte(), 0x11, 0xe0.toByte(), 0xa1.toByte(), 0xb1.toByte(), 0x1a, 0xe1.toByte()))) return DOC_MIME
             if (bytes.size >= 5 && bytes.copyOfRange(0, 5).toString(Charsets.US_ASCII) == "%PDF-") {
                 return "application/pdf"
             }
@@ -518,6 +520,7 @@ class SharedFileImporter(
             return when (effective) {
                 "application/pdf" -> sniffed == effective && name.endsWith(".pdf", true)
                 DOCX_MIME -> sniffed == effective && name.endsWith(".docx", true)
+                DOC_MIME -> sniffed == effective && name.endsWith(".doc", true)
                 else -> sniffed == "text/plain"
             }
         }
@@ -535,6 +538,7 @@ class SharedFileImporter(
             "json" -> "application/json"
             "pdf" -> "application/pdf"
             "docx" -> DOCX_MIME
+            "doc" -> DOC_MIME
             else -> null
         }
 
@@ -559,6 +563,7 @@ class SharedFileImporter(
         private const val MAX_UTF8_SEQUENCE_BYTES = 4
         private const val DOCX_SNIFF_EXPANDED_BYTES = 64L * 1024 * 1024
         internal const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        internal const val DOC_MIME = "application/msword"
         internal val TEXT_MIME_TYPES = setOf(
             "text/plain",
             "text/markdown",

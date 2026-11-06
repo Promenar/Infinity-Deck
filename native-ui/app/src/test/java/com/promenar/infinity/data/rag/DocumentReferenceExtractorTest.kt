@@ -9,6 +9,33 @@ import org.junit.rules.TemporaryFolder
 class DocumentReferenceExtractorTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun `空白PDF识别为没有文字层`() {
+        val root = temporary.newFolder("empty-pdf")
+        com.tom_roush.pdfbox.pdmodel.PDDocument().use { document ->
+            document.addPage(com.tom_roush.pdfbox.pdmodel.PDPage())
+            document.save(root.resolve("empty.pdf"))
+        }
+        val error = runCatching { DocumentReferenceExtractor(64, 0).extract(entry(root.path, "empty.pdf", "application/pdf")) }.exceptionOrNull()
+        assertThat((error as? DocumentFormatException)?.code).isEqualTo(DocumentFormatError.PDF_NO_TEXT_LAYER)
+    }
+
+    @Test fun `编码识别支持UTF与GBK并拒绝二进制`() {
+        val root = temporary.newFolder("encodings")
+        val text = "虚构中文资料"
+        val cases = listOf(
+            "utf8" to text.toByteArray(Charsets.UTF_8),
+            "bom" to (byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()) + text.toByteArray(Charsets.UTF_8)),
+            "gbk" to text.toByteArray(java.nio.charset.Charset.forName("GBK")),
+            "utf16" to (byteArrayOf(0xff.toByte(), 0xfe.toByte()) + text.toByteArray(Charsets.UTF_16LE)),
+        )
+        cases.forEach { (name, bytes) ->
+            root.resolve(name).writeBytes(bytes)
+            assertThat(DocumentReferenceExtractor(64, 0).extract(entry(root.path, name, "text/plain")).graphText).isEqualTo(text)
+        }
+        root.resolve("binary").writeBytes(byteArrayOf(0, 1, 2, 0xff.toByte()))
+        assertThat(runCatching { DocumentReferenceExtractor(64, 0).extract(entry(root.path, "binary", "text/plain")) }.exceptionOrNull()).isInstanceOf(DocumentFormatException::class.java)
+    }
+
     @Test
     fun `菜单抽取资格只接受解析器支持的文件类型与体积`() {
         val file = entry("/tmp", "doc", "application/pdf").copy(sizeBytes = 300 * 1024)

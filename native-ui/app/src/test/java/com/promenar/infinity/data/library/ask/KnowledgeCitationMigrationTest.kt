@@ -53,7 +53,7 @@ class KnowledgeCitationMigrationTest {
                 sqlite.version = 32
             }
             val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS).allowMainThreadQueries().build()
             try {
                 val sqlite = db.openHelper.writableDatabase
                 assertThat(sqlite.version).isEqualTo(36)

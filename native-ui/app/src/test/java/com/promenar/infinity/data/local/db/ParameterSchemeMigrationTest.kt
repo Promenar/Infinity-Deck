@@ -43,7 +43,7 @@ class ParameterSchemeMigrationTest {
                 seed(database, "sessions", mapOf("id" to "broken", "agent_id" to "agent", "title" to "损坏", "inference_params" to "not json"))
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE)
+                .addMigrations(MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, com.promenar.infinity.data.local.db.MIGRATION_36_37_DOCUMENT_SETTINGS)
                 .allowMainThreadQueries()
                 .build()
             try {

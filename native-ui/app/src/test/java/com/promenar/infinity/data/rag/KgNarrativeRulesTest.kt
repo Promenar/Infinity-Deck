@@ -4,6 +4,20 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
 class KgNarrativeRulesTest {
+    @Test fun `持有槽位按物品区分且倒叙不改变状态`() {
+        fun possession(edge: String, owner: String, item: String, chapter: Int, flashback: Boolean = false) =
+            KgNarrativeMention(edge, "work", owner, item, "state", "possession", "doc$chapter", chapter, 0, 0, flashback)
+        val timeline = KgNarrativeTimeline.materialize(listOf(
+            possession("sword-a", "a", "sword", 1), possession("book-a", "a", "book", 2),
+            possession("sword-b", "b", "sword", 3), possession("sword-a", "a", "sword", 4, true),
+        ))
+        val current = KgNarrativeTimeline.at(timeline, 4)
+        assertThat(current.map { it.edgeId }).containsExactly("book-a", "sword-b")
+        val sword = current.single { it.edgeId == "sword-b" }
+        assertThat(sword.history.single().edgeId).isEqualTo("sword-a")
+        assertThat(sword.history.single().toExclusive?.order).isEqualTo(3)
+        assertThat(sword.flashbacks.single().edgeId).isEqualTo("sword-a")
+    }
     private fun mention(edge: String, chapter: Int, flashback: Boolean = false, kind: String = "state") =
         KgNarrativeMention(edge, "work", "a", "b", kind, "relationship", "doc$chapter", chapter, 0, 0, flashback)
 

@@ -38,14 +38,15 @@ internal class LibraryExtractedDocumentReader(
                 val path = normalizedLibraryPath(current.materializedPath) ?: throw SecurityException("资料路径无效")
                 require(path != "/" && !WorkspaceInternalPaths.containsReservedPath(path)) { "资料路径不可读取" }
                 val mime = when (current.mimeType) {
-                    "application/pdf", DocumentReferenceExtractor.DOCX_MIME -> current.mimeType
+                    "application/pdf", DocumentReferenceExtractor.DOCX_MIME, DocumentReferenceExtractor.DOC_MIME -> current.mimeType
                     else -> when (current.name.substringAfterLast('.', "").lowercase()) {
                         "pdf" -> "application/pdf"
                         "docx" -> DocumentReferenceExtractor.DOCX_MIME
+                        "doc" -> DocumentReferenceExtractor.DOC_MIME
                         else -> throw IllegalArgumentException("不支持提取该文件类型")
                     }
                 }
-                val sourceLimit = if (mime == DocumentReferenceExtractor.DOCX_MIME) 50L * 1024 * 1024 else 100L * 1024 * 1024
+                val sourceLimit = if (mime in setOf(DocumentReferenceExtractor.DOCX_MIME, DocumentReferenceExtractor.DOC_MIME)) 50L * 1024 * 1024 else 100L * 1024 * 1024
                 val digest = MessageDigest.getInstance("SHA-256")
                 fileOps.readStream(Paths.get(root.physicalRootPath), path.trimStart('/').split('/'), sourceLimit) { input ->
                     snapshot.outputStream().buffered().use { output ->
@@ -64,7 +65,7 @@ internal class LibraryExtractedDocumentReader(
                     latest.updatedAt == entry.updatedAt && latest.materializedPath == entry.materializedPath) {
                     "资料文件在解析期间发生变化"
                 }
-                val sourceLimit = if (current.mimeType == DocumentReferenceExtractor.DOCX_MIME) 50L * 1024 * 1024 else 100L * 1024 * 1024
+                val sourceLimit = if (current.mimeType in setOf(DocumentReferenceExtractor.DOCX_MIME, DocumentReferenceExtractor.DOC_MIME)) 50L * 1024 * 1024 else 100L * 1024 * 1024
                 val digest = MessageDigest.getInstance("SHA-256")
                 fileOps.readStream(Paths.get(root.physicalRootPath), latest.materializedPath.trimStart('/').split('/'), sourceLimit) { input ->
                     copyLibrarySnapshot(input, DiscardOutput, sourceLimit, digest)

@@ -1,0 +1,6 @@
+<resources>
+    <string name="library_format_pdf_no_text_layer">PDF has no text layer (it may be scanned)</string>
+    <string name="library_format_text_encoding_unrecognized">Text encoding could not be recognized</string>
+    <string name="library_format_unsupported_format">Unsupported file format</string>
+    <string name="library_format_doc_invalid">The DOC file is encrypted or damaged</string>
+</resources>
