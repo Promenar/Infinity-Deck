@@ -146,6 +146,20 @@ class LibraryKnowledgeSourceTest {
     }
 
     @Test
+    fun `格式错误码换成说明文字，其它失败沿用通用原因`() {
+        val entry = file("doc", "/doc.pdf")
+        val formatText = mapOf(LibraryFormatErrors.PDF_NO_TEXT_LAYER to "PDF 没有文字层")
+        fun pending(error: String?) = task("doc", "failed", 1).copy(error = error).let { current ->
+            pendingDocuments("root", listOf(entry), emptyList(), VectorizationQueue.QueueState(listOf(current), null, false),
+                "资料库", "索引失败", "需要确认", formatReason = { formatText[it] }).single()
+        }
+        assertThat(pending(LibraryFormatErrors.PDF_NO_TEXT_LAYER).reason).isEqualTo("PDF 没有文字层")
+        assertThat(pending(LibraryFormatErrors.PDF_NO_TEXT_LAYER).lastError).isEqualTo("PDF 没有文字层")
+        assertThat(pending("HTTP 500").reason).isEqualTo("索引失败")
+        assertThat(pending("HTTP 500").lastError).isEqualTo("HTTP 500")
+    }
+
+    @Test
     fun `需要图谱预算确认的任务给出明确原因`() = runBlocking {
         db.fileEntryDao().insert(file("doc", "/doc.txt").copy(vectorizedAt = 20))
         val task = task("doc", "partial", 1).copy(error = VectorizationQueue.KG_CONFIRMATION_REQUIRED)

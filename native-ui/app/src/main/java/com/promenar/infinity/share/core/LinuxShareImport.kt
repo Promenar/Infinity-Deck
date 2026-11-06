@@ -1,5 +1,6 @@
 package com.promenar.infinity.share.core
 
+import com.promenar.infinity.data.rag.DocumentFormatException
 import android.net.Uri
 import com.promenar.infinity.ShareRequest
 import com.promenar.infinity.data.linux.LinuxImportFiles
@@ -49,16 +50,17 @@ internal suspend fun importShareToLinux(
                     catch (_: IllegalArgumentException) { throw ShareContentMismatchException() }
                 if (!SharedFileImporter.mimeCompatible(request.mimeType, mime, sniffed, name))
                     return@map reject(item, ShareRejectReason.MimeMismatch)
+                if (contentMime in SharedFileImporter.TEXT_MIME_TYPES) {
+                    try { SharedFileImporter.validateText { source.openForShare(item.uri) } }
+                    catch (_: DocumentFormatException) { return@map reject(item, ShareRejectReason.MimeMismatch) }
+                }
             }
             var created: com.promenar.infinity.data.linux.LinuxImportFile? = null
             for (index in 0 until 10_000) {
                 try {
                     created = sink.create(target, SharedFileImporter.collisionName(name, index),
                         minOf(SharedFileImporter.MAX_ITEM_BYTES, SharedFileImporter.MAX_BATCH_BYTES - accepted), source.contentSha256(item.uri)) { output ->
-                        source.openForShare(item.uri).use { input ->
-                            if (contentMime in SharedFileImporter.TEXT_MIME_TYPES) SharedFileImporter.copyUtf8Validated(input, output)
-                            else input.copyTo(output)
-                        }
+                        source.openForShare(item.uri).use { input -> input.copyTo(output) }
                     }
                     break
                 } catch (_: FileAlreadyExistsException) { /* 同名时尝试下一个安全名称。 */ }

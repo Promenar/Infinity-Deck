@@ -377,7 +377,7 @@ private fun PreviewInfoCard(item: FileItem, state: FileManagerUiState) {
     if (knowledge != null) {
         val status = stringResource(knowledgeStateLabel(knowledge.state))
         val chunks = knowledge.chunkCount?.let { pluralStringResource(R.plurals.fm_knowledge_chunks, it, it) }
-        rows += stringResource(R.string.fm_info_knowledge) to listOfNotNull(status, chunks, knowledge.failureReason).joinToString("\n")
+        rows += stringResource(R.string.fm_info_knowledge) to listOfNotNull(status, chunks, knowledge.failureReason?.let { knowledgeFailureText(it) }).joinToString("\n")
     }
     PreviewCard {
         Text(

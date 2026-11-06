@@ -75,6 +75,8 @@ class DefaultLibraryKnowledgeSource internal constructor(
     private val estimateGraph: suspend (FileEntry) -> GraphEstimate? = { null },
     private val enqueueGraph: suspend (String, FileEntry, Boolean) -> Boolean = { _, _, _ -> false },
     private val graphReason: (String?) -> String = { failedReason() },
+    /** 索引失败的格式错误码换成说明文字；未知错误返回 null，沿用通用失败文案。 */
+    private val formatReason: (String?) -> String? = { null },
 ) : LibraryKnowledgeSource {
     init {
         synchronized(preferences) {
@@ -105,7 +107,7 @@ class DefaultLibraryKnowledgeSource internal constructor(
     override fun observePending(): Flow<List<PendingDocument>> = rootId().flatMapLatest { root ->
         combine(database.fileEntryDao().observeLibraryFiles(root),
             database.vectorizationTaskDao().observeLibraryTasks(root), queueState) { entries, stored, queue ->
-            pendingDocuments(root, entries, stored, queue, libraryLabel(), failedReason(), confirmationReason(), graphReason)
+            pendingDocuments(root, entries, stored, queue, libraryLabel(), failedReason(), confirmationReason(), graphReason, formatReason)
         }.distinctUntilChanged()
     }
 
@@ -403,6 +405,7 @@ internal fun pendingDocuments(
     failedReason: String,
     confirmationReason: String,
     graphReason: (String?) -> String = { failedReason },
+    formatReason: (String?) -> String? = { null },
 ): List<PendingDocument> {
     val live = queue.queue.filter { it.workspaceRootUuid == root && it.type in setOf("document", VectorizationQueue.TYPE_DOCUMENT_REFERENCE) }
     val tasks = (stored.mapNotNull { it.libraryTask() } + live.mapNotNull { it.libraryTask() })
@@ -437,14 +440,14 @@ internal fun pendingDocuments(
         PendingDocument(entry.uuid, summary.ref, entry.name, summary.folderPath, kind,
             reason = when (kind) {
                 PendingKind.GRAPH_ATTENTION -> if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else graphReason(task?.error)
-                PendingKind.FAILED -> if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else failedReason
+                PendingKind.FAILED -> if (task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED) confirmationReason else formatReason(task?.error) ?: failedReason
                 else -> null
             },
             queuePosition = if (kind == PendingKind.QUEUED) task?.let { positions[it.id] ?: waitingStored[it.id] } else null,
             stage = stage,
             processed = total?.let { task?.processed },
             total = total,
-            lastError = task?.error?.takeUnless { it.startsWith("kg.") },
+            lastError = task?.error?.takeUnless { it.startsWith("kg.") }?.let { formatReason(it) ?: it },
             graphConfirmation = kind == PendingKind.GRAPH_ATTENTION && task?.error == VectorizationQueue.KG_CONFIRMATION_REQUIRED,
         )
     }.sortedWith(compareBy<PendingDocument> { when (it.kind) {

@@ -55,6 +55,9 @@ object LibraryTags {
     const val ASK_FIELD = "library_ask_field"
     const val UPLINK = "library_uplink"
     const val EXPAND = "library_expand"
+    const val COLLECTION_STRIP = "library_collection_strip"
+    const val COLLECTION_STRIP_SETTINGS = "library_collection_strip_settings"
+    const val COLLECTION_STRIP_EXTRACT = "library_collection_strip_extract"
     fun navItem(key: String) = "library_nav_$key"
     fun page(key: String) = "library_page_$key"
 }

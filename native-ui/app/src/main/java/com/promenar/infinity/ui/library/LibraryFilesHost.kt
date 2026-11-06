@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,6 +56,8 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
     // 资料库文件夹的合集设置与批量抽取；面板关闭时清空。
     var settingsFolder by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     var batchTarget by remember { mutableStateOf<KgBatchTarget?>(null) }
+    // 合集设置关闭、批量抽取入队后递增，让文件夹顶部的合集条重读。
+    var stripRefresh by remember { mutableIntStateOf(0) }
     val settingsLabel = stringResource(R.string.kgc_action_settings)
     val extractLabel = stringResource(R.string.kgc_action_extract)
     Box(Modifier.fillMaxSize().statusBarsPadding().testTag(LibraryTags.page("browse"))) {
@@ -63,6 +66,15 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
             host = FileManagerHostSpec(
                 leading = leading.toFileManagerLeading(),
                 showPin = true,
+                folderHeader = { header ->
+                    LibraryCollectionStrip(
+                        app = app,
+                        scope = header,
+                        refreshKey = stripRefresh,
+                        onSettings = { folderId, folderName -> settingsFolder = folderId to folderName },
+                        onExtract = { folderId -> batchTarget = KgBatchTarget.Folder(folderId) },
+                    )
+                },
                 hostActions = listOf(
                     FileHostAction(
                         id = "library-folder-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
@@ -97,10 +109,16 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
         )
     }
     settingsFolder?.let { (folderId, folderName) ->
-        KgCollectionSettingsHost(app, folderName, folderId = folderId, collectionId = null) { settingsFolder = null }
+        KgCollectionSettingsHost(app, folderName, folderId = folderId, collectionId = null) {
+            settingsFolder = null
+            stripRefresh++
+        }
     }
     batchTarget?.let { target ->
-        KgBatchExtractionHost(app, target, onQueued = host.viewModel::reportGraphQueued) { batchTarget = null }
+        KgBatchExtractionHost(app, target, onQueued = host.viewModel::reportGraphQueued) {
+            batchTarget = null
+            stripRefresh++
+        }
     }
 }
 

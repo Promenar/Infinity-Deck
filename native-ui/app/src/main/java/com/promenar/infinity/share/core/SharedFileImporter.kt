@@ -477,6 +477,14 @@ class SharedFileImporter(
             return "application/octet-stream"
         }
 
+        /**
+         * 文本类内容整体校验编码（UTF-8、带 BOM 的 UTF-16、GB18030），无法识别时抛 [DocumentFormatException]。
+         * 只做校验，文件按原字节保存，不转码；[open] 每次返回一个新的输入流。
+         */
+        internal fun validateText(open: () -> InputStream) {
+            DocumentTextEncoding.detect { check -> open().use(check) }
+        }
+
         private fun progressStream(input: InputStream): InputStream = object : java.io.FilterInputStream(input) {
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
                 if (length == 0) return 0

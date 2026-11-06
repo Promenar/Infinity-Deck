@@ -1338,7 +1338,7 @@ class VectorizationQueue(
     }
 
     private fun getFriendlyErrorMessage(error: Throwable): String {
-        if (error is DocumentFormatException) return "library.format.${error.code.name.lowercase()}"
+        if (error is DocumentFormatException) return com.promenar.infinity.data.library.LibraryFormatErrors.codeFor(error.code)
         if (error is EmbeddingBatchException) return error.message ?: "向量请求失败"
         val msg = error.message?.lowercase() ?: ""
         return when {

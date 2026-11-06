@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 资料库文件夹顶部的图谱合集条 -->
+    <string name="kcs_title">图谱合集 · %1$s</string>
+    <string name="kcs_kind_work">独立作品</string>
+    <string name="kcs_kind_shared">通用知识</string>
+    <string name="kcs_kind_merged">并入上级文件夹</string>
+    <string name="kcs_status">%1$s · 已抽取 %2$d / %3$d 篇</string>
+    <string name="kcs_status_extracting">正在抽取图谱 · 已完成 %1$d / %2$d 篇</string>
+</resources>

@@ -78,7 +78,7 @@ class DocumentReferenceExtractor(
                 completedPages++
                 collector.append("\n")
             }
-            if (completedPages == document.numberOfPages && !collector.truncated && writer.nonWhitespace < 200 && writer.nonWhitespace < document.numberOfPages * 20L) {
+            if (completedPages == document.numberOfPages && !collector.truncated && writer.nonWhitespace < document.numberOfPages * MIN_PDF_CHARS_PER_PAGE) {
                 throw DocumentFormatException(DocumentFormatError.PDF_NO_TEXT_LAYER)
             }
         }
@@ -266,6 +266,8 @@ class DocumentReferenceExtractor(
     }
 
     companion object {
+        /** 扫描件通常抽不出字或只有零星页码；平均每页少于这个字符数（去空白）才判为没有文字层，短小的正常 PDF 照常索引。 */
+        private const val MIN_PDF_CHARS_PER_PAGE = 3L
         /** 按实际读取字节计费，防止文件在长度检查后增长。 */
         internal fun readHtmlSource(input: java.io.InputStream): ByteArray {
             val result = java.io.ByteArrayOutputStream()

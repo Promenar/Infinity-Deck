@@ -413,6 +413,16 @@ private fun FileListPhaseContent(phase: FileListPhase, state: FileManagerUiState
 
 private fun FileManagerUiState.showUpEntry(): Boolean = canGoUp && !selecting
 
+private const val FOLDER_HEADER_KEY = "host-folder-header"
+
+/** 宿主页头插槽与当前文件夹；多选、搜索或没有位置时不显示。 */
+private fun FileManagerUiState.folderHeaderScope(actions: FileManagerUiActions): Pair<@Composable (FileFolderHeaderScope) -> Unit, FileFolderHeaderScope>? {
+    val header = actions.host.folderHeader ?: return null
+    val locationId = location?.id ?: return null
+    if (selecting || search != null) return null
+    return header to FileFolderHeaderScope(locationId, path, items)
+}
+
 /** 单栏下占满整屏的文件预览；文件夹不进预览。 */
 private fun FileManagerUiState.compactPreviewItem(): FileItem? = previewItem?.takeIf { !it.isDirectory }
 
@@ -470,6 +480,9 @@ private fun FileList(state: FileManagerUiState, actions: FileManagerUiActions, m
         if (state.showUpEntry()) {
             item(key = "..") { FileUpRow(parentTitle = state.parentFolderTitle(), onClick = controller::goUp) }
         }
+        state.folderHeaderScope(actions)?.let { (header, scope) ->
+            item(key = FOLDER_HEADER_KEY) { header(scope) }
+        }
         if (state.items.isEmpty()) {
             item(key = "empty") { EmptyFolder(state) }
         }
@@ -500,6 +513,9 @@ private fun FileGrid(state: FileManagerUiState, actions: FileManagerUiActions, m
     ) {
         if (state.showUpEntry()) {
             item(key = "..") { FileUpTile(onClick = controller::goUp) }
+        }
+        state.folderHeaderScope(actions)?.let { (header, scope) ->
+            item(key = FOLDER_HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) { header(scope) }
         }
         if (state.items.isEmpty()) {
             item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyFolder(state) }

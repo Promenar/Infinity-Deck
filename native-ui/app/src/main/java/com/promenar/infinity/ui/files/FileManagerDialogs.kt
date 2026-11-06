@@ -277,7 +277,7 @@ private fun detailsRows(items: List<FileItem>, state: FileManagerUiState): List<
         rows += stringResource(R.string.fm_info_modified) to formatFileTime(single.lastModified)
         single.knowledge?.let { knowledge ->
             val status = stringResource(knowledgeStateLabel(knowledge.state))
-            rows += stringResource(R.string.fm_info_knowledge) to (knowledge.failureReason?.let { "$status\n$it" } ?: status)
+            rows += stringResource(R.string.fm_info_knowledge) to (knowledge.failureReason?.let { "$status\n${knowledgeFailureText(it)}" } ?: status)
         }
     } else {
         rows += stringResource(R.string.fm_info_items) to pluralStringResource(R.plurals.fm_item_count, items.size, items.size)

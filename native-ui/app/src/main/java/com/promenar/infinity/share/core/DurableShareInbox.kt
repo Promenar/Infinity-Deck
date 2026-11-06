@@ -681,10 +681,7 @@ class DurableShareInbox(
             val sniffed = file.inputStream().use { SharedFileImporter.sniffMime(it, effective) }
             if (!SharedFileImporter.mimeCompatible(declaredMime, resolvedMime, sniffed, name)) return ShareRejectReason.MimeMismatch
             if (effective in SharedFileImporter.TEXT_MIME_TYPES) {
-                file.inputStream().use { SharedFileImporter.copyUtf8Validated(it, object : java.io.OutputStream() {
-                    override fun write(value: Int) = Unit
-                    override fun write(bytes: ByteArray, offset: Int, length: Int) = Unit
-                }) }
+                SharedFileImporter.validateText { file.inputStream() }
             }
             if (effective == "application/json" && !isValidJson(file)) ShareRejectReason.MimeMismatch else null
         } catch (_: IOException) { ShareRejectReason.MimeMismatch }

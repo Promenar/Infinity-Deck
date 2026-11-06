@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 单篇文档的图谱合集归属 -->
+    <string name="kda_row">合集归属</string>
+    <string name="kda_row_follow">跟随文件夹 · %1$s</string>
+    <string name="kda_row_collection">加入作品 · %1$s</string>
+    <string name="kda_title">合集归属 · %1$s</string>
+    <string name="kda_desc">选择这篇文档归入哪个图谱合集。已抽取的图谱会随之迁移，不重新调用模型。</string>
+    <string name="kda_mode_follow">跟随文件夹</string>
+    <string name="kda_follow_desc">当前：%1$s</string>
+    <string name="kda_mode_standalone">单独成为作品</string>
+    <string name="kda_standalone_desc">只用这一篇建图谱，不与所在文件夹的其它文档合并</string>
+    <string name="kda_mode_shared">通用知识</string>
+    <string name="kda_shared_desc">与“通用知识”文件夹共用一张图谱，适合现实世界的资料</string>
+    <string name="kda_mode_collection">加入其它作品</string>
+    <string name="kda_join_header">加入已有作品</string>
+    <string name="kda_join_empty">还没有其它作品。文件夹里有文档抽取过图谱后，它就成为一部作品。</string>
+    <plurals name="kda_collection_docs">
+        <item quantity="other">%1$d 篇</item>
+    </plurals>
+</resources>

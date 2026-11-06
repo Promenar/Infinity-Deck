@@ -548,7 +548,7 @@ private fun EntityMergeSection(
 // 面板内的通用小件
 
 @Composable
-private fun SectionHeader(@StringRes label: Int, modifier: Modifier = Modifier) {
+internal fun SectionHeader(@StringRes label: Int, modifier: Modifier = Modifier) {
     Text(
         stringResource(label),
         style = MaterialTheme.typography.labelLarge,
@@ -558,7 +558,7 @@ private fun SectionHeader(@StringRes label: Int, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun SheetNote(text: String, error: Boolean = false) {
+internal fun SheetNote(text: String, error: Boolean = false) {
     Text(
         text.keepCjkTailTogether(),
         // 多句说明按阅读段落断行；界面平衡断行会把整段压成窄列。
@@ -569,7 +569,7 @@ private fun SheetNote(text: String, error: Boolean = false) {
 }
 
 @Composable
-private fun SelectedMark() {
+internal fun SelectedMark() {
     Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
 }
 

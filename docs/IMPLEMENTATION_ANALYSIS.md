@@ -257,7 +257,7 @@ fun createAgent(...) {
 | 功能 | 实现状态 | 评级 |
 |------|---------|------|
 | 文档导入（TXT/MD） | ✅ DocumentImporter | 🟢 |
-| PDF/Word/HTML 导入 | 🟡 PDF/.docx 已实现，旧版 .doc 降级提示 | 🟡 |
+| PDF/Word/HTML 导入 | ✅ PDF/.docx/.doc/HTML 已实现；扫描版 PDF 提示无文字层 | ✅ |
 | 自动分块 | ✅ Recursive Character Splitter | 🟢 |
 | 向量存储（SQLite） | ✅ VectorEntity + VectorDao | 🟢 |
 | FTS5 全文检索 | ✅ VectorFtsEntity + KeywordSearcher | 🟢 |
@@ -340,7 +340,7 @@ Welcome 引导             ██████████ 100%   已完成
 | Provider 管理 | ProviderFormScreen、ProviderModelsScreen、ModelPicker、117+ 模型规格库、多路保存修复 |
 | Agent 基础 | AgentHubScreen、AgentEditScreen（含自动保存）、AgentRagConfig、AgentAdvancedRetrieval |
 | 对话核心流 | ChatScreen + ChatViewModel、流式对话、图片上传/VLM、消息气泡、会话创建/删除、重发/重新生成 |
-| RAG 存储与检索 | VectorStore、EmbeddingClient、DocumentImporter（PDF/.docx/HTML/TXT/MD）、混合检索（RRF Fusion）、RerankClient、查询重写、Memory 记忆浏览、全文搜索、引用内容面板 |
+| RAG 存储与检索 | VectorStore、EmbeddingClient、DocumentImporter（PDF/.docx/.doc/HTML/TXT/MD，文本支持 UTF-8/UTF-16/GB18030）、混合检索（RRF Fusion）、RerankClient、查询重写、Memory 记忆浏览、全文搜索、引用内容面板 |
 | 知识图谱 | KgNodeEntity/KgEdgeEntity、GraphExtractor（LLM 抽取）、MicroGraphExtractor（JIT）、ECharts 力导向图可视化、全局/文档/概念三维视图、176+ 大数据量防崩溃优化 |
 | Token 仪表盘 | TokenUsageScreen（全局统计/会话排行/趋势图/模型明细）、费用估算 |
 | Agent 工具 | 18 内置工具 + MCP 动态扩展 + JS 沙箱 + 文件系统 + 联网搜索三引擎 + 审批增强 + 工具链 Fallback 兜底 |

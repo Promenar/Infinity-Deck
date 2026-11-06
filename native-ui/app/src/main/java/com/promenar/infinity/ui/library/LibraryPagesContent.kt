@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.library
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.rag.KgCollectionRepository
+import com.promenar.infinity.data.rag.KgDocumentSetting
+import com.promenar.infinity.data.rag.KgDocumentAssignment
 import com.promenar.infinity.data.rag.KgDocumentCollectionInfo
 import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.CancellationException
@@ -945,14 +947,27 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
     val app = LocalContext.current.applicationContext as InfinityApplication
     var reextract by remember(info.documentId) { mutableStateOf(false) }
     var openSettings by remember(info.documentId) { mutableStateOf(false) }
+    var openAssignment by remember(info.documentId) { mutableStateOf(false) }
+    var assignmentVersion by remember(info.documentId) { mutableIntStateOf(0) }
     // 所属合集与篇序随图谱状态刷新：抽取完成后文档才写入合集成员。
-    val collection by produceState<KgDocumentCollectionInfo?>(null, info.documentId, graph) {
+    val collection by produceState<KgDocumentCollectionInfo?>(null, info.documentId, graph, assignmentVersion) {
         value = try {
             withContext(Dispatchers.IO) { KgCollectionRepository(app.database).documentInfo(info.documentId) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             InfinityLogger.logError("[Library] 读取所属合集失败", failure)
+            null
+        }
+    }
+    // 合集归属在抽取前也可设置，下次抽取直接写入选定的合集。
+    val assignment by produceState<KgDocumentAssignment?>(null, info.documentId, graph, assignmentVersion) {
+        value = try {
+            withContext(Dispatchers.IO) { KgCollectionRepository(app.database).readDocumentSetting(info.documentId) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            InfinityLogger.logError("[Library] 读取合集归属失败", failure)
             null
         }
     }
@@ -1002,6 +1017,28 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         if (openSettings) {
             KgCollectionSettingsHost(app, current.title, folderId = null, collectionId = current.collectionId) { openSettings = false }
         }
+    }
+    assignment?.let { current ->
+        InspectorLinkRow(
+            label = stringResource(R.string.kda_row),
+            value = when (current.mode) {
+                KgDocumentSetting.FOLLOW_FOLDER -> stringResource(R.string.kda_row_follow, current.folderCollectionTitle)
+                KgDocumentSetting.COLLECTION -> collection?.title?.let { stringResource(R.string.kda_row_collection, it) }
+                    ?: stringResource(R.string.kda_mode_collection)
+                else -> stringResource(current.mode.rowLabel())
+            },
+            onClick = { openAssignment = true },
+            modifier = Modifier.testTag("library_doc_assignment_row"),
+        )
+    }
+    if (openAssignment) {
+        DocumentCollectionAssignmentSheet(
+            app = app,
+            documentId = info.documentId,
+            documentName = info.name,
+            onChanged = { assignmentVersion++ },
+            onDismiss = { openAssignment = false },
+        )
     }
     if (reextract) {
         KgBatchExtractionHost(app, KgBatchTarget.Documents(listOf(info.documentId)), onQueued = host.viewModel::reportGraphQueued) {

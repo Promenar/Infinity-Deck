@@ -218,7 +218,7 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
             if (docs.size < 400) break
         }
         database.openHelper.writableDatabase.execSQL("""DELETE FROM kg_folder_settings WHERE NOT EXISTS (
-            SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND f.in_recycle_bin=0 AND
+            SELECT 1 FROM workspace_files f WHERE f.uuid=kg_folder_settings.folder_id AND
             ((f.is_directory=1 AND kg_folder_settings.mode IN ('AUTO','WORK','SHARED','MERGE_PARENT')) OR
              (f.is_directory=0 AND (kg_folder_settings.mode IN ('DOC_STANDALONE','DOC_SHARED') OR kg_folder_settings.mode LIKE 'DOC_COLLECTION:work:%'))))""")
         collectEmptyCollections()

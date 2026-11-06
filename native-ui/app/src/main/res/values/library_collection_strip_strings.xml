@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 资料库文件夹顶部的图谱合集条 -->
+    <string name="kcs_title">Graph collection · %1$s</string>
+    <string name="kcs_kind_work">Standalone work</string>
+    <string name="kcs_kind_shared">General knowledge</string>
+    <string name="kcs_kind_merged">Merged into parent folder</string>
+    <string name="kcs_status">%1$s · %2$d of %3$d extracted</string>
+    <string name="kcs_status_extracting">Extracting graph · %1$d of %2$d done</string>
+</resources>

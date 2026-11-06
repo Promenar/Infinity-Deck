@@ -206,7 +206,7 @@ class RoomBackupDataSource(
                 workspaces -> "workspace_root_uuid NOT IN ($roots)"
                 else -> "0"
             }
-            return " WHERE folder_id IN (SELECT uuid FROM workspace_files WHERE in_recycle_bin=0 AND ($filter) AND ((is_directory=1 AND kg_folder_settings.mode IN ('AUTO','WORK','SHARED','MERGE_PARENT')) OR (is_directory=0 AND (kg_folder_settings.mode IN ('DOC_STANDALONE','DOC_SHARED') OR kg_folder_settings.mode LIKE 'DOC_COLLECTION:work:%'))))"
+            return " WHERE folder_id IN (SELECT uuid FROM workspace_files WHERE ($filter) AND ((is_directory=1 AND kg_folder_settings.mode IN ('AUTO','WORK','SHARED','MERGE_PARENT')) OR (is_directory=0 AND (kg_folder_settings.mode IN ('DOC_STANDALONE','DOC_SHARED') OR kg_folder_settings.mode LIKE 'DOC_COLLECTION:work:%'))))"
         }
         if (layers == null) return ""
         if (table in GRAPH_VECTOR_TABLES) {
@@ -930,7 +930,6 @@ class RoomBackupDataSource(
 
     private fun validKgSetting(row: JsonObject, files: Map<String, JsonObject>): Boolean {
         val file = files[row.requiredString("folder_id")] ?: return false
-        if (file.requiredBoolean("in_recycle_bin")) return false
         val mode = row.requiredString("mode")
         return if (file.requiredBoolean("is_directory")) mode in setOf("AUTO", "WORK", "SHARED", "MERGE_PARENT")
         else mode in setOf("DOC_STANDALONE", "DOC_SHARED") || mode.startsWith("DOC_COLLECTION:work:") && mode.length > "DOC_COLLECTION:work:".length

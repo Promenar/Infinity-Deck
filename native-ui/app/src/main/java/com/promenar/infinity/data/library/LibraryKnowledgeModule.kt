@@ -91,6 +91,7 @@ object LibraryKnowledgeModule {
                 }
                 application.getString(id)
             },
+            formatReason = { error -> LibraryFormatErrors.resourceFor(error)?.let(application::getString) },
         )
     }
 }
