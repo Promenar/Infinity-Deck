@@ -21,7 +21,6 @@
     <string name="library_page_ask">Ask the library</string>
     <string name="library_page_document">Document</string>
 
-    <string name="library_uplink">Back to %1$s</string>
     <string name="library_badge_new">New</string>
     <string name="library_location_access_lost">Access lost</string>
 

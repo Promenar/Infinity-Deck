@@ -112,7 +112,6 @@
 
     <!-- 预览 -->
     <string name="fm_preview_back">返回列表</string>
-    <string name="fm_back_to_folder">‹ %1$s</string>
     <string name="fm_preview_truncated">仅显示开头部分</string>
     <string name="fm_preview_audio">音频</string>
     <string name="fm_preview_video">视频</string>

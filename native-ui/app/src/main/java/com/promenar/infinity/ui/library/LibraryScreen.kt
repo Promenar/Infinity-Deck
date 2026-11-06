@@ -53,7 +53,7 @@ object LibraryTags {
     const val NAV_COLUMN = "library_nav_column"
     const val STRIP = "library_strip"
     const val ASK_FIELD = "library_ask_field"
-    const val UPLINK = "library_uplink"
+    const val CRUMB = "library_crumb"
     const val EXPAND = "library_expand"
     const val COLLECTION_STRIP = "library_collection_strip"
     const val COLLECTION_STRIP_SETTINGS = "library_collection_strip_settings"
@@ -88,6 +88,11 @@ internal class LibraryNavigator(private val state: MainTabsState, val twoPane: B
 
     fun back(): Boolean = state.popLibrary(keepRoot = twoPane)
 
+    /** 回到当前层级中的第 [depth] 层（0 为根页面）。 */
+    fun backTo(depth: Int) {
+        while (stack.size > depth + 1 && back()) Unit
+    }
+
     fun dropAsk() = state.dropLibraryFrom(LibraryPageKeys.ASK)
 
     fun toggleExpanded() = state.toggleLibraryExpanded()
@@ -118,7 +123,7 @@ fun LibraryScreen(
     // 外屏的“文件”中转页在两列里没有对应导航项；展开折叠屏时去掉它，左列才能高亮当前位置。
     LaunchedEffect(twoPane) { if (twoPane) state.normalizeLibraryForTwoPane() }
 
-    // 问资料：有查询时压上结果页；结果页被弹出（返回或“‹ 上一页”）即清空查询与结果。
+    // 问资料：有查询时压上结果页；结果页被弹出（返回或点路径条上级）即清空查询与结果。
     val askInStack = LibraryPageKeys.ASK in navigator.stack
     val ask = remember(askViewModel, navigator) {
         val focusOnEnter = mutableStateOf(false)
@@ -246,7 +251,7 @@ private fun LibrarySingleLayout(host: LibraryPageHost) {
                 page = LibraryPageKeys.parse(key),
                 host = host,
                 leading = LibraryLeading.Back(onBack = { host.navigator.back() }),
-                uplink = null,
+                trail = null,
             )
         }
     }
@@ -302,12 +307,11 @@ private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.Tw
                 modifier = Modifier.fillMaxSize(),
             ) { pages ->
                 if (pages.isEmpty()) return@InfinityPageStack
-                val previous = pages.getOrNull(pages.lastIndex - 1)
                 LibraryPageContent(
                     page = LibraryPageKeys.parse(pages.last()),
                     host = host,
                     leading = LibraryLeading.Expand(expanded = navigator.expanded, onToggle = navigator::toggleExpanded),
-                    uplink = previous?.let { key -> LibraryUplink(key, onClick = { navigator.back() }) },
+                    trail = pages.takeIf { it.size > 1 }?.let { keys -> LibraryTrail(keys, onGo = navigator::backTo) },
                 )
             }
         }
@@ -320,8 +324,8 @@ internal sealed interface LibraryLeading {
     data class Back(val onBack: () -> Unit) : LibraryLeading
 }
 
-/** 标题下方“‹ 上一页名称”：[key] 为上一页的键。 */
-internal data class LibraryUplink(val key: String, val onClick: () -> Unit)
+/** 内屏右列的页面层级：[keys] 自根页面到当前页，[onGo] 回到某一层。 */
+internal data class LibraryTrail(val keys: List<String>, val onGo: (Int) -> Unit)
 
 /** 抽取知识图谱前的用量确认：模型、窗口数、调用次数与输出上限。 */
 @Composable

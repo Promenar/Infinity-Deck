@@ -40,6 +40,24 @@ class LibraryNavigationTest {
     }
 
     @Test
+    fun `路径条回到指定层级，越界或已在该层时不变`() {
+        val navigator = LibraryNavigator(state(), twoPane = true)
+        navigator.push(LibraryPageKeys.RECENT)
+        navigator.push(LibraryPageKeys.document("d1"))
+        navigator.push(LibraryPageKeys.fragmentSession("s1"))
+        assertThat(navigator.stack).hasSize(4)
+
+        navigator.backTo(1)
+        assertThat(navigator.stack).containsExactly(LibraryPageKeys.OVERVIEW, LibraryPageKeys.RECENT).inOrder()
+        navigator.backTo(3)
+        assertThat(navigator.stack).hasSize(2)
+        navigator.backTo(0)
+        assertThat(navigator.stack).containsExactly(LibraryPageKeys.OVERVIEW)
+        navigator.backTo(-1)
+        assertThat(navigator.stack).containsExactly(LibraryPageKeys.OVERVIEW)
+    }
+
+    @Test
     fun `左列另选一项替换根页面，外屏首页上的分区按推入处理`() {
         val state = state()
         val inner = LibraryNavigator(state, twoPane = true)

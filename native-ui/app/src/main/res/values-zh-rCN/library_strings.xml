@@ -21,7 +21,6 @@
     <string name="library_page_ask">问资料</string>
     <string name="library_page_document">文档</string>
 
-    <string name="library_uplink">返回%1$s</string>
     <string name="library_badge_new">新</string>
     <string name="library_location_access_lost">授权已失效</string>
 

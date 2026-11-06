@@ -146,18 +146,17 @@ internal fun LibraryPageContent(
     page: LibraryPage,
     host: LibraryPageHost,
     leading: LibraryLeading,
-    uplink: LibraryUplink?,
+    trail: LibraryTrail?,
 ) {
     val title = libraryPageTitle(page, host)
-    val uplinkTitle = uplink?.let { libraryPageTitle(LibraryPageKeys.parse(it.key), host) }
-    val onUplink: () -> Unit = { uplink?.onClick?.invoke() }
+    val crumbs = trail?.let { LibraryCrumbs(it.keys.map { key -> libraryPageTitle(LibraryPageKeys.parse(key), host) }, it.onGo) }
     when (page) {
         is LibraryPage.Browse -> LibraryBrowsePage(page.ref, host, leading)
         LibraryPage.Graph -> LibraryGraphPage(host, leading)
-        LibraryPage.Memory -> LibraryMemoryPage(host, title, leading, uplinkTitle, onUplink)
-        is LibraryPage.Document -> LibraryDocumentPage(page.documentId, host, title, leading, uplinkTitle, onUplink)
-        is LibraryPage.FragmentSession -> LibraryFragmentSessionPage(page.sessionId, host, title, leading, uplinkTitle, onUplink)
-        else -> LibraryPageFrame(title, leading, uplinkTitle, onUplink, Modifier.testTag(LibraryTags.page(page.javaClass.simpleName))) { padding ->
+        LibraryPage.Memory -> LibraryMemoryPage(host, title, leading, crumbs)
+        is LibraryPage.Document -> LibraryDocumentPage(page.documentId, host, title, leading, crumbs)
+        is LibraryPage.FragmentSession -> LibraryFragmentSessionPage(page.sessionId, host, title, leading, crumbs)
+        else -> LibraryPageFrame(title, leading, crumbs, Modifier.testTag(LibraryTags.page(page.javaClass.simpleName))) { padding ->
             when (page) {
                 LibraryPage.Overview -> LibraryOverviewContent(host, padding, entryCards = false)
                 LibraryPage.Recent -> LibraryRecentContent(host, padding)
@@ -172,7 +171,7 @@ internal fun LibraryPageContent(
     }
 }
 
-/** 页面在左列、图标条、页头与“‹ 上一页”里显示的名称。 */
+/** 页面在左列、图标条、页头与路径条里显示的名称。 */
 @Composable
 internal fun libraryPageTitle(page: LibraryPage, host: LibraryPageHost): String = when (page) {
     LibraryPage.Overview -> stringResource(R.string.library_page_overview)
@@ -212,14 +211,13 @@ internal fun libraryPageTitle(page: LibraryPage, host: LibraryPageHost): String 
 internal fun LibraryPageFrame(
     title: String,
     leading: LibraryLeading,
-    uplinkTitle: String?,
-    onUplink: () -> Unit,
+    crumbs: LibraryCrumbs?,
     modifier: Modifier = Modifier,
     actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Column(modifier.fillMaxSize()) {
-        LibraryPageHeader(title = title, leading = leading, uplinkTitle = uplinkTitle, onUplink = onUplink, actions = actions)
+        LibraryPageHeader(title = title, leading = leading, crumbs = crumbs, actions = actions)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             content(libraryContentPadding())
         }
@@ -726,8 +724,7 @@ private fun LibraryDocumentPage(
     host: LibraryPageHost,
     title: String,
     leading: LibraryLeading,
-    uplinkTitle: String?,
-    onUplink: () -> Unit,
+    crumbs: LibraryCrumbs?,
 ) {
     val pendingList by host.viewModel.pending.collectAsStateWithLifecycle()
     val livePending = pendingList.firstOrNull { it.documentId == documentId }
@@ -766,8 +763,7 @@ private fun LibraryDocumentPage(
     LibraryPageFrame(
         title = resolvedTitle,
         leading = leading,
-        uplinkTitle = uplinkTitle,
-        onUplink = onUplink,
+        crumbs = crumbs,
         modifier = Modifier.testTag(LibraryTags.page("document")),
         actions = {
             val root = rootUuid
@@ -1150,16 +1146,14 @@ private fun LibraryFragmentSessionPage(
     host: LibraryPageHost,
     title: String,
     leading: LibraryLeading,
-    uplinkTitle: String?,
-    onUplink: () -> Unit,
+    crumbs: LibraryCrumbs?,
 ) {
     val fragments by remember(sessionId) { host.viewModel.fragments(sessionId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     LibraryPageFrame(
         title = title,
         leading = leading,
-        uplinkTitle = uplinkTitle,
-        onUplink = onUplink,
+        crumbs = crumbs,
         modifier = Modifier.testTag(LibraryTags.page("fragment_session")),
         actions = {
             if (fragments.isNotEmpty()) {
@@ -1222,8 +1216,7 @@ private fun LibraryMemoryPage(
     host: LibraryPageHost,
     title: String,
     leading: LibraryLeading,
-    uplinkTitle: String?,
-    onUplink: () -> Unit,
+    crumbs: LibraryCrumbs?,
 ) {
     val context = LocalContext.current
     val memory: LongTermMemoryViewModel = viewModel(factory = LongTermMemoryViewModel.factory(context.applicationContext as Application))
@@ -1240,8 +1233,7 @@ private fun LibraryMemoryPage(
     LibraryPageFrame(
         title = title,
         leading = leading,
-        uplinkTitle = uplinkTitle,
-        onUplink = onUplink,
+        crumbs = crumbs,
         modifier = Modifier.testTag(LibraryTags.page("memory")),
         actions = {
             IconButton(onClick = {

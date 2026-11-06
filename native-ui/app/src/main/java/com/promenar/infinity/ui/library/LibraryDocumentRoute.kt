@@ -72,7 +72,7 @@ fun LibraryDocumentRoute(
             page = LibraryPage.Document(documentId),
             host = host,
             leading = LibraryLeading.Back(onBack = onBack),
-            uplink = null,
+            trail = null,
         )
     }
 }

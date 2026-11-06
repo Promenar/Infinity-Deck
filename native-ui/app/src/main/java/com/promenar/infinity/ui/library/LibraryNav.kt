@@ -32,7 +32,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Dashboard
@@ -85,7 +84,9 @@ import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.InfinitySearchBar
+import com.promenar.infinity.ui.files.FileBreadcrumbs
 import com.promenar.infinity.ui.files.gitLabel
+import com.promenar.infinity.ui.files.state.FileCrumb
 import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.onSelectionIndicator
@@ -454,16 +455,18 @@ internal fun LibraryExpandButton(expanded: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** 内屏右列的页面层级路径：[titles] 自根页面到当前页，点某一级回到那一层（下标同 [titles]）。 */
+internal class LibraryCrumbs(val titles: List<String>, val onGo: (Int) -> Unit)
+
 /**
- * 资料页右列与外屏子页的页头：最左侧为展开 / 还原（内屏）或返回（外屏），然后是标题；
- * [uplinkTitle] 给出时标题下方显示“‹ 上一页名称”。内屏页头不放返回图标。
+ * 资料页右列与外屏子页的页头：最左侧为展开 / 还原（内屏）或返回（外屏），然后是标题。
+ * [crumbs] 给出时页头下方是与文件夹列表相同的路径条，上级可点；内屏页头不放返回图标。
  */
 @Composable
 internal fun LibraryPageHeader(
     title: String,
     leading: LibraryLeading,
-    uplinkTitle: String?,
-    onUplink: () -> Unit,
+    crumbs: LibraryCrumbs?,
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -489,33 +492,13 @@ internal fun LibraryPageHeader(
             )
             actions()
         }
-        if (uplinkTitle != null) {
-            val description = stringResource(R.string.library_uplink, uplinkTitle)
-            Row(
-                Modifier
-                    .padding(start = InfinitySpacing.Small)
-                    .clip(MaterialTheme.shapes.medium)
-                    .clickable(role = Role.Button, onClick = onUplink)
-                    .semantics { contentDescription = description }
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .padding(end = InfinitySpacing.Medium)
-                    .testTag(LibraryTags.UPLINK),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(InfinitySpacing.RowIconSize),
-                )
-                Text(
-                    uplinkTitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+        if (crumbs != null && crumbs.titles.size > 1) {
+            FileBreadcrumbs(
+                crumbs = crumbs.titles.mapIndexed { index, crumb -> FileCrumb(crumb, index.toString()) },
+                onGo = { index -> index.toIntOrNull()?.let(crumbs.onGo) },
+                modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Small, end = InfinitySpacing.XSmall),
+                tagPrefix = LibraryTags.CRUMB,
+            )
         }
     }
 }

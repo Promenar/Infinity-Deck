@@ -58,6 +58,7 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.MarkdownText
+import com.promenar.infinity.ui.files.state.FileCrumb
 import com.promenar.infinity.ui.files.state.FileManagerUiState
 import com.promenar.infinity.ui.media.formatMediaDuration
 import com.promenar.infinity.ui.testing.UiTags
@@ -109,7 +110,9 @@ internal fun FilePreviewPane(state: FileManagerUiState, actions: FileManagerUiAc
 }
 
 /**
- * 单列布局推入的预览页。内屏宿主（展开 / 还原）左侧仍是展开按钮，标题下方“‹ 文件夹名”返回列表；
+ * 单列布局推入的预览页。
+ * 内屏宿主（展开 / 还原）左侧仍是展开按钮，标题单行居中，与左列标题同高；页头下方是与列表相同位置的路径条，
+ * 末级为本文件，点上级回到对应文件夹；大小与修改时间在“信息”卡里。
  * 其它宿主左侧是返回键，标题下方显示所在路径。
  */
 @Composable
@@ -144,24 +147,7 @@ internal fun FileCompactPreviewPage(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (inner) {
-                    Box(
-                        modifier = Modifier
-                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable(role = Role.Button, onClick = controller::closePreview)
-                            .testTag(UiTags.FM_PREVIEW_BACK_LINK),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.fm_back_to_folder, state.currentFolderTitle()),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                } else {
+                if (!inner) {
                     Text(
                         text = locationPathText(state),
                         style = MaterialTheme.typography.bodySmall,
@@ -173,7 +159,18 @@ internal fun FileCompactPreviewPage(
             }
             PreviewItemMenu(item, state, actions)
         }
-        FilePreviewContent(item, state, actions, showMeta = true, modifier = Modifier.weight(1f))
+        if (inner) {
+            FileBreadcrumbs(
+                crumbs = state.fullCrumbs() + FileCrumb(item.name, item.ref.path),
+                onGo = { path ->
+                    controller.closePreview()
+                    if (path != state.path) controller.goTo(path)
+                },
+                modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Small, end = InfinitySpacing.XSmall),
+                tagPrefix = UiTags.FM_PREVIEW_CRUMB,
+            )
+        }
+        FilePreviewContent(item, state, actions, showMeta = !inner, modifier = Modifier.weight(1f))
     }
 }
 

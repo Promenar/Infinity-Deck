@@ -118,7 +118,6 @@
 
     <!-- 预览 -->
     <string name="fm_preview_back">Back to list</string>
-    <string name="fm_back_to_folder">‹ %1$s</string>
     <string name="fm_preview_truncated">Showing the beginning only</string>
     <string name="fm_preview_audio">Audio</string>
     <string name="fm_preview_video">Video</string>
