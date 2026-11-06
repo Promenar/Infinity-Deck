@@ -244,6 +244,7 @@ internal fun LibraryHome(host: LibraryPageHost) {
             onQueryChange = host.ask.onQueryChange,
             onSearch = host.ask.onSearch,
             modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
+            onFocused = host.ask.onOpen,
         )
         Box(Modifier.weight(1f)) {
             LibraryOverviewContent(host, libraryContentPadding(), entryCards = true)

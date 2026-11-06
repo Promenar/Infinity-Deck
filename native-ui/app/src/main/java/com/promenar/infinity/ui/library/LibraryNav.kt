@@ -1,5 +1,11 @@
 package com.promenar.infinity.ui.library
 
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
@@ -379,8 +385,24 @@ internal fun LibraryStrip(host: LibraryPageHost) {
 
 /** 问资料输入框：与全站搜索同一原子组件，输入即在右列（外屏为整页）显示关键词结果，按搜索键语义检索并作答。 */
 @Composable
-internal fun LibraryAskField(query: String, onQueryChange: (String) -> Unit, onSearch: () -> Unit, modifier: Modifier = Modifier) {
+internal fun LibraryAskField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** 获得焦点时调用：外屏首页借此进入结果页。 */
+    onFocused: (() -> Unit)? = null,
+    /** 为 true 时进入组合后请求焦点并复位，用于从首页接过输入。 */
+    focusOnEnter: MutableState<Boolean>? = null,
+) {
     val focusManager = LocalFocusManager.current
+    val requester = remember { FocusRequester() }
+    LaunchedEffect(focusOnEnter) {
+        if (focusOnEnter?.value == true) {
+            focusOnEnter.value = false
+            runCatching { requester.requestFocus() }
+        }
+    }
     InfinitySearchBar(
         value = query,
         onValueChange = onQueryChange,
@@ -392,7 +414,10 @@ internal fun LibraryAskField(query: String, onQueryChange: (String) -> Unit, onS
         placeholder = stringResource(R.string.library_ask_placeholder),
         // 整条搜索框（含清空按钮）点按时保持焦点，框外点按才退出输入。
         modifier = modifier.keepsFocusOnTap(),
-        fieldModifier = Modifier.testTag(LibraryTags.ASK_FIELD),
+        fieldModifier = Modifier
+            .testTag(LibraryTags.ASK_FIELD)
+            .focusRequester(requester)
+            .onFocusChanged { if (it.isFocused) onFocused?.invoke() },
     )
 }
 

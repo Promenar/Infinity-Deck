@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.library
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -114,11 +116,15 @@ fun LibraryScreen(
     // 问资料：有查询时压上结果页；结果页被弹出（返回或“‹ 上一页”）即清空查询与结果。
     val askInStack = LibraryPageKeys.ASK in navigator.stack
     val ask = remember(askViewModel, navigator) {
+        val focusOnEnter = mutableStateOf(false)
         LibraryAsk(
             onQueryChange = { text ->
                 askViewModel.onQueryChange(text)
-                if (text.isNotBlank() && LibraryPageKeys.ASK !in navigator.stack) navigator.push(LibraryPageKeys.ASK)
-                if (text.isBlank()) navigator.dropAsk()
+                when (libraryAskNavigation(navigator.twoPane, text, LibraryPageKeys.ASK in navigator.stack)) {
+                    LibraryAskNavigation.OPEN -> navigator.push(LibraryPageKeys.ASK)
+                    LibraryAskNavigation.CLOSE -> navigator.dropAsk()
+                    LibraryAskNavigation.STAY -> Unit
+                }
             },
             onSearch = {
                 if (askViewModel.state.value.query.isNotBlank()) {
@@ -126,6 +132,13 @@ fun LibraryScreen(
                     askViewModel.submit()
                 }
             },
+            onOpen = {
+                if (!navigator.twoPane && LibraryPageKeys.ASK !in navigator.stack) {
+                    focusOnEnter.value = true
+                    navigator.push(LibraryPageKeys.ASK)
+                }
+            },
+            focusOnEnter = focusOnEnter,
         )
     }
     LaunchedEffect(askInStack) {
@@ -162,9 +175,31 @@ fun LibraryScreen(
     }
 }
 
-/** 问资料输入的回调集合，左列、外屏首页与结果页共用。 */
+/**
+ * 问资料输入的回调集合，左列、外屏首页与结果页共用。
+ * [onOpen] 在外屏首页输入框获得焦点时进入结果页；[focusOnEnter] 让结果页的输入框接过焦点，键盘不收起。
+ */
 @Stable
-internal class LibraryAsk(val onQueryChange: (String) -> Unit, val onSearch: () -> Unit)
+internal class LibraryAsk(
+    val onQueryChange: (String) -> Unit,
+    val onSearch: () -> Unit,
+    val onOpen: () -> Unit = {},
+    val focusOnEnter: MutableState<Boolean> = mutableStateOf(false),
+)
+
+internal enum class LibraryAskNavigation { OPEN, CLOSE, STAY }
+
+/**
+ * 输入变化时结果页是否开合。两列时输入框常驻左列，结果页随输入在右列开合；
+ * 外屏的输入框就在结果页里，输入期间换页会让输入框离开组合、键盘收起并打断输入法组字，
+ * 所以外屏只在输入框获得焦点时进入结果页，清空文字也留在结果页，返回才离开。
+ */
+internal fun libraryAskNavigation(twoPane: Boolean, text: String, askInStack: Boolean): LibraryAskNavigation = when {
+    !twoPane -> LibraryAskNavigation.STAY
+    text.isNotBlank() && !askInStack -> LibraryAskNavigation.OPEN
+    text.isBlank() && askInStack -> LibraryAskNavigation.CLOSE
+    else -> LibraryAskNavigation.STAY
+}
 
 /** 各页面需要的依赖与回调。 */
 @Stable

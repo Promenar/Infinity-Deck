@@ -118,6 +118,7 @@ internal fun LibraryAskContent(host: LibraryPageHost, padding: PaddingValues) {
                 onQueryChange = host.ask.onQueryChange,
                 onSearch = actions.onSubmit,
                 modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
+                focusOnEnter = host.ask.focusOnEnter,
             )
         }
         LibraryAskResults(state, mode, actions, bottomPadding = padding.calculateBottomPadding(), modifier = Modifier.weight(1f))
