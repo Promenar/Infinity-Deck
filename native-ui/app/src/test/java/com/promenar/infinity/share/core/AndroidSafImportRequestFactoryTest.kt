@@ -16,11 +16,11 @@ class AndroidSafImportRequestFactoryTest {
     }
 
     @Test
-    fun `Word仅承诺DOCX而旧DOC保持不支持`() {
+    fun `Word支持DOCX与旧版DOC并按扩展名推断MIME`() {
         assertThat(AndroidSafImportRequestFactory.resolveMime("application/msword", "legacy.doc"))
             .isEqualTo("application/msword")
         assertThat(AndroidSafImportRequestFactory.resolveMime(null, "legacy.doc"))
-            .isEqualTo("application/octet-stream")
+            .isEqualTo("application/msword")
         assertThat(AndroidSafImportRequestFactory.resolveMime(null, "modern.docx"))
             .isEqualTo(DocumentReferenceExtractor.DOCX_MIME)
     }

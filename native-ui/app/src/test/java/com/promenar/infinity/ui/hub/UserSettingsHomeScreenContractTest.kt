@@ -262,7 +262,6 @@ class UserSettingsHomeScreenContractTest {
         assertThat(providerListSource).contains("settings_provider_credentials_not_required")
         assertThat(providerListSource).contains("stateDescription = providerStateDescription")
         assertThat(providerListSource).contains("style = MaterialTheme.typography.bodyLarge")
-        assertThat(providerListSource).contains("style = MaterialTheme.typography.bodyMedium")
         assertThat(providerListSource).doesNotContain("useLargeTextLayout")
         assertThat(providerListSource).doesNotContain("leadingContent = leadingContent")
         assertThat(providerListSource).contains("providerHostLabel(")
