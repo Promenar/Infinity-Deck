@@ -493,6 +493,7 @@ internal fun LibraryPageHeader(
                 InfinityHeaderTitle(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
             }
