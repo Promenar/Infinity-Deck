@@ -4,7 +4,10 @@ package com.promenar.infinity.ui.lab.chat
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -26,6 +29,7 @@ import com.promenar.infinity.domain.secret.SecretDestination
 import com.promenar.infinity.domain.secret.SecretExposure
 import com.promenar.infinity.domain.secret.SecretInputRequest
 import com.promenar.infinity.domain.secret.SecretKind
+import com.promenar.infinity.ui.chat.ChatScreenActions
 import com.promenar.infinity.ui.chat.ChatScreenState
 import com.promenar.infinity.ui.chat.ChatUiState
 import com.promenar.infinity.ui.chat.ComposerQueueUiState
@@ -49,8 +53,15 @@ import kotlinx.serialization.json.Json
  */
 internal val labChatStateScenes: Map<String, () -> LabScene> = mapOf(
     // 后台完整测试运行中锁定触摸，屏幕只剩运行状态与进度。
+    // 长按解锁后回到会话页，返回键再退出版本页；会话页顶栏的锁按钮可以重新锁上。
     "chat.state.touch-lock" to {
-        LabStateScene { AdeOverlay(ADE_PLAN_UPDATE, AdeTimes.PLAN_UPDATE + 95_000) { it.copy(screen = it.screen.copy(touchLocked = true)) } }
+        LabStateScene {
+            var locked by remember { mutableStateOf(true) }
+            val actions = remember { ChatScreenActions(onLockTouch = { locked = true }, onUnlockTouch = { locked = false }) }
+            AdeOverlay(ADE_PLAN_UPDATE, AdeTimes.PLAN_UPDATE + 95_000, actions = actions, key = locked) {
+                it.copy(screen = it.screen.copy(touchLocked = locked))
+            }
+        }
     },
     // 生成中写下的两条后续消息排在输入框上方，第二条已请求插队。
     "chat.state.queue" to {
@@ -134,12 +145,18 @@ private fun rememberStatesText(): LabStatesText {
 
 /** starlog 开发脚本停在 [stage]，经 [overlay] 叠加单一状态后渲染；内屏带首页三列。 */
 @Composable
-private fun LabSceneScope.AdeOverlay(stage: Int, nowScriptMs: Long, overlay: (LabChatFrame) -> LabChatFrame) {
+private fun LabSceneScope.AdeOverlay(
+    stage: Int,
+    nowScriptMs: Long,
+    actions: ChatScreenActions = ChatScreenActions(),
+    /** 叠加内容依赖的场景状态；变化时重新叠加。 */
+    key: Any? = null,
+    overlay: (LabChatFrame) -> LabChatFrame,
+) {
     val zh = isChinese(LocalContext.current.resources)
-    val frame = remember(zh, stage) {
-        overlay(adeFrame(AdeState(LabAdeText(zh), stage = stage, explorerSteps = listOf(5, 7))))
-    }
-    LabChatScene(frame, nowScriptMs = nowScriptMs, hub = LabHubStory.ADE)
+    val base = remember(zh, stage) { adeFrame(AdeState(LabAdeText(zh), stage = stage, explorerSteps = listOf(5, 7))) }
+    val frame = remember(base, key) { overlay(base) }
+    LabChatScene(frame, nowScriptMs = nowScriptMs, actions = actions, hub = LabHubStory.ADE)
 }
 
 private fun LabChatFrame.withQuestion(text: LabStatesText): LabChatFrame {

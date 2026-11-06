@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -19,9 +21,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.library.AskHit
 import com.promenar.infinity.domain.library.AskHitKind
@@ -47,7 +51,7 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 /**
  * 存储空间目录下的版本：问资料的答案与命中列表，以及从答案点进文档后的命中段定位。
  * 资料与记忆都围绕 starlog 的 JSON 输出设计，全部虚构。两页按外屏的整页布局拼装（页头带返回），
- * 内屏两列的资料页要等资料页可注入假数据后再接入。
+ * 内屏打开时居中成最宽 640dp 的阅读列；内屏两列的资料页要等资料页可注入假数据后再接入。
  */
 internal val labLibraryScenes: Map<String, () -> LabScene> = mapOf(
     "library.state.ask" to { LabStateScene { AskPage() } },
@@ -65,6 +69,17 @@ private fun rememberLibraryText(): LabLibraryText {
 /** 外屏资料子页的外壳：页头避开状态栏，底部留白由页面内边距按导航栏计算。 */
 private val PageInsets: WindowInsets
     @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+
+/** 外屏整页布局在内屏打开时最宽的阅读列；整页底色铺满，列居中。 */
+private val PageMaxWidth = 640.dp
+
+@Composable
+private fun pageModifier(): Modifier = Modifier
+    .fillMaxSize()
+    .background(MaterialTheme.colorScheme.background)
+    .windowInsetsPadding(PageInsets)
+    .wrapContentWidth(Alignment.CenterHorizontally)
+    .widthIn(max = PageMaxWidth)
 
 @Composable
 private fun LabSceneScope.AskPage() {
@@ -86,7 +101,7 @@ private fun LabSceneScope.AskPage() {
         title = stringResource(R.string.library_page_ask),
         leading = LibraryLeading.Back(onExit),
         crumbs = null,
-        modifier = Modifier.background(MaterialTheme.colorScheme.background).windowInsetsPadding(PageInsets),
+        modifier = pageModifier(),
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
             LibraryAskField(
@@ -120,7 +135,7 @@ private fun LabSceneScope.LocatePage() {
         title = text.docTitle,
         leading = LibraryLeading.Back(onExit),
         crumbs = null,
-        modifier = Modifier.background(MaterialTheme.colorScheme.background).windowInsetsPadding(PageInsets),
+        modifier = pageModifier(),
     ) { padding ->
         Column(Modifier.fillMaxSize()) {
             DocumentLocateBar(
@@ -190,9 +205,9 @@ private class LabLibraryText(private val zh: Boolean) {
         hits = hits(),
         mode = AskMode.FULL,
         answer = if (zh) {
-            "定了：--json 输出 JSON Lines，每行一个对象，时间戳用 ISO 8601[1][4]。字段为 timestamp、level、target 与原始行 raw，排在 v0.4.0 发布[1][3]。你之前提过希望输出能直接交给 jq[2]。"
+            "定了：--json 输出 JSON Lines，每行一个对象，时间戳用 ISO 8601。[1][4]字段为 timestamp、level、target 与原始行 raw，随 v0.4.0 发布。[1][3]你之前提过希望输出能直接交给 jq。[2]"
         } else {
-            "Yes: --json prints JSON Lines, one object per line, with ISO 8601 timestamps [1][4]. Each record has timestamp, level, target and the raw line, shipping in v0.4.0 [1][3]. You mentioned wanting the output to pipe straight into jq [2]."
+            "Yes: --json prints JSON Lines, one object per line, with ISO 8601 timestamps.[1][4] Each record has timestamp, level, target and the raw line, shipping in v0.4.0.[1][3] You mentioned wanting the output to pipe straight into jq.[2]"
         },
         citedHitIndexes = listOf(0, 3, 2, 1),
         modelLabel = LAB_MODEL,
