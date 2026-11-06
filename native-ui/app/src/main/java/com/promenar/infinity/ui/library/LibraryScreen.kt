@@ -124,6 +124,7 @@ fun LibraryScreen(
         viewModel = viewModel,
         askViewModel = askViewModel,
         workspaceRootUuid = ragViewModel.workspaceRootUuid,
+        collections = remember(app) { DatabaseDocumentCollections(app.database) },
         onNavigateToSecondary = onNavigateToSecondary,
         onOpenSession = onOpenSession,
         onManageMounts = { mountsOpen = true },
@@ -142,6 +143,7 @@ internal fun LibraryScreenContent(
     viewModel: LibraryViewModel,
     askViewModel: LibraryAskViewModel,
     workspaceRootUuid: StateFlow<String?>,
+    collections: LibraryDocumentCollections,
     onNavigateToSecondary: (String) -> Unit,
     onOpenSession: (String) -> Unit,
     onManageMounts: () -> Unit,
@@ -192,6 +194,7 @@ internal fun LibraryScreenContent(
     val host = LibraryPageHost(
         viewModel = viewModel,
         workspaceRootUuid = workspaceRootUuid,
+        collections = collections,
         navigator = navigator,
         askViewModel = askViewModel,
         askQuery = askState.query,
@@ -256,6 +259,8 @@ internal class LibraryPageHost(
     val viewModel: LibraryViewModel,
     /** 存储空间根目录 uuid；未就绪为 null，文档页此时不显示编辑入口。 */
     val workspaceRootUuid: StateFlow<String?>,
+    /** 文档页的所属合集与合集归属。 */
+    val collections: LibraryDocumentCollections,
     val askViewModel: LibraryAskViewModel,
     val navigator: LibraryNavigator,
     val askQuery: String,

@@ -22,6 +22,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.R
+import com.promenar.infinity.data.rag.KgDocumentAssignment
+import com.promenar.infinity.data.rag.KgDocumentCollectionInfo
+import com.promenar.infinity.data.rag.KgDocumentSetting
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationCapabilities
 import com.promenar.infinity.domain.files.FileLocationKind
@@ -109,6 +112,7 @@ private fun LabLibraryPage(openDocument: Boolean) {
         }
     }
     val rootUuid = remember { MutableStateFlow<String?>(LAB_ROOT_UUID) }
+    val collections = remember(text) { LabLibraryCollections(text) }
 
     val configuration = LocalConfiguration.current
     val twoPane = settingsTwoPaneAvailable(configuration.screenWidthDp, configuration.screenHeightDp)
@@ -145,6 +149,7 @@ private fun LabLibraryPage(openDocument: Boolean) {
                     viewModel = viewModel,
                     askViewModel = askViewModel,
                     workspaceRootUuid = rootUuid,
+                    collections = collections,
                     onNavigateToSecondary = {},
                     onOpenSession = {},
                     onManageMounts = {},
@@ -293,6 +298,21 @@ internal class LabLibraryText(private val zh: Boolean, private val titles: Locat
         "# Weekly notes 11-04\n\n## starlog\n\n$notesLine\n\nThe large-file benchmark lands next week; the target is 4 million lines in under 30 seconds."
     }
 
+    // —— 图谱合集：顶层文件夹 starlog 是一部作品，文档按篇序排列 ——
+
+    private val collectionOrder = listOf(NOTES_ID, DOC_ID, BENCH_ID)
+
+    fun collectionInfo(documentId: String) = KgDocumentCollectionInfo(
+        collectionId = COLLECTION_ID, title = COLLECTION_TITLE,
+        ordinal = collectionOrder.indexOf(documentId).takeIf { it >= 0 }?.plus(1),
+        documentCount = collectionOrder.size, orderSource = null,
+    )
+
+    val collectionAssignment = KgDocumentAssignment(
+        mode = KgDocumentSetting.FOLLOW_FOLDER, targetCollectionId = null,
+        folderCollectionId = COLLECTION_ID, folderCollectionTitle = COLLECTION_TITLE,
+    )
+
     // —— 问资料 ——
 
     val query = if (zh) "starlog 的 JSON 输出格式定了吗" else "What did we decide for starlog's JSON output"
@@ -348,6 +368,8 @@ internal class LabLibraryText(private val zh: Boolean, private val titles: Locat
 
     private companion object {
         const val KB = "kb"
+        const val COLLECTION_ID = "lab-collection-starlog"
+        const val COLLECTION_TITLE = "starlog"
         const val MARKDOWN = "text/markdown"
         const val HOUR_MS = 3_600_000L
         val WRITABLE = FileLocationCapabilities(writable = true, deletable = true, archive = true)

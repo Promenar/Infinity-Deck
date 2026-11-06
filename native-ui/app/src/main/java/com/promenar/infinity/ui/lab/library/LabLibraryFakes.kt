@@ -29,6 +29,9 @@ import com.promenar.infinity.domain.library.LibraryDocumentSummary
 import com.promenar.infinity.domain.library.LibraryKnowledgeSource
 import com.promenar.infinity.domain.library.LibraryOverview
 import com.promenar.infinity.domain.library.PendingDocument
+import com.promenar.infinity.data.rag.KgDocumentAssignment
+import com.promenar.infinity.data.rag.KgDocumentCollectionInfo
+import com.promenar.infinity.ui.library.LibraryDocumentCollections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -119,4 +122,10 @@ internal class LabLibraryAsk(private val text: LabLibraryText) : LibraryAskServi
         emit(AskEvent.AnswerDelta(text.answer))
         emit(AskEvent.AnswerDone(text.answer, text.citedHitIndexes, text.modelLabel, noAnswer = false))
     }
+}
+
+/** 文档页的所属合集与合集归属：文档都跟随顶层文件夹 starlog 这部作品。 */
+internal class LabLibraryCollections(private val text: LabLibraryText) : LibraryDocumentCollections {
+    override suspend fun info(documentId: String): KgDocumentCollectionInfo = text.collectionInfo(documentId)
+    override suspend fun assignment(documentId: String): KgDocumentAssignment = text.collectionAssignment
 }

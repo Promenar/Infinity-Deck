@@ -58,6 +58,7 @@ fun LibraryDocumentRoute(
     val host = LibraryPageHost(
         viewModel = viewModel,
         workspaceRootUuid = ragViewModel.workspaceRootUuid,
+        collections = remember(app) { DatabaseDocumentCollections(app.database) },
         askViewModel = askViewModel,
         navigator = navigator,
         askQuery = "",

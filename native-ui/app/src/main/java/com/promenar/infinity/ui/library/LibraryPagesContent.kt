@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.library
 
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import com.promenar.infinity.InfinityApplication
-import com.promenar.infinity.data.rag.KgCollectionRepository
 import com.promenar.infinity.data.rag.KgDocumentSetting
 import com.promenar.infinity.data.rag.KgDocumentAssignment
 import com.promenar.infinity.data.rag.KgDocumentCollectionInfo
@@ -961,7 +960,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
     // 所属合集与篇序随图谱状态刷新：抽取完成后文档才写入合集成员。
     val collection by produceState<KgDocumentCollectionInfo?>(null, info.documentId, graph, assignmentVersion) {
         value = try {
-            withContext(Dispatchers.IO) { KgCollectionRepository(app.database).documentInfo(info.documentId) }
+            withContext(Dispatchers.IO) { host.collections.info(info.documentId) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -972,7 +971,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
     // 合集归属在抽取前也可设置，下次抽取直接写入选定的合集。
     val assignment by produceState<KgDocumentAssignment?>(null, info.documentId, graph, assignmentVersion) {
         value = try {
-            withContext(Dispatchers.IO) { KgCollectionRepository(app.database).readDocumentSetting(info.documentId) }
+            withContext(Dispatchers.IO) { host.collections.assignment(info.documentId) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

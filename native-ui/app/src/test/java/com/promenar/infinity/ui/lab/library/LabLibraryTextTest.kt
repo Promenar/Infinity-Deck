@@ -44,5 +44,12 @@ class LabLibraryTextTest {
         text.recent.forEach { assertThat(text.documentIdFor(it.ref)).isEqualTo(it.documentId) }
         val ids = text.locations.map { it.id }.toSet()
         assertThat(text.pins.all { it.locationId in ids }).isTrue()
+        // 文档页的合集两行显示作品名与篇序，不露出文档 id。
+        (text.recent.map { it.documentId }).forEach { id ->
+            val info = text.collectionInfo(id)
+            assertThat(info.title).doesNotContain(id)
+            assertThat(info.ordinal).isNotNull()
+        }
+        assertThat(text.collectionAssignment.folderCollectionTitle).isEqualTo(text.collectionInfo(text.recent.first().documentId).title)
     }
 }
