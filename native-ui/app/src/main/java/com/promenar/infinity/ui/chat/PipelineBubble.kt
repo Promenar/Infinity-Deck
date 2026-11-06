@@ -922,6 +922,12 @@ internal class ThinkingClock(private val capacity: Int = 64) {
         durations[key] = durationMs.coerceAtLeast(0)
     }
 
+    /** 清掉某条消息的起点与时长；视觉实验室重放同一条脚本消息前调用，计时从这次出现重新开始。 */
+    @Synchronized fun reset(key: String) {
+        starts.remove(key)
+        durations.remove(key)
+    }
+
     companion object {
         val shared = ThinkingClock()
     }

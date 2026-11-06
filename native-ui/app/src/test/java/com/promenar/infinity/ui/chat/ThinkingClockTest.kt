@@ -33,4 +33,22 @@ class ThinkingClockTest {
         assertThat(clock.start("a", now = 5)).isEqualTo(1)
         assertThat(clock.start("b", now = 6)).isEqualTo(6)
     }
+
+    @Test fun `写入的时长覆盖已有记录，之后的结束不再改写`() {
+        val clock = ThinkingClock()
+        clock.start("m1", now = 1_000)
+        clock.finish("m1", now = 1_200)
+        clock.record("m1", durationMs = 6_000)
+        clock.finish("m1", now = 90_000)
+        assertThat(clock.duration("m1")).isEqualTo(6_000)
+    }
+
+    @Test fun `重置后起点与时长都从下一次出现重新开始`() {
+        val clock = ThinkingClock()
+        clock.start("m1", now = 1_000)
+        clock.record("m1", durationMs = 6_000)
+        clock.reset("m1")
+        assertThat(clock.duration("m1")).isNull()
+        assertThat(clock.start("m1", now = 650_000)).isEqualTo(650_000)
+    }
 }

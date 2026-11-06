@@ -144,10 +144,17 @@ internal fun LabSceneScope.LabChatScene(
     inspectorPageContent: @Composable BoxScope.() -> Unit = {},
 ) {
     val anchor = anchorMs - nowScriptMs
+    // 本场景里已经出现过的思考消息；从画面消失（倒退、重播）后移出，再次出现时重新计时。
+    val seenThinking = remember { mutableSetOf<String>() }
     val shifted = remember(frame, anchor) {
-        // 思考时长由真实组件按进程内计时记录；脚本消息没有真实计时，先写入定好的时长。
-        frame.screen.uiState.messages.forEach { message ->
-            if (message.reasoning != null) ThinkingClock.shared.record(message.id, LAB_THOUGHT_MS)
+        // 思考计时由真实组件按消息 id 记在进程内，而脚本每次播放都用同一批 id：
+        // 每条思考消息在本场景首次出现时清掉上次的起点，再写入定好的时长，进行中的计时从 0 开始，结束后显示定好的时长。
+        val thinkingIds = frame.screen.uiState.messages.filter { it.reasoning != null }.map { it.id }.toSet()
+        seenThinking.retainAll(thinkingIds)
+        (thinkingIds - seenThinking).forEach { id ->
+            ThinkingClock.shared.reset(id)
+            ThinkingClock.shared.record(id, LAB_THOUGHT_MS)
+            seenThinking += id
         }
         frame.atWallClock(anchor)
     }
