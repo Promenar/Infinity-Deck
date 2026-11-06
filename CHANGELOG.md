@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.32.1-beta] - 2026-11-06
+
+### 修复
+
+- 图谱合集条不再把索引失败的文档（如扫描版 PDF）计入篇数，避免进度永远到不了满格。
+- 文档“合集归属”的“加入已有作品”列表不再重复列出所在文件夹的合集，它已由“跟随文件夹”表示。
+
 ## [0.32.0-beta] - 2026-11-06
 
 ### 新增

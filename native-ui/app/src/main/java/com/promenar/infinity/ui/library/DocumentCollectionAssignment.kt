@@ -136,10 +136,12 @@ internal fun DocumentCollectionAssignmentSheet(
                 onClick = { choose(KgDocumentSetting.SHARED) },
             )
             SectionHeader(R.string.kda_join_header)
-            if (current.collections.isEmpty()) {
+            if (current.collections.none { it.id != current.current.folderCollectionId || it.id == target }) {
                 SheetNote(stringResource(R.string.kda_join_empty))
             }
-            current.collections.forEach { collection ->
+            // 所在文件夹的合集已由“跟随文件夹”表示，不再重复列出（已选中时保留，便于看清当前归属）。
+            val joinable = current.collections.filter { it.id != current.current.folderCollectionId || it.id == target }
+            joinable.forEach { collection ->
                 AssignmentOption(
                     title = collection.title,
                     subtitle = pluralStringResource(R.plurals.kda_collection_docs, collection.documentCount, collection.documentCount),

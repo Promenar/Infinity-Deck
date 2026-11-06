@@ -42,6 +42,7 @@ import com.promenar.infinity.data.rag.KgCollectionRepository
 import com.promenar.infinity.data.rag.KgFolderSetting
 import com.promenar.infinity.data.rag.KgNaturalOrder
 import com.promenar.infinity.domain.files.FileRef
+import com.promenar.infinity.domain.files.KnowledgeIndexState
 import com.promenar.infinity.domain.library.PendingStage
 import com.promenar.infinity.ui.files.FileFolderHeaderScope
 import com.promenar.infinity.ui.theme.InfinityMotion
@@ -65,7 +66,16 @@ internal data class LibraryCollectionStripData(
     val kind: CollectionStripKind,
     /** 按篇序排列的各篇是否已抽取。 */
     val segments: List<Boolean>,
+    /** 与 [segments] 一一对应的文档 id。 */
+    val documentIds: List<String> = emptyList(),
 ) {
+    /** 去掉索引失败的文档：它们无法抽取图谱，计入总数会让进度永远到不了满格。 */
+    fun withoutDocuments(excluded: Set<String>): LibraryCollectionStripData {
+        if (excluded.isEmpty() || documentIds.size != segments.size) return this
+        val kept = documentIds.indices.filter { documentIds[it] !in excluded }
+        return copy(segments = kept.map { segments[it] }, documentIds = kept.map { documentIds[it] })
+    }
+
     val extracted: Int get() = segments.count { it }
     val total: Int get() = segments.size
 }
@@ -101,6 +111,7 @@ internal suspend fun loadLibraryCollectionStrip(database: InfinityDatabase, fold
                 else -> CollectionStripKind.WORK
             },
             segments = docs.map { it.kgExtractedAt != null },
+            documentIds = docs.map { it.uuid },
         )
     }
 
@@ -137,7 +148,8 @@ internal fun LibraryCollectionStrip(
             null
         }
     }
-    val current = data?.takeIf { it.total > 0 && (it.extracted > 0 || extracting) } ?: return
+    val failed = scope.items.filter { it.knowledge?.state == KnowledgeIndexState.FAILED }.mapNotNull { it.knowledge?.documentId }.toSet()
+    val current = data?.withoutDocuments(failed)?.takeIf { it.total > 0 && (it.extracted > 0 || extracting) } ?: return
     CollectionStripCard(
         data = current,
         extracting = extracting,
