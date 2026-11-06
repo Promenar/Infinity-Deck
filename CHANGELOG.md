@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.32.0-beta] - 2026-11-06
+
 ### 新增
 
 - 资料库文件夹顶部新增图谱合集条：已有文档抽取过图谱的文件夹会显示合集名、类型、按篇序排列的已抽取进度，并可直接进入“合集设置”或“抽取图谱”。

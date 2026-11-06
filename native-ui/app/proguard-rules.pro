@@ -61,6 +61,9 @@
 -dontwarn aQute.bnd.annotation.spi.ServiceProvider
 -dontwarn com.gemalto.jp2.JP2Decoder
 -dontwarn java.awt.Color
+# poi-scratchpad（旧版 .doc）的 EscherMetafileBlip 只在读取嵌入图元文件尺寸时引用，正文抽取不经过。
+-dontwarn java.awt.Dimension
+-dontwarn java.awt.Rectangle
 -dontwarn java.awt.color.ColorSpace
 -dontwarn java.awt.geom.AffineTransform
 -dontwarn java.awt.geom.Dimension2D
