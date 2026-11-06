@@ -129,6 +129,7 @@ import com.promenar.infinity.ui.rag.KnowledgeGraphScreen
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.forReading
 import kotlinx.coroutines.launch
 
 /** 内容宽度达到这个值时使用宽版（文档正文 + 检视器、概览两列卡片）。 */
@@ -857,7 +858,7 @@ private fun DocumentBodyState(
                     } else if (value.markdown) {
                         MarkdownText(markdown = value.text, modifier = Modifier.fillMaxWidth())
                     } else {
-                        Text(value.text, style = MaterialTheme.typography.bodyMedium)
+                        Text(value.text, style = MaterialTheme.typography.bodyMedium.forReading())
                     }
                 }
                 if (value.truncated) {
@@ -899,25 +900,6 @@ private fun DocumentInspector(info: DocumentInsight, livePending: PendingDocumen
         }
         InspectorRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
         DocumentGraphRow(info, pending, enabled = info.documentId !in busy, host)
-        // 图谱实体以标签列在“知识图谱”行下方；尚未抽取时由该行说明状态，不再重复一行。
-        if (info.entities.isNotEmpty()) {
-            FlowRow(
-                modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
-                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
-            ) {
-                info.entities.forEach { entity ->
-                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
-                        Text(
-                            entity,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = InfinitySpacing.Small, vertical = InfinitySpacing.XSmall),
-                        )
-                    }
-                }
-            }
-        }
         InspectorRow(stringResource(R.string.library_doc_location), info.folderPath)
         InfinityMetaLine(
             listOf(
@@ -974,7 +956,6 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
             null
         }
     }
-    InspectorRow(stringResource(R.string.library_graph_row), text)
     // 文档还在排队、索引或解析失败时，先处理索引本身。
     val indexBusy = pending?.kind in setOf(PendingKind.QUEUED, PendingKind.INDEXING, PendingKind.FAILED)
     val action: Pair<Int, () -> Unit>? = if (indexBusy) null else when (graph) {
@@ -987,12 +968,28 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         is DocumentGraphState.Complete -> R.string.kgc_action_reextract to { reextract = true }
         is DocumentGraphState.Extracting -> null
     }
-    if (action != null) {
-        FilledTonalButton(
-            onClick = action.second,
-            enabled = enabled,
-            modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
-        ) { Text(stringResource(action.first), maxLines = 1) }
+    // 图谱状态与它的动作同处一行，实体标签紧随其下；“所属合集”另起一行，三者按图谱 → 实体 → 合集分组。
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.library_graph_row), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (action != null) {
+            FilledTonalButton(onClick = action.second, enabled = enabled, modifier = Modifier.testTag("library_doc_graph_action")) {
+                Text(stringResource(action.first), maxLines = 1)
+            }
+        }
+    }
+    // 尚未抽取时由上一行说明状态，不再重复一行。
+    if (info.entities.isNotEmpty()) {
+        DocumentEntityChips(info.entities)
     }
     collection?.let { current ->
         val ordinal = current.ordinal
@@ -1009,6 +1006,27 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
     if (reextract) {
         KgBatchExtractionHost(app, KgBatchTarget.Documents(listOf(info.documentId)), onQueued = host.viewModel::reportGraphQueued) {
             reextract = false
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DocumentEntityChips(entities: List<String>) {
+    FlowRow(
+        modifier = Modifier.padding(start = InfinitySpacing.Large, end = InfinitySpacing.Large, bottom = InfinitySpacing.Small),
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+    ) {
+        entities.forEach { entity ->
+            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
+                Text(
+                    entity,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = InfinitySpacing.Small, vertical = InfinitySpacing.XSmall),
+                )
+            }
         }
     }
 }

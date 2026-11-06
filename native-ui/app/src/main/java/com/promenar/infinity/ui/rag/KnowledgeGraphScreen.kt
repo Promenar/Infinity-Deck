@@ -274,7 +274,8 @@ fun KnowledgeGraphScreen(
                         ticks = ticks,
                         asOfOrdinal = asOfOrdinal,
                         onCommit = viewModel::setAsOf,
-                        modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
+                        // 与上方类型筛选标签拉开一档，读作独立的一行控件。
+                        modifier = Modifier.padding(start = InfinitySpacing.Large, end = InfinitySpacing.Large, top = InfinitySpacing.Small),
                     )
                 }
             }

@@ -42,6 +42,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityValueRow
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forReading
 
 /** 可绑定图谱的分组，决定改绑面板中的分组顺序与副标题写法。 */
 internal enum class GraphGroup { Session, Collection, Shared, OtherSession }
@@ -225,7 +226,7 @@ internal fun GraphRebindSheet(
         Column {
             Text(
                 stringResource(R.string.ks_graph_rebind_desc),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyMedium.forReading(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp),
             )
@@ -264,7 +265,7 @@ internal fun GraphRebindSheet(
             ) {
                 Text(
                     stringResource(R.string.ks_graph_rebind_adds_docs, pending.title),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.forReading(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,

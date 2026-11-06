@@ -54,6 +54,7 @@ import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.utils.InfinityLogger
 import java.text.NumberFormat
 import kotlinx.coroutines.CancellationException
@@ -455,22 +456,30 @@ private fun EntityMergeSection(
     SectionHeader(R.string.kgc_merge_header)
     SheetNote(stringResource(R.string.kgc_merge_desc))
     val candidates = data.candidates
-    Text(
-        if (candidates.isEmpty()) stringResource(R.string.kgc_merge_none)
-        else pluralStringResource(R.plurals.kgc_merge_candidates, candidates.size, candidates.size),
-        style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(vertical = InfinitySpacing.XSmall),
-    )
-    if (candidates.isNotEmpty()) {
-        val estimate = remember(candidates.size, maxOutputTokens) {
-            com.promenar.infinity.data.rag.KgEntityResolution.estimate(candidates.size, maxOutputTokens)
+    // 候选数、用量估算与“检查合并”同处一行：按钮紧跟它要处理的对象，不单独悬在右侧。
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.XSmall),
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (candidates.isEmpty()) stringResource(R.string.kgc_merge_none)
+                else pluralStringResource(R.plurals.kgc_merge_candidates, candidates.size, candidates.size),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            if (candidates.isNotEmpty()) {
+                val estimate = remember(candidates.size, maxOutputTokens) {
+                    com.promenar.infinity.data.rag.KgEntityResolution.estimate(candidates.size, maxOutputTokens)
+                }
+                SheetNote(
+                    if (modelLabel == null) stringResource(R.string.kgc_batch_no_model)
+                    else stringResource(R.string.kgc_merge_estimate, modelLabel, estimate.candidateCount, estimate.calls),
+                    error = modelLabel == null,
+                )
+            }
         }
-        SheetNote(
-            if (modelLabel == null) stringResource(R.string.kgc_batch_no_model)
-            else stringResource(R.string.kgc_merge_estimate, modelLabel, estimate.candidateCount, estimate.calls),
-            error = modelLabel == null,
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        if (candidates.isNotEmpty()) {
             FilledTonalButton(onClick = onCheck, enabled = !busy && modelLabel != null, modifier = Modifier.testTag("kg_merge_check")) {
                 if (checking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 Text(
@@ -485,17 +494,21 @@ private fun EntityMergeSection(
         lastRun?.let { run -> SheetNote(stringResource(R.string.kgc_merge_result, run.decided, run.merged, run.uncertain)) }
     }
     candidates.take(CANDIDATE_ROWS).forEach { pair ->
-        Column(Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.XSmall)) {
+        // 候选名与两个裁决按钮同一行，与下方“已合并”行的名称 + 撤销结构一致。
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 stringResource(R.string.kgc_merge_pair, pair.first.name, pair.second.name),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End)) {
-                TextButton(onClick = { onDecide(pair, false) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_different), maxLines = 1) }
-                FilledTonalButton(onClick = { onDecide(pair, true) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_same), maxLines = 1) }
-            }
+            TextButton(onClick = { onDecide(pair, false) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_different), maxLines = 1) }
+            FilledTonalButton(onClick = { onDecide(pair, true) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_same), maxLines = 1) }
         }
     }
     if (data.links.isNotEmpty()) {
@@ -547,7 +560,8 @@ private fun SectionHeader(@StringRes label: Int, modifier: Modifier = Modifier) 
 private fun SheetNote(text: String, error: Boolean = false) {
     Text(
         text,
-        style = MaterialTheme.typography.bodySmall,
+        // 多句说明按阅读段落断行；界面平衡断行会把整段压成窄列。
+        style = MaterialTheme.typography.bodySmall.forReading(),
         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(vertical = InfinitySpacing.XSmall),
     )

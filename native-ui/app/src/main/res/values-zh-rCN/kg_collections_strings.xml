@@ -4,8 +4,7 @@
     <string name="kg_timeline_latest">最新 · 共 %1$d 篇</string>
     <string name="kg_timeline_as_of">截至第 %1$d 篇 · %2$s</string>
     <string name="kg_timeline_hint">按阅读顺序</string>
-    <string name="kg_entity_history">状态变化（按阅读顺序）</string>
-    <string name="kg_history_relation">%1$s —%2$s→ %3$s</string>
+    <string name="kg_entity_history">状态变化</string>
     <string name="kg_history_since">第 %1$d 篇起 · 当前有效</string>
     <string name="kg_history_at">第 %1$d 篇</string>
     <string name="kg_history_range">第 %1$d–%2$d 篇</string>

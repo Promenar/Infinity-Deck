@@ -4,8 +4,7 @@
     <string name="kg_timeline_latest">Latest · %1$d articles</string>
     <string name="kg_timeline_as_of">As of article %1$d · %2$s</string>
     <string name="kg_timeline_hint">Reading order</string>
-    <string name="kg_entity_history">State changes (reading order)</string>
-    <string name="kg_history_relation">%1$s —%2$s→ %3$s</string>
+    <string name="kg_entity_history">State changes</string>
     <string name="kg_history_since">From article %1$d · current</string>
     <string name="kg_history_at">Article %1$d</string>
     <string name="kg_history_range">Articles %1$d–%2$d</string>

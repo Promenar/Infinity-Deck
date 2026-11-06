@@ -3,6 +3,10 @@ package com.promenar.infinity.ui.rag
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -443,7 +447,10 @@ internal fun KnowledgeGraphEntityPanel(
     }
 }
 
-/** 状态变化一行：关系与篇目区间；倒叙段落单独标出，不改变当时状态。 */
+/**
+ * 状态变化一行：左侧圆点标出时间点（当前有效为主色、已结束为浅色、倒叙为第三色），
+ * 关系词用主色突出，与上方“关系”标签同一套强调方式；篇目区间在下方小字说明。
+ */
 @Composable
 private fun KgHistoryRow(line: KgEntityHistoryLine) {
     val range = when {
@@ -452,13 +459,36 @@ private fun KgHistoryRow(line: KgEntityHistoryLine) {
         line.endOrdinal == line.startOrdinal -> stringResource(R.string.kg_history_at, line.startOrdinal)
         else -> stringResource(R.string.kg_history_range, line.startOrdinal, line.endOrdinal)
     }
-    Column(Modifier.fillMaxWidth().padding(end = InfinitySpacing.Small, bottom = InfinitySpacing.Small)) {
-        Text(
-            stringResource(R.string.kg_history_relation, line.source, line.relation, line.target),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (line.endOrdinal == null || line.flashback) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+    val colors = MaterialTheme.colorScheme
+    val active = line.endOrdinal == null && !line.flashback
+    val marker = when {
+        line.flashback -> colors.tertiary
+        active -> colors.primary
+        else -> colors.outlineVariant
+    }
+    val textColor = if (active || line.flashback) colors.onSurface else colors.onSurfaceVariant
+    val relationStyle = SpanStyle(color = if (active) colors.primary else textColor, fontWeight = FontWeight.Medium)
+    Row(Modifier.fillMaxWidth().padding(end = InfinitySpacing.Small, bottom = InfinitySpacing.Small)) {
+        Box(
+            Modifier
+                .padding(top = 7.dp)
+                .size(8.dp)
+                .background(marker, CircleShape),
         )
-        Text(range, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        Column(Modifier.weight(1f).padding(start = InfinitySpacing.Medium)) {
+            Text(
+                buildAnnotatedString {
+                    append(line.source)
+                    append("  ")
+                    withStyle(relationStyle) { append(line.relation) }
+                    append("  →  ")
+                    append(line.target)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+            )
+            Text(range, style = MaterialTheme.typography.labelSmall, color = colors.outline)
+        }
     }
 }
 
