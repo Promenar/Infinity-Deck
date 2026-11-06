@@ -130,6 +130,9 @@ fun KnowledgeGraphScreen(
         simulator.setData(nodes, edges)
     }
 
+    // 从合集设置等页面返回时，篇序可能已变：重读时间轴刻度。
+    LaunchedEffect(viewModel) { viewModel.refreshTimelineOnShow() }
+
     // 导航离开或应用退到后台时立即暂停布局与动画。
     DisposableEffect(simulator, lifecycleOwner) {
         val lifecycle = lifecycleOwner.lifecycle

@@ -255,15 +255,28 @@ class KnowledgeGraphViewModel(
         if (next == _asOfOrdinal.value) return
         _asOfOrdinal.value = next
         if (_viewMode.value != KgViewMode.GLOBAL) return
-        // 选中的实体在新时间点仍存在时重新选中，状态变化按新时间点读取。
+        reloadAtPoint(collectionId, next)
+    }
+
+    /** 按时间点重读子图；选中的实体在该时间点仍存在时重新选中，状态变化按新时间点读取。 */
+    private fun reloadAtPoint(collectionId: String, ordinal: Int?) {
         _selectedEntity.value?.nodeId?.let { selected ->
             selectEntity(null)
             pendingFocusId = selected
         }
-        loadGraphInternal(scope = KgScope.Collection(collectionId, next), preserveSameScope = false)
+        loadGraphInternal(scope = KgScope.Collection(collectionId, ordinal), preserveSameScope = false)
     }
 
-    private fun loadTimelineTicks(collectionId: String) {
+    /**
+     * 图谱页重新显示时重读篇目刻度：合集设置里调整篇序或增删篇目后，
+     * 时间轴、当前时间点的子图与实体状态变化随之更新；篇目未变时不重读子图。
+     */
+    fun refreshTimelineOnShow() {
+        if (_viewMode.value != KgViewMode.GLOBAL) return
+        _selectedCollectionId.value?.let { loadTimelineTicks(it, reloadOnChange = true) }
+    }
+
+    private fun loadTimelineTicks(collectionId: String, reloadOnChange: Boolean = false) {
         val source = timeline ?: return
         ticksJob?.cancel()
         ticksJob = viewModelScope.launch {
@@ -276,10 +289,13 @@ class KnowledgeGraphViewModel(
                 emptyList()
             }
             if (_selectedCollectionId.value != collectionId) return@launch
+            val previous = _timelineTicks.value
             _timelineTicks.value = ticks
             // 篇目被删除后原时间点越界时回到最新。
             val point = _asOfOrdinal.value
             if (point != null && (ticks.size < 2 || point >= ticks.last().ordinal)) setAsOf(null)
+            else if (reloadOnChange && _viewMode.value == KgViewMode.GLOBAL &&
+                previous.map { it.docId to it.ordinal } != ticks.map { it.docId to it.ordinal }) reloadAtPoint(collectionId, point)
         }
     }
 

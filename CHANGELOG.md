@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.30.3-beta] - 2026-11-06
+
+### 修复
+
+- 在合集设置里调整篇目顺序后回到知识图谱页，时间轴刻度、当前时间点的图谱与实体状态变化会自动按新顺序重读，不再需要手动刷新；篇目未变时不重读图谱。
+
 ## [0.30.2-beta] - 2026-11-06
 
 ### 修复

@@ -556,6 +556,32 @@ class KnowledgeGraphViewModelTest {
         assertThat(vm.timelineTicks.value).isEmpty()
     }
 
+    @Test
+    fun `页面重新显示时篇序变化重读时间轴与当前时间点子图，未变化不重读`() = runTest {
+        fun article(doc: String, ordinal: Int) = com.promenar.infinity.data.rag.KgCollectionArticle(doc, doc, "$ordinal", "manual", ordinal)
+        var ticks = listOf(article("d1", 1), article("d2", 2), article("d3", 3))
+        val timeline = object : KgGraphTimelineSource {
+            override suspend fun ticks(collectionId: String) = ticks
+            override suspend fun history(collectionId: String, nodeId: String, ticks: List<com.promenar.infinity.data.rag.KgCollectionArticle>, asOfOrdinal: Int?) =
+                emptyList<KgEntityHistoryLine>()
+        }
+        val request = GraphSubgraphRequest(collectionId = "work:p", asOf = com.promenar.infinity.data.rag.KgAsOf.Ordinal(1))
+        coEvery { graphStore.getGraphSubgraph(any()) } returns subgraph(listOf(dataNode("a")), emptyList())
+        val vm = KnowledgeGraphViewModel(repo, graphStore, app, timeline) { emptyList() }
+        vm.loadGraphByCollection("work:p")
+        vm.setAsOf(1)
+        coVerify(exactly = 1) { graphStore.getGraphSubgraph(request) }
+
+        vm.refreshTimelineOnShow()
+        coVerify(exactly = 1) { graphStore.getGraphSubgraph(request) }
+
+        ticks = listOf(article("d2", 1), article("d1", 2), article("d3", 3))
+        vm.refreshTimelineOnShow()
+        assertThat(vm.timelineTicks.value.map { it.docId }).containsExactly("d2", "d1", "d3").inOrder()
+        assertThat(vm.asOfOrdinal.value).isEqualTo(1)
+        coVerify(exactly = 2) { graphStore.getGraphSubgraph(request) }
+    }
+
     private fun subgraph(nodes: List<KgNode>, edges: List<KgEdge>, total: Int = nodes.size) =
         GraphSubgraph(GraphData(nodes, edges), total)
 }
