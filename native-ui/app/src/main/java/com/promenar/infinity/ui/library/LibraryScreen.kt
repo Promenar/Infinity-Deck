@@ -46,6 +46,7 @@ import com.promenar.infinity.ui.MainTabsState
 import com.promenar.infinity.ui.hub.HubListPaneWidth
 import com.promenar.infinity.ui.hub.HubStripWidth
 import com.promenar.infinity.ui.rag.RagViewModel
+import kotlinx.coroutines.flow.StateFlow
 
 /** 资料页的测试标签（与 UiTags 分开，避免与资源管理器组件的标签段冲突）。 */
 object LibraryTags {
@@ -115,9 +116,40 @@ fun LibraryScreen(
     val app = LocalContext.current.applicationContext as InfinityApplication
     val viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(app))
     val ragViewModel: RagViewModel = viewModel(factory = RagViewModel.factory(app))
+    val askViewModel: LibraryAskViewModel = viewModel(factory = LibraryAskViewModel.factory(app))
+    var mountsOpen by rememberSaveable { mutableStateOf(false) }
+    LibraryScreenContent(
+        state = state,
+        layout = layout,
+        viewModel = viewModel,
+        askViewModel = askViewModel,
+        workspaceRootUuid = ragViewModel.workspaceRootUuid,
+        collections = remember(app) { DatabaseDocumentCollections(app.database) },
+        onNavigateToSecondary = onNavigateToSecondary,
+        onOpenSession = onOpenSession,
+        onManageMounts = { mountsOpen = true },
+    )
+    if (mountsOpen) LibraryMountsSheet(onDismiss = { mountsOpen = false })
+}
+
+/**
+ * 资料页本体：两列或单页栈、问资料、提示与图谱用量确认。数据全部来自传入的 ViewModel，
+ * 视觉实验室用假数据构造同样的 ViewModel 复用本页。[workspaceRootUuid] 为存储空间根目录，文档页的编辑入口用它。
+ */
+@Composable
+internal fun LibraryScreenContent(
+    state: MainTabsState,
+    layout: LibraryLayout,
+    viewModel: LibraryViewModel,
+    askViewModel: LibraryAskViewModel,
+    workspaceRootUuid: StateFlow<String?>,
+    collections: LibraryDocumentCollections,
+    onNavigateToSecondary: (String) -> Unit,
+    onOpenSession: (String) -> Unit,
+    onManageMounts: () -> Unit,
+) {
     val twoPane = layout is LibraryLayout.TwoPane
     val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
-    val askViewModel: LibraryAskViewModel = viewModel(factory = LibraryAskViewModel.factory(app))
     val askState by askViewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     // 外屏的“文件”中转页在两列里没有对应导航项；展开折叠屏时去掉它，左列才能高亮当前位置。
@@ -159,10 +191,10 @@ fun LibraryScreen(
     LibraryNoticeEffect(viewModel, snackbar)
     LibraryGraphConfirmDialog(viewModel)
 
-    var mountsOpen by rememberSaveable { mutableStateOf(false) }
     val host = LibraryPageHost(
         viewModel = viewModel,
-        ragViewModel = ragViewModel,
+        workspaceRootUuid = workspaceRootUuid,
+        collections = collections,
         navigator = navigator,
         askViewModel = askViewModel,
         askQuery = askState.query,
@@ -170,9 +202,8 @@ fun LibraryScreen(
         onNavigateToSecondary = onNavigateToSecondary,
         onOpenSession = onOpenSession,
         chunkLocator = com.promenar.infinity.data.library.ask.DefaultChunkLocator,
-        onManageMounts = { mountsOpen = true },
+        onManageMounts = onManageMounts,
     )
-    if (mountsOpen) LibraryMountsSheet(onDismiss = { mountsOpen = false })
 
     LibrarySurface(Modifier.testTag(LibraryTags.SCREEN)) {
         FocusDismissArea(Modifier.fillMaxSize()) { area ->
@@ -226,7 +257,10 @@ internal fun libraryAskNavigation(twoPane: Boolean, text: String, askInStack: Bo
 @Stable
 internal class LibraryPageHost(
     val viewModel: LibraryViewModel,
-    val ragViewModel: RagViewModel,
+    /** 存储空间根目录 uuid；未就绪为 null，文档页此时不显示编辑入口。 */
+    val workspaceRootUuid: StateFlow<String?>,
+    /** 文档页的所属合集与合集归属。 */
+    val collections: LibraryDocumentCollections,
     val askViewModel: LibraryAskViewModel,
     val navigator: LibraryNavigator,
     val askQuery: String,

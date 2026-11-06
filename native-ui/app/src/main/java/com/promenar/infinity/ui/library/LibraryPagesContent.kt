@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.library
 
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import com.promenar.infinity.InfinityApplication
-import com.promenar.infinity.data.rag.KgCollectionRepository
 import com.promenar.infinity.data.rag.KgDocumentSetting
 import com.promenar.infinity.data.rag.KgDocumentAssignment
 import com.promenar.infinity.data.rag.KgDocumentCollectionInfo
@@ -736,7 +735,7 @@ private fun LibraryDocumentPage(
     val body by produceState<Loaded<DocumentBody>>(Loaded.Loading, documentId) {
         value = Loaded.Ready(host.viewModel.body(documentId))
     }
-    val rootUuid by host.ragViewModel.workspaceRootUuid.collectAsStateWithLifecycle()
+    val rootUuid by host.workspaceRootUuid.collectAsStateWithLifecycle()
     val resolvedTitle = (insight as? Loaded.Ready)?.value?.name ?: title
     // 从问资料结果进入：定位到本篇的命中段落；从对话引用进入：定位到被引用的段落。
     val askState by host.askViewModel.state.collectAsStateWithLifecycle()
@@ -961,7 +960,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
     // 所属合集与篇序随图谱状态刷新：抽取完成后文档才写入合集成员。
     val collection by produceState<KgDocumentCollectionInfo?>(null, info.documentId, graph, assignmentVersion) {
         value = try {
-            withContext(Dispatchers.IO) { KgCollectionRepository(app.database).documentInfo(info.documentId) }
+            withContext(Dispatchers.IO) { host.collections.info(info.documentId) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -972,7 +971,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
     // 合集归属在抽取前也可设置，下次抽取直接写入选定的合集。
     val assignment by produceState<KgDocumentAssignment?>(null, info.documentId, graph, assignmentVersion) {
         value = try {
-            withContext(Dispatchers.IO) { KgCollectionRepository(app.database).readDocumentSetting(info.documentId) }
+            withContext(Dispatchers.IO) { host.collections.assignment(info.documentId) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -989,7 +988,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         is DocumentGraphState.Partial, is DocumentGraphState.Failed ->
             R.string.library_action_retry_graph to { host.viewModel.retry(info.documentId) }
         // 换了模型或提示词后可重新抽取，与批量抽取走同一个用量确认；旧图谱在新结果提交前保留。
-        is DocumentGraphState.Complete -> R.string.kgc_action_reextract to { reextract = true }
+        is DocumentGraphState.Complete -> R.string.kgc_action_reextract to { reextract = host.collections.editable }
         is DocumentGraphState.Extracting -> null
     }
     // 图谱状态与它的动作同处一行，实体标签紧随其下；“所属合集”另起一行，三者按图谱 → 实体 → 合集分组。
@@ -1020,7 +1019,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         InspectorLinkRow(
             label = stringResource(R.string.kgc_doc_collection_row),
             value = if (ordinal != null) stringResource(R.string.kgc_doc_collection_value, current.title, ordinal) else current.title,
-            onClick = { openSettings = true },
+            onClick = { openSettings = host.collections.editable },
             modifier = Modifier.testTag("library_doc_collection"),
         )
         if (openSettings) {
@@ -1036,7 +1035,7 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
                     ?: stringResource(R.string.kda_mode_collection)
                 else -> stringResource(current.mode.rowLabel())
             },
-            onClick = { openAssignment = true },
+            onClick = { openAssignment = host.collections.editable },
             modifier = Modifier.testTag("library_doc_assignment_row"),
         )
     }
