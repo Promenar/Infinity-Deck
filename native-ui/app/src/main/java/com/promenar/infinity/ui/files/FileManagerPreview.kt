@@ -52,6 +52,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FilePreview
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
+import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -139,14 +140,22 @@ internal fun FileCompactPreviewPage(
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.fm_preview_back))
                 }
             }
-            Column(Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small)) {
+            if (inner) {
+                // 内屏右列：16sp 标题，下面是大小与修改时间。
+                val meta = fileMetaSegments(item).joinToString(" · ")
+                InfinityPaneHeaderTitle(
+                    title = item.name,
+                    modifier = Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small),
+                    meta = { Text(meta, maxLines = 1, softWrap = false) },
+                )
+            } else Column(Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small)) {
                 InfinityHeaderTitle(
                     text = item.name,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (!inner) {
+                run {
                     InfinityHeaderTitle(
                         text = locationPathText(state),
                         style = MaterialTheme.typography.bodySmall,

@@ -69,15 +69,17 @@ internal fun infinityMarkdownCodeStyle(fontStyle: FontStyle? = null): TextStyle 
 fun infinityMarkdownTypography(
     baseFontSize: Int = 15,
     fontStyle: FontStyle? = null,
+    headingColor: Color = Color.Unspecified,
 ): MarkdownTypography {
     val body = infinityMarkdownBodyStyle(baseFontSize, fontStyle)
+    fun heading(level: Int) = infinityMarkdownHeadingStyle(level, baseFontSize, fontStyle).copy(color = headingColor)
     return markdownTypography(
-        h1 = infinityMarkdownHeadingStyle(1, baseFontSize, fontStyle),
-        h2 = infinityMarkdownHeadingStyle(2, baseFontSize, fontStyle),
-        h3 = infinityMarkdownHeadingStyle(3, baseFontSize, fontStyle),
-        h4 = infinityMarkdownHeadingStyle(4, baseFontSize, fontStyle),
-        h5 = infinityMarkdownHeadingStyle(5, baseFontSize, fontStyle),
-        h6 = infinityMarkdownHeadingStyle(6, baseFontSize, fontStyle),
+        h1 = heading(1),
+        h2 = heading(2),
+        h3 = heading(3),
+        h4 = heading(4),
+        h5 = heading(5),
+        h6 = heading(6),
         text = body,
         code = infinityMarkdownCodeStyle(fontStyle),
         inlineCode = body.copy(fontFamily = InfinityMonospace),

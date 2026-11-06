@@ -85,6 +85,7 @@ import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FileTypeFilter
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
+import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuHeader
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -144,7 +145,8 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
     ) {
         FileManagerLeadingButton(host.leading)
         FileHeaderTitle(state, actions, Modifier.weight(1f))
-        host.folderBadge?.let { HostBadge(it) }
+        // 内屏的合集信息在标题下的信息行里，外屏用小标签。
+        host.folderBadge?.takeUnless { host.leading.isInnerScreen }?.let { HostBadge(it) }
         IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
             Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
         }
@@ -178,6 +180,10 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
         else -> null
     }
     var open by remember { mutableStateOf(false) }
+    val inner = host.leading.isInnerScreen
+    // 内屏右列：16sp 标题，合集信息或位置副标题放在信息行；整块点按打开合集设置。
+    val badge = host.folderBadge?.takeIf { inner }
+    val badgeClick = badge?.onClick
     Box(modifier) {
         Column(
             modifier = Modifier
@@ -185,17 +191,43 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
                 .heightIn(min = InfinitySpacing.MinimumTouchTarget)
                 .clip(RoundedCornerShape(12.dp))
                 .then(
-                    if (switchable) {
-                        Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_switch_location)) { open = true }
-                    } else {
-                        Modifier
+                    when {
+                        switchable -> Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_switch_location)) { open = true }
+                        badgeClick != null -> Modifier.clickable(role = Role.Button, onClickLabel = badge.onClickLabel, onClick = badgeClick)
+                        else -> Modifier
                     },
                 )
                 .padding(horizontal = InfinitySpacing.Small)
                 .testTag(UiTags.FM_TITLE),
             verticalArrangement = Arrangement.Center,
         ) {
-            AnimatedContent(targetState = title, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { text ->
+            if (inner) {
+                val metaText = badge?.description ?: subtitle
+                AnimatedContent(targetState = title to metaText, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { (text, meta) ->
+                    InfinityPaneHeaderTitle(
+                        title = text,
+                        modifier = Modifier.fillMaxWidth(),
+                        meta = meta?.let {
+                            {
+                                badge?.icon?.let { icon ->
+                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = meta,
+                                    color = if (switchable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.testTag(UiTags.FM_HOST_BADGE),
+                                )
+                                if (switchable) {
+                                    Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                    )
+                }
+            } else AnimatedContent(targetState = title, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { text ->
                 InfinityHeaderTitle(
                     text = text,
                     style = MaterialTheme.typography.titleLarge,
@@ -203,7 +235,7 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (subtitle != null) {
+            if (subtitle != null && !inner) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = subtitle,

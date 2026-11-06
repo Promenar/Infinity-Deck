@@ -80,6 +80,7 @@ import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationKind
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
+import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
@@ -469,6 +470,7 @@ internal fun LibraryPageHeader(
     leading: LibraryLeading,
     crumbs: LibraryCrumbs?,
     modifier: Modifier = Modifier,
+    meta: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Column(modifier.fillMaxWidth().statusBarsPadding()) {
@@ -484,11 +486,16 @@ internal fun LibraryPageHeader(
                 is LibraryLeading.Back -> InfinityBackButton(onClick = leading.onBack)
             }
             Spacer(Modifier.width(InfinitySpacing.XSmall))
-            InfinityHeaderTitle(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
+            if (leading is LibraryLeading.Expand) {
+                // 内屏右列是左列的下级：16sp 标题加信息行，视觉重心留给左列一级标题。
+                InfinityPaneHeaderTitle(title = title, meta = meta, modifier = Modifier.weight(1f))
+            } else {
+                InfinityHeaderTitle(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             actions()
         }
         if (crumbs != null && crumbs.titles.size > 1) {

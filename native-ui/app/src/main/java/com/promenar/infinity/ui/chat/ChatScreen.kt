@@ -6,6 +6,7 @@ import com.promenar.infinity.ui.chat.quote.ComposerQuoteArea
 import com.promenar.infinity.ui.chat.quote.LocalMessageQuoteActions
 import com.promenar.infinity.ui.chat.quote.MessageQuoteActions
 import com.promenar.infinity.ui.chat.runmode.labelRes
+import com.promenar.infinity.ui.common.PaneHeaderTitleTop
 import com.promenar.infinity.ui.common.dimOnPress
 import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.theme.InfinityMonospace
@@ -2471,7 +2472,8 @@ fun ChatTopBar(
         title = {
             // 标题独占首行；运行模式、工作区与 Git 合并为其下的状态行，标题再长也不挤动模式标识。
             val statusLine = git != null || runMode != null || workspace != null
-            Column {
+            // 有状态行时整块下移，标题顶边与左列一级标题的顶边对齐（状态行 24dp 触控高，比信息行多 2dp）。
+            Column(if (statusLine) Modifier.padding(top = PaneHeaderTitleTop + 2.dp) else Modifier) {
               Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isBranch) {
                     val branchLabel = stringResource(R.string.branch_label)
@@ -2480,7 +2482,7 @@ fun ChatTopBar(
                         contentDescription = branchLabel,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
-                            .heightIn(min = if (statusLine) 32.dp else 48.dp)
+                            .heightIn(min = if (statusLine) 24.dp else 48.dp)
                             .then(
                                 if (branchOpenParent != null) Modifier.clickable(
                                     role = Role.Button,
@@ -2500,7 +2502,7 @@ fun ChatTopBar(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .heightIn(min = if (statusLine) 32.dp else 48.dp)
+                        .heightIn(min = if (statusLine) 24.dp else 48.dp)
                         .clickable(role = Role.Button, onClickLabel = stringResource(R.string.chat_menu_rename), onClick = onRename)
                         .wrapContentHeight(Alignment.CenterVertically)
                         .testTag("chat_top_title"),

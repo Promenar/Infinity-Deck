@@ -383,17 +383,19 @@ fun MarkdownText(
     }
 
     val currentStyle = LocalTextStyle.current
-    val effectiveColor = overrideColor
-        ?: currentStyle.color.takeUnless { it == Color.Unspecified }
-        ?: MaterialTheme.colorScheme.onSurface
+    val inheritedColor = overrideColor ?: currentStyle.color.takeUnless { it == Color.Unspecified }
+    val colors = MaterialTheme.colorScheme
+    // 深色下默认正文降到约 85% 亮度，减轻深底近白字的光渗；标题保持原亮度，形成亮度层次。
+    val headingColor = inheritedColor ?: colors.onSurface
+    val effectiveColor = inheritedColor ?: readingBodyColor(colors.onSurface, colors.background)
     val m3Typography = MaterialTheme.typography.copy(
         bodyMedium = infinityMarkdownTypography(fontSize).text.copy(color = effectiveColor, fontStyle = fontStyle),
-        headlineLarge = infinityMarkdownTypography(fontSize).h1.copy(color = effectiveColor, fontStyle = fontStyle),
-        headlineMedium = infinityMarkdownTypography(fontSize).h2.copy(color = effectiveColor, fontStyle = fontStyle),
-        headlineSmall = infinityMarkdownTypography(fontSize).h3.copy(color = effectiveColor, fontStyle = fontStyle),
-        titleLarge = infinityMarkdownTypography(fontSize).h1.copy(color = effectiveColor, fontStyle = fontStyle),
-        titleMedium = infinityMarkdownTypography(fontSize).h2.copy(color = effectiveColor, fontStyle = fontStyle),
-        titleSmall = infinityMarkdownTypography(fontSize).h3.copy(color = effectiveColor, fontStyle = fontStyle),
+        headlineLarge = infinityMarkdownTypography(fontSize).h1.copy(color = headingColor, fontStyle = fontStyle),
+        headlineMedium = infinityMarkdownTypography(fontSize).h2.copy(color = headingColor, fontStyle = fontStyle),
+        headlineSmall = infinityMarkdownTypography(fontSize).h3.copy(color = headingColor, fontStyle = fontStyle),
+        titleLarge = infinityMarkdownTypography(fontSize).h1.copy(color = headingColor, fontStyle = fontStyle),
+        titleMedium = infinityMarkdownTypography(fontSize).h2.copy(color = headingColor, fontStyle = fontStyle),
+        titleSmall = infinityMarkdownTypography(fontSize).h3.copy(color = headingColor, fontStyle = fontStyle),
         bodySmall = infinityMarkdownTypography(fontSize).code.copy(color = effectiveColor, fontStyle = fontStyle),
         labelSmall = InfinityTypography.labelSmall.copy(
             fontSize = 11.sp,
@@ -437,6 +439,7 @@ fun MarkdownText(
                             markdown = markdown,
                             onContentChange = onContentChange,
                             textColor = effectiveColor,
+                            headingColor = headingColor,
                             fontStyle = fontStyle,
                             compactSpacing = compactSpacing,
                         )
@@ -457,6 +460,23 @@ fun MarkdownText(
 }
 
 internal const val INLINE_CODE_PADDING_ID = "infinity-inline-code-padding"
+
+/** 行内代码相对正文的字号比例。 */
+internal const val InlineCodeScale = 0.9f
+
+/** 行内代码底块上下各收进的距离，单位为正文字号。 */
+internal const val InlineCodeVerticalInset = 0.2f
+
+/** 深色下默认正文相对 onSurface 的亮度比例。 */
+internal const val ReadingBodyEmphasisDark = 0.85f
+
+/** 默认正文颜色：深色主题下把 onSurface 向背景混合，得到不透明的较暗前景色；浅色主题保持不变。 */
+internal fun readingBodyColor(onSurface: Color, background: Color): Color =
+    if (background.luminance() >= 0.5f) onSurface else androidx.compose.ui.graphics.lerp(background, onSurface, ReadingBodyEmphasisDark)
+
+/** 行内代码底色：深色下用很淡的前景色叠加，浅色沿用容器色。 */
+internal fun inlineCodeBackground(colors: androidx.compose.material3.ColorScheme): Color =
+    if (colors.background.luminance() >= 0.5f) colors.surfaceContainerHigh else colors.onSurface.copy(alpha = 0.10f)
 
 /**
  * 行内代码内边距占位的替代文本。默认的 U+FFFD 会进入无障碍文本被读屏念成替换字符；
@@ -1055,6 +1075,7 @@ private fun MarkdownSafe(
     markdown: String,
     onContentChange: ((String) -> Unit)?,
     textColor: Color = MaterialTheme.colorScheme.onSurface,
+    headingColor: Color = textColor,
     fontStyle: androidx.compose.ui.text.font.FontStyle? = null,
     compactSpacing: Boolean = false,
     modifier: Modifier = Modifier,
@@ -1253,8 +1274,10 @@ private fun MarkdownSafe(
     val inlineCodePaddingContent = remember(inlinePadding) {
         mapOf(INLINE_CODE_PADDING_ID to InlineTextContent(Placeholder(inlinePadding, 1.sp, PlaceholderVerticalAlign.Center)) {})
     }
+    // 行内代码缩到正文的 0.9 倍，深色下底色减淡，避免满屏底块连成一片。
     val inlineCodeStyle = infinityMarkdownTypography(fontSize, fontStyle).inlineCode.toSpanStyle().copy(
-        background = MaterialTheme.colorScheme.surfaceContainerHigh,
+        fontSize = (fontSize * InlineCodeScale).sp,
+        background = inlineCodeBackground(MaterialTheme.colorScheme),
         color = textColor,
     )
     val annotators = rememberReadingMarkdownAnnotators(inlineCodeStyle, textColor, sourceOffset, reveal, MaterialTheme.colorScheme.primary)
@@ -1266,8 +1289,10 @@ private fun MarkdownSafe(
         annotator = annotators.base,
         imageTransformer = InfinityMarkdownImageTransformer,
         extendedSpans = markdownExtendedSpans {
-            remember(inlineCorner) {
-                ExtendedSpans(InlineCodeSpanPainter(cornerRadius = inlineCorner))
+            remember(inlineCorner, fontSize) {
+                // 底块上下各收进约 0.2 个正文字号，相邻两行的底块之间留出间隙。
+                val inset = (fontSize * InlineCodeVerticalInset).sp
+                ExtendedSpans(InlineCodeSpanPainter(cornerRadius = inlineCorner, topMargin = inset, bottomMargin = inset))
             }
         },
         inlineContent = markdownInlineContent(inlineCodePaddingContent),
@@ -1284,7 +1309,7 @@ private fun MarkdownSafe(
             blockQuoteBar = PaddingValues.Absolute(0.dp),
         ),
         colors = infinityMarkdownColors(textColor = textColor),
-        typography = infinityMarkdownTypography(fontSize, fontStyle = fontStyle),
+        typography = infinityMarkdownTypography(fontSize, fontStyle = fontStyle, headingColor = headingColor),
         components = components,
         modifier = modifier.fillMaxWidth(),
         success = { state, resolvedComponents, successModifier ->

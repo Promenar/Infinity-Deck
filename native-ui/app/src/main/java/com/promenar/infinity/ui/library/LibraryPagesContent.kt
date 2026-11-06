@@ -213,11 +213,12 @@ internal fun LibraryPageFrame(
     leading: LibraryLeading,
     crumbs: LibraryCrumbs?,
     modifier: Modifier = Modifier,
+    meta: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
     actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Column(modifier.fillMaxSize()) {
-        LibraryPageHeader(title = title, leading = leading, crumbs = crumbs, actions = actions)
+        LibraryPageHeader(title = title, leading = leading, crumbs = crumbs, meta = meta, actions = actions)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             content(libraryContentPadding())
         }
@@ -760,11 +761,19 @@ private fun LibraryDocumentPage(
         }
     }
     val bodyModifier = Modifier.onGloballyPositioned { viewportTop = it.positionInRoot().y }.verticalScroll(bodyScroll)
+    val readyInsight = (insight as? Loaded.Ready)?.value
     LibraryPageFrame(
         title = resolvedTitle,
         leading = leading,
         crumbs = crumbs,
         modifier = Modifier.testTag(LibraryTags.page("document")),
+        meta = readyInsight?.let { info ->
+            {
+                Icon(Icons.Rounded.Hub, contentDescription = null, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(documentGraphText(info.graph, livePending), softWrap = false, maxLines = 1)
+            }
+        },
         actions = {
             val root = rootUuid
             if (root != null) {
@@ -913,11 +922,9 @@ private fun DocumentInspector(info: DocumentInsight, livePending: PendingDocumen
     }
 }
 
-/** 文档的知识图谱状态与对应动作：抽取、确认用量或重试。抽取中的窗口数随待处理列表实时更新。 */
+/** 文档知识图谱状态的一行文字；文档详情“知识图谱”行与内屏页头信息行共用。 */
 @Composable
-private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
-    val graph = info.graph
-    val text = when (graph) {
+internal fun documentGraphText(graph: DocumentGraphState, pending: PendingDocument?): String = when (graph) {
         DocumentGraphState.NotExtracted -> stringResource(R.string.library_graph_state_none)
         is DocumentGraphState.Extracting -> {
             val progress = liveGraphProgress(graph.processed, graph.total, pending)
@@ -940,6 +947,12 @@ private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, e
         is DocumentGraphState.ConfirmationRequired -> stringResource(R.string.library_graph_state_confirm)
         is DocumentGraphState.Failed -> graph.reason
     }
+
+/** 文档的知识图谱状态与对应动作：抽取、确认用量或重试。抽取中的窗口数随待处理列表实时更新。 */
+@Composable
+private fun DocumentGraphRow(info: DocumentInsight, pending: PendingDocument?, enabled: Boolean, host: LibraryPageHost) {
+    val graph = info.graph
+    val text = documentGraphText(graph, pending)
     val app = LocalContext.current.applicationContext as InfinityApplication
     var reextract by remember(info.documentId) { mutableStateOf(false) }
     var openSettings by remember(info.documentId) { mutableStateOf(false) }
