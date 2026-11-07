@@ -5,7 +5,8 @@
 <h1 align="center">Infinity Workbench</h1>
 
 <p align="center">
-  <b>Your terminal, your repos, your servers and your AI, together on your phone.</b>
+  <b>Your terminal, your repos, your servers and your AI, together on your phone.</b><br>
+  Bring your own key. Your data stays on your device.
 </p>
 
 <p align="center">
@@ -18,17 +19,27 @@
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
 </p>
 
+Bring your own API key — OpenAI, Claude, Gemini, DeepSeek, or a model running on hardware you own — and let it do the work. It runs commands in a real Linux on your phone, edits your code, logs in to your servers and clicks through web pages, and shows you every step before it runs. Chats, documents and settings stay on your device; model requests go straight to the provider you chose.
+
+Unfold the phone and it becomes a workbench. Fold it and the chat carries on.
+
 https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
+
+## Contents
+
+- ✨ [What it can do for you](#what-it-can-do-for-you)
+- 🔒 [You're always in charge](#youre-always-in-charge)
+- 🚀 [Get started](#get-started)
+- 🧰 [Everything it does](#everything-it-does)
+- 💬 [FAQ](#faq)
+- 📚 [Documentation](#documentation)
+- 🤝 [Get involved](#get-involved)
+
+## What it can do for you
 
 <p align="center">
   <img src="assets/screenshots/en/hero.webp" alt="Unfolded: the chat beside the Git panel listing commits. Folded: the 502 fix report continues on the cover screen" width="860">
 </p>
-
-Bring your own API key and connect OpenAI, Claude, Gemini, DeepSeek or a model running at home. Then let it do the work: it runs commands in a Linux system on your phone, edits your code, logs in to your servers and clicks through web pages, and shows you every step first.
-
-Unfold your phone and it becomes a workbench. Fold it and the chat carries on on the cover screen.
-
-## What it can do for you
 
 <table>
   <tr>
@@ -50,21 +61,21 @@ Unfold your phone and it becomes a workbench. Fold it and the chat carries on on
       The main chat fixes the bug while a branch chat writes the tests, each in its own worktree so they never collide. Branches, diffs and commits are all in the Git panel.
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/tailnet-gateway.webp" alt="Picking a model gateway from tailnet devices in the provider form">
-      <h3>Use the GPU you have at home</h3>
-      Got a model running on your desktop? Join your Tailscale network and chat with it or search with it straight from your phone. No open ports, and your system VPN stays free.
+      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agent cards: one locating the change, one reviewing test coverage, marked completed in 3m 32s">
+      <h3>One ask, a small team</h3>
+      Ask for a change and it plans first, then sends sub-agents out in parallel — one to find the code, another to review the tests — while the main chat carries on. When each is done, its findings come back on their own, with the time it took.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/library-ask.webp" alt="Ask the library: an answer with numbered citations and matching results">
-      <h3>Ask your own documents</h3>
-      Drop in a folder of papers, contracts or a whole novel, then just ask. Every answer cites its sources, and one tap takes you to the exact passage. Writing a long story? Ask how two characters stand with each other in chapter 12.
+      <img src="assets/screenshots/en/fold-inspector.webp" alt="Inner screen in three columns with the inspector open on Git: worktrees and the chats they belong to">
+      <h3>Unfold a workbench</h3>
+      The inner screen splits into three — navigation, chat list, conversation — with an inspector for tasks, files, Git and the browser alongside. Branches, diffs and commits stay in view while you work.
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/browser-agent.webp" alt="The agent clicking Re-run failed jobs on a CI page">
-      <h3>Let it handle the web for you</h3>
-      Send it to your CI page to re-run the failed jobs, and watch or take over whenever you like. When it reaches a login page it stops, and you type the password yourself. It never sees it.
+      <img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report mid-read">
+      <h3>Fold it and carry on</h3>
+      Close the phone and the chat moves to the cover screen. Finish reading the incident report on the train, answer with one hand, unfold to go deeper when you're back.
     </td>
   </tr>
 </table>
@@ -76,24 +87,6 @@ Unfold your phone and it becomes a workbench. Fold it and the chat carries on on
 - **Your data stays on your phone.** Chats, documents and settings live on the device, and model requests go straight to the provider you chose, never through a server of ours.
 - **You own your backups.** Save them to a local file or WebDAV, encrypted if you like.
 - **Fully open source.** GPL-3.0.
-
-## Everything it does
-
-| | |
-|---|---|
-| **Models** | Bring your own key for OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint; switch models mid-chat |
-| **Agents** | Plans before it acts; up to 6 sub-agents working in the background; side work becomes a branch chat; slow commands move to the background and wake the chat when done; scheduled tasks; skills and MCP |
-| **Chat** | Up to 4 chats generating at once; queue your next message or let it jump the line; question cards when it needs your call; keeps going with the screen locked or the app in the background; touch lock so the phone can go straight into your pocket |
-| **Runtime** | One-tap Alpine Linux; built-in shell, Python and JavaScript sandboxes even without Linux; Termux works too |
-| **Code** | Built-in git; the Git panel shows branches, diffs and commits; Git passwords are injected per command and never written to repo config |
-| **Servers** | SSH by host alias to run commands and read or write files, up to 4 GiB per file; take over any time in a real terminal or with port forwarding |
-| **Private network** | A Tailscale node inside the app, with self-hosted Headscale support; see whether each device is direct or relayed and ping it continuously; models, SSH and MCP reach your tailnet directly |
-| **Documents** | Search documents, long-term memory and the knowledge graph together, with cited answers; mount outside folders; one graph per work, with relationships you can follow chapter by chapter; PDF, Word, Markdown, HTML and more |
-| **Browser** | Tabs, mobile or desktop sites; watch the agent, take over and hand it back |
-| **Output** | Canvas pages, clickable multi-screen prototypes and versioned artifacts; image generation with a drawing board for markup and masks; export chats as a web page, A4 PDF or long image |
-| **Foldables** | Three columns on the inner screen: navigation, chat list and chat; an inspector for tasks, files, Git and the browser; chats carry on as you fold and unfold |
-
-Details and limits for each item are in the [feature guide](docs/guide/features.md) (in Chinese).
 
 ## Get started
 
@@ -120,20 +113,90 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 
 </details>
 
+## Everything it does
+
+**Chat & models**
+
+- Bring your own key for OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint
+- Switch models mid-chat; up to 4 chats generating at once
+- Queue your next message or let it jump the line
+- Question cards when it needs your call; keeps going with the screen locked
+- Touch lock so the phone can go straight into your pocket
+- Skills and MCP servers
+
+**Agents**
+
+- Plans before it acts
+- Up to 6 sub-agents working in parallel; conclusions return on their own
+- Side work becomes a branch chat
+- Slow commands move to the background and wake the chat when done
+- Scheduled tasks, one-shot to cron
+
+**Runtime & code**
+
+- One-tap Alpine Linux — no root, no Termux
+- Built-in shell, Python and JavaScript sandboxes even without Linux
+- Built-in git; branches, diffs and commits in the Git panel
+- Git passwords injected per command, never written to repo config
+
+**Servers & private network**
+
+- SSH by host alias to run commands and read or write files, up to 4 GiB per file
+- Take over any time in a real terminal or with port forwarding
+- A Tailscale node inside the app, with self-hosted Headscale support
+- Models, SSH and MCP reach your tailnet directly — no open ports, no system VPN
+
+**Documents & knowledge**
+
+- Search documents, long-term memory and the knowledge graph together, with cited answers
+- One graph per work — follow how two characters stand with each other, chapter by chapter
+- Mount outside folders; PDF, Word, Markdown, HTML and more
+
+**Web & output**
+
+- Browser tabs, mobile or desktop sites; watch the agent, take over and hand it back
+- Canvas pages, clickable multi-screen prototypes and versioned artifacts
+- Image generation with a drawing board for markup and masks
+- Export chats as a web page, A4 PDF or long image
+
+**Foldables**
+
+- Three columns on the inner screen: navigation, chat list and chat
+- An inspector for tasks, files, Git and the browser
+- Chats carry on as you fold and unfold
+
+Details and limits for each item are in the [feature guide](docs/guide/features.md) (in Chinese).
+
+## FAQ
+
+**How is this different from a chat app?**
+
+Chat apps answer. This one does the work: it runs commands in a real Linux, edits your repos over git, logs in to your servers over SSH and drives a browser — with your approval before anything runs. And it talks to any provider, including a model on your own hardware.
+
+**Do I need Termux or root?**
+
+No. The Linux environment is a one-tap Alpine install inside the app (arm64). Termux works too, but it's optional.
+
+**Why are the detailed guides in Chinese?**
+
+The project is built by a Chinese-speaking developer and the guides grew out of working notes. The README covers the essentials and the app interface itself is in English as well. Help translating is welcome.
+
 ## Documentation
 
-The detailed guides are written in Chinese.
-
-| Guide | Covers |
-|---|---|
-| [Features](docs/guide/features.md) | Chat and rendering, context management, documents and the knowledge graph, agent tools, sub-agents, browser, background and scheduled tasks, export and backup |
-| [Security and privacy](docs/guide/security-privacy.md) | Key storage, backup encryption, SSH, Git and Tailscale credentials, network security, diagnostics |
-| [Execution environments](docs/guide/execution-environments.md) | Built-in Linux, Termux, sandboxed script runtimes, SSH |
-| [Workspaces](docs/guide/workspaces.md) | Workspace types, Git, what agents can reach, mounted folders |
-| [Install and upgrade](docs/guide/install-and-upgrade.md) | Requirements, data migration, APK verification |
-| [Development](docs/guide/development.md) | Build commands, bundled Python and Tailscale, rich-content security, icons, tech stack |
+| Guide | Covers | Language |
+|---|---|---|
+| [Features](docs/guide/features.md) | Chat and rendering, context management, documents and the knowledge graph, agent tools, sub-agents, browser, background and scheduled tasks, export and backup | Chinese |
+| [Security and privacy](docs/guide/security-privacy.md) | Key storage, backup encryption, SSH, Git and Tailscale credentials, network security, diagnostics | Chinese |
+| [Execution environments](docs/guide/execution-environments.md) | Built-in Linux, Termux, sandboxed script runtimes, SSH | Chinese |
+| [Workspaces](docs/guide/workspaces.md) | Workspace types, Git, what agents can reach, mounted folders | Chinese |
+| [Install and upgrade](docs/guide/install-and-upgrade.md) | Requirements, data migration, APK verification | Chinese |
+| [Development](docs/guide/development.md) | Build commands, bundled Python and Tailscale, rich-content security, icons, tech stack | Chinese |
 
 See also the [architecture overview](docs/ARCHITECTURE.md) and the [guide index](docs/guide/README.md).
+
+## Get involved
+
+Bugs and ideas are welcome as GitHub issues. If you'd like to change code, read [AGENTS.md](AGENTS.md) first — the project runs a heavy verification gate, so opening an issue to talk it through before a large PR saves everyone time.
 
 ## License
 

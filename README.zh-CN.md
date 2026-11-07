@@ -5,7 +5,8 @@
 <h1 align="center">Infinity Workbench</h1>
 
 <p align="center">
-  <b>把终端、代码仓库、服务器和你的 AI 一起装进手机。</b>
+  <b>把终端、代码仓库、服务器和你的 AI 一起装进手机。</b><br>
+  自带 Key，数据留在本机。
 </p>
 
 <p align="center">
@@ -18,17 +19,27 @@
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="许可证 GPL-3.0">
 </p>
 
+用你自己的 API Key 接上 OpenAI、Claude、Gemini、DeepSeek，或家里跑着的模型，然后让它动手：在手机里的真 Linux 跑命令、改你的代码、登上你的服务器、替你操作网页——每一步先给你过目。对话、文档和设置都留在本机，模型请求直连你配置的服务商。
+
+展开是一部工作台，合上接着聊。
+
 https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
+
+## 目录
+
+- ✨ [它能帮你做什么](#它能帮你做什么)
+- 🔒 [你始终说了算](#你始终说了算)
+- 🚀 [开始使用](#开始使用)
+- 🧰 [全部功能](#全部功能)
+- 💬 [常见问题](#常见问题)
+- 📚 [文档](#文档)
+- 🤝 [参与贡献](#参与贡献)
+
+## 它能帮你做什么
 
 <p align="center">
   <img src="assets/screenshots/zh/hero.webp" alt="展开：会话旁边的 Git 面板列出提交记录；合上：外屏继续查看 502 排障报告" width="860">
 </p>
-
-用你自己的 API Key，接上 OpenAI、Claude、Gemini、DeepSeek 或家里跑着的模型。它会动手：在手机里的 Linux 里跑命令，改你的代码，登上你的服务器，替你操作网页，每一步都先给你看。
-
-折叠屏展开是一张工作台，合上在外屏接着聊。
-
-## 它能帮你做什么
 
 <table>
   <tr>
@@ -50,21 +61,21 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
       主会话修 bug，补测试的活派给分支会话，各自在独立的工作树里改，互不打架。分支、差异、提交在 Git 面板里一目了然。
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/tailnet-gateway.webp" alt="提供商表单里从 tailnet 设备中选择模型网关">
-      <h3>用上家里的显卡</h3>
-      家里电脑跑着模型？连上 Tailscale，手机直接拿它聊天、做检索。不开公网端口，也不占系统 VPN。
+      <img src="assets/screenshots/zh/ade-subagents.webp" alt="两张子代理卡：一个定位代码改动点，一个审查测试覆盖缺口，标注已完成 · 3 分 32 秒">
+      <h3>一句话，一支小团队</h3>
+      提一个需求，它先列计划，再并行派出子代理——一个定位改动点，一个审查测试覆盖——主会话接着推进。谁做完了，结论自己交回来，还附上用时。
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/library-ask.webp" alt="问资料：带编号引用的答案与命中列表">
-      <h3>问你自己的资料</h3>
-      把论文、合同或整部小说的文件夹放进来，直接提问。答案标着出处，点一下跳到原文那一段。写长篇的，还能问“第 12 章时这两个人是什么关系”。
+      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器打开 Git 页签：worktree 与对应的会话">
+      <h3>展开就是工作台</h3>
+      内屏一分为三：导航、会话列表、会话，旁边常驻检视器，任务、文件、Git、浏览器一点即达。改了什么、哪些分支在跑，抬眼就在。
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/browser-agent.webp" alt="Agent 在 CI 页面上点击重跑失败的作业">
-      <h3>替你跑网页</h3>
-      让它去 CI 页面重跑失败的作业，你在旁边看着，随时接手。碰到登录页它会停下，密码由你自己输入，它看不到。
+      <img src="assets/screenshots/zh/outer-chat.webp" alt="外屏上正在阅读的 502 修复报告">
+      <h3>合上，接着看</h3>
+      合上手机，会话挪到外屏接着走。地铁上把排障报告看完，单手回一句，回到桌前再展开继续。
     </td>
   </tr>
 </table>
@@ -76,24 +87,6 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 - **数据留在手机上。** 对话、文档和设置都在本机，模型请求直连你配置的服务商，不经过我们的服务器。
 - **备份你来管。** 存到本地文件或 WebDAV，可以加密。
 - **完全开源。** GPL-3.0。
-
-## 全部功能
-
-| | |
-|---|---|
-| **模型** | 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口；聊到一半可以换模型 |
-| **Agent** | 先列计划再动手；最多 6 个子代理在后台并行；适合单独做的工作开成分支会话；慢命令转入后台，跑完再叫醒会话；定时任务；技能与 MCP |
-| **对话** | 最多 4 个会话同时生成；生成中的下一句可以排队或插队；需要你拍板时弹出提问卡；锁屏、切后台不中断；触摸锁让手机直接揣进口袋 |
-| **运行环境** | 一键安装 Alpine Linux；没装 Linux 也有内置命令、Python 和 JavaScript 沙箱；也能接 Termux |
-| **代码** | 内置 git；Git 面板看分支、差异和提交；Git 密码按命令注入，不写进仓库配置 |
-| **服务器** | SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB；真终端和端口转发随时接手 |
-| **私有网络** | 应用自带 Tailscale 节点，支持自建 Headscale；看得到每台设备是直连还是中继，可以持续 Ping；模型、SSH、MCP 都能直接访问 tailnet |
-| **资料** | 文档、长期记忆和知识图谱一起检索，答案带引用；挂载外部文件夹；图谱按作品分开，可按篇序查人物关系的变化；支持 PDF、Word、Markdown、HTML 等格式 |
-| **浏览器** | 多标签，手机版与桌面版网页切换；Agent 操作时你可以旁观、接手再交回 |
-| **产出** | 画布页面、可点击的多屏原型、带版本的产物；生图，可在画板上圈注和涂抹选区；会话导出为网页、A4 PDF 或长图 |
-| **折叠屏** | 内屏三列：导航、会话列表、会话；检视器常驻任务、文件、Git 与浏览器；开合屏会话无缝接续 |
-
-每一项的细节与边界见[功能详解](docs/guide/features.md)。
 
 ## 开始使用
 
@@ -120,6 +113,74 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 
 </details>
 
+## 全部功能
+
+**对话与模型**
+
+- 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口
+- 聊到一半可以换模型；最多 4 个会话同时生成
+- 生成中的下一句可以排队或插队
+- 需要你拍板时弹出提问卡；锁屏、切后台不中断
+- 触摸锁让手机直接揣进口袋
+- 技能与 MCP 服务器
+
+**智能体**
+
+- 先列计划再动手
+- 最多 6 个子代理并行，结论自动交回
+- 适合单独做的工作开成分支会话
+- 慢命令转入后台，跑完再叫醒会话
+- 定时任务，单次到 cron
+
+**运行环境与代码**
+
+- 一键 Alpine Linux，不用 root，也不用 Termux
+- 没装 Linux 也有内置命令、Python 和 JavaScript 沙箱
+- 内置 git；Git 面板看分支、差异和提交
+- Git 密码按命令注入，不写进仓库配置
+
+**服务器与私有网络**
+
+- SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB
+- 真终端和端口转发随时接手
+- 应用自带 Tailscale 节点，支持自建 Headscale
+- 模型、SSH、MCP 直达 tailnet——不开公网端口，不占系统 VPN
+
+**资料与知识**
+
+- 文档、长期记忆和知识图谱一起检索，答案带引用
+- 图谱按作品分开，可按篇序查人物关系的变化
+- 挂载外部文件夹；支持 PDF、Word、Markdown、HTML 等格式
+
+**网页与产出**
+
+- 浏览器多标签，手机版与桌面版切换；Agent 操作时旁观、接手再交回
+- 画布页面、可点击的多屏原型、带版本的产物
+- 生图，可在画板上圈注和涂抹选区
+- 会话导出为网页、A4 PDF 或长图
+
+**折叠屏**
+
+- 内屏三列：导航、会话列表、会话
+- 检视器常驻任务、文件、Git 与浏览器
+- 开合屏会话无缝接续
+
+每一项的细节与边界见[功能详解](docs/guide/features.md)。
+
+## 常见问题
+
+**和手机上的聊天应用有什么区别？**
+
+聊天应用只回答，这个会动手：在真 Linux 里跑命令、用 git 改仓库、SSH 登服务器、驱动浏览器，每一步先经你批准。模型也随你接，包括家里跑着的。
+
+**需要 Termux 或 root 吗？**
+
+都不需要。Linux 环境是应用内一键安装的 Alpine（arm64）。Termux 也能接，但完全可选。
+
+**详细指南为什么是中文的？**
+
+作者是中文开发者，指南从工作笔记里长出来。README 覆盖要点，应用界面本身也有英文。欢迎帮忙翻译。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -132,6 +193,10 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 | [开发构建与发行验证](docs/guide/development.md) | 构建命令、打包 Python 与 Tailscale、富内容安全策略、图标、技术栈 |
 
 另见[架构说明](docs/ARCHITECTURE.md)与[使用指南索引](docs/guide/README.md)。
+
+## 参与贡献
+
+发现问题或有想法，欢迎开 GitHub issue。想改代码请先读 [AGENTS.md](AGENTS.md)——项目跑着较重的验证门禁，大的改动先开 issue 聊清楚，能省下彼此的时间。
 
 ## 许可证
 
