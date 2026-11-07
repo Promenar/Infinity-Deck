@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 浏览器工具的结果卡不再把整段 JSON 按正文铺开：开头给模型的“不可信数据”声明不在界面显示，JSON 对象按字段逐行展示，其余 JSON 与浏览器返回的文本放进等宽代码框。
+
 ## [0.34.1-beta] - 2026-11-07
 
 ### 变更

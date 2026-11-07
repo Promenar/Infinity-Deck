@@ -288,4 +288,30 @@ class ToolDetailModelsTest {
         listOf("web_fetch", "mcp__github__search", "update_plan", "current_time", "read_file")
             .forEach { assertWithMessage(it).that(usesFieldFallback(it)).isTrue() }
     }
+
+    // ── 结果展示 ──
+
+    private val notice = com.promenar.infinity.data.browser.BROWSER_UNTRUSTED_NOTICE
+
+    @Test fun `浏览器结果去掉不可信声明后可以字段化展示`() {
+        val json = """{"current_tab_id":"t1","display_mode":"mobile","tabs":[{"id":"t1","url":"https://example.com/"}]}"""
+        val display = toolResultDisplay("browser_tabs", "$notice\n$json")
+        assertThat(display.body).isEqualTo(json)
+        assertThat(display.code).isTrue()
+        assertThat(toolFieldRows(display.body)!!.map { it.key }).containsAtLeast("current_tab_id", "display_mode", "tabs")
+    }
+
+    @Test fun `浏览器纯文本结果按代码排版`() {
+        assertThat(toolResultDisplay("browser_eval", "$notice\n385")).isEqualTo(ToolResultDisplay("385", code = true))
+    }
+
+    @Test fun `其它工具的JSON数组按代码排版而说明文字按正文排版`() {
+        assertThat(toolResultDisplay("web_search", """[{"title":"a"}]""").code).isTrue()
+        assertThat(toolResultDisplay("web_search", "找到 3 条结果").code).isFalse()
+        assertThat(toolResultDisplay("web_search", "{不是 JSON").code).isFalse()
+    }
+
+    @Test fun `只有声明的结果展示为空`() {
+        assertThat(toolResultDisplay("browser_eval", notice).body).isEmpty()
+    }
 }

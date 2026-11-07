@@ -1577,15 +1577,17 @@ private fun ToolInvocationCard(
                 )
             }
             result.content?.takeIf(String::isNotBlank)?.let { content ->
+                val display = remember(invocation.name, content) { toolResultDisplay(invocation.name, content) }
                 when {
-                    result.type == "error" -> ToolErrorBlock(content)
+                    display.body.isBlank() -> Unit
+                    result.type == "error" -> ToolErrorBlock(display.body)
                     commandSpec != null || planCard != null -> Unit
                     // 生图与查看媒体的结果文本给模型阅读，用户从摘要与预览获知结果，原文经“完整结果”查看。
                     mediaTool && (!resultMedia.isNullOrEmpty() || images.isNotEmpty()) -> Unit
                     else -> {
-                        val fields = remember(content, fieldFallback) { if (fieldFallback) toolFieldRows(content) else null }
+                        val fields = remember(display.body, fieldFallback) { if (fieldFallback) toolFieldRows(display.body) else null }
                         if (fields != null) ToolFieldList(fields, arguments = false)
-                        else ExpandableToolText(text = content, collapsedLines = 12)
+                        else ExpandableToolText(text = display.body, collapsedLines = 12, code = display.code)
                     }
                 }
             }

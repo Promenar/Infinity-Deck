@@ -459,6 +459,16 @@ private const val MAX_FIELD_DEPTH = 2
 private const val MAX_FIELD_ROWS = 120
 internal const val LONG_FIELD_CHARS = 160
 
+/** 工具结果的界面展示：浏览器结果开头给模型的不可信声明不展示；JSON 或浏览器工具的结果按代码排版。 */
+internal data class ToolResultDisplay(val body: String, val code: Boolean)
+
+internal fun toolResultDisplay(toolName: String?, content: String): ToolResultDisplay {
+    val body = content.removePrefix(com.promenar.infinity.data.browser.BROWSER_UNTRUSTED_NOTICE).trimStart('\n', '\r')
+    val trimmed = body.trim()
+    val json = (trimmed.startsWith("{") || trimmed.startsWith("[")) && runCatching { Json.parseToJsonElement(trimmed) }.isSuccess
+    return ToolResultDisplay(body, json || toolName?.startsWith("browser_") == true)
+}
+
 /**
  * 有专用展示的工具（命令、文件编辑与传输、浏览器、知识检索、记忆写入、子代理、保密输入输出、计划）不做字段化，保持原有展示。
  */
