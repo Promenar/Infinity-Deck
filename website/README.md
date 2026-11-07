@@ -49,21 +49,31 @@ website/scripts/prepare-media.sh <footage 目录>
 
 ## 部署：Cloudflare Pages
 
-本仓库的 GitHub Pages 已用于托管 App 的签名模型目录（`model-catalog-publish.yml` 整站部署，App 固定读取 `promenar.github.io/Infinity-Workbench/model-catalog/`）。官网不能部署到这里，也不能给它绑定自定义域名，否则模型目录地址会被重定向而失效。官网改由 Cloudflare Pages 托管。
+本仓库的 GitHub Pages 已用于托管 App 的签名模型目录（`model-catalog-publish.yml` 整站部署，App 固定读取 `promenar.github.io/Infinity-Workbench/model-catalog/`）。官网不能部署到这里，也不能给它绑定自定义域名，否则模型目录地址会被重定向而失效。官网由 Cloudflare Pages 托管。
 
-首次配置（Cloudflare 后台，Workers & Pages → Create → Pages → Connect to Git）：
-
-| 设置项 | 值 |
+| 项目 | 值 |
 | --- | --- |
-| 仓库 | `Promenar/Infinity-Workbench` |
-| 生产分支 | `main` |
-| Root directory | `website` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| 环境变量（可选） | `GITHUB_TOKEN`：只读公开仓库的细粒度令牌，避开 API 限流 |
+| Pages 项目 | `infinity-workbench`（直接上传方式，生产分支 `main`） |
+| 默认地址 | <https://infinity-workbench.pages.dev> |
+| 自定义域名 | <https://infinityware.work>，解析为代理的 CNAME → `infinity-workbench.pages.dev` |
 
-建议在 Build watch paths 里只包含 `website/*` 与 `CHANGELOG.md`，其它目录的提交不触发官网构建。
+### 发布
 
-绑定域名：项目 → Custom domains → 添加 `infinityware.work`。域名已在同一 Cloudflare 账户解析，Pages 会自动创建记录并签发证书。如需 `www.infinityware.work`，再添加一次并在 Rules 里重定向到根域名。
+在本机构建后用 wrangler 上传。令牌需要账户级 Cloudflare Pages 编辑权限，经环境变量提供给 wrangler，不写进脚本或提交：
 
-发布后：每次推送到 `main` 自动构建；新 Release 不会触发构建，但浏览器端会显示最新版本，下一次构建再写入页面。
+```bash
+cd website
+npm run build
+CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
+  npx wrangler@4.152.0 pages deploy dist --project-name infinity-workbench --branch main \
+  --commit-hash "$(git rev-parse HEAD)" --commit-message "<说明>"
+```
+
+`--branch main` 发布到生产域名；换成其它分支名会生成独立的预览地址，不影响线上。新 Release 发布后，下载区会在浏览器端自动显示新版本；重新发布一次即可把新版本写进页面与更新日志。
+
+### 改为推送自动构建
+
+直接上传方式的项目不能改成连接 Git。需要自动构建时，二选一：
+
+- 在仓库加 GitHub Actions 工作流，`main` 上 `website/` 或 `CHANGELOG.md` 变化时执行上面的构建与上传，令牌存为仓库密钥。
+- 在 Cloudflare 后台新建连接 Git 的 Pages 项目（Root directory `website`，Build command `npm run build`，输出目录 `dist`，Build watch paths 只含 `website/*` 与 `CHANGELOG.md`），再把 `infinityware.work` 从旧项目移到新项目。
