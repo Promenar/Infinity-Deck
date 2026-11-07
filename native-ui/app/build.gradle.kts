@@ -575,7 +575,7 @@ ksp {
 }
 
 dependencies {
-    implementation("io.github.dokar3:quickjs-kt-android:1.0.15")
+    implementation("io.github.dokar3:quickjs-kt:1.0.17")
     // ─── Jetpack Compose BOM ───
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
@@ -699,7 +699,7 @@ dependencies {
 configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
     resolutionStrategy.dependencySubstitution {
         substitute(module("io.github.dokar3:quickjs-kt-android"))
-            .using(module("io.github.dokar3:quickjs-kt-jvm:1.0.15"))
+            .using(module("io.github.dokar3:quickjs-kt-jvm:1.0.17"))
     }
 }
 
