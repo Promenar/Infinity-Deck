@@ -6,7 +6,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
@@ -86,7 +85,7 @@ class AgentHubScreenContentTest {
                 )
             }
         }
-        rule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(UiTags.hubAgentCard("agent-18")))
+        rule.onNodeWithTag(UiTags.HUB_AGENT_LIST).performScrollToNode(hasTestTag(UiTags.hubAgentCard("agent-18")))
         rule.onNodeWithTag(UiTags.hubAgentSession("session-18")).assertDoesNotExist()
         rule.onNodeWithTag(UiTags.hubAgentCard("agent-18")).assertIsDisplayed().performClick()
         assertThat(opened.get()).isNull()
@@ -96,7 +95,7 @@ class AgentHubScreenContentTest {
                 resources.getString(R.string.common_state_expanded),
             ),
         )
-        rule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(UiTags.hubAgentSession("session-18")))
+        rule.onNodeWithTag(UiTags.HUB_AGENT_LIST).performScrollToNode(hasTestTag(UiTags.hubAgentSession("session-18")))
         rule.onNodeWithTag(UiTags.hubAgentSession("session-18")).performClick()
         assertThat(opened.get()).isEqualTo("session-18")
     }

@@ -169,8 +169,8 @@ for smoke_contract in \
     'normalize-android-screencap-png.py' \
     'Imported · Indexed' \
     '已导入 · 已完成索引' \
-    'Imported · Indexing failed, tap Retry' \
-    '已导入 · 索引失败，可重试' \
+    'Imported · Indexing failed' \
+    '已导入 · 索引失败' \
     'Retry failed' \
     '重试失败项' \
     'run_canary_text' \

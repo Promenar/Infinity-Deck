@@ -131,8 +131,8 @@ class GitInspectorDeviceTest {
         assertThat(log.commits.single().sha).isEqualTo(status.head)
         assertThat(log.commits.single().parents).isEmpty()
 
-        // 结果文件读后即删，私有缓存中不留残余。
-        assertThat(outputDirectory.listFiles().orEmpty().toList()).isEmpty()
+        // 结果文件读后即删；status-cache 是 status 的持久缓存，按设计保留。
+        assertThat(outputDirectory.listFiles().orEmpty().map { it.name }.filterNot { it == "status-cache" }).isEmpty()
     }
 
     @Test

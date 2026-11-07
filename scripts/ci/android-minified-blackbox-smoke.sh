@@ -649,8 +649,8 @@ wait_for_failed_retry() {
     local phase="$1"
     local filename="$2"
     local xml="${ARTIFACT_DIR}/window-${phase}-failed-retry.xml"
-    local english_failure="Imported · Indexing failed, tap Retry"
-    local chinese_failure="已导入 · 索引失败，可重试"
+    local english_failure="Imported · Indexing failed"
+    local chinese_failure="已导入 · 索引失败"
     local english_retry="Retry failed"
     local chinese_retry="重试失败项"
     local deadline=$(( $(date +%s) + WAIT_SECONDS ))
@@ -675,8 +675,8 @@ wait_for_refailed_retry() {
     local phase="$1"
     local filename="$2"
     local xml="${ARTIFACT_DIR}/window-${phase}-refailed-retry.xml"
-    local english_failure="Imported · Indexing failed, tap Retry"
-    local chinese_failure="已导入 · 索引失败，可重试"
+    local english_failure="Imported · Indexing failed"
+    local chinese_failure="已导入 · 索引失败"
     local english_retry="Retry failed"
     local chinese_retry="重试失败项"
     local deadline=$(( $(date +%s) + WAIT_SECONDS ))
@@ -819,7 +819,7 @@ run_canary_text() {
     assert_target_healthy "${key}-refailed"
 }
 
-run_canary release-parser-canary.pdf application/pdf pdf
+run_canary_text release-parser-canary.pdf application/pdf pdf
 run_canary release-parser-canary-empty.docx \
     application/vnd.openxmlformats-officedocument.wordprocessingml.document docx
 run_canary_text "${TEXT_CANARY_NAME}" "${TEXT_CANARY_MIME}" text

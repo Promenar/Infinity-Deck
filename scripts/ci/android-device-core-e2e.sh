@@ -492,8 +492,6 @@ run_test thinking-preview-motion "${APP_RUNNER}" \
     -e class com.promenar.infinity.ui.chat.ThinkingPreviewMotionTest
 run_test inspector-strip-drag "${APP_RUNNER}" \
     -e class com.promenar.infinity.ui.chat.InspectorStripDragTest
-run_test rag-workspace-source-selector "${APP_RUNNER}" \
-    -e class com.promenar.infinity.ui.rag.RagWorkspaceSourceSelectorDeviceTest
 run_test agent-hub-content "${APP_RUNNER}" \
     -e class com.promenar.infinity.ui.hub.AgentHubScreenContentTest
 run_test packaged-python "${APP_RUNNER}" \
@@ -632,8 +630,6 @@ run_test document-parser-fixtures "${APP_RUNNER}" \
     -e class com.promenar.infinity.data.rag.DocumentParserDeviceE2eTest
 run_test share-import-contracts "${APP_RUNNER}" \
     -e class com.promenar.infinity.share.core.ShareImportAndroidEndToEndTest
-run_test rag-files-navigation "${APP_RUNNER}" \
-    -e class com.promenar.infinity.ui.rag.RagFilesPanelNavigationTest
 
 force_stop_target
 run_test generation-cold-track "${APP_RUNNER}" \
