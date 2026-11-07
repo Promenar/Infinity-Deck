@@ -21,7 +21,7 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 发行前须在本机跑完全量门禁；发行流水线只验证本机不覆盖的环境。完成两个渠道的 Debug 单测、lint、两个渠道 Debug 构建、侧载截图与两个 Python 检查后，须在真机安装本机签名的侧载 Release 包验收。
 
-`release.yml` 保留静态契约与版本输入校验，设备覆盖为 API 31 / `minimum` deviceTest 和 API 36 Release 等价 R8 minifiedTest 黑盒。签名构建在静态检查及版本输入校验通过后与设备作业并行，依次用两次 Gradle 调用分别构建两个渠道的 Release（合并为一次调用会使 Kotlin 编译超出托管 runner 内存），再执行两个 Python 检查的 `--build-type release` 模式。实际签名 APK 冷安装覆盖侧载 / API 31、侧载 / API 36、Play / API 36；版本输入校验、冷安装与两类设备作业全部通过才可发布。Linux 截图验证保留独立工作流入口。
+`release.yml` 保留静态契约与版本输入校验，设备覆盖为 API 31 / `minimum` deviceTest 和 API 36 Release 等价 R8 minifiedTest 黑盒。签名构建在静态检查及版本输入校验通过后与设备作业并行，只构建侧载 Release 并检查 16KB 页对齐；GitHub Release 只发布侧载 APK，`-beta` 版本设为 Latest。实际签名 APK 冷安装覆盖 API 31 与 API 36；版本输入校验、冷安装与两类设备作业全部通过才可发布。Linux 截图验证保留独立工作流入口。
 
 设备相关功能可按需手动触发 `device-regression.yml`，运行 API 35/36 的 `full` deviceTest 完整业务回归；它不阻断发行，沿用托管环境的 Tailscale 控制面登录与 SSH 会话覆盖边界，详见[发行渠道构建说明](../distribution-builds.md)。合并到 `main` 后可用 `gh workflow run release.yml --ref main` 验证候选；该入口构建并冷安装签名产物，不发布 Release。
 

@@ -321,7 +321,7 @@ internal class LabLibraryText(private val zh: Boolean, private val titles: Locat
     fun hits(): List<AskHit> = listOf(
         AskHit(
             key = "vector:$DOC_ID:2", kind = AskHitKind.DOCUMENT, title = docTitle,
-            location = "${titles.library} · starlog/docs",
+            location = "${titles.library} · starlog/docs", // wrap-check: allow 实验室示例数据
             snippet = decision, highlightTerms = listOf("JSON Lines", "jq"),
             match = AskMatch.BOTH, similarity = 0.88f, documentId = DOC_ID, chunkIndex = 2, chunkContent = decision,
         ),
@@ -338,7 +338,7 @@ internal class LabLibraryText(private val zh: Boolean, private val titles: Locat
         ),
         AskHit(
             key = "vector:$NOTES_ID:0", kind = AskHitKind.DOCUMENT, title = notesTitle,
-            location = "${titles.library} · starlog/notes",
+            location = "${titles.library} · starlog/notes", // wrap-check: allow 实验室示例数据
             snippet = notesLine, highlightTerms = if (zh) listOf("JSON 输出") else listOf("JSON output"),
             match = AskMatch.KEYWORD, similarity = null, documentId = NOTES_ID, chunkIndex = 0, chunkContent = notesLine,
         ),
@@ -351,7 +351,7 @@ internal class LabLibraryText(private val zh: Boolean, private val titles: Locat
         ),
         AskHit(
             key = "vector:$DOC_ID:3", kind = AskHitKind.DOCUMENT, title = docTitle,
-            location = "${titles.library} · starlog/docs",
+            location = "${titles.library} · starlog/docs", // wrap-check: allow 实验室示例数据
             snippet = fields, highlightTerms = listOf("ISO 8601"),
             match = AskMatch.SEMANTIC, similarity = 0.69f, documentId = DOC_ID, chunkIndex = 3, chunkContent = fields,
         ),

@@ -437,7 +437,7 @@
     <string name="chat_document_workspace_badge">Workspace</string>
     <string name="chat_draft_budget_exceeded">Over the available context, about %1$s of %2$s</string>
     <string name="chat_draft_budget_combined">Attachments together exceed the available context, about %1$s of %2$s</string>
-    <string name="chat_draft_budget_compactable">Over the available context, about %1$s of %2$s · Compacts on send</string>
+    <string name="chat_draft_budget_compactable">Over the available context, about %1$s of %2$s; compacts on send</string>
     <string name="chat_draft_budget_unknown_window">This model doesn\'t report a context window</string>
     <string name="chat_draft_budget_save">Save to workspace</string>
     <string name="chat_draft_budget_switch_model">Switch model</string>

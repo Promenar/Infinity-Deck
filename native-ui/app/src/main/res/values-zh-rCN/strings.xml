@@ -437,7 +437,7 @@
     <string name="chat_document_workspace_badge">工作区</string>
     <string name="chat_draft_budget_exceeded">超出可用上下文，约 %1$s / %2$s</string>
     <string name="chat_draft_budget_combined">附件合计超出可用上下文，约 %1$s / %2$s</string>
-    <string name="chat_draft_budget_compactable">超出可用上下文，约 %1$s / %2$s · 发送时先压缩</string>
+    <string name="chat_draft_budget_compactable">超出可用上下文，约 %1$s / %2$s，发送时先压缩</string>
     <string name="chat_draft_budget_unknown_window">当前模型未提供上下文窗口</string>
     <string name="chat_draft_budget_save">存入工作区</string>
     <string name="chat_draft_budget_switch_model">换模型</string>

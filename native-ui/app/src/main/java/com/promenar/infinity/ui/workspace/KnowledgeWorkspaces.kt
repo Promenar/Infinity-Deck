@@ -526,7 +526,7 @@ internal fun KnowledgeWorkspaceFileContent(
         supporting = {
             // 路径单行，停在末尾露出文件名与大小。
             InfinityHeaderTitle(
-                text = "${entry.path} · ${Formatter.formatShortFileSize(context, entry.size)}",
+                text = "${entry.path} · ${Formatter.formatShortFileSize(context, entry.size)}", // wrap-check: allow 单行末端对齐标题
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 alignEnd = true,

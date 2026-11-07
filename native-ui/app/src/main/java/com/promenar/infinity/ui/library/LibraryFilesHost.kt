@@ -90,7 +90,7 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                 folderBadge = current?.summary?.let { summary ->
                     FileHeaderBadge(
                         text = "${summary.extracted}/${summary.total}",
-                        description = summary.metaSegments(resources).joinToString(" · "),
+                        description = summary.metaSegments(resources).joinToString(" · "), // wrap-check: allow 无障碍描述
                         icon = Icons.Rounded.Hub,
                         onClickLabel = settingsLabel,
                         onClick = { settingsFolder = current.folderId to folderName },

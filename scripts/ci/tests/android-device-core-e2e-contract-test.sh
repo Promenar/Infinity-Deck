@@ -60,7 +60,7 @@ assert_contains "${REGRESSION_WORKFLOW}" 'script: scripts/ci/android-device-core
 
 assert_count "${RELEASE_WORKFLOW}" "- api-level: 31" 2
 assert_not_contains "${RELEASE_WORKFLOW}" "- api-level: 35"
-assert_count "${RELEASE_WORKFLOW}" "- api-level: 36" 3
+assert_count "${RELEASE_WORKFLOW}" "- api-level: 36" 2
 assert_count "${REGRESSION_WORKFLOW}" "- api-level: 35" 1
 assert_count "${REGRESSION_WORKFLOW}" "- api-level: 36" 1
 assert_contains "${RELEASE_WORKFLOW}" "签名 R8 APK 无密钥冷安装 smoke"

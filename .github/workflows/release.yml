@@ -280,7 +280,7 @@ jobs:
           retention-days: 14
 
   build-release:
-    name: 构建签名 APK（侧载 + Play）
+    name: 构建签名侧载 APK
     needs: [validate-release-inputs, static-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -374,11 +374,10 @@ jobs:
             exit 1
           fi
           chmod +x gradlew
-          # 两个渠道的 Release 分两次调用：同一次调用并行编译两个变体的 Kotlin 会超出托管 runner 内存。
+          # GitHub Release 只发布侧载渠道。
           ./gradlew --stacktrace :app:assembleSideloadRelease
-          ./gradlew --stacktrace :app:assemblePlayRelease
-          python3 ../scripts/ci/check-distribution-manifests.py --build-type release
-          python3 ../scripts/ci/check-native-page-alignment.py --build-type release
+          python3 ../scripts/ci/check-native-page-alignment.py --build-type release \
+            app/build/outputs/apk/sideload/release/app-sideload-release.apk
 
       - name: 删除临时 keystore
         if: always()
@@ -407,35 +406,31 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp native-ui/app/build/outputs/apk/sideload/release/app-sideload-release.apk "dist/infinity-${RELEASE_TAG}.apk"
-          cp native-ui/app/build/outputs/apk/play/release/app-play-release.apk "dist/infinity-${RELEASE_TAG}-play.apk"
-          for distribution in sideload play; do
-            suffix=""
-            if [[ "${distribution}" == "play" ]]; then suffix="-play"; fi
-            apk="dist/infinity-${RELEASE_TAG}${suffix}.apk"
-            python3 scripts/verify-release-apk.py \
-              "${apk}" \
-              --expected-package com.promenar.infinity \
-              --expected-version-code "${VERSION_CODE}" \
-              --expected-version-name "${VERSION_NAME}" \
-              --expected-cert-sha256 "${INFINITY_SIGNING_CERT_SHA256}" \
-              --distribution "${distribution}" \
-              --checksum-output "${apk}.sha256"
-            r8_output_dir="native-ui/app/build/outputs/mapping/${distribution}Release"
-            mapping_path="${r8_output_dir}/mapping.txt"
-            test -s "${mapping_path}" || {
-              echo "::error::${distribution} 的 R8 mapping.txt 缺失或为空。"
-              exit 1
-            }
-            mkdir -p "dist/r8/${distribution}"
-            cp "${mapping_path}" "dist/r8/${distribution}/mapping.txt"
-            for r8_evidence in seeds.txt usage.txt configuration.txt; do
-              if [[ -f "${r8_output_dir}/${r8_evidence}" ]]; then
-                cp "${r8_output_dir}/${r8_evidence}" "dist/r8/${distribution}/${r8_evidence}"
-              else
-                echo "::notice::AGP 未生成可选 R8 证据 ${distribution}/${r8_evidence}。"
-              fi
-            done
+          distribution=sideload
+          apk="dist/infinity-${RELEASE_TAG}.apk"
+          cp native-ui/app/build/outputs/apk/sideload/release/app-sideload-release.apk "${apk}"
+          python3 scripts/verify-release-apk.py \
+            "${apk}" \
+            --expected-package com.promenar.infinity \
+            --expected-version-code "${VERSION_CODE}" \
+            --expected-version-name "${VERSION_NAME}" \
+            --expected-cert-sha256 "${INFINITY_SIGNING_CERT_SHA256}" \
+            --distribution "${distribution}" \
+            --checksum-output "${apk}.sha256"
+          r8_output_dir="native-ui/app/build/outputs/mapping/${distribution}Release"
+          mapping_path="${r8_output_dir}/mapping.txt"
+          test -s "${mapping_path}" || {
+            echo "::error::${distribution} 的 R8 mapping.txt 缺失或为空。"
+            exit 1
+          }
+          mkdir -p "dist/r8/${distribution}"
+          cp "${mapping_path}" "dist/r8/${distribution}/mapping.txt"
+          for r8_evidence in seeds.txt usage.txt configuration.txt; do
+            if [[ -f "${r8_output_dir}/${r8_evidence}" ]]; then
+              cp "${r8_output_dir}/${r8_evidence}" "dist/r8/${distribution}/${r8_evidence}"
+            else
+              echo "::notice::AGP 未生成可选 R8 证据 ${distribution}/${r8_evidence}。"
+            fi
           done
 
       - name: 上传已验签发行产物
@@ -463,9 +458,6 @@ jobs:
           - api-level: 36
             distribution: sideload
             apk-suffix: ""
-          - api-level: 36
-            distribution: play
-            apk-suffix: "-play"
     env:
       APK_NAME: infinity-${{ needs.validate-release-inputs.outputs.tag }}${{ matrix.apk-suffix }}.apk
 
@@ -579,7 +571,7 @@ jobs:
       - name: 发布前再次核对发行 APK 哈希
         working-directory: dist
         shell: bash
-        run: sha256sum -c "infinity-${RELEASE_TAG}.apk.sha256" "infinity-${RELEASE_TAG}-play.apk.sha256"
+        run: sha256sum -c "infinity-${RELEASE_TAG}.apk.sha256"
 
       - name: 由 CHANGELOG 生成发布说明
         shell: bash
@@ -593,9 +585,6 @@ jobs:
             echo "| 文件 | 渠道 | SHA-256 |"
             echo "| --- | --- | --- |"
             echo "| \`infinity-${RELEASE_TAG}.apk\` | 侧载（含内置 Linux 与设备文件访问） | \`$(cut -d ' ' -f 1 "dist/infinity-${RELEASE_TAG}.apk.sha256")\` |"
-            echo "| \`infinity-${RELEASE_TAG}-play.apk\` | Play（不含内置 Linux 与设备文件访问） | \`$(cut -d ' ' -f 1 "dist/infinity-${RELEASE_TAG}-play.apk.sha256")\` |"
-            echo
-            echo "两个渠道使用同一应用 ID 与签名，不能并列安装。"
           } >> release-notes.md
 
       - name: 幂等创建或恢复 GitHub Release draft
@@ -610,8 +599,6 @@ jobs:
           release_assets=(
             "dist/infinity-${tag}.apk"
             "dist/infinity-${tag}.apk.sha256"
-            "dist/infinity-${tag}-play.apk"
-            "dist/infinity-${tag}-play.apk.sha256"
           )
 
           if ! gh release view "${tag}" >/dev/null 2>&1; then

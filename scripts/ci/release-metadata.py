@@ -3,6 +3,7 @@
 
 版本名与版本号以 native-ui/app/build.gradle.kts 为准，标签固定为 v<versionName>；
 发布说明取 CHANGELOG.md 中 `## [<versionName>]` 小节的正文。
+无后缀与 `-beta` 后缀按正式发行公开并设为 Latest；其它后缀（如 `-alpha`、`-rc.1`）标为 prerelease。
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 VERSION_NAME_PATTERN = re.compile(r'^\s*versionName\s*=\s*"([^"\n]+)"\s*$', re.MULTILINE)
 VERSION_CODE_PATTERN = re.compile(r"^\s*versionCode\s*=\s*(\d+)\s*$", re.MULTILINE)
 SEMVER_NAME = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?")
+LATEST_SUFFIXES = ("", "beta")
 
 
 def read_version(build_file: Path) -> tuple[str, int]:
@@ -27,6 +29,11 @@ def read_version(build_file: Path) -> tuple[str, int]:
     if not SEMVER_NAME.fullmatch(names[0]):
         raise SystemExit(f"versionName {names[0]!r} 不符合 主.次.补丁[-后缀]")
     return names[0], int(codes[0])
+
+
+def is_latest_release(version_name: str) -> bool:
+    suffix = version_name.partition("-")[2]
+    return suffix in LATEST_SUFFIXES
 
 
 def changelog_section(changelog: str, version_name: str) -> str:
@@ -59,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         "tag": f"v{version_name}",
         "version-name": version_name,
         "version-code": str(version_code),
-        "prerelease": "true" if "-" in version_name else "false",
+        "prerelease": "false" if is_latest_release(version_name) else "true",
     }
     lines = "".join(f"{key}={value}\n" for key, value in values.items())
     if args.github_output:

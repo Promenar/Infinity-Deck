@@ -142,11 +142,10 @@ internal fun FileCompactPreviewPage(
             }
             if (inner) {
                 // 内屏右列：16sp 标题，下面是大小与修改时间。
-                val meta = fileMetaSegments(item).joinToString(" · ")
                 InfinityPaneHeaderTitle(
                     title = item.name,
                     modifier = Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small),
-                    meta = { Text(meta, maxLines = 1, softWrap = false) },
+                    meta = { InfinityMetaLine(fileMetaSegments(item), maxLines = 1) },
                 )
             } else Column(Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small)) {
                 InfinityHeaderTitle(

@@ -27,7 +27,7 @@
 
 当前 Android 任务显式指定 `distribution` 风味：日常使用 `:app:testSideloadDebugUnitTest`、`:app:testPlayDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`；另构建 `:app:assemblePlayDebug` 并执行 `python3 scripts/ci/check-distribution-manifests.py` 与 `python3 scripts/ci/check-native-page-alignment.py`。Gradle 在 `native-ui/` 运行，Python 检查在仓库根运行。两个渠道的 APK、mapping 与设备构建入口见 [docs/distribution-builds.md](docs/distribution-builds.md)。
 
-发行前须在本机跑完全量门禁，并安装本机签名的侧载 Release 包完成真机验收；发行流水线只验证本机不覆盖的环境。`release.yml` 保留静态契约、版本输入校验、API 31 / `minimum` deviceTest、API 36 minifiedTest 黑盒及侧载 API 31/36、Play API 36 的签名 APK 冷安装；签名构建只依赖静态检查和版本输入校验，依次用两次 Gradle 调用构建侧载与 Play Release（同一次调用会超出托管 runner 内存），再执行两个 Python 发行检查。发布等待冷安装与两类设备作业全部通过。API 35/36 的 `full` deviceTest 由仅手动触发的 `device-regression.yml` 按需执行。
+发行前须在本机跑完全量门禁，并安装本机签名的侧载 Release 包完成真机验收；发行流水线只验证本机不覆盖的环境。`release.yml` 保留静态契约、版本输入校验、API 31 / `minimum` deviceTest、API 36 minifiedTest 黑盒及侧载 API 31/36 的签名 APK 冷安装；签名构建只依赖静态检查和版本输入校验，只构建侧载 Release 并检查 16KB 页对齐。GitHub Release 只发布侧载 APK；版本名无后缀或为 `-beta` 时设为 Latest，其它后缀标为预发布。发布等待冷安装与两类设备作业全部通过。API 35/36 的 `full` deviceTest 由仅手动触发的 `device-regression.yml` 按需执行。
 
 - **Markdown 渲染排障分层**：遇到“Markdown 标记存在但排版堆成一坨”时，必须先区分两类根因：
   - 文本中已有换行，但渲染库按 CommonMark 软换行规则吞掉换行；

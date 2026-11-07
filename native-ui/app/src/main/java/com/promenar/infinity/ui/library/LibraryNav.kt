@@ -140,7 +140,7 @@ internal fun pinLabels(ref: FileRef, locations: LibraryLocations): Pair<String, 
     return when {
         listed != null -> (if (root) listed.title else pinTitle(ref)) to listed.title.takeUnless { root }
         session != null && root -> session to parent
-        session != null -> pinTitle(ref) to listOfNotNull(parent, session).joinToString(" · ")
+        session != null -> pinTitle(ref) to listOfNotNull(parent, session).joinToString(" · ") // wrap-check: allow 单行省略号副标题
         else -> pinTitle(ref) to null
     }
 }

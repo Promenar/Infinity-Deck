@@ -18,7 +18,7 @@ Infinity Workbench 使用 `com.promenar.infinity`，与旧应用并存。旧应�
 
 公开制品只从 [Promenar/Infinity Workbench Releases](https://github.com/Promenar/Infinity-Workbench/releases) 发布，由发行工作流在推送版本标签后构建、验签并上传；早期 `v0.1-beta` 与 `v0.2-beta` 发行已于 2026-10-30 下线。公开发布可能落后于源码。安装时：
 
-1. 取得维护者交付并验真的 APK 与对应 `.sha256` 文件；侧载主资产为 `infinity-v<版本>.apk`，Play 风味资产为 `infinity-v<版本>-play.apk`，Release 说明中列出两者的 SHA-256。
+1. 取得维护者交付并验真的 APK 与对应 `.sha256` 文件；Release 只提供侧载渠道的 `infinity-v<版本>.apk`，说明中列出它的 SHA-256。
 2. 校验 APK 的 SHA-256 与发布文件一致。
 3. 在 Android 系统中允许当前文件管理器或浏览器“安装未知应用”。
 4. 安装 Infinity Workbench 后，在旧应用导出备份并导入新应用。确认数据完整前保留旧应用；不同应用 ID 不能覆盖升级。同 ID 的后续版本可按同签名覆盖安装。

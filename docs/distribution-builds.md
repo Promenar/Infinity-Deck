@@ -35,7 +35,7 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 lint 不分析测试源码（`lint { ignoreTestSources = true }`），门禁只保留主变体的 lint 分析。AGP lint 默认在 Gradle 守护进程内运行，项目 `gradle.properties` 的 4g 堆供 GitHub 托管 runner 使用；本机全量门禁在用户级 `~/.gradle/gradle.properties` 设 `org.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError`，避免 lint 与打包、截图校验并行时频繁 Full GC。新机器内存不少于 32GB 时照此设置。
 
-发行签名构建在版本输入校验与静态检查通过后启动，与设备作业并行；依次执行 `:app:assembleSideloadRelease` 与 `:app:assemblePlayRelease` 两次 Gradle 调用，复用守护进程和缓存；合并为一次调用会使两个变体的 Kotlin 编译超出托管 runner 内存，随后执行两个 Python 检查的 `--build-type release` 模式。发行构建失败时保留 Gradle problems、清单合并日志及 R8 输出供诊断。
+发行签名构建在版本输入校验与静态检查通过后启动，与设备作业并行；只执行 `:app:assembleSideloadRelease`，复用守护进程和缓存，随后对侧载 APK 执行 16KB 页对齐检查（`check-native-page-alignment.py --build-type release`）。Play 渠道不在发行流水线构建，由本机门禁的 Play Debug 单测与构建覆盖。发行构建失败时保留 Gradle problems、清单合并日志及 R8 输出供诊断。
 
 依赖 Android 文件描述符与目录身份实现的工作区安全测试在设备回归中执行，覆盖根目录替换、符号链接竞争、回滚和旧回收目录恢复；不依赖 Android 桥接的协调逻辑仍由 JVM 单测覆盖。排查设备测试时可手动运行“Android 工作区设备诊断”，检查七项测试及执行日志，该诊断不替代完整设备门禁。
 
@@ -55,7 +55,7 @@ lint 不分析测试源码（`lint { ignoreTestSources = true }`），门禁只�
 
 Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`，检查内置模型目录、文本换行和工作流脚本契约；该入口也由发行工作流执行。发行工作流 `.github/workflows/release.yml` 只在推送 `v*` 注释标签（或在 `main` 上手动触发候选验证）时运行，日常推送不会构建 APK。`scripts/ci/release-metadata.py` 从 `native-ui/app/build.gradle.kts` 读取 versionName 与 versionCode，要求标签等于 `v<versionName>`、指向 `main` 历史中的提交，并从 `CHANGELOG.md` 的 `## [<versionName>]` 小节生成发布说明；该小节缺失或为空时拒绝发布。
 
-发行流水线的设备覆盖为 API 31 / `minimum` 的未混淆 deviceTest 核心可达性，以及 API 36 的 Release 等价 R8 minifiedTest 黑盒。签名构建使用 release 环境的 `NEXARA_*` 签名机密，整理侧载主资产 `dist/infinity-v<版本>.apk` 和 Play 资产 `dist/infinity-v<版本>-play.apk`，二者各有 `.sha256`；R8 证据分别进入 `dist/r8/sideload/` 与 `dist/r8/play/`，只作为保留 3 天的 Actions 制品。实际签名 APK 冷安装覆盖侧载 / API 31、侧载 / API 36、Play / API 36，校验对应哈希、包名、版本与发行证书。`publish` 等待版本输入校验、全部冷安装、API 31 deviceTest 及 API 36 minifiedTest 黑盒通过，再以 draft 上传资产、逐个回读哈希，最后公开 Release；版本名带 `-` 后缀时标为 prerelease。手动触发只做候选验证，不发布。
+发行流水线的设备覆盖为 API 31 / `minimum` 的未混淆 deviceTest 核心可达性，以及 API 36 的 Release 等价 R8 minifiedTest 黑盒。签名构建使用 release 环境的 `NEXARA_*` 签名机密，整理侧载资产 `dist/infinity-v<版本>.apk` 及其 `.sha256`；R8 证据进入 `dist/r8/sideload/`，只作为保留 3 天的 Actions 制品。实际签名 APK 冷安装覆盖 API 31 与 API 36，校验哈希、包名、版本与发行证书。`publish` 等待版本输入校验、全部冷安装、API 31 deviceTest 及 API 36 minifiedTest 黑盒通过，再以 draft 上传资产、逐个回读哈希，最后公开 Release；版本名无后缀或为 `-beta` 时设为 Latest，其它后缀（如 `-alpha`、`-rc.1`）标为 prerelease。GitHub Release 不发布 Play 渠道安装包。手动触发只做候选验证，不发布。
 
 改动设备相关功能时，维护者可通过 `device-regression.yml` 的 `workflow_dispatch` 运行 API 35/36 的 `full` deviceTest 完整业务回归。该工作流复用 `scripts/ci/android-device-core-e2e.sh`、工具链与证据上传步骤，使用独立并发组，不阻断发行；沿用托管模拟器的覆盖边界：跳过 Tailscale 控制面交互登录，未配置 SSH 会话时跳过 SSH 设备用例。
 

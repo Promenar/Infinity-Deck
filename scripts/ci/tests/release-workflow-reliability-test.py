@@ -265,21 +265,21 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
             with self.subTest(job=job_name):
                 self.assertIn("validate-release-inputs", job_level_value(workflow_job(job_name), "needs"))
 
-    def test_distribution_assets_and_smoke_are_independent(self) -> None:
+    def test_release_builds_and_publishes_only_the_sideload_apk(self) -> None:
         build = workflow_job("build-release")
         publish = workflow_job("publish")
         smoke = workflow_job("signed-apk-smoke")
-        for flavor, suffix in (("sideload", ""), ("play", "-play")):
-            self.assertIn(f"outputs/apk/{flavor}/release/app-{flavor}-release.apk", build)
-            self.assertIn(f'"dist/infinity-${{RELEASE_TAG}}{suffix}.apk"', build)
-            self.assertIn(f'"dist/infinity-${{tag}}{suffix}.apk"', publish)
-            self.assertIn(f'"dist/infinity-${{tag}}{suffix}.apk.sha256"', publish)
-            self.assertIn(f'distribution: {flavor}\n            apk-suffix: "{suffix}"', smoke)
+        self.assertIn("outputs/apk/sideload/release/app-sideload-release.apk", build)
+        self.assertIn('apk="dist/infinity-${RELEASE_TAG}.apk"', build)
+        self.assertIn('"dist/infinity-${tag}.apk"', publish)
+        self.assertIn('"dist/infinity-${tag}.apk.sha256"', publish)
+        self.assertIn('distribution: sideload\n            apk-suffix: ""', smoke)
+        for job in (build, publish, smoke):
+            self.assertNotRegex(job, r"(?i)play")
         self.assertIn("APK_NAME: infinity-${{ needs.validate-release-inputs.outputs.tag }}${{ matrix.apk-suffix }}.apk", smoke)
         self.assertIn('scripts/ci/android-release-apk-smoke.sh "dist/${APK_NAME}"', smoke)
         self.assertIn('INFINITY_EXPECTED_DISTRIBUTION: ${{ matrix.distribution }}', smoke)
         self.assertIn('--distribution "${distribution}"', build)
-        self.assertIn('check-distribution-manifests.py', build)
         self.assertIn('check-native-page-alignment.py --build-type release', build)
 
     def test_signing_reads_existing_release_environment_secrets(self) -> None:
@@ -425,7 +425,6 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
             commands,
             [
                 ["./gradlew", "--stacktrace", ":app:assembleSideloadRelease"],
-                ["./gradlew", "--stacktrace", ":app:assemblePlayRelease"],
             ],
         )
         errexit = re.search(r"(?m)^\s*set -euo pipefail\s*$", build_step)
@@ -433,15 +432,15 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         assert errexit is not None
         self.assertLess(errexit.start(), build_step.index("./gradlew"))
         self.assertNotRegex(build_step, r"(?m)^\s*set\s+\+e\b")
-        self.assertEqual(len(continued_shell_commands(build_job, "./gradlew")), 2)
+        self.assertEqual(len(continued_shell_commands(build_job, "./gradlew")), 1)
         for removed in ("UnitTest", "lint", "assembleSideloadDebug", "assemblePlayDebug", "screenshotTest"):
             self.assertNotIn(removed, build_job)
-        self.assertIn("python3 ../scripts/ci/check-distribution-manifests.py --build-type release", build_step)
         self.assertIn("python3 ../scripts/ci/check-native-page-alignment.py --build-type release", build_step)
+        self.assertIn("app/build/outputs/apk/sideload/release/app-sideload-release.apk", build_step)
 
     def test_r8_evidence_and_download_integrity_are_mandatory(self) -> None:
         self.assertIn('outputs/mapping/${distribution}Release', RELEASE)
-        self.assertIn('for distribution in sideload play; do', workflow_job("build-release"))
+        self.assertIn('distribution=sideload', workflow_job("build-release"))
         self.assertIn('test -s "${mapping_path}"', RELEASE)
         for filename in ("mapping.txt", "seeds.txt", "usage.txt", "configuration.txt"):
             self.assertIn(filename, RELEASE)
@@ -455,7 +454,7 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
                 r'^          - api-level: (\d+)\n            distribution: (\w+)\n            apk-suffix: "([^"]*)"$',
                 signed_job, re.MULTILINE,
             ),
-            [("31", "sideload", ""), ("36", "sideload", ""), ("36", "play", "-play")],
+            [("31", "sideload", ""), ("36", "sideload", "")],
         )
         self.assertIn("android-release-apk-smoke.sh", signed_job)
         self.assertNotIn("android-device-core-e2e.sh", signed_job)
@@ -673,7 +672,7 @@ is_expected_resumed_activity "$2"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             result.stdout.splitlines(),
-            ["tag=v0.7.1-beta", "version-name=0.7.1-beta", "version-code=21", "prerelease=true"],
+            ["tag=v0.7.1-beta", "version-name=0.7.1-beta", "version-code=21", "prerelease=false"],
         )
         self.assertEqual(notes, "### 修复\n\n- 修复 A\n")
 
@@ -683,6 +682,20 @@ is_expected_resumed_activity "$2"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("prerelease=false", result.stdout.splitlines())
         self.assertEqual(notes, "- 正式版\n")
+
+    def test_release_metadata_marks_only_non_beta_suffixes_as_prerelease(self) -> None:
+        for version_name, prerelease in (
+            ("1.0.0", "false"),
+            ("0.34.0-beta", "false"),
+            ("0.35.0-alpha", "true"),
+            ("1.0.0-rc.1", "true"),
+            ("0.34.0-beta.2", "true"),
+        ):
+            with self.subTest(version=version_name):
+                build = f'        versionCode = 1\n        versionName = "{version_name}"\n'
+                result, _ = self.run_release_metadata(build, f"## [{version_name}] - 2026-11-07\n\n- A\n")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"prerelease={prerelease}", result.stdout.splitlines())
 
     def test_release_metadata_fails_closed(self) -> None:
         build = '        versionCode = 21\n        versionName = "0.7.1-beta"\n'
