@@ -33,4 +33,32 @@ class InfinityPropertyLayoutTest {
         assertThat(InfinityPropertyLayout.stacked(labelWidth = 141, cap = 140)).isTrue()
         assertThat(InfinityPropertyLayout.columnWidth(listOf(140, 141), cap = 140)).isEqualTo(140)
     }
+
+    @Test
+    fun `取值单行放得下时行尾动作留在行尾`() {
+        // 取值列 400，按钮 120，间距 30：取值可用 250。
+        val placement = InfinityPropertyLayout.trailingPlacement(valueColumnWidth = 400, valueIntrinsicWidth = 250, trailingWidth = 120, gap = 30)
+        assertThat(placement).isEqualTo(TrailingPlacement(wraps = false, valueWidth = 250))
+    }
+
+    @Test
+    fun `取值单行放不下时行尾动作移到下方，取值用整列宽度`() {
+        // 宽屏右栏：取值“14 个实体 · 22 条关系”约 330，按钮“重新抽取”约 260，取值列 420。
+        val placement = InfinityPropertyLayout.trailingPlacement(valueColumnWidth = 420, valueIntrinsicWidth = 330, trailingWidth = 260, gap = 30)
+        assertThat(placement).isEqualTo(TrailingPlacement(wraps = true, valueWidth = 420))
+    }
+
+    @Test
+    fun `没有行尾动作时取值用整列宽度且不换行`() {
+        val placement = InfinityPropertyLayout.trailingPlacement(valueColumnWidth = 420, valueIntrinsicWidth = 2000, trailingWidth = 0, gap = 30)
+        assertThat(placement).isEqualTo(TrailingPlacement(wraps = false, valueWidth = 420))
+    }
+
+    @Test
+    fun `按钮比取值列还宽时移到下方，宽度不为负`() {
+        val placement = InfinityPropertyLayout.trailingPlacement(valueColumnWidth = 100, valueIntrinsicWidth = 10, trailingWidth = 200, gap = 30)
+        assertThat(placement).isEqualTo(TrailingPlacement(wraps = true, valueWidth = 100))
+        assertThat(InfinityPropertyLayout.trailingPlacement(valueColumnWidth = -5, valueIntrinsicWidth = 10, trailingWidth = 0, gap = 30).valueWidth)
+            .isEqualTo(0)
+    }
 }

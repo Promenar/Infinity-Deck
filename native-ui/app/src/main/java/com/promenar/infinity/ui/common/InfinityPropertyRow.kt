@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -23,11 +22,9 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -45,7 +42,9 @@ private val PropertyChevronSize = 18.dp
 
 private const val LabelId = "label"
 private const val ValueId = "value"
+private const val SupportingId = "supporting"
 private const val TrailingId = "trailing"
+private const val ChevronId = "chevron"
 
 /** 属性表登记的各行名称宽度；行在组合阶段登记，布局阶段读取，首帧即对齐。 */
 @Stable
@@ -71,7 +70,7 @@ fun InfinityPropertySheet(modifier: Modifier = Modifier, content: @Composable Co
  * 属性表的一行：名称与取值两列对齐，同为 bodyMedium；取值左对齐、可换行。
  * - [supporting]：取值下方一行补充说明；
  * - [onClick]：整行可点，行尾显示箭头；
- * - [trailing]：放在行尾的动作，例如按钮。
+ * - [trailing]：放在行尾的动作，例如按钮；取值单行放不下时移到取值下方，与取值列左对齐。
  * 名称在列宽上限内放不下时（英文、大字号），这一行改为名称在上、取值在下。
  */
 @Composable
@@ -128,24 +127,20 @@ fun InfinityPropertyRow(
             Box(Modifier.layoutId(LabelId)) {
                 Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Column(Modifier.layoutId(ValueId)) {
-                valueContent()
-                supporting?.let {
+            Box(Modifier.layoutId(ValueId)) { valueContent() }
+            supporting?.let {
+                Box(Modifier.layoutId(SupportingId)) {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (trailing != null || onClick != null) {
-                Row(Modifier.layoutId(TrailingId), verticalAlignment = Alignment.CenterVertically) {
-                    trailing?.invoke()
-                    if (onClick != null) {
-                        Icon(
-                            Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(PropertyChevronSize),
-                        )
-                    }
-                }
+            trailing?.let { Box(Modifier.layoutId(TrailingId)) { it() } }
+            if (onClick != null) {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.layoutId(ChevronId).size(PropertyChevronSize),
+                )
             }
         },
         modifier = modifier
@@ -156,9 +151,14 @@ fun InfinityPropertyRow(
     ) { measurables, constraints ->
         val gapPx = gap.roundToPx()
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val chevronPlaceable = measurables.firstOrNull { it.layoutId == ChevronId }?.measure(loose)
         val trailingPlaceable = measurables.firstOrNull { it.layoutId == TrailingId }?.measure(loose)
-        val reserved = trailingPlaceable?.let { it.width + gapPx } ?: 0
-        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else labelWidth + gapPx + reserved
+        val chevronReserved = chevronPlaceable?.let { it.width + gapPx } ?: 0
+        val width = if (constraints.hasBoundedWidth) {
+            constraints.maxWidth
+        } else {
+            labelWidth + gapPx + (trailingPlaceable?.let { it.width + gapPx } ?: 0) + chevronReserved
+        }
         val cap = InfinityPropertyLayout.labelCap(width)
         val stacked = InfinityPropertyLayout.stacked(labelWidth, cap)
         // 布局阶段读取登记表：同一帧内各行登记的名称宽度都已写入。
@@ -167,32 +167,55 @@ fun InfinityPropertyRow(
             ?: labelWidth
         val labelMeasurable = measurables.first { it.layoutId == LabelId }
         val valueMeasurable = measurables.first { it.layoutId == ValueId }
-        val textWidth = (width - reserved).coerceAtLeast(0)
-        val labelPlaceable: Placeable
-        val valuePlaceable: Placeable
-        val valueX: Int
-        val valueYOffset: Int
-        val textHeight: Int
-        if (stacked) {
-            labelPlaceable = labelMeasurable.measure(Constraints(maxWidth = textWidth))
-            valuePlaceable = valueMeasurable.measure(Constraints(maxWidth = textWidth))
-            val stackGap = PropertyStackGap.roundToPx()
-            valueX = 0
-            valueYOffset = labelPlaceable.height + stackGap
-            textHeight = labelPlaceable.height + stackGap + valuePlaceable.height
+        val supportingMeasurable = measurables.firstOrNull { it.layoutId == SupportingId }
+        // 取值列：上下排列时占满整行，并排时从名称列之后开始；行尾箭头始终留在行尾。
+        val valueX = if (stacked) 0 else column + gapPx
+        val valueColumnWidth = (width - valueX - chevronReserved).coerceAtLeast(0)
+        val placement = InfinityPropertyLayout.trailingPlacement(
+            valueColumnWidth = valueColumnWidth,
+            valueIntrinsicWidth = valueMeasurable.maxIntrinsicWidth(Constraints.Infinity),
+            trailingWidth = trailingPlaceable?.width ?: 0,
+            gap = gapPx,
+        )
+        val valueConstraints = Constraints(maxWidth = placement.valueWidth)
+        val labelPlaceable = if (stacked) {
+            labelMeasurable.measure(valueConstraints)
         } else {
-            labelPlaceable = labelMeasurable.measure(Constraints(minWidth = column, maxWidth = column))
-            valuePlaceable = valueMeasurable.measure(Constraints(maxWidth = (textWidth - column - gapPx).coerceAtLeast(0)))
-            valueX = column + gapPx
-            valueYOffset = 0
-            textHeight = maxOf(labelPlaceable.height, valuePlaceable.height)
+            labelMeasurable.measure(Constraints(minWidth = column, maxWidth = column))
         }
-        val height = maxOf(textHeight, trailingPlaceable?.height ?: 0, constraints.minHeight)
+        val valuePlaceable = valueMeasurable.measure(valueConstraints)
+        val supportingPlaceable = supportingMeasurable?.measure(valueConstraints)
+        val wrappedGap = InfinitySpacing.Small.roundToPx()
+        // 取值块：取值、补充说明，以及移下来的行尾动作。
+        val supportingTop = valuePlaceable.height
+        val wrappedTop = supportingTop + (supportingPlaceable?.height ?: 0) + wrappedGap
+        val valueBlockHeight = if (placement.wraps && trailingPlaceable != null) {
+            wrappedTop + trailingPlaceable.height
+        } else {
+            supportingTop + (supportingPlaceable?.height ?: 0)
+        }
+        val stackGap = PropertyStackGap.roundToPx()
+        val valueBlockTop = if (stacked) labelPlaceable.height + stackGap else 0
+        val textHeight = if (stacked) valueBlockTop + valueBlockHeight else maxOf(labelPlaceable.height, valueBlockHeight)
+        val inlineTrailingHeight = if (placement.wraps) 0 else trailingPlaceable?.height ?: 0
+        val height = maxOf(textHeight, inlineTrailingHeight, chevronPlaceable?.height ?: 0, constraints.minHeight)
         layout(width, height) {
             val textTop = (height - textHeight) / 2
+            val blockTop = textTop + valueBlockTop
             labelPlaceable.placeRelative(0, textTop)
-            valuePlaceable.placeRelative(valueX, textTop + valueYOffset)
-            trailingPlaceable?.placeRelative(width - trailingPlaceable.width, (height - trailingPlaceable.height) / 2)
+            valuePlaceable.placeRelative(valueX, blockTop)
+            supportingPlaceable?.placeRelative(valueX, blockTop + supportingTop)
+            if (trailingPlaceable != null) {
+                if (placement.wraps) {
+                    trailingPlaceable.placeRelative(valueX, blockTop + wrappedTop)
+                } else {
+                    trailingPlaceable.placeRelative(
+                        width - chevronReserved - trailingPlaceable.width,
+                        (height - trailingPlaceable.height) / 2,
+                    )
+                }
+            }
+            chevronPlaceable?.placeRelative(width - chevronPlaceable.width, (height - chevronPlaceable.height) / 2)
         }
     }
 }
