@@ -642,8 +642,8 @@ dependencies {
 
     // ─── Markdown 渲染 ───
     // 会话自包含 HTML 导出直接使用已在渲染器运行时类路径中的 Markdown 解析器。
-    implementation("org.jetbrains:markdown:0.7.3")
-    val markdownRendererVersion = "0.41.0"
+    implementation("org.jetbrains:markdown:0.7.17")
+    val markdownRendererVersion = "0.46.0"
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:$markdownRendererVersion")
     implementation("com.mikepenz:multiplatform-markdown-renderer-coil3:$markdownRendererVersion")
     implementation("com.mikepenz:multiplatform-markdown-renderer-code:$markdownRendererVersion")
