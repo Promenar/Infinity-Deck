@@ -629,9 +629,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui-compose-material3:$media3Version")
 
-    // ─── 数据存储 (Multiplatform-Ready) ───
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-
     // ─── Room (SQLite ORM) ───
     val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")
