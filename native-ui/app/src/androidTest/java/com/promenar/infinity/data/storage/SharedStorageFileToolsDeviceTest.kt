@@ -15,6 +15,7 @@ import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.FileOperationRepository
+import com.promenar.infinity.data.repository.WorkspaceDeletionTransaction
 import com.promenar.infinity.data.repository.WorkspaceRepository
 import com.promenar.infinity.data.workspace.AndroidSharedWorkspaceAccess
 import com.promenar.infinity.data.workspace.SessionWorkspaceResolver
@@ -357,7 +358,7 @@ class SharedStorageFileToolsDeviceTest {
         val db = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java).allowMainThreadQueries().build()
         val privateBase = File(context.filesDir, "shared-file-tools-${UUID.randomUUID()}").canonicalFile.apply { check(mkdirs()) }
         try {
-            val repository = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao())
+            val repository = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), deleteCommitter = WorkspaceDeletionTransaction(db)::delete)
             val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao())
             val now = System.currentTimeMillis()
             db.workspaceDao().register(WorkspaceEntity("shared", WorkspaceEntity.KIND_SHARED, "手机存储", directory.path, now))
@@ -430,7 +431,7 @@ class SharedStorageFileToolsDeviceTest {
         val db = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java).allowMainThreadQueries().build()
         val privateBase = File(context.filesDir, "native-move-tools-${UUID.randomUUID()}").canonicalFile.apply { check(mkdirs()) }
         try {
-            val repository = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao())
+            val repository = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), deleteCommitter = WorkspaceDeletionTransaction(db)::delete)
             val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao())
             val now = System.currentTimeMillis()
             db.workspaceDao().register(WorkspaceEntity("shared", WorkspaceEntity.KIND_SHARED, "手机存储", directory.path, now))
@@ -505,7 +506,7 @@ class SharedStorageFileToolsDeviceTest {
         val db = Room.inMemoryDatabaseBuilder(context, InfinityDatabase::class.java).allowMainThreadQueries().build()
         val privateBase = File(context.filesDir, "stream-move-tools-${UUID.randomUUID()}").canonicalFile.apply { check(mkdirs()) }
         try {
-            val repository = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao())
+            val repository = WorkspaceRepository(db.fileEntryDao(), db.workspaceSeqDao(), deleteCommitter = WorkspaceDeletionTransaction(db)::delete)
             val files = FileOperationRepository(db.fileEntryDao(), db.fileVersionDao())
             val now = System.currentTimeMillis()
             db.workspaceDao().register(WorkspaceEntity("shared-stream", WorkspaceEntity.KIND_SHARED, "手机存储", directory.path, now))

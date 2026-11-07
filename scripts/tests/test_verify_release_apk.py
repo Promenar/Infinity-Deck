@@ -477,6 +477,21 @@ class TailnetBinaryTest(ApkFixtureTestCase):
                     verify_release_apk.scan_sensitive_content(self.make_apk(entries))
 
 
+    def test_allows_only_lab_tailnet_subnet_in_app_dex(self) -> None:
+        content = b"\x0c100.101.7.12\x00\x0b100.101.7.5\x00"
+        verify_release_apk.scan_sensitive_content(self.make_apk({"classes.dex": content, "classes2.dex": content}))
+        cases = {
+            "其它 CGNAT 地址": {"classes.dex": b"100.101.8.12"},
+            "私网地址": {"classes2.dex": b"192.168.1.20"},
+            "非 dex 条目": {"assets/lab.json": b"100.101.7.12"},
+            "伪装 dex": {"assets/classes.dex": b"100.101.7.12"},
+        }
+        for label, entries in cases.items():
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(verify_release_apk.VerificationError, "敏感信息"):
+                    verify_release_apk.scan_sensitive_content(self.make_apk(entries))
+
+
 class ChecksumVerificationTest(ApkFixtureTestCase):
     def test_writes_standard_checksum_with_apk_basename(self) -> None:
         apk = self.make_apk({"AndroidManifest.xml": b"manifest"})

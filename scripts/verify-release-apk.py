@@ -102,6 +102,12 @@ TAILNET_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
         rb"10\.0\.0\.0|100\.64\.0\.0|172\.16\.0\.0|192\.168\.0\.0|100\.115\.92\.0|100\.100\.100\.100|10\.[02]76\.76\.10"
     ),
 }
+# 应用 dex：视觉实验室的虚构 Tailscale 设备使用固定的 100.101.7.0/24 地址（ui/lab/tailnet/LabTailnet.kt）。
+# 只对 classes*.dex 放行这一网段；其它私网与 CGNAT 地址照常报警。
+APP_DEX_PATTERN = re.compile(r"classes\d*\.dex\Z")
+APP_DEX_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
+    "私网或 CGNAT 测试地址": re.compile(rb"100\.101\.7\.\d{1,3}"),
+}
 # ELF e_machine：发行 APK 中每个带打包 Python 的 ABI 都须有对应架构的 libnxtailnet.so。
 TAILNET_ELF_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
 
@@ -409,6 +415,8 @@ def upstream_allowances(entry_name: str) -> dict[str, re.Pattern[bytes]]:
         return SITE_ALLOWANCES
     if PACKAGED_PYTHON_LIBRARY_PATTERN.fullmatch(entry_name):
         return UPSTREAM_BUILD_PATHS
+    if APP_DEX_PATTERN.fullmatch(entry_name):
+        return APP_DEX_ALLOWANCES
     return {}
 
 

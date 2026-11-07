@@ -321,7 +321,7 @@ if [[ "${TARGET_COMPONENT}" != "${TARGET_PACKAGE}/"* ]]; then
 fi
 
 for name_and_mime in \
-    'release-parser-canary-empty.pdf|application/pdf' \
+    'release-parser-canary.pdf|application/pdf' \
     'release-parser-canary-empty.docx|application/vnd.openxmlformats-officedocument.wordprocessingml.document' \
     'release-index-canary.txt|text/plain'; do
     name="${name_and_mime%%|*}"
@@ -819,7 +819,7 @@ run_canary_text() {
     assert_target_healthy "${key}-refailed"
 }
 
-run_canary release-parser-canary-empty.pdf application/pdf pdf
+run_canary release-parser-canary.pdf application/pdf pdf
 run_canary release-parser-canary-empty.docx \
     application/vnd.openxmlformats-officedocument.wordprocessingml.document docx
 run_canary_text "${TEXT_CANARY_NAME}" "${TEXT_CANARY_MIME}" text

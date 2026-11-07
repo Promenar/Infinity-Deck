@@ -22,7 +22,7 @@ import java.util.zip.ZipOutputStream;
 
 /** 为发行黑盒测试提供两个无可分块文本的文档，以及一个触发索引失败的只读文本。 */
 public final class BlackBoxFixtureProvider extends ContentProvider {
-    private static final String PDF_NAME = "release-parser-canary-empty.pdf";
+    private static final String PDF_NAME = "release-parser-canary.pdf";
     private static final String DOCX_NAME = "release-parser-canary-empty.docx";
     private static final String TEXT_CANARY_NAME = "release-index-canary.txt";
     private static final String PDF_MIME = "application/pdf";
@@ -33,7 +33,7 @@ public final class BlackBoxFixtureProvider extends ContentProvider {
     @Override
     public boolean onCreate() {
         try {
-            writeFixture(PDF_NAME, createEmptyPdf());
+            writeFixture(PDF_NAME, createTextPdf());
             writeFixture(DOCX_NAME, createEmptyDocx());
             writeFixture(TEXT_CANARY_NAME, createReleaseIndexTextCanary());
             return true;
@@ -159,23 +159,27 @@ public final class BlackBoxFixtureProvider extends ContentProvider {
         return context;
     }
 
-    private static byte[] createEmptyPdf() throws IOException {
+    /** 单页 PDF，带一行 Helvetica 文字层：无文字层的 PDF 会被应用判为扫描件而索引失败。 */
+    private static byte[] createTextPdf() throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         output.write("%PDF-1.4\n%âãÏÓ\n".getBytes(StandardCharsets.ISO_8859_1));
         List<Integer> offsets = new ArrayList<>();
+        String content = "BT /F1 12 Tf 72 720 Td (Release parser canary text layer) Tj ET";
         writePdfObject(output, offsets, 1, "<< /Type /Catalog /Pages 2 0 R >>");
         writePdfObject(output, offsets, 2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
         writePdfObject(output, offsets, 3,
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                        + "/Resources << >> /Contents 4 0 R >>");
-        writePdfObject(output, offsets, 4, "<< /Length 0 >>\nstream\n\nendstream");
+                        + "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>");
+        writePdfObject(output, offsets, 4,
+                "<< /Length " + content.length() + " >>\nstream\n" + content + "\nendstream");
+        writePdfObject(output, offsets, 5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
         int xrefOffset = output.size();
-        output.write("xref\n0 5\n0000000000 65535 f \n".getBytes(StandardCharsets.US_ASCII));
+        output.write("xref\n0 6\n0000000000 65535 f \n".getBytes(StandardCharsets.US_ASCII));
         for (int offset : offsets) {
             output.write(String.format(java.util.Locale.ROOT, "%010d 00000 n \n", offset)
                     .getBytes(StandardCharsets.US_ASCII));
         }
-        output.write(("trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n"
+        output.write(("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n"
                 + xrefOffset + "\n%%EOF\n").getBytes(StandardCharsets.US_ASCII));
         return output.toByteArray();
     }

@@ -72,7 +72,7 @@ assert_contains "${FIXTURE_SENDER}" 'ClipData.newRawUri'
 assert_contains "${FIXTURE_SENDER}" 'setComponent(target)'
 
 for fixture_contract in \
-    'release-parser-canary-empty.pdf' \
+    'release-parser-canary.pdf' \
     'application/pdf' \
     'release-parser-canary-empty.docx' \
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document' \
@@ -161,7 +161,7 @@ for smoke_contract in \
     'BackupTestActivity' \
     'mapping.txt' \
     'FIXTURE_SHARE_COMPONENT' \
-    'release-parser-canary-empty.pdf' \
+    'release-parser-canary.pdf' \
     'release-parser-canary-empty.docx' \
     'release-index-canary.txt' \
     'uiautomator dump' \
