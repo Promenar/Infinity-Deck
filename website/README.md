@@ -41,7 +41,7 @@ npm run preview   # 预览 dist/
 
 - **新版本发布**：更新日志与下载区随下一次构建自动更新。发版后顺手把 `release-snapshot.json` 改成新版本（版本、发布时间、APK 文件名、大小、SHA-256），保证 API 不可用时的回退值不过期。
 - **文案**：只改 `src/i18n.mjs`，中英文同步修改。
-- **截图与录屏**：素材来自 App 视觉实验室的宣传片工程 `footage/` 目录（不在本仓库）。
+- **截图与录屏**：素材来自 App 视觉实验室的宣传片工程 `footage/` 目录（不在本仓库）。页面里的媒体地址带内容哈希版本号（`src/lib/asset.mjs`），替换文件后重新发布即可，CDN 与浏览器不会继续用旧文件。
 
 ```bash
 website/scripts/prepare-media.sh <footage 目录>
