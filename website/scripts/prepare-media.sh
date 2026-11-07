@@ -13,7 +13,8 @@ for lang in zh en; do
   cwebp -quiet -q 80 -resize 640 0 "$dir/outer-chat.state.ops-report.png" -o "$OUT/$lang/outer-chat.state.ops-report.webp"
 done
 # 录屏只有中文界面；终端录屏不含界面文案，中英文共用
-encode() { ffmpeg -v error -y -threads 4 -i "$1" -an -vf "fps=30,scale=1000:-2" -c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -movflags +faststart "$2"; }
-encode "$SRC/inner-apk-add.mp4" "$OUT/apk-add.mp4"
-encode "$SRC/inner-ade-json.mp4" "$OUT/zh/ade.mp4"
-encode "$SRC/inner-ops-502.mp4" "$OUT/zh/ops.mp4"
+# 第三个参数为开头裁掉的秒数：源录屏开头带上一段的残帧和系统状态栏（时间、通知图标）滑出动画
+encode() { ffmpeg -v error -y -threads 4 -i "$1" -ss "$3" -an -vf "fps=30,scale=1000:-2" -c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -movflags +faststart "$2"; }
+encode "$SRC/inner-apk-add.mp4" "$OUT/apk-add.mp4" 1.2
+encode "$SRC/inner-ade-json.mp4" "$OUT/zh/ade.mp4" 1.75
+encode "$SRC/inner-ops-502.mp4" "$OUT/zh/ops.mp4" 1.6
