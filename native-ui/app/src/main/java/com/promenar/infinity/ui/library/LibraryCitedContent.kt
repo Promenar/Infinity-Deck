@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -49,14 +50,14 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /** 文档页：哪些回答引用过这篇文档；对话引用可点开会话。 */
 @Composable
-internal fun DocumentCitationsCard(documentId: String, host: LibraryPageHost) {
+internal fun DocumentCitationsCard(documentId: String, host: LibraryPageHost, titleStyle: TextStyle? = null) {
     val citations by remember(documentId) { host.viewModel.citationsFor(documentId) }.collectAsStateWithLifecycle(emptyList())
-    DocumentCitationsCardContent(citations, onOpenSession = host.onOpenSession)
+    DocumentCitationsCardContent(citations, onOpenSession = host.onOpenSession, titleStyle = titleStyle)
 }
 
 @Composable
-internal fun DocumentCitationsCardContent(citations: List<DocumentCitation>, onOpenSession: (String) -> Unit) {
-    LibraryCard(title = stringResource(R.string.library_doc_cited_title), count = citations.size) {
+internal fun DocumentCitationsCardContent(citations: List<DocumentCitation>, onOpenSession: (String) -> Unit, titleStyle: TextStyle? = null) {
+    LibraryCard(title = stringResource(R.string.library_doc_cited_title), count = citations.size, titleStyle = titleStyle) {
         if (citations.isEmpty()) {
             LibraryEmptyText(stringResource(R.string.library_doc_cited_empty))
         } else {
