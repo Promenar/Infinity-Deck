@@ -618,11 +618,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // ─── 图片 (Multiplatform-Ready) ───
-    implementation("io.coil-kt.coil3:coil:3.0.0")
-    implementation("io.coil-kt.coil3:coil-compose:3.0.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.0")
-    implementation("io.coil-kt.coil3:coil-video:3.0.0")
-    implementation("io.coil-kt.coil3:coil-svg:3.0.0")
+    implementation("io.coil-kt.coil3:coil:3.6.3")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+    implementation("io.coil-kt.coil3:coil-video:3.6.3")
+    implementation("io.coil-kt.coil3:coil-svg:3.6.3")
 
     // ─── 音视频播放（会话内工作区媒体） ───
     val media3Version = "1.11.1"
