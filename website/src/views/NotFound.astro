@@ -1,0 +1,20 @@
+---
+import Base from '../layouts/Base.astro';
+import { strings, href } from '../i18n.mjs';
+
+// 404 页同时给出中英文，静态托管只会返回这一个页面
+const zh = strings.zh.notFound, en = strings.en.notFound;
+---
+<Base locale="zh" path="/404/" title={`${zh.title} · Infinity Workbench`} description={zh.body}>
+  <div class="wrap page">
+    <header class="page-head">
+      <h1 class="sweep" data-sweep>404</h1>
+      <p>{zh.title}。{zh.body}</p>
+      <p lang="en">{en.title}. {en.body}</p>
+    </header>
+    <div class="cta" style="justify-content:flex-start">
+      <a class="btn btn-primary" href={href('zh', '/')}>{zh.home}</a>
+      <a class="btn btn-ghost" href={href('en', '/')} lang="en">{en.home}</a>
+    </div>
+  </div>
+</Base>

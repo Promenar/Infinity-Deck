@@ -1,0 +1,90 @@
+---
+import '../styles/global.css';
+import { strings, href, GITHUB } from '../i18n.mjs';
+
+interface Props {
+  locale: 'zh' | 'en';
+  /** 不带语言前缀的路径，例如 '/'、'/download/' */
+  path: string;
+  title: string;
+  description: string;
+  current?: 'home' | 'download' | 'docs' | 'changelog';
+}
+const { locale, path, title, description, current } = Astro.props;
+const t = strings[locale];
+const site = Astro.site!;
+const canonical = new URL(href(locale, path), site).href;
+const alternates = (['zh', 'en'] as const).map(l => ({ l, url: new URL(href(l, path), site).href }));
+const og = new URL(`/og-${locale}.jpg`, site).href;
+const home = href(locale, '/');
+const navCurrent = (key: string) => (current === key ? 'page' : undefined);
+---
+<!doctype html>
+<html lang={t.htmlLang}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{title}</title>
+  <meta name="description" content={description}>
+  <meta name="theme-color" content="#020308">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href={canonical}>
+  {alternates.map(a => <link rel="alternate" hreflang={strings[a.l].htmlLang} href={a.url}>)}
+  <link rel="alternate" hreflang="x-default" href={alternates[0].url}>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Infinity Workbench">
+  <meta property="og:title" content={title}>
+  <meta property="og:description" content={description}>
+  <meta property="og:url" content={canonical}>
+  <meta property="og:image" content={og}>
+  <meta property="og:locale" content={locale === 'zh' ? 'zh_CN' : 'en_US'}>
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body data-locale={locale}>
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header class="nav" id="nav">
+    <div class="wrap nav-bar">
+      <a class="brand" href={home}><img src="/icon.png" alt="" width="30" height="30">Infinity Workbench</a>
+      <nav class="nav-links" aria-label={t.nav.main}>
+        <a href={`${home}#story`}>{t.nav.features}</a>
+        <a href={`${home}#trust`}>{t.nav.trust}</a>
+        <a href={href(locale, '/download/')} class="keep" aria-current={navCurrent('download')}>{t.nav.download}</a>
+        <a href={href(locale, '/docs/')} aria-current={navCurrent('docs')}>{t.nav.docs}</a>
+        <a href={href(locale, '/changelog/')} aria-current={navCurrent('changelog')}>{t.nav.changelog}</a>
+      </nav>
+      <div class="lang" role="group" aria-label={t.nav.lang}>
+        {(['zh', 'en'] as const).map(l => l === locale
+          ? <span aria-current="true" lang={strings[l].htmlLang}>{strings[l].langName}</span>
+          : <a href={href(l, path)} hreflang={strings[l].htmlLang} lang={strings[l].htmlLang}>{strings[l].langName}</a>)}
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="glow-pool" aria-hidden="true"></div>
+    <slot />
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <a class="brand" href={home}><img src="/icon.png" alt="" width="30" height="30">Infinity Workbench</a>
+      <nav aria-label={t.nav.footer}>
+        <a href={GITHUB}>GitHub</a>
+        <a href={href(locale, '/docs/')}>{t.nav.docs}</a>
+        <a href={href(locale, '/changelog/')}>{t.nav.changelog}</a>
+        <a href={`${GITHUB}/issues`}>{t.footer.issues}</a>
+        <a href={`${GITHUB}/blob/main/LICENSE`}>{t.footer.license}</a>
+      </nav>
+      <span>© 2026 Promenar</span>
+    </div>
+  </footer>
+
+  <script>
+    import '../scripts/site.ts';
+  </script>
+</body>
+</html>

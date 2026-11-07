@@ -1,0 +1,13 @@
+{
+  "tag": "v0.34.0-beta",
+  "version": "0.34.0-beta",
+  "publishedAt": "2026-11-07T05:05:21Z",
+  "pageUrl": "https://github.com/Promenar/Infinity-Workbench/releases/tag/v0.34.0-beta",
+  "apk": {
+    "name": "infinity-v0.34.0-beta.apk",
+    "size": 55769251,
+    "url": "https://github.com/Promenar/Infinity-Workbench/releases/download/v0.34.0-beta/infinity-v0.34.0-beta.apk"
+  },
+  "shaUrl": "https://github.com/Promenar/Infinity-Workbench/releases/download/v0.34.0-beta/infinity-v0.34.0-beta.apk.sha256",
+  "sha256": "34b15aced87fe28ebb458bdd9df84293ef941b95e83f1fc05dc11fa8a7bc5696"
+}
