@@ -66,7 +66,7 @@
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器固定在运行页签：计划进行到第 3/6 步，后台 1 项">
+      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器固定在运行页签：计划第 4/6 步，1 个后台任务运行中">
       <h3>展开就是工作台</h3>
       内屏一分为三：导航、会话列表、会话。检视器固定时会话自动让位，取消固定就浮在会话上；任务、文件、Git、浏览器一点即达。改了什么、哪些分支在跑，抬眼就在。
     </td>

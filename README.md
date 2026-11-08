@@ -59,14 +59,14 @@ Unfold the phone and it becomes a workbench. Fold it and the chat carries on.
       The main chat fixes the bug while a branch chat writes the tests, each in its own worktree so they never collide. Branches, diffs and commits are all in the Git panel.
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agent cards, one locating the change and one reviewing test coverage, while the main chat waits with a Move to background button">
+      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agent cards, one locating the change and one reviewing test coverage, while the main chat waits with a Background button">
       <h3>One ask, a small team</h3>
       Ask for a change and it plans first, then sends sub-agents out in parallel — one to find the code, another to review the tests. The main chat can wait for their findings or move to the background and keep going. When each is done, its findings come back on their own, with the time it took.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/fold-inspector.webp" alt="Inner screen in three columns with the inspector pinned on the Run tab: the plan at step 3 of 6 and one background job">
+      <img src="assets/screenshots/en/fold-inspector.webp" alt="Inner screen in three columns with the inspector pinned on the Run tab: the plan at step 4 of 6 with one background task running">
       <h3>Unfold a workbench</h3>
       The inner screen splits into three — navigation, chat list, conversation. Pin the inspector and the chat makes room for it; unpin it and it floats over the chat. Tasks, files, Git and the browser are one tap away, and branches, diffs and commits stay in view while you work.
     </td>
