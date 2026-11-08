@@ -70,4 +70,10 @@
     <string name="subagent_event_detach_parent">Main session turn ended · subagent continues · %1$s</string>
     <string name="subagent_event_stop_user">You stopped the subagent · %1$s</string>
     <string name="subagent_event_stop_parent">Main session stopped the subagent · %1$s</string>
+    <string name="subagent_retry">%1$s, retry %3$d in %2$d seconds</string>
+    <string name="subagent_retry_rate_limit">Rate limited</string>
+    <string name="subagent_retry_network">Network error</string>
+    <string name="subagent_retry_timeout">Timeout</string>
+    <string name="subagent_retry_server">Server error</string>
+    <string name="subagent_retry_unknown">Request interrupted</string>
 </resources>
