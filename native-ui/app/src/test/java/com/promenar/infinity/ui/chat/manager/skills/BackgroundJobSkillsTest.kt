@@ -64,5 +64,98 @@ class BackgroundJobSkillsTest {
         assertThat(com.promenar.infinity.data.generation.SessionRunModeToolDefinitions.forSession(tool, com.promenar.infinity.domain.model.SessionRunMode.BUILTIN).function.description).contains("/system/bin/sh")
     }
 
+    @Test fun `缺少后台服务时不会执行媒体请求`() = runBlocking {
+        var executed = false
+        val result = runMediaJob("media_fetch", buildJsonObject {}, context("own"), null, 15, "notify", "background", "下载媒体") {
+            executed = true; com.promenar.infinity.data.model.ToolResult("test", "unexpected")
+        }
+        assertThat(result.status).isEqualTo("error")
+        assertThat(result.content).contains("后台任务服务不可用")
+        assertThat(executed).isFalse()
+    }
+
+    @Test fun `进程内媒体让出后查询结果与停止`() = runBlocking {
+        val root = Files.createTempDirectory("job-media").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val woke = CompletableDeferred<String>()
+        val dispatcher = object : com.promenar.infinity.domain.trigger.SystemTurnDispatcher {
+            override suspend fun request(request: com.promenar.infinity.domain.trigger.SystemTurnRequest): com.promenar.infinity.domain.trigger.SystemTurnOutcome {
+                woke.complete(request.body); return com.promenar.infinity.domain.trigger.SystemTurnOutcome.Completed
+            }
+        }
+        val manager = BackgroundJobManager(scope, BackgroundJobStore(File(root, "store")), File(root, "runs"),
+            BuiltinCommandRunner(listOf("/usr/bin/perl", "-e", "setpgrp(0,0); exec @ARGV"), "/bin/sh", ProcessGroupSignaller { _, _ -> }, { File(root, "scratch") }),
+            prepareWorkspace = { BackgroundJobLocation(root, root, false, false) },
+            prepareCommand = { _, _, _, _, _ -> error("不应调用命令执行器") }, completion = BackgroundJobCompletion({ dispatcher }))
+        val ctx = context("own")
+        val media = com.promenar.infinity.domain.media.MediaRef("/media/a.png", "image/png", com.promenar.infinity.domain.media.MediaKind.IMAGE, 4)
+        val expected = com.promenar.infinity.data.model.ToolResult("fake", "图片 /media/a.png", data = "元数据", media = listOf(media))
+        try {
+            val immediate = runMediaJob("generate_image", buildJsonObject {}, ctx, manager, 1, "wake", "run_in_background", "生成图片") { expected }
+            assertThat(immediate).isEqualTo(expected)
+            val release = CompletableDeferred<Unit>()
+            val started = runMediaJob("generate_image", buildJsonObject { put("yield_after_seconds", 1) }, ctx, manager, 1, "wake", "run_in_background", "生成图片") {
+                release.await(); expected
+            }
+            val json = Json.parseToJsonElement(started.content).jsonObject
+            assertThat(json.getValue("runtime").jsonPrimitive.content).isEqualTo("in_app")
+            assertThat(json).containsKey("yielded_after_seconds")
+            val jobId = json.getValue("job_id").jsonPrimitive.content
+            release.complete(Unit)
+            val tools = backgroundJobTools(manager).associateBy { it.id }
+            val args = buildJsonObject { put("job_id", jobId); put("timeout_seconds", 5) }
+            val waited = tools.getValue("job_wait").execute(args, ctx)
+            val status = tools.getValue("job_status").execute(buildJsonObject { put("job_id", jobId) }, ctx)
+            for (result in listOf(waited, status)) {
+                assertThat(result.content).contains(expected.content)
+                assertThat(result.media).isEqualTo(expected.media)
+                assertThat(result.data).isEqualTo(expected.data)
+            }
+            assertThat(withTimeout(5_000) { woke.await() }).contains(expected.content)
+            val continued = CompletableDeferred<Unit>()
+            val handedOff = CompletableDeferred<String>()
+            val turn = launch {
+                val returned = runMediaJob("media_fetch", buildJsonObject { put("yield_after_seconds", 1); put("on_exit", "none") }, ctx, manager, 1, "none", "background", "下载媒体") {
+                    continued.await(); expected
+                }
+                handedOff.complete(Json.parseToJsonElement(returned.content).jsonObject.getValue("job_id").jsonPrimitive.content)
+                awaitCancellation()
+            }
+            val handoffId = withTimeout(5_000) { handedOff.await() }
+            turn.cancelAndJoin()
+            continued.complete(Unit)
+            assertThat(manager.waitFor("own", handoffId, 5).record.state).isEqualTo("EXITED")
+            val cancelled = CompletableDeferred<Unit>()
+            val entered = CompletableDeferred<Unit>()
+            val second = runMediaJob("media_fetch", buildJsonObject { put("background", true) }, ctx, manager, 1, "none", "background", "下载媒体") {
+                entered.complete(Unit)
+                try { awaitCancellation() } finally { cancelled.complete(Unit) }
+            }
+            val secondId = Json.parseToJsonElement(second.content).jsonObject.getValue("job_id").jsonPrimitive.content
+            withTimeout(5_000) { entered.await() }
+            manager.stop("own", secondId)
+            withTimeout(5_000) { cancelled.await() }
+            assertThat(manager.status("own", secondId).record.state).isEqualTo("STOPPED")
+            val foregroundEntered = CompletableDeferred<Unit>()
+            val foregroundCancelled = CompletableDeferred<Unit>()
+            val foreground = launch {
+                runMediaJob("media_fetch", buildJsonObject { put("yield_after_seconds", 0) }, ctx, manager, 1, "none", "background", "下载媒体") {
+                    foregroundEntered.complete(Unit)
+                    try { awaitCancellation() } finally { foregroundCancelled.complete(Unit) }
+                }
+            }
+            withTimeout(5_000) { foregroundEntered.await() }
+            foreground.cancelAndJoin()
+            withTimeout(5_000) { foregroundCancelled.await() }
+            val failed = runMediaJob("media_fetch", buildJsonObject { put("background", true); put("on_exit", "none") }, ctx, manager, 1, "none", "background", "下载媒体") {
+                com.promenar.infinity.data.model.ToolResult("failure", "保存失败：工作区不可用", "error")
+            }
+            val failedId = Json.parseToJsonElement(failed.content).jsonObject.getValue("job_id").jsonPrimitive.content
+            val failureStatus = manager.waitFor("own", failedId, 5).record
+            assertThat(failureStatus.state).isEqualTo("FAILED")
+            assertThat(failureStatus.toolResult?.content).isEqualTo("保存失败：工作区不可用")
+        } finally { scope.cancel(); root.deleteRecursively() }
+    }
+
     private fun context(id:String)=object:SkillExecutionContext {override val sessionId=id;override val agentId="a";override val workspacePath:String?=null;override val workspaceRootUuid="root"}
 }

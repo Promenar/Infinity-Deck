@@ -26,6 +26,8 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Test
 
 class ImageGenerationWorkspaceTest {
+    private val jobFixture = MediaTestJobFixture()
+    @org.junit.After fun closeJobs() = jobFixture.close()
     private val store = RecordingMediaStore()
     private val providers = mockk<ProviderManager> {
         every { imageModelId } returns MutableStateFlow("default::image-test")
@@ -44,11 +46,52 @@ class ImageGenerationWorkspaceTest {
         fields: JsonObject = buildJsonObject {}): com.promenar.infinity.data.model.ToolResult {
         val client = HttpClient(MockEngine { respond(buildJsonObject { fields.forEach { (key, value) -> put(key, value) }; put("data", JsonArray(images.toList())) }.toString()) })
         return try {
-            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader) { url, key, model -> ImageGenClient(url, key, model, client) }
+            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, jobs = jobFixture.jobs) { url, key, model -> ImageGenClient(url, key, model, client) }
             skill.execute(args, mediaTestContext)
         } finally { client.close() }
     }
     private fun base64Image(raw: String = mediaBase64()) = buildJsonObject { put("b64_json", raw); put("revised_prompt", "模型修订的提示词") }
+
+    @Test fun `生图后台完成后查询保留图片与元数据`() = kotlinx.coroutines.runBlocking {
+        val root = java.nio.file.Files.createTempDirectory("image-background").toFile()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val http = HttpClient(MockEngine {
+            entered.complete(Unit); release.await()
+            respond(buildJsonObject { put("data", JsonArray(listOf(base64Image()))) }.toString())
+        })
+        val manager = com.promenar.infinity.data.jobs.BackgroundJobManager(scope,
+            com.promenar.infinity.data.jobs.BackgroundJobStore(java.io.File(root, "store")), java.io.File(root, "runs"),
+            com.promenar.infinity.data.exec.BuiltinCommandRunner(listOf("/bin/sh"), "/bin/sh", com.promenar.infinity.data.exec.ProcessGroupSignaller { _, _ -> }, { java.io.File(root, "scratch") }),
+            prepareWorkspace = { com.promenar.infinity.data.jobs.BackgroundJobLocation(root, root, false, false) },
+            prepareCommand = { _, _, _, _, _ -> error("不应调用命令") })
+        try {
+            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, jobs = manager) { url, key, model -> ImageGenClient(url, key, model, http) }
+            val started = skill.execute(buildJsonObject { put("prompt", "图片"); put("background", "transparent"); put("run_in_background", true); put("on_exit", "none") }, mediaTestContext)
+            val id = Json.parseToJsonElement(started.content).jsonObject.getValue("job_id").jsonPrimitive.content
+            kotlinx.coroutines.withTimeout(5000) { entered.await() }; release.complete(Unit)
+            val result = backgroundJobTools(manager).first { it.id == "job_wait" }.execute(buildJsonObject { put("job_id", id); put("timeout_seconds", 5) }, mediaTestContext)
+            assertThat(result.media).hasSize(1)
+            assertThat(result.content).contains(result.media!!.single().path)
+            assertThat(ImageGenerationResultData.decode(result.data)?.requested?.background).isEqualTo("transparent")
+            val requestStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val requestCancelled = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val slow = HttpClient(MockEngine {
+                requestStarted.complete(Unit)
+                try { kotlinx.coroutines.awaitCancellation() } finally { requestCancelled.complete(Unit) }
+            })
+            try {
+                val second = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, jobs = manager) { url, key, model -> ImageGenClient(url, key, model, slow) }
+                    .execute(buildJsonObject { put("prompt", "图片"); put("run_in_background", true); put("on_exit", "none") }, mediaTestContext)
+                val secondId = Json.parseToJsonElement(second.content).jsonObject.getValue("job_id").jsonPrimitive.content
+                kotlinx.coroutines.withTimeout(5000) { requestStarted.await() }
+                manager.stop(mediaTestContext.sessionId, secondId)
+                kotlinx.coroutines.withTimeout(5000) { requestCancelled.await() }
+                assertThat(manager.status(mediaTestContext.sessionId, secondId).record.state).isEqualTo("STOPPED")
+            } finally { slow.close() }
+        } finally { scope.coroutineContext[kotlinx.coroutines.Job]?.cancel(); http.close(); root.deleteRecursively() }
+    }
 
     @Test fun `URL和base64结果落工作区并提供独立卡片数据`() = runTest {
         val result = generate(buildJsonObject { put("url", "https://images.test/a.png") }, base64Image())
@@ -80,7 +123,7 @@ class ImageGenerationWorkspaceTest {
         val body = buildJsonObject { put("error", buildJsonObject { put("code", "model_not_found"); put("message", message); put("type", "new_api_error") }) }.toString()
         val client = HttpClient(MockEngine { respond(body, HttpStatusCode.ServiceUnavailable) })
         val result = try {
-            ImageGenerationSkill(mockk<Context>(), providers, store, downloader) { url, key, model -> ImageGenClient(url, key, model, client) }
+            ImageGenerationSkill(mockk<Context>(), providers, store, downloader, jobs = jobFixture.jobs) { url, key, model -> ImageGenClient(url, key, model, client) }
                 .execute(buildJsonObject { put("prompt", "一棵树") }, mediaTestContext)
         } finally { client.close() }
         assertThat(result.status).isEqualTo("error")
@@ -122,13 +165,13 @@ class ImageGenerationWorkspaceTest {
         var requests = 0
         val http = HttpClient(MockEngine { requests++; respond("""{"data":[]}""") })
         try {
-            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader) { url, key, model -> ImageGenClient(url, key, model, http) }
+            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, jobs = jobFixture.jobs) { url, key, model -> ImageGenClient(url, key, model, http) }
             val result = skill.execute(buildJsonObject { put("prompt", "图片"); put("quality", "hd") }, mediaTestContext)
             assertThat(result.status).isEqualTo("error")
             assertThat(result.content).contains("low")
             assertThat(requests).isEqualTo(0)
             val schema = Json.parseToJsonElement(skill.parametersSchema).jsonObject["properties"]!!.jsonObject
-            assertThat(schema.keys).containsExactly("prompt", "size", "quality", "background", "output_format", "output_compression", "n", "images", "mask", "markup", "input_fidelity")
+            assertThat(schema.keys).containsExactly("prompt", "size", "quality", "background", "output_format", "output_compression", "n", "images", "mask", "markup", "input_fidelity", "yield_after_seconds", "run_in_background", "on_exit", "max_runtime_minutes")
         } finally { http.close() }
     }
 
@@ -144,7 +187,7 @@ class ImageGenerationWorkspaceTest {
             respond("""{"data":[{"b64_json":"${mediaBase64()}"}]}""")
         })
         try {
-            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, mediaResolver = resolver,
+            val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, mediaResolver = resolver, jobs = jobFixture.jobs,
                 imageGenClientFactory = { url, key, model -> ImageGenClient(url, key, model, http) })
             for (layer in listOf("mask", "markup")) {
                 val result = skill.execute(buildJsonObject { put("prompt", "调整光照"); put("images", buildJsonArray { add("a.png") }); put(layer, "$layer.png") }, mediaTestContext)
@@ -162,7 +205,7 @@ class ImageGenerationWorkspaceTest {
             override suspend fun resolve(sessionId: String, path: String) = MediaResolution.Unavailable(path, MediaUnavailableReason.INVALID_PATH)
             override suspend fun open(resolution: MediaResolution.Available): java.io.InputStream = error("不能打开越界来源")
         }
-        val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, mediaResolver = resolver,
+        val skill = ImageGenerationSkill(mockk<Context>(), providers, store, downloader, mediaResolver = resolver, jobs = jobFixture.jobs,
             imageGenClientFactory = { _, _, _ -> error("越界图片不能创建客户端") })
         val result = skill.execute(buildJsonObject { put("prompt", "调整光照"); put("images", buildJsonArray { add("../../outside.png") }) }, mediaTestContext)
         assertThat(result.status).isEqualTo("error")

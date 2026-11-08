@@ -40,6 +40,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class MediaFetchSkillTest {
+    private val jobFixture = MediaTestJobFixture()
+    @org.junit.After fun closeJobs() = jobFixture.close()
     private val store = RecordingMediaStore()
     private val requests = mutableListOf<String>()
     private var bodyClosed = false
@@ -79,7 +81,26 @@ class MediaFetchSkillTest {
             }.build()
     }
     private suspend fun execute(client: WorkspaceMediaDownloader = downloader(), path: String? = null, limit: Long = 100L * 1024 * 1024, url: String = "https://example.test/image") =
-        MediaFetchSkill(store, client, limit).execute(buildJsonObject { put("url", url); path?.let { put("path", it) } }, mediaTestContext)
+        MediaFetchSkill(store, client, limit, jobs = jobFixture.jobs).execute(buildJsonObject { put("url", url); path?.let { put("path", it) } }, mediaTestContext)
+
+    @Test fun `媒体下载后台结果可通过任务查询`() = runBlocking {
+        val root = java.nio.file.Files.createTempDirectory("fetch-background").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val manager = com.promenar.infinity.data.jobs.BackgroundJobManager(scope,
+            com.promenar.infinity.data.jobs.BackgroundJobStore(java.io.File(root, "store")), java.io.File(root, "runs"),
+            com.promenar.infinity.data.exec.BuiltinCommandRunner(listOf("/bin/sh"), "/bin/sh", com.promenar.infinity.data.exec.ProcessGroupSignaller { _, _ -> }, { java.io.File(root, "scratch") }),
+            prepareWorkspace = { com.promenar.infinity.data.jobs.BackgroundJobLocation(root, root, false, false) },
+            prepareCommand = { _, _, _, _, _ -> error("不应调用命令") })
+        try {
+            val skill = MediaFetchSkill(store, downloader(), jobs = manager)
+            val started = skill.execute(buildJsonObject { put("url", "https://example.test/image"); put("background", true); put("on_exit", "none") }, mediaTestContext)
+            val id = Json.parseToJsonElement(started.content).jsonObject.getValue("job_id").jsonPrimitive.content
+            val result = backgroundJobTools(manager).first { it.id == "job_wait" }.execute(buildJsonObject { put("job_id", id); put("timeout_seconds", 5) }, mediaTestContext)
+            assertThat(result.media).hasSize(1)
+            assertThat(result.content).contains(result.media!!.single().path)
+            assertThat(manager.status(mediaTestContext.sessionId, id).record.state).isEqualTo("EXITED")
+        } finally { scope.cancel(); root.deleteRecursively() }
+    }
 
     @Test fun `局域网与本机支持HTTP和HTTPS下载`() = runTest {
         for (host in listOf("192.168.1.2", "127.0.0.1", "[::1]")) {
@@ -227,7 +248,7 @@ class MediaFetchSkillTest {
             override val isApprovalBoundExecution = true
         }
         val client = downloader { request -> mountId = "new"; response(request) }
-        val result = MediaFetchSkill(store, client, mounts = mounts, sessionWorkspace = { SessionWorkspace.Private })
+        val result = MediaFetchSkill(store, client, mounts = mounts, sessionWorkspace = { SessionWorkspace.Private }, jobs = jobFixture.jobs)
             .execute(buildJsonObject { put("url", "https://example.test/a"); put("path", "/mnt/assets/a.png") }, bound)
         assertThat(result.status).isEqualTo("error")
         assertThat(result.content).contains("发生变化")
@@ -243,7 +264,7 @@ class MediaFetchSkillTest {
                 override val approvedExecutionTarget = target
                 override val isApprovalBoundExecution = true
             }
-            assertThat(MediaFetchSkill(store, downloader(), mounts = mounts, sessionWorkspace = { SessionWorkspace.Private })
+            assertThat(MediaFetchSkill(store, downloader(), mounts = mounts, sessionWorkspace = { SessionWorkspace.Private }, jobs = jobFixture.jobs)
                 .execute(buildJsonObject { put("url", "https://example.test/a"); put("path", "/mnt/assets/a.png") }, bound).status).isEqualTo("error")
         }
         assertThat(requests).isEmpty()
@@ -257,7 +278,7 @@ class MediaFetchSkillTest {
         coEvery { mounts.visible(any()) } answers { visible }
         coEvery { mounts.workspaceMount(any()) } returns primary
         val current = SessionWorkspace.Directory(com.promenar.infinity.data.local.db.entity.WorkspaceEntity("project", "project", "项目", "project", 1), java.io.File("project"))
-        val skill = MediaFetchSkill(store, downloader(), mounts = mounts, sessionWorkspace = { current })
+        val skill = MediaFetchSkill(store, downloader(), mounts = mounts, sessionWorkspace = { current }, jobs = jobFixture.jobs)
         val arguments = """{"url":"https://example.test/a"}"""
         val approved = com.promenar.infinity.data.generation.resolveSessionToolTarget(
             com.promenar.infinity.data.model.Session(id = "media-session", agentId = "agent", title = "媒体", workspaceRootUuid = "root"),
@@ -282,7 +303,7 @@ class MediaFetchSkillTest {
         coEvery { mounts.visible(any()) } answers { visible }
         coEvery { mounts.workspaceMount(any()) } returns primary
         val current = SessionWorkspace.Directory(com.promenar.infinity.data.local.db.entity.WorkspaceEntity("project", "project", "项目", "project", 1), java.io.File("project"))
-        val skill = MediaFetchSkill(store, downloader(), mounts = mounts, sessionWorkspace = { current })
+        val skill = MediaFetchSkill(store, downloader(), mounts = mounts, sessionWorkspace = { current }, jobs = jobFixture.jobs)
         val arguments = """{"url":"https://example.test/a"}"""
         val approved = com.promenar.infinity.data.generation.resolveSessionToolTarget(
             com.promenar.infinity.data.model.Session(id = "media-session", agentId = "agent", title = "媒体", workspaceRootUuid = "root"),
@@ -321,7 +342,7 @@ class MediaFetchSkillTest {
                 return store.save(sessionId, payload, origin, mimeTypeHint, suggestedName, targetPath)
             }
         }
-        val result = MediaFetchSkill(boundStore, downloader(), mounts = mounts, sessionWorkspace = { SessionWorkspace.Private })
+        val result = MediaFetchSkill(boundStore, downloader(), mounts = mounts, sessionWorkspace = { SessionWorkspace.Private }, jobs = jobFixture.jobs)
             .execute(buildJsonObject { put("url", "https://example.test/a"); put("path", "/mnt/assets/a.png") }, mediaTestContext)
         assertThat(result.status).isEqualTo("success")
         assertThat(observed).containsEntry("assets", "old")
@@ -374,7 +395,7 @@ class MediaFetchSkillTest {
     }
 
     @Test fun `写入风险与审批目标按最终路径或默认媒体目录生成`() {
-        val skill = MediaFetchSkill(store, downloader())
+        val skill = MediaFetchSkill(store, downloader(), jobs = jobFixture.jobs)
         assertThat(skill.risk).isEqualTo(ToolRisk.FILE_WRITE)
         val tool = skill.toProtocolTool()
         assertThat(ToolExecutionTargets.extract(tool, """{"url":"https://example.test/a"}""")).isEqualTo("""["path","/media"]""")
@@ -385,7 +406,7 @@ class MediaFetchSkillTest {
     }
 
     @Test fun `默认目录与挂载目标使用各自的审批白名单作用域`() {
-        val tool = MediaFetchSkill(store, downloader()).toProtocolTool()
+        val tool = MediaFetchSkill(store, downloader(), jobs = jobFixture.jobs).toProtocolTool()
         val privateTarget = ToolExecutionTargets.extract(tool, "{}")!!
         assertThat(com.promenar.infinity.data.repository.ToolAllowlistScopes.resolve(privateTarget, "s1", SessionWorkspace.Private)?.scopeKey).isEqualTo("session:s1")
         val mountedTarget = ToolExecutionTargets.extract(tool, """{"path":"/mnt/assets/a.png"}""")!!
@@ -394,7 +415,7 @@ class MediaFetchSkillTest {
 
     @Test fun `注册工具可按id筛选且旧启用集合中的新工具默认启用`() {
         val registry = com.promenar.infinity.ui.chat.manager.registry.DefaultSkillRegistry()
-        registry.register(MediaFetchSkill(store, downloader()))
+        registry.register(MediaFetchSkill(store, downloader(), jobs = jobFixture.jobs))
         assertThat(registry.getAllTools(listOf("media_fetch")).single().function.name).isEqualTo("media_fetch")
         val prefs = mockk<android.content.SharedPreferences>()
         io.mockk.every { prefs.getStringSet("enabled_skills", null) } returns emptySet()
@@ -412,7 +433,7 @@ class MediaFetchSkillTest {
                 awaitCancellation()
             }
         }
-        val task = async { MediaFetchSkill(slowStore, downloader()).execute(buildJsonObject { put("url", "https://example.test/a") }, mediaTestContext) }
+        val task = async { MediaFetchSkill(slowStore, downloader(), jobs = jobFixture.jobs).execute(buildJsonObject { put("url", "https://example.test/a") }, mediaTestContext) }
         entered.await()
         task.cancel()
         val error = try { task.await(); null } catch (e: CancellationException) { e }

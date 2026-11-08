@@ -24,6 +24,7 @@ class MediaFetchSkill(
     private val maxBytes: Long = MAX_MEDIA_FETCH_BYTES,
     private val mounts: ExternalWorkspaceAccess? = null,
     private val sessionWorkspace: (suspend (String) -> SessionWorkspace)? = null,
+    private val jobs: com.promenar.infinity.data.jobs.BackgroundJobManager? = null,
 ) : SkillDefinition {
     override val id = "media_fetch"
     override val name = "media_fetch"
@@ -33,14 +34,26 @@ class MediaFetchSkill(
     override val parametersSchema = """
         {"type":"object","properties":{
           "url":{"type":"string","description":"Media URL to download."},
-          "path":{"type":"string","description":"Optional destination workspace virtual path. Omit to save under media/<yyyy-MM-dd>/. Existing files are never overwritten."}
+          "path":{"type":"string","description":"Optional destination workspace virtual path. Omit to save under media/<yyyy-MM-dd>/. Existing files are never overwritten."},
+          "yield_after_seconds":{"type":"integer","description":"默认 15 秒让出；0 不让出，上限为最长运行秒数。"},
+          "background":{"type":"boolean","description":"立即转后台并返回任务号，默认 false。"},
+          "on_exit":{"type":"string","enum":["none","notify","wake"],"description":"后台结束处理，默认 notify。"},
+          "max_runtime_minutes":{"type":"integer","description":"最长运行 1–60 分钟，默认 10。"}
         },"required":["url"]}
     """.trimIndent()
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
+        return runMediaJob(id, args, context, jobs, 15, "notify", "background", "下载媒体") { output ->
+            executeFetch(args, context, output)
+        }
+    }
+
+    private suspend fun executeFetch(args: JsonObject, context: SkillExecutionContext,
+        output: com.promenar.infinity.domain.tool.ToolLiveOutputSink): ToolResult {
         val resultId = "media_${UUID.randomUUID()}"
         val url = args.stringArgument("url")?.takeIf(String::isNotBlank)
             ?: return ToolResult(resultId, "缺少必填参数 url", status = "error")
+        output.emit(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, "正在下载媒体\n")
         return try {
             val path = MediaFetchPaths.targetPath(args.stringArgument("path"))
             val ref = withContext(Dispatchers.IO) {
@@ -87,6 +100,7 @@ class MediaFetchSkill(
                     downloader.save(url, context.sessionId, guardedStore, MediaOrigin.DOWNLOAD, path, maxBytes)
                 }
             }
+            output.emit(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, "媒体已保存\n")
             ToolResult(resultId, "${mediaSavedDescription(ref)}\n${mediaReferenceGuidance(ref)}", media = listOf(ref))
         } catch (cancelled: CancellationException) {
             throw cancelled

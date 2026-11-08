@@ -14,6 +14,20 @@ import kotlinx.coroutines.flow.first
 import org.junit.Test
 
 class BackgroundJobManagerTest {
+    @Test fun `进程内任务在应用重启后中断且不尝试清理进程组`() = runBlocking {
+        val root = Files.createTempDirectory("job-in-app-recovery").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val store = BackgroundJobStore(File(root, "store"))
+            store.put(sample().copy(runner = "IN_APP", runDirectory = File(root, "runs/job-a").path))
+            var reconciled = false
+            val jobs = manager(root, scope, store, reconcile = { _, _, _ -> reconciled = true; null })
+            val record = jobs.status("s", "job-a").record
+            assertThat(record.state).isEqualTo("INTERRUPTED")
+            assertThat(record.logMigrationDeferred).isFalse()
+            assertThat(reconciled).isFalse()
+        } finally { scope.cancel(); root.deleteRecursively() }
+    }
     @Test fun `Termux重复尾部通过真实字节游标触发输出等待`() = runBlocking {
         val root = Files.createTempDirectory("job-termux-output-position").toFile()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
