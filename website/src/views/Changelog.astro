@@ -22,7 +22,7 @@ const marked = new Marked({
 });
 const rendered = releases.map(r => ({ ...r, id: versionAnchor(r.version), html: marked.parse(r.body) as string }));
 ---
-<Base locale={locale} path="/changelog/" title={`${t.title} · Infinity Workbench`} description={t.description} current="changelog">
+<Base locale={locale} path="/changelog/" title={`${t.title} · Infinity Deck`} description={t.description} current="changelog">
   <div class="wrap page">
     <header class="page-head">
       <h1 class="sweep" data-sweep>{t.title}</h1>

@@ -1,4 +1,4 @@
-# Infinity Workbench 官网
+# Infinity Deck 官网
 
 产品官网，静态站点，线上地址 <https://infinityware.work>。中文为默认语言（`/`），英文在 `/en/`。
 

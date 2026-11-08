@@ -16,7 +16,7 @@ export const strings = {
     langName: '中',
     nav: { features: '功能', trust: '安全', download: '下载', docs: '文档', changelog: '更新日志', main: '主导航', lang: '语言', footer: '页脚' },
     meta: {
-      title: 'Infinity Workbench：手机上的 AI 工作台',
+      title: 'Infinity Deck：手机上的 AI 工作台',
       description: '把终端、代码仓库、服务器和你的 AI 一起装进手机。自带 Key，数据留在本机。真 Linux、Git、SSH、子代理与折叠屏工作台。',
     },
     hero: {
@@ -90,7 +90,7 @@ export const strings = {
       ],
     },
     download: {
-      title: '下载 Infinity Workbench',
+      title: '下载 Infinity Deck',
       released: '发布',
       apk: '下载 APK',
       all: '全部版本',
@@ -104,7 +104,7 @@ export const strings = {
       soon: '即将推出',
       platforms: { android: 'Android', macos: 'macOS' },
       pageTitle: '下载',
-      pageDescription: '下载 Infinity Workbench 的 Android 侧载安装包，核对 SHA-256 后安装。',
+      pageDescription: '下载 Infinity Deck 的 Android 侧载安装包，核对 SHA-256 后安装。',
       stepsTitle: '安装步骤',
       steps: [
         '下载 APK，并记下上面的 SHA-256。',
@@ -122,14 +122,14 @@ export const strings = {
     },
     changelog: {
       title: '更新日志',
-      description: 'Infinity Workbench 各版本的改进与修复，与 App 发行同步。',
+      description: 'Infinity Deck 各版本的改进与修复，与 App 发行同步。',
       lede: '每个版本的改进与修复，与 GitHub Releases 同步。',
       older: '更早的开发记录见仓库里的 CHANGELOG.md',
       jump: '版本',
     },
     docs: {
       title: '文档',
-      description: 'Infinity Workbench 使用指南：功能详解、密钥与隐私、执行环境、工作区、安装升级与开发构建。',
+      description: 'Infinity Deck 使用指南：功能详解、密钥与隐私、执行环境、工作区、安装升级与开发构建。',
       lede: '使用指南都在 GitHub 仓库里，随代码一起更新。',
       langNote: '',
       guides: [
@@ -157,7 +157,7 @@ export const strings = {
     langName: 'EN',
     nav: { features: 'Features', trust: 'Security', download: 'Download', docs: 'Docs', changelog: 'Changelog', main: 'Main', lang: 'Language', footer: 'Footer' },
     meta: {
-      title: 'Infinity Workbench: an AI workbench on your phone',
+      title: 'Infinity Deck: an AI workbench on your phone',
       description: 'Your terminal, your repos, your servers and your AI, together on your phone. Bring your own key; your data stays on your device.',
     },
     hero: {
@@ -231,7 +231,7 @@ export const strings = {
       ],
     },
     download: {
-      title: 'Download Infinity Workbench',
+      title: 'Download Infinity Deck',
       released: 'released',
       apk: 'Download APK',
       all: 'All releases',
@@ -245,7 +245,7 @@ export const strings = {
       soon: 'Coming soon',
       platforms: { android: 'Android', macos: 'macOS' },
       pageTitle: 'Download',
-      pageDescription: 'Download the Infinity Workbench Android APK and check its SHA-256 before installing.',
+      pageDescription: 'Download the Infinity Deck Android APK and check its SHA-256 before installing.',
       stepsTitle: 'Install',
       steps: [
         'Download the APK and note the SHA-256 above.',
@@ -263,14 +263,14 @@ export const strings = {
     },
     changelog: {
       title: 'Changelog',
-      description: 'Improvements and fixes in each Infinity Workbench release.',
+      description: 'Improvements and fixes in each Infinity Deck release.',
       lede: 'Improvements and fixes in each release, in sync with GitHub Releases. Entries are written in Chinese.',
       older: 'Earlier development notes are in CHANGELOG.md in the repository',
       jump: 'Versions',
     },
     docs: {
       title: 'Docs',
-      description: 'Infinity Workbench guides: features, security and privacy, execution environments, workspaces, install and development.',
+      description: 'Infinity Deck guides: features, security and privacy, execution environments, workspaces, install and development.',
       lede: 'The guides live in the GitHub repository and change with the code. They are written in Chinese; the README covers the essentials in English.',
       langNote: 'Chinese',
       guides: [

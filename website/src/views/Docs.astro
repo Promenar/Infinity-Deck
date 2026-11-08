@@ -6,7 +6,7 @@ interface Props { locale: 'zh' | 'en' }
 const { locale } = Astro.props;
 const t = strings[locale].docs;
 ---
-<Base locale={locale} path="/docs/" title={`${t.title} · Infinity Workbench`} description={t.description} current="docs">
+<Base locale={locale} path="/docs/" title={`${t.title} · Infinity Deck`} description={t.description} current="docs">
   <div class="wrap page">
     <header class="page-head">
       <h1 class="sweep" data-sweep>{t.title}</h1>
