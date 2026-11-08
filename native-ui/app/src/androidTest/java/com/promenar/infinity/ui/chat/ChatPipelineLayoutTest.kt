@@ -255,26 +255,22 @@ class ChatPipelineLayoutTest {
     }
 
     @Test
-    fun longArgumentsAndResultsCanEachExpandWithoutTruncation() {
+    fun toolResultTextStaysInFullResultSheet() {
         rule.setContent {
             InfinityTheme {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     InlineToolRow(listOf(
-                        ExecutionStep("a", "tool_call", "exec_js", (1..9).joinToString("\n") { "parameter_$it" }, "call", timestamp = 1_000),
-                        ExecutionStep("r", "tool_result", "exec_js", toolCallId = "call", content = (1..15).joinToString("\n") { "result_$it" }, timestamp = 1_400),
+                        ExecutionStep("a", "tool_call", "read_file", "{\"path\":\"src/main.kt\"}", "call", timestamp = 1_000),
+                        ExecutionStep("r", "tool_result", "read_file", toolCallId = "call", content = (1..15).joinToString("\n") { "result_$it" }, timestamp = 1_400),
                     ), false, 15, initiallyExpanded = true)
                 }
             }
         }
-        assertThat(textLayout("CHAT_TOOL_ARGUMENTS").lineCount).isEqualTo(6)
-        assertThat(textLayout("CHAT_TOOL_ARGUMENTS").hasVisualOverflow).isTrue()
-        assertThat(textLayout("CHAT_TOOL_RESULT").lineCount).isEqualTo(12)
-        rule.onAllNodes(hasTestTag("CHAT_TOOL_EXPAND_ALL"))[0].performScrollTo().performClick()
-        assertThat(textLayout("CHAT_TOOL_ARGUMENTS").lineCount).isEqualTo(9)
-        assertThat(textLayout("CHAT_TOOL_ARGUMENTS").hasVisualOverflow).isFalse()
-        rule.onAllNodes(hasTestTag("CHAT_TOOL_EXPAND_ALL"))[1].performScrollTo().performClick()
-        assertThat(textLayout("CHAT_TOOL_RESULT").lineCount).isEqualTo(15)
-        assertThat(textLayout("CHAT_TOOL_RESULT").hasVisualOverflow).isFalse()
+        rule.onNodeWithText("result_1", substring = true, useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithTag(UiTags.CHAT_TOOL_ARGUMENTS_PREVIEW, useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithTag(UiTags.CHAT_TOOL_FULL_OUTPUT).performScrollTo().performClick()
+        rule.onNodeWithTag(UiTags.CHAT_TOOL_FULL_RESULT_TEXT).assertExists()
+        rule.onNodeWithText("result_15", substring = true, useUnmergedTree = true).assertExists()
     }
 
     @Test

@@ -59,6 +59,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
@@ -73,6 +74,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -86,6 +88,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
@@ -156,6 +159,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -265,8 +269,6 @@ internal fun shouldShowEmptyWordmark(uiState: ChatUiState): Boolean =
 data class ChatScreenState(
     val uiState: ChatUiState = ChatUiState(),
     val inputText: String = "",
-    /** 本页看到的生成正常完成次数，驱动浮岛完成闪光。 */
-    val completionFlashes: Int = 0,
     val tokenState: ChatViewModel.TokenIndicatorState = ChatViewModel.TokenIndicatorState(),
     val ragPhases: List<com.promenar.infinity.data.model.RagPhase> = emptyList(),
     val compressionState: ChatViewModel.CompressionState = ChatViewModel.CompressionState(),
@@ -738,6 +740,9 @@ fun ChatScreenContent(
             )
         }.collectLatest { geometry ->
             if (geometry[0] <= 0 || geometry[2] <= 0 || geometry[4] == 0) return@collectLatest
+            // 布局状态变化可能在测量过程中同步交给收集方；先让出一次调度再滚动，不在测量布局中途触发重新测量，
+            // 也不推迟到下一帧，尾部仍在同一帧内校正。
+            kotlinx.coroutines.yield()
             scrollItemAboveComposer(followTargetIndex)
         }
     }
@@ -822,10 +827,23 @@ fun ChatScreenContent(
         }
         var lastInspectorRoot by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
         SideEffect { inspectorRoot?.let { lastInspectorRoot = it.token } }
+        var inspectorWidened by rememberSaveable { mutableStateOf(false) }
+        // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。
+        val inspectorWidth = if (inspectorWidened && inspectorRoot == ChatPage.Browser) maxWidth - BrowserMaximizedInset
+        else com.promenar.infinity.ui.common.infinityInspectorWidth(maxWidth, inspectorWidened)
+        // 让位后会话仍有足够宽度（折叠屏内屏、平板）时整体让位；加宽后会话过窄时浮在会话右缘之上，会话不动。
+        val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth) ==
+            com.promenar.infinity.ui.common.InfinityInspectorPlacement.Float
+        // 让位时顶栏、会话列与输入浮岛一起收到检视器左侧，检视器从状态栏下方铺到底部。
+        val inspectorReserved by animateDpAsState(
+            targetValue = if (inspectorRoot != null && !inspectorFloats) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
+            animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
+            label = "chat_inspector_reserved",
+        )
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
-              Column(Modifier.background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+              Column(Modifier.padding(end = inspectorReserved).background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
                 ChatTopBar(
                     title = sessionTitle,
                     showDivider = showTopBarDivider,
@@ -966,13 +984,6 @@ fun ChatScreenContent(
                 browserEntry = true,
                 remote = state.remote,
             )
-            var inspectorWidened by rememberSaveable { mutableStateOf(false) }
-            // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。
-            val inspectorWidth = if (inspectorWidened && inspectorRoot == ChatPage.Browser) maxWidth - BrowserMaximizedInset
-            else com.promenar.infinity.ui.common.infinityInspectorWidth(maxWidth, inspectorWidened)
-            // 让位后会话仍有足够宽度（平板横屏）时整体让位；否则（折叠屏内屏）浮在会话右缘之上，会话不动。
-            val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth) ==
-                com.promenar.infinity.ui.common.InfinityInspectorPlacement.Float
             // 浮在会话之上时右缘与输入区浮岛对齐：输入区限宽居中，检视器右边距随之加上两侧留白。
             val inspectorEnd = 12.dp + if (inspectorFloats && inspectorWidth <= com.promenar.infinity.ui.common.InfinityInspectorWideWidth) {
                 // 左侧至少给会话留 48dp 可见边缘。
@@ -983,11 +994,6 @@ fun ChatScreenContent(
             LaunchedEffect(hasPendingApproval, inspectorFloats) {
                 if (hasPendingApproval && inspectorFloats && inspectorRoot != null) actions.onSetInspectorPages(emptyList())
             }
-            val inspectorReserved by animateDpAsState(
-                targetValue = if (inspectorRoot != null && !inspectorFloats) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
-                animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
-                label = "chat_inspector_reserved",
-            )
             val jumpToApproval: () -> Unit = {
                 scope.launch {
                     // 审批卡与子代理审批组都排在底部留白之前，跳到其中第一项。
@@ -1016,10 +1022,11 @@ fun ChatScreenContent(
                     },
                 )
             }
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            Box(Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(padding)
                     .padding(end = inspectorReserved)
                     .imePadding()
                     .then(if (showWordmark) Modifier.trackWordmarkPointer(wordmarkPointer) else Modifier),
@@ -1428,7 +1435,6 @@ fun ChatScreenContent(
                             status = uiState.status,
                             isGenerating = uiState.isGenerating,
                             onStop = actions.onStop,
-                            completionFlashes = state.completionFlashes,
                             onSendSteering = { guardedSend { submitDraft(actions.onSendSteering) } },
                             onStopAndSend = { guardedSend { submitDraft(actions.onStopAndSend) } },
                             onDismissError = actions.onDismissGenerationError,
@@ -1638,15 +1644,17 @@ fun ChatScreenContent(
             }
             if (inspectorMode) {
                 val composerReserve = with(density) { composerHeightPx.toDp() }
-                // 浮在会话之上时底边停在输入区上方，不挡输入与审批；让位时占满右侧高度。
+                // 浮在会话之上时夹在顶栏与输入区之间，不挡输入与审批；让位时从状态栏下方铺到底部，顶栏与浮岛已收到左侧。
                 // 与会话列表的底部留白一样直接跟随输入区高度，不做动画，首帧量到高度前也不会先盖住输入区再滑开。
                 val inspectorBottom = if (inspectorFloats) composerReserve + 8.dp else 12.dp
+                val inspectorTop = if (inspectorFloats) padding.calculateTopPadding()
+                else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val animatedInspectorWidth by animateDpAsState(
                     targetValue = inspectorWidth,
                     animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
                     label = "chat_inspector_width",
                 )
-                Box(Modifier.fillMaxSize().imePadding()) {
+                Box(Modifier.fillMaxSize().padding(top = inspectorTop, bottom = padding.calculateBottomPadding()).imePadding()) {
                     AnimatedVisibility(
                         visible = inspectorRoot != null,
                         enter = slideInHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) { it / 3 } +
@@ -1727,7 +1735,7 @@ fun ChatScreenContent(
                         }
                     }
                     // 收起后有内容时留一条边缘条；没有任何内容时完全隐藏，只留顶栏入口。长按可上下拖开。
-                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 8.dp, end = 8.dp, bottom = composerReserve + 8.dp)) {
+                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding() - inspectorTop + 8.dp, end = 8.dp, bottom = composerReserve + 8.dp)) {
                     var stripHeight by remember { mutableIntStateOf(0) }
                     AnimatedVisibility(
                         visible = inspectorRoot == null && inspectorBadges.hasContent,
@@ -2012,7 +2020,7 @@ internal fun ChatModelSelector(
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
-            modifier = Modifier.height(ComposerChipHeight).pressFeedback(interaction, CircleShape).background(containerColor)
+            modifier = Modifier.height(ComposerChipHeight).composerChip(interaction, containerColor)
                 .padding(start = 10.dp, end = 8.dp)
                 .testTag("chat_model_capsule"),
             verticalAlignment = Alignment.CenterVertically,
@@ -3274,8 +3282,6 @@ fun ChatInputBar(
     isGenerating: Boolean = status == GenerationStatus.UPLOADING ||
         status == GenerationStatus.THINKING || status == GenerationStatus.RECEIVING,
     onStop: () -> Unit = {},
-    /** 本页看到的生成正常完成次数，每次增加时浮岛整圈泛绿一次。 */
-    completionFlashes: Int = 0,
     /** 生成中把草稿排到队首，当前步骤结束后发出（长按菜单）。 */
     onSendSteering: () -> Unit = {},
     /** 停止本轮并立即发出草稿（长按菜单）。 */
@@ -3347,15 +3353,15 @@ fun ChatInputBar(
             trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None,
         ),
     )
-    // 浮岛与底部导航栏同一套材质：抬升底色、半透明描边与投影；生成时外圈流光环绕，出错时整圈泛红，本轮完成时整圈泛绿。
+    // 浮岛与底部导航栏同一套材质：抬升底色、半透明描边与投影；生成时外圈流光环绕，出错时整圈泛红。
     val material = composerIslandMaterial()
+    val islandStyle = LocalComposerIslandStyle.current
     // 等待审批时生成已暂停，浮岛仍保持第三色慢闪，提示轮到用户处理。
     val awaitingUser = com.promenar.infinity.ui.common.motion.LocalGenerationMotion.current.actual ==
         com.promenar.infinity.ui.common.motion.GenerationMotionPhase.APPROVAL
     val glow = rememberComposerGlowState(
         generating = isGenerating || awaitingUser,
         error = status == GenerationStatus.ERROR,
-        completions = completionFlashes,
     )
     // 生成中写好了下一条：主按钮变为排队发送，外圈转动表示本轮仍在进行；长按展开插队、停止并发送与只停止。
     val hasDraft = text.isNotBlank() || hasImages || hasDocuments || hasAnnotatedQuotes
@@ -3366,11 +3372,11 @@ fun ChatInputBar(
             .fillMaxWidth()
             .composerIslandGlow(glow, material.topHighlight)
             .testTag(UiTags.CHAT_INPUT_BAR_SURFACE),
-        shape = RoundedCornerShape(ComposerIslandCorner),
+        shape = RoundedCornerShape(islandStyle.corner),
         color = material.container,
         border = if (answeringQuestion) BorderStroke(1.5.dp, MaterialTheme.infinityDomainColors.warning) else material.border,
         tonalElevation = 0.dp,
-        shadowElevation = 6.dp,
+        shadowElevation = islandStyle.shadowElevation,
     ) {
         // 输入框上留白 16dp、到工具行 8dp，并保证 48dp 点击高度；有附件时附件行与容器顶边留 12dp，
         // 附件行自带 8dp 下边距，输入框上留白相应收为 12dp。
@@ -3435,8 +3441,25 @@ fun ChatInputBar(
                     }
                 },
             )
+            if (islandStyle.toolbarTray) Spacer(Modifier.height(ComposerToolbarInset))
+            val trayColor = MaterialTheme.colorScheme.surfaceContainerLow
+            val trayLine = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
             Row(
-                modifier = Modifier.fillMaxWidth().height(40.dp).testTag("chat_composer_toolbar"),
+                modifier = Modifier.fillMaxWidth().height(40.dp)
+                    .then(
+                        if (islandStyle.toolbarTray) {
+                            // 托盘向左右与底边各铺出工具行留白，铺到浮岛边缘，由浮岛外壳裁出底部圆角；上沿一道细线隔开输入区。
+                            Modifier.drawWithContent {
+                                val inset = ComposerToolbarInset.toPx()
+                                drawRect(trayColor, topLeft = Offset(-inset, -inset), size = Size(size.width + inset * 2, size.height + inset * 2))
+                                drawRect(trayLine, topLeft = Offset(-inset, -inset), size = Size(size.width + inset * 2, 1.dp.toPx()))
+                                drawContent()
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .testTag("chat_composer_toolbar"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChatCompactIconButton(
@@ -3635,7 +3658,7 @@ private fun GenerationStatusButton(
         )
     }
     Box(
-        modifier = Modifier.size(40.dp).clip(CircleShape).background(containerColor)
+        modifier = Modifier.size(40.dp).clip(LocalComposerIslandStyle.current.sendShape).background(containerColor)
             .combinedClickable(
                 enabled = status == GenerationStatus.IDLE || status == GenerationStatus.RECEIVING ||
                     status == GenerationStatus.THINKING || status == GenerationStatus.UPLOADING ||

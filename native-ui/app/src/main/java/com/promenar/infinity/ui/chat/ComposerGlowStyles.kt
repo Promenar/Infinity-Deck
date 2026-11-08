@@ -577,7 +577,7 @@ internal fun drawScopeFrame(
     digits: Boolean,
     /** 停在上一轮：画 [GenerationMotion.lastRunLevel] 的静止波形与平均速率，[phase] 不再起作用。 */
     rest: Boolean = false,
-    /** 亮灯颜色（0 主色、1 第三色）；完成闪光时主色换成绿色。 */
+    /** 亮灯颜色（0 主色、1 第三色）。 */
     colors: List<Color> = palette.leds,
     /** 是否画熄灭的灯珠；运行坞点阵屏另画常驻底格，这里不重复。 */
     drawOff: Boolean = true,

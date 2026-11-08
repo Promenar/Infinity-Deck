@@ -340,16 +340,9 @@ fun ChatRoute(
     LaunchedEffect(statusHaptics, hapticSnapshot) {
         statusHaptics.next(hapticSnapshot, System.currentTimeMillis())?.let(haptics::perform)
     }
-    val completionFlashGate = remember(chatViewModel) { CompletionFlashGate() }
-    var completionFlashes by remember(chatViewModel) { mutableIntStateOf(0) }
-    val runObserved = uiState.isGenerating || uiState.approvalRequest != null
-    LaunchedEffect(completionFlashGate, uiState.session?.id, runObserved) {
-        completionFlashGate.observe(uiState.session?.id, runObserved)
-    }
     LaunchedEffect(statusHaptics) {
         chatViewModel.generationOutcomes.collect { outcome ->
             statusHaptics.onOutcome(outcome, System.currentTimeMillis())?.let(haptics::perform)
-            if (completionFlashGate.onOutcome(outcome)) completionFlashes++
         }
     }
     val taskCompletionUndo by chatViewModel.taskCompletionUndo.collectAsStateWithLifecycle()
@@ -844,7 +837,13 @@ fun ChatRoute(
                         when (page) {
                             ChatPage.Explorer -> ResourceExplorerPage(
                                 onBack = closeTopChatPage.takeUnless { inInspector },
-                                onOpenGit = { setChatPages(pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Git)) },
+                                // 检视器里直接切到“Git”页签；整页时叠一层带返回的 Git 页。
+                                onOpenGit = {
+                                    setChatPages(
+                                        if (inInspector) openChatPageRoot(ChatPage.Git)
+                                        else pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Git),
+                                    )
+                                },
                                 gitRefreshKey = gitRefresh,
                                 sessionId = sessionId,
                                 chatViewModel = chatViewModel,
@@ -925,7 +924,6 @@ fun ChatRoute(
             state = ChatScreenState(
                 uiState = uiState,
                 inputText = inputText,
-                completionFlashes = completionFlashes,
                 pendingQuestion = pendingQuestion,
                 pendingSecretInput = pendingSecretInput,
                 secretInputSubmission = secretInputSubmission,

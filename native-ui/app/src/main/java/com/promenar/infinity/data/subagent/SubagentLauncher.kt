@@ -228,6 +228,12 @@ class SubagentLauncher(
         return mutex.withLock { findLocked(sessionId, id).second }
     }
 
+    suspend fun readHistory(sessionId: String, id: String): List<com.promenar.infinity.data.remote.protocol.ProtocolMessage> {
+        initialize()
+        val step = mutex.withLock { findLocked(sessionId, id).first }
+        return store.execution(sessionId, step, id)?.messages.orEmpty()
+    }
+
     suspend fun send(sessionId: String, id: String, message: String, wrapUp: Boolean = false): SubagentRun {
         require(message.isNotBlank() || wrapUp) { "message 不能为空" }
         initialize()

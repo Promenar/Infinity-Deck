@@ -11,7 +11,27 @@ class HistorySummaryPromptTest {
         val custom = "用户说明\n## History Summary\n示例标记\n<history_summary>\n示例\n</history_summary>\n工具运行规则"
         val result = replaceHistorySummary(custom, "真实摘要", previousSummary = null)
         assertThat(result).startsWith(custom)
-        assertThat(result).endsWith("<history_summary>\n真实摘要\n</history_summary>\n")
+        assertThat(result).endsWith("<history_summary>\n真实摘要\n</history_summary>\n$HISTORY_RECALL_HINT\n")
+    }
+
+    @Test
+    fun `替换已有摘要保留其后取回提示且只出现一次`() {
+        val prompt = "规则" + section("旧") + HISTORY_RECALL_HINT + "\n时钟"
+        val result = replaceHistorySummary(prompt, "新", "旧")
+        assertThat(result).contains("<history_summary>\n新\n</history_summary>\n$HISTORY_RECALL_HINT\n时钟")
+        assertThat(result.split(HISTORY_RECALL_HINT).size - 1).isEqualTo(1)
+    }
+
+    @Test
+    fun `首次追加摘要时提示已存在则不重复`() {
+        val result = replaceHistorySummary("规则\n$HISTORY_RECALL_HINT\n", "摘要", null)
+        assertThat(result.split(HISTORY_RECALL_HINT).size - 1).isEqualTo(1)
+    }
+
+    @Test
+    fun `移除摘要时一并移除取回提示`() {
+        val prompt = "规则" + section("事实") + HISTORY_RECALL_HINT + "\n时钟"
+        assertThat(replaceHistorySummary(prompt, null, "事实")).isEqualTo("规则时钟")
     }
 
     @Test

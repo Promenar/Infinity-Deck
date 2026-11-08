@@ -12,7 +12,7 @@ import kotlinx.serialization.json.*
 internal const val BACKGROUND_EXEC_SCHEMA = """"background":{"type":"boolean","description":"后台立即返回任务号；shell 使用会话固定运行模式，环境不可用时返回错误；默认 false"},"on_exit":{"type":"string","enum":["none","notify","wake"],"description":"后台结束处理，默认 notify；长任务优先 wake"},"max_runtime_minutes":{"type":"integer","description":"仅后台模式：最长运行 1–1440 分钟，默认 120；后台模式不使用 timeout_seconds"}"""
 internal fun JsonObject.backgroundRequested() = (this["background"] as? JsonPrimitive)?.booleanOrNull == true
 internal fun backgroundStartJson(record: BackgroundJobRecord): JsonObject = buildJsonObject {
-    if(record.runnerKind!=BackgroundJobRunner.TERMUX) put("runtime", when(record.runnerKind) { BackgroundJobRunner.SSH -> "ssh"; BackgroundJobRunner.LINUX -> "linux"; else -> "system" })
+    if(record.runnerKind!=BackgroundJobRunner.TERMUX) put("runtime", when(record.runnerKind) { BackgroundJobRunner.SSH -> "ssh"; BackgroundJobRunner.LINUX -> "linux"; BackgroundJobRunner.IN_APP -> "in_app"; else -> "system" })
     put("runner",record.runnerKind.name.lowercase())
     put("job_id",record.id);put("state",record.state.lowercase());put("started_at",java.time.Instant.ofEpochMilli(record.startedAtMillis).toString())
     put("log_reference",BackgroundJobLogs.reference(record.id))
@@ -58,25 +58,30 @@ private class JobSkill(private val jobs:BackgroundJobManager,private val operati
     override val name=id
     override val risk=if (operation == "input") ToolRisk.PROCESS else ToolRisk.SESSION_STATE
     override val mcpServerId:String?=null
-    override val description=when(operation) {"status"->"读取本会话后台任务状态和最多 8000 字符日志末尾。";"wait"->"等待本会话后台任务结束、后续新输出匹配 until_output 正则、until_file 工作区路径出现或 1–600 秒超时，任一条件触发即返回；用户立即检查与插队可提前返回，任务继续运行。";"stop"->"停止本会话后台任务：本机任务停止整个进程组（TERM，2 秒后 KILL）；SSH 任务断开通道，远端进程可能仍在运行。";"input"->"向本会话运行中的 Linux 任务输入文本；工作区档逐次审批，完全访问档免批。需要交互的命令不要传 stdin；newline 默认 true 追加回车，eof 默认 false；返回写入后1秒的输出尾部。";else->"列出本会话后台任务，不包含日志。"}
+    override val description=when(operation) {"status"->"读取本会话后台任务状态和最多 8000 字符日志末尾。";"wait"->"等待本会话后台任务结束、后续新输出匹配 until_output 正则、until_file 工作区路径出现或 1–600 秒超时，任一条件触发即返回；用户立即检查与插队可提前返回，任务继续运行。";"stop"->"停止本会话后台任务：进程内任务取消请求；命令任务停止整个进程组（TERM，2 秒后 KILL）；SSH 任务断开通道，远端进程可能仍在运行。";"input"->"向本会话运行中的 Linux 任务输入文本；工作区档逐次审批，完全访问档免批。需要交互的命令不要传 stdin；newline 默认 true 追加回车，eof 默认 false；返回写入后1秒的输出尾部。";else->"列出本会话后台任务，不包含日志。"}
     override val parametersSchema=if(operation=="input") """{"type":"object","properties":{"job_id":{"type":"string"},"text":{"type":"string","description":"要写入的文本，可为空，最多32000字符"},"newline":{"type":"boolean"},"eof":{"type":"boolean"}},"required":["job_id","text"],"additionalProperties":false}""" else if(operation=="list") """{"type":"object","properties":{},"additionalProperties":false}""" else """{"type":"object","properties":{"job_id":{"type":"string"}${if(operation=="wait") ",\"timeout_seconds\":{\"type\":\"integer\",\"description\":\"1–600 秒，默认 60\"},\"until_output\":{\"type\":\"string\",\"description\":\"匹配后续新输出的正则，返回匹配所在行\"},\"until_file\":{\"type\":\"string\",\"description\":\"工作区相对路径或 /workspace 路径，文件或目录出现即返回\"}" else ""}},"required":["job_id"],"additionalProperties":false}"""
-    override suspend fun execute(rawArgs:JsonObject,context:SkillExecutionContext)=jobToolResult(id) {
-        val normalized = ExecToolArguments.normalize(rawArgs)
-        val args = normalized.arguments
-        ExecToolArguments.validate(parametersSchema, args)
-        val response = if(operation=="list") buildJsonObject {put("jobs",JsonArray(jobs.list(context.sessionId).map {info(it)}))} else {
-            val jobId=(args.getValue("job_id") as JsonPrimitive).content
-            val status=when(operation) {"status"->jobs.status(context.sessionId,jobId);"stop"->jobs.stop(context.sessionId,jobId);"input"->jobs.input(context.sessionId,jobId,args.getValue("text").jsonPrimitive.content,(args["newline"] as? JsonPrimitive)?.booleanOrNull ?: true,(args["eof"] as? JsonPrimitive)?.booleanOrNull ?: false);else->jobs.waitFor(context.sessionId,jobId,ExecToolArguments.integer(args,"timeout_seconds",60,1..600),
-                (args["until_output"] as? JsonPrimitive)?.content, (args["until_file"] as? JsonPrimitive)?.content)}
-            JsonObject(info(status.record)+buildJsonObject{put("log_tail",status.tail.text);put("log_truncated",status.tail.truncated);put("last_output_seconds_ago", status.lastOutputSecondsAgo?.let(::JsonPrimitive) ?: JsonNull);if(operation=="wait") { put("timed_out",status.timedOut);put("wait_reason",status.waitReason?.let(::JsonPrimitive) ?: JsonNull);status.matchedLine?.let { put("matched_line",it) } }})
+    override suspend fun execute(rawArgs:JsonObject,context:SkillExecutionContext): ToolResult {
+        var mediaResult: ToolResult? = null
+        val responseResult = jobToolResult(id) {
+            val normalized = ExecToolArguments.normalize(rawArgs)
+            val args = normalized.arguments
+            ExecToolArguments.validate(parametersSchema, args)
+            val response = if(operation=="list") buildJsonObject {put("jobs",JsonArray(jobs.list(context.sessionId).map {info(it)}))} else {
+                val jobId=(args.getValue("job_id") as JsonPrimitive).content
+                val status=when(operation) {"status"->jobs.status(context.sessionId,jobId);"stop"->jobs.stop(context.sessionId,jobId);"input"->jobs.input(context.sessionId,jobId,args.getValue("text").jsonPrimitive.content,(args["newline"] as? JsonPrimitive)?.booleanOrNull ?: true,(args["eof"] as? JsonPrimitive)?.booleanOrNull ?: false);else->jobs.waitFor(context.sessionId,jobId,ExecToolArguments.integer(args,"timeout_seconds",60,1..600),
+                    (args["until_output"] as? JsonPrimitive)?.content, (args["until_file"] as? JsonPrimitive)?.content)}
+                if (operation == "status" || operation == "wait") mediaResult = status.record.toolResult
+                JsonObject(info(status.record)+buildJsonObject{ status.record.toolResult?.let { put("result_text", it.content) };put("log_tail",status.tail.text);put("log_truncated",status.tail.truncated);put("last_output_seconds_ago", status.lastOutputSecondsAgo?.let(::JsonPrimitive) ?: JsonNull);if(operation=="wait") { put("timed_out",status.timedOut);put("wait_reason",status.waitReason?.let(::JsonPrimitive) ?: JsonNull);status.matchedLine?.let { put("matched_line",it) } }})
+            }
+            normalized.result(response)
         }
-        normalized.result(response)
+        return responseResult.copy(media = mediaResult?.media, data = mediaResult?.data)
     }
     private suspend fun info(record:BackgroundJobRecord):JsonObject {
-        val runtime = if (record.directWorkspace || record.runnerKind == BackgroundJobRunner.SSH) record.commandResult ?: JsonObject(emptyMap()) else if (record.runnerKind == BackgroundJobRunner.TERMUX) JsonObject(emptyMap()) else
+        val runtime = if (record.directWorkspace || record.runnerKind == BackgroundJobRunner.SSH || record.runnerKind == BackgroundJobRunner.IN_APP) record.commandResult ?: JsonObject(emptyMap()) else if (record.runnerKind == BackgroundJobRunner.TERMUX) JsonObject(emptyMap()) else
             com.promenar.infinity.data.exec.RuntimeDataMonitor.backgroundResult(java.io.File(record.runDirectory), expectResult = !record.running)
         return JsonObject(buildJsonObject {
-    if(record.runnerKind!=BackgroundJobRunner.TERMUX) put("runtime", when(record.runnerKind) { BackgroundJobRunner.SSH -> "ssh"; BackgroundJobRunner.LINUX -> "linux"; else -> "system" })
+    if(record.runnerKind!=BackgroundJobRunner.TERMUX) put("runtime", when(record.runnerKind) { BackgroundJobRunner.SSH -> "ssh"; BackgroundJobRunner.LINUX -> "linux"; BackgroundJobRunner.IN_APP -> "in_app"; else -> "system" })
     put("runner",record.runnerKind.name.lowercase())
     put("job_id",record.id);put("state",record.state.lowercase());put("exit_code",record.exitCode?.let(::JsonPrimitive) ?: JsonNull)
         put("summary",record.summary);put("elapsed_seconds",BackgroundJobCompletion.elapsedSeconds(record));put("started_at",java.time.Instant.ofEpochMilli(record.startedAtMillis).toString())
@@ -91,5 +96,32 @@ private class JobSkill(private val jobs:BackgroundJobManager,private val operati
                 put("exit_code", record.exitCode?.let(::JsonPrimitive) ?: JsonNull)
             }
         })
+    }
+}
+
+internal suspend fun runMediaJob(id: String, args: JsonObject, context: SkillExecutionContext,
+    jobs: BackgroundJobManager?, defaultYield: Int, defaultAction: String, backgroundKey: String,
+    summary: String, block: suspend (ToolLiveOutputSink) -> ToolResult): ToolResult {
+    try {
+        val minutes = ExecToolArguments.integer(args, "max_runtime_minutes", 10, 1..60)
+        val threshold = ExecToolArguments.integer(args, "yield_after_seconds", defaultYield, 0..minutes * 60)
+        val action = BackgroundJobExitAction.fromWire((args["on_exit"] as? JsonPrimitive)?.content ?: defaultAction)
+            ?: throw IllegalArgumentException("on_exit 必须为 none、notify 或 wake")
+        val backgroundValue = args[backgroundKey]
+        val background = if (backgroundValue == null) false else (backgroundValue as? JsonPrimitive)?.booleanOrNull
+            ?: throw IllegalArgumentException("$backgroundKey 必须为布尔值")
+        val manager = jobs ?: throw JobAccessException("JOB_UNAVAILABLE", "后台任务服务不可用，请重新打开应用。")
+        val run = manager.runInApp(context.sessionId, context.workspaceRootUuid, summary, threshold, background, minutes, action, context.liveOutput, block)
+        run.result?.let { return it }
+        val record = checkNotNull(run.job)
+        val json = buildJsonObject {
+            backgroundStartJson(record).forEach { (key, value) -> put(key, value) }
+            put("guidance", "任务已登记；用 job_status/job_wait 查看结果，用 job_stop 停止。")
+            run.yieldedAfterSeconds?.let { put("yielded_after_seconds", it) }
+        }
+        return ToolResult("${id}_${UUID.randomUUID()}", json.toString())
+    } catch (cancelled: CancellationException) { throw cancelled
+    } catch (error: Exception) {
+        return ToolResult("${id}_${UUID.randomUUID()}", error.message ?: "后台任务启动失败。", "error")
     }
 }

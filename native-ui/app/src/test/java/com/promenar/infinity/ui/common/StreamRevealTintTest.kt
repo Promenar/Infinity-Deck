@@ -23,7 +23,7 @@ class StreamRevealTintTest {
         val paragraph = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
             .children.single { it.type == MarkdownElementTypes.PARAGRAPH }
         val annotator = readingMarkdownAnnotator(SpanStyle(), text, ranges, 0, accent)
-        val settings = DefaultAnnotatorSettings(TextLinkStyles(), SpanStyle(), annotator)
+        val settings = DefaultAnnotatorSettings(TextLinkStyles(), SpanStyle(), annotator, highlightSpanStyle = SpanStyle())
         return content.buildMarkdownAnnotatedString(paragraph, TextStyle.Default, settings)
     }
 

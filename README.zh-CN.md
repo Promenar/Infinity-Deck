@@ -96,7 +96,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 需要 Android 12 及以上。内置 Linux 需要 arm64-v8a 设备，基础系统约 64 MB，加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。
 
-当前源码版本为 `v0.34.0-beta`（versionCode `94`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.37.0-beta`（versionCode `103`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
 <summary><b>从源码构建</b></summary>
@@ -118,7 +118,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 **对话与模型**
 
 - 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口
-- 聊到一半可以换模型；最多 4 个会话同时生成
+- 聊到一半可以换模型；最多 16 个会话同时生成
 - 生成中的下一句可以排队或插队
 - 需要你拍板时弹出提问卡；锁屏、切后台不中断
 - 触摸锁让手机直接揣进口袋
@@ -127,7 +127,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 **智能体**
 
 - 先列计划再动手
-- 最多 6 个子代理并行，结论自动交回
+- 最多 32 个子代理并行，结论自动交回
 - 适合单独做的工作开成分支会话
 - 慢命令转入后台，跑完再叫醒会话
 - 定时任务，单次到 cron

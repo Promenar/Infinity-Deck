@@ -14,6 +14,20 @@ import kotlinx.coroutines.flow.first
 import org.junit.Test
 
 class BackgroundJobManagerTest {
+    @Test fun `进程内任务在应用重启后中断且不尝试清理进程组`() = runBlocking {
+        val root = Files.createTempDirectory("job-in-app-recovery").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val store = BackgroundJobStore(File(root, "store"))
+            store.put(sample().copy(runner = "IN_APP", runDirectory = File(root, "runs/job-a").path))
+            var reconciled = false
+            val jobs = manager(root, scope, store, reconcile = { _, _, _ -> reconciled = true; null })
+            val record = jobs.status("s", "job-a").record
+            assertThat(record.state).isEqualTo("INTERRUPTED")
+            assertThat(record.logMigrationDeferred).isFalse()
+            assertThat(reconciled).isFalse()
+        } finally { scope.cancel(); root.deleteRecursively() }
+    }
     @Test fun `Termux重复尾部通过真实字节游标触发输出等待`() = runBlocking {
         val root = Files.createTempDirectory("job-termux-output-position").toFile()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -254,7 +268,11 @@ class BackgroundJobManagerTest {
         assertThat(m.stop(job.id)).isTrue()
         assertThat(m.status("s",job.id).record.state).isEqualTo("STOPPED")
     }
-    @Test fun `每会话三项全局六项并发上限与删除停止`() = fixture { m ->
+    @Test fun `默认上限远高于正常使用`() {
+        assertThat(MAX_SESSION_RUNNING).isAtLeast(32)
+        assertThat(MAX_GLOBAL_RUNNING).isAtLeast(2 * MAX_SESSION_RUNNING)
+    }
+    @Test fun `每会话与全局并发上限与删除停止`() = fixture(sessionLimit = 3, globalLimit = 6) { m ->
         repeat(3) { m.startBuiltin("s","root",BackgroundJobRunner.SHELL,"sleep 60",null,1,BackgroundJobExitAction.NONE) }
         assertThat(runCatching { m.startBuiltin("s","root",BackgroundJobRunner.SHELL,"true",null,1,BackgroundJobExitAction.NONE) }.exceptionOrNull()).isInstanceOf(JobAccessException::class.java)
         repeat(3) { m.startBuiltin("t","root",BackgroundJobRunner.SHELL,"sleep 60",null,1,BackgroundJobExitAction.NONE) }
@@ -526,10 +544,10 @@ class BackgroundJobManagerTest {
         } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
     }
 
-    private fun fixture(block:suspend CoroutineScope.(BackgroundJobManager)->Unit)=runBlocking {
+    private fun fixture(sessionLimit:Int=MAX_SESSION_RUNNING, globalLimit:Int=MAX_GLOBAL_RUNNING, block:suspend CoroutineScope.(BackgroundJobManager)->Unit)=runBlocking {
         val root=Files.createTempDirectory("job-manager").toFile()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
-        val m=manager(root,scope,BackgroundJobStore(File(root,"store")))
+        val m=manager(root,scope,BackgroundJobStore(File(root,"store")),sessionLimit=sessionLimit,globalLimit=globalLimit)
         try { block(m) } finally { for(s in listOf("s","t")) m.list(s).filter{it.running}.forEach{m.stop(it.id)};scope.cancel(); root.deleteRecursively() }
     }
     private fun manager(root:File,scope:CoroutineScope,store:BackgroundJobStore,
@@ -537,11 +555,13 @@ class BackgroundJobManagerTest {
         completion:BackgroundJobCompletion=BackgroundJobCompletion(),keepAlive:ExecKeepAlive=NoExecKeepAlive,
         termux:com.promenar.infinity.data.termux.TermuxBackgroundJobs?=null,
         vault:SessionSecretVault?=null, live:ToolLiveOutputStore=ToolLiveOutputStore(),
-        isolated: Boolean = false, requestReconcile: (BackgroundJobRecord) -> Unit = {})=BackgroundJobManager(
+        isolated: Boolean = false, requestReconcile: (BackgroundJobRecord) -> Unit = {},
+        sessionLimit:Int=MAX_SESSION_RUNNING, globalLimit:Int=MAX_GLOBAL_RUNNING)=BackgroundJobManager(
         scope,store,File(root,"runs"),
         BuiltinCommandRunner(listOf("/usr/bin/perl","-e","setpgrp(0, 0); exec @ARGV or exit 127"),"/bin/sh",ProcessGroupSignaller {pid,signal->ProcessBuilder("/bin/kill","-$signal","-$pid").start().waitFor()}, {File(root,"scratch")},killGraceMillis=100),
         prepareWorkspace={ BackgroundJobLocation(root,root,isolated,false) },
         reconcile=reconcile,requestReconcile=requestReconcile,completion=completion,keepAlive=keepAlive,termux=termux,vault=vault,redactor=vault?.let(::SecretOutputRedactor),liveOutput=live,
         prepareCommand={_,source,stdin,location,minutes -> PreparedBackgroundCommand(BuiltinCommandRequest(listOf("/bin/sh","-c",source),location.commandDirectory,mapOf("PATH" to "/usr/bin:/bin"),stdin,minutes*60)) },
+        sessionRunningLimit=sessionLimit,globalRunningLimit=globalLimit,
     )
 }

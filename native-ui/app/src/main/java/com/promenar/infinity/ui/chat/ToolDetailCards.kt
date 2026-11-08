@@ -1,10 +1,8 @@
 package com.promenar.infinity.ui.chat
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -70,7 +68,6 @@ import kotlinx.coroutines.launch
 internal val LocalPlanCallSnapshots = compositionLocalOf<Map<String, PlanCallSnapshot>> { emptyMap() }
 
 private const val PLAN_CARD_TAG = "CHAT_TOOL_PLAN_CARD"
-private const val PLAN_RAW_TOGGLE_TAG = "CHAT_TOOL_PLAN_RAW_TOGGLE"
 private const val COMMAND_OUTPUT_TAG = "CHAT_TOOL_RESULT"
 private const val JOB_STOP_TAG = "CHAT_TOOL_JOB_STOP"
 private const val FIELDS_ARGUMENTS_TAG = "CHAT_TOOL_FIELDS_ARGUMENTS"
@@ -123,9 +120,9 @@ internal fun toolCardSummaryText(invocations: List<ToolInvocationPresentation>, 
 //  计划卡
 // ─────────────────────────────────────────────────────────────────
 
+/** 计划清单与进度；调用参数与结果原文经工具卡底栏的“完整结果”查看。 */
 @Composable
-internal fun PlanToolCard(model: PlanCardModel, arguments: String?, results: List<String>) {
-    var showRaw by rememberSaveable { mutableStateOf(false) }
+internal fun PlanToolCard(model: PlanCardModel) {
     // 计划卡作为工具卡正文嵌入，容器由 [ToolStepCard] 提供。
     Column(modifier = Modifier.fillMaxWidth().testTag(PLAN_CARD_TAG)) {
         model.rows.forEach { row -> if (row.isGroup) PlanGroupRow(row) else PlanStepRow(row) }
@@ -133,27 +130,13 @@ internal fun PlanToolCard(model: PlanCardModel, arguments: String?, results: Lis
             modifier = Modifier.padding(top = InfinitySpacing.XSmall),
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = if (model.allDone) stringResource(R.string.tool_card_plan_all_done, model.total)
-                    else stringResource(R.string.tool_card_plan_position, model.position, model.total),
-                style = InfinityTypography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            InfinityDisclosureRow(
-                text = stringResource(if (showRaw) R.string.tool_card_raw_hide else R.string.tool_card_raw_show),
-                expanded = showRaw,
-                onClick = { showRaw = !showRaw },
-                modifier = Modifier.padding(start = InfinitySpacing.Small).testTag(PLAN_RAW_TOGGLE_TAG),
-            )
-        }
-        AnimatedVisibility(visible = showRaw) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = InfinitySpacing.XSmall)) {
-                arguments?.takeIf(String::isNotBlank)?.let { ExpandableToolText(text = it, collapsedLines = 6, arguments = true) }
-                results.filter(String::isNotBlank).forEach { ExpandableToolText(text = it, collapsedLines = 12) }
-            }
-        }
+        Text(
+            text = if (model.allDone) stringResource(R.string.tool_card_plan_all_done, model.total)
+                else stringResource(R.string.tool_card_plan_position, model.position, model.total),
+            style = InfinityTypography.labelMedium.copy(fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 

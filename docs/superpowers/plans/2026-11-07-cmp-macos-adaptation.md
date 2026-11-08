@@ -218,7 +218,7 @@ commonMain          纯 Kotlin：domain、模型、设计系统、主题令牌�
 
 | 查看器 | Android | macOS 方案 | 首发 |
 |---|---|---|---|
-| 网页与产物（HTML 产物、画布、多屏原型、Agent 浏览器、Mermaid、ECharts、KaTeX、导出渲染） | 系统 WebView | P0 对比两个候选：① ComposeNativeWebview（原生 WKWebView，轻量，跟随系统更新；但要求整个应用改用 Nucleus Tao 后端启动，侵入窗口体系，也没有发布 Release）；② JetBrains JCEF（Chromium，渲染与 Android WebView 一致；但包体大，macOS aarch64 构建的获取方式【待确认】）。都不理想时，自己写 WKWebView 桥接（JNI + NSView 嵌入 AWT 窗口）【推断可行】。compose-webview-multiplatform 依赖已归档的 KCEF，不考虑 | 是 |
+| 网页与产物（HTML 产物、画布、多屏原型、Agent 浏览器、Mermaid、ECharts、KaTeX、导出渲染） | 系统 WebView | 暂定（2026-11-08，P1 原型验证）：标准 Compose AWT 窗口 + 系统 WKWebView 原生子视图，自写 JNI 桥。网页挂在 `AWTView` 内、图层排在 Compose 之后，Compose 在网页区域透明打洞，弹层可盖住网页；滚动时原生几何推迟 1 帧同步。实测同页内存约 448 MB，与 ComposeNativeWebview 持平，包体增量约 0.1 MB。会话富格式默认由共享隐藏渲染器渲染成图片，点开后换成实时网页。不采用 ComposeNativeWebview（要求整个应用改用 Nucleus Tao 后端）与 JCEF（包体增加 300 MB 以上）。该方案只覆盖 macOS，Windows/Linux 另写 | 是 |
 | 终端 | Termux `TerminalView` | 自绘 Compose 终端渲染器，终端解析核心移植自 Termux `terminal-emulator`，见下方“终端分层” | 是 |
 | diff | 差异视图组件 | 共享实现；桌面加并排对比和文件树 | 是 |
 | 代码 | markdown-renderer-code 高亮 | 共享实现；桌面加行号、搜索和折叠 | 是 |
@@ -385,7 +385,7 @@ commonMain          纯 Kotlin：domain、模型、设计系统、主题令牌�
 | Room 从 alpha 升到 2.8.5，破坏迁移链或双数据库恢复 | 高 | P0-A 单独一次提交，跑 v18→v36 迁移测试，真机覆盖安装回归 |
 | 宿主 shell 的 Seatbelt 策略过严或过松 | 高 | 默认工作区可写、拒读密钥目录；用真实开发工作流调策略；完全访问档要用户明确开启 |
 | `sandbox-exec` 已被标为 DEPRECATED，将来可能被移除 | 中 | 关注 Codex CLI 与 sandbox-runtime 的动向；退路是 Apple `container` 或只保留路径白名单加审批 |
-| 桌面网页查看器没有成熟方案（KCEF 已归档；原生 WKWebView 方案侵入应用启动方式；JCEF 包体大） | 中 | P0-B 对比两个候选；必要时自己写 WKWebView 桥接 |
+| 自写 WKWebView 桥接的维护成本与时序风险：原生加 Kotlin 约 1.1–1.6 千行；系统负载高时滚动同步对齐率下降 | 中 | 正式开发早期在常规负载下复测滚动同步；评估 `presentsWithTransaction` 让 Compose 帧与原生几何同一事务提交；会话列表默认显示快照 |
 | 增量备份格式与现有全量包、密钥层不兼容 | 中 | 先出方案文档；旧包继续能导入；增量链要能校验和回滚 |
 | 搬迁提交过大，导致 Release 包的 R8 运行时问题 | 中 | 搬迁当轮跑 minified 黑盒，consumer rules 随代码一起迁移 |
 | 截图基线因依赖升级或资源迁移大面积漂移 | 中 | 预览确认后一次更新；视觉改动与迁移分开提交 |
@@ -399,7 +399,7 @@ commonMain          纯 Kotlin：domain、模型、设计系统、主题令牌�
 2. 【待确认】`jvmSharedMain` 方案是否可行（P0-B-2）。
 3. 【待确认】navigation-compose、Compose 在 `:shared` 与 `:app` 之间最终解析的版本（P0-B-3）。
 4. 【待确认】Skia `RuntimeEffect` 与 Compose `ShaderBrush` 怎样衔接（P0-B-6）。
-5. 【待确认】网页查看器选 ComposeNativeWebview 还是 JCEF；JCEF macOS aarch64 构建从哪里获取，许可证是什么（P0-B-7）。
+5. 【待确认】网页查看器（暂定自写 WKWebView 桥接）在常规负载下的滚动同步对齐率；Tab 焦点交接、网页卡片上的滚轮归属、隐藏渲染器按阈值回收的实现方式（P1 原型遗留）。
 6. 【待确认】Compose 自绘终端在大量输出与全屏 TUI 下的帧率（P0-B）；Termux 解析核心转 Kotlin 后的回归用例覆盖（P3 前）；桌面 PTY 方案（pty4j 或自写 JNI/FFM 调用 `forkpty`）的当前版本与 macOS arm64 支持（P4 前）。
 7. 【待确认】Seatbelt 策略能否覆盖 git、Homebrew、npm、gradle 这类常用工具链（P0-B-8 之后，在 P4 用真实工作流调整）。
 8. 【待确认】开发期构建在 TCC 和钥匙串授权上的实际表现（P4 实测）。

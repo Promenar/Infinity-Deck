@@ -34,6 +34,26 @@ class SubagentControlSkillTest {
         }
         assertThat(calls).hasSize(3)
     }
+    @Test fun `会话读取和检索默认使用当前会话并校验参数`() = runTest {
+        val seen = mutableListOf<String>()
+        val handler = object : SessionAddressHandler {
+            override fun accepts(id: String) = true
+            override suspend fun execute(operation: String, id: String, args: JsonObject, context: SkillExecutionContext): String {
+                seen += id
+                return "ok"
+            }
+        }
+        val read = SessionSubagentSkill("session_read", listOf(handler))
+        val search = SessionSubagentSkill("session_search", listOf(handler))
+        assertThat(read.execute(buildJsonObject {}, context).status).isEqualTo("success")
+        assertThat(search.execute(buildJsonObject { put("query", "关键词") }, context).status).isEqualTo("success")
+        assertThat(seen).containsExactly("parent", "parent")
+        assertThat(read.execute(buildJsonObject { put("before", "a"); put("after", "b") }, context).status).isEqualTo("error")
+        assertThat(read.execute(buildJsonObject { put("limit", 101) }, context).status).isEqualTo("error")
+        assertThat(search.execute(buildJsonObject { put("query", "") }, context).status).isEqualTo("error")
+        assertThat(search.execute(buildJsonObject { put("query", "x"); put("role", "system") }, context).status).isEqualTo("error")
+        assertThat(search.execute(buildJsonObject { put("id", "sa_123abc"); put("query", "x") }, context).status).isEqualTo("error")
+    }
     @Test fun `派生参数校验正轮数有限超时和布尔后台选项`() {
         val skill = AgentTaskSkill { error("parse不得启动运行器") }
         fun parse(extra: String) = skill.parse(Json.parseToJsonElement("""{"tasks":[{"description":"任务","prompt":"任务"}],$extra}""").jsonObject)

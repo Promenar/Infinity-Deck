@@ -72,6 +72,7 @@
         <item quantity="other">%1$d 处改动</item>
     </plurals>
     <string name="fm_git_view">查看变更</string>
+    <string name="fm_git_clean">无改动</string>
 
     <!-- 资料状态 -->
     <string name="fm_knowledge_none">未加入资料</string>

@@ -40,7 +40,7 @@
     <string name="subagent_elapsed_minutes">%1$d 分 %2$d 秒</string>
     <string name="subagent_tokens">%1$s Token</string>
     <string name="skill_agent_task">子代理</string>
-    <string name="skill_agent_task_desc">把最多 3 个子任务交给子代理并行处理，会额外消耗调用次数</string>
+    <string name="skill_agent_task_desc">把最多 8 个子任务交给子代理并行处理，会额外消耗调用次数</string>
     <string name="subagent_approval_session_label">会话</string>
     <string name="subagent_approval_task_label">任务</string>
     <string name="subagent_status_failed_elapsed">失败 · %1$s</string>
@@ -70,4 +70,10 @@
     <string name="subagent_event_detach_parent">主会话本轮结束 · 子代理继续 · %1$s</string>
     <string name="subagent_event_stop_user">你停止了子代理 · %1$s</string>
     <string name="subagent_event_stop_parent">主会话停止了子代理 · %1$s</string>
+    <string name="subagent_retry">%1$s，%2$d 秒后第 %3$d 次重试</string>
+    <string name="subagent_retry_rate_limit">限流</string>
+    <string name="subagent_retry_network">网络错误</string>
+    <string name="subagent_retry_timeout">超时</string>
+    <string name="subagent_retry_server">服务器错误</string>
+    <string name="subagent_retry_unknown">请求中断</string>
 </resources>

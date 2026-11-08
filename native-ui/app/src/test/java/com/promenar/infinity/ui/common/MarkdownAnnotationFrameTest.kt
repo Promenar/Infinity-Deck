@@ -95,7 +95,7 @@ class MarkdownAnnotationFrameTest {
 
     @Composable
     private fun AnnotatedProbe(content: String, node: ASTNode, onAnnotated: (String) -> Unit) {
-        val settings = DefaultAnnotatorSettings(TextLinkStyles(), SpanStyle(), LocalMarkdownAnnotator.current)
+        val settings = DefaultAnnotatorSettings(TextLinkStyles(), SpanStyle(), LocalMarkdownAnnotator.current, highlightSpanStyle = SpanStyle())
         val annotated = content.buildMarkdownAnnotatedString(node, TextStyle.Default, settings)
         onAnnotated(annotated.text)
     }

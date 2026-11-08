@@ -28,6 +28,37 @@ class SubagentAddressHandler(private val launcher: () -> SubagentLauncher,
     override suspend fun execute(operation: String, id: String, args: JsonObject, context: SkillExecutionContext): String {
         require(context.sourceSubagentId == null) { "子代理只能与自己的主会话通信" }
         val runtime = launcher()
+        if (operation == "session_read" && listOf("before", "after", "limit").any { it in args }) {
+            val history = runtime.readHistory(context.sessionId, id)
+            val before = args["before"]?.jsonPrimitive?.content
+            val after = args["after"]?.jsonPrimitive?.content
+            val cursor = (before ?: after)?.let { value ->
+                val index = value.toIntOrNull()
+                require(index != null && index in history.indices && index.toString() == value) { "游标无效" }
+                index
+            }
+            val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 40
+            val start = if (after != null) cursor!! + 1 else 0
+            val end = if (before != null) cursor!! else history.size
+            val pageStart = if (after != null) start else (end - limit).coerceAtLeast(start)
+            val pageEnd = if (after != null) (start + limit).coerceAtMost(end) else end
+            return buildJsonObject {
+                put("id", id)
+                put("has_more_before", pageStart > 0)
+                put("has_more_after", pageEnd < history.size)
+                put("messages", buildJsonArray {
+                    for (index in pageStart until pageEnd) {
+                        val message = history[index]
+                        add(buildJsonObject {
+                            put("index", index.toString()); put("role", message.role); put("content", message.content.take(8_000))
+                            put("tool_calls", buildJsonArray { message.toolCalls.orEmpty().forEach { call ->
+                                add(buildJsonObject { put("name", call.name); put("arguments", call.arguments.take(500)) })
+                            } })
+                        })
+                    }
+                })
+            }.toString()
+        }
         val run = when (operation) {
             "session_send" -> runtime.send(context.sessionId, id, args["message"]!!.jsonPrimitive.content,
                 args["wrapUp"]?.jsonPrimitive?.booleanOrNull ?: false)
@@ -49,22 +80,32 @@ class SessionSubagentSkill(
     override val name: String,
     private val handlers: List<SessionAddressHandler>,
 ) : SkillDefinition {
-    init { require(name in setOf("session_read", "session_send", "session_stop")) }
+    init { require(name in setOf("session_read", "session_search", "session_send", "session_stop")) }
     override val id = name
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SESSION_STATE
     override val description = when (name) {
         "session_read" -> "读取家族会话或本会话子代理的状态与最近记录。同一智能体其它会话的读取每次需批准，其它智能体的会话不可见。"
+        "session_search" -> "按关键词检索会话原始消息，同一智能体其它会话的读取每次需批准。"
         "session_send" -> "向主会话或本会话的分支、子代理发消息；wrapUp=true 请求收尾并交回结论。其它会话不能发送。停止的子代理不能恢复。"
         else -> "立即停止本会话分支当前一轮生成或本会话子代理；不删除会话。分支不能停止主会话。"
     }
-    override val parametersSchema = if (name == "session_send") """{
-        "type":"object","properties":{"id":{"type":"string"},"message":{"type":"string"},"wrapUp":{"type":"boolean"}},
-        "required":["id","message"],"additionalProperties":false
-    }""" else """{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}"""
+    override val parametersSchema = when (name) {
+        "session_send" -> """{"type":"object","properties":{"id":{"type":"string"},"message":{"type":"string"},"wrapUp":{"type":"boolean"}},"required":["id","message"],"additionalProperties":false}"""
+        "session_read" -> """{"type":"object","properties":{"id":{"type":"string"},"before":{"type":"string","description":"消息 ID，取其之前的消息"},"after":{"type":"string","description":"消息 ID，取其之后的消息"},"limit":{"type":"integer","description":"1–100，默认 40"}},"additionalProperties":false}"""
+        "session_search" -> """{"type":"object","properties":{"id":{"type":"string"},"query":{"type":"string","description":"1–200 个字符"},"role":{"type":"string","enum":["user","assistant","tool"]},"limit":{"type":"integer","description":"1–50，默认 20"}},"required":["query"],"additionalProperties":false}"""
+        else -> """{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}"""
+    }
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
         if (ToolSchemaValidator().validate(parametersSchema, args) is ToolSchemaValidation.Invalid) return result("Invalid $name arguments.", false)
-        val id = args["id"]!!.jsonPrimitive.content
+        val limit = args["limit"]?.jsonPrimitive?.intOrNull
+        val query = args["query"]?.jsonPrimitive?.content.orEmpty()
+        if (args["limit"] != null && (limit == null || limit !in 1..(if (name == "session_search") 50 else 100)) ||
+            args["before"] != null && args["after"] != null ||
+            name == "session_search" && (query.codePointCount(0, query.length) !in 1..200 ||
+                args["role"]?.jsonPrimitive?.content?.let { it !in setOf("user", "assistant", "tool") } == true)) return result("Invalid $name arguments.", false)
+        val id = args["id"]?.jsonPrimitive?.content ?: context.sessionId
+        if (name == "session_search" && id.startsWith("sa_")) return result("子代理记录请使用 session_read 翻页", false)
         val handler = handlers.firstOrNull { it.accepts(id) } ?: return result("未找到该会话或子代理", false)
         return try { result(handler.execute(name, id, args, context), true) }
         catch (failure: IllegalArgumentException) { result(failure.message ?: "子代理参数无效", false) }

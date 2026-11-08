@@ -39,6 +39,7 @@ class ImageGenerationSkill(
     private val mediaDownloader: WorkspaceMediaDownloader? = null,
     private val providerRequestRouter: ProviderRequestRouter = DefaultProviderRequestRouter(providerManager),
     private val mediaResolver: WorkspaceMediaResolver? = mediaStore as? WorkspaceMediaResolver,
+    private val jobs: com.promenar.infinity.data.jobs.BackgroundJobManager? = null,
     private val imageGenClientFactory: (baseUrl: String, apiKey: String, modelId: String) -> ImageGenClient =
         { baseUrl, apiKey, modelId -> ImageGenClient(baseUrl = baseUrl, apiKey = apiKey, model = modelId) },
 ) : SkillDefinition {
@@ -100,6 +101,10 @@ class ImageGenerationSkill(
                     "type": "string",
                     "description": "工作区透明底 PNG 标注路径，小于 4 MiB，尺寸与 images 第一张相同；仅编辑时与 images 同用，不能与 mask 同时提供；仅 GPT Image 2.5 系列支持。"
                 },
+                "yield_after_seconds": {"type":"integer","description":"默认 20 秒让出；0 不让出，上限为最长运行秒数。"},
+                "run_in_background": {"type":"boolean","description":"立即转后台并返回任务号，默认 false；background 控制图片背景。"},
+                "on_exit": {"type":"string","enum":["none","notify","wake"],"description":"后台结束处理，默认 wake。"},
+                "max_runtime_minutes": {"type":"integer","description":"最长运行 1–60 分钟，默认 10。"},
                 "input_fidelity": {
                     "type": "string", "enum": ["high", "low"],
                     "description": "仅编辑且仅部分模型支持。默认不发送；gpt-image-2 应省略。"
@@ -109,10 +114,14 @@ class ImageGenerationSkill(
         }
     """.trimIndent()
 
-    override suspend fun execute(
-        args: JsonObject,
-        context: SkillExecutionContext
-    ): ToolResult {
+    override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
+        return runMediaJob(id, args, context, jobs, 20, "wake", "run_in_background", "生成图片") { output ->
+            executeImage(args, context, output)
+        }
+    }
+
+    private suspend fun executeImage(args: JsonObject, context: SkillExecutionContext,
+        output: com.promenar.infinity.domain.tool.ToolLiveOutputSink): ToolResult {
         val resultId = "img_${UUID.randomUUID().toString().take(8)}"
 
         val request = try {
@@ -128,6 +137,7 @@ class ImageGenerationSkill(
             return ToolResult(id = resultId, content = "Image generation not configured: no image model selected. Please select an image model in Settings → Default Image Model.", status = "error")
         }
 
+        output.emit(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, "正在生成 ${request.requested.n ?: 1} 张图片\n")
         return try {
             val (remoteModelId, inputs, result) = withContext(Dispatchers.IO) {
                 val inputs = if (request.images.isEmpty()) null else ImageGenerationInputReader(
@@ -169,6 +179,7 @@ class ImageGenerationSkill(
                             else -> throw WorkspaceMediaException("IMAGE_MISSING", "生图结果没有 URL 或 base64 图片")
                         }
                         saved += ref
+                        output.emit(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, "已保存 ${saved.size} 张\n")
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {

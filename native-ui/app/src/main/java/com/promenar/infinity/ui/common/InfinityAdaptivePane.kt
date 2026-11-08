@@ -85,8 +85,8 @@ internal val InfinityInspectorWideWidth = 560.dp
 /** 检视器距窗口右缘与距让位后主内容的间距之和。 */
 internal val InfinityInspectorGutter = 24.dp
 
-/** 让位后主内容至少保留的宽度；达不到时检视器浮在主内容之上，主内容不动。 */
-internal val InfinityInspectorMinMainWidth = 480.dp
+/** 让位后主内容至少保留的宽度（约一台手机的会话列）；折叠屏内屏默认宽度可让位，加宽后达不到时检视器浮在主内容之上。 */
+internal val InfinityInspectorMinMainWidth = 320.dp
 
 enum class InfinityInspectorPlacement { Shift, Float }
 

@@ -155,7 +155,7 @@ class HeadlessGenerationResumerTest {
         val entered = mutableListOf<String>()
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { request, _ -> entered += request.sessionId; awaitCancellation() }
-        })
+        }, maxConcurrent = 4)
         val fixture = fixture(coordinator)
         val prompt = fixture.prompt("target")
         (1..4).forEach { coordinator.start(request("busy-$it")) }
@@ -260,7 +260,7 @@ class HeadlessGenerationResumerTest {
                     emit(GenerationEvent.PhaseChanged(GenerationPhase.WAITING_APPROVAL))
                 }
             }
-        })
+        }, maxConcurrent = 4)
         val fixture = fixture(coordinator)
         interactions = fixture.interactions
         val old = fixture.prompt("target")
@@ -305,7 +305,7 @@ class HeadlessGenerationResumerTest {
         }
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { _, _ -> awaitCancellation() }
-        }, executionGate = gate)
+        }, executionGate = gate, maxConcurrent = 4)
         val loaded = CompletableDeferred<Unit>()
         val returnSnapshot = CompletableDeferred<Unit>()
         val resumer = HeadlessGenerationResumer(store, interactions, coordinator,
@@ -363,7 +363,7 @@ class HeadlessGenerationResumerTest {
 
     private fun TestScope.coordinator() = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
         GenerationRunner { _, _ -> awaitCancellation() }
-    })
+    }, maxConcurrent = 4)
 
     private fun TestScope.fixture(coordinator: GenerationCoordinator = coordinator()): Fixture {
         val app = InfinityApplication()

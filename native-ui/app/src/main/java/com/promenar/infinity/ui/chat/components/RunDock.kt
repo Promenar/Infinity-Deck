@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -192,7 +191,7 @@ private fun RunDockJobsRing(count: Int, spinning: Boolean) {
 internal enum class RunDockScopeMode {
     /** 生成中或等待审批：按生成阶段实时绘制。 */
     LIVE,
-    /** 计划完成：完成闪绿后停在本轮波形，数字区为本轮平均速率。 */
+    /** 计划完成：停在本轮波形，数字区为本轮平均速率。 */
     REST,
     /** 已暂停：停在本轮波形并调暗。 */
     PAUSED,
@@ -212,7 +211,7 @@ private val RunDockScopeHeight = 30.dp
 
 /**
  * 运行坞右侧的点阵波形屏：常驻一层熄灭的底格，屏的位置不会因状态切换空出来；生成中按阶段绘制（等待审批时“!”慢闪、
- * 波形区为静止的第三色基线），计划完成时先随浮岛闪绿再停在本轮波形，暂停时停在本轮波形并调暗。
+ * 波形区为静止的第三色基线），计划完成时停在本轮波形，暂停时停在本轮波形并调暗。
  * 生成进度与时钟取自浮岛的 [LocalComposerGlow]，并把自己的中心回报给浮岛作为环境光柔光的中心。纯装饰，不进入无障碍树。
  */
 @Composable
@@ -222,7 +221,6 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
     val digits = LocalInfinityMotionStyles.current.scopeDigits
     val palette = rememberMotionPalette()
     val painter = remember { ComposerLightsPainter() }
-    val successColor = MaterialTheme.infinityDomainColors.signalOn
     // 待批准的“!”与盾牌同用警示色，不随主题第二灯色变化。
     val approvalColors = listOf(palette.a, MaterialTheme.infinityDomainColors.warning)
     if (glow != null) {
@@ -244,7 +242,6 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
         val sy = (size.height - (rows * pitch + 2 * inset)) / 2
         // 没有浮岛状态（单独预览运行坞）时，生成中按满幅显示。
         val gen = glow?.generating?.value ?: if (mode == RunDockScopeMode.LIVE) 1f else 0f
-        val success = glow?.success?.value ?: 0f
         val time = glow?.timeSeconds ?: 0f
         drawIntoCanvas { canvas ->
             val native = canvas.nativeCanvas
@@ -258,15 +255,14 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
                 )
             }
             val rest = when (mode) {
-                RunDockScopeMode.REST -> 0.8f + 0.2f * success
+                RunDockScopeMode.REST -> 0.8f
                 RunDockScopeMode.PAUSED -> 0.4f
                 else -> 0f
             } * (1f - gen)
             if (rest > 0.004f) {
-                val colors = if (success > 0f) listOf(lerp(palette.a, successColor, success), palette.b) else palette.leds
                 drawScopeFrame(
                     native, k, sx, sy, cols, rows, GenerationMotionPhase.STREAM, rest, time, motion, palette, painter, digits,
-                    rest = true, colors = colors, drawOff = false,
+                    rest = true, drawOff = false,
                 )
             }
         }

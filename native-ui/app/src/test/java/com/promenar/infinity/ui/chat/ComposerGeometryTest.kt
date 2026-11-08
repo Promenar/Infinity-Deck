@@ -15,6 +15,17 @@ class ComposerGeometryTest {
     }
 
     @Test
+    fun `各档浮岛外圈都与发送键同心，默认档等于正式界面`() {
+        ComposerIslandVariant.entries.forEach { variant ->
+            val style = variant.style
+            val sendRadius = style.sendCorner?.value ?: (ChatCompactIconSize.value / 2)
+            assertThat(style.corner.value).isEqualTo(sendRadius + ComposerToolbarInset.value)
+        }
+        assertThat(ComposerIslandVariant.CURRENT.style).isEqualTo(ComposerIslandStyle())
+        assertThat(ComposerIslandStyle().corner).isEqualTo(ComposerIslandCorner)
+    }
+
+    @Test
     fun `输入正文左缘与加号笔画左缘对齐`() {
         // 8dp 工具行留白 + (40 - 22) / 2 图标留白 + 22 × 5/24 起笔留白。
         assertThat(ComposerTextInset.value).isWithin(1e-3f).of(8f + 9f + 22f * 5f / 24f)

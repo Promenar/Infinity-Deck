@@ -370,8 +370,8 @@ android {
         applicationId = "com.promenar.infinity"
         minSdk = 31
         targetSdk = 36
-        versionCode = 94
-        versionName = "0.34.0-beta"
+        versionCode = 103
+        versionName = "0.37.0-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PACKAGED_PYTHON_VERSION", "\"$packagedPythonVersion\"")
@@ -575,7 +575,7 @@ ksp {
 }
 
 dependencies {
-    implementation("io.github.dokar3:quickjs-kt-android:1.0.15")
+    implementation("io.github.dokar3:quickjs-kt:1.0.17")
     // ─── Jetpack Compose BOM ───
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
@@ -594,9 +594,9 @@ dependencies {
     // InfinityBackScope 直接替换返回调度器；版本与 activity-compose 1.13.0 解析结果一致。
     implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
     implementation("androidx.navigation:navigation-compose:2.10.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.11.0")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.webkit:webkit:1.18.0")
@@ -612,28 +612,25 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
 
     // ─── 序列化 (Multiplatform-Ready) ───
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     // ─── 协程 ───
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // ─── 图片 (Multiplatform-Ready) ───
-    implementation("io.coil-kt.coil3:coil:3.0.0")
-    implementation("io.coil-kt.coil3:coil-compose:3.0.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.0")
-    implementation("io.coil-kt.coil3:coil-video:3.0.0")
-    implementation("io.coil-kt.coil3:coil-svg:3.0.0")
+    implementation("io.coil-kt.coil3:coil:3.6.3")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+    implementation("io.coil-kt.coil3:coil-video:3.6.3")
+    implementation("io.coil-kt.coil3:coil-svg:3.6.3")
 
     // ─── 音视频播放（会话内工作区媒体） ───
     val media3Version = "1.11.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui-compose-material3:$media3Version")
 
-    // ─── 数据存储 (Multiplatform-Ready) ───
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-
     // ─── Room (SQLite ORM) ───
-    val roomVersion = "2.7.0-alpha11"
+    val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
@@ -642,8 +639,8 @@ dependencies {
 
     // ─── Markdown 渲染 ───
     // 会话自包含 HTML 导出直接使用已在渲染器运行时类路径中的 Markdown 解析器。
-    implementation("org.jetbrains:markdown:0.7.3")
-    val markdownRendererVersion = "0.41.0"
+    implementation("org.jetbrains:markdown:0.7.17")
+    val markdownRendererVersion = "0.46.0"
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:$markdownRendererVersion")
     implementation("com.mikepenz:multiplatform-markdown-renderer-coil3:$markdownRendererVersion")
     implementation("com.mikepenz:multiplatform-markdown-renderer-code:$markdownRendererVersion")
@@ -699,7 +696,7 @@ dependencies {
 configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
     resolutionStrategy.dependencySubstitution {
         substitute(module("io.github.dokar3:quickjs-kt-android"))
-            .using(module("io.github.dokar3:quickjs-kt-jvm:1.0.15"))
+            .using(module("io.github.dokar3:quickjs-kt-jvm:1.0.17"))
     }
 }
 

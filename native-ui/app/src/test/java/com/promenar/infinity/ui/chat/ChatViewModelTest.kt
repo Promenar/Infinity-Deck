@@ -294,10 +294,10 @@ class ChatViewModelTest {
         }
     }
 
-    @Test fun `四会话占满时回答提问只排队一次且空位后续跑`() = runTest {
+    @Test fun `名额占满时回答提问只排队一次且空位后续跑`() = runTest {
         holdStreamOpen = true
         fakeStreamChunks = listOf(StreamChunk.TextDelta("处理中"))
-        repeat(4) { index ->
+        repeat(com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS) { index ->
             val id = "question-busy-$index"
             seedSession(id, messages = listOf(
                 Message("u-$id", MessageRole.USER, "占用名额"),
@@ -308,12 +308,12 @@ class ChatViewModelTest {
                 com.promenar.infinity.domain.generation.GenerationRuntimePolicy.BACKGROUND_ALLOWED,
             ))
         }
-        awaitReal { protocolRequestCount == 4 }
+        awaitReal { protocolRequestCount == com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS }
         val question = seedAskUser("question-queued")
         assertThat(viewModel.answerQuestion(question, com.promenar.infinity.domain.ask.AskUserAnswer(other = "采用甲方案"))).isTrue()
         awaitReal { generationCoordinator.observe(question.sessionId).value?.phase == com.promenar.infinity.domain.generation.GenerationPhase.QUEUED }
         val queued = generationCoordinator.observe(question.sessionId).value!!
-        assertThat(protocolRequestCount).isEqualTo(4)
+        assertThat(protocolRequestCount).isEqualTo(com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS)
         assertThat(viewModel.answerQuestion(question, com.promenar.infinity.domain.ask.AskUserAnswer(skipped = true))).isFalse()
         viewModel.loadSession("question-busy-1")
         viewModel.loadSession(question.sessionId)
@@ -321,7 +321,7 @@ class ChatViewModelTest {
         assertThat(generationCoordinator.observe(question.sessionId).value?.taskId).isEqualTo(queued.taskId)
         assertThat(generationCoordinator.sessions.value.values.count { it.sessionId == question.sessionId }).isEqualTo(1)
         generationCoordinator.cancel(generationCoordinator.observe("question-busy-0").value!!.taskId)
-        awaitReal { protocolRequestCount == 5 }
+        awaitReal { protocolRequestCount == com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS + 1 }
         assertThat(generationCoordinator.observe(question.sessionId).value?.phase)
             .isEqualTo(com.promenar.infinity.domain.generation.GenerationPhase.STREAMING)
         assertThat(lastPromptRequest!!.messages.first { it.role == "tool" && it.toolCallId == question.toolCallId }.content)
@@ -1824,7 +1824,7 @@ class ChatViewModelTest {
             .putInt("model_info_gpt-4o_context", 128_000).commit()
         fakeStreamChunks = listOf(StreamChunk.TextDelta("正在运行"))
         holdStreamOpen = true
-        (1..4).forEach { index ->
+        (1..com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS).forEach { index ->
             seedSession("occupied-$index")
             advanceUntilIdle()
             viewModel.sendMessage("占用 $index")

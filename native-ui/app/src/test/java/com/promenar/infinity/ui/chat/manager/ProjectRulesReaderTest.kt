@@ -148,4 +148,17 @@ class ProjectRulesReaderTest {
         assertThat(normalized.joinToString("") { it.content }).isEqualTo(
             com.promenar.infinity.data.generation.replaceHistorySummary(result.finalSystemPrompt, "历史摘要", "历史摘要"))
     }
+    @Test fun `摘要取回提示按工具可用性显示且替换后保留`() = runTest {
+        val params = ContextBuilderParams("s", "输入", assistantMsgId = "a",
+            session = com.promenar.infinity.data.model.Session("s", "agent", summary = "历史摘要"),
+            availableToolNames = setOf("session_read", "session_search"))
+        val prompt = ContextBuilder().buildContext(params).finalSystemPrompt
+        val updated = com.promenar.infinity.data.generation.replaceHistorySummary(prompt, "新摘要", "历史摘要")
+        assertThat(updated.split("Summarized turns are archived").size).isEqualTo(2)
+        assertThat(updated).contains("<history_summary>\n新摘要\n</history_summary>")
+        assertThat(updated).contains("session_search")
+        val noSearch = ContextBuilder().buildContext(params.copy(availableToolNames = setOf("session_read"))).finalSystemPrompt
+        assertThat(noSearch).doesNotContain("Summarized turns are archived")
+    }
+
 }

@@ -1,7 +1,6 @@
 package com.promenar.infinity.ui.chat
 
 import com.google.common.truth.Truth.assertThat
-import com.google.common.truth.Truth.assertWithMessage
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.ExecutionStep
 import com.promenar.infinity.data.model.Message
@@ -282,10 +281,33 @@ class ToolDetailModelsTest {
         assertThat(toolFieldRows(null)).isNull()
     }
 
-    @Test fun `已有专用展示的工具不做字段化`() {
-        listOf("shell_exec", "job_status", "patch_file", "sftp_upload", "browser_open", "knowledge_search", "memory_save", "agent_task")
-            .forEach { assertWithMessage(it).that(usesFieldFallback(it)).isFalse() }
-        listOf("web_fetch", "mcp__github__search", "update_plan", "current_time", "read_file")
-            .forEach { assertWithMessage(it).that(usesFieldFallback(it)).isTrue() }
+    // ── 完整结果原文 ──
+
+    private val notice = com.promenar.infinity.data.browser.BROWSER_UNTRUSTED_NOTICE
+
+    @Test fun `完整结果按缩进排版JSON并去掉浏览器不可信声明`() {
+        val raw = toolRawText("""{"goal":"g","tree":[{"id":"s1"}]}""", listOf("$notice\n385", """{"currentFocusStepId":"s1"}"""))!!
+        assertThat(raw.arguments).isEqualTo("{\n    \"goal\": \"g\",\n    \"tree\": [\n        {\n            \"id\": \"s1\"\n        }\n    ]\n}")
+        assertThat(raw.results).containsExactly("385", "{\n    \"currentFocusStepId\": \"s1\"\n}").inOrder()
+    }
+
+    @Test fun `非JSON原文保持原样且全空时没有完整结果`() {
+        assertThat(toolRawText("parameter", listOf("找到 3 条结果", "{不是 JSON"))).isEqualTo(ToolRawText("parameter", listOf("找到 3 条结果", "{不是 JSON")))
+        assertThat(toolRawText(" ", listOf("", notice))).isNull()
+        assertThat(toolRawText(null, emptyList())).isNull()
+    }
+
+    @Test fun `命令卡只取命令或代码本身`() {
+        assertThat(commandArgumentText("""{"command":"ls -la","timeout_seconds":30}""")).isEqualTo("ls -la")
+        assertThat(commandArgumentText("""{"code":"print(1)"}""")).isEqualTo("print(1)")
+        assertThat(commandArgumentText("""{"job_id":"j1"}""")).isNull()
+        assertThat(commandArgumentText("ls")).isNull()
+    }
+
+    @Test fun `识别合法JSON对象与数组`() {
+        assertThat(looksLikeJson("""[{"title":"a"}]""")).isTrue()
+        assertThat(looksLikeJson(""" {"a":1} """)).isTrue()
+        assertThat(looksLikeJson("{不是 JSON")).isFalse()
+        assertThat(looksLikeJson("42")).isFalse()
     }
 }

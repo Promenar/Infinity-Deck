@@ -36,6 +36,18 @@
 
     <string name="lab_node_chat">对话</string>
     <string name="lab_node_conversation">会话页</string>
+    <string name="lab_node_composer">浮岛质感</string>
+    <string name="lab_v_composer_empty">空会话</string>
+    <string name="lab_v_composer_empty_desc">粒子字标与空闲浮岛，三档浮岛可切换</string>
+    <string name="lab_v_composer_idle">长对话空闲</string>
+    <string name="lab_v_composer_idle_desc">长对话结束后的空闲浮岛，三档浮岛可切换</string>
+    <string name="lab_v_composer_streaming">流式输出</string>
+    <string name="lab_v_composer_streaming_desc">正文流式输出中的描边流光，三档浮岛可切换</string>
+    <string name="lab_v_composer_tools">执行工具</string>
+    <string name="lab_v_composer_tools_desc">运行坞展开、计划进行中，三档浮岛可切换</string>
+    <string name="lab_composer_current">现状</string>
+    <string name="lab_composer_square">方钮</string>
+    <string name="lab_composer_layered">分层</string>
     <string name="lab_node_inspector">检查器</string>
     <string name="lab_node_terminal">终端</string>
 

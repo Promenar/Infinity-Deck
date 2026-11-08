@@ -177,6 +177,8 @@ internal data class ToolGroupSummary(
     val durationMs: Long?,
     val runningAction: ToolSummaryAction? = null,
     val pendingCount: Int = 0,
+    /** 超时转入后台、产出尚未回来的调用数。 */
+    val backgroundedCount: Int = 0,
 ) {
     val categories: List<ToolSummaryCategory> get() = parts.map { it.action.category }.distinct()
     val isFileEditOnly: Boolean get() = categories == listOf(ToolSummaryCategory.FILE_EDIT)
@@ -219,10 +221,23 @@ internal fun toolSummaryAction(name: String?): ToolSummaryAction = when (name) {
 internal fun toolSummaryWeight(action: ToolSummaryAction, invocation: ToolInvocationPresentation): Int {
     if (action == ToolSummaryAction.SUBAGENT) return subagentTaskCount(invocation.call?.toolArgs)
     if (action != ToolSummaryAction.IMAGE && action != ToolSummaryAction.MEDIA_VIEW && action != ToolSummaryAction.MEDIA_FETCH) return 1
-    if (invocation.failed) return 0
+    if (invocation.failed || backgroundedJobId(invocation) != null) return 0
     val media = invocation.results.filter { it.type == "tool_result" }.flatMap { it.media.orEmpty() }
     val counted = if (action == ToolSummaryAction.IMAGE) media.count { it.kind == com.promenar.infinity.domain.media.MediaKind.IMAGE } else media.size
     return counted.takeIf { it > 0 } ?: 1
+}
+
+/** 超时转入后台的生图与媒体下载：成功结果是任务开始 JSON、没有媒体时返回任务号，产出由任务结束后的结果给出。 */
+internal fun backgroundedJobId(invocation: ToolInvocationPresentation): String? {
+    val action = toolSummaryAction(invocation.name)
+    if (action != ToolSummaryAction.IMAGE && action != ToolSummaryAction.MEDIA_FETCH) return null
+    if (!invocation.complete || invocation.failed) return null
+    val success = invocation.results.filter { it.type == "tool_result" }
+    if (success.any { !it.media.isNullOrEmpty() }) return null
+    return success.firstNotNullOfOrNull { result ->
+        val root = runCatching { Json.parseToJsonElement(result.content.orEmpty()) as? JsonObject }.getOrNull()
+        root?.takeIf { "state" in it }?.let { (it["job_id"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }
+    }
 }
 
 /** 摘要保留类别首次出现顺序；同一类别中的检索、实用与媒体动作分别计数。 */
@@ -249,6 +264,7 @@ internal fun toolGroupSummary(invocations: List<ToolInvocationPresentation>): To
         durationMs = toolGroupDurationMs(invocations),
         runningAction = unfinished?.let { toolSummaryAction(it.name) },
         pendingCount = invocations.count { !it.complete },
+        backgroundedCount = invocations.count { backgroundedJobId(it) != null },
     )
 }
 

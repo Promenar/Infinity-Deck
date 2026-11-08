@@ -194,23 +194,36 @@ internal fun ToolArgumentsPreview(rows: List<ToolFieldRow>) {
     )
 }
 
-/** 完整结果面板：原样显示给模型的结果文本，可选中复制。 */
+/** 完整结果面板：给模型的参数与结果原文，分段显示，可选中复制。 */
 @Composable
-internal fun ToolFullResultSheet(text: String?, onDismiss: () -> Unit) {
+internal fun ToolFullResultSheet(text: ToolRawText?, onDismiss: () -> Unit) {
     InfinityBottomSheet(
         show = text != null,
         onDismiss = onDismiss,
         title = stringResource(R.string.tool_step_full_result),
         scrollContent = true,
     ) {
+        val sections = buildList {
+            text?.arguments?.let { add(R.string.tool_card_fields_arguments to it) }
+            text?.results?.forEach { add(R.string.tool_card_fields_result to it) }
+        }
         SelectionContainer {
-            Text(
-                text.orEmpty(),
-                style = InfinityTypography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 12.sp, lineHeight = 18.sp),
-                color = MaterialTheme.colorScheme.onSurface,
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)
                     .testTag(UiTags.CHAT_TOOL_FULL_RESULT_TEXT),
-            )
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+            ) {
+                sections.forEach { (label, body) ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(stringResource(label), style = InfinityTypography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            body,
+                            style = InfinityTypography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 12.sp, lineHeight = 18.sp),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
         }
     }
 }

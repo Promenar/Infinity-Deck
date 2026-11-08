@@ -27,6 +27,8 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class BuiltInSkillCancellationTest {
+    private val jobFixture = MediaTestJobFixture()
+    @org.junit.After fun closeJobs() = jobFixture.close()
     private val appContext: Context = ApplicationProvider.getApplicationContext()
     private val executionContext = object : SkillExecutionContext {
         override val sessionId = "session"
@@ -61,7 +63,7 @@ class BuiltInSkillCancellationTest {
         val cases = listOf(
             FileSearchSkill(workspaceRepository) to skillArgs("query" to "needle"),
             ExecJsSkill { _, _ -> throw cancellation } to skillArgs("code" to "result = 1"),
-            ImageGenerationSkill(appContext, providerManager) { _, _, _ -> throw cancellation } to
+            ImageGenerationSkill(appContext, providerManager, jobs = jobFixture.jobs) { _, _, _ -> throw cancellation } to
                 skillArgs("prompt" to "test image"),
         )
 

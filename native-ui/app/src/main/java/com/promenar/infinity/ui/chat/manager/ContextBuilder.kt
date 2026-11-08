@@ -526,6 +526,9 @@ class ContextBuilder(
             sb.appendLine("<history_summary>")
             sb.appendLine(summary.trim())
             sb.appendLine("</history_summary>")
+            if (params.availableToolNames == null || params.availableToolNames.containsAll(setOf("session_read", "session_search"))) {
+                sb.appendLine(com.promenar.infinity.data.generation.HISTORY_RECALL_HINT)
+            }
         }
         finish("history_summary")
 

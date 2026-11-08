@@ -88,6 +88,24 @@ fun fileManagerCompactLightPreview() = PaneSample(InfinityThemeMode.LIGHT, inner
     FileManagerSamples.controller(english = true)
 }
 
+// ---------- 仓库位置：页头为 Git 分支卡片（检视器宽度） ----------
+
+private fun gitHost() = FileManagerHostSpec(onOpenGit = {})
+
+@PreviewTest
+@Preview(name = "资源管理器 Git 分支卡片 深中360", widthDp = 360, heightDp = 640, locale = "zh-rCN")
+@Composable
+fun fileManagerGitHeaderDarkPreview() = PaneSample(InfinityThemeMode.DARK, gitHost()) {
+    FileManagerSamples.controller(english = false, locationId = FileManagerSamples.PROJECT_ID)
+}
+
+@PreviewTest
+@Preview(name = "资源管理器 Git 分支卡片 浅英360 大字", widthDp = 360, heightDp = 640, locale = "en", fontScale = 1.3f)
+@Composable
+fun fileManagerGitHeaderLightPreview() = PaneSample(InfinityThemeMode.LIGHT, gitHost()) {
+    FileManagerSamples.controller(english = true, locationId = FileManagerSamples.PROJECT_ID)
+}
+
 // ---------- 单列子目录：首行“..” ----------
 
 @PreviewTest

@@ -218,6 +218,33 @@ class ToolInvocationPresentationTest {
         assertThat(mixed.failedCount).isEqualTo(2)
     }
 
+    @Test
+    fun `转入后台的生图与下载不计产出，单独计数`() {
+        val started = """{"runtime":"in_app","job_id":"job-7","state":"running","guidance":"任务已登记","yielded_after_seconds":20}"""
+        fun yielded(name: String, callId: String, time: Long) = listOf(
+            call("$callId-c", callId, name, time),
+            result("$callId-r", callId, time + 20_000).copy(content = started),
+        )
+        val invocations = toolInvocations(yielded("generate_image", "gen", 1000) + yielded("media_fetch", "fetch", 2000))
+        assertThat(invocations.map(::backgroundedJobId)).containsExactly("job-7", "job-7").inOrder()
+        val summary = toolGroupSummary(invocations)
+        assertThat(summary.parts).containsExactly(
+            ToolSummaryPart(ToolSummaryAction.IMAGE, 0), ToolSummaryPart(ToolSummaryAction.MEDIA_FETCH, 0),
+        ).inOrder()
+        assertThat(summary.backgroundedCount).isEqualTo(2)
+        assertThat(summary.failedCount).isEqualTo(0)
+
+        // 前台完成的生图带媒体，任务查询工具与普通文本结果都不算转入后台。
+        val done = toolInvocations(listOf(
+            call("g", "gen", "generate_image", 1000),
+            result("g-r", "gen", 1400).copy(content = started, media = listOf(MediaRef("/media/a.png", "image/png", MediaKind.IMAGE, 1))),
+            call("w", "wait", "job_wait", 1500), result("w-r", "wait", 1600).copy(content = started),
+            call("t", "text", "generate_image", 1700), result("t-r", "text", 1800),
+        ))
+        assertThat(done.map(::backgroundedJobId)).containsExactly(null, null, null).inOrder()
+        assertThat(toolGroupSummary(done).backgroundedCount).isEqualTo(0)
+    }
+
     private fun completedInvocations(vararg names: String) = toolInvocations(names.flatMapIndexed { index, name ->
         val start = 1_000L + index * 500L
         listOf(call("c$index", "$index", name, start), result("r$index", "$index", start + 400))

@@ -16,7 +16,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarkdownStreamingLinkTest {
-    private val settings = DefaultAnnotatorSettings(TextLinkStyles(), SpanStyle(), markdownAnnotator())
+    private val settings = DefaultAnnotatorSettings(TextLinkStyles(), SpanStyle(), markdownAnnotator(), highlightSpanStyle = SpanStyle())
 
     @Test
     fun `显式链接目的地逐字放出期间标签可见且没有半截点击目标`() {

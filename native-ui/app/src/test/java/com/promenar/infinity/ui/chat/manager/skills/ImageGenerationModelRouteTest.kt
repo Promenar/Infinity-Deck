@@ -22,6 +22,8 @@ import kotlinx.serialization.json.*
 import org.junit.Test
 
 class ImageGenerationModelRouteTest {
+    private val jobFixture = MediaTestJobFixture()
+    @org.junit.After fun closeJobs() = jobFixture.close()
     private val models = MutableStateFlow<List<ModelInfo>>(emptyList())
     private val providers = MutableStateFlow<List<ProviderListItem>>(emptyList())
     private val selected = MutableStateFlow("")
@@ -51,7 +53,7 @@ class ImageGenerationModelRouteTest {
             respond(buildJsonObject { put("data", buildJsonArray { add(buildJsonObject { put("b64_json", mediaBase64()) }) }) }.toString())
         })
         return try {
-            ImageGenerationSkill(mockk<Context>(), manager, RecordingMediaStore(), imageGenClientFactory = { url, key, model ->
+            ImageGenerationSkill(mockk<Context>(), manager, RecordingMediaStore(), jobs = jobFixture.jobs, imageGenClientFactory = { url, key, model ->
                 ImageGenClient(url, key, model, client)
             }).execute(buildJsonObject { put("prompt", "一棵树") }, mediaTestContext)
         } finally { client.close() }
