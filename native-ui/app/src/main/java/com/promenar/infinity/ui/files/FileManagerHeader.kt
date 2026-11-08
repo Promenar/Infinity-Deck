@@ -24,6 +24,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.CallSplit
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.automirrored.rounded.NoteAdd
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -95,6 +97,7 @@ import com.promenar.infinity.ui.files.state.FileTransferMode
 import com.promenar.infinity.ui.files.state.FileViewMode
 import com.promenar.infinity.ui.hub.HubExpandButton
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
@@ -144,7 +147,13 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FileManagerLeadingButton(host.leading)
-        FileHeaderTitle(state, actions, Modifier.weight(1f))
+        val gitBranch = state.gitHeaderBranch(host)
+        val onOpenGit = host.onOpenGit
+        if (gitBranch != null && onOpenGit != null) {
+            FileGitHeader(gitBranch, state.location?.gitChangeCount, onOpenGit, Modifier.weight(1f))
+        } else {
+            FileHeaderTitle(state, actions, Modifier.weight(1f))
+        }
         // 内屏的合集信息在标题下的信息行里，外屏用小标签。
         host.folderBadge?.takeUnless { host.leading.isInnerScreen }?.let { HostBadge(it) }
         IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
@@ -159,6 +168,80 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
                 FolderMoreMenu(state, actions) { open = false }
             }
         }
+    }
+}
+
+/**
+ * 页头的 Git 分支卡片所指的分支：宿主能打开 Git 面板、位置是仓库且不需要“位置 ▾”切换时，
+ * 卡片取代页头标题（当前目录名由路径条给出），子文件夹里也保持指向仓库；否则为 null。
+ */
+@Composable
+internal fun FileManagerUiState.gitHeaderBranch(host: FileManagerHostSpec): String? {
+    if (host.onOpenGit == null || (host.allowLocationSwitch && locations.size > 1)) return null
+    return location?.gitLabel()
+}
+
+/** Git 分支卡片：分支名、改动数胶囊与进入箭头，整块点按打开宿主的 Git 面板。 */
+@Composable
+private fun FileGitHeader(branch: String, changes: Int?, onOpen: () -> Unit, modifier: Modifier) {
+    val colors = MaterialTheme.infinityDomainColors
+    Row(
+        modifier = modifier
+            .padding(horizontal = InfinitySpacing.XSmall)
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_git_view), onClick = onOpen)
+            .padding(start = InfinitySpacing.Medium, end = InfinitySpacing.Small)
+            .testTag(UiTags.FM_GIT_STRIP),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.AutoMirrored.Rounded.CallSplit,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(InfinitySpacing.Small))
+        // 分支名与改动胶囊占满箭头前的空间：胶囊先量，分支名过长时省略。
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = branch,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Spacer(Modifier.width(InfinitySpacing.Small))
+        when {
+            changes == null -> Unit
+            changes > 0 -> Text(
+                text = pluralStringResource(R.plurals.fm_git_changes, changes, changes),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onWarningContainer,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.warningContainer)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+            else -> Text(
+                text = stringResource(R.string.fm_git_clean),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+        }
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

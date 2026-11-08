@@ -324,9 +324,9 @@ private fun WideRunPage(mode: InfinityThemeMode, english: Boolean, pages: List<C
 // 截图只渲染首帧，输入区高度要等布局后才量到，所以这里卡片底边还压在输入区上；
 // 真机下一帧起底边停在输入区上方 8dp。
 @PreviewTest
-@Preview(name = "内屏检视器浮动 深中814", widthDp = 814, heightDp = 898, locale = "zh-rCN")
+@Preview(name = "内屏检视器让位 深中814", widthDp = 814, heightDp = 898, locale = "zh-rCN")
 @Composable
-fun chatInspectorFloatDarkPreview() = WideRunPage(InfinityThemeMode.DARK, english = false, pages = listOf(ChatPage.Run))
+fun chatInspectorInnerShiftDarkPreview() = WideRunPage(InfinityThemeMode.DARK, english = false, pages = listOf(ChatPage.Run))
 
 @PreviewTest
 @Preview(name = "平板检视器让位 浅英1280", widthDp = 1280, heightDp = 800, locale = "en")

@@ -837,7 +837,13 @@ fun ChatRoute(
                         when (page) {
                             ChatPage.Explorer -> ResourceExplorerPage(
                                 onBack = closeTopChatPage.takeUnless { inInspector },
-                                onOpenGit = { setChatPages(pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Git)) },
+                                // 检视器里直接切到“Git”页签；整页时叠一层带返回的 Git 页。
+                                onOpenGit = {
+                                    setChatPages(
+                                        if (inInspector) openChatPageRoot(ChatPage.Git)
+                                        else pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Git),
+                                    )
+                                },
                                 gitRefreshKey = gitRefresh,
                                 sessionId = sessionId,
                                 chatViewModel = chatViewModel,

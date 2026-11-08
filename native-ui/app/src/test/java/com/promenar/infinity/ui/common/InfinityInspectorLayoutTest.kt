@@ -22,11 +22,11 @@ class InfinityInspectorLayoutTest {
         assertThat(infinityInspectorWidth(380.dp, widened = true)).isEqualTo(360.dp)
     }
 
-    @Test fun `会话让位后不足 480dp 时检视器浮在会话之上`() {
-        assertThat(infinityInspectorPlacement(814.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Float)
-        assertThat(infinityInspectorPlacement(1280.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
+    @Test fun `折叠屏内屏默认宽度让位，加宽后会话不足 320dp 时浮在会话之上`() {
+        assertThat(infinityInspectorPlacement(814.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
+        assertThat(infinityInspectorPlacement(814.dp, 560.dp)).isEqualTo(InfinityInspectorPlacement.Float)
         assertThat(infinityInspectorPlacement(1280.dp, 560.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
-        assertThat(infinityInspectorPlacement(864.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
-        assertThat(infinityInspectorPlacement(863.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Float)
+        assertThat(infinityInspectorPlacement(704.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
+        assertThat(infinityInspectorPlacement(703.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Float)
     }
 }

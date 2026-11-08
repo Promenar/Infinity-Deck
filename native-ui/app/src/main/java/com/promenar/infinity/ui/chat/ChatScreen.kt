@@ -59,6 +59,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
@@ -73,6 +74,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -738,6 +740,8 @@ fun ChatScreenContent(
             )
         }.collectLatest { geometry ->
             if (geometry[0] <= 0 || geometry[2] <= 0 || geometry[4] == 0) return@collectLatest
+            // 布局状态变化可能在测量过程中被收集；等到下一帧再滚动，避免在测量布局中途触发重新测量。
+            withFrameNanos { }
             scrollItemAboveComposer(followTargetIndex)
         }
     }
@@ -822,10 +826,23 @@ fun ChatScreenContent(
         }
         var lastInspectorRoot by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
         SideEffect { inspectorRoot?.let { lastInspectorRoot = it.token } }
+        var inspectorWidened by rememberSaveable { mutableStateOf(false) }
+        // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。
+        val inspectorWidth = if (inspectorWidened && inspectorRoot == ChatPage.Browser) maxWidth - BrowserMaximizedInset
+        else com.promenar.infinity.ui.common.infinityInspectorWidth(maxWidth, inspectorWidened)
+        // 让位后会话仍有足够宽度（折叠屏内屏、平板）时整体让位；加宽后会话过窄时浮在会话右缘之上，会话不动。
+        val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth) ==
+            com.promenar.infinity.ui.common.InfinityInspectorPlacement.Float
+        // 让位时顶栏、会话列与输入浮岛一起收到检视器左侧，检视器从状态栏下方铺到底部。
+        val inspectorReserved by animateDpAsState(
+            targetValue = if (inspectorRoot != null && !inspectorFloats) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
+            animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
+            label = "chat_inspector_reserved",
+        )
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
-              Column(Modifier.background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+              Column(Modifier.padding(end = inspectorReserved).background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
                 ChatTopBar(
                     title = sessionTitle,
                     showDivider = showTopBarDivider,
@@ -966,13 +983,6 @@ fun ChatScreenContent(
                 browserEntry = true,
                 remote = state.remote,
             )
-            var inspectorWidened by rememberSaveable { mutableStateOf(false) }
-            // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。
-            val inspectorWidth = if (inspectorWidened && inspectorRoot == ChatPage.Browser) maxWidth - BrowserMaximizedInset
-            else com.promenar.infinity.ui.common.infinityInspectorWidth(maxWidth, inspectorWidened)
-            // 让位后会话仍有足够宽度（平板横屏）时整体让位；否则（折叠屏内屏）浮在会话右缘之上，会话不动。
-            val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth) ==
-                com.promenar.infinity.ui.common.InfinityInspectorPlacement.Float
             // 浮在会话之上时右缘与输入区浮岛对齐：输入区限宽居中，检视器右边距随之加上两侧留白。
             val inspectorEnd = 12.dp + if (inspectorFloats && inspectorWidth <= com.promenar.infinity.ui.common.InfinityInspectorWideWidth) {
                 // 左侧至少给会话留 48dp 可见边缘。
@@ -983,11 +993,6 @@ fun ChatScreenContent(
             LaunchedEffect(hasPendingApproval, inspectorFloats) {
                 if (hasPendingApproval && inspectorFloats && inspectorRoot != null) actions.onSetInspectorPages(emptyList())
             }
-            val inspectorReserved by animateDpAsState(
-                targetValue = if (inspectorRoot != null && !inspectorFloats) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
-                animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
-                label = "chat_inspector_reserved",
-            )
             val jumpToApproval: () -> Unit = {
                 scope.launch {
                     // 审批卡与子代理审批组都排在底部留白之前，跳到其中第一项。
@@ -1016,10 +1021,11 @@ fun ChatScreenContent(
                     },
                 )
             }
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            Box(Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(padding)
                     .padding(end = inspectorReserved)
                     .imePadding()
                     .then(if (showWordmark) Modifier.trackWordmarkPointer(wordmarkPointer) else Modifier),
@@ -1637,15 +1643,17 @@ fun ChatScreenContent(
             }
             if (inspectorMode) {
                 val composerReserve = with(density) { composerHeightPx.toDp() }
-                // 浮在会话之上时底边停在输入区上方，不挡输入与审批；让位时占满右侧高度。
+                // 浮在会话之上时夹在顶栏与输入区之间，不挡输入与审批；让位时从状态栏下方铺到底部，顶栏与浮岛已收到左侧。
                 // 与会话列表的底部留白一样直接跟随输入区高度，不做动画，首帧量到高度前也不会先盖住输入区再滑开。
                 val inspectorBottom = if (inspectorFloats) composerReserve + 8.dp else 12.dp
+                val inspectorTop = if (inspectorFloats) padding.calculateTopPadding()
+                else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val animatedInspectorWidth by animateDpAsState(
                     targetValue = inspectorWidth,
                     animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
                     label = "chat_inspector_width",
                 )
-                Box(Modifier.fillMaxSize().imePadding()) {
+                Box(Modifier.fillMaxSize().padding(top = inspectorTop, bottom = padding.calculateBottomPadding()).imePadding()) {
                     AnimatedVisibility(
                         visible = inspectorRoot != null,
                         enter = slideInHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) { it / 3 } +
@@ -1726,7 +1734,7 @@ fun ChatScreenContent(
                         }
                     }
                     // 收起后有内容时留一条边缘条；没有任何内容时完全隐藏，只留顶栏入口。长按可上下拖开。
-                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 8.dp, end = 8.dp, bottom = composerReserve + 8.dp)) {
+                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding() - inspectorTop + 8.dp, end = 8.dp, bottom = composerReserve + 8.dp)) {
                     var stripHeight by remember { mutableIntStateOf(0) }
                     AnimatedVisibility(
                         visible = inspectorRoot == null && inspectorBadges.hasContent,
