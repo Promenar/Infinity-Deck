@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.37.0-beta] - 2026-11-08
+
+0.36.0-beta 与 0.36.1-beta 没有单独发布，二者的改动随本版本一起发布：Agent 可用 `session_search` 与 `session_read` 翻页取回被压缩的原始历史；子代理遇到限流、断网、超时时按主会话规则退避重试；`kotlinx-serialization-json` 升到 1.8.1。详见下方两个版本的小节。
+
 ### 变更
 
 - 宽屏检视器展开后，顶栏、会话列与输入浮岛一起收到检视器左侧，检视器从状态栏下方铺到屏幕底部；折叠屏内屏默认宽度也按此让位，加宽后会话不足 320dp 时仍浮在会话之上。
@@ -21,13 +25,13 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
-- 会话自动跟随在布局几何变化后等到下一帧再滚动，避免在测量布局中途触发滚动而报错。
+- 会话自动跟随在布局几何变化后先让出一次调度再滚动，不在测量布局中途触发滚动而报错，尾部仍在同一帧内校正。
 
 ## [0.36.1-beta] - 2026-11-08
 
 ### 修复
 
-- `kotlinx-serialization-json` 从 1.6.2 升到 1.8.1，与 Room 2.8.5 测试库要求的版本一致；设备测试中的数据库迁移校验不再因序列化库版本不匹配而失败。0.36.0-beta 的功能随本版本一起发布。
+- `kotlinx-serialization-json` 从 1.6.2 升到 1.8.1，与 Room 2.8.5 测试库要求的版本一致；设备测试中的数据库迁移校验不再因序列化库版本不匹配而失败。
 
 ## [0.36.0-beta] - 2026-11-08
 

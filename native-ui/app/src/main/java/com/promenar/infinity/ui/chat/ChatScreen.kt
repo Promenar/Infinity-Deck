@@ -740,8 +740,9 @@ fun ChatScreenContent(
             )
         }.collectLatest { geometry ->
             if (geometry[0] <= 0 || geometry[2] <= 0 || geometry[4] == 0) return@collectLatest
-            // 布局状态变化可能在测量过程中被收集；等到下一帧再滚动，避免在测量布局中途触发重新测量。
-            withFrameNanos { }
+            // 布局状态变化可能在测量过程中同步交给收集方；先让出一次调度再滚动，不在测量布局中途触发重新测量，
+            // 也不推迟到下一帧，尾部仍在同一帧内校正。
+            kotlinx.coroutines.yield()
             scrollItemAboveComposer(followTargetIndex)
         }
     }

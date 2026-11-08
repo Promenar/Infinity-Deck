@@ -128,6 +128,8 @@ class ChatRenderStateContractTest {
         )
         assertThat(streamingFollowEffect).doesNotContain("delay(16)")
         assertThat(streamingFollowEffect).doesNotContain("withFrameNanos { }")
+        // 几何跟随先让出调度再滚动：避免测量中途同步恢复收集方时滚动，同时不引入整帧延迟。
+        assertThat(streamingFollowEffect).contains("kotlinx.coroutines.yield()\n            scrollItemAboveComposer(followTargetIndex)")
         assertThat(streamingFollowEffect).contains("scrollToStreamingTail()")
     }
 
