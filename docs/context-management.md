@@ -50,6 +50,7 @@
 - `tool_context_ratio_percent` 和 `tool_context_keep_rounds` 不参与运行时或备份导出；含这两个键的旧备份仍可恢复，旧键被忽略。快速模型偏好继续参与备份。
 - 工具折叠缓存位于应用私有的 `noBackupFilesDir/context-folds/`，按会话 ID、消息 ID、原正文 SHA-256 识别。正文改变即失效，跨轮与进程复用，删除会话时与工具输出缓存一同清理，不进入备份。
 - 历史摘要复用已有 `context_summaries` 表，与消息已摘要标记在同一 Room 事务提交；重新读取会话时共同恢复，不改变数据库 schema 或版本。提交前校验旧摘要和候选原文快照，历史已变化时拒绝过期结果。记忆向量化状态独立于摘要归档。
+- 已摘要消息只置归档标记，原文保留在 `messages` 表。`session_read` 可按 `before`/`after` 游标翻页并标出 `archived`，`session_search` 以转义后的 `LIKE` 检索原文（含归档、排除内部消息；大小写不敏感仅限 ASCII），两者省略 `id` 时指当前会话，跨会话访问沿用 `SessionCommunicationPolicy` 与审批。系统提示的 `## History Summary` 段后附固定取回提示 `HISTORY_RECALL_HINT`，两个工具都可用或工具集未知时写入，中途替换摘要时保留且只出现一次。
 - 删除或编辑已摘要消息会使聚合摘要失效并恢复幸存历史的发送；撤销删除恢复原文后重新参与压缩。没有合法持久摘要的旧会话会恢复全部历史参与发送和压缩，避免旧归档标记隐藏原文。
 - 图片工作区路径存于 `Message.userImageReferences`（与 `userImages` 按下标对应），文档引用存于 `MessageDocumentAttachment.workspaceReference`，均复用 `MessageEntity.files` 信封，不改 Room schema；旧数据缺少这些字段时按原样内联。
 - 用量面板只读重建现有上下文与工具定义，复用已存在的折叠，不执行新检索或生成。知识增强分项沿用最近一次检索计数，下一次请求的新检索内容尚不可知。token 数为近似估算；最终提供商用量与现有上下文硬门禁分别保留。截图与 JVM 检查不能替代真实模型、设备和跨进程运行验收。

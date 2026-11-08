@@ -61,6 +61,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `schedule_create` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `session_list` | 自由 | 自由 | 自由 | 自由 | 跨会话=批,批,批,批 |
 | `session_read` | 自由 | 自由 | 自由 | 自由 | 跨会话=批,批,批,批 |
+| `session_search` | 自由 | 自由 | 自由 | 自由 | 跨会话=批,批,批,批 |
 | `sftp_download` | 逐次审批 | 自由 | 逐次审批 | 自由 | 技能目录=拒,拒,拒,拒 |
 | `sftp_upload` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `shell_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |

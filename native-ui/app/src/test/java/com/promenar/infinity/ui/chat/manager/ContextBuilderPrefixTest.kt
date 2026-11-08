@@ -66,6 +66,6 @@ class ContextBuilderPrefixTest {
         val result = ContextBuilder().buildContext(params)
         assertThat(result.turnContext).isEmpty()
         assertThat(result.finalSystemPrompt).doesNotContain("System Time")
-        assertThat(result.finalSystemPrompt).endsWith("</history_summary>\n")
+        assertThat(result.finalSystemPrompt).endsWith("</history_summary>\n${com.promenar.infinity.data.generation.HISTORY_RECALL_HINT}\n")
     }
 }

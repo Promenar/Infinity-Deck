@@ -527,7 +527,7 @@ class ContextBuilder(
             sb.appendLine(summary.trim())
             sb.appendLine("</history_summary>")
             if (params.availableToolNames == null || params.availableToolNames.containsAll(setOf("session_read", "session_search"))) {
-                sb.appendLine("Summarized turns are archived, not deleted. For exact wording, numbers, code, or details, use session_search with keywords or page through session_read with before/after; omitting id in either tool targets the current session.")
+                sb.appendLine(com.promenar.infinity.data.generation.HISTORY_RECALL_HINT)
             }
         }
         finish("history_summary")
