@@ -28,6 +28,18 @@ const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster
     </div>
   </section>
 
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sweep" data-sweep>{t.why.title}</h2>
+        <p>{t.why.lede}</p>
+      </div>
+      <ul class="diffs">
+        {t.why.points.map(([b, s]) => <li><b>{b}</b><span>{s}</span></li>)}
+      </ul>
+    </div>
+  </section>
+
   <section id="story" aria-label={t.story.label}>
     <div class="wrap story-pin">
       <div class="chapters">
