@@ -94,7 +94,7 @@
 
 需要 Android 12 及以上。内置 Linux 需要 arm64-v8a 设备，基础系统约 64 MB，加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。
 
-当前源码版本为 `v0.38.0-beta`（versionCode `104`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.38.1-beta`（versionCode `105`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
 <summary><b>从源码构建</b></summary>

@@ -370,8 +370,8 @@ android {
         applicationId = "com.promenar.infinity"
         minSdk = 31
         targetSdk = 36
-        versionCode = 104
-        versionName = "0.38.0-beta"
+        versionCode = 105
+        versionName = "0.38.1-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PACKAGED_PYTHON_VERSION", "\"$packagedPythonVersion\"")

@@ -94,7 +94,7 @@ Unfold the phone and it becomes a workbench. Fold it and the chat carries on.
 
 Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
 
-The source tree is at `v0.38.0-beta` (versionCode `104`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.38.1-beta` (versionCode `105`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>

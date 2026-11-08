@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.38.1-beta] - 2026-11-09
+
 ### 变更
 
 - 检视器浮在会话之上时，卡片右缘与输入浮岛右缘对齐；固定时仍贴窗口右缘 8dp，浏览器加宽铺满会话区时也贴右缘，收起后的边缘条位置不变。
