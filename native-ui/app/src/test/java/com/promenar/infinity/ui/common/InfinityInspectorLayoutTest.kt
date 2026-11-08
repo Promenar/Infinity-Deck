@@ -50,4 +50,12 @@ class InfinityInspectorLayoutTest {
         // 窗口比限宽还窄时没有居中空白，全部由正文末端留出。
         assertThat(infinityInspectorStripInset(700.dp, 720.dp, 20.dp)).isEqualTo(44.dp)
     }
+
+    @Test fun `浮动检视器右缘与输入浮岛右缘对齐`() {
+        // 窗口 800dp：浮岛列限宽 720dp 居中，右侧空白 40dp，再加浮岛自带的 12dp。
+        assertThat(infinityInspectorFloatEnd(800.dp, 720.dp, 12.dp)).isEqualTo(52.dp)
+        assertThat(infinityInspectorFloatEnd(1280.dp, 720.dp, 12.dp)).isEqualTo(292.dp)
+        // 窗口比限宽还窄时浮岛铺满，只剩自带的内边距。
+        assertThat(infinityInspectorFloatEnd(700.dp, 720.dp, 12.dp)).isEqualTo(12.dp)
+    }
 }

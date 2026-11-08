@@ -120,6 +120,13 @@ fun infinityInspectorStripInset(windowWidth: Dp, contentMaxWidth: Dp, contentEnd
     return (InfinityInspectorStripSpan - margin - contentEndPadding).coerceAtLeast(0.dp)
 }
 
+/**
+ * 浮动检视器距窗口右缘的距离，与输入浮岛右缘对齐：浮岛所在列限宽 [contentMaxWidth] 居中，
+ * 浮岛再自带 [islandHorizontalPadding] 的水平内边距。
+ */
+fun infinityInspectorFloatEnd(windowWidth: Dp, contentMaxWidth: Dp, islandHorizontalPadding: Dp): Dp =
+    ((windowWidth - contentMaxWidth) / 2).coerceAtLeast(0.dp) + islandHorizontalPadding
+
 object InfinityPaneTags {
     const val PAGE = "infinity_secondary_page"
     const val INSPECTOR = "infinity_inspector"

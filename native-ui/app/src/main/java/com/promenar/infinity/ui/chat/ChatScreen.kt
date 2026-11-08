@@ -852,6 +852,14 @@ fun ChatScreenContent(
             animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
             label = "chat_strip_inset",
         )
+        // 固定时检视器贴右缘 8dp；浮动时右缘与输入浮岛右缘对齐。浏览器加宽铺满会话区，仍贴右缘。
+        val inspectorEnd by animateDpAsState(
+            targetValue = if (inspectorFloats && !(inspectorWidened && inspectorRoot == ChatPage.Browser)) {
+                com.promenar.infinity.ui.common.infinityInspectorFloatEnd(maxWidth, InfinitySpacing.ChatMaxWidth, ComposerIslandHorizontalPadding)
+            } else com.promenar.infinity.ui.common.InfinityInspectorGutter,
+            animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
+            label = "chat_inspector_end",
+        )
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -992,8 +1000,8 @@ fun ChatScreenContent(
                 browserEntry = true,
                 remote = state.remote,
             )
-            // 检视器与收起后的边缘条同处右缘 8dp：浮动卡片从边缘条的位置展开。
-            val inspectorEnd = 8.dp
+            // 收起后的边缘条贴右缘 8dp。
+            val stripEnd = 8.dp
             // 审批卡在会话列底部；检视器浮在会话之上时会盖住它，新审批到来时先收为边缘条（角标仍提示待批准）。
             val hasPendingApproval = pendingApprovals > 0
             LaunchedEffect(hasPendingApproval, inspectorFloats) {
@@ -1363,7 +1371,7 @@ fun ChatScreenContent(
                     .fillMaxWidth()
                     .onSizeChanged { composerHeightPx = it.height }
                     .onGloballyPositioned { composerTopInRoot = it.boundsInRoot().top }
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = ComposerIslandHorizontalPadding)
                     .padding(bottom = 8.dp)
                     .testTag(UiTags.CHAT_COMPOSER),
             ) {
@@ -1739,7 +1747,7 @@ fun ChatScreenContent(
                         }
                     }
                     // 收起后右缘常驻边缘条，是检视器唯一的开合入口；正文列表末端已让出它的宽度。长按可上下拖动。
-                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 8.dp, end = inspectorEnd, bottom = composerReserve + 8.dp)) {
+                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 8.dp, end = stripEnd, bottom = composerReserve + 8.dp)) {
                     var stripHeight by remember { mutableIntStateOf(0) }
                     AnimatedVisibility(
                         visible = inspectorRoot == null,
@@ -2939,6 +2947,9 @@ internal fun chatTopBarBrowser(
 ): ChatTopBarBrowser? = if (inspectorMode) null else ChatTopBarBrowser(mode = mode, open = open, onClick = onOpen)
 
 private val BrowserMaximizedInset = 24.dp
+
+/** 输入浮岛在限宽会话列内的水平内边距；浮动检视器的右缘与浮岛右缘对齐。 */
+private val ComposerIslandHorizontalPadding = 12.dp
 
 /** Agent 正在使用浏览器挂主色圆点，需要用户处理挂橙色圆点；空闲时没有圆点。 */
 @Composable
