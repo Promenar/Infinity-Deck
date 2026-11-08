@@ -1,9 +1,9 @@
-"""Infinity Workbench 内置 git：把常用 git 子命令转交 dulwich 命令行。
+"""Infinity Deck 内置 git：把常用 git 子命令转交 dulwich 命令行。
 
 不支持的子命令与全局选项返回 GIT_UNSUPPORTED 与指引，退出码 2；
 其它失败输出单行 fatal 信息，退出码 128，与 git 一致。
 
-远端认证（由 Infinity Workbench 内置执行后端按命令注入环境变量，令牌与私钥始终留在 App 进程内）：
+远端认证（由 Infinity Deck 内置执行后端按命令注入环境变量，令牌与私钥始终留在 App 进程内）：
   INFINITY_GIT_NONCE：本条命令的一次性 nonce，命令结束即失效；
   INFINITY_GIT_PROXY 与 INFINITY_GIT_CREDENTIAL_HOSTS：HTTPS 凭据注入代理地址（127.0.0.1:<端口>）与已配置凭据的主机键
       （逗号分隔，非 443 端口写作 主机:端口）。对这些主机的 HTTPS 请求改发到
@@ -110,12 +110,12 @@ def _version():
     from dulwich import __version__
 
     version = __version__ if isinstance(__version__, str) else ".".join(str(part) for part in __version__)
-    return "git version dulwich-" + version + " (Infinity Workbench builtin)"
+    return "git version dulwich-" + version + " (Infinity Deck builtin)"
 
 
 def _usage():
     return "\n".join([
-        "用法：git [-C <目录>] <子命令> [参数]（Infinity Workbench 内置，基于 dulwich）",
+        "用法：git [-C <目录>] <子命令> [参数]（Infinity Deck 内置，基于 dulwich）",
         "支持的子命令：" + " ".join(SUPPORTED),
         "clone [--depth <N>] [-b <分支>] [--single-branch | --no-single-branch] [--no-tags] [--bare] <地址> [<目录>]",
         "  --depth 隐含 --single-branch：只取远端默认分支（或 -b 指定的分支），标签只跟随指向已抓取提交的标签；",
@@ -125,7 +125,7 @@ def _usage():
         "  共享文件夹的仓库自动设置 core.symlinks=false、core.filemode=false、core.ignorecase=true，",
         "  符号链接检出为普通文件，仅大小写不同的路径只保留一个。",
         "远端：HTTPS 与 SSH（git@<主机>:<路径>、ssh://）。",
-        "  私有仓库的 HTTPS 凭据请在 Infinity Workbench 设置 → 执行环境与连接 → Git 凭据 中按主机保存（用户名 + 令牌），内置 git 自动使用；",
+        "  私有仓库的 HTTPS 凭据请在 Infinity Deck 设置 → 执行环境与连接 → Git 凭据 中按主机保存（用户名 + 令牌），内置 git 自动使用；",
         "  不要把令牌写进 URL、命令或文件（URL 中自带的凭据仍可用但不推荐，会写入仓库配置）。",
         "  SSH 远端使用 设置 → 工具 → SSH 主机 中已固定主机密钥的主机（例如主机 github.com、用户 git），私钥不离开 App。",
         FALLBACK,
@@ -143,7 +143,7 @@ ENV_SSH_BRIDGE = "INFINITY_GIT_SSH_BRIDGE"
 NONCE_HEADER = "X-Infinity-Git-Nonce"
 PROXY_ERROR_HEADER = "X-Infinity-Git-Error"
 CREDENTIAL_SETTINGS = "设置 → 执行环境与连接 → Git 凭据"
-SSH_UNAVAILABLE = "当前环境没有 SSH 桥（只在 Infinity Workbench 的 shell_exec / python_exec 中可用），请改用 HTTPS 地址。"
+SSH_UNAVAILABLE = "当前环境没有 SSH 桥（只在 Infinity Deck 的 shell_exec / python_exec 中可用），请改用 HTTPS 地址。"
 
 
 class _RemoteAuthError(Exception):
@@ -302,7 +302,7 @@ class _BridgeStderr:
 
 
 class _BridgeConnection:
-    """经 Infinity Workbench SSH 桥执行一条远端 git 命令，提供 dulwich SSH vendor 需要的 read/write/close/can_read/stderr。
+    """经 Infinity Deck SSH 桥执行一条远端 git 命令，提供 dulwich SSH vendor 需要的 read/write/close/can_read/stderr。
 
     协议：先发送一行 JSON {"nonce", "host", "port", "user", "command", "protocol"}，
     收到一行 JSON {"ok": true} 或 {"ok": false, "code", "message"}；之后双方交换帧
@@ -324,7 +324,7 @@ class _BridgeConnection:
         try:
             self._sock = socket.create_connection(address, timeout=30)
         except OSError as error:
-            raise _RemoteAuthError("SSH_BRIDGE_UNAVAILABLE", "无法连接 Infinity Workbench SSH 桥（%s）。" % type(error).__name__)
+            raise _RemoteAuthError("SSH_BRIDGE_UNAVAILABLE", "无法连接 Infinity Deck SSH 桥（%s）。" % type(error).__name__)
         try:
             request = {"nonce": nonce, "host": host, "port": port, "user": username, "command": text,
                        "protocol": protocol_version or 0}
@@ -341,7 +341,7 @@ class _BridgeConnection:
                 reply = reply if isinstance(reply, dict) else {}
                 raise _RemoteAuthError(
                     str(reply.get("code") or "SSH_BRIDGE_FAILED"),
-                    str(reply.get("message") or "Infinity Workbench SSH 桥没有建立远端连接。"),
+                    str(reply.get("message") or "Infinity Deck SSH 桥没有建立远端连接。"),
                 )
         except BaseException:
             self._sock.close()
@@ -428,7 +428,7 @@ class _BridgeConnection:
 
 
 class _BridgeVendor:
-    """dulwich SSH vendor：远端命令经 Infinity Workbench SSH 桥执行，认证使用 App 中已保存的 SSH 主机。"""
+    """dulwich SSH vendor：远端命令经 Infinity Deck SSH 桥执行，认证使用 App 中已保存的 SSH 主机。"""
 
     def __init__(self, address, nonce):
         self.address = address

@@ -149,7 +149,7 @@ class BadgingVerificationTest(unittest.TestCase):
             verify_release_apk.parse_badging(malformed)
 
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "badging"):
-            verify_release_apk.parse_badging("application-label:'Infinity Workbench'\n")
+            verify_release_apk.parse_badging("application-label:'Infinity Deck'\n")
 
         duplicated_package_lines = (
             "package: name='com.promenar.infinity' versionCode='2' "
@@ -274,7 +274,7 @@ class SensitiveContentVerificationTest(ApkFixtureTestCase):
             "WebDAV password": b"WEBDAV_PASSWORD_FIXTURE=fixture-password",
             "WebDAV plaintext password": b'webdav_password="fixture-password-0123"',
             "WebDAV URL": b"INFINITY_WEBDAV_TEST_URL=https://example.invalid/webdav-test",
-            "absolute path": b"/Users/fixture-user/Projects/Infinity Workbench",
+            "absolute path": b"/Users/fixture-user/Projects/Infinity Deck",
             "secure env": b"config/secure_env/release.properties",
         }
         for label, value in fixtures.items():

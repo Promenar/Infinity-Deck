@@ -171,7 +171,7 @@ private val PREVIEW_MODEL_SELECTIONS = List(120) { index ->
         } else {
             "Model ${index.toString().padStart(3, '0')}"
         },
-        providerName = if (index % 2 == 0) "Infinity Workbench Preview Provider" else "OpenAI Compatible",
+        providerName = if (index % 2 == 0) "Infinity Deck Preview Provider" else "OpenAI Compatible",
         contextTokens = if (index == 0) 1_048_576 else 128_000,
         workload = ModelWorkload.GENERATIVE_TEXT,
         capabilityStates = mapOf(
@@ -372,7 +372,7 @@ private fun NavigationReleasePreview(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Infinity Workbench workspace",
+                    text = "Infinity Deck workspace",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
@@ -470,7 +470,7 @@ fun providerFormEditActionsLargeFontReleasePreview() {
     }
 }
 
-private const val PREVIEW_METADATA_SHORT_NAME = "Infinity Workbench Chat"
+private const val PREVIEW_METADATA_SHORT_NAME = "Infinity Deck Chat"
 private const val PREVIEW_REASONING_MODEL_NAME = "DeepSeek V4 Flash"
 private const val PREVIEW_METADATA_LONG_NAME =
     "超长模型展示名称：用于边界回归的长名称场景，仍需保持时间戳可见与布局稳定"
@@ -490,7 +490,7 @@ fun emptyChatReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                 ),
                 modelDisplayNames = mapOf(PREVIEW_CHAT_MODEL_ID to PREVIEW_METADATA_SHORT_NAME),
             ),
@@ -514,7 +514,7 @@ fun streamingChatReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench 助手",
+                    agentName = "Infinity Deck 助手",
                     messages = listOf(
                         previewMessage("user-1", MessageRole.USER, "请总结这份发行检查清单。"),
                         previewMessage(
@@ -637,7 +637,7 @@ fun chatTaskPendingReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench 助手",
+                    agentName = "Infinity Deck 助手",
                     messages = listOf(
                         previewMessage("task-user", MessageRole.USER, "继续完成发布检查。"),
                         previewMessage(
@@ -672,7 +672,7 @@ fun chatTaskGeneratingReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench 助手",
+                    agentName = "Infinity Deck 助手",
                     messages = listOf(
                         previewMessage("task-live-user", MessageRole.USER, "继续完成发布检查。"),
                         previewMessage(
@@ -711,7 +711,7 @@ fun chatTaskPendingLargeFontReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession().copy(options = SessionOptions(fontSize = 22)),
-                    agentName = "Infinity Workbench 助手",
+                    agentName = "Infinity Deck 助手",
                 ),
                 taskPanel = taskPanelUiState(tree, isGenerating = false),
                 modelDisplayNames = mapOf(PREVIEW_CHAT_MODEL_ID to PREVIEW_METADATA_SHORT_NAME),
@@ -737,7 +737,7 @@ fun chatErrorLargeFontReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage("user-error", MessageRole.USER, "Continue the release audit."),
                         previewMessage(
@@ -815,14 +815,14 @@ fun agentSkillPacksReleasePreview() {
                         com.promenar.infinity.data.skills.SkillScope.BUILTIN,
                         listOf(
                             releasePreviewSkill(
-                                "infinity-workbench",
+                                "infinity-deck",
                                 "管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限时，先读取本指南。",
                                 files = emptyList(),
                                 status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
                             ).copy(
-                                id = "builtin:infinity-workbench",
+                                id = "builtin:infinity-deck",
                                 scope = com.promenar.infinity.data.skills.SkillScope.BUILTIN,
-                                virtualDir = "/.infinity/builtin-skills/infinity-workbench",
+                                virtualDir = "/.infinity/builtin-skills/infinity-deck",
                             ),
                         ),
                     ),
@@ -913,7 +913,7 @@ fun chatApprovalTabletReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage("user-approval", MessageRole.USER, "Prepare the release notes."),
                     ),
@@ -969,7 +969,7 @@ fun chatReadyReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage(
                             id = "user-ready",
@@ -1006,7 +1006,7 @@ fun chatLongModelMetadataReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage(
                             id = "assistant-long",
@@ -1038,7 +1038,7 @@ fun chatReasoningModelReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage(
                             id = "assistant-reasoning",
@@ -1077,7 +1077,7 @@ fun chatLargeFontReleasePreview() {
                     session = previewChatSession().copy(
                         options = SessionOptions(fontSize = 22),
                     ),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage(
                             id = "assistant-large-font",
@@ -1111,7 +1111,7 @@ fun chatFullContextDocumentsChineseReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench 助手",
+                    agentName = "Infinity Deck 助手",
                     messages = listOf(
                         previewMessage(
                             id = "user-document",
@@ -1148,7 +1148,7 @@ fun chatFullContextDocumentsEnglishLargeFontReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession().copy(options = SessionOptions(fontSize = 22)),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                     messages = listOf(
                         previewMessage(
                             id = "user-document-large",
@@ -1249,7 +1249,7 @@ private fun AttachmentActionsReleaseScene() {
                 state = ChatScreenState(
                     uiState = ChatUiState(
                         session = previewChatSession(),
-                        agentName = "Infinity Workbench Assistant",
+                        agentName = "Infinity Deck Assistant",
                         messages = listOf(
                             previewMessage(
                                 id = "attachment-preview",
@@ -1411,12 +1411,12 @@ fun agentHubReleasePreview() {
                     AgentDisplayItem(
                         agent = Agent(
                             id = "agent-default",
-                            name = "Infinity Workbench Assistant",
+                            name = "Infinity Deck Assistant",
                             description = "General AI assistant with streaming chat and knowledge retrieval",
                             icon = "A",
                             color = "#7AE582",
                         ),
-                        title = "Infinity Workbench Assistant",
+                        title = "Infinity Deck Assistant",
                         subtitle = "General AI assistant with streaming chat and knowledge retrieval",
                     ),
                 ),
@@ -1953,7 +1953,7 @@ fun docEditorReadyEditDirtyEnglishPhoneReleasePreview() {
         DocEditorScreenContent(
             state = DocEditorScreenState(
                 editorState = previewDocEditorState(
-                    title = "Infinity Workbench release checklist — edited",
+                    title = "Infinity Deck release checklist — edited",
                     content = PREVIEW_DOC_EDITOR_EDIT_CONTENT,
                     titleDirty = true,
                     contentDirty = true,
@@ -2436,7 +2436,7 @@ fun emptyChatEnglishLandscapeReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench Assistant",
+                    agentName = "Infinity Deck Assistant",
                 ),
                 modelDisplayNames = mapOf(PREVIEW_CHAT_MODEL_ID to PREVIEW_METADATA_SHORT_NAME),
             ),
@@ -2460,7 +2460,7 @@ fun streamingChatChineseLandscapeReleasePreview() {
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = previewChatSession(),
-                    agentName = "Infinity Workbench 助手",
+                    agentName = "Infinity Deck 助手",
                     messages = listOf(
                         previewMessage("user-1", MessageRole.USER, "请总结这份发行检查清单。"),
                         previewMessage(
@@ -2495,7 +2495,7 @@ fun docEditorReadyEditDirtyEnglishLandscapeReleasePreview() {
         DocEditorScreenContent(
             state = DocEditorScreenState(
                 editorState = previewDocEditorState(
-                    title = "Infinity Workbench release checklist — edited",
+                    title = "Infinity Deck release checklist — edited",
                     content = PREVIEW_DOC_EDITOR_EDIT_CONTENT,
                     titleDirty = true,
                     contentDirty = true,
@@ -2521,7 +2521,7 @@ fun docEditorExact800x360EditDirtyEnglishReleasePreview() {
         DocEditorScreenContent(
             state = DocEditorScreenState(
                 editorState = previewDocEditorState(
-                    title = "Infinity Workbench release checklist — edited",
+                    title = "Infinity Deck release checklist — edited",
                     content = PREVIEW_DOC_EDITOR_EDIT_CONTENT,
                     titleDirty = true,
                     contentDirty = true,
@@ -2628,7 +2628,7 @@ private fun previewChatSession() = Session(
 
 private fun previewDocEditorState(
     phase: DocEditorPhase = DocEditorPhase.Ready,
-    title: String = "Infinity Workbench release checklist",
+    title: String = "Infinity Deck release checklist",
     content: String = PREVIEW_DOC_EDITOR_EDIT_CONTENT,
     titleDirty: Boolean = false,
     contentDirty: Boolean = false,
@@ -2643,7 +2643,7 @@ private fun previewDocEditorState(
     documentEpoch = PREVIEW_DOC_EDITOR_EPOCH,
     title = title,
     content = content,
-    persistedTitle = "Infinity Workbench release checklist",
+    persistedTitle = "Infinity Deck release checklist",
     persistedContent = PREVIEW_DOC_EDITOR_PERSISTED_CONTENT,
     currentHash = PREVIEW_DOC_EDITOR_HASH,
     totalLines = content.lineSequence().count(),

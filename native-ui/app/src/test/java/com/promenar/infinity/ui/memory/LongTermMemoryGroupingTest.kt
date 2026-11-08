@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 
 class LongTermMemoryGroupingTest {
     private val items = listOf(
-        item("1", LongTermMemoryKind.PROJECT, "Infinity Workbench 验收", "先跑定向测试"),
+        item("1", LongTermMemoryKind.PROJECT, "Infinity Deck 验收", "先跑定向测试"),
         item("2", LongTermMemoryKind.USER, "称呼", "叫我小冷"),
         item("3", LongTermMemoryKind.PROJECT, "发布", "只推送当前分支"),
         item("4", LongTermMemoryKind.FEEDBACK, "语言", "使用简体中文"),

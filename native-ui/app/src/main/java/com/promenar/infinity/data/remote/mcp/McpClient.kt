@@ -343,7 +343,7 @@ class McpClient(
 
     private companion object {
         const val PROTOCOL_VERSION = "2026-07-28"
-        const val CLIENT_NAME = "Infinity Workbench"
+        const val CLIENT_NAME = "Infinity Deck"
         const val ACCEPT = "application/json, text/event-stream"
         const val META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion"
         const val META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo"

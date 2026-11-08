@@ -5,7 +5,7 @@ import java.io.File
 
 /**
  * 随 APK 打包、安装后位于 nativeLibraryDir 的 CPython：启动器 libnxpython.so、
- * 标准库 zip libpystdlib.so、纯 Python 依赖与 Infinity Workbench 模块 zip libpysite.so（内置 git），
+ * 标准库 zip libpystdlib.so、纯 Python 依赖与 Infinity Deck 模块 zip libpysite.so（内置 git），
  * 以及改名为 libpyext_<模块>.so 的原生扩展。
  * 全部代码都从打包库目录加载，不解压、不从应用数据目录 execve 或 dlopen。
  */

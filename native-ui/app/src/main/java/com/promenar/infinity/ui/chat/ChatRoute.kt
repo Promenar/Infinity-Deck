@@ -209,7 +209,7 @@ data class ChatRouteDependencies(
 
 private fun copyTextToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Infinity Workbench", text))
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Infinity Deck", text))
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

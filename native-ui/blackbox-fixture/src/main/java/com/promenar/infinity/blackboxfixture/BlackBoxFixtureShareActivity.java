@@ -31,7 +31,7 @@ public final class BlackBoxFixtureShareActivity extends Activity {
                 .setComponent(target)
                 .setDataAndType(uri, mime)
                 .putExtra(Intent.EXTRA_STREAM, uri);
-        share.setClipData(ClipData.newRawUri("Infinity Workbench black-box fixture", uri));
+        share.setClipData(ClipData.newRawUri("Infinity Deck black-box fixture", uri));
         share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivity(share);
         finish();

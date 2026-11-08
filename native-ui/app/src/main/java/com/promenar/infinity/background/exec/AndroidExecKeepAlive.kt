@@ -64,6 +64,6 @@ class AndroidExecKeepAlive(
     }
 
     private companion object {
-        const val WAKE_LOCK_TAG = "Infinity Workbench:builtin-exec"
+        const val WAKE_LOCK_TAG = "Infinity Deck:builtin-exec"
     }
 }

@@ -1,8 +1,8 @@
 # 发行渠道构建与富内容渲染
 
-`distribution` 为 `play` 与 `sideload`。两者共享代码与 `com.promenar.infinity`，Debug、DeviceTest、MinifiedTest 的后缀分别为 `.debug`、`.deviceTest`、`.minifiedTest`。同构建类型的两个渠道会覆盖彼此，不能并列安装。`DistributionCapabilities` 描述制品能力，不能代表系统已经授予权限。Infinity Workbench 与旧应用使用不同应用 ID，可并存安装；数据通过旧应用导出备份、新应用导入迁移，加密备份使用用户密码解密。
+`distribution` 为 `play` 与 `sideload`。两者共享代码与 `com.promenar.infinity`，Debug、DeviceTest、MinifiedTest 的后缀分别为 `.debug`、`.deviceTest`、`.minifiedTest`。同构建类型的两个渠道会覆盖彼此，不能并列安装。`DistributionCapabilities` 描述制品能力，不能代表系统已经授予权限。Infinity Deck 与旧应用使用不同应用 ID，可并存安装；数据通过旧应用导出备份、新应用导入迁移，加密备份使用用户密码解密。
 
-只有 `src/sideload/AndroidManifest.xml` 声明 `MANAGE_EXTERNAL_STORAGE`。真实路径目录后端位于 `main` 源集，两个渠道都用它读写 `filesDir/projects/` 下的 Infinity Workbench 项目文件夹工作区；共享存储真实路径（外部挂载与共享文件夹工作区）只在侧载渠道开放，并需取得系统“所有文件访问”授权；Play 渠道的外部挂载仅使用 SAF。同样只有侧载渠道声明 `SCHEDULE_EXACT_ALARM`（`BuildConfig.EXACT_ALARM_AVAILABLE`），定时任务可在用户授权后使用精确闹钟；Play 渠道由 JobScheduler 择时、最短 15 分钟，后台任务也只在应用可见时保证运行（`DistributionCapabilities.backgroundKeepAliveAvailable`）。两个渠道都声明 `RECEIVE_BOOT_COMPLETED` 以在开机后重新排期，`scripts/ci/check-distribution-manifests.py` 校验这两项差异。设置页“导出诊断”生成的 JSONL 首行 `app.build` 包含 `distribution`、`allFilesAccessAvailable` 与版本。
+只有 `src/sideload/AndroidManifest.xml` 声明 `MANAGE_EXTERNAL_STORAGE`。真实路径目录后端位于 `main` 源集，两个渠道都用它读写 `filesDir/projects/` 下的 Infinity Deck 项目文件夹工作区；共享存储真实路径（外部挂载与共享文件夹工作区）只在侧载渠道开放，并需取得系统“所有文件访问”授权；Play 渠道的外部挂载仅使用 SAF。同样只有侧载渠道声明 `SCHEDULE_EXACT_ALARM`（`BuildConfig.EXACT_ALARM_AVAILABLE`），定时任务可在用户授权后使用精确闹钟；Play 渠道由 JobScheduler 择时、最短 15 分钟，后台任务也只在应用可见时保证运行（`DistributionCapabilities.backgroundKeepAliveAvailable`）。两个渠道都声明 `RECEIVE_BOOT_COMPLETED` 以在开机后重新排期，`scripts/ci/check-distribution-manifests.py` 校验这两项差异。设置页“导出诊断”生成的 JSONL 首行 `app.build` 包含 `distribution`、`allFilesAccessAvailable` 与版本。
 
 构建插件使用 Kotlin 2.4.10 编译器、Compose 与序列化插件，应用源码保留 2.2 语言级别；协程运行和测试库为 1.11.0。QuickJS 1.0.15 的 Android JNI 在两个渠道共用，JVM 单测仅在运行时替换为桌面 JNI。AAR 自带 JNI 消费端保留规则；项目不使用脚本对象反射绑定。隔离服务设备回归类为 `com.promenar.infinity.data.script.ScriptRuntimeDeviceTest`，设备测试默认 ABI 与 `infinity.deviceE2eAbi` 配置一致；ARM64 设备构建需显式传 `-Pinfinity.deviceE2eAbi=arm64-v8a`。
 
@@ -61,7 +61,7 @@ Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`
 
 `scripts/ci/android-release-upgrade-smoke.sh` 依赖已下线的 v0.1 公开基线，目前不在工作流中运行，可在本机用同签名旧包手动执行。发行不代表 Play 商店审核通过。
 
-发布步骤：完成版本提交并推送 `main` 后，在用户授权下执行 `git tag -a v<版本> -m "Infinity Workbench v<版本>"` 与 `git push origin v<版本>`。
+发布步骤：完成版本提交并推送 `main` 后，在用户授权下执行 `git tag -a v<版本> -m "Infinity Deck v<版本>"` 与 `git push origin v<版本>`。
 
 ## 打包 Python
 
@@ -102,7 +102,7 @@ Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`
 
 ## GitHub 浏览器登录
 
-“Git 凭据 › 用浏览器登录 GitHub”使用 GitHub OAuth App 的设备码流程（Device Flow），应用里只放 client_id，不需要 client_secret。client_id 由 Gradle 属性 `infinity.githubOAuthClientId` 在构建时写入 `BuildConfig.GITHUB_OAUTH_CLIENT_ID`，只允许字母、数字、`.`、`_` 与 `-`。client_id 是公开标识，`native-ui/gradle.properties` 写入了 Infinity Workbench 官方 OAuth App 的值；自建分发可在 `~/.gradle/gradle.properties` 或命令行 `-Pinfinity.githubOAuthClientId=<client_id>` 覆盖，置空时界面不显示该入口，只保留手动添加令牌。
+“Git 凭据 › 用浏览器登录 GitHub”使用 GitHub OAuth App 的设备码流程（Device Flow），应用里只放 client_id，不需要 client_secret。client_id 由 Gradle 属性 `infinity.githubOAuthClientId` 在构建时写入 `BuildConfig.GITHUB_OAUTH_CLIENT_ID`，只允许字母、数字、`.`、`_` 与 `-`。client_id 是公开标识，`native-ui/gradle.properties` 写入了 Infinity Deck 官方 OAuth App 的值；自建分发可在 `~/.gradle/gradle.properties` 或命令行 `-Pinfinity.githubOAuthClientId=<client_id>` 覆盖，置空时界面不显示该入口，只保留手动添加令牌。
 
 OAuth App 需在 GitHub 的 App 设置中勾选 “Enable Device Flow”。应用申请 `repo` 范围；授权得到的令牌以主机 `github.com`、GitHub 登录名为用户名存入 Git 凭据，内置 git 的 HTTPS 凭据注入代理按 `Authorization: Basic` 使用，与手动保存的个人访问令牌走同一路径。
 

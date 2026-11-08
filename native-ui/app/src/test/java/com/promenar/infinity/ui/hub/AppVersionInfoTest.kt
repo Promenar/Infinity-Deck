@@ -16,9 +16,9 @@ class AppVersionInfoTest {
 
     @Test
     fun `复制文本依次包含版本名、versionCode、渠道与提交短 SHA`() {
-        val text = appVersionCopyText(info, "Infinity Workbench %1\$s\nversionCode: %2\$d\nChannel: %3\$s\nCommit: %4\$s", "Sideload")
+        val text = appVersionCopyText(info, "Infinity Deck %1\$s\nversionCode: %2\$d\nChannel: %3\$s\nCommit: %4\$s", "Sideload")
         assertThat(text.lines()).containsExactly(
-            "Infinity Workbench 0.3.0-beta",
+            "Infinity Deck 0.3.0-beta",
             "versionCode: 5",
             "Channel: Sideload",
             "Commit: abc1234",

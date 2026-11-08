@@ -11,7 +11,7 @@ import java.nio.file.attribute.PosixFilePermissions
 class LinuxLaunchGitIgnoreTest {
     @TempDir lateinit var temporary: Path
     private val root get() = temporary.resolve("rootfs").toFile().apply { mkdirs() }
-    private val managed = "# >>> Infinity Workbench workspace internal files >>>\n/.recycle_bin/\n/.infinity*\n# <<< Infinity Workbench workspace internal files <<<\n"
+    private val managed = "# >>> Infinity Deck workspace internal files >>>\n/.recycle_bin/\n/.infinity*\n# <<< Infinity Deck workspace internal files <<<\n"
     private fun cleanup(environment: Map<String, String> = emptyMap()) = LinuxLaunchGitIgnore.cleanupOnce(root, environment)
     private fun ignore(relative: String = "root/.config/git/ignore", content: String = managed): File =
         File(root, relative).apply { parentFile!!.mkdirs(); writeText(content) }

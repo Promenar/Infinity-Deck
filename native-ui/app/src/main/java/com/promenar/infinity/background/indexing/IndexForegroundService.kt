@@ -210,6 +210,6 @@ class IndexForegroundService : Service() {
     private companion object {
         const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1_000L
         const val WAKE_LOCK_RENEW_MS = 9 * 60 * 1_000L
-        const val WAKE_LOCK_TAG = "Infinity Workbench:document-indexing"
+        const val WAKE_LOCK_TAG = "Infinity Deck:document-indexing"
     }
 }

@@ -7,7 +7,7 @@ class RagSearchResultsTest {
     @Test
     fun `buildRagSearchSnippet strips leading markdown heading hashes`() {
         val markdownContent = """
-            # Infinity Workbench Audit Notes
+            # Infinity Deck Audit Notes
 
             The launch code for the visual audit demo is BLUE-TIGER-42.
 
@@ -23,7 +23,7 @@ class RagSearchResultsTest {
 
         assertThat(snippet).doesNotContain("# ")
         assertThat(snippet).doesNotContain("## ")
-        assertThat(snippet).contains("Infinity Workbench Audit Notes")
+        assertThat(snippet).contains("Infinity Deck Audit Notes")
         assertThat(snippet).contains("BLUE-TIGER-42")
     }
 

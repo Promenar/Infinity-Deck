@@ -216,7 +216,7 @@ fun Modifier.infinityMenuHost(active: Boolean): Modifier {
 }
 
 /**
- * Infinity Workbench 全站统一悬浮菜单：
+ * Infinity Deck 全站统一悬浮菜单：
  * - 同心圆角：外圆角 14dp = 内衬 6dp + 菜单项 8dp；
  * - 浅色用最亮的容器色，深色用比 surfaceContainerHigh 更亮一档的底色并加 0.5dp 顶部高光；0.5dp 描边与两层阴影；
  * - 菜单项用 [InfinityMenuItem]，分组用 [InfinityMenuDivider]，可选分组小标题 [InfinityMenuHeader]；宽度上限 280dp；

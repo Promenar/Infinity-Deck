@@ -247,14 +247,14 @@ def build():
     full = (0, 0, CANVAS, CANVAS)
     return {
         "infinity-dots-master.svg": svg(defs, [("background", background), ("foreground", foreground)], 108, full,
-                                        "Infinity Workbench 点阵无穷"),
-        "infinity-dots-monochrome.svg": svg([], [("foreground", mono)], 108, full, "Infinity Workbench 单色主题图标"),
+                                        "Infinity Deck 点阵无穷"),
+        "infinity-dots-monochrome.svg": svg([], [("foreground", mono)], 108, full, "Infinity Deck 单色主题图标"),
         "infinity-notification.svg": svg([], [("foreground", [notification_path()])], 24, (0, 0, 24, 24),
-                                         "Infinity Workbench 通知图标"),
+                                         "Infinity Deck 通知图标"),
         "infinity-dots-dark.svg": svg(defs, [("background", background), ("foreground", foreground)], 512, VISIBLE_VIEW,
-                                      "Infinity Workbench 点阵无穷（深色展示）"),
+                                      "Infinity Deck 点阵无穷（深色展示）"),
         "infinity-dots-light.svg": svg([], [("background", light_bg), ("foreground", light_fg)], 512, VISIBLE_VIEW,
-                                       "Infinity Workbench 点阵无穷（浅色展示）"),
+                                       "Infinity Deck 点阵无穷（浅色展示）"),
     }
 
 

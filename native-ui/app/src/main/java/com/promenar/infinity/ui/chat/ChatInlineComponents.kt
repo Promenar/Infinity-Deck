@@ -1045,7 +1045,7 @@ internal fun approvalKindDetail(toolName: String, executionTarget: String?): App
     })
 }
 
-/** 类别说明：命令写清以什么身份运行、能触及哪些范围；内置工具说明由 Infinity Workbench 按固定规则执行；传输写明方向与主机。 */
+/** 类别说明：命令写清以什么身份运行、能触及哪些范围；内置工具说明由 Infinity Deck 按固定规则执行；传输写明方向与主机。 */
 @Composable
 internal fun ApprovalKindDetail(toolName: String, executionTarget: String? = null) {
     val detail = approvalKindDetail(toolName, executionTarget) ?: return

@@ -16,7 +16,7 @@ App 恢复完成后检查更新，成功检查间隔二十四小时；手动操�
 
 ## 信任与发布
 
-固定入口是 `https://promenar.github.io/Infinity-Workbench/model-catalog/v1/manifest.json`。Base64 payload 使用独立 P-256 密钥签名，App 固定公钥验证 SHA256withECDSA DER 签名。客户端拒绝重定向、任意路径、签名/哈希错误、超限内容、无效 schema、旧版本回放和同版本内容替换。
+固定入口是 `https://promenar.github.io/Infinity-Deck/model-catalog/v1/manifest.json`。Base64 payload 使用独立 P-256 密钥签名，App 固定公钥验证 SHA256withECDSA DER 签名。客户端拒绝重定向、任意路径、签名/哈希错误、超限内容、无效 schema、旧版本回放和同版本内容替换。
 
 仓库 Secret `INFINITY_MODEL_CATALOG_SIGNING_KEY` 保存目录私钥，keyId 为 `infinity-catalog-p256-20260922`。该私钥与 Android 签名分开，禁止提交、复制到公共产物或在日志打印。只有经过测试与归一化的公开数据进入 Pages。
 

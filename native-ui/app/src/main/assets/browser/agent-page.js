@@ -1,4 +1,4 @@
-// Infinity Workbench Agent 浏览器的页面脚本：生成可访问性快照并按 ref 操作元素。
+// Infinity Deck Agent 浏览器的页面脚本：生成可访问性快照并按 ref 操作元素。
 // 宿主每次调用都重新求值本函数，页面状态只保存在以随机键挂到 window 的不可枚举对象上。
 (function (key, op, args) {
   'use strict';

@@ -66,12 +66,12 @@ class TermuxRuntime(context: Context) {
             }, cleanup = callback::cancel)
         } catch (cancelled: CancellationException) { throw cancelled
         } catch (_: SecurityException) {
-            TermuxCommandResult(errorCode = "TERMUX_PERMISSION_DENIED", guidance = "Termux 拒绝调用；请在 Infinity Workbench 的系统应用权限页授予 RUN_COMMAND 权限。")
+            TermuxCommandResult(errorCode = "TERMUX_PERMISSION_DENIED", guidance = "Termux 拒绝调用；请在 Infinity Deck 的系统应用权限页授予 RUN_COMMAND 权限。")
         } catch (_: IllegalArgumentException) { invalidArguments()
         } catch (failure: Exception) {
             TermuxCommandResult(
                 errorCode = "TERMUX_START_FAILED",
-                guidance = "无法启动 Termux 后台命令；请确认 Termux 已初始化、集成开关已开启。ColorOS、MIUI 等系统还需在应用耗电管理中把 Infinity Workbench 和 Termux 都设为“完全允许后台行为”，重新安装后可能需要再次设置。",
+                guidance = "无法启动 Termux 后台命令；请确认 Termux 已初始化、集成开关已开启。ColorOS、MIUI 等系统还需在应用耗电管理中把 Infinity Deck 和 Termux 都设为“完全允许后台行为”，重新安装后可能需要再次设置。",
                 errmsg = listOfNotNull(failure.javaClass.simpleName, failure.message?.take(300)).joinToString(": "),
             )
         } finally { callback.cancel() }

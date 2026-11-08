@@ -124,7 +124,7 @@ class AppDiagnosticRecorder(
 }
 
 internal fun writeDiagnosticExport(output: OutputStream, issueSummary: String, recent: String) {
-    val text = "Infinity Workbench 诊断\n\n启动问题\n${DiagnosticRedactor.sanitizeIssueSummary(issueSummary)}\n\n最近记录\n$recent"
+    val text = "Infinity Deck 诊断\n\n启动问题\n${DiagnosticRedactor.sanitizeIssueSummary(issueSummary)}\n\n最近记录\n$recent"
     output.write(text.toByteArray(Charsets.UTF_8))
     output.flush()
 }

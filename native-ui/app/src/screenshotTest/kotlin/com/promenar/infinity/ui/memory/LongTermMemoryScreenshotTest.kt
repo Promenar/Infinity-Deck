@@ -71,7 +71,7 @@ private fun sampleMemories(english: Boolean): List<LongTermMemoryListItem> {
             if (english) "Reply language" else "回复语言",
             if (english) "Always reply in Simplified Chinese, conclusions first." else "始终使用简体中文，结论先行，不要套话。", 3), agent),
         LongTermMemoryListItem(memory("3", LongTermMemoryKind.PROJECT,
-            if (english) "Infinity Workbench release checks" else "Infinity Workbench 发布检查",
+            if (english) "Infinity Deck release checks" else "Infinity Deck 发布检查",
             if (english) "Run targeted tests during development and the full gate only once at the end." else "开发中只跑定向测试，全量门禁在最后集成时跑一次。", 1), null),
         LongTermMemoryListItem(memory("4", LongTermMemoryKind.REFERENCE,
             if (english) "Design tokens" else "设计规范",

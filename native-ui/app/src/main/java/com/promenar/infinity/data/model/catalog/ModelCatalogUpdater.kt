@@ -45,7 +45,7 @@ internal class PagesCatalogTransport : CatalogTransport {
             }
         }
         try {
-            return client.prepareGet("https://promenar.github.io/Infinity-Workbench/model-catalog/v1/$file").execute { response ->
+            return client.prepareGet("https://promenar.github.io/Infinity-Deck/model-catalog/v1/$file").execute { response ->
                 require(response.status.value == 200) { "目录服务返回非成功状态" }
                 response.headers["Content-Length"]?.toLongOrNull()?.let {
                     require(it in 1..maxBytes.toLong()) { "目录响应过大" }

@@ -148,7 +148,7 @@ private fun ComposerFrame(
                 postProcessTasks = listOf(PostProcessTask("summary", PostProcessType.AUTO_SUMMARY, PostProcessStatus.RUNNING)),
             )
             ChatInputBar(
-                text = text, placeholder = "向 Infinity Workbench 提问…", onTextChange = {}, onSend = {},
+                text = text, placeholder = "向 Infinity Deck 提问…", onTextChange = {}, onSend = {},
                 status = if (generating) GenerationStatus.THINKING else GenerationStatus.IDLE,
                 isGenerating = generating,
                 modelName = modelName, modelId = "google::gemini-2.5-flash",
@@ -193,7 +193,7 @@ private fun BudgetComposerFrame(text: String, documents: List<MessageDocumentAtt
     ChatBatch2Frame {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             ChatInputBar(
-                text = text, placeholder = "向 Infinity Workbench 提问…", onTextChange = {}, onSend = {},
+                text = text, placeholder = "向 Infinity Deck 提问…", onTextChange = {}, onSend = {},
                 modelName = "Gemini 2.5 Flash", modelId = "google::gemini-2.5-flash",
                 tokenState = ChatViewModel.TokenIndicatorState(used = 44800, max = 128000),
                 hasDocuments = true,
@@ -274,7 +274,7 @@ private fun Batch2Page(dark: Boolean = true, english: Boolean = false, empty: Bo
             state = ChatScreenState(
                 uiState = ChatUiState(
                     session = Session("batch2", "assistant", title = if (english) "Quarterly report" else "季度经营分析", modelId = "google::gemini-2.5-flash"),
-                    agentName = "Infinity Workbench",
+                    agentName = "Infinity Deck",
                     messages = if (empty) emptyList() else listOf(
                         Message("user", MessageRole.USER, if (english) "Summarize the quarterly report." else "请总结季度报告，并给出三个行动建议。"),
                         Message("assistant", MessageRole.ASSISTANT,

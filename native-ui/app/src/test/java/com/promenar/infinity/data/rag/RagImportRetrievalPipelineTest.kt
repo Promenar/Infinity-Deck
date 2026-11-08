@@ -68,7 +68,7 @@ class RagImportRetrievalPipelineTest {
         val fileId = "rag-pipeline-file"
         val fileName = "infinity-release-fact.txt"
         val uniqueFact = "INFINITY_RAG_PIPELINE_SENTINEL_7319"
-        val query = "Infinity Workbench release sentinel"
+        val query = "Infinity Deck release sentinel"
         seedSession(sessionId)
         val workspace = WorkspaceRepository(
             database.fileEntryDao(),

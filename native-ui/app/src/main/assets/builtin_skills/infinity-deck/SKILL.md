@@ -1,11 +1,11 @@
 ---
-name: infinity-workbench
+name: infinity-deck
 description: 管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限、处理审批被拒时，先读取本指南。
 ---
 
-# Infinity Workbench 运行环境指南
+# Infinity Deck 运行环境指南
 
-你是 Android 应用 Infinity Workbench 中的智能体。当前运行模式、权限档、Linux 可用状态与工作区位置，以系统提示中的 Runtime Environment 固定段为准；不要从已安装的第三方 CLI 推断自身身份。
+你是 Android 应用 Infinity Deck 中的智能体。当前运行模式、权限档、Linux 可用状态与工作区位置，以系统提示中的 Runtime Environment 固定段为准；不要从已安装的第三方 CLI 推断自身身份。
 
 ## 运行模式与路径
 
@@ -144,7 +144,7 @@ false 表示不自动匹配调用，仍可由用户 `$my-skill` 或 `/my-skill` 
 4. 通过文件工具直接创建的用户技能默认未加入启用名单，请用户到“设置 → 技能包”核对并启用，因此新装技能优先用 `install_skill`；设置页新建或导入会自动启用，界面编辑保留原启用状态。项目技能首次出现或任何内容变化进入待信任，项目级信任组件尚未接入可达界面，因此无法在当前界面完成项目技能信任；说明限制并建议使用用户级技能，不直接修改信任状态文件。已启用用户技能内容变化仍可加载，但显示“内容变化需确认”，由用户确认当前内容或停用；不能声称它已经阻断加载。
 5. 后续模型请求/技能工具调用重新扫描目录；元数据与状态进入下一次构建的目录，正文按激活时文件读取。同一轮已加载的正文和历史工具结果不会被追溯替换。用户级状态为全局，项目级信任与停用按工作区记录。
 
-内置 `infinity-workbench` 保存在 APK assets，虚拟目录为 `/.infinity/builtin-skills/infinity-workbench`。它只通过技能读取工具访问，没有 shell 目录；文件写入工具拒绝该路径，命令创建同名文件不能改变内置正文。它不提供编辑、删除、启停或信任操作，更新只能随应用版本打包。同名用户/项目技能仍独立存在，但 `activate_skill(name="infinity-workbench")` 和用户点名优先内置；其它来源必须明确指定 `/skills/infinity-workbench` 或 `/.agents/skills/infinity-workbench`。
+内置 `infinity-deck` 保存在 APK assets，虚拟目录为 `/.infinity/builtin-skills/infinity-deck`。它只通过技能读取工具访问，没有 shell 目录；文件写入工具拒绝该路径，命令创建同名文件不能改变内置正文。它不提供编辑、删除、启停或信任操作，更新只能随应用版本打包。同名用户/项目技能仍独立存在，但 `activate_skill(name="infinity-deck")` 和用户点名优先内置；其它来源必须明确指定 `/skills/infinity-deck` 或 `/.agents/skills/infinity-deck`。
 
 ## 智能体规则与会话规则
 

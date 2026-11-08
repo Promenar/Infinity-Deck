@@ -346,7 +346,7 @@ class BuiltinExecDeviceTest {
         val pid = pidFile.readText().trim()
 
         withTimeout(10_000) { while (!execServiceInForeground()) delay(100) }
-        assertThat(heldWakeLocks().any { "Infinity Workbench:builtin-exec" in it }).isTrue()
+        assertThat(heldWakeLocks().any { "Infinity Deck:builtin-exec" in it }).isTrue()
         if (notificationsVisible) {
             val notification = withTimeout(10_000) { var found = execNotification(); while (found == null) { delay(100); found = execNotification() }; found }
             assertThat(notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString())
@@ -361,7 +361,7 @@ class BuiltinExecDeviceTest {
         withTimeout(5_000) { while (File("/proc/$pid").exists()) delay(50) }
         withTimeout(5_000) { while (execNotification() != null || execServiceInForeground()) delay(100) }
         assertThat(registry.runs.value).isEmpty()
-        assertThat(heldWakeLocks().none { "Infinity Workbench:builtin-exec" in it }).isTrue()
+        assertThat(heldWakeLocks().none { "Infinity Deck:builtin-exec" in it }).isTrue()
         assertThat(value.paths("added")).containsExactly("/main.pid")
     }
 }

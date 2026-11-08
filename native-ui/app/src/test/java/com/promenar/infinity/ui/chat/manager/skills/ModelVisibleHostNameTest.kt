@@ -22,7 +22,7 @@ class ModelVisibleHostNameTest {
         assertWithMessage("扫描到的源码文件数").that(files.size).isAtLeast(10)
 
         val literal = Regex("\"(?:[^\"\\\\\\n]|\\\\.)*\"")
-        val hostName = Regex("Infinity Workbench(?!Error)")
+        val hostName = Regex("Infinity Deck(?!Error)")
         val offenders = files.flatMap { file ->
             file.readLines().withIndex().flatMap { (index, line) ->
                 literal.findAll(line).map { it.value }.filter(hostName::containsMatchIn).map { "${file.name}:${index + 1} $it" }

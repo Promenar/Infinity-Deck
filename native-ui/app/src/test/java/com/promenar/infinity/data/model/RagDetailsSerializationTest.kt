@@ -44,12 +44,12 @@ class RagDetailsSerializationTest {
 
     @Test
     fun `test KgPath serialization`() {
-        val node1 = KgNode(id = "n1", label = "Infinity Workbench", type = "Software")
+        val node1 = KgNode(id = "n1", label = "Infinity Deck", type = "Software")
         val node2 = KgNode(id = "n2", label = "Android", type = "Platform")
         val edge = KgEdge(sourceId = "n1", targetId = "n2", relation = "runs_on")
 
         val path = KgPath(
-            queryKeywords = listOf("Infinity Workbench", "Platform"),
+            queryKeywords = listOf("Infinity Deck", "Platform"),
             nodes = listOf(node1, node2),
             edges = listOf(edge),
             reasoning = "Found software running platform."
@@ -57,7 +57,7 @@ class RagDetailsSerializationTest {
 
         val jsonString = json.encodeToString(path)
         assertTrue(jsonString.contains("queryKeywords"))
-        assertTrue(jsonString.contains("Infinity Workbench"))
+        assertTrue(jsonString.contains("Infinity Deck"))
         assertTrue(jsonString.contains("runs_on"))
         assertTrue(jsonString.contains("reasoning"))
 
@@ -95,8 +95,8 @@ class RagDetailsSerializationTest {
     @Test
     fun `Message entity mapping preserves kgPaths JSON across database reload`() {
         val path = KgPath(
-            queryKeywords = listOf("Infinity Workbench"),
-            nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+            queryKeywords = listOf("Infinity Deck"),
+            nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
             edges = listOf(KgEdge("n1", "n2", "uses")),
             reasoning = "graph path",
         )
@@ -108,7 +108,7 @@ class RagDetailsSerializationTest {
         )
 
         val entity = message.toEntity("session-1")
-        assertTrue(entity.kgPaths!!.contains("Infinity Workbench"))
+        assertTrue(entity.kgPaths!!.contains("Infinity Deck"))
         assertEquals(listOf(path), entity.toDomain().kgPaths)
     }
 

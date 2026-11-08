@@ -306,7 +306,7 @@ class PublishedModelCatalogTest(unittest.TestCase):
             self.assertEqual(source["sha256"], hashlib.sha256(OFFICIAL_OVERRIDES.read_bytes()).hexdigest())
             self.assertEqual(
                 source["url"],
-                "https://github.com/Promenar/Infinity-Workbench/blob/main/scripts/model-catalog/official-model-overrides.json",
+                "https://github.com/Promenar/Infinity-Deck/blob/main/scripts/model-catalog/official-model-overrides.json",
             )
             self.assertEqual(
                 source["license"],

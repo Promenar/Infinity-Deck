@@ -80,7 +80,7 @@ class BuiltinSkillCatalog(
     }
 
     companion object {
-        const val NAME = "infinity-workbench"
+        const val NAME = "infinity-deck"
         const val ID = "builtin:$NAME"
         // 复用所有文件入口既有的 .infinity 保留名门禁；此路径没有对应的 shell 目录。
         const val VIRTUAL_DIR = "/.infinity/builtin-skills/$NAME"

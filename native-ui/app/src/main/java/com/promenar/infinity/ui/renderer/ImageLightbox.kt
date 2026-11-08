@@ -287,7 +287,7 @@ private suspend fun saveImageToGallery(context: Context, imageUrl: String) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(
                     MediaStore.Images.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_PICTURES + "/Infinity Workbench"
+                    Environment.DIRECTORY_PICTURES + "/Infinity Deck"
                 )
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
@@ -306,7 +306,7 @@ private suspend fun saveImageToGallery(context: Context, imageUrl: String) {
                 resolver.update(uri, contentValues, null, null)
             }
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Saved to Pictures/Infinity Workbench", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Saved to Pictures/Infinity Deck", Toast.LENGTH_SHORT).show()
             }
         } else {
             withContext(Dispatchers.Main) {
@@ -334,7 +334,7 @@ private suspend fun shareImage(context: Context, imageUrl: String) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(
                     MediaStore.Images.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_PICTURES + "/Infinity Workbench"
+                    Environment.DIRECTORY_PICTURES + "/Infinity Deck"
                 )
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }

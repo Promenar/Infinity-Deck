@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""验证 Infinity Workbench 发行 APK 的渠道制品、完整性、版本、签名与常见秘密泄漏。"""
+"""验证 Infinity Deck 发行 APK 的渠道制品、完整性、版本、签名与常见秘密泄漏。"""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ SENSITIVE_PATTERNS: tuple[tuple[str, re.Pattern[bytes]], ...] = (
     ("macOS 用户绝对路径", re.compile(rb"/Users/[A-Za-z0-9._-]+/")),
     # /home/session 是 Linux 会话在 Alpine 内的固定会话目录，不是构建机或用户路径。
     ("Linux 用户绝对路径", re.compile(rb"/home/(?!session/)[A-Za-z0-9._-]+/")),
-    ("Windows 本机绝对路径", re.compile(rb"(?i)[A-Z]:[\\/](?:Users|Infinity Workbench)[\\/]")),
+    ("Windows 本机绝对路径", re.compile(rb"(?i)[A-Z]:[\\/](?:Users|Infinity Deck)[\\/]")),
     ("本机 secure_env 路径", re.compile(rb"(?i)(?:secure_env|promenar\.keystore|secure\.properties)")),
     (
         "Authorization Bearer 凭证",

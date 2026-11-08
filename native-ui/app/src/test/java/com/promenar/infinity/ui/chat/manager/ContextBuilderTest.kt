@@ -286,11 +286,11 @@ class ContextBuilderTest {
             ContextBuilderParams("s1", "hi", assistantMsgId = "m1", session = Session(id = "s1", agentId = "default"), availableToolNames = emptySet()),
         ).finalSystemPrompt
 
-        assertThat(prompt).doesNotContain("Infinity Workbench,")
+        assertThat(prompt).doesNotContain("Infinity Deck,")
         assertThat(prompt).doesNotContain("You are")
         assertThat(prompt).doesNotContain("Be accurate")
-        assertThat(prompt).startsWith("## Runtime Environment\n- Environment: Infinity Workbench\n")
-        assertThat(prompt).contains("你是 Infinity Workbench 的智能体，运行在 Android 应用内")
+        assertThat(prompt).startsWith("## Runtime Environment\n- Environment: Infinity Deck\n")
+        assertThat(prompt).contains("你是 Infinity Deck 的智能体，运行在 Android 应用内")
     }
 
     @Test
@@ -307,8 +307,8 @@ class ContextBuilderTest {
         ).finalSystemPrompt
 
         assertThat(prompt).contains("shell_exec")
-        assertThat(prompt.lineSequence().filter { "Infinity Workbench" in it }.toList())
-            .containsExactly("- Environment: Infinity Workbench", "- 你是 Infinity Workbench 的智能体，运行在 Android 应用内。")
+        assertThat(prompt.lineSequence().filter { "Infinity Deck" in it }.toList())
+            .containsExactly("- Environment: Infinity Deck", "- 你是 Infinity Deck 的智能体，运行在 Android 应用内。")
     }
 
     @Test

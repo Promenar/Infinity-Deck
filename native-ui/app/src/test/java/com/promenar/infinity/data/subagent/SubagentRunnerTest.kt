@@ -116,7 +116,7 @@ class SubagentRunnerTest {
                 val modelId = "remote-child-${index + 1}"
                 assertThat(request.model).isEqualTo(modelId)
                 val prompt = request.messages.first().content
-                assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+                assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Deck\n")
                 assertThat(prompt).contains("- Model: $modelId\n")
                 assertThat(prompt).doesNotContain("provider::child-key")
                 assertThat(prompt).doesNotContain("parent-model")
@@ -149,7 +149,7 @@ class SubagentRunnerTest {
         val result = runner(models, FakeHost(emptyList())).run(parent(), session("auto"), "step", initial, null) { _, _ -> }
         assertThat(result.status).isEqualTo(SubagentStatus.COMPLETED)
         val prompt = models.requests.single().messages.first().content
-        assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+        assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Deck\n")
         assertThat(prompt).contains("- Model: child-model\n")
     }
 
@@ -424,7 +424,7 @@ class SubagentRunnerTest {
             endpoint.enabled = false
             assertThat(execute("step-1", 0)).containsExactly(null, null)
             assertThat(endpoint.requests.map { com.promenar.infinity.data.remote.SessionHeaderWiringEndpoint.body(it) }).isEqualTo(firstBodies)
-            assertThat(endpoint.requests.none { it.headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true }).isTrue()
+            assertThat(endpoint.requests.none { it.headers["User-Agent"]?.startsWith("Infinity-Deck/") == true }).isTrue()
         }
     }
 

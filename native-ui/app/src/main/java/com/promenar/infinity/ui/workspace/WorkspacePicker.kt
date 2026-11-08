@@ -214,7 +214,7 @@ internal fun sharedVolumeLabel(roots: List<File>, volume: File): String =
     else stringResource(R.string.workspace_picker_shared_volume_named, volume.name)
 
 /**
- * 可复用的工作区选择器：列出已登记的工作区，并可逐级浏览 Infinity Workbench 项目文件夹与（仅侧载渠道的）共享存储卷。
+ * 可复用的工作区选择器：列出已登记的工作区，并可逐级浏览 Infinity Deck 项目文件夹与（仅侧载渠道的）共享存储卷。
  * 选定目录后登记并回调 [onPicked]；未授权时共享存储一栏显示授权引导。
  */
 @Composable

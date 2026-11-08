@@ -16,8 +16,8 @@ class MessageRepositoryKgPathsTest {
     @Test
     fun `partial update encodes kgPaths and reload decodes them`() = runTest {
         val path = KgPath(
-            queryKeywords = listOf("Infinity Workbench"),
-            nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+            queryKeywords = listOf("Infinity Deck"),
+            nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
             edges = emptyList(),
         )
         val original = MessageEntity(
@@ -37,7 +37,7 @@ class MessageRepositoryKgPathsTest {
 
         coVerify {
             dao.update(match { updated ->
-                updated.kgPaths?.contains("Infinity Workbench") == true
+                updated.kgPaths?.contains("Infinity Deck") == true
             })
         }
     }

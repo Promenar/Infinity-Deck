@@ -23,7 +23,7 @@ import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
 private val PreviewWorkspace = WorkspaceEntity(
-    "ws-docs", WorkspaceEntity.KIND_SHARED, "Infinity Workbench 文档", "/storage/emulated/0/Documents/Infinity Workbench", 1,
+    "ws-docs", WorkspaceEntity.KIND_SHARED, "Infinity Deck 文档", "/storage/emulated/0/Documents/Infinity Deck", 1,
 )
 
 @PreviewTest

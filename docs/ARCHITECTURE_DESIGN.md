@@ -1,4 +1,4 @@
-# Infinity Workbench — 全局架构设计文档
+# Infinity Deck — 全局架构设计文档
 
 > **版本**: 2.3.0
 > **更新时间**: 2026-08-25
@@ -225,7 +225,7 @@ IProviderRepository
 
 ### 2.4 上下文构建引擎（ContextBuilder）
 
-上下文构建是 Infinity Workbench 的核心调度器，负责从多个数据源收集、打分、组装 System Prompt。
+上下文构建是 Infinity Deck 的核心调度器，负责从多个数据源收集、打分、组装 System Prompt。
 数据源分为 **被动检索** 和 **主动工具回传** 两类：
 
 - **被动检索**（每次对话自动触发）：向量检索、FTS5 全文、知识图谱查询、历史摘要

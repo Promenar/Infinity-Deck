@@ -1,10 +1,10 @@
-# Infinity Workbench Kotlin 原生规范
+# Infinity Deck Kotlin 原生规范
 
 > 本文件是 OpenCode 的项目级指令，定义了从 TypeScript/React Native 迁移到 Kotlin/Compose 的所有规范。
 
 ## 项目概述
 
-Infinity Workbench（原名 Nexara）是一个 AI 助手 Android 应用，正在从 React Native 前端迁移到纯 Kotlin/Jetpack Compose 原生前端。
+Infinity Deck（原名 Nexara）是一个 AI 助手 Android 应用，正在从 React Native 前端迁移到纯 Kotlin/Jetpack Compose 原生前端。
 本模块 (`native-ui/`) 是完全独立的 Android 项目，零 RN 依赖。
 
 ## 架构约束

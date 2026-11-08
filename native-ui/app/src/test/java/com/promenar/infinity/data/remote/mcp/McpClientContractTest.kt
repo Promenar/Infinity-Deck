@@ -304,7 +304,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
         assertThat(
             meta.getValue("io.modelcontextprotocol/clientInfo").jsonObject
                 .getValue("name").toString(),
-        ).isEqualTo("\"Infinity Workbench\"")
+        ).isEqualTo("\"Infinity Deck\"")
         assertThat(
             meta.getValue("io.modelcontextprotocol/clientInfo").jsonObject
                 .getValue("version").toString(),

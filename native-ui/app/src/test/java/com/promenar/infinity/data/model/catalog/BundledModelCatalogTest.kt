@@ -89,7 +89,7 @@ class BundledModelCatalogTest {
     }
 
     @Test
-    fun `Infinity Workbench 修正逐字段回落到公共目录`() {
+    fun `Infinity Deck 修正逐字段回落到公共目录`() {
         val resolved = ModelCatalogRuntime.resolverFor(semanticCatalog()).resolve("deepseek-v4-flash")
 
         assertThat(resolved.displayName).isEqualTo("DeepSeek V4 Flash")
@@ -171,7 +171,7 @@ class BundledModelCatalogTest {
     }
 
     @Test
-    fun `固定 fixture 中上游新增旧兼容型号仍由 Infinity Workbench exact overlay 优先`() {
+    fun `固定 fixture 中上游新增旧兼容型号仍由 Infinity Deck exact overlay 优先`() {
         val fixtureCatalog = BundledModelCatalog.fromJson(semanticFixtureFile().readText())
         val runtimeResolver = ModelCatalogRuntime.resolverFor(fixtureCatalog)
 
@@ -233,7 +233,7 @@ class BundledModelCatalogTest {
     }
 
     @Test
-    fun `畸形 JSON 后运行时只保留 Infinity Workbench 精确修正`() {
+    fun `畸形 JSON 后运行时只保留 Infinity Deck 精确修正`() {
         ModelCatalogRuntime.withTestResolver(ModelCatalogRuntime.resolverFor(catalog)) {
             ModelCatalogRuntime.withUninitializedTestRuntime {
                 ModelCatalogRuntime.initialize(applicationWithBundledCatalog(malformedJson = true))

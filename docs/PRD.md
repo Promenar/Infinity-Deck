@@ -1,4 +1,4 @@
-# Infinity Workbench — 产品需求文档 (PRD)
+# Infinity Deck — 产品需求文档 (PRD)
 
 > **版本**: 2.1.0（Kotlin 原生发行候选）
 > **更新时间**: 2026-08-25
@@ -13,15 +13,15 @@
 
 | 属性 | 值 |
 |------|-----|
-| **名称** | Infinity Workbench |
+| **名称** | Infinity Deck |
 | **定位** | Android 端 BYOK 开源 AI 客户端 — 对标桌面端 LobeHub / Cherry Studio |
 | **平台** | Android（Kotlin/Jetpack Compose 原生），远期渐进式迁移 CMP 跨端 |
 | **许可证** | GPL-3.0 |
 | **当前版本** | `0.7.0-beta`（versionCode 20，`main`） |
 
-### 1.2 项目精神（Why Infinity Workbench）
+### 1.2 项目精神（Why Infinity Deck）
 
-Infinity Workbench 诞生于一个明确的市场空白：
+Infinity Deck 诞生于一个明确的市场空白：
 
 > **桌面端**有 LobeHub、Cherry Studio 等界面精美、自由接入第三方 API 的开源 AI 客户端。但 **Android 端**缺少同时满足以下三者的产品：
 > 1. **BYOK**（Bring Your Own Key）— 自由接入第三方模型 API
@@ -30,7 +30,7 @@ Infinity Workbench 诞生于一个明确的市场空白：
 
 LobeHub 的 WebApp 可在移动端使用，但纯网页架构的性能牺牲过大。大部分本地客户端（包括 Cherry Studio）也未能将 RAG 和知识图谱完美结合。
 
-**Infinity Workbench 的核心命题**：做 Android 端的 "LobeHub + Cherry Studio 融合体"，BYOK 自由、MD3 视觉、RAG+KG 记忆引擎三位一体。
+**Infinity Deck 的核心命题**：做 Android 端的 "LobeHub + Cherry Studio 融合体"，BYOK 自由、MD3 视觉、RAG+KG 记忆引擎三位一体。
 
 ### 1.3 目标用户画像
 
@@ -41,7 +41,7 @@ LobeHub 的 WebApp 可在移动端使用，但纯网页架构的性能牺牲过�
 | **轻量开发者** | SSH 运维、HTML/JS 小工具、脚本生成 | Agent 工具调用、代码高亮、Artifacts 预览 |
 | **AI 爱好者** | 日常闲聊、模型对比、提示词工程 | 多模型自由切换、推理过程可视化、模型能力透明化 |
 
-### 1.4 能力边界（What Infinity Workbench is NOT）
+### 1.4 能力边界（What Infinity Deck is NOT）
 
 | 不做 | 原因 |
 |------|------|

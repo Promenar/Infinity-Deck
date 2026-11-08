@@ -11,7 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 
 /**
- * 沙箱模式的 Python：在 isolatedProcess 中运行，看不到 Infinity Workbench 私有数据与工作区物理目录，默认无网络。
+ * 沙箱模式的 Python：在 isolatedProcess 中运行，看不到 Infinity Deck 私有数据与工作区物理目录，默认无网络。
  * 工作区读写经 `import infinity` 的能力调用，与 exec_js 共用文件审批、挂载校验与联网策略。
  * 结果沿用命令类工具的结构（exit_code、stdout、stderr），另带 result 变量。
  */

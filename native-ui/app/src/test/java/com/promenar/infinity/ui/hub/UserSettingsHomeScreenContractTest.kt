@@ -128,7 +128,7 @@ class UserSettingsHomeScreenContractTest {
     fun `语言行按偏好显示且页脚文案走资源`() {
         assertThat(screenSource).doesNotContain("LocalConfiguration.current.locales")
         assertThat(screenSource).contains("state.language == \"en\"")
-        assertThat(screenSource).doesNotContain("\"Infinity Workbench AI • Project Narcis\"")
+        assertThat(screenSource).doesNotContain("\"Infinity Deck AI • Project Narcis\"")
         assertThat(screenSource).contains("settings_about_version")
     }
 

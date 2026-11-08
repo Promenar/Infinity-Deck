@@ -10,7 +10,7 @@ class SessionRequestHeaders(val name: String, val identifier: String, val userAg
     init {
         require(SessionHeaderPolicy.isValidName(name)) { "会话请求头名称无效" }
         require(identifier.matches(Regex("[0-9a-f]{32}"))) { "会话标识格式无效" }
-        require(userAgent.startsWith("Infinity-Workbench/") && userAgent.all { it.code in 0x21..0x7e }) { "客户端标识格式无效" }
+        require(userAgent.startsWith("Infinity-Deck/") && userAgent.all { it.code in 0x21..0x7e }) { "客户端标识格式无效" }
     }
     override fun toString(): String = "SessionRequestHeaders(configured=true)"
 }
@@ -23,7 +23,7 @@ internal suspend fun resolveSessionRequestHeaders(
 ): SessionRequestHeaders? {
     if (name == null || sessionId.isNullOrBlank()) return null
     val value = identifier(sessionId) ?: return null
-    return SessionRequestHeaders(name, value, "Infinity-Workbench/$versionName")
+    return SessionRequestHeaders(name, value, "Infinity-Deck/$versionName")
 }
 
 internal fun HttpRequestBuilder.applySessionRequestHeaders(value: SessionRequestHeaders?) {

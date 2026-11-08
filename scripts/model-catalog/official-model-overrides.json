@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "source": {
     "id": "infinity-official-overrides",
-    "url": "https://github.com/Promenar/Infinity-Workbench/blob/main/scripts/model-catalog/official-model-overrides.json",
+    "url": "https://github.com/Promenar/Infinity-Deck/blob/main/scripts/model-catalog/official-model-overrides.json",
     "license": "Google documentation: CC BY 4.0; SenseNova official API documentation: no repository license declared"
   },
   "records": [

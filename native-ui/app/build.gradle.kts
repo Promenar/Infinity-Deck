@@ -230,7 +230,7 @@ val preparePackagedPython = packagedPythonAbis.mapValues { (abi, arch) ->
     }
 }
 
-// 内置 git 的纯 Python 依赖：wheel 按 SHA-256 校验后与 python/site 中的 Infinity Workbench 模块合成 libpysite.so。
+// 内置 git 的纯 Python 依赖：wheel 按 SHA-256 校验后与 python/site 中的 Infinity Deck 模块合成 libpysite.so。
 val packagedPythonWheels = PackagedPythonWheels.load(file("python/python-site.properties").toPath())
 val fetchPackagedPythonWheels = packagedPythonWheels.names.map { name ->
     tasks.register<FetchVerifiedFile>("fetchPackagedPythonWheel${name.replaceFirstChar { it.uppercaseChar() }}") {
@@ -370,8 +370,8 @@ android {
         applicationId = "com.promenar.infinity"
         minSdk = 31
         targetSdk = 36
-        versionCode = 105
-        versionName = "0.38.1-beta"
+        versionCode = 106
+        versionName = "0.39.0-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PACKAGED_PYTHON_VERSION", "\"$packagedPythonVersion\"")
@@ -418,7 +418,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
-            resValue("string", "app_name", "Infinity Workbench (Dev)")
+            resValue("string", "app_name", "Infinity Deck (Dev)")
             buildConfigField("boolean", "LOCAL_INFERENCE_AVAILABLE", "true")
             ndk {
                 abiFilters += listOf("arm64-v8a")
@@ -433,7 +433,7 @@ android {
             applicationIdSuffix = ".deviceTest"
             isDebuggable = true
             signingConfig = signingConfigs.getByName("debug")
-            resValue("string", "app_name", "Infinity Workbench (Device Test)")
+            resValue("string", "app_name", "Infinity Deck (Device Test)")
             buildConfigField("boolean", "LOCAL_INFERENCE_AVAILABLE", "false")
             ndk {
                 abiFilters += listOf(deviceE2eAbi)
@@ -450,7 +450,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
-            resValue("string", "app_name", "Infinity Workbench (Minified Test)")
+            resValue("string", "app_name", "Infinity Deck (Minified Test)")
             buildConfigField("boolean", "LOCAL_INFERENCE_AVAILABLE", "false")
             ndk {
                 abiFilters += listOf(deviceE2eAbi)
@@ -470,7 +470,7 @@ android {
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
-            resValue("string", "app_name", "Infinity Workbench")
+            resValue("string", "app_name", "Infinity Deck")
             buildConfigField("boolean", "LOCAL_INFERENCE_AVAILABLE", "false")
             externalNativeBuild {
                 cmake {

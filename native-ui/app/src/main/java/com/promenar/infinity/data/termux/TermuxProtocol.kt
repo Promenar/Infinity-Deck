@@ -18,7 +18,7 @@ data class TermuxAvailability(val installed: Boolean, val versionName: String?, 
     val guidance: String? get() = when (errorCode) {
         "TERMUX_NOT_INSTALLED" -> "请从 F-Droid 或 GitHub 安装 Termux，并打开一次完成初始化。"
         "TERMUX_VERSION_UNSUPPORTED" -> "请安装可识别版本号的 Termux 0.109 或更高版本，以接收命令结果。"
-        "TERMUX_PERMISSION_DENIED" -> "请在设置 → 工具 → Termux 接入与诊断中授予 RUN_COMMAND 权限，或打开 Infinity Workbench 的系统应用权限页。"
+        "TERMUX_PERMISSION_DENIED" -> "请在设置 → 工具 → Termux 接入与诊断中授予 RUN_COMMAND 权限，或打开 Infinity Deck 的系统应用权限页。"
         else -> null
     }
 

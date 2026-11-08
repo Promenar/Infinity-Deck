@@ -55,10 +55,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 交付边界（Infinity Workbench 责任说明）
+### 交付边界（Infinity Deck 责任说明）
 
-- Infinity Workbench 会基于 `models.dev` 上游快照叠加厂商元数据与本地修正。
-- Infinity Workbench 不保证该快照目录单独构成完整真实权威模型库。
+- Infinity Deck 会基于 `models.dev` 上游快照叠加厂商元数据与本地修正。
+- Infinity Deck 不保证该快照目录单独构成完整真实权威模型库。
 - 规范数据与供应商条目经归一化、签名后通过 GitHub Pages 分发；来源与许可随目录保存，客户端保持验签与离线回退。
 
 ---
@@ -71,11 +71,11 @@ SOFTWARE.
 - 上游仓库：`https://github.com/appshubcc/Bettbox`
 - 本地固定来源提交：`714130a3d746d093f6278c0503dac9e2e43fd3e3`
 - 许可：GNU General Public License v3.0
-- Infinity Workbench 许可：GNU General Public License v3.0，与上游许可兼容
+- Infinity Deck 许可：GNU General Public License v3.0，与上游许可兼容
 
 ### 转译范围
 
-Infinity Workbench 没有直接引入 Bettbox 的 Flutter/Dart 构建产物，而是将以下界面结构和交互语言按 Jetpack Compose 重新实现：
+Infinity Deck 没有直接引入 Bettbox 的 Flutter/Dart 构建产物，而是将以下界面结构和交互语言按 Jetpack Compose 重新实现：
 
 - `lib/widgets/list.dart`：标准 ListTile 节奏、20dp 圆角填充分组、弱化的组内分隔；
 - `lib/widgets/google_bottom_nav_bar.dart`：36dp 浮动导航座、弱描边与阴影、选中容器、250ms 状态过渡；
@@ -84,8 +84,8 @@ Infinity Workbench 没有直接引入 Bettbox 的 Flutter/Dart 构建产物，�
 
 ### 交付边界
 
-- 业务模型、数据层、导航目的地、无障碍语义与 Android 触感仍由 Infinity Workbench 自身实现负责；Flutter 特有依赖没有进入 Android 运行时。
-- 固定提交只用于复现本次视觉基线；后续上游变化不会自动改变 Infinity Workbench 的界面行为。
+- 业务模型、数据层、导航目的地、无障碍语义与 Android 触感仍由 Infinity Deck 自身实现负责；Flutter 特有依赖没有进入 Android 运行时。
+- 固定提交只用于复现本次视觉基线；后续上游变化不会自动改变 Infinity Deck 的界面行为。
 - GPLv3 完整条款见仓库根目录 `LICENSE`。
 
 
@@ -93,7 +93,7 @@ Infinity Workbench 没有直接引入 Bettbox 的 Flutter/Dart 构建产物，�
 
 - LiteLLM 根目录模型价格与上下文文件：MIT，Copyright (c) 2023 Berri AI；不包含 enterprise/ 内容。[上游许可](https://github.com/BerriAI/litellm/blob/main/LICENSE)。
 - OpenRouter 公共模型 API：按[OpenRouter 服务条款](https://openrouter.ai/terms)使用，不能将其数据声明为 MIT。公开事实经过结构化筛选，不含账号凭据或用户请求。
-- Google Gemini 官方模型文档：CC BY 4.0；补充文件记录来源与核验日期，Infinity Workbench 将公开规格转换为结构化字段。[Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)。
+- Google Gemini 官方模型文档：CC BY 4.0；补充文件记录来源与核验日期，Infinity Deck 将公开规格转换为结构化字段。[Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)。
 - SenseNova 官方 API 文档：仅整理模型 ID、公开模态与推理事实并保留来源，不复制文档长段原文；仓库未声明统一再发布许可。[官方文档](https://github.com/OpenSenseNova/SenseNova6.8/blob/main/API_CN.md)。
 
 发布产物附带 `third-party-notices.txt`，保留 models.dev 与 LiteLLM 的完整 MIT 许可及上述出处。抓取时点和摘要以该次签名目录的 sources 为准；人工补充在规范源接管后自动停用。
@@ -117,9 +117,9 @@ SSH 与终端依赖保持版本固定；终端原生进程桥接库只用于侧�
 
 - [termux/proot](https://github.com/termux/proot/tree/b27d81a68d765f3462e807f4a14e01a03f8e89ea)（提交 b27d81a6）：编译为 `libnxproot.so` 与 `libnxproot-loader.so`，以独立进程运行。GPL-2.0-or-later。
 - [talloc 2.4.4](https://www.samba.org/ftp/talloc/talloc-2.4.4.tar.gz)：只编译 `talloc.c`，静态链接进 proot。LGPL-3.0-or-later。
-- [Alpine Linux 3.24.3 aarch64 minirootfs](https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/)：官方归档原样打包为 `assets/linux/alpine-minirootfs.tar.gz.bin`，安装时在应用私有目录解包。其中 BusyBox、apk-tools 为 GPL-2.0，musl 为 MIT，其余软件包按各自许可；对应源码见 [Alpine aports](https://gitlab.alpinelinux.org/alpine/aports) 中 3.24 分支与 [Alpine 源码发布](https://dl-cdn.alpinelinux.org/alpine/)。用户之后经 apk 安装的软件包直接取自所选镜像源，不随 Infinity Workbench 分发。
+- [Alpine Linux 3.24.3 aarch64 minirootfs](https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/)：官方归档原样打包为 `assets/linux/alpine-minirootfs.tar.gz.bin`，安装时在应用私有目录解包。其中 BusyBox、apk-tools 为 GPL-2.0，musl 为 MIT，其余软件包按各自许可；对应源码见 [Alpine aports](https://gitlab.alpinelinux.org/alpine/aports) 中 3.24 分支与 [Alpine 源码发布](https://dl-cdn.alpinelinux.org/alpine/)。用户之后经 apk 安装的软件包直接取自所选镜像源，不随 Infinity Deck 分发。
 
-上述 GPL-2.0 组件以独立进程或独立文件系统映像形式运行，与 Infinity Workbench 主程序通过进程参数和文件交互。对外发布侧载 APK 时，应按 GPL 要求随附或书面提供对应源码（上游源码地址与固定版本见上文及属性文件），本节不构成合规结论。
+上述 GPL-2.0 组件以独立进程或独立文件系统映像形式运行，与 Infinity Deck 主程序通过进程参数和文件交互。对外发布侧载 APK 时，应按 GPL 要求随附或书面提供对应源码（上游源码地址与固定版本见上文及属性文件），本节不构成合规结论。
 
 ## 内置 Tailscale（tsnet）
 

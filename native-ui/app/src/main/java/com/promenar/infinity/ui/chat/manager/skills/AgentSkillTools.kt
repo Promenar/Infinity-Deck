@@ -82,7 +82,7 @@ class ActivateSkillTool(
     private val access = SkillToolAccess(catalog, workspaceResolver)
     override val id = "activate_skill"
     override val name = "activate_skill"
-    override val description = "读取内置、已启用的用户级或当前工作区项目级技能的 SKILL.md。管理技能、规则或询问能力与权限时先读取 infinity-workbench。任务匹配描述或用户以 \$名称点名技能时先读取并遵循指令；同名时内置技能优先，其它来源以 path 区分。附带脚本沿用 shell_exec/python_exec 的审批规则。"
+    override val description = "读取内置、已启用的用户级或当前工作区项目级技能的 SKILL.md。管理技能、规则或询问能力与权限时先读取 infinity-deck。任务匹配描述或用户以 \$名称点名技能时先读取并遵循指令；同名时内置技能优先，其它来源以 path 区分。附带脚本沿用 shell_exec/python_exec 的审批规则。"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
     override val parametersSchema = """{"type":"object","description":"name 或 path 至少提供一个；同时提供时必须指向同一技能","properties":{"name":{"type":"string","description":"技能名称；两级同名时须用 path"},"path":{"type":"string","description":"技能目录或 SKILL.md 的虚拟路径，例如 /skills/demo/SKILL.md 或 /.agents/skills/demo"}}}"""

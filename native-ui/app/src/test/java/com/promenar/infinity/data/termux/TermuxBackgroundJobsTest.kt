@@ -164,7 +164,7 @@ class TermuxBackgroundJobsTest {
         assertThat(TermuxBackgroundJobs(::execute).inspect(handle).stopped).isTrue()
     }
 
-    @Test fun `独立看门狗超时终止且无需Infinity Workbench继续查询`() = runBlocking {
+    @Test fun `独立看门狗超时终止且无需Infinity Deck继续查询`() = runBlocking {
         val script = TermuxBackgroundJobScripts.start(
             "timeout", "trap '' TERM; while :; do sleep 1; done", null, null, 1, null,
         )

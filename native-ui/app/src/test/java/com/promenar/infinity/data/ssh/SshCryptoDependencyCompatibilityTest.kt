@@ -38,7 +38,7 @@ class SshCryptoDependencyCompatibilityTest {
 
     @Test fun `统一BC版本后PDF公钥CMS与PKCS12私钥解密实际往返`() {
         val key = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        val subject = X500Principal("CN=Infinity Workbench Synthetic Test")
+        val subject = X500Principal("CN=Infinity Deck Synthetic Test")
         val holder = JcaX509v3CertificateBuilder(
             subject, BigInteger.ONE, Date(0), Date(4_102_444_800_000L), subject, key.public,
         ).build(JcaContentSignerBuilder("SHA256withRSA").build(key.private))

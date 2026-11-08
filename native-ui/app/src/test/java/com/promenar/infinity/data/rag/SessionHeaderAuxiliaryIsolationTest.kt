@@ -38,7 +38,7 @@ class SessionHeaderAuxiliaryIsolationTest {
             assertThat(endpoint.requests).hasSize(7)
             endpoint.requests.forEach { request ->
                 assertThat(request.headers["x-opencode-session"]).isNull()
-                assertThat(request.headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+                assertThat(request.headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
             }
         }
     }

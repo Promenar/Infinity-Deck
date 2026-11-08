@@ -9,8 +9,8 @@ import java.security.MessageDigest
 
 /** 调用方在 IO 线程执行；只清理已由应用写入默认全局忽略文件的受管区块。 */
 internal object LinuxLaunchGitIgnore {
-    private const val START = "# >>> Infinity Workbench workspace internal files >>>"
-    private const val END = "# <<< Infinity Workbench workspace internal files <<<"
+    private const val START = "# >>> Infinity Deck workspace internal files >>>"
+    private const val END = "# <<< Infinity Deck workspace internal files <<<"
 
     @Synchronized
     fun cleanupOnce(rootfs: File, environment: Map<String, String>): Boolean {

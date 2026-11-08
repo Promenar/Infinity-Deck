@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 enum class NetworkTargetClass { PUBLIC, LAN, LOOPBACK, TAILNET }
 
 /**
- * 出现在网络访问总表中的工具族。前四项由 Infinity Workbench 在 App 内判定；
+ * 出现在网络访问总表中的工具族。前四项由 Infinity Deck 在 App 内判定；
  * 内置进程、Termux 与 SSH 只做展示，它们的网络不经 App 内判定。
  */
 enum class AgentNetworkTool { WEB_FETCH, MEDIA_FETCH, SCRIPT, MCP, BUILTIN_PROCESS, TERMUX, SSH }

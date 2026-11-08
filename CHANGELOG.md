@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.39.0-beta] - 2026-11-09
+
+### 变更
+
+- 产品更名为 Infinity Deck（曾用名 Infinity Workbench）。应用 ID 仍为 `com.promenar.infinity`，可直接覆盖升级，数据原样保留。桌面名称、应用内文案、内置技能（改为 `infinity-deck`）、请求 User-Agent、保存图片与文件的公共目录（`Pictures/Infinity Deck` 等，旧目录中的文件不移动）同步更名。
+- GitHub 仓库改名为 `Promenar/Infinity-Deck`；模型目录改从 `promenar.github.io/Infinity-Deck/model-catalog/` 获取。旧版本按原地址获取不到目录更新，升级后恢复。
+
 ## [0.38.1-beta] - 2026-11-09
 
 ### 变更

@@ -114,7 +114,7 @@ fun canvasCardLightEnglishLargeFontPreview() = CanvasPreviewFrame(dark = false) 
 fun canvasInlineCardLightChinesePreview() = CanvasPreviewFrame(dark = false) {
     Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
         CanvasInlineCard(
-            metadata = previewMetadata("Infinity Workbench 能力探测矩阵").copy(currentVersion = 1, versions = listOf(1)),
+            metadata = previewMetadata("Infinity Deck 能力探测矩阵").copy(currentVersion = 1, versions = listOf(1)),
             version = 1,
             html = null,
             onOpen = {},

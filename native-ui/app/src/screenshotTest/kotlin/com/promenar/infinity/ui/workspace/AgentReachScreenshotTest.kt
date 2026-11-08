@@ -46,7 +46,7 @@ private fun AgentReachPreview(dark: Boolean, shared: Boolean, runMode: SessionRu
     val linux = LinuxRuntimeState.Ready(LinuxEnvironmentInfo("Alpine", "3.24.3", "aarch64", "preview", 1, null))
     val state = if (shared) {
         AgentReachState(
-            workspace = SessionWorkspaceUi.Directory("w1", "infinity-notes", WorkspaceEntity.KIND_SHARED, "/storage/emulated/0/Infinity-Workbench/infinity-notes"),
+            workspace = SessionWorkspaceUi.Directory("w1", "infinity-notes", WorkspaceEntity.KIND_SHARED, "/storage/emulated/0/Infinity-Deck/infinity-notes"),
             mounts = listOf(
                 ReachMount("downloads", ReachMountSource.PATH, commandAccessible = true, unavailable = false),
                 ReachMount("termux-home", ReachMountSource.SAF, commandAccessible = false, unavailable = false),

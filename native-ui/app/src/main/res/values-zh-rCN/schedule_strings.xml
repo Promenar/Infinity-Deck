@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
+<!DOCTYPE resources [<!ENTITY brand "Infinity Deck">]>
 <resources>
     <string name="schedule_notification_channel">智能体动态</string>
     <string name="schedule_notification_channel_description">系统触发的回复和待处理请求</string>

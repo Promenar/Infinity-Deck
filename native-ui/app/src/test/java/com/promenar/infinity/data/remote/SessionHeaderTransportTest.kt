@@ -32,7 +32,7 @@ class SessionHeaderTransportTest {
                 val http = HttpClient(MockEngine { data ->
                     if (data.url.encodedPath.endsWith("/token")) {
                         assertThat(data.headers["x-opencode-session"]).isNull()
-                        assertThat(data.headers[HttpHeaders.UserAgent]).isNotEqualTo("Infinity-Workbench/${BuildConfig.VERSION_NAME}")
+                        assertThat(data.headers[HttpHeaders.UserAgent]).isNotEqualTo("Infinity-Deck/${BuildConfig.VERSION_NAME}")
                         respond("""{"access_token":"synthetic-token","expires_in":3600}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
                     } else {
                         captured += data
@@ -48,14 +48,14 @@ class SessionHeaderTransportTest {
                     val prompt = request.copy(stream = streaming)
                     send(prompt)
                     send(prompt.copy(sessionId = "internal-session"))
-                    send(prompt.copy(sessionHeaders = SessionRequestHeaders("x-opencode-session", identifier, "Infinity-Workbench/${BuildConfig.VERSION_NAME}")))
+                    send(prompt.copy(sessionHeaders = SessionRequestHeaders("x-opencode-session", identifier, "Infinity-Deck/${BuildConfig.VERSION_NAME}")))
                     assertThat(captured).hasSize(3)
                     val baseline = captured[0]
                     assertThat(captured[1].headers).isEqualTo(baseline.headers)
                     assertThat(body(captured[1])).isEqualTo(body(baseline))
                     assertThat(body(captured[2])).isEqualTo(body(baseline))
                     assertThat(captured[2].headers["x-opencode-session"]).isEqualTo(identifier)
-                    assertThat(captured[2].headers.getAll(HttpHeaders.UserAgent)).containsExactly("Infinity-Workbench/${BuildConfig.VERSION_NAME}")
+                    assertThat(captured[2].headers.getAll(HttpHeaders.UserAgent)).containsExactly("Infinity-Deck/${BuildConfig.VERSION_NAME}")
                     val unrelated = captured[2].headers.entries().filter { it.key.lowercase() !in setOf("x-opencode-session", "user-agent") }.associate { it.key.lowercase() to it.value }
                     assertThat(unrelated).isEqualTo(baseline.headers.entries().filter { it.key.lowercase() != "user-agent" }.associate { it.key.lowercase() to it.value })
                 } finally { http.close() }
@@ -95,7 +95,7 @@ class SessionHeaderTransportTest {
             send(SessionHeaderMode.ON, null)
             captured.takeLast(3).forEach {
                 assertThat(it.headers["x-opencode-session"]).isNull()
-                assertThat(it.headers[HttpHeaders.UserAgent]).isNotEqualTo("Infinity-Workbench/${BuildConfig.VERSION_NAME}")
+                assertThat(it.headers[HttpHeaders.UserAgent]).isNotEqualTo("Infinity-Deck/${BuildConfig.VERSION_NAME}")
             }
             send(SessionHeaderMode.INHERIT, "internal-session", true)
             assertThat(captured.last().headers["x-opencode-session"]).isEqualTo(identifier)
@@ -105,7 +105,7 @@ class SessionHeaderTransportTest {
     @Test
     fun `传输元数据永不进入序列化请求体`() {
         val baseline = Json.encodeToString(request)
-        assertThat(Json.encodeToString(request.copy(sessionId = "secret-internal-id", sessionHeaders = SessionRequestHeaders("x-session", identifier, "Infinity-Workbench/test")))).isEqualTo(baseline)
+        assertThat(Json.encodeToString(request.copy(sessionId = "secret-internal-id", sessionHeaders = SessionRequestHeaders("x-session", identifier, "Infinity-Deck/test")))).isEqualTo(baseline)
     }
 
     private fun body(data: HttpRequestData) = (data.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()

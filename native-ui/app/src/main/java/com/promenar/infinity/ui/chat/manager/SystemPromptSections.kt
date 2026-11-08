@@ -56,7 +56,7 @@ object SystemPromptSections {
         appendLine("- 用户技能：${if (linux) "/mnt/skills" else "/skills"}（命令中使用 INFINITY_SKILLS）；目录型工作区的项目技能：${root.trimEnd('/')}/.agents/skills；私有会话不扫描项目技能。")
         appendLine("- 内置只读技能：${com.promenar.infinity.data.skills.BuiltinSkillCatalog.VIRTUAL_DIR}/SKILL.md，仅技能读取工具可读。")
         appendLine("- Linux 中安装的 Codex CLI、Claude Code 等 CLI、~/.codex、~/.claude 及 /root 下的规则文件属于第三方工具，不是你的运行时；不要通过修改它们改变自身行为或配置。")
-        appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-workbench\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
+        appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-deck\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
     }
 
     const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl），使用 apk add 安装软件包；git、ripgrep（rg）、python3 与 pip、nodejs 与 npm、ffmpeg 是安装时的可选包，用前确认已安装，缺少时 apk add 补装。" +

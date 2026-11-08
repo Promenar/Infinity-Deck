@@ -36,7 +36,7 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * 内置执行后端：命令以 Infinity Workbench uid 直接在会话工作区物理根内运行。内置模式的私有工作区期间持有工作区写锁，结束后对账索引；Linux 模式在结束后合并调度私有根对账；
+ * 内置执行后端：命令以 Infinity Deck uid 直接在会话工作区物理根内运行。内置模式的私有工作区期间持有工作区写锁，结束后对账索引；Linux 模式在结束后合并调度私有根对账；
  * 自选目录工作区不进 Room，直接在该目录运行，不持锁、不对账，结果不含 `workspace_changes`。
  * 命令可读写应用私有目录并访问网络，不构成隔离；调用方按执行模式审批。
  * 运行期间经 [keepAlive] 持有唤醒锁与前台服务通知，通知的停止按钮结束整个进程组并返回 `EXEC_STOPPED`。
@@ -441,11 +441,11 @@ class BuiltinExecService(
         val seconds = (pausedMillis + 500) / 1000
         val service = when (foreground) {
             ExecForegroundState.STARTED -> ""
-            ExecForegroundState.UNSUPPORTED -> "当前版本命令期间不启动前台服务，离开 Infinity Workbench 后更容易被暂停。"
+            ExecForegroundState.UNSUPPORTED -> "当前版本命令期间不启动前台服务，离开 Infinity Deck 后更容易被暂停。"
             ExecForegroundState.NOT_ALLOWED -> "本次系统未允许启动前台服务（应用在后台）。"
         }
         return "命令运行期间本应用被系统暂停约 $seconds 秒（后台冻结或设备休眠），暂停时间不计入超时。$service" +
-            "如需离开 Infinity Workbench 时命令继续运行，请在系统的应用耗电管理中把 Infinity Workbench 设为“完全允许后台行为”（ColorOS、MIUI 等）。"
+            "如需离开 Infinity Deck 时命令继续运行，请在系统的应用耗电管理中把 Infinity Deck 设为“完全允许后台行为”（ColorOS、MIUI 等）。"
     }
 
     private fun warningGuidance(changes: WorkspaceChangeReport?): String? {

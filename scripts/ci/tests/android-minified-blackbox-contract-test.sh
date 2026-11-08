@@ -333,7 +333,7 @@ host_anr_coordinates_block="$(
 XML
     cat > "${temp_dir}/target-anr.xml" <<'XML'
 <hierarchy>
-  <node text="Infinity Workbench isn't responding" resource-id="android:id/alertTitle" package="android"
+  <node text="Infinity Deck isn't responding" resource-id="android:id/alertTitle" package="android"
         enabled="true" clickable="false" bounds="[0,0][100,20]" />
   <node text="Wait" resource-id="android:id/aerr_wait" package="android"
         enabled="true" clickable="true" bounds="[10,20][50,60]" />
@@ -386,7 +386,7 @@ XML
 
     HOST_SYSTEM_ANR_RECOVERED=false
     if recover_host_system_anr_once "${temp_dir}/target-anr.xml" 9999999999; then
-        fail "目标 Infinity Workbench ANR 不得进入宿主恢复路径"
+        fail "目标 Infinity Deck ANR 不得进入宿主恢复路径"
     fi
 
     MOCK_FRESH_XML="${temp_dir}/wait-missing.xml"

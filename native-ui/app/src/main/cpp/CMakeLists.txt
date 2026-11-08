@@ -22,7 +22,7 @@ if(NOT INFINITY_ENABLE_LOCAL_INFERENCE)
         "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
     )
     unset(_infinity_disabled_variant_inputs)
-    message(STATUS "Infinity Workbench local inference is disabled for this variant")
+    message(STATUS "Infinity Deck local inference is disabled for this variant")
     return()
 endif()
 

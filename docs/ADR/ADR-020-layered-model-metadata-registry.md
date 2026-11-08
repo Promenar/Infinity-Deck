@@ -6,7 +6,7 @@
 
 ## 决策
 
-1. 领域入口为 `ModelMetadataResolver.resolve(...)`，逐字段采用用户编辑、实际供应商字段、Infinity Workbench 精确修正、匹配作用域的公开目录、保守回退。家族规则只补充展示信息。
+1. 领域入口为 `ModelMetadataResolver.resolve(...)`，逐字段采用用户编辑、实际供应商字段、Infinity Deck 精确修正、匹配作用域的公开目录、保守回退。家族规则只补充展示信息。
 2. models.dev 提供规范模型；models.dev provider、LiteLLM、OpenRouter 提供具有明确作用域的供应商条目。不同供应商的额度和能力不能合并成基础模型事实。
 3. 原始请求 ID、供应商实例 ID、规范模型 ID 和目录供应商作用域分别保存。只接受精确 ID/别名匹配；未知前缀、版本变体和冲突保持未匹配。仅在列表 owned_by 对应时，newapi/openai-chatgpt 路由前缀可用于生成查找候选；wire ID 保持不变。
 4. 工作负载、推理能力和 Chat endpoint 兼容性相互独立。能力使用 SUPPORTED / UNSUPPORTED / UNKNOWN，缺失不等于不支持，也不默认 chat。

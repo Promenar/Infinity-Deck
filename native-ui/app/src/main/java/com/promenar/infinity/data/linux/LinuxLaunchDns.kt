@@ -46,7 +46,7 @@ class LinuxLaunchDns(
     }
 
     companion object {
-        private const val PREFIX = "# Infinity Workbench generated resolv.conf sha256="
+        private const val PREFIX = "# Infinity Deck generated resolv.conf sha256="
         private val ADDRESS = Regex("[0-9a-fA-F:.]+(?:%[A-Za-z0-9_.-]+)?")
         internal fun isGenerated(file: File): Boolean {
             if (!Files.isRegularFile(file.toPath(), NOFOLLOW_LINKS) || file.length() > 64 * 1024) return false

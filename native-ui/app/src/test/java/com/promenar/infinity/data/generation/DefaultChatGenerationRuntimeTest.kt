@@ -251,7 +251,7 @@ class DefaultChatGenerationRuntimeTest {
             fixture.runtime.stream(fixture.request, 0).toList()
             assertThat(requests.last().model).isEqualTo(model)
             val prompt = requests.last().messages.first().content
-            assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+            assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Deck\n")
             assertThat(prompt).contains("\n- Model: $model\n")
             assertThat(prompt).doesNotContain("local::")
         }

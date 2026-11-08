@@ -8,7 +8,7 @@ import com.promenar.infinity.ui.theme.InfinityTheme
 
 private val SamplePrompt = """
     # 角色
-    你是 Infinity Workbench 的写作助手，帮助用户整理思路。
+    你是 Infinity Deck 的写作助手，帮助用户整理思路。
 
     ## 规则
     - 先给**结论**，再展开细节

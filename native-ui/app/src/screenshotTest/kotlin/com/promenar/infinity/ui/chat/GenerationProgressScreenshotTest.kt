@@ -91,7 +91,7 @@ private fun GenerationProgressPage(
                 state = ChatScreenState(
                     uiState = ChatUiState(
                         session = Session("progress", "assistant", title = if (english) "Media test" else "媒体测试", modelId = "deepseek::v4-flash"),
-                        agentName = "Infinity Workbench",
+                        agentName = "Infinity Deck",
                         messages = progressMessages(english, waiting),
                         isGenerating = true,
                         status = GenerationStatus.RECEIVING,
@@ -253,7 +253,7 @@ private fun EmptyChatPage(mode: InfinityThemeMode) {
                 state = ChatScreenState(
                     uiState = ChatUiState(
                         session = Session("empty", "assistant", title = "", modelId = "deepseek::v4-flash"),
-                        agentName = "Infinity Workbench",
+                        agentName = "Infinity Deck",
                     ),
                     modelDisplayNames = mapOf("deepseek::v4-flash" to "DeepSeek V4 Flash"),
                 ),
@@ -302,7 +302,7 @@ private fun WideRunPage(mode: InfinityThemeMode, english: Boolean, pages: List<C
                     state = ChatScreenState(
                         uiState = ChatUiState(
                             session = Session("wide", "assistant", title = if (english) "Capability probe" else "能力探测", modelId = "deepseek::v4-flash"),
-                            agentName = "Infinity Workbench",
+                            agentName = "Infinity Deck",
                             messages = progressMessages(english),
                             isGenerating = true,
                             status = GenerationStatus.RECEIVING,

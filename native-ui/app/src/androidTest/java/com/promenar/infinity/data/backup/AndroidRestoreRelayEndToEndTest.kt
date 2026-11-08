@@ -407,7 +407,7 @@ class AndroidRestoreRelayEndToEndTest {
         const val NO_KEY_BEFORE_SECRET = "e2e-fictional-no-key-before-provider-key"
         const val NO_KEY_NO_REPLAY_SECRET = "e2e-fictional-no-key-no-replay-provider-key"
         const val NO_KEY_AUTOMATIC_BACKUP_PASSWORD = "e2e-fictional-no-key-automatic-backup-password"
-        const val PASSWORD = "Infinity Workbench-E2E-Only-Password-2026!"
+        const val PASSWORD = "Infinity Deck-E2E-Only-Password-2026!"
         val AUTOMATIC_BACKUP_PASSWORD = SecretCatalog.automaticBackupPassword
         val SECRET_ID = SecretCatalog.providerApiKey("default")
     }

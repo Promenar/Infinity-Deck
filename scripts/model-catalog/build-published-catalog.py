@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""从公开上游构建并签名 Infinity Workbench 独立模型目录。"""
+"""从公开上游构建并签名 Infinity Deck 独立模型目录。"""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ def read_source(location: str, *, max_bytes: int = SOURCE_MAX_BYTES) -> tuple[st
             raise CatalogError(f"远程源必须使用 HTTPS: {location}")
         request = urllib.request.Request(
             location,
-            headers={"Accept": "application/json", "User-Agent": "Infinity-Workbench-model-catalog-builder/1"},
+            headers={"Accept": "application/json", "User-Agent": "Infinity-Deck-model-catalog-builder/1"},
         )
         opener = urllib.request.build_opener(_NoRedirectHandler())
         try:
@@ -841,7 +841,7 @@ def _default_timestamp() -> tuple[int, str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     default_version, default_generated_at = _default_timestamp()
-    parser = argparse.ArgumentParser(description="构建并签名 Infinity Workbench 独立模型目录")
+    parser = argparse.ArgumentParser(description="构建并签名 Infinity Deck 独立模型目录")
     parser.add_argument("--models-dev-models", default=DEFAULT_SOURCES["models-dev-models"])
     parser.add_argument("--models-dev-api", default=DEFAULT_SOURCES["models-dev-api"])
     parser.add_argument("--litellm", default=DEFAULT_SOURCES["litellm"])

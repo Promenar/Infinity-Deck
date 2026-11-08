@@ -226,7 +226,7 @@ private fun saveBitmapToMediaStore(context: android.content.Context, bitmap: Bit
         put(MediaStore.Images.Media.DISPLAY_NAME, filename)
         put(MediaStore.Images.Media.MIME_TYPE, "image/png")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Infinity Workbench")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Infinity Deck")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
     }
@@ -243,7 +243,7 @@ private fun saveBitmapToMediaStore(context: android.content.Context, bitmap: Bit
             contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
             resolver.update(uri, contentValues, null, null)
         }
-        Toast.makeText(context, "Saved to Pictures/Infinity Workbench", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Saved to Pictures/Infinity Deck", Toast.LENGTH_SHORT).show()
     } else {
         Toast.makeText(context, "Failed to save", Toast.LENGTH_SHORT).show()
     }
