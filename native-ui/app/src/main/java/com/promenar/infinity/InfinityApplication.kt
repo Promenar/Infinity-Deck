@@ -1960,7 +1960,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             val subagentAddress = com.promenar.infinity.ui.chat.manager.skills.SubagentAddressHandler({ subagentLauncher }) { context, run, text ->
                 sessionMailbox.recordSubagentSend(context.sessionId, run.id, run.description, text)
             }
-            listOf("session_read", "session_send", "session_stop").forEach { operation ->
+            listOf("session_read", "session_search", "session_send", "session_stop").forEach { operation ->
                 register(com.promenar.infinity.ui.chat.manager.skills.SessionSubagentSkill(operation, listOf(subagentAddress, com.promenar.infinity.data.branch.BranchSessionAddressHandler { branchService })))
             }
         }

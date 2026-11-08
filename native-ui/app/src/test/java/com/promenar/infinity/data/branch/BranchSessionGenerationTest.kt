@@ -102,6 +102,40 @@ class BranchSessionGenerationTest {
         override val sessionId = "main"; override val agentId = "a"
         override val workspacePath: String? = null; override val workspaceRootUuid = "root"
     }
+    @Test fun `历史分页和字面检索覆盖归档消息与内部记录`() = runBlocking {
+        val dao = db.messageDao()
+        dao.insert(MessageEntity("archived", "main", "user", "前".repeat(155) + "😀A%_\\B" + "后".repeat(155), isArchived = 1, createdAt = 3))
+        dao.insert(MessageEntity("internal", "main", "system", "A%_\\B", name = SessionMessageStore.WAKE_MESSAGE_NAME, createdAt = 4))
+        dao.insert(MessageEntity("last", "main", "assistant", "a%_\\b", createdAt = 5))
+        fun args(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
+        suspend fun read(vararg pairs: Pair<String, JsonElement>) = Json.parseToJsonElement(service.address("session_read", "main", args(*pairs), context())).jsonObject
+        val last = read("limit" to JsonPrimitive(2))
+        assertThat(last["messages"]!!.jsonArray.map { it.jsonObject["id"]!!.jsonPrimitive.content }).containsExactly("archived", "last").inOrder()
+        assertThat(last["has_more_before"]!!.jsonPrimitive.boolean).isTrue()
+        assertThat(last["has_more_after"]!!.jsonPrimitive.boolean).isFalse()
+        assertThat(last["messages"]!!.jsonArray.first().jsonObject["archived"]!!.jsonPrimitive.boolean).isTrue()
+        val previous = read("before" to JsonPrimitive("archived"), "limit" to JsonPrimitive(2))
+        assertThat(previous["messages"]!!.jsonArray.map { it.jsonObject["id"]!!.jsonPrimitive.content }).containsExactly("u", "ai").inOrder()
+        assertThat(previous["has_more_before"]!!.jsonPrimitive.boolean).isFalse()
+        assertThat(previous["has_more_after"]!!.jsonPrimitive.boolean).isTrue()
+        val next = read("after" to JsonPrimitive("ai"), "limit" to JsonPrimitive(1))
+        assertThat(next["messages"]!!.jsonArray.single().jsonObject["id"]!!.jsonPrimitive.content).isEqualTo("archived")
+        assertThat(next["has_more_before"]!!.jsonPrimitive.boolean).isTrue()
+        assertThat(next["has_more_after"]!!.jsonPrimitive.boolean).isTrue()
+        assertThat(runCatching { read("before" to JsonPrimitive("missing")) }.isFailure).isTrue()
+        assertThat(runCatching { read("before" to JsonPrimitive("u"), "after" to JsonPrimitive("ai")) }.isFailure).isTrue()
+        val search = Json.parseToJsonElement(service.address("session_search", "main", args("query" to JsonPrimitive("A%_\\B"), "limit" to JsonPrimitive(1)), context())).jsonObject
+        assertThat(search["total_matches"]!!.jsonPrimitive.int).isEqualTo(2)
+        assertThat(search["messages"]!!.jsonArray.single().jsonObject["message_id"]!!.jsonPrimitive.content).isEqualTo("last")
+        val filtered = Json.parseToJsonElement(service.address("session_search", "main", args("query" to JsonPrimitive("A%_\\B"), "role" to JsonPrimitive("user")), context())).jsonObject
+        val hit = filtered["messages"]!!.jsonArray.single().jsonObject
+        assertThat(hit["archived"]!!.jsonPrimitive.boolean).isTrue()
+        val snippet = hit["snippet"]!!.jsonPrimitive.content
+        assertThat(snippet).startsWith("…")
+        assertThat(snippet).endsWith("…")
+        assertThat(snippet).contains("😀A%_\\B")
+        assertThat(snippet).doesNotContain("�")
+    }
     @Test fun `批准后父子独立并行停止父轮不取消分支`() = runBlocking {
         val pending = pending(); service.resolvePlan(pending, answer(pending))
         awaitCondition { entered.size == 2 }
@@ -158,6 +192,8 @@ class BranchSessionGenerationTest {
             runtimeToolId = "session_read")
         val source = load("main")!!.copy(messages = listOf(Message("read-ai", MessageRole.ASSISTANT, "", toolCalls = listOf(call))))
         val target = service.approvalTarget(source, call.name, call.arguments)!!
+        assertThat(service.approvalTarget(source, "session_search", """{"id":"other","query":"x"}""")).isEqualTo(target)
+        assertThat(runCatching { service.address("session_search", "other", buildJsonObject { put("query", "x") }, context()) }.isFailure).isTrue()
         val identity = (ToolInvocationIdentityFactory.fromPreparedToolCall(call, tool, true)
             as ToolInvocationIdentityResolution.Valid).identity
         val request = ToolApprovalRequestFactory.create("read-ai", listOf(ApprovalCallCandidate(call, com.promenar.infinity.domain.tool.ToolRisk.UNKNOWN, identity, executionTarget = target)))

@@ -190,7 +190,7 @@ class BranchSessionService(
         worktrees.list(row, database.sessionDao().getAll().filter { it.agentId == row.agentId })
     }
     suspend fun approvalTarget(source: Session, toolName: String, arguments: String): String? = withContext(Dispatchers.IO) {
-        if (toolName !in setOf("session_list", "session_read")) return@withContext null
+        if (toolName !in setOf("session_list", "session_read", "session_search")) return@withContext null
         val args = runCatching { Json.parseToJsonElement(arguments).jsonObject }.getOrNull() ?: return@withContext null
         val row = database.sessionDao().getById(source.id) ?: return@withContext null
         if (toolName == "session_list") return@withContext if (args["scope"]?.jsonPrimitive?.content == "assistant")
@@ -258,14 +258,59 @@ class BranchSessionService(
                 }
                 "已停止该会话当前这一轮生成。"
             }
-            else -> buildJsonObject {
-                put("id", id); put("title", target.title); put("phase", coordinator.observe(id).value?.phase?.name ?: target.loopStatus)
-                put("messages", buildJsonArray {
-                    database.messageDao().getBySession(id).filterNot { SessionMessageStore.isInternal(it.name) }.takeLast(40).forEach {
-                        add(buildJsonObject { put("id", it.id); put("role", it.role); put("name", it.name); put("content", it.content.take(8_000)) })
-                    }
-                })
-            }.toString()
+            "session_read" -> {
+                val dao = database.messageDao()
+                val internal = listOf(SessionMessageStore.DELIVERY_MESSAGE_NAME, SessionMessageStore.WAKE_MESSAGE_NAME, BranchWorktreeAuthorization.MESSAGE_NAME)
+                val before = args["before"]?.jsonPrimitive?.content
+                val after = args["after"]?.jsonPrimitive?.content
+                require(before == null || after == null) { "before 与 after 不能同时使用" }
+                val cursor = before ?: after
+                if (cursor != null) require(dao.getById(cursor)?.sessionId == id) { "游标不存在或不属于该会话" }
+                val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 40
+                require(limit in 1..100) { "limit 无效" }
+                val rows = if (after != null) dao.historyAfter(id, after, limit, internal)
+                    else dao.historyBefore(id, before, limit, internal).asReversed()
+                val first = rows.firstOrNull()?.id
+                val last = rows.lastOrNull()?.id
+                val moreBefore = if (first != null) dao.historyCountBefore(id, first, internal) > 0
+                    else after != null && (dao.historyCountBefore(id, after, internal) > 0 || dao.getById(after)?.let { !SessionMessageStore.isInternal(it.name) } == true)
+                val moreAfter = if (last != null) dao.historyCountAfter(id, last, internal) > 0
+                    else before != null && (dao.historyCountAfter(id, before, internal) > 0 || dao.getById(before)?.let { !SessionMessageStore.isInternal(it.name) } == true)
+                buildJsonObject {
+                    put("id", id); put("title", target.title); put("phase", coordinator.observe(id).value?.phase?.name ?: target.loopStatus)
+                    put("has_more_before", moreBefore); put("has_more_after", moreAfter)
+                    put("messages", buildJsonArray { rows.forEach {
+                        add(buildJsonObject { put("id", it.id); put("role", it.role); put("name", it.name); put("content", it.content.take(8_000))
+                            put("archived", it.isArchived != 0); put("created_at", it.createdAt) })
+                    } })
+                }.toString()
+            }
+            "session_search" -> {
+                val dao = database.messageDao()
+                val internal = listOf(SessionMessageStore.DELIVERY_MESSAGE_NAME, SessionMessageStore.WAKE_MESSAGE_NAME, BranchWorktreeAuthorization.MESSAGE_NAME)
+                val query = args["query"]!!.jsonPrimitive.content
+                val role = args["role"]?.jsonPrimitive?.content
+                val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 20
+                require(query.codePointCount(0, query.length) in 1..200 && limit in 1..50 && (role == null || role in setOf("user", "assistant", "tool"))) { "检索参数无效" }
+                val pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                val rows = dao.searchHistory(id, pattern, role, limit, internal)
+                buildJsonObject {
+                    put("id", id); put("total_matches", dao.countHistoryMatches(id, pattern, role, internal))
+                    put("messages", buildJsonArray { rows.forEach { row ->
+                        add(buildJsonObject { put("message_id", row.id); put("role", row.role); put("created_at", row.createdAt)
+                            put("archived", row.isArchived != 0); put("snippet", historySnippet(row.content, query)) })
+                    } })
+                }.toString()
+            }
+            else -> throw IllegalArgumentException("不支持的会话操作")
         }
     }
+}
+
+internal fun historySnippet(content: String, query: String): String {
+    val match = content.indexOf(query, ignoreCase = true).coerceAtLeast(0)
+    val matchEnd = (match + query.length).coerceAtMost(content.length)
+    val start = content.offsetByCodePoints(match, -minOf(150, content.codePointCount(0, match)))
+    val end = content.offsetByCodePoints(matchEnd, minOf(150, content.codePointCount(matchEnd, content.length)))
+    return (if (start > 0) "…" else "") + content.substring(start, end) + (if (end < content.length) "…" else "")
 }
