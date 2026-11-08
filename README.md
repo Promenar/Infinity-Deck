@@ -96,7 +96,7 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
 
 Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
 
-The source tree is at `v0.34.2-beta` (versionCode `96`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.34.3-beta` (versionCode `97`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>

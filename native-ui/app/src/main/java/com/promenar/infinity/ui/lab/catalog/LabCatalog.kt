@@ -64,6 +64,16 @@ object LabCatalog {
                         ),
                     ),
                     LabNode(
+                        segment = "composer",
+                        title = R.string.lab_node_composer,
+                        children = listOf(
+                            LabVersion("empty", "composer.state.empty", R.string.lab_v_composer_empty, R.string.lab_v_composer_empty_desc, LabVersionKind.STATE),
+                            LabVersion("idle", "composer.state.idle", R.string.lab_v_composer_idle, R.string.lab_v_composer_idle_desc, LabVersionKind.STATE),
+                            LabVersion("streaming", "composer.state.streaming", R.string.lab_v_composer_streaming, R.string.lab_v_composer_streaming_desc, LabVersionKind.STATE),
+                            LabVersion("tools", "composer.state.tools", R.string.lab_v_composer_tools, R.string.lab_v_composer_tools_desc, LabVersionKind.STATE),
+                        ),
+                    ),
+                    LabNode(
                         segment = "inspector",
                         title = R.string.lab_node_inspector,
                         children = listOf(

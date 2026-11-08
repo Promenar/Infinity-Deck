@@ -83,36 +83,57 @@ internal data class ComposerIslandMaterial(
 internal fun composerIslandMaterial(): ComposerIslandMaterial {
     val scheme = MaterialTheme.colorScheme
     val dark = MaterialTheme.infinityDomainColors.isDark
+    val style = LocalComposerIslandStyle.current
+    fun rim(color: Color, alpha: Float) = BorderStroke(1.dp, color.copy(alpha = (alpha * style.borderAlphaScale).coerceAtMost(1f)))
+    fun Color.ifHighlight() = takeIf { style.topHighlight }
     if (LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED) {
         return if (dark) {
             ComposerIslandMaterial(
                 container = Color.Transparent,
-                border = BorderStroke(1.dp, scheme.onSurface.copy(alpha = 0.14f)),
-                topHighlight = scheme.onSurface.copy(alpha = 0.16f),
+                border = rim(scheme.onSurface, 0.14f),
+                topHighlight = scheme.onSurface.copy(alpha = 0.16f).ifHighlight(),
                 chip = scheme.onSurface.copy(alpha = 0.08f),
                 frostedTint = scheme.surfaceContainer.copy(alpha = 0.6f),
             )
         } else {
             ComposerIslandMaterial(
                 container = Color.Transparent,
-                border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.5f)),
-                topHighlight = InfinityPureWhite.copy(alpha = 0.9f),
+                border = rim(scheme.outlineVariant, 0.5f),
+                topHighlight = InfinityPureWhite.copy(alpha = 0.9f).ifHighlight(),
                 chip = scheme.onSurface.copy(alpha = 0.05f),
                 frostedTint = scheme.surfaceContainerLowest.copy(alpha = 0.6f),
+            )
+        }
+    }
+    if (style.layered) {
+        // 分层：底色比卡片高一级，实色描边；深色上沿提亮一档，胶囊用最高一级底色配细描边。
+        return if (dark) {
+            ComposerIslandMaterial(
+                container = scheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, scheme.outlineVariant),
+                topHighlight = scheme.onSurface.copy(alpha = 0.12f),
+                chip = scheme.surfaceContainerHighest,
+            )
+        } else {
+            ComposerIslandMaterial(
+                container = scheme.surfaceContainerLowest,
+                border = BorderStroke(1.dp, scheme.outlineVariant),
+                topHighlight = null,
+                chip = scheme.surfaceContainerLowest,
             )
         }
     }
     return if (dark) {
         ComposerIslandMaterial(
             container = scheme.surfaceContainer,
-            border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.55f)),
-            topHighlight = scheme.onSurface.copy(alpha = 0.06f),
+            border = rim(scheme.outlineVariant, 0.55f),
+            topHighlight = scheme.onSurface.copy(alpha = 0.06f).ifHighlight(),
             chip = scheme.surfaceContainerHigh,
         )
     } else {
         ComposerIslandMaterial(
             container = scheme.surfaceContainerLowest,
-            border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.75f)),
+            border = rim(scheme.outlineVariant, 0.75f),
             topHighlight = null,
             chip = scheme.surfaceContainerLow,
         )
@@ -303,12 +324,14 @@ internal fun rememberComposerGlowState(generating: Boolean, error: Boolean, comp
 internal fun Modifier.composerIslandGlow(
     state: ComposerGlowState,
     topHighlight: Color?,
-    corner: Dp = ComposerIslandCorner,
+    corner: Dp = LocalComposerIslandStyle.current.corner,
 ): Modifier {
     val (colorA, colorB) = composerGlowColors()
     val style = LocalInfinityMotionStyles.current.composer
     val surface = LocalInfinityMotionStyles.current.surface
-    val outerHalo = surface != ComposerSurfaceStyle.AMBIENT
+    val islandStyle = LocalComposerIslandStyle.current
+    val haloScale = islandStyle.outerHaloScale
+    val outerHalo = surface != ComposerSurfaceStyle.AMBIENT && haloScale > 0f
     val glowScale = if (surface == ComposerSurfaceStyle.FROSTED) FrostedGlowScale else 1f
     val motion = LocalGenerationMotion.current
     val palette = rememberMotionPalette()
@@ -328,7 +351,7 @@ internal fun Modifier.composerIslandGlow(
     }
     return this.drawWithCache {
         val cornerPx = corner.toPx()
-        val strokePx = 1.5.dp.toPx()
+        val strokePx = islandStyle.glowStroke.toPx()
         val reach = 64.dp.toPx()
         val center = Offset(size.width / 2f, size.height / 2f)
         fun sweepOf(end: Color) = SweepGradient(
@@ -359,17 +382,21 @@ internal fun Modifier.composerIslandGlow(
             val approval = motion.weight(GenerationMotionPhase.APPROVAL)
             val retry = motion.weight(GenerationMotionPhase.RETRY)
             // 环行光晕只属于极光环行的首字前与流式；出错泛红与完成泛绿所有样式共用。
-            val haloGenerating = if (aurora) generating * (wait * 0.5f + stream * (0.7f + 0.3f * state.act)) else 0f
+            val haloGenerating = if (aurora) generating * (wait * 0.5f + stream * (0.7f + 0.3f * state.act)) * haloScale else 0f
             if (haloShader != null && (haloGenerating > 0f || error > 0f || success > 0f)) {
-                updateHaloShader(haloShader, state, haloGenerating, error, success, if (stream + wait > 0f) lerp(colorB, colorMid, wait / (stream + wait)) else colorB)
+                updateHaloShader(
+                    haloShader, state, haloGenerating, error * haloScale, success * haloScale,
+                    if (stream + wait > 0f) lerp(colorB, colorMid, wait / (stream + wait)) else colorB,
+                )
                 drawRect(haloBrush!!, topLeft = Offset(-reach, -reach), size = Size(size.width + reach * 2, size.height + reach * 2))
             }
+            val haloGen = generating * haloScale
             if (outerHalo && aurora && generating > 0f) {
-                drawHaloRing(generating * tool * (0.12f + 0.45f * breath(time, 1.2f)), 12f, 9f, cornerPx, colorB, colorB, outlinePaints)
-                drawHaloRing(generating * approval * (0.1f + 0.5f * slowBlink(time)), 12f, 9f, cornerPx, colorB, colorB, outlinePaints)
+                drawHaloRing(haloGen * tool * (0.12f + 0.45f * breath(time, 1.2f)), 12f, 9f, cornerPx, colorB, colorB, outlinePaints)
+                drawHaloRing(haloGen * approval * (0.1f + 0.5f * slowBlink(time)), 12f, 9f, cornerPx, colorB, colorB, outlinePaints)
             }
             if (outerHalo && style == ComposerGlowStyle.BREATHE && generating > 0f) {
-                drawBreatheHalo(generating, state, motion, cornerPx, palette, colorA, colorB, outlinePaints)
+                drawBreatheHalo(haloGen, state, motion, cornerPx, palette, colorA, colorB, outlinePaints)
             }
             drawContent()
             if (highlight != null) {

@@ -86,6 +86,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
@@ -2012,7 +2014,7 @@ internal fun ChatModelSelector(
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
-            modifier = Modifier.height(ComposerChipHeight).pressFeedback(interaction, CircleShape).background(containerColor)
+            modifier = Modifier.height(ComposerChipHeight).composerChip(interaction, containerColor)
                 .padding(start = 10.dp, end = 8.dp)
                 .testTag("chat_model_capsule"),
             verticalAlignment = Alignment.CenterVertically,
@@ -3349,6 +3351,7 @@ fun ChatInputBar(
     )
     // 浮岛与底部导航栏同一套材质：抬升底色、半透明描边与投影；生成时外圈流光环绕，出错时整圈泛红，本轮完成时整圈泛绿。
     val material = composerIslandMaterial()
+    val islandStyle = LocalComposerIslandStyle.current
     // 等待审批时生成已暂停，浮岛仍保持第三色慢闪，提示轮到用户处理。
     val awaitingUser = com.promenar.infinity.ui.common.motion.LocalGenerationMotion.current.actual ==
         com.promenar.infinity.ui.common.motion.GenerationMotionPhase.APPROVAL
@@ -3366,11 +3369,11 @@ fun ChatInputBar(
             .fillMaxWidth()
             .composerIslandGlow(glow, material.topHighlight)
             .testTag(UiTags.CHAT_INPUT_BAR_SURFACE),
-        shape = RoundedCornerShape(ComposerIslandCorner),
+        shape = RoundedCornerShape(islandStyle.corner),
         color = material.container,
         border = if (answeringQuestion) BorderStroke(1.5.dp, MaterialTheme.infinityDomainColors.warning) else material.border,
         tonalElevation = 0.dp,
-        shadowElevation = 6.dp,
+        shadowElevation = islandStyle.shadowElevation,
     ) {
         // 输入框上留白 16dp、到工具行 8dp，并保证 48dp 点击高度；有附件时附件行与容器顶边留 12dp，
         // 附件行自带 8dp 下边距，输入框上留白相应收为 12dp。
@@ -3435,8 +3438,24 @@ fun ChatInputBar(
                     }
                 },
             )
+            if (islandStyle.toolbarTray) Spacer(Modifier.height(ComposerToolbarInset))
+            val trayColor = MaterialTheme.colorScheme.surfaceContainerLow
+            val trayLine = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
             Row(
-                modifier = Modifier.fillMaxWidth().height(40.dp).testTag("chat_composer_toolbar"),
+                modifier = Modifier.fillMaxWidth().height(40.dp)
+                    .then(
+                        if (islandStyle.toolbarTray) {
+                            // 托盘向左右与底边各铺出工具行留白，铺到浮岛边缘，由浮岛外壳裁出底部圆角；上沿一道细线隔开输入区。
+                            Modifier.drawBehind {
+                                val inset = ComposerToolbarInset.toPx()
+                                drawRect(trayColor, topLeft = Offset(-inset, -inset), size = Size(size.width + inset * 2, size.height + inset * 2))
+                                drawRect(trayLine, topLeft = Offset(-inset, -inset), size = Size(size.width + inset * 2, 1.dp.toPx()))
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .testTag("chat_composer_toolbar"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChatCompactIconButton(
@@ -3635,7 +3654,7 @@ private fun GenerationStatusButton(
         )
     }
     Box(
-        modifier = Modifier.size(40.dp).clip(CircleShape).background(containerColor)
+        modifier = Modifier.size(40.dp).clip(LocalComposerIslandStyle.current.sendShape).background(containerColor)
             .combinedClickable(
                 enabled = status == GenerationStatus.IDLE || status == GenerationStatus.RECEIVING ||
                     status == GenerationStatus.THINKING || status == GenerationStatus.UPLOADING ||

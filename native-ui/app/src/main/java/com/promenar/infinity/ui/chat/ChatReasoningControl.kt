@@ -1,6 +1,5 @@
 package com.promenar.infinity.ui.chat
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.rounded.Check
@@ -47,7 +45,6 @@ import com.promenar.infinity.data.model.params.ReasoningSupport
 import com.promenar.infinity.data.model.params.resolveModelParameterProfile
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
-import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -189,8 +186,7 @@ internal fun ChatReasoningChip(
             Row(
                 modifier = Modifier
                     .height(ComposerChipHeight)
-                    .pressFeedback(interaction, CircleShape)
-                    .background(fill)
+                    .composerChip(interaction, fill, outlined = false)
                     // 紧凑时左右各 8dp，与 16dp 灯泡正好拼成 32dp 圆。
                     .padding(horizontal = if (compact) 8.dp else 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
