@@ -6,7 +6,7 @@ const SHA = '34b15aced87fe28ebb458bdd9df84293ef941b95e83f1fc05dc11fa8a7bc5696';
 const apiJson = {
   tag_name: 'v0.35.0-beta',
   published_at: '2026-11-20T23:30:00Z',
-  html_url: 'https://github.com/Promenar/Infinity-Workbench/releases/tag/v0.35.0-beta',
+  html_url: 'https://github.com/Promenar/Infinity-Deck/releases/tag/v0.35.0-beta',
   assets: [
     { name: 'infinity-v0.35.0-beta.apk.sha256', size: 92, browser_download_url: 'https://x/apk.sha256' },
     { name: 'infinity-v0.35.0-beta.apk', size: 56000000, browser_download_url: 'https://x/apk' },
@@ -53,7 +53,7 @@ function fakeFetch(routes) {
 
 test('接口正常时返回最新 Release 与校验值', async () => {
   const fetchImpl = fakeFetch({
-    'https://api.github.com/repos/Promenar/Infinity-Workbench/releases/latest': apiJson,
+    'https://api.github.com/repos/Promenar/Infinity-Deck/releases/latest': apiJson,
     'https://x/apk.sha256': `${SHA}  infinity-v0.35.0-beta.apk\n`,
   });
   const r = await loadRelease({ fetchImpl, fallback });
@@ -69,7 +69,7 @@ test('接口失败或校验文件不匹配时回退到快照并给出原因', as
   assert.equal(down.tag, 'v0.34.0-beta');
   const mismatch = await loadRelease({
     fetchImpl: fakeFetch({
-      'https://api.github.com/repos/Promenar/Infinity-Workbench/releases/latest': apiJson,
+      'https://api.github.com/repos/Promenar/Infinity-Deck/releases/latest': apiJson,
       'https://x/apk.sha256': `${SHA}  wrong.apk`,
     }),
     fallback,

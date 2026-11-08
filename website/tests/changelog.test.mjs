@@ -64,7 +64,7 @@ test('仓库的 CHANGELOG.md 能解析出版本，且最新版本在最前', () 
 });
 
 test('相对链接改写为仓库绝对地址，其它链接不变', () => {
-  const base = 'https://github.com/Promenar/Infinity-Workbench/blob/main/';
+  const base = 'https://github.com/Promenar/Infinity-Deck/blob/main/';
   assert.equal(absolutizeLink('docs/guide/features.md', base), base + 'docs/guide/features.md');
   assert.equal(absolutizeLink('./README.md', base), base + 'README.md');
   assert.equal(absolutizeLink('https://example.com/a', base), 'https://example.com/a');

@@ -1,7 +1,7 @@
 // 官网中英文文案。中文为默认语言，路径不带前缀；英文路径以 /en/ 开头。
 
 export const LOCALES = ['zh', 'en'];
-export const GITHUB = 'https://github.com/Promenar/Infinity-Workbench';
+export const GITHUB = 'https://github.com/Promenar/Infinity-Deck';
 const BLOB = `${GITHUB}/blob/main`;
 const TREE = `${GITHUB}/tree/main`;
 
@@ -97,7 +97,7 @@ export const strings = {
         ['服务器与私有网络', ['SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB', '真终端和端口转发随时接手', '应用自带 Tailscale 节点，支持自建 Headscale', '模型、SSH、MCP 直达 tailnet，不开公网端口，不占系统 VPN']],
         ['资料与知识', ['文档、长期记忆和知识图谱一起检索，答案带引用', '图谱按作品分开，可按篇序查人物关系的变化', '挂载外部文件夹；支持 PDF、Word、Markdown、HTML 等格式']],
         ['网页与产出', ['浏览器多标签，手机版与桌面版切换；Agent 操作时旁观、接手再交回', '画布页面、可点击的多屏原型、带版本的产物', '生图，可在画板上圈注和涂抹选区', '会话导出为网页、A4 PDF 或长图']],
-        ['折叠屏与平板', ['内屏三列：导航、会话列表、会话', '检视器常驻任务、文件、Git 与浏览器', '检视器展开时纵贯全屏，会话列与输入浮岛随之让位', '开合屏会话无缝接续']],
+        ['折叠屏与平板', ['内屏三列：导航、会话列表、会话', '检视器常驻任务、文件、Git 与浏览器', '检视器用图钉固定在右侧让出空间，或浮在会话之上', '开合屏会话无缝接续']],
       ],
     },
     download: {
@@ -249,7 +249,7 @@ export const strings = {
         ['Servers & private network', ['SSH by host alias to run commands and read or write files, up to 4 GiB per file', 'Take over any time in a real terminal or with port forwarding', 'A Tailscale node inside the app, with self-hosted Headscale support', 'Models, SSH and MCP reach your tailnet directly: no open ports, no system VPN']],
         ['Documents & knowledge', ['Search documents, long-term memory and the knowledge graph together, with cited answers', 'One graph per work; follow how characters relate, chapter by chapter', 'Mount outside folders; PDF, Word, Markdown, HTML and more']],
         ['Web & output', ['Browser tabs, mobile or desktop sites; watch the agent, take over and hand it back', 'Canvas pages, clickable multi-screen prototypes and versioned artifacts', 'Image generation with a drawing board for markup and masks', 'Export chats as a web page, A4 PDF or long image']],
-        ['Foldables & tablets', ['Three columns on the inner screen: navigation, chat list and chat', 'An inspector for tasks, files, Git and the browser', 'The open inspector runs full height while the chat list and composer make room', 'Chats carry on as you fold and unfold']],
+        ['Foldables & tablets', ['Three columns on the inner screen: navigation, chat list and chat', 'An inspector for tasks, files, Git and the browser', 'Pin the inspector beside the chat to make room, or let it float above', 'Chats carry on as you fold and unfold']],
       ],
     },
     download: {

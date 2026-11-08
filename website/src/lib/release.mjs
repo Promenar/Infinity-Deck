@@ -1,6 +1,6 @@
 // 读取 GitHub 最新 Release 的侧载 APK 信息。构建时调用；接口不可用时回退到仓库内的快照。
 
-export const REPO = 'Promenar/Infinity-Workbench';
+export const REPO = 'Promenar/Infinity-Deck';
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`;
 
@@ -54,7 +54,7 @@ export function formatDate(iso, locale) {
  */
 export async function loadRelease({ fetchImpl = fetch, token, fallback, onWarn = () => {} }) {
   try {
-    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'infinity-workbench-website-build' };
+    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'infinity-deck-website-build' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetchImpl(API_LATEST, { headers });
     if (!res.ok) throw new Error(`GitHub 接口返回 ${res.status}`);

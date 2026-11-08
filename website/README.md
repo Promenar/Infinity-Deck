@@ -49,7 +49,7 @@ website/scripts/prepare-media.sh <footage 目录>
 
 ## 部署：Cloudflare Pages
 
-本仓库的 GitHub Pages 已用于托管 App 的签名模型目录（`model-catalog-publish.yml` 整站部署，App 固定读取 `promenar.github.io/Infinity-Workbench/model-catalog/`）。官网不能部署到这里，也不能给它绑定自定义域名，否则模型目录地址会被重定向而失效。官网由 Cloudflare Pages 托管。
+本仓库的 GitHub Pages 已用于托管 App 的签名模型目录（`model-catalog-publish.yml` 整站部署，App 固定读取 `promenar.github.io/Infinity-Deck/model-catalog/`）。官网不能部署到这里，也不能给它绑定自定义域名，否则模型目录地址会被重定向而失效。官网由 Cloudflare Pages 托管。
 
 | 项目 | 值 |
 | --- | --- |
