@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.36.1-beta] - 2026-11-08
+
+### 修复
+
+- `kotlinx-serialization-json` 从 1.6.2 升到 1.8.1，与 Room 2.8.5 测试库要求的版本一致；设备测试中的数据库迁移校验不再因序列化库版本不匹配而失败。0.36.0-beta 的功能随本版本一起发布。
+
 ## [0.36.0-beta] - 2026-11-08
 
 ### 新增
