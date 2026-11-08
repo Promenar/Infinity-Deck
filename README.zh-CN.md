@@ -23,8 +23,6 @@
 
 展开是一部工作台，合上接着聊。
 
-https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
-
 ## 目录
 
 - ✨ [它能帮你做什么](#它能帮你做什么)
@@ -38,7 +36,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 ## 它能帮你做什么
 
 <p align="center">
-  <img src="assets/screenshots/zh/hero.webp" alt="展开：会话旁边的 Git 面板列出提交记录；合上：外屏继续查看 502 排障报告" width="860">
+  <img src="assets/screenshots/zh/hero.webp" alt="展开：检视器固定在 Git 页签列出提交记录，会话让到左边；合上：外屏继续查看 502 排障报告" width="860">
 </p>
 
 <table>
@@ -61,16 +59,16 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
       主会话修 bug，补测试的活派给分支会话，各自在独立的工作树里改，互不打架。分支、差异、提交在 Git 面板里一目了然。
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/ade-subagents.webp" alt="两张子代理卡：一个定位代码改动点，一个审查测试覆盖缺口，标注已完成 · 3 分 32 秒">
+      <img src="assets/screenshots/zh/ade-subagents.webp" alt="两张子代理卡：一个定位代码改动点，一个审查测试覆盖缺口；主会话等待中，可转入后台">
       <h3>一句话，一支小团队</h3>
-      提一个需求，它先列计划，再并行派出子代理——一个定位改动点，一个审查测试覆盖——主会话接着推进。谁做完了，结论自己交回来，还附上用时。
+      提一个需求，它先列计划，再并行派出子代理——一个定位改动点，一个审查测试覆盖。主会话可以等结论，也可以转入后台接着干。谁做完了，结论自己交回来，还附上用时。
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器打开 Git 页签：worktree 与对应的会话">
+      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器固定在运行页签：计划进行到第 3/6 步，后台 1 项">
       <h3>展开就是工作台</h3>
-      内屏一分为三：导航、会话列表、会话，旁边常驻检视器，任务、文件、Git、浏览器一点即达。改了什么、哪些分支在跑，抬眼就在。
+      内屏一分为三：导航、会话列表、会话。检视器固定时会话自动让位，取消固定就浮在会话上；任务、文件、Git、浏览器一点即达。改了什么、哪些分支在跑，抬眼就在。
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/outer-chat.webp" alt="外屏上正在阅读的 502 修复报告">
@@ -96,7 +94,7 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 需要 Android 12 及以上。内置 Linux 需要 arm64-v8a 设备，基础系统约 64 MB，加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。
 
-当前源码版本为 `v0.37.0-beta`（versionCode `103`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.38.0-beta`（versionCode `104`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
 <summary><b>从源码构建</b></summary>
@@ -120,6 +118,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口
 - 聊到一半可以换模型；最多 16 个会话同时生成
 - 生成中的下一句可以排队或插队
+- 长对话压缩后，Agent 仍能检索和翻看原文
 - 需要你拍板时弹出提问卡；锁屏、切后台不中断
 - 触摸锁让手机直接揣进口袋
 - 技能与 MCP 服务器
@@ -129,7 +128,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 先列计划再动手
 - 最多 32 个子代理并行，结论自动交回
 - 适合单独做的工作开成分支会话
-- 慢命令转入后台，跑完再叫醒会话
+- 慢命令、生图与下载转入后台，跑完再叫醒会话
 - 定时任务，单次到 cron
 
 **运行环境与代码**
@@ -162,7 +161,8 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 **折叠屏**
 
 - 内屏三列：导航、会话列表、会话
-- 检视器常驻任务、文件、Git 与浏览器
+- 检视器装着任务、文件、Git 与浏览器，可固定在会话旁，也可浮在会话上
+- 收起后边缘条常驻，一点回到任一页签
 - 开合屏会话无缝接续
 
 每一项的细节与边界见[功能详解](docs/guide/features.md)。

@@ -23,8 +23,6 @@ Bring your own API key — OpenAI, Claude, Gemini, DeepSeek, or a model running 
 
 Unfold the phone and it becomes a workbench. Fold it and the chat carries on.
 
-https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
-
 ## Contents
 
 - ✨ [What it can do for you](#what-it-can-do-for-you)
@@ -38,7 +36,7 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
 ## What it can do for you
 
 <p align="center">
-  <img src="assets/screenshots/en/hero.webp" alt="Unfolded: the chat beside the Git panel listing commits. Folded: the 502 fix report continues on the cover screen" width="860">
+  <img src="assets/screenshots/en/hero.webp" alt="Unfolded: the inspector pinned on the Git tab lists commits while the chat makes room on the left. Folded: the 502 fix report continues on the cover screen" width="860">
 </p>
 
 <table>
@@ -61,16 +59,16 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
       The main chat fixes the bug while a branch chat writes the tests, each in its own worktree so they never collide. Branches, diffs and commits are all in the Git panel.
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agent cards: one locating the change, one reviewing test coverage, marked completed in 3m 32s">
+      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agent cards, one locating the change and one reviewing test coverage, while the main chat waits with a Move to background button">
       <h3>One ask, a small team</h3>
-      Ask for a change and it plans first, then sends sub-agents out in parallel — one to find the code, another to review the tests — while the main chat carries on. When each is done, its findings come back on their own, with the time it took.
+      Ask for a change and it plans first, then sends sub-agents out in parallel — one to find the code, another to review the tests. The main chat can wait for their findings or move to the background and keep going. When each is done, its findings come back on their own, with the time it took.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/fold-inspector.webp" alt="Inner screen in three columns with the inspector open on Git: worktrees and the chats they belong to">
+      <img src="assets/screenshots/en/fold-inspector.webp" alt="Inner screen in three columns with the inspector pinned on the Run tab: the plan at step 3 of 6 and one background job">
       <h3>Unfold a workbench</h3>
-      The inner screen splits into three — navigation, chat list, conversation — with an inspector for tasks, files, Git and the browser alongside. Branches, diffs and commits stay in view while you work.
+      The inner screen splits into three — navigation, chat list, conversation. Pin the inspector and the chat makes room for it; unpin it and it floats over the chat. Tasks, files, Git and the browser are one tap away, and branches, diffs and commits stay in view while you work.
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report mid-read">
@@ -96,7 +94,7 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
 
 Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
 
-The source tree is at `v0.37.0-beta` (versionCode `103`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.38.0-beta` (versionCode `104`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>
@@ -120,6 +118,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Bring your own key for OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint
 - Switch models mid-chat; up to 16 chats generating at once
 - Queue your next message or let it jump the line
+- Long chats stay searchable: after compaction the agent can search and page through the original messages
 - Question cards when it needs your call; keeps going with the screen locked
 - Touch lock so the phone can go straight into your pocket
 - Skills and MCP servers
@@ -129,7 +128,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Plans before it acts
 - Up to 32 sub-agents working in parallel; conclusions return on their own
 - Side work becomes a branch chat
-- Slow commands move to the background and wake the chat when done
+- Slow commands, image generation and downloads move to the background and wake the chat when done
 - Scheduled tasks, one-shot to cron
 
 **Runtime & code**
@@ -162,7 +161,8 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 **Foldables**
 
 - Three columns on the inner screen: navigation, chat list and chat
-- An inspector for tasks, files, Git and the browser
+- An inspector for tasks, files, Git and the browser, pinned beside the chat or floating over it
+- When it's closed, an edge strip reopens any tab
 - Chats carry on as you fold and unfold
 
 Details and limits for each item are in the [feature guide](docs/guide/features.md) (in Chinese).
