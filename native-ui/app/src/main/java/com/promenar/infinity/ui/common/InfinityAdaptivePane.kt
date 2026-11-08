@@ -82,7 +82,7 @@ internal val InfinityInspectorMinWindowHeight = 480.dp
 internal val InfinityInspectorWidth = 360.dp
 internal val InfinityInspectorWideWidth = 560.dp
 
-/** 检视器距窗口右缘与距让位后主内容的间距之和。 */
+/** 固定的检视器距窗口右缘 8dp、距让位后主内容 16dp，两者之和。 */
 internal val InfinityInspectorGutter = 24.dp
 
 /** 让位后主内容至少保留的宽度（约一台手机的会话列）；折叠屏内屏默认宽度可让位，加宽后达不到时检视器浮在主内容之上。 */
@@ -97,9 +97,29 @@ fun infinityInspectorAvailable(windowWidth: Dp, windowHeight: Dp): Boolean =
 fun infinityInspectorWidth(windowWidth: Dp, widened: Boolean): Dp =
     if (!widened) InfinityInspectorWidth else minOf(InfinityInspectorWideWidth, windowWidth - 48.dp).coerceAtLeast(InfinityInspectorWidth)
 
-fun infinityInspectorPlacement(windowWidth: Dp, inspectorWidth: Dp): InfinityInspectorPlacement =
-    if (windowWidth - inspectorWidth - InfinityInspectorGutter >= InfinityInspectorMinMainWidth) InfinityInspectorPlacement.Shift
+/** 让位后主内容仍有 [InfinityInspectorMinMainWidth] 时才能固定；能固定时按 [pinned]（用户的图钉偏好）决定固定还是浮动。 */
+fun infinityInspectorPlacement(windowWidth: Dp, inspectorWidth: Dp, pinned: Boolean = true): InfinityInspectorPlacement =
+    if (pinned && infinityInspectorCanPin(windowWidth, inspectorWidth)) InfinityInspectorPlacement.Shift
     else InfinityInspectorPlacement.Float
+
+fun infinityInspectorCanPin(windowWidth: Dp, inspectorWidth: Dp): Boolean =
+    windowWidth - inspectorWidth - InfinityInspectorGutter >= InfinityInspectorMinMainWidth
+
+/** 收起后的边缘条占用的右侧宽度：48dp 条身、距右缘 8dp，再与正文留 8dp。 */
+internal val InfinityInspectorStripSpan = 64.dp
+
+/**
+ * 边缘条常驻时主内容右侧要让出的宽度：内容列限宽 [contentMaxWidth] 居中，
+ * 两侧空白已够放下边缘条时不让；否则让出最少的宽度，使内容列右缘距窗口右缘不小于 [InfinityInspectorStripSpan]。
+ */
+fun infinityInspectorStripReserve(windowWidth: Dp, contentMaxWidth: Dp): Dp {
+    val spare = windowWidth - contentMaxWidth
+    return when {
+        spare >= InfinityInspectorStripSpan * 2 -> 0.dp
+        spare >= InfinityInspectorStripSpan -> InfinityInspectorStripSpan * 2 - spare
+        else -> InfinityInspectorStripSpan
+    }
+}
 
 object InfinityPaneTags {
     const val PAGE = "infinity_secondary_page"

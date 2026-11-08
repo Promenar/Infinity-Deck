@@ -65,13 +65,7 @@ class ChatPagesTest {
         assertThat(defaultChatInspectorRoot(null, hasRunContent = false)).isEqualTo(ChatPage.Explorer)
     }
 
-    @Test fun `检视器角标：没有内容时隐藏，非 Git 仓库不显示 Git 页签`() {
-        assertThat(ChatInspectorBadges().hasContent).isFalse()
-        // 工作区是干净的 Git 仓库不算内容，不为此弹出边缘条。
-        assertThat(ChatInspectorBadges(gitAvailable = true).hasContent).isFalse()
-        assertThat(ChatInspectorBadges(gitAvailable = true, gitChanges = 2).hasContent).isTrue()
-        assertThat(ChatInspectorBadges(pendingApprovals = 1).hasContent).isTrue()
-        assertThat(ChatInspectorBadges(canvases = 1).hasContent).isTrue()
+    @Test fun `检视器页签：非 Git 仓库不显示 Git 页签`() {
         // 远程页签常驻，不依赖工作区内容。
         assertThat(ChatInspectorBadges().pages()).containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Canvas, ChatPage.Remote).inOrder()
         assertThat(ChatInspectorBadges(gitAvailable = true).pages()).containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Canvas, ChatPage.Remote).inOrder()

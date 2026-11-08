@@ -26,7 +26,6 @@ import org.junit.Test
 class RemotePanelTest {
     @Test fun `远程页签常驻检视器，窄窗口整页承载并可保存恢复`() {
         assertThat(ChatInspectorBadges().pages()).contains(ChatPage.Remote)
-        assertThat(ChatInspectorBadges().hasContent).isFalse()
         assertThat(chatPageStack(listOf(ChatPage.Remote), wideWindow = false)).containsExactly(ChatPage.Remote)
         assertThat(chatPageStack(listOf(ChatPage.Remote), wideWindow = true)).containsExactly(ChatPage.Remote)
         assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.Remote)))).containsExactly(ChatPage.Remote)

@@ -5,7 +5,8 @@
     <string name="chat_inspector_tab_files">文件</string>
     <string name="chat_inspector_tab_git">Git</string>
     <string name="chat_inspector_tab_canvas">产物</string>
-    <string name="chat_inspector_toggle">显示或收起检视器</string>
+    <string name="chat_inspector_pin">固定检视器</string>
+    <string name="chat_inspector_unpin">取消固定检视器</string>
     <string name="chat_inspector_expand">展开检视器</string>
     <string name="chat_inspector_collapse">收起检视器</string>
     <string name="chat_inspector_widen">加宽检视器</string>

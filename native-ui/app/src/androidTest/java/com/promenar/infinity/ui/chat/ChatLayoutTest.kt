@@ -122,7 +122,7 @@ class ChatLayoutTest {
         rule.runOnIdle { assertThat(renamed).isTrue() }
     }
 
-    @Test fun wideTopBarKeepsOnlyInspectorToggleAndMenuWhileNarrowMovesArtifactsBrowserAndFilesIntoMenu() {
+    @Test fun wideTopBarKeepsOnlyInspectorPinAndMenuWhileNarrowMovesArtifactsBrowserAndFilesIntoMenu() {
         val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources
         val files = resources.getString(com.promenar.infinity.R.string.chat_cd_workspace)
         val canvas = resources.getString(com.promenar.infinity.R.string.canvas_title)
@@ -133,13 +133,13 @@ class ChatLayoutTest {
                     ChatTopBar(
                         "会话", {}, {}, {}, onClearHistory = {}, onRename = {}, onDeleteSession = {},
                         artifacts = chatTopBarArtifacts(inspectorMode = wide, count = 1, onOpen = {}),
-                        inspector = if (wide) ChatTopBarInspector(open = false, onToggle = {}) else null,
+                        inspector = if (wide) ChatTopBarInspector(pinned = true, canPin = true, onTogglePin = {}) else null,
                         browser = chatTopBarBrowser(inspectorMode = wide, mode = com.promenar.infinity.data.browser.BrowserMode.IDLE, open = false, onOpen = {}),
                     )
                 }
             }
         }
-        rule.onNodeWithTag(ChatInspectorTags.TOGGLE).assertIsDisplayed()
+        rule.onNodeWithTag(ChatInspectorTags.PIN).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.CHAT_OPTIONS).assertIsDisplayed()
         rule.onAllNodesWithContentDescription(files).assertCountEquals(0)
         rule.onAllNodesWithContentDescription(canvas).assertCountEquals(0)
@@ -149,7 +149,7 @@ class ChatLayoutTest {
         rule.onAllNodesWithContentDescription(files).assertCountEquals(0)
         rule.onAllNodesWithContentDescription(canvas).assertCountEquals(0)
         rule.onAllNodesWithTag(com.promenar.infinity.ui.browser.BrowserTags.TOP_BAR_ENTRY).assertCountEquals(0)
-        rule.onAllNodesWithTag(ChatInspectorTags.TOGGLE).assertCountEquals(0)
+        rule.onAllNodesWithTag(ChatInspectorTags.PIN).assertCountEquals(0)
         rule.onNodeWithTag(UiTags.CHAT_OPTIONS).performClick()
         rule.onNodeWithTag(UiTags.CANVAS_ENTRY).assertIsDisplayed()
         rule.onNodeWithTag(com.promenar.infinity.ui.browser.BrowserTags.TOP_BAR_ENTRY).assertIsDisplayed()

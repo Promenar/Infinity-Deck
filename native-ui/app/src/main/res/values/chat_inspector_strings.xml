@@ -5,7 +5,8 @@
     <string name="chat_inspector_tab_files">Files</string>
     <string name="chat_inspector_tab_git">Git</string>
     <string name="chat_inspector_tab_canvas">Artifacts</string>
-    <string name="chat_inspector_toggle">Show or hide inspector</string>
+    <string name="chat_inspector_pin">Pin inspector</string>
+    <string name="chat_inspector_unpin">Unpin inspector</string>
     <string name="chat_inspector_expand">Expand inspector</string>
     <string name="chat_inspector_collapse">Collapse inspector</string>
     <string name="chat_inspector_widen">Widen inspector</string>
