@@ -22,11 +22,7 @@ import androidx.compose.ui.unit.dp
 @Immutable
 internal data class ComposerIslandStyle(
     val corner: Dp = ComposerIslandCorner,
-    val shadowElevation: Dp = 6.dp,
-    /** 描边不透明度的倍数。 */
-    val borderAlphaScale: Float = 1f,
-    /** 深色模式的顶边内高光。 */
-    val topHighlight: Boolean = true,
+    val shadowElevation: Dp = 2.dp,
     /** 底色比卡片高一级，实色描边，深色上沿提亮一档。 */
     val layered: Boolean = false,
     /** 发送键圆角；null 为圆形。 */
@@ -38,7 +34,7 @@ internal data class ComposerIslandStyle(
     /** 工具行沉进一条托盘，与输入区之间一道细线。 */
     val toolbarTray: Boolean = false,
     /** 浮岛外圈光晕强度的倍数；0 时生成只留贴边描边。 */
-    val outerHaloScale: Float = 1f,
+    val outerHaloScale: Float = 0.45f,
     /** 生成时贴边流光的线宽。 */
     val glowStroke: Dp = 1.5.dp,
 ) {
@@ -59,26 +55,22 @@ internal fun Modifier.composerChip(interaction: InteractionSource, fill: Color, 
         .then(if (style.chipOutline && outlined) Modifier.border(0.5.dp, outline, shape) else Modifier)
 }
 
-/** 实验室对比用的四档，从软到硬；外圈圆角都等于发送键圆角加 [ComposerToolbarInset]，与发送键同心。 */
+/** 实验室对比用的三档，从软到硬；外圈圆角都等于发送键圆角加 [ComposerToolbarInset]，与发送键同心。 */
 internal enum class ComposerIslandVariant(val style: ComposerIslandStyle) {
-    /** 正式界面。 */
+    /** 正式界面：短投影、低描边、外圈光晕压低。 */
     CURRENT(ComposerIslandStyle()),
-
-    /** 形状不变，去掉内高光，投影、描边与外圈光晕都压低。 */
-    QUIET(ComposerIslandStyle(shadowElevation = 2.dp, borderAlphaScale = 0.75f, topHighlight = false, outerHaloScale = 0.45f)),
 
     /** 发送键与胶囊改成圆角方形，外圈 24dp。 */
     SQUARE(
         ComposerIslandStyle(
-            corner = 24.dp, shadowElevation = 2.dp, borderAlphaScale = 0.85f, topHighlight = false,
-            sendCorner = 16.dp, chipCorner = 12.dp, outerHaloScale = 0f,
+            corner = 24.dp, sendCorner = 16.dp, chipCorner = 12.dp, outerHaloScale = 0f,
         ),
     ),
 
     /** 圆角与设置卡片一致，分量改由底色、托盘与细描边给出。 */
     LAYERED(
         ComposerIslandStyle(
-            corner = 20.dp, shadowElevation = 3.dp, topHighlight = false, layered = true,
+            corner = 20.dp, shadowElevation = 3.dp, layered = true,
             sendCorner = 12.dp, chipCorner = 10.dp, chipOutline = true, toolbarTray = true,
             outerHaloScale = 0f, glowStroke = 1.dp,
         ),

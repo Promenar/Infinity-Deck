@@ -1459,7 +1459,6 @@ private fun ToolInvocationCard(
     }
     val waitLimit = commandStep?.waitLimitSeconds
     val action = toolSummaryAction(invocation.name)
-    val mediaTool = action == ToolSummaryAction.IMAGE || action == ToolSummaryAction.MEDIA_VIEW
     val arguments = invocation.call?.toolArgs
     val media = remember(invocation) { invocation.results.flatMap { it.media.orEmpty() } }
     val imageData = remember(invocation, action) {
@@ -1468,14 +1467,19 @@ private fun ToolInvocationCard(
         } else null
     }
     val imageEdit = action == ToolSummaryAction.IMAGE && (imageData?.mode == "edit" || toolArgumentPresent(arguments, "images"))
-    var fullResult by remember { mutableStateOf<String?>(null) }
-    val rawResult = remember(invocation) {
-        invocation.results.filter { it.type != "error" }.mapNotNull { it.content?.takeIf(String::isNotBlank) }.joinToString("\n\n")
+    var fullResult by remember { mutableStateOf<ToolRawText?>(null) }
+    val raw = remember(invocation) { toolRawText(arguments, invocation.results.mapNotNull { it.content?.takeIf(String::isNotBlank) }) }
+    // 命令工具的结果不是结构化输出、而是纯文本时，按终端输出展示。
+    val plainCommandOutput = remember(invocation, planCard, jobCard, commandResult) {
+        if (planCard != null || jobCard != null || commandResult != null || action != ToolSummaryAction.COMMAND) null
+        else invocation.results.filter { it.type != "error" }.mapNotNull { it.content?.takeIf(String::isNotBlank) }
+            .takeIf { it.isNotEmpty() && it.none(::looksLikeJson) }?.joinToString("\n\n")
     }
 
     val commandSpec = when {
         jobCard != null -> rememberJobCardSpec(jobCard, onOpenFull = openFullOutput, waitLimit = waitLimit?.let { jobWaitLimitText(it) })
         commandResult != null -> commandResultSpec(commandResult, invocation.durationMs, openFullOutput)
+        plainCommandOutput != null -> commandResultSpec(SubagentCommandResult(plainCommandOutput, null), invocation.durationMs, openFullOutput)
         else -> null
     }
     val tone = commandSpec?.tone ?: when {
@@ -1506,9 +1510,9 @@ private fun ToolInvocationCard(
         icon = toolStepIcon(invocation.name),
         summary = summary,
         statusTag = if (commandSpec != null) COMMAND_STATUS_TAG else null,
-        onOpenFull = commandSpec?.onOpenFull ?: openFullOutput
-            ?: if (mediaTool && rawResult.isNotBlank()) {{ fullResult = rawResult }} else null,
-        openFullLabel = if (commandSpec != null || openFullOutput != null) stringResource(R.string.chat_tool_full_output) else null,
+        // 给模型的参数与结果原文不在卡内铺开：命令有完整输出页时进输出页，其余进“完整结果”面板。
+        onOpenFull = (commandSpec?.onOpenFull ?: openFullOutput) ?: raw?.let { text -> { fullResult = text } },
+        openFullLabel = if (commandSpec?.onOpenFull != null || openFullOutput != null) stringResource(R.string.chat_tool_full_output) else null,
         footerMeta = commandSpec?.footerMeta,
         footerMetaColor = if (commandSpec?.footerFailed == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         footerActions = commandSpec?.onStop?.let { stop -> { JobStopButton(stop) } },
@@ -1534,13 +1538,12 @@ private fun ToolInvocationCard(
             JobWaitProgress(waitLimit, startedAt = invocation.call?.timestamp, running = !invocation.complete,
                 stepId = invocation.call?.id?.let(::unscopedStepId))
         }
-        if (planCard != null) {
-            PlanToolCard(model = planCard, arguments = arguments, results = invocation.results.mapNotNull { it.content })
-        }
-        // 参数：生图只留提示词，查看媒体只留提问，其余尺寸与路径已由摘要和预览说明；等待、查看、停止任务的参数只有任务号。
+        if (planCard != null) PlanToolCard(model = planCard)
+        // 参数：生图只留提示词，查看媒体只留提问，命令只留命令本身，其余字段化为两行预览；
+        // 文件编辑、子代理与保密输入输出由改动列表和专用卡说明，计划与任务操作的参数已在清单与标题里。
         val argumentsShown = planCard == null &&
-            commandStep?.kind !in setOf(CommandStepKind.WAIT, CommandStepKind.STATUS, CommandStepKind.STOP)
-        val fieldFallback = planCard == null && jobCard == null && usesFieldFallback(invocation.name)
+            commandStep?.kind !in setOf(CommandStepKind.WAIT, CommandStepKind.STATUS, CommandStepKind.STOP) &&
+            action !in setOf(ToolSummaryAction.FILE_EDIT, ToolSummaryAction.SUBAGENT, ToolSummaryAction.SECRET)
         when {
             !argumentsShown || arguments.isNullOrBlank() -> Unit
             action == ToolSummaryAction.IMAGE -> toolArgumentText(arguments, "prompt")?.let {
@@ -1549,10 +1552,11 @@ private fun ToolInvocationCard(
             action == ToolSummaryAction.MEDIA_VIEW -> toolArgumentText(arguments, "question")?.let {
                 ExpandableToolText(text = it, collapsedLines = 2, arguments = true, code = false)
             }
+            action == ToolSummaryAction.COMMAND && commandStep?.kind != CommandStepKind.INPUT ->
+                commandArgumentText(arguments)?.let { ExpandableToolText(text = it, collapsedLines = 3, arguments = true) }
             else -> {
-                val fields = remember(arguments, fieldFallback) { if (fieldFallback) toolFieldRows(arguments) else null }
+                val fields = remember(arguments) { toolFieldRows(arguments) }
                 if (fields != null) ToolArgumentsPreview(fields)
-                else ExpandableToolText(text = arguments, collapsedLines = 6, arguments = true)
             }
         }
         if (imageEdit) imageData?.inputImages?.takeIf { it.isNotEmpty() }?.let { paths ->
@@ -1576,21 +1580,8 @@ private fun ToolInvocationCard(
                     contentScale = ContentScale.Fit,
                 )
             }
-            result.content?.takeIf(String::isNotBlank)?.let { content ->
-                val display = remember(invocation.name, content) { toolResultDisplay(invocation.name, content) }
-                when {
-                    display.body.isBlank() -> Unit
-                    result.type == "error" -> ToolErrorBlock(display.body)
-                    commandSpec != null || planCard != null -> Unit
-                    // 生图与查看媒体的结果文本给模型阅读，用户从摘要与预览获知结果，原文经“完整结果”查看。
-                    mediaTool && (!resultMedia.isNullOrEmpty() || images.isNotEmpty()) -> Unit
-                    else -> {
-                        val fields = remember(display.body, fieldFallback) { if (fieldFallback) toolFieldRows(display.body) else null }
-                        if (fields != null) ToolFieldList(fields, arguments = false)
-                        else ExpandableToolText(text = display.body, collapsedLines = 12, code = display.code)
-                    }
-                }
-            }
+            // 成功结果的文本是给模型的上下文，经“完整结果”查看；卡内只留错误说明。
+            if (result.type == "error") result.content?.takeIf(String::isNotBlank)?.let { ToolErrorBlock(it) }
         }
     }
     ToolFullResultSheet(fullResult) { fullResult = null }

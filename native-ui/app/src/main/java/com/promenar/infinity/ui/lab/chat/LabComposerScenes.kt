@@ -35,7 +35,7 @@ import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 
 /**
- * 浮岛质感对比：真实会话页在四档浮岛之间切换，顶部的切换器选档；选中的档位在四个版本之间保留，
+ * 浮岛质感对比：真实会话页在三档浮岛之间切换，顶部的切换器选档；选中的档位在四个版本之间保留，
  * 输入框可以真实输入，空会话里还能看到字标散开。
  */
 internal val labComposerScenes: Map<String, () -> LabScene> = mapOf(
@@ -115,7 +115,6 @@ private fun ComposerVariantSwitcher(selected: ComposerIslandVariant, onSelect: (
 private val ComposerIslandVariant.labelRes: Int
     get() = when (this) {
         ComposerIslandVariant.CURRENT -> R.string.lab_composer_current
-        ComposerIslandVariant.QUIET -> R.string.lab_composer_quiet
         ComposerIslandVariant.SQUARE -> R.string.lab_composer_square
         ComposerIslandVariant.LAYERED -> R.string.lab_composer_layered
     }

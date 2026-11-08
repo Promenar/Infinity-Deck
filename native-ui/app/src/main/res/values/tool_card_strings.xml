@@ -17,8 +17,6 @@
     <string name="tool_card_plan_state_todo">To do</string>
     <string name="tool_card_plan_position">Step %1$d of %2$d</string>
     <string name="tool_card_plan_all_done">All %1$d steps done</string>
-    <string name="tool_card_raw_show">Raw data</string>
-    <string name="tool_card_raw_hide">Hide raw data</string>
     <string name="tool_card_job_summary">%1$s · %2$s · %3$s</string>
     <string name="tool_card_job_summary_elapsed">%1$s · %2$s · %3$s %4$s</string>
     <string name="tool_card_job_unnamed">Background job</string>

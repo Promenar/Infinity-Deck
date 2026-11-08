@@ -459,23 +459,33 @@ private const val MAX_FIELD_DEPTH = 2
 private const val MAX_FIELD_ROWS = 120
 internal const val LONG_FIELD_CHARS = 160
 
-/** 工具结果的界面展示：浏览器结果开头给模型的不可信声明不展示；JSON 或浏览器工具的结果按代码排版。 */
-internal data class ToolResultDisplay(val body: String, val code: Boolean)
+/** 一次调用给模型的原文：参数与各条结果，供“完整结果”面板查看。 */
+internal data class ToolRawText(val arguments: String?, val results: List<String>)
 
-internal fun toolResultDisplay(toolName: String?, content: String): ToolResultDisplay {
-    val body = content.removePrefix(com.promenar.infinity.data.browser.BROWSER_UNTRUSTED_NOTICE).trimStart('\n', '\r')
-    val trimmed = body.trim()
-    val json = (trimmed.startsWith("{") || trimmed.startsWith("[")) && runCatching { Json.parseToJsonElement(trimmed) }.isSuccess
-    return ToolResultDisplay(body, json || toolName?.startsWith("browser_") == true)
+private val PrettyJson = Json { prettyPrint = true }
+
+/** 参数与结果都为空时返回 null；JSON 排成缩进格式，浏览器结果开头给模型的不可信声明不展示。 */
+internal fun toolRawText(arguments: String?, results: List<String>): ToolRawText? {
+    val args = arguments?.takeIf(String::isNotBlank)?.let(::prettyJsonOrSelf)
+    val bodies = results.map { it.removePrefix(com.promenar.infinity.data.browser.BROWSER_UNTRUSTED_NOTICE).trimStart('\n', '\r') }
+        .filter(String::isNotBlank).map(::prettyJsonOrSelf)
+    return if (args == null && bodies.isEmpty()) null else ToolRawText(args, bodies)
 }
 
-/**
- * 有专用展示的工具（命令、文件编辑与传输、浏览器、知识检索、记忆写入、子代理、保密输入输出、计划）不做字段化，保持原有展示。
- */
-internal fun usesFieldFallback(toolName: String?): Boolean = when (toolSummaryAction(toolName)) {
-    ToolSummaryAction.COMMAND, ToolSummaryAction.FILE_EDIT, ToolSummaryAction.FILE_TRANSFER, ToolSummaryAction.BROWSER,
-    ToolSummaryAction.KNOWLEDGE_SEARCH, ToolSummaryAction.MEMORY_WRITE, ToolSummaryAction.SUBAGENT, ToolSummaryAction.SECRET -> false
-    else -> true
+/** 合法的 JSON 对象或数组。 */
+internal fun looksLikeJson(text: String): Boolean {
+    val trimmed = text.trim()
+    return (trimmed.startsWith("{") || trimmed.startsWith("[")) && runCatching { Json.parseToJsonElement(trimmed) }.isSuccess
+}
+
+private fun prettyJsonOrSelf(text: String): String =
+    if (looksLikeJson(text)) runCatching { PrettyJson.encodeToString(JsonElement.serializer(), Json.parseToJsonElement(text.trim())) }.getOrDefault(text)
+    else text
+
+/** 命令类调用要执行的命令或代码；参数里没有时为 null。 */
+internal fun commandArgumentText(arguments: String?): String? {
+    val root = parseObject(arguments) ?: return null
+    return listOf("command", "code", "script").firstNotNullOfOrNull { root.text(it)?.takeIf(String::isNotBlank) }
 }
 
 /**

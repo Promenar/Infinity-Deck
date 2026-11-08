@@ -65,8 +65,7 @@ internal val ComposerToolbarInset = 8.dp
 internal const val ComposerGlowPeriodSeconds = 2.8f
 
 /**
- * 浮岛材质。环境光为实色：深色沿用底部导航栏的抬升底色、半透明描边与顶边高光；
- * 浅色改用纯白底，层次主要靠投影，顶边高光在亮底上不可见因此不画。
+ * 浮岛材质。环境光为实色：深色沿用底部导航栏的抬升底色与低透明描边，浅色改用纯白底，层次靠短投影与描边。
  * 毛玻璃时容器透明，底色由 [ComposerIslandSurface] 画模糊背景再叠 [frostedTint]；描边改为浅色亮边，深浅色都画上沿 1px 内高光。
  */
 internal data class ComposerIslandMaterial(
@@ -84,14 +83,13 @@ internal fun composerIslandMaterial(): ComposerIslandMaterial {
     val scheme = MaterialTheme.colorScheme
     val dark = MaterialTheme.infinityDomainColors.isDark
     val style = LocalComposerIslandStyle.current
-    fun rim(color: Color, alpha: Float) = BorderStroke(1.dp, color.copy(alpha = (alpha * style.borderAlphaScale).coerceAtMost(1f)))
-    fun Color.ifHighlight() = takeIf { style.topHighlight }
+    fun rim(color: Color, alpha: Float) = BorderStroke(1.dp, color.copy(alpha = alpha))
     if (LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED) {
         return if (dark) {
             ComposerIslandMaterial(
                 container = Color.Transparent,
                 border = rim(scheme.onSurface, 0.14f),
-                topHighlight = scheme.onSurface.copy(alpha = 0.16f).ifHighlight(),
+                topHighlight = scheme.onSurface.copy(alpha = 0.16f),
                 chip = scheme.onSurface.copy(alpha = 0.08f),
                 frostedTint = scheme.surfaceContainer.copy(alpha = 0.6f),
             )
@@ -99,7 +97,7 @@ internal fun composerIslandMaterial(): ComposerIslandMaterial {
             ComposerIslandMaterial(
                 container = Color.Transparent,
                 border = rim(scheme.outlineVariant, 0.5f),
-                topHighlight = InfinityPureWhite.copy(alpha = 0.9f).ifHighlight(),
+                topHighlight = InfinityPureWhite.copy(alpha = 0.9f),
                 chip = scheme.onSurface.copy(alpha = 0.05f),
                 frostedTint = scheme.surfaceContainerLowest.copy(alpha = 0.6f),
             )
@@ -126,14 +124,14 @@ internal fun composerIslandMaterial(): ComposerIslandMaterial {
     return if (dark) {
         ComposerIslandMaterial(
             container = scheme.surfaceContainer,
-            border = rim(scheme.outlineVariant, 0.55f),
-            topHighlight = scheme.onSurface.copy(alpha = 0.06f).ifHighlight(),
+            border = rim(scheme.outlineVariant, 0.41f),
+            topHighlight = null,
             chip = scheme.surfaceContainerHigh,
         )
     } else {
         ComposerIslandMaterial(
             container = scheme.surfaceContainerLowest,
-            border = rim(scheme.outlineVariant, 0.75f),
+            border = rim(scheme.outlineVariant, 0.56f),
             topHighlight = null,
             chip = scheme.surfaceContainerLow,
         )
