@@ -154,6 +154,37 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE session_id = :sessionId ORDER BY created_at ASC, rowid ASC")
     suspend fun getBySession(sessionId: String): List<MessageEntity>
 
+    @Query("""SELECT * FROM messages WHERE session_id = :sessionId
+        AND (name IS NULL OR name NOT IN (:internalNames))
+        AND (:cursor IS NULL OR (created_at, rowid) < (SELECT created_at, rowid FROM messages WHERE session_id = :sessionId AND id = :cursor))
+        ORDER BY created_at DESC, rowid DESC LIMIT :limit""")
+    suspend fun historyBefore(sessionId: String, cursor: String?, limit: Int, internalNames: List<String>): List<MessageEntity>
+
+    @Query("""SELECT * FROM messages WHERE session_id = :sessionId
+        AND (name IS NULL OR name NOT IN (:internalNames))
+        AND (created_at, rowid) > (SELECT created_at, rowid FROM messages WHERE session_id = :sessionId AND id = :cursor)
+        ORDER BY created_at ASC, rowid ASC LIMIT :limit""")
+    suspend fun historyAfter(sessionId: String, cursor: String, limit: Int, internalNames: List<String>): List<MessageEntity>
+
+    @Query("""SELECT COUNT(*) FROM messages WHERE session_id = :sessionId
+        AND (name IS NULL OR name NOT IN (:internalNames))
+        AND (created_at, rowid) < (SELECT created_at, rowid FROM messages WHERE session_id = :sessionId AND id = :cursor)""")
+    suspend fun historyCountBefore(sessionId: String, cursor: String, internalNames: List<String>): Int
+
+    @Query("""SELECT COUNT(*) FROM messages WHERE session_id = :sessionId
+        AND (name IS NULL OR name NOT IN (:internalNames))
+        AND (created_at, rowid) > (SELECT created_at, rowid FROM messages WHERE session_id = :sessionId AND id = :cursor)""")
+    suspend fun historyCountAfter(sessionId: String, cursor: String, internalNames: List<String>): Int
+
+    @Query("""SELECT * FROM messages WHERE session_id = :sessionId AND (name IS NULL OR name NOT IN (:internalNames))
+        AND (:role IS NULL OR role = :role) AND content LIKE :pattern ESCAPE '\'
+        ORDER BY created_at DESC, rowid DESC LIMIT :limit""")
+    suspend fun searchHistory(sessionId: String, pattern: String, role: String?, limit: Int, internalNames: List<String>): List<MessageEntity>
+
+    @Query("""SELECT COUNT(*) FROM messages WHERE session_id = :sessionId AND (name IS NULL OR name NOT IN (:internalNames))
+        AND (:role IS NULL OR role = :role) AND content LIKE :pattern ESCAPE '\'""")
+    suspend fun countHistoryMatches(sessionId: String, pattern: String, role: String?, internalNames: List<String>): Int
+
     @Query("SELECT COUNT(*) FROM messages WHERE session_id = :sessionId")
     suspend fun countBySession(sessionId: String): Int
 

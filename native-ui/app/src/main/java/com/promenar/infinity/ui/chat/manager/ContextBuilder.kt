@@ -526,6 +526,9 @@ class ContextBuilder(
             sb.appendLine("<history_summary>")
             sb.appendLine(summary.trim())
             sb.appendLine("</history_summary>")
+            if (params.availableToolNames == null || params.availableToolNames.containsAll(setOf("session_read", "session_search"))) {
+                sb.appendLine("Summarized turns are archived, not deleted. For exact wording, numbers, code, or details, use session_search with keywords or page through session_read with before/after; omitting id in either tool targets the current session.")
+            }
         }
         finish("history_summary")
 

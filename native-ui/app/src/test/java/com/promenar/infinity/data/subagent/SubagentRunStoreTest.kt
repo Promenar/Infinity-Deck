@@ -9,6 +9,9 @@ import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.domain.generation.CompletionReason
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import com.promenar.infinity.ui.chat.manager.skills.AgentTaskSkill
+import com.promenar.infinity.ui.chat.manager.skills.SubagentAddressHandler
+import com.promenar.infinity.ui.chat.manager.skills.SessionSubagentSkill
+import kotlinx.serialization.json.*
 import com.promenar.infinity.ui.chat.subagentResultSummary
 import java.nio.file.Files
 import kotlinx.coroutines.CompletableDeferred
@@ -206,6 +209,24 @@ class SubagentRunStoreTest {
         assertThat(pending.canRemember).isFalse()
         broker.resolve(pending.id, approved = true, remember = true)
         assertThat(outcome.await()).isEqualTo(SubagentApprovalOutcome.APPROVED)
+    }
+
+    @Test fun `子代理有分页参数时读取检查点且默认输出保持状态格式`() = runTest {
+        val stored = batch(SubagentStatus.COMPLETED).let { it.copy(runs = listOf(it.runs.single().copy(id = "sa_123abc"))) }
+        store.finish(stored)
+        store.saveExecution("s1", "step", "sa_123abc", SubagentExecutionState(messages = listOf(
+            ProtocolMessage("user", "第一条"), ProtocolMessage("assistant", "第二条"), ProtocolMessage("tool", "第三条"))))
+        val model = SubagentModelClient { _, _, _, _, _, _ -> flow { } }
+        val launcher = launcher(model)
+        val skill = SessionSubagentSkill("session_read", listOf(SubagentAddressHandler({ launcher })))
+        val plain = skill.execute(buildJsonObject { put("id", "sa_123abc") }, context())
+        assertThat(plain.content).contains("Recent events:")
+        val page = skill.execute(buildJsonObject { put("id", "sa_123abc"); put("after", "0"); put("limit", 1) }, context())
+        val body = Json.parseToJsonElement(page.content).jsonObject
+        assertThat(body["messages"]!!.jsonArray.single().jsonObject["content"]!!.jsonPrimitive.content).isEqualTo("第二条")
+        assertThat(body["has_more_before"]!!.jsonPrimitive.boolean).isTrue()
+        assertThat(body["has_more_after"]!!.jsonPrimitive.boolean).isTrue()
+        assertThat(skill.execute(buildJsonObject { put("id", "sa_123abc"); put("before", "99") }, context()).status).isEqualTo("error")
     }
 
     private fun kotlinx.coroutines.test.TestScope.launcher(models: SubagentModelClient) = SubagentLauncher(
