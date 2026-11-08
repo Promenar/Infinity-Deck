@@ -34,7 +34,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * 把纯 Python wheel 与 Infinity Workbench 自带模块合成为不压缩 zip（libpysite.so），作为标准库之后的第二个
+ * 把纯 Python wheel 与 Infinity Deck 自带模块合成为不压缩 zip（libpysite.so），作为标准库之后的第二个
  * PYTHONPATH 条目；安装后位于 nativeLibraryDir，只读，不解压。
  * 启用预编译时每个 .py 旁加入哈希 pyc，源码保留，内置 git 出错时回溯仍能显示源码行；见 {@link PythonBytecode}。
  */
@@ -42,7 +42,7 @@ public abstract class PreparePackagedSite extends DefaultTask {
     @InputFiles @PathSensitive(PathSensitivity.NAME_ONLY)
     public abstract ConfigurableFileCollection getWheels();
 
-    /** Infinity Workbench 自带的顶层模块（如 git 包装）。 */
+    /** Infinity Deck 自带的顶层模块（如 git 包装）。 */
     @InputDirectory @PathSensitive(PathSensitivity.RELATIVE)
     public abstract DirectoryProperty getModuleDirectory();
 
@@ -77,7 +77,7 @@ public abstract class PreparePackagedSite extends DefaultTask {
 
     public PreparePackagedSite() {
         setGroup("build setup");
-        setDescription("把纯 Python 依赖与 Infinity Workbench 模块合成为 jniLibs 打包库 libpysite.so。");
+        setDescription("把纯 Python 依赖与 Infinity Deck 模块合成为 jniLibs 打包库 libpysite.so。");
     }
 
     @TaskAction

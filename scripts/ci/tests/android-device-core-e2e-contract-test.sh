@@ -257,8 +257,8 @@ host_anr_titles_block="$(sed -n '/HOST_SYSTEM_ANR_TITLES = setOf(/,/^[[:space:]]
 host_anr_title_count="$(grep -Ec '^[[:space:]]+"[^"]+",?$' <<<"${host_anr_titles_block}" || true)"
 [[ "${host_anr_title_count}" == "3" ]] ||
     fail "宿主 ANR 精确允许列表只能包含三个完整标题，实际 ${host_anr_title_count} 个"
-if grep -Fq -- '"Infinity Workbench isn'"'"'t responding"' <<<"${host_anr_titles_block}"; then
-    fail "宿主 ANR 允许列表不得包含 Infinity Workbench"
+if grep -Fq -- '"Infinity Deck isn'"'"'t responding"' <<<"${host_anr_titles_block}"; then
+    fail "宿主 ANR 允许列表不得包含 Infinity Deck"
 fi
 host_anr_match_block="$(sed -n '/private fun isHostSystemAnrTitle/,/^$/p' "${NOTIFICATION_E2E_TEST}")"
 if grep -Fq -- '.contains(' <<<"${host_anr_match_block}"; then

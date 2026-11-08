@@ -6,6 +6,8 @@ import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import android.content.Context
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -105,9 +107,6 @@ internal data class ChatInspectorBadges(
     /** 远程页签圆点：智能体正在使用 SSH（主色）或 Tailscale 需要登录、连接失败（橙色）。 */
     val remote: RemoteDot? = null,
 ) {
-    /** 没有运行内容、改动与产物时检视器完全隐藏，只留顶栏入口。 */
-    val hasContent: Boolean get() = running || pendingApprovals > 0 || hasRunContent || gitChanges > 0 || canvases > 0 || browser != null
-
     fun pages(): List<ChatPage> = ChatPage.entries.filter {
         (it != ChatPage.Git || gitAvailable) && (it != ChatPage.Browser || browserEntry || browser != null)
     }
@@ -590,6 +589,24 @@ internal fun Modifier.inspectorStripDrag(maxLiftPx: Float): Modifier {
         }
 }
 
+/**
+ * 检视器图钉：按下时检视器固定在会话右侧、会话让位；松开时浮在会话之上。
+ * 全局共用一份偏好，默认固定；视觉实验室沙箱里只在内存中切换。
+ */
+@Composable
+internal fun rememberChatInspectorPinned(): MutableState<Boolean> {
+    val context = LocalContext.current
+    val sandboxed = com.promenar.infinity.ui.common.LocalLabSandbox.current
+    val prefs = remember(context, sandboxed) {
+        if (sandboxed) null else context.applicationContext.getSharedPreferences("infinity_ui_state", Context.MODE_PRIVATE)
+    }
+    val state = remember(prefs) { mutableStateOf(prefs?.getBoolean(CHAT_INSPECTOR_PINNED_KEY, true) ?: true) }
+    LaunchedEffect(prefs, state.value) { prefs?.edit()?.putBoolean(CHAT_INSPECTOR_PINNED_KEY, state.value)?.apply() }
+    return state
+}
+
+private const val CHAT_INSPECTOR_PINNED_KEY = "chat_inspector_pinned"
+
 /** 运行页签：有待批准的操作时先给出跳转入口；没有运行内容时显示空状态。 */
 @Composable
 internal fun ChatInspectorRunTab(
@@ -657,7 +674,7 @@ internal object ChatInspectorTags {
     const val COLLAPSE = "chat_inspector_collapse"
     const val EXPAND = "chat_inspector_expand"
     const val APPROVAL = "chat_inspector_approval"
-    const val TOGGLE = "chat_inspector_toggle"
+    const val PIN = "chat_inspector_pin"
     const val MORE = "chat_inspector_more"
     fun tab(page: ChatPage) = "chat_inspector_tab_${page.token}"
     fun stripItem(page: ChatPage) = "chat_inspector_strip_${page.token}"

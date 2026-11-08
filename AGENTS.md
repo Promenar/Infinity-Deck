@@ -1,6 +1,6 @@
-# Infinity Workbench 开发者/Agent 协同规范 (AGENTS.md)
+# Infinity Deck 开发者/Agent 协同规范 (AGENTS.md)
 
-本文件遵循 [AGENTS.md 开放标准](https://agents.md/)，为所有参与 Infinity Workbench（原名 Nexara）开发的 AI Agent 和人类开发者提供核心开发规范。
+本文件遵循 [AGENTS.md 开放标准](https://agents.md/)，为所有参与 Infinity Deck（曾用名 Infinity Workbench、Nexara）开发的 AI Agent 和人类开发者提供核心开发规范。
 
 ## 1. 核心规则引用
 本项目严格遵循模型全局开发规则，包含：

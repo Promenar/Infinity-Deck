@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "InfinityWorkbench"
+rootProject.name = "InfinityDeck"
 include(":app")
 include(":mainactivity-e2e")
 include(":blackbox-fixture")

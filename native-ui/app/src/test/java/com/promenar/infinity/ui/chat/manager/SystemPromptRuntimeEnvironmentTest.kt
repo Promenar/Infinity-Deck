@@ -8,9 +8,9 @@ import org.junit.Test
 class SystemPromptRuntimeEnvironmentTest {
     @Test fun `环境固定段包含宿主事实和实际模型`() {
         val prompt = SystemPromptSections.runtimeEnvironment("provider/model-id")
-        assertThat(prompt.lines()).containsAtLeast("## Runtime Environment", "- Environment: Infinity Workbench", "- Model: provider/model-id")
-        assertThat(prompt).contains("你是 Infinity Workbench 的智能体，运行在 Android 应用内")
-        assertThat(prompt).contains("infinity-workbench")
+        assertThat(prompt.lines()).containsAtLeast("## Runtime Environment", "- Environment: Infinity Deck", "- Model: provider/model-id")
+        assertThat(prompt).contains("你是 Infinity Deck 的智能体，运行在 Android 应用内")
+        assertThat(prompt).contains("infinity-deck")
     }
 
     @Test fun `空模型不产生模型行且保留固定环境事实`() {
@@ -37,7 +37,7 @@ class SystemPromptRuntimeEnvironmentTest {
             "s", "q", assistantMsgId = "m", session = Session("s", "a"),
             agentSystemPrompt = "用户定义提示词", sessionCustomPrompt = "会话指令正文", runtimeModelId = "request-model",
         )).finalSystemPrompt
-        assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Workbench\n")
+        assertThat(prompt).contains("## Runtime Environment\n- Environment: Infinity Deck\n")
         assertThat(prompt).contains("- Model: request-model\n")
         assertThat(prompt.indexOf("用户定义提示词")).isLessThan(prompt.indexOf("## Session Instructions"))
         assertThat(prompt.indexOf("## Runtime Environment")).isGreaterThan(prompt.indexOf("会话指令正文"))

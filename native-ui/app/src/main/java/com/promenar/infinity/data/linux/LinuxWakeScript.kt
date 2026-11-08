@@ -36,7 +36,7 @@ object LinuxWakeScript {
         [ "§{#key}" -le @MAX_KEY@ ] || invalid
         dir=§{INFINITY_WAKE_DIR-}
         if [ -z "§dir" ] || [ ! -d "§dir" ] || [ ! -w "§dir" ]; then
-            printf '%s\n' '只能在 Infinity Workbench 的 Linux 会话内、应用运行期间使用。' >&2
+            printf '%s\n' '只能在 Infinity Deck 的 Linux 会话内、应用运行期间使用。' >&2
             exit 3
         fi
         tmp=§(mktemp "§dir/.tmp-XXXXXXXXXX") || exit 4

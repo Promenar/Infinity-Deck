@@ -1,4 +1,4 @@
-// nxtailnet 是 Infinity Workbench 内置的 Tailscale 节点（tsnet）。它作为 App 的子进程运行，不占用系统 VPN：
+// nxtailnet 是 Infinity Deck 内置的 Tailscale 节点（tsnet）。它作为 App 的子进程运行，不占用系统 VPN：
 // 经 stdin/stdout JSON 行协议接受启停、登录、状态与节点列表命令，并在 127.0.0.1 随机端口提供
 // 需要凭据的 SOCKS5 / HTTP 分流代理，让 App 内的 HTTP、SSH 与子进程访问 tailnet。
 // stdin 结束（父进程退出或主动关闭）时下线并退出。

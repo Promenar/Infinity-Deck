@@ -44,7 +44,7 @@
     <string name="lab_v_composer_streaming">流式输出</string>
     <string name="lab_v_composer_streaming_desc">正文流式输出中的描边流光，三档浮岛可切换</string>
     <string name="lab_v_composer_tools">执行工具</string>
-    <string name="lab_v_composer_tools_desc">运行坞展开、计划进行中，三档浮岛可切换</string>
+    <string name="lab_v_composer_tools_desc">运行坞显示计划进度，三档浮岛可切换</string>
     <string name="lab_composer_current">现状</string>
     <string name="lab_composer_square">方钮</string>
     <string name="lab_composer_layered">分层</string>
@@ -65,6 +65,10 @@
     <string name="lab_v_git_worktrees_desc">各 worktree 对应到使用它的会话</string>
     <string name="lab_v_inspector_plan">计划与后台任务</string>
     <string name="lab_v_inspector_plan_desc">已完成步骤、子代理与后台任务</string>
+    <string name="lab_v_files_repo">文件：仓库分支卡片</string>
+    <string name="lab_v_files_repo_desc">starlog 仓库根目录，点分支卡片切到 Git 页签</string>
+    <string name="lab_v_open_shift">展开检视器</string>
+    <string name="lab_v_open_shift_desc">从边缘条展开、会话让位，再切到文件与 Git</string>
     <string name="lab_v_ops_approval">502 修复待批准</string>
     <string name="lab_v_ops_approval_desc">根因已查明，备份并恢复配置的命令等待批准</string>
     <string name="lab_v_ops_report">502 排障报告</string>

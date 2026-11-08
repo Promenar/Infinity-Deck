@@ -1,10 +1,10 @@
-# Infinity Workbench 移动工作流能力测试方案
+# Infinity Deck 移动工作流能力测试方案
 
 日期：2026-11-03。适用环境：Android 真机（侧载版，内置 Tailscale 节点与 Alpine Linux 环境），tailnet 内的 MAIN 主机。文档性质：测试设计与执行入口，不是能力通过声明。
 
 ## 1. 目标与判定
 
-验证使用者能否在手机上用 Infinity Workbench 跑通桌面 ADE（Codex、Claude Code）日常承担的四类创作与办公工作流。四类工作流来自使用者私有资料仓库中的真实工作，依赖组件互不重叠，每类测一次即可代表同类任务：
+验证使用者能否在手机上用 Infinity Deck 跑通桌面 ADE（Codex、Claude Code）日常承担的四类创作与办公工作流。四类工作流来自使用者私有资料仓库中的真实工作，依赖组件互不重叠，每类测一次即可代表同类任务：
 
 | 编号 | 工作流 | 依赖组件 |
 | --- | --- | --- |

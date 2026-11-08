@@ -46,7 +46,7 @@
     <string name="lab_v_composer_streaming">Streaming</string>
     <string name="lab_v_composer_streaming_desc">Edge glow while the answer streams; three composer finishes</string>
     <string name="lab_v_composer_tools">Running tools</string>
-    <string name="lab_v_composer_tools_desc">Run dock open with the plan in progress; three composer finishes</string>
+    <string name="lab_v_composer_tools_desc">Run dock shows plan progress; three composer finishes</string>
     <string name="lab_composer_current">Current</string>
     <string name="lab_composer_square">Square</string>
     <string name="lab_composer_layered">Layered</string>
@@ -67,6 +67,10 @@
     <string name="lab_v_git_worktrees_desc">Each worktree mapped to the chat that uses it</string>
     <string name="lab_v_inspector_plan">Plan and background jobs</string>
     <string name="lab_v_inspector_plan_desc">Finished steps, sub-agents and background jobs</string>
+    <string name="lab_v_files_repo">Files: repository branch card</string>
+    <string name="lab_v_files_repo_desc">starlog root; the branch card opens the Git tab</string>
+    <string name="lab_v_open_shift">Open the inspector</string>
+    <string name="lab_v_open_shift_desc">Opens from the edge strip, the chat makes room, then Files and Git</string>
     <string name="lab_v_ops_approval">502 fix awaiting approval</string>
     <string name="lab_v_ops_approval_desc">Root cause found; the back-up-and-restore command waits for approval</string>
     <string name="lab_v_ops_report">502 incident report</string>

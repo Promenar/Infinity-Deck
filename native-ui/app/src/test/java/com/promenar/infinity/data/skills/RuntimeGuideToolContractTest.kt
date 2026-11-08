@@ -21,7 +21,7 @@ import com.promenar.infinity.domain.tool.ToolExecutionTargets
 /** 从应用注册入口构造真实工具定义；所有依赖均为假对象，不执行工具或访问网络。 */
 class RuntimeGuideToolContractTest {
     private val source = runtimeGuideMainDirectory().resolve("java/com/promenar/infinity")
-    private val guide = runtimeGuideMainDirectory().resolve("assets/builtin_skills/infinity-workbench/SKILL.md")
+    private val guide = runtimeGuideMainDirectory().resolve("assets/builtin_skills/infinity-deck/SKILL.md")
 
     @Test fun `历史用户附件重看说明同时存在于系统媒体段和运行指南`() {
         val instruction = "已保存到工作区的历史用户图片和文档以工作区路径提供"

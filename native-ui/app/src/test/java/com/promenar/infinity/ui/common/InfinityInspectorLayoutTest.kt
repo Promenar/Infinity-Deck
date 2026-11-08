@@ -26,7 +26,36 @@ class InfinityInspectorLayoutTest {
         assertThat(infinityInspectorPlacement(814.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
         assertThat(infinityInspectorPlacement(814.dp, 560.dp)).isEqualTo(InfinityInspectorPlacement.Float)
         assertThat(infinityInspectorPlacement(1280.dp, 560.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
-        assertThat(infinityInspectorPlacement(704.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
-        assertThat(infinityInspectorPlacement(703.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Float)
+        // 会话宽 = 窗口 − 检视器 − 右缘 8dp，至少 320dp。
+        assertThat(infinityInspectorPlacement(688.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
+        assertThat(infinityInspectorPlacement(687.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Float)
+    }
+
+    @Test fun `图钉松开时总是浮动，按下时只在会话够宽时固定`() {
+        assertThat(infinityInspectorPlacement(814.dp, 360.dp, pinned = false)).isEqualTo(InfinityInspectorPlacement.Float)
+        assertThat(infinityInspectorPlacement(1280.dp, 360.dp, pinned = false)).isEqualTo(InfinityInspectorPlacement.Float)
+        assertThat(infinityInspectorPlacement(814.dp, 360.dp, pinned = true)).isEqualTo(InfinityInspectorPlacement.Shift)
+        // 加宽后会话不足 320dp：图钉不可用，按下也只能浮动。
+        assertThat(infinityInspectorCanPin(814.dp, 560.dp)).isFalse()
+        assertThat(infinityInspectorPlacement(814.dp, 560.dp, pinned = true)).isEqualTo(InfinityInspectorPlacement.Float)
+    }
+
+    @Test fun `边缘条常驻时正文右缘距窗口右缘至少 64dp，两侧空白够时不加`() {
+        // 折叠屏内屏会话区约 742dp：限宽 720dp 居中后右侧空白 11dp，正文自带 20dp，再加 33dp。
+        assertThat(infinityInspectorStripInset(742.dp, 720.dp, 20.dp)).isEqualTo(33.dp)
+        assertThat(infinityInspectorStripInset(800.dp, 720.dp, 20.dp)).isEqualTo(4.dp)
+        // 空白与正文内边距合计已有 64dp：不加。
+        assertThat(infinityInspectorStripInset(808.dp, 720.dp, 20.dp)).isEqualTo(0.dp)
+        assertThat(infinityInspectorStripInset(1280.dp, 720.dp, 20.dp)).isEqualTo(0.dp)
+        // 窗口比限宽还窄时没有居中空白，全部由正文末端留出。
+        assertThat(infinityInspectorStripInset(700.dp, 720.dp, 20.dp)).isEqualTo(44.dp)
+    }
+
+    @Test fun `浮动检视器右缘与输入浮岛右缘对齐`() {
+        // 窗口 800dp：浮岛列限宽 720dp 居中，右侧空白 40dp，再加浮岛自带的 12dp。
+        assertThat(infinityInspectorFloatEnd(800.dp, 720.dp, 12.dp)).isEqualTo(52.dp)
+        assertThat(infinityInspectorFloatEnd(1280.dp, 720.dp, 12.dp)).isEqualTo(292.dp)
+        // 窗口比限宽还窄时浮岛铺满，只剩自带的内边距。
+        assertThat(infinityInspectorFloatEnd(700.dp, 720.dp, 12.dp)).isEqualTo(12.dp)
     }
 }

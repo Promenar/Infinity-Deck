@@ -31,15 +31,15 @@ data class MediaSaveTarget(
 
 private const val GENERIC_MIME = "application/octet-stream"
 
-/** 目录与 Environment.DIRECTORY_PICTURES/MOVIES/DOWNLOADS 一致，写成常量以便 JVM 测试。图片、视频写入 `Pictures/Infinity Workbench`、`Movies/Infinity Workbench`；音频与其它文件（含类别与 MIME 不符者）写入 `Download/Infinity Workbench`。 */
+/** 目录与 Environment.DIRECTORY_PICTURES/MOVIES/DOWNLOADS 一致，写成常量以便 JVM 测试。图片、视频写入 `Pictures/Infinity Deck`、`Movies/Infinity Deck`；音频与其它文件（含类别与 MIME 不符者）写入 `Download/Infinity Deck`。 */
 fun mediaSaveTarget(kind: MediaKind, mimeType: String): MediaSaveTarget {
     val mime = mimeType.trim().lowercase().takeIf { it.contains('/') && !it.contains('*') } ?: GENERIC_MIME
     return when {
         kind == MediaKind.IMAGE && mime.startsWith("image/") ->
-            MediaSaveTarget(MediaSaveCollection.PICTURES, "Pictures/Infinity Workbench", mime)
+            MediaSaveTarget(MediaSaveCollection.PICTURES, "Pictures/Infinity Deck", mime)
         kind == MediaKind.VIDEO && mime.startsWith("video/") ->
-            MediaSaveTarget(MediaSaveCollection.MOVIES, "Movies/Infinity Workbench", mime)
-        else -> MediaSaveTarget(MediaSaveCollection.DOWNLOADS, "Download/Infinity Workbench", mime)
+            MediaSaveTarget(MediaSaveCollection.MOVIES, "Movies/Infinity Deck", mime)
+        else -> MediaSaveTarget(MediaSaveCollection.DOWNLOADS, "Download/Infinity Deck", mime)
     }
 }
 

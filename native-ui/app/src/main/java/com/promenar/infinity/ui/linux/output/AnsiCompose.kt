@@ -11,7 +11,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import com.promenar.infinity.ui.theme.InfinityAnsiDark
 import com.promenar.infinity.ui.theme.InfinityAnsiLight
 
-/** ANSI 16 色在 Infinity Workbench 深浅色下的取值；扩展色按 xterm 规则计算。 */
+/** ANSI 16 色在 Infinity Deck 深浅色下的取值；扩展色按 xterm 规则计算。 */
 @Immutable
 class AnsiPalette(private val base: List<Color>) {
     init {

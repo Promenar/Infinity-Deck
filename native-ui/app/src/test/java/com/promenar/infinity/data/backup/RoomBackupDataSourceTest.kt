@@ -1865,8 +1865,8 @@ class RoomBackupDataSourceTest {
             kgPaths = kotlinx.serialization.json.Json.encodeToString(
                 listOf(
                     KgPath(
-                        queryKeywords = listOf("Infinity Workbench"),
-                        nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+                        queryKeywords = listOf("Infinity Deck"),
+                        nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
                         edges = emptyList(),
                     )
                 )

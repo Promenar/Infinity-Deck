@@ -29,7 +29,7 @@ class ThemePreferenceStoreTest {
     }
 
     @Test
-    fun `缺失偏好默认 dark 与 Infinity Workbench 颜色源`() = runTest {
+    fun `缺失偏好默认 dark 与 Infinity Deck 颜色源`() = runTest {
         val store = createStore()
         val state = store.state.value
 

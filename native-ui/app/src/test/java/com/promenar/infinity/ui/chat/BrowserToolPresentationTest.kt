@@ -60,14 +60,12 @@ class BrowserToolPresentationTest {
         assertThat(toolSummaryAction("browser_type")).isEqualTo(ToolSummaryAction.BROWSER)
     }
 
-    @Test fun `浏览器页签随入口常驻，只有打开过网页才算检视器内容`() {
+    @Test fun `浏览器页签随入口常驻，打开过网页后也显示`() {
         assertThat(ChatInspectorBadges().pages()).doesNotContain(ChatPage.Browser)
         val entryOnly = ChatInspectorBadges(browserEntry = true)
         assertThat(entryOnly.pages()).contains(ChatPage.Browser)
-        assertThat(entryOnly.hasContent).isFalse()
         val badges = ChatInspectorBadges(browser = com.promenar.infinity.data.browser.BrowserMode.IDLE)
         assertThat(badges.pages()).contains(ChatPage.Browser)
-        assertThat(badges.hasContent).isTrue()
         assertThat(chatPageStack(listOf(ChatPage.Browser), wideWindow = false)).containsExactly(ChatPage.Browser)
         assertThat(restoreChatPages("browser")).containsExactly(ChatPage.Browser)
     }
@@ -80,7 +78,7 @@ class BrowserToolPresentationTest {
         assertThat(opened).containsExactly("browser")
 
         assertThat(chatTopBarBrowser(inspectorMode = true, mode = BrowserMode.HANDOFF, open = false) {}).isNull()
-        // 侧栏收起时，打开过网页的浏览器仍让边缘条出现，并带状态点。
-        assertThat(ChatInspectorBadges(browser = BrowserMode.HANDOFF, browserEntry = true).hasContent).isTrue()
+        // 侧栏收起时，边缘条的浏览器页签带状态点。
+        assertThat(ChatInspectorBadges(browser = BrowserMode.HANDOFF, browserEntry = true).pages()).contains(ChatPage.Browser)
     }
 }

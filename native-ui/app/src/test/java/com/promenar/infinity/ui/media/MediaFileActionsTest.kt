@@ -14,13 +14,13 @@ class MediaFileActionsTest {
     @Test
     fun `保存目标目录与 MIME 映射`() {
         assertThat(mediaSaveTarget(MediaKind.IMAGE, "image/png"))
-            .isEqualTo(MediaSaveTarget(MediaSaveCollection.PICTURES, "Pictures/Infinity Workbench", "image/png"))
+            .isEqualTo(MediaSaveTarget(MediaSaveCollection.PICTURES, "Pictures/Infinity Deck", "image/png"))
         assertThat(mediaSaveTarget(MediaKind.VIDEO, "Video/MP4"))
-            .isEqualTo(MediaSaveTarget(MediaSaveCollection.MOVIES, "Movies/Infinity Workbench", "video/mp4"))
+            .isEqualTo(MediaSaveTarget(MediaSaveCollection.MOVIES, "Movies/Infinity Deck", "video/mp4"))
         assertThat(mediaSaveTarget(MediaKind.AUDIO, "audio/mpeg"))
-            .isEqualTo(MediaSaveTarget(MediaSaveCollection.DOWNLOADS, "Download/Infinity Workbench", "audio/mpeg"))
+            .isEqualTo(MediaSaveTarget(MediaSaveCollection.DOWNLOADS, "Download/Infinity Deck", "audio/mpeg"))
         assertThat(mediaSaveTarget(MediaKind.FILE, "application/pdf"))
-            .isEqualTo(MediaSaveTarget(MediaSaveCollection.DOWNLOADS, "Download/Infinity Workbench", "application/pdf"))
+            .isEqualTo(MediaSaveTarget(MediaSaveCollection.DOWNLOADS, "Download/Infinity Deck", "application/pdf"))
         // 类别与 MIME 不符、MIME 缺失或为通配时退到下载目录与通用类型。
         assertThat(mediaSaveTarget(MediaKind.IMAGE, "application/octet-stream").collection).isEqualTo(MediaSaveCollection.DOWNLOADS)
         assertThat(mediaSaveTarget(MediaKind.IMAGE, "").mimeType).isEqualTo("application/octet-stream")

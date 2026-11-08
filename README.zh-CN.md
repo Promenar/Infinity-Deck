@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/branding/infinity-glow-icon.png" alt="Infinity Workbench 发光点阵无穷图标" width="112" height="112">
+  <img src="assets/branding/infinity-glow-icon.png" alt="Infinity Deck 发光点阵无穷图标" width="112" height="112">
 </p>
 
-<h1 align="center">Infinity Workbench</h1>
+<h1 align="center">Infinity Deck</h1>
 
 <p align="center">
-  <b>把终端、代码仓库、服务器和你的 AI 一起装进手机。</b><br>
-  自带 Key，数据留在本机。
+  <b>电脑合上，活不停。</b><br>
+  一部手机，接通你所有的仓库、服务器和算力。自带 Key，数据留在本机。
 </p>
 
 <p align="center">
@@ -14,19 +14,20 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Promenar/Infinity-Workbench/releases"><img src="https://img.shields.io/github/v/release/Promenar/Infinity-Workbench?include_prereleases&label=%E4%B8%8B%E8%BD%BD&color=6366F1" alt="下载最新版"></a>
+  <a href="https://github.com/Promenar/Infinity-Deck/releases"><img src="https://img.shields.io/github/v/release/Promenar/Infinity-Deck?include_prereleases&label=%E4%B8%8B%E8%BD%BD&color=6366F1" alt="下载最新版"></a>
   <img src="https://img.shields.io/badge/Android-12%2B-green.svg" alt="Android 12+">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="许可证 GPL-3.0">
 </p>
 
-用你自己的 API Key 接上 OpenAI、Claude、Gemini、DeepSeek，或家里跑着的模型，然后让它动手：在手机里的真 Linux 跑命令、改你的代码、登上你的服务器、替你操作网页——每一步先给你过目。对话、文档和设置都留在本机，模型请求直连你配置的服务商。
+桌面上的 AI 编程工具很好用，可一离开电脑，活就停了。官方 App 的远程控制要那台电脑一直开着、在线；云端任务又进不了你的内网。
 
-展开是一部工作台，合上接着聊。
+Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 git 改你的仓库，通过应用自带的 Tailscale 直连你的服务器和家里的显卡，替你操作网页。用你自己的 API Key 接上 OpenAI、Claude、Gemini、DeepSeek，或家里跑着的模型，每一步先给你过目。对话、文档和设置都留在本机，模型请求直连你配置的服务商。
 
-https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
+在路上、在床上，掏出手机接着干。
 
 ## 目录
 
+- 🧭 [它和远程控制有什么不同](#它和远程控制有什么不同)
 - ✨ [它能帮你做什么](#它能帮你做什么)
 - 🔒 [你始终说了算](#你始终说了算)
 - 🚀 [开始使用](#开始使用)
@@ -35,10 +36,18 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 - 📚 [文档](#文档)
 - 🤝 [参与贡献](#参与贡献)
 
+## 它和远程控制有什么不同
+
+- **手机自己就能干活。** 内置 Alpine Linux，git、Python、Node.js、FFmpeg 都在手机上跑，不靠任何一台电脑在线。
+- **直达你自己的机器。** 应用自带 Tailscale 节点，SSH、模型和 MCP 直接进你的 tailnet：机房的服务器、家里的显卡，不开公网端口，也不占系统 VPN。
+- **模型随你选。** 自带 Key 接任何服务商，聊到一半可以换，也能接家里跑的模型。
+- **为手机而做。** 命令审批卡、后台任务、消息排队、触摸锁、折叠屏外屏，单手、躺着、在地铁上都顺手。
+- **和桌面工具一起用。** 坐在电脑前继续用你习惯的 AI 编程工具；离开时手机接着改同一个 git 仓库，电脑开着也能 SSH 上去借它的算力。
+
 ## 它能帮你做什么
 
 <p align="center">
-  <img src="assets/screenshots/zh/hero.webp" alt="展开：会话旁边的 Git 面板列出提交记录；合上：外屏继续查看 502 排障报告" width="860">
+  <img src="assets/screenshots/zh/hero.webp" alt="展开：检视器固定在 Git 页签列出提交记录，会话让到左边；合上：外屏继续查看 502 排障报告" width="860">
 </p>
 
 <table>
@@ -49,6 +58,18 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
       网站报 502，你让它连上服务器去查。每条命令先给你过目，点一下才执行；修完它写好报告，合上手机在外屏接着看。
     </td>
     <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/ade-branch.webp" alt="工作方案卡提议在新工作树里开分支会话">
+      <h3>代码随身改</h3>
+      主会话修 bug，补测试的活派给分支会话，各自在独立的工作树里改，互不打架。分支、差异、提交在 Git 面板里一目了然。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/ade-subagents.webp" alt="两张子代理卡：一个定位代码改动点，一个审查测试覆盖缺口；主会话等待中，可转入后台">
+      <h3>一句话，一支小团队</h3>
+      提一个需求，它先列计划，再并行派出子代理：一个定位改动点，一个审查测试覆盖。主会话可以等结论，也可以转入后台接着干。谁做完了，结论自己交回来，还附上用时。
+    </td>
+    <td width="50%" valign="top">
       <img src="assets/screenshots/zh/linux-terminal.webp" alt="内置终端里运行 fastfetch：Alpine Linux">
       <h3>手机里有一台真 Linux</h3>
       跑 Python 脚本、用 FFmpeg 转视频、<code>apk add</code> 装个工具，都在应用里完成。不用 root，也不用装 Termux。
@@ -56,26 +77,24 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/ade-branch.webp" alt="工作方案卡提议在新工作树里开分支会话">
-      <h3>代码随身改</h3>
-      主会话修 bug，补测试的活派给分支会话，各自在独立的工作树里改，互不打架。分支、差异、提交在 Git 面板里一目了然。
-    </td>
-    <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/ade-subagents.webp" alt="两张子代理卡：一个定位代码改动点，一个审查测试覆盖缺口，标注已完成 · 3 分 32 秒">
-      <h3>一句话，一支小团队</h3>
-      提一个需求，它先列计划，再并行派出子代理——一个定位改动点，一个审查测试覆盖——主会话接着推进。谁做完了，结论自己交回来，还附上用时。
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器打开 Git 页签：worktree 与对应的会话">
+      <img src="assets/screenshots/zh/fold-inspector.webp" alt="内屏三列布局，检视器固定在运行页签：计划第 4/6 步，1 个后台任务运行中">
       <h3>展开就是工作台</h3>
-      内屏一分为三：导航、会话列表、会话，旁边常驻检视器，任务、文件、Git、浏览器一点即达。改了什么、哪些分支在跑，抬眼就在。
+      内屏一分为三：导航、会话列表、会话。检视器固定时会话自动让位，取消固定就浮在会话上；任务、文件、Git、浏览器一点即达。
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/outer-chat.webp" alt="外屏上正在阅读的 502 修复报告">
       <h3>合上，接着看</h3>
       合上手机，会话挪到外屏接着走。地铁上把排障报告看完，单手回一句，回到桌前再展开继续。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>资料和稿子都在手边</h3>
+      导入 PDF、Word、Markdown，或直接挂载外部文件夹。文档、长期记忆和知识图谱一起检索，答案带引用。写完让它配图，生图在后台跑；成稿导出网页、A4 PDF 或长图。
+    </td>
+    <td width="50%" valign="top">
+      <h3>家里的机器随叫随到</h3>
+      家里显卡跑的模型、内网的服务器和 MCP 服务，经应用自带的 Tailscale 直接连，也支持自建 Headscale。对话、生图都能走自己的显卡。
     </td>
   </tr>
 </table>
@@ -90,13 +109,13 @@ https://github.com/user-attachments/assets/c48800d9-34a5-4397-97f3-04e7ac21449d
 
 ## 开始使用
 
-1. 从 [GitHub Releases](https://github.com/Promenar/Infinity-Workbench/releases) 下载 APK 和对应的 `.sha256` 文件。
+1. 从 [GitHub Releases](https://github.com/Promenar/Infinity-Deck/releases) 下载 APK 和对应的 `.sha256` 文件。
 2. 核对 SHA-256 后安装。只安装 Releases 里的正式包，不要用 CI 临时制品或来源不明的重打包版本。
 3. 在设置里添加一个模型提供商，就可以开始聊了。
 
 需要 Android 12 及以上。内置 Linux 需要 arm64-v8a 设备，基础系统约 64 MB，加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。
 
-当前源码版本为 `v0.37.0-beta`（versionCode `103`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.39.0-beta`（versionCode `106`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
 <summary><b>从源码构建</b></summary>
@@ -120,6 +139,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口
 - 聊到一半可以换模型；最多 16 个会话同时生成
 - 生成中的下一句可以排队或插队
+- 长对话压缩后，Agent 仍能检索和翻看原文
 - 需要你拍板时弹出提问卡；锁屏、切后台不中断
 - 触摸锁让手机直接揣进口袋
 - 技能与 MCP 服务器
@@ -129,7 +149,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 先列计划再动手
 - 最多 32 个子代理并行，结论自动交回
 - 适合单独做的工作开成分支会话
-- 慢命令转入后台，跑完再叫醒会话
+- 慢命令、生图与下载转入后台，跑完再叫醒会话
 - 定时任务，单次到 cron
 
 **运行环境与代码**
@@ -144,7 +164,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB
 - 真终端和端口转发随时接手
 - 应用自带 Tailscale 节点，支持自建 Headscale
-- 模型、SSH、MCP 直达 tailnet——不开公网端口，不占系统 VPN
+- 模型、SSH、MCP 直达 tailnet，不开公网端口，不占系统 VPN
 
 **资料与知识**
 
@@ -162,16 +182,21 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 **折叠屏**
 
 - 内屏三列：导航、会话列表、会话
-- 检视器常驻任务、文件、Git 与浏览器
+- 检视器装着任务、文件、Git 与浏览器，可固定在会话旁，也可浮在会话上
+- 收起后边缘条常驻，一点回到任一页签
 - 开合屏会话无缝接续
 
 每一项的细节与边界见[功能详解](docs/guide/features.md)。
 
 ## 常见问题
 
+**已经有官方 App 的远程控制了，为什么还要它？**
+
+远程控制遥控的是你的电脑：那台电脑得一直开着、在线，手机只是遥控器。云端任务不需要你的电脑，但进不了你的内网，也只能用那一家的模型。Infinity Deck 在手机上就能执行，经 Tailscale 直达你自己的机器，模型随你接。两者也可以一起用：电脑开着时，让它 SSH 上去干重活。
+
 **和手机上的聊天应用有什么区别？**
 
-聊天应用只回答，这个会动手：在真 Linux 里跑命令、用 git 改仓库、SSH 登服务器、驱动浏览器，每一步先经你批准。模型也随你接，包括家里跑着的。
+聊天应用只回答，这个会动手：在真 Linux 里跑命令、用 git 改仓库、SSH 登服务器、驱动浏览器，每一步先经你批准。
 
 **需要 Termux 或 root 吗？**
 
@@ -196,8 +221,8 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 
 ## 参与贡献
 
-发现问题或有想法，欢迎开 GitHub issue。想改代码请先读 [AGENTS.md](AGENTS.md)——项目跑着较重的验证门禁，大的改动先开 issue 聊清楚，能省下彼此的时间。
+发现问题或有想法，欢迎开 GitHub issue。想改代码请先读 [AGENTS.md](AGENTS.md)：项目跑着较重的验证门禁，大的改动先开 issue 聊清楚，能省下彼此的时间。
 
 ## 许可证
 
-Infinity Workbench 以 [GNU General Public License v3.0](LICENSE) 发布。设置列表、底部导航与外观页包含对同为 GPLv3 的 [Bettbox](https://github.com/appshubcc/Bettbox) 视觉实现的 Compose 转译；智能体头像符号来自 Google Material Symbols Rounded（Apache-2.0）。来源与范围见[第三方通知](docs/legal/THIRD_PARTY_NOTICES.md)。
+Infinity Deck 以 [GNU General Public License v3.0](LICENSE) 发布。设置列表、底部导航与外观页包含对同为 GPLv3 的 [Bettbox](https://github.com/appshubcc/Bettbox) 视觉实现的 Compose 转译；智能体头像符号来自 Google Material Symbols Rounded（Apache-2.0）。来源与范围见[第三方通知](docs/legal/THIRD_PARTY_NOTICES.md)。

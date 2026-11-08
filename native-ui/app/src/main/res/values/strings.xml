@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 品牌名：含品牌名的资源文件各自在顶部声明 brand 实体，改名时一并修改；BrandNameContractTest 校验各文件一致。 -->
 <!DOCTYPE resources [
-    <!ENTITY brand "Infinity Workbench">
+    <!ENTITY brand "Infinity Deck">
     <!ENTITY brandWordmark "INFINITY">
 ]>
 <resources>

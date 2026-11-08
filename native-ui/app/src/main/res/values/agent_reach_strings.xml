@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE resources [
-    <!ENTITY brand "Infinity Workbench">
+    <!ENTITY brand "Infinity Deck">
 ]>
 <resources>
     <string name="agent_reach_title">Agent reach</string>

@@ -110,7 +110,7 @@ class GenerationNotificationFactory(
     internal fun stopAllIntent() = Intent(applicationContext, GenerationForegroundService::class.java).apply {
         action = GenerationForegroundService.ACTION_STOP
         putExtra(GenerationForegroundService.EXTRA_STOP_ALL, true)
-        data = Uri.parse("infinity-workbench://generation/stop-all")
+        data = Uri.parse("infinity-deck://generation/stop-all")
     }
 
     internal fun openIntent(snapshot: GenerationTaskSnapshot) =
@@ -119,7 +119,7 @@ class GenerationNotificationFactory(
             action = AppIntentRouter.ACTION_OPEN_GENERATION
             putExtra(AppIntentRouter.EXTRA_SESSION_ID, issued.sessionId)
             putExtra(AppIntentRouter.EXTRA_REQUEST_ID, issued.requestId)
-            data = Uri.parse("infinity-workbench://generation/open/${Uri.encode(snapshot.taskId)}")
+            data = Uri.parse("infinity-deck://generation/open/${Uri.encode(snapshot.taskId)}")
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
 
@@ -127,7 +127,7 @@ class GenerationNotificationFactory(
         Intent(applicationContext, GenerationForegroundService::class.java).apply {
             action = GenerationForegroundService.ACTION_STOP
             putExtra(GenerationForegroundService.EXTRA_TASK_ID, taskId)
-            data = Uri.parse("infinity-workbench://generation/stop/${Uri.encode(taskId)}")
+            data = Uri.parse("infinity-deck://generation/stop/${Uri.encode(taskId)}")
         }
 
     private fun ensureChannel() {

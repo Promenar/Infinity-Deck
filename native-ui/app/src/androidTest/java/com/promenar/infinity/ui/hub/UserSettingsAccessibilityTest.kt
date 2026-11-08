@@ -109,7 +109,7 @@ class UserSettingsAccessibilityTest {
                     Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
                         UserSettingsHomeScreenContent(
                             // 设了头像才显示名片；没有头像时整块是品牌字标。
-                            state = UserSettingsHomeScreenState(userName = "Infinity Workbench", userAvatar = "/preview/user-avatar.img"),
+                            state = UserSettingsHomeScreenState(userName = "Infinity Deck", userAvatar = "/preview/user-avatar.img"),
                             actions = UserSettingsHomeScreenActions(),
                         )
                     }

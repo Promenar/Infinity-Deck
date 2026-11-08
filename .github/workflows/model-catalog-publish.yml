@@ -63,8 +63,8 @@ jobs:
           from pathlib import Path
           Path("public/.nojekyll").touch()
           Path("public/index.html").write_text(
-              "<!doctype html><meta charset=\"utf-8\"><title>Infinity Workbench Model Catalog</title>"
-              "<p>Infinity Workbench signed model catalog: <a href=\"model-catalog/v1/manifest.json\">v1 manifest</a></p>\n",
+              "<!doctype html><meta charset=\"utf-8\"><title>Infinity Deck Model Catalog</title>"
+              "<p>Infinity Deck signed model catalog: <a href=\"model-catalog/v1/manifest.json\">v1 manifest</a></p>\n",
               encoding="utf-8",
           )
           PY

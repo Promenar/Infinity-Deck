@@ -80,6 +80,8 @@ object LabCatalog {
                             LabVersion("git-worktrees", "inspector.state.git-worktrees", R.string.lab_v_git_worktrees, R.string.lab_v_git_worktrees_desc, LabVersionKind.STATE),
                             LabVersion("git-commits", "inspector.state.git-commits", R.string.lab_v_git_commits, R.string.lab_v_git_commits_desc, LabVersionKind.STATE),
                             LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE),
+                            LabVersion("files-repo", "inspector.state.files-repo", R.string.lab_v_files_repo, R.string.lab_v_files_repo_desc, LabVersionKind.STATE),
+                            LabVersion("open-shift", "inspector.workflow.open-shift", R.string.lab_v_open_shift, R.string.lab_v_open_shift_desc, LabVersionKind.WORKFLOW),
                         ),
                     ),
                 ),

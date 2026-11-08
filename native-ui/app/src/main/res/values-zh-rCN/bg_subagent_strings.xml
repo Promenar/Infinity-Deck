@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
+<!DOCTYPE resources [<!ENTITY brand "Infinity Deck">]>
 <resources>
     <string name="bg_subagent_notification_title">正在后台处理任务</string>
     <string name="bg_subagent_notification_starting">正在准备后台子代理</string>

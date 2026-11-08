@@ -63,7 +63,7 @@ class SessionHeaderGenerationWiringTest {
                 assertThat(endpoint.requests.last().headers["x-opencode-session"]).isEqualTo(endpoint.identifier(id))
             }
             assertThat(endpoint.requests.mapNotNull { it.headers["x-opencode-session"] }.toSet()).hasSize(3)
-            endpoint.requests.forEach { assertThat(it.headers["User-Agent"]).isEqualTo("Infinity-Workbench/${BuildConfig.VERSION_NAME}") }
+            endpoint.requests.forEach { assertThat(it.headers["User-Agent"]).isEqualTo("Infinity-Deck/${BuildConfig.VERSION_NAME}") }
         }
     }
 
@@ -80,7 +80,7 @@ class SessionHeaderGenerationWiringTest {
             assertThat(first.headers).isEqualTo(endpoint.requests.last().headers)
             assertThat(SessionHeaderWiringEndpoint.body(first)).isEqualTo(SessionHeaderWiringEndpoint.body(endpoint.requests.last()))
             assertThat(first.headers["x-opencode-session"]).isNull()
-            assertThat(first.headers["User-Agent"]).isNotEqualTo("Infinity-Workbench/${BuildConfig.VERSION_NAME}")
+            assertThat(first.headers["User-Agent"]).isNotEqualTo("Infinity-Deck/${BuildConfig.VERSION_NAME}")
         }
     }
 
@@ -99,7 +99,7 @@ class SessionHeaderGenerationWiringTest {
             assertThat(endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }).isEqualTo(enabledBodies)
             endpoint.requests.forEach {
                 assertThat(it.headers["x-opencode-session"]).isNull()
-                assertThat(it.headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+                assertThat(it.headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
             }
         }
     }
@@ -114,7 +114,7 @@ class SessionHeaderGenerationWiringTest {
             manager.summarizeOrNull(null, listOf(Message("u", MessageRole.USER, "old")), MODEL, sessionId = "summary-session")
             assertThat(SessionHeaderWiringEndpoint.body(endpoint.requests.last())).isEqualTo(SessionHeaderWiringEndpoint.body(endpoint.requests.first()))
             assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()
-            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
         }
     }
 
@@ -139,7 +139,7 @@ class SessionHeaderGenerationWiringTest {
                     assertThat(endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }.any { it.contains("对话记录压缩") }).isTrue()
                     endpoint.requests.forEach {
                         assertThat(it.headers["x-opencode-session"]).isEqualTo(if (enabled) endpoint.identifier("compaction-session") else null)
-                        if (!enabled) assertThat(it.headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+                        if (!enabled) assertThat(it.headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
                     }
                     val bodies = endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }
                     if (enabled) enabledBodies = bodies else assertThat(bodies).isEqualTo(enabledBodies)

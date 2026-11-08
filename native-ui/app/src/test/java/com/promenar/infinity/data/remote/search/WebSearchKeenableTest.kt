@@ -53,7 +53,7 @@ class WebSearchKeenableTest {
         val client = HttpClient(MockEngine { request ->
             assertThat(request.method).isEqualTo(HttpMethod.Post)
             assertThat(request.url.toString()).isEqualTo("https://api.keenable.ai/v1/search/public")
-            assertThat(request.headers["X-Keenable-Title"]).isEqualTo("Infinity Workbench")
+            assertThat(request.headers["X-Keenable-Title"]).isEqualTo("Infinity Deck")
             assertThat(request.headers["X-API-Key"]).isNull()
             assertThat(request.headers[HttpHeaders.Authorization]).isNull()
             val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject

@@ -66,7 +66,7 @@ private fun SlashCommandPage(
                 state = ChatScreenState(
                     uiState = ChatUiState(
                         session = Session("slash", "assistant", title = if (english) "Weekly sync" else "周会准备", modelId = "deepseek::v4-flash"),
-                        agentName = "Infinity Workbench",
+                        agentName = "Infinity Deck",
                         messages = listOf(
                             Message("user-1", MessageRole.USER, question, createdAt = 1700000000000L),
                             Message("assistant-1", MessageRole.ASSISTANT, answer, modelId = "deepseek::v4-flash", createdAt = 1700000030000L),

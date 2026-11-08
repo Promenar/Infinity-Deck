@@ -212,15 +212,20 @@ private fun BrowserUrlBar(
     val url = state?.url.orEmpty().takeUnless { it == "about:blank" }.orEmpty()
     var editing by remember { mutableStateOf(false) }
     BackHandler(enabled = editing) { editing = false }
+    val showClose = onBack != null && !editing
+    val showNav = !editing && state != null
+    // 地址框高 40dp、栏高 56dp，上下各留 8dp；两侧没有按钮时同样留 8dp，与上边距一致。
+    // 两侧是图标按钮时只留 4dp，按钮自带的触控留白补足视觉间距。
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(start = if (showClose) 4.dp else BrowserBarInset, end = if (showNav || editing) 4.dp else BrowserBarInset),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 离开浏览器用关闭图标，和网页内的“后退”箭头区分开。
-        if (onBack != null && !editing) {
-            IconButton(onClick = onBack) { Icon(Icons.Rounded.Close, stringResource(R.string.browser_cd_close)) }
-        } else {
-            Spacer(Modifier.size(8.dp))
+        if (showClose) {
+            IconButton(onClick = onBack!!) { Icon(Icons.Rounded.Close, stringResource(R.string.browser_cd_close)) }
         }
         Surface(
             shape = RoundedCornerShape(20.dp),
@@ -274,7 +279,7 @@ private fun BrowserUrlBar(
         when {
             editing -> TextButton(onClick = { editing = false }) { Text(stringResource(R.string.browser_address_cancel)) }
             // 打开过网页后后退、前进、刷新常驻，不可用的按钮置灰；还没打开网页时都不显示。
-            state != null -> {
+            showNav -> {
                 val navColors = IconButtonDefaults.iconButtonColors(contentColor = scheme.onSurfaceVariant)
                 IconButton(onClick = onPageBack, enabled = state.canGoBack, colors = navColors) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.browser_cd_back))
@@ -286,10 +291,12 @@ private fun BrowserUrlBar(
                     Icon(Icons.Rounded.Refresh, stringResource(R.string.browser_cd_reload))
                 }
             }
-            else -> Spacer(Modifier.size(12.dp))
         }
     }
 }
+
+/** 地址栏两侧没有按钮时地址框到边缘的距离，等于地址框到栏顶的距离。 */
+private val BrowserBarInset = 8.dp
 
 /** 编辑中的地址框：进入时全选当前网址，键盘“前往”提交，失去焦点即退出编辑。 */
 @Composable

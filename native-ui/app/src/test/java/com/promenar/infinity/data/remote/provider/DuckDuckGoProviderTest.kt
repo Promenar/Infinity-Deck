@@ -23,7 +23,7 @@ class DuckDuckGoProviderTest {
             requestCount += 1
             assertThat(request.url.host).isEqualTo("html.duckduckgo.com")
             assertThat(request.url.encodedPath).isEqualTo("/html/")
-            assertThat(request.url.parameters["q"]).isEqualTo("Infinity Workbench release")
+            assertThat(request.url.parameters["q"]).isEqualTo("Infinity Deck release")
             respond(
                 content = fixture,
                 status = HttpStatusCode.OK,
@@ -36,21 +36,21 @@ class DuckDuckGoProviderTest {
             val (context, citations) = DuckDuckGoProvider(
                 httpClient = client,
                 maxResults = 2,
-            ).search("Infinity Workbench release")
+            ).search("Infinity Deck release")
 
             assertThat(requestCount).isEqualTo(1)
             assertThat(citations).hasSize(2)
             assertThat(citations.map { it.title }).containsExactly(
-                "Infinity Workbench release notes",
-                "Infinity Workbench documentation",
+                "Infinity Deck release notes",
+                "Infinity Deck documentation",
             ).inOrder()
             assertThat(citations.map { it.url }).containsExactly(
                 "https://example.test/infinity/releases",
                 "https://docs.example.test/infinity",
             ).inOrder()
             assertThat(citations.all { it.source == "DuckDuckGo" }).isTrue()
-            assertThat(context).contains("[1] Infinity Workbench release notes")
-            assertThat(context).contains("[2] Infinity Workbench documentation")
+            assertThat(context).contains("[1] Infinity Deck release notes")
+            assertThat(context).contains("[2] Infinity Deck documentation")
         } finally {
             client.close()
         }

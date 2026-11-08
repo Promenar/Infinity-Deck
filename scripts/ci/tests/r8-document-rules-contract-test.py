@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Infinity Workbench 文档解析依赖的 R8 规则静态防回归测试。"""
+"""Infinity Deck 文档解析依赖的 R8 规则静态防回归测试。"""
 
 from __future__ import annotations
 

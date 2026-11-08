@@ -232,7 +232,7 @@ class GitCredentialProxy(
             }
             status == 403 && credential?.fromGitHubLogin == true -> Triple(403, "ACCESS_DENIED",
                 "GitHub 拒绝访问该仓库（HTTP 403）：登录的账号可能没有这个仓库的读写权限，" +
-                    "或仓库所属组织启用了 OAuth 应用访问限制，需要组织管理员批准 Infinity Workbench。GitHub 授权本身仍然有效。")
+                    "或仓库所属组织启用了 OAuth 应用访问限制，需要组织管理员批准 Infinity Deck。GitHub 授权本身仍然有效。")
             else -> null
         }
     }

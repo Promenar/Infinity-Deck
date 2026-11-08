@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Infinity Workbench Metro 调试 TUI
+ * Infinity Deck Metro 调试 TUI
  *
  * 解析 adb logcat（或 --stdin）中的 INFINITY_METRO 事件流，
  * 渲染为开发者可读的彩色/纯文本输出。
@@ -25,7 +25,7 @@ const { EventEmitter } = require('events');
 const VERSION = '2.1.0-logcat-tui';
 const DEFAULT_TAG = 'INFINITY_METRO';
 
-const HELP_TEXT = `Infinity Workbench Metro 调试 TUI — 实时解析 adb logcat 中的 INFINITY_METRO 事件流
+const HELP_TEXT = `Infinity Deck Metro 调试 TUI — 实时解析 adb logcat 中的 INFINITY_METRO 事件流
 
 用法:
   node infinity-metro-tui.js [选项]

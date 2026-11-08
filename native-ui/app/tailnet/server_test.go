@@ -228,7 +228,7 @@ func TestValidateStart(t *testing.T) {
 	}
 	for name, mutate := range map[string]func(*StartOptions){
 		"相对路径":     func(o *StartOptions) { o.StateDir = "tailnet" },
-		"主机名大写":    func(o *StartOptions) { o.Hostname = "Infinity Workbench" },
+		"主机名大写":    func(o *StartOptions) { o.Hostname = "Infinity Deck" },
 		"主机名过长":    func(o *StartOptions) { o.Hostname = strings.Repeat("a", 64) },
 		"口令过短":     func(o *StartOptions) { o.ProxyPassword = "short" },
 		"控制服务器带凭据": func(o *StartOptions) { o.ControlURL = "https://u:p@hs.example.org" },

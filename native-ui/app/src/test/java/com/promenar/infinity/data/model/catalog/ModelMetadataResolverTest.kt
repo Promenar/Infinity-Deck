@@ -234,7 +234,7 @@ class ModelMetadataResolverTest {
     fun `INFINITY exact 跨层优先级不依赖输入顺序`() {
         val infinity = record(
             canonicalId = "infinity/shared",
-            displayName = "Infinity Workbench Winner",
+            displayName = "Infinity Deck Winner",
             workload = ModelWorkload.GENERATIVE_TEXT,
             source = MetadataSource.INFINITY_OVERRIDE,
         )
@@ -250,7 +250,7 @@ class ModelMetadataResolverTest {
             listOf(modelsDev, infinity),
         ).forEach { records ->
             val resolved = ModelMetadataResolver(records).resolve("shared-model")
-            assertThat(resolved.displayName).isEqualTo("Infinity Workbench Winner")
+            assertThat(resolved.displayName).isEqualTo("Infinity Deck Winner")
             assertThat(resolved.workload).isEqualTo(ModelWorkload.GENERATIVE_TEXT)
             assertThat(resolved.sourceByField["displayName"])
                 .isEqualTo(MetadataSource.INFINITY_OVERRIDE)

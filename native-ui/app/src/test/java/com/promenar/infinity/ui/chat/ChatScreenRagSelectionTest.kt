@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test
 
 class ChatScreenRagSelectionTest {
     private val kgPath = KgPath(
-        queryKeywords = listOf("Infinity Workbench"),
-        nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+        queryKeywords = listOf("Infinity Deck"),
+        nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
         edges = emptyList(),
     )
 

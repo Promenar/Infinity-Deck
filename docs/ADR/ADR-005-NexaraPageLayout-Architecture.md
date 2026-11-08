@@ -4,7 +4,7 @@
 已接受 (Accepted)
 
 ## 上下文 (Context)
-在 Infinity Workbench 的原生 Android 开发过程中，表单输入页面（如 `ProviderFormScreen`）面临两个严峻问题：
+在 Infinity Deck 的原生 Android 开发过程中，表单输入页面（如 `ProviderFormScreen`）面临两个严峻问题：
 1. **键盘遮挡**: 底部输入区域在软键盘弹出时无法自动避让，导致用户无法看到输入内容或点击保存按钮。
 2. **测量冲突 (IllegalStateException)**: 在根容器全局应用 `Modifier.imePadding()` 时，若内容包含 `LazyColumn` 或 `verticalScroll`，会导致滚动组件被测量为无限高度，触发 Compose 崩溃。
 

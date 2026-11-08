@@ -1,4 +1,4 @@
-Infinity Workbench Model Catalog Third-Party Notices
+Infinity Deck Model Catalog Third-Party Notices
 =========================================
 
 This file accompanies the independently published model catalog. It records
@@ -82,7 +82,7 @@ Evidence: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
 License: Creative Commons Attribution 4.0
 License URL: https://creativecommons.org/licenses/by/4.0/
 
-Infinity Workbench transcribes selected structured facts from the cited Google page,
+Infinity Deck transcribes selected structured facts from the cited Google page,
 including the model code, token limits, modalities, supported capabilities,
 and page update date. It does not reproduce the page as a whole.
 
@@ -90,7 +90,7 @@ SenseNova 6.8 Flash Lite Preview documentation
 -----------------------------------------------
 Evidence: https://github.com/OpenSenseNova/SenseNova6.8/blob/main/API_CN.md
 
-The cited repository declares no license. Infinity Workbench records only narrowly scoped
+The cited repository declares no license. Infinity Deck records only narrowly scoped
 facts verified in the official API documentation: model identifier, preview
 status, reasoning behavior, and text/image input with text output. No long
 passage from that document is reproduced here or in the catalog.

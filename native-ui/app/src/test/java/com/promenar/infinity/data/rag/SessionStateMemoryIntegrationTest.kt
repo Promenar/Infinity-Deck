@@ -77,7 +77,7 @@ class SessionStateMemoryIntegrationTest {
             endpoint.enabled = false
             processor.processPersisted(task())
             assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()
-            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
             assertThat(com.promenar.infinity.data.remote.SessionHeaderWiringEndpoint.body(endpoint.requests.last()))
                 .isEqualTo(com.promenar.infinity.data.remote.SessionHeaderWiringEndpoint.body(endpoint.requests.first()))
         }
@@ -102,7 +102,7 @@ class SessionStateMemoryIntegrationTest {
     @Test
     fun `处理器批量嵌入事件与状态并按用户消息时间写入精确契约`() = runTest {
         seedTurn()
-        val protocol = protocol("""{"event":"确定了界面主题","states":[{"subject":"Infinity Workbench","attribute":"theme","value":"dark"},{"subject":"Infinity Workbench","attribute":"plan","value":null}]}""")
+        val protocol = protocol("""{"event":"确定了界面主题","states":[{"subject":"Infinity Deck","attribute":"theme","value":"dark"},{"subject":"Infinity Deck","attribute":"plan","value":null}]}""")
         val embedded = mutableListOf<List<String>>()
         val embedding = embeddingClient(embedded)
 
@@ -114,10 +114,10 @@ class SessionStateMemoryIntegrationTest {
         assertThat(event.content).isEqualTo("确定了界面主题")
         val states = rows.filter { it.metadata.orEmpty().startsWith("{\"type\":\"state\",\"key\":") }
         assertThat(states.map { it.metadata }).containsExactly(
-            """{"type":"state","key":"infinity workbench\u001ftheme","subject":"Infinity Workbench","attribute":"theme","value":"dark"}""",
-            """{"type":"state","key":"infinity workbench\u001fplan","subject":"Infinity Workbench","attribute":"plan","value":null}""",
+            """{"type":"state","key":"infinity deck\u001ftheme","subject":"Infinity Deck","attribute":"theme","value":"dark"}""",
+            """{"type":"state","key":"infinity deck\u001fplan","subject":"Infinity Deck","attribute":"plan","value":null}""",
         )
-        assertThat(states.map { it.content }).containsExactly("Infinity Workbench · theme: dark", "Infinity Workbench · plan: (no longer applies)")
+        assertThat(states.map { it.content }).containsExactly("Infinity Deck · theme: dark", "Infinity Deck · plan: (no longer applies)")
         rows.forEach { row ->
             assertThat(row.sessionId).isEqualTo("s1")
             assertThat(row.docId).isNull()
@@ -128,7 +128,7 @@ class SessionStateMemoryIntegrationTest {
                 .containsExactly(1f, 0f).inOrder()
         }
         assertThat(embedded).hasSize(1)
-        assertThat(embedded.single()).containsExactly("确定了界面主题", "Infinity Workbench · theme: dark", "Infinity Workbench · plan: (no longer applies)").inOrder()
+        assertThat(embedded.single()).containsExactly("确定了界面主题", "Infinity Deck · theme: dark", "Infinity Deck · plan: (no longer applies)").inOrder()
         coVerify(exactly = 1) { protocol.sendPromptSync(match { it.maxTokens == 1024 && !it.stream }) }
     }
 
@@ -138,17 +138,17 @@ class SessionStateMemoryIntegrationTest {
         seedTurn("s2", "u2", "a2")
         database.vectorDao().insert(memory())
         database.vectorDao().insert(stateRow("other", sessionId = "s2", userId = "u2", assistantId = "a2"))
-        var output = """{"event":"选择了主题","states":[{"subject":"Infinity Workbench","attribute":"theme","value":"light"}]}"""
+        var output = """{"event":"选择了主题","states":[{"subject":"Infinity Deck","attribute":"theme","value":"light"}]}"""
         val protocol = mockk<LlmProtocol> { coEvery { sendPromptSync(any()) } answers { PromptResponse(content = output) } }
         val processor = processor(protocol)
         processor.processPersisted(task())
-        output = """{"event":null,"states":[{"subject":"Infinity Workbench","attribute":"theme","value":"dark"}]}"""
+        output = """{"event":null,"states":[{"subject":"Infinity Deck","attribute":"theme","value":"dark"}]}"""
 
         processor.processPersisted(task())
 
         val rows = database.vectorDao().getBySessionId("s1")
         assertThat(rows).hasSize(2)
-        assertThat(rows.map { it.content }).containsExactly("needle memory", "Infinity Workbench · theme: dark")
+        assertThat(rows.map { it.content }).containsExactly("needle memory", "Infinity Deck · theme: dark")
         assertThat(database.vectorDao().getById("other")).isNotNull()
     }
 
@@ -186,7 +186,7 @@ class SessionStateMemoryIntegrationTest {
         processor(protocol).processPersisted(task())
 
         val input = requests.single().messages.last().content.orEmpty()
-        assertThat(input).contains("Infinity Workbench · theme: current-value")
+        assertThat(input).contains("Infinity Deck · theme: current-value")
         assertThat(input).doesNotContain("old-value")
         assertThat(input).doesNotContain("other-agent-value")
         assertThat(input).doesNotContain("revoked-value")
@@ -206,8 +206,8 @@ class SessionStateMemoryIntegrationTest {
     fun `较旧任务晚完成时最新状态仍由消息发生时间决定`() = runTest {
         seedTurn()
         seedTurn("s2", "u2", "a2", occurredAt = 300)
-        val newer = processor(protocol("""{"event":null,"states":[{"subject":"Infinity Workbench","attribute":"theme","value":"new"}]}"""))
-        val older = processor(protocol("""{"event":null,"states":[{"subject":"Infinity Workbench","attribute":"theme","value":"old"}]}"""))
+        val newer = processor(protocol("""{"event":null,"states":[{"subject":"Infinity Deck","attribute":"theme","value":"new"}]}"""))
+        val older = processor(protocol("""{"event":null,"states":[{"subject":"Infinity Deck","attribute":"theme","value":"old"}]}"""))
 
         newer.processPersisted(task("s2", "u2", "a2"))
         older.processPersisted(task())
@@ -625,9 +625,9 @@ class SessionStateMemoryIntegrationTest {
         id: String, attribute: String = "theme", value: String? = "needle state", sessionId: String = "s1",
         userId: String = "u1", assistantId: String = "a1", occurredAt: Long = 100,
     ) = row(id, buildJsonObject {
-        put("type", "state"); put("key", "infinity workbench\u001f$attribute"); put("subject", "Infinity Workbench"); put("attribute", attribute)
+        put("type", "state"); put("key", "infinity deck\u001f$attribute"); put("subject", "Infinity Deck"); put("attribute", attribute)
         if (value == null) put("value", JsonNull) else put("value", value)
-    }.toString(), "Infinity Workbench · $attribute: ${value ?: "(no longer applies)"}")
+    }.toString(), "Infinity Deck · $attribute: ${value ?: "(no longer applies)"}")
         .copy(sessionId = sessionId, startMessageId = userId, endMessageId = assistantId, createdAt = occurredAt)
 
     private fun row(id: String, metadata: String, content: String) = VectorEntity(
@@ -641,7 +641,7 @@ class SessionStateMemoryIntegrationTest {
     }
 
     private companion object {
-        const val USER = "请把 Infinity Workbench 的界面主题设置为深色，并撤销之前的计划。"
+        const val USER = "请把 Infinity Deck 的界面主题设置为深色，并撤销之前的计划。"
         const val ASSISTANT = "好的，界面使用深色主题；之前的计划已经撤销。"
     }
 }

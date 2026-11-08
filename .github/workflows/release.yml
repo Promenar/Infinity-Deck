@@ -594,7 +594,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG}"
-          title="Infinity Workbench ${tag}"
+          title="Infinity Deck ${tag}"
           if [[ "${PRERELEASE}" == "true" ]]; then latest=false; else latest=true; fi
           release_assets=(
             "dist/infinity-${tag}.apk"

@@ -95,14 +95,14 @@ private fun Batch1TermuxContent(failed: Boolean = false) {
 }
 
 private val Batch1PreviewModel = ModelInfo(
-    name = "Infinity Workbench Chat",
+    name = "Infinity Deck Chat",
     id = "preview::infinity-chat",
     description = "",
     enabled = true,
     type = "chat",
     contextLength = 128_000,
     capabilities = listOf("chat", "toolcalling", "vision"),
-    providerName = "Infinity Workbench",
+    providerName = "Infinity Deck",
     providerId = "preview",
     remoteModelId = "infinity-chat",
 )
@@ -116,7 +116,7 @@ private val Batch1ModelsActions = ProviderModelsScreenActions(
 private fun Batch1ProviderModelsContent(populated: Boolean = false) {
     ProviderModelsScreenContent(
         state = ProviderModelsScreenState(
-            providerName = "Infinity Workbench",
+            providerName = "Infinity Deck",
             providerId = "preview",
             isFetching = false,
             syncNotice = null,
@@ -133,7 +133,7 @@ private fun Batch1ProviderModelsContent(populated: Boolean = false) {
 @Preview(name = "设置首页 深色中文 360", widthDp = 360, heightDp = 914, locale = "zh-rCN")
 @Composable
 fun settingsHomeBatch1() = Batch1PagesTheme {
-    UserSettingsHomeScreenContent(UserSettingsHomeScreenState(userName = "Infinity Workbench"), UserSettingsHomeScreenActions())
+    UserSettingsHomeScreenContent(UserSettingsHomeScreenState(userName = "Infinity Deck"), UserSettingsHomeScreenActions())
 }
 
 @PreviewTest
@@ -274,7 +274,7 @@ fun providerListBatch1() = Batch1PagesTheme {
 @Preview(name = "提供商已配置 深色中文 360", widthDp = 360, heightDp = 914, locale = "zh-rCN")
 @Composable
 fun providerConfiguredBatch1() = Batch1PagesTheme {
-    ProviderListScreenContent(ProviderListScreenState(providers = listOf(ProviderListItem(id = "preview", name = "Infinity Workbench", baseUrl = "https://api.example.com", protocolType = ProtocolType.OpenAI_ChatCompletions, hasApiKey = true))), ProviderListScreenActions())
+    ProviderListScreenContent(ProviderListScreenState(providers = listOf(ProviderListItem(id = "preview", name = "Infinity Deck", baseUrl = "https://api.example.com", protocolType = ProtocolType.OpenAI_ChatCompletions, hasApiKey = true))), ProviderListScreenActions())
 }
 
 @PreviewTest
@@ -337,7 +337,7 @@ fun modelEditorBatch1() = Batch1PagesTheme {
 @Preview(name = "设置首页 浅色英文", widthDp = 411, heightDp = 914, locale = "en")
 @Composable
 fun settingsHomeBatch1LightEnglish() = Batch1PagesTheme(dark = false) {
-    UserSettingsHomeScreenContent(UserSettingsHomeScreenState(userName = "Infinity Workbench"), UserSettingsHomeScreenActions())
+    UserSettingsHomeScreenContent(UserSettingsHomeScreenState(userName = "Infinity Deck"), UserSettingsHomeScreenActions())
 }
 
 @PreviewTest
@@ -364,7 +364,7 @@ fun settingsHomeBatch1AvatarBrand() = Batch1PagesTheme(dark = false) {
 @Preview(name = "设置首页 深色中文 字号130", widthDp = 360, heightDp = 914, locale = "zh-rCN", fontScale = 1.3f)
 @Composable
 fun settingsHomeBatch1LargeText() = Batch1PagesTheme {
-    UserSettingsHomeScreenContent(UserSettingsHomeScreenState(userName = "Infinity Workbench"), UserSettingsHomeScreenActions())
+    UserSettingsHomeScreenContent(UserSettingsHomeScreenState(userName = "Infinity Deck"), UserSettingsHomeScreenActions())
 }
 
 @PreviewTest

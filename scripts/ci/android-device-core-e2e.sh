@@ -552,7 +552,7 @@ if [[ "${DEVICE_E2E_SCOPE}" == "minimum" ]]; then
     echo "跳过 SSH 设备用例：minimum 范围不运行 SSH。"
     adb logcat -b crash -d -v threadtime 2>&1 | redact_output > "${ARTIFACT_DIR}/crash-after-tests.txt"
     if grep -Eq "Process: ${TARGET_PACKAGE_REGEX}([,[:space:]]|$)|ANR in ${TARGET_PACKAGE_REGEX}" "${ARTIFACT_DIR}/crash-after-tests.txt"; then
-        echo "最低 SDK 核心回归后 crash buffer 包含 Infinity Workbench 崩溃" >&2
+        echo "最低 SDK 核心回归后 crash buffer 包含 Infinity Deck 崩溃" >&2
         exit 1
     fi
     echo "API ${API_LEVEL} 最低 SDK 核心可达性、无障碍与自适应布局测试全部通过。"
@@ -640,7 +640,7 @@ run_test generation-cold-stop "${APP_RUNNER}" \
 
 adb logcat -b crash -d -v threadtime 2>&1 | redact_output > "${ARTIFACT_DIR}/crash-after-tests.txt"
 if grep -Eq "Process: ${TARGET_PACKAGE_REGEX}([,[:space:]]|$)|ANR in ${TARGET_PACKAGE_REGEX}" "${ARTIFACT_DIR}/crash-after-tests.txt"; then
-    echo "设备回归后 crash buffer 包含 Infinity Workbench 崩溃" >&2
+    echo "设备回归后 crash buffer 包含 Infinity Deck 崩溃" >&2
     exit 1
 fi
 

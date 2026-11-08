@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-// stdin/stdout JSON 行协议。父进程（Infinity Workbench）每行写一个 request，本进程每行回一个 response 或推送一个 event。
+// stdin/stdout JSON 行协议。父进程（Infinity Deck）每行写一个 request，本进程每行回一个 response 或推送一个 event。
 // 协议内容不含 auth key 之外的秘密；auth key 与代理口令只经 stdin 进入本进程，任何输出都不回显。
 
 // maxLineBytes 限制单行请求大小，防止异常输入耗尽内存。

@@ -134,7 +134,7 @@ class LinuxLaunchTest {
     @Test fun `启动前仅清理一次旧全局忽略块并保留用户后续修改`() {
         val ignore = File(root, "root/.config/git/ignore")
         ignore.parentFile!!.mkdirs()
-        val managed = "# >>> Infinity Workbench workspace internal files >>>\n/.infinity*\n/.recycle_bin/\n# <<< Infinity Workbench workspace internal files <<<\n"
+        val managed = "# >>> Infinity Deck workspace internal files >>>\n/.infinity*\n/.recycle_bin/\n# <<< Infinity Deck workspace internal files <<<\n"
         ignore.writeText("*.local\n" + managed + "# 用户规则")
         builder().build(LinuxLaunchSpec(emptyList()))
         assertEquals("*.local\n# 用户规则", ignore.readText())

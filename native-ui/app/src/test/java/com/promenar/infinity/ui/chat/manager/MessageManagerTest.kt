@@ -783,8 +783,8 @@ class MessageManagerTest {
         )
         advanceUntilIdle()
         val path = KgPath(
-            queryKeywords = listOf("Infinity Workbench"),
-            nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+            queryKeywords = listOf("Infinity Deck"),
+            nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
             edges = emptyList(),
         )
 
@@ -803,8 +803,8 @@ class MessageManagerTest {
     fun clearMessageRagStateExplicitlyClearsKgPathsInStoreAndRepository() = testScope.runTest {
         seedSession()
         val path = KgPath(
-            queryKeywords = listOf("Infinity Workbench"),
-            nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+            queryKeywords = listOf("Infinity Deck"),
+            nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
             edges = emptyList(),
         )
         messageManager.addMessage(
@@ -983,8 +983,8 @@ class MessageManagerTest {
         Message(id = "m1", role = MessageRole.ASSISTANT, content = "", createdAt = 1000L)
 
     private fun kgPath(): KgPath = KgPath(
-        queryKeywords = listOf("Infinity Workbench"),
-        nodes = listOf(KgNode("n1", "Infinity Workbench", "project")),
+        queryKeywords = listOf("Infinity Deck"),
+        nodes = listOf(KgNode("n1", "Infinity Deck", "project")),
         edges = emptyList(),
     )
 

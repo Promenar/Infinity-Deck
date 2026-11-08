@@ -38,7 +38,7 @@ KNOWN_SOURCE_FIELDS = {
     "status",
 }
 KNOWN_LIMIT_FIELDS = {"context", "input", "output"}
-USER_AGENT = "InfinityModelCatalogUpdater/1.0 (+https://github.com/Promenar/Infinity-Workbench)"
+USER_AGENT = "InfinityModelCatalogUpdater/1.0 (+https://github.com/Promenar/Infinity-Deck)"
 ALLOWED_RECORD_FIELDS = {
     "canonicalModelId",
     "displayName",

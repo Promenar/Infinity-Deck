@@ -85,7 +85,7 @@ private val SampleCommits = listOf(
         title = "feat(git): 只读 Git 变更面板与检查子命令", parents = listOf("a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"),
     ),
     GitCommitSummary(
-        sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", shortSha = "a1b2c3d", authorName = "Infinity Workbench Agent", authorEmail = "agent@example.com",
+        sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", shortSha = "a1b2c3d", authorName = "Infinity Deck Agent", authorEmail = "agent@example.com",
         authorTimeSeconds = 1_792_310_000L, authorTimezoneSeconds = 8 * 3600,
         title = "fix(workspace): 共享存储大小写不敏感时只保留一个路径，并在检出后提示受影响的文件列表以免误删",
         parents = listOf("0f1e2d3c4b5a69788796a5b4c3d2e1f0a9b8c7d6"),

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
+<!DOCTYPE resources [<!ENTITY brand "Infinity Deck">]>
 <resources>
     <string name="agent_reach_title">智能体可达范围</string>
 

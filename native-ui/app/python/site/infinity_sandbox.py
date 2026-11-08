@@ -1,7 +1,7 @@
-"""Infinity Workbench Python 沙箱宿主：在 isolatedProcess 中运行用户代码。
+"""Infinity Deck Python 沙箱宿主：在 isolatedProcess 中运行用户代码。
 
 隔离进程看不到应用数据与工作区物理目录，没有可写目录与网络。用户代码通过 `import infinity`
-发起能力调用（读写工作区、受限 fetch），由控制通道交给 Infinity Workbench 主进程执行与审批。
+发起能力调用（读写工作区、受限 fetch），由控制通道交给 Infinity Deck 主进程执行与审批。
 
 控制通道是进程原始的 stdin/stdout，每行一个 JSON 帧：
 - 宿主 → 沙箱：{"t":"start","code":...,"stdin":...,"args":[...]}、{"t":"cap_result","id":N,"value":...}
@@ -27,7 +27,7 @@ OUT_CHUNK = 8 * 1024
 
 
 class InfinityError(Exception):
-    """能力调用被拒绝或失败；code 为 Infinity Workbench 错误码（如 APPROVAL_DENIED、FILE_LIMIT）。"""
+    """能力调用被拒绝或失败；code 为 Infinity Deck 错误码（如 APPROVAL_DENIED、FILE_LIMIT）。"""
 
     def __init__(self, code, message):
         super().__init__("%s: %s" % (code, message))
@@ -97,7 +97,7 @@ def _feed(target, data):
 
 
 def _module(channel, args):
-    module = types.ModuleType("infinity", "Infinity Workbench 工作区与网络能力（沙箱模式）。路径为工作区虚拟路径，如 /data.csv、/mnt/<别名>/x。")
+    module = types.ModuleType("infinity", "Infinity Deck 工作区与网络能力（沙箱模式）。路径为工作区虚拟路径，如 /data.csv、/mnt/<别名>/x。")
 
     def call(operation, **arguments):
         return channel.call(operation, {key: value for key, value in arguments.items() if value is not None})

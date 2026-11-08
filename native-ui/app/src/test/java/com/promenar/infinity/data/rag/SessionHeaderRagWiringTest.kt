@@ -30,12 +30,12 @@ class SessionHeaderRagWiringTest {
             endpoint.enabled = false
             assertThat(runCatching { processor.process(task) }.exceptionOrNull()).isNotNull()
             assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()
-            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
             assertThat(SessionHeaderWiringEndpoint.body(endpoint.requests.last())).isEqualTo(SessionHeaderWiringEndpoint.body(endpoint.requests.first()))
             endpoint.enabled = true
             extractor.extractCandidate("文档文本")
             assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()
-            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
         }
     }
 
@@ -55,7 +55,7 @@ class SessionHeaderRagWiringTest {
                 endpoint.enabled = false
                 assertThat(micro.extract(sources, "问题", "rag-session").isSuccess).isTrue()
                 assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()
-                assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Workbench/") == true).isFalse()
+                assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
                 assertThat(SessionHeaderWiringEndpoint.body(endpoint.requests.last())).isEqualTo(SessionHeaderWiringEndpoint.body(endpoint.requests.first()))
             }
         }

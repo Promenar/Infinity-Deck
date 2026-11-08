@@ -1,4 +1,4 @@
-# Infinity Workbench 发光点阵无穷应用图标
+# Infinity Deck 发光点阵无穷应用图标
 
 ## 采用状态和来源
 

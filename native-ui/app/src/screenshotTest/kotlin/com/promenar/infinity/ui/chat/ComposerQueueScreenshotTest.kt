@@ -81,7 +81,7 @@ private fun ComposerQueuePage(
                 state = ChatScreenState(
                     uiState = ChatUiState(
                         session = Session("queue", "assistant", title = if (english) "Media test" else "媒体测试", modelId = "deepseek::v4-flash"),
-                        agentName = "Infinity Workbench",
+                        agentName = "Infinity Deck",
                         messages = listOf(
                             Message("user-1", MessageRole.USER, question, createdAt = 1700000000000L),
                             Message("assistant-1", MessageRole.ASSISTANT, answer, modelId = "deepseek::v4-flash", createdAt = 1700000030000L),

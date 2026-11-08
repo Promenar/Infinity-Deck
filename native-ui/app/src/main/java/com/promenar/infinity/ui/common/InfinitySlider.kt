@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /**
- * Infinity Workbench 风格的优雅 Slider 组件
+ * Infinity Deck 风格的优雅 Slider 组件
  * 移除了 MD3 默认臃肿的轨道和刻度点，采用更轻量化的设计
  */
 @OptIn(ExperimentalMaterial3Api::class)

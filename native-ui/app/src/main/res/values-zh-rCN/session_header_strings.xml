@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE resources [<!ENTITY brand "Infinity Workbench">]>
+<!DOCTYPE resources [<!ENTITY brand "Infinity Deck">]>
 <resources>
     <string name="session_header_title">会话请求头</string>
     <string name="session_header_name">会话请求头名称</string>

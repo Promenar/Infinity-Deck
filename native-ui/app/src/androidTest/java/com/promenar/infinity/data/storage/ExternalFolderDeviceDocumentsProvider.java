@@ -46,7 +46,7 @@ public final class ExternalFolderDeviceDocumentsProvider extends DocumentsProvid
         Map<String, Object> values = new HashMap<>();
         values.put(Root.COLUMN_ROOT_ID, "root");
         values.put(Root.COLUMN_DOCUMENT_ID, "root");
-        values.put(Root.COLUMN_TITLE, "Infinity Workbench 文件夹测试");
+        values.put(Root.COLUMN_TITLE, "Infinity Deck 文件夹测试");
         values.put(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE);
         addRow(cursor, values);
         return cursor;

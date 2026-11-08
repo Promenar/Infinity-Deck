@@ -1,4 +1,4 @@
-"""Infinity Workbench 内置 pip：运行标准库自带的 pip wheel，包安装到用户目录（PYTHONUSERBASE）。
+"""Infinity Deck 内置 pip：运行标准库自带的 pip wheel，包安装到用户目录（PYTHONUSERBASE）。
 
 只在侧载渠道开放（INFINITY_PIP=1）；Play 渠道返回 PIP_UNSUPPORTED。
 Android 不允许从应用数据目录加载原生库，含原生扩展的包安装后无法导入，安装结束时列出提醒。

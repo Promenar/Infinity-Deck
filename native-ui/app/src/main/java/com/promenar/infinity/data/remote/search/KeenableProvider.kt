@@ -43,7 +43,7 @@ class KeenableProvider(
             httpClient.post("https://api.keenable.ai/v1/$endpoint") {
                 expectSuccess = false
                 contentType(ContentType.Application.Json)
-                header("X-Keenable-Title", "Infinity Workbench")
+                header("X-Keenable-Title", "Infinity Deck")
                 if (key.isNotEmpty()) header("X-API-Key", key)
                 setBody(buildJsonObject {
                     put("query", query)

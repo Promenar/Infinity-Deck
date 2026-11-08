@@ -27,7 +27,7 @@ public final class ShareFixtureProvider extends ContentProvider {
     public static final String METHOD_AWAIT_BLOCKING_READ = "awaitBlockingRead";
     public static final String METHOD_RELEASE_BLOCKING_READ = "releaseBlockingRead";
     public static final String RESULT_READY = "ready";
-    public static final byte[] CONTENT = "Infinity Workbench share fixture".getBytes(StandardCharsets.UTF_8);
+    public static final byte[] CONTENT = "Infinity Deck share fixture".getBytes(StandardCharsets.UTF_8);
     public static final byte[] UTF8_BOUNDARY_CONTENT = utf8BoundaryContent();
     public static final byte[] HTML_CONTENT = (
             "<!doctype html><html><head><title>本地文档</title>"

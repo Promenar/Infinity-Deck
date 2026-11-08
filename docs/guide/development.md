@@ -37,7 +37,7 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 ### Metro CLI/TUI
 
-Infinity Workbench 没有面向最终用户、与 Android UI 等价的 CLI。仓库中的 `scripts/infinity-metro-tui.js` 是 **Debug 构建专用的开发者日志终端**，用于解析 `adb logcat` 中的脱敏 Metro 事件，不替代应用功能：
+Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。仓库中的 `scripts/infinity-metro-tui.js` 是 **Debug 构建专用的开发者日志终端**，用于解析 `adb logcat` 中的脱敏 Metro 事件，不替代应用功能：
 
 ```bash
 node scripts/infinity-metro-tui.js --help

@@ -1,4 +1,4 @@
-# Infinity Workbench — 实现状态与历史进度记录
+# Infinity Deck — 实现状态与历史进度记录
 
 2026-09-22 的当前实现状态以[逐需求验收总账](audit/20260922-requirements-acceptance.md)和[候选验证账本](release/v0.2.1-beta-validation.md)为准。审计修复已完成本机确定性及签名制品验收；真实网关失败、物理设备和未测指标分别保留。历史测试数量、覆盖率表述和总体百分比不能继承为当前版本通过。
 

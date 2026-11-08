@@ -18,6 +18,7 @@ import com.promenar.infinity.data.git.GitChangeList
 import com.promenar.infinity.data.git.GitCommitLog
 import com.promenar.infinity.data.git.GitCommitSummary
 import com.promenar.infinity.data.git.GitStatus
+import com.promenar.infinity.ui.git.GitEntrySummary
 import com.promenar.infinity.data.git.GitTracking
 import com.promenar.infinity.ui.chat.ChatPage
 import com.promenar.infinity.ui.chat.ChatScreenActions
@@ -35,6 +36,8 @@ import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabScene
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.lab.stage.LabWorkflowScene
+import com.promenar.infinity.ui.lab.timeline.LabTimeline
+import com.promenar.infinity.ui.lab.timeline.labTimeline
 import java.time.Instant
 import java.time.ZoneId
 
@@ -76,6 +79,19 @@ internal val labChatScenes: Map<String, () -> LabScene> = mapOf(
     "chat.state.ops-report" to {
         LabStateScene { OpsStill(OPS_DONE, OpsTimes.DONE + 60_000) }
     },
+    // 文件页签停在仓库根：页头是 Git 分支卡片，改动数与顶栏一致，点卡片切到 Git 页签。
+    "inspector.state.files-repo" to {
+        LabStateScene { AdeStill(ADE_PLAN_UPDATE, AdeTimes.PLAN_UPDATE + 2_000, initialPages = listOf(ChatPage.Explorer)) }
+    },
+    // 检视器从边缘条展开、会话让位，再依次切到文件页与 Git 页签。
+    "inspector.workflow.open-shift" to {
+        LabWorkflowScene(
+            timeline = { _ -> inspectorOpenTimeline() },
+            content = { pages: List<ChatPage> ->
+                AdeStill(ADE_PLAN_UPDATE, AdeTimes.PLAN_UPDATE + 2_000, expanded = true, scriptPages = pages)
+            },
+        )
+    },
     "inspector.state.git-worktrees" to {
         LabStateScene { AdeStill(ADE_DONE, AdeTimes.DONE + 60_000, initialPages = listOf(ChatPage.Git)) }
     },
@@ -83,6 +99,14 @@ internal val labChatScenes: Map<String, () -> LabScene> = mapOf(
         LabStateScene { AdeStill(ADE_DONE, AdeTimes.DONE + 60_000, initialPages = listOf(ChatPage.Git), gitTab = GitPanelTab.COMMITS) }
     },
 )
+
+/** 检视器开合演示：1.5 秒时从边缘条展开“任务”，4.5 秒切到文件页，7.5 秒点分支卡片切到 Git，停留到 10.5 秒。 */
+internal fun inspectorOpenTimeline(): LabTimeline<List<ChatPage>> = labTimeline(emptyList()) {
+    at(1_500) { listOf(ChatPage.Run) }
+    at(4_500) { listOf(ChatPage.Explorer) }
+    at(7_500) { listOf(ChatPage.Git) }
+    hold(3_000)
+}
 
 @Composable
 private fun rememberAdeText(): LabAdeText {
@@ -109,9 +133,14 @@ private fun LabSceneScope.AdeStill(
     explorerSteps: List<Int> = listOf(5, 7),
     initialPages: List<ChatPage> = emptyList(),
     gitTab: GitPanelTab = GitPanelTab.BRANCHES,
+    // 检视器要会话列够宽，内屏以展开态（图标条｜会话）开始。
+    expanded: Boolean = initialPages.isNotEmpty(),
+    /** 工作流给出的检视器层级；每次变化时覆盖当前层级，其间仍可手动切换。 */
+    scriptPages: List<ChatPage>? = null,
 ) {
     val text = rememberAdeText()
-    var pages by remember { mutableStateOf(initialPages) }
+    var pages by remember { mutableStateOf(scriptPages ?: initialPages) }
+    LaunchedEffect(scriptPages) { scriptPages?.let { pages = it } }
     val frame = remember(text, stage, explorerSteps) {
         adeFrame(AdeState(text, stage = stage, explorerSteps = explorerSteps, quickLines = 0))
     }
@@ -124,9 +153,14 @@ private fun LabSceneScope.AdeStill(
     }
     val popPage = { pages = pages.dropLast(1) }
     // 与真实会话页相同：Git 页放在 InfinityPaneLevel 里，窄窗口由会话的整页宿主覆盖，宽窗口交给检视器。
+    val changeCount = (frame.screen.gitSummary as? GitEntrySummary.Repository)?.changeCount ?: 0
     val gitLevel: @Composable BoxScope.() -> Unit = {
         val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
-        InfinityPaneLevel(key = ChatPage.Git.token, visible = pages.lastOrNull() == ChatPage.Git, top = true) {
+        // 文件页只在检视器里出现（外屏的会话页没有文件页签入口）；分支卡片与真实检视器一样直接换到 Git 页签。
+        InfinityPaneLevel(key = ChatPage.Explorer.token, visible = pages.lastOrNull() == ChatPage.Explorer, top = pages.lastOrNull() == ChatPage.Explorer) {
+            AdeFilesPanel(changeCount, onOpenGit = { pages = listOf(ChatPage.Git) })
+        }
+        InfinityPaneLevel(key = ChatPage.Git.token, visible = pages.lastOrNull() == ChatPage.Git, top = pages.lastOrNull() == ChatPage.Git) {
             AdeGitPanel(text, initialTab = gitTab, onExit = popPage.takeUnless { inInspector && pages.size == 1 })
         }
     }
@@ -140,10 +174,9 @@ private fun LabSceneScope.AdeStill(
             nowScriptMs = nowScriptMs,
             actions = actions,
             hub = LabHubStory.ADE,
-            // 检视器要会话列够宽，内屏以展开态（图标条｜会话）开始。
-            expanded = initialPages.isNotEmpty(),
+            expanded = expanded,
             inspectorPageContent = gitLevel,
-            paneVisible = pages.lastOrNull() == ChatPage.Git,
+            paneVisible = pages.lastOrNull() == ChatPage.Git || pages.lastOrNull() == ChatPage.Explorer,
             onPaneBack = popPage,
         )
     }

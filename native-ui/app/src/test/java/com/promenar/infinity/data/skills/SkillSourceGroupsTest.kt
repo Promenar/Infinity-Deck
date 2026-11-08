@@ -23,7 +23,7 @@ class SkillSourceGroupsTest {
         user.resolve("broken").mkdir()
         val catalog = BuiltinSkillCatalog(FileSkillCatalog(user, InMemoryPreferences(), temporary.newFolder("state"),
             Dispatchers.IO, System::currentTimeMillis, SkillCatalogFiles(JvmBoundRealPathFileSystem()))) {
-            "---\nname: infinity-workbench\ndescription: 内置测试\n---\n指南"
+            "---\nname: infinity-deck\ndescription: 内置测试\n---\n指南"
         }
         val initial = catalog.scan(project)
         val groups = initial.sourceGroups()
@@ -31,7 +31,7 @@ class SkillSourceGroupsTest {
         assertThat(groups.first().canToggle).isFalse()
         val enabled = catalog.setGroupEnabled(initial, null, true)
         assertThat(enabled.updatedIds).containsExactly("user:user-demo", "project:project:project-demo")
-        assertThat(enabled.skippedIds).containsExactly("builtin:infinity-workbench", "user:broken")
+        assertThat(enabled.skippedIds).containsExactly("builtin:infinity-deck", "user:broken")
         assertThat(enabled.failures).isEmpty()
         assertThat(catalog.scan(project).user.single { it.name == "user-demo" }.modifiedSinceConfirmed).isFalse()
         userFile.appendText("正文变化")

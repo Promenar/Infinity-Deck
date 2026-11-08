@@ -1,7 +1,7 @@
 {
   "package": {
     "name": "infinity-dots-vector",
-    "title": "Infinity Workbench 点阵无穷矢量母版",
+    "title": "Infinity Deck 点阵无穷矢量母版",
     "profile": "digital",
     "output_dir": "build/vector-delivery",
     "zip_name": "infinity-dots-vector.zip"

@@ -8,7 +8,7 @@
 
 ## 背景
 
-`RichContentWebView` 是 Infinity Workbench 所有富内容渲染（HTML/SVG/Mermaid/ECharts/PlantUML/LaTeX）的底层 WebView 组件。其核心逻辑是：加载内容到 WebView → JS 测量 `scrollHeight` → 将 WebView Compose 高度动态调整为测量值。
+`RichContentWebView` 是 Infinity Deck 所有富内容渲染（HTML/SVG/Mermaid/ECharts/PlantUML/LaTeX）的底层 WebView 组件。其核心逻辑是：加载内容到 WebView → JS 测量 `scrollHeight` → 将 WebView Compose 高度动态调整为测量值。
 
 原实现将测高 `WebViewClient` 设置在 `LaunchedEffect` 中，而 `loadDataWithBaseURL` 调用在 `AndroidView.update` 中。
 

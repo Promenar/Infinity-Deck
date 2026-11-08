@@ -145,9 +145,9 @@ class GitInspectorDeviceTest {
     private companion object {
         const val KIND_PRIVATE = "private"
         val IDENTITY = mapOf(
-            "GIT_AUTHOR_NAME" to "Infinity Workbench Device Test",
+            "GIT_AUTHOR_NAME" to "Infinity Deck Device Test",
             "GIT_AUTHOR_EMAIL" to "device-test@example.invalid",
-            "GIT_COMMITTER_NAME" to "Infinity Workbench Device Test",
+            "GIT_COMMITTER_NAME" to "Infinity Deck Device Test",
             "GIT_COMMITTER_EMAIL" to "device-test@example.invalid",
         )
     }

@@ -100,7 +100,7 @@ class BuiltinSkillCatalogTest {
     @Test fun `用户及项目同名技能可用路径读取且不遮蔽内置按名称与斜杠调用`() = runTest {
         for (root in listOf(user, workspace.root.resolve(".agents/skills"))) {
             root.resolve(BuiltinSkillCatalog.NAME).apply { mkdirs() }.resolve("SKILL.md").writeText(
-                "---\nname: infinity-workbench\ndescription: 自定义副本\n---\n用户正文")
+                "---\nname: infinity-deck\ndescription: 自定义副本\n---\n用户正文")
         }
         var snapshot = catalog.scan(workspace)
         catalog.setEnabled(snapshot.user.single(), true)
@@ -109,7 +109,7 @@ class BuiltinSkillCatalogTest {
         assertThat(snapshot.byName(BuiltinSkillCatalog.NAME)).hasSize(3)
         assertThat((SkillSlashInvocation.select(snapshot.skills, BuiltinSkillCatalog.NAME) as SkillSlashInvocation.Selection.Ready).skill.scope).isEqualTo(SkillScope.BUILTIN)
         assertThat(ActivateSkillTool(catalog).execute(buildJsonObject { put("name", BuiltinSkillCatalog.NAME) }, context).content).contains("五级权限边界")
-        val custom = ActivateSkillTool(catalog).execute(buildJsonObject { put("path", "/skills/infinity-workbench") }, context)
+        val custom = ActivateSkillTool(catalog).execute(buildJsonObject { put("path", "/skills/infinity-deck") }, context)
         assertThat(custom.content).contains("用户正文")
         val listed = SystemPromptSections.skillCatalog(snapshot.skills, modelContextTokens = 1)
         assertThat(listed).contains("source=builtin")
