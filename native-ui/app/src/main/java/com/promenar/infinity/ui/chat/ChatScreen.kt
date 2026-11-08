@@ -87,7 +87,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
@@ -158,6 +157,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -3440,10 +3440,11 @@ fun ChatInputBar(
                     .then(
                         if (islandStyle.toolbarTray) {
                             // 托盘向左右与底边各铺出工具行留白，铺到浮岛边缘，由浮岛外壳裁出底部圆角；上沿一道细线隔开输入区。
-                            Modifier.drawBehind {
+                            Modifier.drawWithContent {
                                 val inset = ComposerToolbarInset.toPx()
                                 drawRect(trayColor, topLeft = Offset(-inset, -inset), size = Size(size.width + inset * 2, size.height + inset * 2))
                                 drawRect(trayLine, topLeft = Offset(-inset, -inset), size = Size(size.width + inset * 2, 1.dp.toPx()))
+                                drawContent()
                             }
                         } else {
                             Modifier
