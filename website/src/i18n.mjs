@@ -1,0 +1,312 @@
+// 官网中英文文案。中文为默认语言，路径不带前缀；英文路径以 /en/ 开头。
+
+export const LOCALES = ['zh', 'en'];
+export const GITHUB = 'https://github.com/Promenar/Infinity-Workbench';
+const BLOB = `${GITHUB}/blob/main`;
+const TREE = `${GITHUB}/tree/main`;
+
+/** 站内路径：path 为不带语言前缀的路径，如 '/'、'/download/'。 */
+export function href(locale, path = '/') {
+  return locale === 'en' ? `/en${path}` : path;
+}
+
+export const strings = {
+  zh: {
+    htmlLang: 'zh-CN',
+    langName: '中',
+    nav: { features: '功能', trust: '安全', download: '下载', docs: '文档', changelog: '更新日志', main: '主导航', lang: '语言', footer: '页脚' },
+    meta: {
+      title: 'Infinity Workbench：手机上的 AI 工作台',
+      description: '把终端、代码仓库、服务器和你的 AI 一起装进手机。自带 Key，数据留在本机。真 Linux、Git、SSH、子代理与折叠屏工作台。',
+    },
+    hero: {
+      title: '把终端、代码仓库、服务器\n和你的 AI 一起装进手机。',
+      lede: '自带 Key，数据留在本机。展开是一部工作台，合上接着聊。',
+      download: '下载 Android 版',
+      source: 'GitHub 源码',
+      facts: ['Android 12+', 'GPL-3.0 开源'],
+      hint: '移动指针转动，点按切换形态',
+      canvas: '灯珠拼成 Infinity 字标，再扭成无穷形莫比乌斯带',
+    },
+    story: {
+      label: '功能演示',
+      chapters: [
+        { kicker: '内置 Linux', title: '手机里有一台真 Linux', body: '跑 Python 脚本、用 FFmpeg 转视频、<code>apk add</code> 装个工具，都在应用里完成。不用 root，也不用装 Termux。' },
+        { kicker: 'Agent 开发环境', title: '代码随身改', body: '主会话修 bug，补测试的活派给分支会话，各自在独立的工作树里改，互不打架。分支、差异、提交在 Git 面板里一目了然。' },
+        { kicker: '子代理', title: '一句话，一支小团队', body: '它先列计划，再并行派出子代理：一个定位改动点，一个审查测试覆盖。谁做完了，结论自己交回来，附上用时。' },
+        { kicker: 'SSH 运维', title: '在地铁上修好线上故障', body: '网站报 502，让它连上服务器去查。每条命令先给你过目，点一下才执行；修完它写好报告。' },
+        { kicker: '折叠屏内屏', title: '展开就是工作台', body: '内屏一分为三：导航、会话列表、会话，旁边常驻检视器，任务、文件、Git、浏览器一点即达。' },
+        { kicker: '折叠屏外屏', title: '合上，接着看', body: '合上手机，会话挪到外屏接着走。地铁上把排障报告看完，单手回一句，回到桌前再展开。' },
+      ],
+      alts: {
+        subagents: '两个子代理并行：定位改动点与审查测试覆盖',
+        plan: '内屏会话旁的检视器显示任务计划',
+        terminal: '内置终端里安装 fastfetch',
+        ade: '会话里派出子代理并提出分支方案',
+        ops: '远程命令逐条等待批准',
+      },
+    },
+    trust: {
+      title: '每一步，先给你过目',
+      lede: 'Agent 能登服务器、改文件、跑命令。动手之前，它先停下来等你点头。',
+      promises: [
+        ['每条命令先问你', '默认批准后才执行；删除文件无论哪一档都要你点头。'],
+        ['密码不经过 AI', '保密输入卡直接存进凭据，不进对话，显示时禁止截屏。'],
+        ['数据留在手机上', '模型请求直连你配置的服务商，不经过我们的服务器。'],
+        ['备份你来管', '存到本地文件或 WebDAV，可以加密。'],
+        ['完全开源', 'GPL-3.0，源码都在 GitHub。'],
+      ],
+      demo: {
+        session: '502错误排查修复',
+        replay: '重播',
+        intro: '先登录 web-01，看 starlog 的部署方式、服务状态和 nginx 配置。',
+        ran1: '运行了 2 条命令 · 1.1 秒',
+        cause: '根因：<code>config.toml</code> 把数据库指向从未创建的 <code>/srv/starlog/data</code>，starlog-api 启动即退出。先恢复原路径，再重启 api。',
+        cardLabel: '远程命令',
+        chip: '进程操作',
+        approved: '已批准',
+        rejected: '已拒绝',
+        note: '在远程主机上以登录账户的权限运行。',
+        reject: '拒绝当前',
+        approve: '批准当前',
+        waiting: '等待审批',
+        rejectedSay: '已拒绝，命令没有执行。',
+        ran2: '运行了 3 条命令 · 2.1 秒',
+        done: '已修复。starlog-api: active，edge 进程全程未重启，无需干预。',
+      },
+    },
+    features: {
+      title: '全部功能',
+      lede: '模型自己接，环境自己选，每一项都在手机上跑。',
+      more: '每一项的细节与边界见功能详解',
+      groups: [
+        ['对话与模型', ['自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口', '聊到一半换模型；最多 16 个会话同时生成', '生成中的下一句可以排队或插队', '需要你拍板时弹出提问卡；锁屏、切后台不中断', '触摸锁让手机直接揣进口袋', '技能与 MCP 服务器']],
+        ['智能体', ['先列计划再动手', '最多 32 个子代理并行，单次派出 8 个，结论自动交回', '子代理遇到限流、断网或超时，自动退避重试', '适合单独做的工作开成分支会话', '慢命令、生图与媒体下载转入后台，完成后回报', '按关键词检索、翻页取回已压缩的会话历史', '定时任务，单次到 cron']],
+        ['运行环境与代码', ['一键 Alpine Linux，不用 root，也不用 Termux', '没装 Linux 也有内置命令、Python 和 JavaScript 沙箱', '内置 git；Git 面板看分支、差异和提交', 'Git 密码按命令注入，不写进仓库配置', '文件页显示分支与改动数，点按直达 Git 页签']],
+        ['服务器与私有网络', ['SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB', '真终端和端口转发随时接手', '应用自带 Tailscale 节点，支持自建 Headscale', '模型、SSH、MCP 直达 tailnet，不开公网端口，不占系统 VPN']],
+        ['资料与知识', ['文档、长期记忆和知识图谱一起检索，答案带引用', '图谱按作品分开，可按篇序查人物关系的变化', '挂载外部文件夹；支持 PDF、Word、Markdown、HTML 等格式']],
+        ['网页与产出', ['浏览器多标签，手机版与桌面版切换；Agent 操作时旁观、接手再交回', '画布页面、可点击的多屏原型、带版本的产物', '生图，可在画板上圈注和涂抹选区', '会话导出为网页、A4 PDF 或长图']],
+        ['折叠屏与平板', ['内屏三列：导航、会话列表、会话', '检视器常驻任务、文件、Git 与浏览器', '检视器展开时纵贯全屏，会话列与输入浮岛随之让位', '开合屏会话无缝接续']],
+      ],
+    },
+    download: {
+      title: '下载 Infinity Workbench',
+      released: '发布',
+      apk: '下载 APK',
+      all: '全部版本',
+      shaLabel: 'SHA-256',
+      copy: '复制',
+      copied: '已复制',
+      selected: '已选中',
+      shaFile: '下载 .sha256 文件',
+      reqs: ['Android 12 及以上', '内置 Linux 需 arm64-v8a', '侧载安装'],
+      available: '可下载',
+      soon: '即将推出',
+      platforms: { android: 'Android', macos: 'macOS' },
+      pageTitle: '下载',
+      pageDescription: '下载 Infinity Workbench 的 Android 侧载安装包，核对 SHA-256 后安装。',
+      stepsTitle: '安装步骤',
+      steps: [
+        '下载 APK，并记下上面的 SHA-256。',
+        '核对校验值，一致再安装。只安装这里或 GitHub Releases 的正式包，不要用 CI 临时制品或来源不明的重打包版本。',
+        '打开应用，在设置里添加一个模型提供商，就可以开始用了。',
+      ],
+      verifyTitle: '核对 SHA-256',
+      verifyHint: '在电脑上运行对应命令，输出应与上面的值一致。',
+      linuxTitle: '内置 Linux 的空间',
+      linuxBody: '基础系统约 64 MB；加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。',
+      upgradeTitle: '升级与数据迁移',
+      upgradeBody: '覆盖安装新版本会保留数据。从旧名 Nexara 迁移、备份与恢复见安装指南。',
+      upgradeLink: '安装、升级与数据迁移',
+      newer: '有新版本',
+    },
+    changelog: {
+      title: '更新日志',
+      description: 'Infinity Workbench 各版本的改进与修复，与 App 发行同步。',
+      lede: '每个版本的改进与修复，与 GitHub Releases 同步。',
+      older: '更早的开发记录见仓库里的 CHANGELOG.md',
+      jump: '版本',
+    },
+    docs: {
+      title: '文档',
+      description: 'Infinity Workbench 使用指南：功能详解、密钥与隐私、执行环境、工作区、安装升级与开发构建。',
+      lede: '使用指南都在 GitHub 仓库里，随代码一起更新。',
+      langNote: '',
+      guides: [
+        ['功能详解', '对话与渲染、上下文管理、资料与图谱、Agent 工具、子代理、浏览器、后台与定时任务、导出与备份', `${BLOB}/docs/guide/features.md`],
+        ['密钥与隐私', '密钥存储、备份加密、SSH/Git/Tailscale 凭据、网络安全、诊断事件', `${BLOB}/docs/guide/security-privacy.md`],
+        ['执行环境', '内置 Linux、Termux、隔离脚本运行时、SSH', `${BLOB}/docs/guide/execution-environments.md`],
+        ['工作区与外部文件夹', '工作区类型、Git、Agent 可达范围、文件夹挂载', `${BLOB}/docs/guide/workspaces.md`],
+        ['安装、升级与数据迁移', '运行要求、数据迁移、APK 验真', `${BLOB}/docs/guide/install-and-upgrade.md`],
+        ['开发构建与发行验证', '构建命令、打包 Python 与 Tailscale、富内容安全策略、图标、技术栈', `${BLOB}/docs/guide/development.md`],
+      ],
+      more: [
+        ['架构说明', `${BLOB}/docs/ARCHITECTURE.md`],
+        ['使用指南索引', `${TREE}/docs/guide`],
+        ['README', `${BLOB}/README.zh-CN.md`],
+        ['提交问题', `${GITHUB}/issues`],
+      ],
+      moreTitle: '更多',
+    },
+    footer: { license: 'GPL-3.0', issues: '提交问题' },
+    notFound: { title: '页面不存在', body: '这个地址没有内容。', home: '回到首页' },
+  },
+
+  en: {
+    htmlLang: 'en',
+    langName: 'EN',
+    nav: { features: 'Features', trust: 'Security', download: 'Download', docs: 'Docs', changelog: 'Changelog', main: 'Main', lang: 'Language', footer: 'Footer' },
+    meta: {
+      title: 'Infinity Workbench: an AI workbench on your phone',
+      description: 'Your terminal, your repos, your servers and your AI, together on your phone. Bring your own key; your data stays on your device.',
+    },
+    hero: {
+      title: 'Your terminal, your repos, your servers\nand your AI, together on your phone.',
+      lede: 'Bring your own key. Your data stays on your device. Unfold a workbench, fold it and the chat carries on.',
+      download: 'Download for Android',
+      source: 'Source on GitHub',
+      facts: ['Android 12+', 'GPL-3.0'],
+      hint: 'Move the pointer to turn it, tap to change shape',
+      canvas: 'LED beads form the Infinity wordmark, then twist into an infinity-shaped Möbius strip',
+    },
+    story: {
+      label: 'Feature tour',
+      chapters: [
+        { kicker: 'Built-in Linux', title: 'A real Linux in your pocket', body: 'Run a Python script, convert a video with FFmpeg or <code>apk add</code> the tool you need, all inside the app. No root, no Termux.' },
+        { kicker: 'Agent dev environment', title: 'Your code goes where you go', body: 'The main chat fixes the bug while a branch chat writes the tests, each in its own worktree so they never collide. Branches, diffs and commits are all in the Git panel.' },
+        { kicker: 'Sub-agents', title: 'One ask, a small team', body: 'It plans first, then sends sub-agents out in parallel: one to find the code, another to review the tests. Each reports back on its own, with the time it took.' },
+        { kicker: 'SSH ops', title: 'Fix a production outage from the train', body: 'Your site returns 502, so you ask it to log in and find out why. Every command waits for your tap before it runs. When it’s fixed, it writes up a report.' },
+        { kicker: 'Inner screen', title: 'Unfold a workbench', body: 'The inner screen splits into three: navigation, chat list, conversation, with an inspector for tasks, files, Git and the browser alongside.' },
+        { kicker: 'Cover screen', title: 'Fold it and carry on', body: 'Close the phone and the chat moves to the cover screen. Finish the incident report on the train, answer with one hand, unfold when you’re back.' },
+      ],
+      alts: {
+        subagents: 'Two sub-agents in parallel: locating the change and reviewing test coverage',
+        plan: 'The inspector beside the chat shows the task plan',
+        terminal: 'Installing fastfetch in the built-in terminal',
+        ade: 'A work plan proposing a branch chat in a new worktree',
+        ops: 'Remote commands waiting for approval one by one',
+      },
+    },
+    trust: {
+      title: 'Every step waits for you',
+      lede: 'The agent can log in to servers, edit files and run commands. Before it acts, it stops and asks.',
+      promises: [
+        ['It asks before every command', 'Nothing runs without your approval, and deleting files always needs your OK.'],
+        ['Passwords never pass through the AI', 'A secret input card stores them straight into the credential. Screenshots are blocked while it’s shown.'],
+        ['Your data stays on your phone', 'Model requests go straight to the provider you chose, never through a server of ours.'],
+        ['You own your backups', 'Save them to a local file or WebDAV, encrypted if you like.'],
+        ['Fully open source', 'GPL-3.0, with all the source on GitHub.'],
+      ],
+      demo: {
+        session: 'Fix the 502',
+        replay: 'Replay',
+        intro: 'Logging in to web-01 to check how starlog is deployed, the service status and the nginx config.',
+        ran1: 'Ran 2 commands · 1.1 s',
+        cause: 'Root cause: <code>config.toml</code> points the database at <code>/srv/starlog/data</code>, which was never created, so starlog-api exits on start. Restoring the old path, then restarting the api.',
+        cardLabel: 'Remote command',
+        chip: 'Process',
+        approved: 'Approved',
+        rejected: 'Rejected',
+        note: 'Runs on the remote host with the signed-in account’s permissions.',
+        reject: 'Reject current',
+        approve: 'Approve current',
+        waiting: 'Waiting for approval',
+        rejectedSay: 'Rejected. The command did not run.',
+        ran2: 'Ran 3 commands · 2.1 s',
+        done: 'Fixed. starlog-api is active, and the edge process never restarted.',
+      },
+    },
+    features: {
+      title: 'Everything it does',
+      lede: 'Bring your own model, pick your environment, and run all of it on your phone.',
+      more: 'Details and limits for each item are in the feature guide (in Chinese)',
+      groups: [
+        ['Chat & models', ['Bring your own key for OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint', 'Switch models mid-chat; up to 16 chats generating at once', 'Queue your next message or let it jump the line', 'Question cards when it needs your call; keeps going with the screen locked', 'Touch lock so the phone can go straight into your pocket', 'Skills and MCP servers']],
+        ['Agents', ['Plans before it acts', 'Up to 32 sub-agents in parallel, 8 per dispatch; conclusions return on their own', 'Sub-agents back off and retry on rate limits, dropped connections and timeouts', 'Side work becomes a branch chat', 'Slow commands, image generation and media downloads move to the background and report back when done', 'Search and page back through compacted chat history by keyword', 'Scheduled tasks, one-shot to cron']],
+        ['Runtime & code', ['One-tap Alpine Linux, no root, no Termux', 'Built-in shell, Python and JavaScript sandboxes even without Linux', 'Built-in git; branches, diffs and commits in the Git panel', 'Git passwords injected per command, never written to repo config', 'The file view shows the branch and change count; tap to open the Git tab']],
+        ['Servers & private network', ['SSH by host alias to run commands and read or write files, up to 4 GiB per file', 'Take over any time in a real terminal or with port forwarding', 'A Tailscale node inside the app, with self-hosted Headscale support', 'Models, SSH and MCP reach your tailnet directly: no open ports, no system VPN']],
+        ['Documents & knowledge', ['Search documents, long-term memory and the knowledge graph together, with cited answers', 'One graph per work; follow how characters relate, chapter by chapter', 'Mount outside folders; PDF, Word, Markdown, HTML and more']],
+        ['Web & output', ['Browser tabs, mobile or desktop sites; watch the agent, take over and hand it back', 'Canvas pages, clickable multi-screen prototypes and versioned artifacts', 'Image generation with a drawing board for markup and masks', 'Export chats as a web page, A4 PDF or long image']],
+        ['Foldables & tablets', ['Three columns on the inner screen: navigation, chat list and chat', 'An inspector for tasks, files, Git and the browser', 'The open inspector runs full height while the chat list and composer make room', 'Chats carry on as you fold and unfold']],
+      ],
+    },
+    download: {
+      title: 'Download Infinity Workbench',
+      released: 'released',
+      apk: 'Download APK',
+      all: 'All releases',
+      shaLabel: 'SHA-256',
+      copy: 'Copy',
+      copied: 'Copied',
+      selected: 'Selected',
+      shaFile: 'Download .sha256 file',
+      reqs: ['Android 12 or later', 'Built-in Linux needs arm64-v8a', 'Sideload install'],
+      available: 'Available',
+      soon: 'Coming soon',
+      platforms: { android: 'Android', macos: 'macOS' },
+      pageTitle: 'Download',
+      pageDescription: 'Download the Infinity Workbench Android APK and check its SHA-256 before installing.',
+      stepsTitle: 'Install',
+      steps: [
+        'Download the APK and note the SHA-256 above.',
+        'Check the checksum and install only if it matches. Install packages from here or GitHub Releases only, never CI artifacts or repackaged builds.',
+        'Open the app, add a model provider in Settings and start chatting.',
+      ],
+      verifyTitle: 'Check the SHA-256',
+      verifyHint: 'Run the command for your computer. The output should match the value above.',
+      linuxTitle: 'Space for the built-in Linux',
+      linuxBody: 'The base system takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.',
+      upgradeTitle: 'Upgrades and data',
+      upgradeBody: 'Installing a new version over the old one keeps your data. Migrating from the old Nexara name, backup and restore are in the install guide (in Chinese).',
+      upgradeLink: 'Install and upgrade',
+      newer: 'Newer version',
+    },
+    changelog: {
+      title: 'Changelog',
+      description: 'Improvements and fixes in each Infinity Workbench release.',
+      lede: 'Improvements and fixes in each release, in sync with GitHub Releases. Entries are written in Chinese.',
+      older: 'Earlier development notes are in CHANGELOG.md in the repository',
+      jump: 'Versions',
+    },
+    docs: {
+      title: 'Docs',
+      description: 'Infinity Workbench guides: features, security and privacy, execution environments, workspaces, install and development.',
+      lede: 'The guides live in the GitHub repository and change with the code. They are written in Chinese; the README covers the essentials in English.',
+      langNote: 'Chinese',
+      guides: [
+        ['Features', 'Chat and rendering, context management, documents and the knowledge graph, agent tools, sub-agents, browser, background and scheduled tasks, export and backup', `${BLOB}/docs/guide/features.md`],
+        ['Security and privacy', 'Key storage, backup encryption, SSH, Git and Tailscale credentials, network security, diagnostics', `${BLOB}/docs/guide/security-privacy.md`],
+        ['Execution environments', 'Built-in Linux, Termux, sandboxed script runtimes, SSH', `${BLOB}/docs/guide/execution-environments.md`],
+        ['Workspaces', 'Workspace types, Git, what agents can reach, mounted folders', `${BLOB}/docs/guide/workspaces.md`],
+        ['Install and upgrade', 'Requirements, data migration, APK verification', `${BLOB}/docs/guide/install-and-upgrade.md`],
+        ['Development', 'Build commands, bundled Python and Tailscale, rich-content security, icons, tech stack', `${BLOB}/docs/guide/development.md`],
+      ],
+      more: [
+        ['README', `${BLOB}/README.md`],
+        ['Architecture overview', `${BLOB}/docs/ARCHITECTURE.md`],
+        ['Guide index', `${TREE}/docs/guide`],
+        ['Open an issue', `${GITHUB}/issues`],
+      ],
+      moreTitle: 'More',
+    },
+    footer: { license: 'GPL-3.0', issues: 'Issues' },
+    notFound: { title: 'Page not found', body: 'There is nothing at this address.', home: 'Back to home' },
+  },
+};
+
+/** 每种语言的故事板素材：中文有录屏；英文用英文界面截图，终端录屏不含界面文案，两种语言共用。 */
+export function storyMedia(locale) {
+  const m = `/media/${locale}`;
+  const alts = strings[locale].story.alts;
+  return [
+    { kind: 'video', src: '/media/apk-add.mp4', poster: `${m}/inner-terminal.state.fastfetch.webp`, alt: alts.terminal },
+    locale === 'zh'
+      ? { kind: 'video', src: `${m}/ade.mp4`, poster: `${m}/inner-chat.state.branch-plan.webp`, alt: alts.ade }
+      : { kind: 'image', src: `${m}/inner-chat.state.branch-plan.webp`, alt: alts.ade },
+    { kind: 'image', src: `${m}/inner-chat.state.subagents.webp`, alt: alts.subagents },
+    locale === 'zh'
+      ? { kind: 'video', src: `${m}/ops.mp4`, poster: `${m}/inner-chat.state.ops-approval.webp`, alt: alts.ops }
+      : { kind: 'image', src: `${m}/inner-chat.state.ops-approval.webp`, alt: alts.ops },
+    { kind: 'image', src: `${m}/inner-inspector.state.plan.webp`, alt: alts.plan },
+  ];
+}

@@ -1,0 +1,112 @@
+---
+import Base from '../layouts/Base.astro';
+import DownloadPanel from '../components/DownloadPanel.astro';
+import { strings, href, storyMedia, GITHUB } from '../i18n.mjs';
+import { getRelease } from '../lib/release-data.mjs';
+import { versioned } from '../lib/asset.mjs';
+
+interface Props { locale: 'zh' | 'en' }
+const { locale } = Astro.props;
+const t = strings[locale];
+const release = await getRelease();
+const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster: m.poster && versioned(m.poster) }));
+---
+<Base locale={locale} path="/" title={t.meta.title} description={t.meta.description} current="home">
+  <section class="hero">
+    <div class="hero-stage" id="stage" title={t.hero.hint}>
+      <canvas id="ring" role="img" aria-label={t.hero.canvas}></canvas>
+      <div class="hint" aria-hidden="true">{t.hero.hint}</div>
+    </div>
+    <div class="wrap">
+      <h1 class="sweep" data-sweep>{t.hero.title}</h1>
+      <p class="lede">{t.hero.lede}</p>
+      <div class="cta">
+        <a class="btn btn-primary" href={href(locale, '/download/')}>{t.hero.download}</a>
+        <a class="btn btn-ghost" href={GITHUB}>{t.hero.source}</a>
+      </div>
+      <div class="facts"><span>{release.tag}</span>{t.hero.facts.map(f => <span>{f}</span>)}</div>
+    </div>
+  </section>
+
+  <section id="story" aria-label={t.story.label}>
+    <div class="wrap story-pin">
+      <div class="chapters">
+        {t.story.chapters.map((c, i) => (
+          <article class={i === 0 ? 'chapter on' : 'chapter'} data-ch={i}>
+            <p class="kicker">{c.kicker}</p>
+            <h3 class="sweep">{c.title}</h3>
+            <p set:html={c.body} />
+          </article>
+        ))}
+      </div>
+
+      <div class="device-stage">
+        <div class="device" id="device" style={`--img: url('${versioned(`/media/${locale}/inner-inspector.state.plan.webp`)}'); --outer: url('${versioned(`/media/${locale}/outer-chat.state.ops-report.webp`)}')`}>
+          <div class="panel" id="panel">
+            {media.map((m, i) => m.kind === 'video'
+              ? <video class:list={['media', { on: i === 0 }]} data-ch={i} src={m.src} poster={m.poster} muted playsinline loop preload={i === 0 ? 'auto' : 'none'} aria-label={m.alt}></video>
+              : <img class:list={['media', { on: i === 0 }]} data-ch={i} src={m.src} alt={m.alt} loading="lazy" decoding="async">)}
+          </div>
+          <div class="halves" id="halves" aria-hidden="true">
+            <div class="half l"></div>
+            <div class="half r" id="flap"><div class="face front"></div><div class="face back"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rail" id="rail"></div>
+    </div>
+  </section>
+
+  <section id="trust">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sweep" data-sweep>{t.trust.title}</h2>
+        <p>{t.trust.lede}</p>
+      </div>
+      <div class="trust-grid">
+        <ul class="promises">
+          {t.trust.promises.map(([b, s]) => <li><b>{b}</b><span>{s}</span></li>)}
+        </ul>
+        <div class="demo" id="demo" aria-live="polite" data-strings={JSON.stringify(t.trust.demo)}>
+          <div class="demo-top">
+            <span class="t">{t.trust.demo.session}</span><span class="meta">web-01</span>
+            <button class="btn btn-ghost btn-sm" id="replay" type="button">{t.trust.demo.replay}</button>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sweep" data-sweep>{t.features.title}</h2>
+        <p>{t.features.lede}</p>
+      </div>
+      <div class="feat-cols">
+        {t.features.groups.map(([name, items], i) => (
+          <div class="feat" style={`--d:${i}`}>
+            <div class="strip"></div>
+            <h3>{name}</h3>
+            <ul>{items.map(item => <li>{item}</li>)}</ul>
+          </div>
+        ))}
+      </div>
+      <p class="feat-more"><a href={`${GITHUB}/blob/main/docs/guide/features.md`}>{t.features.more}</a></p>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <DownloadPanel locale={locale} release={release} heading="h2" showPageLink />
+    </div>
+  </section>
+</Base>
+
+<script>
+  import '../scripts/ring.ts';
+  import '../scripts/story.ts';
+  import '../scripts/demo.ts';
+</script>

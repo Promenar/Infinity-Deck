@@ -1,0 +1,50 @@
+---
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { Marked } from 'marked';
+import Base from '../layouts/Base.astro';
+import { strings, GITHUB } from '../i18n.mjs';
+import { parseChangelog, absolutizeLink, versionAnchor } from '../lib/changelog.mjs';
+import { formatDate } from '../lib/release.mjs';
+
+interface Props { locale: 'zh' | 'en' }
+const { locale } = Astro.props;
+const t = strings[locale].changelog;
+// 更新日志直接读仓库根的 CHANGELOG.md，App 发版时官网随之更新
+// 构建在 website/ 目录内运行（npm run build），仓库根即上一级
+const source = readFileSync(resolve(process.cwd(), '..', 'CHANGELOG.md'), 'utf8');
+const releases = parseChangelog(source);
+const marked = new Marked({
+  gfm: true,
+  walkTokens(token) {
+    if (token.type === 'link' || token.type === 'image') token.href = absolutizeLink(token.href, `${GITHUB}/blob/main/`);
+  },
+});
+const rendered = releases.map(r => ({ ...r, id: versionAnchor(r.version), html: marked.parse(r.body) as string }));
+---
+<Base locale={locale} path="/changelog/" title={`${t.title} · Infinity Workbench`} description={t.description} current="changelog">
+  <div class="wrap page">
+    <header class="page-head">
+      <h1 class="sweep" data-sweep>{t.title}</h1>
+      <p>{t.lede}</p>
+    </header>
+    <div class="cl">
+      <nav class="cl-index" aria-label={t.jump}>
+        <b>{t.jump}</b>
+        {rendered.map(r => <a href={`#${r.id}`}>{r.version}</a>)}
+      </nav>
+      <div>
+        {rendered.map(r => (
+          <article class="release" id={r.id}>
+            <div class="release-h">
+              <h2><a href={`#${r.id}`}>{r.version}</a></h2>
+              <time datetime={r.date}>{formatDate(`${r.date}T00:00:00Z`, locale)}</time>
+            </div>
+            <div class="release-b" lang="zh-CN" set:html={r.html} />
+          </article>
+        ))}
+        <p class="cl-older"><a href={`${GITHUB}/blob/main/CHANGELOG.md`}>{t.older}</a></p>
+      </div>
+    </div>
+  </div>
+</Base>

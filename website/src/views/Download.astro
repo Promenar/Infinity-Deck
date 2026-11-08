@@ -1,0 +1,41 @@
+---
+import Base from '../layouts/Base.astro';
+import DownloadPanel from '../components/DownloadPanel.astro';
+import { strings, GITHUB } from '../i18n.mjs';
+import { getRelease } from '../lib/release-data.mjs';
+
+interface Props { locale: 'zh' | 'en' }
+const { locale } = Astro.props;
+const t = strings[locale].download;
+const release = await getRelease();
+const file = release.apk.name;
+---
+<Base locale={locale} path="/download/" title={`${t.pageTitle} · Infinity Workbench`} description={t.pageDescription} current="download">
+  <div class="wrap page">
+    <DownloadPanel locale={locale} release={release} heading="h1" />
+
+    <div class="dl-page prose">
+      <section>
+        <h2>{t.stepsTitle}</h2>
+        <ol class="steps">{t.steps.map(s => <li>{s}</li>)}</ol>
+      </section>
+      <section>
+        <h2>{t.verifyTitle}</h2>
+        <p>{t.verifyHint}</p>
+        <div class="verify">
+          <div><span>macOS</span><pre>shasum -a 256 {file}</pre></div>
+          <div><span>Linux</span><pre>sha256sum {file}</pre></div>
+          <div><span>Windows</span><pre>certutil -hashfile {file} SHA256</pre></div>
+        </div>
+      </section>
+      <section>
+        <h2>{t.linuxTitle}</h2>
+        <p>{t.linuxBody}</p>
+      </section>
+      <section>
+        <h2>{t.upgradeTitle}</h2>
+        <p>{t.upgradeBody} <a href={`${GITHUB}/blob/main/docs/guide/install-and-upgrade.md`}>{t.upgradeLink}</a></p>
+      </section>
+    </div>
+  </div>
+</Base>

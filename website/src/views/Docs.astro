@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+import { strings } from '../i18n.mjs';
+
+interface Props { locale: 'zh' | 'en' }
+const { locale } = Astro.props;
+const t = strings[locale].docs;
+---
+<Base locale={locale} path="/docs/" title={`${t.title} · Infinity Workbench`} description={t.description} current="docs">
+  <div class="wrap page">
+    <header class="page-head">
+      <h1 class="sweep" data-sweep>{t.title}</h1>
+      <p>{t.lede}</p>
+    </header>
+    <div class="guides">
+      {t.guides.map(([name, desc, url]) => (
+        <a class="guide" href={url}>
+          <h2>{name}{t.langNote && <span class="lang-chip">{t.langNote}</span>}</h2>
+          <p>{desc}</p>
+        </a>
+      ))}
+    </div>
+    <div class="more-links">
+      <h2>{t.moreTitle}</h2>
+      {t.more.map(([name, url]) => <a class="btn btn-ghost btn-sm" href={url}>{name}</a>)}
+    </div>
+  </div>
+</Base>
