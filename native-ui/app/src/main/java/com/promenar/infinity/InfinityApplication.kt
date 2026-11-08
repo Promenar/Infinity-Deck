@@ -1034,6 +1034,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
     private val subagentRuntimeTexts get() = com.promenar.infinity.data.subagent.SubagentRuntimeTexts(
+        retry = { code, seconds, attempt -> getString(R.string.subagent_retry, getString(when (code) { com.promenar.infinity.domain.generation.GenerationFailureCode.RATE_LIMIT -> R.string.subagent_retry_rate_limit; com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK -> R.string.subagent_retry_network; com.promenar.infinity.domain.generation.GenerationFailureCode.TIMEOUT -> R.string.subagent_retry_timeout; com.promenar.infinity.domain.generation.GenerationFailureCode.SERVER -> R.string.subagent_retry_server; else -> R.string.subagent_retry_unknown }), seconds, attempt) },
         interrupted = getString(R.string.bg_subagent_interrupted),
         resultWriteFailed = getString(R.string.bg_subagent_result_write_failed),
         executionFailed = getString(R.string.bg_subagent_execution_failed),
@@ -1049,6 +1050,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 models = com.promenar.infinity.data.subagent.RoutedSubagentModelClient(
                     com.promenar.infinity.data.generation.ChatProviderRouteGate(providerRequestRouter),
                 ) { modelId -> generationLocalProviders.create(modelId) },
+                maxStreamRetries = { getSharedPreferences("infinity_settings", MODE_PRIVATE).getInt(com.promenar.infinity.domain.generation.STREAM_RETRY_LIMIT_KEY, com.promenar.infinity.domain.generation.DEFAULT_STREAM_RETRY_LIMIT).coerceIn(0, com.promenar.infinity.domain.generation.MAX_STREAM_RETRY_LIMIT) }, retryText = subagentRuntimeTexts.retry,
                 host = subagentToolHost,
                 approvals = subagentApprovalBroker,
                 liveOutput = toolLiveOutputStore,

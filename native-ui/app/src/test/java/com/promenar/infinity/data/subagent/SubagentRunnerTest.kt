@@ -22,6 +22,7 @@ import com.promenar.infinity.data.remote.protocol.ProtocolUsage
 import com.promenar.infinity.data.remote.protocol.ReasoningReplay
 import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.domain.generation.CompletionReason
+import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import kotlinx.coroutines.CompletableDeferred
@@ -373,11 +374,11 @@ class SubagentRunnerTest {
 
     @Test
     fun `子代理只提供主会话读取发送并隐藏派发停止等待及控制别名`() = runTest {
-        val controls = listOf("agent_wait", "session_read", "session_send", "session_stop", "session_list", "session_branch")
+        val controls = listOf("agent_wait", "session_read", "session_send", "session_search", "session_stop", "session_list", "session_branch")
         val host = FakeHost(listOf(read) + controls.map { tool(it, ToolRisk.SAFE_READ) } + tool("control_alias", ToolRisk.SAFE_READ).copy(runtimeToolId = "session_send"))
         val models = ScriptedModels(listOf(text("完成")))
         runner(models, host).run(parent(), session("auto"), "step", run(), null) { _, _ -> }
-        assertThat(models.requests.single().tools.map { it.function.name }).containsExactly("read_file", "session_read", "session_send")
+        assertThat(models.requests.single().tools.map { it.function.name }).containsExactly("read_file", "session_read", "session_send", "session_search")
     }
 
     @Test fun `子代理隐藏提问工具并对误调用返回可继续的结构化错误`() = runTest {
@@ -826,6 +827,72 @@ class SubagentRunnerTest {
         val result = runner(models, FakeHost(listOf(read))).run(parent(), session("auto"), "step", run(maxTokens = 40), null) { _, _ -> }
         assertThat(result.status).isEqualTo(SubagentStatus.COMPLETED)
         assertThat(models.requests[1].tools).isEmpty()
+    }
+
+    @Test fun `限流重试保留用量并丢弃失败输出`() = runTest {
+        val requests = mutableListOf<List<ProtocolMessage>>()
+        val waits = mutableListOf<Long>()
+        var saved: SubagentExecutionState? = null
+        val models = SubagentModelClient { _, messages, _, _, _, _ ->
+            requests += messages.toList()
+            if (requests.size == 1) flowOf(text("失败片段"), usage(10, 3), StreamChunk.Error(GenerationFailureCode.RATE_LIMIT, retryAfterSeconds = 7))
+            else flowOf(text("完成"), usage(20, 4), StreamChunk.Completed(CompletionReason.END_TURN))
+        }
+        val result = SubagentRunner(models, FakeHost(emptyList()), SubagentApprovalBroker(), awaitRetry = { waits += it })
+            .run(parent(), session("auto"), "step", run(), null, SubagentExecution(save = { saved = it })) { _, _ -> }
+        assertThat(result.status).isEqualTo(SubagentStatus.COMPLETED)
+        assertThat(waits).containsExactly(7000L)
+        assertThat(requests[1]).isEqualTo(requests[0])
+        assertThat(saved!!.messages.filter { it.role == "assistant" }.map { it.content }).containsExactly("完成")
+        assertThat(saved!!.completedSteps).isEqualTo(1)
+        assertThat(result.inputTokens).isEqualTo(30)
+        assertThat(result.outputTokens).isEqualTo(7)
+        assertThat(result.events.filter { it.text.contains("重试") }).hasSize(1)
+        assertThat(result.events.any { it.text.contains("失败片段") || it.failed }).isFalse()
+    }
+
+    @Test fun `重试达到上限或不可重试时保持失败文字`() = runTest {
+        for ((code, expectedRequests) in listOf(GenerationFailureCode.NETWORK to 3, GenerationFailureCode.AUTH to 1)) {
+            var calls = 0
+            val waits = mutableListOf<Long>()
+            val models = SubagentModelClient { _, _, _, _, _, _ -> calls++; flowOf(StreamChunk.Error(code)) }
+            val result = SubagentRunner(models, FakeHost(emptyList()), SubagentApprovalBroker(), maxStreamRetries = { 2 }, awaitRetry = { waits += it })
+                .run(parent(), session("auto"), "step", run(), null) { _, _ -> }
+            assertThat(calls).isEqualTo(expectedRequests)
+            assertThat(waits).hasSize(expectedRequests - 1)
+            assertThat(result.status).isEqualTo(SubagentStatus.FAILED)
+            assertThat(result.error).isEqualTo("模型请求失败（${code.name}）")
+        }
+    }
+
+    @Test fun `流意外结束按网络错误重试`() = runTest {
+        var calls = 0
+        val waits = mutableListOf<Long>()
+        val models = SubagentModelClient { _, _, _, _, _, _ ->
+            calls++
+            if (calls == 1) flowOf(text("片段")) else flowOf(text("完成"), StreamChunk.Completed(CompletionReason.END_TURN))
+        }
+        val result = SubagentRunner(models, FakeHost(emptyList()), SubagentApprovalBroker(), awaitRetry = { waits += it })
+            .run(parent(), session("auto"), "step", run(), null) { _, _ -> }
+        assertThat(result.status).isEqualTo(SubagentStatus.COMPLETED)
+        assertThat(calls).isEqualTo(2)
+        assertThat(waits).containsExactly(1000L)
+    }
+
+    @Test fun `停止等待中的重试不会再次请求`() = runTest {
+        var calls = 0
+        val waiting = CompletableDeferred<Unit>()
+        val published = mutableListOf<SubagentRun>()
+        val models = SubagentModelClient { _, _, _, _, _, _ -> calls++; flowOf(StreamChunk.Error(GenerationFailureCode.NETWORK)) }
+        val job = launch {
+            SubagentRunner(models, FakeHost(emptyList()), SubagentApprovalBroker(), awaitRetry = { waiting.complete(Unit); awaitCancellation() })
+                .run(parent(), session("auto"), "step", run(), null) { value, _ -> published += value }
+        }
+        waiting.await()
+        job.cancel()
+        job.join()
+        assertThat(calls).isEqualTo(1)
+        assertThat(published.last().status).isEqualTo(SubagentStatus.CANCELLED)
     }
 
     private fun runner(models: SubagentModelClient, host: SubagentToolHost, broker: SubagentApprovalBroker = SubagentApprovalBroker()) =
