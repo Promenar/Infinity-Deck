@@ -82,8 +82,11 @@ internal val InfinityInspectorMinWindowHeight = 480.dp
 internal val InfinityInspectorWidth = 360.dp
 internal val InfinityInspectorWideWidth = 560.dp
 
-/** 固定的检视器距窗口右缘 8dp、距让位后主内容 16dp，两者之和。 */
-internal val InfinityInspectorGutter = 24.dp
+/**
+ * 固定的检视器距窗口右缘的距离，也是让位时主内容在检视器宽度之外多让出的宽度。
+ * 主内容与检视器之间不再另留间距：输入浮岛自带 12dp 水平内边距，左右两侧与相邻边缘的距离因此相等。
+ */
+internal val InfinityInspectorGutter = 8.dp
 
 /** 让位后主内容至少保留的宽度（约一台手机的会话列）；折叠屏内屏默认宽度可让位，加宽后达不到时检视器浮在主内容之上。 */
 internal val InfinityInspectorMinMainWidth = 320.dp
@@ -109,16 +112,12 @@ fun infinityInspectorCanPin(windowWidth: Dp, inspectorWidth: Dp): Boolean =
 internal val InfinityInspectorStripSpan = 64.dp
 
 /**
- * 边缘条常驻时主内容右侧要让出的宽度：内容列限宽 [contentMaxWidth] 居中，
- * 两侧空白已够放下边缘条时不让；否则让出最少的宽度，使内容列右缘距窗口右缘不小于 [InfinityInspectorStripSpan]。
+ * 边缘条常驻时正文末端要多留的宽度：正文列限宽 [contentMaxWidth] 居中、自带 [contentEndPadding]，
+ * 让正文右缘距窗口右缘不小于 [InfinityInspectorStripSpan]。只加在正文列表的末端内边距上，输入浮岛不受影响。
  */
-fun infinityInspectorStripReserve(windowWidth: Dp, contentMaxWidth: Dp): Dp {
-    val spare = windowWidth - contentMaxWidth
-    return when {
-        spare >= InfinityInspectorStripSpan * 2 -> 0.dp
-        spare >= InfinityInspectorStripSpan -> InfinityInspectorStripSpan * 2 - spare
-        else -> InfinityInspectorStripSpan
-    }
+fun infinityInspectorStripInset(windowWidth: Dp, contentMaxWidth: Dp, contentEndPadding: Dp): Dp {
+    val margin = ((windowWidth - contentMaxWidth) / 2).coerceAtLeast(0.dp)
+    return (InfinityInspectorStripSpan - margin - contentEndPadding).coerceAtLeast(0.dp)
 }
 
 object InfinityPaneTags {

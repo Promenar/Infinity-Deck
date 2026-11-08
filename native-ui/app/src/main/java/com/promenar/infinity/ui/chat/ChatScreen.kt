@@ -837,16 +837,20 @@ fun ChatScreenContent(
         val inspectorCanPin = com.promenar.infinity.ui.common.infinityInspectorCanPin(maxWidth, inspectorWidth)
         val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth, inspectorPinned) ==
             com.promenar.infinity.ui.common.InfinityInspectorPlacement.Float
-        // 顶栏始终横跨全宽，检视器在顶栏下方。固定时会话列与输入浮岛收到检视器左侧；
-        // 其余时候右缘常驻边缘条，会话列与浮岛只在两侧空白放不下边缘条时让出所需宽度。
+        // 顶栏始终横跨全宽，检视器在顶栏下方。固定时会话列与输入浮岛整体收到检视器左侧；
+        // 其余时候右缘常驻边缘条，只有正文列表在末端多留出边缘条的宽度，输入浮岛保持居中、左右对称。
+        val inspectorPinnedOpen = inspectorRoot != null && !inspectorFloats
         val chatEndReserved by animateDpAsState(
-            targetValue = when {
-                !inspectorMode -> 0.dp
-                inspectorRoot != null && !inspectorFloats -> inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter
-                else -> com.promenar.infinity.ui.common.infinityInspectorStripReserve(maxWidth, InfinitySpacing.ChatMaxWidth)
-            },
+            targetValue = if (inspectorMode && inspectorPinnedOpen) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
             animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
             label = "chat_inspector_reserved",
+        )
+        val chatStripInset by animateDpAsState(
+            targetValue = if (inspectorMode && !inspectorPinnedOpen) {
+                com.promenar.infinity.ui.common.infinityInspectorStripInset(maxWidth, InfinitySpacing.ChatMaxWidth, InfinitySpacing.ChatHorizontal)
+            } else 0.dp,
+            animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
+            label = "chat_strip_inset",
         )
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -988,7 +992,7 @@ fun ChatScreenContent(
                 browserEntry = true,
                 remote = state.remote,
             )
-            // 检视器与收起后的边缘条同处右缘 8dp：浮动卡片从边缘条的位置展开，固定时与会话之间再留 16dp。
+            // 检视器与收起后的边缘条同处右缘 8dp：浮动卡片从边缘条的位置展开。
             val inspectorEnd = 8.dp
             // 审批卡在会话列底部；检视器浮在会话之上时会盖住它，新审批到来时先收为边缘条（角标仍提示待批准）。
             val hasPendingApproval = pendingApprovals > 0
@@ -1071,7 +1075,7 @@ fun ChatScreenContent(
                     },
                 contentPadding = PaddingValues(
                     start = InfinitySpacing.ChatHorizontal,
-                    end = InfinitySpacing.ChatHorizontal,
+                    end = InfinitySpacing.ChatHorizontal + chatStripInset,
                     bottom = composerInsets.contentBottom + generatingExtraBottom,
                 ),
             ) {
@@ -1734,8 +1738,8 @@ fun ChatScreenContent(
                             }
                         }
                     }
-                    // 收起后右缘常驻边缘条，是检视器唯一的开合入口；会话列与浮岛已让出它的宽度。长按可上下拖动。
-                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 8.dp, end = inspectorEnd, bottom = 8.dp)) {
+                    // 收起后右缘常驻边缘条，是检视器唯一的开合入口；正文列表末端已让出它的宽度。长按可上下拖动。
+                    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 8.dp, end = inspectorEnd, bottom = composerReserve + 8.dp)) {
                     var stripHeight by remember { mutableIntStateOf(0) }
                     AnimatedVisibility(
                         visible = inspectorRoot == null,
@@ -1743,7 +1747,7 @@ fun ChatScreenContent(
                             slideInHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) { it },
                         exit = fadeOut(tween(InfinityMotion.DurationShort)) +
                             slideOutHorizontally(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) { it },
-                        // 默认贴底，与输入浮岛底边对齐：浮岛已让出边缘条的宽度，两者并排不重叠。
+                        // 默认贴在输入浮岛上方，拖动范围也止于浮岛上沿：浮岛横跨全宽，边缘条不与它并排。
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .inspectorStripDrag((constraints.maxHeight - stripHeight).coerceAtLeast(0).toFloat())
