@@ -96,7 +96,7 @@ https://github.com/user-attachments/assets/97ec8287-b32f-452f-8bcd-1bffa4f789e6
 
 Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
 
-The source tree is at `v0.35.0-beta` (versionCode `99`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.35.1-beta` (versionCode `100`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>
@@ -118,7 +118,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 **Chat & models**
 
 - Bring your own key for OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint
-- Switch models mid-chat; up to 4 chats generating at once
+- Switch models mid-chat; up to 16 chats generating at once
 - Queue your next message or let it jump the line
 - Question cards when it needs your call; keeps going with the screen locked
 - Touch lock so the phone can go straight into your pocket
@@ -127,7 +127,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 **Agents**
 
 - Plans before it acts
-- Up to 6 sub-agents working in parallel; conclusions return on their own
+- Up to 32 sub-agents working in parallel; conclusions return on their own
 - Side work becomes a branch chat
 - Slow commands move to the background and wake the chat when done
 - Scheduled tasks, one-shot to cron

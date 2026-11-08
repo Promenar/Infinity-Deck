@@ -66,6 +66,10 @@ class BackgroundJobCompletion(
     }
 }
 
+/** 运行中任务的数量上限只防止失控累积，取值远高于正常使用；任务负载不按数量判断。 */
+internal const val MAX_SESSION_RUNNING = 32
+internal const val MAX_GLOBAL_RUNNING = 64
+
 /** 应用级任务所有者；发起/等待工具的取消不会传递到已经接管的运行任务。 */
 class BackgroundJobManager(
     private val scope: CoroutineScope,
@@ -90,6 +94,8 @@ class BackgroundJobManager(
     redactor: SecretOutputRedactor? = null,
     private val requestReconcile: (BackgroundJobRecord) -> Unit = {},
     private val reconcileWarning: (BackgroundJobRecord) -> String? = { null },
+    private val sessionRunningLimit: Int = MAX_SESSION_RUNNING,
+    private val globalRunningLimit: Int = MAX_GLOBAL_RUNNING,
 ) : BackgroundJobController {
     private val redactor = redactor ?: vault?.let(::SecretOutputRedactor)
     private class Active(val control: BuiltinCommandControl = BuiltinCommandControl()) {
@@ -189,8 +195,8 @@ class BackgroundJobManager(
         require(minutes in 1..1440) { "max_runtime_minutes 必须为 1–1440" }
         if(sessionId in deletedSessions) throw JobAccessException("JOB_SESSION_DELETED","会话正在删除，不能启动后台任务。")
         val running=store.all().filter { it.running }
-        if(running.count{it.sessionId==sessionId} >= 3) throw JobAccessException("JOB_SESSION_LIMIT","本会话已有 3 个运行中任务，请先用 job_wait 等待或用 job_stop 停止。")
-        if(running.size >= 6) throw JobAccessException("JOB_GLOBAL_LIMIT","全局已有 6 个运行中任务，请先结束部分后台任务。")
+        if(running.count{it.sessionId==sessionId} >= sessionRunningLimit) throw JobAccessException("JOB_SESSION_LIMIT","本会话已有 $sessionRunningLimit 个运行中任务，请先用 job_wait 等待或用 job_stop 停止。")
+        if(running.size >= globalRunningLimit) throw JobAccessException("JOB_GLOBAL_LIMIT","全局已有 $globalRunningLimit 个运行中任务，请先结束部分后台任务。")
         val id="job-${UUID.randomUUID()}"
         val secretNames = try { vault?.environment(sessionId,source)?.keys?.sorted().orEmpty() }
         catch (_: IllegalStateException) { throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁或不能作为环境变量，任务未启动。") }

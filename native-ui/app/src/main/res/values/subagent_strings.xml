@@ -40,7 +40,7 @@
     <string name="subagent_elapsed_minutes">%1$dm %2$ds</string>
     <string name="subagent_tokens">%1$s tokens</string>
     <string name="skill_agent_task">Subagents</string>
-    <string name="skill_agent_task_desc">Hand up to 3 subtasks to parallel subagents, using extra model calls</string>
+    <string name="skill_agent_task_desc">Hand up to 8 subtasks to parallel subagents, using extra model calls</string>
     <string name="subagent_approval_session_label">Session</string>
     <string name="subagent_approval_task_label">Task</string>
     <string name="subagent_status_failed_elapsed">Failed · %1$s</string>

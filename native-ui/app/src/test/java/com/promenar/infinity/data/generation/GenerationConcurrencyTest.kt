@@ -35,7 +35,7 @@ class GenerationConcurrencyTest {
                     emit(GenerationEvent.PhaseChanged(GenerationPhase.WAITING_INPUT))
                 } else awaitCancellation()
             }
-        })
+        }, maxConcurrent = 4)
         coordinator.start(request("question"))
         (1..4).forEach { coordinator.start(request("running-$it")) }
         runCurrent()
@@ -64,7 +64,7 @@ class GenerationConcurrencyTest {
                     awaitCancellation()
                 }
             }
-        })
+        }, maxConcurrent = 4)
         val old = coordinator.start(request("same").copy(requestId = "old")) as StartGenerationResult.Started
         runCurrent()
         coordinator.awaitTaskCompletion("same", old.taskId)
@@ -80,7 +80,7 @@ class GenerationConcurrencyTest {
         val entered = mutableListOf<String>()
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { request, _ -> entered += request.sessionId; awaitCancellation() }
-        })
+        }, maxConcurrent = 4)
         val denied = coordinator.start(request("denied")) { false }
         assertThat(denied).isInstanceOf(StartGenerationResult.Busy::class.java)
         assertThat(coordinator.sessions.value).doesNotContainKey("denied")
@@ -100,7 +100,7 @@ class GenerationConcurrencyTest {
 
     @Test
     fun `运行器准备失败不会提交准入票据`() = runTest {
-        val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ -> error("准备失败") })
+        val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ -> error("准备失败") }, maxConcurrent = 4)
         var accepted = false
         val result = coordinator.start(request("broken")) { accepted = true; true }
         assertThat(result).isInstanceOf(StartGenerationResult.Rejected::class.java)
@@ -122,7 +122,7 @@ class GenerationConcurrencyTest {
                 }
                 override suspend fun cancelBeforeStart(request: GenerationRequest) { cleaned += request.sessionId }
             }
-        })
+        }, maxConcurrent = 4)
         (1..4).forEach { coordinator.start(request("s$it")) }
         val queued = coordinator.start(request("s5")) as StartGenerationResult.Queued
         runCurrent()
@@ -147,7 +147,7 @@ class GenerationConcurrencyTest {
                     withContext(NonCancellable) { emit(GenerationEvent.PhaseChanged(GenerationPhase.CANCELLED)) }
                 }
             }
-        })
+        }, maxConcurrent = 4)
         (1..5).forEach { coordinator.start(request("s$it")) }
         assertThat(coordinator.cancelAll()).isEqualTo(5)
         assertThat(entered).containsExactly("s1", "s2", "s3", "s4")
@@ -163,7 +163,7 @@ class GenerationConcurrencyTest {
                 entered += request.sessionId
                 awaitCancellation()
             } },
-        )
+         maxConcurrent = 4)
         val first = coordinator.start(request("first"))
         val second = coordinator.start(request("second"))
         runCurrent()
@@ -178,7 +178,7 @@ class GenerationConcurrencyTest {
         val entered = mutableListOf<String>()
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { request, _ -> entered += request.sessionId; awaitCancellation() }
-        })
+        }, maxConcurrent = 4)
         val first = (1..4).map { coordinator.start(request("s$it")) as StartGenerationResult.Started }
         val fifth = coordinator.start(request("s5")) as StartGenerationResult.Queued
         val sixth = coordinator.start(request("s6")) as StartGenerationResult.Queued
@@ -216,7 +216,7 @@ class GenerationConcurrencyTest {
                     cleanup.await()
                 } else awaitCancellation()
             }
-        })
+        }, maxConcurrent = 4)
         (1..5).forEach { coordinator.start(request("s$it")) }
         runCurrent()
         val idle = async { coordinator.awaitSessionIdle("s1") }
@@ -253,7 +253,7 @@ class GenerationConcurrencyTest {
         )
         coordinator = DefaultGenerationCoordinator(backgroundScope,
             GenerationRunnerFactory { _, _ -> GenerationRunner { _, _ -> awaitCancellation() } },
-            executionGate = gate, compactionService = compaction)
+            executionGate = gate, compactionService = compaction, maxConcurrent = 4)
         (1..5).forEach { coordinator.start(request("s$it")) }
         assertThat(runCatching { compaction.compactNow("s5") }.exceptionOrNull())
             .isInstanceOf(ContextCompactionBusyException::class.java)
@@ -269,7 +269,7 @@ class GenerationConcurrencyTest {
         val foreground = MutableStateFlow(true)
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { _, _ -> awaitCancellation() }
-        })
+        }, maxConcurrent = 4)
         observeForegroundOnlyPolicy(backgroundScope, foreground, coordinator)
         val foregroundRunning = request("visible").copy(runtimePolicy = GenerationRuntimePolicy.FOREGROUND_ONLY)
         val foregroundQueued = request("queued").copy(runtimePolicy = GenerationRuntimePolicy.FOREGROUND_ONLY)
@@ -290,7 +290,7 @@ class GenerationConcurrencyTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val coordinator = DefaultGenerationCoordinator(scope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { _, _ -> awaitCancellation() }
-        })
+        }, maxConcurrent = 4)
         observeForegroundOnlyPolicy(scope, foreground, coordinator)
         runCurrent()
         coordinator.start(request("visible").copy(runtimePolicy = GenerationRuntimePolicy.FOREGROUND_ONLY))
@@ -313,7 +313,7 @@ class GenerationConcurrencyTest {
                     withContext(NonCancellable) { emit(GenerationEvent.PhaseChanged(GenerationPhase.CANCELLED)) }
                 }
             }
-        })
+        }, maxConcurrent = 4)
         coordinator.start(request("foreground").copy(runtimePolicy = GenerationRuntimePolicy.FOREGROUND_ONLY))
         (1..3).forEach { coordinator.start(request("background-$it")) }
         coordinator.start(request("queued").copy(runtimePolicy = GenerationRuntimePolicy.FOREGROUND_ONLY))
@@ -330,7 +330,7 @@ class GenerationConcurrencyTest {
         val entered = mutableListOf<String>()
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
             GenerationRunner { request, _ -> entered += request.sessionId; awaitCancellation() }
-        }, executionGate = gate)
+        }, executionGate = gate, maxConcurrent = 4)
         val first = (1..4).map { coordinator.start(request("running-$it")) as StartGenerationResult.Started }
         coordinator.start(request("deleting"))
         runCurrent()
@@ -355,7 +355,7 @@ class GenerationConcurrencyTest {
                 }
                 override suspend fun cancelBeforeStart(request: GenerationRequest) { cleaned += request.sessionId }
             }
-        }, executionGate = gate)
+        }, executionGate = gate, maxConcurrent = 4)
         (1..4).forEach { coordinator.start(request("gate-$it")) }
         val queued = coordinator.start(request("deleting")) as StartGenerationResult.Queued
         runCurrent()

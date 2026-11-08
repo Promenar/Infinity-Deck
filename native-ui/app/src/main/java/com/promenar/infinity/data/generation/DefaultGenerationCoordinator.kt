@@ -40,6 +40,7 @@ class DefaultGenerationCoordinator(
     private val terminalRetentionLimit: Int = 32,
     private val executionGate: com.promenar.infinity.data.session.SessionExecutionGate? = null,
     private val compactionService: ContextCompactionService? = null,
+    private val maxConcurrent: Int = MAX_CONCURRENT_GENERATIONS,
 ) : GenerationCoordinator {
     private class Task(
         val taskId: String,
@@ -128,7 +129,7 @@ class DefaultGenerationCoordinator(
             return@synchronized StartGenerationResult.Rejected(GenerationError(failure.failureOrUnknown()))
         }
         terminalOrder.remove(request.sessionId)
-        val queued = occupiedSlotsLocked() >= MAX_CONCURRENT_GENERATIONS || queue.isNotEmpty()
+        val queued = occupiedSlotsLocked() >= maxConcurrent || queue.isNotEmpty()
         val snapshot = GenerationTaskSnapshot(
             taskId = taskId,
             sessionId = request.sessionId,
@@ -247,7 +248,7 @@ class DefaultGenerationCoordinator(
             clearSessionLocked(task.request.sessionId, task.taskId)
         }
         task.completion.complete(task.snapshot)
-        while (completions.size > terminalRetentionLimit.coerceAtLeast(0) + MAX_CONCURRENT_GENERATIONS + queue.size) {
+        while (completions.size > terminalRetentionLimit.coerceAtLeast(0) + maxConcurrent + queue.size) {
             val completed = completions.entries.firstOrNull { it.value.isCompleted && it.key != task.taskId } ?: break
             completions.remove(completed.key)
         }
@@ -261,7 +262,7 @@ class DefaultGenerationCoordinator(
 
     private fun drainQueueLocked() {
         if (queueDrainSuspensions > 0) return
-        while (queue.isNotEmpty() && occupiedSlotsLocked() < MAX_CONCURRENT_GENERATIONS) {
+        while (queue.isNotEmpty() && occupiedSlotsLocked() < maxConcurrent) {
             val task = queue.removeFirst()
             launchLocked(task)
         }

@@ -165,9 +165,9 @@ data class SubagentSpec(
 )
 
 object SubagentLimits {
-    const val MAX_PARALLEL = 3
+    const val MAX_PARALLEL = 8
     /** 全应用同时运行的后台子代理上限，与会话生成的并发名额分开计数；超出时排队（[SubagentStatus.QUEUED]）。 */
-    const val MAX_BACKGROUND_CONCURRENT = 6
+    const val MAX_BACKGROUND_CONCURRENT = 32
     /** 主会话等待子代理的默认超时；主 Agent 可经 `timeout_seconds` 设定。 */
     const val DEFAULT_WAIT_TIMEOUT_MS = 10 * 60_000L
     /** 软停止后最多再给的收尾步数，之后只允许输出结论。 */

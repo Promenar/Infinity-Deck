@@ -70,7 +70,7 @@ data class GenerationTaskSnapshot(
     val retry: GenerationRetry? = null,
 )
 
-const val MAX_CONCURRENT_GENERATIONS = 4
+const val MAX_CONCURRENT_GENERATIONS = 16
 
 sealed interface StartGenerationResult {
     data class Started(val taskId: String) : StartGenerationResult

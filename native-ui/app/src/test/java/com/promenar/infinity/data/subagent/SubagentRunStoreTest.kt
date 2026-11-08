@@ -107,7 +107,7 @@ class SubagentRunStoreTest {
 
         assertThat(parse("""{"tasks":[]}""")).isNull()
         assertThat(parse("""{"tasks":[{"description":"a","prompt":" "}]}""")).isNull()
-        assertThat(parse("""{"tasks":[${List(4) { """{"description":"a","prompt":"b"}""" }.joinToString(",")}]}""")).isNull()
+        assertThat(parse("""{"tasks":[${List(SubagentLimits.MAX_PARALLEL + 1) { """{"description":"a","prompt":"b"}""" }.joinToString(",")}]}""")).isNull()
         assertThat(parse("""{"tasks":[{"description":"a","prompt":"b","preset":"writer"}]}""")).isNull()
         val parsed = parse("""{"tasks":[{"description":"a","prompt":"b","preset":"explorer","tool_profile":"inherit"},{"description":"c","prompt":"d"}]}""")!!
         assertThat(parsed.map { it.toolProfile }).containsExactly(SubagentToolProfile.READ_ONLY, SubagentToolProfile.INHERIT).inOrder()

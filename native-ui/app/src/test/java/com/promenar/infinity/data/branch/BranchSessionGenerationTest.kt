@@ -110,13 +110,14 @@ class BranchSessionGenerationTest {
         coordinator.cancelAndJoinSession("main", CancellationReason.USER)
         assertThat(coordinator.isSessionBusy(child.id)).isTrue()
     }
-    @Test fun `四个会话满载时派发分支进入同一FIFO队列`() = runBlocking {
-        repeat(4) { index -> coordinator.start(GenerationRequest("busy$index", "ai$index", null, "", emptyList(), GenerationRuntimePolicy.BACKGROUND_ALLOWED)) }
-        awaitCondition { entered.size == 4 }
+    @Test fun `会话名额满载时派发分支进入同一FIFO队列`() = runBlocking {
+        val limit = com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS
+        repeat(limit) { index -> coordinator.start(GenerationRequest("busy$index", "ai$index", null, "", emptyList(), GenerationRuntimePolicy.BACKGROUND_ALLOWED)) }
+        awaitCondition { entered.size == limit }
         val pending = pending(); service.resolvePlan(pending, answer(pending))
         val child = db.sessionDao().getAll().single { it.parentSessionId == "main" }
         awaitCondition { coordinator.observe(child.id).value?.phase == GenerationPhase.QUEUED }
-        assertThat(coordinator.sessions.value.values.count { it.phase == GenerationPhase.STREAMING }).isEqualTo(4)
+        assertThat(coordinator.sessions.value.values.count { it.phase == GenerationPhase.STREAMING }).isEqualTo(limit)
         assertThat(entered).doesNotContain(child.id)
         coordinator.cancelAndJoinSession("busy0")
         awaitCondition { child.id in entered || "main" in entered }

@@ -254,8 +254,9 @@ class BackgroundSubagentTest {
         }
     }
 
-    @Test fun `第七个排队并按FIFO补位取消未启动任务也释放槽位`() = runTest {
-        val gates = (0..8).associate { "p$it" to CompletableDeferred<Unit>() }
+    @Test fun `超出上限排队并按FIFO补位取消未启动任务也释放槽位`() = runTest {
+        val limit = SubagentLimits.MAX_BACKGROUND_CONCURRENT
+        val gates = (0..limit + 2).associate { "p$it" to CompletableDeferred<Unit>() }
         val started = mutableListOf<String>()
         val f = Fixture(this, SubagentModelClient { _, messages, _, _, _, _ -> flow {
             val prompt = messages.first { it.role == "user" }.content!!
@@ -265,14 +266,14 @@ class BackgroundSubagentTest {
         val first = f.runtime.launch(parent(), "first", listOf(spec("p0"))).single()
         f.runtime.stop("parent", first.id)
         runCurrent()
-        val runs = (1..8).map { f.runtime.launch(parent(), "s$it", listOf(spec("p$it"))).single() }
+        val runs = (1..limit + 2).map { f.runtime.launch(parent(), "s$it", listOf(spec("p$it"))).single() }
         runCurrent()
-        assertThat(started).containsExactly("p1", "p2", "p3", "p4", "p5", "p6").inOrder()
-        assertThat(f.runtime.read("parent", runs[6].id).status).isEqualTo(SubagentStatus.QUEUED)
+        assertThat(started).containsExactlyElementsIn((1..limit).map { "p$it" }).inOrder()
+        assertThat(f.runtime.read("parent", runs[limit].id).status).isEqualTo(SubagentStatus.QUEUED)
         gates.getValue("p2").complete(Unit); runCurrent()
-        assertThat(started.last()).isEqualTo("p7")
+        assertThat(started.last()).isEqualTo("p${limit + 1}")
         gates.getValue("p1").complete(Unit); runCurrent()
-        assertThat(started.last()).isEqualTo("p8")
+        assertThat(started.last()).isEqualTo("p${limit + 2}")
         f.runtime.deleteSession("parent"); runCurrent()
         assertThat(f.runtime.activeRuns.value).isEmpty()
         assertThat(f.store.all()).isEmpty()
