@@ -1372,7 +1372,8 @@ internal fun InlineToolRow(
         // 文件改动只来自成功的文件工具：全是文件编辑时标题直接给出文件与行数，混合工具时作为补充段。
         if (!stateOnly && (!showFileTitle || !summary.isFileEditOnly)) add(runningCommandText ?: cardSummaryText ?: toolGroupSummaryText(summary))
         if (showFileTitle) add(com.promenar.infinity.ui.chat.diff.fileChangesStyledTitle(fileChanges))
-        if (summary.failedCount == 0 && summary.runningAction == null) summary.durationMs?.let { add(stepDurationText(it)) }
+        if (summary.backgroundedCount > 0 && summary.runningAction == null) add(stringResource(R.string.tool_card_job_state_backgrounded))
+        else if (summary.failedCount == 0 && summary.runningAction == null) summary.durationMs?.let { add(stepDurationText(it)) }
     }
     openedChange?.let { change ->
         com.promenar.infinity.ui.chat.diff.FileChangeDiffSheet(change, onDismissRequest = { openedChange = null })
@@ -1482,8 +1483,10 @@ private fun ToolInvocationCard(
         plainCommandOutput != null -> commandResultSpec(SubagentCommandResult(plainCommandOutput, null), invocation.durationMs, openFullOutput)
         else -> null
     }
+    val backgrounded = remember(invocation) { backgroundedJobId(invocation) != null }
     val tone = commandSpec?.tone ?: when {
         invocation.failed -> ToolStepTone.FAILED
+        backgrounded -> ToolStepTone.NEUTRAL
         invocation.complete -> ToolStepTone.SUCCESS
         turnActive -> ToolStepTone.RUNNING
         else -> ToolStepTone.NEUTRAL
@@ -1491,6 +1494,7 @@ private fun ToolInvocationCard(
     val status = commandSpec?.status ?: when {
         invocation.failed -> stringResource(R.string.tool_card_job_state_failed)
         !invocation.complete -> stringResource(if (turnActive) R.string.tool_card_job_state_running else R.string.tool_card_job_state_interrupted)
+        backgrounded -> stringResource(R.string.tool_card_job_state_backgrounded)
         else -> invocation.durationMs?.let { stepDurationText(it) } ?: stringResource(R.string.tool_card_job_state_completed)
     }
     val summary = when (action) {

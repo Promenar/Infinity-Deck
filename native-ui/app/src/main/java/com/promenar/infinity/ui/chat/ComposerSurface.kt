@@ -197,7 +197,6 @@ private fun AmbientWash(state: ComposerGlowState, modifier: Modifier) {
     val motion = LocalGenerationMotion.current
     val domain = MaterialTheme.infinityDomainColors
     val errorColor = domain.signalDown
-    val successColor = domain.signalOn
     // 深色底上柔光要更亮才看得出，浅色底压低避免发脏。
     val peak = if (palette.dark) 0.34f else 0.22f
     Spacer(
@@ -205,14 +204,13 @@ private fun AmbientWash(state: ComposerGlowState, modifier: Modifier) {
             val rx = size.width * 0.78f
             val ry = maxOf(size.height * 0.95f, 56.dp.toPx())
             fun gradient(color: Color) = RadialGradient(0f, 0f, rx, color.toArgb(), color.copy(alpha = 0f).toArgb(), Shader.TileMode.CLAMP)
-            val shaders = arrayOf(gradient(palette.a), gradient(palette.b), gradient(errorColor), gradient(successColor))
+            val shaders = arrayOf(gradient(palette.a), gradient(palette.b), gradient(errorColor))
             val local = Matrix()
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             onDrawBehind {
                 val gen = state.generating.value
                 val error = state.error.value
-                val success = state.success.value
-                if (gen <= 0f && error <= 0f && success <= 0f) return@onDrawBehind
+                if (gen <= 0f && error <= 0f) return@onDrawBehind
                 val anchor = composerWashAnchor(state.scopeCenter, size.width, size.height, density)
                 local.setScale(1f, ry / rx)
                 local.postTranslate(anchor.x, anchor.y)
@@ -229,9 +227,8 @@ private fun AmbientWash(state: ComposerGlowState, modifier: Modifier) {
                     if (weight <= 0.004f) continue
                     wash(shaders[if (washUsesTertiary(phase)) 1 else 0], peak * gen * weight * washLevel(phase, time, state.act))
                 }
-                // 出错与完成的整圈泛色在环境光材质下也收进浮岛内部。
+                // 出错的整圈泛色在环境光材质下也收进浮岛内部。
                 wash(shaders[2], peak * 1.3f * error)
-                wash(shaders[3], peak * 1.1f * success)
             }
         },
     )

@@ -189,7 +189,6 @@ internal class ComposerGlowState {
     var timeSeconds by mutableFloatStateOf(0f)
     val generating = Animatable(0f)
     val error = Animatable(0f)
-    val success = Animatable(0f)
     /** 当前流式强度 0..1。 */
     var act = 0f
     /** 潮汐呼吸在流式阶段的呼吸相位（圈数）。 */
@@ -231,37 +230,11 @@ internal class ComposerGlowState {
 internal val LocalComposerGlow = staticCompositionLocalOf<ComposerGlowState?> { null }
 
 /**
- * 本轮完成闪光的触发判定：本页看到过这一轮在运行（含等待审批），且任务以完成收尾时闪一次；出错、取消都作废。
- * 终态在状态值上可能停留不足一帧，因此以任务结果 [ChatGenerationOutcome] 为准；切换会话或进入时已结束的任务不闪。
- */
-internal class CompletionFlashGate {
-    private var sessionId: String? = null
-    private var observedRun = false
-
-    fun observe(sessionId: String?, running: Boolean) {
-        if (sessionId != this.sessionId) {
-            this.sessionId = sessionId
-            observedRun = running
-            return
-        }
-        if (running) observedRun = true
-    }
-
-    /** 返回本次结果是否触发完成闪光。 */
-    fun onOutcome(outcome: ChatGenerationOutcome): Boolean {
-        if (outcome.sessionId != sessionId || !observedRun) return false
-        observedRun = false
-        return outcome.kind == ChatGenerationOutcome.Kind.COMPLETED
-    }
-}
-
-/**
- * 生成中光效淡入并按当前生成阶段（[LocalGenerationMotion]）变化，结束后淡出；进入错误状态时整圈泛红后退去，
- * [completions] 增加（本轮正常完成）时整圈泛绿后退去。
+ * 生成中光效淡入并按当前生成阶段（[LocalGenerationMotion]）变化，结束后淡出；进入错误状态时整圈泛红后退去。
  * [generating] 在等待审批时也应为 true，浮岛保持第三色慢闪。系统关闭动画或静态预览时不推进，光带停在右上方。
  */
 @Composable
-internal fun rememberComposerGlowState(generating: Boolean, error: Boolean, completions: Int = 0): ComposerGlowState {
+internal fun rememberComposerGlowState(generating: Boolean, error: Boolean): ComposerGlowState {
     val state = remember { ComposerGlowState().apply { headDegrees = 30f } }
     val motion = LocalGenerationMotion.current
     val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
@@ -276,16 +249,6 @@ internal fun rememberComposerGlowState(generating: Boolean, error: Boolean, comp
             state.error.animateTo(0f, tween(2_200, easing = LinearEasing))
         }
     }
-    // 浮岛重建时（离开再回到对话页）计数可能已大于 0，以创建时的计数为基线，不补闪。
-    val flashedCompletions = remember { intArrayOf(completions) }
-    LaunchedEffect(completions, animate) {
-        if (completions <= flashedCompletions[0]) return@LaunchedEffect
-        flashedCompletions[0] = completions
-        if (!animate) return@LaunchedEffect
-        // 生成光效正在淡出，绿光短暂升起接上，比错误闪光更轻更快。
-        state.success.animateTo(1f, tween(220))
-        state.success.animateTo(0f, tween(1_600, easing = LinearEasing))
-    }
     LaunchedEffect(animate, motion) {
         if (!animate) {
             state.act = motion.act(0.37f)
@@ -293,7 +256,7 @@ internal fun rememberComposerGlowState(generating: Boolean, error: Boolean, comp
             return@LaunchedEffect
         }
         // 只在光效可见时逐帧推进；空闲时不申请帧。
-        snapshotFlow { state.generating.value > 0f || state.error.value > 0f || state.success.value > 0f }
+        snapshotFlow { state.generating.value > 0f || state.error.value > 0f }
             .distinctUntilChanged()
             .collectLatest { visible ->
                 if (!visible) return@collectLatest
@@ -314,9 +277,9 @@ internal fun rememberComposerGlowState(generating: Boolean, error: Boolean, comp
  * 极光环行：首字前主色光带 6 秒一圈慢转、光晕减半；流式时转速与亮度随速率增加（Android 13 起光晕用 AGSL）；
  * 工具执行时光带停下、整圈换第三色呼吸；等待审批时整圈第三色慢闪；重试时只剩一圈暗描边等间隔闪。
  * 潮汐呼吸画随各阶段节奏扩散的外圈光晕与渐变描边；灯语样式只留一圈按阶段换色的描边，灯效由 [ComposerIslandLights] 画在浮岛内。
- * 出错时所有样式都整圈泛红、本轮完成时整圈泛绿，深色另加顶边高光。光晕画在浮岛自身边界之外，因此本修饰符须放在裁剪与背景之前。
+ * 出错时所有样式都整圈泛红。光晕画在浮岛自身边界之外，因此本修饰符须放在裁剪与背景之前。
  * 材质（[ComposerSurfaceStyle]）：毛玻璃整体减弱到 [FrostedGlowScale]；环境光不画任何超出浮岛边界的光晕，
- * 只留贴边描边，柔光、出错与完成的泛色由 [ComposerIslandSurface] 画在浮岛内部。
+ * 只留贴边描边，柔光、出错的泛色由 [ComposerIslandSurface] 画在浮岛内部。
  */
 @Composable
 internal fun Modifier.composerIslandGlow(
@@ -335,14 +298,13 @@ internal fun Modifier.composerIslandGlow(
     val palette = rememberMotionPalette()
     val outlinePaints = remember { ComposerOutlinePaints() }
     val errorColor = MaterialTheme.infinityDomainColors.signalDown
-    val successColor = MaterialTheme.infinityDomainColors.signalOn
     val dark = MaterialTheme.infinityDomainColors.isDark
     val colorMid = remember(colorA, colorB) { com.promenar.infinity.ui.common.hueMidpoint(colorA, colorB) }
     // 静态预览不跑着色器；Android 12 只保留描边。着色器按颜色缓存，重组时不重新编译。
     val inspection = LocalInspectionMode.current
-    val haloShader: android.graphics.Shader? = remember(colorA, colorB, errorColor, successColor, dark, inspection, outerHalo) {
+    val haloShader: android.graphics.Shader? = remember(colorA, colorB, errorColor, dark, inspection, outerHalo) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !inspection && outerHalo) {
-            composerHaloShader(colorA, colorB, errorColor, successColor, dark)
+            composerHaloShader(colorA, colorB, errorColor, dark)
         } else {
             null
         }
@@ -371,7 +333,6 @@ internal fun Modifier.composerIslandGlow(
         onDrawWithContent {
             val generating = state.generating.value * glowScale
             val error = state.error.value * glowScale
-            val success = state.success.value * glowScale
             val time = state.timeSeconds
             val aurora = style == ComposerGlowStyle.AURORA
             val wait = motion.weight(GenerationMotionPhase.WAIT)
@@ -379,11 +340,11 @@ internal fun Modifier.composerIslandGlow(
             val tool = motion.weight(GenerationMotionPhase.TOOL)
             val approval = motion.weight(GenerationMotionPhase.APPROVAL)
             val retry = motion.weight(GenerationMotionPhase.RETRY)
-            // 环行光晕只属于极光环行的首字前与流式；出错泛红与完成泛绿所有样式共用。
+            // 环行光晕只属于极光环行的首字前与流式；出错泛红所有样式共用。
             val haloGenerating = if (aurora) generating * (wait * 0.5f + stream * (0.7f + 0.3f * state.act)) * haloScale else 0f
-            if (haloShader != null && (haloGenerating > 0f || error > 0f || success > 0f)) {
+            if (haloShader != null && (haloGenerating > 0f || error > 0f)) {
                 updateHaloShader(
-                    haloShader, state, haloGenerating, error * haloScale, success * haloScale,
+                    haloShader, state, haloGenerating, error * haloScale,
                     if (stream + wait > 0f) lerp(colorB, colorMid, wait / (stream + wait)) else colorB,
                 )
                 drawRect(haloBrush!!, topLeft = Offset(-reach, -reach), size = Size(size.width + reach * 2, size.height + reach * 2))
@@ -441,14 +402,12 @@ private fun composerHaloShader(
     colorA: Color,
     colorB: Color,
     errorColor: Color,
-    successColor: Color,
     dark: Boolean,
 ): android.graphics.Shader = RuntimeShader(ComposerHaloAgsl).apply {
     setFloatUniform("lightMode", if (dark) 0f else 1f)
     setColorUniform("colorA", colorA.toArgb())
     setColorUniform("colorB", colorB.toArgb())
     setColorUniform("colorErr", errorColor.toArgb())
-    setColorUniform("colorOk", successColor.toArgb())
 }
 
 private fun updateHaloGeometry(shader: android.graphics.Shader, center: Offset, size: Size, cornerPx: Float, density: Float) {
@@ -460,20 +419,19 @@ private fun updateHaloGeometry(shader: android.graphics.Shader, center: Offset, 
     runtime.setFloatUniform("density", density)
 }
 
-private fun updateHaloShader(shader: android.graphics.Shader, state: ComposerGlowState, generating: Float, error: Float, success: Float, arcEnd: Color) {
+private fun updateHaloShader(shader: android.graphics.Shader, state: ComposerGlowState, generating: Float, error: Float, arcEnd: Color) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
     val runtime = shader as RuntimeShader
     runtime.setColorUniform("colorB", arcEnd.toArgb())
     runtime.setFloatUniform("time", state.timeSeconds)
     runtime.setFloatUniform("gen", generating)
     runtime.setFloatUniform("err", error)
-    runtime.setFloatUniform("ok", success)
     runtime.setFloatUniform("head", Math.toRadians(state.headDegrees.toDouble()).toFloat())
 }
 
 /**
  * 光晕着色器：以浮岛圆角矩形的外距离衰减，按与光带头部的夹角取一段弧（与描边渐变的 70°–130° 亮段一致），
- * 叠加沿边缘流动的噪声纹理；错误时整圈改为红色并向外多扩散一些，本轮完成时整圈泛绿、扩散略小。光晕在 44dp 内衰减到 0（绘制范围 64dp），
+ * 叠加沿边缘流动的噪声纹理；错误时整圈改为红色并向外多扩散一些。光晕在 44dp 内衰减到 0（绘制范围 64dp），
  * 不会在列表上留下矩形边界。输出为预乘透明度。
  */
 internal const val ComposerHaloAgsl = """
@@ -484,13 +442,11 @@ uniform float density;
 uniform float time;
 uniform float gen;
 uniform float err;
-uniform float ok;
 uniform float head;
 uniform float lightMode;
 layout(color) uniform half4 colorA;
 layout(color) uniform half4 colorB;
 layout(color) uniform half4 colorErr;
-layout(color) uniform half4 colorOk;
 
 float hash(float2 p) { return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
 float noise(float2 p) {
@@ -525,15 +481,13 @@ half4 main(float2 coord) {
     float ga = gen * arc * (core + halo * 0.85);
     float gb = gen * 0.07 * exp(-d * d / 200.0);
     float e = err * (exp(-d * d / 500.0) * (0.55 + 0.6 * tx) + 0.35 * exp(-d / 14.0));
-    float o = ok * (exp(-d * d / 380.0) * (0.45 + 0.5 * tx) + 0.3 * exp(-d / 12.0));
     // 弧段颜色随角度渐变；整圈底光用两色中间值，光带头尾相接处不跳色。
     half3 arcCol = mix(colorA.rgb, colorB.rgb, half(smoothstep(70.0, 130.0, deg)));
     half3 baseCol = mix(colorA.rgb, colorB.rgb, half(0.5));
     float g = ga + gb;
     half3 col = (arcCol * half(ga) + baseCol * half(gb)) / half(max(g, 0.0001));
     col = mix(col, colorErr.rgb, half(clamp(e / (g + e + 0.001), 0.0, 1.0)));
-    col = mix(col, colorOk.rgb, half(clamp(o / (g + e + o + 0.001), 0.0, 1.0)));
-    float a = clamp((g + e + o) * fade * mix(1.0, 0.8, lightMode), 0.0, 1.0);
+    float a = clamp((g + e) * fade * mix(1.0, 0.8, lightMode), 0.0, 1.0);
     // 低亮度区加半级抖动，打散色阶。
     a = clamp(a + (hash(coord) - 0.5) / 255.0 * step(0.002, a), 0.0, 1.0);
     return half4(col * half(a), half(a));

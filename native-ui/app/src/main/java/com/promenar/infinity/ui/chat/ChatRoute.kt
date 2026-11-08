@@ -340,16 +340,9 @@ fun ChatRoute(
     LaunchedEffect(statusHaptics, hapticSnapshot) {
         statusHaptics.next(hapticSnapshot, System.currentTimeMillis())?.let(haptics::perform)
     }
-    val completionFlashGate = remember(chatViewModel) { CompletionFlashGate() }
-    var completionFlashes by remember(chatViewModel) { mutableIntStateOf(0) }
-    val runObserved = uiState.isGenerating || uiState.approvalRequest != null
-    LaunchedEffect(completionFlashGate, uiState.session?.id, runObserved) {
-        completionFlashGate.observe(uiState.session?.id, runObserved)
-    }
     LaunchedEffect(statusHaptics) {
         chatViewModel.generationOutcomes.collect { outcome ->
             statusHaptics.onOutcome(outcome, System.currentTimeMillis())?.let(haptics::perform)
-            if (completionFlashGate.onOutcome(outcome)) completionFlashes++
         }
     }
     val taskCompletionUndo by chatViewModel.taskCompletionUndo.collectAsStateWithLifecycle()
@@ -925,7 +918,6 @@ fun ChatRoute(
             state = ChatScreenState(
                 uiState = uiState,
                 inputText = inputText,
-                completionFlashes = completionFlashes,
                 pendingQuestion = pendingQuestion,
                 pendingSecretInput = pendingSecretInput,
                 secretInputSubmission = secretInputSubmission,

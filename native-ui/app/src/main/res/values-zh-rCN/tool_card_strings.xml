@@ -26,6 +26,7 @@
     <string name="tool_card_job_state_stopped">已停止</string>
     <string name="tool_card_job_state_timed_out">已超时</string>
     <string name="tool_card_job_state_interrupted">已中断</string>
+    <string name="tool_card_job_state_backgrounded">转入后台</string>
     <string name="tool_card_job_state_failed">失败</string>
     <string name="tool_card_job_state_other">%1$s</string>
     <string name="tool_card_job_log_empty">暂无输出</string>

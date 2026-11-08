@@ -26,6 +26,7 @@
     <string name="tool_card_job_state_stopped">Stopped</string>
     <string name="tool_card_job_state_timed_out">Timed out</string>
     <string name="tool_card_job_state_interrupted">Interrupted</string>
+    <string name="tool_card_job_state_backgrounded">In background</string>
     <string name="tool_card_job_state_failed">Failed</string>
     <string name="tool_card_job_state_other">%1$s</string>
     <string name="tool_card_job_log_empty">No output yet</string>
