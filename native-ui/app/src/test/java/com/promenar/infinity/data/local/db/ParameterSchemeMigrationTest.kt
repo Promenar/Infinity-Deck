@@ -61,7 +61,7 @@ class ParameterSchemeMigrationTest {
                 room.parameterSchemeDao().upsert(ParameterSchemeEntity("s2", "p::other", "别的模型", "{}", 2, 2))
                 assertThat(room.parameterSchemeDao().observeForModel("p::m").first().map { it.name }).containsExactly("写代码")
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(35, INFINITY_SCHEMA_V35_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(37, INFINITY_SCHEMA_V37_IDENTITY_HASH)
                 }).isTrue()
             } finally {
                 room.close()

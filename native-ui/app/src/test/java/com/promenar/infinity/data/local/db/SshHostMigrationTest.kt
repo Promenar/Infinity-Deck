@@ -81,7 +81,7 @@ class SshHostMigrationTest {
                     assertThat(columns).containsExactly(
                         "id", "alias", "hostname", "port", "username", "auth_type", "jump_alias",
                         "trusted_key_type", "trusted_fingerprint", "keep_terminal", "local_forward_port",
-                        "forward_host", "forward_port",
+                        "forward_host", "forward_port", "key_entry_id",
                     )
                 }
                 database.query("PRAGMA index_list(ssh_hosts)").use { cursor ->

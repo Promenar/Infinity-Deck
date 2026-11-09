@@ -64,6 +64,7 @@ internal class MemorySecretStore : SecretStore {
     override fun remove(id: SecretId) {
         values.remove(id.value)
     }
+    override fun ids(): Set<SecretId> = values.keys.mapTo(mutableSetOf(), ::SecretId)
 }
 
 /**

@@ -61,7 +61,7 @@ class StateBoardMigrationTest {
                 assertThat(sqlite.version).isEqualTo(37)
                 assertThat(sqlite.query("PRAGMA foreign_key_list(state_board_versions)").use { it.count }).isEqualTo(3)
                 assertThat(sqlite.query("PRAGMA index_list(state_board_versions)").use { it.count }).isEqualTo(2)
-                assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use { it.hasCompleteCurrentRoomSchema(35, INFINITY_SCHEMA_V35_IDENTITY_HASH) }).isTrue()
+                assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use { it.hasCompleteCurrentRoomSchema(37, INFINITY_SCHEMA_V37_IDENTITY_HASH) }).isTrue()
                 assertThat(db.sessionDao().getById("s")!!.title).isEqualTo("旧会话")
                 assertThat(db.messageDao().getById("m")!!.content).isEqualTo("保留正文")
                 StateBoardRepository(db).define("s", "m", "面板", listOf(StateField("hp", "生命值", "number", JsonPrimitive(80))))

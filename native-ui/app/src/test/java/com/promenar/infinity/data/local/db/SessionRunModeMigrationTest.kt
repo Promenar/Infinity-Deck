@@ -70,7 +70,7 @@ class SessionRunModeMigrationTest {
                 assertThat(room.sessionDao().getById("s")!!.updatedAt).isEqualTo(activity)
                 assertThat(room.sessionDao().countLinuxSessions()).isEqualTo(1)
                 assertThat(SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use {
-                    it.hasCompleteCurrentRoomSchema(35, INFINITY_SCHEMA_V35_IDENTITY_HASH)
+                    it.hasCompleteCurrentRoomSchema(37, INFINITY_SCHEMA_V37_IDENTITY_HASH)
                 }).isTrue()
             } finally { room.close() }
         } finally { context.deleteDatabase(name) }
