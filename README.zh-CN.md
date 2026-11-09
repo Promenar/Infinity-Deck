@@ -82,7 +82,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
       内屏一分为三：导航、会话列表、会话。检视器固定时会话自动让位，取消固定就浮在会话上；任务、文件、Git、浏览器一点即达。
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/zh/outer-chat.webp" alt="外屏上正在阅读的 502 修复报告">
+      <p align="center"><img src="assets/screenshots/zh/outer-chat.webp" alt="外屏上正在阅读的 502 修复报告" width="190"></p>
       <h3>合上，接着看</h3>
       合上手机，会话挪到外屏接着走。地铁上把排障报告看完，单手回一句，回到桌前再展开继续。
     </td>

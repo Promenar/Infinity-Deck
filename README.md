@@ -82,7 +82,7 @@ On the train or in bed, pick up the phone and keep going.
       The inner screen splits into three — navigation, chat list, conversation. Pin the inspector and the chat makes room for it; unpin it and it floats over the chat. Tasks, files, Git and the browser are one tap away.
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report mid-read">
+      <p align="center"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report mid-read" width="190"></p>
       <h3>Fold it and carry on</h3>
       Close the phone and the chat moves to the cover screen. Finish reading the incident report on the train, answer with one hand, unfold to go deeper when you're back.
     </td>
