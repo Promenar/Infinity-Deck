@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.41.0-beta] - 2026-11-10
+
 ### 新增
 
 - 钥匙串数据层：新增自定义、网站登录与 SSH 私钥条目，值只存加密存储；统一汇总 Git、SSH 登录密码、提供商与各服务密钥，并记录每项最近 200 次使用。
