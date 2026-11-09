@@ -25,6 +25,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.HttpAuthHandler
+import com.promenar.infinity.data.tailnet.WebViewTailnetProxy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.webkit.ProfileStore
@@ -433,6 +435,12 @@ internal class AgentBrowserTab(
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
             if (request.isForMainFrame) mainFrameError = error.description?.toString() ?: "error ${error.errorCode}"
+        }
+
+        override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String?, realm: String?) {
+            // 内置 Tailscale 代理的 407 质询只在此应答；网站自身的认证质询照旧取消。
+            if (WebViewTailnetProxy.installed?.proceedIfProxyChallenge(handler, host, realm) == true) return
+            super.onReceivedHttpAuthRequest(view, handler, host, realm)
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {

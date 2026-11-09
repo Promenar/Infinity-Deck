@@ -1,5 +1,10 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -51,6 +56,8 @@ fun InfinityPageLayout(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    // 可滚动页的正文从毛玻璃顶栏下滚过；不可滚动页（终端等）正文仍从顶栏下沿开始。
+    val backdrop = rememberBackdropSource(enabled = showTopBar && scrollable)
     // 检视器是会话内的浮动卡片，不贴系统栏，不再留系统栏内边距。
     val insets = if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) WindowInsets(0) else WindowInsets.systemBars
 
@@ -60,7 +67,7 @@ fun InfinityPageLayout(
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (showTopBar) TopAppBar(
+            if (showTopBar) FrostedTopBar(backdrop) { TopAppBar(
                 title = {
                     Column(modifier = Modifier.padding(start = if (onBack != null) 0.dp else 4.dp)) {
                         InfinityHeaderTitle(
@@ -85,19 +92,32 @@ fun InfinityPageLayout(
                 },
                 actions = { actions() },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
                 ),
                 scrollBehavior = scrollBehavior,
                 // 顶栏只吃顶部与左右的系统栏；整组 systemBars 会把底部导航条的高度也垫进顶栏下方。
                 windowInsets = insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-            )
+            ) }
         },
         contentWindowInsets = insets,
     ) { paddingValues ->
+        val layoutDirection = LocalLayoutDirection.current
+        val topInset = paddingValues.calculateTopPadding()
+        // 正文延伸到毛玻璃顶栏后方时，顶栏高度改为滚动内容的上留白。
+        val underTopBar = backdrop != null
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .backdropSource(backdrop)
+                .padding(
+                    start = paddingValues.calculateStartPadding(layoutDirection),
+                    top = if (underTopBar) 0.dp else topInset,
+                    end = paddingValues.calculateEndPadding(layoutDirection),
+                    bottom = paddingValues.calculateBottomPadding(),
+                )
+                // 已让出的系统栏不再计入键盘内边距，否则键盘弹出时导航栏高度被算两次。
+                .consumeWindowInsets(paddingValues)
                 .then(if (imePadding) Modifier.imePadding() else Modifier),
             contentAlignment = Alignment.TopCenter,
         ) {
@@ -107,6 +127,7 @@ fun InfinityPageLayout(
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(top = if (underTopBar) topInset else 0.dp)
                     .padding(
                         bodyPadding ?: PaddingValues(
                             start = InfinitySpacing.ScreenHorizontal,

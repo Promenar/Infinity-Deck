@@ -22,6 +22,10 @@ func (f *fakeDirectory) Peers(ctx context.Context, refresh bool) []Peer {
 	return f.peers
 }
 
+func noDNS(context.Context, string) ([]netip.Addr, error) {
+	return nil, errors.New("test DNS unavailable")
+}
+
 func samplePeers() []Peer {
 	return []Peer{
 		{ShortName: "nas", DNSName: "nas.tail1234.ts.net", HostName: "synology", IPs: []netip.Addr{netip.MustParseAddr("100.101.102.103"), netip.MustParseAddr("fd7a:115c:a1e0::1")}, Online: true},
@@ -44,7 +48,7 @@ func TestIsTailnetAddr(t *testing.T) {
 
 func TestResolveRoutes(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "tail1234.ts.net", peers: samplePeers()}
-	r := &Router{Directory: dir}
+	r := &Router{Directory: dir, LookupIP: noDNS}
 	cases := []struct {
 		host    string
 		tailnet bool
@@ -82,7 +86,7 @@ func TestCustomControlServerSuffix(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "home.example.org", peers: []Peer{
 		{ShortName: "box", DNSName: "box.home.example.org", IPs: []netip.Addr{netip.MustParseAddr("100.70.0.2")}},
 	}}
-	r := &Router{Directory: dir}
+	r := &Router{Directory: dir, LookupIP: noDNS}
 	if route := r.Resolve(context.Background(), "box.home.example.org"); !route.Tailnet || route.Addr.String() != "100.70.0.2" {
 		t.Fatalf("Headscale 后缀应经 tailnet：%+v", route)
 	}
@@ -108,7 +112,7 @@ func (d *recordingDial) dial(ctx context.Context, network, address string) (net.
 func TestDialSplitsTraffic(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "tail1234.ts.net", peers: samplePeers()}
 	tail, direct := &recordingDial{}, &recordingDial{}
-	r := &Router{Directory: dir, Tailnet: tail.dial, Direct: direct.dial}
+	r := &Router{Directory: dir, Tailnet: tail.dial, Direct: direct.dial, LookupIP: noDNS}
 
 	if _, err := r.Dial(context.Background(), "tcp", "nas:5666"); err != nil {
 		t.Fatal(err)
@@ -143,9 +147,52 @@ func TestDialSplitsTraffic(t *testing.T) {
 
 func TestShortNameMissRefreshesPeersOnce(t *testing.T) {
 	dir := &fakeDirectory{running: true, suffix: "tail1234.ts.net", peers: samplePeers()}
-	r := &Router{Directory: dir}
+	r := &Router{Directory: dir, LookupIP: noDNS}
 	r.Resolve(context.Background(), "printer")
 	if dir.reads != 2 {
 		t.Fatalf("短名未命中时应刷新一次节点列表，读取 %d 次", dir.reads)
+	}
+}
+
+func TestOrdinaryDomainResolution(t *testing.T) {
+	dir := &fakeDirectory{running: true}
+	tail, direct := &recordingDial{}, &recordingDial{}
+	lookups := 0
+	r := &Router{Directory: dir, Tailnet: tail.dial, Direct: direct.dial,
+		LookupIP: func(ctx context.Context, host string) ([]netip.Addr, error) {
+			lookups++
+			switch host {
+			case "tail.example":
+				return []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("100.70.0.1")}, nil
+			case "public.example":
+				return []netip.Addr{netip.MustParseAddr("8.8.8.8")}, nil
+			default:
+				return nil, errors.New("lookup failed")
+			}
+		}}
+	for _, tc := range []struct{ host, wantTail, wantDirect string }{
+		{"tail.example:443", "100.70.0.1:443", ""},
+		{"public.example:80", "", "public.example:80"},
+		{"bad.example:80", "", "bad.example:80"},
+		{"localhost:8888", "", "localhost:8888"},
+	} {
+		tail.addr, direct.addr = "", ""
+		conn, err := r.Dial(context.Background(), "tcp", tc.host)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.host, err)
+		}
+		conn.Close()
+		if tail.addr != tc.wantTail || direct.addr != tc.wantDirect {
+			t.Errorf("%s: tail=%q direct=%q", tc.host, tail.addr, direct.addr)
+		}
+	}
+	if lookups != 3 {
+		t.Errorf("localhost 不应查询 DNS: %d", lookups)
+	}
+	dir.running = false
+	tail.addr, direct.addr = "", ""
+	_, err := r.Dial(context.Background(), "tcp", "tail.example:443")
+	if !errors.Is(err, errTailnetNotRunning) || tail.addr != "" || direct.addr != "" {
+		t.Errorf("离线时应拒绝并禁止直连: %v tail=%q direct=%q", err, tail.addr, direct.addr)
 	}
 }

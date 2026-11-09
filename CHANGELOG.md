@@ -14,6 +14,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.40.0-beta] - 2026-11-10
+
+### 新增
+
+- 内置浏览器在内置 Tailscale 连接时可打开 tailnet 内的网页：IP、MagicDNS 全名、节点短名，以及 DNS 解析到 tailnet 地址的普通域名；Tailscale 断开后照常上网。
+- 地址栏与 `browser_open` 输入 `localhost:8888`、IP 或 tailnet 地址时默认用 `http://`，可直接打开 Linux 环境与 Termux 在本机端口上的服务。
+
+### 变更
+
+- 二级页顶栏改为半透明毛玻璃，内容从顶栏下方滚过时模糊透出。
+- 添加或编辑提供商时，键盘弹出后底部按钮紧贴键盘上方，不再留出一大片空白；键盘收起后底部手势区不变。
+
 ## [0.39.1-beta] - 2026-11-09
 
 ### 修复

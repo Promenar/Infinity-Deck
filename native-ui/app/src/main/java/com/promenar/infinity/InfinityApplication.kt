@@ -212,7 +212,14 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             stateDirectory = File(noBackupFilesDir, "tailnet"),
             hostname = com.promenar.infinity.data.tailnet.TailnetManager.hostnameFor(android.os.Build.MODEL),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-        ).also { com.promenar.infinity.data.tailnet.InstalledTailnetRouting.routing = it }
+        ).also { manager ->
+            com.promenar.infinity.data.tailnet.InstalledTailnetRouting.routing = manager
+            // 内置 Tailscale 运行时，应用内 WebView 经本机代理访问 tailnet；停止时撤销。
+            com.promenar.infinity.data.tailnet.WebViewTailnetProxy.create(manager).also { proxy ->
+                com.promenar.infinity.data.tailnet.WebViewTailnetProxy.installed = proxy
+                proxy.start(startupScope, manager.state)
+            }
+        }
     }
     /** 模型请求发往 tailnet 时等待内置 Tailscale 接入的关口。 */
     val tailnetConnectGate: com.promenar.infinity.data.tailnet.TailnetConnectGate by lazy {

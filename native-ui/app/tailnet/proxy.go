@@ -246,7 +246,8 @@ func isConnRefused(err error) bool {
 // serveHTTP 处理 CONNECT 隧道与 http:// 绝对 URI 的转发请求。
 func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if !p.authorized(r.Header.Get("Proxy-Authorization")) {
-		w.Header().Set("Proxy-Authenticate", `Basic realm="`+proxyRealm+`"`)
+		// realm 带上本次代理用户名，WebView 据此只对本代理的质询应答凭据，不误发给同为本机地址的网站。
+		w.Header().Set("Proxy-Authenticate", `Basic realm="`+proxyRealm+"-"+p.Credentials.User+`"`)
 		http.Error(w, "需要代理认证", http.StatusProxyAuthRequired)
 		return
 	}

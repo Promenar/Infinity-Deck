@@ -13,7 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
@@ -649,7 +655,7 @@ fun ProviderFormScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ProviderFormContent(
     state: ProviderFormUiState,
@@ -668,7 +674,8 @@ internal fun ProviderFormContent(
         onBack = actions.onBack,
         modifier = modifier,
     ) { contentPadding ->
-        Column(modifier = Modifier.fillMaxSize().imePadding()) {
+        // 键盘弹出时只让出键盘高出导航栏的部分：底部按钮栏自带导航栏内边距，整段 imePadding 会把导航栏算两次。
+        Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars))) {
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth().testTag(PROVIDER_FORM_LIST_TAG),
                 state = listState,
@@ -746,13 +753,18 @@ internal fun ProviderFormContent(
                         start = InfinitySpacing.ScreenHorizontal,
                         top = InfinitySpacing.Small,
                         end = InfinitySpacing.ScreenHorizontal,
-                        bottom = contentPadding.calculateBottomPadding(),
+                        // 键盘弹出时按钮贴近键盘，只留小间距；收起后保持原有手势区留白。
+                        bottom = contentPadding.calculateBottomPadding() -
+                            if (WindowInsets.isImeVisible) ProviderFormActionsImeTrim else 0.dp,
                     ),
                 )
             }
         }
     }
 }
+
+/** 键盘弹出时从底部按钮栏留白中减去的高度：骨架给的 24dp 底部留白减到 12dp。 */
+private val ProviderFormActionsImeTrim = 12.dp
 
 /** 表单中按条件出现的分组与提示：出现时淡入、其余分组平滑让位。 */
 private fun LazyListScope.animatedFormItem(key: String, content: @Composable () -> Unit) =

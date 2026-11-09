@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat.manager.skills
 
+import com.promenar.infinity.data.tailnet.WebViewTailnetProxy
 import com.promenar.infinity.data.browser.BrowserActionException
 import com.promenar.infinity.data.browser.BrowserArgumentException
 import com.promenar.infinity.data.browser.BrowserArguments
@@ -35,7 +36,7 @@ fun browserTools(
 ): List<SkillDefinition> = listOf(
     BrowserSkill(controller, networkPolicy, BROWSER_OPEN,
         "Open a web page in the user's in-app Agent browser and return a snapshot of its interactive elements. Use it for pages that need clicking, typing, scripts or a login; use web_fetch to just read a static page. The browser keeps its own cookies, separate from other apps.",
-        """{"type":"object","properties":{"url":{"type":"string","description":"An http or https address. A bare host name is opened with https."}},"required":["url"],"additionalProperties":false}"""),
+        """{"type":"object","properties":{"url":{"type":"string","description":"An http or https address. Without a scheme, localhost, IP literals, MagicDNS names and short host names use http; other domains use https."}},"required":["url"],"additionalProperties":false}"""),
     BrowserSkill(controller, networkPolicy, BROWSER_SNAPSHOT,
         "Read the current page of the Agent browser: interactive elements with refs such as e12, headings, and optionally the readable main text in chunks.",
         """{"type":"object","properties":{"include_text":{"type":"boolean","description":"Also return the page's readable main text. Defaults to false."},"text_offset":{"type":"integer","description":"Non-negative character offset for the next text chunk, from the previous snapshot."}},"additionalProperties":false}"""),
@@ -87,9 +88,13 @@ private class BrowserSkill(
     private suspend fun open(args: JsonObject, sessionId: String): ToolResult {
         val url = BrowserArguments.url(args)
         val endpoint = networkPolicy.validate(url, AgentNetworkTool.WEB_FETCH)
-        // WebView 不经过应用内 Tailscale 代理，tailnet 地址在浏览器里不可达。
-        if (endpoint.target == NetworkTargetClass.TAILNET) {
-            return error("TAILNET_UNSUPPORTED", "The Agent browser cannot reach tailnet addresses.", "Use web_fetch for tailnet pages.")
+        // tailnet 目标靠 WebView 进程级代理覆盖经应用内 Tailscale 代理访问；未运行时 validate 已返回 TAILNET_OFFLINE。
+        if (endpoint.target == NetworkTargetClass.TAILNET && WebViewTailnetProxy.installed?.active != true) {
+            return if (WebViewTailnetProxy.installed?.supported == false) {
+                error("TAILNET_BROWSER_UNSUPPORTED", "This device's WebView cannot use the in-app Tailscale proxy.", "Use web_fetch for tailnet pages, or update Android System WebView.")
+            } else {
+                error("TAILNET_OFFLINE", AgentNetworkPolicy.TAILNET_GUIDANCE, "Connect built-in Tailscale, then retry.")
+            }
         }
         return success(BrowserSnapshotFormatter.format(controller.open(sessionId, url)))
     }

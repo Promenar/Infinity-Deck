@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -57,6 +58,8 @@ fun InfinitySettingsPageLayout(
     actions: @Composable RowScope.() -> Unit = {},
     // 主标签页用自定义页头（如 [InfinityTabHeader]）替换标准顶栏；页头自行处理状态栏内边距。
     header: (@Composable () -> Unit)? = null,
+    // 自定义页头是否也用毛玻璃底：二级页自带的普通顶栏传 true，并把顶栏底色设为透明。
+    headerFrosted: Boolean = false,
     // 二级页顶栏搜索：给出时顶栏右侧出现放大镜，点开后标题位换成搜索框。
     search: InfinityPageSearch? = null,
     content: @Composable (PaddingValues) -> Unit,
@@ -77,17 +80,24 @@ fun InfinitySettingsPageLayout(
         }
         return
     }
+    // 标准顶栏是毛玻璃：正文录进背景来源，从顶栏下滚过时透出模糊内容。主标签页自定义页头不参与。
+    val frosted = if (header != null) headerFrosted else showTopBar
+    val backdrop = rememberBackdropSource(enabled = frosted)
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.systemBars,
         topBar = {
-            if (header != null) header() else if (showTopBar && search != null) InfinitySearchTopBar(
-                title = title,
-                search = search,
-                onBack = onBack,
-                actions = actions,
-            ) else if (showTopBar) TopAppBar(
+            if (header != null) {
+                if (headerFrosted) FrostedTopBar(backdrop) { header() } else header()
+            } else if (showTopBar) FrostedTopBar(backdrop) {
+                if (search != null) InfinitySearchTopBar(
+                    title = title,
+                    search = search,
+                    onBack = onBack,
+                    actions = actions,
+                    containerColor = Color.Transparent,
+                ) else TopAppBar(
                 title = {
                     InfinityHeaderTitle(
                         text = title,
@@ -103,12 +113,14 @@ fun InfinitySettingsPageLayout(
                 },
                 actions = actions,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
-            ) else {
+            )
+            } else {
                 // 无顶栏时用页面背景色垫住状态栏，滚动内容不会从状态栏图标下方穿过。
                 Spacer(
                     Modifier
@@ -119,13 +131,15 @@ fun InfinitySettingsPageLayout(
             }
         },
     ) { scaffoldPadding ->
-        content(
-            PaddingValues(
-                start = horizontalContentPadding,
-                top = scaffoldPadding.calculateTopPadding(),
-                end = horizontalContentPadding,
-                bottom = scaffoldPadding.calculateBottomPadding() + InfinitySpacing.XLarge,
-            ),
-        )
+        Box(Modifier.fillMaxSize().backdropSource(backdrop)) {
+            content(
+                PaddingValues(
+                    start = horizontalContentPadding,
+                    top = scaffoldPadding.calculateTopPadding(),
+                    end = horizontalContentPadding,
+                    bottom = scaffoldPadding.calculateBottomPadding() + InfinitySpacing.XLarge,
+                ),
+            )
+        }
     }
 }
