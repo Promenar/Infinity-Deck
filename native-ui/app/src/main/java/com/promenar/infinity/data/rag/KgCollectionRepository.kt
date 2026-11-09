@@ -268,6 +268,12 @@ class KgCollectionRepository(private val database: InfinityDatabase) {
         }
         val descriptor = documentDescriptor(docId)
         if (memberCollection(docId) != descriptor.id) relocateDocument(docId, descriptor)
+        else if (descriptor.kind == "work" && descriptor.rootRef != null) {
+            database.openHelper.writableDatabase.execSQL(
+                "UPDATE kg_collections SET title=? WHERE id=? AND root_ref=?",
+                arrayOf(descriptor.title, descriptor.id, descriptor.rootRef),
+            )
+        }
     }
 
     private suspend fun relocateDocument(docId: String, target: Descriptor) {

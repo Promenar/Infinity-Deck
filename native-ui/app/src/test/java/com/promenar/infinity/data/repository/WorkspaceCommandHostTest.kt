@@ -86,16 +86,37 @@ class WorkspaceCommandHostTest {
         repo.reconcileSessionWorkspace(root.uuid, "s")
         val prior = checkNotNull(repo.getByUuid(root.uuid, entry.uuid))
         db.fileEntryDao().update(prior.copy(vectorizedAt = prior.updatedAt, kgExtractedAt = prior.updatedAt))
+        events.clear()
         val version = checkNotNull(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash))
         val finish = repo.beginSessionCommand("s")
         try { check(File(workspace, "a.txt").renameTo(File(workspace, "b.txt"))) } finally { finish() }
         repo.reconcileSessionWorkspace(root.uuid, "s")
         val moved = checkNotNull(repo.getByMaterializedPath(root.uuid, "/b.txt"))
         assertThat(moved.uuid).isEqualTo(entry.uuid)
-        assertThat(moved.vectorizedAt).isEqualTo(prior.updatedAt)
-        assertThat(moved.kgExtractedAt).isEqualTo(prior.updatedAt)
+        assertThat(moved.vectorizedAt).isEqualTo(moved.updatedAt)
+        assertThat(moved.kgExtractedAt).isEqualTo(moved.updatedAt)
+        assertThat(events).isEmpty()
         assertThat(db.fileVersionDao().getByHash(root.uuid, entry.uuid, entry.hash)).isEqualTo(version)
         assertThat(File(version.contentPath).readText()).isEqualTo("old")
+    }
+
+    @Test
+    fun `命令复制并删除原文件时唯一同哈希匹配保留索引`() = runBlocking<Unit> {
+        val root = root()
+        val entry = repo.createFileInWorkspace(root.uuid, "copy-move", "a.txt", "content", root.uuid, "/a.txt")
+        repo.confirmCreatedEntry(root.uuid, entry.uuid)
+        db.fileEntryDao().update(entry.copy(vectorizedAt = entry.updatedAt, kgExtractedAt = entry.updatedAt))
+        events.clear()
+        val outcome = repo.runCommandInWorkspace(root.uuid, "s") { physical ->
+            File(physical, "a.txt").copyTo(File(physical, "b.txt"))
+            check(File(physical, "a.txt").delete())
+        }
+        assertThat(outcome.reconcileError).isNull()
+        val moved = requireNotNull(repo.getByMaterializedPath(root.uuid, "/b.txt"))
+        assertThat(moved.uuid).isEqualTo(entry.uuid)
+        assertThat(moved.vectorizedAt).isEqualTo(moved.updatedAt)
+        assertThat(moved.kgExtractedAt).isEqualTo(moved.updatedAt)
+        assertThat(events).isEmpty()
     }
 
     @Test

@@ -185,7 +185,7 @@ data class WorkspaceReconcilePlan(
 
 object WorkspaceReconcilePlanner {
     /**
-     * @param before 命令前快照或有效持久基线；缺失时全部文件重算哈希且不识别移动。
+     * @param before 命令前快照或有效持久基线；缺失时全部文件重算哈希。
      * @param hash 读取当前文件的 SHA-256；文件已消失时返回 null。
      */
     fun plan(
@@ -253,6 +253,21 @@ object WorkspaceReconcilePlanner {
                 val current = hash(path) ?: continue
                 inserts += PlannedWorkspaceInsert(path, isDirectory = false, sizeBytes = node.sizeBytes, hash = current)
             }
+        }
+
+        // 仅匹配已消失的旧路径与新出现路径，双方哈希均唯一才沿用身份。
+        val missingByHash = removed.filter { !it.isDirectory && it.path !in available && it.hash.isNotBlank() }
+            .groupBy { it.hash }
+        val newByHash = inserts.filter { !it.isDirectory && it.path !in indexedPaths && it.hash.isNotBlank() }
+            .groupBy { it.hash }
+        for ((contentHash, oldCandidates) in missingByHash) {
+            val newCandidates = newByHash[contentHash] ?: continue
+            if (oldCandidates.size != 1 || newCandidates.size != 1) continue
+            val old = oldCandidates.single()
+            val new = newCandidates.single()
+            moves += PlannedWorkspaceMove(old.uuid, old.path, new.path)
+            removed.remove(old)
+            inserts.remove(new)
         }
 
         val unsupported = after.nodes.filter { (path, node) ->

@@ -9,6 +9,11 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.local.db.entity.VectorEntity
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -42,6 +47,49 @@ interface FileEntryDao {
     suspend fun commitCommandReconcile(inserts: List<FileEntry>, updates: List<FileEntry>) {
         if (inserts.isNotEmpty()) insertAllAbort(inserts)
         if (updates.isNotEmpty()) updateAll(updates)
+    }
+
+    @Query("SELECT COUNT(*) FROM vectorization_tasks WHERE workspace_root_uuid = :root AND doc_id = :id AND status IN ('pending', 'running', 'processing', 'extracting_source', 'chunking', 'vectorizing', 'saving', 'extracting')")
+    suspend fun countActivePathIndexTasks(root: String, id: String): Int
+
+    @Query("SELECT * FROM vectors WHERE file_uuid = :id OR (file_uuid IS NULL AND doc_id = :id)")
+    suspend fun vectorsForPathChange(id: String): List<VectorEntity>
+
+    @Query("UPDATE vectors SET metadata = :metadata WHERE id = :id")
+    suspend fun updatePathVectorMetadata(id: String, metadata: String)
+
+    /** 路径提交、任务状态判断与向量标题更新在同一数据库事务内完成。 */
+    @Transaction
+    suspend fun commitPathChanges(
+        inserts: List<FileEntry>, updates: List<FileEntry>, originals: List<FileEntry>, verified: Set<String>,
+    ): List<FileEntry> {
+        val previous = originals.associateBy { it.uuid }
+        val reindex = mutableListOf<FileEntry>()
+        val finalUpdates = updates.map { proposed ->
+            val read = previous[proposed.uuid]
+            if (read == null || proposed.isDirectory) proposed else {
+                // 索引任务可能在根锁外写回完成时间：以事务内的最新行为准，内容哈希变了就不复用。
+                val old = getActiveByUuid(read.workspaceRootUuid, read.uuid) ?: read
+                val reusable = old.uuid in verified && old.hash == read.hash &&
+                    countActivePathIndexTasks(old.workspaceRootUuid, old.uuid) == 0
+                val final = if (reusable) proposed.copy(
+                    vectorizedAt = old.vectorizedAt?.let { if (it >= old.updatedAt) proposed.updatedAt else it },
+                    kgExtractedAt = old.kgExtractedAt?.let { if (it >= old.updatedAt) proposed.updatedAt else it },
+                ) else proposed.copy(vectorizedAt = null, kgExtractedAt = null).also { reindex += it }
+                if (old.name != final.name) {
+                    vectorsForPathChange(old.uuid).forEach { vector ->
+                        val json = runCatching { Json.parseToJsonElement(vector.metadata ?: "").jsonObject }.getOrNull()
+                        if (json != null && "docTitle" in json) {
+                            updatePathVectorMetadata(vector.id, JsonObject(json + ("docTitle" to JsonPrimitive(final.name))).toString())
+                        }
+                    }
+                }
+                final
+            }
+        }
+        if (inserts.isNotEmpty()) insertAllAbort(inserts)
+        if (finalUpdates.isNotEmpty()) updateAll(finalUpdates)
+        return reindex
     }
 
     @Delete

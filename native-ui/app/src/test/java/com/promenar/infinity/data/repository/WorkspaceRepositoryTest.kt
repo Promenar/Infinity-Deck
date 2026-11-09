@@ -911,7 +911,7 @@ class WorkspaceRepositoryTest {
     }
 
     @Test
-    fun `rename changed file clears derived indexing timestamps in the same commit`() = runBlocking<Unit> {
+    fun `rename retains stale derived timestamps in the same commit`() = runBlocking<Unit> {
         insertSession("session-a", rootA.absolutePath)
         val root = repo.ensureSessionRoot("session-a")
         val created = repo.createFileInWorkspace(root.uuid, "file", "a.txt", "A", root.uuid, "/a.txt")
@@ -922,12 +922,12 @@ class WorkspaceRepositoryTest {
 
         assertThat((result as RenameResult.Success).changed).isTrue()
         val renamed = db.fileEntryDao().getByUuid(root.uuid, created.uuid)!!
-        assertThat(renamed.vectorizedAt).isNull()
-        assertThat(renamed.kgExtractedAt).isNull()
+        assertThat(renamed.vectorizedAt).isEqualTo(200L)
+        assertThat(renamed.kgExtractedAt).isEqualTo(300L)
     }
 
     @Test
-    fun `directory rename keeps every descendant epoch monotonic and clears derived timestamps`() = runBlocking<Unit> {
+    fun `directory rename keeps every descendant epoch monotonic and retains stale timestamps`() = runBlocking<Unit> {
         insertSession("session-a", rootA.absolutePath)
         val root = repo.ensureSessionRoot("session-a")
         val folder = repo.createDirectoryInWorkspace(root.uuid, "folder", "docs", root.uuid, "/docs")
@@ -959,16 +959,9 @@ class WorkspaceRepositoryTest {
         val renamedChild = db.fileEntryDao().getByUuid(root.uuid, child.uuid)!!
         assertThat(renamedChild.materializedPath).isEqualTo("/renamed-docs/a.txt")
         assertThat(renamedChild.updatedAt).isEqualTo(childEpoch + 1L)
-        assertThat(renamedChild.vectorizedAt).isNull()
-        assertThat(renamedChild.kgExtractedAt).isNull()
-        assertThat((result as RenameResult.Success).affectedTargets)
-            .containsExactly(
-                com.promenar.infinity.domain.repository.RenameIndexTarget(
-                    child.uuid,
-                    child.hash,
-                    childEpoch + 1L,
-                ),
-            )
+        assertThat(renamedChild.vectorizedAt).isEqualTo(400L)
+        assertThat(renamedChild.kgExtractedAt).isEqualTo(500L)
+        assertThat((result as RenameResult.Success).affectedTargets).isEmpty()
     }
 
     @Test

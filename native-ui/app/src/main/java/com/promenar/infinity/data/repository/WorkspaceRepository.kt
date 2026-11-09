@@ -683,20 +683,25 @@ class WorkspaceRepository(
             val newPath = joinMaterializedPath(parent.materializedPath, entry.name)
             if (newPath == entry.materializedPath) return@withRootMutation
             requireMoveTargetAbsent(entry, newPath)
-            val now = System.currentTimeMillis()
+            val now = clock()
             val oldPrefix = entry.materializedPath
-            val updates = mutableListOf(entry.copy(parentUuid = newParentUuid, materializedPath = newPath, updatedAt = now))
+            val updates = mutableListOf(entry.copy(parentUuid = newParentUuid, materializedPath = newPath, updatedAt = nextMutationEpoch(now, entry.updatedAt)))
             if (entry.isDirectory) {
                 dao.getSubtree(workspaceRootUuid, oldPrefix, entry.inRecycleBin)
                     .filterNot { it.uuid == uuid }
                     .forEach { child ->
                         updates += child.copy(
                             materializedPath = newPath + child.materializedPath.removePrefix(oldPrefix),
-                            updatedAt = now,
+                            updatedAt = nextMutationEpoch(now, child.updatedAt),
                         )
                     }
             }
-            commitMove(WorkspaceMutationType.MOVE, entry, oldPrefix, newPath, updates)
+            val reindex = commitMove(WorkspaceMutationType.MOVE, entry, oldPrefix, newPath, updates, preserveIndexes = true)
+            reindex.forEach { file ->
+                try { indexEventSink.publish(FileIndexEvent.Changed(workspaceRootUuid, file.uuid, file.hash, file.updatedAt)) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { InfinityLogger.logError("WorkspaceMove.publishIndex", failure) }
+            }
         } }
 
     override suspend fun rename(
@@ -740,8 +745,6 @@ class WorkspaceRepository(
                             name = newName,
                             materializedPath = newPath,
                             updatedAt = nextEpoch,
-                            vectorizedAt = null,
-                            kgExtractedAt = null,
                         ),
                     )
                     if (entry.isDirectory) {
@@ -751,20 +754,18 @@ class WorkspaceRepository(
                                 updates += child.copy(
                                     materializedPath = newPath + child.materializedPath.removePrefix(oldPrefix),
                                     updatedAt = nextMutationEpoch(commitClock, child.updatedAt),
-                                    vectorizedAt = null,
-                                    kgExtractedAt = null,
                                 )
                             }
                     }
                     currentCoroutineContext().ensureActive()
                     withContext(NonCancellable) {
-                        commitMove(WorkspaceMutationType.RENAME, entry, oldPrefix, newPath, updates)
+                        val reindex = commitMove(WorkspaceMutationType.RENAME, entry, oldPrefix, newPath, updates, preserveIndexes = true)
                         RenameResult.Success(
                             name = newName,
-                            targetHash = entry.hash,
+                            targetHash = reindex.firstOrNull { it.uuid == entry.uuid }?.hash ?: entry.hash,
                             targetEpoch = nextEpoch,
                             changed = true,
-                            affectedTargets = updates.filterNot { it.isDirectory }.map { updated ->
+                            affectedTargets = reindex.map { updated ->
                                 RenameIndexTarget(
                                     fileUuid = updated.uuid,
                                     targetHash = updated.hash,
@@ -807,20 +808,20 @@ class WorkspaceRepository(
             val oldPrefix = entry.materializedPath
             val updates = mutableListOf(entry.copy(
                 parentUuid = newParentUuid, name = newName, materializedPath = destination,
-                updatedAt = epoch, vectorizedAt = null, kgExtractedAt = null,
+                updatedAt = epoch,
             ))
             if (entry.isDirectory) {
                 dao.getSubtree(workspaceRootUuid, oldPrefix, entry.inRecycleBin).filterNot { it.uuid == uuid }.forEach { child ->
                     updates += child.copy(
                         materializedPath = destination + child.materializedPath.removePrefix(oldPrefix),
-                        updatedAt = nextMutationEpoch(commitClock, child.updatedAt), vectorizedAt = null, kgExtractedAt = null,
+                        updatedAt = nextMutationEpoch(commitClock, child.updatedAt),
                     )
                 }
             }
             currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
-                commitMove(WorkspaceMutationType.MOVE, entry, oldPrefix, destination, updates)
-                RenameResult.Success(newName, entry.hash, epoch, true, updates.filterNot { it.isDirectory }.map {
+                val reindex = commitMove(WorkspaceMutationType.MOVE, entry, oldPrefix, destination, updates, preserveIndexes = true)
+                RenameResult.Success(newName, reindex.firstOrNull { it.uuid == entry.uuid }?.hash ?: entry.hash, epoch, true, reindex.map {
                     RenameIndexTarget(it.uuid, it.hash, it.updatedAt)
                 })
             }
@@ -1057,13 +1058,21 @@ class WorkspaceRepository(
                 updatedAt = nextMutationEpoch(now, entry.updatedAt),
             )
         }
+        val verifiedMoves = mutableSetOf<String>()
         plan.moves.forEach { move ->
-            val entry = updates[move.uuid] ?: byUuid.getValue(move.uuid)
+            val original = byUuid.getValue(move.uuid)
+            val entry = updates[move.uuid] ?: original
+            val actual = if (entry.isDirectory) null else runCatching {
+                fileOps.inspect(rootPath, relative(move.to))
+            }.getOrNull()
+            if (actual?.kind == "file" && actual.sha256 == original.hash) verifiedMoves += move.uuid
             updates[move.uuid] = entry.copy(
                 name = move.to.substringAfterLast('/'),
                 materializedPath = move.to,
                 parentUuid = parentOf(move.to),
-                updatedAt = nextMutationEpoch(now, entry.updatedAt),
+                hash = actual?.sha256 ?: entry.hash,
+                sizeBytes = if (actual?.kind == "file") actual.sizeBytes else entry.sizeBytes,
+                updatedAt = nextMutationEpoch(now, original.updatedAt),
             )
         }
         byUuid.values.filter { it.uuid !in deleted }.forEach { original ->
@@ -1071,10 +1080,12 @@ class WorkspaceRepository(
             val expectedParent = parentOf(normalizeMaterializedPath(entry.materializedPath))
             if (entry.parentUuid != expectedParent) updates[entry.uuid] = entry.copy(parentUuid = expectedParent)
         }
-        dao.commitCommandReconcile(inserts, updates.values.toList())
+        val movedOriginals = plan.moves.mapNotNull { byUuid[it.uuid] }.filterNot { it.isDirectory }
+        val reindexMoves = dao.commitPathChanges(inserts, updates.values.toList(), movedOriginals, verifiedMoves)
         if (plan.moves.isNotEmpty()) withContext(NonCancellable) { afterMoveCommitted() }
 
-        (inserts + updates.values)
+        val movedIds = plan.moves.mapTo(hashSetOf()) { it.uuid }
+        (inserts + updates.values.filter { it.uuid !in movedIds } + reindexMoves)
             .filter { DocumentReferenceExtractor.supports(it) && !isGitInternalWorkspacePath(it.materializedPath) }
             .forEach { entry ->
                 try {
@@ -1180,10 +1191,14 @@ class WorkspaceRepository(
         sourcePath: String,
         targetPath: String,
         updates: List<FileEntry>,
-    ) {
+        preserveIndexes: Boolean = false,
+    ): List<FileEntry> {
         requireMoveTargetAbsent(entry, targetPath)
         reconcileEntryTree(entry)
         val root = requireRoot(entry.workspaceRootUuid)
+        val originals = if (preserveIndexes) updates.filterNot { it.isDirectory }.mapNotNull {
+            dao.getActiveByUuid(entry.workspaceRootUuid, it.uuid)
+        } else emptyList()
         val staged = prepareMutation(root, type, sourcePath, targetPath, entry.uuid)
         val rollback = try {
             fileOps.move(
@@ -1196,12 +1211,25 @@ class WorkspaceRepository(
             throw failure
         }
         var databaseCommitted = false
+        var reindex = emptyList<FileEntry>()
         try {
-            commitDatabaseMutation(staged) { (updateCommitter ?: dao::updateAll).invoke(updates) }
+            val verified = mutableSetOf<String>()
+            val actualUpdates = if (preserveIndexes) updates.map { updated ->
+                if (updated.isDirectory) updated else {
+                    val identity = runCatching { fileOps.inspect(File(entry.physicalRootPath).toPath(), relative(updated.materializedPath)) }.getOrNull()
+                    if (identity?.kind == "file" && identity.sha256 == updated.hash) verified += updated.uuid
+                    if (identity?.kind == "file" && identity.sha256 != null) updated.copy(hash = identity.sha256, sizeBytes = identity.sizeBytes) else updated
+                }
+            } else updates
+            commitDatabaseMutation(staged) {
+                if (preserveIndexes && updateCommitter == null) reindex = dao.commitPathChanges(emptyList(), actualUpdates, originals, verified)
+                else (updateCommitter ?: dao::updateAll).invoke(actualUpdates)
+            }
             databaseCommitted = true
             rollback.commit()
             completeMutation(staged)
-            if (type == WorkspaceMutationType.MOVE) withContext(NonCancellable) { afterMoveCommitted() }
+            if (type == WorkspaceMutationType.MOVE || type == WorkspaceMutationType.RENAME) withContext(NonCancellable) { afterMoveCommitted() }
+            return reindex
         } catch (failure: Throwable) {
             if (!databaseCommitted) {
                 rollbackPhysicalOrPreserveJournal(rollback, staged, failure)

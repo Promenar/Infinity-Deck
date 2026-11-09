@@ -78,7 +78,7 @@ class PrivateWorkspaceFilesTest {
         directory.deleteRecursively()
     }
 
-    @Test fun `改名保留UUID持久身份版本和物理内容并发布新epoch`() = runBlocking<Unit> {
+    @Test fun `改名保留UUID持久身份版本和物理内容`() = runBlocking<Unit> {
         val source = versionedFile()
         val versions = db.fileVersionDao().getByFile(root.uuid, source.uuid)
         val history = versions.associate { it.contentPath to File(it.contentPath).readBytes().toList() }
@@ -90,22 +90,33 @@ class PrivateWorkspaceFilesTest {
         assertThat(changed.name).isEqualTo("renamed.txt")
         assertThat(changed.materializedPath).isEqualTo("/renamed.txt")
         assertThat(changed.updatedAt).isGreaterThan(source.updatedAt)
-        assertThat(changed.vectorizedAt).isNull()
-        assertThat(changed.kgExtractedAt).isNull()
+        assertThat(changed.vectorizedAt).isEqualTo(source.vectorizedAt)
+        assertThat(changed.kgExtractedAt).isEqualTo(source.kgExtractedAt)
         assertThat(File(directory, "a.txt").exists()).isFalse()
         assertThat(File(directory, "renamed.txt").readText()).isEqualTo("current")
         assertThat(identity("renamed.txt")).isEqualTo(identity)
         assertThat(db.fileVersionDao().getByFile(root.uuid, source.uuid)).isEqualTo(versions)
         assertThat(history.mapValues { File(it.key).readBytes().toList() }).isEqualTo(history)
-        val event = events.single() as FileIndexEvent.Changed
-        assertThat(event.workspaceRootUuid).isEqualTo(root.uuid)
-        assertThat(event.fileUuid).isEqualTo(source.uuid)
-        assertThat(event.contentHash).isEqualTo(source.hash)
-        assertThat(event.targetEpoch).isEqualTo(changed.updatedAt)
+        assertThat(events).isEmpty()
         assertJournal(WorkspaceMutationType.RENAME)
     }
 
-    @Test fun `目录改名对每个后代文件发布索引事件且发布失败不阻断其余事件`() = runBlocking<Unit> {
+    @Test fun `改名遇到在途索引任务时发布新目标`() = runBlocking<Unit> {
+        val source = file("source", "a.txt")
+        db.vectorizationTaskDao().insert(com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity(
+            id = "pending", type = "document_reference", status = "pending", docId = source.uuid,
+            workspaceRootUuid = root.uuid, createdAt = 1, updatedAt = 1,
+        ))
+        service().rename("s", source.uuid, "b.txt")
+        val changed = current(source)
+        val event = events.single() as FileIndexEvent.Changed
+        assertThat(event.fileUuid).isEqualTo(source.uuid)
+        assertThat(event.targetEpoch).isEqualTo(changed.updatedAt)
+        assertThat(changed.vectorizedAt).isNull()
+        assertThat(changed.kgExtractedAt).isNull()
+    }
+
+    @Test fun `目录改名保留后代索引状态并不发布事件`() = runBlocking<Unit> {
         val folder = folder("docs")
         val child = file("child", "a.txt", folder)
         val nested = folder("nested", folder)
@@ -117,14 +128,9 @@ class PrivateWorkspaceFilesTest {
         files.rename("s", folder.uuid, "renamed")
         assertThat(current(child).materializedPath).isEqualTo("/renamed/a.txt")
         assertThat(current(leaf).materializedPath).isEqualTo("/renamed/nested/b.txt")
-        assertThat(events.map { it.fileUuid }).containsExactly(child.uuid, leaf.uuid)
-        events.forEach { event ->
-            val changed = event as FileIndexEvent.Changed
-            val entry = repo.getByUuid(root.uuid, event.fileUuid)!!
-            assertThat(changed.contentHash).isEqualTo(entry.hash)
-            assertThat(changed.targetEpoch).isEqualTo(entry.updatedAt)
-            assertThat(entry.vectorizedAt).isNull()
-        }
+        assertThat(events).isEmpty()
+        assertThat(current(child).vectorizedAt).isEqualTo(child.vectorizedAt)
+        assertThat(current(leaf).vectorizedAt).isEqualTo(leaf.vectorizedAt)
         assertThat(File(directory, "renamed/nested/b.txt").readText()).isEqualTo("content")
         assertJournal(WorkspaceMutationType.RENAME)
     }
@@ -396,7 +402,7 @@ class PrivateWorkspaceFilesTest {
         assertThat(File(directory, final.materializedPath.removePrefix("/")).readText()).isEqualTo("content")
         assertThat(File(directory, "a.txt").exists()).isFalse()
         assertThat(File(directory, "second.txt").exists()).isFalse()
-        assertThat(events).hasSize(1)
+        assertThat(events).isEmpty()
         assertJournal(WorkspaceMutationType.RENAME)
     }
 
@@ -474,7 +480,7 @@ class PrivateWorkspaceFilesTest {
         assertCancelled { files.move("s", listOf(source.uuid), target.uuid) }
         assertCancelled { files.delete("s", listOf(source.uuid)) }
         assertThat(current(source)).isEqualTo(source)
-        assertCancelled { service(sink = FileIndexEventSink { throw CancellationException("取消发布") }).rename("s", source.uuid, "b.txt") }
+        service(sink = FileIndexEventSink { throw CancellationException("取消发布") }).rename("s", source.uuid, "b.txt")
         assertThat(current(source).name).isEqualTo("b.txt")
         assertJournal(WorkspaceMutationType.RENAME)
     }

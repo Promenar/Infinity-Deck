@@ -207,7 +207,42 @@ class WorkspaceReconcilePlannerTest {
     }
 
     @Test
-    fun `崩溃恢复时没有前快照，全部文件重算哈希且不识别移动`() {
+    fun `身份快照缺失时唯一同哈希的新旧文件沿用UUID`() {
+        val after = snapshot("/b.txt" to file(1, key = "new"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("a", "/a.txt", 1, "h")), null, after, Hasher(mapOf("/b.txt" to "h")),
+        )
+        assertThat(plan.moves).containsExactly(PlannedWorkspaceMove("a", "/a.txt", "/b.txt"))
+        assertThat(plan.deletes).isEmpty()
+        assertThat(plan.inserts).isEmpty()
+    }
+
+    @Test
+    fun `同哈希新文件有多个候选时保留删除和新建`() {
+        val after = snapshot("/b.txt" to file(1, key = "b"), "/c.txt" to file(1, key = "c"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("a", "/a.txt", 1, "h")), null, after,
+            Hasher(mapOf("/b.txt" to "h", "/c.txt" to "h")),
+        )
+        assertThat(plan.moves).isEmpty()
+        assertThat(plan.deletes.map { it.uuid }).containsExactly("a")
+        assertThat(plan.inserts.map { it.path }).containsExactly("/b.txt", "/c.txt")
+    }
+
+    @Test
+    fun `同哈希旧文件有多个候选时保留删除和新建`() {
+        val after = snapshot("/c.txt" to file(1, key = "c"))
+        val plan = WorkspaceReconcilePlanner.plan(
+            listOf(indexed("a", "/a.txt", 1, "h"), indexed("b", "/b.txt", 1, "h")),
+            null, after, Hasher(mapOf("/c.txt" to "h")),
+        )
+        assertThat(plan.moves).isEmpty()
+        assertThat(plan.deletes.map { it.uuid }).containsExactly("a", "b")
+        assertThat(plan.inserts.map { it.path }).containsExactly("/c.txt")
+    }
+
+    @Test
+    fun `崩溃恢复时没有前快照仍重算哈希并识别唯一匹配`() {
         val after = snapshot("/a.txt" to file(1, key = "1"), "/b.txt" to file(1, key = "2"))
         val hasher = Hasher(mapOf("/a.txt" to "h", "/b.txt" to "hb"))
         val plan = WorkspaceReconcilePlanner.plan(
@@ -215,9 +250,9 @@ class WorkspaceReconcilePlannerTest {
         )
         assertThat(hasher.requested).containsExactly("/a.txt", "/b.txt")
         assertThat(plan.updates).isEmpty()
-        assertThat(plan.moves).isEmpty()
-        assertThat(plan.deletes.map { it.uuid }).containsExactly("c")
-        assertThat(plan.inserts.map { it.path }).containsExactly("/b.txt")
+        assertThat(plan.moves).containsExactly(PlannedWorkspaceMove("c", "/c.txt", "/b.txt"))
+        assertThat(plan.deletes).isEmpty()
+        assertThat(plan.inserts).isEmpty()
         assertThat(plan.reservedChanges).isEmpty()
     }
 
