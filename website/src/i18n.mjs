@@ -28,6 +28,7 @@ export const strings = {
       hint: '移动指针转动，点按切换形态',
       canvas: '灯珠拼成 Infinity 字标，再扭成无穷形莫比乌斯带',
     },
+    film: { label: 'Infinity Deck 宣传片', play: '播放宣传片' },
     why: {
       title: '它和远程控制有什么不同',
       lede: '官方 App 的远程控制要那台电脑一直开着、在线；云端任务又进不了你的内网。',
@@ -180,6 +181,7 @@ export const strings = {
       hint: 'Move the pointer to turn it, tap to change shape',
       canvas: 'LED beads form the Infinity wordmark, then twist into an infinity-shaped Möbius strip',
     },
+    film: { label: 'Infinity Deck launch film', play: 'Play the film' },
     why: {
       title: 'How it differs from remote control',
       lede: 'Remote control from the official apps needs that computer switched on and online, and cloud tasks can’t reach your private network.',

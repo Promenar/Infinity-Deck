@@ -28,6 +28,17 @@ const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster
     </div>
   </section>
 
+  <section id="film" aria-label={t.film.label}>
+    <div class="wrap">
+      <figure class="film">
+        <video id="film-video" src={versioned(`/media/${locale}/promo.mp4`)} poster={versioned(`/media/${locale}/promo-poster.jpg`)} preload="metadata" playsinline aria-label={t.film.label}></video>
+        <button class="film-play" id="film-play" type="button">
+          <span class="badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg><span class="label">{t.film.play}</span><small>0:53</small></span>
+        </button>
+      </figure>
+    </div>
+  </section>
+
   <section id="why">
     <div class="wrap">
       <div class="sec-head">
@@ -121,4 +132,5 @@ const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster
   import '../scripts/ring.ts';
   import '../scripts/story.ts';
   import '../scripts/demo.ts';
+  import '../scripts/film.ts';
 </script>

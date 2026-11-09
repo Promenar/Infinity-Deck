@@ -17,9 +17,9 @@
 | `src/views/` | 各页面的实际内容；`src/pages/` 只按语言包装 |
 | `src/components/DownloadPanel.astro` | 下载台（首页与下载页共用） |
 | `src/lib/` | 更新日志解析、Release 数据读取与格式化 |
-| `src/scripts/` | 客户端动效：星空、开场灯珠、钉住叙事、502 排障实演、下载区 |
+| `src/scripts/` | 客户端动效：星空、开场灯珠、宣传片播放、钉住叙事、502 排障实演、下载区 |
 | `src/data/release-snapshot.json` | 构建时读不到 GitHub API 时使用的 Release 快照 |
-| `public/media/` | 叙事区截图与录屏，由 `scripts/prepare-media.sh` 生成 |
+| `public/media/` | 叙事区截图与录屏，由 `scripts/prepare-media.sh` 生成；宣传片 `promo.mp4` 不进 Git |
 | `public/_headers` | Cloudflare Pages 缓存与安全响应头 |
 
 ## 本地开发
@@ -45,6 +45,12 @@ npm run preview   # 预览 dist/
 
 ```bash
 website/scripts/prepare-media.sh <footage 目录>
+```
+
+- **宣传片**：首页首屏下方的宣传片（每个约 19 MB）不进 Git，构建前从宣传片工程复制；缺少文件时构建报错。封面图 `promo-poster.jpg` 已纳入仓库。在仓库根执行：
+
+```bash
+for l in zh en; do cp promo/deck-launch/renders/share/infinity-deck-$l-web.mp4 website/public/media/$l/promo.mp4; done
 ```
 
 ## 部署：Cloudflare Pages
