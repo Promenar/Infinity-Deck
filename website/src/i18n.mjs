@@ -16,12 +16,12 @@ export const strings = {
     langName: '中',
     nav: { features: '功能', trust: '安全', download: '下载', docs: '文档', changelog: '更新日志', main: '主导航', lang: '语言', footer: '页脚' },
     meta: {
-      title: 'Infinity Deck：电脑关了，工作不断',
-      description: '一部手机，接通你所有的仓库、服务器和算力。内置 Linux 与 git，自带 Tailscale 直达你的机器，使用你自己的 Key，数据留在本机。',
+      title: 'Infinity Deck：跑在手机上的 AI 智能体',
+      description: '跑在手机上的 AI 智能体，接通你所有的仓库、服务器和算力。内置 Linux、git 与 Tailscale，直达你的机器；使用你自己的 Key，数据留在本机。',
     },
     hero: {
       title: '电脑关了，工作不断。',
-      lede: '一部手机，接通你所有的仓库、服务器和算力。使用你自己的 Key，数据留在本机。',
+      lede: '跑在手机上的 AI 智能体，接通你所有的仓库、服务器和算力。使用你自己的 Key，数据留在本机。',
       download: '下载 Android 版',
       source: 'GitHub 源码',
       facts: ['Android 12+', 'GPL-3.0 开源'],
@@ -168,12 +168,12 @@ export const strings = {
     langName: 'EN',
     nav: { features: 'Features', trust: 'Security', download: 'Download', docs: 'Docs', changelog: 'Changelog', main: 'Main', lang: 'Language', footer: 'Footer' },
     meta: {
-      title: 'Infinity Deck: Laptop off. Work goes on.',
-      description: 'Every repo, server and GPU you own, one phone away. Built-in Linux and git, its own Tailscale node, bring your own key; your data stays on your device.',
+      title: 'Infinity Deck: The AI agent that runs on your phone',
+      description: 'The AI agent that runs on your phone, with every repo, server and GPU you own in reach. Built-in Linux, git and Tailscale; bring your own key; your data stays on your device.',
     },
     hero: {
       title: 'Laptop off. Work goes on.',
-      lede: 'Every repo, server and GPU you own, one phone away. Bring your own key. Your data stays on your device.',
+      lede: 'The AI agent that runs on your phone, with every repo, server and GPU you own in reach. Bring your own key. Your data stays on your device.',
       download: 'Download for Android',
       source: 'Source on GitHub',
       facts: ['Android 12+', 'GPL-3.0'],
