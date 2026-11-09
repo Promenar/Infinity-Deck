@@ -10,6 +10,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity
+import com.promenar.infinity.data.local.db.entity.FileEntry
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -306,20 +307,25 @@ interface VectorizationTaskDao {
         replacementUpdatedAt = task.updatedAt,
     )
 
+    @Query("SELECT * FROM workspace_files WHERE workspace_root_uuid = :root AND uuid = :id AND in_recycle_bin = 0")
+    suspend fun currentReferenceTarget(root: String, id: String): FileEntry?
+
     @Transaction
-    suspend fun upsertTarget(task: VectorizationTaskEntity): VectorizationTaskTargetUpsertResult {
-        require(task.type == DOCUMENT_REFERENCE_TYPE) {
-            "target upsert 仅支持 document_reference"
-        }
-        require(!task.workspaceRootUuid.isNullOrBlank() && !task.docId.isNullOrBlank()) {
+    suspend fun upsertTarget(incoming: VectorizationTaskEntity): VectorizationTaskTargetUpsertResult {
+        require(incoming.type == DOCUMENT_REFERENCE_TYPE) { "target upsert 仅支持 document_reference" }
+        require(!incoming.workspaceRootUuid.isNullOrBlank() && !incoming.docId.isNullOrBlank()) {
             "document_reference workspace/doc 标识不能为空"
         }
-        require(!task.targetContentHash.isNullOrBlank()) {
-            "document_reference target_content_hash 不能为空"
-        }
-        require(task.targetEpoch > 0) {
-            "document_reference target_epoch 必须大于 0"
-        }
+        require(!incoming.targetContentHash.isNullOrBlank()) { "document_reference target_content_hash 不能为空" }
+        require(incoming.targetEpoch > 0) { "document_reference target_epoch 必须大于 0" }
+        // 旧事件若在路径事务后才入队，绑定当前文件版本，避免生成失效任务。
+        val currentFile = currentReferenceTarget(requireNotNull(incoming.workspaceRootUuid), requireNotNull(incoming.docId))
+        val task = if (currentFile != null && incoming.targetEpoch < currentFile.updatedAt) incoming.copy(
+            targetEpoch = currentFile.updatedAt,
+            targetContentHash = currentFile.hash,
+            docTitle = currentFile.name,
+            sourceMimeType = currentFile.mimeType,
+        ) else incoming
 
         repeat(MAX_TARGET_UPSERT_ATTEMPTS) {
             if (insertIgnore(task) != INSERT_CONFLICT) {

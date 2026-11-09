@@ -10,6 +10,8 @@ import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.local.db.entity.KgEdgeEntity
 import com.promenar.infinity.data.local.db.entity.KgNodeEntity
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.local.db.entity.VectorizationTaskEntity
+import com.promenar.infinity.data.local.db.entity.VectorEntity
 import com.promenar.infinity.data.rag.DocumentIndexCandidate
 import com.promenar.infinity.data.rag.GraphStore
 import com.promenar.infinity.data.rag.KgCollectionRepository
@@ -108,7 +110,7 @@ class WorkspaceRelocateTest {
         assertThat(current.parentUuid).isEqualTo(parent.uuid)
         assertThat(current.materializedPath).isEqualTo("/docs/b.txt")
         assertThat(current.hash).isEqualTo(written.newHash)
-        assertThat(moved.affectedTargets.single().fileUuid).isEqualTo(source.uuid)
+        assertThat(moved.affectedTargets).isEmpty()
         assertThat(db.fileVersionDao().getByFile(root.uuid, source.uuid)).isEqualTo(history)
         assertThat(File(directory, "a.txt").exists()).isFalse()
         assertThat(File(directory, "docs/a.txt").readText()).isEqualTo("unrelated")
@@ -133,16 +135,16 @@ class WorkspaceRelocateTest {
         val source = folder(root, "source")
         val parent = folder(root, "destination")
         val child = repo.createFileInWorkspace(root.uuid, "child", "a.txt", "content", source.uuid, "/source/a.txt")
-        db.fileEntryDao().update(child.copy(vectorizedAt = 10, kgExtractedAt = 10))
+        db.fileEntryDao().update(child.copy(vectorizedAt = child.updatedAt, kgExtractedAt = child.updatedAt))
         val result = repo.relocate(root.uuid, source.uuid, parent.uuid, "renamed", "source") as RenameResult.Success
         val current = repo.getByUuid(root.uuid, child.uuid)!!
         assertThat(current.materializedPath).isEqualTo("/destination/renamed/a.txt")
         assertThat(current.parentUuid).isEqualTo(source.uuid)
         assertThat(current.hash).isEqualTo(child.hash)
         assertThat(current.updatedAt).isGreaterThan(child.updatedAt)
-        assertThat(current.vectorizedAt).isNull()
-        assertThat(current.kgExtractedAt).isNull()
-        assertThat(result.affectedTargets.single().fileUuid).isEqualTo(child.uuid)
+        assertThat(current.vectorizedAt).isEqualTo(current.updatedAt)
+        assertThat(current.kgExtractedAt).isEqualTo(current.updatedAt)
+        assertThat(result.affectedTargets).isEmpty()
         assertThat(File(directory, "destination/renamed/a.txt").readText()).isEqualTo("content")
     }
 
@@ -160,12 +162,12 @@ class WorkspaceRelocateTest {
         val previous = db.kgEdgeDao().getByDocId(file.uuid).single()
         val oldEvidence = db.kgEvidenceDao().getForEdges(listOf(previous.id)).single()
         val indexed = requireNotNull(db.fileEntryDao().findActiveByUuid(file.uuid))
-        db.fileEntryDao().update(indexed.copy(vectorizedAt = 1, kgExtractedAt = 1))
+        db.fileEntryDao().update(indexed.copy(vectorizedAt = indexed.updatedAt, kgExtractedAt = indexed.updatedAt))
 
         repo.relocate(root.uuid, file.uuid, target.uuid, file.name, file.name, file.hash)
         val movedFile = requireNotNull(db.fileEntryDao().findActiveByUuid(file.uuid))
-        assertThat(movedFile.vectorizedAt).isNull()
-        assertThat(movedFile.kgExtractedAt).isNull()
+        assertThat(movedFile.vectorizedAt).isEqualTo(movedFile.updatedAt)
+        assertThat(movedFile.kgExtractedAt).isEqualTo(movedFile.updatedAt)
         val moved = db.kgEdgeDao().getByDocId(file.uuid).single()
         assertThat(moved.collectionId).isEqualTo("work:${target.uuid}")
         assertThat(db.kgNodeDao().getRawById(moved.sourceId)?.collectionId).isEqualTo(moved.collectionId)
@@ -178,6 +180,19 @@ class WorkspaceRelocateTest {
         assertThat(db.kgEdgeDao().getRawById(previous.id)).isNull()
     }
 
+    @Test fun `目录改名刷新合集标题并保留图谱证据`() = runBlocking<Unit> {
+        val root = root()
+        val parent = folder(root, "source")
+        val document = repo.createFileInWorkspace(root.uuid, "document", "a.txt", "content", parent.uuid, "/source/a.txt")
+        val node = KgNodeEntity(id = "node", name = "甲", type = "person", createdAt = 1)
+        GraphStore(db).commitCandidate(DocumentIndexCandidate(emptyList(), listOf(node), emptyList()),
+            KgSource("document", docId = document.uuid, contentHash = document.hash, workspaceDocument = true))
+        val before = db.kgEvidenceDao().affectedByDocument(document.uuid)
+        repo.rename(root.uuid, parent.uuid, "renamed", parent.name)
+        assertThat(KgCollectionRepository(db).documentInfo(document.uuid).title).isEqualTo("renamed")
+        assertThat(db.kgEvidenceDao().affectedByDocument(document.uuid)).isEqualTo(before)
+    }
+
     @Test fun `名称或真实内容的版本条件不匹配时不移动`() = runBlocking<Unit> {
         val root = root()
         val source = file(root, "source", "a.txt", "source")
@@ -188,6 +203,49 @@ class WorkspaceRelocateTest {
         assertThat(repo.getByUuid(root.uuid, source.uuid)).isEqualTo(source)
         assertThat(File(directory, "a.txt").readText()).isEqualTo("external")
         assertThat(File(directory, "docs/b.txt").exists()).isFalse()
+    }
+
+    @Test fun `单文件移动前移有效状态并同步向量标题`() = runBlocking<Unit> {
+        val root = root()
+        val source = file(root, "source", "a.txt", "content")
+        val target = folder(root, "target")
+        db.fileEntryDao().update(source.copy(vectorizedAt = source.updatedAt, kgExtractedAt = source.updatedAt))
+        db.vectorDao().insert(VectorEntity(id = "v", docId = source.uuid, fileUuid = source.uuid,
+            content = "content", embedding = byteArrayOf(1), metadata = """{"type":"document","docTitle":"a.txt"}""", createdAt = 1))
+        val result = repo.relocate(root.uuid, source.uuid, target.uuid, "b.txt", source.name, source.hash) as RenameResult.Success
+        val moved = requireNotNull(repo.getByUuid(root.uuid, source.uuid))
+        assertThat(moved.vectorizedAt).isEqualTo(moved.updatedAt)
+        assertThat(moved.kgExtractedAt).isEqualTo(moved.updatedAt)
+        assertThat(result.affectedTargets).isEmpty()
+        assertThat(db.vectorDao().getByDocId(source.uuid).single().metadata).contains("\"docTitle\":\"b.txt\"")
+    }
+
+    @Test fun `在途任务导致移动清空索引并要求重排`() = runBlocking<Unit> {
+        val root = root()
+        val source = file(root, "source", "a.txt", "content")
+        val target = folder(root, "target")
+        db.fileEntryDao().update(source.copy(vectorizedAt = source.updatedAt, kgExtractedAt = source.updatedAt))
+        db.vectorizationTaskDao().insert(VectorizationTaskEntity(id = "task", type = "document_reference", status = "pending",
+            workspaceRootUuid = root.uuid, docId = source.uuid, createdAt = 1, updatedAt = 1))
+        val result = repo.relocate(root.uuid, source.uuid, target.uuid, "a.txt", source.name, source.hash) as RenameResult.Success
+        val moved = requireNotNull(repo.getByUuid(root.uuid, source.uuid))
+        assertThat(moved.vectorizedAt).isNull()
+        assertThat(moved.kgExtractedAt).isNull()
+        assertThat(result.affectedTargets.map { it.fileUuid }).containsExactly(source.uuid)
+    }
+
+    @Test fun `内容发生变化的移动更新哈希并要求重排`() = runBlocking<Unit> {
+        val root = root()
+        val source = file(root, "source", "a.txt", "content")
+        val target = folder(root, "target")
+        db.fileEntryDao().update(source.copy(vectorizedAt = source.updatedAt, kgExtractedAt = source.updatedAt))
+        File(directory, "a.txt").writeText("changed")
+        val result = repo.relocate(root.uuid, source.uuid, target.uuid, "a.txt", source.name, null) as RenameResult.Success
+        val moved = requireNotNull(repo.getByUuid(root.uuid, source.uuid))
+        assertThat(moved.hash).isEqualTo(Sha256Utils.hash("changed"))
+        assertThat(moved.vectorizedAt).isNull()
+        assertThat(moved.kgExtractedAt).isNull()
+        assertThat(result.affectedTargets.map { it.fileUuid }).containsExactly(source.uuid)
     }
 
     private suspend fun root(): FileEntry {

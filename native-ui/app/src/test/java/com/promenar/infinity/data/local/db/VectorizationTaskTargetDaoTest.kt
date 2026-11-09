@@ -65,6 +65,20 @@ class VectorizationTaskTargetDaoTest {
     }
 
     @Test
+    fun `旧路径事件在文件移动事务后入队时采用当前版本`() = runTest {
+        seedFile()
+        val files = database.fileEntryDao()
+        val before = requireNotNull(files.getByUuid(ROOT, DOC))
+        files.update(before.copy(name = "renamed.txt", materializedPath = "/renamed.txt", updatedAt = 2))
+        val dao = database.vectorizationTaskDao()
+        dao.upsertTarget(task("late", before.hash, 1))
+        val queued = requireNotNull(dao.getById("late"))
+        assertThat(queued.targetEpoch).isEqualTo(2)
+        assertThat(queued.targetContentHash).isEqualTo(before.hash)
+        assertThat(queued.docTitle).isEqualTo("renamed.txt")
+    }
+
+    @Test
     fun `document reference target entry rejects missing hash or nonpositive epoch while legacy rows remain valid`() = runTest {
         seedFile()
         val dao = database.vectorizationTaskDao()
