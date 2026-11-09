@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
-- 正式版处理带口令的 SSH 私钥不再总报“私钥口令不正确”：导出私钥、修改私钥口令、导入加密的 OpenSSH、PEM 与 PKCS8 私钥，以及用带口令的密钥连接主机恢复正常。
+- 正式版处理带口令的 SSH 私钥不再总报“私钥口令不正确”：导出私钥、修改私钥口令、导入加密的 OpenSSH、PEM 与 PKCS8（RSA）私钥，以及用带口令的密钥连接主机恢复正常。
 
 ## [0.41.3-beta] - 2026-11-10
 
