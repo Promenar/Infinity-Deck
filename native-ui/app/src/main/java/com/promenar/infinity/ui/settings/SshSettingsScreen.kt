@@ -95,6 +95,11 @@ import com.promenar.infinity.data.ssh.SshAgentPreferences
 import com.promenar.infinity.data.ssh.SshActiveConnection
 import com.promenar.infinity.data.ssh.SshHost
 import com.promenar.infinity.data.ssh.SshHostKey
+import com.promenar.infinity.domain.keychain.KeychainItem
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.material.icons.rounded.VpnKey
 import com.promenar.infinity.data.ssh.SshKeyGenerator
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySettingsItem
@@ -157,6 +162,7 @@ fun SshSettingsScreen(
     importPeer: TailnetPeer? = null,
     onImportConsumed: () -> Unit = {},
     onOpenTailscale: (() -> Unit)? = null,
+    onOpenSshKeys: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InfinityApplication
@@ -198,6 +204,11 @@ fun SshSettingsScreen(
     val idlePolicy by remember(settingsPrefs) { SshTerminalIdlePolicy.observe(settingsPrefs) }
         .collectAsState(initial = remember(settingsPrefs) { SshTerminalIdlePolicy.read(settingsPrefs) })
     val copiedMessage = stringResource(R.string.ssh_public_key_copied)
+    val sshKeyCount by remember(app) {
+        app.keychainRepository.entries()
+            .map<List<KeychainItem>, Int?> { items -> items.count { it.category == com.promenar.infinity.domain.keychain.KeychainCategory.SSH_KEY } }
+            .catch { emit(null) }
+    }.collectAsState(initial = null)
     val verifiedMessage = stringResource(R.string.ssh_fingerprint_matches)
 
     fun perform(action: suspend () -> Unit) {
@@ -254,7 +265,10 @@ fun SshSettingsScreen(
                 activeConnections = activity.connections,
                 terminalIdlePolicy = idlePolicy,
             ),
-            leadingContent = leadingContent,
+            leadingContent = {
+                leadingContent?.invoke(this)
+                if (onOpenSshKeys != null) item("ssh_keys") { SshKeysEntryRow(sshKeyCount, onOpenSshKeys) }
+            },
             actions = SshSettingsVisualActions(
                 onOpenConnectedTerminal = onOpenTerminal,
                 onDisconnect = { connection ->
@@ -305,28 +319,11 @@ fun SshSettingsScreen(
             hosts = hosts,
             initialPeer = editorPeer,
             onDismiss = { showEditor = false; editing = null; editorPeer = null },
-            onSave = { host, credential, generate ->
-                val publicKey = withContext(Dispatchers.IO) {
-                    if (generate) {
-                        SshKeyGenerator.generate().use { generated ->
-                            SshCredential(privateKey = generated.privateKey.copyOf()).use {
-                                store.save(host, it)
-                            }
-                            generated.publicKey
-                        }
-                    } else {
-                        if (credential != null && host.authType == SshAuthType.KEY) {
-                            SshKeyGenerator.publicKey(credential.privateKey, credential.passphrase)
-                        }
-                        store.save(host, credential)
-                        null
-                    }
-                }
-                if (publicKey != null) {
-                    copySshPublicKey(context, publicKey)
-                    scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
-                    status = copiedMessage
-                    statusIsError = false
+            onSave = { host, credential, keyEntryId ->
+                withContext(Dispatchers.IO) {
+                    // 选了钥匙串密钥时绑定条目并保留已存登录密码；其余沿用主机凭据保存。
+                    if (host.authType == SshAuthType.KEY && keyEntryId != null) store.saveWithKey(host, keyEntryId)
+                    else store.save(host, credential)
                 }
                 showEditor = false
                 editing = null
@@ -786,7 +783,9 @@ internal class SshHostEditorFields(existing: SshHost?, initialCandidate: SshTail
     var forwardHost by mutableStateOf(existing?.forwardHost ?: "127.0.0.1")
     var forwardPort by mutableStateOf(existing?.forwardPort?.toString().orEmpty())
     var password by mutableStateOf("")
-    var passphrase by mutableStateOf("")
+
+    /** 密钥认证选用的钥匙串条目。 */
+    var keyEntryId by mutableStateOf(existing?.keyEntryId)
 
     init {
         initialCandidate?.let(::applyTailnetCandidate)
@@ -803,9 +802,6 @@ internal class SshHostEditorFields(existing: SshHost?, initialCandidate: SshTail
     )
 }
 
-/** 私钥的载入来源，决定认证分区的说明文案。 */
-internal enum class SshKeySource { FILE, CLIPBOARD }
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SshHostEditorSheet(
@@ -813,7 +809,7 @@ private fun SshHostEditorSheet(
     hosts: List<SshHost>,
     initialPeer: TailnetPeer?,
     onDismiss: () -> Unit,
-    onSave: suspend (SshHost, SshCredential?, Boolean) -> Unit,
+    onSave: suspend (SshHost, SshCredential?, String?) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -829,17 +825,16 @@ private fun SshHostEditorSheet(
     else SshTailnetAvailability.HIDDEN
     var showTailnetPicker by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
-    var privateKey by remember { mutableStateOf<ByteArray?>(null) }
-    var keySource by remember { mutableStateOf<SshKeySource?>(null) }
     var busy by remember { mutableStateOf(false) }
     var errorCode by remember { mutableStateOf<String?>(null) }
+    val keychain: com.promenar.infinity.ui.keychain.KeychainViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel(factory = com.promenar.infinity.ui.keychain.KeychainViewModel.factory(context.applicationContext as android.app.Application))
+    val keychainItems by keychain.items.collectAsState()
+    val sshKeys = com.promenar.infinity.ui.keychain.sshKeyItems(keychainItems)
+    var keySheet by remember { mutableStateOf<SshEditorKeySheet?>(null) }
 
     fun clearSecrets() {
         fields.password = ""
-        fields.passphrase = ""
-        privateKey?.fill(0)
-        privateKey = null
-        keySource = null
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -857,53 +852,10 @@ private fun SshHostEditorSheet(
         if (code in SshErrorMessages.CONNECTION_FIELD_CODES) scope.launch { scrollState.animateScrollTo(0) }
     }
 
-    /** 读取并校验私钥信封；成功后替换内存中的旧私钥，失败时清零读入的字节。 */
-    fun loadKey(source: SshKeySource, read: () -> ByteArray, afterAccepted: () -> Unit = {}) {
-        busy = true
-        scope.launch {
-            var loaded: ByteArray? = null
-            try {
-                loaded = withContext(Dispatchers.IO) { read().also(SshPolicy::validatePrivateKey) }
-                privateKey?.fill(0)
-                privateKey = loaded
-                keySource = source
-                loaded = null
-                errorCode = null
-                afterAccepted()
-            } catch (error: Exception) {
-                showError(safeSshError(error))
-            } finally {
-                loaded?.fill(0)
-                busy = false
-            }
-        }
-    }
-
-    val importKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) loadKey(SshKeySource.FILE, {
-            context.contentResolver.openInputStream(uri)?.use(SshPrivateKeyInput::read)
-                ?: throw SshInputException("SSH_KEY_READ_FAILED")
-        })
-    }
-
-    fun pasteKey() {
-        if (busy) return
-        val clipboard = context.getSystemService(ClipboardManager::class.java)
-        val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)
-        if (text.isNullOrBlank()) {
-            showError("SSH_KEY_CLIPBOARD_EMPTY")
-            return
-        }
-        // 私钥校验通过后清空剪贴板，避免密钥留在系统剪贴板历史中。
-        loadKey(SshKeySource.CLIPBOARD, { SshPrivateKeyInput.read(text.toString().trim().byteInputStream(Charsets.UTF_8)) }) {
-            clipboard.clearPrimaryClip()
-        }
-    }
-
-    fun save(generate: Boolean) {
+    fun save() {
         if (busy) return
         val host = try {
-            fields.draft().toHost(existing, privateKey != null, fields.password.isNotEmpty(), generate, takenAliases)
+            fields.draft().toHost(existing, fields.keyEntryId != null, fields.password.isNotEmpty(), false, takenAliases)
         } catch (error: SshInputException) {
             showError(safeSshError(error))
             return
@@ -916,14 +868,11 @@ private fun SshHostEditorSheet(
             var credential: SshCredential? = null
             try {
                 credential = when {
-                    generate -> null
                     fields.authType == SshAuthType.PASSWORD && fields.password.isNotEmpty() ->
                         SshCredential(password = fields.password.toByteArray(Charsets.UTF_8))
-                    fields.authType == SshAuthType.KEY && privateKey != null ->
-                        SshCredential(privateKey = privateKey!!.copyOf(), passphrase = fields.passphrase.toByteArray(Charsets.UTF_8))
                     else -> null
                 }
-                onSave(host, credential, generate)
+                onSave(host, credential, fields.keyEntryId.takeIf { fields.authType == SshAuthType.KEY })
                 clearSecrets()
             } catch (error: Exception) {
                 showError(safeSshError(error))
@@ -948,18 +897,45 @@ private fun SshHostEditorSheet(
             existing = existing,
             aliasSuggestion = if (existing == null) SshHostDraft.suggestAlias(fields.tailnetPeer?.name ?: fields.hostname, takenAliases) else null,
             busy = busy,
-            keySource = keySource,
+            selectedKey = sshKeys.firstOrNull { it.ref == fields.keyEntryId },
             errorCode = errorCode,
             scrollState = scrollState,
             onAuthTypeChange = { fields.authType = it; clearSecrets() },
-            onImportKey = { importKey.launch(arrayOf("*/*")) },
-            onPasteKey = ::pasteKey,
-            onGenerate = { save(true) },
+            onPickKey = { keySheet = SshEditorKeySheet.PICK },
             onCancel = onDismiss,
-            onSave = { save(false) },
+            onSave = ::save,
             tailnet = tailnetAvailability,
             onPickTailnet = { showTailnetPicker = true },
         )
+    }
+    when (keySheet) {
+        SshEditorKeySheet.PICK -> InfinityBottomSheet(
+            show = true,
+            onDismiss = { keySheet = null },
+            title = stringResource(R.string.keychain_ssh_pick_title),
+            height = InfinitySheetHeight.Content,
+            scrollContent = true,
+        ) {
+            com.promenar.infinity.ui.keychain.SshKeyPickerContent(
+                keys = sshKeys,
+                hosts = hosts,
+                selected = fields.keyEntryId,
+                onPick = { fields.keyEntryId = it.ref; if (errorCode == "SSH_KEY_REQUIRED") errorCode = null; keySheet = null },
+                onGenerate = { keySheet = SshEditorKeySheet.GENERATE },
+                onImport = { keySheet = SshEditorKeySheet.IMPORT },
+            )
+        }
+        SshEditorKeySheet.GENERATE -> com.promenar.infinity.ui.keychain.SshKeyGenerateSheet(onDismiss = { keySheet = SshEditorKeySheet.PICK }) { item ->
+            fields.keyEntryId = item.ref
+            if (errorCode == "SSH_KEY_REQUIRED") errorCode = null
+            keySheet = null
+        }
+        SshEditorKeySheet.IMPORT -> com.promenar.infinity.ui.keychain.SshKeyImportSheet(onDismiss = { keySheet = SshEditorKeySheet.PICK }) { item, _ ->
+            fields.keyEntryId = item.ref
+            if (errorCode == "SSH_KEY_REQUIRED") errorCode = null
+            keySheet = null
+        }
+        null -> Unit
     }
     if (showTailnetPicker) {
         SshTailnetPickerSheet(
@@ -982,13 +958,11 @@ internal fun SshHostEditorForm(
     existing: SshHost?,
     aliasSuggestion: String?,
     busy: Boolean,
-    keySource: SshKeySource?,
+    selectedKey: KeychainItem?,
     errorCode: String?,
     scrollState: ScrollState,
     onAuthTypeChange: (SshAuthType) -> Unit,
-    onImportKey: () -> Unit,
-    onPasteKey: () -> Unit,
-    onGenerate: () -> Unit,
+    onPickKey: () -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
     tailnet: SshTailnetAvailability = SshTailnetAvailability.HIDDEN,
@@ -1027,15 +1001,8 @@ internal fun SshHostEditorForm(
             InfinitySettingsSection(
                 title = stringResource(R.string.ssh_authentication),
                 footer = listOfNotNull(
-                    if (fields.authType == SshAuthType.KEY) stringResource(
-                        when (keySource) {
-                            null -> R.string.ssh_key_import_help
-                            SshKeySource.FILE -> R.string.ssh_key_imported
-                            SshKeySource.CLIPBOARD -> R.string.ssh_key_pasted
-                        },
-                    ) else null,
-                    if (fields.authType == SshAuthType.KEY) stringResource(R.string.ssh_generate_help) else null,
-                    if (existing != null) stringResource(R.string.ssh_keep_credential_hint) else null,
+                    if (fields.authType == SshAuthType.KEY) stringResource(R.string.ssh_key_deploy_first) else null,
+                    if (existing != null && fields.authType == SshAuthType.PASSWORD) stringResource(R.string.ssh_keep_credential_hint) else null,
                 ).joinToString("\n"),
             ) {
                 Column(
@@ -1054,25 +1021,23 @@ internal fun SshHostEditorForm(
                     if (fields.authType == SshAuthType.PASSWORD) {
                         SshEditorField(fields.password, { fields.password = it }, R.string.ssh_password, secret = true, enabled = !busy, isError = errorCode == "SSH_PASSWORD_REQUIRED")
                     } else {
-                        // 导入文件是主要来源；粘贴与生成收进相连的箭头段菜单，不再各占一整行。
-                        InfinitySplitPillButton(
-                            text = stringResource(R.string.ssh_import_key),
-                            onClick = onImportKey,
-                            moreContentDescription = stringResource(R.string.ssh_key_more_cd),
+                        // 密钥来自钥匙串：点选打开选择面板，面板底部可现场生成或导入。
+                        InfinitySettingsItem(
+                            icon = Icons.Rounded.VpnKey,
+                            title = selectedKey?.name ?: stringResource(R.string.ssh_key_choose),
+                            subtitleSegments = selectedKey?.let { key ->
+                                listOfNotNull(
+                                    com.promenar.infinity.ui.keychain.keychainKeyTypeLabel(key.keyType),
+                                    key.fingerprintSha256?.let { if (it.length > 22) it.take(22) + "…" else it },
+                                )
+                            },
+                            titleColor = if (errorCode == "SSH_KEY_REQUIRED") MaterialTheme.colorScheme.error else null,
+                            onClick = onPickKey,
                             enabled = !busy,
-                            icon = Icons.Rounded.UploadFile,
-                            mainModifier = Modifier.testTag("ssh_editor_import_key"),
-                            moreModifier = Modifier.testTag("ssh_editor_key_more"),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { dismiss ->
-                            SshKeySourceMenuItems(
-                                onPasteKey = { dismiss(); onPasteKey() },
-                                onGenerate = { dismiss(); onGenerate() },
-                            )
-                        }
-                        if (keySource != null) {
-                            SshEditorField(fields.passphrase, { fields.passphrase = it }, R.string.ssh_passphrase, secret = true, enabled = !busy)
-                        }
+                            showChevron = true,
+                            horizontalPadding = 0.dp,
+                            modifier = Modifier.testTag("ssh_editor_pick_key"),
+                        )
                     }
                 }
             }
@@ -1125,23 +1090,6 @@ internal fun SshHostEditorForm(
             )
         }
     }
-}
-
-/** 私钥来源分体按钮的菜单项；截图预览以静态浮层渲染同一内容。 */
-@Composable
-internal fun ColumnScope.SshKeySourceMenuItems(onPasteKey: () -> Unit, onGenerate: () -> Unit) {
-    InfinityMenuItem(
-        text = { Text(stringResource(R.string.ssh_paste_key), maxLines = 2) },
-        leadingIcon = { Icon(Icons.Rounded.ContentPaste, contentDescription = null) },
-        onClick = onPasteKey,
-        modifier = Modifier.testTag("ssh_editor_paste_key"),
-    )
-    InfinityMenuItem(
-        text = { Text(stringResource(R.string.ssh_generate_save_copy), maxLines = 2) },
-        leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
-        onClick = onGenerate,
-        modifier = Modifier.testTag("ssh_editor_generate_key"),
-    )
 }
 
 @Composable
@@ -1243,4 +1191,22 @@ private val SshTerminalIdlePolicy.label: Int
 private fun copySshPublicKey(context: Context, publicKey: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
     clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.ssh_public_key_label), publicKey))
+}
+
+/** 主机编辑面板里的密钥面板：选择、生成、导入。 */
+private enum class SshEditorKeySheet { PICK, GENERATE, IMPORT }
+
+/** SSH 主机页顶部进入钥匙串的 SSH 密钥列表。 */
+@Composable
+private fun SshKeysEntryRow(count: Int?, onClick: () -> Unit) {
+    InfinitySettingsGroup {
+        InfinitySettingsItem(
+            icon = Icons.Rounded.VpnKey,
+            title = stringResource(R.string.ssh_keys_entry),
+            subtitle = count?.let { if (it == 0) stringResource(R.string.keychain_settings_entry_count_zero) else pluralStringResource(R.plurals.keychain_settings_entry_count, it, it) },
+            onClick = onClick,
+            showChevron = true,
+            modifier = Modifier.testTag("ssh_keys_entry"),
+        )
+    }
 }

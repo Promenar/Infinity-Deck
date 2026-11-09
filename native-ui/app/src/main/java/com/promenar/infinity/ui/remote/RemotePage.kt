@@ -96,6 +96,8 @@ internal fun RemotePage(
     var terminalTab by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
     // Git 分段里打开的钥匙串条目：整页显示详情，返回回到分段。
     var gitEntry by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
+    // SSH 分段顶部进入的 SSH 密钥列表：整页显示，条目沿用上面的整页详情。
+    var sshKeys by rememberSaveable(sessionId) { mutableStateOf(false) }
     // Tailscale 分段里点“SSH”的设备：切到 SSH 分段后由主机设置打开预填的新建面板。
     var importPeer by remember(sessionId) { mutableStateOf<TailnetPeer?>(null) }
     // 打开面板时智能体正在用 SSH，直接落在 SSH 分段。
@@ -125,6 +127,19 @@ internal fun RemotePage(
         return
     }
 
+    if (sshKeys) {
+        val closeKeys = { sshKeys = false }
+        BackHandler(onBack = closeKeys)
+        KeychainScreen(
+            initialFilter = KeychainCategory.SSH_KEY,
+            lockedFilter = KeychainCategory.SSH_KEY,
+            onBack = closeKeys,
+            onOpenEntry = { gitEntry = it },
+            onNewEntry = {},
+        )
+        return
+    }
+
     val agentItems: LazyListScope.() -> Unit = { remoteAgentUsageItems(usage, onOpenTerminal = openTerminal, onOpenBackgroundJobs = onOpenBackgroundJobs) }
     // 窄窗口整页在会话内容之外组合，实时输出存储需在此重新提供。
     CompositionLocalProvider(LocalToolLiveOutput provides app.toolLiveOutputStore) {
@@ -145,6 +160,7 @@ internal fun RemotePage(
                 importPeer = importPeer,
                 onImportConsumed = { importPeer = null },
                 onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token },
+                onOpenSshKeys = { sshKeys = true },
             )
             RemoteSegment.GIT -> KeychainScreen(
                 initialFilter = KeychainCategory.GIT,

@@ -2,10 +2,6 @@ package com.promenar.infinity.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
-import com.promenar.infinity.ui.common.StaticMenuPanel
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -15,12 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.data.ssh.SshAuthType
+import com.promenar.infinity.domain.keychain.KeychainCategory
+import com.promenar.infinity.domain.keychain.KeychainItem
 import com.promenar.infinity.ui.theme.InfinityColorSource
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
-/** 添加主机表单：主机 ID 规则紧贴字段、错误固定在按钮上方、粘贴私钥入口。只渲染展示状态，不含秘密。 */
+/** 添加主机表单：主机 ID 规则紧贴字段、错误固定在按钮上方、从钥匙串选密钥。只渲染展示状态，不含秘密。 */
 @PreviewTest
 @Preview(name = "SSH 添加主机 深色中文 主机ID错误", widthDp = 412, heightDp = 1300, locale = "zh-rCN")
 @Composable
@@ -39,36 +37,40 @@ fun sshHostEditorSuggestionPreview() = SshHostEditorPreview(dark = false, aliasS
     authType = SshAuthType.PASSWORD
 }
 
+/** 密钥认证：从钥匙串选定一把密钥。 */
 @PreviewTest
-@Preview(name = "SSH 添加主机 深色中文 字号130 已粘贴私钥", widthDp = 360, heightDp = 1900, locale = "zh-rCN", fontScale = 1.3f)
+@Preview(name = "SSH 添加主机 深色中文 字号130 已选密钥", widthDp = 360, heightDp = 1900, locale = "zh-rCN", fontScale = 1.3f)
 @Composable
-fun sshHostEditorPastedKeyPreview() = SshHostEditorPreview(
-    dark = true,
-    keySource = SshKeySource.CLIPBOARD,
-    errorCode = "INVALID_KEY_PASSPHRASE",
-) {
+fun sshHostEditorSelectedKeyPreview() = SshHostEditorPreview(dark = true, selectedKey = SampleKey) {
     alias = "fnos"
     hostname = "100.64.0.103"
     username = "promenar"
 }
 
-/** 私钥来源：导入文件为主体，粘贴与生成收进箭头段菜单（下方静态浮层示意展开状态）。 */
+/** 密钥认证未选密钥时保存：选择行标红，错误在按钮上方。 */
 @PreviewTest
-@Preview(name = "SSH 添加主机 浅色英文 字号130 私钥来源菜单", widthDp = 360, heightDp = 1900, locale = "en", fontScale = 1.3f)
+@Preview(name = "SSH 添加主机 浅色英文 字号130 未选密钥", widthDp = 360, heightDp = 1900, locale = "en", fontScale = 1.3f)
 @Composable
-fun sshHostEditorKeySourceMenuPreview() = SshHostEditorPreview(dark = false, showKeyMenu = true) {
+fun sshHostEditorKeyRequiredPreview() = SshHostEditorPreview(dark = false, errorCode = "SSH_KEY_REQUIRED") {
     alias = "fnos"
     hostname = "100.64.0.103"
     username = "promenar"
 }
+
+private val SampleKey = KeychainItem(
+    ref = "kc-ssh",
+    category = KeychainCategory.SSH_KEY,
+    name = "NAS 部署密钥",
+    keyType = "ssh-ed25519",
+    fingerprintSha256 = "SHA256:q3n8Zp1XrK0b7c9VwYtE5mLhA2sGdF4jU6iO0pQxRzs",
+)
 
 @Composable
 private fun SshHostEditorPreview(
     dark: Boolean,
     aliasSuggestion: String? = null,
-    keySource: SshKeySource? = null,
+    selectedKey: KeychainItem? = null,
     errorCode: String? = null,
-    showKeyMenu: Boolean = false,
     setup: SshHostEditorFields.() -> Unit,
 ) {
     InfinityTheme(
@@ -79,23 +81,16 @@ private fun SshHostEditorPreview(
     ) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
           Column {
-            if (showKeyMenu) {
-                StaticMenuPanel(Modifier.align(Alignment.End).padding(top = 12.dp, end = 16.dp)) {
-                    SshKeySourceMenuItems(onPasteKey = {}, onGenerate = {})
-                }
-            }
             SshHostEditorForm(
                 fields = remember { SshHostEditorFields(null).apply(setup) },
                 existing = null,
                 aliasSuggestion = aliasSuggestion,
                 busy = false,
-                keySource = keySource,
+                selectedKey = selectedKey,
                 errorCode = errorCode,
                 scrollState = rememberScrollState(),
                 onAuthTypeChange = {},
-                onImportKey = {},
-                onPasteKey = {},
-                onGenerate = {},
+                onPickKey = {},
                 onCancel = {},
                 onSave = {},
             )

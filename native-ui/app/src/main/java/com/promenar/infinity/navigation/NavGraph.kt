@@ -86,6 +86,7 @@ object NavDestinations {
     const val TAILSCALE_CONFIG = "tailscale_config"
     const val SSH_TERMINAL = "ssh_terminal/{alias}"
     const val KEYCHAIN = "keychain"
+    const val KEYCHAIN_SSH_KEYS = "keychain_ssh_keys"
     const val KEYCHAIN_ENTRY = "keychain_entry/{ref}"
     const val KEYCHAIN_EDIT = "keychain_edit?ref={ref}"
     const val BACKGROUND_ACTIVITY = "background_activity"
@@ -720,6 +721,18 @@ internal fun NavGraphBuilder.settingsDestinations(
         }
     }
 
+    composablePage(NavDestinations.KEYCHAIN_SSH_KEYS) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.keychain.KeychainScreen(
+                initialFilter = com.promenar.infinity.domain.keychain.KeychainCategory.SSH_KEY,
+                lockedFilter = com.promenar.infinity.domain.keychain.KeychainCategory.SSH_KEY,
+                onBack = { navigator.back() },
+                onOpenEntry = { ref -> navigator.open(NavDestinations.keychainEntry(ref)) },
+                onNewEntry = {},
+            )
+        }
+    }
+
     composablePage(NavDestinations.DEVELOPER) { entry ->
         navigator.Page(entry) {
             com.promenar.infinity.ui.developer.DeveloperRoute(
@@ -773,6 +786,7 @@ internal fun NavGraphBuilder.settingsDestinations(
                 onBack = { navigator.back() },
                 onOpenTerminal = { alias -> navigator.open("ssh_terminal/${android.net.Uri.encode(alias)}") },
                 onOpenTailscale = { navigator.open(NavDestinations.TAILSCALE_CONFIG) },
+                onOpenSshKeys = { navigator.open(NavDestinations.KEYCHAIN_SSH_KEYS) },
             )
         }
     }

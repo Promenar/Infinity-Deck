@@ -135,7 +135,7 @@ internal val KeychainItem.gitFromGitHubLogin: Boolean get() = gitSource == GitCr
 internal fun keychainRowSegments(item: KeychainItem): List<String> {
     if (item.category == KeychainCategory.SSH_KEY) {
         return listOfNotNull(
-            item.keyType,
+            keychainKeyTypeLabel(item.keyType),
             item.fingerprintSha256?.let { if (it.length > 16) it.take(16) + "…" else it },
             stringResource(R.string.keychain_sub_passphrase).takeIf { item.hasPassphrase },
         )

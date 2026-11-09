@@ -16,9 +16,10 @@ class SshErrorMessagesTest {
 
     @Test
     fun `表单与私钥载入抛出的错误码全部有文案`() {
-        val texts = listOf("ui/ssh/SshHostDraft.kt", "ui/ssh/TerminalInput.kt", "ui/settings/SshSettingsScreen.kt").map(::source)
+        val texts = listOf("ui/ssh/SshHostDraft.kt", "ui/ssh/TerminalInput.kt", "ui/settings/SshSettingsScreen.kt", "ui/keychain/KeychainSshKeyScreen.kt")
+            .map(::source)
         val codes = texts.flatMap { text ->
-            Regex("""(?:invalid|SshInputException|showError)\("(SSH_[A-Z_]+)"\)""").findAll(text).map { it.groupValues[1] }.toList()
+            Regex("""(?:(?:invalid|SshInputException|showError)\(|error = )"(SSH_[A-Z_]+)"""").findAll(text).map { it.groupValues[1] }.toList()
         }.toSet()
         assertWithMessage("应至少扫描到表单错误码").that(codes).containsAtLeast("SSH_ALIAS_INVALID", "SSH_ALIAS_TAKEN", "SSH_KEY_CLIPBOARD_EMPTY")
         assertWithMessage("缺少文案的错误码").that(codes.filter { SshErrorMessages.resource(it) == null }).isEmpty()

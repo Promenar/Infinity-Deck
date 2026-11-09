@@ -93,7 +93,6 @@ internal data class KeychainDetailActions(
     val onReveal: (valueRef: String) -> Unit = {},
     val onHide: () -> Unit = {},
     val onCopy: (valueRef: String) -> Unit = {},
-    val onCopyPublicKey: () -> Unit = {},
     val onEdit: () -> Unit = {},
     val onDelete: () -> Unit = {},
     val onReplaceToken: () -> Unit = {},
@@ -151,10 +150,13 @@ fun KeychainEntryScreen(
 
     val missing = stringResource(R.string.keychain_value_missing)
     val copied = stringResource(R.string.keychain_copied)
-    val publicKeyCopied = stringResource(R.string.keychain_public_key_copied)
     val deleteFailed = stringResource(R.string.keychain_delete_failed)
     if (item == null) {
         InfinitySettingsPageLayout(title = stringResource(R.string.keychain_title), onBack = onBack) {}
+        return
+    }
+    if (item.category == KeychainCategory.SSH_KEY) {
+        KeychainSshKeyEntry(item, usage, viewModel, onBack)
         return
     }
     val revealSubtitle = stringResource(R.string.keychain_auth_reveal, item.name)
@@ -201,13 +203,6 @@ fun KeychainEntryScreen(
                                 }
                             }
                         }, onError = ::notify)
-                    }
-                },
-                onCopyPublicKey = {
-                    item.publicKey?.let { key ->
-                        val chars = key.toCharArray()
-                        try { SensitiveClipboard.copy(context, item.name, chars) } finally { chars.fill('\u0000') }
-                        notify(publicKeyCopied)
                     }
                 },
                 onEdit = { onEdit(item.ref) },
@@ -311,7 +306,7 @@ private fun KeychainDetailActionsMenu(item: KeychainItem, actions: KeychainDetai
         }
     }
     val link = item.settingsLink()
-    val deletable = item.editableInKeychain() || item.category == KeychainCategory.SSH_KEY || item.category == KeychainCategory.GIT
+    val deletable = item.editableInKeychain() || item.category == KeychainCategory.GIT
     if (!deletable && link == null) return
     var open by remember { mutableStateOf(false) }
     Box {
@@ -444,34 +439,6 @@ private fun KeychainProperties(item: KeychainItem, actions: KeychainDetailAction
     InfinitySettingsGroup {
         InfinityPropertySheet(Modifier.padding(vertical = InfinitySpacing.Small)) {
             InfinityPropertyRow(stringResource(R.string.keychain_prop_category), keychainCategoryName(item.category))
-            if (item.category == KeychainCategory.SSH_KEY) {
-                item.keyType?.let { InfinityPropertyRow(stringResource(R.string.keychain_prop_key_type), it) }
-                item.fingerprintSha256?.let { InfinityPropertyRow(stringResource(R.string.keychain_prop_fingerprint), it) }
-                InfinityPropertyRow(
-                    stringResource(R.string.keychain_prop_passphrase),
-                    stringResource(if (item.hasPassphrase) R.string.keychain_yes else R.string.keychain_no),
-                )
-                item.publicKey?.let { key ->
-                    InfinityPropertyRow(
-                        label = stringResource(R.string.keychain_prop_public_key),
-                        valueContent = {
-                            Text(
-                                key,
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
-                                maxLines = 3,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        trailing = {
-                            InfinityPillButton(
-                                text = stringResource(R.string.keychain_copy_public_key),
-                                onClick = actions.onCopyPublicKey,
-                                compact = true,
-                            )
-                        },
-                    )
-                }
-            }
             item.username?.let { InfinityPropertyRow(stringResource(R.string.keychain_prop_username), it) }
             item.url?.let { InfinityPropertyRow(stringResource(R.string.keychain_prop_url), it) }
             if (item.category == KeychainCategory.GIT) {
@@ -510,7 +477,7 @@ private fun KeychainProperties(item: KeychainItem, actions: KeychainDetailAction
 }
 
 @Composable
-private fun KeychainUsageSection(usage: List<KeychainUsage>?) {
+internal fun KeychainUsageSection(usage: List<KeychainUsage>?) {
     if (usage == null) return
     val keychainContext = stringResource(R.string.keychain_usage_context_keychain)
     InfinitySettingsSection(title = stringResource(R.string.keychain_section_usage)) {

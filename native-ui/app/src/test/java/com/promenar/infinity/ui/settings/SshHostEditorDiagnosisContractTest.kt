@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 
 /**
  * “添加主机”面板的回归契约，对应真机现象：保存失败只显示原始错误码、
- * 主机 ID 规则提示挂在用户名下方、无法粘贴私钥文本。
+ * 主机 ID 规则提示挂在用户名下方。
  */
 class SshHostEditorDiagnosisContractTest {
     private val moduleRoot: Path = Path.of(System.getProperty("user.dir") ?: ".").let { root ->
@@ -55,17 +55,13 @@ class SshHostEditorDiagnosisContractTest {
     }
 
     @Test
-    fun `密钥认证应提供粘贴私钥文本的入口`() {
+    fun `密钥认证从钥匙串选密钥且剪贴板导入后清空剪贴板`() {
         val passwordBranch = Regex("""if \((?:\w+\.)?authType == SshAuthType\.PASSWORD\) \{""").find(editor)
         assertThat(passwordBranch).isNotNull()
         val keyBranch = editor.substring(passwordBranch!!.range.last).substringBefore("InfinitySettingsSection(")
-        // 粘贴入口收在私钥分体按钮的菜单里：分支内挂菜单并传入粘贴回调，菜单项本身用粘贴文案。
-        val menuItems = editor.substringAfter("fun ColumnScope.SshKeySourceMenuItems(").substringBefore("\n}\n")
-        val pasteInMenu = "SshKeySourceMenuItems(" in keyBranch && "onPasteKey" in keyBranch &&
-            Regex("""R\.string\.ssh_[a-z_]*paste[a-z_]*""").containsMatchIn(menuItems)
-        val hasPasteEntry = pasteInMenu || "privateKeyText" in keyBranch || "getPrimaryClip" in keyBranch || "LocalClipboard" in keyBranch ||
-            Regex("""R\.string\.ssh_[a-z_]*paste[a-z_]*""").containsMatchIn(keyBranch)
-        assertWithMessage("密钥认证分支没有粘贴私钥的入口").that(hasPasteEntry).isTrue()
-        assertWithMessage("从剪贴板载入私钥后应清空剪贴板").that(editor).contains("clearPrimaryClip()")
+        assertWithMessage("密钥认证分支应打开钥匙串选钥面板").that(keyBranch).contains("onPickKey")
+        assertWithMessage("选钥面板应能现场生成与导入").that(editor).contains("SshKeyImportSheet(")
+        val importSheet = source("src/main/java/com/promenar/infinity/ui/keychain/KeychainSshKeyScreen.kt")
+        assertWithMessage("从剪贴板导入私钥后应清空剪贴板").that(importSheet).contains("clearPrimaryClip()")
     }
 }

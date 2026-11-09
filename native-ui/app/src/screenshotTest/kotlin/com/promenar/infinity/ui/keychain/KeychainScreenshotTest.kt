@@ -1,6 +1,16 @@
 package com.promenar.infinity.ui.keychain
 
+import android.content.res.Configuration
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import com.promenar.infinity.data.ssh.SshAuthType
+import com.promenar.infinity.data.ssh.SshHost
+import com.promenar.infinity.domain.keychain.DeployOptions
+import com.promenar.infinity.domain.keychain.DeployStage
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -94,10 +104,130 @@ fun keychainDetailGitRejectedPreview() = Frame(dark = false) {
 }
 
 @PreviewTest
-@Preview(name = "钥匙串 详情 SSH 密钥 深色中文", widthDp = 390, heightDp = 1000, locale = "zh-rCN")
+@Preview(name = "钥匙串 SSH 密钥页 深色中文", widthDp = 390, heightDp = 1200, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "钥匙串 SSH 密钥页 浅色英文 字号130", widthDp = 360, heightDp = 1700, locale = "en", fontScale = 1.3f)
 @Composable
-fun keychainDetailSshKeyPreview() = Frame(dark = true) {
-    KeychainDetailContent(KeychainDetailState(item = SshKey, usage = emptyList()), KeychainDetailActions())
+fun keychainDetailSshKeyPreview() = Frame(dark = isSystemInDarkTheme()) {
+    KeychainSshKeyContent(
+        KeychainSshKeyState(
+            item = SshKey,
+            hosts = listOf(HostWeb, HostNas),
+            usage = listOf(KeychainUsage(SshKey.ref, KeychainAction.DEPLOY, KEYCHAIN_USAGE_CONTEXT, NOW - 3_600_000)),
+        ),
+        KeychainSshKeyActions(),
+    )
+}
+
+@PreviewTest
+@Preview(name = "钥匙串 SSH 密钥页 无主机 浅色中文", widthDp = 390, heightDp = 1000, locale = "zh-rCN")
+@Composable
+fun keychainSshKeyUnusedPreview() = Frame(dark = false) {
+    KeychainSshKeyContent(KeychainSshKeyState(item = SshKey.copy(hasPassphrase = false), usage = emptyList()), KeychainSshKeyActions())
+}
+
+// ── SSH 密钥面板 ──
+
+@PreviewTest
+@Preview(name = "SSH 生成密钥 浅色中文", widthDp = 390, heightDp = 520, locale = "zh-rCN")
+@Preview(name = "SSH 生成密钥 深色英文 字号130", widthDp = 360, heightDp = 640, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun sshKeyGeneratePreview() = Sheet(dark = isSystemInDarkTheme()) {
+    SshKeyGenerateContent(SshKeyGenerateForm(name = "web 集群"), busy = false, error = null, onChange = {}, onCancel = {}, onGenerate = {})
+}
+
+@PreviewTest
+@Preview(name = "SSH 导入 选来源 深色中文", widthDp = 390, heightDp = 420, locale = "zh-rCN")
+@Composable
+fun sshKeyImportPickPreview() = Sheet(dark = true) {
+    SshKeyImportContent(SshKeyImportForm(), false, null, {}, {}, {}, {}, {})
+}
+
+@PreviewTest
+@Preview(name = "SSH 导入 需要口令 浅色中文", widthDp = 390, heightDp = 560, locale = "zh-rCN")
+@Composable
+fun sshKeyImportPassphrasePreview() = Sheet(dark = false) {
+    SshKeyImportContent(
+        SshKeyImportForm(SshKeyImportSource.FILE, "id_ed25519_work", "id_ed25519_work"),
+        busy = false,
+        error = KEYCHAIN_TEXT_ERROR + "需要私钥口令",
+        onPickFile = {}, onPickClipboard = {}, onChange = {}, onCancel = {}, onImport = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "SSH 导出 无口令须设置 深色中文", widthDp = 390, heightDp = 600, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "SSH 导出 无口令须设置 浅色英文 字号130", widthDp = 360, heightDp = 560, locale = "en", fontScale = 1.3f)
+@Composable
+fun sshKeyExportPreview() = Sheet(dark = isSystemInDarkTheme()) {
+    SshKeyExportContent(
+        item = SshKey.copy(hasPassphrase = false),
+        form = SshKeyExportForm(passphrase = "short", repeat = ""),
+        busy = false, error = null, onChange = {}, onCancel = {}, onExport = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "SSH 部署 选主机 浅色中文", widthDp = 390, heightDp = 900, locale = "zh-rCN")
+@Preview(name = "SSH 部署 选主机 深色英文 字号130", widthDp = 360, heightDp = 1200, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun sshDeployFormPreview() = Sheet(dark = isSystemInDarkTheme()) {
+    SshDeployContent(
+        candidates = listOf(
+            SshDeployCandidate(HostDb, SshDeployLoginKind.STORED_PASSWORD, null),
+            SshDeployCandidate(HostNew, SshDeployLoginKind.INPUT_PASSWORD, null),
+            SshDeployCandidate(HostOld, SshDeployLoginKind.CURRENT_KEY, "旧笔记本密钥"),
+        ),
+        form = SshDeployForm(selected = setOf(HostDb.id, HostNew.id)),
+        run = null, onChange = {}, onCancel = {}, onRun = {}, onFinish = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "SSH 部署 进度 深色中文", widthDp = 390, heightDp = 600, locale = "zh-rCN")
+@Composable
+fun sshDeployProgressPreview() = Sheet(dark = true) {
+    SshDeployContent(
+        candidates = emptyList(),
+        form = SshDeployForm(),
+        run = SshDeployRun(
+            entryRef = SshKey.ref,
+            hosts = listOf(
+                SshDeployHostState(HostDb.id, HostDb.alias, DeployStage.COMPLETED),
+                SshDeployHostState(HostNew.id, HostNew.alias, DeployStage.WRITING_AUTHORIZED_KEYS),
+                SshDeployHostState(HostOld.id, HostOld.alias, DeployStage.FAILED, "KEY_LOGIN_FAILED"),
+            ),
+            options = DeployOptions(),
+        ),
+        onChange = {}, onCancel = {}, onRun = {}, onFinish = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "SSH 部署 全部完成 浅色中文", widthDp = 390, heightDp = 480, locale = "zh-rCN")
+@Composable
+fun sshDeployDonePreview() = Sheet(dark = false) {
+    SshDeployContent(
+        candidates = emptyList(),
+        form = SshDeployForm(),
+        run = SshDeployRun(
+            SshKey.ref,
+            listOf(SshDeployHostState(HostDb.id, HostDb.alias, DeployStage.COMPLETED), SshDeployHostState(HostNew.id, HostNew.alias, DeployStage.COMPLETED)),
+            DeployOptions(),
+        ),
+        onChange = {}, onCancel = {}, onRun = {}, onFinish = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "SSH 主机选密钥 深色中文", widthDp = 390, heightDp = 520, locale = "zh-rCN")
+@Composable
+fun sshKeyPickerPreview() = Sheet(dark = true) {
+    SshKeyPickerContent(
+        keys = listOf(SshKey, SshKey.copy(ref = "kc-old", name = "旧笔记本密钥", keyType = "ssh-rsa", hasPassphrase = false)),
+        hosts = listOf(HostWeb, HostNas),
+        selected = SshKey.ref,
+        onPick = {}, onGenerate = {}, onImport = {},
+    )
 }
 
 @PreviewTest
@@ -145,6 +275,11 @@ fun keychainEditorInvalidUrlPreview() = Frame(dark = true) {
 }
 
 @Composable
+private fun Sheet(dark: Boolean, content: @Composable () -> Unit) = Frame(dark) {
+    Column(Modifier.fillMaxWidth().padding(InfinitySpacing.Large)) { content() }
+}
+
+@Composable
 private fun Frame(dark: Boolean, content: @Composable () -> Unit) {
     InfinityTheme(
         preferences = InfinityThemePreferences(
@@ -186,7 +321,7 @@ private val SshKey = KeychainItem(
     name = "NAS 部署密钥",
     updatedAt = NOW - 7L * 86_400_000,
     origin = KeychainOrigin.LOCAL_GENERATED,
-    keyType = "ED25519",
+    keyType = "ssh-ed25519",
     fingerprintSha256 = "SHA256:q3n8Zp1XrK0b7c9VwYtE5mLhA2sGdF4jU6iO0pQxRzs",
     publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHq3n8Zp1XrK0b7c9VwYtE5mLhA2sGdF4jU6iO0pQxRz infinity",
     hasPassphrase = true,
@@ -210,3 +345,9 @@ private val SampleItems = listOf(
     KeychainItem("secret:tavily_api_key", KeychainCategory.SERVICE, "Tavily"),
     KeychainItem("secret:automatic_backup_password", KeychainCategory.SERVICE, "自动备份口令"),
 )
+
+private val HostWeb = SshHost(id = "h-web", alias = "web-01", hostname = "47.96.18.204", username = "root", keyEntryId = "kc-ssh")
+private val HostNas = SshHost(id = "h-nas", alias = "nas", hostname = "nas.example-tailnet.ts.net", port = 2222, username = "promenar", keyEntryId = "kc-ssh")
+private val HostDb = SshHost(id = "h-db", alias = "db-01", hostname = "47.96.18.205", username = "root", authType = SshAuthType.PASSWORD)
+private val HostNew = SshHost(id = "h-new", alias = "web-02", hostname = "47.96.18.210", username = "root", authType = SshAuthType.PASSWORD)
+private val HostOld = SshHost(id = "h-old", alias = "pi", hostname = "192.168.1.20", username = "pi", keyEntryId = "kc-old")

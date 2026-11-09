@@ -79,7 +79,7 @@
     <string name="ssh_error_port_invalid">The SSH port must be a number from 1 to 65535.</string>
     <string name="ssh_error_username_invalid">Enter a username.</string>
     <string name="ssh_error_forward_invalid">Forwarding ports must be from 1 to 65535, and the target hostname can\'t contain spaces.</string>
-    <string name="ssh_error_key_required">Import, paste or generate a private key</string>
+    <string name="ssh_error_key_required">Choose a key.</string>
     <string name="ssh_error_password_required">Enter a password.</string>
     <string name="ssh_error_key_read_failed">Couldn\'t read the private key file.</string>
     <string name="ssh_error_key_too_large">The private key is larger than 64 KB. Make sure you chose a private key file.</string>
@@ -107,4 +107,12 @@
     <string name="ssh_error_forward_not_configured">This host has no port forwarding configured.</string>
     <string name="ssh_error_host_unavailable">SSH is temporarily unavailable. Try again later.</string>
     <string name="ssh_error_unknown">The operation failed (%1$s).</string>
+    <string name="ssh_error_key_install_failed">Couldn\'t write authorized_keys.</string>
+    <string name="ssh_error_key_login_failed">The host rejected the new key.</string>
+    <string name="ssh_error_key_passphrase_required">Passphrase required.</string>
+    <string name="ssh_error_keychain_write_failed">Couldn\'t save to the keychain.</string>
+    <string name="ssh_error_export_passphrase_required">Set an export passphrase of at least 8 characters.</string>
+    <string name="ssh_key_choose">Choose key</string>
+    <string name="ssh_key_deploy_first">Deploy the public key to this host first</string>
+    <string name="ssh_keys_entry">SSH keys</string>
 </resources>

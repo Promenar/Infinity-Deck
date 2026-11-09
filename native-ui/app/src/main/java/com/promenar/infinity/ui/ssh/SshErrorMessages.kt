@@ -51,6 +51,11 @@ internal object SshErrorMessages {
         "FOREGROUND_SERVICE_UNAVAILABLE" -> R.string.ssh_error_foreground_service
         "FORWARD_NOT_CONFIGURED" -> R.string.ssh_error_forward_not_configured
         "HOST_UNAVAILABLE", "RUNTIME_CLOSED" -> R.string.ssh_error_host_unavailable
+        "KEY_INSTALL_FAILED" -> R.string.ssh_error_key_install_failed
+        "KEY_LOGIN_FAILED" -> R.string.ssh_error_key_login_failed
+        "KEY_PASSPHRASE_REQUIRED" -> R.string.ssh_error_key_passphrase_required
+        "EXPORT_PASSPHRASE_REQUIRED" -> R.string.ssh_error_export_passphrase_required
+        "KEYCHAIN_WRITE_FAILED", "KEYCHAIN_ROLLBACK_FAILED" -> R.string.ssh_error_keychain_write_failed
         else -> null
     }
 

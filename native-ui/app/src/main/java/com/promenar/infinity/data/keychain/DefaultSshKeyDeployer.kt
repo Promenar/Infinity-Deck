@@ -53,8 +53,24 @@ class DefaultSshKeyDeployer(
     }
 
     // 运行时在自己的 IO 与超时协程里回调 connected，进度改经通道发送，避免 flow 跨协程 emit。
+    // 失败在生产者内部转成 FAILED 进度：生产者异常会取消转发协程，下游 catch 可能把它误判为下游异常而重新抛出。
     private fun deployTarget(entryId: String, target: DeployTarget, options: DeployOptions) = channelFlow {
         send(DeployProgress(target.hostId, DeployStage.CONNECTING))
+        val failure = try {
+            installAndCommit(entryId, target, options) { send(it) }
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            failure
+        }
+        send(
+            if (failure == null) DeployProgress(target.hostId, DeployStage.COMPLETED)
+            else DeployProgress(target.hostId, DeployStage.FAILED, (failure as? SshFailure)?.code ?: "DEPLOY_FAILED"),
+        )
+    }
+
+    private suspend fun installAndCommit(entryId: String, target: DeployTarget, options: DeployOptions, send: suspend (DeployProgress) -> Unit) {
         hosts.deploymentSnapshot(target.hostId).use { snapshot ->
             val original = snapshot.host
             val presented = runtime.probe(original)
@@ -76,7 +92,6 @@ class DefaultSshKeyDeployer(
                 hosts.commitKeyDeployment(snapshot, entryId, key.fingerprint, presented, options)
             }
         }
-        send(DeployProgress(target.hostId, DeployStage.COMPLETED))
     }
 
     private suspend fun loginCredential(host: SshHost, source: DeployCredentialSource): SshCredential = when (source) {

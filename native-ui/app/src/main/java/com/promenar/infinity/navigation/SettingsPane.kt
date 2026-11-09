@@ -70,6 +70,7 @@ private val SettingsPaneRouteBases: Set<String> = SettingsPaneRoots.toSet() + se
     NavDestinations.LINUX_MIRRORS,
     "visual_lab",
     "keychain_entry",
+    NavDestinations.KEYCHAIN_SSH_KEYS,
     "keychain_edit",
 )
 

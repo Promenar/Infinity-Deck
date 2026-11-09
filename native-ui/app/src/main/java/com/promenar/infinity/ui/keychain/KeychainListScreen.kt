@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Source
+import androidx.compose.material.icons.rounded.UploadFile
+import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -75,6 +77,8 @@ internal data class KeychainListActions(
     val onOpen: (KeychainItem) -> Unit = {},
     val onNewEntry: () -> Unit = {},
     val onAddGit: () -> Unit = {},
+    val onGenerateSshKey: () -> Unit = {},
+    val onImportSshKey: () -> Unit = {},
     val onGitHubLogin: () -> Unit = {},
 )
 
@@ -96,6 +100,11 @@ fun KeychainScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var gitEditor by remember { mutableStateOf<KeychainGitEditor?>(null) }
+    var sshSheet by remember { mutableStateOf<SshKeyImportSource?>(null) }
+    var generating by remember { mutableStateOf(false) }
+    val generatedMessage = stringResource(R.string.keychain_ssh_generated)
+    val importedMessage = stringResource(R.string.keychain_ssh_imported)
+    val importedClipboardMessage = stringResource(R.string.keychain_ssh_imported_clipboard)
     KeychainListContent(
         state = KeychainListState(items, filter, query, searchActive, git.githubLoginAvailable, filterLocked = lockedFilter != null),
         actions = KeychainListActions(
@@ -106,9 +115,25 @@ fun KeychainScreen(
             onOpen = { onOpenEntry(it.ref) },
             onNewEntry = onNewEntry,
             onAddGit = { gitEditor = KeychainGitEditor.Add },
+            onGenerateSshKey = { generating = true },
+            onImportSshKey = { sshSheet = SshKeyImportSource.FILE },
             onGitHubLogin = gitViewModel::startGitHubLogin,
         ),
     )
+    if (generating) {
+        SshKeyGenerateSheet(onDismiss = { generating = false }) { item ->
+            generating = false
+            android.widget.Toast.makeText(context, generatedMessage, android.widget.Toast.LENGTH_SHORT).show()
+            onOpenEntry(item.ref)
+        }
+    }
+    if (sshSheet != null) {
+        SshKeyImportSheet(onDismiss = { sshSheet = null }) { item, fromClipboard ->
+            sshSheet = null
+            android.widget.Toast.makeText(context, if (fromClipboard) importedClipboardMessage else importedMessage, android.widget.Toast.LENGTH_SHORT).show()
+            onOpenEntry(item.ref)
+        }
+    }
     KeychainGitSheets(
         git = git,
         editor = gitEditor,
@@ -124,7 +149,7 @@ fun KeychainScreen(
 @Composable
 internal fun KeychainListContent(state: KeychainListState, actions: KeychainListActions, modifier: Modifier = Modifier) {
     InfinitySettingsPageLayout(
-        title = stringResource(R.string.keychain_title),
+        title = state.filter?.takeIf { state.filterLocked }?.let { keychainCategoryName(it) } ?: stringResource(R.string.keychain_title),
         onBack = actions.onBack,
         modifier = modifier,
         search = InfinityPageSearch(
@@ -139,7 +164,7 @@ internal fun KeychainListContent(state: KeychainListState, actions: KeychainList
         Box(Modifier.fillMaxSize()) {
             KeychainList(state, actions, padding)
             KeychainFab(
-                gitOnly = state.filterLocked && state.filter == KeychainCategory.GIT,
+                lockedTo = state.filter.takeIf { state.filterLocked },
                 actions = actions,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -181,7 +206,7 @@ private fun KeychainList(state: KeychainListState, actions: KeychainListActions,
         if (items != null && groups.isEmpty()) {
             item(key = "empty") {
                 Text(
-                    stringResource(R.string.keychain_empty),
+                    stringResource(if (state.query.isBlank()) R.string.keychain_settings_entry_count_zero else R.string.keychain_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.XLarge),
@@ -276,8 +301,10 @@ internal fun KeychainRow(item: KeychainItem, onClick: () -> Unit) {
 }
 
 @Composable
-private fun KeychainFab(gitOnly: Boolean, actions: KeychainListActions, modifier: Modifier) {
+private fun KeychainFab(lockedTo: KeychainCategory?, actions: KeychainListActions, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
+    val gitOnly = lockedTo == KeychainCategory.GIT
+    val sshOnly = lockedTo == KeychainCategory.SSH_KEY
     Box(modifier) {
         ExtendedFloatingActionButton(
             onClick = { if (gitOnly) actions.onAddGit() else open = true },
@@ -288,17 +315,31 @@ private fun KeychainFab(gitOnly: Boolean, actions: KeychainListActions, modifier
             modifier = Modifier.testTag("keychain_fab"),
         )
         InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (!sshOnly) {
+                InfinityMenuItem(
+                    text = { Text(stringResource(R.string.keychain_new_entry)) },
+                    leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
+                    onClick = { open = false; actions.onNewEntry() },
+                    modifier = Modifier.testTag("keychain_fab_new_entry"),
+                )
+                InfinityMenuItem(
+                    text = { Text(stringResource(R.string.keychain_add_git)) },
+                    leadingIcon = { Icon(Icons.Rounded.Source, contentDescription = null) },
+                    onClick = { open = false; actions.onAddGit() },
+                    modifier = Modifier.testTag("keychain_fab_add_git"),
+                )
+            }
             InfinityMenuItem(
-                text = { Text(stringResource(R.string.keychain_new_entry)) },
-                leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
-                onClick = { open = false; actions.onNewEntry() },
-                modifier = Modifier.testTag("keychain_fab_new_entry"),
+                text = { Text(stringResource(R.string.keychain_ssh_generate_menu)) },
+                leadingIcon = { Icon(Icons.Rounded.VpnKey, contentDescription = null) },
+                onClick = { open = false; actions.onGenerateSshKey() },
+                modifier = Modifier.testTag("keychain_fab_generate_ssh"),
             )
             InfinityMenuItem(
-                text = { Text(stringResource(R.string.keychain_add_git)) },
-                leadingIcon = { Icon(Icons.Rounded.Source, contentDescription = null) },
-                onClick = { open = false; actions.onAddGit() },
-                modifier = Modifier.testTag("keychain_fab_add_git"),
+                text = { Text(stringResource(R.string.keychain_ssh_import_menu)) },
+                leadingIcon = { Icon(Icons.Rounded.UploadFile, contentDescription = null) },
+                onClick = { open = false; actions.onImportSshKey() },
+                modifier = Modifier.testTag("keychain_fab_import_ssh"),
             )
         }
     }
