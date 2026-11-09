@@ -16,12 +16,12 @@ export const strings = {
     langName: '中',
     nav: { features: '功能', trust: '安全', download: '下载', docs: '文档', changelog: '更新日志', main: '主导航', lang: '语言', footer: '页脚' },
     meta: {
-      title: 'Infinity Deck：电脑合上，活不停',
-      description: '一部手机，接通你所有的仓库、服务器和算力。内置 Linux 与 git，自带 Tailscale 直达你的机器，自带 Key，数据留在本机。',
+      title: 'Infinity Deck：电脑关了，工作不断',
+      description: '一部手机，接通你所有的仓库、服务器和算力。内置 Linux 与 git，自带 Tailscale 直达你的机器，使用你自己的 Key，数据留在本机。',
     },
     hero: {
-      title: '电脑合上，活不停。',
-      lede: '一部手机，接通你所有的仓库、服务器和算力。自带 Key，数据留在本机。',
+      title: '电脑关了，工作不断。',
+      lede: '一部手机，接通你所有的仓库、服务器和算力。使用你自己的 Key，数据留在本机。',
       download: '下载 Android 版',
       source: 'GitHub 源码',
       facts: ['Android 12+', 'GPL-3.0 开源'],
@@ -34,7 +34,7 @@ export const strings = {
       points: [
         ['手机自己就能干活', '内置 Alpine Linux，git、Python、Node.js、FFmpeg 都在手机上跑，不靠任何一台电脑在线。'],
         ['直达你自己的机器', '应用自带 Tailscale 节点，SSH、模型和 MCP 直接进你的 tailnet：机房的服务器、家里的显卡，不开公网端口，也不占系统 VPN。'],
-        ['模型随你选', '自带 Key 接任何服务商，聊到一半可以换，也能接家里跑的模型。'],
+        ['模型随你选', '使用你自己的 Key 接任何服务商，聊到一半可以换，也能接家里跑的模型。'],
         ['为手机而做', '命令审批卡、后台任务、消息排队、触摸锁、折叠屏外屏，单手、躺着、在地铁上都顺手。'],
         ['和桌面工具一起用', '坐在电脑前继续用你习惯的 AI 编程工具；离开时手机接着改同一个 git 仓库，电脑开着也能 SSH 上去借它的算力。'],
       ],
@@ -91,7 +91,7 @@ export const strings = {
       lede: '模型自己接，环境自己选，每一项都在手机上跑。',
       more: '每一项的细节与边界见功能详解',
       groups: [
-        ['对话与模型', ['自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口', '聊到一半换模型；最多 16 个会话同时生成', '生成中的下一句可以排队或插队', '需要你拍板时弹出提问卡；锁屏、切后台不中断', '触摸锁让手机直接揣进口袋', '技能与 MCP 服务器']],
+        ['对话与模型', ['使用你自己的 Key 接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口', '聊到一半换模型；最多 16 个会话同时生成', '生成中的下一句可以排队或插队', '需要你拍板时弹出提问卡；锁屏、切后台不中断', '触摸锁让手机直接揣进口袋', '技能与 MCP 服务器']],
         ['智能体', ['先列计划再动手', '最多 32 个子代理并行，单次派出 8 个，结论自动交回', '子代理遇到限流、断网或超时，自动退避重试', '适合单独做的工作开成分支会话', '慢命令、生图与媒体下载转入后台，完成后回报', '按关键词检索、翻页取回已压缩的会话历史', '定时任务，单次到 cron']],
         ['运行环境与代码', ['一键 Alpine Linux，不用 root，也不用 Termux', '没装 Linux 也有内置命令、Python 和 JavaScript 沙箱', '内置 git；Git 面板看分支、差异和提交', 'Git 密码按命令注入，不写进仓库配置', '文件页显示分支与改动数，点按直达 Git 页签']],
         ['服务器与私有网络', ['SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB', '真终端和端口转发随时接手', '应用自带 Tailscale 节点，支持自建 Headscale', '模型、SSH、MCP 直达 tailnet，不开公网端口，不占系统 VPN']],
@@ -168,11 +168,11 @@ export const strings = {
     langName: 'EN',
     nav: { features: 'Features', trust: 'Security', download: 'Download', docs: 'Docs', changelog: 'Changelog', main: 'Main', lang: 'Language', footer: 'Footer' },
     meta: {
-      title: 'Infinity Deck: Close the laptop. Keep working.',
+      title: 'Infinity Deck: Laptop off. Work goes on.',
       description: 'Every repo, server and GPU you own, one phone away. Built-in Linux and git, its own Tailscale node, bring your own key; your data stays on your device.',
     },
     hero: {
-      title: 'Close the laptop. Keep working.',
+      title: 'Laptop off. Work goes on.',
       lede: 'Every repo, server and GPU you own, one phone away. Bring your own key. Your data stays on your device.',
       download: 'Download for Android',
       source: 'Source on GitHub',
