@@ -37,7 +37,7 @@ SSH 路线复用 SSH 主机管理：在 Termux 安装 `openssh`、配置密码�
 
 ## SSH 使用
 
-在“设置 → 工具 → SSH 主机与终端”新增主机，别名使用小写英文字母开头，后接小写字母、数字、下划线或连字符，最多 48 字符。密钥认证支持 Ed25519、ECDSA 和 RSA 的 OpenSSH 新格式，含 bcrypt 口令保护；PEM、PKCS8、PuTTY 和跳板连接尚未提供。生成密钥后仅把公钥复制到服务端的 `authorized_keys`。在可信渠道核对密钥类型与 SHA256 指纹，再点击信任；更换服务端密钥时须在同一页面明确替换信任。
+在“设置 → 工具 → SSH 主机与终端”新增主机，别名使用小写英文字母开头，后接小写字母、数字、下划线或连字符，最多 48 字符。密钥认证支持 Ed25519、ECDSA 和 RSA 的 OpenSSH 新格式，含 bcrypt 口令保护；钥匙串还可导入 PEM 与 PKCS8 私钥（含带口令的 PKCS8 与 NIST P-256/384/521 ECDSA），导入后统一保存为 OpenSSH 新格式。PuTTY 私钥和跳板连接尚未提供。生成密钥后仅把公钥复制到服务端的 `authorized_keys`。在可信渠道核对密钥类型与 SHA256 指纹，再点击信任；更换服务端密钥时须在同一页面明确替换信任。
 
 Termux 路径：在 Termux 安装 OpenSSH，运行 `whoami` 获取用户名、设置密码后运行 `sshd`。在 Infinity Deck 配置主机 `127.0.0.1`、端口 `8022` 和该用户名，核对 Termux 中 `ssh-keygen -lf "$PREFIX/etc/ssh/ssh_host_ed25519_key.pub" -E sha256` 显示的指纹后打开终端。需要密钥认证时，把 Infinity Deck 复制的公钥添加到 Termux 的 `~/.ssh/authorized_keys`。
 
