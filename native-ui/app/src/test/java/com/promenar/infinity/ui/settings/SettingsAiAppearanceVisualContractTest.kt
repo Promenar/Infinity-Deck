@@ -56,7 +56,9 @@ class SettingsAiAppearanceVisualContractTest {
         val source = source("ModelEditorScreen.kt")
 
         assertThat(source).contains("InfinitySettingsSection(")
-        assertThat(source).contains("MaterialTheme.colorScheme.background")
+        // 顶栏透明，由毛玻璃容器提供页面底色。
+        assertThat(source).contains("headerFrosted = true")
+        assertThat(source).contains("containerColor = Color.Transparent")
         assertThat(source).doesNotContain("style = MaterialTheme.typography.titleSmall")
     }
 

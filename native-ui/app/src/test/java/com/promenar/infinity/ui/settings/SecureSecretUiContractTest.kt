@@ -100,7 +100,9 @@ class SecureSecretUiContractTest {
         assertThat(form).doesNotContain("BasicTextField")
         assertThat(form).doesNotContain("Spacer(modifier = Modifier.height(200.dp))")
         assertThat(form).doesNotContain("navigationBarsPadding()")
-        assertThat(form).contains("imePadding()")
+        // 键盘只让出高出导航栏的部分，避免与底部按钮栏的导航栏内边距重复。
+        assertThat(form).contains("WindowInsets.ime.exclude(WindowInsets.navigationBars)")
+        assertThat(form).doesNotContain(".imePadding()")
     }
 
     @Test

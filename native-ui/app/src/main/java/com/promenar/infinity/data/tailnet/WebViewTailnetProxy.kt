@@ -1,10 +1,10 @@
 package com.promenar.infinity.data.tailnet
 
-import android.util.Log
 import android.webkit.HttpAuthHandler
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
+import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
@@ -41,7 +41,7 @@ internal object AndroidxWebViewProxyOverride : WebViewProxyOverride {
 class WebViewTailnetProxy internal constructor(
     private val source: TailnetEndpointSource,
     private val override: WebViewProxyOverride,
-    private val warn: (String, Throwable) -> Unit = { message, error -> Log.w(TAG, message, error) },
+    private val warn: (String, Throwable) -> Unit = { message, error -> InfinityLogger.log("[$TAG] $message type=${error.javaClass.simpleName}") },
 ) {
     @Volatile private var applied: TailnetProxyEndpoint? = null
 
