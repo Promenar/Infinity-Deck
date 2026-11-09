@@ -120,6 +120,12 @@ class SshRuntime(
     private val connections = ConcurrentHashMap<PoolKey, Connection>()
     private val terminals = ConcurrentHashMap<String, Pty>()
     private val stopped = AtomicBoolean(false)
+    private val oneShotOperations = SshOneShotOperations({ stopped.get() })
+    internal suspend fun probeOnce(host: SshHost): SshHostKey = oneShotOperations.probe(host)
+    internal suspend fun installPublicKeyOnce(host: SshHost, credential: com.promenar.infinity.data.security.SshCredential,
+        publicKey: String, connected: suspend () -> Unit) = oneShotOperations.install(host, credential, publicKey, connected)
+    internal suspend fun verifyKeyOnce(host: SshHost, credential: com.promenar.infinity.data.security.SshCredential) =
+        oneShotOperations.verify(host, credential)
     private data class OwnedTemporary(val host: SshHost, val path: String)
     private val pendingCleanup = ConcurrentHashMap<String, OwnedTemporary>()
     private val _cleanupWarnings = MutableStateFlow<Set<String>>(emptySet())
@@ -885,6 +891,7 @@ class SshRuntime(
     suspend fun resumeOwner(owner: String) { pausedOwners.remove(owner) }
     override fun close() {
         stopped.set(true)
+        oneShotOperations.close()
         connections.values.toList().forEach(::drop)
         scope.cancel()
         runCatching { publishPersistent() }

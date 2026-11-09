@@ -69,6 +69,9 @@ interface SshHostStore {
     fun observeHosts(): Flow<List<SshHost>>
     suspend fun find(alias: String): SshHost?
     suspend fun save(host: SshHost, credential: SshCredential? = null)
+    /** 保存连接配置并绑定已校验的钥匙串私钥；password 为 null 时保留既有登录密码。 */
+    suspend fun saveWithKey(host: SshHost, entryId: String, password: ByteArray? = null): SshHost =
+        throw UnsupportedOperationException("主机存储不支持钥匙串绑定")
     suspend fun delete(alias: String)
     suspend fun trust(alias: String, expectedOld: String?, key: SshHostKey, expectedHost: SshHost): Boolean
     fun credential(host: SshHost): SshCredential?
@@ -93,6 +96,14 @@ class RoomSshHostStore(
     private val onLegacyKeySaved: suspend (String) -> Unit = {},
 ) : SshHostStore {
     private val credentials = SshCredentialStore(secrets)
+    private val keyOperations = KeychainSshHostOperations(dao, secrets, keychainDao)
+    override suspend fun saveWithKey(host: SshHost, entryId: String, password: ByteArray?): SshHost =
+        keyOperations.save(host, entryId, password)
+    internal suspend fun deploymentSnapshot(hostId: String) = keyOperations.snapshot(hostId)
+    internal suspend fun deploymentKey(entryId: String) = keyOperations.key(entryId)
+    internal suspend fun storedPasswordForDeployment(host: SshHost) = keyOperations.passwordCredential(host)
+    internal suspend fun commitKeyDeployment(snapshot: SshKeyDeploymentSnapshot, entryId: String, fingerprint: String, pinned: SshHostKey,
+        options: com.promenar.infinity.domain.keychain.DeployOptions) = keyOperations.commit(snapshot, entryId, fingerprint, pinned, options)
 
     override fun observeHosts(): Flow<List<SshHost>> = dao.observeHosts().map { hosts -> hosts.map { it.toHost() } }
 
@@ -104,11 +115,13 @@ class RoomSshHostStore(
     override suspend fun save(host: SshHost, credential: SshCredential?) = SecretMutationRevision.suspending {
         withContext(Dispatchers.IO) {
             mutationMutex.withLock {
+                val previous = dao.findById(host.id)?.toHost()
                 val next = if (host.authType != SshAuthType.KEY || credential?.privateKey?.isNotEmpty() == true)
-                    host.copy(keyEntryId = null) else host
+                    host.copy(keyEntryId = null)
+                else if (host.keyEntryId == null && previous?.authType == SshAuthType.KEY) host.copy(keyEntryId = previous.keyEntryId)
+                else host
                 val owner = dao.find(next.alias)
                 require(owner == null || owner.id == next.id) { "SSH 别名已存在" }
-                val previous = dao.findById(next.id)?.toHost()
                 val identityChanged = previous == null || previous.hostname != next.hostname || previous.port != next.port ||
                     previous.username != next.username || previous.authType != next.authType
                 // Room 与 SecretStore 的短提交窗口完成回滚，避免取消留下半写入状态。
@@ -253,7 +266,7 @@ internal fun SshHost.binding(): ByteArray {
     return try { MessageDigest.getInstance("SHA-256").digest(encoded) } finally { encoded.fill(0) }
 }
 
-private fun SshHost.toEntity() = SshHostEntity(
+internal fun SshHost.toEntity() = SshHostEntity(
     id, alias, hostname, port, username, authType.name, jumpAlias, trustedKeyType, trustedFingerprint,
     keepTerminal, localForwardPort, forwardHost, forwardPort,
     keyEntryId,

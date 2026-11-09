@@ -23,6 +23,7 @@ class AuthorizedKeyInstallCommandTest {
     }
 
     @Test fun `重复执行只追加一次并收紧权限`() {
+        org.junit.Assume.assumeTrue(java.io.File("/bin/sh").canExecute())
         val home = Files.createTempDirectory("ssh-install-test").toFile()
         try {
             val key = "ssh-ed25519 AAAAB3NzaC1lZDI1NTE5 test"
@@ -40,6 +41,23 @@ class AuthorizedKeyInstallCommandTest {
             assertEquals("rw-------", Files.getPosixFilePermissions(ssh.resolve("authorized_keys").toPath()).let {
                 java.nio.file.attribute.PosixFilePermissions.toString(it)
             })
+        } finally { home.deleteRecursively() }
+    }
+
+    @Test fun `已有公钥末行无换行时安全分隔新公钥`() {
+        org.junit.Assume.assumeTrue(java.io.File("/bin/sh").canExecute())
+        val home = Files.createTempDirectory("ssh-install-newline-test").toFile()
+        try {
+            val file = home.resolve(".ssh/authorized_keys").also { it.parentFile.mkdirs() }
+            val previous = "ssh-ed25519 BBBB original"
+            val key = "ssh-rsa AAAA infinity"
+            file.writeText(previous)
+            repeat(2) {
+                val process = ProcessBuilder("/bin/sh", "-c", authorizedKeyInstallCommand(key))
+                    .also { it.environment()["HOME"] = home.absolutePath }.start()
+                assertEquals(0, process.waitFor())
+            }
+            assertEquals(listOf(previous, key), file.readLines())
         } finally { home.deleteRecursively() }
     }
 }
