@@ -28,6 +28,7 @@ import java.security.MessageDigest
 class InfinityDatabaseBaselineTest {
     @Test
     fun backupSchemaGateMatchesExportedRoomIdentityHash() {
+        assertThat(com.promenar.infinity.data.local.db.recovery.CURRENT_V37_IDENTITY).isEqualTo(exportedSchema(37).identityHash)
         assertThat(INFINITY_SCHEMA_V36_IDENTITY_HASH).isEqualTo(exportedSchema(36).identityHash)
         assertThat(com.promenar.infinity.data.backup.ROOM_SCHEMA_V36_IDENTITY_HASH).isEqualTo(exportedSchema(36).identityHash)
         assertThat(com.promenar.infinity.data.local.db.recovery.CURRENT_V36_IDENTITY).isEqualTo(exportedSchema(36).identityHash)
@@ -217,7 +218,7 @@ class InfinityDatabaseBaselineTest {
             .allowMainThreadQueries()
             .build()
 
-    private fun exportedSchema(version: Int = 36): ExportedSchema {
+    private fun exportedSchema(version: Int = 37): ExportedSchema {
         val file = File("app/schemas/com.promenar.infinity.data.local.db.InfinityDatabase/$version.json")
         assertThat(file.isFile).isTrue()
         val database = Json.parseToJsonElement(file.readText()).jsonObject
@@ -260,8 +261,8 @@ class InfinityDatabaseBaselineTest {
         database: SupportSQLiteDatabase,
         schema: ExportedSchema,
     ) {
-        assertThat(schema.version).isEqualTo(36)
-        assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(36L)
+        assertThat(schema.version).isEqualTo(37)
+        assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(37L)
         assertThat(database.longQuery("PRAGMA foreign_keys")).isEqualTo(1L)
 
         val runtimeTables = database.stringColumnQuery(

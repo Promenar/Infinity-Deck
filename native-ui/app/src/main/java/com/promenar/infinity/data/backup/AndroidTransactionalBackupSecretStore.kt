@@ -32,6 +32,8 @@ class AndroidTransactionalBackupSecretStore internal constructor(
 
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
 
+    override suspend fun ids(): Set<SecretId> = liveStore.ids()
+
     override suspend fun snapshot(ids: Set<SecretId>, maxTotalBytes: Long): Map<SecretId, ByteArray> {
         require(maxTotalBytes >= 0) { "Secret snapshot 预算无效" }
         val result = linkedMapOf<SecretId, ByteArray>()

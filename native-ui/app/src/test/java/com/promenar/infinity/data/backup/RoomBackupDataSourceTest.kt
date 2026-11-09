@@ -600,6 +600,9 @@ class RoomBackupDataSourceTest {
                 db.clearAllTables()
                 BackupStreams.deleteTree(sourceRoot); Files.createDirectory(sourceRoot)
                 seedCompleteGraph()
+                db.keychainDao().appendUsage(com.promenar.infinity.data.keychain.KeychainUsageEntity(
+                    entryRef = "service-fixture", action = "COPY", context = "settings", at = 1,
+                ))
                 db.messageDao().insert(MessageEntity("child-message", "session-1", "assistant", "父子链回归", parentMessageId = "message-1", createdAt = 101L))
                 val optional = listOf(BackupLayer.KNOWLEDGE, BackupLayer.SESSIONS, BackupLayer.WORKSPACE_FILES, BackupLayer.SECRETS)
                 val layers = setOf(BackupLayer.CORE) + optional.filterIndexed { index, _ -> mask and (1 shl index) != 0 }
@@ -614,6 +617,7 @@ class RoomBackupDataSourceTest {
                 db.sessionDao().insert(SessionEntity("retained", "agent-1", createdAt = 1, updatedAt = 1))
                 val restored = Files.newInputStream(file).use { input -> codec.decodeFrom(input, password, cache).use { source.restoreWithResult(it, "matrix-$mask") } }
                 assertThat(db.sessionDao().getById("retained") != null).isEqualTo(BackupLayer.SESSIONS !in layers)
+                assertThat(db.keychainDao().observeUsage("service-fixture").first()).hasSize(1)
                 db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertThat(it.moveToFirst()).isFalse() }
                 assertThat(restored.summary.layers.keys).containsExactlyElementsIn(layers)
             }
@@ -1371,7 +1375,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(18)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(19)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -1578,19 +1582,106 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `SSH主机配置和认证材料不进入备份`() = runBlocking {
+    fun `SSH主机钥匙串和认证材料随密钥备份往返`() = runBlocking {
         seedCompleteGraph()
         db.sshHostDao().insert(com.promenar.infinity.data.local.db.entity.SshHostEntity(
             id = "ssh-backup", alias = "termux", hostname = "private-ssh.invalid", username = "ssh-user",
-            trustedKeyType = "ssh-ed25519", trustedFingerprint = "SHA256:synthetic-trust",
+            trustedKeyType = "ssh-ed25519", trustedFingerprint = "SHA256:synthetic-trust", keyEntryId = "test-key",
+        ))
+        db.keychainDao().insert(com.promenar.infinity.data.keychain.KeychainEntryEntity(
+            "test-key", "SSH_KEY", "测试", null, null, null, 1, 1, "MIGRATION", null,
+            "ssh-ed25519", "SHA256:test", "ssh-ed25519 AAAA", true, true,
         ))
         secrets.put(SecretCatalog.sshCredential("ssh-backup"), "synthetic-ssh-secret".toByteArray())
+        secrets.put(SecretCatalog.keychain("test-key"), "synthetic-key".toByteArray())
+        secrets.put(SecretCatalog.keychainPassphrase("test-key"), "synthetic-phrase".toByteArray())
+        val gitIndex = SecretId("git_credential_index_v1")
+        val gitToken = com.promenar.infinity.data.git.remote.SecretGitCredentialStore.tokenId("github.com")
+        secrets.put(gitIndex, """[{"host":"github.com","username":"fixture","source":"github_device"}]""".toByteArray())
+        secrets.put(gitToken, "synthetic-token".toByteArray())
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.database.toString(Charsets.UTF_8)).doesNotContain("ssh_hosts")
-        assertThat(snapshot.database.toString(Charsets.UTF_8)).doesNotContain("private-ssh.invalid")
-        assertThat(snapshot.database.toString(Charsets.UTF_8)).doesNotContain("SHA256:synthetic-trust")
-        assertThat(snapshot.secrets.keys.map { it.value }).doesNotContain(SecretCatalog.sshCredential("ssh-backup").value)
+        assertThat(snapshot.database.toString(Charsets.UTF_8)).contains("ssh_hosts")
+        assertThat(snapshot.database.toString(Charsets.UTF_8)).doesNotContain("synthetic-key")
+        assertThat(snapshot.secrets.keys).containsAtLeast(SecretCatalog.sshCredential("ssh-backup"),
+            SecretCatalog.keychain("test-key"), SecretCatalog.keychainPassphrase("test-key"), gitIndex, gitToken)
+        assertThat(snapshot.secrets).doesNotContainKey(SecretCatalog.automaticBackupPassword)
+        db.clearAllTables()
+        secrets.put(SecretCatalog.keychain("test-key"), "changed".toByteArray())
+        newDataSource().restore(validated(snapshot))
+        assertThat(db.sshHostDao().findById("ssh-backup")!!.keyEntryId).isEqualTo("test-key")
+        assertThat(db.keychainDao().find("test-key")!!.name).isEqualTo("测试")
+        assertThat(secrets.get(SecretCatalog.keychain("test-key"))).isEqualTo("synthetic-key".toByteArray())
+        assertThat(secrets.get(gitToken)).isEqualTo("synthetic-token".toByteArray())
+        val gitSecrets = object : SecretStore {
+            override fun put(id: SecretId, value: ByteArray) = secrets.put(id, value)
+            override fun get(id: SecretId) = secrets.get(id)
+            override fun contains(id: SecretId) = secrets.get(id)?.let { it.fill(0); true } ?: false
+            override fun remove(id: SecretId) = error("测试不删除")
+        }
+        val restoredGit = com.promenar.infinity.data.git.remote.SecretGitCredentialStore(gitSecrets)
+        assertThat(restoredGit.credential("github.com")?.fromGitHubLogin).isTrue()
+        assertThat(restoredGit.token("github.com")).isEqualTo("synthetic-token".toByteArray())
+        assertThat(secrets.get(SecretCatalog.automaticBackupPassword)).isEqualTo("never-export".toByteArray())
         snapshot.wipe()
+    }
+
+    @Test
+    fun `v18 旧备份没有钥匙串表时仍能恢复`() = runBlocking {
+        seedCompleteGraph()
+        val current = newDataSource().snapshot(CANONICAL_CONTENT)
+        val payload = Json.parseToJsonElement(current.database.toString(Charsets.UTF_8)).jsonObject
+        val oldTables = payload.getValue("tables").jsonObject - "ssh_hosts" - "keychain_entries" - "keychain_usage"
+        val oldBytes = JsonObject(payload + mapOf("schemaVersion" to JsonPrimitive(18), "tables" to JsonObject(oldTables)))
+            .toString().toByteArray()
+        val old = current.copy(database = oldBytes, databaseSchemaVersion = 18)
+        db.clearAllTables()
+        newDataSource().restore(validated(old))
+        assertThat(db.agentDao().getById("agent-1")).isNotNull()
+        assertThat(rowCount("keychain_entries")).isEqualTo(0)
+        current.wipe()
+    }
+
+    @Test
+    fun `密钥跨存储写入进行中备份拒绝采集不一致快照`() = runBlocking {
+        seedCompleteGraph()
+        val source = newDataSource()
+        val failure = com.promenar.infinity.data.security.SecretMutationRevision.blocking {
+            runCatching { runBlocking { source.snapshot(CANONICAL_CONTENT) } }.exceptionOrNull()
+        }
+        assertThat(failure).isInstanceOf(BackupValidationException::class.java)
+        source.snapshot(CANONICAL_CONTENT).wipe()
+    }
+
+    @Test
+    fun `恢复v18密钥分层备份保留本机新增钥匙串和SSH凭据`() = runBlocking {
+        seedCompleteGraph()
+        val cache = Files.createTempDirectory(sourceBase, "legacy-keychain")
+        val password = "fixture-backup-password".toCharArray()
+        try {
+            val source = newDataSource()
+            val snapshot = source.snapshotTo(setOf(BackupLayer.CORE, BackupLayer.SECRETS), cache)
+            val legacy = snapshot.copy(databaseSchemaVersion = 18, streamEntries = snapshot.streamEntries.filterNot {
+                it.path.startsWith("database/ssh_hosts/") || it.path.startsWith("database/keychain_entries/") || it.path.startsWith("database/keychain_usage/")
+            })
+            val file = cache.resolve("legacy.iwb")
+            try { Files.newOutputStream(file).use {
+                DefaultBackupPackageCodec().encodeTo(legacy, BackupOptions(CANONICAL_CONTENT, true, password), it)
+            } } finally { snapshot.wipe() }
+            db.keychainDao().insert(com.promenar.infinity.data.keychain.KeychainEntryEntity(
+                "local-entry", "CUSTOM", "本机条目", null, null, null, 1, 1, "MANUAL", null, null, null, null, false, true,
+            ))
+            db.sshHostDao().insert(com.promenar.infinity.data.local.db.entity.SshHostEntity(
+                id = "local-host", alias = "local", hostname = "local.test", username = "user",
+            ))
+            val sshId = SecretCatalog.sshCredential("local-host")
+            secrets.put(SecretCatalog.keychain("local-entry"), "local-value".toByteArray())
+            secrets.put(sshId, "local-ssh".toByteArray())
+            Files.newInputStream(file).use { DefaultBackupPackageCodec().decodeFrom(it, password, cache).use { backup -> source.restore(backup) } }
+            assertThat(db.keychainDao().find("local-entry")).isNotNull()
+            assertThat(db.sshHostDao().findById("local-host")).isNotNull()
+            assertThat(secrets.get(SecretCatalog.keychain("local-entry"))).isEqualTo("local-value".toByteArray())
+            assertThat(secrets.get(sshId)).isEqualTo("local-ssh".toByteArray())
+        } finally { password.fill('\u0000'); BackupStreams.deleteTree(cache) }
     }
 
     private lateinit var db: InfinityDatabase
@@ -2043,8 +2134,8 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(18)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("18")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(19)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("19")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
@@ -4117,6 +4208,8 @@ private class FakeSecretStore private constructor(private val state: State) : Tr
     fun get(id: SecretId): ByteArray? = values[id]?.copyOf()
 
     var failSnapshot = false
+
+    override suspend fun ids(): Set<SecretId> = values.keys.toSet()
 
     override suspend fun snapshot(ids: Set<SecretId>, maxTotalBytes: Long): Map<SecretId, ByteArray> {
         if (failSnapshot) throw BackupValidationException("合成测试：密钥不可用")

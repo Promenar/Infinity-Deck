@@ -9,10 +9,16 @@ import org.junit.Test
 
 internal class MemorySecrets : SecretStore {
     val values = linkedMapOf<String, ByteArray>()
-    override fun put(id: SecretId, value: ByteArray) { values[id.value] = value.copyOf() }
+    private val listeners = mutableListOf<(SecretId) -> Unit>()
+    override fun put(id: SecretId, value: ByteArray) { values[id.value] = value.copyOf(); listeners.toList().forEach { it(id) } }
     override fun get(id: SecretId): ByteArray? = values[id.value]?.copyOf()
     override fun contains(id: SecretId): Boolean = id.value in values
-    override fun remove(id: SecretId) { values.remove(id.value) }
+    override fun remove(id: SecretId) { values.remove(id.value); listeners.toList().forEach { it(id) } }
+    override fun ids(): Set<SecretId> = values.keys.mapTo(linkedSetOf(), ::SecretId)
+    override fun observeChanges(listener: (SecretId) -> Unit): AutoCloseable {
+        listeners.add(listener)
+        return AutoCloseable { listeners.remove(listener) }
+    }
 }
 
 class GitCredentialStoreTest {
@@ -111,11 +117,20 @@ class GitCredentialStoreTest {
         assertThat(store.credentials.value).isEmpty()
     }
 
-    @Test fun `Git凭据不在应用备份白名单中`() {
-        val eligible = SecretCatalog.backupEligible(listOf("github.com", "provider"))
-        assertThat(eligible).doesNotContain(SecretGitCredentialStore.INDEX_ID)
-        assertThat(eligible).doesNotContain(SecretGitCredentialStore.tokenId("github.com"))
-        assertThat(eligible.map { it.value }.none { it.startsWith("git_credential") }).isTrue()
+    @Test fun `Git索引与令牌可随密钥层备份`() {
+        assertThat(SecretCatalog.isBackupEligible(SecretGitCredentialStore.INDEX_ID, emptyList())).isTrue()
+        assertThat(SecretCatalog.isBackupEligible(SecretGitCredentialStore.tokenId("github.com"), emptyList())).isTrue()
+    }
+
+    @Test fun `外部恢复索引后已初始化的Git仓库刷新主机列表`() {
+        val secrets = MemorySecrets()
+        val running = SecretGitCredentialStore(secrets)
+        val restored = SecretGitCredentialStore(secrets)
+        restored.saveGitHubLogin("octocat", token.toByteArray())
+        assertThat(running.credential("github.com")?.fromGitHubLogin).isTrue()
+        assertThat(running.token("github.com")).isEqualTo(token.toByteArray())
+        restored.delete("github.com")
+        assertThat(running.credentials.value).isEmpty()
     }
 
     @Test fun `延迟存储在装配时不创建底层存储，首次调用才创建且只创建一次`() {

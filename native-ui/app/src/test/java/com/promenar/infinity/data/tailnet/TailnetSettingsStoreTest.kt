@@ -41,7 +41,7 @@ class TailnetSettingsStoreTest {
     }
 
     @Test
-    fun `设置与 auth key 都不属于备份范围`() {
+    fun `本机设置不备份认证密钥可随密钥层备份`() {
         for (key in listOf(
             TailnetSettingsStore.KEY_ENABLED,
             TailnetSettingsStore.KEY_CONTROL_URL,
@@ -50,7 +50,7 @@ class TailnetSettingsStoreTest {
             assertThat(BackupPreferencePolicy.isAllowed(TailnetSettingsStore.PREFERENCES_NAME, key)).isFalse()
             assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isFalse()
         }
-        assertThat(SecretCatalog.backupEligible(listOf("tailnet", "openai"))).doesNotContain(TailnetSettingsStore.AUTH_KEY_ID)
+        assertThat(SecretCatalog.isBackupEligible(TailnetSettingsStore.AUTH_KEY_ID, emptyList())).isTrue()
     }
 
     @Test

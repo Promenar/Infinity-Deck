@@ -109,12 +109,14 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         ExternalMountEntity::class,
         ExternalSnapshotEntity::class,
         SshHostEntity::class,
+        com.promenar.infinity.data.keychain.KeychainEntryEntity::class,
+        com.promenar.infinity.data.keychain.KeychainUsageEntity::class,
         WorkspaceEntity::class,
         AgentRuleRevisionEntity::class,
         ParameterSchemeEntity::class,
         com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity::class,
     ],
-    version = 36,
+    version = 37,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -146,6 +148,7 @@ abstract class InfinityDatabase : RoomDatabase() {
     abstract fun fileVersionDao(): FileVersionDao
     abstract fun workspaceMutationDao(): WorkspaceMutationDao
     abstract fun sshHostDao(): SshHostDao
+    abstract fun keychainDao(): com.promenar.infinity.data.keychain.KeychainDao
     abstract fun externalMountDao(): ExternalMountDao
     abstract fun workspaceDao(): WorkspaceDao
     abstract fun agentRuleRevisionDao(): AgentRuleRevisionDao

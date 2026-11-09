@@ -7,12 +7,19 @@ import android.security.keystore.KeyProperties
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 class AndroidKeystoreSecretStore internal constructor(
     private val preferences: SharedPreferences,
     private val key: SecretKey,
     private val codec: AesGcmSecretCodec = AesGcmSecretCodec(),
 ) : SecretStore {
+    private val revision = MutableStateFlow(0L)
+    private val listeners = CopyOnWriteArrayList<(SecretId) -> Unit>()
+    override val changes = revision.asStateFlow()
     constructor(
         context: Context,
         preferencesName: String = DEFAULT_PREFERENCES_NAME,
@@ -25,11 +32,13 @@ class AndroidKeystoreSecretStore internal constructor(
         key = getOrCreateKey(keyAlias),
     )
 
-    override fun put(id: SecretId, value: ByteArray) {
+    override fun put(id: SecretId, value: ByteArray) = SecretMutationRevision.blocking {
         val envelope = codec.encode(value, key)
         check(preferences.edit().putString(id.value, envelope).commit()) {
             "密钥 envelope 写入失败"
         }
+        revision.update { it + 1 }
+        listeners.forEach { listener -> runCatching { listener(id) } }
     }
 
     override fun get(id: SecretId): ByteArray? =
@@ -37,10 +46,19 @@ class AndroidKeystoreSecretStore internal constructor(
 
     override fun contains(id: SecretId): Boolean = preferences.contains(id.value)
 
-    override fun remove(id: SecretId) {
+    override fun ids(): Set<SecretId> = preferences.all.keys.mapTo(linkedSetOf(), ::SecretId)
+
+    override fun observeChanges(listener: (SecretId) -> Unit): AutoCloseable {
+        listeners.add(listener)
+        return AutoCloseable { listeners.remove(listener) }
+    }
+
+    override fun remove(id: SecretId) = SecretMutationRevision.blocking {
         check(preferences.edit().remove(id.value).commit()) {
             "密钥 envelope 删除失败"
         }
+        revision.update { it + 1 }
+        listeners.forEach { listener -> runCatching { listener(id) } }
     }
 
     companion object {

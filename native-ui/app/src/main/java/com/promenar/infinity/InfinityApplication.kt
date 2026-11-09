@@ -122,6 +122,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -161,8 +162,27 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     }
 
     val sshHostStore: com.promenar.infinity.data.ssh.SshHostStore by lazy {
-        com.promenar.infinity.data.ssh.RoomSshHostStore(database.sshHostDao(), secretStore)
+        com.promenar.infinity.data.ssh.RoomSshHostStore(database.sshHostDao(), secretStore, database.keychainDao()) { id ->
+            try { sshKeyMigration().migrateOne(id) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) { InfinityLogger.log("[SshKeyMigration] 迁移初始化失败 type=${failure.javaClass.simpleName}") }
+        }
     }
+    private val keychainDataRepository: com.promenar.infinity.data.keychain.DefaultKeychainRepository by lazy {
+        val providerFlow = kotlinx.coroutines.flow.flow {
+            val manager = ProviderManager.getInstance()
+            emitAll(kotlinx.coroutines.flow.combine(manager.providers, manager.unsupportedProviders) { supported, unsupported ->
+                supported.map { com.promenar.infinity.data.keychain.KeychainProvider(it.id, it.name, it.hasApiKey, it.hasVertexCredentials) } +
+                    unsupported.map { com.promenar.infinity.data.keychain.KeychainProvider(it.id, it.name, it.hasApiKey, it.hasVertexCredentials) }
+            })
+        }
+        com.promenar.infinity.data.keychain.DefaultKeychainRepository(database.keychainDao(), database.sshHostDao(), sshHostStore,
+            secretStore, gitCredentialStore, providerFlow)
+    }
+    val keychainRepository: com.promenar.infinity.domain.keychain.KeychainRepository get() = keychainDataRepository
+    private fun sshKeyMigration() = com.promenar.infinity.data.keychain.SshKeyMigration(
+        sshHostStore, database.sshHostDao(), database.keychainDao(), keychainDataRepository, secretStore,
+    ) { id, alias, kind -> InfinityLogger.log("[SshKeyMigration] 主机迁移失败 id=$id alias=$alias type=$kind") }
     /** 工具执行中需要用户亲自输入密码或核对主机指纹时的应用内弹窗队列。 */
     val sshUserPrompts = com.promenar.infinity.data.ssh.SshUserPromptBroker()
     val sshRuntime: com.promenar.infinity.data.ssh.SshRuntime by lazy {
@@ -2289,6 +2309,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 val runtime = backupRuntime
                 // 向导发起的恢复在界面出现前结算：提交成功则引导记为完成，启动后直接进入主界面。
                 withContext(Dispatchers.IO) { settleOnboardingRestoreAtStartup(runtime) }
+                try {
+                    withContext(Dispatchers.IO) {
+                        sshKeyMigration().migrate()
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    InfinityLogger.log("[SshKeyMigration] 迁移初始化失败 type=${failure.javaClass.simpleName}")
+                }
                 PostBackupStartupRecoverySequence(
                     recoverWorkspaceJournal = { recoverStartupWorkspaces() },
                     recoverToolLedger = {
@@ -3260,7 +3289,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
 
     // ProviderConfig 已迁移至 data/model/ProviderModels.kt
 
-    /** 内置 git 的 HTTPS 凭据：主机与用户名、令牌都在 SecretStore，不进应用备份。 */
+    /** 内置 git 的 HTTPS 凭据在 SecretStore 中；用户选择密钥备份时一并保存。 */
     val gitCredentialStore: com.promenar.infinity.data.git.remote.GitCredentialStore by lazy {
         com.promenar.infinity.data.git.remote.SecretGitCredentialStore(secretStore)
     }

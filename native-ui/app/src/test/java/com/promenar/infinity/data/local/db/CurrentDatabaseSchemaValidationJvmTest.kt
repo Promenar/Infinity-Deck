@@ -38,20 +38,20 @@ class CurrentDatabaseSchemaValidationJvmTest {
     fun tearDown() = deleteDatabases()
 
     @Test
-    fun completeExportedV18ThroughV36DatabasesPassBothProductionGates() = verify(Mutation.NONE)
+    fun completeExportedV18ThroughV37DatabasesPassBothProductionGates() = verify(Mutation.NONE)
 
     @Test
     fun productionMigrationChainFromV18PassesBothProductionGatesAtEveryVersion() {
         createLegacyDatabase()
         createCurrentDatabase(18, Mutation.NONE)
-        for (version in 18..36) {
+        for (version in 18..37) {
             for (gate in Gate.entries) {
                 val source = context.getDatabasePath("infinity_v2.db")
                 val originalBytes = source.readBytes()
                 validate(gate, version)
                 assertThat(source.readBytes()).isEqualTo(originalBytes)
             }
-            if (version < 36) migrateCurrentDatabase(version + 1)
+            if (version < 37) migrateCurrentDatabase(version + 1)
         }
     }
 
@@ -108,7 +108,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
     @Test
     fun matchingIdentityWithWrongFtsDeclarationFailsBothProductionGates() = verify(Mutation.FTS_DECLARATION)
 
-    private fun verify(mutation: Mutation, versions: IntRange = 18..36) {
+    private fun verify(mutation: Mutation, versions: IntRange = 18..37) {
         val failures = mutableListOf<String>()
         for (version in versions) {
             for (gate in Gate.entries) {
@@ -205,6 +205,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
             34 -> MIGRATION_33_34
             35 -> MIGRATION_34_35
             36 -> MIGRATION_35_36_TIMELINE
+            37 -> MIGRATION_36_37_KEYCHAIN
             else -> error("数据库测试没有对应的生产迁移")
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)

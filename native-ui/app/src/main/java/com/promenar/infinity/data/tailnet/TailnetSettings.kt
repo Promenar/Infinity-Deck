@@ -45,7 +45,7 @@ object TailnetSettingsPolicy {
 
 /**
  * 设置存储：普通设置写入独立的 `infinity_tailnet` 偏好文件（不在 App 备份的命名空间内，系统备份已关闭）；
- * auth key 写入 [SecretStore]（不属于可备份秘密），不进入快照、日志与模型上下文。
+ * auth key 写入 [SecretStore]，用户选择密钥备份时随加密备份保存，不进入日志与模型上下文。
  * 调用方在 Dispatchers.IO 上调用写入方法。
  */
 class TailnetSettingsStore(

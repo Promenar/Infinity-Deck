@@ -643,6 +643,7 @@ class AndroidDualDatabaseWorkspaceRecoveryTest {
     }
 
     private object EmptySecrets : TransactionalBackupSecretStore {
+        override suspend fun ids(): Set<SecretId> = emptySet()
         override suspend fun snapshot(ids: Set<SecretId>, maxTotalBytes: Long) = emptyMap<SecretId, ByteArray>()
         override suspend fun prepare(txId: String, before: Map<SecretId, ByteArray>, after: Map<SecretId, ByteArray>) = Unit
         override suspend fun commitPrepared(txId: String) = Unit

@@ -48,9 +48,9 @@ class AgentToolsDefaultMigrationTest {
                 sqlite.version = 29
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN).allowMainThreadQueries().build()
             try {
-                assertThat(room.openHelper.writableDatabase.version).isEqualTo(36)
+                assertThat(room.openHelper.writableDatabase.version).isEqualTo(37)
                 val agent = room.agentDao().getById("old")!!
                 assertThat(agent.name).isEqualTo("保留智能体")
                 assertThat(agent.systemPrompt).isEqualTo("提示词")

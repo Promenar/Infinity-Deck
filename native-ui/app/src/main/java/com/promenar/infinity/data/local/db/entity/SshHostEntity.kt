@@ -21,4 +21,5 @@ data class SshHostEntity(
     @ColumnInfo(name = "local_forward_port") val localForwardPort: Int? = null,
     @ColumnInfo(name = "forward_host", defaultValue = "'127.0.0.1'") val forwardHost: String = "127.0.0.1",
     @ColumnInfo(name = "forward_port") val forwardPort: Int? = null,
+    @ColumnInfo(name = "key_entry_id") val keyEntryId: String? = null,
 )

@@ -73,9 +73,8 @@ class SshCredentialStoreTest {
     }
 
     @Test
-    fun `SSH凭据不会被通用备份秘密目录选中`() {
-        assertThat(SecretCatalog.backupEligible(listOf("provider")))
-            .doesNotContain(SecretCatalog.sshCredential("host-id"))
+    fun `SSH凭据可随密钥层备份`() {
+        assertThat(SecretCatalog.isBackupEligible(SecretCatalog.sshCredential("host-id"), listOf("provider"))).isTrue()
     }
 
     @Test

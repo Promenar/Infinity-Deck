@@ -93,7 +93,7 @@ class KgCollectionsMigration34Test {
             db.query("PRAGMA foreign_key_check").use { assertThat(it.count).isEqualTo(0) }
         }
         val reopened = Room.databaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, InfinityDatabase::class.java, name)
-            .addMigrations(MIGRATION_35_36_TIMELINE).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN).allowMainThreadQueries().build()
         try {
             runBlocking {
                 GraphStore(reopened).upsertNode("同名", "person", scope = KgScope(docId = "d1", contentHash = "h", taskId = "task-0"), collectionId = "work:f1")

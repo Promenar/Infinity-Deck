@@ -19,6 +19,15 @@ abstract class SshHostDao {
     @Query("SELECT * FROM ssh_hosts WHERE id = :id")
     abstract suspend fun findById(id: String): SshHostEntity?
 
+    @Query("SELECT * FROM ssh_hosts WHERE id = :id")
+    abstract fun findByIdForCredential(id: String): SshHostEntity?
+
+    @Query("SELECT * FROM ssh_hosts WHERE key_entry_id = :entryId ORDER BY alias")
+    abstract suspend fun findByKeyEntryId(entryId: String): List<SshHostEntity>
+
+    @Query("UPDATE ssh_hosts SET key_entry_id = :entryId WHERE id = :id AND key_entry_id IS :expectedEntryId")
+    abstract suspend fun assignKey(id: String, entryId: String?, expectedEntryId: String?): Int
+
     @Insert
     abstract suspend fun insert(host: SshHostEntity)
 

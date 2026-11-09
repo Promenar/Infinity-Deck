@@ -2,6 +2,7 @@ package com.promenar.infinity.data.git.remote
 
 import com.promenar.infinity.data.security.SecretId
 import com.promenar.infinity.data.security.SecretStore
+import com.promenar.infinity.data.security.SecretMutationRevision
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,7 +104,7 @@ class LazyGitCredentialStore(provider: () -> GitCredentialStore) : GitCredential
 
 /**
  * 主机列表与令牌都存于 [SecretStore]（Android Keystore 加密）：
- * 应用的备份只收录 `SecretCatalog.backupEligible` 白名单中的密钥，系统备份已关闭，因此 Git 凭据不进入任何备份。
+ * 用户选择密钥备份时，索引与令牌随应用备份一并保存。
  */
 class SecretGitCredentialStore(
     private val secrets: SecretStore,
@@ -111,6 +112,9 @@ class SecretGitCredentialStore(
 ) : GitCredentialStore {
     private val state = MutableStateFlow(load())
     override val credentials: StateFlow<List<GitCredential>> = state.asStateFlow()
+    private val secretChanges = secrets.observeChanges { id ->
+        if (id == INDEX_ID) synchronized(this) { state.value = load() }
+    }
 
     override fun save(host: String, username: String, token: ByteArray) = store(host, username, token, GitCredential.SOURCE_TOKEN)
 
@@ -125,7 +129,7 @@ class SecretGitCredentialStore(
     }
 
     @Synchronized
-    private fun store(host: String, username: String, token: ByteArray, source: String) {
+    private fun store(host: String, username: String, token: ByteArray, source: String) = SecretMutationRevision.blocking {
         val key = GitCredentialHost.normalize(host) ?: throw GitCredentialInputException(GitCredentialInputException.Field.HOST)
         val user = username.trim()
         if (user.isEmpty() || user.length > 256 || ':' in user || user.any { it.isISOControl() || it.isWhitespace() }) {
@@ -138,8 +142,8 @@ class SecretGitCredentialStore(
     }
 
     @Synchronized
-    override fun delete(host: String) {
-        val key = GitCredentialHost.normalize(host) ?: return
+    override fun delete(host: String) = SecretMutationRevision.blocking {
+        val key = GitCredentialHost.normalize(host) ?: return@blocking
         val next = state.value.filterNot { it.host == key }
         persist(next)
         secrets.remove(tokenId(key))

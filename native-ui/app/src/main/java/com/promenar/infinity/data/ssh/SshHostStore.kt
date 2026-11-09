@@ -3,6 +3,7 @@ package com.promenar.infinity.data.ssh
 import com.promenar.infinity.data.local.db.dao.SshHostDao
 import com.promenar.infinity.data.local.db.entity.SshHostEntity
 import com.promenar.infinity.data.security.SecretStore
+import com.promenar.infinity.data.security.SecretMutationRevision
 import com.promenar.infinity.data.security.SshCredential
 import com.promenar.infinity.data.security.SshCredentialStore
 import com.promenar.infinity.domain.secret.SshSecretField
@@ -33,6 +34,7 @@ data class SshHost(
     val localForwardPort: Int? = null,
     val forwardHost: String = "127.0.0.1",
     val forwardPort: Int? = null,
+    val keyEntryId: String? = null,
 ) {
     fun executionIdentity(): com.promenar.infinity.domain.tool.SshExecutionIdentity {
         val parts = listOf(hostname, port.toString(), username, authType.name, trustedKeyType.orEmpty(), trustedFingerprint.orEmpty())
@@ -84,7 +86,12 @@ interface SshHostStore {
     }
 }
 
-class RoomSshHostStore(private val dao: SshHostDao, secrets: SecretStore) : SshHostStore {
+class RoomSshHostStore(
+    private val dao: SshHostDao,
+    private val secrets: SecretStore,
+    private val keychainDao: com.promenar.infinity.data.keychain.KeychainDao? = null,
+    private val onLegacyKeySaved: suspend (String) -> Unit = {},
+) : SshHostStore {
     private val credentials = SshCredentialStore(secrets)
 
     override fun observeHosts(): Flow<List<SshHost>> = dao.observeHosts().map { hosts -> hosts.map { it.toHost() } }
@@ -94,43 +101,52 @@ class RoomSshHostStore(private val dao: SshHostDao, secrets: SecretStore) : SshH
         return dao.find(alias)?.toHost()
     }
 
-    override suspend fun save(host: SshHost, credential: SshCredential?) = withContext(Dispatchers.IO) {
-        mutationMutex.withLock {
-            val owner = dao.find(host.alias)
-            require(owner == null || owner.id == host.id) { "SSH 别名已存在" }
-            val previous = dao.findById(host.id)?.toHost()
-            val identityChanged = previous == null || previous.hostname != host.hostname || previous.port != host.port ||
-                previous.username != host.username || previous.authType != host.authType
-            // Room 与 SecretStore 的短提交窗口完成回滚，避免取消留下半写入状态。
-            withContext(NonCancellable) {
-                if (credential != null || identityChanged) {
-                    val binding = host.binding()
-                    var retained: SshCredential? = null
-                    try {
-                        if (credential == null && previous != null && previous.authType == host.authType) {
-                            val oldBinding = previous.binding()
-                            try { retained = credentials.get(previous.id, oldBinding) } finally { oldBinding.fill(0) }
+    override suspend fun save(host: SshHost, credential: SshCredential?) = SecretMutationRevision.suspending {
+        withContext(Dispatchers.IO) {
+            mutationMutex.withLock {
+                val next = if (host.authType != SshAuthType.KEY || credential?.privateKey?.isNotEmpty() == true)
+                    host.copy(keyEntryId = null) else host
+                val owner = dao.find(next.alias)
+                require(owner == null || owner.id == next.id) { "SSH 别名已存在" }
+                val previous = dao.findById(next.id)?.toHost()
+                val identityChanged = previous == null || previous.hostname != next.hostname || previous.port != next.port ||
+                    previous.username != next.username || previous.authType != next.authType
+                // Room 与 SecretStore 的短提交窗口完成回滚，避免取消留下半写入状态。
+                withContext(NonCancellable) {
+                    if (credential != null || identityChanged) {
+                        val binding = next.binding()
+                        var retained: SshCredential? = null
+                        try {
+                            if (credential == null && previous != null && previous.authType == next.authType) {
+                                val oldBinding = previous.binding()
+                                try { retained = credentials.get(previous.id, oldBinding) } finally { oldBinding.fill(0) }
+                            }
+                            credentials.replace(next.id, binding, credential ?: retained) { dao.save(next.toEntity()) }
+                        } finally {
+                            retained?.close()
+                            binding.fill(0)
                         }
-                        credentials.replace(host.id, binding, credential ?: retained) { dao.save(host.toEntity()) }
-                    } finally {
-                        retained?.close()
-                        binding.fill(0)
+                    } else {
+                        dao.save(next.toEntity())
                     }
-                } else {
-                    dao.save(host.toEntity())
                 }
+            }
+            if (host.authType == SshAuthType.KEY && credential?.privateKey?.isNotEmpty() == true) {
+                onLegacyKeySaved(host.id)
             }
         }
     }
 
-    override suspend fun delete(alias: String) = withContext(Dispatchers.IO) {
-        requireAlias(alias)
-        mutationMutex.withLock {
-            val host = dao.find(alias)?.toHost() ?: return@withLock
-            withContext(NonCancellable) {
-                val binding = host.binding()
-                try { credentials.replace(host.id, binding, null) { dao.deleteById(host.id); Unit } }
-                finally { binding.fill(0) }
+    override suspend fun delete(alias: String) = SecretMutationRevision.suspending {
+        withContext(Dispatchers.IO) {
+            requireAlias(alias)
+            mutationMutex.withLock {
+                val host = dao.find(alias)?.toHost() ?: return@withLock
+                withContext(NonCancellable) {
+                    val binding = host.binding()
+                    try { credentials.replace(host.id, binding, null) { dao.deleteById(host.id); Unit } }
+                    finally { binding.fill(0) }
+                }
             }
         }
     }
@@ -150,15 +166,34 @@ class RoomSshHostStore(private val dao: SshHostDao, secrets: SecretStore) : SshH
     }
 
     override fun credential(host: SshHost): SshCredential? {
+        if (host.keyEntryId != null && dao.findByIdForCredential(host.id)?.toHost() != host) return null
         val binding = host.binding()
-        return try { credentials.get(host.id, binding) } finally { binding.fill(0) }
+        val previous = try { credentials.get(host.id, binding) } finally { binding.fill(0) }
+        if (host.authType != SshAuthType.KEY || host.keyEntryId == null) return previous
+        // 即使迁出私钥也保留主机绑定记录，避免过期主机快照读取其他身份的凭据。
+        previous ?: return null
+        return try {
+            val access = com.promenar.infinity.data.keychain.KeychainSecretAccess(secrets)
+            val privateKey = access.reveal(host.keyEntryId) ?: return null
+            try {
+                val passphrase = access.revealPassphrase(host.keyEntryId) ?: ByteArray(0)
+                SshCredential(privateKey, previous.password.copyOf(), passphrase)
+            } catch (failure: Throwable) {
+                privateKey.fill(0)
+                throw failure
+            }
+        } finally { previous.close() }
     }
 
-    override suspend fun replaceSecret(hostId: String, field: SshSecretField, value: ByteArray) {
+    override suspend fun replaceSecret(hostId: String, field: SshSecretField, value: ByteArray) = SecretMutationRevision.suspending {
         try {
             withContext(Dispatchers.IO) {
                 mutationMutex.withLock {
                     val host = dao.findById(hostId)?.toHost() ?: throw IllegalArgumentException("SSH_HOST_NOT_FOUND")
+                    if (host.keyEntryId != null && field == SshSecretField.KEY_PASSPHRASE) {
+                        replaceKeychainPassphrase(host.keyEntryId, value)
+                        return@withLock
+                    }
                     val binding = host.binding()
                     var previous: SshCredential? = null
                     try {
@@ -173,7 +208,33 @@ class RoomSshHostStore(private val dao: SshHostDao, secrets: SecretStore) : SshH
         } finally { value.fill(0) }
     }
 
-    private companion object { val mutationMutex = Mutex() }
+    private suspend fun replaceKeychainPassphrase(entryId: String, value: ByteArray) {
+        val keyDao = keychainDao ?: throw IllegalStateException("钥匙串目录不可用")
+        val entry = keyDao.find(entryId) ?: throw IllegalStateException("钥匙串私钥不存在")
+        require(entry.category == "SSH_KEY") { "钥匙串条目不是私钥" }
+        val access = com.promenar.infinity.data.keychain.KeychainSecretAccess(secrets)
+        val privateKey = access.reveal(entryId) ?: throw IllegalStateException("钥匙串私钥缺失")
+        try {
+            check(com.promenar.infinity.data.keychain.DefaultKeychainRepository.fingerprint(
+                SshKeyGenerator.publicKey(privateKey, value),
+            ) == entry.fingerprintSha256) { "私钥指纹不一致" }
+        } finally { privateKey.fill(0) }
+        val id = com.promenar.infinity.data.security.SecretCatalog.keychainPassphrase(entryId)
+        withContext(NonCancellable) {
+            val previous = secrets.get(id)
+            try {
+                if (value.isEmpty()) secrets.remove(id) else secrets.put(id, value)
+                check(keyDao.update(entry.copy(hasPassphrase = value.isNotEmpty(), updatedAt = System.currentTimeMillis())) == 1) {
+                    "钥匙串条目已变化"
+                }
+            } catch (failure: Throwable) {
+                if (previous == null) secrets.remove(id) else secrets.put(id, previous)
+                throw failure
+            } finally { previous?.fill(0) }
+        }
+    }
+
+    internal companion object { val mutationMutex = Mutex() }
 }
 
 private fun replacementCredential(previous: SshCredential?, field: SshSecretField, value: ByteArray): SshCredential = SshCredential(
@@ -187,7 +248,7 @@ private fun requireAlias(alias: String) = require(aliasPattern.matches(alias)) {
 private fun requireCleanText(value: String, message: String) =
     require(value.isNotBlank() && value.none(Char::isISOControl)) { message }
 
-private fun SshHost.binding(): ByteArray {
+internal fun SshHost.binding(): ByteArray {
     val encoded = listOf(id, hostname, port.toString(), username, authType.name).joinToString("\u0000").toByteArray(Charsets.UTF_8)
     return try { MessageDigest.getInstance("SHA-256").digest(encoded) } finally { encoded.fill(0) }
 }
@@ -195,11 +256,13 @@ private fun SshHost.binding(): ByteArray {
 private fun SshHost.toEntity() = SshHostEntity(
     id, alias, hostname, port, username, authType.name, jumpAlias, trustedKeyType, trustedFingerprint,
     keepTerminal, localForwardPort, forwardHost, forwardPort,
+    keyEntryId,
 )
 
-private fun SshHostEntity.toHost() = SshHost(
+internal fun SshHostEntity.toHost() = SshHost(
     id, alias, hostname, port, username,
     SshAuthType.entries.firstOrNull { it.name == authType } ?: throw IllegalStateException("SSH 认证方式无效"),
     jumpAlias, trustedKeyType, trustedFingerprint,
     keepTerminal, localForwardPort, forwardHost, forwardPort,
+    keyEntryId,
 )

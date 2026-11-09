@@ -14,6 +14,7 @@ import com.promenar.infinity.data.memory.LongTermMemoryValidation
 import com.promenar.infinity.data.repository.PersistentFileIdentity
 import com.promenar.infinity.data.security.SecretCatalog
 import com.promenar.infinity.data.security.SecretId
+import com.promenar.infinity.data.security.SecretMutationRevision
 import com.promenar.infinity.domain.workspace.WorkspaceInternalPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -160,12 +161,13 @@ class RoomBackupDataSource(
         BackupStreams.requireSpace(directory, estimate * 3 + 16L * 1024 * 1024)
         repeat(MAX_CONFIGURATION_SNAPSHOT_ATTEMPTS) {
             val before = configurationRevision()
-            if (before and 1L != 0L) return@repeat
+            val secretBefore = SecretMutationRevision.current()
+            if (before and 1L != 0L || secretBefore and 1L != 0L) return@repeat
             val captured = streamSnapshotOnce(layers, directory)
-            if (before == configurationRevision() && before and 1L == 0L) return@withContext captured
+            if (before == configurationRevision() && secretBefore == SecretMutationRevision.current()) return@withContext captured
             captured.wipe()
         }
-        throw BackupValidationException("提供商配置在备份期间变化，请重试")
+        throw BackupValidationException("配置或密钥在备份期间变化，请重试")
     }
 
     private fun cursorRow(cursor: Cursor, table: String): JsonObject = JsonObject(cursor.columnNames.mapIndexed { index, name ->
@@ -368,13 +370,14 @@ class RoomBackupDataSource(
     override suspend fun snapshot(content: Set<BackupContent>): BackupSnapshot = withContext(Dispatchers.IO) {
         repeat(MAX_CONFIGURATION_SNAPSHOT_ATTEMPTS) {
             val before = configurationRevision()
-            if (before and 1L != 0L) return@repeat
+            val secretBefore = SecretMutationRevision.current()
+            if (before and 1L != 0L || secretBefore and 1L != 0L) return@repeat
             val captured = snapshotOnce(content)
             val after = configurationRevision()
-            if (before == after && after and 1L == 0L) return@withContext captured
+            if (before == after && secretBefore == SecretMutationRevision.current()) return@withContext captured
             captured.wipe()
         }
-        throw BackupValidationException("Provider 配置在备份期间持续变化，请稍后重试")
+        throw BackupValidationException("配置或密钥在备份期间持续变化，请稍后重试")
     }
 
     private suspend fun snapshotOnce(content: Set<BackupContent>): BackupSnapshot {
@@ -463,6 +466,7 @@ class RoomBackupDataSource(
     override suspend fun restore(validated: ValidatedBackup, operationId: String) {
         requireOperationId(operationId)
         validated.beginConsumption()
+        val secretMutation = SecretMutationRevision.start()
         var lockAcquired = false
         try {
             restoreMutex.lock()
@@ -518,10 +522,18 @@ class RoomBackupDataSource(
             requireAvatarRestore().plan(restoreId)
         }
         preferences.preflightRestore(restoreId, beforePreferences, preferenceSnapshot)
-        val eligibleIds = eligibleSecretIds(preferenceSnapshot.providerIds + beforePreferences.providerIds)
+        val eligibleIds = eligibleSecretIds(preferenceSnapshot.providerIds + beforePreferences.providerIds) + validated.secrets.keys
         val includeSecretLayer = validated.manifest.containsSecrets
         val beforeSecrets = if (includeSecretLayer) secrets.snapshot(eligibleIds, BackupPackageLimits.MAX_ENTRY_BYTES) else emptyMap()
-        val afterSecrets = if (includeSecretLayer) validated.secrets.mapValues { it.value.copyOf() } else emptyMap()
+        val afterSecrets = if (includeSecretLayer) {
+            validated.secrets.mapValuesTo(linkedMapOf()) { it.value.copyOf() }.apply {
+                if (layerSet != null && validated.manifest.databaseSchemaVersion < 19) {
+                    beforeSecrets.filterKeys(SecretCatalog::addedInBackupV19).forEach { (id, value) ->
+                        if (id !in this) put(id, value.copyOf())
+                    }
+                }
+            }
+        } else emptyMap()
         var record = RestoreJournalRecord(
             txId = restoreId,
             expectedDatabaseFingerprint = expectedFingerprint,
@@ -611,6 +623,7 @@ class RoomBackupDataSource(
             }
         } finally {
             if (lockAcquired) restoreMutex.unlock()
+            secretMutation.close()
             validated.close()
         }
     }
@@ -892,10 +905,10 @@ class RoomBackupDataSource(
     private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload {
         if (validated.manifest.layers == null) {
             val parsed = parseDatabase(validated.database)
-            return if ("agent_rule_revisions" in backupTables() && "agent_rule_revisions" !in parsed.tables)
-                parsed.copy(tables = parsed.tables + ("agent_rule_revisions" to emptyList())) else parsed
+            val optionalTables = setOf("agent_rule_revisions") + if (validated.manifest.databaseSchemaVersion < 19) KEYCHAIN_TABLES else emptySet()
+            return parsed.copy(tables = parsed.tables + optionalTables.filter { it in backupTables() && it !in parsed.tables }.associateWith { emptyList() })
         }
-        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, 18, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
         if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
         val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
@@ -910,6 +923,7 @@ class RoomBackupDataSource(
                 !(table == LONG_TERM_MEMORY_TABLE && layer != BackupLayer.CORE && validated.manifest.databaseSchemaVersion < 17) &&
                 !(table in GRAPH_VECTOR_TABLES && validated.manifest.databaseSchemaVersion < 16) &&
                 !(table in TIMELINE_TABLES && validated.manifest.databaseSchemaVersion < 18) &&
+                !(table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) &&
                 !(table == "kg_folder_settings" && validated.manifest.databaseSchemaVersion < 15)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
             }
@@ -969,7 +983,9 @@ class RoomBackupDataSource(
             }
         }
         val tables = backupTables().associateWith { table ->
-            if (table in GRAPH_TABLES) {
+            if (table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) {
+                local.rows(table)
+            } else if (table in GRAPH_TABLES) {
                 if (validated.manifest.databaseSchemaVersion >= 16) imported.rows(table) else local.rows(table)
             }
             else BackupDatabaseRows.concat(BackupDatabaseRows.select(local.rows(table)) { row ->
@@ -1060,7 +1076,10 @@ class RoomBackupDataSource(
             } }
             if (columns.isEmpty()) throw BackupValidationException("备份表缺少主键")
             Deletion(columns, local.rows(table).asSequence().filter { previous.layer(table, it) in layers }
-                .map { row -> columns.map { row.requiredString(it) } }.toList())
+                .map { row -> columns.map { column ->
+                    if (table == "keychain_usage" && column == "id") row.requiredLong(column).toString()
+                    else row.requiredString(column)
+                } }.toList())
         }
         val selected = payload.copy(tables = payload.tables.mapValues { (table, rows) ->
             // 本机引用可能依赖即将被替换的父行，必须在删除前完整读取。
@@ -1121,7 +1140,7 @@ class RoomBackupDataSource(
             throw BackupValidationException("数据库 payload 无效", error)
         }
         val upgraded = when (decoded.schemaVersion) {
-            DATABASE_SCHEMA_VERSION -> return filterFolderSettings(decoded)
+            DATABASE_SCHEMA_VERSION, 18 -> return filterFolderSettings(decoded.copy(schemaVersion = DATABASE_SCHEMA_VERSION))
             17 -> return filterFolderSettings(withTimelineTables(decoded))
             16 -> return filterFolderSettings(withTimelineTables(upgradeRetrievalPermissions(decoded)))
             14, 15 -> decoded
@@ -1554,8 +1573,9 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        if (sqlite.version != 36 || identityHash != ROOM_SCHEMA_V36_IDENTITY_HASH) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v36")
+        val expectedIdentity = com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[37]?.identityHash
+        if (sqlite.version != 37 || expectedIdentity == null || identityHash != expectedIdentity) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v37")
         }
         backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
@@ -1649,14 +1669,13 @@ class RoomBackupDataSource(
     }
 
     private fun validateSecrets(secrets: Map<SecretId, ByteArray>, providerIds: Set<String>) {
-        val eligible = eligibleSecretIds(providerIds)
-        if (secrets.keys.any { it !in eligible || it == SecretCatalog.automaticBackupPassword }) {
+        if (secrets.keys.any { !SecretCatalog.isBackupEligible(it, providerIds) }) {
             throw BackupValidationException("恢复包包含不可备份的密钥")
         }
     }
 
-    private fun eligibleSecretIds(providerIds: Collection<String>): Set<SecretId> =
-        SecretCatalog.backupEligible(providerIds) - SecretCatalog.automaticBackupPassword
+    private suspend fun eligibleSecretIds(providerIds: Collection<String>): Set<SecretId> =
+        (SecretCatalog.backupEligible(providerIds) + secrets.ids().filter { SecretCatalog.isBackupEligible(it, providerIds) }) - SecretCatalog.automaticBackupPassword
 
     private fun validateFileBytes(row: JsonObject, bytes: BackupBlob) {
         val expectedSize = row.requiredLong("size_bytes")
@@ -2432,6 +2451,9 @@ class RoomBackupDataSource(
             LONG_TERM_MEMORY_TABLE,
             "custom_skills",
             "mcp_servers",
+            "ssh_hosts",
+            "keychain_entries",
+            "keychain_usage",
             PARAMETER_SCHEME_TABLE,
             FILE_TABLE,
             "kg_folder_settings",
@@ -2454,6 +2476,7 @@ class RoomBackupDataSource(
             "kg_jit_cache_sources", "kg_jit_cache", "vectors_fts", "audit_logs",
         )
         val TIMELINE_TABLES = setOf("kg_edge_mentions", "kg_edge_validity", "kg_entity_links")
+        val KEYCHAIN_TABLES = setOf("ssh_hosts", "keychain_entries", "keychain_usage")
         val GRAPH_TABLES = setOf("kg_collections", "kg_nodes", "kg_edges", "kg_evidence", "kg_collection_members") + TIMELINE_TABLES
         val GRAPH_VECTOR_TABLES = GRAPH_TABLES + "vectors"
     }

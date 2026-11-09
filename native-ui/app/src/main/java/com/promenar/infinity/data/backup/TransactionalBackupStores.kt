@@ -25,6 +25,8 @@ interface TransactionalBackupPreferenceStore {
  * snapshot 返回调用方拥有的 ByteArray；所有操作必须支持进程重启后按 txId 幂等恢复。
  */
 interface TransactionalBackupSecretStore {
+    /** 仅枚举标识；实现不解密密钥值。 */
+    suspend fun ids(): Set<SecretId>
     suspend fun snapshot(ids: Set<SecretId>, maxTotalBytes: Long): Map<SecretId, ByteArray>
     suspend fun prepare(txId: String, before: Map<SecretId, ByteArray>, after: Map<SecretId, ByteArray>)
     suspend fun commitPrepared(txId: String)
