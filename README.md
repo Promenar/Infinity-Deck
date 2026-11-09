@@ -115,7 +115,7 @@ On the train or in bed, pick up the phone and keep going.
 
 Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
 
-The source tree is at `v0.41.5-beta` (versionCode `114`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.41.6-beta` (versionCode `115`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>
