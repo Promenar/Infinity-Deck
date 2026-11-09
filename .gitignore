@@ -31,6 +31,8 @@ secure.properties
 # === macOS ===
 .DS_Store
 *.pem
+# 仅供 SshPkcs8ImportTest 使用的测试密钥，来源见该目录 README
+!native-ui/app/src/test/resources/ssh-pkcs8/*.pem
 
 # === Environment ===
 .env

@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- 钥匙串可导入 PKCS8 格式的 ECDSA 私钥（P-256、P-384、P-521，含带口令的 `ENCRYPTED PRIVATE KEY`）：macOS 上 `ssh-keygen -m PKCS8` 生成的显式曲线参数私钥不再报“私钥格式无效”或“私钥口令不正确”。PKCS8 口令解密支持 PBKDF2（HMAC-SHA1/224/256/384/512）与 scrypt 搭配 AES-CBC；非 NIST 曲线提示不支持的密钥类型。
+
 ## [0.41.4-beta] - 2026-11-10
 
 ### 修复
