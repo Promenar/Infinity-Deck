@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.40.0-beta] - 2026-11-10
+
 ### 新增
 
 - 内置浏览器在内置 Tailscale 连接时可打开 tailnet 内的网页：IP、MagicDNS 全名、节点短名，以及 DNS 解析到 tailnet 地址的普通域名；Tailscale 断开后照常上网。
