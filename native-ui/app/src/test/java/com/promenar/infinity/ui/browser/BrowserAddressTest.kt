@@ -13,11 +13,16 @@ class BrowserAddressTest {
         assertThat(browserAddressTarget("HTTP://example.com")).isEqualTo("HTTP://example.com")
     }
 
-    @Test fun `缺协议的域名、IP 与 localhost 补 https`() {
+    @Test fun `缺协议时按主机类型补全`() {
         assertThat(browserAddressTarget("example.com")).isEqualTo("https://example.com")
         assertThat(browserAddressTarget("docs.example.co.uk/path#x")).isEqualTo("https://docs.example.co.uk/path#x")
-        assertThat(browserAddressTarget("192.168.1.2:8080")).isEqualTo("https://192.168.1.2:8080")
-        assertThat(browserAddressTarget("localhost:3000/app")).isEqualTo("https://localhost:3000/app")
+        assertThat(browserAddressTarget("192.168.1.2:8080")).isEqualTo("http://192.168.1.2:8080")
+        assertThat(browserAddressTarget("localhost:3000/app")).isEqualTo("http://localhost:3000/app")
+        assertThat(browserAddressTarget("node.tail123.ts.net:80")).isEqualTo("http://node.tail123.ts.net:80")
+        assertThat(browserAddressTarget("nas:8888")).isEqualTo("http://nas:8888")
+        assertThat(browserAddressTarget("[::1]:8888")).isEqualTo("http://[::1]:8888")
+        assertThat(browserAddressTarget("fd7a:115c:a1e0::1")).isEqualTo("http://[fd7a:115c:a1e0::1]")
+        assertThat(browserAddressTarget("foo.localhost")).isEqualTo("http://foo.localhost")
         assertThat(browserAddressTarget("例子.中国")).isEqualTo("https://例子.中国")
     }
 

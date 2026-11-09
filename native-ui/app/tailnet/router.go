@@ -80,6 +80,7 @@ type Router struct {
 	Directory Directory
 	Tailnet   DialFunc
 	Direct    DialFunc
+	LookupIP  func(context.Context, string) ([]netip.Addr, error)
 }
 
 func findPeerByAddr(peers []Peer, addr netip.Addr) *Peer {
@@ -124,7 +125,7 @@ func isMagicDNSName(name, suffix string) bool {
 //   - tailnet 地址段内的 IP 经 tsnet；
 //   - MagicDNS 全名（*.ts.net 或当前 tailnet 后缀）经 tsnet，节点不存在时拒绝，不回落到公网 DNS；
 //   - 不含点的短名匹配到节点时经 tsnet，否则直连（保留局域网短名的原有行为）；
-//   - 其它目标直连。
+//   - 普通域名由系统 DNS 查询，包含 tailnet 地址时使用该地址，其它目标直连。
 func (r *Router) Resolve(ctx context.Context, host string) Route {
 	name := normalizeHost(host)
 	if addr, err := netip.ParseAddr(name); err == nil {
@@ -142,6 +143,20 @@ func (r *Router) Resolve(ctx context.Context, host string) Route {
 	magic := isMagicDNSName(name, suffix)
 	dotless := !strings.Contains(name, ".")
 	if !magic && !dotless {
+		lookup := r.LookupIP
+		if lookup == nil {
+			lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
+				return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+			}
+		}
+		addresses, err := lookup(ctx, name)
+		if err == nil {
+			for _, addr := range addresses {
+				if IsTailnetAddr(addr) {
+					return Route{Tailnet: true, Addr: addr.Unmap()}
+				}
+			}
+		}
 		return Route{}
 	}
 	peer := findPeerByName(r.Directory.Peers(ctx, false), name, suffix)

@@ -13,12 +13,11 @@ class BrowserArgumentException(override val message: String) : IllegalArgumentEx
 object BrowserArguments {
     const val MAX_TEXT = 2000
     private val refPattern = Regex("""^e[1-9][0-9]{0,6}$""")
-    private val schemePrefix = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*:(?!\d)""")
 
     fun url(args: JsonObject): String {
         val raw = string(args, "url")?.trim()?.takeIf { it.isNotEmpty() } ?: invalid("url must be a non-empty string.")
         // “host:端口”不是协议；其余带协议前缀的原样校验，以便明确拒绝 javascript:、file: 等。
-        val withScheme = if (schemePrefix.containsMatchIn(raw)) raw else "https://$raw"
+        val withScheme = BrowserUrlInput.withDefaultScheme(raw)
         val uri = runCatching { URI(withScheme) }.getOrElse { invalid("url is not a valid web address.") }
         val scheme = uri.scheme?.lowercase(Locale.ROOT)
         if (scheme != "http" && scheme != "https") invalid("Only http and https pages can be opened.")
