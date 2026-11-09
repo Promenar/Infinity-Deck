@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.keychain
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.domain.keychain.ImportSshKeyResult
 import com.promenar.infinity.domain.keychain.KeychainAction
 import com.promenar.infinity.domain.keychain.KeychainCategory
 import com.promenar.infinity.domain.keychain.KeychainDeleteResult
@@ -9,6 +10,7 @@ import com.promenar.infinity.domain.keychain.KeychainMetadata
 import com.promenar.infinity.domain.keychain.KeychainOrigin
 import com.promenar.infinity.domain.keychain.KeychainRepository
 import com.promenar.infinity.domain.keychain.KeychainUsage
+import com.promenar.infinity.domain.keychain.SshKeyType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -149,4 +151,9 @@ private class FakeKeychainRepository : KeychainRepository {
     override suspend fun saveGit(host: String, username: String, token: ByteArray) = Unit
     override suspend fun saveGitHubLogin(username: String, token: ByteArray) = Unit
     override suspend fun deleteGit(host: String) = Unit
+    override suspend fun generateSshKey(name: String, type: SshKeyType, passphrase: ByteArray?): KeychainItem = error("unused")
+    override suspend fun importSshKey(name: String, privateKey: ByteArray, passphrase: ByteArray?, origin: KeychainOrigin): ImportSshKeyResult =
+        error("unused")
+    override suspend fun exportOpenSsh(entryId: String, exportPassphrase: ByteArray?): ByteArray = error("unused")
+    override suspend fun changePassphrase(entryId: String, newPassphrase: ByteArray?): KeychainItem = error("unused")
 }

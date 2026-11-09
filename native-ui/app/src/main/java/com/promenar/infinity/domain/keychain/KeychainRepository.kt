@@ -54,6 +54,10 @@ interface KeychainRepository {
     suspend fun createCustom(metadata: KeychainMetadata, value: ByteArray, origin: KeychainOrigin = KeychainOrigin.MANUAL, sessionId: String? = null): KeychainItem
     suspend fun createWebLogin(metadata: KeychainMetadata, value: ByteArray, origin: KeychainOrigin = KeychainOrigin.MANUAL, sessionId: String? = null): KeychainItem
     suspend fun createSshKey(name: String, privateKeyPem: ByteArray, passphrase: ByteArray?, origin: KeychainOrigin, sessionId: String? = null): KeychainItem
+    suspend fun generateSshKey(name: String, type: SshKeyType = SshKeyType.ED25519, passphrase: ByteArray? = null): KeychainItem
+    suspend fun importSshKey(name: String, privateKey: ByteArray, passphrase: ByteArray?, origin: KeychainOrigin): ImportSshKeyResult
+    suspend fun exportOpenSsh(entryId: String, exportPassphrase: ByteArray? = null): ByteArray
+    suspend fun changePassphrase(entryId: String, newPassphrase: ByteArray?): KeychainItem
     suspend fun update(ref: String, metadata: KeychainMetadata, value: ByteArray? = null, passphrase: ByteArray? = null): KeychainItem
     suspend fun delete(ref: String): KeychainDeleteResult
     suspend fun matchWebLogin(host: String, port: Int?): List<KeychainItem>

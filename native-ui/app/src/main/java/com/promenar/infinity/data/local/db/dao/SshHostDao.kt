@@ -67,4 +67,19 @@ abstract class SshHostDao {
         )
         if (previous == null) insert(next) else check(update(next) == 1) { "SSH 主机已变化" }
     }
+
+    /** 调用方已校验密钥与信任状态；配置和部署记录在同一 Room 事务中提交。 */
+    @Transaction
+    open suspend fun saveKeychainSnapshot(
+        host: SshHostEntity,
+        expected: SshHostEntity?,
+        keychain: com.promenar.infinity.data.keychain.KeychainDao? = null,
+        usage: com.promenar.infinity.data.keychain.KeychainUsageEntity? = null,
+    ) {
+        check(findById(host.id) == expected) { "SSH 主机已变化" }
+        val owner = find(host.alias)
+        require(owner == null || owner.id == host.id) { "SSH 别名已存在" }
+        if (expected == null) insert(host) else check(update(host) == 1) { "SSH 主机已变化" }
+        if (usage != null) requireNotNull(keychain).appendUsage(usage)
+    }
 }

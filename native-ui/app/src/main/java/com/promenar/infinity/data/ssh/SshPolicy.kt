@@ -7,6 +7,7 @@ import com.jcraft.jsch.KeyPair
 import com.jcraft.jsch.Logger
 import com.jcraft.jsch.UserInfo
 import com.promenar.infinity.data.security.SshCredential
+import com.promenar.infinity.domain.keychain.SshKeyType
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.security.MessageDigest
@@ -131,12 +132,16 @@ object SshKeyGenerator {
         })
     }
     fun configuredClient(): JSch = JSch()
-    fun generate(): GeneratedSshKey {
-        val key = KeyPair.genKeyPair(configuredClient(), KeyPair.ED25519)
+    fun generate(): GeneratedSshKey = generate(SshKeyType.ED25519, null)
+    fun generate(type: SshKeyType, passphrase: ByteArray?): GeneratedSshKey {
+        val key = when (type) {
+            SshKeyType.ED25519 -> KeyPair.genKeyPair(configuredClient(), KeyPair.ED25519)
+            SshKeyType.RSA_4096 -> KeyPair.genKeyPair(configuredClient(), KeyPair.RSA, 4096)
+        }
         return try {
             val private = object : ByteArrayOutputStream() { fun wipe() { buf.fill(0) } }
             try {
-                key.writeOpenSSHv1PrivateKey(private, null as ByteArray?)
+                key.writeOpenSSHv1PrivateKey(private, passphrase?.takeIf { it.isNotEmpty() })
                 GeneratedSshKey(private.toByteArray(), publicText(key))
             } finally { private.wipe() }
         } catch (_: Exception) { throw SshFailure("KEY_GENERATION_FAILED")

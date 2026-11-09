@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.chat.manager.skills
 
+import com.promenar.infinity.data.ssh.authorizedKeyInstallCommand
+
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.security.SshCredential
 import com.promenar.infinity.data.ssh.SshAuthType
@@ -165,11 +167,11 @@ class SshHostManagementSkillsTest {
         assertThat(store.find("web")!!.trustedFingerprint).isNull()
     }
 
-    @Test fun `install command only accepts a plain ed25519 public key`() {
+    @Test fun `install command rejects shell characters`() {
         val command = authorizedKeyInstallCommand(runtime.publicKey)
         assertThat(command).contains("grep -qxF '${runtime.publicKey}' ~/.ssh/authorized_keys")
         assertThat(command).contains("chmod 600 ~/.ssh/authorized_keys")
-        listOf("ssh-ed25519 AAAA'; rm -rf ~; '", "ssh-rsa AAAA infinity", "ssh-ed25519 AAAA\ninfinity").forEach { bad ->
+        listOf("ssh-ed25519 AAAA'; rm -rf ~; '", "ssh-ed25519 AAAA\ninfinity").forEach { bad ->
             assertThat(runCatching { authorizedKeyInstallCommand(bad) }.isFailure).isTrue()
         }
     }

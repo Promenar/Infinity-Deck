@@ -10,6 +10,7 @@ import com.promenar.infinity.data.ssh.SshHostStore
 import com.promenar.infinity.data.ssh.SshKeyGenerator
 import com.promenar.infinity.data.ssh.SshPolicy
 import com.promenar.infinity.data.ssh.SshUserPromptBroker
+import com.promenar.infinity.data.ssh.authorizedKeyInstallCommand
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.domain.tool.ToolSchemaValidation
 import com.promenar.infinity.domain.tool.ToolSchemaValidator
@@ -279,16 +280,6 @@ internal fun mergeSshHost(
     val updated = existing.copy(hostname = hostname, port = port ?: existing.port, username = username, authType = authType)
     val endpointChanged = updated.hostname != existing.hostname || updated.port != existing.port
     return if (endpointChanged) updated.copy(trustedKeyType = null, trustedFingerprint = null) else updated
-}
-
-private val PUBLIC_KEY = Regex("ssh-ed25519 [A-Za-z0-9+/]+={0,2}( [A-Za-z0-9@._-]+)?")
-
-/** 幂等追加公钥的远端命令；公钥格式严格校验后单引号包裹，不含可被 shell 解释的字符。 */
-internal fun authorizedKeyInstallCommand(publicKey: String): String {
-    require(PUBLIC_KEY.matches(publicKey)) { "公钥格式无效" }
-    val quoted = "'$publicKey'"
-    return "umask 077 && mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys && " +
-        "(grep -qxF $quoted ~/.ssh/authorized_keys || printf '%s\\n' $quoted >> ~/.ssh/authorized_keys)"
 }
 
 internal fun sshHostGuidance(code: String): String = when (code.removePrefix("SSH_")) {

@@ -43,6 +43,13 @@ class DefaultKeychainRepository(
 ) : KeychainRepository {
     private val access = KeychainSecretAccess(secrets)
     private val sshCredentials = SshCredentialStore(secrets)
+    private val sshKeys = KeychainSshKeyOperations(dao, secrets, clock)
+
+    override suspend fun generateSshKey(name: String, type: SshKeyType, passphrase: ByteArray?) = sshKeys.generate(name, type, passphrase)
+    override suspend fun importSshKey(name: String, privateKey: ByteArray, passphrase: ByteArray?, origin: KeychainOrigin) =
+        sshKeys.import(name, privateKey, passphrase, origin)
+    override suspend fun exportOpenSsh(entryId: String, exportPassphrase: ByteArray?) = sshKeys.export(entryId, exportPassphrase)
+    override suspend fun changePassphrase(entryId: String, newPassphrase: ByteArray?) = sshKeys.changePassphrase(entryId, newPassphrase)
 
     override fun entries(): Flow<List<KeychainItem>> = combine(
         dao.observeEntries(), hosts.observeHosts(), git.credentials, providers, secrets.changes,
