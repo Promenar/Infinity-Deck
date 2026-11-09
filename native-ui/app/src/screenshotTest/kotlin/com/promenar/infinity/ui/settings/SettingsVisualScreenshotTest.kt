@@ -159,7 +159,6 @@ private fun ToolsHeaderPreview(dark: Boolean) = SettingsVisualTheme(dark) {
                     state = EnvironmentConnectionState(
                         termuxAvailability = TermuxAvailability(true, "0.119.1", true),
                         sshHostCount = 2,
-                        gitCredentialCount = 2,
                     ),
                     onOpen = {},
                 )

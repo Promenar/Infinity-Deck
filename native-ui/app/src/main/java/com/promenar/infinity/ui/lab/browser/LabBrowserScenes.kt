@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,7 +52,7 @@ internal val labBrowserScenes: Map<String, () -> LabScene> = mapOf(
     "browser.state.issue-12" to {
         LabStateScene {
             val context = LocalContext.current
-            val zh = context.resources.configuration.locales[0].language == "zh"
+            val zh = LocalConfiguration.current.locales[0].language == "zh"
             val assets = context.assets
             val issue = remember(zh) { IssuePage(zh) }
             LabBrowserPage(issueState(issue), ISSUE_URL, styleAsset = SITE_STYLE_ASSET) { style ->

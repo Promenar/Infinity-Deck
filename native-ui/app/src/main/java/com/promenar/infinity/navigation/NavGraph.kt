@@ -85,7 +85,9 @@ object NavDestinations {
     const val NETWORK_ACCESS = "network_access"
     const val TAILSCALE_CONFIG = "tailscale_config"
     const val SSH_TERMINAL = "ssh_terminal/{alias}"
-    const val GIT_CREDENTIALS = "git_credentials"
+    const val KEYCHAIN = "keychain"
+    const val KEYCHAIN_ENTRY = "keychain_entry/{ref}"
+    const val KEYCHAIN_EDIT = "keychain_edit?ref={ref}"
     const val BACKGROUND_ACTIVITY = "background_activity"
     const val THEME_CONFIG = "theme_config"
     const val BACKUP_SETTINGS = "backup_settings"
@@ -104,6 +106,8 @@ object NavDestinations {
     fun providerForm(providerId: String? = null) =
         if (providerId != null) "provider_form?providerId=$providerId" else "provider_form"
     fun providerModels(providerId: String) = "provider_models/$providerId"
+    fun keychainEntry(ref: String) = "keychain_entry/${android.net.Uri.encode(ref)}"
+    fun keychainEdit(ref: String? = null) = if (ref == null) "keychain_edit" else "keychain_edit?ref=${android.net.Uri.encode(ref)}"
     fun docEditor(workspaceRootUuid: String, docId: String) = "doc_editor/$workspaceRootUuid/$docId"
     fun libraryDocument(docId: String) = "library_document/${android.net.Uri.encode(docId)}"
     @Suppress("UNUSED_PARAMETER")
@@ -773,11 +777,46 @@ internal fun NavGraphBuilder.settingsDestinations(
         }
     }
 
-    composablePage(NavDestinations.GIT_CREDENTIALS) { entry ->
+    composablePage(NavDestinations.KEYCHAIN) { entry ->
         navigator.Page(entry) {
-            com.promenar.infinity.ui.settings.GitCredentialSettingsScreen(
+            com.promenar.infinity.ui.keychain.KeychainScreen(
+                initialFilter = null,
                 onBack = { navigator.back() },
-                onOpenSsh = { navigator.open(NavDestinations.SSH_CONFIG) },
+                onOpenEntry = { ref -> navigator.open(NavDestinations.keychainEntry(ref)) },
+                onNewEntry = { navigator.open(NavDestinations.keychainEdit()) },
+            )
+        }
+    }
+
+    composablePage(
+        route = NavDestinations.KEYCHAIN_ENTRY,
+        arguments = listOf(navArgument("ref") { type = NavType.StringType }),
+    ) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.keychain.KeychainEntryScreen(
+                ref = entry.arguments?.getString("ref").orEmpty(),
+                onBack = { navigator.back() },
+                onEdit = { ref -> navigator.open(NavDestinations.keychainEdit(ref)) },
+                onOpenSettings = { link -> navigator.open(keychainSettingsRoute(link)) },
+            )
+        }
+    }
+
+    composablePage(
+        route = NavDestinations.KEYCHAIN_EDIT,
+        arguments = listOf(navArgument("ref") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) { entry ->
+        val ref = entry.arguments?.getString("ref")
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.keychain.KeychainEditorScreen(
+                ref = ref,
+                onBack = { navigator.back() },
+                onSaved = { saved ->
+                    navigator.back()
+                    // 新建后进入新条目；编辑改变了类别时条目以新引用重建，详情页换成新条目。
+                    if (ref != null && saved != ref) navigator.back()
+                    if (saved != ref) navigator.open(NavDestinations.keychainEntry(saved))
+                },
             )
         }
     }
@@ -824,4 +863,15 @@ internal fun NavGraphBuilder.settingsDestinations(
             }
         }
     }
+}
+
+/** 钥匙串汇总条目“在原设置页编辑”对应的设置页。 */
+internal fun keychainSettingsRoute(link: com.promenar.infinity.ui.keychain.KeychainSettingsLink): String = when (link) {
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.SSH_HOSTS -> NavDestinations.SSH_CONFIG
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.PROVIDERS -> NavDestinations.PROVIDER_LIST
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.BUILTIN_TOOLS -> NavDestinations.BUILTIN_TOOLS
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.DEFAULT_MODELS -> NavDestinations.DEFAULT_MODELS
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.BACKUP -> NavDestinations.BACKUP_SETTINGS
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.TAILSCALE -> NavDestinations.TAILSCALE_CONFIG
+    com.promenar.infinity.ui.keychain.KeychainSettingsLink.MCP -> NavDestinations.MCP_SERVERS
 }

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Memory
@@ -66,6 +67,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
+import com.promenar.infinity.ui.keychain.rememberKeychainCount
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -128,6 +130,7 @@ fun UserSettingsHomeScreen(
     val settingsError by viewModel.settingsError.collectAsState()
     val mcpServers by viewModel.mcpServers.collectAsState()
     val environment = rememberEnvironmentConnectionState()
+    val keychainCount = rememberKeychainCount()
     val developerModeStore = remember(context) { DeveloperModeStore.get(context) }
     val developerModeEnabled by developerModeStore.enabled.collectAsState()
     val diagnosticsChooserTitle = stringResource(R.string.settings_diagnostics_export)
@@ -145,7 +148,7 @@ fun UserSettingsHomeScreen(
         onFailure = viewModel::reportAvatarImportFailure,
     )
 
-    val state = remember(userName, userAvatar, profilePrefersBrand, settingsError, selectedRoute, language, mcpServers.size, environment, developerModeEnabled) {
+    val state = remember(userName, userAvatar, profilePrefersBrand, settingsError, selectedRoute, language, mcpServers.size, keychainCount, environment, developerModeEnabled) {
         UserSettingsHomeScreenState(
             userName = userName,
             selectedRoute = selectedRoute,
@@ -155,6 +158,7 @@ fun UserSettingsHomeScreen(
             localInferenceAvailable = BuildConfig.LOCAL_INFERENCE_AVAILABLE,
             language = language,
             mcpServerCount = mcpServers.size,
+            keychainCount = keychainCount,
             environment = environment,
             developerModeEnabled = developerModeEnabled,
         )
@@ -269,6 +273,7 @@ internal data class UserSettingsHomeScreenState(
     /** 偏好中保存的界面语言（"zh" / "en"），语言行按它显示，不读系统区域。 */
     val language: String = "zh",
     val mcpServerCount: Int? = null,
+    val keychainCount: Int? = null,
     val environment: EnvironmentConnectionState = EnvironmentConnectionState(),
     /** 版本号连点解锁后为 true，“关于”前多出开发者分组。 */
     val developerModeEnabled: Boolean = false,
@@ -499,6 +504,18 @@ internal fun UserSettingsHomeScreenContent(
                     title = stringResource(R.string.settings_ia_section_data),
                     headerStartPadding = InfinitySpacing.ScreenHorizontal,
                 ) {
+                    UserSettingsNavigationItem(
+                        icon = Icons.Rounded.Key,
+                        title = stringResource(R.string.keychain_title),
+                        subtitle = when (val count = state.keychainCount) {
+                            null -> stringResource(R.string.settings_status_loading)
+                            0 -> stringResource(R.string.keychain_settings_entry_count_zero)
+                            else -> pluralStringResource(R.plurals.keychain_settings_entry_count, count, count)
+                        },
+                        onClick = { actions.onNavigateToSecondary(NavDestinations.KEYCHAIN) },
+                        selected = state.selectedRoute == NavDestinations.KEYCHAIN,
+                        modifier = Modifier.testTag("settings_keychain"),
+                    )
                     UserSettingsNavigationItem(
                         icon = Icons.Rounded.Toll,
                         title = stringResource(R.string.settings_token_usage),

@@ -55,7 +55,9 @@ import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.LocalInfinitySettingsEmbedded
 import com.promenar.infinity.ui.common.InfinitySegmentTrackInset
 import com.promenar.infinity.ui.common.inspectorTopGap
-import com.promenar.infinity.ui.settings.GitCredentialSettingsScreen
+import com.promenar.infinity.domain.keychain.KeychainCategory
+import com.promenar.infinity.ui.keychain.KeychainEntryScreen
+import com.promenar.infinity.ui.keychain.KeychainScreen
 import com.promenar.infinity.ui.settings.NetworkAccessSettingsScreen
 import com.promenar.infinity.ui.settings.SshSettingsScreen
 import com.promenar.infinity.data.tailnet.TailnetPeer
@@ -92,6 +94,8 @@ internal fun RemotePage(
     var segment by rememberSaveable(sessionId) { mutableStateOf(RemoteSegment.SSH.token) }
     var terminalAlias by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
     var terminalTab by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
+    // Git 分段里打开的钥匙串条目：整页显示详情，返回回到分段。
+    var gitEntry by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
     // Tailscale 分段里点“SSH”的设备：切到 SSH 分段后由主机设置打开预填的新建面板。
     var importPeer by remember(sessionId) { mutableStateOf<TailnetPeer?>(null) }
     // 打开面板时智能体正在用 SSH，直接落在 SSH 分段。
@@ -111,6 +115,13 @@ internal fun RemotePage(
             readOnlyTabs = usage.readOnlyTabs(alias),
             initialTab = terminalTab,
         )
+        return
+    }
+
+    gitEntry?.let { ref ->
+        val closeEntry = { gitEntry = null }
+        BackHandler(onBack = closeEntry)
+        KeychainEntryScreen(ref = ref, onBack = closeEntry, onEdit = {}, onOpenSettings = {})
         return
     }
 
@@ -135,7 +146,13 @@ internal fun RemotePage(
                 onImportConsumed = { importPeer = null },
                 onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token },
             )
-            RemoteSegment.GIT -> GitCredentialSettingsScreen(onBack = {}, onOpenSsh = { segment = RemoteSegment.SSH.token })
+            RemoteSegment.GIT -> KeychainScreen(
+                initialFilter = KeychainCategory.GIT,
+                lockedFilter = KeychainCategory.GIT,
+                onBack = {},
+                onOpenEntry = { gitEntry = it },
+                onNewEntry = {},
+            )
             RemoteSegment.TAILSCALE -> TailscaleSettingsScreen(
                 onBack = {},
                 onAddSshHost = { peer ->

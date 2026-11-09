@@ -12,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
-import com.promenar.infinity.data.git.remote.GitCredential
 import com.promenar.infinity.data.git.remote.GitHubDeviceFailure
 import com.promenar.infinity.data.ssh.SshHost
 import com.promenar.infinity.data.ssh.SshTerminalIdlePolicy
@@ -103,17 +102,6 @@ private fun sshJob(id: String, host: String) = BackgroundJob(
 )
 
 // ── GitHub 浏览器登录 ──
-
-@PreviewTest
-@Preview(name = "Git 凭据 GitHub 登录入口 浅色中文", widthDp = 390, heightDp = 900, locale = "zh-rCN")
-@Preview(name = "Git 凭据 GitHub 登录入口 浅色英文 字号130", widthDp = 360, heightDp = 1200, locale = "en", fontScale = 1.3f)
-@Composable
-fun gitCredentialsGitHubEntryPreview() = Frame(dark = false) {
-    GitCredentialSettingsContent(
-        state = GitCredentialUiState(credentials = listOf(GitCredential("github.com", "promenar")), githubLoginAvailable = true),
-        actions = GitCredentialSettingsActions(),
-    )
-}
 
 @PreviewTest
 @Preview(name = "GitHub 登录 显示代码 深色中文", widthDp = 390, heightDp = 420, locale = "zh-rCN")

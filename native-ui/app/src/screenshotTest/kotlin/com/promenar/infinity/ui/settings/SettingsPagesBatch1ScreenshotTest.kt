@@ -64,7 +64,6 @@ private fun Batch1ToolsContent(budgetOnly: Boolean = false) {
                         state = EnvironmentConnectionState(
                             termuxAvailability = TermuxAvailability(false, null, false),
                             sshHostCount = 0,
-                            gitCredentialCount = 0,
                         ),
                         onOpen = {},
                     )

@@ -54,8 +54,8 @@ internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.SSH_CONFIG,
     NavDestinations.TAILSCALE_CONFIG,
     NavDestinations.NETWORK_ACCESS,
-    NavDestinations.GIT_CREDENTIALS,
     NavDestinations.BACKGROUND_ACTIVITY,
+    NavDestinations.KEYCHAIN,
     NavDestinations.TOKEN_USAGE,
     NavDestinations.BACKUP_SETTINGS,
     NavDestinations.DEVELOPER,
@@ -69,6 +69,8 @@ private val SettingsPaneRouteBases: Set<String> = SettingsPaneRoots.toSet() + se
     NavDestinations.LINUX_PACKAGES,
     NavDestinations.LINUX_MIRRORS,
     "visual_lab",
+    "keychain_entry",
+    "keychain_edit",
 )
 
 internal fun isSettingsPaneRoute(route: String): Boolean =
@@ -124,7 +126,6 @@ private val OpenedFromSessionRoots: Set<String> = setOf(
     NavDestinations.SSH_CONFIG,
     NavDestinations.TAILSCALE_CONFIG,
     NavDestinations.NETWORK_ACCESS,
-    NavDestinations.GIT_CREDENTIALS,
     NavDestinations.BACKGROUND_ACTIVITY,
 )
 
