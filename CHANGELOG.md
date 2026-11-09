@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.41.3-beta] - 2026-11-10
+
+### 修复
+
+- 正式版生成 RSA 4096 密钥不再失败；生成出错时提示生成失败，不再误报保存到钥匙串失败。
+
 ## [0.41.2-beta] - 2026-11-10
 
 ### 修复

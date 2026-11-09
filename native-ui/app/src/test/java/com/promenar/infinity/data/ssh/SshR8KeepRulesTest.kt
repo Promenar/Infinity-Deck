@@ -23,7 +23,7 @@ class SshR8KeepRulesTest {
             .flatMap { JSch.getConfig(it).split(',') }
         val helpers = listOf(
             "ecdh-sha2-nistp", "xdh", "dh", "sha-256", "random", "bcrypt",
-            "keypairgen.eddsa", "keypairgen_fromprivate.eddsa",
+            "keypairgen.eddsa", "keypairgen_fromprivate.eddsa", "keypairgen.rsa", "keypairgen.ecdsa",
             "userauth.none", "userauth.password", "userauth.publickey",
         )
         val classes = (algorithms + helpers).map { name ->

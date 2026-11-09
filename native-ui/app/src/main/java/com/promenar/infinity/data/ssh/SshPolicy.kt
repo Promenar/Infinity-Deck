@@ -134,10 +134,13 @@ object SshKeyGenerator {
     fun configuredClient(): JSch = JSch()
     fun generate(): GeneratedSshKey = generate(SshKeyType.ED25519, null)
     fun generate(type: SshKeyType, passphrase: ByteArray?): GeneratedSshKey {
-        val key = when (type) {
-            SshKeyType.ED25519 -> KeyPair.genKeyPair(configuredClient(), KeyPair.ED25519)
-            SshKeyType.RSA_4096 -> KeyPair.genKeyPair(configuredClient(), KeyPair.RSA, 4096)
-        }
+        // 生成类由 JSch 按配置反射加载，加载或生成失败同样归为生成失败。
+        val key = try {
+            when (type) {
+                SshKeyType.ED25519 -> KeyPair.genKeyPair(configuredClient(), KeyPair.ED25519)
+                SshKeyType.RSA_4096 -> KeyPair.genKeyPair(configuredClient(), KeyPair.RSA, 4096)
+            }
+        } catch (_: Exception) { throw SshFailure("KEY_GENERATION_FAILED") }
         return try {
             val private = object : ByteArrayOutputStream() { fun wipe() { buf.fill(0) } }
             try {

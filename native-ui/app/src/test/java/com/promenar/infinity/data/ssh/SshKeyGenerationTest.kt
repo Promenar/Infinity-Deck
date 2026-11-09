@@ -1,9 +1,11 @@
 package com.promenar.infinity.data.ssh
 
+import com.jcraft.jsch.JSch
 import com.jcraft.jsch.KeyPair
 import com.promenar.infinity.domain.keychain.SshKeyType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +28,19 @@ class SshKeyGenerationTest {
                     } finally { loaded.dispose() }
                 }
             }
+        }
+    }
+
+    /** Release 的 R8 裁掉反射加载的生成类时，生成报“生成失败”而不是笼统的写入失败。 */
+    @Test fun `生成类缺失时报生成失败`() {
+        SshKeyGenerator.configuredClient()
+        for ((type, config) in listOf(SshKeyType.RSA_4096 to "keypairgen.rsa", SshKeyType.ED25519 to "keypairgen.eddsa")) {
+            val original = JSch.getConfig(config)
+            JSch.setConfig(config, "com.promenar.infinity.MissingKeyPairGen")
+            try {
+                val failure = assertThrows(SshFailure::class.java) { SshKeyGenerator.generate(type, null) }
+                assertEquals("KEY_GENERATION_FAILED", failure.code)
+            } finally { JSch.setConfig(config, original) }
         }
     }
 }

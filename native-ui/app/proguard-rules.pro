@@ -139,7 +139,7 @@
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 
 # JSch 2.28.8 固定算法表的反射保留规则。
-# 只涵盖 Ed25519 生成与 OpenSSH v1 导入，不宣称支持 PEM、PKCS8、PuTTY。
+# 只涵盖 Ed25519、RSA 4096 生成与 OpenSSH v1 导入，不宣称支持 PEM、PKCS8、PuTTY。
 # 使用前须固定 server_host_key、PubkeyAcceptedAlgorithms、CheckSignatures 为裸 Ed25519/ECDSA/RSA-SHA2。
 # 同时固定网络 KEX/cipher/MAC/auth/compression，禁用证书、GSS、压缩、agent。
 # 私钥导入须显式验证 cipher 为下列 AES-CTR/GCM，kdf 为 bcrypt 或明文 none。
@@ -163,6 +163,8 @@
 
 # 密钥生成、指纹、KEX 摘要及加盐随机源。
 -keep class com.jcraft.jsch.bc.KeyPairGenEdDSA { *; }
+-keep class com.jcraft.jsch.jce.KeyPairGenRSA { *; }
+-keep class com.jcraft.jsch.jce.KeyPairGenECDSA { *; }
 -keep class com.jcraft.jsch.jce.SHA256 { *; }
 -keep class com.jcraft.jsch.jce.Random { *; }
 
