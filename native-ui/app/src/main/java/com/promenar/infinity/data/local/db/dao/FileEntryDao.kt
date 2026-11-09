@@ -70,7 +70,9 @@ interface FileEntryDao {
             if (read == null || proposed.isDirectory) proposed else {
                 // 索引任务可能在根锁外写回完成时间：以事务内的最新行为准，内容哈希变了就不复用。
                 val old = getActiveByUuid(read.workspaceRootUuid, read.uuid) ?: read
-                val reusable = old.uuid in verified && old.hash == read.hash &&
+                // 从未索引过的文件（如 SFTP 临时文件改名落位）照旧排队；已索引的沿用结果，已过期的保持过期。
+                val indexed = old.vectorizedAt != null || old.kgExtractedAt != null
+                val reusable = indexed && old.uuid in verified && old.hash == read.hash &&
                     countActivePathIndexTasks(old.workspaceRootUuid, old.uuid) == 0
                 val final = if (reusable) proposed.copy(
                     vectorizedAt = old.vectorizedAt?.let { if (it >= old.updatedAt) proposed.updatedAt else it },

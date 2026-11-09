@@ -189,7 +189,12 @@ private fun PreviewItemMenu(item: FileItem, state: FileManagerUiState, actions: 
         IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.FM_PREVIEW_MORE)) {
             Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.fm_item_actions, item.name))
         }
-        InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        InfinityDropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            minWidth = FileItemMenuWidth,
+            maxWidth = FileItemMenuWidth,
+        ) {
             FileItemMenu(item, state, actions) { open = false }
         }
     }

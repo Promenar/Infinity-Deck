@@ -33,6 +33,14 @@ class SftpPrivateWorkspaceTest {
         "getAllStatesByWorkspaceRootForCleanup" -> entries.values.toList()
         "insertAbort" -> { val row = args[0] as FileEntry; check(entries.putIfAbsent(row.uuid, row) == null); Unit }
         "updateAll" -> { (args[0] as List<*>).filterIsInstance<FileEntry>().forEach { entries[it.uuid] = it }; onUpdate(); Unit }
+        // 内存行从未索引：路径提交照常写入，全部文件都需要重新排队。
+        "commitPathChanges" -> {
+            (args[0] as List<*>).filterIsInstance<FileEntry>().forEach { check(entries.putIfAbsent(it.uuid, it) == null) }
+            val updates = (args[1] as List<*>).filterIsInstance<FileEntry>()
+            updates.forEach { entries[it.uuid] = it }
+            onUpdate()
+            updates.filterNot { it.isDirectory }
+        }
         else -> error("未实现的 DAO 调用：$method")
     } }
     private val repo = WorkspaceRepository(dao, proxy<WorkspaceSeqDao> { method, _ -> error(method) }, fileOps = ops,

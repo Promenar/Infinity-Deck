@@ -360,6 +360,7 @@ class WorkspaceCommandHostTest {
         assertThat(blob.mimeType).isEqualTo("application/octet-stream")
 
         val changed = events.filterIsInstance<FileIndexEvent.Changed>().map { it.fileUuid }
+        // 改名的文件此前从未索引，路径变更后照旧排队。
         assertThat(changed).containsAtLeast(keep.uuid, csv.uuid, renamed.uuid)
         assertThat(changed).doesNotContain(blob.uuid)
         assertThat(File(workspace, COMMAND_PENDING_MARKER).exists()).isFalse()

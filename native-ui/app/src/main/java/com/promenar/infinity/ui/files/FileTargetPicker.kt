@@ -1,5 +1,20 @@
 package com.promenar.infinity.ui.files
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clipToBounds
+import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.common.LocalInfinityHaptics
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.hierarchicalTransition
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,6 +114,11 @@ internal fun FileTargetPickerContent(
     // 从会话工作区进入的会话不在位置列表里，此时“会话工作区”保持选中。
     val selectedId = if (listed == null && picker.locationId.startsWith("session:")) SESSIONS_LOCATION_ID else picker.locationId
     val writable = targetLocation?.capabilities?.writable ?: true
+    val haptics = LocalInfinityHaptics.current
+    val go: (String) -> Unit = { path ->
+        if (path != picker.path) haptics.perform(InfinityHapticEvent.SELECTION)
+        onGo(path)
+    }
     Column(modifier.fillMaxWidth().testTag(UiTags.FM_TARGET_SHEET)) {
         Text(
             text = pluralStringResource(
@@ -115,7 +135,12 @@ internal fun FileTargetPickerContent(
                 locations.forEach { location ->
                     FilterChip(
                         selected = location.id == selectedId,
-                        onClick = { if (location.id != picker.locationId) onLocation(location.id) },
+                        onClick = {
+                            if (location.id != picker.locationId) {
+                                haptics.perform(InfinityHapticEvent.SELECTION)
+                                onLocation(location.id)
+                            }
+                        },
                         label = { Text(location.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingIcon = {
                             Icon(locationKindIcon(location.kind), contentDescription = null, modifier = Modifier.size(18.dp))
@@ -129,24 +154,49 @@ internal fun FileTargetPickerContent(
         }
         FileBreadcrumbs(
             crumbs = withRootCrumb(picker.crumbs, targetLocation?.title.orEmpty(), picker.path),
-            onGo = onGo,
+            onGo = go,
             tagPrefix = UiTags.FM_TARGET_CRUMB,
         )
-        Box(Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 320.dp)) {
-            when {
-                picker.loading -> Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
-                    InfinityLoadingIndicator()
+        // 列表区固定高度：进出文件夹、加载与空文件夹之间切换时面板不随内容伸缩。
+        AnimatedContent(
+            targetState = rememberSettledPicker(picker),
+            contentKey = { it.listingKey() },
+            transitionSpec = {
+                if (initialState.locationId != targetState.locationId) {
+                    InfinityMotion.fadeThrough()
+                } else {
+                    hierarchicalTransition { it.crumbs.size }
                 }
-                picker.folders.isEmpty() -> Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = stringResource(R.string.fm_target_no_folders),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                else -> LazyColumn(Modifier.fillMaxWidth()) {
-                    items(picker.folders, key = { it.ref.listKey() }) { folder ->
-                        TargetFolderRow(folder, onClick = { onOpenFolder(folder) })
+            },
+            modifier = Modifier.fillMaxWidth().height(TargetListHeight).clipToBounds(),
+            label = "fm_target_folder",
+        ) { page ->
+            Crossfade(
+                targetState = when {
+                    page.loading -> TargetListPhase.Loading
+                    page.folders.isEmpty() -> TargetListPhase.Empty
+                    else -> TargetListPhase.List
+                },
+                label = "fm_target_phase",
+            ) { phase ->
+                when (phase) {
+                    TargetListPhase.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        InfinityLoadingIndicator()
+                    }
+                    TargetListPhase.Empty -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = stringResource(R.string.fm_target_no_folders),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TargetListPhase.List -> LazyColumn(Modifier.fillMaxSize()) {
+                        items(page.folders, key = { it.ref.listKey() }) { folder ->
+                            TargetFolderRow(folder, onClick = {
+                                haptics.perform(InfinityHapticEvent.SELECTION)
+                                onOpenFolder(folder)
+                            })
+                        }
                     }
                 }
             }
@@ -167,7 +217,10 @@ internal fun FileTargetPickerContent(
             )
             InfinityPillButton(
                 text = stringResource(if (picker.mode == FileTransferMode.MOVE) R.string.fm_target_move_here else R.string.fm_target_copy_here),
-                onClick = onConfirm,
+                onClick = {
+                    haptics.perform(InfinityHapticEvent.CONFIRM)
+                    onConfirm()
+                },
                 enabled = writable && !picker.loading,
                 tone = InfinityPillTone.PRIMARY,
                 modifier = Modifier.testTag(UiTags.FM_TARGET_CONFIRM),
@@ -206,3 +259,35 @@ private fun TargetFolderRow(folder: FileItem, onClick: () -> Unit) {
         )
     }
 }
+
+private enum class TargetListPhase { Loading, Empty, List }
+
+private fun FileTargetPickerState.listingKey(): String = "$locationId\u0000$path"
+
+/** 目标面板子文件夹列表的固定高度，约五行。 */
+private val TargetListHeight = 280.dp
+
+/**
+ * 进入或返回文件夹时，新目录读取的这一小段里继续显示旧列表，读完再整页滑入，
+ * 免得滑进来的是加载指示再闪成列表；读取超过 [TargetSettleMillis] 才带着加载指示切换。
+ */
+@Composable
+private fun rememberSettledPicker(picker: FileTargetPickerState): FileTargetPickerState {
+    val shown = remember { PickerHolder(picker) }
+    val key = picker.listingKey()
+    val pending = key != shown.value.listingKey() && picker.loading && picker.folders.isEmpty()
+    var timedOut by remember(key) { mutableStateOf(false) }
+    if (pending) {
+        LaunchedEffect(key) {
+            delay(TargetSettleMillis)
+            timedOut = true
+        }
+    }
+    val result = if (pending && !timedOut) shown.value else picker
+    SideEffect { shown.value = result }
+    return result
+}
+
+private class PickerHolder(var value: FileTargetPickerState)
+
+private const val TargetSettleMillis = 200L

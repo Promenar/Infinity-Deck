@@ -110,7 +110,8 @@ class WorkspaceRelocateTest {
         assertThat(current.parentUuid).isEqualTo(parent.uuid)
         assertThat(current.materializedPath).isEqualTo("/docs/b.txt")
         assertThat(current.hash).isEqualTo(written.newHash)
-        assertThat(moved.affectedTargets).isEmpty()
+        // 来源从未索引，移动后照旧排队一次。
+        assertThat(moved.affectedTargets.map { it.fileUuid }).containsExactly(source.uuid)
         assertThat(db.fileVersionDao().getByFile(root.uuid, source.uuid)).isEqualTo(history)
         assertThat(File(directory, "a.txt").exists()).isFalse()
         assertThat(File(directory, "docs/a.txt").readText()).isEqualTo("unrelated")

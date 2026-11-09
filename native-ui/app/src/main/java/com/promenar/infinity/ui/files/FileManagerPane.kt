@@ -411,7 +411,8 @@ private fun FileListPhaseContent(phase: FileListPhase, state: FileManagerUiState
     }
 }
 
-private fun FileManagerUiState.showUpEntry(): Boolean = canGoUp && !selecting
+/** 多选时“..”仍占位、只是不可点，列表不因它消失而整体上移。 */
+private fun FileManagerUiState.showUpEntry(): Boolean = canGoUp
 
 private const val FOLDER_HEADER_KEY = "host-folder-header"
 
@@ -478,7 +479,7 @@ private fun FileList(state: FileManagerUiState, actions: FileManagerUiActions, m
     val highlighted = state.previewItem?.ref
     LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = FabClearance)) {
         if (state.showUpEntry()) {
-            item(key = "..") { FileUpRow(parentTitle = state.parentFolderTitle(), onClick = controller::goUp) }
+            item(key = "..") { FileUpRow(parentTitle = state.parentFolderTitle(), onClick = controller::goUp, enabled = !state.selecting) }
         }
         state.folderHeaderScope(actions)?.let { (header, scope) ->
             item(key = FOLDER_HEADER_KEY) { header(scope) }
@@ -512,7 +513,7 @@ private fun FileGrid(state: FileManagerUiState, actions: FileManagerUiActions, m
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
         if (state.showUpEntry()) {
-            item(key = "..") { FileUpTile(onClick = controller::goUp) }
+            item(key = "..") { FileUpTile(onClick = controller::goUp, enabled = !state.selecting) }
         }
         state.folderHeaderScope(actions)?.let { (header, scope) ->
             item(key = FOLDER_HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) { header(scope) }

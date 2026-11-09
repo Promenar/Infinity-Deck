@@ -47,3 +47,29 @@ fun Modifier.verticalFadingEdges(
             )
         }
     }
+
+/** 横向渐隐边：[start] / [end] 为 true 的一侧淡出，用于单行横向滚动的文字。 */
+fun Modifier.horizontalFadingEdges(
+    start: Boolean,
+    end: Boolean,
+    length: Dp = 12.dp,
+): Modifier = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val edge = length.toPx().coerceAtMost(size.width / 4f)
+        if (start && edge > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(listOf(Color.Transparent, OpaqueMask), startX = 0f, endX = edge),
+                size = Size(edge, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        if (end && edge > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(listOf(OpaqueMask, Color.Transparent), startX = size.width - edge, endX = size.width),
+                topLeft = Offset(size.width - edge, 0f),
+                size = Size(edge, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }

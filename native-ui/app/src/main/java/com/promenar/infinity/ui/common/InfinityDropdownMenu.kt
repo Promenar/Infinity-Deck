@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -232,6 +233,7 @@ fun InfinityDropdownMenu(
     modifier: Modifier = Modifier,
     offset: DpOffset = DpOffset.Zero,
     minWidth: Dp = 160.dp,
+    maxWidth: Dp = MenuMaxWidth,
     properties: PopupProperties = PopupProperties(focusable = true),
     touch: InfinityMenuTouch? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -375,7 +377,7 @@ fun InfinityDropdownMenu(
                             }
                         }
                         .width(IntrinsicSize.Max)
-                        .widthIn(min = minWidth, max = MenuMaxWidth)
+                        .widthIn(min = minWidth, max = maxWidth.coerceAtLeast(minWidth))
                         .verticalScroll(rememberScrollState())
                         .padding(MenuInnerPadding),
                     content = content,

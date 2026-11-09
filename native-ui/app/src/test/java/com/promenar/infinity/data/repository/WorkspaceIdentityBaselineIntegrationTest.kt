@@ -156,7 +156,7 @@ class WorkspaceIdentityBaselineIntegrationTest {
         File(sandbox, "baselines").listFiles()!!.single().writeText("damaged")
         command { mv("a.txt", "b.txt") }
         assertThat(repo.getByMaterializedPath(root.uuid, "/b.txt")).isNotNull()
-        assertThat(repo.getByMaterializedPath(root.uuid, "/b.txt")?.uuid).isNotEqualTo("old")
+        assertThat(repo.getByMaterializedPath(root.uuid, "/b.txt")?.uuid).isEqualTo("old")
         assertThat(diagnostics).contains("corrupted")
         assertThat(store.load(root)).isNotNull()
     }
@@ -243,7 +243,8 @@ class WorkspaceIdentityBaselineIntegrationTest {
         create("old", "/a.txt")
         command { mv("a.txt", "b.txt") }
         val first = checkNotNull(repo.getByMaterializedPath(root.uuid, "/b.txt"))
-        assertThat(first.uuid).isNotEqualTo("old")
+        // 没有身份基线时按唯一同哈希识别移动，沿用原 uuid。
+        assertThat(first.uuid).isEqualTo("old")
         command { mv("b.txt", "c.txt") }
         assertThat(repo.getByMaterializedPath(root.uuid, "/c.txt")?.uuid).isEqualTo(first.uuid)
     }

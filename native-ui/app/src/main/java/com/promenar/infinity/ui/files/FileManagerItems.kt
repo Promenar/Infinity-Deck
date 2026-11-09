@@ -2,6 +2,12 @@ package com.promenar.infinity.ui.files
 
 import com.promenar.infinity.ui.common.InfinityScrollingLine
 import com.promenar.infinity.ui.common.IndexingIndicator
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.MarqueeSpacing
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,6 +72,7 @@ import com.promenar.infinity.domain.files.FileSort
 import com.promenar.infinity.domain.files.FileSortKey
 import com.promenar.infinity.domain.files.KnowledgeIndexState
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.horizontalFadingEdges
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuHeader
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -447,14 +454,7 @@ internal fun FileRow(
         Column(Modifier.weight(1f).padding(vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val tag = item.knowledge?.collectionTag
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = scheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+                FileNameMarquee(item.name, Modifier.weight(1f, fill = false))
                 if (tag != null) FileCollectionTagChip(tag)
             }
             if (location != null) {
@@ -474,6 +474,7 @@ internal fun FileRow(
                 )
             }
         }
+        Spacer(Modifier.width(InfinitySpacing.Small))
         FileStatusBadge(item.knowledge)
         if (menu != null && !selecting) {
             RowMenuButton(item, menu)
@@ -494,7 +495,12 @@ private fun RowMenuButton(item: FileItem, menu: @Composable ColumnScope.(dismiss
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        InfinityDropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            minWidth = FileItemMenuWidth,
+            maxWidth = FileItemMenuWidth,
+        ) {
             menu { open = false }
         }
     }
@@ -502,13 +508,15 @@ private fun RowMenuButton(item: FileItem, menu: @Composable ColumnScope.(dismiss
 
 /** 列表第一行“..”：上一级 · 父文件夹名。 */
 @Composable
-internal fun FileUpRow(parentTitle: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun FileUpRow(parentTitle: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val alpha by animateFloatAsState(if (enabled) 1f else DisabledUpEntryAlpha, label = "fm_up_alpha")
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = InfinitySpacing.Small)
+            .graphicsLayer { this.alpha = alpha }
             .clip(RowShape)
-            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_up_level), onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = stringResource(R.string.fm_up_level), onClick = onClick)
             .heightIn(min = InfinitySpacing.RowTwoLineHeight)
             .padding(horizontal = 4.dp)
             .testTag(UiTags.FM_UP_ROW),
@@ -590,12 +598,14 @@ internal fun FileTile(
 
 /** 网格第一格“..”。 */
 @Composable
-internal fun FileUpTile(onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun FileUpTile(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val alpha by animateFloatAsState(if (enabled) 1f else DisabledUpEntryAlpha, label = "fm_up_alpha")
     Column(
         modifier = modifier
+            .graphicsLayer { this.alpha = alpha }
             .clip(TileShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_up_level), onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = stringResource(R.string.fm_up_level), onClick = onClick)
             .padding(horizontal = InfinitySpacing.Small, vertical = InfinitySpacing.Medium)
             .testTag(UiTags.FM_UP_ROW),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -612,3 +622,45 @@ internal fun FileUpTile(onClick: () -> Unit, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** 条目菜单固定宽度：不随文件名长短变化，文件与文件夹一致；过长的名称在表头省略。 */
+internal val FileItemMenuWidth = 248.dp
+
+/** 多选时“..”保留占位但不可点，以减淡表示。 */
+private const val DisabledUpEntryAlpha = 0.38f
+
+/**
+ * 列表行文件名：单行，放不下时停顿片刻后慢速横向滚动展示全名，每轮之间再停顿；放得下时静止。
+ * 两端渐隐，滚动文字不贴着徽标或状态位硬切。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FileNameMarquee(name: String, modifier: Modifier = Modifier) {
+    // 走马灯内部按不限宽度排版，文字全宽大于可见宽度时才是放不下，此时两端加渐隐。
+    var textWidth by remember { mutableIntStateOf(0) }
+    var boxWidth by remember { mutableIntStateOf(0) }
+    val overflowing = boxWidth in 1 until textWidth
+    Text(
+        text = name,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        softWrap = false,
+        onTextLayout = { textWidth = it.size.width },
+        modifier = modifier
+            .onSizeChanged { boxWidth = it.width }
+            .horizontalFadingEdges(start = overflowing, end = overflowing, length = FileNameFadeWidth)
+            .basicMarquee(
+                iterations = Int.MAX_VALUE,
+                initialDelayMillis = FileNameMarqueeDelayMillis,
+                repeatDelayMillis = FileNameMarqueeDelayMillis,
+                spacing = MarqueeSpacing(FileNameMarqueeGap),
+                velocity = FileNameMarqueeVelocity,
+            ),
+    )
+}
+
+private const val FileNameMarqueeDelayMillis = 2000
+private val FileNameMarqueeGap = 40.dp
+private val FileNameMarqueeVelocity = 20.dp
+private val FileNameFadeWidth = 12.dp
