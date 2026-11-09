@@ -139,7 +139,7 @@
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 
 # JSch 2.28.8 固定算法表的反射保留规则。
-# 只涵盖 Ed25519、RSA 4096 生成与 OpenSSH v1 导入，不宣称支持 PEM、PKCS8、PuTTY。
+# 涵盖 Ed25519、RSA 4096 生成，OpenSSH v1、PEM、PKCS8 私钥导入与加密私钥解密；不支持 PuTTY。
 # 使用前须固定 server_host_key、PubkeyAcceptedAlgorithms、CheckSignatures 为裸 Ed25519/ECDSA/RSA-SHA2。
 # 同时固定网络 KEX/cipher/MAC/auth/compression，禁用证书、GSS、压缩、agent。
 # 私钥导入须显式验证 cipher 为下列 AES-CTR/GCM，kdf 为 bcrypt 或明文 none。
@@ -183,6 +183,16 @@
 
 # OpenSSH v1 加密私钥的 bcrypt KDF；它不是 PKCS8 的 PBKDF2。
 -keep class com.jcraft.jsch.jbcrypt.JBCrypt { *; }
+
+# 加密私钥解密：KeyPair.genKey 对任何格式都先反射创建 md5，缺失时 decrypt 吞掉异常只返回 false（表现为口令错误）。
+-keep class com.jcraft.jsch.jce.MD5 { *; }
+# 加密 PEM（DEK-Info）与加密 PKCS8 的 CBC 解密及 PBKDF2、scrypt 口令派生。
+-keep class com.jcraft.jsch.jce.AES128CBC { *; }
+-keep class com.jcraft.jsch.jce.AES192CBC { *; }
+-keep class com.jcraft.jsch.jce.AES256CBC { *; }
+-keep class com.jcraft.jsch.jce.TripleDESCBC { *; }
+-keep class com.jcraft.jsch.jce.PBKDF2 { *; }
+-keep class com.jcraft.jsch.bc.SCrypt { *; }
 
 # JSch 总会先反射创建 UserAuthNone，随后才进入固定的 publickey/password。
 -keep class com.jcraft.jsch.UserAuthNone { *; }

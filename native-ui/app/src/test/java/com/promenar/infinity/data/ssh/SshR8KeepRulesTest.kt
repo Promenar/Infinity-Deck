@@ -24,6 +24,8 @@ class SshR8KeepRulesTest {
         val helpers = listOf(
             "ecdh-sha2-nistp", "xdh", "dh", "sha-256", "random", "bcrypt",
             "keypairgen.eddsa", "keypairgen_fromprivate.eddsa", "keypairgen.rsa", "keypairgen.ecdsa",
+            // 加密私钥解密：KeyPair.genKey 无论哪种格式都先建 md5；PEM 与 PKCS8 另需 CBC 与 PBKDF2/scrypt。
+            "md5", "aes128-cbc", "aes192-cbc", "aes256-cbc", "3des-cbc", "pbkdf2", "scrypt",
             "userauth.none", "userauth.password", "userauth.publickey",
         )
         val classes = (algorithms + helpers).map { name ->
