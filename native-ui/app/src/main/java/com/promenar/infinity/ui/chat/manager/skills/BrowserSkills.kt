@@ -35,7 +35,7 @@ fun browserTools(
 ): List<SkillDefinition> = listOf(
     BrowserSkill(controller, networkPolicy, BROWSER_OPEN,
         "Open a web page in the user's in-app Agent browser and return a snapshot of its interactive elements. Use it for pages that need clicking, typing, scripts or a login; use web_fetch to just read a static page. The browser keeps its own cookies, separate from other apps.",
-        """{"type":"object","properties":{"url":{"type":"string","description":"An http or https address. A bare host name is opened with https."}},"required":["url"],"additionalProperties":false}"""),
+        """{"type":"object","properties":{"url":{"type":"string","description":"An http or https address. Without a scheme, localhost, IP literals, MagicDNS names and short host names use http; other domains use https."}},"required":["url"],"additionalProperties":false}"""),
     BrowserSkill(controller, networkPolicy, BROWSER_SNAPSHOT,
         "Read the current page of the Agent browser: interactive elements with refs such as e12, headings, and optionally the readable main text in chunks.",
         """{"type":"object","properties":{"include_text":{"type":"boolean","description":"Also return the page's readable main text. Defaults to false."},"text_offset":{"type":"integer","description":"Non-negative character offset for the next text chunk, from the previous snapshot."}},"additionalProperties":false}"""),

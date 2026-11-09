@@ -74,10 +74,18 @@ class BrowserArgumentsTest {
     private fun args(json: String): JsonObject = Json.parseToJsonElement(json).jsonObject
     private fun invalid(block: () -> Unit) = assertThrows(BrowserArgumentException::class.java, block)
 
-    @Test fun `网址补全https并拒绝非网页协议与内嵌凭据`() {
+    @Test fun `网址按主机补全协议并拒绝非网页协议与内嵌凭据`() {
         assertThat(BrowserArguments.url(args("""{"url":" example.com/a?b=1 "}"""))).isEqualTo("https://example.com/a?b=1")
-        assertThat(BrowserArguments.url(args("""{"url":"localhost:8080/x"}"""))).isEqualTo("https://localhost:8080/x")
+        assertThat(BrowserArguments.url(args("""{"url":"localhost:8080/x"}"""))).isEqualTo("http://localhost:8080/x")
         assertThat(BrowserArguments.url(args("""{"url":"http://example.com"}"""))).isEqualTo("http://example.com")
+        for ((host, expected) in listOf(
+            "nas" to "http://nas", "foo.localhost:80" to "http://foo.localhost:80",
+            "100.64.0.2" to "http://100.64.0.2", "[::1]:8080" to "http://[::1]:8080",
+            "box.tail123.ts.net" to "http://box.tail123.ts.net", "example.com" to "https://example.com",
+            "fd7a:115c:a1e0::1" to "http://[fd7a:115c:a1e0::1]",
+        )) {
+            assertThat(BrowserArguments.url(args("""{"url":${kotlinx.serialization.json.JsonPrimitive(host)}}"""))).isEqualTo(expected)
+        }
         for (bad in listOf("javascript:alert(1)", "file:///sdcard/a.html", "intent://x#Intent;end", "content://a/b",
             "data:text/html,hi", "https://user:pass@example.com/", "https:///nohost", "")) {
             invalid { BrowserArguments.url(args("""{"url":${kotlinx.serialization.json.JsonPrimitive(bad)}}""")) }
