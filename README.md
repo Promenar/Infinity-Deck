@@ -5,8 +5,8 @@
 <h1 align="center">Infinity Deck</h1>
 
 <p align="center">
-  <b>Close the laptop. Keep working.</b><br>
-  Every repo, server and GPU you own, one phone away. Bring your own key. Your data stays on your device.
+  <b>Laptop off. Work goes on.</b><br>
+  The AI agent that runs on your phone, with every repo, server and GPU you own in reach. Bring your own key. Your data stays on your device.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
 </p>
 
-AI coding tools on the desktop are great, until you walk away from the desk and the work stops. Remote control from the official apps needs that computer switched on and online, and cloud tasks can't reach your private network.
+AI coding tools on the desktop are great, until the computer is off and remote access goes with it. Remote control from the official apps needs that computer switched on and online, and cloud tasks can't reach your private network.
 
 Infinity Deck does the work on the phone itself. It runs commands in a real Linux on your phone, edits your repos over git, reaches your servers and the GPU at home through its own built-in Tailscale, and clicks through web pages. Bring your own API key — OpenAI, Claude, Gemini, DeepSeek, or a model running on hardware you own — and it shows you every step before it runs. Chats, documents and settings stay on your device; model requests go straight to the provider you chose.
 

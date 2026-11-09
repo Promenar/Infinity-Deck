@@ -5,8 +5,8 @@
 <h1 align="center">Infinity Deck</h1>
 
 <p align="center">
-  <b>电脑合上，活不停。</b><br>
-  一部手机，接通你所有的仓库、服务器和算力。自带 Key，数据留在本机。
+  <b>电脑关了，工作不断。</b><br>
+  跑在手机上的 AI 智能体，接通你所有的仓库、服务器和算力。使用你自己的 Key，数据留在本机。
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="许可证 GPL-3.0">
 </p>
 
-桌面上的 AI 编程工具很好用，可一离开电脑，活就停了。官方 App 的远程控制要那台电脑一直开着、在线；云端任务又进不了你的内网。
+桌面上的 AI 编程工具很好用，可电脑一关，远程就断了。官方 App 的远程控制要那台电脑一直开着、在线；云端任务又进不了你的内网。
 
 Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 git 改你的仓库，通过应用自带的 Tailscale 直连你的服务器和家里的显卡，替你操作网页。用你自己的 API Key 接上 OpenAI、Claude、Gemini、DeepSeek，或家里跑着的模型，每一步先给你过目。对话、文档和设置都留在本机，模型请求直连你配置的服务商。
 
@@ -40,7 +40,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 - **手机自己就能干活。** 内置 Alpine Linux，git、Python、Node.js、FFmpeg 都在手机上跑，不靠任何一台电脑在线。
 - **直达你自己的机器。** 应用自带 Tailscale 节点，SSH、模型和 MCP 直接进你的 tailnet：机房的服务器、家里的显卡，不开公网端口，也不占系统 VPN。
-- **模型随你选。** 自带 Key 接任何服务商，聊到一半可以换，也能接家里跑的模型。
+- **模型随你选。** 使用你自己的 Key 接任何服务商，聊到一半可以换，也能接家里跑的模型。
 - **为手机而做。** 命令审批卡、后台任务、消息排队、触摸锁、折叠屏外屏，单手、躺着、在地铁上都顺手。
 - **和桌面工具一起用。** 坐在电脑前继续用你习惯的 AI 编程工具；离开时手机接着改同一个 git 仓库，电脑开着也能 SSH 上去借它的算力。
 
@@ -136,7 +136,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 
 **对话与模型**
 
-- 自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口
+- 使用你自己的 Key 接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口
 - 聊到一半可以换模型；最多 16 个会话同时生成
 - 生成中的下一句可以排队或插队
 - 长对话压缩后，Agent 仍能检索和翻看原文
