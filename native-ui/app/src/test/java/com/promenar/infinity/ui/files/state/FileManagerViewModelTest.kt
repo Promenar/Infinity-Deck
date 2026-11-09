@@ -2,10 +2,13 @@ package com.promenar.infinity.ui.files.state
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -45,8 +48,13 @@ class FileManagerViewModelTest {
         assertThat(services.locations.requestedSession).isEqualTo("session-example")
         services.locations.linux.value = null
         withContext(Dispatchers.Default) { withTimeout(5_000) { linux.state.first { it.location == null } } }
+        val jobs = listOf(library, session, linux).map { it.viewModelScope.coroutineContext.job }
         libraryStore.clear()
         sessionStore.clear()
         linuxStore.clear()
+        // 清理只发出取消；flowOn(IO) 生产者结束后仍要回到 Main 收尾。须在 resetMain 前等它们结束，
+        // 否则续体落到已复位的 Main 上抛出未捕获异常，被记到同进程下一个 runTest。
+        jobs.joinAll()
+        assertThat(jobs.all { it.isCancelled && it.isCompleted }).isTrue()
     }
 }
