@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.promenar.infinity.ui.common.SecretKeyboardOptions
 import com.promenar.infinity.ui.common.SecretTextInput
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import androidx.compose.ui.window.DialogProperties
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -78,7 +79,7 @@ internal fun SshPasswordPromptDialog(prompt: SshUserPrompt.Password) {
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = SecretKeyboardOptions,
-                        modifier = Modifier.fillMaxWidth().testTag(SSH_PROMPT_PASSWORD_FIELD),
+                        modifier = Modifier.fillMaxWidth().testTag(SSH_PROMPT_PASSWORD_FIELD).excludeFromAutofill(),
                     )
                 }
             }

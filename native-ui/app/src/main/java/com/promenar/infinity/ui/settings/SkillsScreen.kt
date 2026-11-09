@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
 import androidx.compose.foundation.background
@@ -309,7 +310,7 @@ fun SkillsScreen(
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         keyboardOptions = com.promenar.infinity.ui.common.SecretKeyboardOptions,
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().excludeFromAutofill(),
                     )
                 }
                 val errorMessage = when (configError) {

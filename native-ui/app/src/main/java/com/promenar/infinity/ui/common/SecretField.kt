@@ -27,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDataType
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -67,6 +69,12 @@ val SecretKeyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, a
  * 可见密码变体同样强制切换系统安全键盘（实测 com.oplus.securitykeyboard）。
  */
 internal const val SECRET_INPUT_TYPE = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+
+/**
+ * 应用自管的密钥与口令不进入系统自动填充：密码管理器既不弹出保存提示，也不往里填入。
+ * 文本框默认声明为可填充文本，此修饰须加在文本框的外层 modifier 上才能覆盖。
+ */
+fun Modifier.excludeFromAutofill(): Modifier = semantics { contentDataType = ContentDataType.None }
 
 internal fun secretImeOptions(imeOptions: Int): Int = imeOptions or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
 
@@ -173,6 +181,7 @@ fun SecretField(
     val fieldModifier = modifier
         .fillMaxWidth()
         .focusRequester(fieldFocusRequester)
+        .excludeFromAutofill()
         .semantics { contentDescription = label ?: placeholder }
         .onFocusChanged {
             if (focused && !it.isFocused) focusGeneration += 1

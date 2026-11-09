@@ -26,4 +26,18 @@ class SecretKeyboardTest {
             .toList()
         assertThat(offenders).isEmpty()
     }
+
+    @Test
+    fun `使用密钥键盘的界面都让输入框退出系统自动填充`() {
+        val root = listOf(File("src/main/java"), File("app/src/main/java")).first { it.isDirectory }
+        val missing = root.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && "/.mimosa/" !in it.invariantSeparatorsPath }
+            .filter { file ->
+                val code = file.readLines().filterNot { it.trimStart().startsWith("import ") }.joinToString("\n")
+                "SecretKeyboardOptions" in code && "excludeFromAutofill()" !in code
+            }
+            .map { it.name }
+            .toList()
+        assertThat(missing).isEmpty()
+    }
 }

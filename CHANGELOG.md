@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.41.5-beta] - 2026-11-10
+
+### 修复
+
+- 输入私钥口令、API 密钥、主机密码等应用自管的密钥后，系统密码管理器不再弹出“保存密码”提示，也不再往这些输入框里自动填入。
+
 ## [0.41.4-beta] - 2026-11-10
 
 ### 修复

@@ -57,6 +57,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.SecretKeyboardOptions
 import com.promenar.infinity.ui.common.SecretTextInput
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -158,7 +159,7 @@ private fun GitCredentialField(
             placeholder = placeholder?.let { { Text(it) } },
             singleLine = true,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().testTag(tag),
+            modifier = Modifier.fillMaxWidth().testTag(tag).then(if (secret) Modifier.excludeFromAutofill() else Modifier),
             textStyle = MaterialTheme.typography.bodyLarge.forInput(),
             shape = MaterialTheme.shapes.medium,
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,

@@ -83,6 +83,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.promenar.infinity.ui.common.SecretKeyboardOptions
 import com.promenar.infinity.ui.common.SecretTextInput
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -1119,7 +1120,9 @@ private fun SshEditorField(
             isError = isError,
             enabled = enabled,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
+            modifier = Modifier.fillMaxWidth()
+                .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+                .then(if (secret) Modifier.excludeFromAutofill() else Modifier),
             textStyle = MaterialTheme.typography.bodyLarge.forInput(),
             shape = MaterialTheme.shapes.medium,
             visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,

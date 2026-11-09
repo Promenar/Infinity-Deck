@@ -45,6 +45,7 @@ import com.promenar.infinity.ui.common.InfinitySnackbar
 import com.promenar.infinity.ui.common.InfinitySnackbarData
 import com.promenar.infinity.ui.common.SecretKeyboardOptions
 import com.promenar.infinity.ui.common.SecretTextInput
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.SnackbarType
 import kotlinx.coroutines.launch
 
@@ -210,7 +211,7 @@ internal fun KeychainEditorContent(state: KeychainEditorState, actions: Keychain
                             monospace = true,
                             keyboardOptions = SecretKeyboardOptions,
                             visualTransformation = if (state.valueVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            fieldModifier = Modifier.testTag("keychain_field_value"),
+                            fieldModifier = Modifier.testTag("keychain_field_value").excludeFromAutofill(),
                             trailing = {
                                 Row {
                                     IconButton(onClick = actions.onToggleValueVisible) {

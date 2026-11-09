@@ -47,6 +47,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.SecretKeyboardOptions
 import com.promenar.infinity.ui.common.SecretTextInput
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.ssh.sshErrorText
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -75,7 +76,7 @@ internal fun KeychainSheetField(
             enabled = enabled,
             isError = error != null,
             supportingText = (error ?: supporting)?.let { { Text(it) } },
-            modifier = Modifier.fillMaxWidth().testTag(tag),
+            modifier = Modifier.fillMaxWidth().testTag(tag).then(if (secret) Modifier.excludeFromAutofill() else Modifier),
             textStyle = MaterialTheme.typography.bodyLarge.forInput(),
             shape = MaterialTheme.shapes.medium,
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
