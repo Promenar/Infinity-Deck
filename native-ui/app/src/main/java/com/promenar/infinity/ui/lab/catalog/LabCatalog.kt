@@ -50,6 +50,8 @@ object LabCatalog {
                         children = listOf(
                             LabVersion("ade-json", "chat.workflow.ade-json", R.string.lab_v_ade_json, R.string.lab_v_ade_json_desc, LabVersionKind.WORKFLOW),
                             LabVersion("ops-502", "chat.workflow.ops-502", R.string.lab_v_ops_502, R.string.lab_v_ops_502_desc, LabVersionKind.WORKFLOW),
+                            LabVersion("issue-12", "chat.workflow.issue-12", R.string.lab_v_issue_12, R.string.lab_v_issue_12_desc, LabVersionKind.WORKFLOW),
+                            LabVersion("cover-job", "chat.state.cover-job", R.string.lab_v_cover_job, R.string.lab_v_cover_job_desc, LabVersionKind.STATE),
                             LabVersion("subagents", "chat.state.subagents", R.string.lab_v_subagents, R.string.lab_v_subagents_desc, LabVersionKind.STATE),
                             LabVersion("background-job", "chat.state.background-job", R.string.lab_v_background_job, R.string.lab_v_background_job_desc, LabVersionKind.STATE),
                             LabVersion("branch-plan", "chat.state.branch-plan", R.string.lab_v_branch_plan, R.string.lab_v_branch_plan_desc, LabVersionKind.STATE),
@@ -102,6 +104,7 @@ object LabCatalog {
                     LabVersion("agent", "browser.state.agent", R.string.lab_v_browser_agent, R.string.lab_v_browser_agent_desc, LabVersionKind.STATE),
                     LabVersion("takeover", "browser.state.takeover", R.string.lab_v_browser_takeover, R.string.lab_v_browser_takeover_desc, LabVersionKind.STATE),
                     LabVersion("login", "browser.state.login", R.string.lab_v_browser_login, R.string.lab_v_browser_login_desc, LabVersionKind.STATE),
+                    LabVersion("issue-12", "browser.state.issue-12", R.string.lab_v_browser_issue_12, R.string.lab_v_browser_issue_12_desc, LabVersionKind.STATE),
                 ),
             ),
             LabNode(

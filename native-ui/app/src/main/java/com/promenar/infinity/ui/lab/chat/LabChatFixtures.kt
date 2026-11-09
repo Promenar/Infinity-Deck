@@ -11,6 +11,7 @@ import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.ToolCall
+import com.promenar.infinity.domain.media.MediaRef
 import com.promenar.infinity.ui.chat.ChatScreenActions
 import com.promenar.infinity.ui.chat.ChatViewModel
 import com.promenar.infinity.ui.chat.ThinkingClock
@@ -84,6 +85,10 @@ internal data class LabCall(
     val result: String = "",
     val failed: Boolean = false,
     val fileChanges: List<FileChangeSummary>? = null,
+    /** 结果步骤携带的工作区媒体（生图、等待任务取回的图片）。 */
+    val media: List<MediaRef>? = null,
+    /** 结果步骤的结构化数据，如生图卡片契约或网页检索的引用。 */
+    val data: String? = null,
 ) {
     val stepId: String get() = "step_${at}_$callId"
 
@@ -98,6 +103,8 @@ internal data class LabCall(
                 content = result,
                 timestamp = it,
                 fileChanges = fileChanges,
+                media = media,
+                data = data,
             )
         },
     )

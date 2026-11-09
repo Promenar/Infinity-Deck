@@ -171,8 +171,10 @@ class LabChatScriptsTest {
     fun `画面不含真实用户名、家目录与网络地址`() = languages.forEach { zh ->
         val ade = adeTimeline(LabAdeText(zh))
         val ops = opsTimeline(LabOpsText(zh))
+        val issue = issueTimeline(LabIssueText(zh))
         val frames = (0..ade.durationMs step 500).map { adeFrame(ade.stateAt(it)).toString() } +
-            (0..ops.durationMs step 500).map { opsFrame(ops.stateAt(it)).toString() }
+            (0..ops.durationMs step 500).map { opsFrame(ops.stateAt(it)).toString() } +
+            (0..issue.durationMs step 500).map { issueFrame(issue.stateAt(it)).toString() }
         frames.forEach { dump ->
             assertThat(dump).doesNotContain("promenar")
             assertThat(dump).doesNotContain("/home/")
@@ -183,12 +185,92 @@ class LabChatScriptsTest {
 
     @Test
     fun `会话与检查器场景都已登记`() {
-        val workflows = listOf("chat.workflow.ade-json", "chat.workflow.ops-502")
+        val workflows = listOf("chat.workflow.ade-json", "chat.workflow.ops-502", "chat.workflow.issue-12")
         val states = listOf(
-            "chat.state.subagents", "chat.state.background-job", "chat.state.branch-plan", "chat.state.ops-approval", "chat.state.ops-report",
+            "chat.state.cover-job", "chat.state.subagents", "chat.state.background-job", "chat.state.branch-plan", "chat.state.ops-approval", "chat.state.ops-report",
             "inspector.state.plan", "inspector.state.git-worktrees", "inspector.state.git-commits",
         )
         workflows.forEach { assertThat(LabScenes.scene(it)).isInstanceOf(LabWorkflowScene::class.java) }
         states.forEach { assertThat(LabScenes.scene(it)).isInstanceOf(LabStateScene::class.java) }
+    }
+
+    // ── 第 12 期 ──
+
+    @Test
+    fun `第 12 期阶段只增不减、停在交接处仍在生成，整段不超过 16 秒`() = languages.forEach { zh ->
+        val timeline = issueTimeline(LabIssueText(zh))
+        val stages = (0..timeline.durationMs step 50).map { timeline.stateAt(it).stage }
+        assertThat(stages).isInOrder()
+        assertThat(stages.last()).isEqualTo(ISSUE_HANDOFF)
+        assertThat(timeline.durationMs).isAtMost(16_000)
+        assertThat(issueFrame(timeline.stateAt(timeline.durationMs)).screen.uiState.isGenerating).isTrue()
+    }
+
+    @Test
+    fun `第 12 期相邻动作的间隔不超过 3 秒`() {
+        val timeline = issueTimeline(LabIssueText(true))
+        val frames = (0..timeline.durationMs step 50).map { issueFrame(timeline.stateAt(it)) }
+        var last = 0L
+        frames.zipWithNext().forEachIndexed { index, (before, after) ->
+            if (before != after) last = (index + 1) * 50L
+            assertThat((index + 1) * 50L - last).isAtMost(3_000)
+        }
+    }
+
+    @Test
+    fun `第 12 期流式正文在下一阶段开始前打完`() = languages.forEach { zh ->
+        val timeline = issueTimeline(LabIssueText(zh))
+        (0..timeline.durationMs step 50).zipWithNext().forEach { (t, next) ->
+            val now = timeline.stateAt(t)
+            if (timeline.stateAt(next).stage != now.stage && now.partial != null) {
+                val full = issueFrame(now.copy(partial = null)).screen.uiState.messages.last().content
+                assertThat(now.partial).isEqualTo(full)
+            }
+        }
+    }
+
+    @Test
+    fun `封面转后台后任务运行，取回时任务结束且等待结果带图片`() {
+        val text = LabIssueText(true)
+        val running = issueFrame(IssueState(text, stage = ISSUE_BUILD))
+        val job = running.jobs.single()
+        assertThat(job.state).isEqualTo(com.promenar.infinity.domain.jobs.BackgroundJobState.RUNNING)
+        assertThat(job.title).isEqualTo(text.coverJob)
+        val start = running.screen.uiState.messages.flatMap { it.executionSteps.orEmpty() }
+            .single { it.toolName == "generate_image" && it.type == "tool_result" }
+        assertThat(start.content).contains("\"job_id\":\"${job.id}\"")
+        assertThat(start.media).isNull()
+
+        val done = issueFrame(IssueState(text, stage = ISSUE_COVER_DONE))
+        assertThat(done.jobs.single().state).isEqualTo(com.promenar.infinity.domain.jobs.BackgroundJobState.EXITED)
+        val wait = done.screen.uiState.messages.last().executionSteps.orEmpty().single { it.type == "tool_result" }
+        assertThat(wait.toolName).isEqualTo("job_wait")
+        assertThat(wait.media).containsExactly(ISSUE_COVER_REF)
+        assertThat(com.promenar.infinity.data.model.ImageGenerationResultData.decode(wait.data)?.actual?.size).isEqualTo("1344x768")
+    }
+
+    @Test
+    fun `核对结论引用的编号都有对应来源，计划四步按进度推进`() = languages.forEach { zh ->
+        val text = LabIssueText(zh)
+        val searched = issueFrame(IssueState(text, stage = ISSUE_VERDICT))
+        val citations = searched.screen.uiState.messages.single { it.citations != null }.citations.orEmpty()
+        assertThat(citations).hasSize(2)
+        assertThat(Regex("\\[(\\d)]").findAll(text.verdict).map { it.groupValues[1].toInt() }.toSet()).containsExactly(1, 2)
+
+        fun statuses(stage: Int) = issueFrame(IssueState(text, stage = stage)).screen.taskPanel!!.let { panel -> panel.doneCount }
+        assertThat(statuses(ISSUE_PLAN)).isEqualTo(0)
+        assertThat(statuses(ISSUE_BUILD)).isEqualTo(1)
+        assertThat(statuses(ISSUE_COVER_DONE)).isEqualTo(2)
+        assertThat(statuses(ISSUE_HANDOFF)).isEqualTo(3)
+        assertThat(issueFrame(IssueState(text, stage = ISSUE_VERIFY_DONE)).screen.uiState.messages.last()
+            .executionSteps.orEmpty().last().content).isEqualTo("[502]")
+    }
+
+    @Test
+    fun `构建中挂实时输出并位于最后一条助手消息`() {
+        val frame = issueFrame(IssueState(LabIssueText(false), stage = ISSUE_BUILD, buildLines = 2))
+        val build = frame.screen.uiState.messages.last().executionSteps.orEmpty()
+            .single { it.type == "tool_call" && it.toolName == "shell_exec" }
+        assertThat(frame.liveOutput.getValue(build.id)).hasSize(2)
     }
 }
