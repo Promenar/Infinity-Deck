@@ -163,7 +163,7 @@ class RoomSshHostStoreTest {
     }
 
     @Test
-    fun `连接身份变更清信任且同认证编辑重绑定凭据而认证切换清凭据`() = runBlocking {
+    fun `地址端口用户名变更清信任而认证切换保留信任并清凭据`() = runBlocking {
         val transforms: List<(SshHost) -> SshHost> = listOf(
             { it.copy(hostname = "other.example.test") },
             { it.copy(port = 8022) },
@@ -182,8 +182,10 @@ class RoomSshHostStoreTest {
 
             val changed = transform(displayChange)
             store.save(changed)
-            assertThat(store.find(original.alias)?.trustedFingerprint).isNull()
-            assertThat(store.find(original.alias)?.trustedKeyType).isNull()
+            // 主机指纹标识服务器本身，只随地址、端口、用户名失效；认证方式不影响。
+            val endpointChanged = changed.authType == original.authType
+            assertThat(store.find(original.alias)?.trustedFingerprint).isEqualTo(if (endpointChanged) null else "SHA256:old")
+            assertThat(store.find(original.alias)?.trustedKeyType).isEqualTo(if (endpointChanged) null else "ssh-ed25519")
             if (changed.authType == original.authType) {
                 store.credential(changed)!!.use { assertThat(it.password).isEqualTo("old-password".toByteArray()) }
             } else {

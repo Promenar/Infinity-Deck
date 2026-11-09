@@ -88,6 +88,7 @@ class KeychainSshDeploymentTest {
         f.hosts.save(keyed.copy(authType = SshAuthType.PASSWORD), null)
         val restored = f.hosts.find(original.alias)!!
         assertEquals(SshAuthType.PASSWORD, restored.authType); assertNull(restored.keyEntryId)
+        assertEquals(pin.fingerprint, restored.trustedFingerprint); assertEquals(pin.type, restored.trustedKeyType)
         f.hosts.credential(restored)!!.use {
             assertEquals("stored fixture password", it.password.toString(Charsets.UTF_8)); assertTrue(it.privateKey.isEmpty())
         }

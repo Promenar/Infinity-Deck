@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.41.2-beta] - 2026-11-10
+
+### 修复
+
+- SSH 主机切换认证方式（密码与密钥互换）后不再清空已信任的主机指纹；只有主机名、端口或用户名变化才需要重新确认。
+- 内屏设置页点左列切换设置项时，右列旧页面退场过程中标题前不再闪出返回键。
+
 ## [0.41.1-beta] - 2026-11-10
 
 ### 修复

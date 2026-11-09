@@ -2,6 +2,8 @@ package com.promenar.infinity.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
@@ -27,11 +29,16 @@ class SettingsNavigator internal constructor(
         nav.popBackStack()
     }
 
-    /** 右列根层（左列选中项对应的页面）不显示返回：离开它靠左列或主导航。 */
+    /**
+     * 右列根层（左列选中项对应的页面）不显示返回：离开它靠左列或主导航。
+     * 根层页面在左列切换时先出栈、再播放退场叠化，根层身份保持到页面离开组合，退场期间不闪出返回键。
+     */
     @Composable
     fun Page(entry: NavBackStackEntry, content: @Composable () -> Unit) {
+        val wasPaneRoot = remember(entry.id) { mutableStateOf(false) }
         val paneRoot = paneRootId != null && paneRootId.invoke() == entry.id
-        CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides paneRoot, content = content)
+        if (paneRoot) wasPaneRoot.value = true
+        CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides (paneRoot || wasPaneRoot.value), content = content)
     }
 }
 

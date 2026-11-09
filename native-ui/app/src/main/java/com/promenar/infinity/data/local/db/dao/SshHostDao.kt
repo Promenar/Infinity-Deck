@@ -59,11 +59,12 @@ abstract class SshHostDao {
         val aliasOwner = find(host.alias)
         require(aliasOwner == null || aliasOwner.id == host.id) { "SSH 别名已存在" }
         val previous = findById(host.id)
-        val sameIdentity = previous != null && previous.hostname == host.hostname && previous.port == host.port &&
-            previous.username == host.username && previous.authType == host.authType
+        // 主机指纹标识服务器本身，只随地址、端口、用户名失效；切换认证方式保留信任。
+        val sameEndpoint = previous != null && previous.hostname == host.hostname && previous.port == host.port &&
+            previous.username == host.username
         val next = host.copy(
-            trustedKeyType = if (sameIdentity) previous?.trustedKeyType else null,
-            trustedFingerprint = if (sameIdentity) previous?.trustedFingerprint else null,
+            trustedKeyType = if (sameEndpoint) previous?.trustedKeyType else null,
+            trustedFingerprint = if (sameEndpoint) previous?.trustedFingerprint else null,
         )
         if (previous == null) insert(next) else check(update(next) == 1) { "SSH 主机已变化" }
     }
