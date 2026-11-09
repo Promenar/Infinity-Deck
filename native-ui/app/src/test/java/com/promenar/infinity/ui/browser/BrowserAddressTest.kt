@@ -29,6 +29,8 @@ class BrowserAddressTest {
     @Test fun `其它内容走 Google 搜索`() {
         assertThat(browserAddressTarget("kotlin flow")).isEqualTo("https://www.google.com/search?q=kotlin+flow")
         assertThat(browserAddressTarget("天气")).isEqualTo("https://www.google.com/search?q=%E5%A4%A9%E6%B0%94")
+        assertThat(browserAddressTarget("kotlin")).isEqualTo("https://www.google.com/search?q=kotlin")
+        assertThat(browserAddressTarget("localhost")).isEqualTo("http://localhost")
         assertThat(browserAddressTarget("3.14")).isEqualTo("https://www.google.com/search?q=3.14")
         assertThat(browserAddressTarget("example.com 教程")).startsWith("https://www.google.com/search?q=example.com+")
     }

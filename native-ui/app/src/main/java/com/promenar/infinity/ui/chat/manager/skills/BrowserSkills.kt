@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat.manager.skills
 
+import com.promenar.infinity.data.tailnet.WebViewTailnetProxy
 import com.promenar.infinity.data.browser.BrowserActionException
 import com.promenar.infinity.data.browser.BrowserArgumentException
 import com.promenar.infinity.data.browser.BrowserArguments
@@ -87,9 +88,13 @@ private class BrowserSkill(
     private suspend fun open(args: JsonObject, sessionId: String): ToolResult {
         val url = BrowserArguments.url(args)
         val endpoint = networkPolicy.validate(url, AgentNetworkTool.WEB_FETCH)
-        // WebView 不经过应用内 Tailscale 代理，tailnet 地址在浏览器里不可达。
-        if (endpoint.target == NetworkTargetClass.TAILNET) {
-            return error("TAILNET_UNSUPPORTED", "The Agent browser cannot reach tailnet addresses.", "Use web_fetch for tailnet pages.")
+        // tailnet 目标靠 WebView 进程级代理覆盖经应用内 Tailscale 代理访问；未运行时 validate 已返回 TAILNET_OFFLINE。
+        if (endpoint.target == NetworkTargetClass.TAILNET && WebViewTailnetProxy.installed?.active != true) {
+            return if (WebViewTailnetProxy.installed?.supported == false) {
+                error("TAILNET_BROWSER_UNSUPPORTED", "This device's WebView cannot use the in-app Tailscale proxy.", "Use web_fetch for tailnet pages, or update Android System WebView.")
+            } else {
+                error("TAILNET_OFFLINE", AgentNetworkPolicy.TAILNET_GUIDANCE, "Connect built-in Tailscale, then retry.")
+            }
         }
         return success(BrowserSnapshotFormatter.format(controller.open(sessionId, url)))
     }

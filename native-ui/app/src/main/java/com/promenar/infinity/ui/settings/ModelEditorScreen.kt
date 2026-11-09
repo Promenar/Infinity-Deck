@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -128,6 +129,7 @@ internal fun ModelEditorScreen(
     InfinitySettingsPageLayout(
         title = stringResource(R.string.provider_models_editor_title),
         modifier = modifier.testTag(UiTags.providerModelsEditorSheet(model.id)),
+        headerFrosted = true,
         header = {
             TopAppBar(
                 title = {
@@ -143,7 +145,8 @@ internal fun ModelEditorScreen(
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),

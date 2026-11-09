@@ -181,6 +181,9 @@ func TestHTTPConnectRequiresCredentials(t *testing.T) {
 	if resp.StatusCode != http.StatusProxyAuthRequired || !strings.Contains(resp.Header.Get("Proxy-Authenticate"), "Basic") {
 		t.Fatalf("无凭据应回复 407 与 Basic 质询，得到 %d %q", resp.StatusCode, resp.Header.Get("Proxy-Authenticate"))
 	}
+	if want := `Basic realm="infinity-tailnet-` + testUser + `"`; resp.Header.Get("Proxy-Authenticate") != want {
+		t.Fatalf("质询 realm 应带本次代理用户名，得到 %q", resp.Header.Get("Proxy-Authenticate"))
+	}
 	resp, c = connect(basic(testUser, "wrong-password-000000"))
 	c.Close()
 	if resp.StatusCode != http.StatusProxyAuthRequired {
