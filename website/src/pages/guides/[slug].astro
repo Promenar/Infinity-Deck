@@ -1,0 +1,9 @@
+---
+import Guide from '../../views/Guide.astro';
+import { guides } from '../../guides.mjs';
+export function getStaticPaths() {
+  return Object.keys(guides).map(slug => ({ params: { slug } }));
+}
+const { slug } = Astro.params;
+---
+<Guide locale="zh" slug={slug} />

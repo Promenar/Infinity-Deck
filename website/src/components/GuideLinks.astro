@@ -1,0 +1,13 @@
+---
+import { guides } from '../guides.mjs';
+import { href } from '../i18n.mjs';
+
+interface Props { locale: 'zh' | 'en' }
+const { locale } = Astro.props;
+---
+<section class="more-links" aria-labelledby="usage-guides">
+  <h2 id="usage-guides">{locale === 'zh' ? '实战指南' : 'Practical guides'}</h2>
+  {Object.entries(guides).map(([slug, guide]) => (
+    <a class="btn btn-ghost" href={href(locale, `/guides/${slug}/`)}>{guide[locale].title}</a>
+  ))}
+</section>

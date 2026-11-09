@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import GuideLinks from '../components/GuideLinks.astro';
 import DownloadPanel from '../components/DownloadPanel.astro';
 import { strings, href, storyMedia, GITHUB } from '../i18n.mjs';
 import { getRelease } from '../lib/release-data.mjs';
@@ -9,9 +10,20 @@ interface Props { locale: 'zh' | 'en' }
 const { locale } = Astro.props;
 const t = strings[locale];
 const release = await getRelease();
+const site = Astro.site!;
+const siteUrl = site.href;
+const appId = new URL('/#app', site).href;
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    ...(locale === 'zh' ? [{ '@type': 'WebSite', '@id': new URL('/#website', site).href, url: siteUrl, name: 'Infinity Deck', inLanguage: ['zh-CN', 'en'], about: { '@id': appId } }] : []),
+    { '@type': 'SoftwareApplication', '@id': appId, name: 'Infinity Deck', operatingSystem: 'Android 12+', applicationCategory: 'DeveloperApplication', url: siteUrl, downloadUrl: new URL(href(locale, '/download/'), site).href, license: `${GITHUB}/blob/main/LICENSE`, sameAs: GITHUB },
+  ],
+};
 const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster: m.poster && versioned(m.poster) }));
 ---
 <Base locale={locale} path="/" title={t.meta.title} description={t.meta.description} current="home">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(structuredData)} />
   <section class="hero">
     <div class="hero-stage" id="stage" title={t.hero.hint}>
       <canvas id="ring" role="img" aria-label={t.hero.canvas}></canvas>
@@ -25,6 +37,29 @@ const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster
         <a class="btn btn-ghost" href={GITHUB}>{t.hero.source}</a>
       </div>
       <div class="facts"><span>{release.tag}</span>{t.hero.facts.map(f => <span>{f}</span>)}</div>
+    </div>
+  </section>
+
+  <section id="film" aria-label={t.film.label}>
+    <div class="wrap">
+      <figure class="film">
+        <video id="film-video" src={versioned(`/media/${locale}/promo.mp4`)} poster={versioned(`/media/${locale}/promo-poster.jpg`)} preload="none" playsinline aria-label={t.film.label}></video>
+        <button class="film-play" id="film-play" type="button">
+          <span class="badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg><span class="label">{t.film.play}</span><small>0:53</small></span>
+        </button>
+      </figure>
+    </div>
+  </section>
+
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="sweep" data-sweep>{t.why.title}</h2>
+        <p>{t.why.lede}</p>
+      </div>
+      <ul class="diffs">
+        {t.why.points.map(([b, s]) => <li><b>{b}</b><span>{s}</span></li>)}
+      </ul>
     </div>
   </section>
 
@@ -94,6 +129,7 @@ const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster
           </div>
         ))}
       </div>
+      <GuideLinks locale={locale} />
       <p class="feat-more"><a href={`${GITHUB}/blob/main/docs/guide/features.md`}>{t.features.more}</a></p>
     </div>
   </section>
@@ -109,4 +145,5 @@ const media = storyMedia(locale).map(m => ({ ...m, src: versioned(m.src), poster
   import '../scripts/ring.ts';
   import '../scripts/story.ts';
   import '../scripts/demo.ts';
+  import '../scripts/film.ts';
 </script>

@@ -1,4 +1,5 @@
 ---
+import GuideLinks from '../components/GuideLinks.astro';
 import Base from '../layouts/Base.astro';
 import { strings } from '../i18n.mjs';
 
@@ -6,12 +7,13 @@ interface Props { locale: 'zh' | 'en' }
 const { locale } = Astro.props;
 const t = strings[locale].docs;
 ---
-<Base locale={locale} path="/docs/" title={`${t.title} · Infinity Workbench`} description={t.description} current="docs">
+<Base locale={locale} path="/docs/" title={`${t.title} · Infinity Deck`} description={t.description} current="docs">
   <div class="wrap page">
     <header class="page-head">
       <h1 class="sweep" data-sweep>{t.title}</h1>
       <p>{t.lede}</p>
     </header>
+    <GuideLinks locale={locale} />
     <div class="guides">
       {t.guides.map(([name, desc, url]) => (
         <a class="guide" href={url}>
@@ -20,6 +22,15 @@ const t = strings[locale].docs;
         </a>
       ))}
     </div>
+    <section class="page-head" aria-labelledby="product-answers">
+      <h2 id="product-answers">{t.faqTitle}</h2>
+      {t.faq.map(([question, answer]) => (
+        <div>
+          <h3>{question}</h3>
+          <p>{answer}</p>
+        </div>
+      ))}
+    </section>
     <div class="more-links">
       <h2>{t.moreTitle}</h2>
       {t.more.map(([name, url]) => <a class="btn btn-ghost btn-sm" href={url}>{name}</a>)}

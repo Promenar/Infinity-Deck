@@ -1,0 +1,37 @@
+---
+import Base from '../layouts/Base.astro';
+import { GITHUB, href } from '../i18n.mjs';
+import { guides } from '../guides.mjs';
+import { versioned } from '../lib/asset.mjs';
+
+interface Props { locale: 'zh' | 'en'; slug: keyof typeof guides }
+const { locale, slug } = Astro.props;
+const guide = guides[slug];
+const t = guide[locale];
+const zh = locale === 'zh';
+---
+<Base locale={locale} path={`/guides/${slug}/`} title={`${t.title} · Infinity Deck`} description={t.intro} current="docs">
+  <div class="wrap page">
+    <article class="usage-guide">
+      <header class="page-head">
+        <h1>{t.title}</h1>
+        <p>{t.intro}</p>
+      </header>
+      <h2>{zh ? '操作步骤' : 'Steps'}</h2>
+      <ol>{t.steps.map(step => <li>{step}</li>)}</ol>
+      <img src={versioned(`/media/${locale}/${guide.image}`)} alt={t.alt} loading="lazy" decoding="async">
+      <h2>{zh ? '运行条件' : 'Requirements'}</h2>
+      <p>{t.note}</p>
+      <div class="more-links">
+        <a class="btn btn-primary" href={href(locale, '/download/')}>{zh ? '下载 Android APK' : 'Download the Android APK'}</a>
+        <a class="btn btn-ghost" href={`${GITHUB}/blob/main/docs/guide/${guide.source}`}>{zh ? '查看完整技术文档' : 'Technical documentation (Chinese)'}</a>
+      </div>
+    </article>
+  </div>
+</Base>
+
+<style>
+  .usage-guide { max-width: 48rem; margin-inline: auto; }
+  .usage-guide li { margin-block: .75rem; }
+  .usage-guide img { display: block; max-width: 100%; height: auto; margin-block: 2rem; }
+</style>

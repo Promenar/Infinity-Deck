@@ -26,7 +26,7 @@ const boxes = [...document.querySelectorAll<HTMLElement>('[data-release]')];
 if (boxes.length) {
   const builtTag = boxes[0].dataset.release;
   const locale = document.body.dataset.locale === 'en' ? 'en' : 'zh';
-  fetch('https://api.github.com/repos/Promenar/Infinity-Workbench/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+  fetch('https://api.github.com/repos/Promenar/Infinity-Deck/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
     .then(r => (r.ok ? r.json() : null))
     .then(json => {
       if (!json || json.tag_name === builtTag || json.draft || json.prerelease) return;

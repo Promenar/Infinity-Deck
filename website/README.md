@@ -1,4 +1,4 @@
-# Infinity Workbench 官网
+# Infinity Deck 官网
 
 产品官网，静态站点，线上地址 <https://infinityware.work>。中文为默认语言（`/`），英文在 `/en/`。
 
@@ -17,9 +17,9 @@
 | `src/views/` | 各页面的实际内容；`src/pages/` 只按语言包装 |
 | `src/components/DownloadPanel.astro` | 下载台（首页与下载页共用） |
 | `src/lib/` | 更新日志解析、Release 数据读取与格式化 |
-| `src/scripts/` | 客户端动效：星空、开场灯珠、钉住叙事、502 排障实演、下载区 |
+| `src/scripts/` | 客户端动效：星空、开场灯珠、宣传片播放、钉住叙事、502 排障实演、下载区 |
 | `src/data/release-snapshot.json` | 构建时读不到 GitHub API 时使用的 Release 快照 |
-| `public/media/` | 叙事区截图与录屏，由 `scripts/prepare-media.sh` 生成 |
+| `public/media/` | 叙事区截图与录屏，由 `scripts/prepare-media.sh` 生成；宣传片 `promo.mp4` 不进 Git |
 | `public/_headers` | Cloudflare Pages 缓存与安全响应头 |
 
 ## 本地开发
@@ -47,9 +47,15 @@ npm run preview   # 预览 dist/
 website/scripts/prepare-media.sh <footage 目录>
 ```
 
+- **宣传片**：首页首屏下方的宣传片（每个约 19 MB）不进 Git，构建前从宣传片工程复制；缺少文件时构建报错。封面图 `promo-poster.jpg` 已纳入仓库。在仓库根执行：
+
+```bash
+for l in zh en; do cp promo/deck-launch/renders/share/infinity-deck-$l-web.mp4 website/public/media/$l/promo.mp4; done
+```
+
 ## 部署：Cloudflare Pages
 
-本仓库的 GitHub Pages 已用于托管 App 的签名模型目录（`model-catalog-publish.yml` 整站部署，App 固定读取 `promenar.github.io/Infinity-Workbench/model-catalog/`）。官网不能部署到这里，也不能给它绑定自定义域名，否则模型目录地址会被重定向而失效。官网由 Cloudflare Pages 托管。
+本仓库的 GitHub Pages 已用于托管 App 的签名模型目录（`model-catalog-publish.yml` 整站部署，App 固定读取 `promenar.github.io/Infinity-Deck/model-catalog/`）。官网不能部署到这里，也不能给它绑定自定义域名，否则模型目录地址会被重定向而失效。官网由 Cloudflare Pages 托管。
 
 | 项目 | 值 |
 | --- | --- |
@@ -77,3 +83,13 @@ CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
 
 - 在仓库加 GitHub Actions 工作流，`main` 上 `website/` 或 `CHANGELOG.md` 变化时执行上面的构建与上传，令牌存为仓库密钥。
 - 在 Cloudflare 后台新建连接 Git 的 Pages 项目（Root directory `website`，Build command `npm run build`，输出目录 `dist`，Build watch paths 只含 `website/*` 与 `CHANGELOG.md`），再把 `infinityware.work` 从旧项目移到新项目。
+
+## 搜索发现与 Agent 引用
+
+- Astro 生成 `/sitemap.xml` 和 `/robots.txt`。sitemap 包含中英文正式页面和语言配对，404 页不进入索引清单。新增专题时在 `src/guides.mjs` 登记，中英文页面、站内链接和 sitemap 会一起生成。
+- 首页的 `WebSite` 和 `SoftwareApplication` 数据用于表达站点与 Android 应用的关系。实战指南将步骤、运行条件和技术文档链接输出为静态 HTML。
+- 英文更新日志提供版本和日期索引，逐版本链接到中文原文。完整中文发布记录由仓库根的 `CHANGELOG.md` 生成。
+- 发布构建需要 `public/media/zh/promo.mp4` 与 `public/media/en/promo.mp4`。这两份素材由宣传片工程提供，保留在 Git 之外。构建会检查引用素材是否存在。
+- 发布后核对主域 12 个 sitemap 地址、`robots.txt`、页面 canonical 和双向语言链接。在 Google Search Console 提交 sitemap 并检查首页、下载页和实战指南的索引状态。
+- Cloudflare 公开生产别名可通过专用重定向规则按原路径与查询参数跳转到主域。将条件限定为 `infinity-workbench.pages.dev`，保留预览子域。
+- 在 Cloudflare 中分开核验 AI 搜索、用户触发的抓取和训练策略。请求成功仅说明该次访问通过，验证真实抓取应查看 Cloudflare 记录和平台公布的身份或 IP。搜索与用户触发抓取可独立于训练配置。发布后用中英文产品名、Android Git 编程、SSH 排障和 APK 下载等查询检查回答是否准确引用主域。

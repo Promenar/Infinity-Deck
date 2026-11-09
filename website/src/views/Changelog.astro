@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Marked } from 'marked';
 import Base from '../layouts/Base.astro';
-import { strings, GITHUB } from '../i18n.mjs';
+import { strings, GITHUB, href } from '../i18n.mjs';
 import { parseChangelog, absolutizeLink, versionAnchor } from '../lib/changelog.mjs';
 import { formatDate } from '../lib/release.mjs';
 
@@ -20,9 +20,9 @@ const marked = new Marked({
     if (token.type === 'link' || token.type === 'image') token.href = absolutizeLink(token.href, `${GITHUB}/blob/main/`);
   },
 });
-const rendered = releases.map(r => ({ ...r, id: versionAnchor(r.version), html: marked.parse(r.body) as string }));
+const rendered = releases.map(r => ({ ...r, id: versionAnchor(r.version), html: locale === 'zh' ? marked.parse(r.body) as string : undefined }));
 ---
-<Base locale={locale} path="/changelog/" title={`${t.title} · Infinity Workbench`} description={t.description} current="changelog">
+<Base locale={locale} path="/changelog/" title={`${t.title} · Infinity Deck`} description={t.description} current="changelog">
   <div class="wrap page">
     <header class="page-head">
       <h1 class="sweep" data-sweep>{t.title}</h1>
@@ -40,7 +40,8 @@ const rendered = releases.map(r => ({ ...r, id: versionAnchor(r.version), html: 
               <h2><a href={`#${r.id}`}>{r.version}</a></h2>
               <time datetime={r.date}>{formatDate(`${r.date}T00:00:00Z`, locale)}</time>
             </div>
-            <div class="release-b" lang="zh-CN" set:html={r.html} />
+            {locale === 'zh' ? <div class="release-b" set:html={r.html} /> :
+              <p class="release-b"><a href={`${href('zh', '/changelog/')}#${r.id}`}>Read the release notes in Chinese</a></p>}
           </article>
         ))}
         <p class="cl-older"><a href={`${GITHUB}/blob/main/CHANGELOG.md`}>{t.older}</a></p>

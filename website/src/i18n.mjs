@@ -1,7 +1,7 @@
 // 官网中英文文案。中文为默认语言，路径不带前缀；英文路径以 /en/ 开头。
 
 export const LOCALES = ['zh', 'en'];
-export const GITHUB = 'https://github.com/Promenar/Infinity-Workbench';
+export const GITHUB = 'https://github.com/Promenar/Infinity-Deck';
 const BLOB = `${GITHUB}/blob/main`;
 const TREE = `${GITHUB}/tree/main`;
 
@@ -16,17 +16,29 @@ export const strings = {
     langName: '中',
     nav: { features: '功能', trust: '安全', download: '下载', docs: '文档', changelog: '更新日志', main: '主导航', lang: '语言', footer: '页脚' },
     meta: {
-      title: 'Infinity Workbench：手机上的 AI 工作台',
-      description: '把终端、代码仓库、服务器和你的 AI 一起装进手机。自带 Key，数据留在本机。真 Linux、Git、SSH、子代理与折叠屏工作台。',
+      title: 'Infinity Deck｜跑在 Android 手机上的开源 AI 智能体',
+      description: '跑在手机上的 AI 智能体，接通你所有的仓库、服务器和算力。内置 Linux、git 与 Tailscale，直达你的机器；使用你自己的 Key，数据留在本机。',
     },
     hero: {
-      title: '把终端、代码仓库、服务器\n和你的 AI 一起装进手机。',
-      lede: '自带 Key，数据留在本机。展开是一部工作台，合上接着聊。',
+      title: '电脑关了，工作不断。',
+      lede: '跑在 Android 手机上的开源 AI 智能体，接通你的仓库、服务器和算力。使用你自己的 Key，数据留在本机。',
       download: '下载 Android 版',
       source: 'GitHub 源码',
       facts: ['Android 12+', 'GPL-3.0 开源'],
       hint: '移动指针转动，点按切换形态',
       canvas: '灯珠拼成 Infinity 字标，再扭成无穷形莫比乌斯带',
+    },
+    film: { label: 'Infinity Deck 宣传片', play: '播放宣传片' },
+    why: {
+      title: '它和远程控制有什么不同',
+      lede: '官方 App 的远程控制要那台电脑一直开着、在线；云端任务又进不了你的内网。',
+      points: [
+        ['手机自己就能干活', '内置 Alpine Linux，git、Python、Node.js、FFmpeg 都在手机上跑，不靠任何一台电脑在线。'],
+        ['直达你自己的机器', '应用自带 Tailscale 节点，SSH、模型和 MCP 直接进你的 tailnet：机房的服务器、家里的显卡，不开公网端口，也不占系统 VPN。'],
+        ['模型随你选', '使用你自己的 Key 接任何服务商，聊到一半可以换，也能接家里跑的模型。'],
+        ['为手机而做', '命令审批卡、后台任务、消息排队、触摸锁、折叠屏外屏，单手、躺着、在地铁上都顺手。'],
+        ['和桌面工具一起用', '坐在电脑前继续用你习惯的 AI 编程工具；离开时手机接着改同一个 git 仓库，电脑开着也能 SSH 上去借它的算力。'],
+      ],
     },
     story: {
       label: '功能演示',
@@ -80,17 +92,17 @@ export const strings = {
       lede: '模型自己接，环境自己选，每一项都在手机上跑。',
       more: '每一项的细节与边界见功能详解',
       groups: [
-        ['对话与模型', ['自带密钥接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口', '聊到一半换模型；最多 16 个会话同时生成', '生成中的下一句可以排队或插队', '需要你拍板时弹出提问卡；锁屏、切后台不中断', '触摸锁让手机直接揣进口袋', '技能与 MCP 服务器']],
+        ['对话与模型', ['使用你自己的 Key 接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi 和任何 OpenAI 兼容接口', '聊到一半换模型；最多 16 个会话同时生成', '生成中的下一句可以排队或插队', '需要你拍板时弹出提问卡；锁屏、切后台不中断', '触摸锁让手机直接揣进口袋', '技能与 MCP 服务器']],
         ['智能体', ['先列计划再动手', '最多 32 个子代理并行，单次派出 8 个，结论自动交回', '子代理遇到限流、断网或超时，自动退避重试', '适合单独做的工作开成分支会话', '慢命令、生图与媒体下载转入后台，完成后回报', '按关键词检索、翻页取回已压缩的会话历史', '定时任务，单次到 cron']],
         ['运行环境与代码', ['一键 Alpine Linux，不用 root，也不用 Termux', '没装 Linux 也有内置命令、Python 和 JavaScript 沙箱', '内置 git；Git 面板看分支、差异和提交', 'Git 密码按命令注入，不写进仓库配置', '文件页显示分支与改动数，点按直达 Git 页签']],
         ['服务器与私有网络', ['SSH 用主机别名执行命令、读写文件，单个文件最大 4 GiB', '真终端和端口转发随时接手', '应用自带 Tailscale 节点，支持自建 Headscale', '模型、SSH、MCP 直达 tailnet，不开公网端口，不占系统 VPN']],
         ['资料与知识', ['文档、长期记忆和知识图谱一起检索，答案带引用', '图谱按作品分开，可按篇序查人物关系的变化', '挂载外部文件夹；支持 PDF、Word、Markdown、HTML 等格式']],
         ['网页与产出', ['浏览器多标签，手机版与桌面版切换；Agent 操作时旁观、接手再交回', '画布页面、可点击的多屏原型、带版本的产物', '生图，可在画板上圈注和涂抹选区', '会话导出为网页、A4 PDF 或长图']],
-        ['折叠屏与平板', ['内屏三列：导航、会话列表、会话', '检视器常驻任务、文件、Git 与浏览器', '检视器展开时纵贯全屏，会话列与输入浮岛随之让位', '开合屏会话无缝接续']],
+        ['折叠屏与平板', ['内屏三列：导航、会话列表、会话', '检视器常驻任务、文件、Git 与浏览器', '检视器用图钉固定在右侧让出空间，或浮在会话之上', '开合屏会话无缝接续']],
       ],
     },
     download: {
-      title: '下载 Infinity Workbench',
+      title: '下载 Infinity Deck',
       released: '发布',
       apk: '下载 APK',
       all: '全部版本',
@@ -103,8 +115,8 @@ export const strings = {
       available: '可下载',
       soon: '即将推出',
       platforms: { android: 'Android', macos: 'macOS' },
-      pageTitle: '下载',
-      pageDescription: '下载 Infinity Workbench 的 Android 侧载安装包，核对 SHA-256 后安装。',
+      pageTitle: 'Android APK 下载',
+      pageDescription: '下载 Infinity Deck 的 Android 侧载安装包，核对 SHA-256 后安装。',
       stepsTitle: '安装步骤',
       steps: [
         '下载 APK，并记下上面的 SHA-256。',
@@ -122,15 +134,21 @@ export const strings = {
     },
     changelog: {
       title: '更新日志',
-      description: 'Infinity Workbench 各版本的改进与修复，与 App 发行同步。',
+      description: 'Infinity Deck 各版本的改进与修复，与 App 发行同步。',
       lede: '每个版本的改进与修复，与 GitHub Releases 同步。',
       older: '更早的开发记录见仓库里的 CHANGELOG.md',
       jump: '版本',
     },
     docs: {
       title: '文档',
-      description: 'Infinity Workbench 使用指南：功能详解、密钥与隐私、执行环境、工作区、安装升级与开发构建。',
-      lede: '使用指南都在 GitHub 仓库里，随代码一起更新。',
+      faqTitle: '安装、模型与数据',
+      faq: [
+        ['Infinity Deck 支持哪些 Android 设备？', 'Infinity Deck 支持 Android 12 及以上。使用内置 Alpine Linux 工作流时，请安装侧载 APK。'],
+        ['Infinity Deck 可以使用自己的模型服务吗？', '可以。在应用中配置模型服务、模型和对应 API Key。也可以接入自托管的兼容模型服务，手机需要能访问其接口。'],
+        ['会话数据保存在手机上吗？', '会话、文档和设置默认保存在设备上。使用云端模型时，推理所需的内容会随请求发送给你选定的模型服务。API Key 由 Android Keystore 支撑的密钥存储管理。'],
+      ],
+      description: 'Infinity Deck 使用指南：功能详解、密钥与隐私、执行环境、工作区、安装升级与开发构建。',
+      lede: '从手机上的 Git 开发和 SSH 排障开始。完整技术文档在 GitHub 仓库中随代码更新。',
       langNote: '',
       guides: [
         ['功能详解', '对话与渲染、上下文管理、资料与图谱、Agent 工具、子代理、浏览器、后台与定时任务、导出与备份', `${BLOB}/docs/guide/features.md`],
@@ -157,17 +175,29 @@ export const strings = {
     langName: 'EN',
     nav: { features: 'Features', trust: 'Security', download: 'Download', docs: 'Docs', changelog: 'Changelog', main: 'Main', lang: 'Language', footer: 'Footer' },
     meta: {
-      title: 'Infinity Workbench: an AI workbench on your phone',
-      description: 'Your terminal, your repos, your servers and your AI, together on your phone. Bring your own key; your data stays on your device.',
+      title: 'Infinity Deck — Open-source AI agent for Android',
+      description: 'An open-source AI agent for Android, with your repos, servers and GPUs in reach. Built-in Linux, git and Tailscale; bring your own key; your data stays on your device.',
     },
     hero: {
-      title: 'Your terminal, your repos, your servers\nand your AI, together on your phone.',
-      lede: 'Bring your own key. Your data stays on your device. Unfold a workbench, fold it and the chat carries on.',
+      title: 'Laptop off. Work goes on.',
+      lede: 'An open-source AI agent for Android, with your repos, servers and GPUs in reach. Bring your own key. Your data stays on your device.',
       download: 'Download for Android',
       source: 'Source on GitHub',
       facts: ['Android 12+', 'GPL-3.0'],
       hint: 'Move the pointer to turn it, tap to change shape',
       canvas: 'LED beads form the Infinity wordmark, then twist into an infinity-shaped Möbius strip',
+    },
+    film: { label: 'Infinity Deck launch film', play: 'Play the film' },
+    why: {
+      title: 'How it differs from remote control',
+      lede: 'Remote control from the official apps needs that computer switched on and online, and cloud tasks can’t reach your private network.',
+      points: [
+        ['The phone does the work', 'A built-in Alpine Linux runs git, Python, Node.js and FFmpeg on the phone, with no computer that has to stay online.'],
+        ['Straight to your own machines', 'A Tailscale node inside the app takes SSH, models and MCP straight into your tailnet — the servers you run, the GPU at home — with no open ports and no system VPN.'],
+        ['Any model you like', 'Bring a key for any provider, switch mid-chat, or point it at a model on your own hardware.'],
+        ['Made for the phone', 'Approval cards, background tasks, a message queue, touch lock and the foldable cover screen work one-handed, lying down or on the train.'],
+        ['Works alongside your desktop tools', 'Keep your usual AI coding tools at the desk; when you leave, the phone picks up the same git repo, and while the computer is on it can SSH in and borrow its power.'],
+      ],
     },
     story: {
       label: 'Feature tour',
@@ -227,11 +257,11 @@ export const strings = {
         ['Servers & private network', ['SSH by host alias to run commands and read or write files, up to 4 GiB per file', 'Take over any time in a real terminal or with port forwarding', 'A Tailscale node inside the app, with self-hosted Headscale support', 'Models, SSH and MCP reach your tailnet directly: no open ports, no system VPN']],
         ['Documents & knowledge', ['Search documents, long-term memory and the knowledge graph together, with cited answers', 'One graph per work; follow how characters relate, chapter by chapter', 'Mount outside folders; PDF, Word, Markdown, HTML and more']],
         ['Web & output', ['Browser tabs, mobile or desktop sites; watch the agent, take over and hand it back', 'Canvas pages, clickable multi-screen prototypes and versioned artifacts', 'Image generation with a drawing board for markup and masks', 'Export chats as a web page, A4 PDF or long image']],
-        ['Foldables & tablets', ['Three columns on the inner screen: navigation, chat list and chat', 'An inspector for tasks, files, Git and the browser', 'The open inspector runs full height while the chat list and composer make room', 'Chats carry on as you fold and unfold']],
+        ['Foldables & tablets', ['Three columns on the inner screen: navigation, chat list and chat', 'An inspector for tasks, files, Git and the browser', 'Pin the inspector beside the chat to make room, or let it float above', 'Chats carry on as you fold and unfold']],
       ],
     },
     download: {
-      title: 'Download Infinity Workbench',
+      title: 'Download Infinity Deck',
       released: 'released',
       apk: 'Download APK',
       all: 'All releases',
@@ -244,8 +274,8 @@ export const strings = {
       available: 'Available',
       soon: 'Coming soon',
       platforms: { android: 'Android', macos: 'macOS' },
-      pageTitle: 'Download',
-      pageDescription: 'Download the Infinity Workbench Android APK and check its SHA-256 before installing.',
+      pageTitle: 'Android APK Download',
+      pageDescription: 'Download the Infinity Deck Android APK and check its SHA-256 before installing.',
       stepsTitle: 'Install',
       steps: [
         'Download the APK and note the SHA-256 above.',
@@ -263,15 +293,21 @@ export const strings = {
     },
     changelog: {
       title: 'Changelog',
-      description: 'Improvements and fixes in each Infinity Workbench release.',
-      lede: 'Improvements and fixes in each release, in sync with GitHub Releases. Entries are written in Chinese.',
+      description: 'Browse Infinity Deck versions and release dates, with links to the full Chinese release notes.',
+      lede: 'Browse release dates and open the full notes for each version in Chinese.',
       older: 'Earlier development notes are in CHANGELOG.md in the repository',
       jump: 'Versions',
     },
     docs: {
       title: 'Docs',
-      description: 'Infinity Workbench guides: features, security and privacy, execution environments, workspaces, install and development.',
-      lede: 'The guides live in the GitHub repository and change with the code. They are written in Chinese; the README covers the essentials in English.',
+      faqTitle: 'Installation, models, and data',
+      faq: [
+        ['Which Android devices does Infinity Deck support?', 'Infinity Deck supports Android 12 and later. Install the sideloaded APK to use the built-in Alpine Linux environment.'],
+        ['Can I use my own model provider with Infinity Deck?', 'Yes. Configure your provider, model, and API key in the app. You can also connect to a compatible self-hosted model endpoint that your phone can reach.'],
+        ['Does Infinity Deck store conversations on the phone?', 'Conversations, documents, and settings are stored on the device by default. When you use a cloud model, the request sends the content needed for inference to the provider you selected. API keys are managed by a secret store backed by Android Keystore.'],
+      ],
+      description: 'Infinity Deck guides: features, security and privacy, execution environments, workspaces, install and development.',
+      lede: 'Start with Git development and SSH troubleshooting on Android. The full technical documentation on GitHub is written in Chinese.',
       langNote: 'Chinese',
       guides: [
         ['Features', 'Chat and rendering, context management, documents and the knowledge graph, agent tools, sub-agents, browser, background and scheduled tasks, export and backup', `${BLOB}/docs/guide/features.md`],
