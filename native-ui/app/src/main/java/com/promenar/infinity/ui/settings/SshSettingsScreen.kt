@@ -831,6 +831,8 @@ private fun SshHostEditorSheet(
         androidx.lifecycle.viewmodel.compose.viewModel(factory = com.promenar.infinity.ui.keychain.KeychainViewModel.factory(context.applicationContext as android.app.Application))
     val keychainItems by keychain.items.collectAsState()
     val sshKeys = com.promenar.infinity.ui.keychain.sshKeyItems(keychainItems)
+    // 改用密钥时保留的登录密码仍在钥匙串里，切回密码认证可留空沿用。
+    val hasStoredPassword = existing != null && keychainItems.orEmpty().any { it.ref == "ssh-password:${existing.id}" }
     var keySheet by remember { mutableStateOf<SshEditorKeySheet?>(null) }
 
     fun clearSecrets() {
@@ -855,7 +857,7 @@ private fun SshHostEditorSheet(
     fun save() {
         if (busy) return
         val host = try {
-            fields.draft().toHost(existing, fields.keyEntryId != null, fields.password.isNotEmpty(), false, takenAliases)
+            fields.draft().toHost(existing, fields.keyEntryId != null, fields.password.isNotEmpty() || hasStoredPassword, false, takenAliases)
         } catch (error: SshInputException) {
             showError(safeSshError(error))
             return

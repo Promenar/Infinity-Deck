@@ -130,9 +130,13 @@ class RoomSshHostStore(
                         val binding = next.binding()
                         var retained: SshCredential? = null
                         try {
-                            if (credential == null && previous != null && previous.authType == next.authType) {
+                            // 未提供新凭据时沿用旧凭据；切回密码认证只沿用其中的登录密码，部署时保留的密码不因切换丢失。
+                            if (credential == null && previous != null &&
+                                (previous.authType == next.authType || next.authType == SshAuthType.PASSWORD)) {
                                 val oldBinding = previous.binding()
-                                try { retained = credentials.get(previous.id, oldBinding) } finally { oldBinding.fill(0) }
+                                val old = try { credentials.get(previous.id, oldBinding) } finally { oldBinding.fill(0) }
+                                retained = if (previous.authType == next.authType || old == null) old
+                                    else old.use { if (it.password.isEmpty()) null else SshCredential(password = it.password.copyOf()) }
                             }
                             credentials.replace(next.id, binding, credential ?: retained) { dao.save(next.toEntity()) }
                         } finally {

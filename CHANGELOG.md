@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.41.1-beta] - 2026-11-10
+
+### 修复
+
+- 公钥部署选择“改用此密钥”并保留登录密码后，把主机切回密码认证时要求重新输入密码，留空保存还会清掉已存的密码；现在可留空沿用已存密码，并解除对部署密钥的引用。
+
 ## [0.41.0-beta] - 2026-11-10
 
 ### 新增

@@ -79,6 +79,21 @@ class KeychainSshDeploymentTest {
         }
     }
 
+    @Test fun `改用密钥并保留密码后切回密码认证沿用已存密码且释放密钥`() = runBlocking {
+        val f = K2MemoryFixture(); val item = f.repository.generateSshKey("目标"); val original = host(f, "server")
+        val result = DefaultSshKeyDeployer(f.hosts, FakeRuntime(pin)) { _, _ -> true }.deployPublicKey(item.ref,
+            listOf(DeployTarget(original.id, DeployCredentialSource.StoredPassword)), DeployOptions(switchToKey = true, deleteStoredPassword = false)).toList()
+        assertEquals(DeployStage.COMPLETED, result.last().stage)
+        val keyed = f.hosts.find(original.alias)!!
+        f.hosts.save(keyed.copy(authType = SshAuthType.PASSWORD), null)
+        val restored = f.hosts.find(original.alias)!!
+        assertEquals(SshAuthType.PASSWORD, restored.authType); assertNull(restored.keyEntryId)
+        f.hosts.credential(restored)!!.use {
+            assertEquals("stored fixture password", it.password.toString(Charsets.UTF_8)); assertTrue(it.privateKey.isEmpty())
+        }
+        assertEquals(KeychainDeleteResult.Deleted, f.repository.delete(item.ref))
+    }
+
     @Test fun `多主机隔离并清零不存在主机的一次性密码`() = runBlocking {
         val f = K2MemoryFixture(); val item = f.repository.generateSshKey("目标")
         val first = host(f, "bad"); val second = host(f, "good")
