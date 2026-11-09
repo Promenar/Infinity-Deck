@@ -3,7 +3,7 @@
 - 状态：待评审
 - 范围：`native-ui`（Android，targetSdk 36，minSdk 31）
 - 方向：内置固定工具集（B）作为默认后端，Termux 与 SSH（D）作为完整 Linux 后端并存
-- 依据：执行后端探针 `poc/exec-probe/`（分支 `poc/bd-exec`），在 API 31、API 35 模拟器与 OPPO PKH110（Android 16，ColorOS V16.1.0）上实测；数据见探针 README
+- 依据：执行后端探针应用（`com.promenar.nexara.execprobe`），在 API 31、API 35 模拟器与 OPPO PKH110（Android 16，ColorOS V16.1.0）上实测；结论与关键数据见本文第 2 节事实表及 `.agent/handover.md` 2026-10-18 的两条执行后端真机验证记录
 
 ## 1. 目标与非目标
 
