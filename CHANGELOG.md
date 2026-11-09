@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.39.1-beta] - 2026-11-09
+
 ### 修复
 
 - 资料库内移动、重命名文件或文件夹，内容未变的文件保留已有向量索引与知识图谱，不再清空后重新索引；内容是否变化以 SHA-256 判定。Linux 命令或 Agent 工具在工作区内移动文件时，唯一同哈希的文件沿用原身份。从未索引过的文件移动后照常排队索引。
@@ -24,6 +26,7 @@ All notable changes to this project will be documented in this file.
 ### 变更
 
 - 文件列表中过长的文件名改为停顿后慢速横向滚动展示全名，两端渐隐；文件名与状态图标之间留出间距。
+- 视觉实验室新增第 12 期发布工作流、封面后台任务与第 12 期页面三个版本，中英两版，供宣传片录屏。
 
 ## [0.39.0-beta] - 2026-11-09
 
