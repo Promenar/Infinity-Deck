@@ -1,0 +1,21 @@
+/* 视觉实验室浏览器版本 starlog 周刊页面的样式：模拟个人站点，不跟随应用主题。 */
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.7 Georgia,"Noto Serif SC","Noto Serif CJK SC",serif;color:#1d2230;background:#fbfaf7}
+header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #e7e3da;font-family:system-ui,-apple-system,sans-serif}
+.logo{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff7d6 0,#f2c14e 30%,#1b2457 70%)}
+.brand{font-weight:700;letter-spacing:.02em}
+nav{margin-left:auto;display:flex;gap:16px;color:#5b6170;font-size:14px}
+article{max-width:720px;margin:0 auto;padding:22px 18px 40px}
+.kicker{font:600 13px/1.4 system-ui,sans-serif;color:#8a5a12;letter-spacing:.06em;text-transform:uppercase}
+h1{font-size:28px;line-height:1.25;margin:6px 0 6px}
+.meta{font:13px/1.5 system-ui,sans-serif;color:#6b7080;margin-bottom:18px}
+.cover{display:block;width:calc(100% + 36px);max-width:none;margin:0 -18px 22px;aspect-ratio:1344/768;object-fit:cover}
+h2{font-size:20px;margin:28px 0 8px}
+p{margin:0 0 14px}
+sup{font:600 11px system-ui,sans-serif;color:#2f3e9e}
+table{width:100%;border-collapse:collapse;font:14px/1.5 system-ui,sans-serif;margin:6px 0 16px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #e7e3da}
+th{color:#6b7080;font-weight:600}
+td.num{font-variant-numeric:tabular-nums}
+.refs{font:13px/1.6 system-ui,sans-serif;color:#5b6170;border-top:1px solid #e7e3da;padding-top:12px;margin-top:24px}
+footer{font:13px system-ui,sans-serif;color:#8b90a0;text-align:center;padding:18px}

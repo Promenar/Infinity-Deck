@@ -55,6 +55,10 @@
     <string name="lab_v_ade_json_desc">计划、两个子代理并行、实现、后台完整测试、分支会话、提交</string>
     <string name="lab_v_ops_502">web-01 502 排障</string>
     <string name="lab_v_ops_502_desc">SSH 审批、定位服务、查明根因、批准修复、验证 200</string>
+    <string name="lab_v_issue_12">第 12 期发布</string>
+    <string name="lab_v_issue_12_desc">列计划、联网核对引用、gpu-box 后台生成封面、Linux 构建、web-01 返回 502</string>
+    <string name="lab_v_cover_job">后台任务取回封面</string>
+    <string name="lab_v_cover_job_desc">gpu-box 上的封面任务已完成，会话里出现图片卡</string>
     <string name="lab_v_subagents">子代理并行</string>
     <string name="lab_v_subagents_desc">两张子代理卡片同时运行</string>
     <string name="lab_v_background_job">后台任务运行中</string>
@@ -105,6 +109,8 @@
     <string name="lab_v_browser_takeover_desc">同一页面由你操作，可随时交还</string>
     <string name="lab_v_browser_login">需要你登录</string>
     <string name="lab_v_browser_login_desc">密码字段标出“仅你可输入”</string>
+    <string name="lab_v_browser_issue_12">第 12 期页面</string>
+    <string name="lab_v_browser_issue_12_desc">starlog 周刊第 12 期“四颗亮星”，满宽封面</string>
 
     <string name="lab_v_library_ask">问资料</string>
     <string name="lab_v_library_ask_desc">带编号引用的答案，文档、主动记忆与图谱命中</string>

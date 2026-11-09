@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -32,7 +33,9 @@ import com.promenar.infinity.ui.git.GitPanelActions
 import com.promenar.infinity.ui.git.GitPanelTab
 import com.promenar.infinity.ui.git.GitPanelUiState
 import com.promenar.infinity.ui.git.gitPageModifier
+import com.promenar.infinity.ui.lab.fakes.LabMediaResolver
 import com.promenar.infinity.ui.lab.stage.LabSceneScope
+import com.promenar.infinity.ui.media.LabWorkspaceMediaResolvers
 import com.promenar.infinity.ui.lab.stage.LabScene
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.lab.stage.LabWorkflowScene
@@ -57,6 +60,17 @@ internal val labChatScenes: Map<String, () -> LabScene> = mapOf(
             timeline = { resources -> opsTimeline(LabOpsText(isChinese(resources))) },
             content = { state: OpsState -> LabChatScene(opsFrame(state), hub = LabHubStory.OPS) },
         )
+    },
+    // 外屏起始的第 12 期发布：核对引用、gpu-box 后台生成封面、Linux 构建、发布后返回 502。
+    "chat.workflow.issue-12" to {
+        LabWorkflowScene(
+            timeline = { resources -> issueTimeline(LabIssueText(isChinese(resources))) },
+            content = { state: IssueState -> IssueScene(issueFrame(state)) },
+        )
+    },
+    // 封面后台任务已结束，取回的封面图片卡在会话里，运行坞里的任务已完成。
+    "chat.state.cover-job" to {
+        LabStateScene { IssueStill(ISSUE_COVER_DONE, IssueTimes.COVER_DONE + 1_500) }
     },
     // 两个探索者跑到 1 分 31 秒，主会话还能等 3 分 29 秒。
     "chat.state.subagents" to {
@@ -112,6 +126,30 @@ internal fun inspectorOpenTimeline(): LabTimeline<List<ChatPage>> = labTimeline(
 private fun rememberAdeText(): LabAdeText {
     val zh = isChinese(LocalContext.current.resources)
     return remember(zh) { LabAdeText(zh) }
+}
+
+/** 第 12 期脚本在 [stage] 的定格画面。 */
+@Composable
+private fun LabSceneScope.IssueStill(stage: Int, nowScriptMs: Long) {
+    val zh = isChinese(LocalContext.current.resources)
+    val frame = remember(zh, stage) { issueFrame(IssueState(LabIssueText(zh), stage = stage)) }
+    IssueScene(frame, nowScriptMs)
+}
+
+/**
+ * 第 12 期的会话页：先为演示会话登记封面图的解析器，再交给 [LabChatScene]，
+ * 取回的封面经真实的工作区媒体卡片显示。内屏带首页列表。
+ */
+@Composable
+private fun LabSceneScope.IssueScene(frame: LabChatFrame, nowScriptMs: Long = 0) {
+    val context = LocalContext.current
+    // 在组合阶段登记：会话页的媒体环境在子组件首次组合时读取它。
+    val resolver = remember {
+        LabMediaResolver(context, mapOf(ISSUE_COVER_PATH to (ISSUE_COVER_REF to ISSUE_COVER_ASSET)))
+            .also { LabWorkspaceMediaResolvers.register(LAB_SESSION_ID, it) }
+    }
+    DisposableEffect(resolver) { onDispose { LabWorkspaceMediaResolvers.unregister(LAB_SESSION_ID, resolver) } }
+    LabChatScene(frame, nowScriptMs = nowScriptMs, hub = LabHubStory.OPS)
 }
 
 /** 502 排障脚本在 [stage] 的定格画面，内屏带首页列表。 */

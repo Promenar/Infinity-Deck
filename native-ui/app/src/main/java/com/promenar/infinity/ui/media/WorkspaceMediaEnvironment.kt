@@ -33,6 +33,24 @@ class WorkspaceMediaEnvironment(
 val LocalWorkspaceMedia = staticCompositionLocalOf<WorkspaceMediaEnvironment?> { null }
 
 /**
+ * 视觉实验室为演示会话登记的内存媒体解析器。会话页的媒体环境与图片取数器按会话 id 优先使用它；
+ * 真实会话从不登记，仍走应用的工作区解析器。
+ */
+object LabWorkspaceMediaResolvers {
+    private val resolvers = java.util.concurrent.ConcurrentHashMap<String, WorkspaceMediaResolver>()
+
+    fun register(sessionId: String, resolver: WorkspaceMediaResolver) {
+        resolvers[sessionId] = resolver
+    }
+
+    fun unregister(sessionId: String, resolver: WorkspaceMediaResolver) {
+        resolvers.remove(sessionId, resolver)
+    }
+
+    fun forSession(sessionId: String): WorkspaceMediaResolver? = resolvers[sessionId]
+}
+
+/**
  * 按“会话 + 路径”缓存的解析结果。滚动复用与流式重组直接读取缓存，不重复解析；
  * 超过 [revalidateAfterMs] 的条目在下次进入组合时后台复核一次，文件被替换后卡片随之更新。
  */
@@ -135,8 +153,14 @@ fun rememberSessionWorkspaceMedia(
             withContext(Dispatchers.IO) { runCatching { MediaFileActions.cleanupShareCache(application) } }
         }
     }
-    return remember(sessionId, application) {
-        if (sessionId == null || application == null) null
-        else WorkspaceMediaEnvironment(sessionId, application.workspaceMediaResolver, onLocate = stableOnLocate)
+    return remember(sessionId, application, sandboxed) {
+        // 沙箱内只使用实验室为演示会话登记的解析器，没有登记时不解析媒体。
+        val labResolver = if (sandboxed && sessionId != null) LabWorkspaceMediaResolvers.forSession(sessionId) else null
+        when {
+            sessionId == null -> null
+            labResolver != null -> WorkspaceMediaEnvironment(sessionId, labResolver)
+            application == null -> null
+            else -> WorkspaceMediaEnvironment(sessionId, application.workspaceMediaResolver, onLocate = stableOnLocate)
+        }
     }
 }

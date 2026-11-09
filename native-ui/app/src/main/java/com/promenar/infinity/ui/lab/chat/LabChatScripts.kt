@@ -132,3 +132,51 @@ internal class LabOpsText(zh: Boolean) {
             "- `GET :8080/api/stars` → 200 with the four records Sirius / Canopus / Arcturus / Vega\n\nThe edge process never restarted and needs nothing."
     }
 }
+
+/**
+ * “starlog 周刊第 12 期”的文案：核对引用、gpu-box 后台生成封面、本机 Linux 构建、发布到 web-01 后返回 502。
+ * 星等取公认的视星等；命令、路径与输出保持原样，不随语言变化。
+ */
+internal class LabIssueText(zh: Boolean) {
+    val sessionTitle = if (zh) "第12期发布" else "Publish issue 12"
+    val prompt = if (zh) "第 12 期：核对引用，配封面，发到站点" else "Issue 12: check the citations, add a cover, publish it"
+    val planIntro = if (zh) "先列计划，再逐项处理。" else "Planning first, then one step at a time."
+    val planTitle = if (zh) "starlog 周刊第 12 期：核对引用、配封面、发布" else "starlog weekly #12: citations, cover, publish"
+    val planSteps = if (zh) {
+        listOf("核对引用", "生成封面", "构建发布", "验证上线")
+    } else {
+        listOf("Check the citations", "Generate the cover", "Build and publish", "Verify it's live")
+    }
+    val checkSay = if (zh) {
+        "草稿里四颗亮星的视星等引了两处来源，联网核对。"
+    } else {
+        "The draft cites two sources for the four stars' magnitudes. Checking them online."
+    }
+    val verdict = if (zh) {
+        "核对无误：天狼星 −1.46 [1]、老人星 −0.74 [1]、大角星 −0.05 [2]、织女星 +0.03 [2]，与草稿一致。"
+    } else {
+        "The citations check out: Sirius −1.46 [1], Canopus −0.74 [1], Arcturus −0.05 [2], Vega +0.03 [2], all matching the draft."
+    }
+    val coverSay = if (zh) {
+        "封面交给 gpu-box 上的模型在后台画，我先构建正文。"
+    } else {
+        "The cover goes to the model on gpu-box in the background. Building the page meanwhile."
+    }
+    val coverPrompt = if (zh) {
+        "starlog 周刊第 12 期封面插画：深蓝夜空与银河，天狼星、老人星、大角星、织女星四颗亮星带柔和星芒，地平线上低矮山脊的剪影，横幅构图，无文字。"
+    } else {
+        "Cover illustration for starlog weekly #12: a deep blue night sky with the Milky Way, the four bright stars Sirius, Canopus, " +
+            "Arcturus and Vega with soft spikes, a low ridge silhouetted on the horizon, wide banner, no text."
+    }
+    val coverJob = if (zh) "生成封面" else "Generate the cover"
+    val coverJobSummary = if (zh) "生成图片" else "Generate image"
+    val cmdBuild = if (zh) "构建第 12 期页面" else "Build the issue 12 page"
+    val publishSay = if (zh) "封面好了，放进页面，发布到 web-01。" else "The cover is ready. Adding it to the page and publishing to web-01."
+    val cmdPublish = if (zh) "发布到 web-01" else "Publish to web-01"
+    val cmdVerify = if (zh) "验证页面" else "Check the page"
+    val failSay = if (zh) {
+        "页面返回 502：web-01 上 starlog 的后端没有响应。登录 web-01 排查。"
+    } else {
+        "The page returns 502: starlog's backend on web-01 isn't answering. Logging in to web-01 to find out why."
+    }
+}

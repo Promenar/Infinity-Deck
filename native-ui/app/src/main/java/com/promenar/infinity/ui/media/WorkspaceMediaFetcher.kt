@@ -91,7 +91,7 @@ class WorkspaceMediaFetcher(
         private val resolver: () -> WorkspaceMediaResolver,
     ) : Fetcher.Factory<WorkspaceMediaModel> {
         override fun create(data: WorkspaceMediaModel, options: Options, imageLoader: ImageLoader): Fetcher =
-            WorkspaceMediaFetcher(data, resolver()) { uri ->
+            WorkspaceMediaFetcher(data, LabWorkspaceMediaResolvers.forSession(data.sessionId) ?: resolver()) { uri ->
                 context.contentResolver.openAssetFileDescriptor(android.net.Uri.parse(uri), "r")
             }
     }

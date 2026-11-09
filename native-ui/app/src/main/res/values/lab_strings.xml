@@ -57,6 +57,10 @@
     <string name="lab_v_ade_json_desc">Plan, two sub-agents in parallel, implement, full suite in the background, branch chat, commit</string>
     <string name="lab_v_ops_502">Fix the 502 on web-01</string>
     <string name="lab_v_ops_502_desc">SSH approval, find the services, root cause, approved fix, verified 200</string>
+    <string name="lab_v_issue_12">Publish issue 12</string>
+    <string name="lab_v_issue_12_desc">Plan, citations checked online, cover in the background on gpu-box, Linux build, 502 on web-01</string>
+    <string name="lab_v_cover_job">Cover from a background job</string>
+    <string name="lab_v_cover_job_desc">The cover job on gpu-box has finished and the image card is in the conversation</string>
     <string name="lab_v_subagents">Sub-agents in parallel</string>
     <string name="lab_v_subagents_desc">Two sub-agent cards running side by side</string>
     <string name="lab_v_background_job">Background job running</string>
@@ -107,6 +111,8 @@
     <string name="lab_v_browser_takeover_desc">The same page under your control, ready to hand back</string>
     <string name="lab_v_browser_login">Sign-in needed</string>
     <string name="lab_v_browser_login_desc">The password field is marked as yours to type</string>
+    <string name="lab_v_browser_issue_12">Issue 12 page</string>
+    <string name="lab_v_browser_issue_12_desc">starlog weekly issue 12, Four bright stars, with a full-width cover</string>
 
     <string name="lab_v_library_ask">Ask the library</string>
     <string name="lab_v_library_ask_desc">Numbered citations over document, active memory and graph hits</string>
