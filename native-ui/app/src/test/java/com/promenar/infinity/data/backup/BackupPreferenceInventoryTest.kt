@@ -46,8 +46,10 @@ class BackupPreferenceInventoryTest {
 
     @Test
     fun `宠物总开关作为用户偏好参与备份`() {
-        assertThat(BackupPreferencePolicy.isKnown("infinity_settings", "pet_enabled")).isTrue()
-        assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", "pet_enabled")).isTrue()
+        for (key in listOf("pet_enabled", "pet_default_id", "pet_model_map", "pet_lines_enabled", "pet_lines_model", "pet_video_enabled")) {
+            assertThat(BackupPreferencePolicy.isKnown("infinity_settings", key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isTrue()
+        }
     }
 
     @Test

@@ -23,7 +23,7 @@ internal object BackupPreferencePolicy {
             "known_builtin_skills",
             "agent_skills_enabled",
             "long_term_memory_enabled",
-            "pet_enabled",
+            "pet_enabled", "pet_default_id", "pet_model_map", "pet_lines_enabled", "pet_lines_model", "pet_video_enabled",
             "suppressed_provider_models",
             "default_model", "default_temperature", "default_top_p", "default_max_tokens",
             "model_timeout_llm_seconds", "model_timeout_image_seconds",
@@ -90,6 +90,7 @@ internal object BackupPreferencePolicy {
         ),
         "catalog_update_schedule" to setOf("checkedat"),
         "kg_usage" to setOf("kg_usage_ledger_v1"),
+        "pet_usage" to setOf("kg_usage_ledger_v1"),
         // 本机每日会话图谱抽取统计，换设备后重新计数。
         "session_graph_stats" to setOf("day", "turns", "calls"),
         // 检视器边缘条的拖放位置随本机屏幕尺寸而定，不随备份迁移。

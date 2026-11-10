@@ -19,16 +19,18 @@ class TokenStatsRepository(
     private val messageDao: MessageDao,
     private val kgUsageStore: KgUsageStore = KgUsageStore.None,
     private val rolledBackSummaryUsageStore: RolledBackSummaryUsageStore? = null,
+    private val petUsageStore: KgUsageStore = KgUsageStore.None,
 ) : ITokenStatsRepository {
 
     override suspend fun getTotalUsage(): TokenUsageAggregate = withRollbackUsage { records ->
         val row = messageDao.getTotalTokenUsage()
         val kg = kgUsageStore.snapshot().usage
         val rolledBack = records.usage()
+        val pet = petUsageStore.snapshot().usage
         TokenUsageAggregate(
-            inputTokens = row.total_input + kg.inputTokens + rolledBack.inputTokens,
-            outputTokens = row.total_output + kg.outputTokens + rolledBack.outputTokens,
-            estimated = kg.estimated || rolledBack.estimated,
+            inputTokens = row.total_input + kg.inputTokens + rolledBack.inputTokens + pet.inputTokens,
+            outputTokens = row.total_output + kg.outputTokens + rolledBack.outputTokens + pet.outputTokens,
+            estimated = kg.estimated || rolledBack.estimated || pet.estimated,
             cache = row.cache,
         )
     }
@@ -50,7 +52,10 @@ class TokenStatsRepository(
         val rolledBack = records.map { record ->
             ModelTokenStats(record.modelId, listOf(record).usage())
         }
-        (chat + kg + rolledBack).groupBy { it.modelId }.map { (modelId, entries) ->
+        val pet = petUsageStore.snapshot().records.map { record ->
+            ModelTokenStats(record.modelId, TokenUsageAggregate(record.usage.inputTokens, record.usage.outputTokens, record.usage.estimated))
+        }
+        (chat + kg + rolledBack + pet).groupBy { it.modelId }.map { (modelId, entries) ->
             ModelTokenStats(modelId, TokenUsageAggregate(
                 entries.sumOf { it.usage.inputTokens }, entries.sumOf { it.usage.outputTokens }, entries.any { it.usage.estimated },
                 cache = entries.map { it.usage.cache }.sumCacheUsage(),
@@ -119,7 +124,10 @@ class TokenStatsRepository(
             val day = java.time.Instant.ofEpochMilli(record.createdAt).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
             DailyTokenStats(day, record.usage.input.toLong(), record.usage.output.toLong())
         }
-        (chat + kg + rolledBack).groupBy { it.day }.map { (day, records) ->
+        val pet = petUsageStore.snapshot().dailyUsage.filter { it.day >= firstDay }.map {
+            DailyTokenStats(it.day, it.usage.inputTokens, it.usage.outputTokens)
+        }
+        (chat + kg + rolledBack + pet).groupBy { it.day }.map { (day, records) ->
             DailyTokenStats(day, records.sumOf { it.inputTokens }, records.sumOf { it.outputTokens }, records.map { it.cache }.sumCacheUsage())
         }.sortedBy { it.day }
     }
@@ -129,12 +137,15 @@ class TokenStatsRepository(
             val chat = messageDao.getTotalTokenUsage()
             val kg = kgUsageStore.snapshot()
             val rolledBack = records.usage()
+            val pet = petUsageStore.snapshot()
             listOf(
                 CategoryTokenStats("chat", TokenUsageAggregate(
                     chat.total_input + rolledBack.inputTokens, chat.total_output + rolledBack.outputTokens, rolledBack.estimated, cache = chat.cache,
                 )),
                 CategoryTokenStats("kg", TokenUsageAggregate(kg.usage.inputTokens, kg.usage.outputTokens, kg.usage.estimated), kg.calls),
-            )
+            ) + if (pet.calls > 0) listOf(
+                CategoryTokenStats("pet", TokenUsageAggregate(pet.usage.inputTokens, pet.usage.outputTokens, pet.usage.estimated), pet.calls),
+            ) else emptyList()
         }
     }
 
@@ -142,6 +153,7 @@ class TokenStatsRepository(
         val clearMessageUsage: suspend () -> Unit = {
             messageDao.clearAllTokenData()
             kgUsageStore.clear()
+            petUsageStore.clear()
         }
         if (rolledBackSummaryUsageStore == null) clearMessageUsage()
         else rolledBackSummaryUsageStore.reset(clearMessageUsage)
