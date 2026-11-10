@@ -41,6 +41,10 @@ import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.background.schedule.canScheduleExact
 import com.promenar.infinity.background.schedule.exactAlarmPermissionIntent
 import com.promenar.infinity.distribution.DistributionCapabilities
+import com.promenar.infinity.data.jobs.MAX_GLOBAL_RUNNING
+import com.promenar.infinity.data.jobs.MAX_SESSION_RUNNING
+import com.promenar.infinity.data.schedule.MAX_GLOBAL_SCHEDULES
+import com.promenar.infinity.data.schedule.MAX_SESSION_SCHEDULES
 import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.domain.schedule.ScheduledTask
 import com.promenar.infinity.ui.chat.components.BackgroundJobRow
@@ -220,7 +224,7 @@ internal fun BackgroundActivitySettingsContent(
         }
         InfinitySettingsSection(
             title = stringResource(R.string.agent_jobs_title),
-            footer = stringResource(R.string.settings_background_jobs_footer),
+            footer = stringResource(R.string.settings_background_jobs_footer, MAX_SESSION_RUNNING, MAX_GLOBAL_RUNNING),
         ) {
             if (jobs.isEmpty()) EmptyRow(stringResource(R.string.settings_background_jobs_empty))
             // 列表各项等高：按全部任务算出是否有运行中任务、运行中传输。
@@ -243,7 +247,7 @@ internal fun BackgroundActivitySettingsContent(
         }
         InfinitySettingsSection(
             title = stringResource(R.string.agent_schedules_title),
-            footer = stringResource(R.string.settings_background_schedules_footer),
+            footer = stringResource(R.string.settings_background_schedules_footer, MAX_SESSION_SCHEDULES, MAX_GLOBAL_SCHEDULES),
         ) {
             if (schedules.isEmpty()) EmptyRow(stringResource(R.string.settings_background_schedules_empty))
             // 精确闹钟授权由本页上方的“精确闹钟”设置项提供，任务行保持等高。

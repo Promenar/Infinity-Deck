@@ -91,9 +91,9 @@
     <string name="settings_background_notifications">通知</string>
     <string name="settings_background_notifications_on">已允许</string>
     <string name="settings_background_notifications_off">未允许</string>
-    <string name="settings_background_jobs_footer">上限：每个会话同时 3 个，共 6 个</string>
+    <string name="settings_background_jobs_footer">上限：每个会话同时 %1$d 个，共 %2$d 个</string>
     <string name="settings_background_jobs_empty">没有后台任务</string>
-    <string name="settings_background_schedules_footer">上限：每个会话 5 个，共 20 个；不随备份迁移</string>
+    <string name="settings_background_schedules_footer">上限：每个会话 %1$d 个，共 %2$d 个；不随备份迁移</string>
     <string name="settings_background_schedules_empty">没有定时任务</string>
     <string name="settings_background_untitled_session">未命名会话</string>
     <string name="agent_jobs_log_title">任务日志</string>

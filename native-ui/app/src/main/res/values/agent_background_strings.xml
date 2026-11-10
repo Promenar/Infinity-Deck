@@ -100,9 +100,9 @@
     <string name="settings_background_notifications">Notifications</string>
     <string name="settings_background_notifications_on">Allowed</string>
     <string name="settings_background_notifications_off">Off</string>
-    <string name="settings_background_jobs_footer">Limit: 3 at once per chat, 6 in total</string>
+    <string name="settings_background_jobs_footer">Limit: %1$d at once per chat, %2$d in total</string>
     <string name="settings_background_jobs_empty">No background jobs</string>
-    <string name="settings_background_schedules_footer">Limit: 5 per chat, 20 in total. Not included in backups</string>
+    <string name="settings_background_schedules_footer">Limit: %1$d per chat, %2$d in total. Not included in backups</string>
     <string name="settings_background_schedules_empty">No scheduled tasks</string>
     <string name="settings_background_untitled_session">Untitled chat</string>
     <string name="agent_jobs_log_title">Job log</string>

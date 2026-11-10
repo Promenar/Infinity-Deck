@@ -610,8 +610,11 @@ class SubagentRunner(
         append("\n\n").append(com.promenar.infinity.ui.chat.manager.SystemPromptSections.permissions(ExecutionModeCodec.parseOrWorkspace(executionMode), runMode = runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN))
         preset?.let { append("\n\n").append(it.instruction) }
         if (tools.isEmpty()) append("\n\n本次没有可用工具，请直接根据任务内容作答。")
-        else append("\n\n").append(if (runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX)
-            com.promenar.infinity.ui.chat.manager.SystemPromptSections.LINUX_SHELL_GUIDANCE else WORKSPACE_PATHS)
+        else append("\n\n").append(when {
+            runMode != com.promenar.infinity.domain.model.SessionRunMode.LINUX -> WORKSPACE_PATHS
+            tools.any { it.function.name == "shell_exec" } -> com.promenar.infinity.ui.chat.manager.SystemPromptSections.LINUX_SHELL_POINTER
+            else -> LINUX_PATHS
+        })
     }
 
     /** 审批卡展示的内容：已知工具用专门的预览，其余工具展示完整参数，用户批准的就是实际执行的。 */
@@ -631,6 +634,7 @@ class SubagentRunner(
         private val PRETTY_JSON = kotlinx.serialization.json.Json { prettyPrint = true }
         private val CONTROL_TOOLS = setOf(SubagentLimits.WAIT_TOOL_NAME, "session_branch", "session_list", "session_stop")
         private const val INTERRUPTED_TOOL_RESULT = "工具执行被中断，状态未知。请先核对实际状态，不要直接重复可能产生副作用的操作。"
+        private const val LINUX_PATHS = "文件工具使用 Linux 路径：/workspace 为主工作区，/home/session 为会话专用空间，/mnt/<别名> 为真实路径挂载。"
         private const val WORKSPACE_PATHS = "工作区文件使用以 / 开头的虚拟路径（相对工作区根目录），文件工具接受 path 或 uuid；" +
             "先用 list_files、search_files 查找，不要猜测路径，也不要使用设备上的绝对路径。"
         private const val SYSTEM_PROMPT = "你是主智能体派生的子代理，在独立上下文中完成交给你的一项子任务。" +

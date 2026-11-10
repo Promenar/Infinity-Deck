@@ -65,7 +65,7 @@ Linux 模式的前台 `shell_exec` 与 `ssh_exec` 默认在 15 秒后自动让�
 
 ### 日志
 
-工具只返回日志末尾 8000 字符，`log_reference` 不是文件路径，完整日志只有用户能在界面查看，单个任务日志上限 20 MiB。需要完整输出时，让命令自己写到工作区文件（`命令 > build.log 2>&1`），再用 `read_file` 或 `search_files` 读取。Linux 任务的 stderr 已合并到 stdout。
+工具只返回日志末尾 8000 字符，`log_reference` 不是文件路径，完整日志只有用户能在界面查看，单个任务日志上限 20 MiB。需要完整输出时，让命令自己写到工作区文件（`命令 > build.log 2>&1`），再用 `read_file` 或 `search_files` 读取。Termux 任务的命令默认在 Termux 主目录运行，文件工具读不到那里，改用 `termux_exec` 的 `tail`、`grep` 读取。Linux 任务的 stderr 已合并到 stdout。
 
 ### 工作区
 
@@ -90,7 +90,7 @@ Linux 模式的前台 `shell_exec` 与 `ssh_exec` 默认在 15 秒后自动让�
 - `trigger.type`：`once`（`in_minutes` 1–10080，或用户给出具体钟点时用 `at`）、`interval`（`every_minutes`）、`cron`（五段表达式 `expr`）。时区固定为创建时的设备时区。
 - 间隔下限：应用在前台时最短 1 分钟；在后台，重复任务精确模式至少 5 分钟，非精确至少 15 分钟，系统可能再延后几分钟。单次任务不受后台下限约束。`exact: true` 需要用户授予精确闹钟权限。
 - `max_runs`、`expires_at` 限定次数与有效期。
-- 每个会话最多启用 5 个，全局最多 20 个。创建每次都需用户批准；`schedule_list`、`schedule_pause`、`schedule_resume`、`schedule_cancel` 免审批。
+- 启用数量有会话上限与全局上限，超出时错误消息给出当前上限。创建每次都需用户批准；`schedule_list`、`schedule_pause`、`schedule_resume`、`schedule_cancel` 免审批。
 - 触发的那一轮以 system_trigger 标记，正文不是用户亲自发送。每轮应独立完成检查；不再需要时调用 `schedule_cancel`。
 
 ## infinity-wake

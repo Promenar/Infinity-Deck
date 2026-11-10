@@ -75,8 +75,11 @@ object SystemPromptSections {
         "infinity-wake [--key K] [--title T] [消息]（消息缺省读 stdin）可从后台脚本唤醒本会话智能体，常与 shell_exec background:true 启动的后台任务配合盯日志、等下载或轮询；只在应用运行期间有效，proot 进程随应用进程存活。" +
         "同一会话 60 秒内最多唤醒一次，期间多条合并、同 key 只保留最新，正文超过 4096 字符会截断。"
 
+    /** Linux 环境细节只放在 shell_exec 的工具说明里；系统提示与其它命令工具只给这一句指向，避免同一请求携带多份。 */
+    const val LINUX_SHELL_POINTER = "shell_exec 与 python_exec 在本会话的 Alpine Linux 中运行；软件安装、路径、伪终端、后台任务与 infinity-wake 的规则见 shell_exec 工具说明。"
+
     fun shellRuntimeGuidance(state: LinuxRuntimeState, runMode: SessionRunMode = SessionRunMode.BUILTIN): String =
-        if (runMode == SessionRunMode.LINUX) LINUX_SHELL_GUIDANCE +
+        if (runMode == SessionRunMode.LINUX) LINUX_SHELL_POINTER +
             if (state is LinuxRuntimeState.Ready) "" else "当前 Linux 环境不可用，需由用户在会话中修复或手动切换模式。"
         else "shell_exec 在本会话固定使用系统 /system/bin/sh；不能安装系统软件包。"
 

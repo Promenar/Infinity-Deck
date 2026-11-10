@@ -19,7 +19,7 @@ object SessionRunModeToolDefinitions {
         val base = tool.baseDefinitionDigest ?: (ToolInvocationIdentityFactory.definitionDigest(tool) as? ToolDefinitionDigestResolution.Valid)?.digest ?: return tool
         val description = when (name) {
             "shell_exec" -> SystemPromptSections.LINUX_SHELL_GUIDANCE
-            "python_exec" -> "在本会话 Linux 环境的 python3 中执行 code，可使用本会话保密库的环境变量引用与 capture_secret；捕获强制前台。" + SystemPromptSections.LINUX_SHELL_GUIDANCE
+            "python_exec" -> "在本会话 Linux 环境的 python3 中执行 code，可使用本会话保密库的环境变量引用与 capture_secret；捕获强制前台。路径、pip 与 apk 安装、后台任务规则与 shell_exec 工具说明相同。"
             else -> "$name。$PATHS"
         }
         val schema = if (name !in files) tool.function.parameters else runCatching {

@@ -18,6 +18,10 @@ import kotlinx.coroutines.sync.withLock
 /** 厂商系统会把精确闹钟对齐到约 1.5 分钟的窗口内送达；超过该容差才视为错过后补发。 */
 internal const val CATCH_UP_TOLERANCE_MILLIS = 5 * 60_000L
 
+/** 启用中定时任务的数量上限；设置页文案与错误消息引用同一常量。 */
+internal const val MAX_SESSION_SCHEDULES = 5
+internal const val MAX_GLOBAL_SCHEDULES = 20
+
 interface ScheduleBackend {
     fun canUseExact(): Boolean
     fun schedule(task: ScheduledTaskEntity)
@@ -77,8 +81,8 @@ class DefaultScheduledTaskController(
     }
 
     private suspend fun checkCapacity(sessionId: String) {
-        require(dao.countEnabled(sessionId) < 5) { "本会话最多启用 5 个定时任务。" }
-        require(dao.countEnabled(null) < 20) { "全局最多启用 20 个定时任务。" }
+        require(dao.countEnabled(sessionId) < MAX_SESSION_SCHEDULES) { "本会话最多启用 $MAX_SESSION_SCHEDULES 个定时任务。" }
+        require(dao.countEnabled(null) < MAX_GLOBAL_SCHEDULES) { "全局最多启用 $MAX_GLOBAL_SCHEDULES 个定时任务。" }
     }
 
     override suspend fun pause(id: String) = withContext(Dispatchers.IO) {
