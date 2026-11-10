@@ -3,11 +3,11 @@
 > 日期：2026-11-10
 > 范围：Infinity Deck 会话宠物（第一阶段：会话页输入框浮岛上的宠物；后续阶段：全局悬浮窗宠物）
 > 状态：调研稿，方向待用户确认，未改产品代码
-> 首个形象：DeepSeek 大肥鱼（蓝色鲸鱼女仆 Q 版），设定图在本机 `artifacts/pet-reference/deepseek-whale-maid-sheet.webp`（不入库）
+> 形象：Infinity Deck 不内置任何宠物形象，形象全部以社区宠物包导入；首个测试形象为 DeepSeek 大肥鱼（蓝色鲸鱼女仆 Q 版），设定图在本机 `artifacts/pet-reference/deepseek-whale-maid-sheet.webp`（不入库）
 
 ## 1. 结论
 
-推荐方案：**3D 卡通渲染角色**。运行时用 Filament（Apache-2.0），素材用 VRM 格式：VRoid Studio 起模，Blender 补鲸鱼尾、鲸鳍耳、女仆头饰；自研一层 VRM 支持，包括 SpringBone 物理、Expression 表情、LookAt 视线和卡通着色。状态机与程序化运动层与渲染无关，直接沿用浏览器原型的设计。
+推荐方案：**3D 卡通渲染（3 渲 2）二次元角色**。运行时用 Filament（Apache-2.0），素材用 VRM 格式：VRoid Studio 起模，Blender 补鲸鱼尾、鲸鳍耳、女仆头饰；自研一层 VRM 支持，包括 SpringBone 物理、Expression 表情、LookAt 视线和卡通着色。状态机与程序化运动层与渲染无关，直接沿用浏览器原型的设计。
 
 理由：
 
@@ -16,19 +16,22 @@
 3. **形象系列化成本低。** 后续要出其它“模型拟人”角色，VRoid 加 Blender 的单角色成本远低于每个角色重新分层、重新绑定 2D 骨骼。
 4. **授权干净。** Filament 是 Apache-2.0，与仓库的 GPLv3 兼容；Spine 运行时和 Live2D Core 是专有许可，与 GPLv3 公开仓库有冲突（见 4.1）。
 5. **悬浮窗可用。** Filament 不依赖 Activity，可以在 Service 的 `TYPE_APPLICATION_OVERLAY` 窗口里用透明 `TextureView` 渲染（合理推断，待真机验证）。
+6. **天然适合社区宠物包。** VRM 是为跨应用携带虚拟形象设计的开放格式，模型里自带作者、许可、是否允许商用和再分发等元数据，应用可以直接展示并遵守。所有动作都写在通用人形骨骼上，应用自带一套动作库，社区作者只需提供模型就能用全部状态动作（3D 原型已验证这一点）。
 
 主要风险与对应的验证：
 
-- **画风还原度。** 3D 卡通渲染能否达到设定图那种插画的可爱度，是最大的未知数。先用浏览器做 3D 原型（three.js + three-vrm），和 2D 原型放在同一个浮岛场景里对比，再决定。
+- **画风还原度。** 3D 卡通渲染能否达到设定图那种插画的可爱度，是最大的未知数。3D 浏览器原型（第 3.2 节）用通用样例模型改出了 Q 版比例和鲸鱼部件，动作与表情已经成立；形象的可爱度取决于正式模型的建模质量，需要用 VRoid 按设定图建出第一版模型后再评估。
 - **自研工作量。** Kotlin + Filament 没有现成的 VRM 实现，VRM 解析、表情映射、SpringBone、LookAt、卡通材质估计 3 到 6 人周（推断）。可参考 flutter_vrm（MIT）和 three-vrm 的实现。
 - **包体。** filament-android 与 gltfio-android 的 AAR 合计约 11 MB（含全部 ABI，已核验 1.77.3 版），按 ABI 拆分后单个 APK 增量更小（各 ABI 实际大小未核实）。
 - **功耗。** 空闲时降到 15 到 30 fps，宠物静止或不可见时停帧，真机测功耗后定档。
 
 备选方案：**Rive**。运行时 MIT，有官方 Compose 组件（Beta），内置状态机与数据绑定，arm64 包体约 2.4 MB。头发、尾巴的物理要用 Luau 脚本自写。适合 3D 原型对比后觉得 2D 插画质感更重要的情况，素材用 AI 分层部件。
 
-不推荐：Spine 与 Live2D（GPL 兼容性与开源协作者授权问题）、Godot 嵌入（AAR 103 MB，单实例）、Unity 嵌入（只能全屏，不能用于悬浮窗）、DragonBones（停维）、纯序列帧（就是 Codex 的做法，过渡与物理都做不到）。
+序列帧作为第二种宠物包类型保留：GPT-Image 2.6（2026-11-04 发布）可以从提示词或图片直接生成 GIF 动图并逐帧编辑，社区作者做一套精灵图的门槛很低。精灵图包的格式兼容 Codex 宠物（`spritesheet.webp` + `pet.json`），叠加应用自己的程序化运动层（呼吸缩放、弹跳、过渡淡化），观感也能好于 Codex 原版。
 
-第一阶段 MVP 与素材清单见第 7 节。
+不推荐：Spine 与 Live2D（GPL 兼容性与开源协作者授权问题；Live2D 对“可加载任意模型的拓展性应用”另有审查签约要求，与社区导入模式冲突）、Godot 嵌入（AAR 103 MB，单实例）、Unity 嵌入（只能全屏，不能用于悬浮窗）、DragonBones（停维）。
+
+宠物包设计见第 7 节，第一阶段 MVP 与素材清单见第 8 节。
 
 ## 2. 对标对象：Codex 宠物
 
@@ -41,6 +44,8 @@
 这意味着 Codex 宠物的观感上限由“低帧数逐帧 + 状态硬切”决定：没有骨骼过渡，没有物理次级运动，动作之间直接跳帧。要明显超过它，至少需要三样东西：连续的程序化运动（呼吸、头部、身体）、跟随运动滞后摆动的头发与尾巴、状态之间的平滑过渡。
 
 ## 3. 浏览器原型的结论
+
+### 3.1 2D 原型
 
 原型：[鲸鱼女仆宠物原型](https://claude.ai/artifact/YFji8kFE5JkEyxrk5aK81h)（claude.ai 私有页面；本地副本在共享笔记目录 `pet-research/pet-proto.html`）。做法是从设定图直接抠出 7 张单图，每张套 29×29 顶点网格，用程序化运动、4 组弹簧（左右头发、尾巴、呆毛）和状态机驱动，切换状态时做交叉淡化与弹簧回弹。
 
@@ -58,6 +63,28 @@
 - 分辨率：素材约 190 像素高，放到手机 3 倍密度会发虚。正式素材需要按显示尺寸的 3 倍以上出图。
 
 原型里的运动层（弹簧、程序化呼吸与头部运动、状态到动作的映射、过渡策略）与渲染方案无关，正式实现时可以原样迁移到任何方案。
+
+### 3.2 3D 原型
+
+原型：[鲸鱼女仆 3D 原型](https://claude.ai/artifact/UdSutASLmetCQAmF71eV89)（claude.ai 私有页面；本地副本在共享笔记目录 `pet-research/pet-3d.html`）。技术栈为 three.js 0.185 + three-vrm 3.5.5，模型用 VRM 官方样例 `VRM1_Constraint_Twist_Sample`（pixiv 用 VRoid 制作，VRM Public License 1.0，允许再分发）。原型在样例模型上做了这些改造：头部放大 1.9 倍、腿和手臂缩短（Q 版比例），头发与瞳孔按亮度重映射成蓝色渐变，上衣染成藏青；程序补上 6 节鲸鱼尾（水平尾鳍）、鲸鳍耳、荷叶边头饰和蝴蝶结。
+
+已验证（本地浏览器，逐个状态截图）：
+
+- 同一套模型做出 8 个状态的全身动作：坐在浮岛边晃腿、手托下巴思考、左手端碗右手持筷吃饭（咀嚼口型）、站起打字（前方浮现工具面板）、举手挥动等审批、双手举起跳跃欢呼、低头摇头委屈、坐着打瞌睡（周期性点头惊醒）。
+- 姿势之间用骨骼四元数平滑过渡，坐下、站起是连续动作，不是交叉淡化。
+- 眨眼、开心、惊讶、委屈、放松、口型全部来自模型自带的 VRM 表情；视线按状态看向不同方向。
+- 头发由模型自带的 57 个弹簧骨骼驱动；鲸鱼尾和鲸鳍耳用自写弹簧驱动，随跳跃和摇头滞后摆动。
+- 按住拖动可以转身看侧面和背面。
+- 所有动作只引用人形骨骼名，不引用模型自身的任何节点，换别的 VRM 模型可以直接复用。
+- 样例模型约 4.4 万三角面，浏览器内 120 fps。
+
+原型发现的工程要点：
+
+- 不能通过缩放整个模型来控制显示大小，弹簧骨骼的碰撞半径不随缩放变化，头发会被撑开；应保持模型原始尺寸，调整相机距离。
+- 补部件要先按世界坐标摆好再挂到骨骼上，不能依赖原始骨骼的局部坐标轴。
+- Q 版缩放后脚底高度会变，站立与坐下的落点要按实测的脚底、髋部高度计算。
+
+样例模型是正常比例的长直发少女，原型只能近似 Q 版和女仆造型；卷发、女仆裙、围裙这些要在正式模型里建。
 
 ## 4. 方案比较
 
@@ -79,7 +106,7 @@
 
 ### 4.2 2D 方案
 
-来源均为官方页面，详见第 8 节。
+来源均为官方页面，详见第 9 节。
 
 | 方案 | 自然度上限 | 状态机 | Compose 集成 | 包体 | 费用 | 主要风险 |
 |---|---|---|---|---|---|---|
@@ -152,7 +179,7 @@
 
 ## 6. 全局悬浮窗（后续阶段）
 
-已核验（来源见第 8 节）：
+已核验（来源见第 9 节）：
 
 - `SYSTEM_ALERT_WINDOW` 在 Play 属于特殊权限，没有专门的声明表单；要求只为没有替代方案的核心功能申请、引导用户到系统设置授权、拒绝后有替代方案。
 - Android 14 起前台服务必须声明 `foregroundServiceType`；`specialUse` 要在 manifest 写 `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`，并在 Play Console 声明、接受审核。
@@ -162,11 +189,67 @@
 
 建议：悬浮窗先只做侧载版（权限放进 `src/sideload/AndroidManifest.xml`），Play 版用通知加系统气泡（Bubbles）承载同样的状态与跳转。悬浮窗的渲染方案要能放进 `WindowManager` 窗口：Compose 原生、Rive、Spine（Canvas）都没有问题；GL/3D 方案要用 `TextureView` 或 `SurfaceView` 并验证透明背景与功耗。
 
-## 7. 第一阶段 MVP、素材清单与制作管线
+## 7. 宠物包：导入、导出与管理
 
-### 7.1 MVP 范围
+Infinity Deck 本身不附带宠物形象，所有形象以宠物包形式由社区制作、分享和导入。这样具体形象及其商标、版权都留在宠物包作者那里，与本项目分离。
 
-- 会话页浮岛上的宠物，一个形象（鲸鱼女仆）。
+### 7.1 Android 能否在运行时导入动画素材
+
+可以。宠物包是纯数据，不是可执行代码：
+
+- VRM / glTF 模型、VRMA 动作、图片、JSON 都在运行时由渲染器解析。Filament 的 gltfio 可以直接从内存缓冲区加载 glb。
+- 导入走系统文件选择器（SAF，`ACTION_OPEN_DOCUMENT`）或分享菜单接收，复制到应用私有目录后加载，不需要存储权限。
+- Google Play 的“设备和网络滥用”政策禁止从 Play 以外下载可执行代码（dex、JAR、.so）；在虚拟机或解释器中运行、只能间接访问 Android API 的代码不受这条限制，但运行时加载的解释型代码不得造成违反 Play 政策的行为（[政策原文](https://support.google.com/googleplay/android-developer/answer/16559646)）。模型、贴图、动作数据不是可执行代码；宠物包格式不包含脚本，保持在这条政策之外。
+
+### 7.2 包格式草案
+
+扩展名暂定 `.idpet`，本质是 zip：
+
+- `manifest.json`：
+  - 包 ID、名称、版本、作者、许可证。VRM 包的许可直接取模型元数据（是否允许商用、再分发、修改，署名要求）。
+  - 渲染类型：`vrm` 或 `sprite`。
+  - 入口文件。
+  - 状态映射：每个宠物状态对应的动作片段名或精灵图行号，缺省时用应用内置动作。
+  - 显示参数：显示高度、落点、朝向。
+- `model.vrm`：VRM 1.0 模型；VRM 0.x 也要支持，社区存量模型大量是 0.x。
+- `animations/*.vrma`：可选，覆盖内置动作。
+- `props/*.glb`：可选，角色专属道具，例如鲸鱼女仆的饭碗和筷子。
+- `spritesheet.webp` + `pet.json`：`sprite` 类型使用，兼容 Codex 宠物格式。
+- `thumbnail.webp`：管理页缩略图。
+
+应用内置、随应用发布的部分：
+
+- 状态机。
+- 一套通用人形动作库（VRMA，项目自有或获得许可）。
+- 程序化运动层。
+- 通用特效（问号、zZ、审批气泡）。
+
+### 7.3 安全与限制
+
+宠物包来自不可信来源，解析器在原生代码里运行：
+
+- **先校验再加载：**
+  - 解压时防目录穿越（zip slip）。
+  - 限制总大小（例如 30 MB）、贴图尺寸（例如 2048²）、三角面数、骨骼数、表情数和动作时长。
+  - `manifest.json` 按 schema 校验。
+  - glb 头部和 JSON 块先在 Kotlin 侧解析检查，再交给原生解析器。
+- **加载失败隔离：** 解析失败只禁用该宠物包，不影响会话页。
+- **导出与分享：**
+  - 导出已安装的宠物包时保留原作者元数据。
+  - 模型元数据不允许再分发时，禁用导出与分享按钮。
+
+### 7.4 管理界面
+
+- 宠物列表：缩略图、名称、作者、许可。
+- 操作：启用、导入、导出、删除。
+- 单个宠物的设置：显示大小、是否在会话页显示、是否用于悬浮窗。
+
+## 8. 第一阶段 MVP、素材清单与制作管线
+
+### 8.1 MVP 范围
+
+- 会话页浮岛上的宠物。
+- 宠物包导入、启用、删除（第 7 节）；应用不内置形象，开发期用鲸鱼女仆测试包验收，测试包不进仓库。
 - 状态：空闲、准备、思考、生成中（吃白饭）、调用工具、等待审批、等你回答、完成、出错、睡觉，按第 5 节映射。
 - 交互：
   - 点击摸头，有反应动作。
@@ -174,9 +257,9 @@
   - 设置里可以关闭宠物。
 - 跟随系统“移除动画”设置降级为静态姿势。
 - 不可见（页面切走、应用进后台、浮岛收起）时停帧。
-- 不在 MVP：全局悬浮窗、多形象、用户导入模型、宠物换装。
+- 不在 MVP：全局悬浮窗、宠物包导出与分享、精灵图包类型、宠物换装。
 
-### 7.2 素材清单（3D 路线）
+### 8.2 素材清单（3D 路线）
 
 - **角色模型：** 一套 VRM，约 1 万到 2 万三角面，贴图合计 2048² 以内。
   - 部件：Q 版人形本体、长卷发（分 6 到 10 束挂 SpringBone）、鲸鳍耳（左右）、女仆头饰与蝴蝶结、呆毛、女仆裙与围裙（裙摆挂 SpringBone）、鲸鱼尾（3 到 4 节骨骼挂 SpringBone）。
@@ -187,7 +270,7 @@
   - 过渡动作：坐下、起身、躺下。
 - **道具：** 白饭碗、筷子、鲸鱼玩偶、枕头、工具图标、审批气泡、zZ 与问号特效。
 
-### 7.3 制作管线
+### 8.3 制作管线
 
 1. **定稿形象：** 以设定图为准，用 GPT Image 2.5 补齐正、侧、背三视图和细节特写（头饰、尾巴、鞋）。GPT Image 2.5 支持 `background: "transparent"`。
 2. **起模：** VRoid Studio 做本体、头发、服装，贴图可以用生图模型绘制后再手修。
@@ -196,11 +279,11 @@
 5. **出道具：** 用 AI 图生 3D 做道具（TRELLIS.2 本地或 Meshy Pro），重拓扑后贴卡通材质。
 6. **真机调参：** 调节动画混合时长、SpringBone 参数、帧率档位和功耗。
 
-### 7.4 AI 工具的授权提醒
+### 8.4 AI 工具的授权提醒
 
 | 工具 | 许可证 | 能否用于打包进应用的素材 |
 |---|---|---|
-| GPT Image 2.5（OpenAI） | OpenAI 服务条款，输出归用户 | 可以 |
+| GPT Image 2.5 / 2.6（OpenAI） | OpenAI 服务条款，输出归用户 | 可以 |
 | Qwen-Image-Layered | Apache-2.0 | 可以 |
 | Qwen Image 2.1 | Qwen Research License，只允许“研究或评估”用途，商用需另行授权（已核验许可证原文） | 只用于构思和评估；正式素材改用其它工具，或先取得授权 |
 | TRELLIS.2 | MIT | 可以 |
@@ -208,19 +291,18 @@
 | Hunyuan3D 2.1 | 社区许可，排除欧盟、英国、韩国 | 不建议，应用全球分发 |
 | RMBG-2.0 | CC BY-NC 4.0 | 不可以；抠图用 BiRefNet（代码 MIT，权重许可未标明，待复核）或生成时直接出透明通道 |
 
-“Codex Image 2.6”没有查到官方资料，未核实；如果它属于 OpenAI 图像模型系列，授权按 OpenAI 服务条款处理。
+GPT-Image 2.6（2026-11-04 随 ChatGPT Images 2.6 发布，API 有 Flare 与 Sunburst 两个变体）可以从提示词或图片直接生成 GIF 动图并逐帧编辑，适合做精灵图包和动作参考；授权按 OpenAI 服务条款处理。API 是否直接支持 GIF 输出只见于第三方资料，使用前以官方 API 文档为准。
 
-另外，形象以 DeepSeek 为原型，名称和鲸鱼标志涉及第三方商标，对外发布前需要确认商标使用方式。
+形象涉及的第三方商标与版权由宠物包作者负责，项目仓库与安装包不包含任何具体形象。
 
-### 7.5 下一步验证
+### 8.5 下一步验证
 
-1. 做 3D 浏览器原型：three.js + three-vrm，加载一个可用于测试的 VRM 样例模型，放进与 2D 原型相同的浮岛场景，对比卡通渲染质感、SpringBone 摆动、表情和动作过渡。
-2. 用户在两个原型之间定方向。
-3. 定方向后再做 Android 技术验证：
-   - 3D 路线：Filament 透明 `TextureView` 叠在 Compose 上的帧率与功耗。
-   - Rive 路线：用官方示例文件测数据绑定驱动状态机。
+1. 用户对比 2D 与 3D 两个原型，确认方向。
+2. 按设定图在 VRoid 中建出鲸鱼女仆第一版 Q 版模型，评估 3 渲 2 的可爱度。
+3. Android 技术验证：Filament 透明 `TextureView` 叠在 Compose 上，加载 VRM 样例模型，测帧率、功耗、内存与包体增量。
+4. 定宠物包格式与校验规则，写成规格文档。
 
-## 8. 来源
+## 9. 来源
 
 - Codex 宠物：https://github.com/openai/skills/blob/main/skills/.curated/hatch-pet/SKILL.md
 - Spine：https://esotericsoftware.com/spine-android 、https://esotericsoftware.com/spine-runtimes-license 、https://esotericsoftware.com/spine-editor-license 、https://esotericsoftware.com/spine-purchase 、https://esotericsoftware.com/spine-physics-constraints
@@ -230,6 +312,10 @@
 - DragonBones：https://github.com/DragonBones/DragonBonesJava
 - 分层工具：https://github.com/QwenLM/Qwen-Image-Layered 、https://github.com/shitagaki-lab/see-through
 - 透明视频：https://huggingface.co/htdong/Wan-Alpha
+- Play 可执行代码政策：https://support.google.com/googleplay/android-developer/answer/16559646
+- GPT-Image 2.6：https://community.openai.com/t/images-upgraded-introducing-chatgpt-images-2-6/1412901 、https://the-decoder.com/chatgpt-can-now-turn-text-prompts-and-photos-into-animated-gifs-with-openais-images-2-6-model/
+- VRM 样例模型：https://github.com/vrm-c/vrm-specification/tree/master/samples/VRM1_Constraint_Twist_Sample 、https://vrm.dev/licenses/1.0/
+- three-vrm：https://github.com/pixiv/three-vrm
 - 悬浮窗与前台服务：https://support.google.com/googleplay/android-developer/answer/16558241 、https://developer.android.com/develop/background-work/services/fgs/service-types 、https://support.google.com/googleplay/android-developer/answer/13392821 、https://developer.android.com/about/versions/15/behavior-changes-15
 - Filament：https://github.com/google/filament 、https://google.github.io/filament/main/materials.html 、https://github.com/google/filament/blob/main/android/filament-android/src/main/java/com/google/android/filament/android/UiHelper.java 、https://repo1.maven.org/maven2/com/google/android/filament/
 - SceneView：https://github.com/sceneview/sceneview-android 、https://repo1.maven.org/maven2/io/github/sceneview/sceneview/
