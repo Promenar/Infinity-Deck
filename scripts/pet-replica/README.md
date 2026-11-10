@@ -1,0 +1,23 @@
+# 会话宠物原型：鲸鱼女仆模型工具
+
+开发测试用脚本。模型、贴图等角色形象资产不进仓库，产物放在仓库外的共享笔记目录。
+
+## 两条路线
+
+- **手工脚本建模**（本目录）：`build.sh <构建目录> <产物目录> [Python]`
+  - `make_textures.py` 程序绘制贴图（需要 Pillow、numpy）；
+  - `build_model.py`、`meshkit.py` 在 Blender 里按设定图脚本建模，含骨骼与形态键表情；
+  - 这条路线已停止，保留作参考。
+- **图生 3D 网格转 VRM**（`v2/`）：`v2/build.sh <输入.glb> <工作目录> <产物目录> [起始阶段]`
+  - `s1_prepare.py` 焊接、归一化、采样顶点色；
+  - `s2_lowpoly.py` 体素重建、剔除里层、减面、部位分区、切口封口；
+  - `s3_bake.py` 展 UV、颜色传递、法线烘焙；
+  - `s4_rig.py` 骨骼、权重、摆 T 姿势、导出 glb；
+  - `render_blook.py` 用 B 版工程渲染高低模对比；`render_dbg.py`、`inspect_src.py` 为检查用；
+  - 只用 Blender 自带的 Python。
+
+## 共用
+
+- `glb_to_vrm.py`：向 glb 写入 `VRMC_vrm`、`VRMC_springBone`、`VRMC_materials_mtoon`，不依赖 Blender 的 VRM 插件，只需 numpy。
+- `viewer.html`、`serve.py`：three-vrm 多视角检查器与本地服务（含截图保存端点）。
+- `patch_prototype.py`：从 3D 原型 `pet-3d.html` 生成加载复刻模型的副本。
