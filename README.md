@@ -39,7 +39,7 @@ On the train or in bed, pick up the phone and keep going.
 ## How it differs from remote control
 
 - **The phone does the work.** A built-in Alpine Linux runs git, Python, Node.js and FFmpeg on the phone, with no computer that has to stay online.
-- **Straight to your own machines.** A Tailscale node inside the app takes SSH, models and MCP straight into your tailnet — the servers you run, the GPU at home — with no open ports and no system VPN.
+- **Straight to your own machines.** A Tailscale node inside the app takes SSH, models, MCP and the browser straight into your tailnet — the servers you run, the GPU at home — with no open ports and no system VPN.
 - **Any model you like.** Bring a key for any provider, switch mid-chat, or point it at a model on your own hardware.
 - **Made for the phone.** Approval cards, background tasks, a message queue, touch lock and the foldable cover screen work one-handed, lying down or on the train.
 - **Works alongside your desktop tools.** Keep your usual AI coding tools at the desk; when you leave, the phone picks up the same git repo, and while the computer is on it can SSH in and borrow its power.
@@ -90,7 +90,7 @@ On the train or in bed, pick up the phone and keep going.
   <tr>
     <td width="50%" valign="top">
       <h3>Your notes and drafts, close at hand</h3>
-      Import PDF, Word or Markdown, or mount an outside folder. It searches documents, long-term memory and the knowledge graph together and cites its answers. Ask for artwork when the draft is done and the images generate in the background; export the result as a web page, an A4 PDF or a long image.
+      Import PDF, Word or Markdown, or mount an outside folder. It searches documents, long-term memory and the knowledge graph together and cites its answers. Ask for artwork when the draft is done and the images generate in the background; export the result as a web page, an A4 PDF or a long image. Open a Markdown file from your file manager and it lands in the viewer, ready to save or send to a chat.
     </td>
     <td width="50%" valign="top">
       <h3>Your machines at home, on call</h3>
@@ -103,6 +103,7 @@ On the train or in bed, pick up the phone and keep going.
 
 - **It asks before every command.** By default nothing runs without your approval, and deleting files always needs your OK, whatever mode you're in.
 - **Passwords never pass through the AI.** When one is needed, a secret input card stores it straight into the credential. It never enters the chat, and screenshots are blocked while it's shown.
+- **Every key in one keychain.** SSH keys, Git tokens, API keys and website logins are stored encrypted. Showing a value takes device authentication and it hides again after 30 seconds; a copied value leaves the clipboard after 60.
 - **Your data stays on your phone.** Chats, documents and settings live on the device, and model requests go straight to the provider you chose, never through a server of ours.
 - **You own your backups.** Save them to a local file or WebDAV, encrypted if you like.
 - **Fully open source.** GPL-3.0.
@@ -158,23 +159,29 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Built-in shell, Python and JavaScript sandboxes even without Linux
 - Built-in git; branches, diffs and commits in the Git panel
 - Git passwords injected per command, never written to repo config
+- The agent reads text files up to 100 MiB, a section at a time
 
 **Servers & private network**
 
 - SSH by host alias to run commands and read or write files, up to 4 GiB per file
+- SSH keys live in the keychain: generate Ed25519 or RSA 4096, or import OpenSSH, PEM and PKCS8 keys, passphrase-protected ones included
+- Deploy a public key to several hosts at once, with a test login before any host switches to it
 - Take over any time in a real terminal or with port forwarding
 - A Tailscale node inside the app, with self-hosted Headscale support
-- Models, SSH and MCP reach your tailnet directly — no open ports, no system VPN
+- Models, SSH, MCP and the browser reach your tailnet directly — no open ports, no system VPN
 
 **Documents & knowledge**
 
 - Search documents, long-term memory and the knowledge graph together, with cited answers
 - One graph per work — follow how two characters stand with each other, chapter by chapter
 - Mount outside folders; PDF, Word, Markdown, HTML and more
+- Open Markdown files from other apps: save as, save to Storage, or send to a chat as an attachment or a reference
+- Large Markdown renders in chunks; text up to 16 MiB is shown
 
 **Web & output**
 
 - Browser tabs, mobile or desktop sites; watch the agent, take over and hand it back
+- Type `localhost:8888` to open services running in Linux or Termux
 - Canvas pages, clickable multi-screen prototypes and versioned artifacts
 - Image generation with a drawing board for markup and masks
 - Export chats as a web page, A4 PDF or long image
