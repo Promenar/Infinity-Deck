@@ -96,6 +96,7 @@ class BackupPreferenceInventoryTest {
             "data/rag/SessionGraphExtraction.kt#preferences" to "session_graph_stats",
             "data/rag/EmbeddingSetupHint.kt#prefs" to "infinity_settings",
             "data/repository/RolledBackSummaryUsageStore.kt#preferences" to "infinity_settings",
+            "data/pet/PetPreferenceStore.kt#preferences" to "infinity_settings",
             "ui/settings/BackupViewModel.kt#prefs" to "infinity_backup_settings",
             "ui/settings/SettingsViewModel.kt#prefs" to "infinity_settings",
             "ui/theme/ThemePreferenceStore.kt#preferences" to "infinity_settings",

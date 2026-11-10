@@ -57,7 +57,7 @@ class PetPackageStoreTest {
     )
     private suspend fun PetPackageStore.install(bytes: ByteArray) = import(ByteArrayInputStream(bytes))
 
-    @Test fun `导入覆盖删除与导出恢复`() = runBlocking {
+    @Test fun `导入覆盖删除与导出恢复`() = runBlocking<Unit> {
         val root = temporary.newFolder()
         val prefs = preferences()
         val store = PetPackageStore(root, prefs, metadata)
@@ -79,7 +79,7 @@ class PetPackageStoreTest {
         assertThat(prefs.modelPets.value).containsExactly("other", "different")
     }
 
-    @Test fun `路径大小解析和校验错误不安装`() = runBlocking {
+    @Test fun `路径大小解析和校验错误不安装`() = runBlocking<Unit> {
         val root = temporary.newFolder()
         val store = PetPackageStore(root, preferences(), metadata, PetLimits(maxPackageBytes = 1024))
         val unsafe = store.install(archive("../bad.txt" to "x")) as PetImportResult.Invalid
@@ -94,7 +94,7 @@ class PetPackageStoreTest {
         assertThat(store.install("not zip".toByteArray())).isEqualTo(PetImportResult.Failed(PetImportFailure.NOT_A_ZIP))
     }
 
-    @Test fun `不允许再分发且启动跳过损坏包`() = runBlocking {
+    @Test fun `不允许再分发且启动跳过损坏包`() = runBlocking<Unit> {
         val root = temporary.newFolder()
         val prefs = preferences()
         val store = PetPackageStore(root, prefs, metadata)
@@ -106,7 +106,7 @@ class PetPackageStoreTest {
         val loaded = withTimeout(5_000) { reloaded.pets.first { it.isNotEmpty() } }
         assertThat(loaded.map { it.id }).containsExactly("test.pet")
     }
-    @Test fun `文件数量与角色配置错误得到明确结果`() = runBlocking {
+    @Test fun `文件数量与角色配置错误得到明确结果`() = runBlocking<Unit> {
         val root = temporary.newFolder()
         val limited = PetPackageStore(root, preferences(), metadata, PetLimits(maxFiles = 2))
         val count = limited.install(valid()) as PetImportResult.Invalid

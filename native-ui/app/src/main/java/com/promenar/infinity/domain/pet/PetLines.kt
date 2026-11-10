@@ -2,7 +2,7 @@ package com.promenar.infinity.domain.pet
 
 /** 将数据通道值代入兜底模板，见规格第 6、7.1 节。 */
 object PetLineTemplate {
-    private val key = Regex("\\{([^{}]+)}")
+    private val key = Regex("\\{([^{}]+)\\}")
 
     fun render(template: String, data: Map<String, String>): String? {
         if (key.findAll(template).any { it.groupValues[1] !in data }) return null
