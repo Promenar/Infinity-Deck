@@ -12,6 +12,8 @@ import com.promenar.infinity.domain.repository.PatchError
 import com.promenar.infinity.domain.repository.PatchOperation
 import com.promenar.infinity.domain.repository.PatchResult
 import com.promenar.infinity.domain.repository.ReadResult
+import com.promenar.infinity.domain.repository.ReadWindowRequest
+import com.promenar.infinity.domain.repository.ReadWindowResult
 import com.promenar.infinity.domain.repository.WriteResult
 import com.promenar.infinity.infra.util.MyersDiff
 import com.promenar.infinity.infra.util.Sha256Utils
@@ -113,6 +115,33 @@ class FileOperationRepository(
             val content = if (total == 0) "" else allLines.subList(start - 1, end).joinToString("\n")
             textPolicy.validateOutput(content, WorkspaceTextContentPolicy.DEFAULT_TOOL_BUDGET)
             ReadResult(entry.uuid, entry.name, total, start, end, content, entry.hash, entry.updatedAt)
+        }
+    }
+
+    override suspend fun readFileWindow(
+        workspaceRootUuid: String,
+        uuid: String,
+        request: ReadWindowRequest,
+    ): ReadWindowResult = withContext(Dispatchers.IO) {
+        val root = bindRoot(workspaceRootUuid)
+        WorkspaceMutationCoordinator.withBoundRoot(File(root.physicalRootPath).toPath(), root.hash) {
+            val entry = requireFile(workspaceRootUuid, uuid)
+            textPolicy.requireSupportedType(entry.name, entry.mimeType)
+            if (entry.sizeBytes > ReadWindowRequest.MAX_FILE_BYTES) throw workspaceTextWindowTooLarge()
+            val rootPath = File(entry.physicalRootPath).toPath()
+            val relative = relative(entry.materializedPath)
+            // 与整读一致：隔离读取只观察当前节点，不顺带恢复临时文件。
+            if (!com.promenar.infinity.startup.StartupWriteBarrier.isReadOnly(rootId = entry.workspaceRootUuid, path = entry.physicalRootPath)) {
+                fileOps.reconcileFile(rootPath, relative, entry.hash)
+            }
+            val scan = try {
+                fileOps.readStreamLimited(rootPath, relative, ReadWindowRequest.MAX_FILE_BYTES) { input ->
+                    scanWorkspaceTextWindow(input, request)
+                }
+            } catch (_: WorkspaceFileTooLargeException) {
+                throw workspaceTextWindowTooLarge()
+            }
+            scan.toResult(entry.uuid, entry.name, entry.hash, entry.updatedAt)
         }
     }
 

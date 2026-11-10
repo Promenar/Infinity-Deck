@@ -7,6 +7,8 @@ import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.domain.repository.IFileOperationRepository
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
 import com.promenar.infinity.domain.repository.ReadResult
+import com.promenar.infinity.domain.repository.ReadWindowRequest
+import com.promenar.infinity.domain.repository.ReadWindowResult
 import com.promenar.infinity.domain.repository.RenameIndexTarget
 import com.promenar.infinity.domain.repository.RenameResult
 import com.promenar.infinity.domain.repository.WriteResult
@@ -95,8 +97,8 @@ class WorkspaceToolBehaviorTest {
         val workspace = mockk<IWorkspaceRepository>()
         val operations = mockk<IFileOperationRepository>()
         coEvery { workspace.getByMaterializedPath("root", "/docs/a.md") } returns entry("a", "/docs/a.md")
-        coEvery { operations.readFileRange("root", "a", 9, 10) } returns
-            ReadResult("a", "a.md", 12, 9, 10, "nine\nten", "hash-a", 0)
+        coEvery { operations.readFileWindow("root", "a", ReadWindowRequest(startLine = 9, endLine = 10)) } returns
+            ReadWindowResult("a", "a.md", 12, 9, 10, 0, "nine\nten", "hash-a", 0, nextLine = 11, nextLineByteOffset = 0)
 
         val result = FileReadSkill(operations, workspace).execute(
             skillArgs("path" to "docs/a.md", "mode" to "range", "startLine" to 9, "endLine" to 10),
@@ -105,6 +107,36 @@ class WorkspaceToolBehaviorTest {
 
         assertThat(result.content).contains(" 9| nine\n10| ten")
         assertThat(result.content).contains("[uuid=a]")
+        assertThat(result.content).contains("后续: mode=range startLine=11")
+    }
+
+    @Test
+    fun `read file 分页参数换算为行窗口并提示超长行续读位置`() = runTest {
+        val operations = mockk<IFileOperationRepository>()
+        coEvery { operations.readFileWindow("root", "a", ReadWindowRequest(startLine = 5, endLine = 2004, lineByteOffset = 100)) } returns
+            ReadWindowResult("a", "a.log", 9, 5, 5, 100, "片段", "hash-a", 0, nextLine = 5, nextLineByteOffset = 300)
+
+        val result = FileReadSkill(operations).execute(
+            skillArgs("uuid" to "a", "offset" to 4, "limit" to 9999, "lineByteOffset" to 100),
+            context,
+        )
+
+        assertThat(result.status).isNotEqualTo("error")
+        assertThat(result.content).contains("第 5 行自字节 100 起")
+        assertThat(result.content).contains("后续: mode=range startLine=5 lineByteOffset=300")
+        assertThat(result.content).contains("5| 片段")
+    }
+
+    @Test
+    fun `read file 起始行超出末尾时说明总行数`() = runTest {
+        val operations = mockk<IFileOperationRepository>()
+        coEvery { operations.readFileWindow("root", "a", any()) } returns
+            ReadWindowResult("a", "a.md", 3, 50, 49, 0, "", "hash-a", 0, nextLine = null, nextLineByteOffset = 0)
+
+        val result = FileReadSkill(operations).execute(skillArgs("uuid" to "a", "mode" to "range", "startLine" to 50), context)
+
+        assertThat(result.content).contains("后续: 已到文件末尾")
+        assertThat(result.content).contains("起始行 50 超出文件总行数 3")
     }
 
     @Test
@@ -117,7 +149,7 @@ class WorkspaceToolBehaviorTest {
         )
 
         assertThat(result.status).isEqualTo("error")
-        coVerify(exactly = 0) { operations.readFileRange(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { operations.readFileWindow(any(), any(), any()) }
     }
 
     @Test

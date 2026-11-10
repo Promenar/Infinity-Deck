@@ -9,6 +9,7 @@ import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.domain.repository.PatchOperation
 import com.promenar.infinity.domain.repository.PatchResult
+import com.promenar.infinity.domain.repository.ReadWindowRequest
 import com.promenar.infinity.domain.repository.WriteResult
 import com.promenar.infinity.infra.util.Sha256Utils
 import com.promenar.infinity.data.rag.FileIndexEvent
@@ -681,6 +682,36 @@ class FileOperationRepositoryTest {
         assertThat((failure as WorkspaceTextPolicyException).code)
             .isEqualTo(WorkspaceTextErrorCode.INPUT_TOO_LARGE)
         assertThat(physicalReads).isEqualTo(0)
+    }
+
+    @Test
+    fun `分段读取超过1MiB的私有工作区文件只返回窗口并给出续读位置`() = runBlocking<Unit> {
+        val lines = List(40_000) { "行${it + 1}:" + "z".repeat(30) }
+        val content = lines.joinToString("\r\n")
+        val entry = insertTestFile(content = content, physicalBytes = UTF8_BOM + content.toByteArray())
+        assertThat(entry.sizeBytes).isGreaterThan(WorkspaceTextContentPolicy.DEFAULT_TOOL_BUDGET.maxInputBytes)
+
+        val middle = repo.readFileWindow(ROOT, entry.uuid, ReadWindowRequest(startLine = 20_001, endLine = 20_500))
+        val last = repo.readFileWindow(ROOT, entry.uuid, ReadWindowRequest(startLine = 39_901))
+
+        assertThat(middle.totalLines).isEqualTo(40_000)
+        assertThat(middle.content).isEqualTo(lines.subList(20_000, 20_500).joinToString("\n"))
+        assertThat(middle.nextLine).isEqualTo(20_501)
+        assertThat(middle.hash).isEqualTo(entry.hash)
+        assertThat(last.endLine).isEqualTo(40_000)
+        assertThat(last.nextLine).isNull()
+        val wholeFile = runCatching { repo.readFileRange(ROOT, entry.uuid) }.exceptionOrNull()
+        assertThat((wholeFile as WorkspaceTextPolicyException).code).isEqualTo(WorkspaceTextErrorCode.INPUT_TOO_LARGE)
+    }
+
+    @Test
+    fun `分段读取拒绝超过100MiB上限的文件且不读取内容`() = runBlocking<Unit> {
+        val entry = insertTestFile(content = "small")
+        db.fileEntryDao().update(entry.copy(sizeBytes = ReadWindowRequest.MAX_FILE_BYTES + 1))
+
+        val failure = runCatching { repo.readFileWindow(ROOT, entry.uuid, ReadWindowRequest()) }.exceptionOrNull()
+
+        assertThat((failure as WorkspaceTextPolicyException).code).isEqualTo(WorkspaceTextErrorCode.INPUT_TOO_LARGE)
     }
 
     @Test

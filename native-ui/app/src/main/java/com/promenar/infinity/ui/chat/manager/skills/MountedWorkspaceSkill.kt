@@ -453,6 +453,35 @@ private class MountedFileOperations(
         completedHash = Sha256Utils.hash(bytes)
         return ReadResult(uuid, path(uuid).substringAfterLast('/'), lines.size, start, end, selected, completedHash!!, mounts.entry(session, path(uuid))!!.updatedAt)
     }
+    override suspend fun readFileWindow(workspaceRootUuid: String, uuid: String, request: ReadWindowRequest): ReadWindowResult {
+        if (isPrivate(uuid)) return base.readFileWindow(privateRoot(workspaceRootUuid), privateUuid(uuid), request).copy(uuid = uuid)
+        val path = path(uuid)
+        val name = path.substringAfterLast('/')
+        WorkspaceTextContentPolicy().requireSupportedType(name, textMime(path))
+        val entry = mounts.entry(session, path) ?: fail("NOT_FOUND", "挂载条目不可见")
+        if (entry.sizeBytes > ReadWindowRequest.MAX_FILE_BYTES) throw workspaceTextWindowTooLarge()
+        val smallLimit = WorkspaceTextContentPolicy.DEFAULT_TOOL_BUDGET.maxInputBytes
+        // 小文件整读会登记版本快照，diff_file 才能以这次读到的 sha256 作基准；大文件流式扫描，不登记快照。
+        val small = if (entry.sizeBytes > smallLimit) null else try {
+            mounts.read(session, path, smallLimit)
+        } catch (failure: ExternalFolderException) {
+            if (failure.code != "TOO_LARGE") throw failure
+            null
+        }
+        val scan = if (small != null) {
+            scanWorkspaceTextWindow(small.inputStream(), request, computeSha256 = true)
+        } else try {
+            mounts.readStream(session, path, ReadWindowRequest.MAX_FILE_BYTES) { input ->
+                scanWorkspaceTextWindow(input, request, computeSha256 = true)
+            }
+        } catch (failure: ExternalFolderException) {
+            if (failure.code == "TOO_LARGE") throw workspaceTextWindowTooLarge()
+            throw failure
+        }
+        val hash = requireNotNull(scan.sha256)
+        completedHash = hash
+        return scan.toResult(uuid, name, hash, entry.updatedAt)
+    }
     override suspend fun writeFileAtomic(workspaceRootUuid: String, uuid: String, newContent: String, sessionId: String, expectedHash: String): WriteResult {
         if (isPrivate(uuid)) return base.writeFileAtomic(privateRoot(workspaceRootUuid), privateUuid(uuid), newContent, sessionId, expectedHash)
         val path = path(uuid)

@@ -33,6 +33,9 @@ interface WorkspaceFileOps {
     ): String
     fun read(root: Path, relative: List<String>): ByteArray
     fun readLimited(root: Path, relative: List<String>, maxBytes: Long): ByteArray
+    /** 在文件句柄有效期内把内容交给 [consume] 流式处理；默认实现退回 [readLimited] 整读，供测试替身使用。 */
+    fun <T> readStreamLimited(root: Path, relative: List<String>, maxBytes: Long, consume: (java.io.InputStream) -> T): T =
+        consume(readLimited(root, relative, maxBytes).inputStream())
     fun exists(root: Path, relative: List<String>): Boolean
     fun inspect(root: Path, relative: List<String>): WorkspaceNodeIdentity
     fun listChildren(root: Path, relative: List<String>): List<String>
@@ -147,6 +150,9 @@ class SecureWorkspaceFileOps(
                 output.toByteArray()
             }
         }
+
+    override fun <T> readStreamLimited(root: Path, relative: List<String>, maxBytes: Long, consume: (java.io.InputStream) -> T): T =
+        readStream(root, relative, maxBytes, consume)
 
     /** 流式读取持有安全父目录和文件句柄，结束前复核路径与句柄版本。 */
     fun <T> readStream(root: Path, relative: List<String>, maxBytes: Long, consume: (java.io.InputStream) -> T): T =
