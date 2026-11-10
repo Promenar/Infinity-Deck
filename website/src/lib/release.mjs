@@ -49,20 +49,34 @@ export function formatDate(iso, locale) {
 }
 
 /**
+ * 读取 GitHub 最新 Release 与其 .sha256 校验值；任一步失败都抛出错误。
+ * @param {{ fetchImpl?: typeof fetch, token?: string }} options
+ */
+export async function fetchLatestRelease({ fetchImpl = fetch, token } = {}) {
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'infinity-deck-website-build' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetchImpl(API_LATEST, { headers });
+  if (!res.ok) throw new Error(`GitHub 接口返回 ${res.status}`);
+  const release = pickRelease(await res.json());
+  if (!release.shaUrl) throw new Error(`${release.tag} 缺少 .sha256 资产`);
+  const shaRes = await fetchImpl(release.shaUrl, { headers: { 'User-Agent': headers['User-Agent'] } });
+  if (!shaRes.ok) throw new Error(`校验文件下载返回 ${shaRes.status}`);
+  return { ...release, sha256: parseSha256File(await shaRes.text(), release.apk.name) };
+}
+
+/** 转成 `src/data/release-snapshot.json` 的字段与顺序。 */
+export function toSnapshot(release) {
+  const { tag, version, publishedAt, pageUrl, apk, shaUrl, sha256 } = release;
+  return { tag, version, publishedAt, pageUrl, apk: { name: apk.name, size: apk.size, url: apk.url }, shaUrl, sha256 };
+}
+
+/**
  * 构建时读取最新 Release；任一步失败都回退到 fallback，并通过 onWarn 报告原因。
  * @param {{ fetchImpl?: typeof fetch, token?: string, fallback: object, onWarn?: (msg: string) => void }} options
  */
 export async function loadRelease({ fetchImpl = fetch, token, fallback, onWarn = () => {} }) {
   try {
-    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'infinity-deck-website-build' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetchImpl(API_LATEST, { headers });
-    if (!res.ok) throw new Error(`GitHub 接口返回 ${res.status}`);
-    const release = pickRelease(await res.json());
-    if (!release.shaUrl) throw new Error(`${release.tag} 缺少 .sha256 资产`);
-    const shaRes = await fetchImpl(release.shaUrl, { headers: { 'User-Agent': headers['User-Agent'] } });
-    if (!shaRes.ok) throw new Error(`校验文件下载返回 ${shaRes.status}`);
-    return { ...release, sha256: parseSha256File(await shaRes.text(), release.apk.name), source: 'github' };
+    return { ...(await fetchLatestRelease({ fetchImpl, token })), source: 'github' };
   } catch (error) {
     onWarn(`读取最新 Release 失败，使用仓库快照 ${fallback.tag}：${error.message}`);
     return { ...fallback, source: 'snapshot' };
