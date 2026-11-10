@@ -2,12 +2,14 @@
 
 > 日期：2026-11-10
 > 范围：Infinity Deck 会话宠物（第一阶段：会话页输入框浮岛上的宠物；后续阶段：全局悬浮窗宠物）
-> 状态：调研稿，未改产品代码。3D 路线经实测否决（2026-11-10，见第 4.4 节），方向回到 2D；2D 如何支持更丰富的动作与表情待研究
+> 状态：调研稿，未改产品代码。3D 路线经实测否决（2026-11-10，见第 4.4 节），方向回到 2D；2D 动作与表情方案见第 4.5 节，待用户看原型确认
 > 形象：Infinity Deck 不内置任何宠物形象，形象全部以社区宠物包导入；首个测试形象为 DeepSeek 大肥鱼（蓝色鲸鱼女仆 Q 版），设定图在本机 `artifacts/pet-reference/deepseek-whale-maid-sheet.webp`（不入库）
 
 ## 1. 结论
 
 **方向决定（2026-11-10）：** 按设定图复刻鲸鱼女仆 3D 模型的实测（第 4.4 节）气质接近，但一眼能看出不是设定图里的形象，用户决定放弃 3D 路线，回到 2D。本节以下的 3D 推荐保留为调研记录，不再作为实施方向。
+
+**2D 方案（待确认）：** 素材全部由 GPT Image 2.6 以设定图为参考重绘，运行时组合四种手段：每个状态一张姿势图加程序化运动（网格变形、弹簧物理、跳跃挤压），空闲姿势按脸部区域替换表情并自动眨眼，标志性动作用逐帧图，需要更流畅时用 H3 生成的视频帧。实测与取舍见第 4.5 节。
 
 原推荐方案：**3D 卡通渲染（3 渲 2）二次元角色**。运行时用 Filament（Apache-2.0），素材用 VRM 格式：VRoid Studio 起模，Blender 补鲸鱼尾、鲸鳍耳、女仆头饰；自研一层 VRM 支持，包括 SpringBone 物理、Expression 表情、LookAt 视线和卡通着色。状态机与程序化运动层与渲染无关，直接沿用浏览器原型的设计。
 
@@ -158,13 +160,35 @@
 - **手工建模：** Blender 脚本徒手建模的还原度远低于图生 3D，已停止。
 - **图生 3D：** 在 MAIN（RTX 4090，ComfyUI）上对比 Pixal3D 单图、Pixal3D Multi-View 和 TRELLIS.2，Multi-View 最好。原始设定图双手比心的姿势导致手、胸口和头发粘连，并出现两条尾巴；改用 GPT Image 2.6 单次生成的 A 字姿势四视图重建后，手臂分离、尾巴唯一。
 - **转 VRM：** 脚本（分支 `claude/pet-whale-replica-02387f` 的 `scripts/pet-replica/`）把约 21.8 万面的网格转成约 2 万面的 VRM 1.0：91 根骨骼、17 条弹簧链、12 个贴图切换表情、MToon 材质，8 个状态在浏览器原型里跑通。
-- **结果：** 气质接近、细节比前几版好，但仍一眼能看出不是设定图里的形象。原因是 VRM 上没有像素直接来自设定图：四视图重绘、重建、减面烘焙、另画的眼嘴图集，每一步都只保留“像这个角色”。把设定图的脸直接裁下贴成面片、发色取设定图色值后明显更像，但只剩一种表情。
+- **结果：** 气质接近、细节比前几版好，但仍一眼能看出不是设定图里的形象。GPT Image 2.6 重绘的四视图本身与设定图一致性很好，走样发生在 3D 重建和减面烘焙：脸、眼和发色经网格重建、贴图烘焙后失去插画的精度，另画的眼嘴图集贴回三维脸上也与原脸比例不符。把设定图的脸直接裁下贴成面片、发色取设定图色值后明显更像，但只剩一种表情。
 - **对 2D 的启示：**
-  - 辨识度主要来自脸和发色的原图像素，重绘是走样的来源。
+  - GPT Image 2.6 能在保持人物一致的前提下重绘新姿势，可作为 2D 姿势和表情素材的来源。
   - 宠物在屏幕上约 236 像素高，设定图里单个姿势的像素已经够用。
   - 2D 原型与 7 张抠图仍可作为起点。
 
 产出（VRM、对比图、报告）只保存在本机共享笔记目录的 `pet-research/replica/`，形象资产不入库。
+
+### 4.5 2D 动作与表情实测（2026-11-10）
+
+浏览器原型 v2（本机共享笔记目录 `pet-research/2d/proto/pet-2d-v2.html`）在 2D 原型的网格变形、弹簧物理和状态机上接入以下素材。素材都以设定图为参考，经 Codex CLI 单次生成，背景为纯绿，抠图后使用。
+
+| 手段 | 素材 | 实测结果 | 代价与限制 |
+|---|---|---|---|
+| 姿势图 + 程序化运动 | 一张 3×3 状态姿势表（思考、吃饭、干活、请求确认、提问、完成、出错、睡觉、被摸头） | 九个姿势与设定图是同一人物，比例一致；呼吸、点头、跳跃、头发与尾巴摆动由程序生成 | 每个状态只有一个静态造型，大动作靠变形，幅度有限 |
+| 脸部区域换表情 | 同一站姿的 3×3 表情表（平静、闭眼笑、大笑、惊讶、疑惑、委屈、生气、犯困、咀嚼） | 九格轮廓逐像素对齐，脸外只有线稿级抖动；用羽化椭圆只替换脸部，接缝不可见；空闲时用闭眼格做眨眼 | 表情只适用于与表情表同姿势的底图；其它姿势要各出一张表情表 |
+| 逐帧动画 | 一张 3×2 的吃饭 6 帧表 | 六帧连贯，可首尾循环，帧间偏移不超过 2 像素；每秒 7 帧有手绘动画感 | 帧数受单张图容量限制，一次约 6 到 9 帧；单帧约 512 像素 |
+| 视频帧 | MAIN 本地 MiniMax H3，FL2VA 首尾同帧，640×640、124 帧、24 fps | 待机（眨眼、发尾和尾巴摆动、微笑）和吃饭（送饭、咀嚼、点头）两条人物都保持住，首尾帧衔接；绿幕抠像无绿边 | 画面比静态图略软；每条 5 秒 MP4 约 1.6 到 1.9 MB；角色位置会轻微漂移；需要透明通道方案 |
+
+素材体量：25 张 418 到 512 像素的 WebP 合计约 0.85 MB；两条 H3 视频在 MAIN 上合计约 2 分钟生成完毕。
+
+技术取舍（运行时与许可的一手核验见对应来源）：
+
+- **运行时自研，不引入 Rive 作为基础格式。** Rive Android 运行时为 MIT，支持位图网格、骨骼和状态机，并能从字节加载 `.riv`；但免费计划导出的文件会播放 Rive 启动画面，去除需每月 9 美元，编辑器闭源，社区作者门槛高。可作为后续可选的高级宠物包类型。
+- **网格变形用 Compose `Canvas.drawVertices`。** 平台 `drawVertices` 自 API 29 起支持硬件加速，项目 minSdk 31 满足。
+- **逐帧用精灵图集或 WebP 动图。** `AnimatedImageDrawable`（API 28+）可播 WebP 动图但不能跳帧；精灵图集可控帧但需常驻内存。按 2 倍密度、每秒 12 帧估算，1 秒约 9 MB 内存（推断）。
+- **视频帧需要透明通道方案。** Android 官方格式表未列出带 alpha 的视频解码；可行做法是 RGB 与 Alpha 左右拼接后用着色器合成，或像原型一样按绿幕在着色器里实时抠像（只适合不含绿色的形象）。视频也可以先抽帧再转精灵图集。
+- **Inochi2D 暂不考虑。** 格式与编辑器为 BSD-2，但 Rust 运行时 Inox2D 自述处于原型阶段。
+- **分层部件拆分（Qwen-Image-Layered，Apache-2.0）** 留作需要独立摆动部件时的选项；当前整图网格变形已能做出头发和尾巴的摆动。
 
 ## 5. 状态源与状态映射
 
@@ -316,8 +340,8 @@ GPT-Image 2.6（2026-11-04 随 ChatGPT Images 2.6 发布，API 有 Flare 与 Sun
 
 第 8.2、8.3 节是 3D 路线的清单，已随 3D 路线一并停用。下一轮研究 2D 路线：
 
-1. 研究 2D 方案如何支持更丰富的动作和表情，并尽量保留设定图像素：分层部件骨骼（Rive）、逐状态精灵图、原图部件加程序化运动等，各自做原型对比。
-2. 按选定的 2D 方案重定宠物包格式与素材清单（第 7、8 节）。
+1. 用户看 2D 原型 v2，确定四种手段的取舍，以及视频帧是否进入第一版。
+2. 按选定的 2D 方案重定宠物包格式与素材清单（第 7、8 节）：每个状态的动作片段可以是单张姿势图、逐帧序列或视频，另带与底图对齐的表情层。
 3. Android 技术验证：选定的运行时叠在 Compose 浮岛上，测帧率、功耗、内存与包体增量。
 
 ## 9. 来源
@@ -345,3 +369,4 @@ GPT-Image 2.6（2026-11-04 随 ChatGPT Images 2.6 发布，API 有 Flare 与 Sun
 - 绑定与动作：https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html 、https://www.rokoko.com/pricing
 - 2D 生图与抠图：https://github.com/QwenLM/Qwen-Image-2.1 、https://developers.openai.com/api/docs/guides/image-generation 、https://github.com/Bria-AI/RMBG-2.0 、https://github.com/ZhengPeng7/BiRefNet 、https://www.live2d.com/en/cubism/update/update_5_1_00/
 - 视频生成：https://github.com/Wan-Video/Wan2.2 、https://arxiv.org/html/2509.24979v3
+- 2D 运行时补充（第 4.5 节）：https://github.com/rive-app/rive-android/releases 、https://rive.app/docs/editor/manipulating-shapes/meshes 、https://rive.app/docs/editor/exporting/exporting-for-runtime 、https://github.com/Inochi2D/inox2d 、https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Canvas 、https://developer.android.com/develop/ui/views/graphics/hardware-accel 、https://developer.android.com/reference/android/graphics/drawable/AnimatedImageDrawable 、https://developer.android.com/media/platform/supported-formats 、https://github.com/hzwer/Practical-RIFE
