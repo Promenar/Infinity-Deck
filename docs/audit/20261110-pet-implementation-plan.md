@@ -34,8 +34,42 @@
 - 无工具短请求：`data/generation/RoutedToolResultSummarizer.summarizePrompt`；用量统计需新增分类。
 - 导入范例：`data/skills/AgentSkillStore.installZip`。
 
-## 第 1 波需要主会话运行的测试
+## 实现状态（2026-11-10）
 
-- `:app:testSideloadDebugUnitTest --tests 'com.promenar.infinity.domain.pet.*'`
-- `:app:testSideloadDebugUnitTest --tests '*UserSettingsHomeScreenContractTest' --tests '*SettingsPaneTest' --tests '*SettingsNavigationContractTest' --tests '*BackupPreferenceInventoryTest' --tests '*PetPreferenceStoreTest'`
-- `:app:compileSideloadDebugKotlin :app:compilePlayDebugKotlin`
+六波的代码都已写入本分支，**全部未经编译和运行**。主会话回收后需要先编译，再跑测试，再真机验收。
+
+| 部分 | 位置 | 说明 |
+|---|---|---|
+| 契约领域层 | `domain/pet/` | 解析、校验、信号回退、任务状态映射、台词模板与限流 |
+| 数据层 | `data/pet/` | `PetPackageStore`、`PetPreferenceStore`、`PetLineGenerator`；用量计入 `pet` 分类 |
+| 基座 | `ui/pet/` | `PetEngine`（状态机与平台物理，纯 Kotlin）、`PetMesh`（网格变形）、`PetAssets`、`PetRuntime`、`PetOverlay`、`PetVideoLayer` |
+| 会话页接入 | `ui/chat/ChatScreen.kt` | 记录浮岛范围；在聊天区域上叠加 `PetOverlay` |
+| 设置 | `ui/settings/PetSettingsScreen.kt` | 总开关、宠物包导入/设为默认/导出/删除、模型关联、台词开关与模型、视频片段开关 |
+| 内置 Skill | `assets/builtin_skills/pet-pack-authoring/` | 宠物包制作规范 |
+
+与规格的出入和已知缺口：
+
+- 宠物包内容不随备份导出，只有偏好随备份走；恢复到新设备后需要重新导入宠物包。
+- 数据通道目前提供 `session.title`、`model.name`、`output.chars`、`elapsed.s`、`ask.text`、`idle.s`、`daypart`；`tool.name`、`tool.target`、`error.kind` 未接入，`task.tool.<工具名>` 也只给到 `task.tool`。
+- 事件信号 `island.fx.*`、`island.focus`、`island.blur`、`island.send`、`device.fold`、`device.unfold`、`session.other.active`、`env.theme.*` 未接入；折叠屏展开与侧边栏通过浮岛宽度和边缘位置的变化体现（`island.wider`、`island.narrower`、`push.*`）。
+- 视频片段只在 Android 13 及以上播放（用着色器换出透明通道），更低版本播放替补片段。视频不做网格变形。
+- 位图按需解码后常驻内存，直到切换角色；没有淘汰策略。
+
+需要真机确认的风险点：
+
+1. `Canvas.drawVertices` 带位图着色器的绘制是否正确、是否硬件加速。
+2. 宠物触摸区域在图层内按帧移动后，点按、长按提起、拖动、松手是否都能收到；宠物以外的区域是否仍能滚动聊天列表、点按消息。
+3. `TextureView` 上的 `RenderEffect` 着色器能否抠出透明；ExoPlayer 循环播放是否有卡顿。
+4. 帧率、内存（位图缓存）、功耗；页面切走后是否停帧。
+5. 键盘弹出、检视器固定、内屏侧边栏展开时浮岛范围是否正确，推挤是否触发。
+6. 台词模型的真实输出与 256 token 上限是否合适，用量是否记入“宠物台词”。
+
+开发验收用的鲸鱼女仆测试包在本机共享笔记目录 `pet-research/pack/whale-maid.idpet`（约 4.1 MB，含 26 个姿势、2 个逐帧片段、1 个视频片段、8 个表情和角色配置单），不进仓库。验收步骤：设置 → 宠物 → 导入宠物包 → 打开“显示宠物” → 进入会话页。
+
+## 需要主会话运行的测试
+
+- `:app:compileSideloadDebugKotlin :app:compilePlayDebugKotlin :app:compileSideloadDebugUnitTestKotlin`
+- `:app:testSideloadDebugUnitTest --tests 'com.promenar.infinity.domain.pet.*' --tests 'com.promenar.infinity.data.pet.*' --tests 'com.promenar.infinity.ui.pet.*'`
+- `:app:testSideloadDebugUnitTest --tests '*UserSettingsHomeScreenContractTest' --tests '*SettingsPaneTest' --tests '*SettingsNavigationContractTest' --tests '*BackupPreferenceInventoryTest' --tests '*BuiltinSkillCatalogTest' --tests '*SkillSourceGroupsTest' --tests '*KgTokenStatsRepositoryTest' --tests '*RolledBackSummaryUsageStoreTest'`
+- 设置首页多了一个条目，`SettingsPagesBatch1ScreenshotTest`、`ReleasePreviewScreenshotTest` 的参考图可能需要更新。
+- 功能验收通过后补 `CHANGELOG.md` 的 `[Unreleased]`、README 的功能说明和 `docs/ARCHITECTURE.md`。

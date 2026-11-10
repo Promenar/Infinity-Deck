@@ -484,6 +484,8 @@ fun ChatScreenContent(
     var showModelHint by remember { mutableStateOf(false) }
     var attachmentMenuExpanded by attachmentMenuExpandedState
     var chatRootBounds by remember { mutableStateOf(Rect.Zero) }
+    // 输入框浮岛在根坐标系中的范围：宠物站在它的上沿。
+    var petIslandBounds by remember { mutableStateOf(Rect.Zero) }
     var composerTopInRoot by remember { mutableStateOf(0f) }
     var attachmentAnchorInRoot by remember { mutableStateOf(Rect.Zero) }
     val scope = rememberCoroutineScope()
@@ -1417,7 +1419,11 @@ fun ChatScreenContent(
                             secretGuard = ComposerSecretGuardRequest(inputText, matches, send)
                         }
                     }
-                    Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { petIslandBounds = it.boundsInRoot() },
+                    ) {
                         ChatInputBar(
                             text = inputText,
                             placeholder = if (agentName.isNotBlank()) {
@@ -1625,6 +1631,25 @@ fun ChatScreenContent(
                     }
             }
             }
+
+            // 宠物图层：叠在聊天区域之上，只响应界面状态，不改动浮岛。
+            com.promenar.infinity.ui.pet.PetOverlay(
+                islandBounds = petIslandBounds,
+                phase = state.generationPhase,
+                awaitingApproval = uiState.approvalRequest != null || state.subagentApprovals.isNotEmpty() ||
+                    state.pendingSecretInput != null,
+                awaitingAnswer = state.pendingQuestion != null,
+                contentLength = uiState.streamingContent.length,
+                reasoningLength = latestAssistantMsg?.reasoning?.length ?: 0,
+                modelId = uiState.session?.modelId,
+                lineData = com.promenar.infinity.ui.pet.petLineData(
+                    sessionTitle = uiState.session?.title,
+                    modelName = uiState.session?.modelId?.let(state.modelDisplayNames::get),
+                    outputChars = uiState.streamingContent.length,
+                    startedAt = state.generationStartedAt,
+                    question = state.pendingQuestion?.request?.questions?.firstOrNull()?.question,
+                ),
+            )
 
             AnimatedVisibility(
                 visible = isUserScrolledAway && (!uiState.isGenerating || !autoFollowEnabled),
