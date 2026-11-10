@@ -87,8 +87,9 @@ for ci, deg in enumerate(HAIR_PHI):
         par = nm
         names.append(nm)
     bone('hair%d_end' % ci, hair_pt(deg, zs[-1]), hair_pt(deg, zs[-1]) + Vector((0, 0, -0.04)), par)
-    SPRINGS.append(dict(name='hair%d' % ci, joints=names + ['hair%d_end' % ci], stiffness=[1.4, 1.0, 0.8, 0.6],
-                        gravity=0.08, drag=0.5, radius=0.03, groups=['body']))
+    # 刚度和阻尼偏高：低头时发束跟着头走、再缓慢垂下，不被甩向一侧
+    SPRINGS.append(dict(name='hair%d' % ci, joints=names + ['hair%d_end' % ci], stiffness=[3.0, 2.4, 1.9, 1.5],
+                        gravity=0.12, drag=0.65, radius=0.02, groups=['body']))
 # 裙摆：6 条链
 SKIRT_PHI = [0, 60, 120, 180, 240, 300]
 SKIRT_LEVELS = [0.385, 0.30]
@@ -141,8 +142,7 @@ for side, (root, tip) in EARS.items():
     bone('ear%s_end' % side, tip, tip + (tip - root).normalized() * 0.03, 'ear' + side)
     SPRINGS.append(dict(name='ear' + side, joints=['ear' + side, 'ear%s_end' % side], stiffness=[3.2], gravity=0.0,
                         drag=0.4, radius=0.02, groups=[]))
-COLLIDERS.append(dict(node='spine', pos=(0, 0.01, 0.37), tail=(0, 0.01, 0.50), radius=0.09, group='body'))
-COLLIDERS.append(dict(node='hips', pos=(0, 0.0, 0.27), radius=0.19, group='body'))
+COLLIDERS.append(dict(node='spine', pos=(0, 0.01, 0.37), tail=(0, 0.01, 0.50), radius=0.075, group='body'))
 
 # ================================================================ 换成脚本手臂时，先删掉生成网格里的手臂
 if SCRIPT_ARMS:
@@ -151,8 +151,33 @@ if SCRIPT_ARMS:
     bm = bmesh.new()
     bm.from_mesh(me)
     bm.faces.ensure_lookup_table()
-    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in np.nonzero((pf == P_ARM_L) | (pf == P_ARM_R))[0]], context='FACES')
+    kill = (pf == P_ARM_L) | (pf == P_ARM_R)
+    # 原手势位置残留的袖口、手部碎片：落在胸前“手和前臂”范围内的面一并删除
+    cen = np.array([f.calc_center_median()[:] for f in bm.faces])
+    asc, _, aseg_, _ = K.arm_score(cen)
+    kill |= (asc < 1.5) & (aseg_ >= 1) & (cen[:, 1] < -0.085) & (cen[:, 2] > 0.40) & (cen[:, 2] < 0.54) & (pf != P_HEAD)
+    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in np.nonzero(kill)[0]], context='FACES')
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    # 删除手臂后变成孤岛的小碎片
+    seen, isl = set(), []
+    for f in bm.faces:
+        if f in seen:
+            continue
+        comp, stack = [], [f]
+        seen.add(f)
+        while stack:
+            x_ = stack.pop()
+            comp.append(x_)
+            for e in x_.edges:
+                for g in e.link_faces:
+                    if g not in seen:
+                        seen.add(g)
+                        stack.append(g)
+        if len(comp) < 60:
+            isl += comp
+    bmesh.ops.delete(bm, geom=isl, context='FACES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    print('ARMS removed, islands dropped faces', len(isl))
     bm.to_mesh(me)
     bm.free()
 
@@ -313,10 +338,10 @@ if FLAT:
     if os.environ.get('TEX', 'painted') == 'painted':
         # 手绘贴图为主：阴影色贴近主色、只略偏蓝紫，阴影范围收窄，描边比平涂版细一档
         MATERIALS = {
-            'Cloth': dict(shade=(0.88, 0.88, 0.96), outline=0.0012, outline_color=(0.10, 0.12, 0.30), toony=0.95, shift=0.25,
+            'Cloth': dict(shade=(0.88, 0.88, 0.96), outline=0.0010, outline_color=(0.10, 0.12, 0.30), toony=0.95, shift=0.25,
                           rim=(0.012, 0.027, 0.054), rim_power=3.0),
-            'Skin': dict(shade=(0.98, 0.90, 0.91), outline=0.0009, outline_color=(0.36, 0.20, 0.26), toony=0.95, shift=0.3),
-            'Hair': dict(shade=(0.87, 0.88, 0.97), outline=0.0014, outline_color=(0.09, 0.11, 0.30), toony=0.95, shift=0.25,
+            'Skin': dict(shade=(0.99, 0.92, 0.93), outline=0.0008, outline_color=(0.36, 0.20, 0.26), toony=0.95, shift=0.3),
+            'Hair': dict(shade=(0.87, 0.88, 0.97), outline=0.0007, outline_color=(0.12, 0.16, 0.40), toony=0.95, shift=0.25,
                          rim=(0.016, 0.037, 0.075), rim_power=3.0),
         }
     # 顶点法线：脸取球面代理，头发取“球面/柱面代理 + 大幅平滑”的混合，其余部位轻度平滑。

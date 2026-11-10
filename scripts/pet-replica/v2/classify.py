@@ -102,10 +102,12 @@ def classify(P, C):
     body = torso | arm | legs | core | (skirt & ~hairlike)
     cls[body] = BODY
     # 尾巴：按中心线的管状范围识别（颜色与头发接近，不能只靠颜色）
-    tscore, _, _ = tail_score(P)
+    tscore, tmain, _ = tail_score(P)
     fluke = np.linalg.norm(P - FLUKE_C, axis=1) < FLUKE_R
     tail = (tscore < 1.0) & ~body & (z < 0.56) & (fluke | ~(hairlike & (lum > 0.30) & (tscore > 0.55)))
     cls[tail] = TAIL
+    # 只保留通向左前方尾鳍的主尾；多视图条件冲突多生成的第二只尾鳍和残段按杂质删除
+    cls[tail & ~tmain] = JUNK
     # 右侧的深灰杂质（多视图条件冲突产生的第二条尾巴残影）
     junk = (x < -0.20) & (z > 0.15) & (z < 1.0) & (lum < 0.22) & (sat < 0.13) & ~body
     # 残影下半截颜色偏深蓝，按“右侧外缘的深色块”补一条规则（这一带的头发是浅蓝）

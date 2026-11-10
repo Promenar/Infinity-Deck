@@ -153,6 +153,51 @@ else:
     lin2 = lin * (1 - mask[:, None]) + adj * mask[:, None]
     lin2 = np.clip(lin2, 0, 1)
     out = np.where(lin2 <= 0.0031308, lin2 * 12.92, 1.055 * lin2 ** (1 / 2.4) - 0.055).astype(np.float32)
+    # ---- 按设定图校正（检查点 4）
+    def to_hsv(c):
+        mx_, mn_ = c.max(1), c.min(1)
+        dl = mx_ - mn_
+        safe = np.maximum(dl, 1e-8)
+        hh = np.where(c[:, 0] == mx_, (c[:, 1] - c[:, 2]) / safe,
+                      np.where(c[:, 1] == mx_, 2 + (c[:, 2] - c[:, 0]) / safe, 4 + (c[:, 0] - c[:, 1]) / safe)) / 6.0 % 1.0
+        return np.where(dl > 1e-8, hh, 0.0), np.where(mx_ > 1e-8, dl / np.maximum(mx_, 1e-8), 0.0), mx_
+
+    def from_hsv(hh, ss, vv):
+        i_ = np.floor(hh * 6).astype(int) % 6
+        f_ = hh * 6 - np.floor(hh * 6)
+        p_, q_, t_ = vv * (1 - ss), vv * (1 - ss * f_), vv * (1 - ss * (1 - f_))
+        return np.stack([np.choose(i_, [vv, q_, p_, p_, t_, vv]), np.choose(i_, [t_, vv, vv, q_, p_, p_]),
+                         np.choose(i_, [p_, p_, t_, vv, vv, q_])], -1).astype(np.float32)
+    hh, ss, vv = to_hsv(out)
+    hairish = (cid == C_HAIR) | (cid == C_LHAIR) | (cid == C_BOW)
+    # 线稿：头发里比同高度发色暗很多的笔触提亮到发色的八成，只留下发束分界的浅线，去掉黑粗线和点状噪点
+    zb = np.clip(((z - 0.05) / 0.04).astype(int), 0, 27)
+    vref = np.ones(28, np.float32)
+    for b in range(28):
+        sel = hairish & (zb == b)
+        if sel.sum() > 200:
+            vref[b] = np.percentile(vv[sel], 60)
+    for _ in range(2):   # 相邻高度平滑
+        vref = np.convolve(np.pad(vref, 1, mode='edge'), [0.25, 0.5, 0.25], mode='valid')
+    floor_v = 0.80 * vref[zb]
+    vv = np.where(hairish & (vv < floor_v), floor_v, vv)
+    # 色相：设定图的头发是宝蓝到浅天蓝，不含绿。偏青的像素拉回到目标色相（深处 222°，亮处 210°）
+    ht = np.interp(vv, [0.35, 0.90], [222 / 360, 210 / 360])
+    blueish = hairish & (hh > 150 / 360) & (hh < ht) & (ss > 0.12)
+    hh = np.where(blueish, hh + (ht - hh) * 0.9, hh)
+    # 尾巴：深蓝主体，保留笔触的明暗起伏；白色腹面不动
+    tl = (tp == TAIL) & (cid == C_TAIL)
+    if tl.sum() > 50:
+        vm = np.median(vv[tl])
+        th_, ts_, tv_ = to_hsv(TAILC[None, :])
+        hh = np.where(tl, th_[0], hh)
+        ss = np.where(tl, ts_[0], ss)
+        vv = np.where(tl, np.clip(tv_[0] * (vv / max(vm, 1e-3)) ** 0.6, 0.30, 0.72), vv)
+    out = from_hsv(hh, np.clip(ss, 0, 1), np.clip(vv, 0, 1))
+    # 肤色：白里透粉。脸统一成一块均匀的肤色（腮红在眼睛贴花里），腿上的肤色向它靠拢
+    SKIN_REF = hx('#ffeee8')
+    body_skin = (cid == C_SKIN) & (tp != HEAD)
+    out[body_skin] = out[body_skin] * 0.25 + SKIN_REF * 0.75
     # 旧五官所在的皮肤区域、鲸鱼图案所在的围裙区域，用各自周围的中位色盖掉，交给贴花
     skin_ok = (cid == C_SKIN) & (tp == HEAD) & ~face
     skin_ref = np.median(out[skin_ok], axis=0)
@@ -166,6 +211,8 @@ else:
         d2 = ((POS[idx][:, None, :] - rp[None, :, :]) ** 2).sum(-1)
         wgt = np.exp(-d2 / (0.022 ** 2)) + 1e-9
         out[idx] = (wgt @ rc) / wgt.sum(1, keepdims=True)
+    out[((cid == C_SKIN) & (tp == HEAD)) | face] = SKIN_REF
+    skin_ref = SKIN_REF
     white_ref = np.median(out[(cid == C_WHITE) & (tp == TORSO) & ~stamp], axis=0)
     out[stamp] = white_ref
 

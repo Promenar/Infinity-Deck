@@ -118,6 +118,12 @@ if len(sys.argv) > 3 and sys.argv[3] == '--v2':
         "standRaise:{sit:0,b:{leftUpperArm:[0,-.35,-1.2],leftLowerArm:[0,-.5,0],rightUpperArm:[0,.35,-.55],rightLowerArm:[0,.2,-.5],head:[-.05,0,-.12]}},")
     rep("standCheer:{sit:0,b:{leftUpperArm:[0,-.95,.95],leftLowerArm:[0,-.3,.35],rightUpperArm:[0,.95,-.95],rightLowerArm:[0,.3,-.35],head:[-.12,0,0]}},",
         "standCheer:{sit:0,b:{leftUpperArm:[0,-.3,.6],leftLowerArm:[0,-.15,.45],rightUpperArm:[0,.3,-.6],rightLowerArm:[0,.15,-.45],head:[-.12,0,0]}},")
+    # 头大、刘海长：出错和睡觉的低头角度减小，脸和表情保持可见
+    rep("sitSad:   {sit:1, b:{...SIT,...LAP_L,...LAP_R,spine:[.18,0,0],neck:[.15,0,0],head:[.25,0,0]}},",
+        "sitSad:   {sit:1, b:{...SIT,...LAP_L,...LAP_R,spine:[.08,0,0],neck:[.06,0,0],head:[.10,0,0]}},")
+    rep("sitDoze:  {sit:1, b:{...SIT,...LAP_L,...LAP_R,spine:[.22,0,0],neck:[.2,0,0],head:[.38,0,.12]}},",
+        "sitDoze:  {sit:1, b:{...SIT,...LAP_L,...LAP_R,spine:[.10,0,0],neck:[.07,0,0],head:[.13,0,.14]}},")
+    rep("if(n==='head')x+=.12*Math.sin(t*.8)-.35*jerk;", "if(n==='head')x+=.05*Math.sin(t*.8)-.14*jerk;")
     rep("模型：按设定图用 Blender 脚本建模的鲸鱼女仆复刻版", "模型：Pixal3D 图生网格经减面、平涂、绑定转出的鲸鱼女仆")
 open(dst, 'w', encoding='utf-8').write(s)
 print('patched ->', dst)

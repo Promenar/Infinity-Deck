@@ -265,7 +265,7 @@ for v in bm.verts:
                 stack.append(o)
     cx = sum(v.co.x for v in comp) / len(comp)
     cz = sum(v.co.z for v in comp) / len(comp)
-    if len(comp) < 20 or (len(comp) < 150 and cx < -0.24 and 0.3 < cz < 0.78):  # 右侧残影附近放宽
+    if len(comp) < 45 or (len(comp) < 150 and cx < -0.24 and 0.3 < cz < 0.78):  # 游离碎片；右侧残影附近放宽
         crumbs += comp
 # 右侧残影的下半截：这一带的头发是浅蓝，按邻域平均色偏深来识别并删除
 _lum = 0.2126 * lcol[:, 0] + 0.7152 * lcol[:, 1] + 0.0722 * lcol[:, 2]
