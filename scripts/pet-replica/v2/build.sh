@@ -14,5 +14,7 @@ mkdir -p "$WORK" "$OUT"
 [ "$FROM" -le 3 ] && "$BLENDER" --background --python "$HERE/s3_bake.py" -- "$WORK" 2>&1 | grep -E "$F"
 [ "$FROM" -le 3 ] && "$BLENDER" --background --python "$HERE/s3b_flat.py" -- "$WORK" 2>&1 | grep -E "$F|^(FACE|MATID)"
 [ "$FROM" -le 4 ] && "$BPY" "$HERE/make_face_atlas.py" "$WORK"
+# 有重绘图集时覆盖程序绘制的版本（由 atlas_from_sheet.py 整理到 <工作目录>/assets/）
+for f in eyes.png mouth.png; do [ -f "$WORK/assets/$f" ] && cp "$WORK/assets/$f" "$WORK/$f"; done
 [ "$FROM" -le 4 ] && "$BLENDER" --background --python "$HERE/s4_rig.py" -- "$WORK" 2>&1 | grep -E "$F"
 "$BPY" "$HERE/../glb_to_vrm.py" "$WORK/whale-maid.glb" "$WORK/rig.json" "$OUT/whale-maid.vrm"

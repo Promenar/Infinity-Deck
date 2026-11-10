@@ -107,7 +107,9 @@ def classify(P, C):
     tail = (tscore < 1.0) & ~body & (z < 0.56) & (fluke | ~(hairlike & (lum > 0.30) & (tscore > 0.55)))
     cls[tail] = TAIL
     # 右侧的深灰杂质（多视图条件冲突产生的第二条尾巴残影）
-    junk = (x < -0.20) & (z > 0.15) & (z < 0.80) & (lum < 0.20) & (sat < 0.12) & ~body
+    junk = (x < -0.20) & (z > 0.15) & (z < 1.0) & (lum < 0.22) & (sat < 0.13) & ~body
+    # 残影下半截颜色偏深蓝，按“右侧外缘的深色块”补一条规则（这一带的头发是浅蓝）
+    junk |= (x < -0.24) & (z > 0.20) & (z < 0.62) & (lum < 0.15) & ~body
     cls[junk] = JUNK
     # 头部：下巴以上整体随头骨；下巴、脖子的肤色也归头
     head = (z >= Z_HEAD) | (skin & (z > 0.535) & (y < 0.06) & ~arm)

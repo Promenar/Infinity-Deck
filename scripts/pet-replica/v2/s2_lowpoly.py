@@ -24,7 +24,7 @@ import common as C
 
 argv = sys.argv[sys.argv.index('--') + 1:]
 WORK = argv[0]
-TARGET = int(argv[1]) if len(argv) > 1 else 18300  # 封口会再加约一千面
+TARGET = int(argv[1]) if len(argv) > 1 else 17300  # 封口约一千面，脚本手臂、胸前部件和贴花约两千面
 P_HEAD, P_TORSO, P_ARM_L, P_ARM_R, P_HAIR, P_TAIL = 1, 2, 3, 4, 5, 6
 PART_NAMES = {1: 'head', 2: 'torso', 3: 'armL', 4: 'armR', 5: 'hair', 6: 'tail'}
 CUT_PAIRS = {frozenset(p) for p in [(P_ARM_L, P_TORSO), (P_ARM_R, P_TORSO), (P_ARM_L, P_ARM_R), (P_HAIR, P_TORSO),
@@ -267,6 +267,11 @@ for v in bm.verts:
     cz = sum(v.co.z for v in comp) / len(comp)
     if len(comp) < 20 or (len(comp) < 150 and cx < -0.24 and 0.3 < cz < 0.78):  # 右侧残影附近放宽
         crumbs += comp
+# 右侧残影的下半截：这一带的头发是浅蓝，按邻域平均色偏深来识别并删除
+_lum = 0.2126 * lcol[:, 0] + 0.7152 * lcol[:, 1] + 0.0722 * lcol[:, 2]
+_dark = (LP[:, 0] < -0.24) & (LP[:, 2] > 0.20) & (LP[:, 2] < 0.62) & (_lum < 0.30) & (lcls != K.BODY)
+_cs = set(crumbs)
+crumbs += [v for v in bm.verts if _dark[v.index] and v not in _cs]
 if crumbs:
     keep = np.ones(len(LP), bool)
     keep[[v.index for v in crumbs]] = False

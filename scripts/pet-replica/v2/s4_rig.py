@@ -310,6 +310,15 @@ if FLAT:
         'Hair': dict(shade=(0.70, 0.72, 0.95), outline=0.0030, outline_color=(0.09, 0.11, 0.30), toony=0.95, shift=-0.05,
                      rim=(0.033, 0.075, 0.150), rim_power=3.0),
     }
+    if os.environ.get('TEX', 'painted') == 'painted':
+        # 手绘贴图为主：阴影色贴近主色、只略偏蓝紫，阴影范围收窄，描边比平涂版细一档
+        MATERIALS = {
+            'Cloth': dict(shade=(0.88, 0.88, 0.96), outline=0.0012, outline_color=(0.10, 0.12, 0.30), toony=0.95, shift=0.25,
+                          rim=(0.012, 0.027, 0.054), rim_power=3.0),
+            'Skin': dict(shade=(0.98, 0.90, 0.91), outline=0.0009, outline_color=(0.36, 0.20, 0.26), toony=0.95, shift=0.3),
+            'Hair': dict(shade=(0.87, 0.88, 0.97), outline=0.0014, outline_color=(0.09, 0.11, 0.30), toony=0.95, shift=0.25,
+                         rim=(0.016, 0.037, 0.075), rim_power=3.0),
+        }
     # 顶点法线：脸取球面代理，头发取“球面/柱面代理 + 大幅平滑”的混合，其余部位轻度平滑。
     # 这样脸上不会有五官起伏投下的碎阴影，头发的阴影成大块。
     vmat = np.zeros((nv, 3), np.int32)
@@ -356,7 +365,9 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
     me.loops.foreach_get('vertex_index', lo)
     bvh = BVHTree.FromPolygons(P.tolist(), lo.reshape(-1, 3).tolist())
     fcv, frr = Vector(fs[:3].tolist()), float(fs[3])
-    EYE_Z, EYE_SIZE = 0.657, 0.108
+    # 重绘图集的眼睛偏宽，贴花片取大一些；程序绘制的图集用 0.108
+    ASSET_EYES = os.path.exists(os.path.join(WORK, 'assets', 'eyes.png'))
+    EYE_Z, EYE_SIZE = 0.657, (0.128 if ASSET_EYES else 0.108)
     PATCHES = [  # (材质序号, 中心 x, 中心 z, 边长, 网格数, 图集内 u0, 每片 u 宽, 每片 v 高)
         (0, -0.098, EYE_Z, EYE_SIZE, 10, 0.0, 0.25, 1 / 3),
         (0, 0.062, EYE_Z, EYE_SIZE, 10, 0.25, 0.25, 1 / 3),
@@ -557,6 +568,56 @@ if SCRIPT_ARMS:
                   lambda i, j, p: {side + 'Hand': 1.0}, nu=8, nv=6)
         for prt in (sl, cf, hd):
             new_objs.append(part_to_object(prt, bone_index, mats[prt.mat]))
+    # 胸前：白领子、黑蝴蝶结、围裙上身。原来被双手挡住的区域没有贴图内容，用脚本部件盖住封口。
+    from mathutils.bvhtree import BVHTree as _BVH
+    from meshkit import grid_solid, smooth as _sm
+    _lo = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get('vertex_index', _lo)
+    _bv = _BVH.FromPolygons(C.np_verts(me).tolist(), _lo.reshape(-1, 3).tolist())
+
+    def chest_y(xw, zw):
+        loc = _bv.ray_cast(Vector((xw, -0.6, zw)), Vector((0, 1, 0)))[0]
+        return min(loc.y, -0.035) if loc is not None and abs(loc.x - xw) < 1e-3 and loc.y < 0.02 else -0.05
+    CW = {'upperChest': 0.6, 'chest': 0.4}
+    bib = Part('bib', 'Cloth')
+    zs = [0.492, 0.475, 0.455, 0.435, 0.415]
+    Pg = []
+    for zw in zs:
+        row = []
+        for j in range(7):
+            xw = -0.046 + 0.092 * j / 6
+            row.append(Vector((xw, chest_y(xw * 0.6, zw) - 0.012 + 0.010 * (xw / 0.046) ** 2, zw)))
+        Pg.append(row)
+    grid_solid(bib, Pg, 0.004, lambda i, j, p, layer: WHITE_UV, lambda i, j, p: CW, hint_fn=lambda p: Vector((0, -1, 0)))
+    for sx in (1, -1):   # 围裙上身两侧的荷叶边
+        n = 13
+        base = [Vector((sx * 0.046, Pg[0][0 if sx < 0 else 6].y + 0.002, 0.497 - 0.085 * j / (n - 1))) for j in range(n)]
+        frill_strip(bib, base, [Vector((sx, -0.25, 0))] * n, 0.020, 0.004, 4,
+                    lambda i, j, p, layer: WHITE_UV if layer == 0 else WSHADE_UV, lambda i, j, p: CW, rows=3,
+                    thick=0.004, scallop=0.1, hint_fn=lambda p: Vector((0, -1, 0)))
+    collar = Part('collar', 'Cloth')
+    yc = chest_y(0.0, 0.50)
+    n = 25
+    base, outd = [], []
+    for j in range(n):
+        a = math.radians(-105 + 210 * j / (n - 1))
+        base.append(Vector((0.040 * math.sin(a), 0.004 - 0.040 * math.cos(a), 0.522)))
+        outd.append(Vector((math.sin(a), -math.cos(a), -0.75)))
+    frill_strip(collar, base, outd, 0.030, 0.0, 1, lambda i, j, p, layer: WHITE_UV,
+                lambda i, j, p: {'upperChest': 0.6, 'neck': 0.4}, rows=3, thick=0.004,
+                hint_fn=lambda p: Vector((p.x, p.y, 0.5)))
+    bow = Part('collar_bow', 'Cloth')
+    bc0 = Vector((0, min(yc, -0.045) - 0.016, 0.498))
+    for s_ in (-1, 1):
+        def deform(l, s_=s_):
+            k = 0.30 + 0.70 * _sm((l.x * s_ + 1) / 2 * 1.15)
+            return Vector((l.x, l.y * (0.55 + 0.45 * k), l.z * k))
+        ellipsoid(bow, bc0 + Vector((s_ * 0.017, 0, 0)), (0.018, 0.006, 0.013), lambda i, j, p: LINE_UV,
+                  lambda i, j, p: CW, nu=12, nv=8, deform=deform)
+    ellipsoid(bow, bc0 + Vector((0, -0.003, 0)), (0.006, 0.006, 0.007), lambda i, j, p: swuv(5), lambda i, j, p: CW,
+              nu=8, nv=6)
+    for prt in (bib, collar, bow):
+        new_objs.append(part_to_object(prt, bone_index, mats[prt.mat]))
     bpy.ops.object.select_all(action='DESELECT')
     for o in new_objs:
         o.select_set(True)

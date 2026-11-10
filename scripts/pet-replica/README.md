@@ -12,9 +12,10 @@
   - `s1_prepare.py` 焊接、归一化、采样顶点色；
   - `s2_lowpoly.py` 体素重建、剔除里层、减面、部位分区、切口封口；
   - `s3_bake.py` 分组展 UV、最近可见点颜色传递；
-  - `s3b_flat.py` 把手绘感贴图量化成平涂色，给每个面标材质类别；
-  - `make_face_atlas.py` 用 numpy 绘制眼睛、嘴的表情图集和围裙鲸鱼图案；
-  - `s4_rig.py` 骨骼、权重、材质拆分与法线整理、面部贴花、脚本手臂、导出 glb；
+  - `s3b_flat.py` 生成最终基础色并给每个面标材质类别：默认保留手绘笔触并烘入 B 版调色，`TEX=flat` 时量化成平涂色；
+  - `make_face_atlas.py` 用 numpy 绘制眼睛、嘴的表情图集和围裙鲸鱼图案（没有重绘图集时的后备）；
+  - `atlas_from_sheet.py` 把图像模型画的表情素材表整理成图集，放到 `<工作目录>/assets/` 后构建时自动采用（需要 Pillow）；
+  - `s4_rig.py` 骨骼、权重、材质拆分与法线整理、面部贴花、脚本手臂与胸前部件、导出 glb；
   - `render_blook.py` 用 B 版工程渲染高低模对比；`render_dbg.py`、`inspect_src.py` 为检查用；
   - 只用 Blender 自带的 Python。
 

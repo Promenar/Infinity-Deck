@@ -3,6 +3,7 @@
 用法：Blender --background --python s3b_flat.py -- <工作目录>
 输入：<工作目录>/low_baked.blend、texels.npz（s3_bake.py 产出）
 产出：<工作目录>/base_flat.png（2048×1536）、low_flat.blend（面属性 matid：0 服装 1 皮肤 2 头发）
+环境变量 TEX：painted（默认）保留手绘笔触并烘入 B 版调色；flat 输出平涂色块。
 
 做法：每个贴图像素按所属部位和原颜色归到一个色类，输出该色类的平涂色；头发和尾巴按世界高度取渐变；
 原贴图里明显更深的细线保留为线稿色；白色布料的灰色褶皱保留为一档阴影色。色值取自设定图。
@@ -103,7 +104,7 @@ for cx, cz, hw, hh in FEAT:
     zone |= (np.abs(x - cx) < hw) & (np.abs(z - cz) < hh)
 face = m & zone & (y < -0.09) & (d < 0.006)
 # 嘴周围到下巴没有刘海，范围放宽：旧嘴的口腔颜色偏深，容易被归到别的色类
-face |= ((tp == HEAD) | (tp == HAIRP)) & (np.abs(x + 0.017) < 0.085) & (z > 0.545) & (z < 0.625) & (y < -0.11) & (d < 0.014)
+face |= ((tp == HEAD) | (tp == HAIRP)) & (np.abs(x + 0.017) < 0.075) & (z > 0.548) & (z < 0.622) & (y < -0.12) & (d < 0.04)
 cid[face] = C_SKIN
 print('FACE sphere center', np.round(fc, 3), 'radius', round(fr, 3), 'repainted texels', int(face.sum()))
 
@@ -117,12 +118,62 @@ share = votes.max(1) / np.maximum(votes.sum(1), 1)
 dom = (share >= 0.7)[PF] & ~isline
 cid[dom] = top[PF][dom]
 
-flat_col = np.array([NAVY, WHITE, WSHADE, SKIN, SHOE, SKIN, TAILC, EARC, BOW, hx('#4562b8'), LINE_HAIR, LINE_CLOTH])
-out = flat_col[cid]
-hm = cid == C_HAIR
-out[hm] = grad(HAIR, z[hm])
-lm = cid == C_LHAIR                      # 发丝线稿：取所在高度发色的深一档，不用近黑色
-out[lm] = grad(HAIR, z[lm]) * np.array([0.66, 0.68, 0.84], np.float32)
+MODE = os.environ.get('TEX', 'painted')
+SW_COL = [NAVY, WHITE, WSHADE, SKIN, LINE_CLOTH, GOLD, BOW, SHOE]
+if MODE == 'flat':
+    flat_col = np.array([NAVY, WHITE, WSHADE, SKIN, SHOE, SKIN, TAILC, EARC, BOW, hx('#4562b8'), LINE_HAIR, LINE_CLOTH])
+    out = flat_col[cid]
+    hm = cid == C_HAIR
+    out[hm] = grad(HAIR, z[hm])
+    lm = cid == C_LHAIR                      # 发丝线稿：取所在高度发色的深一档，不用近黑色
+    out[lm] = grad(HAIR, z[lm]) * np.array([0.66, 0.68, 0.84], np.float32)
+else:
+    # 手绘贴图：保留烘焙出的笔触、发丝线和渐变，把 B 版的调色直接烘进贴图。
+    # B 版节点：蓝色遮罩 = 映射(B - R, 0.015..0.14)；遮罩内色相 +0.016、饱和度 ×1.18、明度 ×1.10。
+    # 节点在线性空间里算，这里先把贴图值转线性，算完再转回。
+    lin = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
+    mask = np.clip((lin[:, 2] - lin[:, 0] - 0.015) / (0.14 - 0.015), 0, 1)
+    mx, mn = lin.max(1), lin.min(1)
+    dlt = mx - mn
+    hch = np.zeros(len(lin), np.float32)
+    nz = dlt > 1e-8
+    rc = np.where(nz, (mx - lin[:, 0]) / np.maximum(dlt, 1e-8), 0)
+    gc = np.where(nz, (mx - lin[:, 1]) / np.maximum(dlt, 1e-8), 0)
+    bc = np.where(nz, (mx - lin[:, 2]) / np.maximum(dlt, 1e-8), 0)
+    hch = np.where(lin[:, 0] == mx, bc - gc, np.where(lin[:, 1] == mx, 2 + rc - bc, 4 + gc - rc)) / 6.0 % 1.0
+    sch = np.where(mx > 1e-8, dlt / np.maximum(mx, 1e-8), 0)
+    h2 = (hch + 0.016) % 1.0
+    s2 = np.clip(sch * 1.18, 0, 1)
+    v2 = mx * 1.10
+    i6 = np.floor(h2 * 6).astype(int) % 6
+    f6 = h2 * 6 - np.floor(h2 * 6)
+    pq, qq, tq = v2 * (1 - s2), v2 * (1 - s2 * f6), v2 * (1 - s2 * (1 - f6))
+    adj = np.stack([np.choose(i6, [v2, qq, pq, pq, tq, v2]), np.choose(i6, [tq, v2, v2, qq, pq, pq]),
+                    np.choose(i6, [pq, pq, tq, v2, v2, qq])], -1)
+    lin2 = lin * (1 - mask[:, None]) + adj * mask[:, None]
+    lin2 = np.clip(lin2, 0, 1)
+    out = np.where(lin2 <= 0.0031308, lin2 * 12.92, 1.055 * lin2 ** (1 / 2.4) - 0.055).astype(np.float32)
+    # 旧五官所在的皮肤区域、鲸鱼图案所在的围裙区域，用各自周围的中位色盖掉，交给贴花
+    skin_ok = (cid == C_SKIN) & (tp == HEAD) & ~face
+    skin_ref = np.median(out[skin_ok], axis=0)
+    # 旧五官区域按周围皮肤颜色平滑填充（按距离加权），保留脸上原有的明暗过渡，不留色差方块
+    ref_i = np.nonzero(skin_ok)[0]
+    ref_i = ref_i[np.linspace(0, len(ref_i) - 1, min(3000, len(ref_i))).astype(int)]
+    rp, rc = POS[ref_i], out[ref_i]
+    fi = np.nonzero(face)[0]
+    for a0 in range(0, len(fi), 2000):
+        idx = fi[a0:a0 + 2000]
+        d2 = ((POS[idx][:, None, :] - rp[None, :, :]) ** 2).sum(-1)
+        wgt = np.exp(-d2 / (0.022 ** 2)) + 1e-9
+        out[idx] = (wgt @ rc) / wgt.sum(1, keepdims=True)
+    white_ref = np.median(out[(cid == C_WHITE) & (tp == TORSO) & ~stamp], axis=0)
+    out[stamp] = white_ref
+
+    def med(mask_, fallback):
+        return np.median(out[mask_], axis=0) if mask_.sum() > 50 else fallback
+    body = (tp == TORSO)
+    SW_COL = [med(body & (cid == C_NAVY), NAVY), white_ref, med(body & (cid == C_WSHADE), WSHADE), skin_ref,
+              med(body & (cid == C_LCLOTH), LINE_CLOTH), GOLD, BOW, med(body & (cid == C_SHOE), SHOE)]
 # 材质类别：0 服装 1 皮肤 2 头发
 cls = np.zeros(len(col), np.int8)
 cls[cid == C_SKIN] = 1
@@ -150,7 +201,7 @@ for _ in range(32):
 px[..., 3] = 1.0
 # 色块带：贴图右下角竖排的纯色块，脚本生成的部件（袖子、袖口、手）把 UV 指到这里。
 # 第 k 块中心的 UV 为 (0.985, 0.02 + 0.04 * k)，顺序见 SWATCHES。
-SWATCHES = [NAVY, WHITE, WSHADE, SKIN, LINE_CLOTH, GOLD, BOW, SHOE]
+SWATCHES = SW_COL
 x0 = int(0.97 * W)
 for k, cval in enumerate(SWATCHES):
     y1 = H - int(0.04 * k * H)
