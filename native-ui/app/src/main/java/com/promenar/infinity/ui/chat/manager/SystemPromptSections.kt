@@ -225,6 +225,10 @@ object SystemPromptSections {
         if (toolNames.any { it in setOf("state_define", "state_update", "state_get", "state_remove") }) {
             appendLine("- 用户要求跟踪游戏状态或写作进度时，用 state_define 定义状态面板，以 state_update 更新，state_get 读取，state_remove 移除；无需额外模型抽取。")
         }
+        if (toolNames.any { it in setOf("shell_exec", "python_exec", "termux_exec", "ssh_exec") } && "job_wait" in toolNames) {
+            // 常驻提示只放选用规则；参数、状态与存活条件在内置指南的附带文件中按需读取。
+            appendLine("- 需要在本次工具调用之后继续运行的进程用命令工具的 background:true 启动并用 job_* 工具管理；命令里的 nohup、&、setsid、screen、tmux 不能让本机进程持续运行。周期性工作用 schedule_create。细节读 read_skill_file(name=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.NAME}\", path=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.REFERENCE_FILES.first()}\")。")
+        }
         if (toolNames.any { it in setOf("shell_exec", "python_exec", "termux_exec") } && "job_wait" in toolNames) {
             if (runMode == SessionRunMode.LINUX) appendLine("- Linux 长命令可用 background:true 立即返回，或等待前台默认15秒让出；两者均用 job_status/job_wait/job_input/job_stop 操作。让出的进程持续在原目录持锁运行，结束后对账，结果包含 workspace_changes；自选目录不对账。")
             else appendLine("- 耗时超过约一分钟或需要持续运行的命令使用 background:true；启动后继续其它工作，需要结果时用 job_wait。长任务优先 on_exit:\"wake\"，不要循环轮询。私有工作区后台命令在快照中运行，结束时合入，冲突产物保留在 jobs/；job_status/job_wait 发布日志。")

@@ -33,7 +33,7 @@ fun sshTools(runtime: SshRuntime, jobs: BackgroundJobManager? = null, transferAc
 
 // 数值边界由运行时强制校验；工具定义仅使用公共 schema 门禁支持的关键字。
 private enum class SshOperation(val tool: String, val risk: ToolRisk, val summary: String, val fields: String, val required: String) {
-    EXEC("ssh_exec", ToolRisk.PROCESS, "远程运维首选：每条命令独立执行，可让出到后台；默认60秒，最多600秒，输出有上限。background=true 立即返回任务号，后台按 max_runtime_minutes 限时，不使用 timeout_seconds；on_exit 为 none/notify/wake，默认 notify。停止只断开通道，远端进程可能仍在运行。",
+    EXEC("ssh_exec", ToolRisk.PROCESS, "远程运维首选：每条命令独立执行，可让出到后台；默认60秒，最多600秒，输出有上限。background=true 立即返回任务号，后台按 max_runtime_minutes 限时，不使用 timeout_seconds；on_exit 为 none/notify/wake，默认 notify。停止只断开通道，远端进程可能仍在运行；要脱离本应用长期存活的远端服务交给远端的 systemd、tmux 或 nohup（重定向输入输出），再用 ssh_exec 查询。",
         """"host":{"type":"string"},"command":{"type":"string"},${ExecToolArguments.TITLE_SCHEMA},"timeout_seconds":{"type":"integer","description":"1–600 秒，默认 60"},"max_output_chars":{"type":"integer","description":"1–256000 个字符，默认 32000"},"yield_after_seconds":{"type":"integer","description":"前台让出阈值；默认 min(15,timeout_seconds)，0 不让出，不得超过 timeout_seconds"},${BACKGROUND_EXEC_SCHEMA},${SecretCapture.schema}""", "\"host\",\"command\""),
     LIST("sftp_list", ToolRisk.SAFE_READ, "列出远端目录，最多512项，返回截断标记。",
         """"host":{"type":"string"},"path":{"type":"string"}""", "\"host\",\"path\""),
