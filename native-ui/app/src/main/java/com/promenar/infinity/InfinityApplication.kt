@@ -1920,6 +1920,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 sessionRepository::getById, { current -> knowledgeAccessAllowedForTools(current) }, externalFolderManager,
                 workspaceRepository, linux.files, { linux.runtime.state.value is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready }, ::reconcileSessionHome))
             register(CalculatorSkill())
+            register(com.promenar.infinity.ui.chat.manager.skills.PetSkill(petPreferenceStore) { id ->
+                com.promenar.infinity.ui.chat.manager.skills.installedDefaultPetName(filesDir, id)
+            })
             register(com.promenar.infinity.data.skills.InstallApprovedSkillTool(skillCatalog))
             register(com.promenar.infinity.ui.chat.manager.AskUserTool())
             register(com.promenar.infinity.ui.chat.manager.skills.RequestSecretSkill())

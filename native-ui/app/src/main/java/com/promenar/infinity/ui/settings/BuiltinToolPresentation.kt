@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.PlaylistRemove
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Terminal
@@ -71,6 +72,7 @@ internal fun builtinToolIcon(id: String): ImageVector = when (id) {
     "browser_click" -> Icons.Rounded.TouchApp
     "browser_type" -> Icons.Rounded.Keyboard
     "calculator" -> Icons.Rounded.Calculate
+    "pet" -> Icons.Rounded.Pets
     "image_generation" -> Icons.Rounded.Image
     "view_media" -> Icons.Rounded.ImageSearch
     "media_fetch" -> Icons.Rounded.Download

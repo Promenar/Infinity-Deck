@@ -5,7 +5,7 @@ import java.util.Locale
 /** 基座支持的契约版本，见规格第 1 节。 */
 object PetContract {
     const val MAJOR = 0
-    const val MINOR = 2
+    const val MINOR = 3
 }
 
 /** 片段及显示字段的契约取值，见规格第 3 节。 */
@@ -18,6 +18,9 @@ object PetValues {
     val motions = setOf("breathe", "nod", "hop", "shake", "bounce", "none")
     val alphas = setOf("side_by_side", "chroma_green")
     val facings = setOf("left", "right")
+    val haptics = setOf("tick", "thud", "buzz")
+    val perchKinds = setOf("cloud", "bubble")
+    val zoneNames = setOf("head", "belly", "tail")
 }
 
 /** 导入限制，见规格第 3、7.1、10 节。 */
@@ -102,6 +105,7 @@ class PetPackageValidator(private val limits: PetLimits = PetLimits()) {
             clips()
             mappings()
             expressions()
+            extensions()
             persona()
             return out
         }
@@ -256,6 +260,10 @@ class PetPackageValidator(private val limits: PetLimits = PetLimits()) {
 
         fun mapping(signal: String, reaction: PetReaction) {
             val field = "map.$signal"
+            val parts = signal.split('@')
+            if (parts.size > 2 || parts.first().isBlank() || (parts.size == 2 && parts[1] !in
+                setOf("perch", "message", "stage", "long", "verylong", "mood.high", "mood.low"))) invalid(field, signal)
+            if (reaction.haptic != null && reaction.haptic !in PetValues.haptics) invalid("$field.haptic", reaction.haptic)
             clip(reaction.clip, "$field.clip")
             clip(reaction.enter, "$field.enter")
             reaction.sometimes.forEach {
@@ -290,6 +298,26 @@ class PetPackageValidator(private val limits: PetLimits = PetLimits()) {
             expressions.set.values.forEach(::requireFile)
             if (expressions.set.isNotEmpty() && (expressions.baseClip == null || expressions.face == null)) {
                 invalid("expressions", "base_clip/face")
+            }
+        }
+
+        fun extensions() {
+            manifest.zones.forEach { (name, zone) ->
+                if (name !in PetValues.zoneNames) invalid("zones.$name", name)
+                point("zones.$name.center", zone.center)
+                point("zones.$name.radius", zone.radius)
+            }
+            manifest.props.perch.forEach { (name, prop) ->
+                val field = "props.perch.$name"
+                if (name !in PetValues.perchKinds) invalid(field, name)
+                prop.file?.let {
+                    requireFile(it)
+                    if (it.substringAfterLast('.', "").lowercase(Locale.ROOT) !in setOf("png", "webp")) invalid("$field.file", it)
+                }
+                prop.seat?.let { point("$field.seat", it) }
+                prop.widthDp?.let { if (it !in 60..200) invalid("$field.width_dp", it) }
+                clip(prop.appear, "$field.appear")
+                clip(prop.vanish, "$field.vanish")
             }
         }
 

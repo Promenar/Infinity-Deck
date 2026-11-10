@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 宠物“吹气吹散云朵”：用户在宠物页开启后才申请，只读取音量。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 保密输出卡“验证后显示 / 复制”经框架 BiometricPrompt 做设备验证。 -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />

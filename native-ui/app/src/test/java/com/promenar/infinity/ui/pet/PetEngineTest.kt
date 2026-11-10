@@ -45,12 +45,33 @@ class PetEngineTest {
     )
 
     /** 以 60 帧每秒推进 [seconds] 秒；平台左右边缘与顶部可指定。 */
-    private fun PetEngine.run(seconds: Float, left: Float = 0f, right: Float = 300f, top: Float = 500f) {
+    private fun PetEngine.run(
+        seconds: Float,
+        left: Float = 0f,
+        right: Float = 300f,
+        top: Float = 500f,
+        height: Float = 0f,
+    ) {
         val dt = 1f / 60f
         repeat((seconds * 60).toInt()) {
-            setPlatform(left, right, top, width = 400f, dt = dt)
+            setPlatform(left, right, top, width = 400f, dt = dt, height = height)
             step(dt)
         }
+    }
+
+    /** 图层高 800 dp 的入场：有高度时才提供栖息点。 */
+    private fun enteredTall(map: Map<String, PetReaction> = emptyMap()): PetEngine {
+        val engine = PetEngine(manifest(map), Random(7))
+        engine.enter()
+        engine.run(0.6f, height = TALL)
+        return engine
+    }
+
+    /** 提起后慢慢拖到屏幕上部松手，落到栖息点上。 */
+    private fun PetEngine.dropOnPerch() {
+        grab(100f, 450f, time = 0f)
+        dragTo(150f, 200f, time = 0.5f)
+        release(time = 0.5f)
     }
 
     private fun entered(map: Map<String, PetReaction> = emptyMap()): PetEngine {
@@ -280,5 +301,335 @@ class PetEngineTest {
         listOf(PetEngine.Mode.HELD, PetEngine.Mode.FALLING, PetEngine.Mode.ENTERING, PetEngine.Mode.EXITING).forEach { mode ->
             assertThat(petTargetFps(mode, calmSeconds = 5f, reducedMotion = false, clipType = "pose", clipFps = null, videoActive = false)).isEqualTo(0)
         }
+    }
+
+    @Test
+    fun `较快松手时抛出去撞边反弹再落回浮岛`() {
+        val engine = entered()
+
+        engine.grab(100f, 300f, time = 0f)
+        engine.dragTo(130f, 280f, time = 0.016f)
+        engine.release(time = 0.016f)
+
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FLYING)
+        assertThat(engine.events).contains(PetSignals.TOUCH_THROW)
+
+        engine.run(3f)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+        assertThat(engine.y).isEqualTo(0f)
+        assertThat(engine.x).isAtMost(282f)
+        assertThat(engine.events).contains(PetSignals.TOUCH_BOUNCE)
+        assertThat(engine.events).contains(PetSignals.TOUCH_LAND_HARD)
+        assertThat(engine.dismissedByFling).isFalse()
+    }
+
+    @Test
+    fun `用力甩出后飞出屏幕并标记为被收起`() {
+        val engine = entered()
+
+        engine.grab(100f, 300f, time = 0f)
+        engine.dragTo(200f, 250f, time = 0.016f)
+        engine.release(time = 0.016f)
+
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FLYING_OUT)
+        assertThat(engine.events).contains(PetSignals.ROLE_DISMISS)
+
+        engine.run(1f)
+        assertThat(engine.gone).isTrue()
+        assertThat(engine.dismissedByFling).isTrue()
+        assertThat(engine.scale).isEqualTo(1f)
+    }
+
+    @Test
+    fun `关闭甩出收起后用力甩出只反弹`() {
+        val engine = entered()
+        engine.flingEnabled = false
+
+        engine.grab(100f, 300f, time = 0f)
+        engine.dragTo(200f, 250f, time = 0.016f)
+        engine.release(time = 0.016f)
+
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FLYING)
+        engine.run(4f)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+        assertThat(engine.dismissedByFling).isFalse()
+    }
+
+    @Test
+    fun `拖动停住一会儿再松手按静止处理`() {
+        val engine = entered()
+
+        engine.grab(100f, 300f, time = 0f)
+        engine.dragTo(200f, 250f, time = 0.016f)
+        engine.release(time = 0.3f)
+
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+    }
+
+    @Test
+    fun `被收起后唤回从上方落到浮岛并发出唤回事件`() {
+        val engine = entered()
+        engine.grab(100f, 300f, time = 0f)
+        engine.dragTo(200f, 250f, time = 0.016f)
+        engine.release(time = 0.016f)
+        engine.run(1f)
+        engine.events.clear()
+
+        engine.summon()
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+        assertThat(engine.alpha).isEqualTo(1f)
+        assertThat(engine.dismissedByFling).isFalse()
+
+        engine.run(1.2f)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+        assertThat(engine.y).isEqualTo(0f)
+        assertThat(engine.events).contains(PetSignals.ROLE_SUMMON)
+        assertThat(engine.events).doesNotContain(PetSignals.TOUCH_LAND_HARD)
+        // 包没有声明唤回片段时用摔倒再起身代替。
+        assertThat(engine.clip).isEqualTo("over")
+    }
+
+    @Test
+    fun `提起时出现栖息点提示并在拖到屏幕上部后可落座`() {
+        val engine = enteredTall()
+
+        engine.grab(100f, 450f, time = 0f)
+        assertThat(engine.perchPhase).isEqualTo(PetEngine.PerchPhase.GHOST)
+        assertThat(engine.perchHot).isFalse()
+
+        engine.dragTo(150f, 200f, time = 0.5f)
+        assertThat(engine.perchHot).isTrue()
+
+        engine.release(time = 0.5f)
+        assertThat(engine.place).isEqualTo(PetEngine.Place.PERCH)
+        assertThat(engine.perchPhase).isEqualTo(PetEngine.PerchPhase.ACTIVE)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+        assertThat(engine.x).isEqualTo(150f)
+        assertThat(engine.y).isEqualTo(0f)
+        assertThat(engine.perchY).isWithin(0.01f).of(271.5f)
+        assertThat(engine.groundTop).isWithin(3.01f).of(271.5f)
+        assertThat(engine.events).contains(PetSignals.PLACE_PERCH_ENTER)
+    }
+
+    @Test
+    fun `没有图层高度时不提供栖息点`() {
+        val engine = entered()
+
+        engine.grab(100f, 450f, time = 0f)
+        engine.dragTo(150f, 200f, time = 0.5f)
+        engine.release(time = 0.5f)
+
+        assertThat(engine.perchPhase).isEqualTo(PetEngine.PerchPhase.NONE)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+    }
+
+    @Test
+    fun `在栖息点上不走动`() {
+        val walking = PetReaction(
+            behaviors = listOf(
+                PetBehavior(clip = "walk", weight = 100.0, move = true),
+                PetBehavior(clip = "stand", weight = 1.0),
+            ),
+        )
+        val engine = enteredTall(mapOf(PetSignals.IDLE to walking))
+        engine.dropOnPerch()
+
+        engine.run(5f, height = TALL)
+
+        assertThat(engine.place).isEqualTo(PetEngine.Place.PERCH)
+        assertThat(engine.x).isEqualTo(150f)
+        assertThat(engine.clip).isEqualTo("stand")
+    }
+
+    @Test
+    fun `在栖息点上优先使用带栖息点限定的映射`() {
+        val engine = enteredTall(mapOf("${PetSignals.IDLE}@perch" to PetReaction(clip = "look")))
+        engine.run(0.2f, height = TALL)
+        assertThat(engine.clip).isEqualTo("stand")
+
+        engine.dropOnPerch()
+        engine.run(0.2f, height = TALL)
+
+        assertThat(engine.clip).isEqualTo("look")
+    }
+
+    @Test
+    fun `戳破泡泡后落回浮岛`() {
+        val engine = enteredTall()
+        engine.dropOnPerch()
+        engine.run(0.5f, height = TALL)
+
+        assertThat(engine.popPerch()).isTrue()
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+        assertThat(engine.perchPhase).isEqualTo(PetEngine.PerchPhase.VANISHING)
+        assertThat(engine.perchExit).isEqualTo(PetEngine.PerchExit.POP)
+
+        engine.run(1.5f, height = TALL)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+        assertThat(engine.place).isEqualTo(PetEngine.Place.ISLAND)
+        assertThat(engine.perchPhase).isEqualTo(PetEngine.PerchPhase.NONE)
+        assertThat(engine.y).isEqualTo(0f)
+        assertThat(engine.events).containsAtLeast(PetSignals.PLACE_PERCH_POP, PetSignals.PLACE_PERCH_LEAVE)
+    }
+
+    @Test
+    fun `吹散云朵只在栖息点上有效`() {
+        val engine = enteredTall()
+        assertThat(engine.blowPerch()).isFalse()
+
+        engine.dropOnPerch()
+        assertThat(engine.blowPerch()).isTrue()
+        assertThat(engine.perchExit).isEqualTo(PetEngine.PerchExit.BLOWN)
+        assertThat(engine.events).contains(PetSignals.PLACE_PERCH_BLOWN)
+    }
+
+    @Test
+    fun `从栖息点提起后在下方松手落回浮岛`() {
+        val engine = enteredTall()
+        engine.dropOnPerch()
+        engine.run(0.5f, height = TALL)
+
+        engine.grab(150f, 271f, time = 1f)
+        assertThat(engine.perchPhase).isEqualTo(PetEngine.PerchPhase.GHOST)
+        engine.dragTo(150f, 450f, time = 1.5f)
+        assertThat(engine.perchHot).isFalse()
+        engine.release(time = 1.5f)
+
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+        engine.run(1.5f, height = TALL)
+        assertThat(engine.place).isEqualTo(PetEngine.Place.ISLAND)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+    }
+
+    @Test
+    fun `恢复栖息点后入场直接出现在栖息点上`() {
+        val engine = PetEngine(manifest(), Random(7))
+        engine.restorePerch(120f, 200f)
+        engine.enter()
+
+        engine.run(0.6f, height = TALL)
+
+        assertThat(engine.place).isEqualTo(PetEngine.Place.PERCH)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.NORMAL)
+        assertThat(engine.x).isEqualTo(120f)
+        assertThat(engine.perchY).isEqualTo(200f)
+        assertThat(engine.alpha).isEqualTo(1f)
+    }
+
+    @Test
+    fun `点按身体分区时依次回退到戳和点按`() {
+        val engine = entered(
+            mapOf(
+                PetSignals.TOUCH_TAP to PetReaction(clip = "look"),
+                PetSignals.TOUCH_POKE_HEAD to PetReaction(clip = "startle"),
+            ),
+        )
+
+        engine.tap("head")
+        engine.run(0.05f)
+        assertThat(engine.clip).isEqualTo("startle")
+        assertThat(engine.events).contains(PetSignals.TOUCH_POKE_HEAD)
+
+        engine.tap("belly")
+        engine.run(0.05f)
+        assertThat(engine.clip).isEqualTo("look")
+    }
+
+    @Test
+    fun `三秒内连点五次触发不耐烦`() {
+        val engine = entered(
+            mapOf(
+                PetSignals.TOUCH_TAP to PetReaction(clip = "look"),
+                PetSignals.TOUCH_ANNOYED to PetReaction(clip = "over"),
+            ),
+        )
+
+        repeat(4) {
+            engine.tap()
+            engine.run(0.1f)
+        }
+        assertThat(engine.clip).isEqualTo("look")
+
+        engine.tap()
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("over")
+        assertThat(engine.events.last()).isEqualTo(PetSignals.TOUCH_ANNOYED)
+    }
+
+    @Test
+    fun `间隔较长的点按不触发不耐烦`() {
+        val engine = entered(mapOf(PetSignals.TOUCH_ANNOYED to PetReaction(clip = "over")))
+
+        repeat(6) {
+            engine.tap()
+            engine.run(1f)
+        }
+
+        assertThat(engine.events).doesNotContain(PetSignals.TOUCH_ANNOYED)
+    }
+
+    @Test
+    fun `手机倾斜时沿浮岛滑到边缘`() {
+        val engine = entered()
+
+        engine.setTilt(0.8f)
+        engine.run(0.5f)
+
+        assertThat(engine.x).isWithin(0.01f).of(256f)
+        assertThat(engine.events).contains(PetSignals.TILT_SLIDE_RIGHT)
+
+        engine.setTilt(0.1f)
+        engine.run(0.5f)
+        assertThat(engine.x).isWithin(0.01f).of(256f)
+    }
+
+    @Test
+    fun `摇晃后晃一会儿再站稳`() {
+        val engine = entered()
+
+        engine.shake()
+        engine.run(0.5f)
+        assertThat(engine.events).contains(PetSignals.SHAKE_DIZZY)
+        assertThat(engine.rotation).isNotEqualTo(0f)
+
+        engine.run(1.5f)
+        assertThat(engine.rotation).isEqualTo(0f)
+    }
+
+    @Test
+    fun `任务持续较久后换成带时长限定的表现且不重播进入反应`() {
+        val engine = entered(
+            mapOf("${PetSignals.TASK_GENERATING}@long" to PetReaction(clip = "dive", enter = "startle")),
+        )
+        engine.setTaskSignal(PetSignals.TASK_GENERATING)
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("eat")
+
+        engine.setContext(duration = "long", mood = null)
+        engine.run(0.1f)
+
+        assertThat(engine.clip).isEqualTo("dive")
+    }
+
+    @Test
+    fun `工具信号依次回退到工具类别和通用工具表现`() {
+        val engine = entered(
+            mapOf(
+                "${PetSignals.TASK_TOOL}.search" to PetReaction(clip = "look"),
+                PetSignals.TASK_TOOL to PetReaction(clip = "dive"),
+            ),
+        )
+
+        engine.setTaskSignal("${PetSignals.TASK_TOOL}.web_search")
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("look")
+
+        engine.setTaskSignal("${PetSignals.TASK_TOOL}.unknown_tool")
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("dive")
+    }
+
+    private companion object {
+        const val TALL = 800f
     }
 }

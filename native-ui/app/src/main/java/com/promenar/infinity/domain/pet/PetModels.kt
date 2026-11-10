@@ -18,6 +18,18 @@ data class PetManifest(
     val clips: Map<String, PetClip>,
     val expressions: PetExpressions = PetExpressions(),
     val map: Map<String, PetReaction>,
+    val zones: Map<String, PetZone> = emptyMap(),
+    val props: PetProps = PetProps(),
+)
+
+@Serializable data class PetZone(val center: List<Double>, val radius: List<Double>)
+@Serializable data class PetProps(val perch: Map<String, PetPerchProp> = emptyMap())
+@Serializable data class PetPerchProp(
+    val file: String? = null,
+    val seat: List<Double>? = null,
+    @SerialName("width_dp") val widthDp: Int? = null,
+    val appear: String? = null,
+    val vanish: String? = null,
 )
 
 /** 许可及分发限制，见规格第 3 节。 */
@@ -97,6 +109,7 @@ data class PetReaction(
     val expression: String? = null,
     val say: Boolean = false,
     val sequence: List<PetSequenceStep> = emptyList(),
+    val haptic: String? = null,
 )
 
 /** 持续期间的插入动作，见规格第 3.3 节。 */

@@ -1228,6 +1228,7 @@ private fun toolSummaryCompletedText(part: ToolSummaryPart): String {
         ToolSummaryAction.PLAN -> R.plurals.chat_step_plan_done
         ToolSummaryAction.TIME -> R.plurals.chat_step_time_done
         ToolSummaryAction.CALCULATE -> R.plurals.chat_step_calculate_done
+        ToolSummaryAction.PET -> R.plurals.chat_step_pet_done
         ToolSummaryAction.SCHEDULE -> R.plurals.chat_step_schedule_done
         ToolSummaryAction.SKILL -> R.plurals.chat_step_skill_done
         ToolSummaryAction.SUBAGENT -> R.plurals.chat_step_subagent_done
@@ -1257,6 +1258,7 @@ private fun toolActionNameRes(action: ToolSummaryAction): Int = when (action) {
     ToolSummaryAction.PLAN -> R.string.chat_step_plan_name
     ToolSummaryAction.TIME -> R.string.chat_step_time_name
     ToolSummaryAction.CALCULATE -> R.string.chat_step_calculate_name
+    ToolSummaryAction.PET -> R.string.chat_step_pet_name
     ToolSummaryAction.SCHEDULE -> R.string.chat_step_schedule_name
     ToolSummaryAction.SKILL -> R.string.chat_step_skill_name
     ToolSummaryAction.SUBAGENT -> R.string.chat_step_subagent_name
@@ -1290,6 +1292,7 @@ internal fun toolGroupSummaryText(summary: ToolGroupSummary): String {
             ToolSummaryAction.PLAN -> R.string.chat_step_plan_running
             ToolSummaryAction.TIME -> R.string.chat_step_time_running
             ToolSummaryAction.CALCULATE -> R.string.chat_step_calculate_running
+            ToolSummaryAction.PET -> R.string.chat_step_pet_running
             ToolSummaryAction.SCHEDULE -> R.string.chat_step_schedule_running
             ToolSummaryAction.SKILL -> R.string.chat_step_skill_running
             ToolSummaryAction.SUBAGENT -> R.string.chat_step_subagent_running

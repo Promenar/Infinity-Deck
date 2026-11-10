@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import android.Manifest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import com.promenar.infinity.ui.common.ModelPicker
 import com.promenar.infinity.ui.common.ModelSelectionUiModel
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.common.toModelSelectionUiModel
+import com.promenar.infinity.ui.pet.petMicrophoneGranted
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +52,8 @@ import kotlinx.coroutines.withContext
 
 internal const val PET_ENABLED_SWITCH_TAG = "pet_enabled_switch"
 internal const val PET_IMPORT_TAG = "pet_import"
+private const val PERCH_CLOUD = "cloud"
+private const val PERCH_BUBBLE = "bubble"
 
 /** 模型选择器当前的用途。 */
 private enum class PetModelPick { LINES, ASSOCIATION }
@@ -71,6 +75,12 @@ fun PetSettingsScreen(onBack: () -> Unit) {
     val linesEnabled by preferences.linesEnabled.collectAsStateWithLifecycle()
     val linesModelId by preferences.linesModelId.collectAsStateWithLifecycle()
     val videoEnabled by preferences.videoEnabled.collectAsStateWithLifecycle()
+    val dismissed by preferences.dismissed.collectAsStateWithLifecycle()
+    val flingEnabled by preferences.flingGestureEnabled.collectAsStateWithLifecycle()
+    val motionEnabled by preferences.motionSensorEnabled.collectAsStateWithLifecycle()
+    val hapticsEnabled by preferences.hapticsEnabled.collectAsStateWithLifecycle()
+    val perchKind by preferences.perchKind.collectAsStateWithLifecycle()
+    val blowEnabled by preferences.blowEnabled.collectAsStateWithLifecycle()
     val allModels by settings.providerModels.collectAsState()
     val resolver = ModelCatalogRuntime.resolver
     val models = remember(allModels, resolver) {
@@ -94,6 +104,10 @@ fun PetSettingsScreen(onBack: () -> Unit) {
                 }.getOrNull() ?: PetImportResult.Failed(PetImportFailure.IO)
             }
         }
+    }
+    // 吹散云朵要用麦克风：打开开关时才申请权限，被拒绝则保持关闭。
+    val microphoneLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        preferences.setBlowEnabled(granted)
     }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
@@ -127,6 +141,14 @@ fun PetSettingsScreen(onBack: () -> Unit) {
                     icon = Icons.Rounded.Pets,
                     switchModifier = Modifier.testTag(PET_ENABLED_SWITCH_TAG),
                 )
+                if (enabled && dismissed) {
+                    InfinityGroupDivider()
+                    InfinitySettingsItem(
+                        title = stringResource(R.string.pet_settings_summon),
+                        subtitle = stringResource(R.string.pet_settings_dismissed),
+                        onClick = { preferences.setDismissed(false) },
+                    )
+                }
             }
             PetPackagesSection(
                 pets = pets,
@@ -156,6 +178,57 @@ fun PetSettingsScreen(onBack: () -> Unit) {
                     value = petModelName(models, linesModelId) ?: stringResource(R.string.pet_settings_not_set),
                     onClick = { modelPick = PetModelPick.LINES },
                     enabled = linesEnabled,
+                )
+            }
+            InfinitySettingsSection(
+                title = stringResource(R.string.pet_settings_play_section),
+                footer = stringResource(R.string.pet_settings_play_footer),
+            ) {
+                SettingsToggle(
+                    title = stringResource(R.string.pet_settings_fling),
+                    checked = flingEnabled,
+                    onCheckedChange = preferences::setFlingGestureEnabled,
+                )
+                InfinityGroupDivider()
+                SettingsToggle(
+                    title = stringResource(R.string.pet_settings_motion),
+                    checked = motionEnabled,
+                    onCheckedChange = preferences::setMotionSensorEnabled,
+                )
+                InfinityGroupDivider()
+                SettingsToggle(
+                    title = stringResource(R.string.pet_settings_haptics),
+                    checked = hapticsEnabled,
+                    onCheckedChange = preferences::setHapticsEnabled,
+                )
+            }
+            InfinitySettingsSection(
+                title = stringResource(R.string.pet_settings_perch_section),
+                footer = stringResource(R.string.pet_settings_perch_footer),
+            ) {
+                InfinitySettingsItem(
+                    title = stringResource(R.string.pet_settings_perch_cloud),
+                    subtitle = stringResource(R.string.pet_settings_perch_selected).takeIf { perchKind != PERCH_BUBBLE },
+                    onClick = { preferences.setPerchKind(PERCH_CLOUD) },
+                )
+                InfinityGroupDivider()
+                InfinitySettingsItem(
+                    title = stringResource(R.string.pet_settings_perch_bubble),
+                    subtitle = stringResource(R.string.pet_settings_perch_selected).takeIf { perchKind == PERCH_BUBBLE },
+                    onClick = { preferences.setPerchKind(PERCH_BUBBLE) },
+                )
+                InfinityGroupDivider()
+                SettingsToggle(
+                    title = stringResource(R.string.pet_settings_blow),
+                    // 权限不随备份迁移：恢复到新设备后没有权限时显示为关闭。
+                    checked = blowEnabled && petMicrophoneGranted(context),
+                    onCheckedChange = { wanted ->
+                        when {
+                            !wanted -> preferences.setBlowEnabled(false)
+                            petMicrophoneGranted(context) -> preferences.setBlowEnabled(true)
+                            else -> microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
                 )
             }
             InfinitySettingsGroup(footer = stringResource(R.string.pet_settings_video_footer)) {

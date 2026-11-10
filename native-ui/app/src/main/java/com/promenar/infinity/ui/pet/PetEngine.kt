@@ -2,18 +2,21 @@ package com.promenar.infinity.ui.pet
 
 import com.promenar.infinity.domain.pet.PetBehavior
 import com.promenar.infinity.domain.pet.PetManifest
+import com.promenar.infinity.domain.pet.PetQualifiers
 import com.promenar.infinity.domain.pet.PetReaction
 import com.promenar.infinity.domain.pet.PetSignalResolver
 import com.promenar.infinity.domain.pet.PetSignals
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sign
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * 宠物基座的状态机与平台物理，见规格第 3.3、5、9 节。
+ * 宠物基座的状态机与平台物理，见规格第 3.3、5、9 节与 v0.3 增补第 1 到 4 节。
  *
  * 不依赖 Android：长度单位为 dp，时间为秒，坐标原点在宠物图层左上角。
  * 每帧先 [setPlatform]、再 [step]，然后由绘制层读取 [clip]、[x]、[y] 等结果。
@@ -23,9 +26,24 @@ internal class PetEngine(
     private val manifest: PetManifest,
     private val random: Random = Random.Default,
 ) {
-    enum class Mode { NORMAL, HELD, FALLING, ENTERING, EXITING, GONE }
+    enum class Mode { NORMAL, HELD, FALLING, FLYING, FLYING_OUT, ENTERING, EXITING, GONE }
 
-    private class Timed(val clip: String, var left: Float, val mirrored: Boolean, val then: (() -> Unit)?)
+    /** 宠物所在的平台：浮岛上沿，或屏幕上部的栖息点。 */
+    enum class Place { ISLAND, PERCH }
+
+    /** 栖息点的显示阶段：没有、被提起时的提示、已落座、正在消失。 */
+    enum class PerchPhase { NONE, GHOST, ACTIVE, VANISHING }
+
+    /** 栖息点消失的方式：宠物被拖走、泡泡被戳破、云朵被吹散。 */
+    enum class PerchExit { DRAG, POP, BLOWN }
+
+    private class Timed(
+        val clip: String,
+        var left: Float,
+        val mirrored: Boolean,
+        val then: (() -> Unit)?,
+        val slide: Boolean = false,
+    )
 
     var mode = Mode.GONE
         private set
@@ -34,9 +52,48 @@ internal class PetEngine(
     var x = 0f
         private set
 
-    /** 接触点高出平台的距离；被提起时为抓握点的高度。 */
+    /** 接触点高出当前平台（[groundTop]）的距离；被提起时为抓握点的高度。 */
     var y = 0f
         private set
+
+    /** 整体缩放；被甩出屏幕时逐渐变小。 */
+    var scale = 1f
+        private set
+
+    var place = Place.ISLAND
+        private set
+
+    var perchPhase = PerchPhase.NONE
+        private set
+
+    /** 栖息点落座点的横坐标与距图层顶部的距离。 */
+    var perchX = 0f
+        private set
+    var perchY = 0f
+        private set
+
+    /** 被提起的宠物已进入可落座的范围。 */
+    var perchHot = false
+        private set
+
+    /** 栖息点出现与消失的进度，0 到 1。 */
+    var perchAppear = 0f
+        private set
+    var perchVanish = 0f
+        private set
+    var perchExit = PerchExit.DRAG
+        private set
+
+    /** 被用力甩出屏幕后为真，直到下一次入场或唤回。 */
+    var dismissedByFling = false
+        private set
+
+    /** 为假时用力甩出只反弹，不收起。 */
+    var flingEnabled = true
+
+    /** 当前平台的顶部：在栖息点上时是栖息点（带轻微浮动），否则是浮岛上沿。 */
+    val groundTop: Float
+        get() = if (place == Place.PERCH) perchY + sin(clock * 1.3f) * PERCH_BOB else platformTop
 
     var rotation = 0f
         private set
@@ -80,6 +137,9 @@ internal class PetEngine(
     /** 待处理的台词请求（信号名），由图层取走。 */
     val sayRequests = ArrayDeque<String>()
 
+    /** 本帧发生的事件信号，由运行时取走，用于触感、心情和状态保存。 */
+    val events = ArrayDeque<String>()
+
     val gone: Boolean
         get() = mode == Mode.GONE
 
@@ -89,7 +149,7 @@ internal class PetEngine(
      */
     val calm: Boolean
         get() = mode == Mode.NORMAL && platformReady && behavior?.move != true && fade >= 1f &&
-            abs(pop.x - 1f) < CALM_POP_EPSILON && abs(pop.v) < CALM_POP_VELOCITY && rotation == 0f
+            abs(pop.x - 1f) < CALM_POP_EPSILON && abs(pop.v) < CALM_POP_VELOCITY && rotation == 0f && !sliding
 
     private val rotationSpring = PetSpring(70f, 7f)
     private val defaultFacing = if (manifest.display.facing == "left") -1 else 1
@@ -98,6 +158,7 @@ internal class PetEngine(
     private var platformRight = 0f
     private var platformTop = 0f
     private var layerWidth = 0f
+    private var layerHeight = 0f
     private var platformReady = false
     private var settledWidth = 0f
     private var previousWidth = 0f
@@ -116,27 +177,79 @@ internal class PetEngine(
     private var sequenceClips: List<String> = emptyList()
     private var sequenceIntoIsland = false
     private var mirrored = false
+    private var clock = 0f
+    private var qualifiers = PetQualifiers.NONE
+    private var contextDuration: String? = null
+    private var contextMood: String? = null
+    private var spin = 0f
+    private var flyTime = 0f
+    private var summonLanding = false
+    private var pendingSummon = false
+    private var pendingPerchX = 0f
+    private var pendingPerchY = 0f
+    private var pendingPerch = false
+    private var tilt = 0f
+    private var sliding = false
+    private var wobbleLeft = 0f
+    private val taps = ArrayDeque<Float>()
 
     /** 任务状态或空闲信号变化；相同信号重复传入没有效果。 */
     fun setTaskSignal(signal: String) {
         if (signal == taskSignal) return
+        // 连续执行不同工具且表现相同时，不重播进入反应。
+        val toolToTool = taskSignal.startsWith(PetSignals.TASK_TOOL) && signal.startsWith(PetSignals.TASK_TOOL)
         taskSignal = signal
-        val next = PetSignalResolver.resolve(manifest, signal)?.reaction
+        val same = toolToTool && PetSignalResolver.resolve(manifest, signal, qualifiers)?.reaction === reaction
+        applyReaction(entering = !same)
+    }
+
+    /** 时长与心情限定（v0.3 第 1 节）；变化时只换表现，不重播进入反应。 */
+    fun setContext(duration: String?, mood: String?) {
+        if (duration == contextDuration && mood == contextMood) return
+        contextDuration = duration
+        contextMood = mood
+        refreshQualifiers()
+    }
+
+    /** 手机左右倾斜的程度，-1 到 1；正值向右滑。 */
+    fun setTilt(value: Float) {
+        tilt = petClamp(value, -1f, 1f)
+    }
+
+    private fun refreshQualifiers() {
+        val next = PetQualifiers(
+            place = if (place == Place.PERCH) PLACE_PERCH else null,
+            duration = contextDuration,
+            mood = contextMood,
+        )
+        if (next == qualifiers) return
+        qualifiers = next
+        applyReaction(entering = false)
+    }
+
+    private fun applyReaction(entering: Boolean) {
+        val next = PetSignalResolver.resolve(manifest, taskSignal, qualifiers)?.reaction
+        if (!entering && next === reaction) return
         reaction = next
         behavior = null
         sometimesLeft = FloatArray(next?.sometimes?.size ?: 0) { next?.sometimes?.get(it)?.everyS?.toFloat() ?: 0f }
+        if (!entering) return
         chatterLeft = 10f + random.nextFloat() * 10f
         if (next == null) return
         val enter = next.enter
         if (mode == Mode.NORMAL && enter != null && enter in manifest.clips) {
             timed = Timed(enter, (next.enterMs ?: DEFAULT_ENTER_MS) / 1000f, mirrored = false, then = null)
         }
-        if (next.say) sayRequests.addLast(signal)
+        if (next.say) sayRequests.addLast(taskSignal)
     }
 
-    /** 更新图层宽度与浮岛平台的位置；浮岛边缘移动碰到角色时推着走。 */
-    fun setPlatform(left: Float, right: Float, top: Float, width: Float, dt: Float) {
+    /**
+     * 更新图层尺寸与浮岛平台的位置；浮岛边缘移动碰到角色时推着走。
+     * [height] 为 0 时不提供栖息点。
+     */
+    fun setPlatform(left: Float, right: Float, top: Float, width: Float, dt: Float, height: Float = 0f) {
         layerWidth = width
+        layerHeight = height
         platformTop = top
         if (!platformReady) {
             platformLeft = left
@@ -145,10 +258,12 @@ internal class PetEngine(
             settledWidth = right - left
             previousWidth = settledWidth
             platformReady = true
-            if (mode == Mode.ENTERING) beginEnter()
+            if (mode == Mode.ENTERING) {
+                if (pendingSummon) beginSummon() else beginEnter()
+            }
             return
         }
-        if (mode == Mode.NORMAL) {
+        if (mode == Mode.NORMAL && place == Place.ISLAND) {
             if (x < left + PUSH_MARGIN && left > platformLeft + 0.5f) {
                 x = left + PUSH_MARGIN
                 push(PetSignals.PUSH_LEFT, PetSignals.PUSH_RIGHT)
@@ -165,18 +280,20 @@ internal class PetEngine(
         if (settleLeft > 0f) {
             settleLeft -= dt
             if (settleLeft <= 0f && abs(width2 - settledWidth) > WIDTH_CHANGE) {
-                if (mode == Mode.NORMAL && timed == null) {
+                if (mode == Mode.NORMAL && place == Place.ISLAND && timed == null) {
                     playEvent(if (width2 > settledWidth) PetSignals.ISLAND_WIDER else PetSignals.ISLAND_NARROWER, 1600)
                 }
                 settledWidth = width2
             }
         }
-        if (mode == Mode.NORMAL) x = petClamp(x, left + EDGE_MARGIN, right - EDGE_MARGIN)
+        if (mode == Mode.NORMAL && place == Place.ISLAND) x = petClamp(x, left + EDGE_MARGIN, right - EDGE_MARGIN)
     }
 
     fun step(dt: Float) {
         if (mode == Mode.GONE || !platformReady) return
+        clock += dt
         pop.step(1f, dt)
+        stepPerch(dt)
         fade = min(1f, fade + dt / FADE_SECONDS)
         if (fade >= 1f) previousClip = null
         clipTime += dt
@@ -186,6 +303,8 @@ internal class PetEngine(
                 rotation = rotationSpring.step(-petClamp(velocityX * 0.0025f, -0.7f, 0.7f), dt)
             }
             Mode.FALLING -> stepFalling(dt)
+            Mode.FLYING -> stepFlying(dt)
+            Mode.FLYING_OUT -> stepFlyingOut(dt)
             Mode.ENTERING -> stepEntering(dt)
             Mode.EXITING -> stepExiting(dt)
             Mode.NORMAL -> stepNormal(dt)
@@ -194,20 +313,94 @@ internal class PetEngine(
         updateClip()
     }
 
-    /** 点按。 */
-    fun tap() {
+    /**
+     * 点按。[zone] 为点中的身体分区（`head`、`belly`、`tail`），包没有声明分区时为 null。
+     * 3 秒内点按 5 次触发 `touch.annoyed`。
+     */
+    fun tap(zone: String? = null) {
         if (mode != Mode.NORMAL) return
+        while (taps.isNotEmpty() && clock - taps.first() > ANNOYED_WINDOW) taps.removeFirst()
+        taps.addLast(clock)
+        val signal = when {
+            taps.size >= ANNOYED_TAPS -> {
+                taps.clear()
+                PetSignals.TOUCH_ANNOYED
+            }
+            zone == "head" -> PetSignals.TOUCH_POKE_HEAD
+            zone == "belly" -> PetSignals.TOUCH_POKE_BELLY
+            zone == "tail" -> PetSignals.TOUCH_POKE_TAIL
+            else -> PetSignals.TOUCH_TAP
+        }
         pop.x = 0.92f
-        playEvent(PetSignals.TOUCH_TAP, 1600)
+        events.addLast(signal)
+        playEvent(signal, 1600)
+    }
+
+    /** 抚摸：在头部来回滑动。 */
+    fun stroke() {
+        if (mode != Mode.NORMAL) return
+        events.addLast(PetSignals.TOUCH_PET)
+        playEvent(PetSignals.TOUCH_PET, 1600)
+    }
+
+    /** 摇晃手机：晕一下。 */
+    fun shake() {
+        if (mode != Mode.NORMAL) return
+        wobbleLeft = DIZZY_SECONDS
+        pop.x = 0.86f
+        events.addLast(PetSignals.SHAKE_DIZZY)
+        playEvent(PetSignals.SHAKE_DIZZY, 1600)
+    }
+
+    /** 键盘弹出或收起。 */
+    fun keyboard(up: Boolean) {
+        if (mode != Mode.NORMAL || place != Place.ISLAND) return
+        val signal = if (up) PetSignals.KEYBOARD_UP else PetSignals.KEYBOARD_DOWN
+        pop.x = 0.8f
+        pop.v = 0f
+        events.addLast(signal)
+        playEvent(signal, 1300)
+    }
+
+    /** 泡泡被戳破：宠物落回浮岛。 */
+    fun popPerch(): Boolean = leavePerch(PerchExit.POP, PetSignals.PLACE_PERCH_POP)
+
+    /** 云朵被吹散：宠物落回浮岛。 */
+    fun blowPerch(): Boolean = leavePerch(PerchExit.BLOWN, PetSignals.PLACE_PERCH_BLOWN)
+
+    /** 下一次入场时直接出现在栖息点上；[xDp]、[yDp] 为落座点在图层内的位置。 */
+    fun restorePerch(xDp: Float, yDp: Float) {
+        pendingPerch = true
+        pendingPerchX = xDp
+        pendingPerchY = yDp
     }
 
     /** 提起；[px]、[py] 为指针在图层内的位置。进出场期间不能提起。 */
     fun grab(px: Float, py: Float, time: Float): Boolean {
-        if (mode != Mode.NORMAL && mode != Mode.FALLING) return false
+        if (mode != Mode.NORMAL && mode != Mode.FALLING && mode != Mode.FLYING) return false
+        if (place == Place.PERCH) {
+            // 原来的栖息点留作提示，松手在可落座范围内时落回原处附近。
+            place = Place.ISLAND
+            perchPhase = PerchPhase.GHOST
+            perchHot = true
+            events.addLast(PetSignals.PLACE_PERCH_LEAVE)
+            refreshQualifiers()
+        } else if (layerHeight > 0f) {
+            perchPhase = PerchPhase.GHOST
+            perchAppear = 0f
+            perchVanish = 0f
+            perchHot = false
+            perchX = px
+            perchY = clampPerchY(GHOST_REST_TOP)
+        }
         mode = Mode.HELD
         timed = null
         behavior = null
+        wobbleLeft = 0f
+        sliding = false
+        summonLanding = false
         velocityX = 0f
+        velocityY = 0f
         rotationSpring.x = 0f
         rotationSpring.v = 0f
         pop.x = 1.12f
@@ -220,23 +413,162 @@ internal class PetEngine(
     fun dragTo(px: Float, py: Float, time: Float) {
         if (mode != Mode.HELD) return
         val previousX = x
+        val previousY = y
         moveHeld(px, py)
         val elapsed = max(0.008f, time - lastDragTime)
         velocityX += ((x - previousX) / elapsed - velocityX) * 0.5f
+        velocityY += ((y - previousY) / elapsed - velocityY) * 0.5f
         lastDragTime = time
+        if (perchPhase == PerchPhase.GHOST) {
+            val feet = platformTop - (y - heldDrop())
+            perchHot = feet < layerHeight * PERCH_ZONE
+            perchX = x
+            perchY = if (perchHot) clampPerchY(feet) else perchY + (clampPerchY(GHOST_REST_TOP) - perchY) * 0.2f
+        }
     }
 
-    /** 松手：按重力落回平台。 */
-    fun release() {
+    /**
+     * 松手。按松手速度分三档（v0.3 第 3.1 节）：慢的落回平台或落到栖息点，快的飞出去撞边反弹，
+     * 更快的飞出屏幕被收起。[time] 距最后一次拖动超过 90 毫秒时视为静止松手。
+     */
+    fun release(time: Float = lastDragTime) {
         if (mode != Mode.HELD) return
-        velocityX = petClamp(velocityX, -260f, 260f) * 0.35f
-        velocityY = 0f
+        if (time - lastDragTime > STALE_DRAG) {
+            velocityX = 0f
+            velocityY = 0f
+        }
+        val speed = hypot(velocityX, velocityY)
         y = max(0f, y - heldDrop())
-        mode = Mode.FALLING
+        flyTime = 0f
+        when {
+            speed >= FLING_OUT_SPEED && flingEnabled -> {
+                val boost = max(1f, FLING_OUT_MIN / speed)
+                velocityX *= boost
+                velocityY *= boost
+                spin = FLING_OUT_SPIN * if (velocityX < 0f) -1f else 1f
+                dropGhost()
+                mode = Mode.FLYING_OUT
+                events.addLast(PetSignals.ROLE_DISMISS)
+                if (manifest.map[PetSignals.ROLE_DISMISS]?.say == true) sayRequests.addLast(PetSignals.ROLE_DISMISS)
+            }
+            speed >= THROW_SPEED -> {
+                velocityX = petClamp(velocityX, -MAX_THROW_X, MAX_THROW_X)
+                velocityY = petClamp(velocityY, -MAX_THROW_Y, MAX_THROW_Y)
+                spin = petClamp(velocityX * 0.004f, -9f, 9f)
+                dropGhost()
+                mode = Mode.FLYING
+                events.addLast(PetSignals.TOUCH_THROW)
+                if (manifest.map[PetSignals.TOUCH_THROW]?.say == true) sayRequests.addLast(PetSignals.TOUCH_THROW)
+            }
+            perchPhase == PerchPhase.GHOST && perchHot -> landOnPerch()
+            else -> {
+                velocityX = petClamp(velocityX, -260f, 260f) * 0.35f
+                velocityY = 0f
+                dropGhost()
+                mode = Mode.FALLING
+            }
+        }
     }
+
+    /** 被收起后用力摇晃手机唤回：从图层上方翻滚着落到浮岛。 */
+    fun summon() {
+        if (mode != Mode.GONE && mode != Mode.ENTERING) return
+        if (!platformReady) {
+            pendingSummon = true
+            mode = Mode.ENTERING
+            alpha = 0f
+            sequenceClips = emptyList()
+            return
+        }
+        beginSummon()
+    }
+
+    private fun beginSummon() {
+        pendingSummon = false
+        pendingPerch = false
+        dismissedByFling = false
+        place = Place.ISLAND
+        perchPhase = PerchPhase.NONE
+        scale = 1f
+        alpha = 1f
+        clipAtPlatform = false
+        timed = null
+        behavior = null
+        sequenceClips = emptyList()
+        val low = platformLeft + PUSH_MARGIN
+        val high = max(low, platformRight - PUSH_MARGIN)
+        x = low + random.nextFloat() * (high - low)
+        y = platformTop + SUMMON_HEIGHT
+        velocityX = 0f
+        velocityY = -SUMMON_SPEED
+        rotation = SUMMON_ROTATION
+        summonLanding = true
+        mode = Mode.FALLING
+        refreshQualifiers()
+    }
+
+    private fun landOnPerch() {
+        place = Place.PERCH
+        perchPhase = PerchPhase.ACTIVE
+        perchVanish = 0f
+        x = perchX
+        y = 0f
+        velocityX = 0f
+        velocityY = 0f
+        rotation = 0f
+        pop.x = 0.85f
+        pop.v = 0f
+        timed = null
+        behavior = null
+        mode = Mode.NORMAL
+        events.addLast(PetSignals.PLACE_PERCH_ENTER)
+        refreshQualifiers()
+        playEvent(PetSignals.PLACE_PERCH_ENTER, 1200)
+    }
+
+    private fun leavePerch(exit: PerchExit, signal: String): Boolean {
+        if (place != Place.PERCH || mode != Mode.NORMAL) return false
+        y = max(0f, platformTop - perchY)
+        place = Place.ISLAND
+        perchPhase = PerchPhase.VANISHING
+        perchVanish = 0f
+        perchExit = exit
+        timed = null
+        behavior = null
+        velocityX = 0f
+        velocityY = 0f
+        mode = Mode.FALLING
+        events.addLast(signal)
+        events.addLast(PetSignals.PLACE_PERCH_LEAVE)
+        if (PetSignalResolver.resolveEvent(manifest, signal, qualifiers)?.reaction?.say == true) sayRequests.addLast(signal)
+        refreshQualifiers()
+        return true
+    }
+
+    private fun dropGhost() {
+        if (perchPhase != PerchPhase.GHOST) return
+        perchPhase = PerchPhase.VANISHING
+        perchVanish = 0f
+        perchExit = PerchExit.DRAG
+    }
+
+    private fun stepPerch(dt: Float) {
+        when (perchPhase) {
+            PerchPhase.GHOST, PerchPhase.ACTIVE -> perchAppear = min(1f, perchAppear + dt * 4f)
+            PerchPhase.VANISHING -> {
+                perchVanish += dt * if (perchExit == PerchExit.POP) 5f else 1.6f
+                if (perchVanish >= 1f) perchPhase = PerchPhase.NONE
+            }
+            PerchPhase.NONE -> Unit
+        }
+    }
+
+    private fun clampPerchY(value: Float): Float =
+        petClamp(value, PERCH_MIN_TOP, max(PERCH_MIN_TOP, layerHeight * PERCH_MAX_ZONE))
 
     /** 入场：包声明了 `role.enter` 的序列时按序列，否则淡入。 */
     fun enter() {
+        pendingSummon = false
         if (!platformReady) {
             // 平台尚未测量：先标记为入场，位置在第一次 setPlatform 时确定。
             mode = Mode.ENTERING
@@ -254,7 +586,13 @@ internal class PetEngine(
             finishExit()
             return
         }
-        val steps = manifest.map[PetSignals.ROLE_EXIT]?.sequence.orEmpty().filter { it.clip in manifest.clips }
+        // 在栖息点上时原地淡出，不播放钻进浮岛的序列。
+        val steps = if (place == Place.PERCH) {
+            emptyList()
+        } else {
+            manifest.map[PetSignals.ROLE_EXIT]?.sequence.orEmpty().filter { it.clip in manifest.clips }
+        }
+        if (place != Place.PERCH && perchPhase != PerchPhase.NONE) dropGhost()
         timed = null
         behavior = null
         rotation = 0f
@@ -270,11 +608,32 @@ internal class PetEngine(
     }
 
     private fun beginEnter() {
-        val steps = manifest.map[PetSignals.ROLE_ENTER]?.sequence.orEmpty().filter { it.clip in manifest.clips }
+        dismissedByFling = false
+        scale = 1f
+        val onPerch = pendingPerch && layerHeight > 0f
+        pendingPerch = false
+        val steps = if (onPerch) {
+            emptyList()
+        } else {
+            manifest.map[PetSignals.ROLE_ENTER]?.sequence.orEmpty().filter { it.clip in manifest.clips }
+        }
         timed = null
         behavior = null
         rotation = 0f
-        x = petClamp(x, platformLeft + PUSH_MARGIN, platformRight - PUSH_MARGIN)
+        if (onPerch) {
+            place = Place.PERCH
+            perchPhase = PerchPhase.ACTIVE
+            perchAppear = 0f
+            perchVanish = 0f
+            perchX = petClamp(pendingPerchX, 24f, max(24f, layerWidth - 24f))
+            perchY = clampPerchY(pendingPerchY)
+            x = perchX
+        } else {
+            place = Place.ISLAND
+            perchPhase = PerchPhase.NONE
+            x = petClamp(x, platformLeft + PUSH_MARGIN, platformRight - PUSH_MARGIN)
+        }
+        refreshQualifiers()
         sequenceClips = steps.map { it.clip }
         sequenceIntoIsland = steps.any { it.intoIsland }
         if (steps.isEmpty()) {
@@ -328,6 +687,10 @@ internal class PetEngine(
 
     private fun finishExit() {
         alpha = 0f
+        scale = 1f
+        rotation = 0f
+        place = Place.ISLAND
+        perchPhase = PerchPhase.NONE
         clipAtPlatform = false
         sequenceClips = emptyList()
         clip = null
@@ -344,7 +707,59 @@ internal class PetEngine(
         x += (inside - x) * min(1f, dt * 7f)
         rotation *= 0.01f.pow(dt)
         if (y > 0f) return
-        val hard = velocityY < -HARD_LANDING_SPEED
+        land(hard = velocityY < -HARD_LANDING_SPEED)
+    }
+
+    /** 飞行：受重力，撞图层左右边缘和顶部反弹，下落到低处时被引回浮岛范围。 */
+    private fun stepFlying(dt: Float) {
+        velocityY -= GRAVITY * dt
+        y += velocityY * dt
+        x += velocityX * dt
+        rotation += spin * dt
+        val right = max(FLY_MARGIN, layerWidth - FLY_MARGIN)
+        if (x < FLY_MARGIN) {
+            x = FLY_MARGIN
+            velocityX = abs(velocityX) * RESTITUTION
+            bounce()
+        } else if (x > right) {
+            x = right
+            velocityX = -abs(velocityX) * RESTITUTION
+            bounce()
+        }
+        val ceiling = max(0f, platformTop - FLY_CEILING)
+        if (y > ceiling) {
+            y = ceiling
+            velocityY = -abs(velocityY) * RESTITUTION
+            bounce()
+        }
+        if (y < FLY_STEER_HEIGHT && velocityY < 0f) {
+            val inside = petClamp(x, platformLeft + PUSH_MARGIN, platformRight - PUSH_MARGIN)
+            x += (inside - x) * min(1f, dt * 6f)
+        }
+        if (y <= 0f && velocityY < 0f) land(hard = true)
+    }
+
+    private fun bounce() {
+        pop.x = 0.8f
+        pop.v = 0f
+        events.addLast(PetSignals.TOUCH_BOUNCE)
+    }
+
+    /** 被甩出屏幕：不受重力，越飞越小，飞出图层或超时后消失。 */
+    private fun stepFlyingOut(dt: Float) {
+        x += velocityX * dt
+        y += velocityY * dt
+        rotation += spin * dt
+        scale = max(0.06f, scale - dt * 1.15f)
+        flyTime += dt
+        val outside = x < -FLY_OUT_MARGIN || x > layerWidth + FLY_OUT_MARGIN || y > platformTop + FLY_OUT_MARGIN ||
+            y < -FLY_OUT_MARGIN * 4f
+        if (flyTime < FLING_OUT_SECONDS && !outside) return
+        finishExit()
+        dismissedByFling = true
+    }
+
+    private fun land(hard: Boolean) {
         y = 0f
         velocityY = 0f
         velocityX = 0f
@@ -352,10 +767,26 @@ internal class PetEngine(
         pop.x = if (hard) 0.7f else 0.88f
         pop.v = 0f
         mode = Mode.NORMAL
-        playEvent(if (hard) PetSignals.TOUCH_LAND_HARD else PetSignals.TOUCH_LAND_SOFT, if (hard) 1500L else 400L)
+        val signal = if (hard) PetSignals.TOUCH_LAND_HARD else PetSignals.TOUCH_LAND_SOFT
+        if (summonLanding) {
+            // 被摇回来的落地不算被摔，只发唤回事件。
+            summonLanding = false
+            events.addLast(PetSignals.ROLE_SUMMON)
+            if (!playEvent(PetSignals.ROLE_SUMMON, 2000)) {
+                playEvent(PetSignals.FALL_OVER, 1100) { playEvent(PetSignals.GET_UP, 1600) }
+            }
+            return
+        }
+        events.addLast(signal)
+        playEvent(signal, if (hard) 1500L else 400L)
     }
 
     private fun stepNormal(dt: Float) {
+        if (wobbleLeft > 0f) {
+            wobbleLeft -= dt
+            rotation = if (wobbleLeft > 0f) sin(clock * 22f) * 0.14f * min(1f, wobbleLeft) else 0f
+        }
+        if (stepSlide(dt)) return
         val current = timed
         if (current != null) {
             current.left -= dt
@@ -389,6 +820,37 @@ internal class PetEngine(
         }
     }
 
+    /** 手机倾斜时沿浮岛打滑；返回真表示本帧在打滑，其它行为暂停。 */
+    private fun stepSlide(dt: Float): Boolean {
+        val running = timed
+        val low = platformLeft + PUSH_MARGIN
+        val high = max(low, platformRight - PUSH_MARGIN)
+        // 已经滑到边缘时不再算打滑，空闲行为照常继续。
+        val blocked = if (tilt > 0f) x >= high - 0.01f else x <= low + 0.01f
+        val active = place == Place.ISLAND && !reducedMotion && abs(tilt) > TILT_THRESHOLD && !blocked &&
+            (running == null || running.slide)
+        if (!active) {
+            if (running?.slide == true) timed = null
+            sliding = false
+            return false
+        }
+        val right = tilt > 0f
+        val signal = if (right) PetSignals.TILT_SLIDE_RIGHT else PetSignals.TILT_SLIDE_LEFT
+        val opposite = if (right) PetSignals.TILT_SLIDE_LEFT else PetSignals.TILT_SLIDE_RIGHT
+        val own = manifest.map[signal]?.clip?.takeIf { it in manifest.clips }
+        val other = manifest.map[opposite]?.clip?.takeIf { it in manifest.clips }
+        if (!sliding) {
+            sliding = true
+            behavior = null
+            events.addLast(signal)
+            if ((manifest.map[signal] ?: manifest.map[opposite])?.say == true) sayRequests.addLast(signal)
+        }
+        val slideClip = own ?: other
+        timed = slideClip?.let { Timed(it, 0.2f, mirrored = own == null, then = null, slide = true) }
+        x = petClamp(x + tilt * SLIDE_SPEED * dt, low, high)
+        return true
+    }
+
     private fun stepBehavior(dt: Float, behaviors: List<PetBehavior>) {
         val current = behavior
         if (current == null) {
@@ -412,7 +874,8 @@ internal class PetEngine(
     }
 
     private fun pickBehavior(behaviors: List<PetBehavior>) {
-        val candidates = behaviors.filter { it.clip in manifest.clips && it.weight > 0.0 && !(reducedMotion && it.move) }
+        val still = reducedMotion || place == Place.PERCH
+        val candidates = behaviors.filter { it.clip in manifest.clips && it.weight > 0.0 && !(still && it.move) }
         if (candidates.isEmpty()) return
         var roll = random.nextDouble() * candidates.sumOf { it.weight }
         var chosen = candidates.last()
@@ -463,7 +926,7 @@ internal class PetEngine(
      * 包没有声明该事件时直接执行 [then] 并返回 false。
      */
     private fun playEvent(signal: String, defaultMs: Long, then: (() -> Unit)? = null): Boolean {
-        val event = manifest.map[signal]
+        val event = PetSignalResolver.resolveEvent(manifest, signal, qualifiers)?.reaction
         val eventClip = event?.clip?.takeIf { it in manifest.clips }
         if (event == null || eventClip == null) {
             then?.invoke()
@@ -494,6 +957,8 @@ internal class PetEngine(
         val wanted: String? = when (mode) {
             Mode.HELD -> manifest.map[PetSignals.TOUCH_HELD]?.clip
             Mode.FALLING -> manifest.map[PetSignals.TOUCH_FALL]?.clip
+            Mode.FLYING -> flightClip(PetSignals.TOUCH_THROW)
+            Mode.FLYING_OUT -> flightClip(PetSignals.ROLE_DISMISS) ?: flightClip(PetSignals.TOUCH_THROW)
             Mode.ENTERING -> sequenceClips.firstOrNull()
             Mode.EXITING -> if (velocityY > 0f) sequenceClips.firstOrNull() else sequenceClips.lastOrNull()
             Mode.NORMAL -> current?.clip ?: behavior?.clip ?: active?.clip
@@ -512,6 +977,10 @@ internal class PetEngine(
             pop.x = min(pop.x, 0.92f)
         }
     }
+
+    /** 飞行中的片段：事件自己的片段，其次下落片段。 */
+    private fun flightClip(signal: String): String? =
+        manifest.map[signal]?.clip?.takeIf { it in manifest.clips } ?: manifest.map[PetSignals.TOUCH_FALL]?.clip
 
     /** 没有指定片段时显示的片段：当前信号的片段，其次空闲片段，最后任取一个。 */
     private fun restingClip(): String? {
@@ -540,5 +1009,39 @@ internal class PetEngine(
         const val DEFAULT_EXIT_LAUNCH = 430L
         const val CALM_POP_EPSILON = 0.002f
         const val CALM_POP_VELOCITY = 0.02f
+
+        const val PLACE_PERCH = "perch"
+
+        // 抛掷（v0.3 第 3.1 节），速度单位 dp 每秒，数值待真机调校。
+        const val THROW_SPEED = 900f
+        const val FLING_OUT_SPEED = 2600f
+        const val FLING_OUT_MIN = 1500f
+        const val FLING_OUT_SPIN = 14f
+        const val FLING_OUT_SECONDS = 0.8f
+        const val FLY_OUT_MARGIN = 30f
+        const val MAX_THROW_X = 2200f
+        const val MAX_THROW_Y = 1800f
+        const val STALE_DRAG = 0.09f
+        const val RESTITUTION = 0.62f
+        const val FLY_MARGIN = 24f
+        const val FLY_CEILING = 64f
+        const val FLY_STEER_HEIGHT = 170f
+
+        // 栖息点（v0.3 第 2 节）。
+        const val PERCH_ZONE = 0.42f
+        const val PERCH_MAX_ZONE = 0.36f
+        const val PERCH_MIN_TOP = 72f
+        const val GHOST_REST_TOP = 110f
+        const val PERCH_BOB = 3f
+
+        // 唤回、摇晃、倾斜、连戳。
+        const val SUMMON_HEIGHT = 40f
+        const val SUMMON_SPEED = 120f
+        const val SUMMON_ROTATION = 2.6f
+        const val DIZZY_SECONDS = 1.6f
+        const val TILT_THRESHOLD = 0.3f
+        const val SLIDE_SPEED = 150f
+        const val ANNOYED_TAPS = 5
+        const val ANNOYED_WINDOW = 3f
     }
 }
