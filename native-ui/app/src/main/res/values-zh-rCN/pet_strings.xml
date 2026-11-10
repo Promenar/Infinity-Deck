@@ -10,7 +10,6 @@
     <string name="pet_settings_default">默认</string>
     <string name="pet_settings_set_default">设为默认</string>
     <string name="pet_settings_export">导出</string>
-    <string name="pet_settings_export_blocked">许可不允许再分发</string>
     <string name="pet_settings_delete">删除</string>
     <string name="pet_settings_delete_title">删除“%1$s”</string>
     <string name="pet_settings_delete_message">宠物包和它的模型关联会一起移除。</string>
@@ -18,7 +17,6 @@
     <string name="pet_settings_association_footer">会话使用已关联的模型时显示对应的宠物，其它模型显示默认宠物。</string>
     <string name="pet_settings_association_add">添加关联</string>
     <string name="pet_settings_association_remove_title">解除关联</string>
-    <string name="pet_settings_association_remove">解除</string>
     <string name="pet_settings_missing">未安装</string>
     <string name="pet_settings_lines_section">台词</string>
     <string name="pet_settings_lines_footer">关闭或未选模型时使用宠物包自带的台词。费用计入用量。</string>

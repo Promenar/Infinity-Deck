@@ -43,6 +43,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
@@ -176,6 +177,7 @@ private fun PetLayer(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val view = LocalView.current
+    val resources = LocalResources.current
     val density = LocalDensity.current.density
     val dismissHint = stringResource(R.string.pet_dismiss_hint)
 
@@ -184,7 +186,7 @@ private fun PetLayer(
     val memoryLabels = PetMemoryLabels(
         earlierToday = stringResource(R.string.pet_memory_earlier_today),
         yesterday = stringResource(R.string.pet_memory_yesterday),
-        daysAgo = { days -> context.getString(R.string.pet_memory_days_ago, days) },
+        daysAgo = { days -> resources.getString(R.string.pet_memory_days_ago, days) },
         done = stringResource(R.string.pet_memory_result_done),
         error = stringResource(R.string.pet_memory_result_error),
         cancelled = stringResource(R.string.pet_memory_result_cancelled),

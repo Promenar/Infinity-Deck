@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.local.inference.SlotType
@@ -323,48 +324,23 @@ private fun ModelPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (StoredModel) -> Unit
 ) {
-    InfinityConfirmDialog(
-        onDismissRequest = onDismiss,
+    // 选择列表用底部面板，不放进对话框。
+    InfinityBottomSheet(
+        show = true,
+        scrollContent = true,
+        onDismiss = onDismiss,
         title = stringResource(R.string.common_model_picker_title),
-        message = "",
-        confirmText = stringResource(R.string.common_btn_cancel),
-        cancelText = null,
-        onConfirm = onDismiss,
-        onCancel = onDismiss,
-        content = {
-            LazyColumn(
-                // 统一对话框正文不限高，模型很多时限高滚动，避免挤掉按钮。
-                modifier = Modifier.heightIn(max = 360.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(models) { model ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSelect(model) }
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            InfinityIdentifierText(
-                                text = model.fileName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 2
-                            )
-                            Text(
-                                text = formatFileSize(model.sizeBytes),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        },
-    )
+    ) {
+        models.forEach { model ->
+            InfinitySettingsItem(
+                horizontalPadding = 0.dp,
+                title = model.fileName,
+                subtitle = formatFileSize(model.sizeBytes),
+                subtitleIsIdentifier = false,
+                onClick = { onSelect(model) },
+            )
+        }
+    }
 }
 
 @Composable

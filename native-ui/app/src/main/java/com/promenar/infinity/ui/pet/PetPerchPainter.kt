@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.pet
 
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
@@ -22,6 +23,8 @@ import kotlin.math.sin
  */
 internal class PetPerchPainter {
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var glowBlurRadius = 0f
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -97,24 +100,33 @@ internal class PetPerchPainter {
     ) {
         val blown = exit == PetEngine.PerchExit.BLOWN
         val spread = vanish * if (blown) 90f else 26f
+        val glowRadius = 14f * density
+        if (glowRadius != glowBlurRadius) {
+            glowBlurRadius = glowRadius
+            glow.maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
+        }
+        glow.color = CLOUD_GLOW
+        glow.alpha = (opacity * (CLOUD_GLOW ushr 24)).toInt().coerceIn(0, 255)
         fill.shader = null
         fill.color = CLOUD_COLOR
         fill.alpha = (opacity * 0.96f * 255f).toInt().coerceIn(0, 255)
-        fill.setShadowLayer(14f * density, 0f, 0f, CLOUD_GLOW)
-        for (index in CLOUD_PUFFS.indices step 3) {
-            val cx = CLOUD_PUFFS[index]
-            val cy = CLOUD_PUFFS[index + 1]
-            val radius = CLOUD_PUFFS[index + 2]
-            val side = if (cx == 0f) 1f else sign(cx)
-            val drift = side * spread * (if (blown) 1f else 0.6f) + if (blown) spread else 0f
-            canvas.drawCircle(
-                x + (cx + drift) * size * density,
-                seatY + (cy - vanish * 10f) * size * density,
-                radius * size * (1f - vanish * 0.4f) * density,
-                fill,
-            )
+        // 先画整片光晕再画云体，光晕不会盖到相邻的云团上。
+        repeat(2) { pass ->
+            val paint = if (pass == 0) glow else fill
+            for (index in CLOUD_PUFFS.indices step 3) {
+                val cx = CLOUD_PUFFS[index]
+                val cy = CLOUD_PUFFS[index + 1]
+                val radius = CLOUD_PUFFS[index + 2]
+                val side = if (cx == 0f) 1f else sign(cx)
+                val drift = side * spread * (if (blown) 1f else 0.6f) + if (blown) spread else 0f
+                canvas.drawCircle(
+                    x + (cx + drift) * size * density,
+                    seatY + (cy - vanish * 10f) * size * density,
+                    radius * size * (1f - vanish * 0.4f) * density,
+                    paint,
+                )
+            }
         }
-        fill.clearShadowLayer()
     }
 
     private fun drawBubble(

@@ -10,7 +10,6 @@
     <string name="pet_settings_default">Default</string>
     <string name="pet_settings_set_default">Set as default</string>
     <string name="pet_settings_export">Export</string>
-    <string name="pet_settings_export_blocked">License does not allow redistribution</string>
     <string name="pet_settings_delete">Delete</string>
     <string name="pet_settings_delete_title">Delete “%1$s”</string>
     <string name="pet_settings_delete_message">The pack and its model links are removed.</string>
@@ -18,7 +17,6 @@
     <string name="pet_settings_association_footer">Chats using a linked model show its pet. Other models show the default pet.</string>
     <string name="pet_settings_association_add">Add link</string>
     <string name="pet_settings_association_remove_title">Remove link</string>
-    <string name="pet_settings_association_remove">Remove</string>
     <string name="pet_settings_missing">Not installed</string>
     <string name="pet_settings_lines_section">Lines</string>
     <string name="pet_settings_lines_footer">When off or no model is chosen, the pack\'s own lines are used. Cost counts toward usage.</string>

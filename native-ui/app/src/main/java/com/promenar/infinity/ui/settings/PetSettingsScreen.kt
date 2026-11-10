@@ -5,6 +5,13 @@ import android.Manifest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityMenuItem
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -88,12 +95,9 @@ fun PetSettingsScreen(onBack: () -> Unit) {
     }
 
     var importResult by remember { mutableStateOf<PetImportResult?>(null) }
-    var selectedPetId by remember { mutableStateOf<String?>(null) }
     var deletingPetId by remember { mutableStateOf<String?>(null) }
     var exportingPetId by remember { mutableStateOf<String?>(null) }
     var modelPick by remember { mutableStateOf<PetModelPick?>(null) }
-    var associatingModelId by remember { mutableStateOf<String?>(null) }
-    var unlinkingModelId by remember { mutableStateOf<String?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -153,7 +157,12 @@ fun PetSettingsScreen(onBack: () -> Unit) {
             PetPackagesSection(
                 pets = pets,
                 activePetId = pets.firstOrNull { it.id == defaultPetId }?.id ?: pets.firstOrNull()?.id,
-                onOpen = { selectedPetId = it.id },
+                onSetDefault = { preferences.setDefaultPetId(it.id) },
+                onExport = {
+                    exportingPetId = it.id
+                    exportLauncher.launch("${it.id}.idpet")
+                },
+                onDelete = { deletingPetId = it.id },
                 onImport = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
             )
             PetAssociationsSection(
@@ -161,7 +170,8 @@ fun PetSettingsScreen(onBack: () -> Unit) {
                 pets = pets,
                 models = models,
                 onAdd = { modelPick = PetModelPick.ASSOCIATION },
-                onRemove = { unlinkingModelId = it },
+                onSelect = { modelId, pet -> preferences.setModelPet(modelId, pet.id) },
+                onRemove = { preferences.setModelPet(it, null) },
             )
             InfinitySettingsSection(
                 title = stringResource(R.string.pet_settings_lines_section),
@@ -250,58 +260,15 @@ fun PetSettingsScreen(onBack: () -> Unit) {
         models = models,
         onDismiss = { modelPick = null },
         onSelect = { id, _ ->
-            if (modelPick == PetModelPick.LINES) preferences.setLinesModelId(id) else associatingModelId = id
+            if (modelPick == PetModelPick.LINES) {
+                preferences.setLinesModelId(id)
+            } else {
+                // 选完模型即关联当前默认宠物；要换宠物在该行的菜单里改。
+                (pets.firstOrNull { it.id == defaultPetId } ?: pets.firstOrNull())?.let { preferences.setModelPet(id, it.id) }
+            }
             modelPick = null
         },
     )
-
-    val associating = associatingModelId
-    if (associating != null) {
-        PetChoiceDialog(
-            title = petModelName(models, associating) ?: associating,
-            pets = pets,
-            onDismiss = { associatingModelId = null },
-            onSelect = {
-                preferences.setModelPet(associating, it.id)
-                associatingModelId = null
-            },
-        )
-    }
-
-    val unlinking = unlinkingModelId
-    if (unlinking != null) {
-        InfinityConfirmDialog(
-            title = stringResource(R.string.pet_settings_association_remove_title),
-            message = petModelName(models, unlinking) ?: unlinking,
-            confirmText = stringResource(R.string.pet_settings_association_remove),
-            onConfirm = {
-                preferences.setModelPet(unlinking, null)
-                unlinkingModelId = null
-            },
-            onCancel = { unlinkingModelId = null },
-        )
-    }
-
-    val selected = pets.firstOrNull { it.id == selectedPetId }
-    if (selected != null) {
-        PetActionsDialog(
-            pet = selected,
-            onDismiss = { selectedPetId = null },
-            onSetDefault = {
-                preferences.setDefaultPetId(selected.id)
-                selectedPetId = null
-            },
-            onExport = {
-                exportingPetId = selected.id
-                selectedPetId = null
-                exportLauncher.launch("${selected.id}.idpet")
-            },
-            onDelete = {
-                deletingPetId = selected.id
-                selectedPetId = null
-            },
-        )
-    }
 
     val deleting = pets.firstOrNull { it.id == deletingPetId }
     if (deleting != null) {
@@ -335,7 +302,9 @@ fun PetSettingsScreen(onBack: () -> Unit) {
 private fun PetPackagesSection(
     pets: List<InstalledPet>,
     activePetId: String?,
-    onOpen: (InstalledPet) -> Unit,
+    onSetDefault: (InstalledPet) -> Unit,
+    onExport: (InstalledPet) -> Unit,
+    onDelete: (InstalledPet) -> Unit,
     onImport: () -> Unit,
 ) {
     InfinitySettingsSection(
@@ -343,6 +312,7 @@ private fun PetPackagesSection(
         footer = stringResource(R.string.pet_settings_packages_footer),
     ) {
         pets.forEach { pet ->
+            var menu by remember(pet.id) { mutableStateOf(false) }
             InfinitySettingsItem(
                 title = pet.manifest.name,
                 subtitleSegments = listOfNotNull(
@@ -351,8 +321,43 @@ private fun PetPackagesSection(
                     pet.manifest.author.takeIf { it.isNotBlank() },
                     pet.manifest.license.name,
                 ),
-                onClick = { onOpen(pet) },
-                showChevron = true,
+                onClick = { menu = true },
+                trailingContent = {
+                    // 操作菜单贴着这一行弹出：设为默认、导出、删除。
+                    Box {
+                        Icon(
+                            Icons.Rounded.MoreHoriz,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            InfinityMenuItem(
+                                text = { Text(stringResource(R.string.pet_settings_set_default)) },
+                                selected = pet.id == activePetId,
+                                onClick = {
+                                    menu = false
+                                    onSetDefault(pet)
+                                },
+                            )
+                            InfinityMenuItem(
+                                text = { Text(stringResource(R.string.pet_settings_export)) },
+                                enabled = pet.manifest.license.redistribute,
+                                onClick = {
+                                    menu = false
+                                    onExport(pet)
+                                },
+                            )
+                            InfinityMenuItem(
+                                text = { Text(stringResource(R.string.pet_settings_delete)) },
+                                destructive = true,
+                                onClick = {
+                                    menu = false
+                                    onDelete(pet)
+                                },
+                            )
+                        }
+                    }
+                },
             )
             InfinityGroupDivider()
         }
@@ -371,6 +376,7 @@ private fun PetAssociationsSection(
     pets: List<InstalledPet>,
     models: List<ModelSelectionUiModel>,
     onAdd: () -> Unit,
+    onSelect: (String, InstalledPet) -> Unit,
     onRemove: (String) -> Unit,
 ) {
     InfinitySettingsSection(
@@ -378,10 +384,42 @@ private fun PetAssociationsSection(
         footer = stringResource(R.string.pet_settings_association_footer),
     ) {
         associations.entries.sortedBy { it.key }.forEach { (modelId, petId) ->
-            InfinityValueRow(
+            var menu by remember(modelId) { mutableStateOf(false) }
+            InfinitySettingsItem(
                 title = petModelName(models, modelId) ?: modelId,
-                value = pets.firstOrNull { it.id == petId }?.manifest?.name ?: stringResource(R.string.pet_settings_missing),
-                onClick = { onRemove(modelId) },
+                onClick = { menu = true },
+                trailingContent = {
+                    // 点这一行在宠物名旁弹出菜单：换一只宠物，或解除关联。
+                    Box {
+                        Text(
+                            text = pets.firstOrNull { it.id == petId }?.manifest?.name
+                                ?: stringResource(R.string.pet_settings_missing),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                        )
+                        InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            pets.forEach { pet ->
+                                InfinityMenuItem(
+                                    text = { Text(pet.manifest.name) },
+                                    selected = pet.id == petId,
+                                    onClick = {
+                                        menu = false
+                                        onSelect(modelId, pet)
+                                    },
+                                )
+                            }
+                            InfinityMenuItem(
+                                text = { Text(stringResource(R.string.pet_settings_association_remove_title)) },
+                                destructive = true,
+                                onClick = {
+                                    menu = false
+                                    onRemove(modelId)
+                                },
+                            )
+                        }
+                    }
+                },
             )
             InfinityGroupDivider()
         }
@@ -392,61 +430,6 @@ private fun PetAssociationsSection(
             enabled = pets.isNotEmpty(),
         )
     }
-}
-
-/** 点开一个宠物包后的操作：设为默认、导出、删除。 */
-@Composable
-private fun PetActionsDialog(
-    pet: InstalledPet,
-    onDismiss: () -> Unit,
-    onSetDefault: () -> Unit,
-    onExport: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    InfinityConfirmDialog(
-        title = pet.manifest.name,
-        message = "",
-        confirmText = stringResource(R.string.common_btn_cancel),
-        cancelText = null,
-        onConfirm = onDismiss,
-        onCancel = onDismiss,
-        content = {
-            Column {
-                InfinitySettingsItem(title = stringResource(R.string.pet_settings_set_default), onClick = onSetDefault)
-                InfinitySettingsItem(
-                    title = stringResource(R.string.pet_settings_export),
-                    subtitle = stringResource(R.string.pet_settings_export_blocked).takeIf { !pet.manifest.license.redistribute },
-                    onClick = onExport,
-                    enabled = pet.manifest.license.redistribute,
-                )
-                InfinitySettingsItem(title = stringResource(R.string.pet_settings_delete), onClick = onDelete)
-            }
-        },
-    )
-}
-
-@Composable
-private fun PetChoiceDialog(
-    title: String,
-    pets: List<InstalledPet>,
-    onDismiss: () -> Unit,
-    onSelect: (InstalledPet) -> Unit,
-) {
-    InfinityConfirmDialog(
-        title = title,
-        message = "",
-        confirmText = stringResource(R.string.common_btn_cancel),
-        cancelText = null,
-        onConfirm = onDismiss,
-        onCancel = onDismiss,
-        content = {
-            Column {
-                pets.forEach { pet ->
-                    InfinitySettingsItem(title = pet.manifest.name, onClick = { onSelect(pet) })
-                }
-            }
-        },
-    )
 }
 
 private fun petModelName(models: List<ModelSelectionUiModel>, id: String): String? =
