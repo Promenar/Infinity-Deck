@@ -12,6 +12,13 @@
     <!-- 项目仓库地址唯一定义处；更名或迁移仓库时只改这里。 -->
     <string name="ux2_project_repository_url" translatable="false">https://github.com/Promenar/Infinity-Deck</string>
     <string name="ux2_settings_github_open">View on GitHub</string>
+    <string name="settings_website_url" translatable="false">https://infinityware.work</string>
+    <string name="settings_website_open">Website</string>
+    <string name="settings_update_check">Check for updates</string>
+    <string name="settings_update_checking">Checking…</string>
+    <string name="settings_update_latest">Up to date</string>
+    <string name="settings_update_available">Get v%1$s</string>
+    <string name="settings_update_failed">Check failed. Retry</string>
 
     <!-- 网络访问适用范围（D8） -->
     <string name="ux2_network_scope_prefix">Scope: %1$s</string>

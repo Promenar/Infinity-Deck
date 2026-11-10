@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- 设置“关于”面板新增“官网”入口，以及侧载渠道的“检查更新”：查询 GitHub 上标为 Latest 的发行版，有新版时点按打开发行页；只检查，不下载也不自动安装。
+
 ## [0.45.0-beta] - 2026-11-10
 
 ### 新增

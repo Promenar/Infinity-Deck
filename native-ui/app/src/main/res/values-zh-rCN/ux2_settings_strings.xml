@@ -10,6 +10,12 @@
     <string name="ux2_settings_version_copy_action">复制版本信息</string>
     <string name="ux2_settings_version_copied">已复制版本信息</string>
     <string name="ux2_settings_github_open">在 GitHub 上查看</string>
+    <string name="settings_website_open">官网</string>
+    <string name="settings_update_check">检查更新</string>
+    <string name="settings_update_checking">正在检查…</string>
+    <string name="settings_update_latest">已是最新版本</string>
+    <string name="settings_update_available">获取 v%1$s</string>
+    <string name="settings_update_failed">检查失败，重试</string>
 
     <!-- 网络访问适用范围（D8） -->
     <string name="ux2_network_scope_prefix">适用范围：%1$s</string>

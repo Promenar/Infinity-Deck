@@ -30,6 +30,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BugReport
@@ -208,8 +210,36 @@ fun UserSettingsHomeScreen(
     UserSettingsHomeScreenContent(state = state, actions = actions, languageAnchor = languageAnchor, aboutAnchor = aboutAnchor)
 
     if (showAbout) {
+        val websiteUrl = stringResource(R.string.settings_website_url)
+        val openUrl: (String) -> Unit = { url ->
+            runCatching {
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            }
+        }
+        val updateScope = rememberCoroutineScope()
+        val updateChecker = remember { com.promenar.infinity.data.update.AppUpdateChecker() }
+        var updateState by remember { mutableStateOf<AppUpdateUiState>(AppUpdateUiState.Idle) }
         AboutInfinitySheet(
             onOpenGithub = actions.onOpenGithub,
+            onOpenWebsite = { openUrl(websiteUrl) },
+            updateState = updateState,
+            onUpdateClick = {
+                when (val current = updateState) {
+                    AppUpdateUiState.Checking -> Unit
+                    is AppUpdateUiState.Available -> openUrl(current.pageUrl)
+                    else -> {
+                        updateState = AppUpdateUiState.Checking
+                        updateScope.launch {
+                            updateState = when (val result = updateChecker.check(AppVersionInfo.current().versionName)) {
+                                is com.promenar.infinity.domain.update.AppUpdateResult.Available ->
+                                    AppUpdateUiState.Available(result.release.versionName, result.release.pageUrl)
+                                com.promenar.infinity.domain.update.AppUpdateResult.UpToDate -> AppUpdateUiState.UpToDate
+                                com.promenar.infinity.domain.update.AppUpdateResult.Failed -> AppUpdateUiState.Failed
+                            }
+                        }
+                    }
+                }
+            },
             onDismiss = { showAbout = false },
             popover = InfinityPopoverSpec(aboutAnchor, align = InfinityPopoverAlign.Auto),
             onVersionTap = rememberDeveloperUnlockTap(developerModeStore),
@@ -746,12 +776,16 @@ internal fun GitHubProjectFooter(onOpen: () -> Unit) {
 }
 
 /**
- * 关于面板：版本一行（版本名、versionCode、渠道）与提交短 SHA，下面是“复制版本信息”和“在 GitHub 上打开”两行。
+ * 关于面板：版本一行（版本名、versionCode、渠道）与提交短 SHA，下面依次是“复制版本信息”、“检查更新”（仅侧载渠道）、
+ * “官网”和“在 GitHub 上查看”。检查更新只查询 GitHub 上标为 Latest 的发行版，有新版时点按打开发行页，不下载安装包。
  * 复制内容与原设置页底部一致；Android 13 起系统自带复制提示，只在更早版本补一条。
  */
 @Composable
 internal fun AboutInfinitySheet(
     onOpenGithub: () -> Unit,
+    onOpenWebsite: () -> Unit = {},
+    updateState: AppUpdateUiState = AppUpdateUiState.Idle,
+    onUpdateClick: () -> Unit = {},
     onDismiss: () -> Unit,
     popover: InfinityPopoverSpec? = null,
     versionInfo: AppVersionInfo = AppVersionInfo.current(),
@@ -797,6 +831,33 @@ internal fun AboutInfinitySheet(
             },
             modifier = Modifier.testTag("settings_about_copy_version"),
         )
+        if (versionInfo.isSideload) {
+            InfinitySettingsItem(
+                horizontalPadding = 0.dp,
+                icon = Icons.Rounded.SystemUpdate,
+                title = when (updateState) {
+                    AppUpdateUiState.Idle -> stringResource(R.string.settings_update_check)
+                    AppUpdateUiState.Checking -> stringResource(R.string.settings_update_checking)
+                    AppUpdateUiState.UpToDate -> stringResource(R.string.settings_update_latest)
+                    is AppUpdateUiState.Available -> stringResource(R.string.settings_update_available, updateState.version)
+                    AppUpdateUiState.Failed -> stringResource(R.string.settings_update_failed)
+                },
+                titleColor = if (updateState is AppUpdateUiState.Available) MaterialTheme.colorScheme.primary else null,
+                enabled = updateState != AppUpdateUiState.Checking,
+                onClick = onUpdateClick,
+                modifier = Modifier.testTag("settings_about_update"),
+            )
+        }
+        InfinitySettingsItem(
+            horizontalPadding = 0.dp,
+            icon = Icons.Rounded.Language,
+            title = stringResource(R.string.settings_website_open),
+            onClick = {
+                onDismiss()
+                onOpenWebsite()
+            },
+            modifier = Modifier.testTag("settings_about_website"),
+        )
         InfinitySettingsItem(
             horizontalPadding = 0.dp,
             icon = Icons.AutoMirrored.Rounded.OpenInNew,
@@ -808,6 +869,15 @@ internal fun AboutInfinitySheet(
             modifier = Modifier.testTag("settings_about_github"),
         )
     }
+}
+
+/** 关于面板“检查更新”一行的状态。 */
+internal sealed interface AppUpdateUiState {
+    data object Idle : AppUpdateUiState
+    data object Checking : AppUpdateUiState
+    data object UpToDate : AppUpdateUiState
+    data class Available(val version: String, val pageUrl: String) : AppUpdateUiState
+    data object Failed : AppUpdateUiState
 }
 
 /** 版本号连点：按 [DeveloperUnlockCounter] 的结果弹提示，满次数时打开开发者模式。 */
