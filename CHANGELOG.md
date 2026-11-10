@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.42.0-beta] - 2026-11-10
+
 ### 新增
 
 - 其它应用可用 Infinity Deck 打开 Markdown 文件：在文件管理器等应用里选“打开方式”或分享单个 .md / .markdown 文件，直接进入 Markdown 查看器；分享多个文件或其它格式仍走分享导入。打开时先把内容复制到应用私有暂存区，来源应用收回读取权限后仍可继续操作；指向应用私有目录的 `file://` 链接与本应用自己提供的内容链接不由查看器读取；应用内“用其它应用打开”的选择器不再列出本应用。
