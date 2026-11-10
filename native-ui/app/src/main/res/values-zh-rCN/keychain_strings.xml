@@ -103,7 +103,7 @@
     <string name="keychain_field_name">名称</string>
     <string name="keychain_field_name_placeholder">例如 路由器管理密码</string>
     <string name="keychain_field_url">网址（可选）</string>
-    <string name="keychain_field_url_placeholder">例如 192.168.1.1</string>
+    <string name="keychain_field_url_placeholder">例如 router.local</string>
     <string name="keychain_field_username">用户名（可选）</string>
     <string name="keychain_field_value">值</string>
     <string name="keychain_field_value_keep">值（留空保留原值）</string>

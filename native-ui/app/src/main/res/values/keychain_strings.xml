@@ -103,7 +103,7 @@
     <string name="keychain_field_name">Name</string>
     <string name="keychain_field_name_placeholder">e.g. Router admin password</string>
     <string name="keychain_field_url">Address (optional)</string>
-    <string name="keychain_field_url_placeholder">e.g. 192.168.1.1</string>
+    <string name="keychain_field_url_placeholder">e.g. router.local</string>
     <string name="keychain_field_username">Username (optional)</string>
     <string name="keychain_field_value">Value</string>
     <string name="keychain_field_value_keep">Value (leave empty to keep)</string>

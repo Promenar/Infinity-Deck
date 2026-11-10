@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
+- 会话界面在生成中自动跟随尾部时，偶发在测量布局过程中触发滚动而崩溃（`performMeasureAndLayout called during measure layout`）；几何跟随改为等到下一帧的帧回调再滚动。
+- 钥匙串网站登录的地址占位改为 `router.local`，安装包不再含私网地址字样。
 - 设置“后台与定时”页的上限说明改为读取代码中的实际上限：后台任务显示每个会话同时 32 个、共 64 个（原文写成 3 个、6 个），定时任务上限与创建时的错误消息共用同一常量。
 
 ### 改进

@@ -743,9 +743,10 @@ fun ChatScreenContent(
             )
         }.collectLatest { geometry ->
             if (geometry[0] <= 0 || geometry[2] <= 0 || geometry[4] == 0) return@collectLatest
-            // 布局状态变化可能在测量过程中同步交给收集方；先让出一次调度再滚动，不在测量布局中途触发重新测量，
-            // 也不推迟到下一帧，尾部仍在同一帧内校正。
-            kotlinx.coroutines.yield()
+            // 布局状态变化可能在测量过程中交给收集方，只让出调度时仍可能在测量中途恢复（发行设备测试 API 31 复现
+            // performMeasureAndLayout called during measure layout）。等到下一帧的帧回调再滚动：这里一定不在测量布局中，
+            // 与 Compose 自带滚动动画调用 scrollBy 的时机一致，校正最多晚一帧。
+            withFrameNanos { }
             scrollItemAboveComposer(followTargetIndex)
         }
     }

@@ -127,9 +127,9 @@ class ChatRenderStateContractTest {
             "if (uiState.isGenerating && autoFollowEnabled)",
         )
         assertThat(streamingFollowEffect).doesNotContain("delay(16)")
-        assertThat(streamingFollowEffect).doesNotContain("withFrameNanos { }")
-        // 几何跟随先让出调度再滚动：避免测量中途同步恢复收集方时滚动，同时不引入整帧延迟。
-        assertThat(streamingFollowEffect).contains("kotlinx.coroutines.yield()\n            scrollItemAboveComposer(followTargetIndex)")
+        // 几何跟随等到下一帧的帧回调再滚动：只让出调度时收集方仍可能在测量中途恢复并触发重新测量。
+        assertThat(streamingFollowEffect).contains("withFrameNanos { }\n            scrollItemAboveComposer(followTargetIndex)")
+        assertThat(streamingFollowEffect).doesNotContain("kotlinx.coroutines.yield()")
         assertThat(streamingFollowEffect).contains("scrollToStreamingTail()")
     }
 
