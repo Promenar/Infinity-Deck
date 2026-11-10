@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/Promenar/Infinity-Deck/releases"><img src="https://img.shields.io/github/v/release/Promenar/Infinity-Deck?include_prereleases&label=download&color=6366F1" alt="Download the latest release"></a>
+  <a href="https://infinityware.work"><img src="https://img.shields.io/badge/website-infinityware.work-6366F1" alt="Website"></a>
   <img src="https://img.shields.io/badge/Android-12%2B-green.svg" alt="Android 12+">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
 </p>
