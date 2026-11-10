@@ -49,10 +49,11 @@ internal class PetRuntime(
     val pet: InstalledPet,
     private val scope: CoroutineScope,
     private val lineGenerator: PetLineGenerator,
+    pxPerDp: Float,
     private val random: Random = Random.Default,
 ) {
     val engine = PetEngine(pet.manifest, random).also { it.enter() }
-    private val assets = PetAssets(pet, scope)
+    private val assets = PetAssets(pet, scope, pxPerDp)
     private val rigState = PetRigState()
     private val motion = PetMotion()
     private val still = PetMotion()
@@ -100,6 +101,9 @@ internal class PetRuntime(
     private var nextBlink = 2.5f
     private var videoAllowed = false
     private var lineData: Map<String, String> = emptyMap()
+    private var rigFrame = -1L
+    private var terminalSignal: String? = null
+    private var terminalSeconds = 0f
 
     /** 推进一帧。[dt] 为秒，[pxPerDp] 为屏幕密度。 */
     fun tick(dt: Float, inputs: PetInputs, platform: PetPlatform?, pxPerDp: Float) {
@@ -146,6 +150,12 @@ internal class PetRuntime(
         if (clipping) canvas.restore()
     }
 
+    /** 当前能否响应触摸：进出场和消失期间不响应。 */
+    val touchable: Boolean
+        get() = engine.mode == PetEngine.Mode.NORMAL || engine.mode == PetEngine.Mode.FALLING
+
+    fun enter() = engine.enter()
+
     fun tap() {
         idleSeconds = 0f
         engine.tap()
@@ -182,7 +192,18 @@ internal class PetRuntime(
             contentGrowing = time - contentGrewAt < GROWTH_WINDOW,
             reasoningGrowing = time - reasoningGrewAt < GROWTH_WINDOW,
         )
-        if (signal != PetSignals.IDLE) {
+        // 完成、出错、取消是一次性的：任务阶段停留在终态时，只表现一小段时间就回到空闲。
+        val hold = TERMINAL_HOLD[signal]
+        if (hold == null) {
+            terminalSignal = null
+        } else {
+            if (terminalSignal != signal) {
+                terminalSignal = signal
+                terminalSeconds = 0f
+            }
+            terminalSeconds += dt
+        }
+        if (signal != PetSignals.IDLE && (hold == null || terminalSeconds <= hold)) {
             idleSeconds = 0f
             return signal
         }
@@ -200,12 +221,11 @@ internal class PetRuntime(
 
     private fun updateVideo() {
         val name = engine.clip
-        val clip = name?.let { pet.manifest.clips[it] }
-        val wanted = if (clip != null && clip.type == PetValues.VIDEO && videoAllowed && engine.fade >= 1f) {
-            PetVideoRequest(name, clip)
-        } else {
-            null
-        }
+        val clip = if (name == null) null else pet.manifest.clips[name]
+        // 视频不做淡入淡出、翻转和裁切，只在正常站立的状态下播放。
+        val playable = name != null && clip != null && clip.type == PetValues.VIDEO && videoAllowed &&
+            engine.mode == PetEngine.Mode.NORMAL && engine.fade >= 1f && !engine.flip
+        val wanted = if (playable && name != null && clip != null) PetVideoRequest(name, clip) else null
         if (wanted != video) {
             videoReady = false
             video = wanted
@@ -268,7 +288,11 @@ internal class PetRuntime(
         val applied = if (preset == "none") still else motion
         if (applied === motion) {
             petMotion(preset, time, motion)
-            rigState.step(motion, engine.x, time, dt)
+            // 同一帧内重绘多次时弹簧只推进一步。
+            if (rigFrame != frame) {
+                rigFrame = frame
+                rigState.step(motion, engine.x, time, dt)
+            }
         }
         deformPetMesh(
             out = vertices,
@@ -323,7 +347,7 @@ internal class PetRuntime(
     /** 兜底台词：依次查找信号自身、工具大类和所属大类的模板。 */
     private fun fallbackLine(signal: String, data: Map<String, String>): String? {
         val fallback = pet.persona?.fallback ?: return null
-        val keys = buildList {
+        val keys = buildList<String> {
             add(signal)
             if (signal.startsWith(PetSignals.TASK_TOOL + ".")) add(PetSignals.TASK_TOOL)
             PetSignals.categories[last()]?.let { add(it) }
@@ -346,6 +370,11 @@ internal class PetRuntime(
 
     private companion object {
         const val FOOT_SINK_DP = 2f
+        val TERMINAL_HOLD = mapOf(
+            PetSignals.TASK_DONE to 4f,
+            PetSignals.TASK_ERROR to 8f,
+            PetSignals.TASK_CANCELLED to 0f,
+        )
         const val GROWTH_WINDOW = 1f
         const val BLINK_SECONDS = 0.16f
         const val BUBBLE_SECONDS = 3.2f

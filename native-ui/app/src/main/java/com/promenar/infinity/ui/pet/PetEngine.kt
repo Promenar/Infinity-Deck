@@ -479,6 +479,7 @@ internal class PetEngine(
     }
 
     private fun updateClip() {
+        if (mode == Mode.GONE) return
         val current = timed
         val active = reaction
         val moving = behavior?.move == true

@@ -17,7 +17,8 @@
     <string name="pet_settings_association_section">Model links</string>
     <string name="pet_settings_association_footer">Chats using a linked model show its pet. Other models show the default pet.</string>
     <string name="pet_settings_association_add">Add link</string>
-    <string name="pet_settings_association_remove_hint">Tap to unlink</string>
+    <string name="pet_settings_association_remove_title">Remove link</string>
+    <string name="pet_settings_association_remove">Remove</string>
     <string name="pet_settings_missing">Not installed</string>
     <string name="pet_settings_lines_section">Lines</string>
     <string name="pet_settings_lines_footer">When off or no model is chosen, the pack\'s own lines are used. Cost counts toward usage.</string>

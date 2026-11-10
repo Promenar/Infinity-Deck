@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -137,7 +138,7 @@ private fun PetLayer(
     val density = LocalDensity.current.density
     var shown by remember { mutableStateOf<InstalledPet?>(null) }
     val runtime = remember(shown) {
-        shown?.let { PetRuntime(it, scope, application.petLineGenerator) }
+        shown?.let { PetRuntime(it, scope, application.petLineGenerator, density) }
     }
     DisposableEffect(runtime) {
         onDispose { runtime?.dispose() }
@@ -147,14 +148,20 @@ private fun PetLayer(
     var layerWidth by remember { mutableStateOf(0f) }
     val frameDelta = remember { FloatArray(1) }
     val latestTarget by rememberUpdatedState(target)
-    val latestEnabled by rememberUpdatedState(enabled)
     val latestInputs by rememberUpdatedState(inputs)
     val latestIsland by rememberUpdatedState(islandBounds)
     val latestVideoEnabled by rememberUpdatedState(videoEnabled)
     val latestOnGone by rememberUpdatedState(onGone)
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    // 没有正在显示的角色：有目标就创建，功能已关闭就收起图层；不占用帧循环。
+    LaunchedEffect(runtime, target, enabled) {
+        if (runtime != null) return@LaunchedEffect
+        if (target != null) shown = target else if (!enabled) latestOnGone()
+    }
+
     LaunchedEffect(runtime, lifecycleOwner) {
+        if (runtime == null) return@LaunchedEffect
         // 页面不在前台时停帧。
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             var previous = 0L
@@ -171,10 +178,6 @@ private fun PetLayer(
                         powerSave = powerSaveMode(context)
                     }
                     val wanted = latestTarget
-                    if (runtime == null) {
-                        if (wanted != null) shown = wanted else if (!latestEnabled) latestOnGone()
-                        return@withFrameNanos
-                    }
                     if (runtime.pet != wanted && !runtime.engine.gone) runtime.exit()
                     val island = latestIsland
                     val platform = if (island == Rect.Zero || layerWidth <= 0f) {
@@ -207,7 +210,8 @@ private fun PetLayer(
                     )
                     // 离场播完：换成目标角色；没有目标时等下一帧收起图层。
                     if (runtime.engine.gone && runtime.pet != wanted) shown = wanted
-                    if (runtime.engine.gone && wanted == null) shown = null
+                    // 离场途中目标又变回当前角色（例如马上重新打开开关）：重新入场。
+                    if (runtime.engine.gone && runtime.pet == wanted) runtime.enter()
                 }
             }
         }
@@ -230,7 +234,7 @@ private fun PetLayer(
         }
         val video = runtime.video
         if (video != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            PetVideoLayer(runtime = runtime, request = video)
+            key(video) { PetVideoLayer(runtime = runtime, request = video) }
         }
         PetTouchTarget(runtime)
         PetBubble(runtime)
@@ -257,6 +261,7 @@ private fun PetTouchTarget(runtime: PetRuntime) {
             .pointerInput(runtime) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    if (!runtime.touchable) return@awaitEachGesture
                     down.consume()
                     val start = down.position
                     // 280 毫秒内抬起算点按；按住不放或移动超过触摸阈值算提起。

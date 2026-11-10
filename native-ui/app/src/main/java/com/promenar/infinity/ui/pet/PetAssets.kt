@@ -15,6 +15,7 @@ import com.promenar.infinity.data.pet.InstalledPet
 import com.promenar.infinity.domain.pet.PetFace
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.max
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,7 +25,7 @@ import kotlinx.coroutines.launch
  *
  * 表情纹理是“底图 + 脸部椭圆内替换”的合成结果（规格第 3.2 节），以 `表情名` 为键单独缓存。
  */
-internal class PetAssets(private val pet: InstalledPet, private val scope: CoroutineScope) {
+internal class PetAssets(private val pet: InstalledPet, private val scope: CoroutineScope, private val pxPerDp: Float) {
     class Texture(val bitmap: Bitmap) {
         val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
     }
@@ -38,8 +39,8 @@ internal class PetAssets(private val pet: InstalledPet, private val scope: Corou
     /** 片段 [clip] 的纹理；未解码时发起解码并返回 null。 */
     fun texture(clip: String): Texture? {
         textures[clip]?.let { return it }
-        val file = pet.manifest.clips[clip]?.file ?: return null
-        load(clip) { decode(file) }
+        val declared = pet.manifest.clips[clip] ?: return null
+        load(clip) { decode(declared.file, max(1, declared.rows ?: 1), declared.scale.toFloat()) }
         return null
     }
 
@@ -51,10 +52,11 @@ internal class PetAssets(private val pet: InstalledPet, private val scope: Corou
         val baseClip = expressions.baseClip ?: return null
         val face = expressions.face ?: return null
         val file = expressions.set[expression] ?: return null
-        val baseFile = pet.manifest.clips[baseClip]?.file ?: return null
+        val baseDeclared = pet.manifest.clips[baseClip] ?: return null
+        val baseScale = baseDeclared.scale.toFloat()
         load(key) {
-            val base = decode(baseFile) ?: return@load null
-            val overlay = decode(file) ?: return@load null
+            val base = decode(baseDeclared.file, 1, baseScale) ?: return@load null
+            val overlay = decode(file, 1, baseScale) ?: return@load null
             composeExpression(base, overlay, face)
         }
         return null
@@ -75,10 +77,20 @@ internal class PetAssets(private val pet: InstalledPet, private val scope: Corou
         }
     }
 
-    private fun decode(path: String): Bitmap? {
+    /**
+     * 解码一张片段图。图片比显示尺寸大出两倍以上时按 2 的幂降采样：
+     * 显示高度只有 [pxPerDp] × `height_dp` × [scale]，[rows] 为图集的行数。
+     */
+    private fun decode(path: String, rows: Int, scale: Float): Bitmap? {
         val file = File(pet.directory, path)
         if (!file.isFile) return null
-        return BitmapFactory.decodeFile(file.path)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outHeight <= 0) return null
+        val shown = max(1f, pet.manifest.display.heightDp * scale * pxPerDp * rows)
+        var sample = 1
+        while (bounds.outHeight / (sample * 2) >= shown) sample *= 2
+        return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     private fun composeExpression(base: Bitmap, overlay: Bitmap, face: PetFace): Bitmap? {

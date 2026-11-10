@@ -83,6 +83,7 @@ fun PetSettingsScreen(onBack: () -> Unit) {
     var exportingPetId by remember { mutableStateOf<String?>(null) }
     var modelPick by remember { mutableStateOf<PetModelPick?>(null) }
     var associatingModelId by remember { mutableStateOf<String?>(null) }
+    var unlinkingModelId by remember { mutableStateOf<String?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -95,7 +96,7 @@ fun PetSettingsScreen(onBack: () -> Unit) {
         }
     }
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip"),
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri ->
         val id = exportingPetId
         exportingPetId = null
@@ -138,7 +139,7 @@ fun PetSettingsScreen(onBack: () -> Unit) {
                 pets = pets,
                 models = models,
                 onAdd = { modelPick = PetModelPick.ASSOCIATION },
-                onRemove = { preferences.setModelPet(it, null) },
+                onRemove = { unlinkingModelId = it },
             )
             InfinitySettingsSection(
                 title = stringResource(R.string.pet_settings_lines_section),
@@ -191,6 +192,20 @@ fun PetSettingsScreen(onBack: () -> Unit) {
                 preferences.setModelPet(associating, it.id)
                 associatingModelId = null
             },
+        )
+    }
+
+    val unlinking = unlinkingModelId
+    if (unlinking != null) {
+        InfinityConfirmDialog(
+            title = stringResource(R.string.pet_settings_association_remove_title),
+            message = petModelName(models, unlinking) ?: unlinking,
+            confirmText = stringResource(R.string.pet_settings_association_remove),
+            onConfirm = {
+                preferences.setModelPet(unlinking, null)
+                unlinkingModelId = null
+            },
+            onCancel = { unlinkingModelId = null },
         )
     }
 
@@ -293,7 +308,6 @@ private fun PetAssociationsSection(
             InfinityValueRow(
                 title = petModelName(models, modelId) ?: modelId,
                 value = pets.firstOrNull { it.id == petId }?.manifest?.name ?: stringResource(R.string.pet_settings_missing),
-                subtitle = stringResource(R.string.pet_settings_association_remove_hint),
                 onClick = { onRemove(modelId) },
             )
             InfinityGroupDivider()
