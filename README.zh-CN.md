@@ -116,6 +116,8 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 需要 Android 12 及以上。内置 Linux 需要 arm64-v8a 设备，基础系统约 64 MB，加上默认工具（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可以取消勾选。
 
+升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
+
 当前源码版本为 `v0.47.0-beta`（versionCode `126`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
@@ -144,7 +146,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 需要你拍板时弹出提问卡；锁屏、切后台不中断
 - 触摸锁让手机直接揣进口袋
 - 技能与 MCP 服务器
-- 会话宠物：导入 `.idpet` 宠物包，站在输入浮岛上随任务状态换姿势与台词，可点按、拖动
+- 会话宠物：导入 `.idpet` 宠物包，站在输入浮岛上随任务状态和早晨、白天、晚上、深夜四个时段换姿势与台词，可点按、拖动
 
 **智能体**
 

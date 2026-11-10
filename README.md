@@ -116,6 +116,8 @@ On the train or in bed, pick up the phone and keep going.
 
 Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
 
+To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
+
 The source tree is at `v0.47.0-beta` (versionCode `126`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
@@ -144,7 +146,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Question cards when it needs your call; keeps going with the screen locked
 - Touch lock so the phone can go straight into your pocket
 - Skills and MCP servers
-- Chat pets: import a `.idpet` pack and a pet stands on the input bar, changing pose and lines with the task state; tap it or drag it around
+- Chat pets: import a `.idpet` pack and a pet stands on the input bar, changing pose and lines with the task state and the time of day (morning, day, evening, night); tap it or drag it around
 
 **Agents**
 
