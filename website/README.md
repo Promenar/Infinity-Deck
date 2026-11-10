@@ -31,6 +31,7 @@ cd website
 npm ci
 npm run dev       # http://localhost:4321
 npm test          # 更新日志与 Release 数据单测
+npm run snapshot  # 用 GitHub 最新 Release 刷新 src/data/release-snapshot.json
 npm run build     # 输出到 dist/
 npm run preview   # 预览 dist/
 ```
@@ -39,7 +40,7 @@ npm run preview   # 预览 dist/
 
 ## 更新内容
 
-- **新版本发布**：更新日志与下载区随下一次构建自动更新。发版后顺手把 `release-snapshot.json` 改成新版本（版本、发布时间、APK 文件名、大小、SHA-256），保证 API 不可用时的回退值不过期。
+- **新版本发布**：更新日志与下载区随下一次构建自动更新。GitHub Release 发布后在 `website/` 执行 `npm run snapshot`，把最新 Release 的版本、发布时间、APK 文件名、大小与 SHA-256 写入 `release-snapshot.json`，保证 API 不可用时的回退值不过期；接口或校验文件读取失败时报错，不改文件。
 - **文案**：只改 `src/i18n.mjs`，中英文同步修改。
 - **截图与录屏**：素材来自 App 视觉实验室的宣传片工程 `footage/` 目录（不在本仓库）。页面里的媒体地址带内容哈希版本号（`src/lib/asset.mjs`），替换文件后重新发布即可，CDN 与浏览器不会继续用旧文件。
 
