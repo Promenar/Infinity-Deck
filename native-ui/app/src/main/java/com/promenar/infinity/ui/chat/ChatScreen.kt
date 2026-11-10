@@ -182,6 +182,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.combinedClickable
@@ -860,10 +862,15 @@ fun ChatScreenContent(
             animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
             label = "chat_inspector_end",
         )
+        // 会话列表把自己录进背景来源：毛玻璃顶栏始终使用；输入浮岛只在毛玻璃材质下使用。
+        val chatBackdrop = com.promenar.infinity.ui.common.rememberBackdropSource()
+        val composerSurface = LocalInfinityMotionStyles.current.surface
+        val composerBackdrop = chatBackdrop.takeIf { composerSurface == com.promenar.infinity.ui.theme.ComposerSurfaceStyle.FROSTED }
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
-              Column(Modifier.background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+              com.promenar.infinity.ui.common.FrostedTopBar(chatBackdrop) {
+              Column(Modifier.statusBarsPadding()) {
                 ChatTopBar(
                     title = sessionTitle,
                     showDivider = showTopBarDivider,
@@ -903,6 +910,7 @@ fun ChatScreenContent(
                 if (state.startupWritePaused) {
                     com.promenar.infinity.ui.startup.StartupWritePausedBanner(onOpen = actions.onOpenStartupIssues)
                 }
+              }
               }
             },
             snackbarHost = {
@@ -1035,11 +1043,18 @@ fun ChatScreenContent(
                     },
                 )
             }
+            // 会话区延伸到毛玻璃顶栏后方：列表以顶栏高度作上留白，其余居中层单独让出顶栏。
+            val topBarInset = padding.calculateTopPadding()
+            val layoutDirection = LocalLayoutDirection.current
             Box(Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
+                    )
                     .padding(end = chatEndReserved)
                     .imePadding()
                     .then(if (showWordmark) Modifier.trackWordmarkPointer(wordmarkPointer) else Modifier),
@@ -1054,7 +1069,7 @@ fun ChatScreenContent(
                     .fillMaxHeight()
                     .widthIn(max = InfinitySpacing.ChatMaxWidth)
                     .fillMaxWidth()
-                    .padding(bottom = with(density) { composerHeightPx.toDp() }),
+                    .padding(top = topBarInset, bottom = with(density) { composerHeightPx.toDp() }),
             ) {
                 EmptyChatWordmark(dispersed = inputText.isNotEmpty(), pointer = wordmarkPointer)
             }
@@ -1065,12 +1080,11 @@ fun ChatScreenContent(
                 label = "chat_generating_bottom",
             )
             val focusManager = LocalFocusManager.current
-            // 毛玻璃浮岛：列表把自己录进背景来源，浮岛在自身范围内模糊后垫在底下；环境光材质不创建。
-            val composerBackdrop = rememberComposerBackdrop(LocalInfinityMotionStyles.current.surface)
+            // 毛玻璃顶栏与浮岛：列表把自己录进背景来源，两者在自身范围内模糊后垫在底下。
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .composerBackdropSource(composerBackdrop)
+                    .composerBackdropSource(chatBackdrop)
                     .align(Alignment.Center)
                     .fillMaxHeight()
                     .widthIn(max = InfinitySpacing.ChatMaxWidth)
@@ -1083,6 +1097,7 @@ fun ChatScreenContent(
                     },
                 contentPadding = PaddingValues(
                     start = InfinitySpacing.ChatHorizontal,
+                    top = topBarInset,
                     end = InfinitySpacing.ChatHorizontal + chatStripInset,
                     bottom = composerInsets.contentBottom + generatingExtraBottom,
                 ),
@@ -1351,17 +1366,19 @@ fun ChatScreenContent(
                     .fillMaxHeight()
                     .widthIn(max = InfinitySpacing.ChatMaxWidth)
                     .fillMaxWidth()
-                    .padding(bottom = 160.dp)
+                    .padding(top = topBarInset, bottom = 160.dp)
                     .testTag(UiTags.CHAT_LOADING_SKELETON)
             ) {
                 ChatSkeleton(modifier = Modifier.fillMaxSize())
             }
 
-            TailnetConnectOverlay(
-                wait = state.tailnetWait,
-                onCancel = actions.onStop,
-                bottomInset = with(density) { composerHeightPx.toDp() },
-            )
+            Box(Modifier.matchParentSize().padding(top = topBarInset)) {
+                TailnetConnectOverlay(
+                    wait = state.tailnetWait,
+                    onCancel = actions.onStop,
+                    bottomInset = with(density) { composerHeightPx.toDp() },
+                )
+            }
 
             CompositionLocalProvider(LocalComposerBackdrop provides composerBackdrop) {
             Column(
