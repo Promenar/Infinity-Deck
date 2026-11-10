@@ -36,8 +36,10 @@ const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true, pr
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
-const sun = new THREE.DirectionalLight(0xffffff, Math.PI*.95); sun.position.set(-1.2,1.6,2.2); scene.add(sun);
-scene.add(new THREE.AmbientLight(0xffffff,.5));
+// 灯光：平涂贴图的模型用“主光 + 环境光合计约 1”的强度，受光面颜色等于贴图颜色；?light=proto 用原型的灯光
+const LIGHT = q.get('light')==='proto' ? [.95,.5] : [.72,.28];
+const sun = new THREE.DirectionalLight(0xffffff, Math.PI*LIGHT[0]); sun.position.set(-1.2,1.6,2.2); scene.add(sun);
+scene.add(new THREE.AmbientLight(0xffffff,LIGHT[1]));
 const cam = new THREE.OrthographicCamera(-1,1,1,-1,.01,50);
 const rig = new THREE.Group(); scene.add(rig);
 let vrm = null, W = 0, H = 0;

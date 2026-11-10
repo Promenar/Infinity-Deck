@@ -67,7 +67,8 @@ quad = ((np.degrees(np.arctan2(cen[:, 0] - 0.03, -(cen[:, 1] - 0.09))) % 360) //
 hair = part == 5
 T = 1.0 / 3.0
 groups = [(part == 1, (0.0, T, 0.5, 2 * T)), (~hair & (part != 1), (0.5, T, 0.5, 2 * T))]
-groups += [(hair & (quad == k), (0.25 * k, 0.0, 0.25, T)) for k in range(4)]
+groups += [(hair & (quad == k), (0.25 * k, 0.0, 0.25, T)) for k in range(3)]
+groups += [(hair & (quad == 3), (0.75, 0.0, 0.22, T * 0.88))]   # 右下角留一条 61 像素宽的色块带给脚本部件用
 print('AREA head', round(float(area[part == 1].sum()), 3), 'body', round(float(area[~hair & (part != 1)].sum()), 3),
       'hair', [round(float(area[hair & (quad == k)].sum()), 3) for k in range(4)])
 me.uv_layers.new(name='UVMap')
@@ -169,7 +170,7 @@ me.loops.foreach_get('vertex_index', lloops)
 luv = np.empty(len(me.loops) * 2, np.float32)
 me.uv_layers[0].data.foreach_get('uv', luv)
 luv = luv.reshape(-1, 2)
-PX, PY, POS = [], [], []
+PX, PY, POS, PF = [], [], [], []
 for pl in me.polygons:
     ls = pl.loop_start
     t = luv[ls:ls + 3] * np.array([BASE_W, BASE_H])
@@ -196,7 +197,8 @@ for pl in me.polygons:
     PX.append(xs[m].astype(np.int32))
     PY.append(ys[m].astype(np.int32))
     POS.append(bc @ w3)
-PX, PY, POS = np.concatenate(PX), np.concatenate(PY), np.concatenate(POS)
+    PF.append(np.full(int(m.sum()), pl.index, np.int32))
+PX, PY, POS, PF = np.concatenate(PX), np.concatenate(PY), np.concatenate(POS), np.concatenate(PF)
 n = len(PX)
 hit_i = np.zeros(n, np.int32)
 hit_p = np.zeros((n, 3), np.float32)
@@ -223,6 +225,7 @@ col = (hpx[iy, ix] * (1 - ax) * (1 - ay) + hpx[iy, ix + 1] * ax * (1 - ay)
 px = np.zeros((BASE_H, BASE_W, 4), np.float32)
 px[PY, PX, :3] = col
 px[PY, PX, 3] = 1.0
+np.savez(os.path.join(WORK, 'texels.npz'), PX=PX, PY=PY, POS=POS.astype(np.float32), PF=PF, col=col.astype(np.float32))
 print('TRANSFER texels', n)
 npx = np.empty(NRM_W * NRM_H * 4, np.float32)
 nimg.pixels.foreach_get(npx)

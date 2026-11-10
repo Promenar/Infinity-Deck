@@ -100,7 +100,9 @@ def main():
             'shadingToonyFactor': prm.get('toony', 0.9),
             'giEqualizationFactor': 0.9,
             'matcapFactor': [0, 0, 0],
-            'parametricRimColorFactor': [0, 0, 0],
+            'parametricRimColorFactor': list(prm.get('rim', (0, 0, 0))),
+            'parametricRimFresnelPowerFactor': prm.get('rim_power', 5.0),
+            'parametricRimLiftFactor': prm.get('rim_lift', 0.0),
             'rimLightingMixFactor': 1.0,
             'outlineWidthMode': 'worldCoordinates' if prm.get('outline', 0) > 0 else 'none',
             'outlineWidthFactor': prm.get('outline', 0.0),
@@ -111,8 +113,9 @@ def main():
             mtoon['shadeMultiplyTexture'] = {'index': tex}
         m.setdefault('extensions', {})['VRMC_materials_mtoon'] = mtoon
 
-    # ---------------- 表情（rig.json 未给出面部网格时不写表情）
+    # ---------------- 表情：形态键绑定（需要 face_mesh）与贴图坐标绑定
     preset = {}
+    face_node = targets = eye_mat = None
     if rig.get('face_mesh'):
         # 眼睛贴图：表情会平移、缩放采样坐标，采样器改为边缘钳制
         eye_mat = mat_index[rig['eye_material']]
@@ -121,23 +124,24 @@ def main():
         gltf['textures'][eye_tex]['sampler'] = len(gltf['samplers']) - 1
         face_node = name2node[rig['face_mesh']]
         targets = gltf['meshes'][nodes[face_node]['mesh']]['extras']['targetNames']
-        for name, e in rig['expressions'].items():
-            ex = {'isBinary': False, 'overrideBlink': e.get('overrideBlink', 'none'),
-                  'overrideLookAt': e.get('overrideLookAt', 'none'), 'overrideMouth': e.get('overrideMouth', 'none')}
-            binds = [{'node': face_node, 'index': targets.index(mn), 'weight': float(w)}
-                     for mn, w in e.get('morphs', [])]
-            if binds:
-                ex['morphTargetBinds'] = binds
-            tt = []
-            if 'iris_scale' in e:  # 以贴图中心为基准缩放：虹膜看起来变小
-                sc = e['iris_scale']
-                tt.append({'material': eye_mat, 'scale': [sc, sc], 'offset': [(1 - sc) / 2, (1 - sc) / 2]})
-            if 'iris_offset' in e:  # (向右, 向下) 的画面位移，换成采样坐标的反向偏移
-                dx, dy = e['iris_offset']
-                tt.append({'material': eye_mat, 'scale': [1, 1], 'offset': [-dx, -dy]})
-            if tt:
-                ex['textureTransformBinds'] = tt
-            preset[name] = ex
+    for name, e in rig.get('expressions', {}).items():
+        ex = {'isBinary': bool(e.get('binary', False)), 'overrideBlink': e.get('overrideBlink', 'none'),
+              'overrideLookAt': e.get('overrideLookAt', 'none'), 'overrideMouth': e.get('overrideMouth', 'none')}
+        binds = [{'node': face_node, 'index': targets.index(mn), 'weight': float(w)} for mn, w in e.get('morphs', [])]
+        if binds:
+            ex['morphTargetBinds'] = binds
+        tt = []
+        if 'iris_scale' in e:  # 以贴图中心为基准缩放：虹膜看起来变小
+            sc = e['iris_scale']
+            tt.append({'material': eye_mat, 'scale': [sc, sc], 'offset': [(1 - sc) / 2, (1 - sc) / 2]})
+        if 'iris_offset' in e:  # (向右, 向下) 的画面位移，换成采样坐标的反向偏移
+            dx, dy = e['iris_offset']
+            tt.append({'material': eye_mat, 'scale': [1, 1], 'offset': [-dx, -dy]})
+        for t in e.get('tex', []):  # 图集换格：直接给 glTF 贴图坐标的偏移
+            tt.append({'material': mat_index[t['material']], 'scale': [1, 1], 'offset': list(t['offset'])})
+        if tt:
+            ex['textureTransformBinds'] = tt
+        preset[name] = ex
 
     head = name2node['head']
     vrm = {

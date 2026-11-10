@@ -109,5 +109,15 @@ rep("const hs=worldToScreen(rawBone('head').getWorldPosition(V));for(let i=0;i<3
     "const hs=worldToScreen(rawBone('head').getWorldPosition(V).setY(V.y+.2));for(let i=0;i<3;i++)")
 # 供截图用：按状态名切换并停掉随机眨眼
 rep("let simTimers=[];", "window.petDebug={setState:k=>{stopSim();setState(k)},get t(){return stateT}};\nlet simTimers=[];")
+if len(sys.argv) > 3 and sys.argv[3] == '--v2':
+    # 图生网格转出的平涂模型：受光面颜色应等于贴图颜色，主光与环境光合计约 1
+    rep("new THREE.DirectionalLight(0xffffff,Math.PI*.95)", "new THREE.DirectionalLight(0xffffff,Math.PI*.72)")
+    rep("scene.add(new THREE.AmbientLight(0xffffff,.5));", "scene.add(new THREE.AmbientLight(0xffffff,.28));")
+    # 头大手短：举手和欢呼改成向外上方伸，手才不会埋进头里
+    rep("standRaise:{sit:0,b:{leftUpperArm:[0,-.35,-1.2],leftLowerArm:[0,-.5,0],rightUpperArm:[0,.95,-.95],rightLowerArm:[0,.3,-.35],head:[-.05,0,-.12]}},",
+        "standRaise:{sit:0,b:{leftUpperArm:[0,-.35,-1.2],leftLowerArm:[0,-.5,0],rightUpperArm:[0,.35,-.55],rightLowerArm:[0,.2,-.5],head:[-.05,0,-.12]}},")
+    rep("standCheer:{sit:0,b:{leftUpperArm:[0,-.95,.95],leftLowerArm:[0,-.3,.35],rightUpperArm:[0,.95,-.95],rightLowerArm:[0,.3,-.35],head:[-.12,0,0]}},",
+        "standCheer:{sit:0,b:{leftUpperArm:[0,-.3,.6],leftLowerArm:[0,-.15,.45],rightUpperArm:[0,.3,-.6],rightLowerArm:[0,.15,-.45],head:[-.12,0,0]}},")
+    rep("模型：按设定图用 Blender 脚本建模的鲸鱼女仆复刻版", "模型：Pixal3D 图生网格经减面、平涂、绑定转出的鲸鱼女仆")
 open(dst, 'w', encoding='utf-8').write(s)
 print('patched ->', dst)
