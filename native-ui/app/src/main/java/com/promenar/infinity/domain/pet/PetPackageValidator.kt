@@ -262,7 +262,7 @@ class PetPackageValidator(private val limits: PetLimits = PetLimits()) {
             val field = "map.$signal"
             val parts = signal.split('@')
             if (parts.size > 2 || parts.first().isBlank() || (parts.size == 2 && parts[1] !in
-                setOf("perch", "message", "stage", "long", "verylong", "mood.high", "mood.low"))) invalid(field, signal)
+                setOf("perch", "message", "stage", "long", "verylong", "mood.high", "mood.low") + PetDaypart.all)) invalid(field, signal)
             if (reaction.haptic != null && reaction.haptic !in PetValues.haptics) invalid("$field.haptic", reaction.haptic)
             clip(reaction.clip, "$field.clip")
             clip(reaction.enter, "$field.enter")

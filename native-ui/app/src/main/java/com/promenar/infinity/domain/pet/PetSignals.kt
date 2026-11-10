@@ -86,7 +86,28 @@ data class PetResolvedReaction(
     val signal: String,
     val reaction: PetReaction,
 )
-data class PetQualifiers(val place: String? = null, val duration: String? = null, val mood: String? = null) {
+/** 作息四段，按手机本地时间的小时划分（v0.3 第 8 节）。 */
+object PetDaypart {
+    const val MORNING = "morning"
+    const val DAY = "day"
+    const val EVENING = "evening"
+    const val NIGHT = "night"
+    val all = setOf(MORNING, DAY, EVENING, NIGHT)
+
+    fun of(hour: Int): String = when (hour) {
+        in 6..10 -> MORNING
+        in 11..17 -> DAY
+        in 18..22 -> EVENING
+        else -> NIGHT
+    }
+}
+
+data class PetQualifiers(
+    val place: String? = null,
+    val duration: String? = null,
+    val mood: String? = null,
+    val daypart: String? = null,
+) {
     companion object {
         val NONE = PetQualifiers()
         fun durationOf(seconds: Float): String? = when {
@@ -117,7 +138,7 @@ object PetSignalResolver {
     }
 
     private fun lookup(manifest: PetManifest, chain: List<String>, q: PetQualifiers): PetResolvedReaction? {
-        val suffixes = listOfNotNull(q.place, q.duration, if (q.duration == "verylong") "long" else null, q.mood)
+        val suffixes = listOfNotNull(q.place, q.duration, if (q.duration == "verylong") "long" else null, q.mood, q.daypart)
         for (key in chain.distinct()) {
             for (candidate in suffixes.map { "$key@$it" } + key) {
                 manifest.map[candidate]?.let { return PetResolvedReaction(candidate, it) }

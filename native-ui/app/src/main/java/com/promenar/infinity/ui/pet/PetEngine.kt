@@ -181,6 +181,7 @@ internal class PetEngine(
     private var qualifiers = PetQualifiers.NONE
     private var contextDuration: String? = null
     private var contextMood: String? = null
+    private var contextDaypart: String? = null
     private var spin = 0f
     private var flyTime = 0f
     private var summonLanding = false
@@ -210,11 +211,12 @@ internal class PetEngine(
         applyReaction(entering = !same)
     }
 
-    /** 时长与心情限定（v0.3 第 1 节）；变化时只换表现，不重播进入反应。 */
-    fun setContext(duration: String?, mood: String?) {
-        if (duration == contextDuration && mood == contextMood) return
+    /** 时长、心情与作息限定（v0.3 第 1 节）；变化时只换表现，不重播进入反应。 */
+    fun setContext(duration: String?, mood: String?, daypart: String? = null) {
+        if (duration == contextDuration && mood == contextMood && daypart == contextDaypart) return
         contextDuration = duration
         contextMood = mood
+        contextDaypart = daypart
         refreshQualifiers()
     }
 
@@ -241,6 +243,7 @@ internal class PetEngine(
             place = if (place == Place.PERCH) PLACE_PERCH else if (stage) PLACE_STAGE else null,
             duration = contextDuration,
             mood = contextMood,
+            daypart = contextDaypart,
         )
         if (next == qualifiers) return
         qualifiers = next
