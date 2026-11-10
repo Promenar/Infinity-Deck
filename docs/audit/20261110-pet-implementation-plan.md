@@ -102,6 +102,41 @@
 6. 触感三种强度在真机上的区别是否明显（ColorOS 振动取证方法见记忆）。
 7. `pet` 工具唤回或收起后，会话页是否立即反映。
 
+## v0.3 补充（2026-11-10，0.44.0-beta 真机反馈之后）
+
+0.44.0-beta 已合并 v0.3 并装真机，抛掷、摇晃、吹气的阈值手感通过。真机反馈的问题和这一轮的处理，同样未经编译和运行：
+
+| 问题 | 处理 |
+|---|---|
+| 倾斜、连点、发晕、唤回等新信号没有专属动作 | 原因是测试包的 `map` 没有配置 v0.3 的信号。测试包升到 0.2.0（契约 0.3）：新增 9 个姿势（打滑、不耐烦、被摸头、被戳头、怕痒、尾巴被碰、被抛飞、头晕、飞走），补齐全部玩法信号的映射、身体分区、`idle@perch`、心情与长任务限定的示例和兜底台词 |
+| 撞边、戳破、吹散、唤回下落没有地方播放片段 | `PetEngine`：飞行中撞边后显示 `touch.bounce` 片段约 0.2 秒；戳破、吹散后的下落途中显示对应信号的片段；唤回下落途中显示 `touch.throw` 的片段 |
+| 从云朵慢慢拖到屏幕下方松手，宠物回到云朵上 | 我和独立审阅者读代码都没有找到确定的成因：只要有一次拖动事件把位置带到下方，松手只会下落。剩下三种可能，都要求最后的云朵就是原来那朵：提起后没有拖动事件到达、手势被系统或上层取消（原先不会松手，宠物停在被提起的状态，原云朵保持高亮）、模拟按下没有点中宠物（触摸区域只覆盖头顶到落座线，点在云朵下半部不算）。这一轮让手势被取消时也执行松手，松手速度改用触摸事件自身的时间计算；现象本身需要真机带日志复测 |
+| 重建宠物时任务停在完成或失败，心情重复加减 | 运行时第一次看到的任务状态若已是终态，不再表现也不再记心情 |
+
+这一轮新增：
+
+- **空会话页舞台**：会话没有消息时映射优先使用 `@stage` 限定，进入和离开时发出 `place.stage.enter`、`place.stage.leave`。平台仍是浮岛上沿。
+- **台词记忆**（契约第 8 节）：`domain/pet/PetMemory.kt`、`data/pet/PetMemoryStore.kt`。进入会话时记一次到访，一轮任务结束时记下结果；数据通道新增 `memory.session.last`、`memory.session.visits`、`memory.last_result`、`memory.streak.days`。只存会话标识、时间和结果，保存在本机独立的偏好文件 `infinity_pet_memory`。
+- 内置 Skill 的玩法信号改成配置表：触发条件、片段怎么用、未配置时的表现、建议姿势。
+
+仍未实现，原因如下：
+
+- **消息上沿落座**：需要从会话列表取最后一条消息的位置并处理滚动，跳上跳下的动画也没有定稿，按约定先出原型确认。
+- **小分身、击掌交接**：基座目前只支持一个实例，交接动画需要新的素材约定，先出原型。
+- **作息限定、亲密度**：契约里写明细节在实现该阶段时定，需要用户先定规则。
+- **应用外形态**：下一阶段的核心，悬浮窗等需要新增权限，单独确认。
+- 宠物包 `props.perch` 的 `appear`、`vanish` 片段仍未播放。
+
+这一轮需要真机确认：
+
+1. 新姿势在各信号下的落点是否正确（脚底是否贴住浮岛）、飞行中旋转的观感、打滑时镜像方向。
+2. 头、肚子、尾巴三个分区是否点得准；头部来回滑动是否稳定触发抚摸。
+3. 从云朵拖到下方松手是否落回浮岛；拖动中系统手势打断后宠物是否正常落下。
+4. 松手速度改用触摸事件时间后，三档抛掷的手感是否仍与 0.44.0 一致。
+5. 空会话进入、发出第一条消息时宠物的反应；`memory.*` 是否进入模型台词。
+
+测试包：共享笔记目录 `pet-research/pack/whale-maid.idpet`（0.2.0，约 4.4 MB，49 个文件），旧版保留为 `whale-maid-0.1.0.idpet`；新姿势素材在 `pet-research/2d/gen/e7-play/`，构建脚本 `pet-research/pack/build_pack.py`。导入前先删除应用里的旧包或直接覆盖导入。
+
 ## 后续阶段（2026-11-10 用户确认的顺序）
 
 接口见 [契约 v0.3 增补](20261110-pet-base-contract-v0.3-draft.md)。阶段 1 和阶段 2 的栖息点已按用户要求提前写完，等阶段 0 一并验收；其余阶段先出浏览器原型给用户确认，再实现。
@@ -123,6 +158,7 @@
 
 - `:app:compileSideloadDebugKotlin :app:compilePlayDebugKotlin :app:compileSideloadDebugUnitTestKotlin`
 - `:app:testSideloadDebugUnitTest --tests 'com.promenar.infinity.domain.pet.*' --tests 'com.promenar.infinity.data.pet.*' --tests 'com.promenar.infinity.ui.pet.*'`
+- 补充一轮新增的测试：`--tests '*PetMemoryTest' --tests '*PetMemoryStoreTest'`，并重跑 `*PetEngineTest`、`*PetFrameSourceContractTest`、`*BackupPreferenceInventoryTest`。
 - v0.3 新增或改动的测试：`--tests '*PetEngineTest' --tests '*PetSensorsTest' --tests '*PetV03Test' --tests '*PetV03PreferenceTest' --tests '*PetSkillTest' --tests '*ToolInvocationPresentationTest' --tests '*BuiltinToolPresentationTest' --tests '*SettingsViewModelTest'`；新增权限后再跑 `python3 scripts/ci/check-distribution-manifests.py`。
 - `:app:testSideloadDebugUnitTest --tests '*UserSettingsHomeScreenContractTest' --tests '*SettingsPaneTest' --tests '*SettingsNavigationContractTest' --tests '*BackupPreferenceInventoryTest' --tests '*BuiltinSkillCatalogTest' --tests '*SkillSourceGroupsTest' --tests '*KgTokenStatsRepositoryTest' --tests '*RolledBackSummaryUsageStoreTest'`
 - 设置首页多了一个条目，`SettingsPagesBatch1ScreenshotTest`、`ReleasePreviewScreenshotTest` 的参考图可能需要更新。

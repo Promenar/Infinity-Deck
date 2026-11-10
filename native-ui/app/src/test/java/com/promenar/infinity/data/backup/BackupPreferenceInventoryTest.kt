@@ -8,6 +8,12 @@ import java.nio.file.Path
 
 class BackupPreferenceInventoryTest {
     @Test
+    fun `宠物会话记忆登记为仅本机数据`() {
+        assertThat(BackupPreferencePolicy.isKnown("infinity_pet_memory", "state")).isTrue()
+        assertThat(BackupPreferencePolicy.isAllowed("infinity_pet_memory", "state")).isFalse()
+    }
+
+    @Test
     fun `废弃网络限制键仅作为旧包识别项且不参与导出`() {
         listOf("settings" to "script_lan_hosts", "settings" to "mcp_allow_loopback_http", "infinity_tailnet" to "tailnet_allowed_peers").forEach { (namespace, key) ->
             assertThat(BackupPreferencePolicy.isRetired(namespace, key)).isTrue()

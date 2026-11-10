@@ -40,15 +40,40 @@ description: 当用户询问 Infinity Deck 宠物的使用、操作，或需要�
 
 事件：`island.fx.wait`、`island.fx.stream`、`island.fx.tool`、`island.fx.approval`、`island.fx.retry`、`island.wider`、`island.narrower`、`island.focus`、`island.blur`、`island.send`、`device.unfold`、`device.fold`、`push.left`、`push.right`、`touch.tap`、`touch.held`、`touch.fall`、`touch.land.soft`、`touch.land.hard`、`fall.over`、`get.up`、`role.enter`、`role.exit`、`session.other.active`。
 
-台词模板可使用 `{session.title}`、`{model.name}`、`{tool.name}`、`{tool.target}`、`{output.chars}`、`{elapsed.s}`、`{error.kind}`、`{ask.text}`、`{idle.s}`、`{daypart}`。
+台词模板可使用 `{session.title}`、`{model.name}`、`{tool.name}`、`{tool.target}`、`{output.chars}`、`{elapsed.s}`、`{error.kind}`、`{ask.text}`、`{idle.s}`、`{daypart}`，以及记忆数据 `{memory.session.last}`（上次在这个会话的时间，如“昨天”）、`{memory.session.visits}`（来过的天数）、`{memory.last_result}`（上一轮结果）、`{memory.streak.days}`（连续使用天数）；没有值的模板会被跳过。
 
-新增事件：`touch.throw`、`touch.bounce`、`touch.pet`、`touch.poke`、`touch.poke.head`、`touch.poke.belly`、`touch.poke.tail`、`touch.annoyed`、`tilt.slide.left`、`tilt.slide.right`、`shake.dizzy`、`role.dismiss`、`role.summon`、`keyboard.up`、`keyboard.down`、`place.perch.enter`、`place.perch.leave`、`place.perch.pop`、`place.perch.blown`、`place.message.enter`、`place.message.leave`、`place.stage.enter`、`place.stage.leave`。分区戳按回退到 `touch.poke` 再到 `touch.tap`；抚摸和生气回退到 `touch.tap`。数据通道 `mood` 为 `high`、`normal` 或 `low`。
+### 玩法信号（契约 0.3）
+
+下表的信号都要在 `map` 里配了才有专属动作；没配时按“未配置时”一列表现。给每个信号准备一张姿势图即可，不需要逐帧。
+
+| 信号 | 触发 | `clip` 怎么用 | 未配置时 | 建议姿势 |
+|---|---|---|---|---|
+| `touch.pet` | 在头部分区横向来回滑动 | 播放 `enter_ms`（默认 1.6 秒） | 用 `touch.tap` | 闭眼享受 |
+| `touch.poke.head` / `.belly` / `.tail` | 点按对应分区（需声明 `zones`） | 播放 `enter_ms` | 用 `touch.poke`，再用 `touch.tap` | 捂头、怕痒、护尾巴 |
+| `touch.annoyed` | 3 秒内点按 5 次 | 播放 `enter_ms` | 用 `touch.tap` | 抱臂生闷气 |
+| `touch.throw` | 较快松手被抛出 | 飞行全程显示，基座让它旋转 | 用 `touch.fall` | 缩成一团翻滚 |
+| `touch.bounce` | 飞行中撞到屏幕边缘 | 撞边后显示约 0.2 秒 | 保持飞行片段 | 被压扁 |
+| `tilt.slide.left` / `.right` | 手机左右倾斜，沿浮岛打滑 | 打滑期间显示；只配一侧时另一侧自动镜像 | 保持站姿平移 | 侧身后仰滑行 |
+| `shake.dizzy` | 轻摇手机 | 播放 `enter_ms`，基座同时让它左右摇摆 | 只有摇摆 | 螺旋眼、站不稳 |
+| `keyboard.up` / `.down` | 键盘弹出、收起 | 播放 `enter_ms`（默认 1.3 秒） | 只有弹跳 | 吓一跳、张望 |
+| `role.dismiss` | 用力甩出屏幕被收起 | 飞出途中显示，基座让它旋转并缩小 | 用 `touch.throw`，再用 `touch.fall` | 回头挥手飞走 |
+| `role.summon` | 被收起后摇晃手机唤回 | 落地后播放 `enter_ms`（默认 2 秒）；下落途中显示 `touch.throw` 的片段 | 落地后用 `fall.over` 再 `get.up` | 摔坐、晕乎乎 |
+| `place.perch.enter` | 落到云朵或泡泡上 | 播放 `enter_ms`（默认 1.2 秒） | 直接进入 `idle@perch` | 伸懒腰、张望 |
+| `place.perch.pop` / `.blown` | 泡泡被戳破、云朵被吹散 | 落回浮岛途中显示 | 用 `touch.fall` | 吓一跳、被吹翻 |
+| `place.perch.leave` | 离开栖息点 | 不播放片段，可配 `haptic` | — | — |
+| `place.stage.enter` / `.leave` | 进入没有消息的会话、出现第一条消息 | 播放 `enter_ms`（默认 1.5 秒） | 没有反应 | 挥手、张望 |
+
+在栖息点上的表现用位置限定配置，例如 `idle@perch` 写一组不带 `move` 的 `behaviors`（趴着、坐在边缘、打哈欠）；没配时用 `idle` 里不走动的行为。心情用 `@mood.high`、`@mood.low` 配置，例如 `touch.tap@mood.low`。长任务用 `@long`、`@verylong`，例如 `task.tool@long`。
+
+`haptic` 只对点按、抚摸、抛掷、落地、摇晃、栖息点这些交互事件生效。兜底台词 `fallback` 按信号名精确查找（工具状态除外），`touch.poke.head`、`tilt.slide.left` 这类信号要说话就各写一条。数据通道 `mood` 为 `high`、`normal` 或 `low`。
+
+会话还没有消息时映射优先使用 `@stage` 限定，例如 `idle@stage`。`@message` 与 `place.message.*` 为后续版本预留，可以写进清单，当前基座不触发。
 
 ## 玩法与操作
 
 在“设置 → 宠物”打开宠物总开关，选择默认宠物并管理宠物包；台词、视频、甩出收起与摇晃唤回、倾斜与摇晃反应、触感、栖息点样式及吹气开关也在此页。
 
-按住宠物可以提起；轻甩会落回平台，中等力度会撞边反弹，用力甩出屏幕会收起。宠物不见时，可摇晃手机唤回，在“设置 → 宠物”点“唤回”，或请 Agent 调用 `pet` 工具的 `summon`；总开关须开启。把宠物拖到屏幕上部松手可落在云朵或七彩泡泡上；点破泡泡可让它落下，开启吹气功能后可吹散云朵。点头部可抚摸，点身体可戳，连续戳会生气；倾斜手机时宠物会打滑。
+按住宠物可以提起；轻甩会落回平台，中等力度会撞边反弹，用力甩出屏幕会收起。宠物不见时，可摇晃手机唤回，在“设置 → 宠物”点“唤回”，或请 Agent 调用 `pet` 工具的 `summon`；总开关须开启。把宠物拖到屏幕上部松手可落在云朵或七彩泡泡上；点破泡泡可让它落下，开启吹气功能后可吹散云朵。在头部左右来回滑动是抚摸，点头、肚子、尾巴各有反应，3 秒内连点 5 次会生气；倾斜手机时宠物会打滑，轻摇手机它会发晕。这些动作需要宠物包配置了对应信号才有专属姿势，否则只有通用反应。
 
 ## 角色配置
 

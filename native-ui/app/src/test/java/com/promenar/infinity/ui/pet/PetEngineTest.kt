@@ -629,6 +629,74 @@ class PetEngineTest {
         assertThat(engine.clip).isEqualTo("dive")
     }
 
+    @Test
+    fun `空会话时优先使用带舞台限定的映射并在出现消息后换回`() {
+        val engine = entered(mapOf("${PetSignals.IDLE}@stage" to PetReaction(clip = "look")))
+
+        engine.setStage(true)
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("look")
+        assertThat(engine.events).contains(PetSignals.PLACE_STAGE_ENTER)
+
+        engine.setStage(false)
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("stand")
+        assertThat(engine.events).contains(PetSignals.PLACE_STAGE_LEAVE)
+    }
+
+    @Test
+    fun `泡泡被戳破后下落途中显示戳破信号的片段`() {
+        val engine = enteredTall(mapOf(PetSignals.PLACE_PERCH_POP to PetReaction(clip = "startle")))
+        engine.dropOnPerch()
+        engine.run(0.5f, height = TALL)
+
+        engine.popPerch()
+        engine.run(0.1f, height = TALL)
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+        assertThat(engine.clip).isEqualTo("startle")
+
+        engine.run(1.5f, height = TALL)
+        assertThat(engine.clip).isNotEqualTo("startle")
+    }
+
+    @Test
+    fun `抛出后显示抛掷片段并在撞边时短暂显示撞边片段`() {
+        val engine = entered(
+            mapOf(
+                PetSignals.TOUCH_THROW to PetReaction(clip = "dive"),
+                PetSignals.TOUCH_BOUNCE to PetReaction(clip = "push"),
+            ),
+        )
+        engine.grab(100f, 300f, time = 0f)
+        engine.dragTo(130f, 280f, time = 0.016f)
+        engine.release(time = 0.016f)
+
+        engine.run(0.1f)
+        assertThat(engine.clip).isEqualTo("dive")
+
+        // 约 0.27 秒时撞到右边缘。
+        engine.run(0.2f)
+        assertThat(engine.events).contains(PetSignals.TOUCH_BOUNCE)
+        assertThat(engine.clip).isEqualTo("push")
+
+        engine.run(0.3f)
+        assertThat(engine.clip).isEqualTo("dive")
+    }
+
+    @Test
+    fun `拖动途中进过落座范围但松手时已在下方则落回浮岛`() {
+        val engine = enteredTall()
+
+        engine.grab(100f, 450f, time = 0f)
+        engine.dragTo(150f, 200f, time = 0.5f)
+        assertThat(engine.perchHot).isTrue()
+        engine.dragTo(150f, 480f, time = 1.5f)
+        engine.release(time = 1.5f)
+
+        assertThat(engine.mode).isEqualTo(PetEngine.Mode.FALLING)
+        assertThat(engine.place).isEqualTo(PetEngine.Place.ISLAND)
+    }
+
     private companion object {
         const val TALL = 800f
     }

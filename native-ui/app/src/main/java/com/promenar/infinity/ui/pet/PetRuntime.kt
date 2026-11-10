@@ -49,6 +49,8 @@ internal class PetInputs(
     val flingEnabled: Boolean = true,
     /** 栖息点样式：`cloud` 或 `bubble`。 */
     val perchKind: String = "cloud",
+    /** 会话还没有任何消息。 */
+    val stage: Boolean = false,
 )
 
 /**
@@ -109,6 +111,8 @@ internal class PetRuntime(
     summonByShake: Boolean = false,
     /** 被甩出收起时的提示语。 */
     private val dismissHint: String = "",
+    /** 一轮任务结束时调用一次，参数为 `task.done`、`task.error` 或 `task.cancelled`。 */
+    private val onTaskResult: (String) -> Unit = {},
     private val random: Random = Random.Default,
 ) {
     val engine = PetEngine(pet.manifest, random).also { if (summonByShake) it.summon() else it.enter() }
@@ -241,6 +245,7 @@ internal class PetRuntime(
     private var runSeconds = 0f
     private var clipAspect = 1f
     private var dismissReported = false
+    private var signalSeen = false
     private var twinkleLeft = 0f
     private var twinkleX = 0f
     private var twinkleY = 0f
@@ -255,6 +260,7 @@ internal class PetRuntime(
         engine.reducedMotion = inputs.reducedMotion
         engine.flingEnabled = inputs.flingEnabled
         engine.setTilt(inputs.tilt)
+        engine.setStage(inputs.stage)
         if (platform != null) {
             platformTop = platform.top
             layerWidth = platform.layerWidth
@@ -475,15 +481,22 @@ internal class PetRuntime(
         perchWidth = (pet.manifest.props.perch[perchKind]?.widthDp ?: PetPerchPainter.DEFAULT_WIDTH_DP) * density
     }
 
-    fun grab(x: Float, y: Float): Boolean {
+    /**
+     * 提起、拖动、松手。[seconds] 为触摸事件自身的时间（同一次手势内的相对秒数），
+     * 松手速度按它计算，不受帧率影响。
+     */
+    fun grab(x: Float, y: Float, seconds: Float): Boolean {
         idleSeconds = 0f
         wake()
-        return engine.grab(x / density, y / density, time)
+        return engine.grab(x / density, y / density, seconds)
     }
 
-    fun dragTo(x: Float, y: Float) = engine.dragTo(x / density, y / density, time)
+    fun dragTo(x: Float, y: Float, seconds: Float) = engine.dragTo(x / density, y / density, seconds)
 
-    fun release() = engine.release(time)
+    fun release(seconds: Float) {
+        engine.release(seconds)
+        wake()
+    }
 
     fun exit() {
         bubble = null
@@ -511,6 +524,16 @@ internal class PetRuntime(
         )
         // 完成、出错、取消是一次性的：任务阶段停留在终态时，只表现一小段时间就回到空闲。
         val hold = TERMINAL_HOLD[signal]
+        if (!signalSeen) {
+            signalSeen = true
+            // 运行时刚创建时任务已经停在终态（切换角色、被唤回、重新打开开关）：不再表现和记心情，避免重复；
+            // 结果仍然上报，记忆里的上一轮结果按会话覆盖，重复上报没有影响。
+            if (hold != null) {
+                terminalSignal = signal
+                terminalSeconds = hold + 1f
+                onTaskResult(signal)
+            }
+        }
         if (hold == null) {
             terminalSignal = null
         } else {
@@ -521,6 +544,7 @@ internal class PetRuntime(
                     PetSignals.TASK_DONE -> applyMood(PetMoodEvent.TASK_DONE)
                     PetSignals.TASK_ERROR -> applyMood(PetMoodEvent.TASK_ERROR)
                 }
+                onTaskResult(signal)
             }
             terminalSeconds += dt
         }

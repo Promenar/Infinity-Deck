@@ -93,6 +93,8 @@ internal object BackupPreferencePolicy {
         "catalog_update_schedule" to setOf("checkedat"),
         "kg_usage" to setOf("kg_usage_ledger_v1"),
         "pet_usage" to setOf("kg_usage_ledger_v1"),
+        // 会话台词记忆只保留在本机。
+        "infinity_pet_memory" to setOf("state"),
         // 本机每日会话图谱抽取统计，换设备后重新计数。
         "session_graph_stats" to setOf("day", "turns", "calls"),
         // 检视器边缘条的拖放位置随本机屏幕尺寸而定，不随备份迁移。

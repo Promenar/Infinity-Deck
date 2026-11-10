@@ -55,4 +55,10 @@
     <string name="pet_settings_perch_selected">使用中</string>
     <string name="pet_settings_blow">吹气吹散云朵</string>
     <string name="pet_dismiss_hint">摇一摇叫我回来</string>
+    <string name="pet_memory_earlier_today">今天早些时候</string>
+    <string name="pet_memory_yesterday">昨天</string>
+    <string name="pet_memory_days_ago">%1$d 天前</string>
+    <string name="pet_memory_result_done">完成</string>
+    <string name="pet_memory_result_error">失败</string>
+    <string name="pet_memory_result_cancelled">取消</string>
 </resources>

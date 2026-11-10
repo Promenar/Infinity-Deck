@@ -55,4 +55,10 @@
     <string name="pet_settings_perch_selected">In use</string>
     <string name="pet_settings_blow">Blow the cloud away</string>
     <string name="pet_dismiss_hint">Shake to bring me back</string>
+    <string name="pet_memory_earlier_today">earlier today</string>
+    <string name="pet_memory_yesterday">yesterday</string>
+    <string name="pet_memory_days_ago">%1$d days ago</string>
+    <string name="pet_memory_result_done">done</string>
+    <string name="pet_memory_result_error">failed</string>
+    <string name="pet_memory_result_cancelled">cancelled</string>
 </resources>

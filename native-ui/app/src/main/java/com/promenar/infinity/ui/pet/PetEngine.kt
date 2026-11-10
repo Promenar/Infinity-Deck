@@ -184,11 +184,18 @@ internal class PetEngine(
     private var spin = 0f
     private var flyTime = 0f
     private var summonLanding = false
+
+    /** 下落途中改用这个信号的片段（戳破、吹散、被摇出来）；为 null 时用 `touch.fall`。 */
+    private var fallSignal: String? = null
+
+    /** 撞边后短暂显示 `touch.bounce` 片段的剩余时间。 */
+    private var bounceLeft = 0f
     private var pendingSummon = false
     private var pendingPerchX = 0f
     private var pendingPerchY = 0f
     private var pendingPerch = false
     private var tilt = 0f
+    private var stage = false
     private var sliding = false
     private var wobbleLeft = 0f
     private val taps = ArrayDeque<Float>()
@@ -211,6 +218,19 @@ internal class PetEngine(
         refreshQualifiers()
     }
 
+    /**
+     * 会话还没有任何消息（空会话页舞台，v0.3 第 2 节）。平台仍是浮岛上沿，可以走动；
+     * 映射优先使用 `@stage` 限定，进入和离开时发出 `place.stage.enter`、`place.stage.leave`。
+     */
+    fun setStage(on: Boolean) {
+        if (on == stage) return
+        stage = on
+        refreshQualifiers()
+        val signal = if (on) PetSignals.PLACE_STAGE_ENTER else PetSignals.PLACE_STAGE_LEAVE
+        events.addLast(signal)
+        if (mode == Mode.NORMAL && place == Place.ISLAND && timed == null) playEvent(signal, 1500)
+    }
+
     /** 手机左右倾斜的程度，-1 到 1；正值向右滑。 */
     fun setTilt(value: Float) {
         tilt = petClamp(value, -1f, 1f)
@@ -218,7 +238,7 @@ internal class PetEngine(
 
     private fun refreshQualifiers() {
         val next = PetQualifiers(
-            place = if (place == Place.PERCH) PLACE_PERCH else null,
+            place = if (place == Place.PERCH) PLACE_PERCH else if (stage) PLACE_STAGE else null,
             duration = contextDuration,
             mood = contextMood,
         )
@@ -399,6 +419,8 @@ internal class PetEngine(
         wobbleLeft = 0f
         sliding = false
         summonLanding = false
+        fallSignal = null
+        bounceLeft = 0f
         velocityX = 0f
         velocityY = 0f
         rotationSpring.x = 0f
@@ -503,6 +525,7 @@ internal class PetEngine(
         velocityY = -SUMMON_SPEED
         rotation = SUMMON_ROTATION
         summonLanding = true
+        fallSignal = PetSignals.TOUCH_THROW
         mode = Mode.FALLING
         refreshQualifiers()
     }
@@ -537,6 +560,7 @@ internal class PetEngine(
         behavior = null
         velocityX = 0f
         velocityY = 0f
+        fallSignal = signal
         mode = Mode.FALLING
         events.addLast(signal)
         events.addLast(PetSignals.PLACE_PERCH_LEAVE)
@@ -671,6 +695,8 @@ internal class PetEngine(
         sequenceClips = emptyList()
         mode = Mode.NORMAL
         if (manifest.map[PetSignals.ROLE_ENTER]?.say == true) sayRequests.addLast(PetSignals.ROLE_ENTER)
+        // 入场时已经在空会话里：入场完成后补播进入舞台的反应。
+        if (stage && place == Place.ISLAND) playEvent(PetSignals.PLACE_STAGE_ENTER, 1500)
     }
 
     private fun stepExiting(dt: Float) {
@@ -716,6 +742,7 @@ internal class PetEngine(
         y += velocityY * dt
         x += velocityX * dt
         rotation += spin * dt
+        bounceLeft = max(0f, bounceLeft - dt)
         val right = max(FLY_MARGIN, layerWidth - FLY_MARGIN)
         if (x < FLY_MARGIN) {
             x = FLY_MARGIN
@@ -742,6 +769,7 @@ internal class PetEngine(
     private fun bounce() {
         pop.x = 0.8f
         pop.v = 0f
+        bounceLeft = BOUNCE_CLIP_SECONDS
         events.addLast(PetSignals.TOUCH_BOUNCE)
     }
 
@@ -764,6 +792,8 @@ internal class PetEngine(
         velocityY = 0f
         velocityX = 0f
         rotation = 0f
+        fallSignal = null
+        bounceLeft = 0f
         pop.x = if (hard) 0.7f else 0.88f
         pop.v = 0f
         mode = Mode.NORMAL
@@ -956,9 +986,11 @@ internal class PetEngine(
         val moving = behavior?.move == true
         val wanted: String? = when (mode) {
             Mode.HELD -> manifest.map[PetSignals.TOUCH_HELD]?.clip
-            Mode.FALLING -> manifest.map[PetSignals.TOUCH_FALL]?.clip
-            Mode.FLYING -> flightClip(PetSignals.TOUCH_THROW)
-            Mode.FLYING_OUT -> flightClip(PetSignals.ROLE_DISMISS) ?: flightClip(PetSignals.TOUCH_THROW)
+            Mode.FALLING -> fallSignal?.let { manifest.map[it]?.clip?.takeIf { name -> name in manifest.clips } }
+                ?: manifest.map[PetSignals.TOUCH_FALL]?.clip
+            Mode.FLYING -> (if (bounceLeft > 0f) ownClip(PetSignals.TOUCH_BOUNCE) else null)
+                ?: flightClip(PetSignals.TOUCH_THROW)
+            Mode.FLYING_OUT -> ownClip(PetSignals.ROLE_DISMISS) ?: flightClip(PetSignals.TOUCH_THROW)
             Mode.ENTERING -> sequenceClips.firstOrNull()
             Mode.EXITING -> if (velocityY > 0f) sequenceClips.firstOrNull() else sequenceClips.lastOrNull()
             Mode.NORMAL -> current?.clip ?: behavior?.clip ?: active?.clip
@@ -977,6 +1009,9 @@ internal class PetEngine(
             pop.x = min(pop.x, 0.92f)
         }
     }
+
+    /** 信号自己声明的片段；没有声明或片段不存在时为 null。 */
+    private fun ownClip(signal: String): String? = manifest.map[signal]?.clip?.takeIf { it in manifest.clips }
 
     /** 飞行中的片段：事件自己的片段，其次下落片段。 */
     private fun flightClip(signal: String): String? =
@@ -1011,6 +1046,7 @@ internal class PetEngine(
         const val CALM_POP_VELOCITY = 0.02f
 
         const val PLACE_PERCH = "perch"
+        const val PLACE_STAGE = "stage"
 
         // 抛掷（v0.3 第 3.1 节），速度单位 dp 每秒，数值待真机调校。
         const val THROW_SPEED = 900f
@@ -1026,6 +1062,7 @@ internal class PetEngine(
         const val FLY_MARGIN = 24f
         const val FLY_CEILING = 64f
         const val FLY_STEER_HEIGHT = 170f
+        const val BOUNCE_CLIP_SECONDS = 0.22f
 
         // 栖息点（v0.3 第 2 节）。
         const val PERCH_ZONE = 0.42f
