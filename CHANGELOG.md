@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.42.1-beta] - 2026-11-10
+
 ### 修复
 
 - 设置“后台与定时”页的上限说明改为读取代码中的实际上限：后台任务显示每个会话同时 32 个、共 64 个（原文写成 3 个、6 个），定时任务上限与创建时的错误消息共用同一常量。
