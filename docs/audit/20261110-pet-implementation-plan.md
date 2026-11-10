@@ -152,6 +152,19 @@
 
 备忘：竞技同台等竞技场功能定型后再设计。
 
+### 2026-11-10 用户决策后的范围
+
+| 项 | 决定 | 状态 |
+|---|---|---|
+| 空会话舞台扩展、消息上沿落座 | 先不做，保留现有 `@stage` 与 `place.stage.*` | — |
+| 小分身 | 做：派出时身旁分出小号的自己，沿浮岛跑出屏幕，结束时跑回；不常驻、不可点按 | 暂缓：用户 2026-11-11 决定先搁置；契约 7.2 保留为设计记录 |
+| 角色交接 | 做：新角色在烟雾里出现，两个角色隔空挥手，旧角色在烟雾里消失（用户看过原型后否决了击掌） | 暂缓：用户 2026-11-11 决定先搁置，等第二角色素材做完整后再议；契约 7.1 保留为设计记录 |
+| 作息 | 做：早晨 6–11、白天 11–18、晚上 18–23、深夜 23–6；限定后缀与 `{daypart}` | 已实现（`PetDaypart`、解析、校验、运行时），未编译 |
+| 亲密度、应用外形态、栖息点出现与消失片段 | 先不做 | — |
+| 删除会话时清理台词记忆 | 做 | 已接入 `InfinityApplication.deleteSessionRecoverably`，未编译 |
+
+子代理的开始与结束可以从 `LocalSubagentRuns`（`SubagentRunsAccess.observe(stepId)` 返回的 `SubagentBatch`，各 `SubagentRun.status`）得到；挥手交接需要 `PetOverlay` 在切换角色时同时持有新旧两个角色的素材。
+
 已确认：“吹气吹散云朵”新增 `RECORD_AUDIO` 权限，默认关闭，宠物在云朵上且会话页在前台期间保持监听；耗电和误触发在真机实测后再定是否收窄监听时段。
 
 ## 需要主会话运行的测试
@@ -162,4 +175,5 @@
 - v0.3 新增或改动的测试：`--tests '*PetEngineTest' --tests '*PetSensorsTest' --tests '*PetV03Test' --tests '*PetV03PreferenceTest' --tests '*PetSkillTest' --tests '*ToolInvocationPresentationTest' --tests '*BuiltinToolPresentationTest' --tests '*SettingsViewModelTest'`；新增权限后再跑 `python3 scripts/ci/check-distribution-manifests.py`。
 - `:app:testSideloadDebugUnitTest --tests '*UserSettingsHomeScreenContractTest' --tests '*SettingsPaneTest' --tests '*SettingsNavigationContractTest' --tests '*BackupPreferenceInventoryTest' --tests '*BuiltinSkillCatalogTest' --tests '*SkillSourceGroupsTest' --tests '*KgTokenStatsRepositoryTest' --tests '*RolledBackSummaryUsageStoreTest'`
 - 设置首页多了一个条目，`SettingsPagesBatch1ScreenshotTest`、`ReleasePreviewScreenshotTest` 的参考图可能需要更新。
+- 作息与清理记忆：`--tests '*PetV03Test' --tests '*PetEngineTest' --tests '*PetMemoryStoreTest'`。
 - 功能验收通过后补 `CHANGELOG.md` 的 `[Unreleased]`、README 的功能说明和 `docs/ARCHITECTURE.md`。

@@ -67,6 +67,17 @@ class PetV03Test {
         assertThat(PetSignalResolver.resolveEvent(m, "role.summon")).isNull()
         assertThat(PetSignalResolver.resolveEvent(base.copy(map = mapOf("touch.tap" to PetReaction())), "touch.poke")).isNull()
     }
+    @Test fun `作息四段与限定顺序`() {
+        mapOf(5 to "night", 6 to "morning", 10 to "morning", 11 to "day", 17 to "day", 18 to "evening", 22 to "evening", 23 to "night", 0 to "night")
+            .forEach { (hour, part) -> assertThat(PetDaypart.of(hour)).isEqualTo(part) }
+        val q = PetQualifiers(mood = "mood.low", daypart = "night")
+        assertThat(resolved(listOf("idle@mood.low", "idle@night", "idle"), "idle", q)).isEqualTo("idle@mood.low")
+        assertThat(resolved(listOf("idle@night", "idle@morning", "idle"), "idle", q)).isEqualTo("idle@night")
+        assertThat(resolved(listOf("idle@morning", "idle"), "idle", q)).isEqualTo("idle")
+        assertThat(resolved(listOf("task.working", "idle@night"), "task.working", q)).isEqualTo("task.working")
+        PetDaypart.all.forEach { assertThat(issues(base.copy(map = base.map + ("idle@$it" to PetReaction())))).isEmpty() }
+        assertThat(issues(base.copy(map = base.map + ("idle@noon" to PetReaction())))).isNotEmpty()
+    }
     @Test fun `时长和工具类别`() {
         assertThat(PetQualifiers.durationOf(59.9f)).isNull(); assertThat(PetQualifiers.durationOf(60f)).isEqualTo("long")
         assertThat(PetQualifiers.durationOf(299f)).isEqualTo("long"); assertThat(PetQualifiers.durationOf(300f)).isEqualTo("verylong")

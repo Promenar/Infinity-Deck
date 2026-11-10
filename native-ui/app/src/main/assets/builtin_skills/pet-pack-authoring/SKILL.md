@@ -30,7 +30,7 @@ description: 当用户询问 Infinity Deck 宠物的使用、操作，或需要�
 
 `pose` 是单张透明图；`frames` 是网格图集；`video` 使用 MP4，透明方式为 `side_by_side`（左 RGB、右 Alpha）或 `chroma_green`，`fallback` 指向同包 `pose` 或 `frames`。共同字段 `anchor` 是平台接触点的归一化坐标，`scale` 默认 1；可选 `motion` 为 `breathe`、`nod`、`hop`、`shake`、`bounce`、`none`。可选 `rig` 包含 `neck`、`hair_top`、`tail`（`root`、`tip`、`radius`）、`sitting`、`lying`。表情图与基底图逐像素对齐，预留名称为 `neutral`、`blink`、`happy`、`laugh`、`surprised`、`confused`、`sad`、`angry`、`sleepy`。
 
-映射支持持续 `clip`、进入动作 `enter` 和 `enter_ms`、周期插入 `sometimes`（`clip`、`every_s`、`for_ms`）、空闲 `behaviors`（`clip`、`weight`、`move`、`min_s`、`max_s`）、`expression`、`say` 和 `sequence`（`clip`、`launch`、`into_island`）。至少提供不带限定的 `idle`；状态信号回退到所属大类再到 `idle`。每个映射键最多带一个限定后缀：位置 `@perch`、`@message`、`@stage`，时长 `@long`（60 秒起）、`@verylong`（300 秒起），心情 `@mood.high`、`@mood.low`。每级按位置、时长、心情、无后缀查找，`@verylong` 可回退到 `@long`。工具状态按工具名、类别、`task.tool`、`task.working`、`idle` 回退；类别为 `read`、`write`、`search`、`web`、`shell`、`image`、`schedule`、`subagent`、`other`。
+映射支持持续 `clip`、进入动作 `enter` 和 `enter_ms`、周期插入 `sometimes`（`clip`、`every_s`、`for_ms`）、空闲 `behaviors`（`clip`、`weight`、`move`、`min_s`、`max_s`）、`expression`、`say` 和 `sequence`（`clip`、`launch`、`into_island`）。至少提供不带限定的 `idle`；状态信号回退到所属大类再到 `idle`。每个映射键最多带一个限定后缀：位置 `@perch`、`@message`、`@stage`，时长 `@long`（60 秒起）、`@verylong`（300 秒起），心情 `@mood.high`、`@mood.low`，作息 `@morning`（6–11 点）、`@day`（11–18 点）、`@evening`（18–23 点）、`@night`（23–6 点，手机本地时间）。每级按位置、时长、心情、作息、无后缀查找，`@verylong` 可回退到 `@long`。工具状态按工具名、类别、`task.tool`、`task.working`、`idle` 回退；类别为 `read`、`write`、`search`、`web`、`shell`、`image`、`schedule`、`subagent`、`other`。
 
 `zones` 支持 `head`、`belly`、`tail`，每个 `center` 和 `radius` 是两个 0 到 1 的数。`props.perch` 支持 `cloud`、`bubble`；可选 `file` 为包内 PNG/WebP 图片，`seat` 是两个 0 到 1 的数，`width_dp` 为 60 至 200，`appear` 和 `vanish` 引用已有片段。映射可选 `haptic`：`tick`、`thud`、`buzz`。
 
@@ -66,6 +66,8 @@ description: 当用户询问 Infinity Deck 宠物的使用、操作，或需要�
 在栖息点上的表现用位置限定配置，例如 `idle@perch` 写一组不带 `move` 的 `behaviors`（趴着、坐在边缘、打哈欠）；没配时用 `idle` 里不走动的行为。心情用 `@mood.high`、`@mood.low` 配置，例如 `touch.tap@mood.low`。长任务用 `@long`、`@verylong`，例如 `task.tool@long`。
 
 `haptic` 只对点按、抚摸、抛掷、落地、摇晃、栖息点这些交互事件生效。兜底台词 `fallback` 按信号名精确查找（工具状态除外），`touch.poke.head`、`tilt.slide.left` 这类信号要说话就各写一条。数据通道 `mood` 为 `high`、`normal` 或 `low`。
+
+作息用 `@morning`、`@day`、`@evening`、`@night` 配置，例如 `idle@night` 写一组抱枕头、打哈欠的 `behaviors`；台词里的 `{daypart}` 取值为“早晨”“白天”“晚上”“深夜”。
 
 会话还没有消息时映射优先使用 `@stage` 限定，例如 `idle@stage`。`@message` 与 `place.message.*` 为后续版本预留，可以写进清单，当前基座不触发。
 

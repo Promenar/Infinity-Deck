@@ -11,6 +11,7 @@ import com.promenar.infinity.data.pet.PetPerchPlacement
 import com.promenar.infinity.data.pet.PetPreferenceStore
 import com.promenar.infinity.domain.generation.GenerationPhase
 import com.promenar.infinity.domain.pet.PetClip
+import com.promenar.infinity.domain.pet.PetDaypart
 import com.promenar.infinity.domain.pet.PetIdleSignalMapper
 import com.promenar.infinity.domain.pet.PetLineTemplate
 import com.promenar.infinity.domain.pet.PetMood
@@ -114,6 +115,8 @@ internal class PetRuntime(
     /** 一轮任务结束时调用一次，参数为 `task.done`、`task.error` 或 `task.cancelled`。 */
     private val onTaskResult: (String) -> Unit = {},
     private val random: Random = Random.Default,
+    /** 手机本地时间的小时，作息限定与 `{daypart}` 由它决定。 */
+    private val hourOfDay: () -> Int = { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) },
 ) {
     val engine = PetEngine(pet.manifest, random).also { if (summonByShake) it.summon() else it.enter() }
     private val mood = preferences.mood.value.let { snapshot ->
@@ -283,7 +286,7 @@ internal class PetRuntime(
         mood.decay(dt)
         val signal = taskSignal(dt, inputs)
         engine.setTaskSignal(signal)
-        engine.setContext(duration(signal, dt), mood.qualifier)
+        engine.setContext(duration(signal, dt), mood.qualifier, daypart(dt))
         engine.step(dt)
         while (engine.events.isNotEmpty()) handleEvent(engine.events.removeFirst())
         if (engine.dismissedByFling && !dismissReported) {
@@ -681,7 +684,7 @@ internal class PetRuntime(
         lastLineAt = time
         val data = lineData + mapOf(
             "idle.s" to idleSeconds.toInt().toString(),
-            "daypart" to daypart(),
+            "daypart" to daypartLabel(),
             "mood" to mood.dataValue,
         )
         scope.launch {
@@ -713,13 +716,24 @@ internal class PetRuntime(
         return null
     }
 
-    private fun daypart(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-        in 5..10 -> "早上"
-        in 11..13 -> "中午"
-        in 14..17 -> "下午"
-        in 18..22 -> "晚上"
+    /** 作息每 30 秒重读一次本地时间，逐帧不新建日历对象。 */
+    private fun daypart(dt: Float = 0f): String {
+        daypartAge += dt
+        val cached = daypartCache
+        if (cached != null && daypartAge < 30f) return cached
+        daypartAge = 0f
+        return PetDaypart.of(hourOfDay()).also { daypartCache = it }
+    }
+
+    private fun daypartLabel(): String = when (daypart()) {
+        PetDaypart.MORNING -> "早晨"
+        PetDaypart.DAY -> "白天"
+        PetDaypart.EVENING -> "晚上"
         else -> "深夜"
     }
+
+    private var daypartCache: String? = null
+    private var daypartAge = 0f
 
     private companion object {
         const val FOOT_SINK_DP = 2f

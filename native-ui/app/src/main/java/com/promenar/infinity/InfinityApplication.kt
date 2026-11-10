@@ -882,7 +882,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.session.SessionDeletionResult = try {
         withContext(Dispatchers.IO) {
             val result = sessionDeletionCoordinator.delete(sessionId, keepFiles)
-            if (result !is com.promenar.infinity.data.session.SessionDeletionResult.Failed) timedApprovalGrants.revokeAll(sessionId)
+            if (result !is com.promenar.infinity.data.session.SessionDeletionResult.Failed) {
+                timedApprovalGrants.revokeAll(sessionId)
+                // 会话删除后，宠物台词记忆里对应的条目一并清掉。
+                petMemoryStore.forget(sessionId)
+            }
             database.sessionDao().getAll().filter { it.parentSessionDeleted }.forEach { row ->
                 chatStore.updateSession(row.id) { it.copy(parentSessionId = row.parentSessionId, parentSessionDeleted = true) }
             }
