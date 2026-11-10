@@ -144,6 +144,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 需要你拍板时弹出提问卡；锁屏、切后台不中断
 - 触摸锁让手机直接揣进口袋
 - 技能与 MCP 服务器
+- 会话宠物：导入 `.idpet` 宠物包，站在输入浮岛上随任务状态换姿势与台词，可点按、拖动
 
 **智能体**
 
