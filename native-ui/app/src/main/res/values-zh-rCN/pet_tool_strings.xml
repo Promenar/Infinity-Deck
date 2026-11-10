@@ -1,0 +1,7 @@
+<resources>
+    <string name="skill_pet">宠物</string>
+    <string name="skill_pet_desc">唤回、收起或查询宠物</string>
+    <string name="chat_step_pet_name">宠物</string>
+    <string name="chat_step_pet_running">正在操作宠物</string>
+    <plurals name="chat_step_pet_done"><item quantity="other">操作宠物 %d 次</item></plurals>
+</resources>

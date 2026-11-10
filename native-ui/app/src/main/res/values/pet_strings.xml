@@ -41,4 +41,18 @@
     <string name="pet_issue_persona">Persona is too long</string>
     <string name="pet_issue_field">Invalid value</string>
     <string name="token_usage_pet">Pet lines</string>
+    <string name="pet_settings_summon">Bring pet back</string>
+    <string name="pet_settings_dismissed">Dismissed</string>
+    <string name="pet_settings_play_section">Play</string>
+    <string name="pet_settings_play_footer">Fling the pet off the screen to dismiss it. Shake the phone hard to bring it back.</string>
+    <string name="pet_settings_fling">Fling to dismiss, shake to bring back</string>
+    <string name="pet_settings_motion">Tilt and shake</string>
+    <string name="pet_settings_haptics">Haptics</string>
+    <string name="pet_settings_perch_section">Perch</string>
+    <string name="pet_settings_perch_footer">Drag the pet to the upper screen and let go to leave it on a perch. Blowing uses the microphone and reads volume only.</string>
+    <string name="pet_settings_perch_cloud">Cloud</string>
+    <string name="pet_settings_perch_bubble">Rainbow bubble</string>
+    <string name="pet_settings_perch_selected">In use</string>
+    <string name="pet_settings_blow">Blow the cloud away</string>
+    <string name="pet_dismiss_hint">Shake to bring me back</string>
 </resources>

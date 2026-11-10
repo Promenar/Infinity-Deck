@@ -87,6 +87,7 @@ class ToolInvocationPresentationTest {
             listOf("initialize_plan", "update_plan", "get_plan", "drop_plan") to ToolSummaryAction.PLAN,
             listOf("current_time") to ToolSummaryAction.TIME,
             listOf("calculator") to ToolSummaryAction.CALCULATE,
+            listOf("pet") to ToolSummaryAction.PET,
             listOf("schedule_create", "schedule_list", "schedule_pause", "schedule_resume", "schedule_cancel") to ToolSummaryAction.SCHEDULE,
             listOf("activate_skill") to ToolSummaryAction.SKILL,
         )

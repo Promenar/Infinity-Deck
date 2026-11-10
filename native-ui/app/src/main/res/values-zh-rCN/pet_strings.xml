@@ -41,4 +41,18 @@
     <string name="pet_issue_persona">角色配置单过长</string>
     <string name="pet_issue_field">取值无效</string>
     <string name="token_usage_pet">宠物台词</string>
+    <string name="pet_settings_summon">唤回宠物</string>
+    <string name="pet_settings_dismissed">已收起</string>
+    <string name="pet_settings_play_section">互动</string>
+    <string name="pet_settings_play_footer">用力把宠物甩出屏幕可以收起它，用力摇晃手机唤回。</string>
+    <string name="pet_settings_fling">甩出收起、摇晃唤回</string>
+    <string name="pet_settings_motion">倾斜与摇晃</string>
+    <string name="pet_settings_haptics">触感</string>
+    <string name="pet_settings_perch_section">栖息点</string>
+    <string name="pet_settings_perch_footer">把宠物拖到屏幕上部松手，它会留在栖息点上。吹气使用麦克风，只读取音量。</string>
+    <string name="pet_settings_perch_cloud">云朵</string>
+    <string name="pet_settings_perch_bubble">七彩泡泡</string>
+    <string name="pet_settings_perch_selected">使用中</string>
+    <string name="pet_settings_blow">吹气吹散云朵</string>
+    <string name="pet_dismiss_hint">摇一摇叫我回来</string>
 </resources>

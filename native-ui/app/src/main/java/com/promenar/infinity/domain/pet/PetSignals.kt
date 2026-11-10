@@ -48,6 +48,25 @@ object PetSignals {
     const val ROLE_ENTER = "role.enter"
     const val ROLE_EXIT = "role.exit"
     const val SESSION_OTHER_ACTIVE = "session.other.active"
+    const val TOUCH_THROW = "touch.throw"
+    const val TOUCH_BOUNCE = "touch.bounce"
+    const val TOUCH_PET = "touch.pet"
+    const val TOUCH_POKE = "touch.poke"
+    const val TOUCH_POKE_HEAD = "touch.poke.head"
+    const val TOUCH_POKE_BELLY = "touch.poke.belly"
+    const val TOUCH_POKE_TAIL = "touch.poke.tail"
+    const val TOUCH_ANNOYED = "touch.annoyed"
+    const val TILT_SLIDE_LEFT = "tilt.slide.left"
+    const val TILT_SLIDE_RIGHT = "tilt.slide.right"
+    const val SHAKE_DIZZY = "shake.dizzy"
+    const val ROLE_DISMISS = "role.dismiss"
+    const val ROLE_SUMMON = "role.summon"
+    const val KEYBOARD_UP = "keyboard.up"
+    const val KEYBOARD_DOWN = "keyboard.down"
+    const val PLACE_PERCH_ENTER = "place.perch.enter"
+    const val PLACE_PERCH_LEAVE = "place.perch.leave"
+    const val PLACE_PERCH_POP = "place.perch.pop"
+    const val PLACE_PERCH_BLOWN = "place.perch.blown"
     val categories = mapOf(
         TASK_QUEUED to TASK_WAITING,
         TASK_THINKING to TASK_WORKING,
@@ -65,14 +84,58 @@ data class PetResolvedReaction(
     val signal: String,
     val reaction: PetReaction,
 )
-/** 按信号、大类、idle 顺序查找，见规格第 3.3 节。 */
+data class PetQualifiers(val place: String? = null, val duration: String? = null, val mood: String? = null) {
+    companion object {
+        val NONE = PetQualifiers()
+        fun durationOf(seconds: Float): String? = when {
+            seconds >= 300f -> "verylong"
+            seconds >= 60f -> "long"
+            else -> null
+        }
+    }
+}
+
 object PetSignalResolver {
-    fun resolve(manifest: PetManifest, signal: String): PetResolvedReaction? {
+    fun resolve(manifest: PetManifest, signal: String, qualifiers: PetQualifiers = PetQualifiers.NONE): PetResolvedReaction? {
         val chain = mutableListOf(signal)
-        if (signal.startsWith("${PetSignals.TASK_TOOL}.")) chain.add(PetSignals.TASK_TOOL)
+        if (signal.startsWith("${PetSignals.TASK_TOOL}.")) {
+            chain.add("${PetSignals.TASK_TOOL}.${PetToolCategories.categoryOf(signal.removePrefix("${PetSignals.TASK_TOOL}."))}")
+            chain.add(PetSignals.TASK_TOOL)
+        }
         PetSignals.categories[chain.last()]?.let { chain.add(it) }
         chain.add(PetSignals.IDLE)
-        return chain.distinct().firstNotNullOfOrNull { key -> manifest.map[key]?.let { PetResolvedReaction(key, it) } }
+        return lookup(manifest, chain, qualifiers)
+    }
+
+    fun resolveEvent(manifest: PetManifest, signal: String, qualifiers: PetQualifiers = PetQualifiers.NONE): PetResolvedReaction? {
+        val chain = mutableListOf(signal)
+        if (signal in setOf(PetSignals.TOUCH_POKE_HEAD, PetSignals.TOUCH_POKE_BELLY, PetSignals.TOUCH_POKE_TAIL)) chain.add(PetSignals.TOUCH_POKE)
+        if (signal in setOf(PetSignals.TOUCH_POKE_HEAD, PetSignals.TOUCH_POKE_BELLY, PetSignals.TOUCH_POKE_TAIL, PetSignals.TOUCH_PET, PetSignals.TOUCH_ANNOYED)) chain.add(PetSignals.TOUCH_TAP)
+        return lookup(manifest, chain, qualifiers)
+    }
+
+    private fun lookup(manifest: PetManifest, chain: List<String>, q: PetQualifiers): PetResolvedReaction? {
+        val suffixes = listOfNotNull(q.place, q.duration, if (q.duration == "verylong") "long" else null, q.mood)
+        for (key in chain.distinct()) {
+            for (candidate in suffixes.map { "$key@$it" } + key) {
+                manifest.map[candidate]?.let { return PetResolvedReaction(candidate, it) }
+            }
+        }
+        return null
+    }
+}
+
+object PetToolCategories {
+    fun categoryOf(toolName: String): String = when (toolName) {
+        "read_file", "list_files", "diff_file", "read_tool_output", "read_skill_file", "canvas_read", "canvas_list" -> "read"
+        "write_file", "patch_file", "create_file", "create_directory", "move_file", "delete_file", "canvas_create", "canvas_update" -> "write"
+        "search_files", "web_search", "knowledge_search", "memory_search" -> "search"
+        "web_fetch", "browser_open", "browser_snapshot", "browser_click", "browser_type" -> "web"
+        "shell_exec", "python_exec", "python_sandbox", "exec_js", "run_script", "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send", "ssh_session_read", "ssh_session_close" -> "shell"
+        "generate_image", "view_media", "media_fetch" -> "image"
+        "schedule_create", "schedule_list", "schedule_pause", "schedule_resume", "schedule_cancel" -> "schedule"
+        "agent_task", "agent_wait" -> "subagent"
+        else -> "other"
     }
 }
 

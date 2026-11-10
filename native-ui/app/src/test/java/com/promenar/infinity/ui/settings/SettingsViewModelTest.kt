@@ -163,7 +163,7 @@ class SettingsViewModelTest {
 
     @Test fun `画布四个工具出现在可开关的内置工具列表`() = runTest {
         val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
-        assertThat(vm.skills.value.map { it.id }).containsAtLeast("canvas_create", "canvas_update", "canvas_read", "canvas_list", "artifact_publish", "artifact_list")
+        assertThat(vm.skills.value.map { it.id }).containsAtLeast("pet", "canvas_create", "canvas_update", "canvas_read", "canvas_list", "artifact_publish", "artifact_list")
     }
 
     @Test

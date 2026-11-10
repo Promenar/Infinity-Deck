@@ -1,0 +1,7 @@
+<resources>
+    <string name="skill_pet">Pet</string>
+    <string name="skill_pet_desc">Summon, dismiss, or check the pet</string>
+    <string name="chat_step_pet_name">Pet</string>
+    <string name="chat_step_pet_running">Managing pet</string>
+    <plurals name="chat_step_pet_done"><item quantity="one">Managed pet</item><item quantity="other">Managed pet %d times</item></plurals>
+</resources>

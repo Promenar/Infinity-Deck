@@ -154,6 +154,7 @@ internal enum class ToolSummaryAction(val category: ToolSummaryCategory) {
     PLAN(ToolSummaryCategory.PLAN),
     TIME(ToolSummaryCategory.UTILITY),
     CALCULATE(ToolSummaryCategory.UTILITY),
+    PET(ToolSummaryCategory.UTILITY),
     SCHEDULE(ToolSummaryCategory.UTILITY),
     SKILL(ToolSummaryCategory.SKILL),
     SUBAGENT(ToolSummaryCategory.SUBAGENT),
@@ -206,6 +207,7 @@ internal fun toolSummaryAction(name: String?): ToolSummaryAction = when (name) {
     "initialize_plan", "update_plan", "get_plan", "drop_plan" -> ToolSummaryAction.PLAN
     "current_time" -> ToolSummaryAction.TIME
     "calculator" -> ToolSummaryAction.CALCULATE
+    "pet" -> ToolSummaryAction.PET
     "schedule_create", "schedule_list", "schedule_pause", "schedule_resume", "schedule_cancel" -> ToolSummaryAction.SCHEDULE
     "activate_skill" -> ToolSummaryAction.SKILL
     com.promenar.infinity.data.subagent.SubagentLimits.TOOL_NAME -> ToolSummaryAction.SUBAGENT

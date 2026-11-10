@@ -709,6 +709,7 @@ class SettingsViewModel(
             SkillInfo("get_plan", app.getString(R.string.skill_get_plan), app.getString(R.string.skill_get_plan_desc), enabledSet?.contains("get_plan") ?: true),
             SkillInfo("drop_plan", app.getString(R.string.skill_drop_plan), app.getString(R.string.skill_drop_plan_desc), enabledSet?.contains("drop_plan") ?: true),
         ) + listOf(
+            Triple("pet", R.string.skill_pet, R.string.skill_pet_desc),
             Triple("canvas_create", R.string.canvas_tool_create, R.string.canvas_tool_create_description),
             Triple("canvas_update", R.string.canvas_tool_update, R.string.canvas_tool_update_description),
             Triple("canvas_read", R.string.canvas_tool_read, R.string.canvas_tool_read_description),

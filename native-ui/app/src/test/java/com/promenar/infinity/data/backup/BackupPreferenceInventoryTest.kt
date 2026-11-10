@@ -53,6 +53,18 @@ class BackupPreferenceInventoryTest {
     }
 
     @Test
+    fun `宠物玩法偏好随备份而运行状态保留本机`() {
+        listOf("pet_fling_gesture_enabled", "pet_motion_sensor_enabled", "pet_haptics_enabled", "pet_perch_kind", "pet_blow_enabled").forEach { key ->
+            assertThat(BackupPreferencePolicy.isKnown("settings", key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed("settings", key)).isTrue()
+        }
+        listOf("pet_dismissed", "pet_dismiss_hint_count", "pet_perch_x_fraction", "pet_perch_y_dp", "pet_mood_value", "pet_mood_at_millis").forEach { key ->
+            assertThat(BackupPreferencePolicy.isKnown("settings", key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed("settings", key)).isFalse()
+        }
+    }
+
+    @Test
     fun `工具上下文旧偏好只读识别且快速模型偏好继续参与备份`() {
         for (key in listOf("tool_context_ratio_percent", "tool_context_keep_rounds")) {
             assertWithMessage(key).that(BackupPreferencePolicy.isKnown("infinity_settings", key)).isTrue()

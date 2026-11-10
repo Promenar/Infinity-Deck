@@ -62,6 +62,24 @@ internal class PetAssets(private val pet: InstalledPet, private val scope: Corou
         return null
     }
 
+    /** 栖息点等道具图；按显示宽度 [widthDp] 降采样。未解码时发起解码并返回 null。 */
+    fun prop(path: String, widthDp: Int): Bitmap? {
+        val key = PROP_PREFIX + path
+        textures[key]?.let { return it.bitmap }
+        load(key) {
+            val file = File(pet.directory, path)
+            if (!file.isFile) return@load null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.path, bounds)
+            if (bounds.outWidth <= 0) return@load null
+            val shown = max(1f, widthDp * pxPerDp)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= shown) sample *= 2
+            BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+        }
+        return null
+    }
+
     fun release() {
         released = true
         textures.clear()
@@ -125,5 +143,6 @@ internal class PetAssets(private val pet: InstalledPet, private val scope: Corou
 
     private companion object {
         const val EXPRESSION_PREFIX = "\u0000expression:"
+        const val PROP_PREFIX = "\u0000prop:"
     }
 }

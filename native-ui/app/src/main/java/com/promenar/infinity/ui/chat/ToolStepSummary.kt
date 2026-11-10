@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Terminal
@@ -146,5 +147,6 @@ internal fun toolStepIcon(name: String?): ImageVector = when (toolSummaryAction(
     ToolSummaryAction.MEDIA_FETCH -> Icons.Rounded.CloudDownload
     ToolSummaryAction.PLAN -> Icons.AutoMirrored.Rounded.Article
     ToolSummaryAction.SKILL -> Icons.Rounded.Extension
+    ToolSummaryAction.PET -> Icons.Rounded.Pets
     else -> if (name?.contains("image", ignoreCase = true) == true) Icons.Rounded.Image else Icons.Rounded.Build
 }

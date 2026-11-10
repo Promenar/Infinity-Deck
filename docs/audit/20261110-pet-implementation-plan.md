@@ -36,7 +36,7 @@
 
 ## 实现状态（2026-11-10）
 
-六波的代码都已写入本分支，**全部未经编译和运行**。主会话回收后需要先编译，再跑测试，再真机验收。
+六波的代码，以及契约 v0.3 的阶段 1 与阶段 2 的栖息点部分（见下方“v0.3 实现状态”），都已写入本分支，**全部未经编译和运行**。主会话回收后需要先编译，再跑测试，再真机验收。
 
 | 部分 | 位置 | 说明 |
 |---|---|---|
@@ -50,7 +50,7 @@
 与规格的出入和已知缺口：
 
 - 宠物包内容不随备份导出，只有偏好随备份走；恢复到新设备后需要重新导入宠物包。
-- 数据通道目前提供 `session.title`、`model.name`、`output.chars`、`elapsed.s`、`ask.text`、`idle.s`、`daypart`；`tool.name`、`tool.target`、`error.kind` 未接入，`task.tool.<工具名>` 也只给到 `task.tool`。
+- 数据通道目前提供 `session.title`、`model.name`、`output.chars`、`elapsed.s`、`ask.text`、`idle.s`、`daypart`；`tool.target`、`error.kind` 未接入。工具名取自最新助手消息的最后一个工具调用，以 `task.tool.<工具名>` 进入信号回退链；`tool.name` 没有作为台词数据提供。
 - 事件信号 `island.fx.*`、`island.focus`、`island.blur`、`island.send`、`device.fold`、`device.unfold`、`session.other.active`、`env.theme.*` 未接入；折叠屏展开与侧边栏通过浮岛宽度和边缘位置的变化体现（`island.wider`、`island.narrower`、`push.*`）。
 - 视频片段只在 Android 13 及以上播放（用着色器换出透明通道），更低版本播放替补片段。视频不做网格变形。
 - 位图按需解码后常驻内存，直到切换角色；没有淘汰策略。
@@ -66,9 +66,45 @@
 
 开发验收用的鲸鱼女仆测试包在本机共享笔记目录 `pet-research/pack/whale-maid.idpet`（约 4.1 MB，含 26 个姿势、2 个逐帧片段、1 个视频片段、8 个表情和角色配置单），不进仓库。验收步骤：设置 → 宠物 → 导入宠物包 → 打开“显示宠物” → 进入会话页。
 
+## v0.3 实现状态（2026-11-10）
+
+按 [契约 v0.3 增补](20261110-pet-base-contract-v0.3-draft.md) 实现了阶段 1 全部内容和阶段 2 的栖息点，与前六波一样未经编译和运行。
+
+| 部分 | 位置 | 说明 |
+|---|---|---|
+| 契约 0.3 | `domain/pet/` | 映射键限定（`@perch`、`@long`、`@verylong`、`@mood.high`、`@mood.low`）、事件回退（`touch.poke.*` → `touch.poke` → `touch.tap`）、工具类别、`zones`、`props.perch`、`haptic`、`PetMood`；0.2 的包照常加载 |
+| 物理 | `ui/pet/PetEngine.kt` | 松手速度三档（下落或落座、抛出反弹、甩出收起）、唤回、倾斜打滑、摇晃、连点不耐烦、键盘弹出、栖息点（提起时显示提示、落座、戳破、吹散、恢复） |
+| 运行时与图层 | `ui/pet/PetRuntime.kt`、`PetOverlay.kt`、`PetPerchPainter.kt`、`PetSensors.kt` | 触感、心情及其保存、栖息点位置保存、收起提示气泡（最多 3 次）、加速度计（倾斜与摇晃）、麦克风音量（吹气）、抚摸与分区点按手势 |
+| 偏好 | `data/pet/PetPreferenceStore.kt` | 甩出收起与摇晃唤回、倾斜与摇晃、触感、栖息点样式、吹气五项随备份；收起状态、提示次数、栖息点位置、心情只留本机 |
+| 设置 | `ui/settings/PetSettingsScreen.kt` | 收起时的“唤回宠物”、互动三个开关、栖息点样式、吹气开关（打开时申请麦克风权限，被拒绝则保持关闭） |
+| Agent 工具 | `ui/chat/manager/skills/PetSkill.kt` | `pet`：`summon`、`dismiss`、`status`；不改总开关 |
+| 内置 Skill | `assets/builtin_skills/pet-pack-authoring/SKILL.md` | 契约 0.3 字段与“玩法与操作”一章 |
+| 权限 | `AndroidManifest.xml` | 新增 `RECORD_AUDIO`（两个渠道都有），麦克风硬件声明为非必需 |
+
+本阶段没有实现的部分：
+
+- 宠物包 `props.perch` 的 `appear`、`vanish` 片段没有播放，栖息点的出现和消失只用基座的默认动画；包提供的栖息点图片会显示。
+- 映射键的 `@message`、`@stage` 能通过校验，但消息上沿落座和空会话页舞台还没有做。
+- 小分身、击掌交接、台词记忆、作息、亲密度、应用外形态没有做。
+- 映射里的 `haptic` 只对交互与物理事件生效（点按、抚摸、抛掷、落地、摇晃、栖息点等）；`task.*`、`role.enter` 等状态映射上声明的 `haptic` 不触发。
+- `touch.bounce`、`place.perch.pop`、`place.perch.blown` 只触发触感和台词，映射里的 `clip` 不播放。
+- 麦克风在键盘弹出时释放；外接键盘下输入框获得焦点时不释放。
+- `pet` 工具的 `status` 返回默认宠物的名字，按模型关联切换的角色不体现；`summon`、`dismiss` 只改收起状态，风险级别为免审批。
+- 宠物触感直接调用视图触感反馈的三种常量（轻点、闷响、长振），没有新增 `InfinityHapticEvent`；外观里关闭触感反馈时宠物也不振动。
+
+需要真机确认的风险点（在上面六条之外）：
+
+1. 抛掷三档的速度阈值（900、2600 dp/s）手感是否合适，是否容易误收起；阈值在 `PetEngine` 的常量里。
+2. 轻摇与用力摇晃的识别阈值，走路、放进口袋时是否误触发；ColorOS 上页面在前台时加速度计是否正常回调。
+3. 点按、长按提起、头部来回滑动（抚摸）三种手势的区分是否可靠。
+4. 栖息点：提起时提示是否明显，落座位置、重新进入会话后的恢复位置是否正确；七彩泡泡能否点破；横竖屏和折叠屏展开后位置是否合理。
+5. 吹气：识别阈值、状态栏麦克风指示、键盘弹出或页面切走后是否释放麦克风、实际耗电。
+6. 触感三种强度在真机上的区别是否明显（ColorOS 振动取证方法见记忆）。
+7. `pet` 工具唤回或收起后，会话页是否立即反映。
+
 ## 后续阶段（2026-11-10 用户确认的顺序）
 
-接口见 [契约 v0.3 增补](20261110-pet-base-contract-v0.3-draft.md)。阶段 0 通过后再开始写代码；每个阶段先出浏览器原型给用户确认，再实现。
+接口见 [契约 v0.3 增补](20261110-pet-base-contract-v0.3-draft.md)。阶段 1 和阶段 2 的栖息点已按用户要求提前写完，等阶段 0 一并验收；其余阶段先出浏览器原型给用户确认，再实现。
 
 | 阶段 | 内容 | 依赖 |
 |---|---|---|
@@ -87,6 +123,7 @@
 
 - `:app:compileSideloadDebugKotlin :app:compilePlayDebugKotlin :app:compileSideloadDebugUnitTestKotlin`
 - `:app:testSideloadDebugUnitTest --tests 'com.promenar.infinity.domain.pet.*' --tests 'com.promenar.infinity.data.pet.*' --tests 'com.promenar.infinity.ui.pet.*'`
+- v0.3 新增或改动的测试：`--tests '*PetEngineTest' --tests '*PetSensorsTest' --tests '*PetV03Test' --tests '*PetV03PreferenceTest' --tests '*PetSkillTest' --tests '*ToolInvocationPresentationTest' --tests '*BuiltinToolPresentationTest' --tests '*SettingsViewModelTest'`；新增权限后再跑 `python3 scripts/ci/check-distribution-manifests.py`。
 - `:app:testSideloadDebugUnitTest --tests '*UserSettingsHomeScreenContractTest' --tests '*SettingsPaneTest' --tests '*SettingsNavigationContractTest' --tests '*BackupPreferenceInventoryTest' --tests '*BuiltinSkillCatalogTest' --tests '*SkillSourceGroupsTest' --tests '*KgTokenStatsRepositoryTest' --tests '*RolledBackSummaryUsageStoreTest'`
 - 设置首页多了一个条目，`SettingsPagesBatch1ScreenshotTest`、`ReleasePreviewScreenshotTest` 的参考图可能需要更新。
 - 功能验收通过后补 `CHANGELOG.md` 的 `[Unreleased]`、README 的功能说明和 `docs/ARCHITECTURE.md`。
