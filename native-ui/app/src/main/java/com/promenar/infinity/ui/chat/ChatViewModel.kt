@@ -1210,16 +1210,19 @@ class ChatViewModel(
                     }
                 }
                 if (imported.isNotEmpty()) {
-                    _draftDocuments.update { current ->
-                        val importedHashes = imported.mapTo(mutableSetOf()) { it.sha256 }
-                        current.filterNot { it.sha256 in importedHashes } + imported.distinctBy { it.sha256 }
-                    }
+                    _draftDocuments.update { current -> com.promenar.infinity.data.document.mergeDraftDocuments(current, imported) }
                     if (imported.size == uris.size) _error.value = null
                 }
             } finally {
                 _isImportingDocument.value = false
             }
         }
+    }
+
+    /** 并入从其它入口（例如外部文档查看器）送来的草稿附件；同一内容只留最新一份。 */
+    fun addDraftDocuments(documents: List<MessageDocumentAttachment>) {
+        if (documents.isEmpty()) return
+        _draftDocuments.update { current -> com.promenar.infinity.data.document.mergeDraftDocuments(current, documents) }
     }
 
     fun removeDraftDocument(documentId: String) {

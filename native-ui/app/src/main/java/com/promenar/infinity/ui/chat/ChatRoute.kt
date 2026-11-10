@@ -236,6 +236,16 @@ fun ChatRoute(
     }
     val chatViewModel: ChatViewModel = viewModel(factory = resolvedDependencies.viewModelFactory)
     val uiState by chatViewModel.uiState.collectAsStateWithLifecycle()
+    // 外部文档查看器送来的附件：只由前台的聊天页取走（返回栈里的页面不在 STARTED，不收集），
+    // 并等本会话的草稿恢复完成后再并入，避免被恢复覆盖。
+    val inboxPending by application.composerDocumentInbox.pending.collectAsStateWithLifecycle()
+    val pendingForSession = inboxPending[sessionId]
+    val loadedSessionId = uiState.session?.id
+    LaunchedEffect(loadedSessionId, pendingForSession) {
+        if (loadedSessionId == sessionId && !pendingForSession.isNullOrEmpty()) {
+            chatViewModel.addDraftDocuments(application.composerDocumentInbox.take(sessionId))
+        }
+    }
     val startupIssues by application.startupIssues.collectAsStateWithLifecycle()
     val startupWritePaused = startupIssues.affectsSession(sessionId, uiState.session?.workspaceRootUuid)
     var showStartupIssues by remember(sessionId) { mutableStateOf(false) }

@@ -18,6 +18,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.util.UUID
+import com.promenar.infinity.ui.document.external.excludingOwnViewer
 
 /** 保存到系统媒体库时的集合。 */
 enum class MediaSaveCollection { PICTURES, MOVIES, DOWNLOADS }
@@ -137,7 +138,7 @@ class MediaFileActions(
             clipData = ClipData.newRawUri(mediaDisplayName(available.ref.path), uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        return launch(Intent.createChooser(view, null))
+        return launch(Intent.createChooser(view, null).excludingOwnViewer(context))
     }
 
     private fun launch(intent: Intent): MediaActionResult = try {

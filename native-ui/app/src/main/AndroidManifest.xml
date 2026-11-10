@@ -51,6 +51,43 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <!-- 外部应用“打开方式”：按 Markdown 类型匹配。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/x-markdown" />
+            </intent-filter>
+            <!-- 类型为通用值（如 text/plain、application/octet-stream）时按扩展名匹配；pathSuffix 区分大小写。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathSuffix=".md" />
+                <data android:pathSuffix=".MD" />
+                <data android:pathSuffix=".markdown" />
+                <data android:pathSuffix=".MARKDOWN" />
+            </intent-filter>
+            <!-- 没有类型的 file:// 与 content:// 链接按扩展名匹配。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathSuffix=".md" />
+                <data android:pathSuffix=".MD" />
+                <data android:pathSuffix=".markdown" />
+                <data android:pathSuffix=".MARKDOWN" />
+            </intent-filter>
         </activity>
 
         <receiver

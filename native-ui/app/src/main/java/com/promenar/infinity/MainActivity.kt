@@ -53,6 +53,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.promenar.infinity.share.ui.ShareImportUiState
+import com.promenar.infinity.data.document.external.ownsContentUri
+import com.promenar.infinity.ui.document.external.message
 
 internal fun allowOnboardingEmptyModelsOverride(
     isDebugBuild: Boolean,
@@ -105,6 +107,9 @@ open class MainActivity : ComponentActivity() {
             linuxReady = { app.linux.runtime.state.value is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready },
         )
     }
+    private val externalDocumentViewModel by viewModels<com.promenar.infinity.ui.document.external.ExternalDocumentViewModel> {
+        com.promenar.infinity.ui.document.external.externalDocumentViewModelFactory(application as InfinityApplication, shareTargetProvider)
+    }
     private val shareImportViewModel by viewModels<ShareImportViewModel> {
         ShareImportViewModel.factory(
             queue = shareIntentQueue,
@@ -144,7 +149,8 @@ open class MainActivity : ComponentActivity() {
                 }
             }
         }
-        stageShareIntent(intent, ShareDelivery.of(savedInstanceState != null, intent?.flags ?: 0))
+        val launchDelivery = ShareDelivery.of(savedInstanceState != null, intent?.flags ?: 0)
+        if (!routeExternalDocumentIntent(intent, launchDelivery)) stageShareIntent(intent, launchDelivery)
         routeOpenGenerationIntent(intent)
         routeOpenSshRemoteIntent(intent)
         routeOpenLabIntent(intent)
@@ -306,6 +312,19 @@ open class MainActivity : ComponentActivity() {
                                 },
                             ),
                         )
+                        com.promenar.infinity.ui.document.external.ExternalDocumentViewer(externalDocumentViewModel)
+                        LaunchedEffect(externalDocumentViewModel) {
+                            externalDocumentViewModel.events.collect { event ->
+                                when (event) {
+                                    is com.promenar.infinity.ui.document.external.ExternalDocumentEvent.OpenSession ->
+                                        navController.navigate(NavDestinations.chatHero(event.sessionId)) { launchSingleTop = true }
+                                    is com.promenar.infinity.ui.document.external.ExternalDocumentEvent.OpenLibraryDocument ->
+                                        navController.navigate(NavDestinations.libraryDocument(event.documentId)) { launchSingleTop = true }
+                                    is com.promenar.infinity.ui.document.external.ExternalDocumentEvent.Notice ->
+                                        Toast.makeText(this@MainActivity, event.notice.message(this@MainActivity), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                         com.promenar.infinity.ui.ssh.SshUserPromptHost(app.sshUserPrompts)
                         SharePendingBanner(
                             pendingCount = importState.pendingCount,
@@ -320,6 +339,7 @@ open class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (routeExternalDocumentIntent(intent, ShareDelivery.Fresh)) return
         if (ShareIntentQueue.isShareIntent(intent)) {
             setIntent(intent)
             stageShareIntent(intent, ShareDelivery.of(restoredInstanceState = false, intentFlags = intent.flags))
@@ -379,6 +399,23 @@ open class MainActivity : ComponentActivity() {
             }
             ShareEnqueueResult.RejectedCapacity -> showShareFeedback(R.string.share_intent_queue_full)
         }
+    }
+
+    /**
+     * 外部应用打开或分享的单个 Markdown 文件交给查看器；多个文件、其它格式与本应用自己提供的内容链接仍走原有流程。
+     * 系统重放（进程重建、从最近任务恢复）时查看器已从暂存区恢复，不重复读取来源。
+     */
+    private fun routeExternalDocumentIntent(candidate: Intent?, delivery: ShareDelivery): Boolean {
+        val uri = com.promenar.infinity.data.document.external.ExternalDocumentIntents.markdownUri(candidate)
+            ?.takeUnless { ownsContentUri(it) } ?: return false
+        setIntent(cleanMainIntent())
+        if (delivery == ShareDelivery.Fresh) {
+            val context = applicationContext
+            externalDocumentViewModel.open {
+                com.promenar.infinity.data.document.external.androidExternalDocumentInput(context, uri)
+            }
+        }
+        return true
     }
 
     private fun cleanMainIntent() = Intent(this, MainActivity::class.java).apply {
