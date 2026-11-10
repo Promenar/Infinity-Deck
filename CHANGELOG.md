@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 ### 改进
 
 - 智能体内置指南补齐持久进程与命令执行说明：持续运行的进程一律用命令工具的 `background: true` 启动并以 `job_*` 工具管理，说明 `nohup`、`&`、`setsid`、`screen`、`tmux` 在内置模式、Linux 模式、Termux 与 SSH 远端各自的结果，以及后台任务的存活条件、状态、日志与定时任务的分工。细节放在按需读取的 `references/background-processes.md` 与 `references/command-execution.md`，系统提示只增加一行选用规则与指向。
+- `read_file` 改为按行流式分段读取，超过 1 MiB 的文本文件也能读取，私有工作区、自选目录与挂载（含 SAF）一致：单文件上限 100 MiB（与存储空间单文件上限一致），只解码请求范围内的行；每次最多 2000 行、正文约 190 KB（按 JSON 转义后计），超出时截断并在结果“后续”行给出下一次的 `startLine`，超长单行另给 `lineByteOffset` 续读。整文件读取（文档编辑器、检索）仍保持 1 MiB 上限。
 - `job_status` 说明列出全部状态取值与完整日志的取得方式；`ssh_exec` 说明给出远端长期服务的做法；内置 `shell_exec`、`python_exec` 说明后台任务主命令须保持前台运行。
 
 ## [0.41.6-beta] - 2026-11-10

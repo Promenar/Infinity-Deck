@@ -133,6 +133,8 @@ class PrivateWorkspaceFileOps(
     override fun read(root: Path, relative: List<String>): ByteArray = at(root, relative) { delegate.read(it.root, it.path) }
     override fun readLimited(root: Path, relative: List<String>, maxBytes: Long): ByteArray =
         at(root, relative) { delegate.readLimited(it.root, it.path, maxBytes) }
+    override fun <T> readStreamLimited(root: Path, relative: List<String>, maxBytes: Long, consume: (java.io.InputStream) -> T): T =
+        at(root, relative) { delegate.readStreamLimited(it.root, it.path, maxBytes, consume) }
     override fun exists(root: Path, relative: List<String>): Boolean = at(root, relative) { delegate.exists(it.root, it.path) }
     override fun inspect(root: Path, relative: List<String>): WorkspaceNodeIdentity = at(root, relative) { delegate.inspect(it.root, it.path) }
     override fun listChildren(root: Path, relative: List<String>): List<String> = at(root, relative) { delegate.listChildren(it.root, it.path) }

@@ -7,7 +7,7 @@ import com.promenar.infinity.domain.repository.DiffLine
 import com.promenar.infinity.domain.repository.IFileOperationRepository
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
 import com.promenar.infinity.domain.repository.PatchResult
-import com.promenar.infinity.domain.repository.ReadResult
+import com.promenar.infinity.domain.repository.ReadWindowResult
 import com.promenar.infinity.domain.repository.WriteResult
 import com.promenar.infinity.data.repository.WorkspaceTextErrorCode
 import com.promenar.infinity.data.repository.WorkspaceTextPolicyException
@@ -40,8 +40,8 @@ class FileSkillsScopeTest {
     @Test
     fun `every file skill forwards execution context workspace root`() = runTest {
         val operations = mockk<IFileOperationRepository>()
-        coEvery { operations.readFileRange("root-a", "file", any(), any()) } returns
-            ReadResult("file", "a.txt", 1, 1, 1, "old", "hash", 1)
+        coEvery { operations.readFileWindow("root-a", "file", any()) } returns
+            ReadWindowResult("file", "a.txt", 1, 1, 1, 0, "old", "hash", 1, null, 0)
         coEvery { operations.writeFileAtomic("root-a", "file", "new", "session", "hash") } returns
             WriteResult.Success("new-hash")
         coEvery { operations.diffFile("root-a", "file", null) } returns
@@ -66,7 +66,7 @@ class FileSkillsScopeTest {
             context,
         )
 
-        coVerify { operations.readFileRange("root-a", "file", any(), any()) }
+        coVerify { operations.readFileWindow("root-a", "file", any()) }
         coVerify { operations.writeFileAtomic("root-a", "file", "new", "session", "hash") }
         coVerify { operations.diffFile("root-a", "file", null) }
         coVerify { operations.patchFile("root-a", "file", any(), "hash") }
@@ -92,7 +92,7 @@ class FileSkillsScopeTest {
             WorkspaceTextErrorCode.INPUT_TOO_LARGE,
             "文件超过上限，请缩小读取范围。",
         )
-        coEvery { operations.readFileRange(any(), any(), any(), any()) } throws failure
+        coEvery { operations.readFileWindow(any(), any(), any()) } throws failure
         coEvery { operations.writeFileAtomic(any(), any(), any(), any(), any()) } throws failure
         coEvery { operations.diffFile(any(), any(), any()) } throws failure
 
@@ -117,8 +117,8 @@ class FileSkillsScopeTest {
     fun `read输出预算包含最终ToolResult的JSON转义开销`() = runTest {
         val operations = mockk<IFileOperationRepository>()
         val shortLines = "123456789012\n".repeat(20_000).trimEnd()
-        coEvery { operations.readFileRange(any(), any(), any(), any()) } returns
-            ReadResult("file", "large.txt", 1, 20_000, 20_000, shortLines, "hash", shortLines.length.toLong())
+        coEvery { operations.readFileWindow(any(), any(), any()) } returns
+            ReadWindowResult("file", "large.txt", 20_000, 1, 20_000, 0, shortLines, "hash", shortLines.length.toLong(), null, 0)
 
         val result = FileReadSkill(operations).execute(skillArgs("uuid" to "file"), context)
 
