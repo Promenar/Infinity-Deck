@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鲸鱼女仆复刻模型检查器</title>
+<style>
+  html,body{margin:0;background:#8d93a3;font:13px system-ui;color:#111}
+  #bar{position:fixed;left:8px;top:8px;display:flex;flex-wrap:wrap;gap:4px;max-width:96vw;z-index:2}
+  button{font:inherit;padding:3px 8px;border-radius:6px;border:1px solid #445;background:#fff;cursor:pointer}
+  canvas{display:block}
+  #info{position:fixed;left:8px;bottom:8px;background:#fffc;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<canvas id="c"></canvas>
+<div id="info">加载中…</div>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.min.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.0/examples/jsm/",
+  "@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.5/lib/three-vrm.module.min.js"
+}}
+</script>
+<script type="module">
+// 检查器：正交相机多视角、表情与姿势切换、截图保存到本地服务的 /save 端点。
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+const q = new URLSearchParams(location.search);
+const MODEL = q.get('model') || 'whale-maid.vrm';
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true, preserveDrawingBuffer:true});
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x000000, 0);
+const scene = new THREE.Scene();
+const sun = new THREE.DirectionalLight(0xffffff, Math.PI*.95); sun.position.set(-1.2,1.6,2.2); scene.add(sun);
+scene.add(new THREE.AmbientLight(0xffffff,.5));
+const cam = new THREE.OrthographicCamera(-1,1,1,-1,.01,50);
+const rig = new THREE.Group(); scene.add(rig);
+let vrm = null, W = 0, H = 0;
+const state = {view:'front', half:.62, cy:.54, pose:'T', expr:{}, yaw:0};
+
+function size(w,h,pr=1){ W=w; H=h; renderer.setPixelRatio(pr); renderer.setSize(w,h,false); canvas.style.width=w+'px'; canvas.style.height=h+'px'; }
+size(Math.min(innerWidth,760), Math.min(innerHeight,620));
+
+const VIEWS = { front:[0,0,1], back:[0,0,-1], side:[1,0,0], side2:[-1,0,0], q:[.55,.12,1], q2:[-.55,.12,1], top:[0,1,.001], low:[.4,-.25,1] };
+function applyCamera(){
+  const d = new THREE.Vector3(...VIEWS[state.view]).normalize().multiplyScalar(8);
+  cam.position.set(d.x, state.cy + d.y, d.z); cam.lookAt(0, state.cy, 0);
+  const a = W/H; cam.top = state.half; cam.bottom = -state.half; cam.left = -state.half*a; cam.right = state.half*a; cam.updateProjectionMatrix();
+}
+
+// 姿势：归一化人形骨骼欧拉角，与 3D 原型同一约定
+const POSES = {
+  T:{},
+  A:{leftUpperArm:[0,0,-1.1],rightUpperArm:[0,0,1.1]},
+  ref:{leftUpperArm:[.25,-.75,-1.12],leftLowerArm:[0,-2.05,0],rightUpperArm:[.25,.75,1.12],rightLowerArm:[0,2.05,0],leftHand:[0,0,.2],rightHand:[0,0,-.2]},
+  cheer:{leftUpperArm:[0,0,1.05],leftLowerArm:[0,0,.35],rightUpperArm:[0,0,-1.05],rightLowerArm:[0,0,-.35],head:[-.12,0,0]},
+  sit:{leftUpperLeg:[-1.5,0,-.08],rightUpperLeg:[-1.5,0,.08],leftLowerLeg:[1.45,0,0],rightLowerLeg:[1.45,0,0],leftUpperArm:[0,-.35,-1.22],leftLowerArm:[0,-1.05,0],rightUpperArm:[0,.35,1.22],rightLowerArm:[0,1.05,0]},
+};
+const BONES=['hips','spine','chest','upperChest','neck','head','leftShoulder','rightShoulder','leftUpperArm','leftLowerArm','leftHand','rightUpperArm','rightLowerArm','rightHand','leftUpperLeg','leftLowerLeg','leftFoot','rightUpperLeg','rightLowerLeg','rightFoot'];
+const E = new THREE.Euler();
+function applyPose(){
+  const P = typeof state.pose==='string' ? POSES[state.pose] : state.pose;
+  for(const n of BONES){ const b = vrm.humanoid.getNormalizedBoneNode(n); if(!b) continue; const e = P[n]||[0,0,0]; b.quaternion.setFromEuler(E.set(e[0],e[1],e[2])); }
+}
+function applyExpr(){
+  const em = vrm.expressionManager; for(const k of Object.keys(em.expressionMap)) em.setValue(k, state.expr[k]||0);
+}
+function step(n=1, dt=1/60){
+  for(let i=0;i<n;i++){ applyPose(); applyExpr(); rig.rotation.y = state.yaw; vrm.humanoid.update(); vrm.expressionManager.update(); vrm.springBoneManager?.update(dt); vrm.materials?.forEach(m=>m.update?.(dt)); }
+}
+function draw(){ applyCamera(); renderer.render(scene, cam); }
+function tick(){ if(vrm && !api.paused){ step(1); draw(); } requestAnimationFrame(tick); }
+
+const api = window.api = {
+  paused:false, state, POSES,
+  set(o){ Object.assign(state, o); return api; },
+  settle(n=90){ if(o_reset){ } step(n); draw(); return api; },
+  reset(){ vrm.springBoneManager?.reset(); return api; },
+  async capture(name, o={}){
+    api.paused = true;
+    const w=o.w||900, h=o.h||1100; size(w,h,1); if(o.state) Object.assign(state,o.state);
+    if(o.reset!==false) { step(2); scene.updateMatrixWorld(true); vrm.springBoneManager?.reset(); }
+    step(o.frames??60); draw();
+    const data = canvas.toDataURL('image/png');
+    const r = await fetch('/save?name='+encodeURIComponent(name), {method:'POST', body:data});
+    return name+' '+(await r.text());
+  },
+  info(){ let tris=0; vrm.scene.traverse(o=>{ if(o.isMesh){ const g=o.geometry; tris+=(g.index?g.index.count:g.attributes.position.count)/3 } });
+    return {tris:Math.round(tris), joints:vrm.springBoneManager?.joints?.size, exprs:Object.keys(vrm.expressionManager.expressionMap), mats:vrm.materials.map(m=>m.name+':'+m.type)}; },
+};
+const o_reset = false;
+
+const loader = new GLTFLoader(); loader.register(p=>new VRMLoaderPlugin(p));
+loader.loadAsync(MODEL+'?t='+Date.now()).then(gltf=>{
+  vrm = gltf.userData.vrm; window.vrm = vrm;
+  VRMUtils.removeUnnecessaryVertices(gltf.scene); VRMUtils.combineSkeletons(gltf.scene);
+  vrm.scene.traverse(o=>{ o.frustumCulled=false });
+  rig.add(vrm.scene);
+  document.getElementById('info').textContent = JSON.stringify(api.info());
+  const bar = document.getElementById('bar');
+  const btn = (t,f)=>{ const b=document.createElement('button'); b.textContent=t; b.onclick=f; bar.appendChild(b); };
+  for(const v in VIEWS) btn(v, ()=>{state.view=v});
+  for(const p in POSES) btn('姿势 '+p, ()=>{state.pose=p});
+  for(const e of ['neutral','happy','angry','sad','relaxed','surprised','aa','ih','ou','ee','oh','blink','lookLeft','lookRight','lookUp','lookDown']) btn(e, ()=>{state.expr = e==='neutral'?{}:{[e]:1}});
+  window.ready = true; tick();
+}).catch(e=>{ document.getElementById('info').textContent='加载失败：'+e.message; window.loadError = e.message; console.error(e); });
+</script>
+</body>
+</html>
