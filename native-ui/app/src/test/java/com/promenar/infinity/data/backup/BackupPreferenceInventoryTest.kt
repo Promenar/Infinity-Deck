@@ -45,6 +45,14 @@ class BackupPreferenceInventoryTest {
     }
 
     @Test
+    fun `宠物总开关作为用户偏好参与备份`() {
+        for (key in listOf("pet_enabled", "pet_default_id", "pet_model_map", "pet_lines_enabled", "pet_lines_model", "pet_video_enabled")) {
+            assertThat(BackupPreferencePolicy.isKnown("infinity_settings", key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isTrue()
+        }
+    }
+
+    @Test
     fun `工具上下文旧偏好只读识别且快速模型偏好继续参与备份`() {
         for (key in listOf("tool_context_ratio_percent", "tool_context_keep_rounds")) {
             assertWithMessage(key).that(BackupPreferencePolicy.isKnown("infinity_settings", key)).isTrue()

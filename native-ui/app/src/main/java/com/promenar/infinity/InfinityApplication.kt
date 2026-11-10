@@ -230,6 +230,21 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.network.PublicNetworkMonitor(this)
     }
     val themePreferenceStore: ThemePreferenceStore by lazy { ThemePreferenceStore(this) }
+    val petPreferenceStore: com.promenar.infinity.data.pet.PetPreferenceStore by lazy {
+        com.promenar.infinity.data.pet.PetPreferenceStore(this)
+    }
+
+    val petPackageStore: com.promenar.infinity.data.pet.PetPackageStore by lazy {
+        com.promenar.infinity.data.pet.PetPackageStore(filesDir, petPreferenceStore)
+    }
+    val petLineGenerator: com.promenar.infinity.data.pet.PetLineGenerator by lazy {
+        val router = com.promenar.infinity.data.generation.RoutedToolResultSummarizer(
+            com.promenar.infinity.data.generation.ChatProviderRouteGate(providerRequestRouter),
+        ) { modelId -> generationLocalProviders.create(modelId) }
+        com.promenar.infinity.data.pet.PetLineGenerator(petPreferenceStore, petUsageStore, { prompt, onUsage ->
+            router.summarizePrompt(prompt, onUsage)?.let { it.content to it.usage }
+        })
+    }
 
     /** 生产默认依赖保持不变；instrumentation 可通过 Application 子类注入可验证端口。 */
     open fun createChatRouteDependencies(): ChatRouteDependencies =
@@ -1395,10 +1410,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.rag.PreferencesKgUsageStore(getSharedPreferences("kg_usage", MODE_PRIVATE))
     }
 
+    val petUsageStore: com.promenar.infinity.data.rag.KgUsageStore by lazy {
+        com.promenar.infinity.data.rag.PreferencesKgUsageStore(getSharedPreferences("pet_usage", MODE_PRIVATE))
+    }
+
     val tokenStatsRepository: ITokenStatsRepository by lazy {
         com.promenar.infinity.data.subagent.SubagentTokenStatsRepository(TokenStatsRepository(
             database.messageDao(), kgUsageStore,
             com.promenar.infinity.data.repository.RolledBackSummaryUsageStore(getSharedPreferences("infinity_settings", MODE_PRIVATE)),
+            petUsageStore,
         ), subagentRunStore, title = { sessionId -> sessionRepository.getById(sessionId)?.title })
     }
 
@@ -2022,7 +2042,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             File(filesDir, "agent_skills"),
             getSharedPreferences("infinity_settings", MODE_PRIVATE),
             File(noBackupFilesDir, "skill_state"),
-        )) { path -> assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() } }
+        ), includePetAuthoring = true) { path -> assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() } }
     }
 
     val skillRegistry: SkillRegistry by lazy { createSkillRegistry() }

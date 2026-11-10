@@ -78,6 +78,13 @@ class UserSettingsHomeScreenContractTest {
     }
 
     @Test
+    fun `宠物入口在通用分组内紧跟外观之后`() {
+        val general = screenSource.substringAfter("settings_section_general").substringBefore("settings_ia_section_models")
+        assertThat(general).contains("NavDestinations.PET_SETTINGS")
+        assertThat(general.indexOf("NavDestinations.THEME_CONFIG")).isLessThan(general.indexOf("NavDestinations.PET_SETTINGS"))
+    }
+
+    @Test
     fun `settings-home 必须恰好包含一个 theme_config 和 provider_list 和 default_models 导航目的地`() {
         fun countOccurrences(sub: String): Int {
             var count = 0
@@ -92,6 +99,7 @@ class UserSettingsHomeScreenContractTest {
         }
 
         assertThat(countOccurrences("onNavigateToSecondary(NavDestinations.THEME_CONFIG)")).isEqualTo(1)
+        assertThat(countOccurrences("onNavigateToSecondary(NavDestinations.PET_SETTINGS)")).isEqualTo(1)
         assertThat(countOccurrences("onNavigateToSecondary(NavDestinations.PROVIDER_LIST)")).isEqualTo(1)
         assertThat(countOccurrences("onNavigateToSecondary(NavDestinations.DEFAULT_MODELS)")).isEqualTo(1)
     }

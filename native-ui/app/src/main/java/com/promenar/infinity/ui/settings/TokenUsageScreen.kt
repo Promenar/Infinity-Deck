@@ -162,6 +162,7 @@ internal fun TokenUsageScreenContent(
                                 when (category.category) {
                                     "kg" -> R.string.token_usage_kg
                                     "subagent" -> R.string.token_usage_subagent
+                                    "pet" -> R.string.token_usage_pet
                                     else -> R.string.token_usage_chat
                                 },
                             ),

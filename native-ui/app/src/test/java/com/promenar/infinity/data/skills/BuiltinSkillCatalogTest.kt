@@ -128,4 +128,17 @@ class BuiltinSkillCatalogTest {
         temporary.newFolder("rootfs").resolve(path.removePrefix("/")).apply { parentFile.mkdirs(); writeText("伪造文件") }
         assertThat(catalog.readFile(catalog.scan(null).builtin.single(), "SKILL.md")).isEqualTo(original)
     }
+    @Test fun `宠物制作技能可发现并通过名称和路径读取`() = runTest {
+        val combined = BuiltinSkillCatalog(catalog, includePetAuthoring = true) {
+            runtimeGuideMainDirectory().resolve("assets/$it").readText()
+        }
+        val pet = combined.scan(null).builtin.single { it.name == BuiltinSkillCatalog.PET_NAME }
+        assertThat(pet.description).contains("宠物包")
+        val activated = ActivateSkillTool(combined).execute(buildJsonObject { put("name", pet.name) }, context)
+        assertThat(activated.status).isEqualTo("success")
+        assertThat(activated.content).contains("manifest.json")
+        val read = ReadSkillFileTool(combined).execute(buildJsonObject { put("path", "${pet.virtualDir}/SKILL.md") }, context)
+        assertThat(read.status).isEqualTo("success")
+        assertThat(read.content).contains("persona.json")
+    }
 }
