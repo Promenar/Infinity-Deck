@@ -2,6 +2,7 @@
 
 export const REPO = 'Promenar/Infinity-Deck';
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
+export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 const API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`;
 
 /**

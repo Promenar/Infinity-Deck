@@ -1,7 +1,7 @@
 ---
 // 下载台：版本、APK 按钮、SHA-256 与平台状态。首页与下载页共用。
 import { strings, href } from '../i18n.mjs';
-import { formatSize, formatDate, RELEASES_URL } from '../lib/release.mjs';
+import { formatSize, formatDate, RELEASES_URL, LATEST_RELEASE_URL } from '../lib/release.mjs';
 
 interface Props { locale: 'zh' | 'en'; release: any; heading: 'h1' | 'h2'; showPageLink?: boolean }
 const { locale, release, heading: Heading, showPageLink = false } = Astro.props;
@@ -15,7 +15,7 @@ const t = strings[locale].download;
       {locale === 'zh'
         ? <Fragment><b data-version>{release.tag}</b>，<span class="nw"><span data-date>{formatDate(release.publishedAt, locale)}</span>{t.released}</span></Fragment>
         : <Fragment><b data-version>{release.tag}</b>, <span class="nw">{`${t.released} `}<span data-date>{formatDate(release.publishedAt, locale)}</span></span></Fragment>}
-      <a class="newer" href={RELEASES_URL} data-newer hidden>{t.newer}</a>
+      <a class="newer" href={LATEST_RELEASE_URL} data-newer hidden>{t.newer}</a>
     </p>
     <div class="cta">
       <a class="btn btn-primary" href={release.apk.url} data-apk>{t.apk} <small data-size>{formatSize(release.apk.size)}</small></a>
