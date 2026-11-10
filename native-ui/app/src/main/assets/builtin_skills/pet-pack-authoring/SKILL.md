@@ -62,9 +62,6 @@ description: 当用户询问 Infinity Deck 宠物的使用、操作，或需要�
 | `place.perch.pop` / `.blown` | 泡泡被戳破、云朵被吹散 | 落回浮岛途中显示 | 用 `touch.fall` | 吓一跳、被吹翻 |
 | `place.perch.leave` | 离开栖息点 | 不播放片段，可配 `haptic` | — | — |
 | `place.stage.enter` / `.leave` | 进入没有消息的会话、出现第一条消息 | 播放 `enter_ms`（默认 1.5 秒） | 没有反应 | 挥手、张望 |
-| `sub.spawn` | 一个子代理开始运行 | 播放 `enter_ms`，基座让角色面向分身跑走的一侧；同时身旁分出一个小分身沿浮岛跑出屏幕 | 只有分身跑出 | 侧身比大拇指、挥手送行 |
-| `sub.return` | 一个子代理结束 | 分身跑回身旁并回身上时播放 `enter_ms` | 只有分身跑回 | 把小东西搂进怀里 |
-| `sub.clone` | 分身跑动时的画面，显示高度为角色的 45% | 跑动全程循环显示，按 `display.facing` 绘制 | 用 `idle` 里带 `move` 的行走片段，再用 `idle` 的片段 | 行走或奔跑循环 |
 
 在栖息点上的表现用位置限定配置，例如 `idle@perch` 写一组不带 `move` 的 `behaviors`（趴着、坐在边缘、打哈欠）；没配时用 `idle` 里不走动的行为。心情用 `@mood.high`、`@mood.low` 配置，例如 `touch.tap@mood.low`。长任务用 `@long`、`@verylong`，例如 `task.tool@long`。
 
@@ -73,17 +70,6 @@ description: 当用户询问 Infinity Deck 宠物的使用、操作，或需要�
 作息用 `@morning`、`@day`、`@evening`、`@night` 配置，例如 `idle@night` 写一组抱枕头、打哈欠的 `behaviors`；台词里的 `{daypart}` 取值为“早晨”“白天”“晚上”“深夜”。
 
 会话还没有消息时映射优先使用 `@stage` 限定，例如 `idle@stage`。`@message` 与 `place.message.*` 为后续版本预留，可以写进清单，当前基座不触发。
-
-### 挥手交接（契约 0.3）
-
-切换角色时，新角色在一团烟雾里出现在旧角色旁边，两个角色面对面挥手约 1.3 秒，旧角色在一团烟雾里消失。位置、朝向、烟雾和轻微摆动都由基座处理，包只需要给两个事件配片段：
-
-| 信号 | 谁收到 | 未配置时 | 建议姿势 |
-|---|---|---|---|
-| `role.bye` | 离场的旧角色 | 保持站姿 | 挥手告别 |
-| `role.hi` | 入场的新角色 | 保持站姿 | 挥手打招呼 |
-
-两个信号可以用同一张挥手姿势图，例如 `"role.bye": {"clip": "wave"}`、`"role.hi": {"clip": "wave"}`。侧身的姿势按 `display.facing` 绘制，基座会按需要水平翻转；脚的位置与 `idle` 一致，画面里只有角色本人。台词写在 `role.exit`、`role.enter` 的兜底台词里。
 
 ## 玩法与操作
 
