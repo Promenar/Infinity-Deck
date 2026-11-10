@@ -15,6 +15,7 @@ import bpy
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import classify as K
 import common as C
 
 WORK = sys.argv[sys.argv.index('--') + 1]
@@ -76,14 +77,14 @@ cid[m & white] = C_WHITE
 cid[m & skin] = C_SKIN
 cid[m & (z < 0.085) & ~white & ~grey & ~skin] = C_SHOE
 # 围裙上的小鲸鱼：贴图在这里的像素密度不够画清楚，原位置刷白，图案改由单独的贴花承担
-wx, wz = (x - 0.036) / 0.024, (z - 0.287) / 0.024
-stamp = (tp == TORSO) & (y < -0.12) & (np.abs(wx) < 1.6) & (np.abs(wz) < 1.4)
+wx, wz = (x - K.CFG['whale'][0]) / 0.024, (z - K.CFG['whale'][1]) / 0.024
+stamp = (tp == TORSO) & (y < K.CFG['face_y'] + 0.07) & (np.abs(wx) < 1.6) & (np.abs(wz) < 1.4)
 cid[stamp] = C_WHITE
 # ---- 头部：皮肤、头发、头饰、蝴蝶结、鲸鳍耳
 m = tp == HEAD
 cid[m] = C_HAIR
 cid[m & (lum < 0.20)] = C_LHAIR
-ear = m & (np.abs(x) > 0.215) & (z > 0.54) & (z < 0.745)
+ear = m & (np.abs(x) > K.CFG['ear_x'] + 0.01) & (z > K.CFG['ear_z'][0]) & (z < K.CFG['ear_z'][1] - 0.015)
 cid[ear] = C_EAR
 bow = m & (np.abs(x) > 0.13) & (z > 0.735) & (z < 0.87) & (sat > 0.30) & (G > R + 0.12) & (lum > 0.30) & (y < 0.12)
 cid[bow] = C_BOW
@@ -98,13 +99,14 @@ A = np.c_[2 * sp, np.ones(len(sp))]
 sol = np.linalg.lstsq(A, (sp ** 2).sum(1), rcond=None)[0]
 fc, fr = sol[:3], float(np.sqrt(sol[3] + (sol[:3] ** 2).sum()))
 d = np.linalg.norm(POS - fc, axis=1) - fr
-FEAT = [(-0.098, 0.655, 0.058, 0.050), (0.062, 0.662, 0.058, 0.050), (-0.015, 0.582, 0.058, 0.042)]
+FX, EZ, MZ = K.CFG['face_x'], K.CFG['eye_z'], K.CFG['mouth_z']
+FEAT = [(FX - K.CFG['eye_dx'], EZ, 0.058, 0.050), (FX + K.CFG['eye_dx'], EZ + 0.004, 0.058, 0.050), (FX, MZ, 0.058, 0.042)]
 zone = np.zeros(len(col), bool)
 for cx, cz, hw, hh in FEAT:
     zone |= (np.abs(x - cx) < hw) & (np.abs(z - cz) < hh)
-face = m & zone & (y < -0.09) & (d < 0.006)
+face = m & zone & (y < K.CFG['face_y'] + 0.10) & (d < 0.006)
 # 嘴周围到下巴没有刘海，范围放宽：旧嘴的口腔颜色偏深，容易被归到别的色类
-face |= ((tp == HEAD) | (tp == HAIRP)) & (np.abs(x + 0.017) < 0.075) & (z > 0.548) & (z < 0.622) & (y < -0.12) & (d < 0.04)
+face |= ((tp == HEAD) | (tp == HAIRP)) & (np.abs(x - FX) < 0.075) & (z > MZ - 0.035) & (z < MZ + 0.039) & (y < K.CFG['face_y'] + 0.07) & (d < 0.04)
 cid[face] = C_SKIN
 print('FACE sphere center', np.round(fc, 3), 'radius', round(fr, 3), 'repainted texels', int(face.sum()))
 
@@ -150,6 +152,8 @@ else:
     pq, qq, tq = v2 * (1 - s2), v2 * (1 - s2 * f6), v2 * (1 - s2 * (1 - f6))
     adj = np.stack([np.choose(i6, [v2, qq, pq, pq, tq, v2]), np.choose(i6, [tq, v2, v2, qq, pq, pq]),
                     np.choose(i6, [pq, pq, tq, v2, v2, qq])], -1)
+    if not K.CFG.get('grade', True):
+        mask = np.zeros_like(mask)
     lin2 = lin * (1 - mask[:, None]) + adj * mask[:, None]
     lin2 = np.clip(lin2, 0, 1)
     out = np.where(lin2 <= 0.0031308, lin2 * 12.92, 1.055 * lin2 ** (1 / 2.4) - 0.055).astype(np.float32)
@@ -193,6 +197,9 @@ else:
         hh = np.where(tl, th_[0], hh)
         ss = np.where(tl, ts_[0], ss)
         vv = np.where(tl, np.clip(tv_[0] * (vv / max(vm, 1e-3)) ** 0.6, 0.30, 0.72), vv)
+    # 白色布料去掉偏紫的色调，只留很浅的冷色
+    wcl = (cid == C_WHITE) | (cid == C_WSHADE)
+    ss = np.where(wcl, ss * 0.35, ss)
     out = from_hsv(hh, np.clip(ss, 0, 1), np.clip(vv, 0, 1))
     # 肤色：白里透粉。脸统一成一块均匀的肤色（腮红在眼睛贴花里），腿上的肤色向它靠拢
     SKIN_REF = hx('#ffeee8')

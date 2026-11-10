@@ -40,7 +40,7 @@ def bone(name, head, tail, parent):
     BONES[name] = (Vector(head), Vector(tail), parent)
 
 
-LEG_X = 0.04
+LEG_X = K.CFG['leg_x']
 bone('hips', (0, 0.01, 0.31), (0, 0.01, 0.37), None)
 bone('spine', (0, 0.01, 0.37), (0, 0.01, 0.42), 'hips')
 bone('chest', (0, 0.01, 0.42), (0, 0.01, 0.465), 'spine')
@@ -48,7 +48,7 @@ bone('upperChest', (0, 0.01, 0.465), (0, 0.005, 0.51), 'chest')
 bone('neck', (0, 0.005, 0.51), (0, 0.0, 0.555), 'upperChest')
 bone('head', (0, 0.0, 0.555), (0, 0.0, 0.76), 'neck')
 bone('headEnd', (0, 0.0, 1.0), (0, 0.0, 1.03), 'head')
-SCRIPT_ARMS = FLAT and os.environ.get('ARMS', 'script') == 'script'
+SCRIPT_ARMS = FLAT and os.environ.get('ARMS', K.CFG['arms']) == 'script'
 ARM_Z, ARM_Y = 0.497, 0.005
 ARM_X = [0.078, 0.168, 0.262, 0.315]   # 肩、肘、腕、指尖（T 姿势）
 for sx, side, arm in ((1, 'left', K.ARM_L), (-1, 'right', K.ARM_R)):
@@ -65,11 +65,11 @@ for sx, side, arm in ((1, 'left', K.ARM_L), (-1, 'right', K.ARM_R)):
 
 SPRINGS, COLLIDERS = [], []
 # 头发：8 条链，绕头发云的中心均匀分布
-HAIR_C = (0.03, 0.09)
+HAIR_C = tuple(K.CFG['hair_c'])
 HAIR_PHI = [40, 80, 120, 160, 200, 240, 280, 320]
 HAIR_LEVELS = [0.60, 0.48, 0.36, 0.24]
 HAIR_END = 0.12
-HAIR_R = [(0.12, 0.34), (0.24, 0.34), (0.36, 0.30), (0.48, 0.25), (0.60, 0.20)]
+HAIR_R = [tuple(v) for v in K.CFG['hair_r']]
 
 
 def hair_pt(deg, z):
@@ -135,8 +135,7 @@ bone('tail_end', tail_pt(1.0), tail_pt(1.0) + Vector((0.02, 0, 0.08)), par)
 SPRINGS.append(dict(name='tail', joints=['tail0', 'tail1', 'tail2', 'tail3', 'tail_end'], stiffness=[2.4, 1.9, 1.5, 1.2],
                     gravity=0.0, drag=0.35, radius=0.03, groups=[]))
 # 鲸鳍耳
-EARS = {'L': (Vector((0.19, 0.03, 0.665)), Vector((0.36, 0.07, 0.655))),
-        'R': (Vector((-0.20, 0.03, 0.655)), Vector((-0.37, 0.07, 0.60)))}
+EARS = {k: (Vector(v[0]), Vector(v[1])) for k, v in K.CFG['ears'].items()}
 for side, (root, tip) in EARS.items():
     bone('ear' + side, root, tip, 'head')
     bone('ear%s_end' % side, tip, tip + (tip - root).normalized() * 0.03, 'ear' + side)
@@ -210,17 +209,17 @@ for vi in range(nv):
     part = vpart[vi]
     # 鲸鳍耳：头两侧伸出的部分
     ear = None
-    if part in (P_HEAD, P_HAIR) and 0.54 < z < 0.76 and abs(x) > 0.205 and -0.12 < y < 0.22:
+    if part in (P_HEAD, P_HAIR) and K.CFG['ear_z'][0] < z < K.CFG['ear_z'][1] and abs(x) > K.CFG['ear_x']:
         side = 'L' if x > 0 else 'R'
         root, tip = EARS[side]
         d, _ = K.seg_dist(P[vi:vi + 1].astype(np.float64), np.array(root), np.array(tip))
         if d[0] < 0.075:
-            k = min(1.0, (abs(x) - 0.205) / 0.04)
+            k = min(1.0, (abs(x) - K.CFG['ear_x']) / 0.04)
             ear = {'ear' + side: k, 'head': 1 - k}
     if ear:
         put(vi, ear)
     elif part == P_HEAD:
-        if z < 0.585 and y < 0.08 and r < 0.13:   # 下巴与脖子
+        if z < 0.585 and y < K.CFG['face_y'] + 0.27 and r < 0.13:   # 下巴与脖子
             k = min(1.0, max(0.0, (z - 0.525) / 0.05))
             put(vi, {'head': k, 'neck': 1 - k})
         else:
@@ -371,7 +370,7 @@ if FLAT:
     hairv = vm == 2
     up = P[:, 2] > 0.60
     proxy = np.where(up[:, None], P - np.array([0.0, 0.0, 0.74]),
-                     np.c_[P[:, 0] - 0.03, P[:, 1] - 0.09, np.full(nv, 0.12)])
+                     np.c_[P[:, 0] - HAIR_C[0], P[:, 1] - HAIR_C[1], np.full(nv, 0.12)])
     proxy /= np.maximum(np.linalg.norm(proxy, axis=1, keepdims=True), 1e-9)
     Nh = 0.6 * proxy + 0.4 * smooth_n(N0, 8)
     N[hairv] = Nh[hairv]
@@ -392,11 +391,12 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
     fcv, frr = Vector(fs[:3].tolist()), float(fs[3])
     # 重绘图集的眼睛偏宽，贴花片取大一些；程序绘制的图集用 0.108
     ASSET_EYES = os.path.exists(os.path.join(WORK, 'assets', 'eyes.png'))
-    EYE_Z, EYE_SIZE = 0.657, (0.128 if ASSET_EYES else 0.108)
+    EYE_Z, EYE_SIZE = K.CFG['eye_z'], (0.128 if ASSET_EYES else 0.108)
+    FX_, DX_ = K.CFG['face_x'], K.CFG['eye_dx']
     PATCHES = [  # (材质序号, 中心 x, 中心 z, 边长, 网格数, 图集内 u0, 每片 u 宽, 每片 v 高)
-        (0, -0.098, EYE_Z, EYE_SIZE, 10, 0.0, 0.25, 1 / 3),
-        (0, 0.062, EYE_Z, EYE_SIZE, 10, 0.25, 0.25, 1 / 3),
-        (1, -0.017, 0.583, 0.072, 7, 0.0, 0.25, 0.5),
+        (0, FX_ - DX_, EYE_Z, EYE_SIZE, 10, 0.0, 0.25, 1 / 3),
+        (0, FX_ + DX_, EYE_Z, EYE_SIZE, 10, 0.25, 0.25, 1 / 3),
+        (1, FX_, K.CFG['mouth_z'], 0.072, 7, 0.0, 0.25, 0.5),
     ]
     fv, fuv, fnrm, ffaces, fmat = [], [], [], [], []
     for mi, cx0, cz0, size, n, u0, du, dv in PATCHES:
@@ -439,7 +439,7 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
         base_i = len(fv)
         for i in range(n):
             for j in range(n):
-                fv.append((fs[:3] + dirs[i, j] * (rad[i, j] + 0.003)).tolist())
+                fv.append((fs[:3] + dirs[i, j] * (rad[i, j] + (K.CFG.get('eye_off', 0.003) if mi == 0 else 0.003))).tolist())
                 fnrm.append(dirs[i, j].tolist())
                 fuv.append((u0 + du * j / (n - 1), 1.0 - dv * i / (n - 1)))
         for i in range(n - 1):
@@ -449,7 +449,7 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
                 fmat.append(mi)
     # 围裙小鲸鱼贴花：从正前方向围裙投射，权重取最近的身体顶点，随裙摆一起动
     DECAL_W = []
-    n, size, cx0, cz0 = 6, 0.058, 0.036, 0.287
+    n, size, cx0, cz0 = 6, 0.058, K.CFG['whale'][0], K.CFG['whale'][1]
     from mathutils import kdtree as _kd
     kdt = _kd.KDTree(nv)
     for i, pp in enumerate(P):
@@ -696,7 +696,7 @@ for side in ('left', 'right'):
     humanoid += [side + s for s in ('Shoulder', 'UpperArm', 'LowerArm', 'Hand', 'UpperLeg', 'LowerLeg', 'Foot', 'Toes')]
 rig = dict(
     humanoid={n: n for n in humanoid}, springs=SPRINGS, colliders=COLLIDERS, expressions=EXPR,
-    look_at_pos=[-0.018, -0.2, 0.657],
+    look_at_pos=[K.CFG['face_x'], K.CFG['face_y'] - 0.01, K.CFG['eye_z']],
     materials=MATERIALS,
     meta=dict(
         name='Whale Maid (image-to-3D, dev test)', version='0.2',

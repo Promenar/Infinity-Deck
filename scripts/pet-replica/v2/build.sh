@@ -1,6 +1,7 @@
 #!/bin/zsh
 # v2 一键流程：图生 3D 网格 → 减面分区 → 烘焙 → 绑定 → VRM 1.0。
 # 用法：build.sh <输入.glb> <工作目录> <产物目录> [起始阶段 1-4]
+# 换底模时设置环境变量 PET_CFG 指向位置参数配置（例如 cfg-turnaround1.json）；不设则用第一版底模的默认值。
 # 只用 Blender 自带的 Python（含 numpy），不需要额外依赖。
 set -e
 HERE="${0:A:h}"

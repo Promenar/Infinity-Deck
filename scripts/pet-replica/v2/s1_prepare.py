@@ -2,7 +2,7 @@
 
 用法：Blender --background --python s1_prepare.py -- <输入.glb> <工作目录>
 产出：<工作目录>/high.blend（对象 High，带原始 UV、材质与顶点色属性 col）
-归一化：整体放大 1.1 倍，脚底落在 z=0，原点取两脚中心；角色面向 -Y。
+归一化：整体缩放到总高度 TARGET_TOTAL（默认 1.0465 米，含呆毛），脚底落在 z=0，原点取两脚中心；角色面向 -Y。
 """
 import os
 import sys
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common as C
 
 src, work = sys.argv[sys.argv.index('--') + 1:][:2]
-SCALE = 1.1
+TARGET_TOTAL = float(os.environ.get('TARGET_TOTAL', '1.0465'))  # 归一化后的总高度（含呆毛），米
 C.reset()
 ob = C.import_glb(src)
 ob.name = 'High'
@@ -29,6 +29,7 @@ v = C.np_verts(me)
 zmin = v[:, 2].min()
 feet = v[v[:, 2] < zmin + 0.03]
 cx, cy = feet[:, 0].mean(), feet[:, 1].mean()
+SCALE = TARGET_TOTAL / float(v[:, 2].max() - zmin)   # 换底模后各部位高度仍落在同一套经验数值附近
 v = (v - np.array([cx, cy, zmin], np.float32)) * SCALE
 me.vertices.foreach_set('co', v.ravel())
 me.update()

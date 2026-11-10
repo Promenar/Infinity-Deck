@@ -16,6 +16,7 @@ import numpy as np
 from mathutils import Vector, kdtree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import classify as K
 import common as C
 
 WORK = sys.argv[sys.argv.index('--') + 1]
@@ -63,7 +64,7 @@ me.polygons.foreach_get('area', area)
 cen = np.zeros(len(me.polygons) * 3, np.float32)
 me.polygons.foreach_get('center', cen)
 cen = cen.reshape(-1, 3)
-quad = ((np.degrees(np.arctan2(cen[:, 0] - 0.03, -(cen[:, 1] - 0.09))) % 360) // 90).astype(int)
+quad = ((np.degrees(np.arctan2(cen[:, 0] - K.CFG['hair_c'][0], -(cen[:, 1] - K.CFG['hair_c'][1]))) % 360) // 90).astype(int)
 hair = part == 5
 T = 1.0 / 3.0
 groups = [(part == 1, (0.0, T, 0.5, 2 * T)), (~hair & (part != 1), (0.5, T, 0.5, 2 * T))]

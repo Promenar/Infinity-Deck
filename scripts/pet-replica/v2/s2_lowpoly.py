@@ -27,7 +27,7 @@ WORK = argv[0]
 TARGET = int(argv[1]) if len(argv) > 1 else 17300  # 封口约一千面，脚本手臂、胸前部件和贴花约两千面
 P_HEAD, P_TORSO, P_ARM_L, P_ARM_R, P_HAIR, P_TAIL = 1, 2, 3, 4, 5, 6
 PART_NAMES = {1: 'head', 2: 'torso', 3: 'armL', 4: 'armR', 5: 'hair', 6: 'tail'}
-CUT_PAIRS = {frozenset(p) for p in [(P_ARM_L, P_TORSO), (P_ARM_R, P_TORSO), (P_ARM_L, P_ARM_R), (P_HAIR, P_TORSO),
+CUT_PAIRS = {frozenset(p) for p in [(P_ARM_L, P_ARM_R), (P_HAIR, P_TORSO),
                                     (P_HAIR, P_ARM_L), (P_HAIR, P_ARM_R), (P_HAIR, P_TAIL), (P_TAIL, P_TORSO),
                                     (P_ARM_L, P_HEAD), (P_ARM_R, P_HEAD)]}
 
@@ -42,8 +42,14 @@ print('HIGH classes', {K.NAMES[i]: int((hcls == i).sum()) for i in range(5)})
 # ---------------------------------------------------------------- 减面
 # 细节分配：减面前把脸、手所在的区域按径向平滑放大，减面后再逆变换回去。
 # 二次误差减面与尺度相关，被放大的区域会保留更多三角面。
-WARPS = [(np.array([0.0, -0.17, 0.665]), 0.17, 0.9),    # 脸与眼睛：中心、影响半径、放大量
-         (np.array([0.0, -0.135, 0.47]), 0.085, 0.9)]   # 双手
+WARPS = [(np.array([K.CFG['face_x'], K.CFG['face_y'] + 0.02, K.CFG['eye_z'] + 0.008]), 0.17, 0.9)]  # 脸与眼睛：中心、影响半径、放大量
+_hl, _hr = (K.ARM_L[2] + K.ARM_L[3]) / 2, (K.ARM_R[2] + K.ARM_R[3]) / 2
+if np.linalg.norm(_hl - _hr) < 0.12:      # 双手合拢：一个放大区
+    WARPS.append(((_hl + _hr) / 2, 0.085, 0.9))
+else:                                      # 双手分开：各一个，范围不重叠
+    WARPS += [(_hl, 0.06, 0.9), (_hr, 0.06, 0.9)]
+if K.CFG['arms'] == 'script':              # 手臂要整体换掉时，才沿手臂与躯干的交界切开
+    CUT_PAIRS |= {frozenset((P_ARM_L, P_TORSO)), frozenset((P_ARM_R, P_TORSO))}
 
 
 def _g(r, rad):
@@ -240,8 +246,8 @@ vpart[lcls == K.TAIL] = P_TAIL
 vpart[lcls == K.JUNK] = P_HAIR
 body = lcls == K.BODY
 ascore, aside, aseg, _ = K.arm_score(LP)
-tdist, _ = K.seg_dist(LP, np.array([0, 0.005, 0.36]), np.array([0, 0.005, 0.55]))
-is_arm = body & (ascore < tdist / 0.078) & (ascore < 1.15) & (LP[:, 2] > 0.37) & (LP[:, 2] < 0.56)
+tdist, _ = K.seg_dist(LP, np.array([0, K.CFG['torso_y'], 0.36]), np.array([0, K.CFG['torso_y'], 0.55]))
+is_arm = body & (ascore < tdist / 0.078) & (ascore < 1.15) & (LP[:, 2] > min(0.37, K.ARM_L[:, 2].min() - 0.06)) & (LP[:, 2] < 0.56)
 vpart[body] = P_TORSO
 vpart[is_arm & (aside > 0)] = P_ARM_L
 vpart[is_arm & (aside < 0)] = P_ARM_R
@@ -265,11 +271,11 @@ for v in bm.verts:
                 stack.append(o)
     cx = sum(v.co.x for v in comp) / len(comp)
     cz = sum(v.co.z for v in comp) / len(comp)
-    if len(comp) < 45 or (len(comp) < 150 and cx < -0.24 and 0.3 < cz < 0.78):  # 游离碎片；右侧残影附近放宽
+    if len(comp) < 45 or (K.CFG['junk'] and len(comp) < 150 and cx < -0.24 and 0.3 < cz < 0.78):  # 游离碎片；右侧残影附近放宽
         crumbs += comp
 # 右侧残影的下半截：这一带的头发是浅蓝，按邻域平均色偏深来识别并删除
 _lum = 0.2126 * lcol[:, 0] + 0.7152 * lcol[:, 1] + 0.0722 * lcol[:, 2]
-_dark = (LP[:, 0] < -0.24) & (LP[:, 2] > 0.20) & (LP[:, 2] < 0.62) & (_lum < 0.30) & (lcls != K.BODY)
+_dark = K.CFG['junk'] & (LP[:, 0] < -0.24) & (LP[:, 2] > 0.20) & (LP[:, 2] < 0.62) & (_lum < 0.30) & (lcls != K.BODY)
 _cs = set(crumbs)
 crumbs += [v for v in bm.verts if _dark[v.index] and v not in _cs]
 if crumbs:

@@ -17,6 +17,7 @@
   - `atlas_from_sheet.py` 把图像模型画的表情素材表整理成图集，放到 `<工作目录>/assets/` 后构建时自动采用（需要 Pillow）；
   - `s4_rig.py` 骨骼、权重、材质拆分与法线整理、面部贴花、脚本手臂与胸前部件、导出 glb；
   - `render_blook.py` 用 B 版工程渲染高低模对比；`render_dbg.py`、`inspect_src.py` 为检查用；
+  - 与底模相关的位置参数在 `classify.py` 的 `CFG` 里，默认值对应第一版底模；换底模时用 `PET_CFG=<json>` 覆盖，`cfg-turnaround1.json` 是 A 字姿势四视图重建的底模用的配置；
   - 只用 Blender 自带的 Python。
 
 ## 共用
