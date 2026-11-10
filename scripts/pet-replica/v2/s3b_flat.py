@@ -197,6 +197,14 @@ else:
         hh = np.where(tl, th_[0], hh)
         ss = np.where(tl, ts_[0], ss)
         vv = np.where(tl, np.clip(tv_[0] * (vv / max(vm, 1e-3)) ** 0.6, 0.30, 0.72), vv)
+    # 头发配色拉回设定图：色相和饱和度直接取设定图的高度渐变，明度在渐变色的基础上保留一部分笔触起伏
+    if K.CFG.get('hair_ref'):
+        hr = (cid == C_HAIR) | (cid == C_LHAIR)
+        th_, ts_, tv_ = to_hsv(grad(HAIR, z))
+        rel = np.clip((vv / np.maximum(vref[zb], 1e-3)) ** 0.6, 0.74, 1.12)
+        hh = np.where(hr, th_, hh)
+        ss = np.where(hr, ts_, ss)
+        vv = np.where(hr, np.clip(tv_ * rel, 0, 1), vv)
     # 白色布料去掉偏紫的色调，只留很浅的冷色
     wcl = (cid == C_WHITE) | (cid == C_WSHADE)
     ss = np.where(wcl, ss * 0.35, ss)

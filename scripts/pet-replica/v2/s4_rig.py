@@ -383,6 +383,7 @@ if FLAT:
 # 贴花片贴在脸的皮肤表面外 3 毫米处：从脸部代理球心向外发射线，取皮肤上的交点；
 # 落在刘海上的点改用周围皮肤点插值，这样贴花会从刘海下面穿过，被刘海自然遮住。
 FACE = None
+PLATE = False
 if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
     from mathutils.bvhtree import BVHTree
     lo = np.empty(len(me.loops), np.int32)
@@ -398,6 +399,10 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
         (0, FX_ + DX_, EYE_Z, EYE_SIZE, 10, 0.25, 0.25, 1 / 3),
         (1, FX_, K.CFG['mouth_z'], 0.072, 7, 0.0, 0.25, 0.5),
     ]
+    # 原图面片：有 assets/faceplate.png 时，用设定图正面的脸（未经重绘）贴在头部正面，代替眼睛和嘴的贴花
+    PLATE = os.path.exists(os.path.join(WORK, 'assets', 'faceplate.png'))
+    if PLATE:
+        PATCHES = []
     fv, fuv, fnrm, ffaces, fmat = [], [], [], [], []
     for mi, cx0, cz0, size, n, u0, du, dv in PATCHES:
         pts = np.zeros((n, n, 3))
@@ -447,6 +452,50 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
                 a = base_i + i * n + j
                 ffaces.append((a, a + n, a + n + 1, a + 1))
                 fmat.append(mi)
+    if PLATE:
+        # 面片按设定图的真实比例摆放：设定图 1 像素对应模型 2.597 毫米，以两眼中点对齐。
+        # 表面取“从正前方看到的第一层”（刘海或皮肤），大幅平滑后前移 6 毫米。
+        MMPX = 1.0465 / 403.0
+        SRC_W, SRC_H, EYE_U, EYE_V = 144, 92, 70.5, 49.0     # 面片在设定图里的像素尺寸与两眼中点位置
+        nx_, nz_ = 25, 17
+        x0_, z0_ = FX_ - EYE_U * MMPX, EYE_Z + EYE_V * MMPX
+        dep = np.full((nz_, nx_), np.nan)
+        for i in range(nz_):
+            for j in range(nx_):
+                xw, zw = x0_ + SRC_W * MMPX * j / (nx_ - 1), z0_ - SRC_H * MMPX * i / (nz_ - 1)
+                loc = bvh.ray_cast(Vector((xw, -1.0, zw)), Vector((0, 1, 0)))[0]
+                if loc is not None and loc.y < fcv.y + 0.03:
+                    dep[i, j] = loc.y
+        for _ in range(60):
+            bad = np.isnan(dep)
+            if not bad.any():
+                break
+            pad = np.pad(dep, 1, constant_values=np.nan)
+            nb = np.stack([pad[:-2, 1:-1], pad[2:, 1:-1], pad[1:-1, :-2], pad[1:-1, 2:]])
+            cnt = (~np.isnan(nb)).sum(0)
+            fillv = np.nansum(nb, 0) / np.maximum(cnt, 1)
+            dep = np.where(bad & (cnt > 0), fillv, dep)
+        # 取外包络：每个点取周围两圈里最靠前的深度，再平滑，保证面片整体在刘海之前、不被发束穿出
+        for _ in range(2):
+            pad = np.pad(dep, 1, mode='edge')
+            dep = np.minimum.reduce([dep, pad[:-2, 1:-1], pad[2:, 1:-1], pad[1:-1, :-2], pad[1:-1, 2:],
+                                     pad[:-2, :-2], pad[:-2, 2:], pad[2:, :-2], pad[2:, 2:]])
+        for _ in range(6):
+            pad = np.pad(dep, 1, mode='edge')
+            dep = (pad[:-2, 1:-1] + pad[2:, 1:-1] + pad[1:-1, :-2] + pad[1:-1, 2:] + 2 * dep) / 6
+        b0 = len(fv)
+        for i in range(nz_):
+            for j in range(nx_):
+                xw, zw = x0_ + SRC_W * MMPX * j / (nx_ - 1), z0_ - SRC_H * MMPX * i / (nz_ - 1)
+                pos = Vector((xw, dep[i, j] - 0.010, zw))
+                fv.append(list(pos))
+                fnrm.append(list((pos - fcv).normalized()))
+                fuv.append((720 / 1024 * j / (nx_ - 1), 1.0 - 460 / 512 * i / (nz_ - 1)))
+        for i in range(nz_ - 1):
+            for j in range(nx_ - 1):
+                a = b0 + i * nx_ + j
+                ffaces.append((a, a + nx_, a + nx_ + 1, a + 1))
+                fmat.append(3)
     # 围裙小鲸鱼贴花：从正前方向围裙投射，权重取最近的身体顶点，随裙摆一起动
     DECAL_W = []
     n, size, cx0, cz0 = 6, 0.058, K.CFG['whale'][0], K.CFG['whale'][1]
@@ -478,7 +527,8 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
         poly.use_smooth = True
         for li in poly.loop_indices:
             uvl.data[li].uv = fuv[fme.loops[li].vertex_index]
-    for nm, tex_name in (('FaceEyes', 'eyes.png'), ('FaceMouth', 'mouth.png'), ('Decal', 'whale.png')):
+    for nm, tex_name in (('FaceEyes', 'eyes.png'), ('FaceMouth', 'mouth.png'), ('Decal', 'whale.png')) + \
+            ((('FacePlate', os.path.join('assets', 'faceplate.png')),) if PLATE else ()):
         m3 = bpy.data.materials.new(nm)
         m3.use_nodes = True
         nt3 = m3.node_tree
@@ -501,7 +551,7 @@ if FLAT and os.path.exists(os.path.join(WORK, 'eyes.png')):
     bpy.context.scene.collection.objects.link(FACE)
     FACE.vertex_groups.new(name='head').add(list(range(base_i)), 1.0, 'REPLACE')
     FACE_DECAL_W = DECAL_W
-    for nm in ('FaceEyes', 'FaceMouth', 'Decal'):
+    for nm in ('FaceEyes', 'FaceMouth', 'Decal', 'FacePlate'):
         MATERIALS[nm] = dict(shade=(1, 1, 1), outline=0.0, toony=1.0, shift=-1.0)
     for fvi, bvi in FACE_DECAL_W:
         for bi in np.nonzero(Wk[bvi] > 1e-4)[0]:
@@ -670,7 +720,7 @@ bpy.ops.export_scene.gltf(filepath=os.path.join(WORK, 'whale-maid.glb'), export_
 # 表情：切换图集格子。贴图坐标偏移只能取整格，所以全部设为二值表情；
 # 带眼部或嘴部画面的情绪表情会屏蔽眨眼和口型，避免两个偏移相加落到错误的格子。
 EXPR = {}
-if FACE:
+if FACE and not PLATE:
     def EY(c, r):
         return dict(material='FaceEyes', offset=[c * 0.5, r / 3])
 
