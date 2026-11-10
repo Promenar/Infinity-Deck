@@ -6,32 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,19 +24,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.FileProvider
 import com.promenar.infinity.R
 import com.promenar.infinity.data.artifact.ArtifactFileSnapshot
 import com.promenar.infinity.data.artifact.ArtifactKind
-import com.promenar.infinity.ui.common.MarkdownText
+import com.promenar.infinity.data.document.DocumentTextDecoding
+import com.promenar.infinity.data.document.MarkdownChunks
+import com.promenar.infinity.ui.document.DocumentBody
+import com.promenar.infinity.ui.document.DocumentBodyState
+import com.promenar.infinity.ui.document.DocumentViewerAction
+import com.promenar.infinity.ui.document.DocumentViewerScaffold
+import com.promenar.infinity.ui.document.external.excludingOwnViewer
 import com.promenar.infinity.ui.media.MediaFileActions
 import com.promenar.infinity.ui.renderer.ImageLightbox
 import com.promenar.infinity.ui.testing.UiTags
-import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
-import com.promenar.infinity.ui.theme.InfinityTypography
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -84,8 +65,8 @@ internal fun fileArtifactPreview(kind: ArtifactKind, fileName: String, sizeBytes
 }
 
 /**
- * 文件产物查看：图片进图片查看器，Markdown 与纯文本在应用内显示，HTML 与 SVG 用画布网页只读显示，
- * 其它类型（PDF、Office、压缩包等）直接交给其它应用打开。
+ * 文件产物查看：图片进图片查看器，Markdown 与纯文本用共用的文档查看器外壳显示（大 Markdown 分块渲染），
+ * HTML 与 SVG 用画布网页只读显示，其它类型（PDF、Office、压缩包等）直接交给其它应用打开。
  */
 @Composable
 internal fun FileArtifactViewer(
@@ -114,75 +95,53 @@ internal fun FileArtifactViewer(
         LaunchedEffect(snapshot) { openArtifactExternally(context, snapshot); onClose() }
         return
     }
-    var text by remember(snapshot) { mutableStateOf<String?>(null) }
+    var content by remember(snapshot) { mutableStateOf<FileArtifactContent?>(null) }
     var readFailed by remember(snapshot) { mutableStateOf(false) }
     LaunchedEffect(snapshot) {
         if (snapshot == null) return@LaunchedEffect
         try {
-            text = withContext(Dispatchers.IO) { snapshot.file.readText(Charsets.UTF_8) }
+            content = withContext(Dispatchers.IO) {
+                // 产物可能不是 UTF-8 或带 BOM；按 BOM 识别编码，无法解码的字节以替换字符显示。
+                val text = DocumentTextDecoding.decodeLenient(snapshot.file.readBytes())
+                FileArtifactContent(text, if (preview == FileArtifactPreview.MARKDOWN) MarkdownChunks.split(text) else null)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             readFailed = true
         }
     }
-    Surface(modifier = Modifier.fillMaxSize().testTag(UiTags.ARTIFACT_FILE_VIEWER), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    // 顶栏底色延伸到状态栏下方，和系统栏连成一体。
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                    .padding(horizontal = InfinitySpacing.XSmall, vertical = InfinitySpacing.XSmall),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small)) {
-                    Text(
-                        text = snapshot?.summary?.title.orEmpty(),
-                        style = InfinityTypography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    snapshot?.let {
-                        Text(text = artifactMeta(it.summary), style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                    }
-                }
-                IconButton(onClick = openWith, enabled = snapshot != null, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
-                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = stringResource(R.string.artifact_open_with))
-                }
-                IconButton(onClick = onClose, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
-                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.canvas_close))
-                }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                val content = text
-                when {
-                    error || readFailed -> Text(
-                        text = stringResource(R.string.artifact_file_load_error),
-                        color = MaterialTheme.colorScheme.error,
-                        style = InfinityTypography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(InfinitySpacing.XLarge),
-                    )
-                    content == null -> CanvasLoading()
-                    preview == FileArtifactPreview.PAGE -> CanvasWebView(html = content, modifier = Modifier.fillMaxSize(), interactive = true, readOnly = true)
-                    preview == FileArtifactPreview.MARKDOWN -> Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(InfinitySpacing.Large),
-                    ) { MarkdownText(markdown = content) }
-                    else -> SelectionContainer {
-                        Text(
-                            text = content,
-                            style = InfinityTypography.bodyMedium.copy(fontFamily = InfinityMonospace),
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(InfinitySpacing.Large),
-                        )
-                    }
-                }
-            }
+    val loaded = content
+    val body = when {
+        error || readFailed -> DocumentBodyState.Message(stringResource(R.string.artifact_file_load_error))
+        loaded == null -> DocumentBodyState.Loading
+        loaded.chunks != null -> DocumentBodyState.Markdown(loaded.chunks)
+        else -> DocumentBodyState.Plain(loaded.text)
+    }
+    DocumentViewerScaffold(
+        title = snapshot?.summary?.title.orEmpty(),
+        subtitle = snapshot?.let { artifactMeta(it.summary) },
+        onClose = onClose,
+        modifier = Modifier.testTag(UiTags.ARTIFACT_FILE_VIEWER),
+        topActions = listOf(
+            DocumentViewerAction(
+                label = stringResource(R.string.artifact_open_with),
+                icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                onClick = openWith,
+                enabled = snapshot != null,
+            ),
+        ),
+    ) { modifier ->
+        if (preview == FileArtifactPreview.PAGE && loaded != null && body !is DocumentBodyState.Message) {
+            CanvasWebView(html = loaded.text, modifier = modifier, interactive = true, readOnly = true)
+        } else {
+            DocumentBody(body, modifier)
         }
     }
 }
+
+/** 读入的产物正文；[chunks] 只在 Markdown 预览时生成。 */
+private class FileArtifactContent(val text: String, val chunks: List<String>?)
 
 /** 复制到分享缓存目录（文件名用产物原名），再以只读 content URI 交给其它应用。 */
 internal suspend fun openArtifactExternally(context: Context, snapshot: ArtifactFileSnapshot) {
@@ -208,7 +167,9 @@ internal suspend fun openArtifactExternally(context: Context, snapshot: Artifact
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     try {
-        context.startActivity(Intent.createChooser(view, null).apply { if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        context.startActivity(Intent.createChooser(view, null).excludingOwnViewer(context).apply {
+            if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, R.string.artifact_no_app, Toast.LENGTH_SHORT).show()
     }

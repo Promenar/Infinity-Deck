@@ -136,6 +136,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.promenar.infinity.ui.common.InfinityMenuItem
+import com.promenar.infinity.ui.document.external.excludingOwnViewer
 
 /** 挂载状态按当前会话隔离；管理、添加与浏览在同一个全高面板内逐页切换。 */
 @Composable
@@ -1203,6 +1204,7 @@ private fun ExternalMountBrowserPage(
                                     val intent = prepareExternalFolderOpen(context, manager, sessionId, entry)
                                     context.startActivity(
                                         Intent.createChooser(intent, externalOpenTitle)
+                                            .excludingOwnViewer(context)
                                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                     )
                                 } catch (cancelled: CancellationException) {

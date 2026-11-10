@@ -28,6 +28,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** 新建会话的默认模型：优先摘要模型，其次主模型；都未配置时为 null。 */
+internal fun defaultNewSessionModelId(): String? = runCatching {
+    val providerManager = ProviderManager.getInstance()
+    providerManager.summaryModelId.value.takeIf { it.isNotBlank() }
+        ?: providerManager.getMainConfiguredModelId()
+}.getOrNull()
+
 class SessionListViewModel(
     private val store: ChatStore,
     private val sessionRepository: ISessionRepository,
@@ -111,13 +118,7 @@ class SessionListViewModel(
         _operationFailed.value = false
     }
 
-    private fun resolveDefaultModelId(): String? {
-        return runCatching {
-            val providerManager = ProviderManager.getInstance()
-            providerManager.summaryModelId.value.takeIf { it.isNotBlank() }
-                ?: providerManager.getMainConfiguredModelId()
-        }.getOrNull()
-    }
+    private fun resolveDefaultModelId(): String? = defaultNewSessionModelId()
 
     private suspend fun runSessionOperation(operation: suspend () -> Unit) {
         _operationFailed.value = false

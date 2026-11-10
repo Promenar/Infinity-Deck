@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 文档查看器：外部打开的 Markdown 与文件产物共用。 -->
+<resources>
+    <string name="doc_viewer_close">Close</string>
+    <string name="doc_viewer_external_file">External file</string>
+    <string name="doc_viewer_meta">%1$s · %2$s</string>
+    <string name="doc_viewer_storage">Storage</string>
+    <string name="doc_viewer_save_as">Save as</string>
+    <string name="doc_viewer_save_to_storage">Save to Storage</string>
+    <string name="doc_viewer_open_in_library">Open in Library</string>
+    <string name="doc_viewer_send_to_session">Send to session</string>
+    <string name="doc_viewer_mode_attachment">Attachment</string>
+    <string name="doc_viewer_mode_reference">Reference</string>
+    <string name="doc_viewer_reference_only">Over 1 MiB · Reference</string>
+    <string name="doc_viewer_new_session">New session</string>
+    <string name="doc_viewer_choose_agent">Choose agent</string>
+    <string name="doc_viewer_save_here">Save here</string>
+    <string name="doc_viewer_cancel">Cancel</string>
+    <string name="doc_viewer_back">Back</string>
+    <string name="doc_viewer_folder_up">Up</string>
+    <string name="doc_viewer_folder_empty">No subfolders</string>
+    <string name="doc_viewer_load_failed">Couldn\'t load</string>
+    <string name="doc_viewer_sessions_empty">No sessions</string>
+    <string name="doc_viewer_saved">Saved to %1$s</string>
+    <string name="doc_viewer_save_failed">Couldn\'t save</string>
+    <string name="doc_viewer_saved_as">Saved</string>
+    <string name="doc_viewer_send_failed">Couldn\'t send</string>
+    <string name="doc_viewer_create_session_failed">Couldn\'t create session</string>
+    <string name="doc_viewer_failure_too_large">File over 32 MiB</string>
+    <string name="doc_viewer_failure_empty">Empty file</string>
+    <string name="doc_viewer_failure_unreadable">Can\'t read this file</string>
+    <string name="doc_viewer_failure_not_text">Not a text file</string>
+    <string name="doc_viewer_body_too_large">Text over 16 MiB</string>
+    <string name="doc_viewer_detail_name">Name</string>
+    <string name="doc_viewer_detail_size">Size</string>
+    <string name="doc_viewer_detail_location">Location</string>
+</resources>

@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.promenar.infinity.ui.document.external.excludingOwnViewer
 
 /*
  * “打开方式”“分享”与剪贴板：URI 由控制器经 FileProvider 授权给出，这里只组装系统 Intent。
@@ -20,7 +21,7 @@ internal fun launchOpenWith(context: Context, uri: String, mimeType: String?, ch
         clipData = ClipData.newRawUri(null, parsed)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    return startChooser(context, view, chooserTitle)
+    return startChooser(context, view, chooserTitle, excludeOwnViewer = true)
 }
 
 /** 系统分享：单个文件用 ACTION_SEND，多个用 ACTION_SEND_MULTIPLE。 */
@@ -48,8 +49,9 @@ internal fun launchShare(context: Context, uris: List<Pair<String, String?>>, ch
     return startChooser(context, send, chooserTitle)
 }
 
-private fun startChooser(context: Context, intent: Intent, title: String): Boolean {
+private fun startChooser(context: Context, intent: Intent, title: String, excludeOwnViewer: Boolean = false): Boolean {
     val chooser = Intent.createChooser(intent, title).apply {
+        if (excludeOwnViewer) excludingOwnViewer(context)
         if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     return try {

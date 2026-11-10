@@ -551,6 +551,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             generationRunnerFactory.createRuntime(sessionId, "draft-budget").estimateDraftDocumentBudget(sessionId, text, documents)
         }
 
+    /** 外部文档查看器送往会话输入框的附件，由前台聊天页取走。 */
+    val composerDocumentInbox: com.promenar.infinity.data.document.ComposerDocumentInbox by lazy {
+        com.promenar.infinity.data.document.ComposerDocumentInbox()
+    }
+
     val documentWorkspaceSaver: com.promenar.infinity.data.document.DocumentWorkspaceSaver by lazy {
         com.promenar.infinity.data.document.WorkspaceDocumentSaver(
             com.promenar.infinity.data.workspace.WorkspaceFileTargetResolver(

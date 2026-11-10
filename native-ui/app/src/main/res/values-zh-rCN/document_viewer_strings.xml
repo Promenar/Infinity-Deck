@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 文档查看器：外部打开的 Markdown 与文件产物共用。 -->
+<resources>
+    <string name="doc_viewer_close">关闭</string>
+    <string name="doc_viewer_external_file">外部文件</string>
+    <string name="doc_viewer_meta">%1$s · %2$s</string>
+    <string name="doc_viewer_storage">存储空间</string>
+    <string name="doc_viewer_save_as">另存为</string>
+    <string name="doc_viewer_save_to_storage">存入存储空间</string>
+    <string name="doc_viewer_open_in_library">在资料中打开</string>
+    <string name="doc_viewer_send_to_session">发送到会话</string>
+    <string name="doc_viewer_mode_attachment">附件</string>
+    <string name="doc_viewer_mode_reference">引用</string>
+    <string name="doc_viewer_reference_only">超过 1 MiB · 引用</string>
+    <string name="doc_viewer_new_session">新建会话</string>
+    <string name="doc_viewer_choose_agent">选择智能体</string>
+    <string name="doc_viewer_save_here">存到这里</string>
+    <string name="doc_viewer_cancel">取消</string>
+    <string name="doc_viewer_back">返回</string>
+    <string name="doc_viewer_folder_up">上一级</string>
+    <string name="doc_viewer_folder_empty">没有子文件夹</string>
+    <string name="doc_viewer_load_failed">无法加载</string>
+    <string name="doc_viewer_sessions_empty">没有会话</string>
+    <string name="doc_viewer_saved">已存入“%1$s”</string>
+    <string name="doc_viewer_save_failed">存入失败</string>
+    <string name="doc_viewer_saved_as">已另存</string>
+    <string name="doc_viewer_send_failed">发送失败</string>
+    <string name="doc_viewer_create_session_failed">无法新建会话</string>
+    <string name="doc_viewer_failure_too_large">文件超过 32 MiB</string>
+    <string name="doc_viewer_failure_empty">文件为空</string>
+    <string name="doc_viewer_failure_unreadable">无法读取此文件</string>
+    <string name="doc_viewer_failure_not_text">不是文本文件</string>
+    <string name="doc_viewer_body_too_large">正文超过 16 MiB</string>
+    <string name="doc_viewer_detail_name">名称</string>
+    <string name="doc_viewer_detail_size">大小</string>
+    <string name="doc_viewer_detail_location">位置</string>
+</resources>
