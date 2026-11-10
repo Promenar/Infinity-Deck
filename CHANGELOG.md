@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 改进
+
+- 智能体内置指南补齐持久进程与命令执行说明：持续运行的进程一律用命令工具的 `background: true` 启动并以 `job_*` 工具管理，说明 `nohup`、`&`、`setsid`、`screen`、`tmux` 在内置模式、Linux 模式、Termux 与 SSH 远端各自的结果，以及后台任务的存活条件、状态、日志与定时任务的分工。细节放在按需读取的 `references/background-processes.md` 与 `references/command-execution.md`，系统提示只增加一行选用规则与指向。
+- `job_status` 说明列出全部状态取值与完整日志的取得方式；`ssh_exec` 说明给出远端长期服务的做法；内置 `shell_exec`、`python_exec` 说明后台任务主命令须保持前台运行。
+
 ## [0.41.6-beta] - 2026-11-10
 
 ### 修复
