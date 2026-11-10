@@ -218,7 +218,7 @@ private const val COVER_ASSET = "lab/issue-12-cover.jpg"
 private class IssuePage(zh: Boolean) {
     val lang = if (zh) "zh-CN" else "en"
     val title = if (zh) "第 12 期：四颗亮星" else "Issue 12: Four bright stars"
-    val tabTitle = "$title · starlog"
+    val tabTitle = "$title · starlog" // wrap-check: allow 模拟网页的 HTML 标题，沿用站点“标题 · 站名”写法
     val nav = if (zh) listOf("周刊", "关于") else listOf("Weekly", "About")
     val kicker = if (zh) "starlog 周刊" else "starlog weekly"
     val meta = if (zh) "2026 年 11 月 9 日 · 阅读约 4 分钟" else "November 9, 2026 · 4 min read"
