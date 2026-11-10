@@ -395,12 +395,17 @@ def _litellm_modalities(item: dict[str, Any], path: str) -> dict[str, list[str]]
 
 def _normalize_litellm(document: SourceDocument) -> list[dict[str, Any]]:
     root = _require_object(document.value, document.source_id)
-    records: list[dict[str, Any]] = []
+    records: dict[str, dict[str, Any]] = {}
+    aliases: dict[str, str] = {}
     for model_key in sorted(root):
         if model_key in {"sample_spec", "fallback_generalizations"}:
             continue
         path = f"{document.source_id}.{model_key}"
         item = _require_object(root[model_key], path)
+        if "alias_of" in item:
+            alias = _required_text(model_key, path)
+            aliases[alias] = _required_text(item["alias_of"], f"{path}.alias_of")
+            continue
         provider = _required_text(item.get("litellm_provider"), f"{path}.litellm_provider")
         display_name = item.get("display_name", model_key)
         record: dict[str, Any] = {
@@ -432,8 +437,12 @@ def _normalize_litellm(document: SourceDocument) -> list[dict[str, Any]]:
             record["inputTokens"] = input_tokens
         if output_tokens is not None:
             record["outputTokens"] = output_tokens
-        records.append(record)
-    return records
+        records[model_key] = record
+    for alias, target in aliases.items():
+        if target not in records:
+            raise CatalogError(f"{document.source_id}.{alias}.alias_of 必须指向普通模型条目: {target}")
+        records[target].setdefault("exactAliases", []).append(alias)
+    return list(records.values())
 
 
 def _string_list(value: Any, path: str, *, max_items: int = 128) -> list[str]:

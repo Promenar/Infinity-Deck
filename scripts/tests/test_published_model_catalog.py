@@ -91,6 +91,42 @@ class PublishedModelCatalogTest(unittest.TestCase):
             command.append("--no-official-overrides")
         return subprocess.run(command, text=True, capture_output=True, env=environment)
 
+    def test_litellm_aliases_preserve_target_identity_and_provider_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "litellm.json"
+            models = {
+                "azure/example-latest": {"alias_of": "azure/example-2026"},
+                "azure/example-2026": {"litellm_provider": "azure", "max_output_tokens": 4096},
+            }
+            sources = {
+                name: FIXTURES / f"{name}.json"
+                for name in ("models-dev-models", "models-dev-api", "openrouter")
+            }
+            sources["litellm"] = source
+            source.write_text(json.dumps(models), encoding="utf-8")
+            result = self.run_builder(root / "ok", sources=sources)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            catalog_path, = (root / "ok/model-catalog/v1").glob("catalog-*.json")
+            records = json.loads(catalog_path.read_bytes())["records"]
+            target, = [r for r in records if r["source"] == "LITELLM"]
+            self.assertEqual(target["canonicalModelId"], "azure/example-2026")
+            self.assertEqual(target["providerScope"], "azure")
+            self.assertEqual(target["outputTokens"], 4096)
+            self.assertEqual(target["exactAliases"], ["azure/example-latest"])
+
+            models["azure/example-2026"].pop("litellm_provider")
+            source.write_text(json.dumps(models), encoding="utf-8")
+            result = self.run_builder(root / "invalid", sources=sources)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("azure/example-2026.litellm_provider", result.stderr)
+
+            models.pop("azure/example-2026")
+            source.write_text(json.dumps(models), encoding="utf-8")
+            result = self.run_builder(root / "dangling", sources=sources)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("azure/example-latest.alias_of", result.stderr)
+
     def test_builds_scoped_catalog_and_verifiable_manifest(self) -> None:
         """捕获字段合并、false 丢失、作用域丢失或签名不覆盖原始 payload 的缺陷。"""
         with tempfile.TemporaryDirectory() as tmp:

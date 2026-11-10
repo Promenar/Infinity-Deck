@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 修复在线模型目录因 LiteLLM 别名条目缺少供应商字段而无法更新的问题，保留普通模型的供应商字段校验。
+
 ## [0.43.3-beta] - 2026-11-10
 
 ### 修复
