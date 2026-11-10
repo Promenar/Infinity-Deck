@@ -1661,6 +1661,8 @@ fun ChatScreenContent(
                 reasoningLength = latestAssistantMsg?.reasoning?.length ?: 0,
                 modelId = uiState.session?.modelId,
                 toolName = latestAssistantMsg?.toolCalls?.lastOrNull()?.name,
+                sessionId = uiState.session?.id,
+                emptySession = uiState.session != null && !uiState.isLoading && uiState.messages.isEmpty(),
                 lineData = com.promenar.infinity.ui.pet.petLineData(
                     sessionTitle = uiState.session?.title,
                     modelName = uiState.session?.modelId?.let(state.modelDisplayNames::get),

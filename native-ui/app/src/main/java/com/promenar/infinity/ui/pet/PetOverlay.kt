@@ -59,12 +59,20 @@ import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.data.pet.InstalledPet
+import com.promenar.infinity.domain.pet.PetMemoryLabels
+import com.promenar.infinity.domain.pet.PetSignals
+import com.promenar.infinity.domain.pet.PetTaskResult
+import com.promenar.infinity.domain.pet.petMemoryLineData
 import com.promenar.infinity.domain.generation.GenerationPhase
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal const val PET_LAYER_TAG = "pet_layer"
 
@@ -78,6 +86,8 @@ internal const val PET_LAYER_TAG = "pet_layer"
  * @param modelId 当前会话使用的模型，用于按模型关联切换角色。
  * @param toolName 正在执行的工具名，用于工具专属表现；没有时为 null。
  * @param lineData 交给台词的任务数据，见规格第 6 节。
+ * @param sessionId 当前会话的标识，用于台词记忆；只在本机保存时间和任务结果。
+ * @param emptySession 会话还没有任何消息。
  */
 @Composable
 fun PetOverlay(
@@ -91,6 +101,8 @@ fun PetOverlay(
     lineData: Map<String, String>,
     modifier: Modifier = Modifier,
     toolName: String? = null,
+    sessionId: String? = null,
+    emptySession: Boolean = false,
 ) {
     if (LocalInspectionMode.current) return
     val application = LocalContext.current.applicationContext as? InfinityApplication ?: return
@@ -105,7 +117,9 @@ fun PetOverlay(
         application = application,
         enabled = enabled,
         islandBounds = islandBounds,
-        inputs = PetLayerInputs(phase, awaitingApproval, awaitingAnswer, contentLength, reasoningLength, lineData, toolName),
+        inputs = PetLayerInputs(
+            phase, awaitingApproval, awaitingAnswer, contentLength, reasoningLength, lineData, toolName, sessionId, emptySession,
+        ),
         modelId = modelId,
         onGone = { present = false },
         modifier = modifier,
@@ -120,6 +134,8 @@ private class PetLayerInputs(
     val reasoningLength: Int,
     val lineData: Map<String, String>,
     val toolName: String?,
+    val sessionId: String?,
+    val emptySession: Boolean,
 )
 
 /** 按“模型关联 → 默认宠物 → 第一个已安装的包”选出当前会话应显示的宠物，见规格第 8 节。 */
@@ -162,6 +178,32 @@ private fun PetLayer(
     val view = LocalView.current
     val density = LocalDensity.current.density
     val dismissHint = stringResource(R.string.pet_dismiss_hint)
+
+    // 台词记忆：进入会话时记一次到访并取出快照；一轮任务结束时记下结果。只存会话标识、时间和结果。
+    // 存储第一次使用时要读盘，只在 IO 线程里取。
+    val memoryLabels = PetMemoryLabels(
+        earlierToday = stringResource(R.string.pet_memory_earlier_today),
+        yesterday = stringResource(R.string.pet_memory_yesterday),
+        daysAgo = { days -> context.getString(R.string.pet_memory_days_ago, days) },
+        done = stringResource(R.string.pet_memory_result_done),
+        error = stringResource(R.string.pet_memory_result_error),
+        cancelled = stringResource(R.string.pet_memory_result_cancelled),
+    )
+    val latestSessionId by rememberUpdatedState(inputs.sessionId)
+    var memoryData by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(inputs.sessionId, enabled) {
+        val id = inputs.sessionId
+        memoryData = if (id == null || !enabled) {
+            emptyMap()
+        } else {
+            withContext(Dispatchers.IO) {
+                val memoryStore = application.petMemoryStore
+                memoryStore.visit(id)
+                petMemoryLineData(memoryStore.snapshot(id), System.currentTimeMillis(), ZoneId.systemDefault(), memoryLabels)
+            }
+        }
+    }
+    val latestMemory by rememberUpdatedState(memoryData)
     // 外观里关闭触感反馈时，宠物也不振动。
     val latestHaptics by rememberUpdatedState(hapticsEnabled && LocalInfinityHaptics.current.interaction)
     // 下一个创建的运行时是否以“被摇出来”的方式入场。
@@ -190,6 +232,16 @@ private fun PetLayer(
                 },
                 summonByShake = shaken,
                 dismissHint = dismissHint,
+                onTaskResult = { signal ->
+                    val id = latestSessionId
+                    val result = when (signal) {
+                        PetSignals.TASK_DONE -> PetTaskResult.DONE
+                        PetSignals.TASK_ERROR -> PetTaskResult.ERROR
+                        PetSignals.TASK_CANCELLED -> PetTaskResult.CANCELLED
+                        else -> null
+                    }
+                    if (id != null && result != null) scope.launch(Dispatchers.IO) { application.petMemoryStore.result(id, result) }
+                },
             )
         }
     }
@@ -267,7 +319,7 @@ private fun PetLayer(
     // 任务状态、浮岛位置或目标角色变化时，降帧等待中的帧循环立即推进。
     LaunchedEffect(
         runtime, target, islandBounds, inputs.phase, inputs.awaitingApproval, inputs.awaitingAnswer,
-        inputs.contentLength, inputs.reasoningLength, videoEnabled,
+        inputs.contentLength, inputs.reasoningLength, videoEnabled, inputs.emptySession,
     ) {
         runtime?.wake()
     }
@@ -330,7 +382,7 @@ private fun PetLayer(
                         awaitingAnswer = current.awaitingAnswer,
                         contentLength = current.contentLength,
                         reasoningLength = current.reasoningLength,
-                        lineData = current.lineData,
+                        lineData = if (latestMemory.isEmpty()) current.lineData else current.lineData + latestMemory,
                         // 省电模式与“移除动画”同样处理：不走动、不呼吸、不眨眼，站定后每半秒推进一次。
                         reducedMotion = reducedMotion || powerSave,
                         videoAllowed = latestVideoEnabled && !reducedMotion && !powerSave &&
@@ -339,6 +391,7 @@ private fun PetLayer(
                         tilt = if (latestMotion && !reducedMotion) motion.tilt else 0f,
                         flingEnabled = latestFling,
                         perchKind = latestPerchKind,
+                        stage = current.emptySession,
                     )
                     var left = dt
                     do {
@@ -455,11 +508,17 @@ private fun PetTouchTarget(runtime: PetRuntime) {
                     val startX = origin[0] + start.x
                     val startY = origin[1] + start.y
                     val onHead = runtime.isHead(startX, startY)
+                    // 手势内的相对时间，取自触摸事件，用来算松手速度。
+                    var at = 0f
+                    fun stamp(change: androidx.compose.ui.input.pointer.PointerInputChange) {
+                        at = (change.uptimeMillis - down.uptimeMillis) / 1000f
+                    }
                     // 280 毫秒内抬起算点按；按住不放或移动超过触摸阈值算提起；从头部横向滑出算抚摸的开始。
                     val first = withTimeoutOrNull(HOLD_MILLIS) {
                         var decided = 0
                         while (decided == 0) {
                             val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                            if (change != null) stamp(change)
                             if (change == null || !change.pressed) {
                                 decided = GESTURE_TAP
                             } else {
@@ -471,6 +530,8 @@ private fun PetTouchTarget(runtime: PetRuntime) {
                         }
                         decided
                     } ?: GESTURE_GRAB
+                    // 按住不动到时限才提起：没有事件可取时间，按时限计。
+                    if (at == 0f && first == GESTURE_GRAB) at = HOLD_MILLIS / 1000f
                     if (first == GESTURE_TAP) {
                         runtime.tap(startX, startY)
                         return@awaitEachGesture
@@ -484,6 +545,7 @@ private fun PetTouchTarget(runtime: PetRuntime) {
                         var toGrab = false
                         while (!toGrab) {
                             val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            stamp(change)
                             if (!change.pressed) break
                             change.consume()
                             val moved = change.position - start
@@ -506,14 +568,19 @@ private fun PetTouchTarget(runtime: PetRuntime) {
                         }
                         if (!toGrab) return@awaitEachGesture
                     }
-                    if (!runtime.grab(startX, startY)) return@awaitEachGesture
-                    while (true) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) break
-                        change.consume()
-                        runtime.dragTo(origin[0] + change.position.x, origin[1] + change.position.y)
+                    if (!runtime.grab(startX, startY, at)) return@awaitEachGesture
+                    try {
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            stamp(change)
+                            if (!change.pressed) break
+                            change.consume()
+                            runtime.dragTo(origin[0] + change.position.x, origin[1] + change.position.y, at)
+                        }
+                    } finally {
+                        // 手势被系统或上层取消时也要松手，否则宠物会一直停在被提起的状态。
+                        runtime.release(at)
                     }
-                    runtime.release()
                 }
             },
     )

@@ -230,6 +230,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.network.PublicNetworkMonitor(this)
     }
     val themePreferenceStore: ThemePreferenceStore by lazy { ThemePreferenceStore(this) }
+    val petMemoryStore: com.promenar.infinity.data.pet.PetMemoryStore by lazy { com.promenar.infinity.data.pet.PetMemoryStore(this) }
+
     val petPreferenceStore: com.promenar.infinity.data.pet.PetPreferenceStore by lazy {
         com.promenar.infinity.data.pet.PetPreferenceStore(this)
     }

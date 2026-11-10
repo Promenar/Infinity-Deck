@@ -67,6 +67,8 @@ object PetSignals {
     const val PLACE_PERCH_LEAVE = "place.perch.leave"
     const val PLACE_PERCH_POP = "place.perch.pop"
     const val PLACE_PERCH_BLOWN = "place.perch.blown"
+    const val PLACE_STAGE_ENTER = "place.stage.enter"
+    const val PLACE_STAGE_LEAVE = "place.stage.leave"
     val categories = mapOf(
         TASK_QUEUED to TASK_WAITING,
         TASK_THINKING to TASK_WORKING,
