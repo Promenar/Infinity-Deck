@@ -20,7 +20,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** 内核每帧提供给宠物的状态，见规格第 4、6 节。 */
 internal class PetInputs(
@@ -33,6 +35,20 @@ internal class PetInputs(
     val reducedMotion: Boolean,
     val videoAllowed: Boolean,
 )
+
+/**
+ * 帧循环在下一帧前可以等待的毫秒数；0 表示逐帧推进。角色站定 [PET_CALM_SETTLE_SECONDS] 秒后，画面只剩呼吸与眨眼，
+ * 降到约 15 帧每秒；“移除动画”或省电模式下没有呼吸与眨眼，每半秒推进一次计时。逐帧片段与视频保持逐帧。
+ */
+internal fun petFrameWaitMillis(calmSeconds: Float, reducedMotion: Boolean, clipType: String?, videoActive: Boolean): Long = when {
+    videoActive || clipType == PetValues.FRAMES || calmSeconds < PET_CALM_SETTLE_SECONDS -> 0L
+    reducedMotion -> PET_STILL_FRAME_MILLIS
+    else -> PET_CALM_FRAME_MILLIS
+}
+
+internal const val PET_CALM_SETTLE_SECONDS = 1f
+internal const val PET_CALM_FRAME_MILLIS = 66L
+internal const val PET_STILL_FRAME_MILLIS = 500L
 
 /** 浮岛平台在宠物图层内的位置（像素）。 */
 internal class PetPlatform(val left: Float, val right: Float, val top: Float, val layerWidth: Float)
@@ -104,6 +120,27 @@ internal class PetRuntime(
     private var rigFrame = -1L
     private var terminalSignal: String? = null
     private var terminalSeconds = 0f
+    private var calmSeconds = 0f
+    private val wakeSignal = Channel<Unit>(Channel.CONFLATED)
+
+    /** 下一帧前可以等待的毫秒数；0 表示逐帧推进。 */
+    val frameWaitMillis: Long
+        get() = petFrameWaitMillis(
+            calmSeconds = calmSeconds,
+            reducedMotion = engine.reducedMotion,
+            clipType = engine.clip?.let { pet.manifest.clips[it]?.type },
+            videoActive = video != null,
+        )
+
+    /** 让降帧等待中的帧循环立即推进；触摸、任务状态或浮岛位置变化时调用。 */
+    fun wake() {
+        wakeSignal.trySend(Unit)
+    }
+
+    /** 最多等待 [millis] 毫秒，期间被 [wake] 唤醒则提前返回。 */
+    suspend fun awaitWake(millis: Long) {
+        withTimeoutOrNull(millis) { wakeSignal.receive() }
+    }
 
     /** 推进一帧。[dt] 为秒，[pxPerDp] 为屏幕密度。 */
     fun tick(dt: Float, inputs: PetInputs, platform: PetPlatform?, pxPerDp: Float) {
@@ -124,6 +161,7 @@ internal class PetRuntime(
         }
         engine.setTaskSignal(taskSignal(dt, inputs))
         engine.step(dt)
+        calmSeconds = if (engine.calm) calmSeconds + dt else 0f
         stepBlink(dt)
         updateVideo()
         updateMetrics()
@@ -154,15 +192,20 @@ internal class PetRuntime(
     val touchable: Boolean
         get() = engine.mode == PetEngine.Mode.NORMAL || engine.mode == PetEngine.Mode.FALLING
 
-    fun enter() = engine.enter()
+    fun enter() {
+        engine.enter()
+        wake()
+    }
 
     fun tap() {
         idleSeconds = 0f
         engine.tap()
+        wake()
     }
 
     fun grab(x: Float, y: Float): Boolean {
         idleSeconds = 0f
+        wake()
         return engine.grab(x / density, y / density, time)
     }
 
@@ -173,6 +216,7 @@ internal class PetRuntime(
     fun exit() {
         bubble = null
         engine.exit()
+        wake()
     }
 
     fun dispose() {

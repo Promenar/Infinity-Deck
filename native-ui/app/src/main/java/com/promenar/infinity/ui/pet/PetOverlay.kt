@@ -154,6 +154,14 @@ private fun PetLayer(
     val latestOnGone by rememberUpdatedState(onGone)
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    // 任务状态、浮岛位置或目标角色变化时，降帧等待中的帧循环立即推进。
+    LaunchedEffect(
+        runtime, target, islandBounds, inputs.phase, inputs.awaitingApproval, inputs.awaitingAnswer,
+        inputs.contentLength, inputs.reasoningLength, videoEnabled,
+    ) {
+        runtime?.wake()
+    }
+
     // 没有正在显示的角色：有目标就创建，功能已关闭就收起图层；不占用帧循环。
     LaunchedEffect(runtime, target, enabled) {
         if (runtime != null) return@LaunchedEffect
@@ -168,9 +176,12 @@ private fun PetLayer(
             var environmentCheckedAt = 0L
             var reducedMotion = false
             var powerSave = false
+            var waited = false
             while (true) {
                 withFrameNanos { now ->
-                    val dt = if (previous == 0L) 0f else min(0.05f, (now - previous) / 1_000_000_000f)
+                    // 降帧等待后的间隔按实际时长推进计时，物理按不超过 1/30 秒的子步积分。
+                    val elapsed = if (previous == 0L) 0f else (now - previous) / 1_000_000_000f
+                    val dt = min(if (waited) MAX_WAIT_STEP_SECONDS else MAX_FRAME_SECONDS, elapsed)
                     previous = now
                     if (now - environmentCheckedAt > 2_000_000_000L || environmentCheckedAt == 0L) {
                         environmentCheckedAt = now
@@ -191,28 +202,33 @@ private fun PetLayer(
                         )
                     }
                     val current = latestInputs
-                    frameDelta[0] = dt
-                    runtime.tick(
-                        dt = dt,
-                        inputs = PetInputs(
-                            phase = current.phase,
-                            awaitingApproval = current.awaitingApproval,
-                            awaitingAnswer = current.awaitingAnswer,
-                            contentLength = current.contentLength,
-                            reasoningLength = current.reasoningLength,
-                            lineData = current.lineData,
-                            reducedMotion = reducedMotion,
-                            videoAllowed = latestVideoEnabled && !reducedMotion && !powerSave &&
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-                        ),
-                        platform = platform,
-                        pxPerDp = density,
+                    frameDelta[0] = min(dt, MAX_FRAME_SECONDS)
+                    val inputs = PetInputs(
+                        phase = current.phase,
+                        awaitingApproval = current.awaitingApproval,
+                        awaitingAnswer = current.awaitingAnswer,
+                        contentLength = current.contentLength,
+                        reasoningLength = current.reasoningLength,
+                        lineData = current.lineData,
+                        // 省电模式与“移除动画”同样处理：不走动、不呼吸、不眨眼，站定后每半秒推进一次。
+                        reducedMotion = reducedMotion || powerSave,
+                        videoAllowed = latestVideoEnabled && !reducedMotion && !powerSave &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
                     )
+                    var left = dt
+                    do {
+                        val step = min(left, PHYSICS_STEP_SECONDS)
+                        runtime.tick(dt = step, inputs = inputs, platform = platform, pxPerDp = density)
+                        left -= step
+                    } while (left > 0f)
                     // 离场播完：换成目标角色；没有目标时等下一帧收起图层。
                     if (runtime.engine.gone && runtime.pet != wanted) shown = wanted
                     // 离场途中目标又变回当前角色（例如马上重新打开开关）：重新入场。
                     if (runtime.engine.gone && runtime.pet == wanted) runtime.enter()
                 }
+                val wait = runtime.frameWaitMillis
+                waited = wait > 0L
+                if (waited) runtime.awaitWake(wait)
             }
         }
     }
@@ -331,3 +347,6 @@ private fun powerSaveMode(context: Context): Boolean =
     (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
 
 private const val HOLD_MILLIS = 280L
+private const val MAX_FRAME_SECONDS = 0.05f
+private const val MAX_WAIT_STEP_SECONDS = 1f
+private const val PHYSICS_STEP_SECONDS = 1f / 30f

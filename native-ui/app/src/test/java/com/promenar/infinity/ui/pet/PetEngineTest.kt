@@ -235,4 +235,40 @@ class PetEngineTest {
         assertThat(engine.x).isNotEqualTo(start)
         assertThat(engine.flip).isEqualTo(engine.x < start)
     }
+
+    @Test
+    fun `站定后进入平静状态，点按、走动与提起期间不平静`() {
+        val engine = entered()
+        engine.run(1f)
+        assertThat(engine.calm).isTrue()
+
+        engine.tap()
+        engine.run(1f / 60f)
+        assertThat(engine.calm).isFalse()
+        engine.run(2f)
+        assertThat(engine.calm).isTrue()
+
+        assertThat(engine.grab(100f, 300f, time = 0f)).isTrue()
+        engine.run(0.2f)
+        assertThat(engine.calm).isFalse()
+
+        val walker = PetEngine(manifest(mapOf(PetSignals.IDLE to PetReaction(behaviors = listOf(PetBehavior(clip = "walk", move = true))))), Random(7))
+        walker.enter()
+        walker.run(1.6f)
+        assertThat(walker.clip).isEqualTo("walk")
+        assertThat(walker.calm).isFalse()
+    }
+
+    @Test
+    fun `平静一秒后降到约每秒 15 帧，移除动画或省电时每半秒一次`() {
+        assertThat(petFrameWaitMillis(calmSeconds = 0.5f, reducedMotion = false, clipType = "pose", videoActive = false)).isEqualTo(0L)
+        assertThat(petFrameWaitMillis(calmSeconds = 1.2f, reducedMotion = false, clipType = "pose", videoActive = false)).isEqualTo(66L)
+        assertThat(petFrameWaitMillis(calmSeconds = 1.2f, reducedMotion = true, clipType = "pose", videoActive = false)).isEqualTo(500L)
+    }
+
+    @Test
+    fun `逐帧片段与视频保持逐帧推进`() {
+        assertThat(petFrameWaitMillis(calmSeconds = 5f, reducedMotion = false, clipType = "frames", videoActive = false)).isEqualTo(0L)
+        assertThat(petFrameWaitMillis(calmSeconds = 5f, reducedMotion = true, clipType = "video", videoActive = true)).isEqualTo(0L)
+    }
 }

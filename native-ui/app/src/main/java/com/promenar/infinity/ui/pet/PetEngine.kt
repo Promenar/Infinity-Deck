@@ -83,6 +83,14 @@ internal class PetEngine(
     val gone: Boolean
         get() = mode == Mode.GONE
 
+    /**
+     * 角色站定且画面只剩呼吸、眨眼这类缓慢变化：没有走动、跳跃、拖动或进出场，片段淡入已完成，
+     * 缩放弹簧已回稳。图层据此降低帧率。
+     */
+    val calm: Boolean
+        get() = mode == Mode.NORMAL && platformReady && behavior?.move != true && fade >= 1f &&
+            abs(pop.x - 1f) < CALM_POP_EPSILON && abs(pop.v) < CALM_POP_VELOCITY && rotation == 0f
+
     private val rotationSpring = PetSpring(70f, 7f)
     private val defaultFacing = if (manifest.display.facing == "left") -1 else 1
     private var facing = defaultFacing
@@ -530,5 +538,7 @@ internal class PetEngine(
         const val DEFAULT_ENTER_MS = 700L
         const val DEFAULT_ENTER_LAUNCH = 560L
         const val DEFAULT_EXIT_LAUNCH = 430L
+        const val CALM_POP_EPSILON = 0.002f
+        const val CALM_POP_VELOCITY = 0.02f
     }
 }
