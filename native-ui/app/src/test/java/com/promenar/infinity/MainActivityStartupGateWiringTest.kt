@@ -35,9 +35,9 @@ class MainActivityStartupGateWiringTest {
 
         assertThat(source).contains("ShareIntentViewModel.factory(durableShareInbox, applicationContext.contentResolver)")
         assertThat(source).contains("shareIntentViewModel.stagingCoordinator.submit")
-        assertThat(onCreate).contains(
-            "stageShareIntent(intent, ShareDelivery.of(savedInstanceState != null, intent?.flags ?: 0))"
-        )
+        assertThat(onCreate).contains("val launchDelivery = ShareDelivery.of(savedInstanceState != null, intent?.flags ?: 0)")
+        // 单个 Markdown 交给外部文档查看器，其余分享照常持久暂存。
+        assertThat(onCreate).contains("if (!routeExternalDocumentIntent(intent, launchDelivery)) stageShareIntent(intent, launchDelivery)")
         assertThat(onCreate).doesNotContain("restoreConsumedState")
         assertThat(onNewIntent).contains(
             "stageShareIntent(intent, ShareDelivery.of(restoredInstanceState = false, intentFlags = intent.flags))"

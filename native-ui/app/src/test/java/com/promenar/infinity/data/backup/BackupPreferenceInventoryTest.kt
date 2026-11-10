@@ -130,6 +130,8 @@ class BackupPreferenceInventoryTest {
             // 资料页知识源与固定文件夹由 LibraryKnowledgeModule / DefaultFileManagerServices 注入 infinity_settings。
             "data/library/DefaultLibraryKnowledgeSource.kt#preferences" to "infinity_settings",
             "data/files/DefaultPinnedFolderStore.kt#preferences" to "infinity_settings",
+            // 外部文档查看器“存入存储空间”上次用过的文件夹：本机界面状态，独立偏好文件，不参与备份。
+            "ui/document/external/AppExternalDocumentTargets.kt#preferences" to "external_document_viewer",
         )
         val editorChain = Regex("(\\w+)\\s*\\.edit\\(\\)([\\s\\S]{0,2000}?)\\.apply\\(\\)")
         val editorPut = Regex("\\.put(?:String|StringSet|Boolean|Int|Long|Float)\\(\\s*\"([^\"]+)\"")
