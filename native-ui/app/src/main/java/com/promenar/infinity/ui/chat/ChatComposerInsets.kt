@@ -12,11 +12,8 @@ internal data class ChatComposerInsets(
     val fabBottom: Dp,
 )
 
-/**
- * 最后一条消息与输入浮岛之间的常驻留白。站在浮岛上的宠物占据这段高度，不遮挡消息底部的操作行；
- * 没有宠物时作为消息与输入区之间的呼吸空间。
- */
-internal val ChatTailReserve: Dp = 128.dp
+/** 最后一条消息与输入浮岛之间的呼吸空间，与末尾留白条目的 16dp 合计 48dp。 */
+internal val ChatTailReserve: Dp = 32.dp
 
 /** 生成中列表底部额外的内边距，使 [ChatComposerInsets.streamingOverlap] 在滚动到底时也能达到。 */
 internal val ChatGeneratingExtraBottom: Dp = InfinitySpacing.Large

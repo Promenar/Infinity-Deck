@@ -260,15 +260,25 @@ class PetEngineTest {
     }
 
     @Test
-    fun `平静一秒后降到约每秒 15 帧，移除动画或省电时每半秒一次`() {
-        assertThat(petFrameWaitMillis(calmSeconds = 0.5f, reducedMotion = false, clipType = "pose", videoActive = false)).isEqualTo(0L)
-        assertThat(petFrameWaitMillis(calmSeconds = 1.2f, reducedMotion = false, clipType = "pose", videoActive = false)).isEqualTo(66L)
-        assertThat(petFrameWaitMillis(calmSeconds = 1.2f, reducedMotion = true, clipType = "pose", videoActive = false)).isEqualTo(500L)
+    fun `帧率按状态与片段类型限制`() {
+        val normal = PetEngine.Mode.NORMAL
+        // 走动、过渡与回弹：30 帧。
+        assertThat(petTargetFps(normal, calmSeconds = 0.5f, reducedMotion = false, clipType = "pose", clipFps = null, videoActive = false)).isEqualTo(30)
+        // 站定后只剩呼吸与眨眼：15 帧；移除动画或省电：2 帧。
+        assertThat(petTargetFps(normal, calmSeconds = 1.2f, reducedMotion = false, clipType = "pose", clipFps = null, videoActive = false)).isEqualTo(15)
+        assertThat(petTargetFps(normal, calmSeconds = 1.2f, reducedMotion = true, clipType = "pose", clipFps = null, videoActive = false)).isEqualTo(2)
+        // 逐帧片段站定时按片段帧率，限制在 4 至 30 帧。
+        assertThat(petTargetFps(normal, calmSeconds = 5f, reducedMotion = false, clipType = "frames", clipFps = 12.0, videoActive = false)).isEqualTo(12)
+        assertThat(petTargetFps(normal, calmSeconds = 5f, reducedMotion = true, clipType = "frames", clipFps = 60.0, videoActive = false)).isEqualTo(30)
+        assertThat(petTargetFps(normal, calmSeconds = 5f, reducedMotion = false, clipType = "frames", clipFps = null, videoActive = false)).isEqualTo(8)
+        // 视频由播放器解码，图层 30 帧。
+        assertThat(petTargetFps(normal, calmSeconds = 5f, reducedMotion = false, clipType = "video", clipFps = null, videoActive = true)).isEqualTo(30)
     }
 
     @Test
-    fun `逐帧片段与视频保持逐帧推进`() {
-        assertThat(petFrameWaitMillis(calmSeconds = 5f, reducedMotion = false, clipType = "frames", videoActive = false)).isEqualTo(0L)
-        assertThat(petFrameWaitMillis(calmSeconds = 5f, reducedMotion = true, clipType = "video", videoActive = true)).isEqualTo(0L)
+    fun `拖动、下落与进出场跟随屏幕刷新`() {
+        listOf(PetEngine.Mode.HELD, PetEngine.Mode.FALLING, PetEngine.Mode.ENTERING, PetEngine.Mode.EXITING).forEach { mode ->
+            assertThat(petTargetFps(mode, calmSeconds = 5f, reducedMotion = false, clipType = "pose", clipFps = null, videoActive = false)).isEqualTo(0)
+        }
     }
 }

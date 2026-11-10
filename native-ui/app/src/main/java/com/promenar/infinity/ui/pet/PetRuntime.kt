@@ -18,6 +18,7 @@ import com.promenar.infinity.domain.pet.PetValues
 import java.util.Calendar
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -37,18 +38,33 @@ internal class PetInputs(
 )
 
 /**
- * 帧循环在下一帧前可以等待的毫秒数；0 表示逐帧推进。角色站定 [PET_CALM_SETTLE_SECONDS] 秒后，画面只剩呼吸与眨眼，
- * 降到约 15 帧每秒；“移除动画”或省电模式下没有呼吸与眨眼，每半秒推进一次计时。逐帧片段与视频保持逐帧。
+ * 帧循环的目标帧率，0 表示跟随屏幕刷新。拖动、下落与进出场跟手或按物理运动，逐帧推进；
+ * 视频由播放器按自身帧率解码，图层只需推进位置与计时；姿态图的走动、过渡与回弹 30 帧足够流畅；
+ * 站定 [PET_CALM_SETTLE_SECONDS] 秒后只剩呼吸与眨眼，降到 15 帧；逐帧片段站定时按片段帧率；
+ * “移除动画”或省电模式下站定后没有呼吸与眨眼，每秒推进 2 次计时。
  */
-internal fun petFrameWaitMillis(calmSeconds: Float, reducedMotion: Boolean, clipType: String?, videoActive: Boolean): Long = when {
-    videoActive || clipType == PetValues.FRAMES || calmSeconds < PET_CALM_SETTLE_SECONDS -> 0L
-    reducedMotion -> PET_STILL_FRAME_MILLIS
-    else -> PET_CALM_FRAME_MILLIS
+internal fun petTargetFps(
+    mode: PetEngine.Mode,
+    calmSeconds: Float,
+    reducedMotion: Boolean,
+    clipType: String?,
+    clipFps: Double?,
+    videoActive: Boolean,
+): Int = when {
+    mode != PetEngine.Mode.NORMAL -> 0
+    videoActive -> PET_MOTION_FPS
+    calmSeconds < PET_CALM_SETTLE_SECONDS -> PET_MOTION_FPS
+    clipType == PetValues.FRAMES -> (clipFps ?: PET_DEFAULT_CLIP_FPS).roundToInt().coerceIn(PET_MIN_CLIP_FPS, PET_MOTION_FPS)
+    reducedMotion -> PET_STILL_FPS
+    else -> PET_CALM_FPS
 }
 
 internal const val PET_CALM_SETTLE_SECONDS = 1f
-internal const val PET_CALM_FRAME_MILLIS = 66L
-internal const val PET_STILL_FRAME_MILLIS = 500L
+internal const val PET_MOTION_FPS = 30
+internal const val PET_CALM_FPS = 15
+internal const val PET_STILL_FPS = 2
+private const val PET_MIN_CLIP_FPS = 4
+private const val PET_DEFAULT_CLIP_FPS = 8.0
 
 /** 浮岛平台在宠物图层内的位置（像素）。 */
 internal class PetPlatform(val left: Float, val right: Float, val top: Float, val layerWidth: Float)
@@ -123,24 +139,31 @@ internal class PetRuntime(
     private var calmSeconds = 0f
     private val wakeSignal = Channel<Unit>(Channel.CONFLATED)
 
-    /** 下一帧前可以等待的毫秒数；0 表示逐帧推进。 */
-    val frameWaitMillis: Long
-        get() = petFrameWaitMillis(
-            calmSeconds = calmSeconds,
-            reducedMotion = engine.reducedMotion,
-            clipType = engine.clip?.let { pet.manifest.clips[it]?.type },
-            videoActive = video != null,
-        )
+    /** 当前状态的目标帧率；0 表示跟随屏幕刷新。 */
+    val targetFps: Int
+        get() {
+            val clip = engine.clip?.let { pet.manifest.clips[it] }
+            return petTargetFps(
+                mode = engine.mode,
+                calmSeconds = calmSeconds,
+                reducedMotion = engine.reducedMotion,
+                clipType = clip?.type,
+                clipFps = clip?.fps,
+                videoActive = video != null,
+            )
+        }
 
     /** 让降帧等待中的帧循环立即推进；触摸、任务状态或浮岛位置变化时调用。 */
     fun wake() {
         wakeSignal.trySend(Unit)
     }
 
-    /** 最多等待 [millis] 毫秒，期间被 [wake] 唤醒则提前返回。 */
-    suspend fun awaitWake(millis: Long) {
-        withTimeoutOrNull(millis) { wakeSignal.receive() }
-    }
+    /** 最多等待 [millis] 毫秒；期间被 [wake] 唤醒则提前返回真。 */
+    suspend fun awaitWake(millis: Long): Boolean =
+        withTimeoutOrNull(millis) { wakeSignal.receive() } != null
+
+    /** 取走未处理的唤醒；有则返回真。 */
+    fun consumeWake(): Boolean = wakeSignal.tryReceive().isSuccess
 
     /** 推进一帧。[dt] 为秒，[pxPerDp] 为屏幕密度。 */
     fun tick(dt: Float, inputs: PetInputs, platform: PetPlatform?, pxPerDp: Float) {

@@ -176,12 +176,22 @@ private fun PetLayer(
             var environmentCheckedAt = 0L
             var reducedMotion = false
             var powerSave = false
-            var waited = false
+            var dueAt = 0L
             while (true) {
+                // 按目标帧率排下一次推进：间隔较长时先挂起等待，再在到点后的第一帧推进；触摸、任务状态与浮岛变化立即唤醒。
+                val fps = runtime.targetFps
+                var woken = runtime.consumeWake()
+                if (fps > 0 && !woken) {
+                    val sleep = (dueAt - System.nanoTime()) / 1_000_000L - EARLY_WAKE_MILLIS
+                    if (sleep > 0L) woken = runtime.awaitWake(sleep)
+                }
                 withFrameNanos { now ->
-                    // 降帧等待后的间隔按实际时长推进计时，物理按不超过 1/30 秒的子步积分。
+                    if (fps > 0 && !woken && previous != 0L && now < dueAt - FRAME_TOLERANCE_NANOS) return@withFrameNanos
+                    val interval = if (fps > 0) 1_000_000_000L / fps else 0L
+                    dueAt = now + interval
+                    // 间隔按实际时长推进计时，跨度上限随目标帧率放宽；物理按不超过 1/30 秒的子步积分。
                     val elapsed = if (previous == 0L) 0f else (now - previous) / 1_000_000_000f
-                    val dt = min(if (waited) MAX_WAIT_STEP_SECONDS else MAX_FRAME_SECONDS, elapsed)
+                    val dt = min(max(MAX_FRAME_SECONDS, interval * 2 / 1_000_000_000f), elapsed)
                     previous = now
                     if (now - environmentCheckedAt > 2_000_000_000L || environmentCheckedAt == 0L) {
                         environmentCheckedAt = now
@@ -226,9 +236,6 @@ private fun PetLayer(
                     // 离场途中目标又变回当前角色（例如马上重新打开开关）：重新入场。
                     if (runtime.engine.gone && runtime.pet == wanted) runtime.enter()
                 }
-                val wait = runtime.frameWaitMillis
-                waited = wait > 0L
-                if (waited) runtime.awaitWake(wait)
             }
         }
     }
@@ -348,5 +355,6 @@ private fun powerSaveMode(context: Context): Boolean =
 
 private const val HOLD_MILLIS = 280L
 private const val MAX_FRAME_SECONDS = 0.05f
-private const val MAX_WAIT_STEP_SECONDS = 1f
+private const val EARLY_WAKE_MILLIS = 12L
+private const val FRAME_TOLERANCE_NANOS = 4_000_000L
 private const val PHYSICS_STEP_SECONDS = 1f / 30f
