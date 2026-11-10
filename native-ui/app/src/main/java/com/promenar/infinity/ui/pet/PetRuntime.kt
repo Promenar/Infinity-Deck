@@ -3,7 +3,6 @@ package com.promenar.infinity.ui.pet
 import android.graphics.Canvas
 import android.graphics.Paint
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.promenar.infinity.data.pet.InstalledPet
@@ -94,9 +93,24 @@ internal class PetRuntime(
     private val indices = petMeshIndices()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
-    /** 每帧递增；布局与绘制读取它来跟随宠物移动，不触发重组。 */
-    var frame by mutableLongStateOf(0L)
+    /** 每次推进递增；同一次推进内重复绘制时弹簧只推进一步。 */
+    var frame = 0L
         private set
+
+    private val frameListeners = ArrayList<() -> Unit>()
+
+    fun addFrameListener(listener: () -> Unit) {
+        frameListeners += listener
+    }
+
+    fun removeFrameListener(listener: () -> Unit) {
+        frameListeners -= listener
+    }
+
+    /** 一帧推进完成：让宠物的绘制与跟随布局在本帧失效重绘。 */
+    fun publishFrame() {
+        for (index in frameListeners.indices.reversed()) frameListeners.getOrNull(index)?.invoke()
+    }
 
     /** 气泡里的台词；没有台词时为 null。 */
     var bubble by mutableStateOf<String?>(null)

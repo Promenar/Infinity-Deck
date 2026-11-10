@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -29,9 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
@@ -231,6 +231,7 @@ private fun PetLayer(
                         runtime.tick(dt = step, inputs = inputs, platform = platform, pxPerDp = density)
                         left -= step
                     } while (left > 0f)
+                    runtime.publishFrame()
                     // 离场播完：换成目标角色；没有目标时等下一帧收起图层。
                     if (runtime.engine.gone && runtime.pet != wanted) shown = wanted
                     // 离场途中目标又变回当前角色（例如马上重新打开开关）：重新入场。
@@ -243,6 +244,9 @@ private fun PetLayer(
     Box(
         modifier
             .fillMaxSize()
+            // 独立图形层：宠物每帧重绘只重录这一层，不让父层连带重画会话列表。列表是毛玻璃的背景来源，
+            // 跟着重画会让浮岛与顶栏在下一帧重做模糊。
+            .graphicsLayer()
             .onGloballyPositioned {
                 layerOrigin = it.positionInRoot()
                 layerWidth = it.size.width.toFloat()
@@ -250,11 +254,11 @@ private fun PetLayer(
             .testTag(PET_LAYER_TAG),
     ) {
         if (runtime == null) return@Box
-        Canvas(Modifier.fillMaxSize()) {
-            // 读取帧计数，让每帧只重绘、不重组。
-            runtime.frame
-            drawIntoCanvas { runtime.draw(it.nativeCanvas, frameDelta[0]) }
-        }
+        Spacer(
+            Modifier
+                .fillMaxSize()
+                .petDraw(runtime) { drawIntoCanvas { runtime.draw(it.nativeCanvas, frameDelta[0]) } },
+        )
         val video = runtime.video
         if (video != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             key(video) { PetVideoLayer(runtime = runtime, request = video) }
@@ -271,8 +275,7 @@ private fun PetTouchTarget(runtime: PetRuntime) {
     val origin = remember { FloatArray(2) }
     Box(
         Modifier
-            .layout { measurable, _ ->
-                runtime.frame
+            .petFollow(runtime) { measurable, _ ->
                 val width = max(minimum, runtime.bodyWidth).roundToInt()
                 val height = max(minimum, runtime.feetY - runtime.headTop).roundToInt()
                 val placeable = measurable.measure(Constraints.fixed(width, height))
@@ -329,8 +332,7 @@ private fun PetBubble(runtime: PetRuntime) {
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
         shape = RoundedCornerShape(16.dp),
         shadowElevation = 3.dp,
-        modifier = Modifier.layout { measurable, constraints ->
-            runtime.frame
+        modifier = Modifier.petFollow(runtime) { measurable, constraints ->
             val placeable = measurable.measure(Constraints(maxWidth = min(maxWidth, constraints.maxWidth)))
             val limit = max(edge, constraints.maxWidth - placeable.width - edge)
             val x = (runtime.headX - placeable.width / 2f).roundToInt().coerceIn(edge, limit)

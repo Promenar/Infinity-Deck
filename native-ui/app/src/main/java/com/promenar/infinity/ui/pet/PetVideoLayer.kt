@@ -103,8 +103,7 @@ internal fun PetVideoLayer(runtime: PetRuntime, request: PetVideoRequest) {
     val anchorV = clip.anchor.getOrNull(1)?.toFloat() ?: 1f
     Box(
         Modifier
-            .layout { measurable, _ ->
-                runtime.frame
+            .petFollow(runtime) { measurable, _ ->
                 val placeable = measurable.measure(Constraints.fixed(visibleWidth.roundToInt(), height.roundToInt()))
                 val left = runtime.headX - anchorU * visibleWidth
                 val top = runtime.feetY - anchorV * height
