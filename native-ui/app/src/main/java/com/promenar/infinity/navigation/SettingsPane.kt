@@ -45,6 +45,7 @@ class SettingsNavigator internal constructor(
 /** 设置首页可直接打开的子页：宽屏时即左列条目，右列以它们为根。 */
 internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.THEME_CONFIG,
+    NavDestinations.PET_SETTINGS,
     NavDestinations.PROVIDER_LIST,
     NavDestinations.DEFAULT_MODELS,
     NavDestinations.LOCAL_MODELS,

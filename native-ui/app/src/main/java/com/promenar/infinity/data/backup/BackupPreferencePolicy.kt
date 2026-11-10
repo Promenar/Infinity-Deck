@@ -23,6 +23,7 @@ internal object BackupPreferencePolicy {
             "known_builtin_skills",
             "agent_skills_enabled",
             "long_term_memory_enabled",
+            "pet_enabled",
             "suppressed_provider_models",
             "default_model", "default_temperature", "default_top_p", "default_max_tokens",
             "model_timeout_llm_seconds", "model_timeout_image_seconds",

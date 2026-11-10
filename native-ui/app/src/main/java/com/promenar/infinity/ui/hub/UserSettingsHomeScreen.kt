@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Loop
@@ -370,6 +371,13 @@ internal fun UserSettingsHomeScreenContent(
                         subtitle = stringResource(R.string.settings_appearance_desc),
                         onClick = { actions.onNavigateToSecondary(NavDestinations.THEME_CONFIG) },
                         selected = state.selectedRoute == NavDestinations.THEME_CONFIG,
+                    )
+                    UserSettingsNavigationItem(
+                        icon = Icons.Rounded.Pets,
+                        title = stringResource(R.string.pet_settings_title),
+                        subtitle = stringResource(R.string.pet_settings_desc),
+                        onClick = { actions.onNavigateToSecondary(NavDestinations.PET_SETTINGS) },
+                        selected = state.selectedRoute == NavDestinations.PET_SETTINGS,
                     )
                 }
             }

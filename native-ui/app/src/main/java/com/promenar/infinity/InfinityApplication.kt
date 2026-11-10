@@ -230,6 +230,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.network.PublicNetworkMonitor(this)
     }
     val themePreferenceStore: ThemePreferenceStore by lazy { ThemePreferenceStore(this) }
+    val petPreferenceStore: com.promenar.infinity.data.pet.PetPreferenceStore by lazy {
+        com.promenar.infinity.data.pet.PetPreferenceStore(this)
+    }
 
     /** 生产默认依赖保持不变；instrumentation 可通过 Application 子类注入可验证端口。 */
     open fun createChatRouteDependencies(): ChatRouteDependencies =

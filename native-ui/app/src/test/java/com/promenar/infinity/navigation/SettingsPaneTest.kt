@@ -122,6 +122,13 @@ class SettingsPaneTest {
     }
 
     @Test
+    fun `宠物设置页是紧跟外观的右列根页面`() {
+        assertThat(SettingsPaneRoots).containsAtLeast(NavDestinations.THEME_CONFIG, NavDestinations.PET_SETTINGS).inOrder()
+        assertThat(SettingsPaneRoots.indexOf(NavDestinations.PET_SETTINGS))
+            .isEqualTo(SettingsPaneRoots.indexOf(NavDestinations.THEME_CONFIG) + 1)
+    }
+
+    @Test
     fun `首页智能体运行与知识库条目按决定顺序成为右列根页面`() {
         val runtime = listOf(
             NavDestinations.AGENT_BUDGET, NavDestinations.BUILTIN_TOOLS,

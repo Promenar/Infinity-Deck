@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pet_settings_title">宠物</string>
+    <string name="pet_settings_desc">会话宠物</string>
+    <string name="pet_settings_enabled">显示宠物</string>
+    <string name="pet_settings_enabled_footer">宠物待在输入框上方，随任务状态做出反应。</string>
+</resources>

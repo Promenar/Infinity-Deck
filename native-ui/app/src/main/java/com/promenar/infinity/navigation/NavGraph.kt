@@ -91,6 +91,7 @@ object NavDestinations {
     const val KEYCHAIN_EDIT = "keychain_edit?ref={ref}"
     const val BACKGROUND_ACTIVITY = "background_activity"
     const val THEME_CONFIG = "theme_config"
+    const val PET_SETTINGS = "pet_settings"
     const val BACKUP_SETTINGS = "backup_settings"
     const val LOCAL_MODELS = "local_models"
     const val PROVIDER_LIST = "provider_list"
@@ -840,6 +841,12 @@ internal fun NavGraphBuilder.settingsDestinations(
             ThemeScreen(
                 onNavigateBack = { navigator.back() }
             )
+        }
+    }
+
+    composablePage(NavDestinations.PET_SETTINGS) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.settings.PetSettingsScreen(onBack = { navigator.back() })
         }
     }
 

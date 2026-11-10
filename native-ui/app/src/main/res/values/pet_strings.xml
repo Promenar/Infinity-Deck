@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pet_settings_title">Pet</string>
+    <string name="pet_settings_desc">Chat companion</string>
+    <string name="pet_settings_enabled">Show pet</string>
+    <string name="pet_settings_enabled_footer">The pet stays on top of the message box and reacts to the task.</string>
+</resources>
