@@ -90,6 +90,9 @@ class KeychainSshOperationsTest {
         } finally { key.dispose() }
     }
 
+}
+
+class KeychainSshExportTest {
     @Test fun `导出始终加密不修改原值并记录使用`() = runBlocking {
         val f = K2MemoryFixture()
         val plain = f.repository.generateSshKey("无口令")
@@ -153,6 +156,9 @@ class KeychainSshOperationsTest {
         } finally { valid.fill(0); private.fill(0); derived.fill(0); ciphertext.fill(0) }
     }
 
+}
+
+class KeychainSshPassphraseTest {
     @Test fun `修改与去掉口令保留指纹主机引用且写入失败回滚`() = runBlocking {
         val f = K2MemoryFixture()
         val old = "old fixture phrase".toByteArray(); val new = "new fixture phrase".toByteArray()

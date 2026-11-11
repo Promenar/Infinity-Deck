@@ -171,7 +171,7 @@ class BackupPreferenceInventoryTest {
 
         files.forEach { file ->
             val text = Files.readAllBytes(file).toString(Charsets.UTF_8)
-            val receiverNamespaces = preferenceDeclaration.findAll(text).associate {
+            val receiverNamespaces = (if ("getSharedPreferences" in text) preferenceDeclaration.findAll(text) else emptySequence()).associate {
                 it.groupValues[1] to it.groupValues[2]
             }
             val typedPreferenceReceivers = Regex("(\\w+)\\s*:\\s*(?:android\\.content\\.)?SharedPreferences\\b")
@@ -200,7 +200,7 @@ class BackupPreferenceInventoryTest {
                 assertWithMessage("未知或 namespace 不匹配的生产偏好 key: $file -> $receiver.$key")
                     .that(known).isTrue()
             }
-            editorChain.findAll(text).forEach { chain ->
+            (if ("edit" in text) editorChain.findAll(text) else emptySequence()).forEach { chain ->
                 val receiver = chain.groupValues[1]
                 val relative = sourceRoot.relativize(file).toString()
                 val namespace = receiverNamespaces[receiver] ?: injectedNamespaces["$relative#$receiver"]
@@ -217,7 +217,7 @@ class BackupPreferenceInventoryTest {
                         .that(representatives.any { BackupPreferencePolicy.isKnown(namespace!!, it) }).isTrue()
                 }
             }
-            editorScope.findAll(text).forEach { scope ->
+            (if ("edit" in text) editorScope.findAll(text) else emptySequence()).forEach { scope ->
                 val receiver = scope.groupValues[1]
                 val relative = sourceRoot.relativize(file).toString()
                 val namespace = receiverNamespaces[receiver] ?: injectedNamespaces["$relative#$receiver"]
@@ -228,7 +228,7 @@ class BackupPreferenceInventoryTest {
                         .that(BackupPreferencePolicy.isKnown(namespace!!, put.groupValues[1])).isTrue()
                 }
             }
-            directCall.findAll(text).forEach { call ->
+            (if ("getSharedPreferences" in text) directCall.findAll(text) else emptySequence()).forEach { call ->
                 assertWithMessage("未知直接 SharedPreferences 偏好 key: $file -> ${call.groupValues[1]}.${call.groupValues[2]}")
                     .that(BackupPreferencePolicy.isKnown(call.groupValues[1], call.groupValues[2])).isTrue()
             }

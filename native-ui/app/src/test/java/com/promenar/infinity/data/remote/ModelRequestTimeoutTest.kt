@@ -23,10 +23,58 @@ import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
 
-class ModelRequestTimeoutTest {
+abstract class ModelRequestTimeoutFixture {
     @After
     fun reset() { ModelRequestTimeouts.install { ModelTimeoutSettings() } }
 
+    protected fun assertTimeout(failure: Throwable?) {
+        assertThat(failure).isNotNull()
+        val causes = generateSequence(failure) { it.cause }.map { it.javaClass.simpleName }.toList()
+        assertThat(causes.any { it.contains("Timeout") }).isTrue()
+    }
+
+    protected val prompt = PromptRequest(messages = listOf(ProtocolMessage("user", "test")), model = "test")
+
+    protected class LocalServer(private val respond: (Socket) -> Unit) : Closeable {
+        protected val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
+        val url = "http://127.0.0.1:${server.localPort}/v1"
+        protected val workers = mutableListOf<Thread>()
+        protected val acceptor = thread(isDaemon = true) {
+            while (!server.isClosed) {
+                val socket = try { server.accept() } catch (_: java.io.IOException) { break }
+                synchronized(workers) {
+                    workers += thread(isDaemon = true) {
+                        socket.use {
+                            socket.soTimeout = 5000
+                            val input = socket.getInputStream().bufferedReader()
+                            var length = 0
+                            while (true) {
+                                val line = input.readLine() ?: return@thread
+                                if (line.isEmpty()) break
+                                if (line.startsWith("Content-Length:", true)) length = line.substringAfter(':').trim().toInt()
+                            }
+                            repeat(length) { input.read() }
+                            // 超时测试的对端可能已关连接，写入失败属于预期。
+                            try { respond(socket) } catch (_: java.io.IOException) { }
+                        }
+                    }
+                }
+            }
+        }
+        override fun close() {
+            server.close()
+            acceptor.join(1000)
+            synchronized(workers) { workers.toList() }.forEach { it.join(2500) }
+        }
+    }
+
+    protected fun Socket.write(text: String) { getOutputStream().apply { write(text.toByteArray()); flush() } }
+    protected fun Socket.streamHeaders() = write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
+    protected fun Socket.finishStream() = write("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+    protected fun Socket.json(body: String) = write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n$body")
+}
+
+class ModelRequestTimeoutTest : ModelRequestTimeoutFixture() {
     @Test
     fun `流式总时长超过配置值仍完整收到全部内容`() = runBlocking {
         ModelRequestTimeouts.install { ModelTimeoutSettings(llmSeconds = 2) }
@@ -67,6 +115,9 @@ class ModelRequestTimeoutTest {
         }
     }
 
+}
+
+class ModelRequestTimeoutStreamingTest : ModelRequestTimeoutFixture() {
     @Test
     fun `回包停顿超时且同一客户端下一请求即时采用新值`() = runBlocking {
         var current = ModelTimeoutSettings(llmSeconds = 1)
@@ -104,6 +155,9 @@ class ModelRequestTimeoutTest {
         }
     }
 
+}
+
+class ModelRequestTimeoutClientsTest : ModelRequestTimeoutFixture() {
     @Test
     fun `生图读取IMAGE且下一请求即时更新`() = runBlocking {
         var current = ModelTimeoutSettings(llmSeconds = 9, imageSeconds = 1, embeddingSeconds = 9, rerankSeconds = 9)
@@ -154,49 +208,4 @@ class ModelRequestTimeoutTest {
         }
     }
 
-    private fun assertTimeout(failure: Throwable?) {
-        assertThat(failure).isNotNull()
-        val causes = generateSequence(failure) { it.cause }.map { it.javaClass.simpleName }.toList()
-        assertThat(causes.any { it.contains("Timeout") }).isTrue()
-    }
-
-    private val prompt = PromptRequest(messages = listOf(ProtocolMessage("user", "test")), model = "test")
-
-    private class LocalServer(private val respond: (Socket) -> Unit) : Closeable {
-        private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
-        val url = "http://127.0.0.1:${server.localPort}/v1"
-        private val workers = mutableListOf<Thread>()
-        private val acceptor = thread(isDaemon = true) {
-            while (!server.isClosed) {
-                val socket = try { server.accept() } catch (_: java.io.IOException) { break }
-                synchronized(workers) {
-                    workers += thread(isDaemon = true) {
-                        socket.use {
-                            socket.soTimeout = 5000
-                            val input = socket.getInputStream().bufferedReader()
-                            var length = 0
-                            while (true) {
-                                val line = input.readLine() ?: return@thread
-                                if (line.isEmpty()) break
-                                if (line.startsWith("Content-Length:", true)) length = line.substringAfter(':').trim().toInt()
-                            }
-                            repeat(length) { input.read() }
-                            // 超时测试的对端可能已关连接，写入失败属于预期。
-                            try { respond(socket) } catch (_: java.io.IOException) { }
-                        }
-                    }
-                }
-            }
-        }
-        override fun close() {
-            server.close()
-            acceptor.join(1000)
-            synchronized(workers) { workers.toList() }.forEach { it.join(2500) }
-        }
-    }
-
-    private fun Socket.write(text: String) { getOutputStream().apply { write(text.toByteArray()); flush() } }
-    private fun Socket.streamHeaders() = write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
-    private fun Socket.finishStream() = write("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
-    private fun Socket.json(body: String) = write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n$body")
 }
