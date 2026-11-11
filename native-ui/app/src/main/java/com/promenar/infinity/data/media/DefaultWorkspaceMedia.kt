@@ -29,6 +29,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import com.promenar.infinity.data.storage.namespaceBindings
 
 internal class DefaultWorkspaceMedia(
     private val context: Context,
@@ -51,6 +52,20 @@ internal class DefaultWorkspaceMedia(
     // 弱键不延长卡片生命周期；open 必须重新核验会话和挂载身份，不能接受任意本机文件。
     private val expiredBindings = ReferenceQueue<MediaResolution.Available>()
     private val bindings = HashMap<ResolutionKey, Target>()
+
+    override suspend fun productionPath(sessionId: String, path: String): String {
+        com.promenar.infinity.data.production.ProductionManifestCodec.validatePath(path)
+        val virtualPath = "/$path"
+        val bindings = mounts.namespaceBindings(sessionId)
+        val alias = com.promenar.infinity.data.storage.ExternalMountPaths.aliasOf(virtualPath, com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS in bindings)
+        val presenter = targets.presenter(sessionId)
+        return when (alias) {
+            null -> targets.present(sessionId, com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE), virtualPath)
+            com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS -> targets.present(sessionId, com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.PRIMARY_WORKSPACE), virtualPath)
+            com.promenar.infinity.data.storage.ExternalMountPaths.SKILLS_ALIAS -> if (presenter == com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter) "/mnt$virtualPath" else virtualPath
+            else -> virtualPath
+        }
+    }
 
     override suspend fun resolve(sessionId: String, path: String): MediaResolution = withContext(Dispatchers.IO) {
         var normalized = path

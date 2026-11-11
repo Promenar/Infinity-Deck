@@ -136,12 +136,6 @@ class ProductionPresentationTest {
     }
 
     @Test
-    fun `媒体路径按工作区根解析`() {
-        assertThat(workspacePath("productions/harbor/takes/t01.mp4")).isEqualTo("/productions/harbor/takes/t01.mp4")
-        assertThat(workspacePath("/mnt/ext/a.png")).isEqualTo("/mnt/ext/a.png")
-    }
-
-    @Test
     fun `时长整数秒不带小数`() {
         assertThat(formatShotSeconds(5.0)).isEqualTo("5")
         assertThat(formatShotSeconds(4.5)).isEqualTo("4.5")

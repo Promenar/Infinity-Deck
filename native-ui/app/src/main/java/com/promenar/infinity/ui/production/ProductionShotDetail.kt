@@ -59,7 +59,6 @@ import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
 import com.promenar.infinity.ui.media.MediaCardStyle
-import com.promenar.infinity.ui.media.WorkspaceMediaReference
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /** 提示词与批注的长度上限，与后端校验一致。 */
@@ -126,7 +125,7 @@ internal fun ProductionShotDetail(
                 if (viewing != null) {
                     Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
                         key(viewing.path) {
-                            WorkspaceMediaReference(path = workspacePath(viewing.path), alt = shot.title, style = MediaCardStyle.TOOL, modifier = Modifier.fillMaxWidth())
+                            ProductionMediaReference(path = viewing.path, alt = shot.title, style = MediaCardStyle.TOOL, modifier = Modifier.fillMaxWidth())
                         }
                         InfinityMetaLine(
                             segments = listOfNotNull(viewing.source.service, viewing.source.model, viewing.source.mode?.label()),
@@ -236,8 +235,8 @@ internal fun ProductionShotDetail(
                             ProductionSectionTitle(stringResource(R.string.production_panel_section_preview))
                             shot.preview?.let { ProductionStatusChip(it.label(), ProductionTone.NEUTRAL) }
                         }
-                        WorkspaceMediaReference(
-                            path = workspacePath(path),
+                        ProductionMediaReference(
+                            path = path,
                             asLink = shot.preview == PreviewKind.TEXT_CARD,
                             style = MediaCardStyle.TOOL,
                             modifier = Modifier.fillMaxWidth(),
@@ -373,7 +372,7 @@ internal fun ProductionAssetSheet(
             }
             version?.let { current ->
                 key(current.path) {
-                    WorkspaceMediaReference(path = workspacePath(current.path), alt = asset.name, style = MediaCardStyle.TOOL, modifier = Modifier.fillMaxWidth())
+                    ProductionMediaReference(path = current.path, alt = asset.name, style = MediaCardStyle.TOOL, modifier = Modifier.fillMaxWidth())
                 }
                 current.note?.takeIf(String::isNotBlank)?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

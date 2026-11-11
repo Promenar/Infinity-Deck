@@ -17,6 +17,8 @@ import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.*
 import com.promenar.infinity.data.storage.*
 import com.promenar.infinity.data.workspace.*
+import com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles
+import com.promenar.infinity.domain.repository.IFileOperationRepository
 import com.promenar.infinity.domain.media.*
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
 import com.promenar.infinity.domain.storage.*
@@ -135,6 +137,37 @@ class DefaultWorkspaceMediaTest {
         val failure = try { block(); null } catch (failure: WorkspaceMediaException) { failure }
         assertThat(failure?.code).isEqualTo(expected)
         assertThat(failure?.message).isNotEmpty()
+    }
+
+    @Test fun `制作媒体与清单位于同一会话私有根和挂载`() = runBlocking {
+        val files = DefaultProductionWorkspaceFiles(repo, mockk<IFileOperationRepository>(), mounts, service)
+        val path = "productions/p/takes/t01.mp4"
+        files.write("session", path, byteArrayOf(1, 2, 3), null)
+        db.sessionDao().updateRunMode("session", "LINUX", 2)
+        assertThat(service.productionPath("session", path)).isEqualTo("/home/session/$path")
+        assertThat(files.isImageOrVideo("session", path)).isTrue()
+        db.sessionDao().updateRunMode("session", "BUILTIN", 3)
+        assertThat(service.productionPath("session", path)).isEqualTo("/$path")
+        assertThat(files.isImageOrVideo("session", path)).isTrue()
+        val project = bindDirectory()
+        val privatePath = "session/$path"
+        files.write("session", privatePath, byteArrayOf(1, 2, 3), null)
+        assertThat(service.productionPath("session", privatePath)).isEqualTo("/session/$privatePath")
+        assertThat(files.isImageOrVideo("session", privatePath)).isTrue()
+        File(project, path).apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
+        assertThat(files.isImageOrVideo("session", path)).isTrue()
+        db.sessionDao().updateRunMode("session", "LINUX", 4)
+        assertThat(service.productionPath("session", path)).isEqualTo("/workspace/$path")
+        assertThat(files.isImageOrVideo("session", path)).isTrue()
+        assertThat(service.productionPath("session", privatePath)).isEqualTo("/home/session/$privatePath")
+        assertThat(files.isImageOrVideo("session", privatePath)).isTrue()
+        val mounted = File(directory, "mounted").apply { mkdirs() }
+        File(mounted, "a.png").writeBytes(png)
+        addMount("素材", mounted.path)
+        assertThat(service.productionPath("session", "mnt/素材/a.png")).isEqualTo("/mnt/素材/a.png")
+        assertThat(files.isImageOrVideo("session", "mnt/素材/a.png")).isTrue()
+        db.sessionDao().updateRunMode("session", "BUILTIN", 5)
+        assertThat(files.isImageOrVideo("session", "mnt/素材/a.png")).isTrue()
     }
 
 

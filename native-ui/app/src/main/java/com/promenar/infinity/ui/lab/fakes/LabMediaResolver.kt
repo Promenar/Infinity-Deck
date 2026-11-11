@@ -21,6 +21,8 @@ internal class LabMediaResolver(
     private val assets = context.applicationContext.assets
     private val directory = File(context.applicationContext.cacheDir, "lab-media")
 
+    override suspend fun productionPath(sessionId: String, path: String): String = "/${path.trimStart('/')}"
+
     override suspend fun resolve(sessionId: String, path: String): MediaResolution {
         val (ref, asset) = entries[path] ?: return MediaResolution.Unavailable(path, MediaUnavailableReason.NOT_FOUND)
         val file = File(directory, asset.substringAfterLast('/'))
