@@ -115,8 +115,10 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         AgentRuleRevisionEntity::class,
         ParameterSchemeEntity::class,
         com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity::class,
+        com.promenar.infinity.data.local.db.entity.ProductionEntity::class,
+        com.promenar.infinity.data.local.db.entity.SessionProductionEntity::class,
     ],
-    version = 37,
+    version = 38,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -152,6 +154,7 @@ abstract class InfinityDatabase : RoomDatabase() {
     abstract fun externalMountDao(): ExternalMountDao
     abstract fun workspaceDao(): WorkspaceDao
     abstract fun agentRuleRevisionDao(): AgentRuleRevisionDao
+    abstract fun productionDao(): com.promenar.infinity.data.local.db.dao.ProductionDao
     abstract fun stateBoardDao(): com.promenar.infinity.data.local.db.dao.StateBoardDao
     abstract fun parameterSchemeDao(): ParameterSchemeDao
 }

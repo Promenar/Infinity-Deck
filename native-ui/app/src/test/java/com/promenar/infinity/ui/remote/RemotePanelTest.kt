@@ -10,7 +10,8 @@ import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.domain.jobs.BackgroundJobExitAction
 import com.promenar.infinity.domain.jobs.BackgroundJobRunner
 import com.promenar.infinity.domain.jobs.BackgroundJobState
-import com.promenar.infinity.ui.chat.ChatInspectorBadges
+import com.promenar.infinity.ui.chat.ChatPanelHubSignals
+import com.promenar.infinity.ui.chat.chatPanelHubEntries
 import com.promenar.infinity.ui.chat.ChatPage
 import com.promenar.infinity.ui.chat.InspectorContentGroup
 import com.promenar.infinity.ui.chat.RemoteDot
@@ -25,7 +26,8 @@ import org.junit.Test
 
 class RemotePanelTest {
     @Test fun `远程页签常驻检视器，窄窗口整页承载并可保存恢复`() {
-        assertThat(ChatInspectorBadges().pages()).contains(ChatPage.Remote)
+        val entries = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {})
+        assertThat(entries.first { it.page == ChatPage.Remote }.available).isTrue()
         assertThat(chatPageStack(listOf(ChatPage.Remote), wideWindow = false)).containsExactly(ChatPage.Remote)
         assertThat(chatPageStack(listOf(ChatPage.Remote), wideWindow = true)).containsExactly(ChatPage.Remote)
         assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.Remote)))).containsExactly(ChatPage.Remote)

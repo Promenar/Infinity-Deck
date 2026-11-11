@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -122,40 +123,61 @@ class ChatLayoutTest {
         rule.runOnIdle { assertThat(renamed).isTrue() }
     }
 
-    @Test fun wideTopBarKeepsOnlyInspectorPinAndMenuWhileNarrowMovesArtifactsBrowserAndFilesIntoMenu() {
+    @Test fun wideTopBarKeepsOnlyInspectorPinAndMenuWhileNarrowShowsPanelHubBesideMenu() {
         val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources
-        val files = resources.getString(com.promenar.infinity.R.string.chat_cd_workspace)
-        val canvas = resources.getString(com.promenar.infinity.R.string.canvas_title)
         var wide by mutableStateOf(true)
+        val entries = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {})
         rule.setContent {
             InfinityTheme {
                 Box(Modifier.width(if (wide) 814.dp else 411.dp)) {
                     ChatTopBar(
                         "会话", {}, {}, {}, onClearHistory = {}, onRename = {}, onDeleteSession = {},
-                        artifacts = chatTopBarArtifacts(inspectorMode = wide, count = 1, onOpen = {}),
+                        panelHub = entries.takeUnless { wide },
                         inspector = if (wide) ChatTopBarInspector(pinned = true, canPin = true, onTogglePin = {}) else null,
-                        browser = chatTopBarBrowser(inspectorMode = wide, mode = com.promenar.infinity.data.browser.BrowserMode.IDLE, open = false, onOpen = {}),
                     )
                 }
             }
         }
         rule.onNodeWithTag(ChatInspectorTags.PIN).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.CHAT_OPTIONS).assertIsDisplayed()
-        rule.onAllNodesWithContentDescription(files).assertCountEquals(0)
-        rule.onAllNodesWithContentDescription(canvas).assertCountEquals(0)
+        rule.onAllNodesWithTag(PanelHubTags.BUTTON).assertCountEquals(0)
 
         wide = false
-        // 窄窗口顶栏只留选项菜单；产物、浏览器与文件是菜单首组，运行模式只在状态行切换，菜单不重复。
-        rule.onAllNodesWithContentDescription(files).assertCountEquals(0)
-        rule.onAllNodesWithContentDescription(canvas).assertCountEquals(0)
-        rule.onAllNodesWithTag(com.promenar.infinity.ui.browser.BrowserTags.TOP_BAR_ENTRY).assertCountEquals(0)
+        // 窄窗口顶栏是功能面板入口与选项菜单；功能面板不再出现在选项菜单里，运行模式只在状态行切换。
         rule.onAllNodesWithTag(ChatInspectorTags.PIN).assertCountEquals(0)
+        rule.onNodeWithTag(PanelHubTags.BUTTON).assertIsDisplayed()
+        val hub = rule.onNodeWithTag(PanelHubTags.BUTTON).getUnclippedBoundsInRoot()
+        val options = rule.onNodeWithTag(UiTags.CHAT_OPTIONS).getUnclippedBoundsInRoot()
+        assertThat(hub.right.value).isAtMost(options.left.value + 1f)
         rule.onNodeWithTag(UiTags.CHAT_OPTIONS).performClick()
-        rule.onNodeWithTag(UiTags.CANVAS_ENTRY).assertIsDisplayed()
-        rule.onNodeWithTag(com.promenar.infinity.ui.browser.BrowserTags.TOP_BAR_ENTRY).assertIsDisplayed()
-        rule.onNodeWithTag(UiTags.CHAT_MENU_WORKSPACE).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.CHAT_SESSION_SETTINGS).assertIsDisplayed()
+        rule.onAllNodesWithTag(PanelHubTags.item(ChatPage.Explorer)).assertCountEquals(0)
         rule.onAllNodesWithText(resources.getString(com.promenar.infinity.R.string.run_mode_title), substring = true).assertCountEquals(0)
+    }
+
+    @Test fun panelHubListsEveryPanelWithUnusedAgentPanelsDisabledAtTheEnd() {
+        val opened = mutableListOf<ChatPage>()
+        val entries = chatPanelHubEntries(
+            ChatPanelHubSignals(pendingApprovals = 2, hasStateBoard = true),
+            summary = { null },
+            onOpen = { opened += it },
+        )
+        rule.setContent {
+            InfinityTheme {
+                Box(Modifier.width(411.dp)) {
+                    ChatTopBar("会话", {}, {}, {}, onClearHistory = {}, onRename = {}, onDeleteSession = {}, panelHub = entries)
+                }
+            }
+        }
+        rule.onNodeWithTag(PanelHubTags.BUTTON_PENDING, useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(PanelHubTags.BUTTON).performClick()
+        ChatPage.entries.forEach { rule.onNodeWithTag(PanelHubTags.item(it)).assertExists() }
+        rule.onNodeWithTag(PanelHubTags.item(ChatPage.Canvas)).assertIsNotEnabled()
+        val state = rule.onNodeWithTag(PanelHubTags.item(ChatPage.State)).getUnclippedBoundsInRoot()
+        val canvas = rule.onNodeWithTag(PanelHubTags.item(ChatPage.Canvas)).getUnclippedBoundsInRoot()
+        assertThat(state.top.value).isLessThan(canvas.top.value)
+        rule.onNodeWithTag(PanelHubTags.item(ChatPage.Git)).performClick()
+        rule.runOnIdle { assertThat(opened).containsExactly(ChatPage.Git) }
     }
 
     @Test fun inspectorTabsAndActionsShareBottomBarWithCollapseAtRight() {
@@ -164,12 +186,12 @@ class ChatLayoutTest {
             InfinityTheme {
                 ChatInspectorCard(
                     root = ChatPage.Run,
-                    badges = ChatInspectorBadges(
-                        running = true, hasRunContent = true, gitAvailable = true, gitChanges = 3, canvases = 2,
-                        browser = com.promenar.infinity.data.browser.BrowserMode.AGENT, browserEntry = true,
+                    entries = chatPanelHubEntries(
+                        ChatPanelHubSignals(generating = true, canvases = 2, browser = com.promenar.infinity.data.browser.BrowserMode.AGENT),
+                        summary = { null },
+                        onOpen = {},
                     ),
                     widened = false,
-                    onSelect = {},
                     onToggleWiden = {},
                     onCollapse = { collapsed = true },
                     modifier = Modifier.width(360.dp).height(600.dp),

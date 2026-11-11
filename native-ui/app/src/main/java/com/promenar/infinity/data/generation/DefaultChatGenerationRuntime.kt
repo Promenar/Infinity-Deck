@@ -200,6 +200,7 @@ internal class DefaultChatGenerationRuntime(
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
     private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
+    private val productionRepository: com.promenar.infinity.data.repository.ProductionRepository? = null,
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
@@ -228,6 +229,8 @@ internal class DefaultChatGenerationRuntime(
     private var refreshingForSend = false
     private val unsentInstructionIds = mutableSetOf<String>()
     private var observedStateRevision = 0L
+    private var observedProductionRevision = 0L
+    private var observedProductionId: String? = null
     private var cachedRetrieval: com.promenar.infinity.ui.chat.manager.ContextRetrieval? = null
 
     /** 生成运行在主线程作用域；工具表要按会话扫描技能目录，统一放到 IO 上构建。 */
@@ -709,6 +712,11 @@ internal class DefaultChatGenerationRuntime(
         preparedContext = context
         observedStateRevision = maxOf(observedStateRevision, context.stateBoardRevision, observedStateRevision(session, request))
         stateBoardRepository?.recordContextRead(request.sessionId, assistantMessageId(request), observedStateRevision)
+        val currentProductionId = productionRepository?.get(request.sessionId)?.production?.id
+        if (observedProductionId != currentProductionId) { observedProductionId = currentProductionId; observedProductionRevision = 0 }
+        val contextProductionRevision = if (context.productionId == currentProductionId) context.productionRevision else 0
+        observedProductionRevision = maxOf(observedProductionRevision, contextProductionRevision, observedProductionRevision(session, request, observedProductionId))
+        if (currentProductionId != null) productionRepository?.recordContextRead(request.sessionId, assistantMessageId(request), observedProductionRevision, currentProductionId)
         preparedContextSummary = session.summary
         preparedTools = tools
         if (frozenTurnContext == null) {
@@ -1477,6 +1485,15 @@ internal class DefaultChatGenerationRuntime(
             }.getOrNull() }.maxOrNull() ?: 0
     }
 
+    private fun observedProductionRevision(session: com.promenar.infinity.data.model.Session, request: GenerationRequest, productionId: String?): Long {
+        if (productionId == null) return 0
+        val start = session.messages.indexOfFirst { it.id == request.userMessageId && it.role == MessageRole.USER }
+        if (start < 0) return 0
+        val history = sanitizeProtocolHistory(session.messages.drop(start + 1).takeWhile { it.role != MessageRole.USER }.filterNot { it.id in request.messageIdsToReplace || it.parentMessageId in request.messageIdsToReplace })
+        val calls = history.filter { it.role == MessageRole.ASSISTANT }.flatMap { it.toolCalls.orEmpty() }.filter { it.name == "production_get" }.map { it.id }.toSet()
+        return history.asSequence().filter { it.role == MessageRole.TOOL && !it.isError && it.name == "production_get" && it.toolCallId in calls }.mapNotNull { message -> runCatching { (com.promenar.infinity.data.model.json.parseToJsonElement(message.content) as? kotlinx.serialization.json.JsonObject)?.let { body -> if ((body["production_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content == productionId) (body["revision"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() else null } }.getOrNull() }.maxOrNull() ?: 0
+    }
+
     override suspend fun prepareContinuation(request: GenerationRequest): String {
         val session = store.getSession(request.sessionId) ?: error("生成会话不存在")
         val nextAssistantMessageId = com.promenar.infinity.domain.usecase.IdGenerator.message("ai")
@@ -1493,6 +1510,10 @@ internal class DefaultChatGenerationRuntime(
         )
         currentAssistantMessageId = nextAssistantMessageId
         stateBoardRepository?.recordContextRead(request.sessionId, nextAssistantMessageId, observedStateRevision)
+        val productionId = productionRepository?.get(request.sessionId)?.production?.id
+        if (observedProductionId != productionId) { observedProductionId = productionId; observedProductionRevision = 0 }
+        observedProductionRevision = maxOf(observedProductionRevision, observedProductionRevision(session, request, productionId))
+        if (productionId != null) productionRepository?.recordContextRead(request.sessionId, nextAssistantMessageId, observedProductionRevision, productionId)
         return nextAssistantMessageId
     }
 

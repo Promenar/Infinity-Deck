@@ -584,7 +584,6 @@ object BrowserTags {
     const val STATUS = "browser_status"
     const val TAKE_OVER = "browser_take_over"
     const val HAND_BACK = "browser_hand_back"
-    const val TOP_BAR_ENTRY = "chat_browser_entry"
     const val TABS = "browser_tabs"
     const val TAB = "browser_tab"
     const val NEW_TAB = "browser_new_tab"

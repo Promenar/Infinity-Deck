@@ -1,5 +1,4 @@
 <resources>
-    <string name="state_open">Open state panel</string>
     <string name="state_close">Close state panel</string>
     <string name="state_edit">Edit %1$s</string>
     <string name="state_remove">Remove panel</string>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_tool_define">Define production</string>
+    <string name="production_tool_define_desc">Create or update a production</string>
+    <string name="production_tool_attach">Attach production</string>
+    <string name="production_tool_attach_desc">Attach a workspace production manifest</string>
+    <string name="production_tool_get">Read production</string>
+    <string name="production_tool_get_desc">Read production progress and details</string>
+    <string name="production_tool_update">Update production</string>
+    <string name="production_tool_update_desc">Apply production operations</string>
+    <string name="production_tool_remove">Detach production</string>
+    <string name="production_tool_remove_desc">Detach the production from this conversation</string>
+</resources>

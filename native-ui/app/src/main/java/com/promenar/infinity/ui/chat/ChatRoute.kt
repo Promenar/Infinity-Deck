@@ -321,6 +321,7 @@ fun ChatRoute(
         taskPanelUiState(activeTaskTree, uiState.isGenerating, activeTaskGoal)
     }
     val stateBoard by chatViewModel.stateBoard.collectAsStateWithLifecycle()
+    val productionEntry by chatViewModel.productionEntry.collectAsStateWithLifecycle()
     val subagentApprovals by application.subagentApprovalBroker.pending.collectAsStateWithLifecycle()
     val sessionSubagentApprovals = remember(subagentApprovals, sessionId) { subagentApprovals.filter { it.sessionId == sessionId } }
     val inputText by chatViewModel.inputText.collectAsStateWithLifecycle()
@@ -882,7 +883,7 @@ fun ChatRoute(
                             ChatPage.Canvas -> com.promenar.infinity.ui.canvas.CanvasListPage(
                                 onBack = closeTopChatPage.takeUnless { inInspector },
                             )
-                            ChatPage.Run -> Unit
+                            ChatPage.Run, ChatPage.State, ChatPage.Production -> Unit
                         }
                     }
                 }
@@ -964,6 +965,8 @@ fun ChatRoute(
                 touchLockUnlock = themePreferences.touchLockUnlock,
                 slashCommands = slashCommands.commands,
                 stateBoard = stateBoard,
+                production = productionEntry,
+                productionSource = chatViewModel.productionSource,
                 subagentApprovals = sessionSubagentApprovals,
                 gitSummary = gitSummary,
                 startupWritePaused = startupWritePaused,

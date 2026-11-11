@@ -1375,7 +1375,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(19)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(20)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -2122,6 +2122,39 @@ class RoomBackupDataSourceTest {
         assertThat(db.messageDao().countBySession("deep-session")).isEqualTo(10_000)
     }
 
+    @Test fun `制作项目与会话绑定随备份恢复`() = runBlocking {
+        seedCompleteGraph()
+        val project = com.promenar.infinity.data.production.Production("project", "影片", com.promenar.infinity.data.production.ProductionKind.FILM, "productions/project", createdAt = 100, updatedAt = 100)
+        db.productionDao().insert(com.promenar.infinity.data.local.db.entity.ProductionEntity("project", project.title, project.rootPath, 1, Json.encodeToString(project), null, null, 100, 100))
+        db.productionDao().bind(com.promenar.infinity.data.local.db.entity.SessionProductionEntity("session-1", "project", true, 100))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        db.openHelper.writableDatabase.execSQL("DELETE FROM productions")
+        newDataSource().restore(validated(snapshot))
+        assertThat(db.productionDao().getForSession("session-1")?.id).isEqualTo("project")
+    }
+
+    @Test fun `备份恢复拒绝项目存在两个活动会话绑定`() = runBlocking {
+        seedCompleteGraph()
+        db.sessionDao().insert(SessionEntity("second-session", "agent-1", "会话", createdAt = 100, updatedAt = 100))
+        val project = com.promenar.infinity.data.production.Production("project", "影片", com.promenar.infinity.data.production.ProductionKind.FILM, "productions/project", createdAt = 100, updatedAt = 100)
+        db.productionDao().insert(com.promenar.infinity.data.local.db.entity.ProductionEntity("project", project.title, project.rootPath, 1, Json.encodeToString(project), null, null, 100, 100))
+        db.productionDao().bind(com.promenar.infinity.data.local.db.entity.SessionProductionEntity("session-1", "project", true, 100))
+        db.productionDao().bind(com.promenar.infinity.data.local.db.entity.SessionProductionEntity("second-session", "project", true, 100))
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val failure = runCatching { newDataSource().restore(validated(snapshot)) }.exceptionOrNull()
+        assertThat(failure).isInstanceOf(BackupValidationException::class.java)
+        assertThat(failure?.message).contains("多个活动会话")
+    }
+
+    @Test fun `旧载荷恢复时制作项目表为空`() = runBlocking {
+        seedCompleteGraph()
+        val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
+        val payload = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8)).jsonObject
+        val old = JsonObject(payload + mapOf("schemaVersion" to JsonPrimitive(19), "tables" to JsonObject(payload.getValue("tables").jsonObject - "productions" - "session_productions")))
+        newDataSource().restore(validated(snapshot, database = old.toString().toByteArray()))
+        assertThat(db.openHelper.readableDatabase.query("SELECT count(*) FROM productions").use { it.moveToFirst(); it.getInt(0) }).isEqualTo(0)
+    }
+
     @Test
     fun `database payload covers every user source table and excludes derived runtime tables`() {
         runBlocking {
@@ -2134,12 +2167,12 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(19)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("19")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(20)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("20")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
-                "tags", "document_tags", "task_nodes", "custom_skills", "mcp_servers",
+                "tags", "document_tags", "task_nodes", "productions", "session_productions", "custom_skills", "mcp_servers",
                 "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings", "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "kg_edge_mentions", "kg_edge_validity", "kg_entity_links", "vectors",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(

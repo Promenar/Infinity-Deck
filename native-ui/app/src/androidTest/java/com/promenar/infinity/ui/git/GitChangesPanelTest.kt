@@ -58,7 +58,7 @@ class GitChangesPanelTest {
         rule.setContent {
             InfinityTheme {
                 ChatTopBar(
-                    title = "会话", onBack = {}, onWorkspace = {}, onSettings = {},
+                    title = "会话", onBack = {}, onSettings = {},
                     onClearHistory = {}, onRename = {}, onDeleteSession = {},
                     git = GitEntrySummary.Repository("main", false, "2222222", false, 3, false, ahead = 2),
                     onOpenGit = { opened = true },

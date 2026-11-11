@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.chat.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,14 +13,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -62,7 +58,6 @@ import com.promenar.infinity.ui.chat.drawScopeGrid
 import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
 import com.promenar.infinity.ui.common.motion.LocalGenerationMotion
 import com.promenar.infinity.ui.common.motion.rememberMotionPalette
-import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
@@ -72,7 +67,7 @@ import kotlinx.coroutines.delay
 
 /**
  * 输入浮岛顶层的运行坞：一行显示当前在做什么、计划进度（“2/5”）与本轮用时，最左是后台任务圆环（或完成、暂停标记），
- * 右侧是状态面板入口与点阵波形屏（[RunDockScope]）；点按整行打开运行详情。待批准数由工具行的执行模式盾牌承载，锁定触摸在顶栏。
+ * 右侧是点阵波形屏（[RunDockScope]）；点按整行打开运行详情。待批准数由工具行的执行模式盾牌承载，锁定触摸与状态面板入口在顶栏。
  * 与输入区之间的细灯带由浮岛绘制。[startedAt] 为本轮开始时间（毫秒），不为 null 时用时每秒刷新，只重组运行坞这一行。
  */
 @Composable
@@ -91,15 +86,13 @@ internal fun RunDockRow(
         state.enabledSchedules > 0 -> pluralStringResource(R.plurals.agent_schedules_count, state.enabledSchedules, state.enabledSchedules)
         else -> null
     }
-    val showBoard = state.hasStateBoard && state.label !is RunDockLabel.Board
     val showScope = LocalInfinityMotionStyles.current.runDockScope
     val leading = jobsLabel != null || state.tone == RunDockTone.DONE || state.tone == RunDockTone.PAUSED || state.tone == RunDockTone.IDLE
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth().testTag(UiTags.CHAT_RUN_DOCK)) {
         // 点阵屏宽度随剩余空间伸缩：先给文字留够（至多 150dp 随字号放大、不超过行宽 42%），余下的给屏，限在 72～140dp。
         val labelReserve = minOf(RunDockLabelReserve * fontScale, maxWidth * 0.42f) + if (leading) RunDockLeadStart + RunDockLeadSize + RunDockGap else ComposerTextInset
-        val boardReserve = if (showBoard) RunDockBoardChipWidth + RunDockGap else 0.dp
-        val scopeWidth = (maxWidth - labelReserve - boardReserve - RunDockEndPadding - RunDockGap)
+        val scopeWidth = (maxWidth - labelReserve - RunDockEndPadding - RunDockGap)
             .coerceIn(ScopeScreenSpec.MinWidthDp.dp, ScopeScreenSpec.MaxWidthDp.dp)
         Row(
             modifier = Modifier
@@ -141,16 +134,6 @@ internal fun RunDockRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (showBoard) {
-                RunDockChip(
-                    onClick = { onOpen(RunDetailTab.STATE) },
-                    label = stringResource(R.string.state_open),
-                    tag = UiTags.CHAT_RUN_DOCK_STATE,
-                    square = true,
-                ) {
-                    Icon(Icons.Rounded.TableChart, contentDescription = null, modifier = Modifier.size(15.dp))
-                }
-            }
             if (showScope) RunDockScope(runDockScopeMode(state.tone), Modifier.width(scopeWidth))
         }
     }
@@ -158,7 +141,6 @@ internal fun RunDockRow(
 
 /** 运行坞文字至少保留的宽度（按 1 倍字号），随系统字号放大。 */
 private val RunDockLabelReserve = 150.dp
-private val RunDockBoardChipWidth = 32.dp
 private val RunDockGap = 6.dp
 
 /** 前置标记盒尺寸；圆环 24dp 居中，盒边比圆环多 2dp。 */
@@ -265,40 +247,6 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
                     rest = true, drawOff = false,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun RunDockChip(
-    onClick: () -> Unit,
-    label: String,
-    tag: String,
-    modifier: Modifier = Modifier,
-    square: Boolean = false,
-    container: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    content: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    body: @Composable () -> Unit,
-) {
-    // 外层 48dp 触控区，内层 32dp 可见胶囊；按压反馈画在胶囊内。
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = modifier
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .clickable(interactionSource = interaction, indication = null, onClickLabel = label, role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = label }
-            .testTag(tag),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(shape = RoundedCornerShape(50), color = container, contentColor = content) {
-            Row(
-                modifier = Modifier
-                    .heightIn(min = 32.dp)
-                    .pressFeedback(interaction, RoundedCornerShape(50))
-                    .padding(horizontal = if (square) 8.5.dp else 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) { body() }
         }
     }
 }

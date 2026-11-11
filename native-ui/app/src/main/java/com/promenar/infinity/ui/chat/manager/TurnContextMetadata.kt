@@ -14,6 +14,8 @@ internal data class TurnContextMetadata(
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val configuration: TurnConfigurationSnapshot? = null,
+    val productionRevision: Long = 0,
+    val productionId: String? = null,
 )
 
 /** 非空对象可冻结原值为 null 的配置；旧轮次没有该对象时沿用当前配置。 */
