@@ -49,7 +49,11 @@ import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -68,6 +72,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
@@ -83,7 +88,9 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FileTypeFilter
+import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.LocalInfinitySettingsPaneRoot
 import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import androidx.compose.foundation.layout.PaddingValues
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
@@ -138,6 +145,10 @@ internal fun FileManagerLeadingButton(leading: FileManagerLeading) {
 @Composable
 private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
     val host = actions.host
+    if (host.settingsPage) {
+        FileSettingsBrowseBar(state, actions, modifier)
+        return
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -169,6 +180,66 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
             }
         }
     }
+}
+
+/**
+ * 设置次级页形态的浏览页头（[FileManagerHostSpec.settingsPage]）：与设置子页同一顶栏，
+ * 返回 · 当前文件夹名 · 搜索 · 新建 · 更多。子文件夹里返回先回上一级；右列根层且在根目录时不画返回。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FileSettingsBrowseBar(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
+    val host = actions.host
+    val controller = actions.controller
+    val leave = (host.leading as? FileManagerLeading.Leave)?.onLeave
+    val scheme = MaterialTheme.colorScheme
+    TopAppBar(
+        title = {
+            AnimatedContent(
+                targetState = host.title ?: state.currentFolderTitle(),
+                transitionSpec = { InfinityMotion.fadeThrough() },
+                label = "fm_settings_title",
+            ) { text ->
+                InfinityHeaderTitle(
+                    text = text,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.fillMaxWidth().testTag(UiTags.FM_TITLE),
+                )
+            }
+        },
+        navigationIcon = {
+            when {
+                state.canGoUp -> InfinityBackButton(onClick = controller::goUp, modifier = Modifier.testTag(UiTags.FM_LEADING))
+                leave != null && !LocalInfinitySettingsPaneRoot.current ->
+                    InfinityBackButton(onClick = leave, modifier = Modifier.testTag(UiTags.FM_LEADING))
+            }
+        },
+        actions = {
+            IconButton(onClick = controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
+                Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
+            }
+            if (state.location != null && state.writable()) FileCreateButton(actions)
+            var open by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.FM_MORE)) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.fm_more))
+                }
+                InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    FolderMoreMenu(state, actions) { open = false }
+                }
+            }
+        },
+        // 宿主页面已处理系统栏内边距。
+        windowInsets = WindowInsets(0),
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            titleContentColor = scheme.onBackground,
+            navigationIconContentColor = scheme.onSurfaceVariant,
+            actionIconContentColor = scheme.onSurfaceVariant,
+        ),
+        modifier = modifier.testTag(UiTags.FM_HEADER),
+    )
 }
 
 /**
@@ -401,7 +472,8 @@ private fun HostBadge(badge: FileHeaderBadge) {
 private fun ColumnScope.FolderMoreMenu(state: FileManagerUiState, actions: FileManagerUiActions, dismiss: () -> Unit) {
     val controller = actions.controller
     val writable = state.writable()
-    if (writable) {
+    // 设置次级页形态的新建在页头“＋”里，这里不再重复。
+    if (writable && !actions.host.settingsPage) {
         MenuAction(Icons.Rounded.CreateNewFolder, R.string.fm_new_folder, UiTags.FM_MENU_NEW_FOLDER) {
             dismiss()
             actions.openDialog(FileManagerDialog.NewFolder)

@@ -72,7 +72,10 @@ data class FileFolderAction(
  * - [onOpenGit] 非 null 时根目录的 Git 状态条可点，打开宿主的 Git 面板；
  * - [folderHeader] 非 null 时作为列表首项（“..”之后）显示在当前文件夹顶部；
  *   多选与搜索时不显示。没有内容可显示时由宿主自己渲染为空；
- * - [folderBadge] 非 null 时在页头搜索按钮前显示一枚小标签，例如存储空间文件夹的合集抽取进度“2/4”。
+ * - [folderBadge] 非 null 时在页头搜索按钮前显示一枚小标签，例如存储空间文件夹的合集抽取进度“2/4”；
+ * - [settingsPage] 为 true 时按设置次级页呈现（Linux 主目录）：标准页头为“返回 · 标题 · 搜索 · 新建 · 更多”，
+ *   新建收进页头“＋”菜单、不放悬浮按钮；根目录的目录行显示文件夹与文件计数，子文件夹不显示“..”行，
+ *   页头返回在子文件夹里先回上一级，到根目录再交给 [FileManagerLeading.Leave]。
  */
 @Immutable
 data class FileManagerHostSpec(
@@ -86,6 +89,7 @@ data class FileManagerHostSpec(
     val onOpenGit: (() -> Unit)? = null,
     val folderHeader: (@Composable (FileFolderHeaderScope) -> Unit)? = null,
     val folderBadge: FileHeaderBadge? = null,
+    val settingsPage: Boolean = false,
 )
 
 /** 宿主给当前文件夹的页头小标签：[text] 为短文字，[description] 为读屏全文；[onClick] 非 null 时可点，[onClickLabel] 为无障碍动作名。 */

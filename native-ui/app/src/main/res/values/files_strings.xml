@@ -26,6 +26,7 @@
     <string name="fm_new_text_file">New text file</string>
     <string name="fm_new_file">New file</string>
     <string name="fm_import">Import from device…</string>
+    <string name="fm_import_short">Import</string>
     <string name="fm_paste_as_file">Paste clipboard as file</string>
     <string name="fm_select">Select</string>
     <string name="fm_select_all">Select all</string>

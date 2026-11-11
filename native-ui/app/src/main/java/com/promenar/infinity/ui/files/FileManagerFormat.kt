@@ -40,6 +40,7 @@ import com.promenar.infinity.ui.files.state.FileCrumb
 import com.promenar.infinity.ui.files.state.FileManagerNotice
 import com.promenar.infinity.ui.files.state.FileManagerUiState
 import com.promenar.infinity.ui.media.formatMediaSize
+import androidx.compose.runtime.staticCompositionLocalOf
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -123,6 +124,18 @@ internal fun formatFileTime(epochMillis: Long, zone: ZoneId = ZoneId.systemDefau
     FileTimeFormatter.format(Instant.ofEpochMilli(epochMillis).atZone(zone))
 
 private val FileTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
+
+/** 列表行的时间：与 [now] 同一年时省略年份（月-日 时:分），其它年份写全。 */
+internal fun formatFileListTime(epochMillis: Long, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+    val time = Instant.ofEpochMilli(epochMillis).atZone(zone)
+    val sameYear = time.year == Instant.ofEpochMilli(now).atZone(zone).year
+    return (if (sameYear) FileListTimeFormatter else FileTimeFormatter).format(time)
+}
+
+private val FileListTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.ROOT)
+
+/** 列表时间所用的“现在”；为 null 时取系统时钟。截图预览固定为样例时刻，参考图不随年份变化。 */
+internal val LocalFileTimeNow = staticCompositionLocalOf<Long?> { null }
 
 /** 当前文件夹名：最后一级面包屑，根目录为位置名。 */
 internal fun FileManagerUiState.currentFolderTitle(): String {

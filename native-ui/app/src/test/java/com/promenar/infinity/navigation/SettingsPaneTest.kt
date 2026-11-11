@@ -23,14 +23,19 @@ class SettingsPaneTest {
     }
 
     @Test
-    fun `右列只承载设置页，终端文件图谱与会话交给主导航`() {
+    fun `右列只承载设置页与 Linux 文件页，终端图谱与会话交给主导航`() {
         listOf(
             NavDestinations.THEME_CONFIG, NavDestinations.providerForm("extra_1"), NavDestinations.providerForm(),
             NavDestinations.providerModels("default"), NavDestinations.SSH_CONFIG, NavDestinations.LINUX_ENVIRONMENT,
             NavDestinations.LINUX_PACKAGES, NavDestinations.RAG_ADVANCED_KG, NavDestinations.TAILSCALE_CONFIG,
         ).forEach { assertThat(isSettingsPaneRoute(it)).isTrue() }
+        // Linux 环境里打开的主目录、整个根目录与单文件详情在右列内推入。
         listOf(
-            NavDestinations.linuxTerminal(), "linux_files?path=%2Froot", "ssh_terminal/host",
+            NavDestinations.linuxFiles(), "linux_files?path=%2Froot", "linux_system_files?path=%2F",
+            "linux_file?path=%2Froot%2Fa.pdf",
+        ).forEach { assertThat(isSettingsPaneRoute(it)).isTrue() }
+        listOf(
+            NavDestinations.linuxTerminal(), "linux_terminal?dir=%2Froot", "ssh_terminal/host",
             NavDestinations.KNOWLEDGE_GRAPH, NavDestinations.chatHero("s1"), NavDestinations.agentEdit("a1"),
         ).forEach { assertThat(isSettingsPaneRoute(it)).isFalse() }
     }

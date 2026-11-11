@@ -381,42 +381,6 @@ fun InfinityNavGraph(
             )
         }
         composablePage(
-            NavDestinations.LINUX_FILES,
-            arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
-        ) { backStackEntry ->
-            com.promenar.infinity.ui.linux.files.LinuxFileManagerScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTerminal = { directory -> navController.navigate(NavDestinations.linuxTerminal(directory = directory)) },
-                onOpenEnvironment = { navController.navigate(NavDestinations.LINUX_ENVIRONMENT) },
-                onOpenFile = { navController.navigate(NavDestinations.linuxFile(it)) },
-                onBrowseSystemRoot = { navController.navigate(NavDestinations.linuxSystemFiles("/")) },
-                initialPath = backStackEntry.arguments?.getString("path"),
-            )
-        }
-        // 整个根目录仍用 Linux 专属浏览页：统一资源管理器只提供主目录位置。
-        composablePage(
-            NavDestinations.LINUX_SYSTEM_FILES,
-            arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
-        ) { backStackEntry ->
-            com.promenar.infinity.ui.linux.files.LinuxFilesScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTerminal = { directory, command -> navController.navigate(NavDestinations.linuxTerminal(directory = directory, command = command)) },
-                onOpenEnvironment = { navController.navigate(NavDestinations.LINUX_ENVIRONMENT) },
-                initialPath = backStackEntry.arguments?.getString("path") ?: "/",
-                onOpenFile = { navController.navigate(NavDestinations.linuxFile(it)) },
-            )
-        }
-        composablePage(
-            NavDestinations.LINUX_FILE,
-            arguments = listOf(navArgument("path") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            com.promenar.infinity.ui.linux.files.LinuxFileScreen(
-                path = backStackEntry.arguments?.getString("path") ?: com.promenar.infinity.ui.linux.files.LINUX_HOME_PATH,
-                onBack = { navController.popBackStack() },
-                onOpenTerminal = { directory, command -> navController.navigate(NavDestinations.linuxTerminal(directory = directory, command = command)) },
-            )
-        }
-        composablePage(
             NavDestinations.COMMAND_OUTPUT,
             arguments = listOf("sessionId", "messageId", "toolCallId").map { navArgument(it) { type = NavType.StringType } },
         ) { backStackEntry ->
@@ -561,7 +525,7 @@ private fun NavGraphBuilder.hubPaneDestinations(
 
 /**
  * 设置子页的注册：主导航（整页）与宽屏设置右列（[SettingsNavigator] 带 outside）共用。
- * 页面间跳转经 [navigator]，右列中打开终端、文件、知识图谱与会话等整页内容时交给主导航。
+ * 页面间跳转经 [navigator]，右列中打开终端、知识图谱与会话等整页内容时交给主导航；Linux 文件页留在右列。
  */
 /** “智能体运行”的四个页面：执行轮次与预算、内置工具、技能包、MCP 服务器。 */
 private fun NavGraphBuilder.agentRuntimeDestination(navigator: SettingsNavigator, route: String, section: AgentRuntimeSection) {
@@ -719,6 +683,50 @@ internal fun NavGraphBuilder.settingsDestinations(
                 onOpenMirrors = { navigator.open(NavDestinations.LINUX_MIRRORS) },
                 onOpenTermux = { navigator.open(NavDestinations.TERMUX_CONFIG) },
                 onOpenSsh = { navigator.open(NavDestinations.SSH_CONFIG) },
+            )
+        }
+    }
+
+    // Linux 主目录、整个根目录与单文件详情：宽屏时在设置右列内推入，终端仍交给主导航整页打开。
+    composablePage(
+        NavDestinations.LINUX_FILES,
+        arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.linux.files.LinuxFileManagerScreen(
+                onBack = { navigator.back() },
+                onOpenTerminal = { directory -> navigator.open(NavDestinations.linuxTerminal(directory = directory)) },
+                onOpenEnvironment = { navigator.open(NavDestinations.LINUX_ENVIRONMENT) },
+                onOpenFile = { navigator.open(NavDestinations.linuxFile(it)) },
+                onBrowseSystemRoot = { navigator.open(NavDestinations.linuxSystemFiles("/")) },
+                initialPath = entry.arguments?.getString("path"),
+            )
+        }
+    }
+    // 整个根目录仍用 Linux 专属浏览页：统一资源管理器只提供主目录位置。
+    composablePage(
+        NavDestinations.LINUX_SYSTEM_FILES,
+        arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.linux.files.LinuxFilesScreen(
+                onBack = { navigator.back() },
+                onOpenTerminal = { directory, command -> navigator.open(NavDestinations.linuxTerminal(directory = directory, command = command)) },
+                onOpenEnvironment = { navigator.open(NavDestinations.LINUX_ENVIRONMENT) },
+                initialPath = entry.arguments?.getString("path") ?: "/",
+                onOpenFile = { navigator.open(NavDestinations.linuxFile(it)) },
+            )
+        }
+    }
+    composablePage(
+        NavDestinations.LINUX_FILE,
+        arguments = listOf(navArgument("path") { type = NavType.StringType }),
+    ) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.linux.files.LinuxFileScreen(
+                path = entry.arguments?.getString("path") ?: com.promenar.infinity.ui.linux.files.LINUX_HOME_PATH,
+                onBack = { navigator.back() },
+                onOpenTerminal = { directory, command -> navigator.open(NavDestinations.linuxTerminal(directory = directory, command = command)) },
             )
         }
     }

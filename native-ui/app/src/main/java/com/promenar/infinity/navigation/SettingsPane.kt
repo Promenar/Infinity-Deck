@@ -69,13 +69,16 @@ internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.DEVELOPER,
 )
 
-/** 能在右列内打开的设置页（路由的首段）；终端、文件、知识图谱、会话等整页内容不在其中。 */
+/** 能在右列内打开的设置页（路由的首段），含 Linux 文件页；终端、知识图谱、会话等整页内容不在其中。 */
 private val SettingsPaneRouteBases: Set<String> = SettingsPaneRoots.toSet() + setOf(
     NavDestinations.RAG_VECTOR_STATS,
     "provider_form",
     "provider_models",
     NavDestinations.LINUX_PACKAGES,
     NavDestinations.LINUX_MIRRORS,
+    "linux_files",
+    "linux_system_files",
+    "linux_file",
     "visual_lab",
     "keychain_entry",
     NavDestinations.KEYCHAIN_SSH_KEYS,

@@ -3,11 +3,7 @@ package com.promenar.infinity.ui.files
 import com.promenar.infinity.ui.common.InfinityScrollingLine
 import com.promenar.infinity.ui.common.IndexingIndicator
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.MarqueeSpacing
-import androidx.compose.foundation.basicMarquee
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,7 +68,6 @@ import com.promenar.infinity.domain.files.FileSort
 import com.promenar.infinity.domain.files.FileSortKey
 import com.promenar.infinity.domain.files.KnowledgeIndexState
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
-import com.promenar.infinity.ui.common.horizontalFadingEdges
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuHeader
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -127,21 +122,28 @@ private fun FolderBadge(size: Dp = 40.dp) {
     }
 }
 
+/**
+ * 类型徽标配色：字形用类型主色，底色是同色的浅色调，深浅主题下都不压过文件名。
+ * 归档与其它类型没有专属色，用中性容器。
+ */
 @Composable
 private fun fileKindColors(kind: FileKind): Pair<Color, Color> {
     val c = MaterialTheme.colorScheme
     val d = MaterialTheme.infinityDomainColors
-    return when (kind) {
-        FileKind.FOLDER -> c.primaryContainer to c.onPrimaryContainer
-        FileKind.PDF -> c.errorContainer to c.onErrorContainer
-        FileKind.DOCUMENT, FileKind.TEXT -> c.secondaryContainer to c.onSecondaryContainer
-        FileKind.CODE -> d.successContainer to d.onSuccessContainer
-        FileKind.IMAGE -> c.tertiaryContainer to c.onTertiaryContainer
-        FileKind.AUDIO -> d.warningContainer to d.onWarningContainer
-        FileKind.VIDEO -> d.infoContainer to d.onInfoContainer
-        FileKind.ARCHIVE, FileKind.OTHER -> c.surfaceContainerHighest to c.onSurfaceVariant
+    val accent = when (kind) {
+        FileKind.FOLDER -> c.primary
+        FileKind.PDF -> c.error
+        FileKind.DOCUMENT, FileKind.TEXT -> c.secondary
+        FileKind.CODE -> d.success
+        FileKind.IMAGE -> c.tertiary
+        FileKind.AUDIO -> d.warning
+        FileKind.VIDEO -> d.info
+        FileKind.ARCHIVE, FileKind.OTHER -> return c.surfaceContainerHighest to c.onSurfaceVariant
     }
+    return accent.copy(alpha = FileKindToneAlpha) to accent
 }
+
+private const val FileKindToneAlpha = 0.16f
 
 /** 资料状态徽标：只对解析失败、排队中、已改动待重建与索引中显示；排队与索引中用资料首页同款索引指示代替圆点。 */
 @Composable
@@ -366,7 +368,7 @@ internal fun FileSortButton(
  */
 @Composable
 internal fun fileMetaSegments(item: FileItem): List<String> {
-    val time = formatFileTime(item.lastModified)
+    val time = formatFileListTime(item.lastModified, LocalFileTimeNow.current ?: System.currentTimeMillis())
     val collection = item.knowledge?.folderCollection?.takeIf { item.isDirectory }
     if (collection != null) {
         val count = item.childCount
@@ -454,7 +456,7 @@ internal fun FileRow(
         Column(Modifier.weight(1f).padding(vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val tag = item.knowledge?.collectionTag
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FileNameMarquee(item.name, Modifier.weight(1f, fill = false))
+                FileNameText(item.name, Modifier.weight(1f, fill = false))
                 if (tag != null) FileCollectionTagChip(tag)
             }
             if (location != null) {
@@ -634,33 +636,15 @@ private const val DisabledUpEntryAlpha = 0.38f
  * 两端渐隐，滚动文字不贴着徽标或状态位硬切。
  */
 @OptIn(ExperimentalFoundationApi::class)
+/** 文件名单行；放不下时省略中间，保留开头与扩展名。 */
 @Composable
-private fun FileNameMarquee(name: String, modifier: Modifier = Modifier) {
-    // 走马灯内部按不限宽度排版，文字全宽大于可见宽度时才是放不下，此时两端加渐隐。
-    var textWidth by remember { mutableIntStateOf(0) }
-    var boxWidth by remember { mutableIntStateOf(0) }
-    val overflowing = boxWidth in 1 until textWidth
+private fun FileNameText(name: String, modifier: Modifier = Modifier) {
     Text(
         text = name,
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurface,
         maxLines = 1,
-        softWrap = false,
-        onTextLayout = { textWidth = it.size.width },
-        modifier = modifier
-            .onSizeChanged { boxWidth = it.width }
-            .horizontalFadingEdges(start = overflowing, end = overflowing, length = FileNameFadeWidth)
-            .basicMarquee(
-                iterations = Int.MAX_VALUE,
-                initialDelayMillis = FileNameMarqueeDelayMillis,
-                repeatDelayMillis = FileNameMarqueeDelayMillis,
-                spacing = MarqueeSpacing(FileNameMarqueeGap),
-                velocity = FileNameMarqueeVelocity,
-            ),
+        overflow = TextOverflow.MiddleEllipsis,
+        modifier = modifier,
     )
 }
-
-private const val FileNameMarqueeDelayMillis = 2000
-private val FileNameMarqueeGap = 40.dp
-private val FileNameMarqueeVelocity = 20.dp
-private val FileNameFadeWidth = 12.dp
