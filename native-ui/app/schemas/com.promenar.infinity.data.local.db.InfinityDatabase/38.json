@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 38,
-    "identityHash": "400c851785e58a3c024599e4989693ff",
+    "identityHash": "db4a8256ff323d528161f49f35704916",
     "entities": [
       {
         "tableName": "scheduled_tasks",
@@ -4440,14 +4440,12 @@
           {
             "fieldPath": "manifestSha256",
             "columnName": "manifest_sha256",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "manifestError",
             "columnName": "manifest_error",
-            "affinity": "TEXT",
-            "notNull": false
+            "affinity": "TEXT"
           },
           {
             "fieldPath": "createdAt",
@@ -4467,9 +4465,7 @@
           "columnNames": [
             "id"
           ]
-        },
-        "indices": [],
-        "foreignKeys": []
+        }
       },
       {
         "tableName": "session_productions",
@@ -4545,7 +4541,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '400c851785e58a3c024599e4989693ff')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'db4a8256ff323d528161f49f35704916')"
     ]
   }
 }

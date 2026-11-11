@@ -88,7 +88,7 @@ class SshRecoveryDatabaseCompatibilityTest {
                 sqlite.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use {
                     check(it.moveToFirst() && it.getInt(0) == 0)
                 }
-                sqlite.version = 37
+                sqlite.version = 38
                 RandomAccessFile(main, "r").use { file -> file.seek(60); assertThat(file.readInt()).isEqualTo(5) }
                 val before = sourceHashes(context)
                 assertThat(before.keys).contains("infinity_v2.db-wal")

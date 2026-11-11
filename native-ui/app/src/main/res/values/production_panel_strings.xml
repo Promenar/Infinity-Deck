@@ -3,10 +3,10 @@
     <string name="production_panel_title">Production</string>
     <string name="production_panel_action_failed">Action failed</string>
     <string name="production_panel_empty">No production</string>
-    <string name="production_panel_tab_overview">Overview</string>
+    <string name="production_panel_tab_overview">Status</string>
     <string name="production_panel_tab_script">Script</string>
     <string name="production_panel_tab_assets">Assets</string>
-    <string name="production_panel_tab_storyboard">Storyboard</string>
+    <string name="production_panel_tab_storyboard">Shots</string>
     <string name="production_panel_kind_film">Film</string>
     <string name="production_panel_kind_series">Series</string>
     <plurals name="production_panel_episode_count">

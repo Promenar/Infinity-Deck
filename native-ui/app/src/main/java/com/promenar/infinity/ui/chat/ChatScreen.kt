@@ -2587,7 +2587,7 @@ internal fun ContextCompactionFeedback(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatTopBar(
+internal fun ChatTopBar(
     title: String,
     onBack: () -> Unit,
     onSettings: () -> Unit,

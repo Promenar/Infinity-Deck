@@ -185,7 +185,7 @@ val launcherIconTask = tasks.register("generateInfinityLauncherIcons") {
 }
 val currentRoomSchemaContracts = tasks.register<GenerateCurrentRoomSchemaContracts>("generateCurrentRoomSchemaContracts") {
     group = "build setup"
-    description = "依据 v18 至 v37 导出版本生成完整数据库结构校验合同。"
+    description = "依据 v18 至 v38 导出版本生成完整数据库结构校验合同。"
     schemaFiles.from((18..38).map { version ->
         layout.projectDirectory.file("schemas/com.promenar.infinity.data.local.db.InfinityDatabase/$version.json")
     })
