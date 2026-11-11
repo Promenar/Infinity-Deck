@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.48.4-beta] - 2026-11-12
+
+### 修复
+
+- Linux 运行模式下制作项目登记候选（`production_update` 的 `add_take`）始终报“媒体不存在”，制作面板的候选、资产版本、剧本与预览也解析不到：制作项目内的相对路径改为按会话当前运行模式映射到清单所在的同一根（Linux 为 `/home/session/…`，挂载目录与清单读写一致），候选校验与面板展示共用该映射。
+
 ## [0.48.3-beta] - 2026-11-12
 
 ### 变更

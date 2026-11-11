@@ -120,7 +120,13 @@ internal fun rememberProductionPath(environment: WorkspaceMediaEnvironment?, pat
 
 @Composable
 internal fun ProductionMediaReference(path: String, modifier: Modifier = Modifier, alt: String? = null, asLink: Boolean = false, style: MediaCardStyle = MediaCardStyle.MARKDOWN) {
-    when (val mapped = rememberProductionPath(LocalWorkspaceMedia.current, path)) {
+    val environment = LocalWorkspaceMedia.current
+    // 未关联会话时由媒体卡片自行显示“未关联会话”，不经过映射。
+    if (environment == null) {
+        WorkspaceMediaReference(path = "/${path.trimStart('/')}", modifier = modifier, alt = alt, asLink = asLink, style = style)
+        return
+    }
+    when (val mapped = rememberProductionPath(environment, path)) {
         ProductionPathState.Loading -> Unit
         is ProductionPathState.Ready -> WorkspaceMediaReference(path = mapped.path, modifier = modifier, alt = alt, asLink = asLink, style = style)
         ProductionPathState.Failed -> WorkspaceMediaUnavailable(path = path, reason = null, onLocate = null, modifier = modifier)
