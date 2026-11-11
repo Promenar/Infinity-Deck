@@ -359,18 +359,7 @@ fun PipelineBubble(
                             streamingContent.ifEmpty { step.content }
                         } else step.content
                         val sourceMessage = pipelineContentOwner(group.messages, step)
-                        val segment = contentSegments.getOrPut(step.messageId.ifEmpty { "content:$index" }) {
-                            movableContentOf { args: ContentSegmentArgs ->
-                                ContentSegment(
-                                    content = args.content,
-                                    isStreaming = args.isStreaming,
-                                    showStreamingCursor = args.showStreamingCursor,
-                                    fontSize = args.fontSize,
-                                    onContentChange = args.onContentChange,
-                                    sourceMessageId = args.sourceMessageId,
-                                )
-                            }
-                        }
+                        val segment = contentSegments.getOrPut(step.messageId.ifEmpty { "content:$index" }, ::movableContentSegment)
                         segment(
                             ContentSegmentArgs(
                                 content = displayContent,
@@ -1847,6 +1836,19 @@ private data class AssistantBodyArgs(
     val fontSize: Int,
     val onContentChange: ((String) -> Unit)?,
 )
+
+/** 一条消息正文的可移动内容；由按消息记住的表调用，每条消息只创建一次。 */
+private fun movableContentSegment(): @Composable (ContentSegmentArgs) -> Unit =
+    movableContentOf { args: ContentSegmentArgs ->
+        ContentSegment(
+            content = args.content,
+            isStreaming = args.isStreaming,
+            showStreamingCursor = args.showStreamingCursor,
+            fontSize = args.fontSize,
+            onContentChange = args.onContentChange,
+            sourceMessageId = args.sourceMessageId,
+        )
+    }
 
 /** 正文段的全部参数；结束收起时最终正文换到另一处调用位置，整体传给同一份可移动内容。 */
 private data class ContentSegmentArgs(

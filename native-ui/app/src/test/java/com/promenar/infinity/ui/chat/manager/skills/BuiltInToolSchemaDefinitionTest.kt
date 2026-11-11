@@ -25,10 +25,16 @@ class BuiltInToolSchemaDefinitionTest {
             .map(::File).firstOrNull { it.resolve("com/promenar/infinity").isDirectory }
         assertWithMessage("未找到 app 主源码目录：${File("").absolutePath}").that(sourceRoot).isNotNull()
         sourceRoot!!
-        val literal = Regex("parametersSchema\\s*=\\s*\"\"\"(.*?)\"\"\"", RegexOption.DOT_MATCHES_ALL)
+        // 既扫 `parametersSchema = """…"""`，也扫作为构造参数等方式传入、以根对象类型开头的 schema 字面量。
+        val literals = listOf(
+            Regex("parametersSchema\\s*=\\s*\"\"\"(.*?)\"\"\"", RegexOption.DOT_MATCHES_ALL),
+            Regex("\"\"\"(\\{\"type\":\"object\".*?)\"\"\"", RegexOption.DOT_MATCHES_ALL),
+        )
         val schemas = sourceRoot.walkTopDown().filter { it.extension == "kt" }.flatMap { file ->
-            literal.findAll(file.readText()).map { "${file.name}: ${it.groupValues[1]}" to it.groupValues[1] }
-        }.filterNot { (_, schema) -> "\${" in schema }.toList()
+            val text = file.readText()
+            literals.flatMap { literal -> literal.findAll(text).map { it.groupValues[1] } }.distinct()
+                .map { "${file.name}: $it" to it }
+        }.filterNot { (_, schema) -> "\$" in schema }.toList()
 
         // 防止正则失效后空跑通过。
         assertWithMessage("扫描到的字面量 schema 数量").that(schemas.size).isAtLeast(20)
