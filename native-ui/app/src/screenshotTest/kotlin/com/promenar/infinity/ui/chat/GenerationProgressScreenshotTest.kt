@@ -338,19 +338,22 @@ fun chatInspectorShiftLightPreview() = WideRunPage(InfinityThemeMode.LIGHT, engl
 @Composable
 fun chatInspectorStripLightPreview() = WideRunPage(InfinityThemeMode.LIGHT, english = false, pages = emptyList())
 
-// 检视器卡片单独：待批准时运行页签顶部给出跳转入口，页签角标显示待批准数与 Git 改动数；大字号下页签与按钮不重叠。
+// 检视器卡片单独：待批准时运行页签顶部给出跳转入口，页签角标显示待处理数；未使用的画布排在队尾灰调显示；大字号下页签与按钮不重叠。
 @Composable
 private fun InspectorAlone(mode: InfinityThemeMode, english: Boolean) {
     val plan = groupedPlan(english)
-    val badges = ChatInspectorBadges(running = true, pendingApprovals = 2, hasRunContent = true, gitAvailable = true, gitChanges = 3, canvases = 2, browserEntry = true)
+    val entries = chatPanelHubEntries(
+        ChatPanelHubSignals(generating = true, pendingApprovals = 2, hasStateBoard = true),
+        summary = { null },
+        onOpen = {},
+    )
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
         Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
             Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ChatInspectorCard(
                     root = ChatPage.Run,
-                    badges = badges,
+                    entries = entries,
                     widened = false,
-                    onSelect = {},
                     onToggleWiden = {},
                     onCollapse = {},
                     modifier = Modifier.width(360.dp).fillMaxHeight(),
@@ -375,11 +378,43 @@ private fun InspectorAlone(mode: InfinityThemeMode, english: Boolean) {
                         )
                     }
                 }
-                ChatInspectorStrip(badges = badges, onOpen = {}, onExpand = {})
+                ChatInspectorStrip(entries = entries, onExpand = {})
             }
         }
     }
 }
+
+// 窄窗口顶栏：⋮ 左侧的功能面板入口，有待处理时挂总数，只有运行中内容时挂圆点。
+@Composable
+private fun PanelHubTopBars(mode: InfinityThemeMode) {
+    InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Column {
+                listOf(
+                    ChatPanelHubSignals(generating = true, pendingApprovals = 2),
+                    ChatPanelHubSignals(generating = true),
+                    ChatPanelHubSignals(),
+                ).forEach { signals ->
+                    ChatTopBar(
+                        "整理发布清单", {}, {}, {}, onClearHistory = {}, onRename = {}, onDeleteSession = {},
+                        panelHub = chatPanelHubEntries(signals, summary = { null }, onOpen = {}),
+                        touchLock = ChatTopBarTouchLock(enabled = signals.generating, onLock = {}),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "顶栏功能面板入口 深中", widthDp = 411, heightDp = 200, locale = "zh-rCN")
+@Composable
+fun chatPanelHubTopBarDarkPreview() = PanelHubTopBars(InfinityThemeMode.DARK)
+
+@PreviewTest
+@Preview(name = "顶栏功能面板入口 浅中 大字", widthDp = 360, heightDp = 220, locale = "zh-rCN", fontScale = 1.3f)
+@Composable
+fun chatPanelHubTopBarLightLargeFontPreview() = PanelHubTopBars(InfinityThemeMode.LIGHT)
 
 @PreviewTest
 @Preview(name = "检视器卡片 深中", widthDp = 440, heightDp = 860, locale = "zh-rCN")

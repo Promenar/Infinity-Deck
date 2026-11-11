@@ -417,7 +417,6 @@
     <string name="chat_execution_mode_full_access_hint">Commands run directly</string>
     <string name="chat_input_placeholder_generating">Queue your next message</string>
     <string name="chat_empty_prompt">What would you like to do today?</string>
-    <string name="chat_cd_workspace">Workspace</string>
     <string name="chat_cd_options">Options</string>
     <string name="chat_cd_stop">Stop</string>
     <string name="chat_cd_send">Send</string>

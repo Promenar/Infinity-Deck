@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -17,9 +18,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.promenar.infinity.data.canvas.FileCanvasStore
 import com.promenar.infinity.data.model.ExecutionStep
 import com.promenar.infinity.ui.chat.CanvasInvocationCards
+import com.promenar.infinity.ui.chat.ChatPage
 import com.promenar.infinity.ui.chat.ChatScreenActions
 import com.promenar.infinity.ui.chat.ChatScreenContent
 import com.promenar.infinity.ui.chat.ChatScreenState
+import com.promenar.infinity.ui.chat.PanelHubTags
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.R
@@ -42,7 +45,7 @@ class CanvasChatEntryTest {
 
     @After fun cleanup() { root.deleteRecursively() }
 
-    @Test fun narrowMenu_alwaysHasArtifactsEntry_countAppearsWithArtifacts_andOpensList() {
+    @Test fun panelHub_artifactsEntryUnusedUntilAgentCreatesOne_thenShowsCountAndOpensList() {
         var opened = 0
         rule.setContent {
             InfinityTheme {
@@ -51,16 +54,18 @@ class CanvasChatEntryTest {
                 }
             }
         }
-        // 产物入口始终在选项菜单首项，会话有产物后显示数量。
-        rule.onNodeWithTag(UiTags.CHAT_OPTIONS).performClick()
-        rule.onNodeWithTag(UiTags.CANVAS_ENTRY).assertIsDisplayed()
-        rule.onAllNodesWithText("1").assertCountEquals(0)
+        // 产物条目在功能面板入口里常驻；Agent 还没有创建产物时灰调不可点。
+        rule.onNodeWithTag(PanelHubTags.BUTTON).performClick()
+        rule.onNodeWithTag(PanelHubTags.item(ChatPage.Canvas)).assertIsDisplayed().assertIsNotEnabled()
         androidx.test.espresso.Espresso.pressBack()
         runBlocking { store.create("session", "图表", "<p>1</p>", "message") }
         rule.waitForIdle()
-        rule.onNodeWithTag(UiTags.CHAT_OPTIONS).performClick()
-        rule.waitUntil(5_000) { rule.onAllNodesWithText("1").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithTag(UiTags.CANVAS_ENTRY).assertIsDisplayed().performClick()
+        rule.onNodeWithTag(PanelHubTags.BUTTON).performClick()
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithTag(PanelHubTags.item(ChatPage.Canvas)).fetchSemanticsNodes()
+                .any { androidx.compose.ui.semantics.SemanticsProperties.Disabled !in it.config }
+        }
+        rule.onNodeWithTag(PanelHubTags.item(ChatPage.Canvas)).assertIsEnabled().performClick()
         rule.runOnIdle { assertThat(opened).isEqualTo(1) }
     }
 

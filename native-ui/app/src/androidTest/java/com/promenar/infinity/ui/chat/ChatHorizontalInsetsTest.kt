@@ -30,7 +30,7 @@ class ChatHorizontalInsetsTest {
                 InfinityTheme {
                     Box(Modifier.fillMaxSize().testTag("SAFE_TOP_HOST")) {
                         ChatTopBar(
-                            title = "横屏会话", onBack = {}, onWorkspace = {}, onSettings = {},
+                            title = "横屏会话", onBack = {}, onSettings = {},
                             onClearHistory = {}, onRename = {}, onDeleteSession = {},
                             windowInsets = WindowInsets(left = 28.dp, right = 48.dp),
                         )

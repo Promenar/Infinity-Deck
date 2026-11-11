@@ -417,7 +417,6 @@
     <string name="chat_execution_mode_full_access_hint">命令直接执行</string>
     <string name="chat_input_placeholder_generating">写下一条，发送后排队</string>
     <string name="chat_empty_prompt">今天想做点什么？</string>
-    <string name="chat_cd_workspace">工作区</string>
     <string name="chat_cd_options">选项</string>
     <string name="chat_cd_stop">停止</string>
     <string name="chat_cd_send">发送</string>

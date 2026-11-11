@@ -17,10 +17,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
-import com.promenar.infinity.ui.chat.ChatInspectorBadges
+import com.promenar.infinity.ui.chat.ChatPanelHubSignals
 import com.promenar.infinity.ui.chat.ChatInspectorCard
 import com.promenar.infinity.ui.chat.ChatInspectorStrip
 import com.promenar.infinity.ui.chat.ChatInspectorTags
+import com.promenar.infinity.ui.chat.chatPanelHubEntries
 import com.promenar.infinity.ui.chat.ChatPage
 import com.promenar.infinity.ui.theme.InfinityTheme
 import androidx.compose.runtime.getValue
@@ -93,12 +94,12 @@ class HapticCoverageTest {
 
     @Test
     fun inspectorTabsTickOnSwitch_andCollapseExpandUseToggleFeedback() {
-        val badges = ChatInspectorBadges(hasRunContent = true)
+        val entries = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {})
         val view = show {
             Column {
                 // 卡片内部铺满父级，固定高度才能让边缘条留在屏幕内可被点按。
-                ChatInspectorCard(root = ChatPage.Run, badges = badges, widened = false, onSelect = {}, onToggleWiden = {}, onCollapse = {}, modifier = Modifier.height(240.dp)) {}
-                ChatInspectorStrip(badges = badges, onOpen = {}, onExpand = {})
+                ChatInspectorCard(root = ChatPage.Run, entries = entries, widened = false, onToggleWiden = {}, onCollapse = {}, modifier = Modifier.height(240.dp)) {}
+                ChatInspectorStrip(entries = entries, onExpand = {})
             }
         }
         rule.onNodeWithTag(ChatInspectorTags.tab(ChatPage.Run)).performClick()

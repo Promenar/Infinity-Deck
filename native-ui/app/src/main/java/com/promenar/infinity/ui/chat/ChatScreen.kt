@@ -185,6 +185,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -865,6 +866,116 @@ fun ChatScreenContent(
             animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
             label = "chat_inspector_end",
         )
+        val taskPanel = state.taskPanel
+        var hiddenPlanSignature by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
+        var planObservedIncomplete by rememberSaveable(uiState.session?.id, taskPanel?.planId) {
+            mutableStateOf(false)
+        }
+        val autoHideDelay = completedPlanAutoHideDelay(taskPanel, uiState.isGenerating, planObservedIncomplete)
+        // 打开会话时就已完成的计划不再出现；本次看着完成的计划停留片刻后自动收起。
+        val planBarVisible = isTaskPlanBarVisible(taskPanel, hiddenPlanSignature) && autoHideDelay != 0L
+        // 退场动画期间计划已不再可见，仍用最后一次可见的状态绘制，避免内容瞬间消失。
+        var lastVisiblePlan by remember(uiState.session?.id) { mutableStateOf<TaskPanelUiState?>(null) }
+        if (taskPanel != null && planBarVisible) lastVisiblePlan = taskPanel
+        LaunchedEffect(taskPanel?.visibilitySignature(), autoHideDelay) {
+            if (taskPanel?.isCompleted == false) planObservedIncomplete = true
+            val delayMs = autoHideDelay?.takeIf { it > 0 } ?: return@LaunchedEffect
+            delay(delayMs)
+            hiddenPlanSignature = taskPanel?.visibilitySignature()
+        }
+        // 运行坞：计划、生成、审批、后台任务与状态面板合成一行，清单收进运行详情，统计挂在回复下方。
+        var runSheetTab by remember(uiState.session?.id) { mutableStateOf<com.promenar.infinity.ui.chat.components.RunDetailTab?>(null) }
+        var runSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
+        // 后台任务只有运行详情“后台”页一份列表：宽窗口切到检视器“运行”页签，窄窗口打开运行详情。
+        // 记下已处理的请求，重新进入组合时不再重复打开。
+        var handledJobsRequest by remember { mutableIntStateOf(state.backgroundJobsRequest) }
+        LaunchedEffect(state.backgroundJobsRequest) {
+            if (state.backgroundJobsRequest == handledJobsRequest) return@LaunchedEffect
+            handledJobsRequest = state.backgroundJobsRequest
+            if (inspectorMode) {
+                actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
+            } else {
+                runSheetTab = com.promenar.infinity.ui.chat.components.RunDetailTab.BACKGROUND
+                runSheetOpen = true
+            }
+        }
+        val agentActivity = com.promenar.infinity.ui.chat.components.rememberAgentActivityState(fastTick = runSheetOpen || inspectorRoot == ChatPage.Run)
+        val activitySummary = agentActivity?.summary
+        val boardTitle = state.stateBoard?.board?.title
+        val pendingApprovals = (uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting }?.calls?.size?.coerceAtLeast(1) ?: 0) +
+            state.subagentApprovals.size
+        // 本轮用时由运行坞按秒自行刷新，不在这里计时，避免整个会话内容逐秒重组。
+        val turnStartedAt = state.generationStartedAt?.takeIf { uiState.isGenerating }
+        val dock = com.promenar.infinity.ui.chat.components.runDockState(
+            plan = lastVisiblePlan.takeIf { taskPanel != null && planBarVisible },
+            isGenerating = uiState.isGenerating,
+            pendingApprovals = pendingApprovals,
+            runningJobs = activitySummary?.runningJobs ?: 0,
+            enabledSchedules = activitySummary?.enabledSchedules ?: 0,
+            boardTitle = boardTitle,
+            awaitingAnswer = state.pendingQuestion != null || state.pendingSecretInput != null,
+            elapsedMillis = null,
+        )
+        var lastDock by remember(uiState.session?.id) { mutableStateOf(dock) }
+        if (dock != null) lastDock = dock
+        val canvasSession = com.promenar.infinity.ui.canvas.LocalCanvasSession.current
+        // 侧栏计划区与运行坞同一可见规则：隐藏或自动收起的计划不占侧栏。
+        val sidePlan = taskPanel?.takeIf { planBarVisible && it.totalCount > 0 }
+        val sideArtifacts = canvasSession?.artifacts.orEmpty()
+        val sideCandidates = canvasSession?.candidates.orEmpty()
+        val sideBoard = state.stateBoard?.takeIf { it.board != null }
+        val hasRunContent = sidePlan != null || sideBoard != null || activitySummary?.visible == true || uiState.isGenerating
+        // 功能面板统一入口：窄窗口顶栏按钮与宽窗口检视器页签、边缘条共用这一份条目，排序与可用性一致。
+        // 画布与状态面板在本会话被 Agent 调用过后保持可用，内容清空也不再回到“未使用”。
+        var hubUsedToken by rememberSaveable(uiState.session?.id) { mutableStateOf("") }
+        val hubUsed = panelHubUsage(restorePanelHubUsage(hubUsedToken), panelHubActive(sideArtifacts.size, sideCandidates.size, sideBoard != null))
+        SideEffect { savePanelHubUsage(hubUsed).let { if (it != hubUsedToken) hubUsedToken = it } }
+        val hubSummaries = mapOf(
+            ChatPage.Run to (dock?.label?.takeUnless { it is com.promenar.infinity.ui.chat.components.RunDockLabel.Board }
+                ?.let { com.promenar.infinity.ui.chat.components.runDockLabelText(it) } ?: stringResource(R.string.panel_hub_idle)),
+            ChatPage.Explorer to state.workspace?.let { workspaceStatusName(it) },
+            ChatPage.Git to state.gitSummary?.let { com.promenar.infinity.ui.git.gitSummaryLine(it, compactChanges = true) },
+            ChatPage.Browser to panelHubBrowserSummary(state.browser),
+            ChatPage.Remote to remoteDotDescription(state.remote),
+            ChatPage.Canvas to panelHubJoin(
+                listOf(
+                    sideArtifacts.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.chat_inspector_count, it, it) },
+                    sideCandidates.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.panel_hub_canvas_candidates, it, it) },
+                ),
+            ),
+            ChatPage.State to boardTitle,
+        )
+        // 宽窗口切换检视器页签；窄窗口运行与状态面板打开运行详情，其余整页打开。
+        val openHubPage: (ChatPage) -> Unit = { page ->
+            if (inspectorMode) {
+                actions.onSetInspectorPages(openChatPageRoot(page))
+            } else when (page) {
+                ChatPage.Run, ChatPage.State -> {
+                    runSheetTab = com.promenar.infinity.ui.chat.components.RunDetailTab.STATE.takeIf { page == ChatPage.State }
+                    runSheetOpen = true
+                }
+                ChatPage.Explorer -> actions.onOpenWorkspace()
+                ChatPage.Git -> actions.onOpenGit()
+                ChatPage.Browser -> actions.onOpenBrowser()
+                ChatPage.Remote -> actions.onOpenRemote()
+                ChatPage.Canvas -> canvasSession?.openList?.invoke()
+            }
+        }
+        val hubEntries = chatPanelHubEntries(
+            signals = ChatPanelHubSignals(
+                generating = uiState.isGenerating,
+                pendingApprovals = pendingApprovals,
+                runningJobs = activitySummary?.runningJobs ?: 0,
+                browser = state.browser?.mode,
+                remote = state.remote,
+                canvases = sideArtifacts.size,
+                canvasCandidates = sideCandidates.size,
+                hasStateBoard = sideBoard != null,
+                used = hubUsed,
+            ),
+            summary = hubSummaries::get,
+            onOpen = openHubPage,
+        )
         // 会话列表把自己录进背景来源：毛玻璃顶栏始终使用；输入浮岛只在毛玻璃材质下使用。
         val chatBackdrop = com.promenar.infinity.ui.common.rememberBackdropSource()
         val composerSurface = LocalInfinityMotionStyles.current.surface
@@ -878,16 +989,13 @@ fun ChatScreenContent(
                     title = sessionTitle,
                     showDivider = showTopBarDivider,
                     onBack = actions.onNavigateBack,
-                    onWorkspace = actions.onOpenWorkspace,
                     onSettings = actions.onOpenSettings,
                     onSessionPrompt = actions.onOpenPromptEditor,
                     onClearHistory = actions.onOpenClearDialog,
                     onRename = actions.onOpenRenameDialog,
                     onExport = actions.onOpenExport,
                     onDeleteSession = actions.onOpenDeleteDialog,
-                    artifacts = com.promenar.infinity.ui.canvas.LocalCanvasSession.current?.let { canvasSession ->
-                        chatTopBarArtifacts(inspectorMode, canvasSession.artifacts.size, canvasSession.openList)
-                    },
+                    panelHub = hubEntries.takeUnless { inspectorMode },
                     git = state.gitSummary,
                     onOpenGit = if (inspectorMode) ({ toggleInspectorPage(ChatPage.Git) }) else actions.onOpenGit,
                     inspector = if (inspectorMode && inspectorRoot != null) ChatTopBarInspector(
@@ -899,13 +1007,6 @@ fun ChatScreenContent(
                     onRunMode = actions.onOpenRunMode,
                     workspace = state.workspace,
                     onWorkspaceStatus = actions.onOpenWorkspaceStatus,
-                    browser = chatTopBarBrowser(
-                        inspectorMode = inspectorMode,
-                        mode = state.browser?.mode ?: com.promenar.infinity.data.browser.BrowserMode.IDLE,
-                        open = inspectorRoot == ChatPage.Browser,
-                        onOpen = actions.onOpenBrowser,
-                    ),
-                    remote = if (inspectorMode) null else ChatTopBarRemote(state.remote, actions.onOpenRemote),
                     isBranch = uiState.session?.parentSessionId != null || uiState.session?.parentSessionDeleted == true,
                     branchOpenParent = branchAccess?.parentSessionId?.let { parent -> { branchAccess.onOpenSession(parent) } },
                     touchLock = if (inspectorMode) null else ChatTopBarTouchLock(enabled = uiState.isGenerating, onLock = actions.onLockTouch),
@@ -931,58 +1032,6 @@ fun ChatScreenContent(
         ) { padding ->
             val wordmarkPointer = remember { WordmarkPointer() }
             val showWordmark = shouldShowEmptyWordmark(uiState)
-            val taskPanel = state.taskPanel
-            var hiddenPlanSignature by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
-            var planObservedIncomplete by rememberSaveable(uiState.session?.id, taskPanel?.planId) {
-                mutableStateOf(false)
-            }
-            val autoHideDelay = completedPlanAutoHideDelay(taskPanel, uiState.isGenerating, planObservedIncomplete)
-            // 打开会话时就已完成的计划不再出现；本次看着完成的计划停留片刻后自动收起。
-            val planBarVisible = isTaskPlanBarVisible(taskPanel, hiddenPlanSignature) && autoHideDelay != 0L
-            // 退场动画期间计划已不再可见，仍用最后一次可见的状态绘制，避免内容瞬间消失。
-            var lastVisiblePlan by remember(uiState.session?.id) { mutableStateOf<TaskPanelUiState?>(null) }
-            if (taskPanel != null && planBarVisible) lastVisiblePlan = taskPanel
-            LaunchedEffect(taskPanel?.visibilitySignature(), autoHideDelay) {
-                if (taskPanel?.isCompleted == false) planObservedIncomplete = true
-                val delayMs = autoHideDelay?.takeIf { it > 0 } ?: return@LaunchedEffect
-                delay(delayMs)
-                hiddenPlanSignature = taskPanel?.visibilitySignature()
-            }
-            // 运行坞：计划、生成、审批、后台任务与状态面板合成一行，清单收进运行详情，统计挂在回复下方。
-            var runSheetTab by remember(uiState.session?.id) { mutableStateOf<com.promenar.infinity.ui.chat.components.RunDetailTab?>(null) }
-            var runSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
-            // 后台任务只有运行详情“后台”页一份列表：宽窗口切到检视器“运行”页签，窄窗口打开运行详情。
-            // 记下已处理的请求，重新进入组合时不再重复打开。
-            var handledJobsRequest by remember { mutableIntStateOf(state.backgroundJobsRequest) }
-            LaunchedEffect(state.backgroundJobsRequest) {
-                if (state.backgroundJobsRequest == handledJobsRequest) return@LaunchedEffect
-                handledJobsRequest = state.backgroundJobsRequest
-                if (inspectorMode) {
-                    actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
-                } else {
-                    runSheetTab = com.promenar.infinity.ui.chat.components.RunDetailTab.BACKGROUND
-                    runSheetOpen = true
-                }
-            }
-            val agentActivity = com.promenar.infinity.ui.chat.components.rememberAgentActivityState(fastTick = runSheetOpen || inspectorRoot == ChatPage.Run)
-            val activitySummary = agentActivity?.summary
-            val boardTitle = state.stateBoard?.board?.title
-            val pendingApprovals = (uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting }?.calls?.size?.coerceAtLeast(1) ?: 0) +
-                state.subagentApprovals.size
-            // 本轮用时由运行坞按秒自行刷新，不在这里计时，避免整个会话内容逐秒重组。
-            val turnStartedAt = state.generationStartedAt?.takeIf { uiState.isGenerating }
-            val dock = com.promenar.infinity.ui.chat.components.runDockState(
-                plan = lastVisiblePlan.takeIf { taskPanel != null && planBarVisible },
-                isGenerating = uiState.isGenerating,
-                pendingApprovals = pendingApprovals,
-                runningJobs = activitySummary?.runningJobs ?: 0,
-                enabledSchedules = activitySummary?.enabledSchedules ?: 0,
-                boardTitle = boardTitle,
-                awaitingAnswer = state.pendingQuestion != null || state.pendingSecretInput != null,
-                elapsedMillis = null,
-            )
-            var lastDock by remember(uiState.session?.id) { mutableStateOf(dock) }
-            if (dock != null) lastDock = dock
             if (state.touchLocked) {
                 TouchLockDialogWithClock(
                     dock = dock ?: lastDock,
@@ -993,24 +1042,6 @@ fun ChatScreenContent(
                     onUnlock = actions.onUnlockTouch,
                 )
             }
-            val canvasSession = com.promenar.infinity.ui.canvas.LocalCanvasSession.current
-            // 侧栏计划区与运行坞同一可见规则：隐藏或自动收起的计划不占侧栏。
-            val sidePlan = taskPanel?.takeIf { planBarVisible && it.totalCount > 0 }
-            val sideArtifacts = canvasSession?.artifacts.orEmpty()
-            val sideCandidates = canvasSession?.candidates.orEmpty()
-            val sideBoard = state.stateBoard?.takeIf { it.board != null }
-            val hasRunContent = sidePlan != null || sideBoard != null || activitySummary?.visible == true || uiState.isGenerating
-            val inspectorBadges = ChatInspectorBadges(
-                running = uiState.isGenerating,
-                pendingApprovals = pendingApprovals,
-                hasRunContent = hasRunContent,
-                gitAvailable = state.gitSummary != null,
-                gitChanges = state.gitSummary?.changeCount ?: 0,
-                canvases = sideArtifacts.size,
-                browser = state.browser?.mode,
-                browserEntry = true,
-                remote = state.remote,
-            )
             // 收起后的边缘条贴右缘 8dp。
             val stripEnd = 8.dp
             // 审批卡在会话列底部；检视器浮在会话之上时会盖住它，新审批到来时先收为边缘条（角标仍提示待批准）。
@@ -1730,9 +1761,8 @@ fun ChatScreenContent(
                         val shownRoot = inspectorRoot ?: lastInspectorRoot?.let { restoreChatPages(it).firstOrNull() } ?: ChatPage.Run
                         ChatInspectorCard(
                             root = shownRoot,
-                            badges = inspectorBadges,
+                            entries = hubEntries,
                             widened = inspectorWidened,
-                            onSelect = { page -> actions.onSetInspectorPages(openChatPageRoot(page)) },
                             onToggleWiden = { inspectorWidened = !inspectorWidened },
                             onCollapse = { actions.onSetInspectorPages(emptyList()) },
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
@@ -1786,6 +1816,17 @@ fun ChatScreenContent(
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }
+                                ChatPage.State -> if (sideBoard == null) {
+                                    ChatInspectorStateEmpty()
+                                } else {
+                                    com.promenar.infinity.ui.chat.components.StateBoardContent(
+                                        snapshot = sideBoard,
+                                        isGenerating = uiState.isGenerating,
+                                        onEdit = actions.onEditState,
+                                        onRemove = actions.onRemoveState,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                                 ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> inspectorPageContent()
                             }
                             }
@@ -1808,11 +1849,16 @@ fun ChatScreenContent(
                             .onSizeChanged { stripHeight = it.height },
                     ) {
                         ChatInspectorStrip(
-                            badges = inspectorBadges,
-                            onOpen = { page -> actions.onSetInspectorPages(openChatPageRoot(page)) },
+                            entries = hubEntries,
                             onExpand = {
                                 actions.onSetInspectorPages(
-                                    openChatPageRoot(defaultChatInspectorRoot(lastInspectorRoot?.let { restoreChatPages(it).firstOrNull() }, hasRunContent)),
+                                    openChatPageRoot(
+                                        defaultChatInspectorRoot(
+                                            lastInspectorRoot?.let { restoreChatPages(it).firstOrNull() },
+                                            hasRunContent,
+                                            available = hubEntries.filter { it.available }.mapTo(mutableSetOf()) { it.page },
+                                        ),
+                                    ),
                                 )
                             },
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
@@ -2503,7 +2549,6 @@ internal fun ContextCompactionFeedback(
 fun ChatTopBar(
     title: String,
     onBack: () -> Unit,
-    onWorkspace: () -> Unit,
     onSettings: () -> Unit,
     onSessionPrompt: () -> Unit = {},
     onClearHistory: () -> Unit,
@@ -2512,8 +2557,8 @@ fun ChatTopBar(
     onExport: () -> Unit = {},
     showDivider: Boolean = false,
     windowInsets: WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
-    /** 窄窗口选项菜单首项的产物入口；宽窗口由检视器页签承载，传 null。 */
-    artifacts: ChatTopBarArtifacts? = null,
+    /** 窄窗口 ⋮ 左侧的功能面板入口条目（见 [chatPanelHubEntries]）；宽窗口由检视器页签承载，传 null。 */
+    panelHub: List<PanelHubEntry>? = null,
     git: com.promenar.infinity.ui.git.GitEntrySummary.Repository? = null,
     onOpenGit: () -> Unit = {},
     runMode: com.promenar.infinity.ui.chat.runmode.RunModeBadge? = null,
@@ -2521,12 +2566,8 @@ fun ChatTopBar(
     /** 状态行中运行模式之后的会话工作区；为 null 时不显示。 */
     workspace: com.promenar.infinity.ui.workspace.SessionWorkspaceUi? = null,
     onWorkspaceStatus: () -> Unit = {},
-    /** 宽窗口：顶栏只有检视器开合与菜单，文件、画布与浏览器在侧栏页签；为 null 时（窄窗口）显示文件入口。 */
+    /** 宽窗口检视器打开时的图钉；功能面板在检视器页签里。 */
     inspector: ChatTopBarInspector? = null,
-    /** 本会话已打开 Agent 浏览器时的地球入口；为 null 时不显示。 */
-    browser: ChatTopBarBrowser? = null,
-    /** 窄窗口菜单中的“远程”；宽窗口由检视器页签承载，传 null。 */
-    remote: ChatTopBarRemote? = null,
     /** 分支会话：标题前显示分支标记；主会话仍在时点按回到主会话。 */
     branchOpenParent: (() -> Unit)? = null,
     isBranch: Boolean = false,
@@ -2695,8 +2736,8 @@ fun ChatTopBar(
             LocalChatNavigationIcon.current?.invoke() ?: InfinityBackButton(onClick = onBack)
         },
         actions = {
-            // 宽窗口的文件、产物与浏览器都是检视器侧栏的页签，侧栏由右缘边缘条开合，顶栏只在侧栏打开时放图钉；
-            // 窄窗口顶栏只留选项菜单，产物、浏览器与文件是菜单首组。
+            // 宽窗口的功能面板都是检视器侧栏的页签，侧栏由右缘边缘条开合，顶栏只在侧栏打开时放图钉；
+            // 窄窗口顶栏是触摸锁占位、功能面板入口与选项菜单。
             if (inspector != null) {
                 val pinnedNow = inspector.pinned && inspector.canPin
                 ChatTopBarAction(
@@ -2723,123 +2764,23 @@ fun ChatTopBar(
                     if (touchLock.enabled) TouchLockButton(onLock = touchLock.onLock, iconSize = 22.dp, tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
+            panelHub?.let { PanelHubButton(it) }
             Box(Modifier.infinityPopoverAnchor(menuAnchor)) {
-                // 浏览器收进菜单后，Agent 正在使用或需要你处理的圆点挂到菜单按钮上。
-                val browserDot = browser?.mode?.let { browserStatusDot(it) }
-                val browserStatus = browser?.mode?.let { browserStatusDescription(it) }
-                val optionsDescription = listOfNotNull(stringResource(R.string.chat_cd_options), browserStatus).joinToString(", ")
                 IconButton(
                     onClick = { showMenu = true },
                     modifier = Modifier.testTag(UiTags.CHAT_OPTIONS),
                 ) {
-                    Box {
-                        Icon(
-                            Icons.Rounded.MoreVert,
-                            optionsDescription,
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                        if (browserDot != null) {
-                            Box(Modifier.align(Alignment.TopEnd).size(8.dp).background(browserDot, CircleShape))
-                        }
-                    }
+                    Icon(
+                        Icons.Rounded.MoreVert,
+                        stringResource(R.string.chat_cd_options),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
                 InfinityDropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
                     minWidth = 190.dp,
                 ) {
-                    artifacts?.let { entry ->
-                        InfinityMenuItem(
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.Dashboard,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            text = { Text(stringResource(R.string.canvas_title), style = InfinityTypography.labelLarge) },
-                            trailingIcon = if (entry.count > 0) {
-                                { Text(entry.count.toString(), style = InfinityTypography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            } else null,
-                            modifier = Modifier.testTag(UiTags.CANVAS_ENTRY),
-                            onClick = {
-                                showMenu = false
-                                entry.onClick()
-                            },
-                        )
-                    }
-                    browser?.let { entry ->
-                        InfinityMenuItem(
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Public,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            text = { Text(stringResource(R.string.browser_title), style = InfinityTypography.labelLarge) },
-                            trailingIcon = browserDot?.let { dot ->
-                                { Box(Modifier.size(8.dp).background(dot, CircleShape)) }
-                            },
-                            modifier = Modifier
-                                .testTag(com.promenar.infinity.ui.browser.BrowserTags.TOP_BAR_ENTRY)
-                                .then(if (browserStatus != null) Modifier.semantics { stateDescription = browserStatus } else Modifier),
-                            onClick = {
-                                showMenu = false
-                                entry.onClick()
-                            },
-                        )
-                    }
-                    remote?.let { entry ->
-                        val dot = when (entry.dot) {
-                            RemoteDot.AGENT -> MaterialTheme.colorScheme.primary
-                            RemoteDot.ATTENTION -> MaterialTheme.colorScheme.tertiary
-                            null -> null
-                        }
-                        InfinityMenuItem(
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Lan,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            text = { Text(stringResource(R.string.remote_panel_title), style = InfinityTypography.labelLarge) },
-                            trailingIcon = dot?.let { color ->
-                                { Box(Modifier.size(8.dp).background(color, CircleShape)) }
-                            },
-                            modifier = Modifier.testTag(UiTags.CHAT_MENU_REMOTE),
-                            onClick = {
-                                showMenu = false
-                                entry.onClick()
-                            },
-                        )
-                    }
-                    if (inspector == null) {
-                        InfinityMenuItem(
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.Folder,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            text = { Text(stringResource(R.string.chat_cd_workspace), style = InfinityTypography.labelLarge) },
-                            modifier = Modifier.testTag(UiTags.CHAT_MENU_WORKSPACE),
-                            onClick = {
-                                showMenu = false
-                                onWorkspace()
-                            },
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                        )
-                    }
                     InfinityMenuItem(
                         leadingIcon = {
                             Icon(
@@ -2953,19 +2894,12 @@ fun ChatTopBar(
     }
 }
 
-/** 窄窗口选项菜单中的产物入口。 */
+/** 顶栏锁定触摸入口；[enabled] 为 false（不在生成）时只留透明占位。 */
 @Immutable
-data class ChatTopBarArtifacts(val count: Int, val onClick: () -> Unit)
-
-/** 宽窗口由检视器页签承载产物；窄窗口菜单始终有产物入口，有产物时显示数量。 */
-internal fun chatTopBarArtifacts(inspectorMode: Boolean, count: Int, onOpen: () -> Unit): ChatTopBarArtifacts? =
-    if (inspectorMode) null else ChatTopBarArtifacts(count.coerceAtLeast(0), onOpen)
+data class ChatTopBarTouchLock(val enabled: Boolean, val onLock: () -> Unit)
 
 /** 宽窗口顶栏的检视器图钉：检视器打开时出现，开合由右缘的边缘条负责。 */
 @Immutable
-/** 顶栏锁定触摸入口；[enabled] 为 false（不在生成）时只留透明占位。 */
-data class ChatTopBarTouchLock(val enabled: Boolean, val onLock: () -> Unit)
-
 data class ChatTopBarInspector(
     val pinned: Boolean,
     /** 让位后会话仍够宽时才能固定；不够时图钉置灰，偏好保留。 */
@@ -2973,44 +2907,10 @@ data class ChatTopBarInspector(
     val onTogglePin: () -> Unit,
 )
 
-/** 顶栏的 Agent 浏览器入口：Agent 操作时挂主色圆点，需要用户处理时挂橙色圆点。 */
-@Immutable
-/** 窄窗口菜单的“远程”入口与圆点。 */
-data class ChatTopBarRemote(val dot: RemoteDot?, val onClick: () -> Unit)
-
-data class ChatTopBarBrowser(
-    val mode: com.promenar.infinity.data.browser.BrowserMode,
-    val open: Boolean,
-    val onClick: () -> Unit,
-)
-
-/** 宽窗口的检视器侧栏已有常驻浏览器页签，收起时边缘条也带状态点，顶栏地球入口只在窄窗口出现。 */
-internal fun chatTopBarBrowser(
-    inspectorMode: Boolean,
-    mode: com.promenar.infinity.data.browser.BrowserMode,
-    open: Boolean,
-    onOpen: () -> Unit,
-): ChatTopBarBrowser? = if (inspectorMode) null else ChatTopBarBrowser(mode = mode, open = open, onClick = onOpen)
-
 private val BrowserMaximizedInset = 24.dp
 
 /** 输入浮岛在限宽会话列内的水平内边距；浮动检视器的右缘与浮岛右缘对齐。 */
 private val ComposerIslandHorizontalPadding = 12.dp
-
-/** Agent 正在使用浏览器挂主色圆点，需要用户处理挂橙色圆点；空闲时没有圆点。 */
-@Composable
-private fun browserStatusDot(mode: com.promenar.infinity.data.browser.BrowserMode): Color? = when (mode) {
-    com.promenar.infinity.data.browser.BrowserMode.AGENT -> MaterialTheme.colorScheme.primary
-    com.promenar.infinity.data.browser.BrowserMode.HANDOFF -> MaterialTheme.colorScheme.tertiary
-    else -> null
-}
-
-@Composable
-private fun browserStatusDescription(mode: com.promenar.infinity.data.browser.BrowserMode): String? = when (mode) {
-    com.promenar.infinity.data.browser.BrowserMode.AGENT -> stringResource(R.string.chat_inspector_browser_agent)
-    com.promenar.infinity.data.browser.BrowserMode.HANDOFF -> stringResource(R.string.chat_inspector_browser_needs_you)
-    else -> null
-}
 
 /** 顶栏状态行中工作区的显示名称。 */
 @Composable

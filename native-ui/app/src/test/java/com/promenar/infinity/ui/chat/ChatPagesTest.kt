@@ -44,13 +44,6 @@ class ChatPagesTest {
         assertThat(chatPageStack(listOf(ChatPage.Explorer, ChatPage.Git), wideWindow = true)).containsExactly(ChatPage.Explorer, ChatPage.Git).inOrder()
     }
 
-    @Test fun `顶栏产物入口只在窄窗口且会话已有产物时出现`() {
-        val open = {}
-        assertThat(chatTopBarArtifacts(inspectorMode = false, count = 2, onOpen = open)).isEqualTo(ChatTopBarArtifacts(count = 2, onClick = open))
-        assertThat(chatTopBarArtifacts(inspectorMode = false, count = 0, onOpen = open)).isEqualTo(ChatTopBarArtifacts(count = 0, onClick = open))
-        assertThat(chatTopBarArtifacts(inspectorMode = true, count = 2, onOpen = open)).isNull()
-    }
-
     @Test fun `顶栏图标在已打开的根层页签上收起，否则以该页签为根打开`() {
         assertThat(toggleChatInspector(emptyList(), ChatPage.Explorer)).containsExactly(ChatPage.Explorer)
         assertThat(toggleChatInspector(listOf(ChatPage.Explorer), ChatPage.Explorer)).isEmpty()
@@ -65,9 +58,16 @@ class ChatPagesTest {
         assertThat(defaultChatInspectorRoot(null, hasRunContent = false)).isEqualTo(ChatPage.Explorer)
     }
 
-    @Test fun `检视器页签：非 Git 仓库不显示 Git 页签`() {
-        // 远程页签常驻，不依赖工作区内容。
-        assertThat(ChatInspectorBadges().pages()).containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Canvas, ChatPage.Remote).inOrder()
-        assertThat(ChatInspectorBadges(gitAvailable = true).pages()).containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Canvas, ChatPage.Remote).inOrder()
+    @Test fun `展开检视器时上次的页签已不可用就按没有上次处理`() {
+        assertThat(defaultChatInspectorRoot(ChatPage.State, hasRunContent = false, available = setOf(ChatPage.Run, ChatPage.Explorer)))
+            .isEqualTo(ChatPage.Explorer)
+        assertThat(defaultChatInspectorRoot(ChatPage.State, hasRunContent = false, available = setOf(ChatPage.State))).isEqualTo(ChatPage.State)
+    }
+
+    @Test fun `状态面板只是检视器页签，窄窗口由运行详情承载，不进整页层级`() {
+        assertThat(chatPageStack(listOf(ChatPage.State), wideWindow = false)).isEmpty()
+        assertThat(chatPageStack(listOf(ChatPage.State), wideWindow = true)).isEmpty()
+        assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.State)))).containsExactly(ChatPage.State)
+        assertThat(ChatPage.State.inspectorGroup).isEqualTo(InspectorContentGroup.State)
     }
 }

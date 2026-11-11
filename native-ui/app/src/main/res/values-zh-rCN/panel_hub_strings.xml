@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 会话功能面板统一入口：窄窗口顶栏按钮与弹出列表、宽窗口检视器页签共用。 -->
+    <string name="panel_hub_title">功能面板</string>
+    <string name="panel_hub_tab_state">状态面板</string>
+    <string name="panel_hub_unused">未使用</string>
+    <string name="panel_hub_idle">空闲</string>
+    <string name="panel_hub_browser_closed">未打开</string>
+    <plurals name="panel_hub_pending">
+        <item quantity="other">%d 项待处理</item>
+    </plurals>
+    <plurals name="panel_hub_canvas_candidates">
+        <item quantity="other">%d 个待认领</item>
+    </plurals>
+</resources>

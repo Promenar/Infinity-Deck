@@ -60,25 +60,19 @@ class BrowserToolPresentationTest {
         assertThat(toolSummaryAction("browser_type")).isEqualTo(ToolSummaryAction.BROWSER)
     }
 
-    @Test fun `浏览器页签随入口常驻，打开过网页后也显示`() {
-        assertThat(ChatInspectorBadges().pages()).doesNotContain(ChatPage.Browser)
-        val entryOnly = ChatInspectorBadges(browserEntry = true)
-        assertThat(entryOnly.pages()).contains(ChatPage.Browser)
-        val badges = ChatInspectorBadges(browser = com.promenar.infinity.data.browser.BrowserMode.IDLE)
-        assertThat(badges.pages()).contains(ChatPage.Browser)
+    @Test fun `浏览器条目在功能面板入口常驻，整页承载并可保存恢复`() {
+        val entries = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {})
+        assertThat(entries.first { it.page == ChatPage.Browser }.available).isTrue()
         assertThat(chatPageStack(listOf(ChatPage.Browser), wideWindow = false)).containsExactly(ChatPage.Browser)
         assertThat(restoreChatPages("browser")).containsExactly(ChatPage.Browser)
     }
 
-    @Test fun `宽窗口有检视器侧栏时顶栏不再放浏览器入口，状态由侧栏边缘条显示`() {
-        val opened = mutableListOf<String>()
-        val narrow = chatTopBarBrowser(inspectorMode = false, mode = BrowserMode.HANDOFF, open = false) { opened += "browser" }
-        assertThat(narrow?.mode).isEqualTo(BrowserMode.HANDOFF)
-        narrow!!.onClick()
-        assertThat(opened).containsExactly("browser")
-
-        assertThat(chatTopBarBrowser(inspectorMode = true, mode = BrowserMode.HANDOFF, open = false) {}).isNull()
-        // 侧栏收起时，边缘条的浏览器页签带状态点。
-        assertThat(ChatInspectorBadges(browser = BrowserMode.HANDOFF, browserEntry = true).pages()).contains(ChatPage.Browser)
+    @Test fun `Agent 操作浏览器时条目运行中，需要你接手时计入待处理`() {
+        fun browser(mode: BrowserMode) =
+            chatPanelHubEntries(ChatPanelHubSignals(browser = mode), summary = { null }, onOpen = {}).first { it.page == ChatPage.Browser }
+        assertThat(browser(BrowserMode.AGENT).running).isTrue()
+        assertThat(browser(BrowserMode.AGENT).pending).isEqualTo(0)
+        assertThat(browser(BrowserMode.HANDOFF).pending).isEqualTo(1)
+        assertThat(browser(BrowserMode.IDLE).running).isFalse()
     }
 }

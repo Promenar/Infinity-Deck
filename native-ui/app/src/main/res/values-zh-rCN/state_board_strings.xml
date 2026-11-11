@@ -1,5 +1,4 @@
 <resources>
-    <string name="state_open">展开状态面板</string>
     <string name="state_close">关闭状态面板</string>
     <string name="state_edit">编辑%1$s</string>
     <string name="state_remove">移除面板</string>
