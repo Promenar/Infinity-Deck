@@ -45,14 +45,17 @@ class GitPanelViewModel(
     private var detailToken = 0L
     private var fileToken = 0L
 
-    /** 打开面板：回到列表并刷新一次。 */
+    /** 打开面板：回到列表并按缓存策略读取状态。 */
     fun open() {
         detailToken++
         fileToken++
         detailJob?.cancel()
         fileJob?.cancel()
         _state.update { it.copy(detail = null) }
-        refresh()
+        if (statusCache == null || statusJob?.isActive != true) loadStatus()
+        val current = _state.value
+        if (current.tab == GitPanelTab.COMMITS || current.log != null) loadLog()
+        if (current.tab == GitPanelTab.BRANCHES || current.branches != null) loadBranches()
     }
 
     /** 回到前台：缓存订阅已停止时重新订阅，先显示缓存再按需刷新。 */

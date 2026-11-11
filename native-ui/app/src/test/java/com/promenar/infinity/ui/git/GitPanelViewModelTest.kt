@@ -91,6 +91,29 @@ class GitPanelViewModelTest {
         assertThat(runner.operations().drop(2)).containsExactly("status", "log")
     }
 
+    @Test fun `重复打开复用状态缓存，手动刷新重新读取`() {
+        val cacheScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+        try {
+            val cache = com.promenar.infinity.data.git.DefaultGitStatusCache(
+                locate = { GitWorkspaceResolution.Ready(GitWorkspaceTarget(root, "project")) },
+                read = { service.status("s") }, scope = cacheScope, fingerprint = { "same" },
+            )
+            val viewModel = track(GitPanelViewModel("s", service, statusCache = cache))
+            viewModel.open()
+            awaitState(viewModel) { it.status is GitLoad.Ready && !it.refreshing }
+            viewModel.close()
+            viewModel.open()
+            awaitState(viewModel) { it.status is GitLoad.Ready && !it.refreshing }
+            runBlocking { kotlinx.coroutines.delay(500) }
+            assertThat(runner.operations().count { it == "status" }).isEqualTo(1)
+            viewModel.refresh()
+            awaitState(viewModel) { runner.operations().count { op -> op == "status" } == 2 && !it.refreshing }
+            assertThat(runner.operations().count { it == "status" }).isEqualTo(2)
+        } finally {
+            cacheScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
     @Test fun `切到分支页时才读取本地分支，刷新时一并重读`() {
         val viewModel = track(GitPanelViewModel("s", service))
         viewModel.open()

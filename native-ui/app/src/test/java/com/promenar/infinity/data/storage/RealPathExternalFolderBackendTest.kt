@@ -279,6 +279,95 @@ class RealPathExternalFolderBackendTest : ExternalFolderBackendContractTest() {
         assertEquals("ours", temporary.readText())
     }
 
+    @Test fun `跨父目录移动改变目录时间时递归删除成功`() = runBlocking {
+        val root = temporaryFolder.newFolder().canonicalFile
+        File(root, "dir/a/b").mkdirs()
+        File(root, "dir/a/b/file").writeText("内容")
+        driftingDirectoryBackend(root).delete("/dir")
+        assertFalse(File(root, "dir").exists())
+        assertTrue(File(root, ".infinity").list()!!.none { it.startsWith(".infinity-delete-") })
+    }
+
+    @Test fun `隔离校验失败时完整目录恢复`() = runBlocking {
+        val root = temporaryFolder.newFolder().canonicalFile
+        File(root, "dir/a").mkdirs()
+        File(root, "dir/a/file").writeText("内容")
+        expectCode("CONFLICT") { driftingDirectoryBackend(root, failVerification = true).delete("/dir") }
+        assertEquals("内容", File(root, "dir/a/file").readText())
+        assertTrue(File(root, ".infinity").list()!!.none { it.startsWith(".infinity-delete-") })
+    }
+
+    @Test fun `原名被占用时不覆盖并保留隔离目录`() = runBlocking {
+        val root = temporaryFolder.newFolder().canonicalFile
+        File(root, "dir").mkdir()
+        File(root, "dir/file").writeText("原内容")
+        expectCode("RECOVERY_REQUIRED") { driftingDirectoryBackend(root, failVerification = true, occupyOriginal = true).delete("/dir") }
+        assertTrue(File(root, "dir").isDirectory)
+        val isolated = File(root, ".infinity").listFiles()!!.single { it.name.startsWith(".infinity-delete-") }
+        assertEquals("原内容", File(isolated, "file").readText())
+    }
+
+    @Test fun `删除子项后失败时保留隔离目录`() = runBlocking {
+        val root = temporaryFolder.newFolder().canonicalFile
+        File(root, "dir").mkdir()
+        File(root, "dir/a").writeText("内容")
+        val fs = JvmBoundRealPathFileSystem()
+        fs.beforeOperation = { operation, path ->
+            if (operation == "delete-directory" && path.fileName.toString().startsWith(".infinity-delete-")) throw IOException("删除目录失败")
+        }
+        expectCode("RECOVERY_REQUIRED") { driftingDirectoryBackend(root, fs).delete("/dir") }
+        assertFalse(File(root, "dir").exists())
+        assertTrue(File(root, ".infinity").listFiles()!!.any { it.name.startsWith(".infinity-delete-") && it.isDirectory })
+    }
+
+    @Test fun `删除子项后取消时提示恢复并保留隔离目录`() = runBlocking {
+        val root = temporaryFolder.newFolder().canonicalFile
+        File(root, "dir").mkdir()
+        File(root, "dir/a").writeText("内容")
+        val fs = JvmBoundRealPathFileSystem()
+        fs.beforeOperation = { operation, path ->
+            if (operation == "delete-directory" && path.fileName.toString().startsWith(".infinity-delete-")) {
+                throw kotlinx.coroutines.CancellationException("取消删除")
+            }
+        }
+        expectCode("RECOVERY_REQUIRED") { driftingDirectoryBackend(root, fs).delete("/dir") }
+        assertFalse(File(root, "dir").exists())
+        assertTrue(File(root, ".infinity").listFiles()!!.any { it.name.startsWith(".infinity-delete-") && it.isDirectory })
+    }
+
+    private fun driftingDirectoryBackend(root: File, base: JvmBoundRealPathFileSystem = JvmBoundRealPathFileSystem(),
+        failVerification: Boolean = false, occupyOriginal: Boolean = false): RealPathExternalFolderBackend {
+        var failName: String? = null
+        fun wrap(directory: BoundRealPathDirectory): BoundRealPathDirectory = object : BoundRealPathDirectory by directory {
+            override fun openDirectory(name: String) = wrap(directory.openDirectory(name))
+            override fun stat(name: String): RealPathFileState? {
+                val state = directory.stat(name)
+                if (name == failName && state != null) {
+                    failName = null
+                    if (occupyOriginal) check(File(root, "dir").mkdir())
+                    return state.copy(objectId = "changed")
+                }
+                return state
+            }
+            override fun moveNew(source: String, targetDirectory: BoundRealPathDirectory, target: String) {
+                val targetWrapped = targetDirectory as WrappedDirectory
+                val isDirectory = directory.stat(source)?.isDirectory == true
+                directory.moveNew(source, targetWrapped.delegate, target)
+                if (isDirectory && target.startsWith(".infinity-delete-")) {
+                    val moved = File(root, ".infinity/$target")
+                    check(moved.setLastModified(moved.lastModified() - 5000))
+                    if (failVerification && source == "dir") failName = target
+                }
+            }
+        }.let { WrappedDirectory(it, directory) }
+        return RealPathExternalFolderBackend(root, emptySet(), { true }, object : RealPathFileSystem {
+            override fun openFileSystemRoot() = wrap(base.openFileSystemRoot())
+        })
+    }
+
+    private class WrappedDirectory(private val wrapped: BoundRealPathDirectory, val delegate: BoundRealPathDirectory) :
+        BoundRealPathDirectory by wrapped
+
     private fun withoutAtomicMoves(root: File, base: JvmBoundRealPathFileSystem = JvmBoundRealPathFileSystem(), failAfterCreate: Boolean = false, allowCheckedMove: Boolean = false,
         beforeUnsupportedMove: (String, String) -> Unit = { _, _ -> },
         afterCheckedMove: (String, String) -> Unit = { _, _ -> }): RealPathExternalFolderBackend {

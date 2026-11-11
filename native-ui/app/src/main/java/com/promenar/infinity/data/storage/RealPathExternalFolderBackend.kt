@@ -660,21 +660,26 @@ class RealPathExternalFolderBackend internal constructor(
     }
 
     private suspend fun deleteBound(parent: BoundRealPathDirectory, name: String, path: String, internal: BoundRealPathDirectory,
-        expected: ExternalFolderEntry? = null, expectedState: RealPathFileState? = null) {
+        expected: ExternalFolderEntry? = null, expectedState: RealPathFileState? = null, onDeleteStarted: () -> Unit = {}) {
         currentCoroutineContext().ensureActive()
         ensureAllowed(path)
         val original = expected ?: snapshot(parent, name, path, hash = true) ?: fail("NOT_FOUND", "删除目标不存在")
         val state = expectedState ?: stateFor(parent, name, original)
         val quarantine = ".infinity-delete-${UUID.randomUUID()}"
         var isolated = false
+        var childDeletionStarted = false
+        val childDeleting = { childDeletionStarted = true; onDeleteStarted() }
         try {
             try { parent.moveNew(name, internal, quarantine) }
             catch (failure: Throwable) {
                 if (failure is AtomicMoveNotSupportedException && internal.stat(quarantine) == null) {
-                    deleteChecked(parent, name, path, internal, original, state)
+                    deleteChecked(parent, name, path, internal, original, state, onDeleteStarted)
                     return
                 }
-                if (internal.stat(quarantine) != null) recoverOrThrow(internal, quarantine, parent, name, path, failure)
+                if (internal.stat(quarantine) != null) {
+                    try { recoverOrThrow(internal, quarantine, parent, name, path, failure, state.objectId.takeIf { state.isDirectory }) }
+                    catch (recoveryFailure: Throwable) { onDeleteStarted(); throw recoveryFailure }
+                }
                 throw moveFailure(failure)
             }
             isolated = true
@@ -683,24 +688,31 @@ class RealPathExternalFolderBackend internal constructor(
                 internal.openDirectory(quarantine).use { directory ->
                     for (child in directory.names()) {
                         if (!visibleName(child)) fail("INVALID_PATH", "删除范围包含内部恢复文件或保留目录")
-                        deleteBound(directory, child, join(path, child), internal)
+                        deleteBound(directory, child, join(path, child), internal, onDeleteStarted = childDeleting)
                     }
                     if (internal.stat(quarantine)?.objectId != state.objectId) realPathReadConflict("identity")
+                    onDeleteStarted()
                     internal.deleteDirectory(quarantine)
                 }
             } else {
                 verifyIsolated(internal, quarantine, path, original, state)
+                onDeleteStarted()
                 internal.deleteFile(quarantine)
             }
             isolated = false
         } catch (exception: Throwable) {
-            if (isolated) recoverOrThrow(internal, quarantine, parent, name, path, exception)
+            if (isolated) {
+                try { recoverOrThrow(internal, quarantine, parent, name, path, exception,
+                    state.objectId.takeIf { state.isDirectory && !childDeletionStarted },
+                    forceRecovery = state.isDirectory && childDeletionStarted) }
+                catch (recoveryFailure: Throwable) { onDeleteStarted(); throw recoveryFailure }
+            }
             throw exception
         }
     }
 
     private suspend fun deleteChecked(parent: BoundRealPathDirectory, name: String, path: String,
-        internal: BoundRealPathDirectory, expected: ExternalFolderEntry, state: RealPathFileState) {
+        internal: BoundRealPathDirectory, expected: ExternalFolderEntry, state: RealPathFileState, onDeleteStarted: () -> Unit) {
         val current = snapshot(parent, name, path, hash = true)
         checkEntry(expected, current)
         checkRealPathReadState(state, parent.stat(name), timestamps = !parent.readTimestampsMayDrift)
@@ -709,15 +721,17 @@ class RealPathExternalFolderBackend internal constructor(
                 if (directory.state().objectId != state.objectId) realPathReadConflict("identity")
                 for (child in directory.names()) {
                     if (!visibleName(child)) fail("INVALID_PATH", "删除范围包含内部恢复文件或保留目录")
-                    deleteBound(directory, child, join(path, child), internal)
+                    deleteBound(directory, child, join(path, child), internal, onDeleteStarted = onDeleteStarted)
                 }
                 currentCoroutineContext().ensureActive()
                 if (parent.stat(name)?.objectId != state.objectId) realPathReadConflict("identity")
+                onDeleteStarted()
                 parent.deleteDirectory(name)
             }
         } else {
             currentCoroutineContext().ensureActive()
             checkRealPathReadState(state, parent.stat(name), timestamps = !parent.readTimestampsMayDrift)
+            onDeleteStarted()
             parent.deleteFile(name)
         }
     }
@@ -735,7 +749,7 @@ class RealPathExternalFolderBackend internal constructor(
         val isolated = parent.stat(name) ?: realPathReadConflict("identity")
         requireSupported(isolated)
         checkRealPathReadState(state, isolated, timestamps = false)
-        if (!parent.readTimestampsMayDrift && isolated.contentVersion != state.contentVersion) {
+        if (!isolated.isDirectory && !parent.readTimestampsMayDrift && isolated.contentVersion != state.contentVersion) {
             realPathReadConflict("mtime=${state.modifiedTime} -> ${isolated.modifiedTime}")
         }
         if (!isolated.isDirectory && snapshot(parent, name, path, hash = true)?.sha256 != expected.sha256) {
@@ -743,25 +757,29 @@ class RealPathExternalFolderBackend internal constructor(
         }
     }
 
-    private suspend fun recoverOrThrow(internal: BoundRealPathDirectory, quarantine: String, parent: BoundRealPathDirectory, originalName: String, path: String, failure: Throwable) {
+    private suspend fun recoverOrThrow(internal: BoundRealPathDirectory, quarantine: String, parent: BoundRealPathDirectory, originalName: String, path: String, failure: Throwable, directoryId: String? = null, forceRecovery: Boolean = false) {
         var restored = false
         withContext(NonCancellable) {
-            try { restored = restoreNoReplace(internal, quarantine, parent, originalName, path) }
+            try { restored = restoreNoReplace(internal, quarantine, parent, originalName, path, directoryId) }
             catch (recoveryFailure: Throwable) { failure.addSuppressed(recoveryFailure) }
         }
         if (restored) return
         val location = "/${WorkspaceInternalPaths.DIRECTORY}/$quarantine"
         val recovery = ExternalFolderException("RECOVERY_REQUIRED", "未能安全恢复原目标；请核查隔离副本 $location 与 $path")
-        if (failure is CancellationException) { failure.addSuppressed(recovery); throw failure }
+        if (failure is CancellationException && !forceRecovery) { failure.addSuppressed(recovery); throw failure }
         recovery.addSuppressed(failure)
         throw recovery
     }
 
-    private suspend fun restoreNoReplace(internal: BoundRealPathDirectory, quarantine: String, parent: BoundRealPathDirectory, name: String, path: String): Boolean {
+    private suspend fun restoreNoReplace(internal: BoundRealPathDirectory, quarantine: String, parent: BoundRealPathDirectory, name: String, path: String, directoryId: String? = null): Boolean {
         if (parent.stat(name) != null) return false
         val isolated = internal.stat(quarantine) ?: return false
-        // 递归删除失败时保留隔离目录，避免把不完整目录当作已恢复目标。
-        if (isolated.isDirectory || isolated.isSymbolicLink || !isolated.isRegularFile) return false
+        if (isolated.isDirectory) {
+            if (directoryId == null || isolated.objectId != directoryId || isolated.isSymbolicLink) return false
+            internal.moveNew(quarantine, parent, name)
+            return internal.stat(quarantine) == null && parent.stat(name)?.objectId == directoryId
+        }
+        if (isolated.isSymbolicLink || !isolated.isRegularFile) return false
         val captured = snapshot(internal, quarantine, path, hash = true) ?: return false
         val restoredId = publishNew(internal, quarantine, parent, name, restoringOriginal = true)
         val restored = snapshot(parent, name, path, hash = true) ?: return false
