@@ -33,6 +33,7 @@ internal const val CURRENT_V33_IDENTITY = com.promenar.infinity.data.local.db.IN
 internal const val CURRENT_V34_IDENTITY = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V34_IDENTITY_HASH
 internal const val CURRENT_V35_IDENTITY = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V35_IDENTITY_HASH
 internal const val CURRENT_V36_IDENTITY = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V36_IDENTITY_HASH
+internal val CURRENT_V38_IDENTITY: String get() = checkNotNull(com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[38]).identityHash
 internal val CURRENT_V37_IDENTITY: String get() = checkNotNull(com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[37]).identityHash
 internal const val CURRENT_V31_IDENTITY = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V31_IDENTITY_HASH
 internal const val CURRENT_V30_IDENTITY = com.promenar.infinity.data.local.db.INFINITY_SCHEMA_V30_IDENTITY_HASH
@@ -62,7 +63,8 @@ internal fun isTrustedCurrentRoomSchema(version: Int, identity: String): Boolean
         (version == 34 && identity == CURRENT_V34_IDENTITY) ||
         (version == 35 && identity == CURRENT_V35_IDENTITY) ||
         (version == 36 && identity == CURRENT_V36_IDENTITY) ||
-        (version == 37 && identity == CURRENT_V37_IDENTITY)
+        (version == 37 && identity == CURRENT_V37_IDENTITY) ||
+        (version == 38 && identity == CURRENT_V38_IDENTITY)
 
 @Serializable
 enum class DualDatabaseRecoveryStage {

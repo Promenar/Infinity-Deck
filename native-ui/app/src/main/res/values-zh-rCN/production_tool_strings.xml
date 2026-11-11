@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_tool_define">定义制作项目</string>
+    <string name="production_tool_define_desc">创建或更新制作项目</string>
+    <string name="production_tool_attach">附加制作项目</string>
+    <string name="production_tool_attach_desc">从工作区清单附加制作项目</string>
+    <string name="production_tool_get">读取制作项目</string>
+    <string name="production_tool_get_desc">读取制作进度和详情</string>
+    <string name="production_tool_update">更新制作项目</string>
+    <string name="production_tool_update_desc">执行制作项目操作</string>
+    <string name="production_tool_remove">解绑制作项目</string>
+    <string name="production_tool_remove_desc">解除会话与制作项目的绑定</string>
+</resources>

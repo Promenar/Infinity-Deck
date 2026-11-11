@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_panel_title">Production</string>
+    <string name="production_panel_action_failed">Action failed</string>
+    <string name="production_panel_empty">No production</string>
+    <string name="production_panel_tab_overview">Overview</string>
+    <string name="production_panel_tab_script">Script</string>
+    <string name="production_panel_tab_assets">Assets</string>
+    <string name="production_panel_tab_storyboard">Storyboard</string>
+    <string name="production_panel_kind_film">Film</string>
+    <string name="production_panel_kind_series">Series</string>
+    <plurals name="production_panel_episode_count">
+        <item quantity="one">%d episode</item>
+        <item quantity="other">%d episodes</item>
+    </plurals>
+    <plurals name="production_panel_shot_count">
+        <item quantity="one">%d shot</item>
+        <item quantity="other">%d shots</item>
+    </plurals>
+    <plurals name="production_panel_asset_usage">
+        <item quantity="one">Used in %d shot</item>
+        <item quantity="other">Used in %d shots</item>
+    </plurals>
+    <string name="production_panel_locked_progress">%1$d/%2$d locked</string>
+    <string name="production_panel_episode_number">Episode %d</string>
+    <string name="production_panel_scene_number">Scene %d</string>
+    <string name="production_panel_seconds">%ss</string>
+    <string name="production_panel_anchor_at">At %ss</string>
+    <string name="production_panel_version">v%d</string>
+
+    <string name="production_panel_stage_script">Script</string>
+    <string name="production_panel_stage_visual_dev">Visual development</string>
+    <string name="production_panel_stage_storyboard">Storyboard</string>
+    <string name="production_panel_stage_animatic">Animatic</string>
+    <string name="production_panel_stage_generation">Generation</string>
+    <string name="production_panel_stage_sound">Sound</string>
+    <string name="production_panel_stage_edit">Edit</string>
+
+    <string name="production_panel_stage_not_started">Not started</string>
+    <string name="production_panel_stage_in_progress">In progress</string>
+    <string name="production_panel_stage_locked">Locked</string>
+    <string name="production_panel_stage_skipped">Skipped</string>
+
+    <string name="production_panel_shot_todo">To do</string>
+    <string name="production_panel_shot_generating">Generating</string>
+    <string name="production_panel_shot_review">Review</string>
+    <string name="production_panel_shot_locked">Locked</string>
+    <string name="production_panel_shot_redo">Redo</string>
+
+    <string name="production_panel_asset_draft">Draft</string>
+    <string name="production_panel_asset_review">Review</string>
+    <string name="production_panel_asset_locked">Locked</string>
+    <string name="production_panel_asset_redo">Redo</string>
+
+    <string name="production_panel_asset_all">All</string>
+    <string name="production_panel_asset_character">Characters</string>
+    <string name="production_panel_asset_location">Locations</string>
+    <string name="production_panel_asset_prop">Props</string>
+    <string name="production_panel_asset_style">Styles</string>
+
+    <string name="production_panel_role_first_frame">First frame</string>
+    <string name="production_panel_role_last_frame">Last frame</string>
+    <string name="production_panel_role_anchor">Anchor</string>
+    <string name="production_panel_role_reference">Reference</string>
+
+    <string name="production_panel_mode_text">Text</string>
+    <string name="production_panel_mode_first_frame">First frame</string>
+    <string name="production_panel_mode_first_last">First and last frame</string>
+    <string name="production_panel_mode_reference">Reference</string>
+
+    <string name="production_panel_preview_keyframe">Keyframe</string>
+    <string name="production_panel_preview_draft_clip">Draft clip</string>
+    <string name="production_panel_preview_text_card">Text card</string>
+
+    <string name="production_panel_section_stages">Stages</string>
+    <string name="production_panel_section_pending">Pending</string>
+    <string name="production_panel_section_redo">Redo</string>
+    <string name="production_panel_section_episodes">Episodes</string>
+    <string name="production_panel_section_bible">Story bible</string>
+    <string name="production_panel_section_takes">Takes</string>
+    <string name="production_panel_section_inputs">Inputs</string>
+    <string name="production_panel_section_prompt">Prompt</string>
+    <string name="production_panel_section_preview">Preview</string>
+    <string name="production_panel_section_agent_note">Agent note</string>
+    <string name="production_panel_section_user_note">Note</string>
+    <string name="production_panel_section_versions">Versions</string>
+    <string name="production_panel_nothing_pending">Nothing pending</string>
+    <string name="production_panel_no_takes">No takes</string>
+    <string name="production_panel_no_prompt">No prompt</string>
+    <string name="production_panel_no_script">No script</string>
+    <string name="production_panel_no_assets">No assets</string>
+    <string name="production_panel_no_shots">No shots</string>
+
+    <string name="production_panel_lock_script">Lock script</string>
+    <string name="production_panel_unlock_script">Unlock script</string>
+    <string name="production_panel_lock_storyboard">Lock storyboard</string>
+    <string name="production_panel_unlock_storyboard">Unlock storyboard</string>
+    <string name="production_panel_select">Select</string>
+    <string name="production_panel_redo">Redo</string>
+    <string name="production_panel_unlock">Unlock</string>
+    <string name="production_panel_edit">Edit</string>
+    <string name="production_panel_save">Save</string>
+    <string name="production_panel_approve">Approve</string>
+    <string name="production_panel_reject">Reject</string>
+    <string name="production_panel_back">Back</string>
+    <string name="production_panel_stage_menu">Stage status</string>
+    <string name="production_panel_selected">Selected</string>
+    <string name="production_panel_take_number">Take %d</string>
+
+    <string name="production_panel_redo_title">Redo shot</string>
+    <string name="production_panel_reject_title">Reject asset</string>
+    <string name="production_panel_reason">Reason</string>
+    <string name="production_panel_prompt_title">Edit prompt</string>
+
+    <string name="production_panel_manifest_write_failed">Manifest write failed: %s</string>
+    <string name="production_panel_manifest_external">Manifest changed outside the app</string>
+    <string name="production_panel_manifest_invalid">Manifest unreadable: %s</string>
+    <string name="production_panel_manifest_adopt">Use file</string>
+    <string name="production_panel_manifest_overwrite">Overwrite file</string>
+    <string name="production_panel_manifest_adopt_title">Use manifest file?</string>
+    <string name="production_panel_manifest_adopt_body">Panel data is replaced with the file.</string>
+    <string name="production_panel_manifest_overwrite_title">Overwrite manifest file?</string>
+    <string name="production_panel_manifest_overwrite_body">The file is rewritten with panel data.</string>
+</resources>

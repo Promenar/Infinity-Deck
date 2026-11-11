@@ -38,20 +38,25 @@ class CurrentDatabaseSchemaValidationJvmTest {
     fun tearDown() = deleteDatabases()
 
     @Test
-    fun completeExportedV18ThroughV37DatabasesPassBothProductionGates() = verify(Mutation.NONE)
+    fun `版本38的Room身份必须不同于版本37`() {
+        assertThat(GeneratedCurrentRoomSchemas.schemas.getValue(38).identityHash).isNotEqualTo(GeneratedCurrentRoomSchemas.schemas.getValue(37).identityHash)
+    }
+
+    @Test
+    fun completeExportedV18ThroughV38DatabasesPassBothProductionGates() = verify(Mutation.NONE)
 
     @Test
     fun productionMigrationChainFromV18PassesBothProductionGatesAtEveryVersion() {
         createLegacyDatabase()
         createCurrentDatabase(18, Mutation.NONE)
-        for (version in 18..37) {
+        for (version in 18..38) {
             for (gate in Gate.entries) {
                 val source = context.getDatabasePath("infinity_v2.db")
                 val originalBytes = source.readBytes()
                 validate(gate, version)
                 assertThat(source.readBytes()).isEqualTo(originalBytes)
             }
-            if (version < 37) migrateCurrentDatabase(version + 1)
+            if (version < 38) migrateCurrentDatabase(version + 1)
         }
     }
 
@@ -108,7 +113,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
     @Test
     fun matchingIdentityWithWrongFtsDeclarationFailsBothProductionGates() = verify(Mutation.FTS_DECLARATION)
 
-    private fun verify(mutation: Mutation, versions: IntRange = 18..37) {
+    private fun verify(mutation: Mutation, versions: IntRange = 18..38) {
         val failures = mutableListOf<String>()
         for (version in versions) {
             for (gate in Gate.entries) {
@@ -206,6 +211,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
             35 -> MIGRATION_34_35
             36 -> MIGRATION_35_36_TIMELINE
             37 -> MIGRATION_36_37_KEYCHAIN
+            38 -> MIGRATION_37_38_PRODUCTION
             else -> error("数据库测试没有对应的生产迁移")
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)

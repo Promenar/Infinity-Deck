@@ -218,7 +218,7 @@ class InfinityDatabaseBaselineTest {
             .allowMainThreadQueries()
             .build()
 
-    private fun exportedSchema(version: Int = 37): ExportedSchema {
+    private fun exportedSchema(version: Int = 38): ExportedSchema {
         val file = File("app/schemas/com.promenar.infinity.data.local.db.InfinityDatabase/$version.json")
         assertThat(file.isFile).isTrue()
         val database = Json.parseToJsonElement(file.readText()).jsonObject
@@ -261,8 +261,8 @@ class InfinityDatabaseBaselineTest {
         database: SupportSQLiteDatabase,
         schema: ExportedSchema,
     ) {
-        assertThat(schema.version).isEqualTo(37)
-        assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(37L)
+        assertThat(schema.version).isEqualTo(38)
+        assertThat(database.longQuery("PRAGMA user_version")).isEqualTo(38L)
         assertThat(database.longQuery("PRAGMA foreign_keys")).isEqualTo(1L)
 
         val runtimeTables = database.stringColumnQuery(

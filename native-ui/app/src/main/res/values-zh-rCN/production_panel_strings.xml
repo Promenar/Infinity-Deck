@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_panel_title">制作</string>
+    <string name="production_panel_action_failed">操作失败</string>
+    <string name="production_panel_empty">暂无制作项目</string>
+    <string name="production_panel_tab_overview">总览</string>
+    <string name="production_panel_tab_script">剧本</string>
+    <string name="production_panel_tab_assets">资产</string>
+    <string name="production_panel_tab_storyboard">分镜</string>
+    <string name="production_panel_kind_film">电影</string>
+    <string name="production_panel_kind_series">剧集</string>
+    <plurals name="production_panel_episode_count">
+        <item quantity="other">%d 集</item>
+    </plurals>
+    <plurals name="production_panel_shot_count">
+        <item quantity="other">%d 个镜头</item>
+    </plurals>
+    <plurals name="production_panel_asset_usage">
+        <item quantity="other">%d 个镜头引用</item>
+    </plurals>
+    <string name="production_panel_locked_progress">已定 %1$d/%2$d</string>
+    <string name="production_panel_episode_number">第 %d 集</string>
+    <string name="production_panel_scene_number">第 %d 场</string>
+    <string name="production_panel_seconds">%s 秒</string>
+    <string name="production_panel_anchor_at">%s 秒处</string>
+    <string name="production_panel_version">v%d</string>
+
+    <string name="production_panel_stage_script">剧本</string>
+    <string name="production_panel_stage_visual_dev">视觉开发</string>
+    <string name="production_panel_stage_storyboard">分镜</string>
+    <string name="production_panel_stage_animatic">动态预演</string>
+    <string name="production_panel_stage_generation">生成</string>
+    <string name="production_panel_stage_sound">声音</string>
+    <string name="production_panel_stage_edit">剪辑</string>
+
+    <string name="production_panel_stage_not_started">未开始</string>
+    <string name="production_panel_stage_in_progress">进行中</string>
+    <string name="production_panel_stage_locked">已锁定</string>
+    <string name="production_panel_stage_skipped">已跳过</string>
+
+    <string name="production_panel_shot_todo">待生成</string>
+    <string name="production_panel_shot_generating">生成中</string>
+    <string name="production_panel_shot_review">待审</string>
+    <string name="production_panel_shot_locked">已定</string>
+    <string name="production_panel_shot_redo">重做</string>
+
+    <string name="production_panel_asset_draft">草稿</string>
+    <string name="production_panel_asset_review">待审</string>
+    <string name="production_panel_asset_locked">已定</string>
+    <string name="production_panel_asset_redo">打回</string>
+
+    <string name="production_panel_asset_all">全部</string>
+    <string name="production_panel_asset_character">角色</string>
+    <string name="production_panel_asset_location">场景</string>
+    <string name="production_panel_asset_prop">道具</string>
+    <string name="production_panel_asset_style">风格</string>
+
+    <string name="production_panel_role_first_frame">首帧</string>
+    <string name="production_panel_role_last_frame">尾帧</string>
+    <string name="production_panel_role_anchor">锚点</string>
+    <string name="production_panel_role_reference">参考</string>
+
+    <string name="production_panel_mode_text">文生</string>
+    <string name="production_panel_mode_first_frame">首帧</string>
+    <string name="production_panel_mode_first_last">首尾帧</string>
+    <string name="production_panel_mode_reference">参考</string>
+
+    <string name="production_panel_preview_keyframe">关键帧</string>
+    <string name="production_panel_preview_draft_clip">低清试片</string>
+    <string name="production_panel_preview_text_card">文字卡</string>
+
+    <string name="production_panel_section_stages">阶段</string>
+    <string name="production_panel_section_pending">待处理</string>
+    <string name="production_panel_section_redo">待重做</string>
+    <string name="production_panel_section_episodes">剧集</string>
+    <string name="production_panel_section_bible">故事圣经</string>
+    <string name="production_panel_section_takes">候选</string>
+    <string name="production_panel_section_inputs">输入</string>
+    <string name="production_panel_section_prompt">提示词</string>
+    <string name="production_panel_section_preview">预演</string>
+    <string name="production_panel_section_agent_note">智能体说明</string>
+    <string name="production_panel_section_user_note">批注</string>
+    <string name="production_panel_section_versions">版本</string>
+    <string name="production_panel_nothing_pending">无待处理</string>
+    <string name="production_panel_no_takes">暂无候选</string>
+    <string name="production_panel_no_prompt">暂无提示词</string>
+    <string name="production_panel_no_script">暂无剧本</string>
+    <string name="production_panel_no_assets">暂无资产</string>
+    <string name="production_panel_no_shots">暂无镜头</string>
+
+    <string name="production_panel_lock_script">锁定剧本</string>
+    <string name="production_panel_unlock_script">解锁剧本</string>
+    <string name="production_panel_lock_storyboard">锁定分镜</string>
+    <string name="production_panel_unlock_storyboard">解锁分镜</string>
+    <string name="production_panel_select">选定</string>
+    <string name="production_panel_redo">重做</string>
+    <string name="production_panel_unlock">解锁</string>
+    <string name="production_panel_edit">编辑</string>
+    <string name="production_panel_save">保存</string>
+    <string name="production_panel_approve">通过</string>
+    <string name="production_panel_reject">打回</string>
+    <string name="production_panel_back">返回</string>
+    <string name="production_panel_stage_menu">阶段状态</string>
+    <string name="production_panel_selected">已选</string>
+    <string name="production_panel_take_number">候选 %d</string>
+
+    <string name="production_panel_redo_title">重做镜头</string>
+    <string name="production_panel_reject_title">打回资产</string>
+    <string name="production_panel_reason">原因</string>
+    <string name="production_panel_prompt_title">编辑提示词</string>
+
+    <string name="production_panel_manifest_write_failed">清单写入失败：%s</string>
+    <string name="production_panel_manifest_external">清单文件已在外部修改</string>
+    <string name="production_panel_manifest_invalid">清单文件无法读取：%s</string>
+    <string name="production_panel_manifest_adopt">采用文件</string>
+    <string name="production_panel_manifest_overwrite">覆盖文件</string>
+    <string name="production_panel_manifest_adopt_title">采用清单文件？</string>
+    <string name="production_panel_manifest_adopt_body">面板数据将替换为文件内容。</string>
+    <string name="production_panel_manifest_overwrite_title">覆盖清单文件？</string>
+    <string name="production_panel_manifest_overwrite_body">清单文件将按面板数据重写。</string>
+</resources>

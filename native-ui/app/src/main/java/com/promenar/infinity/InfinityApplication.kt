@@ -1278,6 +1278,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             kgProvider = kgProvider,
             taskRepository = taskRepository,
             stateBoardRepository = stateBoardRepository,
+            productionRepository = productionRepository,
             longTermMemoryRepository = longTermMemoryRepository,
             longTermMemoryAccess = longTermMemoryAccess,
             onEmbeddingNotConfigured = embeddingSetupHint::onEmbeddingNotConfigured,
@@ -1371,6 +1372,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             tailnetGate = tailnetConnectGate,
             composerQueueStore = composerQueueStore,
             stateBoardRepository = stateBoardRepository,
+            productionRepository = productionRepository,
             runModeCheck = ::checkSessionRunMode,
             linuxFiles = linuxSessionFiles,
             askUserLedger = askUserLedger,
@@ -1844,6 +1846,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
     val stateBoardRepository by lazy { com.promenar.infinity.data.repository.StateBoardRepository(database) }
+    val productionRepository by lazy {
+        com.promenar.infinity.data.repository.ProductionRepository(database, com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(workspaceRepository, fileOperationRepository, externalFolderManager, workspaceMediaResolver))
+    }
 
     val taskRepository: com.promenar.infinity.domain.repository.ITaskRepository by lazy {
         TaskRepository(database.taskNodeDao(), database)
@@ -2001,6 +2006,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.StateUpdateSkill(stateBoardRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.StateGetSkill(stateBoardRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.StateRemoveSkill(stateBoardRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionDefineSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionAttachSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasUpdateSkill(canvasStore))

@@ -44,6 +44,8 @@ data class ContextBuilderResult(
     val turnContext: String = "",
     /** 与系统提示原文对应的真实段落边界，仅供本地上下文估算使用。 */
     val systemPromptSections: List<com.promenar.infinity.data.generation.ContextPromptSection> = emptyList(),
+    val productionRevision: Long = 0,
+    val productionId: String? = null,
 )
 
 /** 依赖用户问题的检索结果（联网搜索、文档与记忆、知识图谱），与工具轮次无关。 */
@@ -180,6 +182,7 @@ class ContextBuilder(
     private val longTermMemoryRepository: LongTermMemoryRepository? = null,
     private val longTermMemoryAccess: LongTermMemoryAccess? = null,
     private val projectRulesReader: ProjectRulesReader = ProjectRulesReader(),
+    private val productionRepository: com.promenar.infinity.data.repository.ProductionRepository? = null,
 ) {
     suspend fun buildContext(params: ContextBuilderParams): ContextBuilderResult {
         val frozen = params.cachedTurnContext
@@ -201,6 +204,12 @@ class ContextBuilder(
         } else null
         val stateRevision = if (frozen == null) stateSnapshot?.revision ?: 0 else turnContextMetadata(frozen)?.stateRevision ?: 0
         stateBoardRepository?.recordContextRead(params.sessionId, params.assistantMsgId, stateRevision)
+        val productionSnapshot = if (frozen == null) productionRepository?.get(params.sessionId) else null
+        val productionSeen = productionSnapshot?.production?.id?.let { productionRepository?.lastContextRevision(params.sessionId, it) } ?: 0
+        val productionId = if (frozen == null) productionSnapshot?.production?.id else turnContextMetadata(frozen)?.productionId
+        val productionRevision = if (frozen == null) productionSnapshot?.revision ?: 0 else turnContextMetadata(frozen)?.productionRevision ?: 0
+        val currentProductionId = if (frozen == null) productionId else productionRepository?.get(params.sessionId)?.production?.id
+        if (productionId != null && productionId == currentProductionId) productionRepository?.recordContextRead(params.sessionId, params.assistantMsgId, productionRevision, productionId)
         val memoryContext = if (frozen == null && params.session.options.toolsEnabled && longTermMemoryRepository != null && longTermMemoryAccess != null) {
             try {
                 if (longTermMemoryAccess.isEnabled(params.session)) {
@@ -227,7 +236,7 @@ class ContextBuilder(
         val turnContext = frozen ?: buildTurnContext(params, retrieval, activePlan, memoryContext,
             stateBoardContext(stateSnapshot?.board,
                 params.session.options.toolsEnabled && (params.availableToolNames == null || "state_update" in params.availableToolNames)),
-            stateRevision)
+            stateRevision, productionContext(productionSnapshot, productionSeen), productionRevision, productionId)
 
         return ContextBuilderResult(
             searchContext = retrieval.searchContext,
@@ -240,6 +249,8 @@ class ContextBuilder(
             ragTrace = retrieval.ragTrace,
             retrieval = retrieval,
             stateBoardRevision = stateRevision,
+            productionRevision = productionRevision,
+            productionId = productionId,
             turnContext = turnContext,
             systemPromptSections = systemSections,
         )
@@ -544,6 +555,9 @@ class ContextBuilder(
         memoryContext: String,
         stateContext: String,
         stateRevision: Long,
+        productionContext: String,
+        productionRevision: Long,
+        productionId: String?,
     ): String {
         val body = buildString {
             if (params.session.options.enableTimeInjection) {
@@ -584,12 +598,13 @@ class ContextBuilder(
                 append(stateContext)
                 appendLine("</state_board>")
             }
+            if (productionContext.isNotEmpty()) { appendLine("<production>"); appendLine(productionContext); appendLine("</production>") }
             (listOfNotNull(params.requestedSkill) + params.requestedSkills).distinctBy { it.name }.forEach {
                 append(com.promenar.infinity.ui.chat.manager.skills.SlashSkillActivation.promptSection(it))
             }
         }
         return "<turn_context>\n<snapshot_metadata>${json.encodeToString(TurnContextMetadata(stateRevision, params.assistantMsgId,
-            params.turnConfiguration ?: TurnConfigurationSnapshot(params.agentSystemPrompt, params.sessionCustomPrompt ?: params.session.customPrompt)))}</snapshot_metadata>\n$body</turn_context>"
+            params.turnConfiguration ?: TurnConfigurationSnapshot(params.agentSystemPrompt, params.sessionCustomPrompt ?: params.session.customPrompt), productionRevision, productionId))}</snapshot_metadata>\n$body</turn_context>"
     }
 
     /** 已完成步骤仅保留标题，当前与未完成步骤保留完整说明。 */

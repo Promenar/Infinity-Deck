@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33])
 class LegacyDatabasePromoterCurrentSchemaTest {
     @Test
-    fun `健康v37当前库不因无效历史库被阻断且来源文件保持不变`() {
+    fun `健康v38当前库不因无效历史库被阻断且来源文件保持不变`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("infinity.db")
         context.deleteDatabase("infinity_v2.db")
@@ -25,10 +25,10 @@ class LegacyDatabasePromoterCurrentSchemaTest {
                 .allowMainThreadQueries().build()
             try {
                 val sqlite = room.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(37)
+                assertThat(sqlite.version).isEqualTo(38)
                 sqlite.query("SELECT identity_hash FROM room_master_table WHERE id=42").use {
                     check(it.moveToFirst())
-                    assertThat(it.getString(0)).isEqualTo(com.promenar.infinity.data.local.db.recovery.CURRENT_V37_IDENTITY)
+                    assertThat(it.getString(0)).isEqualTo(com.promenar.infinity.data.local.db.recovery.CURRENT_V38_IDENTITY)
                 }
             } finally { room.close() }
             val legacyBytes = legacy.readBytes()

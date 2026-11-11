@@ -908,7 +908,7 @@ class RoomBackupDataSource(
             val optionalTables = setOf("agent_rule_revisions") + if (validated.manifest.databaseSchemaVersion < 19) KEYCHAIN_TABLES else emptySet()
             return parsed.copy(tables = parsed.tables + optionalTables.filter { it in backupTables() && it !in parsed.tables }.associateWith { emptyList() })
         }
-        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, 18, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, 18, 19, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
         if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
         val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
@@ -924,6 +924,7 @@ class RoomBackupDataSource(
                 !(table in GRAPH_VECTOR_TABLES && validated.manifest.databaseSchemaVersion < 16) &&
                 !(table in TIMELINE_TABLES && validated.manifest.databaseSchemaVersion < 18) &&
                 !(table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) &&
+                !(table in setOf("productions", "session_productions") && validated.manifest.databaseSchemaVersion < 20) &&
                 !(table == "kg_folder_settings" && validated.manifest.databaseSchemaVersion < 15)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
             }
@@ -999,6 +1000,10 @@ class RoomBackupDataSource(
                 } else policy.layer(table, row) !in layers
             }, imported.rows(table))
         }.toMutableMap()
+        // 保留未替换会话仍引用的本地项目，避免只恢复核心层时产生悬空绑定。
+        val projectIds = tables.getValue("productions").map { it.requiredString("id") }.toSet()
+        val neededProjects = tables.getValue("session_productions").map { it.requiredString("production_id") }.toSet() - projectIds
+        tables["productions"] = tables.getValue("productions") + local.rows("productions").filter { it.requiredString("id") in neededProjects }
         // 日期序号跨层共享，保留两端较大值以避免保留文件的名称被复用。
         val localSeq = local.rows("workspace_seq").associateBy { it.requiredString("date_key") }
         tables["workspace_seq"] = tables.getValue("workspace_seq").map { row ->
@@ -1132,15 +1137,19 @@ class RoomBackupDataSource(
 
     private fun parseDatabase(bytes: ByteArray): DatabaseBackupPayload {
         if (bytes.isEmpty()) throw BackupValidationException("恢复包缺少 database.json")
-        val decoded: DatabaseBackupPayload = try {
+        val original: DatabaseBackupPayload = try {
             json.decodeFromString(bytes.toString(Charsets.UTF_8))
         } catch (error: SerializationException) {
             throw BackupValidationException("数据库 payload 无效", error)
         } catch (error: IllegalArgumentException) {
             throw BackupValidationException("数据库 payload 无效", error)
         }
+        val decoded = if (original.schemaVersion in 1..19) {
+            if (listOf("productions", "session_productions").any { original.tables[it].orEmpty().isNotEmpty() }) throw BackupValidationException("历史备份不应包含制作项目数据")
+            original.copy(tables = original.tables + mapOf("productions" to emptyList(), "session_productions" to emptyList()))
+        } else original
         val upgraded = when (decoded.schemaVersion) {
-            DATABASE_SCHEMA_VERSION, 18 -> return filterFolderSettings(decoded.copy(schemaVersion = DATABASE_SCHEMA_VERSION))
+            DATABASE_SCHEMA_VERSION, 18, 19 -> return filterFolderSettings(decoded.copy(schemaVersion = DATABASE_SCHEMA_VERSION))
             17 -> return filterFolderSettings(withTimelineTables(decoded))
             16 -> return filterFolderSettings(withTimelineTables(upgradeRetrievalPermissions(decoded)))
             14, 15 -> decoded
@@ -1401,6 +1410,8 @@ class RoomBackupDataSource(
         validateCompositeUnique(payload, "document_tags", listOf("doc_id", "tag_id"))
         validateUnique(payload, "task_nodes", "id")
         validateUnique(payload, "state_board_versions", "id")
+        validateUnique(payload, "productions", "id")
+        validateUnique(payload, "session_productions", "session_id")
         validateUnique(payload, LONG_TERM_MEMORY_TABLE, "id")
         validateLongTermMemories(payload)
         validateUnique(payload, "custom_skills", "id")
@@ -1421,6 +1432,19 @@ class RoomBackupDataSource(
         val agents = payload.ids("agents", "id")
         val sessions = payload.ids("sessions", "id")
         val messages = payload.ids("messages", "id")
+        val productions = payload.ids("productions", "id")
+        payload.rows("productions").forEach { row ->
+            val production = try {
+                Json { ignoreUnknownKeys = true }.decodeFromString<com.promenar.infinity.data.production.Production>(row.requiredString("snapshot")).also { com.promenar.infinity.data.production.ProductionManifestCodec.validate(it, row.requiredLong("revision")) }
+            } catch (_: Exception) { throw BackupValidationException("制作项目快照无效") }
+            if (production.id != row.requiredString("id") || production.title != row.requiredString("title") || production.rootPath != row.requiredString("root_path") || row.requiredLong("revision") < 0) throw BackupValidationException("制作项目快照与记录不一致")
+        }
+        val activeProductionIds = mutableSetOf<String>()
+        payload.rows("session_productions").forEach { row ->
+            requireReference(row, "session_id", sessions, "制作项目会话")
+            requireReference(row, "production_id", productions, "制作项目")
+            if (row.requiredBoolean("active") && !activeProductionIds.add(row.requiredString("production_id"))) throw BackupValidationException("制作项目存在多个活动会话绑定")
+        }
         val tags = payload.ids("tags", "id")
         val fileIds = payload.ids(FILE_TABLE, "uuid")
         val taskIds = payload.ids("task_nodes", "id")
@@ -1573,9 +1597,9 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        val expectedIdentity = com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[37]?.identityHash
-        if (sqlite.version != 37 || expectedIdentity == null || identityHash != expectedIdentity) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v37")
+        val expectedIdentity = com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[38]?.identityHash
+        if (sqlite.version != 38 || expectedIdentity == null || identityHash != expectedIdentity) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v38")
         }
         backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
@@ -2448,6 +2472,8 @@ class RoomBackupDataSource(
             "document_tags",
             "task_nodes",
             "state_board_versions",
+            "productions",
+            "session_productions",
             LONG_TERM_MEMORY_TABLE,
             "custom_skills",
             "mcp_servers",

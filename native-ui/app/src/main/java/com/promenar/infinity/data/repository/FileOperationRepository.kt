@@ -46,6 +46,9 @@ class FileOperationRepository(
         expectedHash: String,
     ): WriteResult = writeFile(workspaceRootUuid, uuid, newContent, sessionId, expectedHash, exact = true)
 
+    override suspend fun writeProductionManifestAtomic(workspaceRootUuid: String, uuid: String, newContent: String, sessionId: String, expectedHash: String): WriteResult =
+        writeFile(workspaceRootUuid, uuid, newContent, sessionId, expectedHash, exact = true, exactBudget = WorkspaceTextBudget(16_777_216, 16_777_217, 16_777_216))
+
     override suspend fun writeFileAtomic(
         workspaceRootUuid: String,
         uuid: String,
@@ -61,6 +64,7 @@ class FileOperationRepository(
         sessionId: String,
         expectedHash: String,
         exact: Boolean,
+        exactBudget: WorkspaceTextBudget = EXACT_MIRROR_BUDGET,
     ): WriteResult = withSessionWorkspaceAdmission(sessionId, workspaceRootUuid) {
         withContext(Dispatchers.IO) {
         val initial = dao.getActiveByUuid(workspaceRootUuid, uuid)
@@ -75,7 +79,7 @@ class FileOperationRepository(
                 entry.mimeType,
                 newContent.toByteArray(Charsets.UTF_8),
                 WorkspaceTextOperation.WRITE,
-                if (exact) EXACT_MIRROR_BUDGET else WorkspaceTextContentPolicy.budgetFor(WorkspaceTextOperation.WRITE),
+                if (exact) exactBudget else WorkspaceTextContentPolicy.budgetFor(WorkspaceTextOperation.WRITE),
             )
             if (entry.hash != expectedHash) {
                 return@withBoundRoot WriteResult.Conflict(
@@ -86,7 +90,7 @@ class FileOperationRepository(
             }
             val committed = commitContentChange(
                 entry, if (exact) newContent else validated.text, sessionId,
-                if (exact) EXACT_MIRROR_BUDGET else WorkspaceTextContentPolicy.budgetFor(WorkspaceTextOperation.WRITE),
+                if (exact) exactBudget else WorkspaceTextContentPolicy.budgetFor(WorkspaceTextOperation.WRITE),
             )
             val indexTarget = committed ?: entry.currentIndexTargetIfStale()
             val indexQueued = indexTarget == null || publishIndexEvent(workspaceRootUuid, uuid, indexTarget)

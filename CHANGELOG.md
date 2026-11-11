@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- 制作面板（第 1 期）：会话可绑定一个长片或剧集制作项目（项目、季、集、场、镜头、候选，资产库与七个阶段）。智能体用 `production_define`、`production_attach`、`production_get`、`production_update`、`production_remove` 定义与推进项目；面板提供总览、剧本、资产、分镜与镜头详情，用户在其中审片、选定候选、要求重做、打回资产与锁定剧本和分镜。项目存于数据库，并同步到工作区 `<项目目录>/production.json`；清单在应用外被改动时可采用文件或覆盖文件。面板入口随功能面板统一入口接入。
+- 数据库升级到 v38，备份载荷升级到 v20 并包含制作项目。
+- 制作项目限制单个活动会话绑定；强化用户决定、锁定资产和清单采纳时的并发保护。
+
 ## [0.47.0-beta] - 2026-11-11
 
 ### 新增

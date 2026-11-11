@@ -10,6 +10,10 @@ interface IFileOperationRepository {
         expectedHash: String,
     ): WriteResult = writeFileAtomic(workspaceRootUuid, uuid, newContent, sessionId, expectedHash)
 
+    /** 制作清单使用与快照上限匹配的专用写入预算。 */
+    suspend fun writeProductionManifestAtomic(workspaceRootUuid: String, uuid: String, newContent: String, sessionId: String, expectedHash: String): WriteResult =
+        writeFileAtomicExact(workspaceRootUuid, uuid, newContent, sessionId, expectedHash)
+
     suspend fun writeFileAtomic(
         workspaceRootUuid: String,
         uuid: String,
