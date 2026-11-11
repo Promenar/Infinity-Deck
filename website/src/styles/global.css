@@ -298,6 +298,15 @@ footer { border-top: 1px solid var(--line); padding-block: 40px 56px; color: var
 .steps li { counter-increment: step; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; color: var(--ink-2); }
 .steps li::before { content: counter(step); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); color: var(--ice); font-size: 14px; font-variant-numeric: tabular-nums; }
 .verify { display: grid; gap: 10px; margin-top: 8px; }
+.pets { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 14px; }
+.pets li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 18px; align-items: start; padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255, 255, 255, .02); }
+.pets img { width: 96px; height: 96px; border-radius: 16px; background: var(--card-2); object-fit: contain; }
+.pet-b b { display: block; font-size: 19px; font-weight: 500; color: var(--ink); }
+.pet-b dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 10px 0 14px; font-size: 14px; }
+.pet-b dt { color: var(--ink-3); }
+.pet-b dd { margin: 0; color: var(--ink-2); min-width: 0; }
+.pet-b code { font-size: 12px; word-break: break-all; }
+@media (max-width: 520px) { .pets li { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; padding: 14px; } .pets img { width: 64px; height: 64px; } }
 .verify div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; align-items: center; }
 .verify span { font-size: 14px; color: var(--ink-2); white-space: nowrap; }
 .verify pre { margin: 0; font: 400 13.5px/1.5 var(--f-mono); background: var(--card); border: 1px solid #1E262C; border-radius: 12px; padding: 10px 14px; overflow-x: auto; color: var(--ink); }

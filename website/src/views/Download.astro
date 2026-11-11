@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import DownloadPanel from '../components/DownloadPanel.astro';
 import { strings, GITHUB } from '../i18n.mjs';
 import { getRelease } from '../lib/release-data.mjs';
+import { PETS } from '../data/pets.mjs';
 
 interface Props { locale: 'zh' | 'en' }
 const { locale } = Astro.props;
@@ -18,6 +19,27 @@ const file = release.apk.name;
       <section>
         <h2>{t.stepsTitle}</h2>
         <ol class="steps">{t.steps.map(s => <li>{s}</li>)}</ol>
+      </section>
+      <section id="pets">
+        <h2>{t.petsTitle}</h2>
+        <p>{t.petsBody}</p>
+        <ul class="pets">
+          {PETS.map(p => (
+            <li>
+              <img src={`/pets/${p.thumb}`} alt="" width="96" height="96" loading="lazy" decoding="async">
+              <div class="pet-b">
+                <b>{p.name}</b>
+                <dl>
+                  <dt>{t.petVersion}</dt><dd>{p.version}</dd>
+                  <dt>{t.petSize}</dt><dd>{(p.size / 1048576).toFixed(1)} MB</dd>
+                  <dt>{t.petLicense}</dt><dd>{t.petLicenseValue}</dd>
+                  <dt>SHA-256</dt><dd><code>{p.sha256}</code></dd>
+                </dl>
+                <a class="btn btn-ghost btn-sm" href={`/pets/${p.file}`} download={p.file}>{t.petDownload}</a>
+              </div>
+            </li>
+          ))}
+        </ul>
       </section>
       <section>
         <h2>{t.verifyTitle}</h2>

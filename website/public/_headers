@@ -4,6 +4,14 @@
 /media/*
   Cache-Control: public, max-age=604800
 
+/pets/*.idpet
+  Content-Type: application/octet-stream
+  Content-Disposition: attachment
+  Cache-Control: public, max-age=604800
+
+/pets/*.webp
+  Cache-Control: public, max-age=604800
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

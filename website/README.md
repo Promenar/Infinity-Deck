@@ -20,6 +20,7 @@
 | `src/scripts/` | 客户端动效：星空、开场灯珠、宣传片播放、钉住叙事、502 排障实演、下载区 |
 | `src/data/release-snapshot.json` | 构建时读不到 GitHub API 时使用的 Release 快照 |
 | `public/media/` | 叙事区截图与录屏，由 `scripts/prepare-media.sh` 生成；宣传片 `promo.mp4` 不进 Git |
+| `public/pets/` | 下载页托管的会话宠物包（`.idpet`）与缩略图，登记在 `src/data/pets.mjs` |
 | `public/_headers` | Cloudflare Pages 缓存与安全响应头 |
 
 ## 本地开发
@@ -42,6 +43,7 @@ npm run preview   # 预览 dist/
 
 - **新版本发布**：更新日志与下载区随下一次构建自动更新。GitHub Release 发布后在 `website/` 执行 `npm run snapshot`，把最新 Release 的版本、发布时间、APK 文件名、大小与 SHA-256 写入 `release-snapshot.json`，保证 API 不可用时的回退值不过期；接口或校验文件读取失败时报错，不改文件。
 - **文案**：只改 `src/i18n.mjs`，中英文同步修改。
+- **宠物包**：新版本放进 `public/pets/`（文件名带版本号），在 `src/data/pets.mjs` 更新版本、大小和 SHA-256；`npm test` 对照实际文件与包内 `manifest.json` 校验。
 - **截图与录屏**：素材来自 App 视觉实验室的宣传片工程 `footage/` 目录（不在本仓库）。页面里的媒体地址带内容哈希版本号（`src/lib/asset.mjs`），替换文件后重新发布即可，CDN 与浏览器不会继续用旧文件。
 
 ```bash
