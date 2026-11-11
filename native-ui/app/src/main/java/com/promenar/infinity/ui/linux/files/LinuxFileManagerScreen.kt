@@ -1,6 +1,5 @@
 package com.promenar.infinity.ui.linux.files
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +10,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -36,7 +36,7 @@ import com.promenar.infinity.ui.common.InfinitySearchTopBar
 import com.promenar.infinity.ui.testing.UiTags
 
 /*
- * Linux 文件页：用统一资源管理器浏览 Linux 主目录。
+ * Linux 文件页：用统一资源管理器浏览 Linux 主目录，按设置次级页呈现（标准页头、页头新建），宽屏时在设置右列内推入。
  * 单文件的文本编辑、十六进制、权限与运行仍由 LinuxFileScreen 承担，整个根目录由旧浏览页承担。
  */
 
@@ -64,19 +64,21 @@ fun LinuxFileManagerScreen(
 ) {
     val app = LocalContext.current.applicationContext as InfinityApplication
     val runtime by app.linux.runtime.state.collectAsStateWithLifecycle()
-    Box(
-        Modifier
+    // Surface 同时给出底色与内容色，页头图标与文字随主题取色；底色与设置子页一致。
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .systemBarsPadding()
             .testTag(UiTags.LINUX_FILE_MANAGER),
     ) {
-        if (runtime is LinuxRuntimeState.Ready) {
-            LinuxHomeFileManager(app, onBack, onOpenTerminal, onOpenFile, onBrowseSystemRoot, initialPath)
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                InfinitySearchTopBar(title = stringResource(R.string.linux_files_title), search = null, onBack = onBack)
-                Box(Modifier.fillMaxWidth().weight(1f)) { LinuxNotReady(runtime, onOpenEnvironment) }
+        Box(Modifier.fillMaxSize().systemBarsPadding()) {
+            if (runtime is LinuxRuntimeState.Ready) {
+                LinuxHomeFileManager(app, onBack, onOpenTerminal, onOpenFile, onBrowseSystemRoot, initialPath)
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    InfinitySearchTopBar(title = stringResource(R.string.linux_files_title), search = null, onBack = onBack)
+                    Box(Modifier.fillMaxWidth().weight(1f)) { LinuxNotReady(runtime, onOpenEnvironment) }
+                }
             }
         }
     }
@@ -103,6 +105,7 @@ private fun LinuxHomeFileManager(
     val host = remember(details, terminal, terminalHere, systemRoot, onBack, onOpenTerminal, onOpenFile, onBrowseSystemRoot) {
         FileManagerHostSpec(
             leading = FileManagerLeading.Leave(onBack),
+            settingsPage = true,
             hostActions = listOf(
                 FileHostAction(
                     id = "linux-details", icon = Icons.Rounded.Description, label = details,

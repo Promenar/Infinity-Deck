@@ -47,7 +47,7 @@ internal fun settingsTwoPaneAvailable(widthDp: Int, heightDp: Int): Boolean =
 
 /**
  * 宽屏设置页：左列为设置目录（当前根页面高亮），右列为所选设置页及其下层页面，层级在右列内推进与后退。
- * 右列层级记在 [state] 中，切换标签、窗口重建后按原层级恢复；打开终端、文件等整页内容时经 [onNavigateToSecondary] 交给主导航。
+ * 右列层级记在 [state] 中，切换标签、窗口重建后按原层级恢复；打开终端、知识图谱等整页内容时经 [onNavigateToSecondary] 交给主导航。
  */
 @Composable
 internal fun SettingsTwoPane(

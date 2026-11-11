@@ -9,6 +9,7 @@ import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -27,13 +28,16 @@ import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
 /*
  * 统一资源管理器的截图：单列列表、单列子目录“..”、双栏列表 + 预览、选择模式、目标选择面板、
- * 搜索结果与单列预览页。每组深色中文与浅色英文各一，浅色组同时覆盖 360dp 与 1.3 倍字号。
+ * 搜索结果、单列预览页与设置次级页形态的 Linux 主目录。每组深色中文与浅色英文各一，浅色组同时覆盖 360dp 与 1.3 倍字号。
  */
 
 @Composable
 private fun FilesFrame(mode: InfinityThemeMode, content: @Composable () -> Unit) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
-        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) { content() }
+        // 列表时间以样例时刻为“现在”，同年省略年份的判断不随运行日期变化。
+        CompositionLocalProvider(LocalFileTimeNow provides FileManagerSamples.NOW) {
+            Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) { content() }
+        }
     }
 }
 
@@ -201,6 +205,38 @@ fun fileManagerCompactPreviewLightPreview() = PaneSample(
     FileManagerSamples.controller(english = true).apply {
         state.value.items.firstOrNull { it.name.endsWith(".pdf") }?.let { showPreview(it) }
     }
+}
+
+// ---------- Linux 主目录：设置次级页形态（外屏整页 392dp、内屏设置右列约 456dp） ----------
+
+private fun linuxHost() = FileManagerHostSpec(leading = FileManagerLeading.Leave(onLeave = {}), settingsPage = true)
+
+@PreviewTest
+@Preview(name = "Linux 主目录 外屏 深中392", widthDp = 392, heightDp = 780, locale = "zh-rCN")
+@Composable
+fun fileManagerLinuxHomeDarkPreview() = PaneSample(InfinityThemeMode.DARK, linuxHost()) {
+    FileManagerSamples.linuxController(english = false)
+}
+
+@PreviewTest
+@Preview(name = "Linux 主目录 右列子文件夹 深中456", widthDp = 456, heightDp = 860, locale = "zh-rCN")
+@Composable
+fun fileManagerLinuxSubfolderDarkPreview() = PaneSample(InfinityThemeMode.DARK, linuxHost()) {
+    FileManagerSamples.linuxController(english = false, path = FileManagerSamples.LINUX_PROJECT_PATH)
+}
+
+@PreviewTest
+@Preview(name = "Linux 主目录 空文件夹 浅英360 大字", widthDp = 360, heightDp = 760, locale = "en", fontScale = 1.3f)
+@Composable
+fun fileManagerLinuxEmptyLightPreview() = PaneSample(InfinityThemeMode.LIGHT, linuxHost()) {
+    FileManagerSamples.linuxController(english = true, path = FileManagerSamples.LINUX_EMPTY_PATH)
+}
+
+@PreviewTest
+@Preview(name = "Linux 主目录 外屏 浅英360 大字", widthDp = 360, heightDp = 860, locale = "en", fontScale = 1.3f)
+@Composable
+fun fileManagerLinuxHomeLightPreview() = PaneSample(InfinityThemeMode.LIGHT, linuxHost()) {
+    FileManagerSamples.linuxController(english = true)
 }
 
 // ---------- 复制到 / 移动到 ----------

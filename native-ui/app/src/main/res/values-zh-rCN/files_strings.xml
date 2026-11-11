@@ -26,6 +26,7 @@
     <string name="fm_new_text_file">新建文本文件</string>
     <string name="fm_new_file">新建文件</string>
     <string name="fm_import">从设备导入…</string>
+    <string name="fm_import_short">导入</string>
     <string name="fm_paste_as_file">粘贴剪贴板为文件</string>
     <string name="fm_select">选择</string>
     <string name="fm_select_all">全选</string>

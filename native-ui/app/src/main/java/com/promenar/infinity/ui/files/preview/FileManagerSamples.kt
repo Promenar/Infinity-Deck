@@ -178,6 +178,55 @@ internal object FileManagerSamples {
         )
     }
 
+    const val LINUX_ID = "sample-linux-home"
+    const val LINUX_PROJECT_PATH = "/starlog"
+    const val LINUX_EMPTY_PATH = "/vp-test"
+
+    /** Linux 主目录示例：只有这一个位置，名称取自真机上的常见内容，含一个需要中间省略的长文件名。 */
+    fun linuxController(english: Boolean = false, path: String = "/"): FakeFileManagerController {
+        val n = Names(english)
+        val id = LINUX_ID
+        val location = FileLocation(
+            id = id,
+            kind = FileLocationKind.LINUX_HOME,
+            title = n.t("Linux 主目录", "Linux home"),
+            capabilities = FileLocationCapabilities(writable = true, deletable = true, archive = true, terminal = true),
+        )
+        fun dir(path: String, ageHours: Long) =
+            FileItem(FileRef(id, path), path.substringAfterLast('/'), isDirectory = true, sizeBytes = 0, lastModified = NOW - ageHours * HOUR)
+        fun file(path: String, size: Long, ageHours: Long, mime: String? = null) =
+            FileItem(FileRef(id, path), path.substringAfterLast('/'), isDirectory = false, sizeBytes = size, lastModified = NOW - ageHours * HOUR, mimeType = mime)
+        val root = listOf(
+            dir("/en", 2),
+            dir("/starlog-toml", 8),
+            dir(LINUX_PROJECT_PATH, 9),
+            dir(LINUX_EMPTY_PATH, 4L * 24),
+            file("/" + n.t("助手功能介绍_20261029_135214.pdf", "assistant-feature-overview_20261029_135214.pdf"), 367 * KB + 700, 5L * 24, "application/pdf"),
+            file("/release-notes-2025.md", 9 * KB, 300L * 24, "text/markdown"),
+        )
+        val project = listOf(
+            dir("$LINUX_PROJECT_PATH/src", 9),
+            dir("$LINUX_PROJECT_PATH/tests", 10),
+            file("$LINUX_PROJECT_PATH/starlog-release-notes-2026-11-01-final-draft.md", 4 * KB + 800, 9, "text/markdown"),
+            file("$LINUX_PROJECT_PATH/Cargo.toml", 1 * KB + 200, 10),
+            file("$LINUX_PROJECT_PATH/build.sh", 612, 41, "application/x-sh"),
+            file("$LINUX_PROJECT_PATH/screenshot-0412.png", 218 * KB, 79, "image/png"),
+            file("$LINUX_PROJECT_PATH/starlog-0.3.1.tar.gz", 2 * MB + 400 * KB, 94, "application/gzip"),
+        )
+        return FakeFileManagerController(
+            locations = listOf(location),
+            tree = mapOf(
+                FileRef(id, "/") to root,
+                FileRef(id, LINUX_PROJECT_PATH) to project,
+                FileRef(id, LINUX_EMPTY_PATH) to emptyList(),
+            ),
+            previews = emptyMap(),
+            initialLocationId = id,
+            initialPath = path,
+            clock = { NOW },
+        )
+    }
+
     private fun previews(english: Boolean): Map<String, FilePreview> {
         val n = Names(english)
         val markdown = if (english) {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,9 +36,12 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
@@ -75,6 +79,8 @@ import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.LoadingSize
 import com.promenar.infinity.ui.files.state.FileManagerController
 import com.promenar.infinity.ui.files.state.FileManagerUiState
@@ -103,6 +109,9 @@ private val ListMinWidth = 280.dp
 private val ListMaxWidth = 340.dp
 private const val ListWidthFraction = 0.44f
 private val FabClearance = 96.dp
+
+/** 列表底部留白：有悬浮按钮时让出它的位置，设置次级页形态没有悬浮按钮。 */
+private fun FileManagerHostSpec.listBottomPadding() = if (settingsPage) InfinitySpacing.XLarge else FabClearance
 
 /** 组件内部各部件共用的动作入口：控制器、宿主声明与需要 Context 的系统动作。 */
 @Stable
@@ -286,7 +295,11 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                     modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Small, end = InfinitySpacing.XSmall),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    FileBreadcrumbs(crumbs = state.fullCrumbs(), onGo = controller::goTo, modifier = Modifier.weight(1f))
+                    if (actions.host.settingsPage && state.path == "/") {
+                        FolderCountLine(state, Modifier.weight(1f))
+                    } else {
+                        FileBreadcrumbs(crumbs = state.fullCrumbs(), onGo = controller::goTo, modifier = Modifier.weight(1f))
+                    }
                     FileSortButton(
                         sort = state.sort,
                         onKey = controller::setSortKey,
@@ -315,8 +328,29 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                 FileListBody(page, actions, Modifier.fillMaxSize())
             }
         }
-        if (!state.selecting && state.search == null && state.location != null && state.writable()) {
+        if (!actions.host.settingsPage && !state.selecting && state.search == null && state.location != null && state.writable()) {
             FileManagerFab(actions, Modifier.align(Alignment.BottomEnd).padding(InfinitySpacing.Large))
+        }
+    }
+}
+
+/** 设置次级页形态的根目录：标题已是位置名，目录行改为文件夹与文件计数；首次读取时留空。 */
+@Composable
+private fun FolderCountLine(state: FileManagerUiState, modifier: Modifier) {
+    Box(modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget).padding(start = 4.dp), contentAlignment = Alignment.CenterStart) {
+        if (state.location != null && !(state.loading && state.items.isEmpty())) {
+            val folders = state.items.count { it.isDirectory }
+            val files = state.items.size - folders
+            InfinityMetaLine(
+                segments = listOf(
+                    pluralStringResource(R.plurals.fm_folder_count, folders, folders),
+                    pluralStringResource(R.plurals.fm_file_count, files, files),
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.testTag(UiTags.FM_FOLDER_COUNT),
+            )
         }
     }
 }
@@ -411,8 +445,11 @@ private fun FileListPhaseContent(phase: FileListPhase, state: FileManagerUiState
     }
 }
 
-/** 多选时“..”仍占位、只是不可点，列表不因它消失而整体上移。 */
-private fun FileManagerUiState.showUpEntry(): Boolean = canGoUp
+/**
+ * 多选时“..”仍占位、只是不可点，列表不因它消失而整体上移。
+ * 设置次级页形态由页头返回与路径条回上一级，不显示“..”。
+ */
+internal fun FileManagerUiState.showUpEntry(host: FileManagerHostSpec): Boolean = canGoUp && !host.settingsPage
 
 private const val FOLDER_HEADER_KEY = "host-folder-header"
 
@@ -477,15 +514,15 @@ private fun FileManagerController.openItem(item: FileItem) {
 private fun FileList(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
     val controller = actions.controller
     val highlighted = state.previewItem?.ref
-    LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = FabClearance)) {
-        if (state.showUpEntry()) {
+    LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = actions.host.listBottomPadding())) {
+        if (state.showUpEntry(actions.host)) {
             item(key = "..") { FileUpRow(parentTitle = state.parentFolderTitle(), onClick = controller::goUp, enabled = !state.selecting) }
         }
         state.folderHeaderScope(actions)?.let { (header, scope) ->
             item(key = FOLDER_HEADER_KEY) { header(scope) }
         }
         if (state.items.isEmpty()) {
-            item(key = "empty") { EmptyFolder(state) }
+            item(key = "empty") { EmptyFolder(state, actions) }
         }
         items(state.items, key = { it.ref.listKey() }) { item ->
             FileRow(
@@ -508,18 +545,18 @@ private fun FileGrid(state: FileManagerUiState, actions: FileManagerUiActions, m
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 104.dp),
         modifier = modifier,
-        contentPadding = PaddingValues(start = InfinitySpacing.Medium, end = InfinitySpacing.Medium, top = InfinitySpacing.XSmall, bottom = FabClearance),
+        contentPadding = PaddingValues(start = InfinitySpacing.Medium, end = InfinitySpacing.Medium, top = InfinitySpacing.XSmall, bottom = actions.host.listBottomPadding()),
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
-        if (state.showUpEntry()) {
+        if (state.showUpEntry(actions.host)) {
             item(key = "..") { FileUpTile(onClick = controller::goUp, enabled = !state.selecting) }
         }
         state.folderHeaderScope(actions)?.let { (header, scope) ->
             item(key = FOLDER_HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) { header(scope) }
         }
         if (state.items.isEmpty()) {
-            item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyFolder(state) }
+            item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { EmptyFolder(state, actions) }
         }
         items(state.items, key = { it.ref.listKey() }) { item ->
             FileTile(
@@ -552,11 +589,40 @@ private fun LocationUnavailable(modifier: Modifier) {
 
 private const val LocationSettleMillis = 600L
 
-/** 空目录提示；“会话工作区”汇总根为空时说明绑定项目的会话文件在哪里，避免像是读取失败。 */
+/**
+ * 空目录提示；“会话工作区”汇总根为空时说明绑定项目的会话文件在哪里，避免像是读取失败。
+ * 设置次级页形态没有悬浮按钮，可写目录在提示下给出“新建文件夹”与“导入”。
+ */
 @Composable
-private fun EmptyFolder(state: FileManagerUiState) {
+private fun EmptyFolder(state: FileManagerUiState, actions: FileManagerUiActions) {
     val text = if (state.location?.id == SESSIONS_LOCATION_ID) R.string.fm_empty_sessions else R.string.fm_empty_folder
-    FolderStatusMessage(text = stringResource(text), modifier = Modifier.testTag(UiTags.FM_EMPTY))
+    val offerCreate = actions.host.settingsPage && !state.selecting && state.writable()
+    FolderStatusMessage(
+        text = stringResource(text),
+        icon = if (offerCreate) Icons.Rounded.FolderOpen else Icons.Rounded.FolderOff,
+        modifier = Modifier.testTag(UiTags.FM_EMPTY),
+        action = {
+            if (offerCreate) {
+                InfinityPillRow(modifier = Modifier.padding(top = InfinitySpacing.Large), reverseWhenStacked = false) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.fm_new_folder),
+                        onClick = { actions.openDialog(FileManagerDialog.NewFolder) },
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.CreateNewFolder,
+                        modifier = Modifier.testTag(UiTags.FM_EMPTY_NEW_FOLDER),
+                    )
+                    actions.importFromDevice?.let { launch ->
+                        InfinityPillButton(
+                            text = stringResource(R.string.fm_import_short),
+                            onClick = launch,
+                            icon = Icons.Rounded.UploadFile,
+                            modifier = Modifier.testTag(UiTags.FM_EMPTY_IMPORT),
+                        )
+                    }
+                }
+            }
+        },
+    )
 }
 
 /** 搜索结果：副文字为所在路径，点结果定位到所在文件夹（文件同时打开预览）。 */
@@ -612,24 +678,43 @@ private fun FileManagerFab(actions: FileManagerUiActions, modifier: Modifier) {
             Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.fm_fab))
         }
         InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            MenuAction(Icons.Rounded.CreateNewFolder, R.string.fm_new_folder, UiTags.FM_FAB_NEW_FOLDER) {
-                open = false
-                actions.openDialog(FileManagerDialog.NewFolder)
-            }
-            MenuAction(Icons.AutoMirrored.Rounded.NoteAdd, R.string.fm_new_file, UiTags.FM_FAB_NEW_FILE) {
-                open = false
-                actions.openDialog(FileManagerDialog.NewTextFile)
-            }
-            actions.importFromDevice?.let { launch ->
-                MenuAction(Icons.Rounded.UploadFile, R.string.fm_import, UiTags.FM_FAB_IMPORT) {
-                    open = false
-                    launch()
-                }
-            }
-            MenuAction(Icons.Rounded.ContentPaste, R.string.fm_paste_as_file, UiTags.FM_FAB_PASTE) {
-                open = false
-                actions.pasteClipboard()
-            }
+            FileCreateMenuItems(actions) { open = false }
         }
+    }
+}
+
+/** 设置次级页形态的页头 ＋：菜单与悬浮按钮相同。 */
+@Composable
+internal fun FileCreateButton(actions: FileManagerUiActions) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.FM_NEW)) {
+            Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.fm_fab))
+        }
+        InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            FileCreateMenuItems(actions) { open = false }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.FileCreateMenuItems(actions: FileManagerUiActions, dismiss: () -> Unit) {
+    MenuAction(Icons.Rounded.CreateNewFolder, R.string.fm_new_folder, UiTags.FM_FAB_NEW_FOLDER) {
+        dismiss()
+        actions.openDialog(FileManagerDialog.NewFolder)
+    }
+    MenuAction(Icons.AutoMirrored.Rounded.NoteAdd, R.string.fm_new_file, UiTags.FM_FAB_NEW_FILE) {
+        dismiss()
+        actions.openDialog(FileManagerDialog.NewTextFile)
+    }
+    actions.importFromDevice?.let { launch ->
+        MenuAction(Icons.Rounded.UploadFile, R.string.fm_import, UiTags.FM_FAB_IMPORT) {
+            dismiss()
+            launch()
+        }
+    }
+    MenuAction(Icons.Rounded.ContentPaste, R.string.fm_paste_as_file, UiTags.FM_FAB_PASTE) {
+        dismiss()
+        actions.pasteClipboard()
     }
 }
