@@ -441,11 +441,11 @@ private fun PromptEditorTopBar(
             modifier = Modifier.weight(1f),
         )
         if (views.size > 1) {
-            InfinityCapsuleTabRow(
-                tabs = views.map { InfinityTabItem(title = stringResource(it.labelRes)) },
-                selectedIndex = views.indexOf(view),
-                onTabSelected = { onViewChange(views[it]) },
-                modifier = Modifier.width(if (views.size > 2) 216.dp else 148.dp),
+            InfinitySegmentedControl(
+                segments = views.map { InfinitySegment(it, stringResource(it.labelRes)) },
+                selected = view,
+                onSelect = onViewChange,
+                compact = true,
             )
         }
         if (saveInBar) PromptSaveButton(isSaving = isSaving, onSave = onSave)

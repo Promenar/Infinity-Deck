@@ -237,7 +237,6 @@ fun KnowledgeGraphScreen(
                     if (mode == KgViewMode.DOCUMENT && selectedDocumentId == null) showDocumentSelector = true
                     if (mode == KgViewMode.SESSION && selectedSessionId == null && sessionOptions.isNotEmpty()) showSessionSelector = true
                 },
-                modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
             )
             KnowledgeGraphScopeRow(
                 viewMode = viewMode,

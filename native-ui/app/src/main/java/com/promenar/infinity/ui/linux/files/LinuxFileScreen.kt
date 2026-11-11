@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.linux.files
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -76,12 +78,10 @@ import com.promenar.infinity.domain.linux.LinuxFileEntry
 import com.promenar.infinity.domain.linux.LinuxFileType
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.FolderStatusMessage
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityNavigationHeader
 import com.promenar.infinity.ui.common.InfinityRetryButton
-import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.UnifiedPromptEditor
 import com.promenar.infinity.ui.common.bettboxListGroup
 import com.promenar.infinity.ui.renderer.infinitySyntaxTheme
@@ -198,17 +198,18 @@ internal fun LinuxFileContent(state: LinuxFileUiState, actions: LinuxFileActions
                 },
                 actions = { LinuxFileMoreMenu(state, actions) },
             )
-            InfinityCapsuleTabRow(
+            InfinityPanelTabs(
                 tabs = listOf(
-                    InfinityTabItem(stringResource(R.string.linux_file_tab_content), testTag = "${UiTags.LINUX_FILE_TABS}:content"),
-                    InfinityTabItem(stringResource(R.string.linux_file_tab_hex), testTag = "${UiTags.LINUX_FILE_TABS}:hex"),
-                    InfinityTabItem(stringResource(R.string.linux_file_tab_properties), testTag = "${UiTags.LINUX_FILE_TABS}:properties"),
+                    InfinityPanelTab(LinuxFileTab.CONTENT, stringResource(R.string.linux_file_tab_content), testTag = "${UiTags.LINUX_FILE_TABS}:content"),
+                    InfinityPanelTab(LinuxFileTab.HEX, stringResource(R.string.linux_file_tab_hex), testTag = "${UiTags.LINUX_FILE_TABS}:hex"),
+                    InfinityPanelTab(LinuxFileTab.PROPERTIES, stringResource(R.string.linux_file_tab_properties), testTag = "${UiTags.LINUX_FILE_TABS}:properties"),
                 ),
-                selectedIndex = state.tab.ordinal,
-                onTabSelected = { actions.onSelectTab(LinuxFileTab.entries[it]) },
+                selected = state.tab,
+                onSelect = actions.onSelectTab,
+                contentInset = InfinitySpacing.Large,
+                bleed = InfinitySpacing.Large,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = InfinitySpacing.Small)
+                    .padding(bottom = InfinitySpacing.Small)
                     .testTag(UiTags.LINUX_FILE_TABS),
             )
             AnimatedVisibility(visible = state.loading, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {

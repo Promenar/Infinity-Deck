@@ -148,24 +148,6 @@ data class GitPanelUiState(
     val statusReadAtMillis: Long? = null,
 )
 
-/** 页头状态新鲜度：刷新中优先；读取不足 10 秒视为最新，不显示。 */
-sealed interface GitStatusFreshness {
-    data object Refreshing : GitStatusFreshness
-    data class Seconds(val value: Int) : GitStatusFreshness
-    data class Minutes(val value: Int) : GitStatusFreshness
-}
-
-fun gitStatusFreshness(refreshing: Boolean, readAtMillis: Long?, nowMillis: Long): GitStatusFreshness? {
-    if (refreshing) return GitStatusFreshness.Refreshing
-    readAtMillis ?: return null
-    val seconds = ((nowMillis - readAtMillis) / 1000).coerceAtLeast(0)
-    return when {
-        seconds < 10 -> null
-        seconds < 60 -> GitStatusFreshness.Seconds(seconds.toInt())
-        else -> GitStatusFreshness.Minutes((seconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-    }
-}
-
 data class GitPanelActions(
     val onRefresh: () -> Unit = {},
     val onSelectTab: (GitPanelTab) -> Unit = {},
@@ -176,6 +158,19 @@ data class GitPanelActions(
     /** 作为二级页面时离开 Git 的入口；非空时根层也显示返回按钮。检视器根层由页签与收起按钮离开，为空。 */
     val onExit: (() -> Unit)? = null,
 )
+
+/** 抓取时间按分钟取整，页头每隔这么久重算一次。 */
+const val GIT_FETCH_AGE_TICK_MILLIS = 60_000L
+
+/**
+ * 页头里的上游名：上游分支与本地分支同名时只留远端名（`origin/main` 跟 `main` 显示为 `origin`），
+ * 否则原样显示；没有斜杠的上游也原样显示。
+ */
+fun gitUpstreamLabel(branch: String?, upstream: String): String {
+    val slash = upstream.indexOf('/')
+    if (slash <= 0 || branch.isNullOrEmpty()) return upstream
+    return if (upstream.substring(slash + 1) == branch) upstream.substring(0, slash) else upstream
+}
 
 /** 上次抓取距今：按分钟、小时、天取整，时钟回拨视为刚刚。 */
 sealed interface GitFetchAge {

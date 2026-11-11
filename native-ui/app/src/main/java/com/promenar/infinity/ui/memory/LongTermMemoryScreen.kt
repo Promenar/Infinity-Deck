@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.memory
 
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.InfinitySegment
 import android.app.Application
 import android.text.format.DateUtils
 import androidx.compose.foundation.clickable
@@ -49,13 +51,11 @@ import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.data.memory.LongTermMemory
 import com.promenar.infinity.data.memory.LongTermMemoryKind
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityModalSheet
 import com.promenar.infinity.ui.common.InfinityPageSearch
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinitySheetHeight
-import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -324,13 +324,12 @@ internal fun LongTermMemoryEditForm(
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
     ) {
         Text(stringResource(R.string.ltm_edit_title), style = MaterialTheme.typography.titleLarge)
-        InfinityCapsuleTabRow(
-            tabs = LongTermMemoryKind.entries.map {
-                InfinityTabItem(title = stringResource(it.shortLabelRes), testTag = UiTags.ltmKind(it.name))
+        InfinitySegmentedControl(
+            segments = LongTermMemoryKind.entries.map {
+                InfinitySegment(it, stringResource(it.shortLabelRes), tag = UiTags.ltmKind(it.name))
             },
-            selectedIndex = LongTermMemoryKind.entries.indexOf(kind),
-            onTabSelected = { kind = LongTermMemoryKind.entries[it] },
-            itemRole = Role.RadioButton,
+            selected = kind,
+            onSelect = { kind = it },
         )
         OutlinedTextField(
             value = title,

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.chat.components
 
+import com.promenar.infinity.ui.common.InfinityPanelTab
+import com.promenar.infinity.ui.common.InfinityPanelTabs
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Dp
@@ -448,59 +450,29 @@ private fun RunDetailTabs(
     activity: AgentActivityState?,
     onSelect: (RunDetailTab) -> Unit,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(24.dp))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        val haptics = LocalInfinityHaptics.current
-        tabs.forEach { tab ->
-            val active = tab == selected
-            val (label, count) = when (tab) {
-                RunDetailTab.PLAN -> stringResource(R.string.run_detail_tab_plan) to plan?.let { "${it.doneCount}/${it.totalCount}" }
-                RunDetailTab.BACKGROUND -> stringResource(R.string.run_detail_tab_background) to
-                    activity?.let { (it.jobs.size + it.schedules.size).takeIf { n -> n > 0 }?.toString() }
-                RunDetailTab.STATE -> stringResource(R.string.run_detail_tab_state) to null
+    InfinityPanelTabs(
+        tabs = tabs.map { tab ->
+            when (tab) {
+                RunDetailTab.PLAN -> InfinityPanelTab(
+                    tab,
+                    stringResource(R.string.run_detail_tab_plan),
+                    count = plan?.let { "${it.doneCount}/${it.totalCount}" },
+                    testTag = UiTags.runSheetTab(tab.name),
+                )
+                RunDetailTab.BACKGROUND -> InfinityPanelTab(
+                    tab,
+                    stringResource(R.string.run_detail_tab_background),
+                    count = activity?.let { (it.jobs.size + it.schedules.size).takeIf { n -> n > 0 }?.toString() },
+                    testTag = UiTags.runSheetTab(tab.name),
+                )
+                RunDetailTab.STATE -> InfinityPanelTab(tab, stringResource(R.string.run_detail_tab_state), testTag = UiTags.runSheetTab(tab.name))
             }
-            // 由 Surface 承接点击，按压反馈沿 20dp 胶囊裁剪，选中页签的阴影不被外层裁掉。
-            // 页签条连同 4dp 内衬已有 48dp 高，不再让 Surface 把每个页签撑到最小触控尺寸。
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                Surface(
-                    selected = active,
-                    onClick = { haptics.select(active); onSelect(tab) },
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (active) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shadowElevation = if (active) 1.dp else 0.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 40.dp)
-                        .semantics { role = Role.Tab }
-                        .testTag(UiTags.runSheetTab(tab.name)),
-                ) {
-                    Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 10.dp)) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                        count?.let {
-                            Text(
-                                " $it",
-                                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+        },
+        selected = selected ?: tabs.first(),
+        onSelect = onSelect,
+        contentInset = 20.dp,
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+    )
 }
 
 // 两个按钮各占一半宽度、等高；窄的检视器与大字号下文字可换成两行，不截断。

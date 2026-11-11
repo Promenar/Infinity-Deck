@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.rag
 
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -10,7 +12,6 @@ import com.promenar.infinity.ui.theme.InfinityMotion
 import android.content.ClipData
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityIdentifierText
-import com.promenar.infinity.ui.common.InfinityTabSwitcher
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
@@ -924,32 +925,26 @@ private fun ModeSelector(
         add(DocEditorViewMode.PREVIEW to Icons.Rounded.Visibility)
         if (splitAvailable) add(DocEditorViewMode.SPLIT to Icons.Rounded.VerticalSplit)
     }
-    InfinityTabSwitcher(
-        itemCount = modes.size,
-        selectedIndex = modes.indexOfFirst { it.first == selectedMode },
-        onTabSelected = { index -> onModeChange(modes[index].first) },
-        modifier = modifier.testTagCompat(UiTags.DOC_EDITOR_MODE_SELECTOR),
-        tabModifier = { index -> Modifier.testTagCompat(modeTag(modes[index].first)) },
-    ) { index, _, contentColor ->
-        val (mode, icon) = modes[index]
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
-            Icon(imageVector = icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = stringResource(
+    InfinitySegmentedControl(
+        segments = modes.map { (mode, icon) ->
+            InfinitySegment(
+                value = mode,
+                label = stringResource(
                     when (mode) {
                         DocEditorViewMode.EDIT -> R.string.doc_editor_edit
                         DocEditorViewMode.PREVIEW -> R.string.doc_editor_preview
                         DocEditorViewMode.SPLIT -> R.string.doc_editor_split
                     },
                 ),
-                style = MaterialTheme.typography.labelLarge,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                tag = modeTag(mode),
+                leading = { Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
             )
-        }
-    }
+        },
+        selected = selectedMode,
+        onSelect = onModeChange,
+        fillWidth = true,
+        modifier = modifier.testTagCompat(UiTags.DOC_EDITOR_MODE_SELECTOR),
+    )
 }
 
 private fun modeTag(mode: DocEditorViewMode): String = when (mode) {

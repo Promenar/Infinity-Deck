@@ -61,10 +61,9 @@
     <string name="git_panel_error_unsafe_path">This path can\'t be shown safely</string>
     <string name="git_panel_error_failed">Couldn\'t read Git data</string>
     <string name="git_panel_tab_branches">Branches</string>
-    <string name="git_panel_tracking">Tracking %1$s</string>
+    <string name="git_panel_synced">Up to date</string>
     <string name="git_panel_no_upstream">No upstream</string>
     <string name="git_panel_upstream_missing">Upstream %1$s not found locally</string>
-    <string name="git_panel_head">HEAD %1$s</string>
     <string name="git_panel_fetch_never">Never fetched</string>
     <string name="git_panel_fetch_just_now">Fetched just now</string>
     <plurals name="git_panel_fetch_minutes">
@@ -96,12 +95,4 @@
     </plurals>
     <string name="git_top_bar_cd">Open Git panel: %1$s</string>
     <string name="git_panel_status_refreshing">Refreshing</string>
-    <plurals name="git_panel_status_seconds">
-        <item quantity="one">Status %d second ago</item>
-        <item quantity="other">Status %d seconds ago</item>
-    </plurals>
-    <plurals name="git_panel_status_minutes">
-        <item quantity="one">Status %d minute ago</item>
-        <item quantity="other">Status %d minutes ago</item>
-    </plurals>
 </resources>
