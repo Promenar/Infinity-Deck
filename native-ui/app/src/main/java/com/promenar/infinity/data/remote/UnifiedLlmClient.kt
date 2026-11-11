@@ -46,6 +46,7 @@ data class StreamConfig(
     val assistantId: String = "",
     val topicId: String = "",
     val sessionId: String? = null,
+    internal val latencyTrace: ModelLatencyTrace? = null,
 )
 
 class UnifiedLlmClient(
@@ -96,6 +97,7 @@ class UnifiedLlmClient(
             webSearch = finalParams.enableWebSearch || config.enableWebSearch,
             streamTimeout = finalParams.streamTimeout,
             sessionHeaders = resolveSessionRequestHeaders(providerConfig.sessionHeaderName, config.sessionId, sessionIdentifier),
+            latencyTrace = config.latencyTrace,
         )
 
         val lifecycleHandler = ToolCallLifecycleHandler(

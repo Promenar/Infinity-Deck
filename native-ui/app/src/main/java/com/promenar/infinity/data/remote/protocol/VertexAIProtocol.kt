@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.remote.protocol
 
 import com.promenar.infinity.data.remote.applySessionRequestHeaders
+import com.promenar.infinity.data.remote.observeFirstByte
 
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
@@ -102,63 +103,49 @@ class VertexAIProtocol(
             return@channelFlow
         }
 
-        val response: HttpResponse
         try {
-            response = httpClient.post(endpoint) {
+            httpClient.preparePost(endpoint) {
                 applySessionRequestHeaders(request.sessionHeaders)
                 applyModelTimeout(ModelTimeoutKind.LLM)
                 contentType(ContentType.Application.Json)
                 header("Authorization", "Bearer $token")
                 setBody(buildRequestBody(request))
+                request.latencyTrace?.dispatched()
+            }.execute { response ->
+                if (!response.status.isSuccess()) {
+                    val errorBody = try {
+                        response.bodyAsText()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        ""
+                    }
+                    val normalized = ErrorNormalizer.normalize(HttpStatusException(response.status.value, errorBody))
+                    send(ProtocolContextLimit.fromHttp(protocolType, response.status.value, errorBody)
+                        ?: normalized.toStreamChunkError())
+                    return@execute
+                }
+                if (response.contentType()?.match(ContentType.Text.Html) == true) {
+                    send(StreamChunk.Error(
+                        code = com.promenar.infinity.domain.generation.GenerationFailureCode.SERVER,
+                        retryable = false,
+                        technical = "Received HTML response instead of JSON stream.",
+                    ))
+                    return@execute
+                }
+                val channel = response.body<ByteReadChannel>()
+                activeChannel = channel
+                try {
+                    channel.observeFirstByte(request.latencyTrace)
+                    consumeGeminiStream(channel = channel, state = GeminiStreamState(), json = json, label = "Vertex")
+                } finally {
+                    activeChannel = null
+                }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            send(normalizeError(e))
-            return@channelFlow
-        }
-
-        if (!response.status.isSuccess()) {
-            val errorBody = try {
-                response.bodyAsText()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                ""
-            }
-            val normalized = ErrorNormalizer.normalize(
-                HttpStatusException(response.status.value, errorBody)
-            )
-            send(ProtocolContextLimit.fromHttp(protocolType, response.status.value, errorBody)
-                ?: normalized.toStreamChunkError())
-            return@channelFlow
-        }
-
-        response.contentType()?.let { ct ->
-            if (ct.match(ContentType.Text.Html)) {
-                send(StreamChunk.Error(
-                    code = com.promenar.infinity.domain.generation.GenerationFailureCode.SERVER,
-                    retryable = false,
-                    technical = "Received HTML response instead of JSON stream.",
-                ))
-                return@channelFlow
-            }
-        }
-        val channel = response.body<ByteReadChannel>()
-        activeChannel = channel
-        try {
-            consumeGeminiStream(
-                channel = channel,
-                state = GeminiStreamState(),
-                json = json,
-                label = "Vertex",
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            send(normalizeError(e))
-        } finally {
-            activeChannel = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            send(normalizeError(error))
         }
     }
 

@@ -3,6 +3,7 @@ package com.promenar.infinity.data.generation
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.remote.protocol.*
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class PromptPrefixFingerprintTest {
     private val tool = ProtocolTool(function = ProtocolToolFunction("read", "读取", "{}"))
@@ -37,5 +38,16 @@ class PromptPrefixFingerprintTest {
         assertThat(tracker.observe("秘密会话", request)).contains("historyPrefix=1")
         tracker.observe("另一个", request)
         assertThat(tracker.observe("秘密会话", request)).contains("toolsChanged=null")
+    }
+    @Test fun `发行模式跳过指纹计算和日志`() = runBlocking {
+        var calculations = 0
+        val logs = mutableListOf<String>()
+        logPrefixDiagnostic(false, { calculations++; "fingerprint" }, { logs.add(it) })
+        assertThat(calculations).isEqualTo(0)
+        assertThat(logs).isEmpty()
+        logPrefixDiagnostic(true, { calculations++; "fingerprint" }, { logs.add(it) })
+        assertThat(calculations).isEqualTo(1)
+        assertThat(logs).containsExactly("fingerprint")
+        Unit
     }
 }
