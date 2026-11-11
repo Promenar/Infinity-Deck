@@ -90,7 +90,7 @@
     <string name="linux_file_run">Run in terminal</string>
     <string name="linux_file_edit">Edit</string>
     <string name="linux_file_truncated">Read-only · first %1$s of %2$s</string>
-    <string name="linux_file_binary">Binary file. View it on the Hex tab.</string>
+    <string name="linux_file_binary">Binary file</string>
     <string name="linux_file_empty">Empty file</string>
     <string name="linux_file_load_failed">Couldn\'t read this file: %1$s</string>
     <string name="linux_file_hex_page">Page %1$d of %2$d</string>

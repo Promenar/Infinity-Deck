@@ -10,12 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,11 +30,12 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -59,6 +60,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -76,11 +78,11 @@ import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.linux.LinuxFileEntry
 import com.promenar.infinity.domain.linux.LinuxFileType
-import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.FolderStatusMessage
+import com.promenar.infinity.ui.common.InfinityBackButton
+import com.promenar.infinity.ui.common.LocalInfinitySettingsPaneRoot
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
-import com.promenar.infinity.ui.common.InfinityNavigationHeader
 import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.UnifiedPromptEditor
 import com.promenar.infinity.ui.common.bettboxListGroup
@@ -177,84 +179,123 @@ internal data class LinuxFileActions(
 @Composable
 internal fun LinuxFileContent(state: LinuxFileUiState, actions: LinuxFileActions, modifier: Modifier = Modifier) {
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .padding(horizontal = InfinitySpacing.Large),
-        ) {
-            InfinityNavigationHeader(
-                title = state.name,
-                onBack = actions.onBack,
-                titleStyle = MaterialTheme.typography.titleLarge.copy(fontFamily = InfinityMonospace),
-                supporting = {
-                    InfinityHeaderTitle(
-                        text = state.path,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        alignEnd = true,
-                        heading = false,
-                    )
-                },
-                actions = { LinuxFileMoreMenu(state, actions) },
-            )
-            InfinityPanelTabs(
-                tabs = listOf(
-                    InfinityPanelTab(LinuxFileTab.CONTENT, stringResource(R.string.linux_file_tab_content), testTag = "${UiTags.LINUX_FILE_TABS}:content"),
-                    InfinityPanelTab(LinuxFileTab.HEX, stringResource(R.string.linux_file_tab_hex), testTag = "${UiTags.LINUX_FILE_TABS}:hex"),
-                    InfinityPanelTab(LinuxFileTab.PROPERTIES, stringResource(R.string.linux_file_tab_properties), testTag = "${UiTags.LINUX_FILE_TABS}:properties"),
-                ),
-                selected = state.tab,
-                onSelect = actions.onSelectTab,
-                contentInset = InfinitySpacing.Large,
-                bleed = InfinitySpacing.Large,
-                modifier = Modifier
-                    .padding(bottom = InfinitySpacing.Small)
-                    .testTag(UiTags.LINUX_FILE_TABS),
-            )
-            AnimatedVisibility(visible = state.loading, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-                LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.XSmall))
-            }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                val error = state.error
-                if (error != null) {
-                    FolderStatusMessage(text = stringResource(R.string.linux_file_load_failed, linuxErrorText(error)), error = true) {
-                        InfinityRetryButton(onClick = actions.onReload)
-                    }
-                } else if (state.entry != null) {
-                    AnimatedContent(
-                        targetState = state.tab,
-                        transitionSpec = { InfinityMotion.sharedAxisX(forward = targetState.ordinal > initialState.ordinal) },
-                        label = "linux_file_tab",
-                    ) { tab ->
-                        when (tab) {
-                            LinuxFileTab.CONTENT -> LinuxContentTab(state, actions)
-                            LinuxFileTab.HEX -> LinuxHexTab(state, actions)
-                            LinuxFileTab.PROPERTIES -> LinuxPropertiesTab(state)
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            LinuxFileTopBar(state, actions)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = InfinitySpacing.Large),
+            ) {
+                LinuxFilePathLine(state.path)
+                InfinityPanelTabs(
+                    tabs = listOf(
+                        InfinityPanelTab(LinuxFileTab.CONTENT, stringResource(R.string.linux_file_tab_content), testTag = "${UiTags.LINUX_FILE_TABS}:content"),
+                        InfinityPanelTab(LinuxFileTab.HEX, stringResource(R.string.linux_file_tab_hex), testTag = "${UiTags.LINUX_FILE_TABS}:hex"),
+                        InfinityPanelTab(LinuxFileTab.PROPERTIES, stringResource(R.string.linux_file_tab_properties), testTag = "${UiTags.LINUX_FILE_TABS}:properties"),
+                    ),
+                    selected = state.tab,
+                    onSelect = actions.onSelectTab,
+                    contentInset = InfinitySpacing.Large,
+                    bleed = InfinitySpacing.Large,
+                    modifier = Modifier
+                        .padding(bottom = InfinitySpacing.Small)
+                        .testTag(UiTags.LINUX_FILE_TABS),
+                )
+                AnimatedVisibility(visible = state.loading, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.XSmall))
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    val error = state.error
+                    if (error != null) {
+                        FolderStatusMessage(text = stringResource(R.string.linux_file_load_failed, linuxErrorText(error)), error = true) {
+                            InfinityRetryButton(onClick = actions.onReload)
+                        }
+                    } else if (state.entry != null) {
+                        AnimatedContent(
+                            targetState = state.tab,
+                            transitionSpec = { InfinityMotion.sharedAxisX(forward = targetState.ordinal > initialState.ordinal) },
+                            label = "linux_file_tab",
+                        ) { tab ->
+                            when (tab) {
+                                LinuxFileTab.CONTENT -> LinuxContentTab(state, actions)
+                                LinuxFileTab.HEX -> LinuxHexTab(state, actions)
+                                LinuxFileTab.PROPERTIES -> LinuxPropertiesTab(state)
+                            }
                         }
                     }
                 }
-            }
-            val entry = state.entry
-            if (entry != null && entry.type != LinuxFileType.DIRECTORY) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Medium),
-                ) {
-                    if (state.canRun) {
-                        FilledTonalButton(
-                            onClick = actions.onRun,
-                            modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.LINUX_FILE_RUN),
-                        ) { Text(stringResource(R.string.linux_file_run), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                val entry = state.entry
+                if (entry != null && entry.type != LinuxFileType.DIRECTORY) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Medium),
+                    ) {
+                        if (state.canRun) {
+                            FilledTonalButton(
+                                onClick = actions.onRun,
+                                modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.LINUX_FILE_RUN),
+                            ) { Text(stringResource(R.string.linux_file_run), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        }
+                        Button(
+                            onClick = actions.onEdit,
+                            enabled = state.canEdit,
+                            modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.LINUX_FILE_EDIT),
+                        ) { Text(stringResource(R.string.linux_file_edit), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Button(
-                        onClick = actions.onEdit,
-                        enabled = state.canEdit,
-                        modifier = Modifier.weight(1f).heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag(UiTags.LINUX_FILE_EDIT),
-                    ) { Text(stringResource(R.string.linux_file_edit), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
+    }
+}
+
+/**
+ * 与设置子页同一顶栏：返回 · 文件名 · 更多。文件名单行，放不下时省略中间、保留扩展名；
+ * 完整路径在顶栏下方的 [LinuxFilePathLine]。右列根层不画返回（本页不会是根层，保持与其它设置页一致的判断）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LinuxFileTopBar(state: LinuxFileUiState, actions: LinuxFileActions) {
+    val scheme = MaterialTheme.colorScheme
+    TopAppBar(
+        title = {
+            Text(
+                text = state.name,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
+                modifier = Modifier.fillMaxWidth().semantics { heading() }.testTag(UiTags.LINUX_FILE_TITLE),
+            )
+        },
+        navigationIcon = {
+            if (!LocalInfinitySettingsPaneRoot.current) InfinityBackButton(onClick = actions.onBack)
+        },
+        actions = { LinuxFileMoreMenu(state, actions) },
+        // 宿主页面已处理系统栏内边距。
+        windowInsets = WindowInsets(0),
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            titleContentColor = scheme.onBackground,
+            navigationIconContentColor = scheme.onSurfaceVariant,
+            actionIconContentColor = scheme.onSurfaceVariant,
+        ),
+    )
+}
+
+/** 文件的完整路径：等宽小字，自动换行，可选中复制。 */
+@Composable
+private fun LinuxFilePathLine(path: String) {
+    SelectionContainer {
+        Text(
+            text = path,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = InfinitySpacing.Small)
+                .testTag(UiTags.LINUX_FILE_PATH),
+        )
     }
 }
 
@@ -262,14 +303,9 @@ internal fun LinuxFileContent(state: LinuxFileUiState, actions: LinuxFileActions
 private fun LinuxFileMoreMenu(state: LinuxFileUiState, actions: LinuxFileActions) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        FilledTonalIconButton(
-            onClick = { expanded = true },
-            modifier = Modifier.size(40.dp).testTag(UiTags.LINUX_FILE_MORE),
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) { Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.linux_files_more), modifier = Modifier.size(20.dp)) }
+        IconButton(onClick = { expanded = true }, modifier = Modifier.testTag(UiTags.LINUX_FILE_MORE)) {
+            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.linux_files_more))
+        }
         InfinityDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             InfinityMenuItem(text = { Text(stringResource(R.string.linux_file_reload)) }, onClick = { expanded = false; actions.onReload() })
             InfinityMenuItem(

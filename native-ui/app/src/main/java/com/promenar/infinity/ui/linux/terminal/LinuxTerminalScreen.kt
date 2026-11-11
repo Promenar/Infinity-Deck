@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -114,6 +115,7 @@ fun LinuxTerminalScreen(
         onToggleAlt = viewModel::toggleAlt,
         onToggleKeyboard = { visible -> if (visible) bridge.hideKeyboard() else bridge.showKeyboard() },
         onScrollToBottom = bridge::scrollToBottom,
+        onHardwareKey = bridge::redirectKey,
         shellPane = { sessionId, modifier ->
             LocalTerminalPane(
                 sessionId = sessionId,
@@ -148,6 +150,8 @@ fun LinuxTerminalContent(
     onScrollToBottom: () -> Unit,
     shellPane: @Composable (sessionId: String, modifier: Modifier) -> Unit,
     imeVisible: Boolean = WindowInsets.isImeVisible,
+    /** 终端页签打开时，页面其它控件持有焦点期间收到的硬件按键；返回 true 表示已转交终端。 */
+    onHardwareKey: (android.view.KeyEvent) -> Boolean = { false },
 ) {
     val selected = state.selectedTab
     var confirmClose by remember { mutableStateOf<TerminalTab.Shell?>(null) }
@@ -167,7 +171,10 @@ fun LinuxTerminalContent(
             top = InfinitySpacing.XSmall,
             bottom = InfinitySpacing.Small,
         ),
-        modifier = Modifier.testTag(UiTags.LINUX_TERMINAL_SCREEN),
+        // 焦点落在页头按钮等控件上时，硬件按键（含回车）先交给终端，不会点中返回。
+        modifier = Modifier
+            .testTag(UiTags.LINUX_TERMINAL_SCREEN)
+            .onPreviewKeyEvent { event -> selected is TerminalTab.Shell && onHardwareKey(event.nativeKeyEvent) },
         actions = {
             if (state.ready) {
                 IconButton(onClick = onNewTerminal, enabled = !state.opening, modifier = Modifier.testTag(UiTags.LINUX_TERMINAL_NEW)) {

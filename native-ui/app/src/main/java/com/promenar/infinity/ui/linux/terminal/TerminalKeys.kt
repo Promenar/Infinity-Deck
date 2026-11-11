@@ -57,3 +57,10 @@ object TerminalKeyEncoder {
         return "$ESC[1;$code$direction"
     }
 }
+
+/**
+ * 终端页收到的硬件按键是否转交终端视图：终端已挂到窗口、自身没有焦点（焦点在页头按钮等其它控件上），
+ * 且不是系统键（返回、音量、主屏等）。
+ */
+internal fun shouldRedirectTerminalKey(isSystemKey: Boolean, terminalHasFocus: Boolean, terminalAttached: Boolean): Boolean =
+    !isSystemKey && !terminalHasFocus && terminalAttached

@@ -494,6 +494,8 @@ object UiTags {
     const val LINUX_FILE_RUN = "linux_file_run"
     const val LINUX_FILE_EDIT = "linux_file_edit"
     const val LINUX_FILE_MORE = "linux_file_more"
+    const val LINUX_FILE_TITLE = "linux_file_title"
+    const val LINUX_FILE_PATH = "linux_file_path"
     const val LINUX_FILE_CONFLICT_RELOAD = "linux_file_conflict_reload"
     const val LINUX_FILE_CONFLICT_OVERWRITE = "linux_file_conflict_overwrite"
     fun linuxFileRow(path: String) = "linux_file_row:$path"

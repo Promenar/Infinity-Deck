@@ -6,6 +6,9 @@
     <string name="panel_hub_unused">Not used</string>
     <string name="panel_hub_idle">Idle</string>
     <string name="panel_hub_browser_closed">Not open</string>
+    <string name="panel_hub_git_loading">Loading</string>
+    <string name="panel_hub_git_none">Not a Git repo</string>
+    <string name="panel_hub_git_unavailable">Unavailable</string>
     <plurals name="panel_hub_pending">
         <item quantity="one">%d pending</item>
         <item quantity="other">%d pending</item>
