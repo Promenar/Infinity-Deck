@@ -73,6 +73,7 @@
     <string name="params_value_default">默认</string>
     <string name="params_restore_agent">沿用智能体</string>
     <string name="params_scheme_model_default">模型默认</string>
+    <string name="params_scheme_custom">自定义</string>
     <string name="params_scheme_save">存为方案</string>
     <string name="params_scheme_overwrite">覆盖</string>
     <string name="params_scheme_save_as">另存为</string>

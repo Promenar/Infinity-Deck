@@ -248,6 +248,7 @@ object UiTags {
         "$PROVIDER_MODELS_TYPE_VISUAL_PREFIX$modelId:$type"
     fun providerModelsCapabilityAction(modelId: String, capability: String): String =
         "$PROVIDER_MODELS_CAPABILITY_PREFIX$modelId:$capability"
+    fun providerModelsCapabilityPicker(modelId: String): String = "provider_models_capability_picker:$modelId"
     fun providerModelsCapabilityVisual(modelId: String, capability: String): String =
         "$PROVIDER_MODELS_CAPABILITY_VISUAL_PREFIX$modelId:$capability"
     fun providerModelsContextField(modelId: String): String = "$PROVIDER_MODELS_CONTEXT_PREFIX$modelId"
@@ -696,6 +697,7 @@ object UiTags {
     const val FM_SEARCH_BAR = "fm_search_bar"
     const val FM_SEARCH_CLOSE = "fm_search_close"
     const val FM_SEARCH_FIELD = "fm_search_field"
+    const val FM_SEARCH_SCOPE = "fm_search_scope"
     const val FM_SEARCH_SCOPE_ALL = "fm_search_scope_all"
     const val FM_SEARCH_SCOPE_FOLDER = "fm_search_scope_folder"
     const val FM_SEARCH_TYPE = "fm_search_type"

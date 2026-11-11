@@ -327,6 +327,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         }
         startupScope.launch { modelCatalogUpdater.refresh() }
     }
+    private var skillStoreMonitorJob: Job? = null
     private var startupRecoveryJob: Job? = null
     private var writersInitialized = false
     private var startupWriterSession: StartupWriterSession<PreparedStartupWriters>? = null
@@ -2064,6 +2065,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         ), includePetAuthoring = true) { path -> assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() } }
     }
 
+    val skillStore: com.promenar.infinity.data.skills.store.SkillStoreRepository by lazy {
+        com.promenar.infinity.data.skills.store.SkillStoreRepository(
+            httpClient, skillCatalog, getSharedPreferences("infinity_settings", MODE_PRIVATE),
+            File(cacheDir, "skill_store"),
+            if (com.promenar.infinity.distribution.DistributionCapabilities.channel == "play") com.promenar.infinity.data.skills.store.SkillChannel.PLAY else com.promenar.infinity.data.skills.store.SkillChannel.SIDELOAD,
+            BuildConfig.VERSION_CODE,
+        )
+    }
+
     val skillRegistry: SkillRegistry by lazy { createSkillRegistry() }
 
     /** 会话工具表绑定自己的工作区，后台生成不依赖界面当前选中的会话。 */
@@ -2436,6 +2446,24 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 }
                 startupIssueManager.recover(StartupStep.MODEL_CATALOG, StartupIssueScope.subsystem(StartupSubsystem.MODEL_CATALOG)) { startModelCatalogUpdates() }
                 _startupState.value = BackupStartupState.Ready
+                if (skillStoreMonitorJob?.isActive != true) {
+                    skillStoreMonitorJob = startupScope.launch(Dispatchers.IO) {
+                        try {
+                            skillStore.maybeAutoCheck()
+                            skillStore.snapshot.value.sources.forEach { source ->
+                                if (source.status is com.promenar.infinity.data.skills.store.SourceStatus.Failed) {
+                                    InfinityLogger.log("[SkillStore] 自动检查目录失败：${source.host}")
+                                }
+                            }
+                            skillCatalog.revision.collect {
+                                try { skillStore.rescan() }
+                                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                catch (failure: Exception) { InfinityLogger.logError("SkillStoreScan", failure) }
+                            }
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (failure: Exception) { InfinityLogger.logError("SkillStoreAutoCheck", failure) }
+                    }
+                }
                 linuxWakeLifecycle.start()
                 generationScope.launch {
                     try {

@@ -648,11 +648,15 @@ class ProviderModelsAccessibilityTest {
 
         onModelCard(modelId).performClick()
         rule.onNodeWithTag(editorSheetTag(modelId)).assertExists()
-        // 类型与能力是页内平铺的芯片；上下文长度点按规格格子后在底部面板里输入。
+        // 类型是页内分段滑块；能力点按摘要行后在多选面板里勾选，返回键关闭面板；
+        // 上下文长度点按规格格子后在底部面板里输入。
         scrollEditorTo(modelId, UiTags.providerModelsTypeAction(modelId, "reasoning"))
         rule.onNodeWithTag(UiTags.providerModelsTypeAction(modelId, "reasoning")).performClick()
-        scrollEditorTo(modelId, UiTags.providerModelsCapabilityAction(modelId, "internet"))
+        scrollEditorTo(modelId, UiTags.providerModelsCapabilityPicker(modelId))
+        rule.onNodeWithTag(UiTags.providerModelsCapabilityPicker(modelId)).performClick()
         rule.onNodeWithTag(UiTags.providerModelsCapabilityAction(modelId, "internet")).performClick()
+        Espresso.pressBack()
+        rule.waitForIdle()
         scrollEditorTo(modelId, UiTags.providerModelsSpecCell(modelId, ModelSpecField.Context.name))
         rule.onNodeWithTag(UiTags.providerModelsSpecCell(modelId, ModelSpecField.Context.name)).performClick()
         val contextField = rule.onNode(

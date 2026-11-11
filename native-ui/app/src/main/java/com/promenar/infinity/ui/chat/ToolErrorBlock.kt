@@ -1,11 +1,11 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,7 +21,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -54,11 +53,7 @@ internal fun ToolErrorBlock(content: String) {
             .testTag("CHAT_TOOL_ERROR"),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
+        InfinityTagScrollRow(spacing = 6.dp) {
             Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = colors.error, modifier = Modifier.size(16.dp))
             Text(stringResource(R.string.chat_tool_error_title), style = InfinityTypography.labelMedium, color = colors.error)
             error.tags.forEach { tag ->

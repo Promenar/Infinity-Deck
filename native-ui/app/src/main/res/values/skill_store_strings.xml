@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 技能商店：设置“技能包”页入口、商店列表、技能详情与目录来源 -->
+    <string name="skill_store_title">Store</string>
+    <plurals name="skill_store_update_count">
+        <item quantity="one">%d update</item>
+        <item quantity="other">%d updates</item>
+    </plurals>
+    <string name="skill_store_search">Search skills</string>
+    <string name="skill_store_filter_all">All</string>
+    <string name="skill_store_filter_installed">Installed</string>
+    <string name="skill_store_filter_updates">Updates</string>
+    <string name="skill_store_category">Category</string>
+    <string name="skill_store_category_all">All categories</string>
+    <string name="skill_store_refresh">Refresh</string>
+    <string name="skill_store_sources">Catalogs</string>
+    <string name="skill_store_empty">No skills</string>
+    <string name="skill_store_empty_updates">No updates</string>
+    <string name="skill_store_source_failed">%1$s unavailable</string>
+
+    <string name="skill_store_install">Install</string>
+    <string name="skill_store_update">Update</string>
+    <string name="skill_store_installed">Installed</string>
+    <string name="skill_store_uninstall">Uninstall</string>
+    <string name="skill_store_view_skill_md">View SKILL.md</string>
+    <string name="skill_store_installing">Installing</string>
+    <string name="skill_store_downloading">%1$s of %2$s</string>
+
+    <string name="skill_store_tag_scripts">Scripts</string>
+    <string name="skill_store_tag_third_party">Third party</string>
+    <string name="skill_store_tag_sideload_only">Sideload only</string>
+    <string name="skill_store_tag_modified">Modified</string>
+    <string name="skill_store_tag_name_taken">Name in use</string>
+    <string name="skill_store_tag_needs_app_update">Needs app update</string>
+    <string name="skill_store_official">Official</string>
+    <string name="skill_store_official_catalog">Official catalog</string>
+
+    <string name="skill_store_detail_source">Source</string>
+    <string name="skill_store_detail_version">Version</string>
+    <string name="skill_store_detail_installed_version">Installed version</string>
+    <string name="skill_store_detail_author">Author</string>
+    <string name="skill_store_detail_license">License</string>
+    <string name="skill_store_detail_size">Size</string>
+    <string name="skill_store_detail_channels">Versions</string>
+    <string name="skill_store_detail_after_install">After install</string>
+    <string name="skill_store_detail_files">Files</string>
+    <string name="skill_store_channels_both">Sideload and Play</string>
+    <string name="skill_store_state_enabled">Enabled</string>
+    <string name="skill_store_state_disabled">Disabled</string>
+    <string name="skill_store_play_limited">Limited in the Play version</string>
+    <plurals name="skill_store_file_count">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+    <plurals name="skill_store_skill_count">
+        <item quantity="one">%d skill</item>
+        <item quantity="other">%d skills</item>
+    </plurals>
+    <string name="skill_store_document_unavailable">SKILL.md unavailable</string>
+
+    <string name="skill_store_confirm_overwrite_title">Replace %1$s</string>
+    <string name="skill_store_confirm_overwrite_message">A skill named %1$s already exists.</string>
+    <string name="skill_store_confirm_overwrite">Replace</string>
+    <string name="skill_store_confirm_modified_title">Update %1$s</string>
+    <string name="skill_store_confirm_modified_message">Local changes to %1$s will be replaced.</string>
+    <string name="skill_store_confirm_uninstall_title">Uninstall %1$s</string>
+    <string name="skill_store_confirm_uninstall_message">/skills/%1$s</string>
+
+    <string name="skill_store_event_installed">%1$s installed</string>
+    <string name="skill_store_event_installed_disabled">%1$s installed, disabled</string>
+    <string name="skill_store_event_updated">%1$s updated</string>
+    <string name="skill_store_event_uninstalled">%1$s uninstalled</string>
+    <string name="skill_store_event_source_added">Catalog added</string>
+
+    <string name="skill_store_failure_network">Network unavailable</string>
+    <string name="skill_store_failure_http">Server returned %1$d</string>
+    <string name="skill_store_failure_http_unknown">Server error</string>
+    <string name="skill_store_failure_too_large">Package exceeds size limit</string>
+    <string name="skill_store_failure_hash">Checksum mismatch</string>
+    <string name="skill_store_failure_file_list">File list mismatch</string>
+    <string name="skill_store_failure_name">Skill name mismatch</string>
+    <string name="skill_store_failure_package">Invalid skill package</string>
+    <string name="skill_store_failure_catalog">Invalid catalog</string>
+    <string name="skill_store_failure_schema">Unsupported catalog version</string>
+    <string name="skill_store_failure_url">Enter an https address</string>
+    <string name="skill_store_failure_duplicate">Catalog already added</string>
+    <string name="skill_store_failure_limit">Catalog limit reached</string>
+    <string name="skill_store_failure_storage">Storage error</string>
+
+    <string name="skill_store_sources_group">Catalogs</string>
+    <string name="skill_store_source_builtin">Built in</string>
+    <string name="skill_store_source_loading">Loading</string>
+    <string name="skill_store_source_installs_disabled">Installed disabled</string>
+    <string name="skill_store_source_add">Add catalog</string>
+    <string name="skill_store_source_address">Address</string>
+    <string name="skill_store_source_address_hint">https://example.com/skills/index.json</string>
+    <string name="skill_store_source_add_confirm">Add</string>
+    <string name="skill_store_source_remove">Remove</string>
+    <string name="skill_store_source_remove_title">Remove %1$s</string>
+    <string name="skill_store_source_remove_message">Installed skills stay.</string>
+    <string name="skill_store_updates_group">Updates</string>
+    <string name="skill_store_auto_check">Check automatically</string>
+    <string name="skill_store_last_checked">Last checked</string>
+    <string name="skill_store_never_checked">Never</string>
+</resources>

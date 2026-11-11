@@ -89,6 +89,15 @@ class BackupPreferenceInventoryTest {
     }
 
     @Test
+    fun `技能商店来源记录开关随备份而检查时间留在本机`() {
+        listOf("skill_store_sources", "skill_store_records", "skill_store_auto_check").forEach { key ->
+            assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isTrue()
+        }
+        assertThat(BackupPreferencePolicy.isKnown("infinity_settings", "skill_store_last_checked")).isTrue()
+        assertThat(BackupPreferencePolicy.isAllowed("infinity_settings", "skill_store_last_checked")).isFalse()
+    }
+
+    @Test
     fun `all literal production preference keys are explicitly allowed or denied`() {
         val sourceRoot = Path.of("app/src/main/java/com/promenar/infinity")
         val files = Files.walk(sourceRoot).use { stream ->
@@ -136,6 +145,7 @@ class BackupPreferenceInventoryTest {
             "data/generation/PreparedPromptBudgetGate.kt#settings" to "infinity_settings",
             "data/generation/ChatGenerationContentStrategy.kt#settings" to "infinity_settings",
             "data/skills/AgentSkillStore.kt#settings" to "infinity_settings",
+            "data/skills/store/SkillStoreRepository.kt#preferences" to "infinity_settings",
             "onboarding/OnboardingStateStore.kt#preferences" to "infinity_onboarding",
             "MainActivity.kt#prefs" to "infinity_prefs",
             "util/LocaleHelper.kt#prefs" to "infinity_settings",

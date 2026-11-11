@@ -32,11 +32,12 @@ class SettingsPopoverContractTest {
     }
 
     @Test
-    fun `模型编辑页为页内全屏且类型改为分段芯片不再弹出层`() {
-        // 编辑器不再是对话框，类型选择直接平铺为单选芯片，不需要弹出层锚点。
+    fun `模型编辑页为页内全屏且类型为分段滑块不再弹出层`() {
+        // 编辑器是页内全屏页，类型用单行分段滑块，能力用摘要行加多选面板，都不需要弹出层锚点。
         val editor = source("settings/ModelEditorScreen.kt")
         assertWithMessage("ModelEditorScreen").that(editor).contains("InfinitySettingsPageLayout(")
-        assertWithMessage("ModelEditorScreen").that(editor).contains("InfinityChoiceChips(")
+        assertWithMessage("ModelEditorScreen").that(editor).contains("InfinitySegmentedControl(")
+        assertWithMessage("ModelEditorScreen").that(editor).contains("InfinityMultiChoiceSheet(")
         assertWithMessage("ModelEditorScreen").that(editor).doesNotContain("InfinityPopoverSpec(")
     }
 

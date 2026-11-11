@@ -201,7 +201,7 @@ class FileSkillCatalog internal constructor(
 
     private suspend fun <T> locked(block: () -> T): T = withContext(ioDispatcher) { mutex.withLock { block() } }
 
-    override suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean): DiscoveredSkill = locked {
+    override suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean, enableAfterInstall: Boolean?): DiscoveredSkill = locked {
         if (files.isEmpty() || files.size > AgentSkillStore.MAX_FILES) throw AgentSkillFormatException("技能包文件数无效")
         val payload = linkedMapOf<String, ByteArray>()
         var total = 0L
@@ -241,12 +241,19 @@ class FileSkillCatalog internal constructor(
                 inspected = requireCurrent(Location(SkillScope.USER, name, staging, null))
                 check(inspected!!.hash == approvedHash) { "安装暂存内容与批准的文件快照不一致" }
             }) { existed ->
-                val next = state.copy(userConfirmed = state.userConfirmed + (name to approvedHash))
+                val next = state.copy(
+                    userConfirmed = state.userConfirmed + (name to approvedHash),
+                    userDisabled = when (enableAfterInstall) {
+                        true -> state.userDisabled - name
+                        false -> state.userDisabled + name
+                        null -> state.userDisabled
+                    },
+                )
                 stateAttempted = true
                 states.write(next)
                 // 旧版只有启用名单的停用选择，也按覆盖前目录存在且未启用来保留。
                 val preserveDisabled = name in state.userDisabled || (existed || name in state.userConfirmed) && name !in enabled
-                val nextEnabled = if (preserveDisabled) enabled - name else enabled + name
+                val nextEnabled = if (enableAfterInstall ?: !preserveDisabled) enabled + name else enabled - name
                 writeEnabled(nextEnabled)
                 val location = Location(SkillScope.USER, name, userRoot, null)
                 locations[location.id] = location
@@ -326,6 +333,7 @@ class FileSkillCatalog internal constructor(
             allowImplicitInvocation = inspected.presentation.allowImplicitInvocation,
             brokenReason = inspected.brokenReason,
             metadata = inspected.metadata,
+            contentHash = if (status == SkillStatus.BROKEN) null else inspected.hash,
         )
     }
 

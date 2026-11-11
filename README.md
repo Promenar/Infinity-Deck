@@ -146,7 +146,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Long chats stay searchable: after compaction the agent can search and page through the original messages
 - Question cards when it needs your call; keeps going with the screen locked
 - Touch lock so the phone can go straight into your pocket
-- Skills and MCP servers
+- Skills and MCP servers; a skill store installs vetted skills from the official catalog or catalogs you add
 - Chat pets: import a `.idpet` pack and a pet stands on the input bar, changing pose and lines with the task state and the time of day (morning, day, evening, night); tap it or drag it around
 
 **Agents**

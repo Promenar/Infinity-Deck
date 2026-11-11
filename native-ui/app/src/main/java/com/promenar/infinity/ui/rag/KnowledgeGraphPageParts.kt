@@ -13,11 +13,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -431,13 +428,7 @@ internal fun KnowledgeGraphEntityPanel(
             }
             if (relations.isNotEmpty()) {
                 KgPanelSectionLabel(R.string.kg_entity_relations)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-                    verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-                    modifier = Modifier.padding(end = InfinitySpacing.Small),
-                ) {
-                    relations.forEach { item -> KgRelationChip(item, onPickEntity) }
-                }
+                relations.forEach { item -> KgRelationRow(item, onPickEntity) }
             }
             if (detail.history.isNotEmpty()) {
                 KgPanelSectionLabel(R.string.kg_entity_history)
@@ -588,21 +579,27 @@ private fun KgEntitySourceRows(sources: KgEntitySources, onOpenSession: (String)
 }
 
 @Composable
-private fun KgRelationChip(item: KgRelationItem, onPickEntity: (String) -> Unit) {
+private fun KgRelationRow(item: KgRelationItem, onPickEntity: (String) -> Unit) {
     val color = kgEntityPalette().of(item.otherKind)
+    // 每条关系占一行：关系词、方向、对方实体；点按定位到对方实体。
     Row(
         modifier = Modifier
-            .heightIn(min = 36.dp)
-            .widthIn(max = 280.dp)
+            .fillMaxWidth()
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
             .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .clickable(role = Role.Button) { onPickEntity(item.otherId) }
-            .padding(horizontal = InfinitySpacing.Medium),
+            .clickable(role = Role.Button) { onPickEntity(item.otherId) },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (item.relation.isNotBlank()) {
-            Text(item.relation, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(
+                item.relation,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
         }
         Icon(
             if (item.outgoing) Icons.AutoMirrored.Rounded.ArrowForward else Icons.AutoMirrored.Rounded.ArrowBack,
@@ -610,8 +607,14 @@ private fun KgRelationChip(item: KgRelationItem, onPickEntity: (String) -> Unit)
             modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Icon(item.otherKind.icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = color)
-        Text(item.otherName, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(item.otherKind.icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = color)
+        Text(
+            item.otherName,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
     }
 }
 

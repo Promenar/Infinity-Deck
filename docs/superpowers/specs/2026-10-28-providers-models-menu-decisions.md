@@ -55,7 +55,7 @@
 | 部件 | 位置 | 用途 |
 | --- | --- | --- |
 | `InfinityFieldRow` | `ui/common/` | 分组卡片内的无框输入行，含标签、错误、尾部动作，另有密钥变体 |
-| `InfinityChoiceChips` | `ui/common/` | 单选或多选标签组，自动换行，选中态带图标着色 |
+| `InfinityMultiChoiceSheet` | `ui/common/` | 多选面板：页面上一行摘要作入口，面板内每项一行、选中项带勾；单选用 `InfinitySegmentedControl` |
 | `InfinityStatusStrip` | `ui/common/` | 成功、错误、提示、警示四色状态条，替换同步横幅与连接测试文字 |
 | `ModelCapabilityBadges` | `ui/common/` | 列表行内的类型标签、能力图标组与上下文长度 |
 | `ModelCapabilityIcons` | `ui/settings/` | 九项能力与图标、文案的单一映射，列表与编辑页共用，取代两份重复的能力标签实现 |

@@ -80,6 +80,8 @@ class FileSkillCatalogTest {
         assertThat(snapshot.user.first().virtualDir).isEqualTo("/skills/alpha")
         assertThat(snapshot.project.first().virtualDir).isEqualTo("/.agents/skills/alpha")
         assertThat(snapshot.project.first().status).isEqualTo(SkillStatus.PENDING_TRUST)
+        assertThat(snapshot.user.first().contentHash).isNotNull()
+        assertThat(snapshot.project.first().contentHash).isNotNull()
     }
 
     @Test fun `不同工作区交替扫描且内容不变时不递增revision`() = runTest {
@@ -124,6 +126,7 @@ class FileSkillCatalogTest {
         assertThat(broken["mismatch"]!!.brokenReason).contains("目录名")
         assertThat(broken["no-description"]!!.brokenReason).contains("description 不能为空")
         assertThat(broken.values.all { it.metadata == null }).isTrue()
+        assertThat(broken.values.all { it.contentHash == null }).isTrue()
     }
 
     @Test fun `文件数单文件与总大小超限均损坏`() = runTest {
@@ -667,6 +670,19 @@ class FileSkillCatalogTest {
         catalog.installApproved(payload("重新批准的内容"), overwrite = true)
         assertThat(skill(catalog(), "approved").status).isEqualTo(SkillStatus.DISABLED)
         repeat(2) { assertThat(skill(catalog, "approved").status).isEqualTo(SkillStatus.DISABLED) }
+    }
+
+    @Test fun `批准安装可显式控制启用并保留默认行为`() = runTest {
+        val catalog = catalog()
+        val payload = mapOf("SKILL.md" to "---\nname: explicit-enable\ndescription: 测试\n---\n正文".toByteArray())
+        val disabled = catalog.installApproved(payload, enableAfterInstall = false)
+        assertThat(disabled.status).isEqualTo(SkillStatus.DISABLED)
+        assertThat(disabled.contentHash).isNotNull()
+        val preserved = catalog.installApproved(payload, overwrite = true)
+        assertThat(preserved.status).isEqualTo(SkillStatus.DISABLED)
+        val enabled = catalog.installApproved(payload, overwrite = true, enableAfterInstall = true)
+        assertThat(enabled.status).isEqualTo(SkillStatus.ENABLED)
+        assertThat(skill(catalog(), "explicit-enable").status).isEqualTo(SkillStatus.ENABLED)
     }
 
     @Test fun `缓存生成修改与删除不影响确认哈希或revision`() = runTest {

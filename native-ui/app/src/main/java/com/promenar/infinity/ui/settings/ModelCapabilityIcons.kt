@@ -25,6 +25,11 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.ui.common.ModelCapabilityBadge
 import com.promenar.infinity.ui.common.InfinityChoice
+import com.promenar.infinity.ui.common.InfinitySegment
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 /**
  * 模型类型与九项能力的图标、文案单一映射：模型列表行与编辑页共用。
@@ -70,12 +75,12 @@ internal fun modelCapabilityBadges(model: ModelInfo): List<ModelCapabilityBadge>
 }
 
 @Composable
-internal fun modelTypeChoices(modelId: String): List<InfinityChoice<String>> = ModelTypeSpecs.map {
-    InfinityChoice(
-        value = it.key,
-        label = stringResource(it.labelRes),
-        icon = it.icon,
-        tag = com.promenar.infinity.ui.testing.UiTags.providerModelsTypeAction(modelId, it.key),
+internal fun modelTypeSegments(modelId: String): List<InfinitySegment<String>> = ModelTypeSpecs.map { spec ->
+    InfinitySegment(
+        value = spec.key,
+        label = stringResource(spec.labelRes),
+        tag = com.promenar.infinity.ui.testing.UiTags.providerModelsTypeAction(modelId, spec.key),
+        leading = { Icon(spec.icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
     )
 }
 

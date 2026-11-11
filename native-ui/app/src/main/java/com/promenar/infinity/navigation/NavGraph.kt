@@ -69,6 +69,8 @@ object NavDestinations {
     const val RAG_VECTOR_STATS = "rag_vector_stats"
     const val TOKEN_USAGE = "token_usage"
     const val SKILLS_CONFIG = "skills_config"
+    const val SKILL_STORE = "skill_store"
+    const val SKILL_STORE_SOURCES = "skill_store_sources"
     const val AGENT_BUDGET = "agent_budget"
     const val BUILTIN_TOOLS = "builtin_tools"
     const val MCP_SERVERS = "mcp_servers"
@@ -565,7 +567,13 @@ private fun NavGraphBuilder.hubPaneDestinations(
 private fun NavGraphBuilder.agentRuntimeDestination(navigator: SettingsNavigator, route: String, section: AgentRuntimeSection) {
     composablePage(route) { entry ->
         navigator.Page(entry) {
-            SkillsScreen(onNavigateBack = { navigator.back() }, section = section)
+            SkillsScreen(
+                onNavigateBack = { navigator.back() },
+                section = section,
+                onOpenStore = if (section == AgentRuntimeSection.SkillPacks) {
+                    { navigator.open(NavDestinations.SKILL_STORE) }
+                } else null,
+            )
         }
     }
 }
@@ -686,6 +694,20 @@ internal fun NavGraphBuilder.settingsDestinations(
     agentRuntimeDestination(navigator, NavDestinations.BUILTIN_TOOLS, AgentRuntimeSection.BuiltinTools)
     agentRuntimeDestination(navigator, NavDestinations.SKILLS_CONFIG, AgentRuntimeSection.SkillPacks)
     agentRuntimeDestination(navigator, NavDestinations.MCP_SERVERS, AgentRuntimeSection.Mcp)
+
+    composablePage(NavDestinations.SKILL_STORE) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.skills.store.SkillStoreScreen(
+                onBack = { navigator.back() },
+                onOpenSources = { navigator.open(NavDestinations.SKILL_STORE_SOURCES) },
+            )
+        }
+    }
+    composablePage(NavDestinations.SKILL_STORE_SOURCES) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.skills.store.SkillStoreSourcesScreen(onBack = { navigator.back() })
+        }
+    }
 
     composablePage(NavDestinations.LINUX_ENVIRONMENT) { entry ->
         navigator.Page(entry) {

@@ -21,6 +21,9 @@
 | `src/data/release-snapshot.json` | 构建时读不到 GitHub API 时使用的 Release 快照 |
 | `public/media/` | 叙事区截图与录屏，由 `scripts/prepare-media.sh` 生成；宣传片 `promo.mp4` 不进 Git |
 | `public/pets/` | 下载页托管的会话宠物包（`.idpet`）与缩略图，登记在 `src/data/pets.mjs` |
+| `skills/` | 官方技能源目录，每个目录包含根部 `SKILL.md` |
+| `public/skills/` | 由脚本生成的技能 ZIP 与目录索引 |
+| `scripts/build-skills.mjs` | 从 `src/data/skills.mjs` 与技能源生成官方目录 |
 | `public/_headers` | Cloudflare Pages 缓存与安全响应头 |
 
 ## 本地开发
@@ -31,7 +34,8 @@
 cd website
 npm ci
 npm run dev       # http://localhost:4321
-npm test          # 更新日志与 Release 数据单测
+npm test          # 网站数据与技能目录单测
+node scripts/build-skills.mjs # 生成官方技能目录和压缩包
 npm run snapshot  # 用 GitHub 最新 Release 刷新 src/data/release-snapshot.json
 npm run build     # 输出到 dist/
 npm run preview   # 预览 dist/

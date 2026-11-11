@@ -65,8 +65,8 @@ import com.promenar.infinity.domain.library.AskMode
 import com.promenar.infinity.domain.library.AskScope
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.chat.copyToClipboard
-import com.promenar.infinity.ui.common.InfinityChoice
-import com.promenar.infinity.ui.common.InfinityChoiceChips
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityMenuItem
@@ -374,15 +374,21 @@ private fun askErrorText(code: AskErrorCode?): String = stringResource(
 @Composable
 private fun AskFilterRow(state: AskUiState, listed: List<AskHit>, actions: LibraryAskActions) {
     val counts = listed.groupingBy { it.kind }.eachCount()
-    val choices = buildList<InfinityChoice<AskHitKind?>> {
-        add(InfinityChoice(null, stringResource(R.string.library_ask_filter_all, listed.size)))
-        counts[AskHitKind.DOCUMENT]?.let { add(InfinityChoice(AskHitKind.DOCUMENT, stringResource(R.string.library_ask_filter_documents, it))) }
-        counts[AskHitKind.MEMORY]?.let { add(InfinityChoice(AskHitKind.MEMORY, stringResource(R.string.library_ask_filter_memories, it))) }
-        counts[AskHitKind.ENTITY]?.let { add(InfinityChoice(AskHitKind.ENTITY, stringResource(R.string.library_ask_filter_graph, it))) }
+    val segments = buildList<InfinitySegment<AskHitKind?>> {
+        add(InfinitySegment(null, stringResource(R.string.library_ask_filter_all, listed.size)))
+        counts[AskHitKind.DOCUMENT]?.let { add(InfinitySegment(AskHitKind.DOCUMENT, stringResource(R.string.library_ask_filter_documents, it))) }
+        counts[AskHitKind.MEMORY]?.let { add(InfinitySegment(AskHitKind.MEMORY, stringResource(R.string.library_ask_filter_memories, it))) }
+        counts[AskHitKind.ENTITY]?.let { add(InfinitySegment(AskHitKind.ENTITY, stringResource(R.string.library_ask_filter_graph, it))) }
     }
     Column {
-        if (listed.isNotEmpty() && choices.size > 2) {
-            InfinityChoiceChips(choices = choices, selected = setOf(state.filter), onToggle = actions.onFilter, multiSelect = false)
+        if (listed.isNotEmpty() && segments.size > 2) {
+            InfinitySegmentedControl(
+                segments = segments,
+                selected = state.filter,
+                onSelect = actions.onFilter,
+                compact = true,
+                contentPadding = PaddingValues(horizontal = InfinitySpacing.ScreenHorizontal),
+            )
         }
         AskScopeButton(state.scope, actions.onScope)
     }

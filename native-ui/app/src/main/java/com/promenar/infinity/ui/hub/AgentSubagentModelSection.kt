@@ -1,9 +1,15 @@
 package com.promenar.infinity.ui.hub
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -11,10 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.SwapHoriz
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.InputChip
-import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -131,7 +134,7 @@ internal fun AgentSubagentModelSection(
 private fun modelLabel(id: String, available: Boolean, displayName: (String) -> String): String =
     if (available) displayName(id) else stringResource(R.string.subagent_model_missing, displayName(id))
 
-/** 已勾选的可选模型：逐个可移除，末尾“添加”打开只含可调用工具模型的选择器。 */
+/** 已勾选的可选模型：每个一行，行尾移除；末尾“添加”打开只含可调用工具模型的选择器。 */
 @Composable
 private fun SelectableModels(
     ids: List<String>,
@@ -153,28 +156,36 @@ private fun SelectableModels(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ids.forEach { id ->
-                val available = id in availableIds
-                val label = modelLabel(id, available, displayName)
-                val removeLabel = stringResource(R.string.subagent_model_remove_cd, displayName(id))
-                InputChip(
-                    selected = available,
-                    onClick = { onRemove(id) },
-                    label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    trailingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(InputChipDefaults.IconSize)) },
-                    colors = if (available) InputChipDefaults.inputChipColors()
-                    else InputChipDefaults.inputChipColors(labelColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.semantics { contentDescription = removeLabel }.testTag("agent_subagent_model_chip_$id"),
+        // 可选模型数量不限：每个模型占一行，行尾移除；末尾一行添加。
+        ids.forEach { id ->
+            val available = id in availableIds
+            val removeLabel = stringResource(R.string.subagent_model_remove_cd, displayName(id))
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).testTag("agent_subagent_model_chip_$id"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    modelLabel(id, available, displayName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
+                IconButton(onClick = { onRemove(id) }, modifier = Modifier.testTag("agent_subagent_model_remove_$id")) {
+                    Icon(Icons.Rounded.Close, contentDescription = removeLabel, modifier = Modifier.size(18.dp))
+                }
             }
-            val addLabel = stringResource(R.string.subagent_model_add_cd)
-            AssistChip(
-                onClick = onAdd,
-                label = { Text(stringResource(R.string.subagent_model_add)) },
-                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                modifier = Modifier.semantics { contentDescription = addLabel }.testTag("agent_subagent_model_add"),
-            )
+        }
+        val addLabel = stringResource(R.string.subagent_model_add_cd)
+        TextButton(
+            onClick = onAdd,
+            contentPadding = PaddingValues(horizontal = 0.dp),
+            modifier = Modifier.semantics { contentDescription = addLabel }.testTag("agent_subagent_model_add"),
+        ) {
+            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.subagent_model_add))
         }
     }
 }

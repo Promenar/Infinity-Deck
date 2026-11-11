@@ -70,6 +70,7 @@
     <string name="model_editor_group_specs">Specs</string>
     <string name="model_editor_specs_footer">Tap a value to override the spec library</string>
     <string name="model_editor_capabilities_selected">%d selected</string>
+    <string name="model_editor_capabilities_none">None</string>
     <string name="model_editor_group_test">Test</string>
     <string name="model_editor_test_idle">Not tested</string>
     <string name="model_editor_test_running">Testing…</string>

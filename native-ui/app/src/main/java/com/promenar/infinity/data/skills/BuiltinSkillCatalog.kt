@@ -56,6 +56,9 @@ class BuiltinSkillCatalog(
         }
     }
 
+    override suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean, enableAfterInstall: Boolean?): DiscoveredSkill =
+        delegate.installApproved(files, overwrite, enableAfterInstall)
+
     override suspend fun setEnabled(skill: DiscoveredSkill, enabled: Boolean) {
         requireMutable(skill)
         delegate.setEnabled(skill, enabled)

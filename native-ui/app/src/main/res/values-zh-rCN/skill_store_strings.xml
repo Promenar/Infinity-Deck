@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 技能商店：设置“技能包”页入口、商店列表、技能详情与目录来源 -->
+    <string name="skill_store_title">商店</string>
+    <plurals name="skill_store_update_count">
+        <item quantity="other">%d 个更新</item>
+    </plurals>
+    <string name="skill_store_search">搜索技能</string>
+    <string name="skill_store_filter_all">全部</string>
+    <string name="skill_store_filter_installed">已安装</string>
+    <string name="skill_store_filter_updates">可更新</string>
+    <string name="skill_store_category">分类</string>
+    <string name="skill_store_category_all">全部分类</string>
+    <string name="skill_store_refresh">刷新</string>
+    <string name="skill_store_sources">目录来源</string>
+    <string name="skill_store_empty">没有技能</string>
+    <string name="skill_store_empty_updates">没有可更新的技能</string>
+    <string name="skill_store_source_failed">%1$s 读取失败</string>
+
+    <string name="skill_store_install">安装</string>
+    <string name="skill_store_update">更新</string>
+    <string name="skill_store_installed">已安装</string>
+    <string name="skill_store_uninstall">卸载</string>
+    <string name="skill_store_view_skill_md">查看 SKILL.md</string>
+    <string name="skill_store_installing">安装中</string>
+    <string name="skill_store_downloading">%1$s / %2$s</string>
+
+    <string name="skill_store_tag_scripts">含脚本</string>
+    <string name="skill_store_tag_third_party">第三方</string>
+    <string name="skill_store_tag_sideload_only">仅侧载</string>
+    <string name="skill_store_tag_modified">已修改</string>
+    <string name="skill_store_tag_name_taken">同名技能</string>
+    <string name="skill_store_tag_needs_app_update">需更新应用</string>
+    <string name="skill_store_official">官方</string>
+    <string name="skill_store_official_catalog">官方目录</string>
+
+    <string name="skill_store_detail_source">来源</string>
+    <string name="skill_store_detail_version">版本</string>
+    <string name="skill_store_detail_installed_version">已安装版本</string>
+    <string name="skill_store_detail_author">作者</string>
+    <string name="skill_store_detail_license">许可</string>
+    <string name="skill_store_detail_size">大小</string>
+    <string name="skill_store_detail_channels">适用版本</string>
+    <string name="skill_store_detail_after_install">安装后</string>
+    <string name="skill_store_detail_files">文件</string>
+    <string name="skill_store_channels_both">侧载与 Play</string>
+    <string name="skill_store_state_enabled">启用</string>
+    <string name="skill_store_state_disabled">停用</string>
+    <string name="skill_store_play_limited">Play 版中部分能力受限</string>
+    <plurals name="skill_store_file_count">
+        <item quantity="other">%d 个文件</item>
+    </plurals>
+    <plurals name="skill_store_skill_count">
+        <item quantity="other">%d 个技能</item>
+    </plurals>
+    <string name="skill_store_document_unavailable">SKILL.md 读取失败</string>
+
+    <string name="skill_store_confirm_overwrite_title">替换 %1$s</string>
+    <string name="skill_store_confirm_overwrite_message">已有名为 %1$s 的技能。</string>
+    <string name="skill_store_confirm_overwrite">替换</string>
+    <string name="skill_store_confirm_modified_title">更新 %1$s</string>
+    <string name="skill_store_confirm_modified_message">%1$s 的本地修改将被替换。</string>
+    <string name="skill_store_confirm_uninstall_title">卸载 %1$s</string>
+    <string name="skill_store_confirm_uninstall_message">/skills/%1$s</string>
+
+    <string name="skill_store_event_installed">已安装 %1$s</string>
+    <string name="skill_store_event_installed_disabled">已安装 %1$s，未启用</string>
+    <string name="skill_store_event_updated">已更新 %1$s</string>
+    <string name="skill_store_event_uninstalled">已卸载 %1$s</string>
+    <string name="skill_store_event_source_added">已添加目录</string>
+
+    <string name="skill_store_failure_network">网络连接失败</string>
+    <string name="skill_store_failure_http">服务器返回 %1$d</string>
+    <string name="skill_store_failure_http_unknown">服务器错误</string>
+    <string name="skill_store_failure_too_large">技能包超出大小限制</string>
+    <string name="skill_store_failure_hash">校验值不符</string>
+    <string name="skill_store_failure_file_list">文件清单不符</string>
+    <string name="skill_store_failure_name">技能名称不符</string>
+    <string name="skill_store_failure_package">技能包无效</string>
+    <string name="skill_store_failure_catalog">目录格式无效</string>
+    <string name="skill_store_failure_schema">目录版本不受支持</string>
+    <string name="skill_store_failure_url">需要 https 地址</string>
+    <string name="skill_store_failure_duplicate">目录已存在</string>
+    <string name="skill_store_failure_limit">目录数量已达上限</string>
+    <string name="skill_store_failure_storage">存储失败</string>
+
+    <string name="skill_store_sources_group">目录</string>
+    <string name="skill_store_source_builtin">内置</string>
+    <string name="skill_store_source_loading">读取中</string>
+    <string name="skill_store_source_installs_disabled">安装后停用</string>
+    <string name="skill_store_source_add">添加目录地址</string>
+    <string name="skill_store_source_address">地址</string>
+    <string name="skill_store_source_address_hint">https://example.com/skills/index.json</string>
+    <string name="skill_store_source_add_confirm">添加</string>
+    <string name="skill_store_source_remove">移除</string>
+    <string name="skill_store_source_remove_title">移除 %1$s</string>
+    <string name="skill_store_source_remove_message">已安装的技能保留。</string>
+    <string name="skill_store_updates_group">更新</string>
+    <string name="skill_store_auto_check">自动检查更新</string>
+    <string name="skill_store_last_checked">上次检查</string>
+    <string name="skill_store_never_checked">未检查</string>
+</resources>

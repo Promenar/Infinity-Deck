@@ -1,0 +1,676 @@
+{
+  "schema": 1,
+  "title": {
+    "zh-CN": "官方目录",
+    "en": "Official catalog"
+  },
+  "categories": [
+    {
+      "id": "writing",
+      "title": {
+        "zh-CN": "写作",
+        "en": "Writing"
+      }
+    },
+    {
+      "id": "research",
+      "title": {
+        "zh-CN": "调研",
+        "en": "Research"
+      }
+    },
+    {
+      "id": "data",
+      "title": {
+        "zh-CN": "数据",
+        "en": "Data"
+      }
+    },
+    {
+      "id": "dev",
+      "title": {
+        "zh-CN": "开发",
+        "en": "Development"
+      }
+    },
+    {
+      "id": "design",
+      "title": {
+        "zh-CN": "设计",
+        "en": "Design"
+      }
+    }
+  ],
+  "skills": [
+    {
+      "name": "meeting-summary",
+      "version": "1.0.0",
+      "category": "writing",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "会议纪要",
+        "en": "Meeting summary"
+      },
+      "summary": {
+        "zh-CN": "整理会议记录与长文，提取决议、待办与未决问题。",
+        "en": "Turn meeting notes and long texts into decisions, action items, and open questions."
+      },
+      "archive": "meeting-summary-1.0.0.zip",
+      "size": 3030,
+      "sha256": "7a3518ecebbd20131e2c167d2aa2b510976b30b8ef1f3a3b09ab3afae3e882cf",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "size": 5356
+        }
+      ]
+    },
+    {
+      "name": "writing-polish",
+      "version": "1.0.0",
+      "category": "writing",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "中文润色",
+        "en": "Chinese polish"
+      },
+      "summary": {
+        "zh-CN": "修改病句与标点，统一术语，调整语气，并标出每处改动。",
+        "en": "Fix grammar and punctuation, unify terms, adjust tone, and mark every edit."
+      },
+      "archive": "writing-polish-1.0.0.zip",
+      "size": 3272,
+      "sha256": "cf5263dbf2adfc2561f6b782429756efdf50e65eda724a7f71d141cb62cc3946",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "size": 6049
+        }
+      ]
+    },
+    {
+      "name": "markitdown",
+      "version": "1.0.0",
+      "category": "writing",
+      "channels": [
+        "sideload"
+      ],
+      "author": "Infinity Deck",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "文档转 Markdown",
+        "en": "Documents to Markdown"
+      },
+      "summary": {
+        "zh-CN": "用 MarkItDown 把 PDF、Office、网页等文档批量转为 Markdown。",
+        "en": "Batch-convert PDF, Office, and web documents to Markdown with MarkItDown."
+      },
+      "archive": "markitdown-1.0.0.zip",
+      "size": 8076,
+      "sha256": "61c460d91b6fc8b4f1634244a4aedc16f3aa03e7ee8a847e98e1b63e59a4ebff",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "size": 5714
+        },
+        {
+          "path": "scripts/markitdown_convert.py",
+          "size": 14012
+        }
+      ]
+    },
+    {
+      "name": "research-brief",
+      "version": "1.0.0",
+      "category": "research",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "调研简报",
+        "en": "Research brief"
+      },
+      "summary": {
+        "zh-CN": "联网检索、多源核验，输出标注来源与时效的调研简报。",
+        "en": "Search the web, cross-check sources, and deliver a dated, cited brief."
+      },
+      "archive": "research-brief-1.0.0.zip",
+      "size": 3100,
+      "sha256": "9a301b1e497261f2808bafc7a70f20aa2d49197a88db75ffafd910be82ca90d4",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "size": 5581
+        }
+      ]
+    },
+    {
+      "name": "business-analysis",
+      "version": "1.0.0",
+      "category": "research",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck（改编自 anthropics/knowledge-work-plugins）",
+      "license": "Apache-2.0",
+      "title": {
+        "zh-CN": "经营分析",
+        "en": "Business analysis"
+      },
+      "summary": {
+        "zh-CN": "差异分解、财务报表、竞品简报与用户研究综合。",
+        "en": "Variance analysis, financial statements, competitive briefs, and research synthesis."
+      },
+      "archive": "business-analysis-1.0.0.zip",
+      "size": 44384,
+      "sha256": "ca4d50b82be9ec0c19d56dfada19289c49436505b3a5e5903578b17ef7d4f179",
+      "files": [
+        {
+          "path": "NOTICE.md",
+          "size": 1561
+        },
+        {
+          "path": "SKILL.md",
+          "size": 3353
+        },
+        {
+          "path": "members/competitive-brief/GUIDE.md",
+          "size": 15095
+        },
+        {
+          "path": "members/competitive-brief/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/financial-statements/GUIDE.md",
+          "size": 14611
+        },
+        {
+          "path": "members/financial-statements/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/synthesize-research/GUIDE.md",
+          "size": 16126
+        },
+        {
+          "path": "members/synthesize-research/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/variance-analysis/GUIDE.md",
+          "size": 13324
+        },
+        {
+          "path": "members/variance-analysis/LICENSE.txt",
+          "size": 11607
+        }
+      ]
+    },
+    {
+      "name": "data-analysis",
+      "version": "1.0.0",
+      "category": "data",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck（改编自 anthropics/knowledge-work-plugins）",
+      "license": "Apache-2.0",
+      "title": {
+        "zh-CN": "数据分析",
+        "en": "Data analysis"
+      },
+      "summary": {
+        "zh-CN": "探查、统计、SQL 查询、出图与看板，分享前复核结论。",
+        "en": "Explore, analyze, query with SQL, chart, build dashboards, and validate findings."
+      },
+      "archive": "data-analysis-1.0.0.zip",
+      "size": 82165,
+      "sha256": "be9ddb9eb2d99f1234447ee0df2410f644ed959849d2c4c9503fd073f5e851c7",
+      "files": [
+        {
+          "path": "NOTICE.md",
+          "size": 1906
+        },
+        {
+          "path": "SKILL.md",
+          "size": 5342
+        },
+        {
+          "path": "members/analyze/GUIDE.md",
+          "size": 4913
+        },
+        {
+          "path": "members/analyze/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/build-dashboard/GUIDE.md",
+          "size": 31216
+        },
+        {
+          "path": "members/build-dashboard/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/create-viz/GUIDE.md",
+          "size": 6155
+        },
+        {
+          "path": "members/create-viz/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/data-visualization/GUIDE.md",
+          "size": 11699
+        },
+        {
+          "path": "members/data-visualization/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/explore-data/GUIDE.md",
+          "size": 11830
+        },
+        {
+          "path": "members/explore-data/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/sql-queries/GUIDE.md",
+          "size": 11729
+        },
+        {
+          "path": "members/sql-queries/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/statistical-analysis/GUIDE.md",
+          "size": 11031
+        },
+        {
+          "path": "members/statistical-analysis/LICENSE.txt",
+          "size": 11607
+        },
+        {
+          "path": "members/validate-data/GUIDE.md",
+          "size": 15127
+        },
+        {
+          "path": "members/validate-data/LICENSE.txt",
+          "size": 11607
+        }
+      ]
+    },
+    {
+      "name": "data-storytelling",
+      "version": "1.0.0",
+      "category": "data",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck（改编自 oh-da/dataink）",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "数据叙事",
+        "en": "Data storytelling"
+      },
+      "summary": {
+        "zh-CN": "设计汇报叙事、选图、看板与表格，评审图表与配色。",
+        "en": "Shape data narratives, choose charts, lay out dashboards and tables, and review visuals."
+      },
+      "archive": "data-storytelling-1.0.0.zip",
+      "size": 46411,
+      "sha256": "e26aa7329874a9932cd62f5d0163707cbb5d2f84f1a5babc08a706ba4b6c126d",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "NOTICE.md",
+          "size": 1850
+        },
+        {
+          "path": "SKILL.md",
+          "size": 5286
+        },
+        {
+          "path": "assets/accessible-palettes.md",
+          "size": 2719
+        },
+        {
+          "path": "assets/brand-colors.md",
+          "size": 2565
+        },
+        {
+          "path": "assets/brand-fonts.md",
+          "size": 2522
+        },
+        {
+          "path": "assets/core-standards.md",
+          "size": 4112
+        },
+        {
+          "path": "members/dashboard-design/GUIDE.md",
+          "size": 3315
+        },
+        {
+          "path": "members/dashboard-design/LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "members/dashboard-design/references/kpi-components.md",
+          "size": 1867
+        },
+        {
+          "path": "members/dashboard-design/references/layout-patterns.md",
+          "size": 3131
+        },
+        {
+          "path": "members/data-storyteller/GUIDE.md",
+          "size": 2790
+        },
+        {
+          "path": "members/data-storyteller/LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "members/data-storyteller/references/storytelling-methods.md",
+          "size": 3148
+        },
+        {
+          "path": "members/data-visualization/GUIDE.md",
+          "size": 3222
+        },
+        {
+          "path": "members/data-visualization/LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "members/data-visualization/references/chart-types.md",
+          "size": 4194
+        },
+        {
+          "path": "members/data-visualization/references/code-recipes.md",
+          "size": 6912
+        },
+        {
+          "path": "members/data-visualization/references/design-principles.md",
+          "size": 1698
+        },
+        {
+          "path": "members/infographic-creator/GUIDE.md",
+          "size": 3002
+        },
+        {
+          "path": "members/infographic-creator/LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "members/infographic-creator/references/audience-context.md",
+          "size": 1256
+        },
+        {
+          "path": "members/table-design/GUIDE.md",
+          "size": 4081
+        },
+        {
+          "path": "members/table-design/LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "members/visualization-review/GUIDE.md",
+          "size": 3154
+        },
+        {
+          "path": "members/visualization-review/LICENSE.txt",
+          "size": 1067
+        },
+        {
+          "path": "members/visualization-review/references/review-rules.md",
+          "size": 5309
+        },
+        {
+          "path": "scripts/check_contrast.py",
+          "size": 1905
+        },
+        {
+          "path": "scripts/check_palette.py",
+          "size": 5613
+        },
+        {
+          "path": "scripts/check_rtl.py",
+          "size": 3157
+        }
+      ]
+    },
+    {
+      "name": "code-review",
+      "version": "1.0.0",
+      "category": "dev",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "代码评审",
+        "en": "Code review"
+      },
+      "summary": {
+        "zh-CN": "按清单评审代码，输出按严重度排序、可定位的问题。",
+        "en": "Review code against a checklist and report located issues by severity."
+      },
+      "archive": "code-review-1.0.0.zip",
+      "size": 3641,
+      "sha256": "66e6b5691c9aa9aa1f0be5567b581a48cf91f1a215fab422818116bc82c93677",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "size": 6637
+        }
+      ]
+    },
+    {
+      "name": "spec-intake",
+      "version": "1.0.0",
+      "category": "dev",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck",
+      "license": "MIT",
+      "title": {
+        "zh-CN": "需求澄清",
+        "en": "Spec intake"
+      },
+      "summary": {
+        "zh-CN": "逐轮澄清模糊需求，产出含验收标准的规格。",
+        "en": "Clarify vague requests round by round into a spec with acceptance criteria."
+      },
+      "archive": "spec-intake-1.0.0.zip",
+      "size": 2928,
+      "sha256": "5379135fa89359d033d1d23b91ac1582c733b27fdede6f5d4ededc22437b3dba",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "size": 5449
+        }
+      ]
+    },
+    {
+      "name": "mcp-development",
+      "version": "1.0.0",
+      "category": "dev",
+      "channels": [
+        "sideload"
+      ],
+      "author": "Infinity Deck（改编自 anthropics/claude-plugins-official）",
+      "license": "Apache-2.0",
+      "title": {
+        "zh-CN": "MCP 开发",
+        "en": "MCP development"
+      },
+      "summary": {
+        "zh-CN": "设计、构建、打包 MCP 服务器，并在应用中联调。",
+        "en": "Design, build, and package MCP servers, and test them in the app."
+      },
+      "archive": "mcp-development-1.0.0.zip",
+      "size": 74492,
+      "sha256": "5cbabd818dda7dba1df9e08dc435bf86874ae5c29d1ee07948b515b09ea3ed18",
+      "files": [
+        {
+          "path": "NOTICE.md",
+          "size": 1500
+        },
+        {
+          "path": "SKILL.md",
+          "size": 6339
+        },
+        {
+          "path": "members/build-mcp-app/GUIDE.md",
+          "size": 19908
+        },
+        {
+          "path": "members/build-mcp-app/LICENSE.txt",
+          "size": 11358
+        },
+        {
+          "path": "members/build-mcp-app/references/abuse-protection.md",
+          "size": 2412
+        },
+        {
+          "path": "members/build-mcp-app/references/apps-sdk-messages.md",
+          "size": 8772
+        },
+        {
+          "path": "members/build-mcp-app/references/directory-checklist.md",
+          "size": 1552
+        },
+        {
+          "path": "members/build-mcp-app/references/iframe-sandbox.md",
+          "size": 5188
+        },
+        {
+          "path": "members/build-mcp-app/references/payload-budgeting.md",
+          "size": 2175
+        },
+        {
+          "path": "members/build-mcp-app/references/widget-templates.md",
+          "size": 8924
+        },
+        {
+          "path": "members/build-mcp-server/GUIDE.md",
+          "size": 13333
+        },
+        {
+          "path": "members/build-mcp-server/LICENSE.txt",
+          "size": 11358
+        },
+        {
+          "path": "members/build-mcp-server/references/auth.md",
+          "size": 5745
+        },
+        {
+          "path": "members/build-mcp-server/references/deploy-cloudflare-workers.md",
+          "size": 3639
+        },
+        {
+          "path": "members/build-mcp-server/references/elicitation.md",
+          "size": 4728
+        },
+        {
+          "path": "members/build-mcp-server/references/remote-http-scaffold.md",
+          "size": 7504
+        },
+        {
+          "path": "members/build-mcp-server/references/resources-and-prompts.md",
+          "size": 4090
+        },
+        {
+          "path": "members/build-mcp-server/references/server-capabilities.md",
+          "size": 4673
+        },
+        {
+          "path": "members/build-mcp-server/references/tool-design.md",
+          "size": 7054
+        },
+        {
+          "path": "members/build-mcp-server/references/versions.md",
+          "size": 1108
+        },
+        {
+          "path": "members/build-mcpb/GUIDE.md",
+          "size": 8510
+        },
+        {
+          "path": "members/build-mcpb/LICENSE.txt",
+          "size": 11358
+        },
+        {
+          "path": "members/build-mcpb/references/local-security.md",
+          "size": 5384
+        },
+        {
+          "path": "members/build-mcpb/references/manifest-schema.md",
+          "size": 5359
+        }
+      ]
+    },
+    {
+      "name": "frontend-design",
+      "version": "1.0.0",
+      "category": "design",
+      "channels": [
+        "sideload",
+        "play"
+      ],
+      "author": "Infinity Deck（改编自 anthropics/claude-plugins-official）",
+      "license": "Apache-2.0",
+      "title": {
+        "zh-CN": "前端设计",
+        "en": "Frontend design"
+      },
+      "summary": {
+        "zh-CN": "确定有辨识度的视觉方向，在画布中实现页面与原型。",
+        "en": "Set a distinctive visual direction and build pages and prototypes on the canvas."
+      },
+      "archive": "frontend-design-1.0.0.zip",
+      "size": 10861,
+      "sha256": "fac0af89fff648f41ecd9318eca5a1529393152841b13354ececbefcdb49ebb1",
+      "files": [
+        {
+          "path": "LICENSE.txt",
+          "size": 10174
+        },
+        {
+          "path": "NOTICE.md",
+          "size": 978
+        },
+        {
+          "path": "SKILL.md",
+          "size": 12275
+        }
+      ]
+    }
+  ]
+}

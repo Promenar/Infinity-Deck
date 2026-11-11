@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.InfinityButtonGroup
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.promenar.infinity.data.chat.queue.ComposerQuotes
@@ -53,7 +54,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
@@ -3238,8 +3238,8 @@ private fun DraftBudgetNoticeBar(
                 modifier = Modifier.testTag(UiTags.CHAT_DRAFT_BUDGET_SAVE_ERROR),
             )
         }
-        // 放不下一行时第二个按钮整体换到下一行，按钮文字保持单行。
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 两个按钮放得下时横排，否则整组竖排等宽，按钮文字保持单行。
+        InfinityButtonGroup {
             if (onSaveDocument != null) {
                 Button(
                     onClick = {

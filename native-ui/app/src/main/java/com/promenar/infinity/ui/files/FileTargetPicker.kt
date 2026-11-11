@@ -12,15 +12,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clipToBounds
 import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.hierarchicalTransition
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,7 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.CreateNewFolder
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -130,27 +129,22 @@ internal fun FileTargetPickerContent(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(InfinitySpacing.Small))
-        if (locations.size > 1) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                locations.forEach { location ->
-                    FilterChip(
-                        selected = location.id == selectedId,
-                        onClick = {
-                            if (location.id != picker.locationId) {
-                                haptics.perform(InfinityHapticEvent.SELECTION)
-                                onLocation(location.id)
-                            }
-                        },
-                        label = { Text(location.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingIcon = {
-                            Icon(locationKindIcon(location.kind), contentDescription = null, modifier = Modifier.size(18.dp))
-                        },
-                        // 会话工作区本身只读，但可以进入其中的会话作为目标。
-                        enabled = location.capabilities.writable || location.id == SESSIONS_LOCATION_ID,
-                        modifier = Modifier.testTag(UiTags.fmTargetLocation(location.id)),
+        // 只列可作为目标的位置；会话工作区本身只读，但可以进入其中的会话作为目标。
+        val targets = locations.filter { it.capabilities.writable || it.id == SESSIONS_LOCATION_ID || it.id == selectedId }
+        if (targets.size > 1) {
+            InfinitySegmentedControl(
+                segments = targets.map { location ->
+                    InfinitySegment(
+                        value = location.id,
+                        label = location.title,
+                        tag = UiTags.fmTargetLocation(location.id),
+                        leading = { Icon(locationKindIcon(location.kind), contentDescription = null, modifier = Modifier.size(18.dp)) },
                     )
-                }
-            }
+                },
+                selected = selectedId,
+                onSelect = { id -> if (id != picker.locationId) onLocation(id) },
+                compact = true,
+            )
         }
         FileBreadcrumbs(
             crumbs = withRootCrumb(picker.crumbs, targetLocation?.title.orEmpty(), picker.path),
