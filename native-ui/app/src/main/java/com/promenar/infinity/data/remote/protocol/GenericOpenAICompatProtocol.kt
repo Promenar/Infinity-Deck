@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.remote.protocol
 
 import com.promenar.infinity.data.remote.applySessionRequestHeaders
+import com.promenar.infinity.data.remote.observeFirstByte
 
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
@@ -69,6 +70,7 @@ class GenericOpenAICompatProtocol(
                     header("Authorization", "Bearer $apiKey")
                 }
                 setBody(buildRequestBody(request, stream = true))
+                request.latencyTrace?.dispatched()
             }.execute { response ->
                 if (!response.status.isSuccess()) {
                     val errorBody = try {
@@ -100,6 +102,7 @@ class GenericOpenAICompatProtocol(
 
                 val channel = response.body<ByteReadChannel>()
                 activeChannel = channel
+                channel.observeFirstByte(request.latencyTrace)
                 val sb = StringBuilder()
                 var completionReason: CompletionReason? = null
                 var sawDone = false

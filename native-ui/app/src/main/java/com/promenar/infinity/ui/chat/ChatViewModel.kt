@@ -1322,6 +1322,9 @@ class ChatViewModel(
             enqueueComposerDraft(sessionId, text, imageUris, documents, quotes)
             return
         }
+        InfinityLogger.diagnostic("generation.send_accepted", mapOf(
+            "sessionId" to sessionId, "monotonicMs" to System.nanoTime() / 1_000_000,
+        ))
         cancelPendingPreparation(sessionId)
         preparingSessions.add(sessionId)
         val submissionId = takeDraftForSending(sessionId, text, imageUris)

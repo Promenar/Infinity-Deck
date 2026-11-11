@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.remote.protocol
 
 import com.promenar.infinity.data.remote.applySessionRequestHeaders
+import com.promenar.infinity.data.remote.observeFirstByte
 
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
@@ -72,6 +73,7 @@ class GeminiProtocol(
                 contentType(ContentType.Application.Json)
                 header(API_KEY_HEADER, apiKey)
                 setBody(GeminiContentCodec.buildRequestBody(request, json))
+                request.latencyTrace?.dispatched()
             }.execute { response ->
                 if (!response.status.isSuccess()) {
                     val body = runCatching { response.bodyAsText() }.getOrDefault("")
@@ -81,6 +83,7 @@ class GeminiProtocol(
                 val channel = response.bodyAsChannel()
                 activeChannel = channel
                 try {
+                    channel.observeFirstByte(request.latencyTrace)
                     consumeGeminiStream(
                         channel = channel,
                         state = GeminiStreamState(),

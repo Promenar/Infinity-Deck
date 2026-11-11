@@ -233,8 +233,17 @@ class GenerationPresentationStore {
             it.copy(generating = value, handledFailure = if (value) false else it.handledFailure)
         }
 
-        override fun setStreamingContent(value: String) =
+        override fun setStreamingContent(value: String) {
+            val previous = entry(sessionId).value
+            val firstText = previous?.taskId == taskId && previous.streamingContent.isEmpty() && value.isNotEmpty()
             update(sessionId, taskId) { it.copy(streamingContent = value) }
+            if (firstText && entry(sessionId).value?.taskId == taskId) {
+                com.promenar.infinity.utils.InfinityLogger.diagnostic("generation.presentation_first_text", mapOf(
+                    "sessionId" to sessionId, "taskId" to taskId,
+                    "monotonicMs" to System.nanoTime() / 1_000_000,
+                ))
+            }
+        }
 
         override fun setError(failure: GenerationFailure?) =
             update(sessionId, taskId) { it.copy(error = failure) }

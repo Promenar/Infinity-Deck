@@ -527,7 +527,10 @@ internal class DefaultChatGenerationRuntime(
             historyForNextTurn = nextPreview.prompt), text, documents)
     }
 
+    private var latencyPreparationStart = 0L
+
     override suspend fun prepare(request: GenerationRequest) {
+        latencyPreparationStart = System.nanoTime() / 1_000_000
         toolProgressReminder.start()
         interactionMode = request.interactionMode
         val input = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == request.userMessageId }
@@ -576,6 +579,7 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun buildContext(request: GenerationRequest): GenerationPreparationOutcome {
+        if (latencyPreparationStart == 0L) latencyPreparationStart = System.nanoTime() / 1_000_000
         interactionMode = request.interactionMode
         subagentCompletions?.let { bridge ->
             val target = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
@@ -875,7 +879,19 @@ internal class DefaultChatGenerationRuntime(
         }
         unsentInstructionIds.remove(assistantMessageId(request))
         emptyReplyReminder = false
-        InfinityLogger.log(mainPromptPrefixTracker.observe(request.sessionId, prompt))
+        logPrefixDiagnostic(com.promenar.infinity.BuildConfig.DEBUG,
+            { mainPromptPrefixTracker.observe(request.sessionId, prompt) }, InfinityLogger::log)
+        val traceId = java.util.UUID.randomUUID().toString()
+        val trace = com.promenar.infinity.data.remote.ModelLatencyTrace(
+            latencyPreparationStart.takeIf { it > 0 } ?: System.nanoTime() / 1_000_000,
+            { System.nanoTime() / 1_000_000 },
+        ) { stage, elapsed ->
+            InfinityLogger.diagnostic("generation.latency", mapOf(
+                "sessionId" to request.sessionId, "targetId" to assistantMessageId(request), "traceId" to traceId, "attempt" to attempt,
+                "stage" to stage, "elapsedMs" to elapsed, "monotonicMs" to System.nanoTime() / 1_000_000,
+            ))
+        }
+        latencyPreparationStart = 0L
         val source = if (route.useLocalProvider) {
             localProviderFactory(prompt.model).sendPrompt(prompt)
         } else {
@@ -896,7 +912,7 @@ internal class DefaultChatGenerationRuntime(
                     tools = preparedTools.associateBy { it.function.name },
                     toolChoice = prompt.toolChoice,
                 ),
-                StreamConfig(sessionId = request.sessionId),
+                StreamConfig(sessionId = request.sessionId, latencyTrace = trace),
             )
         }
         val recorder = RequestInputUsageRecorder(currentSession, prompt, route.modelId) { baseline ->
@@ -916,7 +932,10 @@ internal class DefaultChatGenerationRuntime(
                         )))
                 }
                 mapped?.also {
-                    if (it is GenerationChunk.Text) toolProgressReminder.onUserFacingText(it.content)
+                    if (it is GenerationChunk.Text) {
+                        if (it.content.isNotEmpty()) trace.firstVisible()
+                        toolProgressReminder.onUserFacingText(it.content)
+                    }
                 }
             })
         }

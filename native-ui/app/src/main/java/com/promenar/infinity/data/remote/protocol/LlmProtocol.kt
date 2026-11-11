@@ -146,6 +146,7 @@ data class PromptRequest(
     val documents: List<DocumentInput>? = null,
     @Transient val sessionId: String? = null,
     @Transient val sessionHeaders: com.promenar.infinity.data.remote.SessionRequestHeaders? = null,
+    @Transient internal val latencyTrace: com.promenar.infinity.data.remote.ModelLatencyTrace? = null,
 )
 
 @Serializable
