@@ -11,12 +11,12 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.assertThrows
 
-class TermuxBackgroundJobsTest {
-    private lateinit var root: File
-    private lateinit var home: File
-    private lateinit var bin: File
-    private lateinit var jobs: TermuxBackgroundJobs
-    private val handles = mutableListOf<TermuxJobHandle>()
+abstract class TermuxBackgroundJobsTestFixture {
+    protected lateinit var root: File
+    protected lateinit var home: File
+    protected lateinit var bin: File
+    protected lateinit var jobs: TermuxBackgroundJobs
+    protected val handles = mutableListOf<TermuxJobHandle>()
 
     @Before fun prepare() {
         assumeTrue(File("/bin/bash").canExecute())
@@ -49,6 +49,44 @@ class TermuxBackgroundJobsTest {
         if (::root.isInitialized) root.deleteRecursively()
     }
 
+    protected suspend fun awaitFinished(handle: TermuxJobHandle): TermuxJobSnapshot {
+        repeat(100) {
+            val result = jobs.inspect(handle)
+            if (result.exitCode != null && !result.alive) return result
+            Thread.sleep(100)
+        }
+        error("后台任务未在测试期限内结束")
+    }
+
+    protected suspend fun execute(request: TermuxCommandRequest): TermuxCommandResult {
+        val process = ProcessBuilder("/bin/bash", "-c", request.command).apply {
+            environment()["HOME"] = home.path
+            environment()["PATH"] = "${bin.path}:${System.getenv("PATH")}"
+        }.start()
+        process.outputStream.close()
+        val stdout = process.inputStream.bufferedReader().readText()
+        val stderr = process.errorStream.bufferedReader().readText()
+        check(process.waitFor(12, TimeUnit.SECONDS)) { "RUN_COMMAND 测试调用超时" }
+        return TermuxCommandResult(stdout = stdout, stderr = stderr, exitCode = process.exitValue())
+    }
+
+    /**
+     * macOS 首次执行新建的可执行脚本前要排队做系统安全评估，单次约 0.3 秒，并发构建时可达数秒，
+     * 会吃掉启动回执等待并误报退出码 73；Termux 的 setsid、ps 是原生程序，没有这段开销。
+     * 因此在准备阶段先执行一次，让评估落在不受回执时限约束的位置。
+     */
+    protected fun warmUp(tool: File, vararg args: String) {
+        val process = ProcessBuilder(tool.path, *args).redirectErrorStream(true).start()
+        process.outputStream.close()
+        process.inputStream.readBytes()
+        check(process.waitFor(60, TimeUnit.SECONDS) && process.exitValue() == 0) { "测试工具 ${tool.name} 预热失败" }
+    }
+
+    protected fun processExists(pid: Int): Boolean =
+        ProcessBuilder("/bin/kill", "-0", pid.toString()).start().waitFor() == 0
+}
+
+class TermuxBackgroundJobsTest : TermuxBackgroundJobsTestFixture() {
     @Test fun `字节计数之后追加日志时快照仍返回对应固定范围`() = runBlocking {
         val handle = jobs.start("snapshot-race", "printf before", null, null, 120, null).also(handles::add)
         awaitFinished(handle)
@@ -140,6 +178,9 @@ class TermuxBackgroundJobsTest {
         assertThat(legacy.exists()).isFalse()
     }
 
+}
+
+class TermuxBackgroundJobsLifecycleTest : TermuxBackgroundJobsTestFixture() {
     @Test fun `日志只返回末尾八千字符并标记截断`() = runBlocking {
         val handle = jobs.start("tail", "printf '%09000d' 0", null, null, 120, null).also(handles::add)
         val result = awaitFinished(handle)
@@ -217,6 +258,9 @@ class TermuxBackgroundJobsTest {
         Unit
     }
 
+}
+
+class TermuxBackgroundJobsRecoveryTest : TermuxBackgroundJobsTestFixture() {
     @Test fun `PID身份不匹配时拒绝停止其它进程`() = runBlocking {
         val handle = jobs.start("identity", "sleep 30", null, null, 120, null).also(handles::add)
         assertThrows(IllegalStateException::class.java) {
@@ -278,39 +322,4 @@ class TermuxBackgroundJobsTest {
         assertThat(result.logTail).doesNotContain("should-not-run")
     }
 
-    private suspend fun awaitFinished(handle: TermuxJobHandle): TermuxJobSnapshot {
-        repeat(100) {
-            val result = jobs.inspect(handle)
-            if (result.exitCode != null && !result.alive) return result
-            Thread.sleep(100)
-        }
-        error("后台任务未在测试期限内结束")
-    }
-
-    private suspend fun execute(request: TermuxCommandRequest): TermuxCommandResult {
-        val process = ProcessBuilder("/bin/bash", "-c", request.command).apply {
-            environment()["HOME"] = home.path
-            environment()["PATH"] = "${bin.path}:${System.getenv("PATH")}"
-        }.start()
-        process.outputStream.close()
-        val stdout = process.inputStream.bufferedReader().readText()
-        val stderr = process.errorStream.bufferedReader().readText()
-        check(process.waitFor(12, TimeUnit.SECONDS)) { "RUN_COMMAND 测试调用超时" }
-        return TermuxCommandResult(stdout = stdout, stderr = stderr, exitCode = process.exitValue())
-    }
-
-    /**
-     * macOS 首次执行新建的可执行脚本前要排队做系统安全评估，单次约 0.3 秒，并发构建时可达数秒，
-     * 会吃掉启动回执等待并误报退出码 73；Termux 的 setsid、ps 是原生程序，没有这段开销。
-     * 因此在准备阶段先执行一次，让评估落在不受回执时限约束的位置。
-     */
-    private fun warmUp(tool: File, vararg args: String) {
-        val process = ProcessBuilder(tool.path, *args).redirectErrorStream(true).start()
-        process.outputStream.close()
-        process.inputStream.readBytes()
-        check(process.waitFor(60, TimeUnit.SECONDS) && process.exitValue() == 0) { "测试工具 ${tool.name} 预热失败" }
-    }
-
-    private fun processExists(pid: Int): Boolean =
-        ProcessBuilder("/bin/kill", "-0", pid.toString()).start().waitFor() == 0
 }
