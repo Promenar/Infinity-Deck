@@ -279,6 +279,11 @@ fun PipelineBubble(
     // 本次组合中是否见过这一轮以平铺形式进行；只作结束收起时是否播放过渡的判断，不触发重组。
     val sawLiveTurn = remember(group.messages.firstOrNull()?.id) { LiveTurnFlag() }
     SideEffect { if (collapsePlan == null && isGenerating) sawLiveTurn.value = true }
+    // 正文按所属消息保存为可移动内容：一轮结束收起时，最终正文从平铺列表换到收起布局的固定位置，
+    // 仍沿用流式期间的放出进度、解析结果与横向滚动位置。
+    val contentSegments = remember(group.messages.firstOrNull()?.id) {
+        HashMap<String, @Composable (ContentSegmentArgs) -> Unit>()
+    }
 
     val footerContent = collapsePlan?.finalContent
         ?: allSteps.filterIsInstance<PipelineStep.Content>().lastOrNull { it.content.isNotBlank() }
@@ -354,15 +359,29 @@ fun PipelineBubble(
                             streamingContent.ifEmpty { step.content }
                         } else step.content
                         val sourceMessage = pipelineContentOwner(group.messages, step)
-                        ContentSegment(
-                            content = displayContent,
-                            isStreaming = streamingTarget,
-                            showStreamingCursor = renderPlan.showContentCursor,
-                            fontSize = fontSize,
-                            sourceMessageId = sourceMessage?.id ?: group.messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id,
-                            onContentChange = sourceMessage?.let { msg ->
-                                onMessageContentChange?.let { handler -> { content: String -> handler(msg.id, content) } }
-                            } ?: onContentChange,
+                        val segment = contentSegments.getOrPut(step.messageId.ifEmpty { "content:$index" }) {
+                            movableContentOf { args: ContentSegmentArgs ->
+                                ContentSegment(
+                                    content = args.content,
+                                    isStreaming = args.isStreaming,
+                                    showStreamingCursor = args.showStreamingCursor,
+                                    fontSize = args.fontSize,
+                                    onContentChange = args.onContentChange,
+                                    sourceMessageId = args.sourceMessageId,
+                                )
+                            }
+                        }
+                        segment(
+                            ContentSegmentArgs(
+                                content = displayContent,
+                                isStreaming = streamingTarget,
+                                showStreamingCursor = renderPlan.showContentCursor,
+                                fontSize = fontSize,
+                                onContentChange = sourceMessage?.let { msg ->
+                                    onMessageContentChange?.let { handler -> { content: String -> handler(msg.id, content) } }
+                                } ?: onContentChange,
+                                sourceMessageId = sourceMessage?.id ?: group.messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id,
+                            ),
                         )
                     }
                     is PipelineStep.SessionRecord -> SessionRecordRows(step.message)
@@ -1801,20 +1820,43 @@ internal fun ContentSegment(
     /** 正文所属消息；引用时作为来源，为 null 时工具条不出现“引用”。 */
     sourceMessageId: String? = null,
 ) {
-    val body = @Composable {
-        MarkdownText(
-            markdown = content,
-            isStreaming = isStreaming,
-            showCursor = showStreamingCursor,
-            fontSize = fontSize,
-            onContentChange = onContentChange,
-            modifier = Modifier.fillMaxWidth()
-        )
+    // 生成中与结束后正文分处两个父布局。可移动内容让正文换入选区容器时保留放出进度、解析结果与代码块横向滚动位置，
+    // 收尾时积压文字继续渐显，不会因重建一次涌出、让条目高度跳变。
+    val body = remember {
+        movableContentOf { args: AssistantBodyArgs ->
+            MarkdownText(
+                markdown = args.content,
+                isStreaming = args.isStreaming,
+                showCursor = args.showCursor,
+                fontSize = args.fontSize,
+                onContentChange = args.onContentChange,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
+    val args = AssistantBodyArgs(content, isStreaming, showStreamingCursor, fontSize, onContentChange)
     Box(modifier = Modifier.fillMaxWidth().testTag("CHAT_ASSISTANT_BODY")) {
-        if (isStreaming) body() else QuotableSelectionContainer(sourceMessageId) { body() }
+        if (isStreaming) body(args) else QuotableSelectionContainer(sourceMessageId) { body(args) }
     }
 }
+
+private data class AssistantBodyArgs(
+    val content: String,
+    val isStreaming: Boolean,
+    val showCursor: Boolean,
+    val fontSize: Int,
+    val onContentChange: ((String) -> Unit)?,
+)
+
+/** 正文段的全部参数；结束收起时最终正文换到另一处调用位置，整体传给同一份可移动内容。 */
+private data class ContentSegmentArgs(
+    val content: String,
+    val isStreaming: Boolean,
+    val showStreamingCursor: Boolean,
+    val fontSize: Int,
+    val onContentChange: ((String) -> Unit)?,
+    val sourceMessageId: String?,
+)
 
 // ─────────────────────────────────────────────────────────────────
 //  工具图片结果解析

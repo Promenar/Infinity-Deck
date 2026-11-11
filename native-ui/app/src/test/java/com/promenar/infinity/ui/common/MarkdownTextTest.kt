@@ -87,6 +87,35 @@ class MarkdownTextTest {
         }
 
         @Test
+        fun `completes partial closing fence instead of rendering it as an extra code line`() {
+            assertThat(sanitizeStreamingMarkdown("```text\nsrc/\n`")).isEqualTo("```text\nsrc/\n```")
+            assertThat(sanitizeStreamingMarkdown("```text\nsrc/\n``")).isEqualTo("```text\nsrc/\n```")
+        }
+
+        @Test
+        fun `code lines never shrink while the closing fence streams in`() {
+            fun codeLines(text: String): Int {
+                val sanitized = sanitizeStreamingMarkdown(text)
+                val body = sanitized.substringAfter('\n').substringBeforeLast("\n```", missingDelimiterValue = "")
+                return if (body.isEmpty()) 0 else body.lines().size
+            }
+            val full = "```text\nsrc/\n├── main/\n└── test/\n```\n\n完成"
+            var previous = 0
+            for (end in full.indexOf('\n') + 1..full.length) {
+                val prefix = full.take(end)
+                val lines = codeLines(prefix)
+                assertThat(lines).isAtLeast(previous)
+                previous = lines
+            }
+            assertThat(previous).isEqualTo(3)
+        }
+
+        @Test
+        fun `keeps backticks that are code content`() {
+            assertThat(sanitizeStreamingMarkdown("```text\n`a")).isEqualTo("```text\n`a\n```")
+        }
+
+        @Test
         fun `does not modify already closed code fence`() {
             val input = "```kotlin\nval x = 1\n```"
             val result = sanitizeStreamingMarkdown(input)
