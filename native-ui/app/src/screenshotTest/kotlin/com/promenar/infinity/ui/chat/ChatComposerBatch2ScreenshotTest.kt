@@ -310,7 +310,7 @@ private fun batch2Document() = MessageDocumentAttachment(
 @Composable
 fun chatTopBarLandscapeSafeInsetsBatch2Preview() = ChatBatch2Frame {
     ChatTopBar(
-        title = "季度经营分析", onBack = {}, onWorkspace = {}, onSettings = {},
+        title = "季度经营分析", onBack = {}, onSettings = {},
         onClearHistory = {}, onRename = {}, onDeleteSession = {},
         windowInsets = WindowInsets(left = 28.dp, right = 48.dp),
     )
@@ -326,7 +326,7 @@ private val PreviewGitSummary = com.promenar.infinity.ui.git.GitEntrySummary.Rep
 @Composable
 fun chatTopBarGitLightChinesePreview() = ChatBatch2Frame(dark = false) {
     ChatTopBar(
-        title = "重构会话浮岛", onBack = {}, onWorkspace = {}, onSettings = {},
+        title = "重构会话浮岛", onBack = {}, onSettings = {},
         onClearHistory = {}, onRename = {}, onDeleteSession = {},
         git = PreviewGitSummary,
     )
@@ -337,7 +337,7 @@ fun chatTopBarGitLightChinesePreview() = ChatBatch2Frame(dark = false) {
 @Composable
 fun chatTopBarGitDarkEnglishLargeFontPreview() = ChatBatch2Frame {
     ChatTopBar(
-        title = "Refactor the chat composer island", onBack = {}, onWorkspace = {}, onSettings = {},
+        title = "Refactor the chat composer island", onBack = {}, onSettings = {},
         onClearHistory = {}, onRename = {}, onDeleteSession = {},
         git = PreviewGitSummary.copy(branch = "feature/a-very-long-branch-name", changeCount = 1, behind = null),
     )

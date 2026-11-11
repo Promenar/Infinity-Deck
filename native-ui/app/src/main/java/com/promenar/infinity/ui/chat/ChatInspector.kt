@@ -6,6 +6,8 @@ import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import android.content.Context
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -42,25 +44,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.CloseFullscreen
-import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowLeft
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowRight
-import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.OpenInFull
-import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Badge
-import androidx.compose.ui.layout.Layout
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -91,132 +87,7 @@ import com.promenar.infinity.ui.startup.StartupNotice
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 
-/** 检视器页签与边缘条上的角标；[gitAvailable] 为 false（工作区不是 Git 仓库）时不显示 Git 页签。 */
-internal data class ChatInspectorBadges(
-    val running: Boolean = false,
-    val pendingApprovals: Int = 0,
-    /** 有计划、后台任务或状态面板等可看的运行内容。 */
-    val hasRunContent: Boolean = false,
-    val gitAvailable: Boolean = false,
-    val gitChanges: Int = 0,
-    val canvases: Int = 0,
-    /** 本会话的 Agent 浏览器状态；为空表示还没有打开网页。 */
-    val browser: com.promenar.infinity.data.browser.BrowserMode? = null,
-    /** 会话提供浏览器入口时浏览器页签常驻，未打开网页时显示空状态。 */
-    val browserEntry: Boolean = false,
-    /** 远程页签圆点：智能体正在使用 SSH（主色）或 Tailscale 需要登录、连接失败（橙色）。 */
-    val remote: RemoteDot? = null,
-) {
-    fun pages(): List<ChatPage> = ChatPage.entries.filter {
-        (it != ChatPage.Git || gitAvailable) && (it != ChatPage.Browser || browserEntry || browser != null)
-    }
-}
-
-private val ChatPage.icon: ImageVector
-    get() = when (this) {
-        ChatPage.Run -> Icons.Rounded.Checklist
-        ChatPage.Explorer -> Icons.Outlined.Folder
-        ChatPage.Git -> Icons.Rounded.AccountTree
-        ChatPage.Canvas -> Icons.Rounded.Dashboard
-        ChatPage.Browser -> Icons.Rounded.Public
-        ChatPage.Remote -> Icons.Rounded.Lan
-    }
-
-@Composable
-private fun ChatPage.label(): String = stringResource(
-    when (this) {
-        ChatPage.Run -> R.string.chat_inspector_tab_run
-        ChatPage.Explorer -> R.string.chat_inspector_tab_files
-        ChatPage.Git -> R.string.chat_inspector_tab_git
-        ChatPage.Canvas -> R.string.chat_inspector_tab_canvas
-        ChatPage.Browser -> R.string.chat_inspector_tab_browser
-        ChatPage.Remote -> R.string.remote_panel_title
-    },
-)
-
-/** 页签名加角标含义，供只有图标的入口朗读。 */
-@Composable
-private fun ChatPage.description(badges: ChatInspectorBadges): String = listOfNotNull(
-    label(),
-    if (this == ChatPage.Run && badges.pendingApprovals > 0) {
-        pluralStringResource(R.plurals.chat_inspector_pending_approvals, badges.pendingApprovals, badges.pendingApprovals)
-    } else null,
-    if (this == ChatPage.Run && badges.running) stringResource(R.string.chat_inspector_running) else null,
-    if (this == ChatPage.Browser) browserDotDescription(badges.browser) else null,
-    if (this == ChatPage.Remote) remoteDotDescription(badges.remote) else null,
-    when (this) {
-        ChatPage.Git -> badges.gitChanges
-        ChatPage.Canvas -> badges.canvases
-        else -> 0
-    }.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.chat_inspector_count, it, it) },
-).joinToString(", ")
-
-/** 页签图标：运行中换成转圈；待批准、Git 改动数与画布数挂在右上角。 */
-/**
- * 页签图标与角标：角标贴在图标右上角外侧，只压住图标右缘 [BadgeOverlap]，数字变宽时向图标内侧多让一点，
- * 伸出图标右缘始终不超过 [BadgeReach]。[reserveBadge] 为 true 时把伸出部分计入宽度，后面的页签名称不会被压住。
- */
-@Composable
-private fun InspectorIcon(page: ChatPage, badges: ChatInspectorBadges, tint: Color, reserveBadge: Boolean = false) {
-    val scheme = MaterialTheme.colorScheme
-    val count = when (page) {
-        ChatPage.Run -> badges.pendingApprovals
-        ChatPage.Git -> badges.gitChanges
-        ChatPage.Canvas -> badges.canvases
-        ChatPage.Explorer, ChatPage.Browser, ChatPage.Remote -> 0
-    }
-    // 浏览器与远程页签不计数，只用圆点区分 Agent 操作中（主色）与需要用户处理（橙色）。
-    val dot = when (page) {
-        ChatPage.Browser -> browserDotColor(badges.browser)
-        ChatPage.Remote -> remoteDotColor(badges.remote)
-        else -> null
-    }
-    val badgeColor = if (page == ChatPage.Run) scheme.tertiary else scheme.primary
-    val badgeContent = if (page == ChatPage.Run) scheme.onTertiary else scheme.onPrimary
-    Layout(
-        content = {
-            if (page == ChatPage.Run && badges.running) {
-                Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = scheme.primary)
-                }
-            } else {
-                Icon(page.icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-            }
-            if (count > 0) {
-                Badge(containerColor = badgeColor, contentColor = badgeContent) { Text(count.toString()) }
-            } else if (dot != null) {
-                Badge(containerColor = dot)
-            }
-        },
-    ) { measurables, constraints ->
-        val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val icon = measurables[0].measure(loose)
-        val badge = measurables.getOrNull(1)?.measure(loose)
-        val reach = BadgeReach.roundToPx()
-        val badgeX = if (badge == null) 0 else icon.width - maxOf(BadgeOverlap.roundToPx(), badge.width - reach)
-        val width = if (badge != null && reserveBadge) badgeX + badge.width else icon.width
-        layout(width, icon.height) {
-            icon.place(0, 0)
-            badge?.place(badgeX, -BadgeLift.roundToPx())
-        }
-    }
-}
-
-@Composable
-private fun browserDotColor(mode: com.promenar.infinity.data.browser.BrowserMode?): Color? = when (mode) {
-    com.promenar.infinity.data.browser.BrowserMode.AGENT -> MaterialTheme.colorScheme.primary
-    com.promenar.infinity.data.browser.BrowserMode.HANDOFF -> MaterialTheme.colorScheme.tertiary
-    else -> null
-}
-
-@Composable
-private fun browserDotDescription(mode: com.promenar.infinity.data.browser.BrowserMode?): String? = when (mode) {
-    com.promenar.infinity.data.browser.BrowserMode.AGENT -> stringResource(R.string.chat_inspector_browser_agent)
-    com.promenar.infinity.data.browser.BrowserMode.HANDOFF -> stringResource(R.string.chat_inspector_browser_needs_you)
-    else -> null
-}
-
-/** 远程页签圆点；两种情况同时出现时需要用户处理的橙点优先。 */
+/** 远程条目的状态：智能体正在使用 SSH，或 Tailscale 需要登录、连接失败；两种情况同时出现时需要用户处理的优先。 */
 enum class RemoteDot { AGENT, ATTENTION }
 
 internal fun remoteDot(agentUsingSsh: Boolean, tailscaleNeedsAttention: Boolean): RemoteDot? = when {
@@ -226,22 +97,11 @@ internal fun remoteDot(agentUsingSsh: Boolean, tailscaleNeedsAttention: Boolean)
 }
 
 @Composable
-private fun remoteDotColor(dot: RemoteDot?): Color? = when (dot) {
-    RemoteDot.AGENT -> MaterialTheme.colorScheme.primary
-    RemoteDot.ATTENTION -> MaterialTheme.colorScheme.tertiary
-    null -> null
-}
-
-@Composable
-private fun remoteDotDescription(dot: RemoteDot?): String? = when (dot) {
+internal fun remoteDotDescription(dot: RemoteDot?): String? = when (dot) {
     RemoteDot.AGENT -> stringResource(R.string.remote_panel_dot_agent)
     RemoteDot.ATTENTION -> stringResource(R.string.remote_panel_dot_attention)
     null -> null
 }
-
-private val BadgeOverlap = 4.dp
-private val BadgeReach = 12.dp
-private val BadgeLift = 6.dp
 
 private val InspectorShape = RoundedCornerShape(20.dp)
 
@@ -250,15 +110,14 @@ private fun inspectorBorder() = BorderStroke(0.5.dp, MaterialTheme.colorScheme.o
 
 /**
  * 宽窗口会话右侧的浮动检视器：独立圆角卡片，不以竖线切开会话。
- * 底栏左侧是页签，右侧是加宽与收起；当前页签显示图标与名称，其余只显示图标与角标。
+ * 底栏左侧是功能面板页签（与窄窗口顶栏入口同一份 [entries]），右侧是加宽与收起；当前页签显示图标与名称，其余只显示图标与角标。
  * 内容以 [InfinityPanePresentation.Inspector] 承载：页面不再贴系统栏留白，根层不重复画顶栏。
  */
 @Composable
 internal fun ChatInspectorCard(
     root: ChatPage,
-    badges: ChatInspectorBadges,
+    entries: List<PanelHubEntry>,
     widened: Boolean,
-    onSelect: (ChatPage) -> Unit,
     onToggleWiden: () -> Unit,
     onCollapse: () -> Unit,
     modifier: Modifier = Modifier,
@@ -285,13 +144,12 @@ internal fun ChatInspectorCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                // 页签区只用操作按钮之外的宽度：放得下就全部显示（当前页签带名称），放不下时其余页签收进“更多”菜单，
-                // 不再横向滚动——滚动视口会把最后一个页签切成半截，看起来像一个残缺的图标。
+                // 页签区只用操作按钮之外的宽度：放得下就全部显示（当前页签带名称），放不下时队尾的页签收进“更多”菜单。
+                // 不横向滚动：固定模式下底栏紧贴屏幕底边，横滑会与系统手势冲突，滚动视口也会把最后一个页签切成半截。
                 InspectorTabRow(
-                    pages = badges.pages(),
+                    entries = entries,
                     root = root,
-                    badges = badges,
-                    onSelect = { page -> haptics.select(page == root); onSelect(page) },
+                    onSelect = { entry -> haptics.select(entry.page == root); entry.onOpen() },
                     modifier = Modifier.weight(1f),
                 )
                 // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏。
@@ -333,7 +191,7 @@ internal data class InspectorTabFit(
 )
 
 /**
- * 按可用宽度（dp）决定底栏页签怎么放：
+ * 按可用宽度（dp）决定底栏页签怎么放（[pages] 已按功能面板入口排好序，不可用的在队尾）：
  * 1. 全部图标加当前页签名称放得下时照常显示；
  * 2. 名称放不下时只显示图标；
  * 3. 图标也放不下时，末尾留一个“更多”按钮，放不下的页签按原顺序收进菜单，当前页签始终留在底栏。
@@ -362,63 +220,62 @@ internal fun inspectorTabFit(
     return InspectorTabFit(visible, pages.filter { it !in visible }, showSelectedLabel = false)
 }
 
-/** 页签角标或圆点是否存在：用于给“更多”按钮挂提示圆点，以及估算当前页签名称占用的宽度。 */
-private fun ChatPage.hasMark(badges: ChatInspectorBadges): Boolean = when (this) {
-    ChatPage.Run -> badges.pendingApprovals > 0
-    ChatPage.Git -> badges.gitChanges > 0
-    ChatPage.Canvas -> badges.canvases > 0
-    ChatPage.Browser -> badges.browser == com.promenar.infinity.data.browser.BrowserMode.AGENT ||
-        badges.browser == com.promenar.infinity.data.browser.BrowserMode.HANDOFF
-    ChatPage.Remote -> badges.remote != null
-    ChatPage.Explorer -> false
-}
+/** 条目带角标或圆点：用于给“更多”按钮挂提示圆点，以及估算当前页签名称占用的宽度。 */
+private fun PanelHubEntry.hasMark(): Boolean = available && (pending > 0 || running)
 
 @Composable
 private fun InspectorTabRow(
-    pages: List<ChatPage>,
+    entries: List<PanelHubEntry>,
     root: ChatPage,
-    badges: ChatInspectorBadges,
-    onSelect: (ChatPage) -> Unit,
+    onSelect: (PanelHubEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val label = root.label()
+    val label = root.hubLabel()
     val labelStyle = InfinityTypography.labelLarge
+    val rootMarked = entries.firstOrNull { it.page == root }?.hasMark() == true
     // 带名称时比只显示图标多出的宽度：名称、图标与名称的间距、两侧内边距差，以及角标伸出图标右缘的部分。
-    val labelExtra = remember(label, labelStyle, density, root, badges) {
+    val labelExtra = remember(label, labelStyle, density, rootMarked) {
         val text = with(density) { measurer.measure(label, labelStyle, maxLines = 1).size.width.toDp() }
         text + InspectorTabLabelStart + 20.dp + InspectorTabLabelGap + InspectorTabLabelEnd - InspectorTabWidth +
-            (if (root.hasMark(badges)) BadgeReach else 0.dp)
+            (if (rootMarked) PanelHubBadgeReach else 0.dp)
     }
+    val byPage = entries.associateBy { it.page }
     BoxWithConstraints(modifier) {
-        val fit = inspectorTabFit(pages, root, maxWidth.value, labelExtra.value)
+        val fit = inspectorTabFit(entries.map { it.page }, root, maxWidth.value, labelExtra.value)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(InspectorTabGap),
         ) {
             fit.visible.forEach { page ->
+                val entry = byPage.getValue(page)
                 InspectorTab(
-                    page = page,
+                    entry = entry,
                     selected = page == root,
                     showLabel = page == root && fit.showSelectedLabel,
-                    badges = badges,
-                    onClick = { onSelect(page) },
+                    onClick = { onSelect(entry) },
                 )
             }
-            if (fit.overflow.isNotEmpty()) InspectorOverflowTabs(fit.overflow, badges, onSelect)
+            if (fit.overflow.isNotEmpty()) InspectorOverflowTabs(fit.overflow.map(byPage::getValue), onSelect)
         }
     }
 }
 
 @Composable
-private fun InspectorTab(page: ChatPage, selected: Boolean, showLabel: Boolean, badges: ChatInspectorBadges, onClick: () -> Unit) {
+private fun InspectorTab(entry: PanelHubEntry, selected: Boolean, showLabel: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val tint = if (selected) scheme.onSurface else scheme.onSurfaceVariant
-    val description = page.description(badges)
+    val tint = when {
+        !entry.available -> scheme.onSurface.copy(alpha = 0.38f)
+        selected -> scheme.onSurface
+        else -> scheme.onSurfaceVariant
+    }
+    val description = entry.description()
     // 可点的 Surface 自带最小触控尺寸：可见底色 40dp 高，触控高度补足 48dp；宽度至少 48dp。
+    // 未被 Agent 调用过的条目灰调显示、不可点按。
     Surface(
         onClick = onClick,
+        enabled = entry.available,
         shape = RoundedCornerShape(12.dp),
         color = if (selected) scheme.surfaceContainerHigh else Color.Transparent,
         modifier = Modifier
@@ -429,7 +286,7 @@ private fun InspectorTab(page: ChatPage, selected: Boolean, showLabel: Boolean, 
                 this.selected = selected
                 contentDescription = description
             }
-            .testTag(ChatInspectorTags.tab(page)),
+            .testTag(ChatInspectorTags.tab(entry.page)),
     ) {
         if (showLabel) {
             Row(
@@ -437,24 +294,27 @@ private fun InspectorTab(page: ChatPage, selected: Boolean, showLabel: Boolean, 
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(InspectorTabLabelGap),
             ) {
-                InspectorIcon(page, badges, tint, reserveBadge = true)
-                Text(page.label(), style = InfinityTypography.labelLarge, color = tint, maxLines = 1)
+                PanelHubIcon(entry, tint, reserveBadge = true)
+                Text(entry.page.hubLabel(), style = InfinityTypography.labelLarge, color = tint, maxLines = 1)
             }
         } else {
             // 只显示图标时图标居中，角标伸出图标右缘的部分仍落在 48dp 宽度内。
             Box(Modifier.width(InspectorTabWidth), contentAlignment = Alignment.Center) {
-                InspectorIcon(page, badges, tint)
+                PanelHubIcon(entry, tint)
             }
         }
     }
 }
 
-/** 放不下的页签收进的“更多”按钮与菜单；收进去的页签有角标时按钮挂一个圆点。 */
+/**
+ * 放不下的页签收进的“更多”按钮与菜单；收进去的可用条目有角标或运行圆点时按钮挂一个圆点。
+ * 菜单里通常是队尾未使用的条目，与底栏一样灰调不可点。
+ */
 @Composable
-private fun InspectorOverflowTabs(pages: List<ChatPage>, badges: ChatInspectorBadges, onSelect: (ChatPage) -> Unit) {
+private fun InspectorOverflowTabs(entries: List<PanelHubEntry>, onSelect: (PanelHubEntry) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val description = listOf(stringResource(R.string.chat_inspector_more_tabs)) + pages.map { it.label() }
-    val marked = pages.any { it.hasMark(badges) }
+    val description = listOf(stringResource(R.string.chat_inspector_more_tabs)) + entries.map { it.page.hubLabel() }
+    val marked = entries.any { it.hasMark() }
     val interaction = remember { MutableInteractionSource() }
     Box {
         Box(
@@ -483,14 +343,19 @@ private fun InspectorOverflowTabs(pages: List<ChatPage>, badges: ChatInspectorBa
             }
         }
         InfinityDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            pages.forEach { page ->
+            entries.forEach { entry ->
+                val itemDescription = entry.description()
                 InfinityMenuItem(
-                    text = { Text(page.label()) },
-                    onClick = { expanded = false; onSelect(page) },
+                    text = { Text(entry.page.hubLabel()) },
+                    onClick = { expanded = false; onSelect(entry) },
+                    enabled = entry.available,
                     // 选择页签的触感由 onSelect 统一给出，菜单项不再重复。
                     haptic = null,
-                    leadingIcon = { InspectorIcon(page, badges, MaterialTheme.colorScheme.onSurfaceVariant) },
-                    modifier = Modifier.heightIn(min = 48.dp).testTag(ChatInspectorTags.tab(page)),
+                    leadingIcon = { PanelHubIcon(entry, LocalContentColor.current) },
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .semantics(mergeDescendants = true) { contentDescription = itemDescription }
+                        .testTag(ChatInspectorTags.tab(entry.page)),
                 )
             }
         }
@@ -498,13 +363,12 @@ private fun InspectorOverflowTabs(pages: List<ChatPage>, badges: ChatInspectorBa
 }
 
 /**
- * 检视器收起后的边缘条：贴在会话右缘、底部对齐的竖向胶囊，只有页签图标与角标，点按以该页签展开。
- * 没有任何内容时整个检视器隐藏，边缘条也不出现。
+ * 检视器收起后的边缘条：贴在会话右缘、底部对齐的竖向胶囊，与底栏同一份 [entries]、同一顺序，只有图标与角标，点按以该页签展开。
+ * 未使用的条目同样灰调不可点；条目多于可用高度时上下滚动，展开按钮始终在底部。
  */
 @Composable
 internal fun ChatInspectorStrip(
-    badges: ChatInspectorBadges,
-    onOpen: (ChatPage) -> Unit,
+    entries: List<PanelHubEntry>,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
     onLockTouch: (() -> Unit)? = null,
@@ -518,25 +382,32 @@ internal fun ChatInspectorStrip(
         shadowElevation = 6.dp,
     ) {
         Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            badges.pages().forEach { page ->
-                val description = page.description(badges)
-                val interaction = remember { MutableInteractionSource() }
-                // 不用 IconButton：它把内容裁成 40dp 圆，伸出图标的角标会被切掉；按压圆单独一层画。
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = null,
-                            role = Role.Button,
-                            onClick = { haptics.toggle(true); onOpen(page) },
-                        )
-                        .semantics { contentDescription = description }
-                        .testTag(ChatInspectorTags.stripItem(page)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(Modifier.size(40.dp).pressFeedback(interaction, CircleShape))
-                    InspectorIcon(page, badges, MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                entries.forEach { entry ->
+                    val description = entry.description()
+                    val interaction = remember { MutableInteractionSource() }
+                    val tint = if (entry.available) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    // 不用 IconButton：它把内容裁成 40dp 圆，伸出图标的角标会被切掉；按压圆单独一层画。
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clickable(
+                                interactionSource = interaction,
+                                indication = null,
+                                enabled = entry.available,
+                                role = Role.Button,
+                                onClick = { haptics.toggle(true); entry.onOpen() },
+                            )
+                            .semantics { contentDescription = description }
+                            .testTag(ChatInspectorTags.stripItem(entry.page)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.size(40.dp).pressFeedback(interaction, CircleShape))
+                        PanelHubIcon(entry, tint)
+                    }
                 }
             }
             HorizontalDivider(
@@ -641,8 +512,15 @@ internal fun ChatInspectorRunTab(
 /** 画布页签没有画布时的空状态，与运行、Git 页签一样在检视器中居中。 */
 @Composable
 internal fun ChatInspectorCanvasEmpty() = InspectorEmpty(
-    icon = ChatPage.Canvas.icon,
+    icon = ChatPage.Canvas.hubIcon,
     title = stringResource(R.string.canvas_empty_title),
+)
+
+/** 状态面板页签在面板被移除后的空状态。 */
+@Composable
+internal fun ChatInspectorStateEmpty() = InspectorEmpty(
+    icon = ChatPage.State.hubIcon,
+    title = stringResource(R.string.state_removed),
 )
 
 @Composable

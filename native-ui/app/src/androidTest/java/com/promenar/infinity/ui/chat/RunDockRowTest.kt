@@ -52,8 +52,8 @@ class RunDockRowTest {
             .performClick()
         rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS, useUnmergedTree = true).assertExists()
         rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_SCOPE, useUnmergedTree = true).assertExists()
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_STATE).performClick()
-        rule.runOnIdle { assertThat(opened).containsExactly(null, RunDetailTab.STATE).inOrder() }
+        // 状态面板入口已迁入顶栏功能面板入口，运行坞只有整行一个点按目标。
+        rule.runOnIdle { assertThat(opened).containsExactly(null) }
     }
 
     @Test
@@ -67,7 +67,6 @@ class RunDockRowTest {
             }
         }
         rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS, useUnmergedTree = true).assertExists()
-        rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_STATE).assertExists()
         rule.onNodeWithTag(UiTags.CHAT_TOUCH_LOCK_BUTTON).assertDoesNotExist()
     }
 

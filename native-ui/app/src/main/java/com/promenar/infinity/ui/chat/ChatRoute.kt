@@ -882,7 +882,7 @@ fun ChatRoute(
                             ChatPage.Canvas -> com.promenar.infinity.ui.canvas.CanvasListPage(
                                 onBack = closeTopChatPage.takeUnless { inInspector },
                             )
-                            ChatPage.Run -> Unit
+                            ChatPage.Run, ChatPage.State -> Unit
                         }
                     }
                 }
