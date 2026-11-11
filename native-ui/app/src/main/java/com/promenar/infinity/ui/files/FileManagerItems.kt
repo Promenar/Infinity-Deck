@@ -631,12 +631,7 @@ internal val FileItemMenuWidth = 248.dp
 /** 多选时“..”保留占位但不可点，以减淡表示。 */
 private const val DisabledUpEntryAlpha = 0.38f
 
-/**
- * 列表行文件名：单行，放不下时停顿片刻后慢速横向滚动展示全名，每轮之间再停顿；放得下时静止。
- * 两端渐隐，滚动文字不贴着徽标或状态位硬切。
- */
-@OptIn(ExperimentalFoundationApi::class)
-/** 文件名单行；放不下时省略中间，保留开头与扩展名。 */
+/** 列表行文件名：单行，放不下时省略中间，保留开头与扩展名。 */
 @Composable
 private fun FileNameText(name: String, modifier: Modifier = Modifier) {
     Text(
