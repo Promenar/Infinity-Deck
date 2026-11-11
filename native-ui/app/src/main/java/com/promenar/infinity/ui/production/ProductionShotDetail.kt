@@ -54,7 +54,6 @@ import com.promenar.infinity.data.production.ShotInput
 import com.promenar.infinity.data.production.Take
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityChoice
-import com.promenar.infinity.ui.common.InfinityChoiceChips
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityStatusKind
@@ -383,13 +382,12 @@ internal fun ProductionAssetSheet(
             if (asset.versions.size > 1) {
                 Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                     ProductionSectionTitle(stringResource(R.string.production_panel_section_versions))
-                    InfinityChoiceChips(
+                    ProductionChoiceRow(
                         choices = asset.versions.sortedBy { it.number }.map {
                             InfinityChoice(it.number, stringResource(R.string.production_panel_version, it.number))
                         },
-                        selected = setOfNotNull(version?.number),
-                        onToggle = { versionNumber = it },
-                        multiSelect = false,
+                        selected = version?.number ?: -1,
+                        onSelect = { versionNumber = it },
                     )
                 }
             }

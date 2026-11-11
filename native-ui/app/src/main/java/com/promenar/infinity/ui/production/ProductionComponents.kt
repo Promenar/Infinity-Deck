@@ -357,3 +357,22 @@ internal fun ProductionTextDialog(
         },
     )
 }
+
+/** 单选标签：一行排列，放不下时整行横向滚动。 */
+@Composable
+internal fun <T> ProductionChoiceRow(
+    choices: List<com.promenar.infinity.ui.common.InfinityChoice<T>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    com.promenar.infinity.ui.common.InfinityTagScrollRow(modifier = modifier, spacing = com.promenar.infinity.ui.theme.InfinitySpacing.Small) {
+        choices.forEach { choice ->
+            androidx.compose.material3.FilterChip(
+                selected = choice.value == selected,
+                onClick = { onSelect(choice.value) },
+                label = { Text(choice.label, maxLines = 1) },
+            )
+        }
+    }
+}

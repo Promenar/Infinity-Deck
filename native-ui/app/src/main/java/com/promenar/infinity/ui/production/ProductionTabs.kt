@@ -58,7 +58,6 @@ import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.StageState
 import com.promenar.infinity.data.production.StageStatus
 import com.promenar.infinity.ui.common.InfinityChoice
-import com.promenar.infinity.ui.common.InfinityChoiceChips
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -463,7 +462,7 @@ internal fun ProductionAssetsTab(
             item(span = { GridItemSpan(maxLineSpan) }) { EmptyTabText(stringResource(R.string.production_panel_no_assets)) }
         } else {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                InfinityChoiceChips(choices = choices, selected = setOf(kind), onToggle = { kind = it }, multiSelect = false)
+                ProductionChoiceRow(choices = choices, selected = kind, onSelect = { kind = it })
             }
         }
         items(assets, key = { it.id }) { asset -> AssetCard(asset, onClick = { openAssetId = asset.id }) }

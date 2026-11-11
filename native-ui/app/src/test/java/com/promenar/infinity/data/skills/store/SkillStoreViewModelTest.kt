@@ -13,6 +13,9 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -39,6 +42,8 @@ class SkillStoreViewModelTest {
         val client = HttpClient(MockEngine { respond(json, HttpStatusCode.OK) })
         val repo = SkillStoreRepository(client, catalog, prefs, temp.newFolder("cache"), SkillChannel.PLAY, 126, io = dispatcher)
         repo.refresh(); val vm = SkillStoreViewModel(repo, catalog)
+        // Ktor 的 MockEngine 让测试体在其工作线程上恢复，视图模型的首次收集因此异步到达，先等它落地。
+        withContext(Dispatchers.Default) { withTimeout(5_000) { vm.state.first { it.categoryCounts.isNotEmpty() } } }
         assertThat(vm.state.value.items.map { it.entry.name }).containsExactly("alpha", "bravo").inOrder()
         assertThat(vm.state.value.categoryCounts[null]).isEqualTo(2)
         vm.setQuery("SHARED"); vm.setFilter(StoreFilter.UPDATES)

@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -87,6 +88,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SkillStoreScreen(onBack: () -> Unit, onOpenSources: () -> Unit) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val viewModel: SkillStoreViewModel = viewModel(factory = SkillStoreViewModel.factory(context.applicationContext as Application))
     val state by viewModel.state.collectAsState()
     val event by viewModel.event.collectAsState()
@@ -105,13 +107,13 @@ fun SkillStoreScreen(onBack: () -> Unit, onOpenSources: () -> Unit) {
                 pendingConfirm = current.key to current.reason
                 null
             }
-            is SkillStoreEvent.Installed -> context.getString(
+            is SkillStoreEvent.Installed -> resources.getString(
                 if (current.enabled) R.string.skill_store_event_installed else R.string.skill_store_event_installed_disabled,
                 current.name,
             )
-            is SkillStoreEvent.Updated -> context.getString(R.string.skill_store_event_updated, current.name)
-            is SkillStoreEvent.Uninstalled -> context.getString(R.string.skill_store_event_uninstalled, current.name)
-            is SkillStoreEvent.SourceAdded -> context.getString(R.string.skill_store_event_source_added)
+            is SkillStoreEvent.Updated -> resources.getString(R.string.skill_store_event_updated, current.name)
+            is SkillStoreEvent.Uninstalled -> resources.getString(R.string.skill_store_event_uninstalled, current.name)
+            is SkillStoreEvent.SourceAdded -> resources.getString(R.string.skill_store_event_source_added)
             is SkillStoreEvent.Failed -> storeFailureText(context, current.failure, current.httpStatus)
         }
         if (message != null) {

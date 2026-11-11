@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +65,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SkillStoreSourcesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val viewModel: SkillStoreViewModel = viewModel(factory = SkillStoreViewModel.factory(context.applicationContext as Application))
     val state by viewModel.state.collectAsState()
     val event by viewModel.event.collectAsState()
@@ -74,7 +76,7 @@ fun SkillStoreSourcesScreen(onBack: () -> Unit) {
     LaunchedEffect(event) {
         val current = event ?: return@LaunchedEffect
         val message = when (current) {
-            is SkillStoreEvent.SourceAdded -> context.getString(R.string.skill_store_event_source_added)
+            is SkillStoreEvent.SourceAdded -> resources.getString(R.string.skill_store_event_source_added)
             is SkillStoreEvent.Failed -> storeFailureText(context, current.failure, current.httpStatus)
             else -> null
         } ?: return@LaunchedEffect

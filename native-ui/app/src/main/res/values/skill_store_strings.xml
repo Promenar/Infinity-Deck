@@ -41,7 +41,7 @@
     <string name="skill_store_detail_author">Author</string>
     <string name="skill_store_detail_license">License</string>
     <string name="skill_store_detail_size">Size</string>
-    <string name="skill_store_detail_channels">Versions</string>
+    <string name="skill_store_detail_channels">Builds</string>
     <string name="skill_store_detail_after_install">After install</string>
     <string name="skill_store_detail_files">Files</string>
     <string name="skill_store_channels_both">Sideload and Play</string>
