@@ -659,12 +659,30 @@ internal fun readingInkLineText(text: AnnotatedString, start: Int, end: Int): St
 
 private data class ReadingTextEdges(val modifier: Modifier, val onTextLayout: (TextLayoutResult) -> Unit)
 
+/** 代码墨迹参照：含大写、升部、降部、竖线与括号，覆盖等宽字体常见代码行的上下外沿。 */
+private const val CODE_INK_REFERENCE = "Hgjpqy|[](){}"
+
+/**
+ * 代码正文的上下裁切只由首末基线和字体参照外沿决定，不读取首末行实际文字。
+ * 行高固定时可见高度等于基线跨度加常量：流式追加字符不改变高度，每多一行只增加一个行高。
+ */
+internal fun stableCodeInkInsets(
+    height: Int,
+    firstBaseline: Int,
+    lastBaseline: Int,
+    referenceInkTop: Int,
+    referenceInkBottom: Int,
+): ReadingInkInsets = readingInkInsets(
+    height = height,
+    firstInkTop = (firstBaseline + referenceInkTop).toFloat(),
+    lastInkBottom = (lastBaseline + referenceInkBottom).toFloat(),
+)
+
 @Composable
-private fun rememberReadingTextEdges(style: TextStyle): ReadingTextEdges {
+private fun rememberReadingInkPaint(style: TextStyle): Paint {
     val density = LocalDensity.current
     val context = LocalContext.current
-    val insets = remember(style, density.density, density.fontScale) { mutableStateOf(ReadingInkInsets(0, 0)) }
-    val paint = remember(style, density.density, density.fontScale) {
+    return remember(style, density.density, density.fontScale) {
         val family = if (style.fontFamily == InfinityMonospace) infinityMonospaceTypeface(context) else Typeface.SANS_SERIF
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             textSize = with(density) { style.fontSize.toPx() }
@@ -673,6 +691,38 @@ private fun rememberReadingTextEdges(style: TextStyle): ReadingTextEdges {
             } else Typeface.create(family, if ((style.fontWeight ?: FontWeight.Normal).weight >= 600) Typeface.BOLD else Typeface.NORMAL)
         }
     }
+}
+
+/** 代码正文的稳定裁切：参照外沿只随字体与字号变化，不随流式文字逐字变化。 */
+@Composable
+private fun rememberStableCodeEdges(style: TextStyle): Modifier {
+    val paint = rememberReadingInkPaint(style)
+    return remember(paint) {
+        val reference = Rect().also { paint.getTextBounds(CODE_INK_REFERENCE, 0, CODE_INK_REFERENCE.length, it) }
+        Modifier.layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            val first = placeable[FirstBaseline]
+            val last = placeable[LastBaseline]
+            val specified = first != androidx.compose.ui.layout.AlignmentLine.Unspecified &&
+                last != androidx.compose.ui.layout.AlignmentLine.Unspecified
+            val insets = if (specified) {
+                stableCodeInkInsets(placeable.height, first, last, reference.top, reference.bottom)
+            } else ReadingInkInsets(0, 0)
+            val baselines: Map<androidx.compose.ui.layout.AlignmentLine, Int> = if (specified) {
+                mapOf(FirstBaseline to first - insets.top, LastBaseline to last - insets.top)
+            } else emptyMap()
+            layout(placeable.width, placeable.height - insets.top - insets.bottom, baselines) {
+                placeable.placeRelative(0, -insets.top)
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberReadingTextEdges(style: TextStyle): ReadingTextEdges {
+    val density = LocalDensity.current
+    val insets = remember(style, density.density, density.fontScale) { mutableStateOf(ReadingInkInsets(0, 0)) }
+    val paint = rememberReadingInkPaint(style)
     return remember(paint, insets) {
         ReadingTextEdges(
             modifier = Modifier.layout { measurable, constraints ->
@@ -900,8 +950,9 @@ private fun ReadingHighlightedCode(
         result
     }
     val visibleCode = remember(code, highlighted) { highlightedCodeWithUnstyledTail(code, highlighted) }
-    val edges = rememberReadingTextEdges(style)
-    Text(visibleCode, style = style, softWrap = false, modifier = edges.modifier.testTag("CHAT_MARKDOWN_CODE_TEXT"), onTextLayout = edges.onTextLayout)
+    // 代码正文按字体参照外沿固定裁切：按首末行实际墨迹裁切时，流式中末行有无降部、竖线会让高度逐字伸缩几像素。
+    val edges = rememberStableCodeEdges(style)
+    Text(visibleCode, style = style, softWrap = false, modifier = edges.testTag("CHAT_MARKDOWN_CODE_TEXT"))
 }
 
 internal val markdownCodeIndent = Regex("^(?: {4}| {0,3}\\t)")
@@ -1592,14 +1643,21 @@ internal fun normalizeLatexDelimiters(text: String): String {
     return result
 }
 
+private val streamingPartialFence = Regex("`{1,2}")
+
 internal fun sanitizeStreamingMarkdown(text: String): String {
     var result = text
 
     // Handle code block fences
     val fenceCount = Regex("""(?m)^```""").findAll(result).count()
     if (fenceCount % 2 != 0) {
-        if (!result.endsWith("\n")) result += "\n"
-        result += "```"
+        val lastLine = result.substringAfterLast('\n')
+        result += when {
+            // 闭合围栏只到达一两个反引号时就地补全，避免它先作为代码行出现、围栏到齐后又消失，代码块先涨后缩。
+            streamingPartialFence.matches(lastLine) -> "`".repeat(3 - lastLine.length)
+            result.endsWith("\n") -> "```"
+            else -> "\n```"
+        }
     }
 
     // 只统计代码与链接之外的美元符号，避免 `echo $$` 之类的字面量被当作未闭合公式截断后文。
