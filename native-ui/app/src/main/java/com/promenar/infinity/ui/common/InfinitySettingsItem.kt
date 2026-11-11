@@ -45,6 +45,8 @@ fun InfinitySettingsItem(
     selected: Boolean? = null,
     horizontalPadding: Dp = InfinitySpacing.RowHorizontal,
     subtitleMaxLines: Int = 1,
+    /** 标题最多行数，超出时末尾省略；为 null 时按默认规则（见 [InfinitySettingsRowLayout]）。 */
+    titleMaxLines: Int? = null,
     /** 多段元数据副标题：非空时以 [InfinityMetaLine] 排版并取代 [subtitle]。 */
     subtitleSegments: List<String>? = null,
     /** 自定义副标题：非空时取代 [subtitle] 与 [subtitleSegments]，由调用方固定行数以保持列表等高。 */
@@ -73,6 +75,7 @@ fun InfinitySettingsItem(
         subtitleMaxLines = subtitleMaxLines,
         subtitleSegments = subtitleSegments,
         subtitleContent = subtitleContent,
+        titleMaxLines = titleMaxLines,
         trailingContent = when {
             trailingContent != null -> trailingContent
             showChevron -> ({ Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant) })
@@ -101,6 +104,11 @@ internal fun InfinitySettingsRowLayout(
     subtitleMaxLines: Int = 1,
     /** 标题始终单行（含窄屏与大字号），列表行不会因长标题变成两行。 */
     singleLineTitle: Boolean = false,
+    /**
+     * 标题最多行数，超出时末尾省略：用于名称较长、需要尽量读全的条目（例如技能名）。
+     * 为 null 时按默认规则：有副标题时单行横滑，无副标题时两行。窄屏与大字号下标题不限行数。
+     */
+    titleMaxLines: Int? = null,
     /** 多段元数据副标题：非空时以 [InfinityMetaLine] 排版并取代 [subtitle]，整段换行、分隔符不落行首行尾。 */
     subtitleSegments: List<String>? = null,
     /** 自定义副标题（如文字后跟状态标签）：非空时取代 [subtitle] 与 [subtitleSegments]。 */
@@ -135,11 +143,12 @@ internal fun InfinitySettingsRowLayout(
                 val titleLines = when {
                     singleLineTitle -> 1
                     expandTitle -> Int.MAX_VALUE
+                    titleMaxLines != null -> titleMaxLines
                     !hasSubtitle -> 2
                     else -> 1
                 }
-                // 单行标题放不下时横滑查看、右侧渐隐，不用省略号。
-                if (titleLines == 1) {
+                // 单行标题放不下时横滑查看、右侧渐隐，不用省略号；调用方指定行数时按行数末尾省略。
+                if (titleLines == 1 && titleMaxLines == null) {
                     InfinityScrollingLine(Modifier.fillMaxWidth()) {
                         Text(title, style = titleStyle, color = titleTextColor, maxLines = 1, softWrap = false)
                     }

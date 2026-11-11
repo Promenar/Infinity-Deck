@@ -25,8 +25,9 @@ class SettingsNavigator internal constructor(
         if (handOff != null && !isSettingsPaneRoute(route)) handOff(route) else nav.navigate(route, builder)
     }
 
+    /** 下面没有页面时不弹出：退场动画中重复返回不会把主导航起始页或右列根层也弹掉、留下空白。 */
     fun back() {
-        nav.popBackStack()
+        if (nav.previousBackStackEntry != null) nav.popBackStack()
     }
 
     /**
@@ -69,9 +70,14 @@ internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.DEVELOPER,
 )
 
-/** 能在右列内打开的设置页（路由的首段），含 Linux 文件页；终端、知识图谱、会话等整页内容不在其中。 */
+/**
+ * 能在右列内打开的设置页（路由的首段），含 Linux 文件页与技能商店；终端、知识图谱、会话等整页内容不在其中。
+ * 技能商店的技能详情是商店页内的状态，随商店页留在右列；SKILL.md 是商店页弹出的底部面板，不另设路由。
+ */
 private val SettingsPaneRouteBases: Set<String> = SettingsPaneRoots.toSet() + setOf(
     NavDestinations.RAG_VECTOR_STATS,
+    NavDestinations.SKILL_STORE,
+    NavDestinations.SKILL_STORE_SOURCES,
     "provider_form",
     "provider_models",
     NavDestinations.LINUX_PACKAGES,

@@ -10,6 +10,7 @@ import android.view.inputmethod.InputMethodManager
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,26 @@ class TerminalBridge(private val context: Context) : TerminalViewClient, Termina
         val target = view ?: return
         target.requestFocus()
         context.getSystemService(InputMethodManager::class.java)?.showSoftInput(target, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    /**
+     * 让终端视图持有键盘焦点，不弹出软键盘：外接键盘与 adb 按键直接进入终端，
+     * 不会走 Compose 的焦点遍历落到页头按钮上。视图尚未挂到窗口时等挂上后再请求。
+     */
+    fun focusTerminal() {
+        val target = view ?: return
+        target.post { if (view === target && !target.hasFocus()) target.requestFocus() }
+    }
+
+    /**
+     * 页面上其它控件（例如页头返回）持有键盘焦点时收到的硬件按键：焦点交还终端并把按键转给它，
+     * 回车因此不会点中页头按钮。返回是否已处理；系统键（返回、音量等）照常交给页面。
+     */
+    fun redirectKey(event: KeyEvent): Boolean {
+        val target = view ?: return false
+        if (!shouldRedirectTerminalKey(event.isSystem, target.hasFocus(), target.isAttachedToWindow)) return false
+        if (!target.requestFocus()) return false
+        return target.dispatchKeyEvent(event)
     }
 
     fun hideKeyboard() {
@@ -260,4 +281,6 @@ fun LocalTerminalPane(
         },
         modifier = modifier.testTag(UiTags.LINUX_TERMINAL_VIEW),
     )
+    // 打开终端页、切到另一个终端页签时，终端默认持有键盘焦点。
+    LaunchedEffect(sessionId, bridge) { bridge.focusTerminal() }
 }

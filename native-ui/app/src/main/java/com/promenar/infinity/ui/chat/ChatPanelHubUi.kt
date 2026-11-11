@@ -51,6 +51,8 @@ import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaSeparator
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.pressFeedback
+import com.promenar.infinity.ui.git.GitEntrySummary
+import com.promenar.infinity.ui.git.gitSummaryLine
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 
@@ -248,6 +250,18 @@ internal fun panelHubBrowserSummary(browser: BrowserUiState?): String = when (br
     BrowserMode.HANDOFF -> stringResource(R.string.chat_inspector_browser_needs_you)
     else -> browser?.title?.takeIf { it.isNotBlank() } ?: browser?.url?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.panel_hub_browser_closed)
+}
+
+/**
+ * Git 条目的摘要：读到仓库时为“分支 · 改动数”；状态还没读出时为“读取中”，不是仓库或读不出时为短状态。
+ * 摘要行始终存在，读到后原地替换，弹出列表的行高不跳动。
+ */
+@Composable
+internal fun panelHubGitSummary(entry: GitEntrySummary?): String = when (entry) {
+    is GitEntrySummary.Repository -> gitSummaryLine(entry, compactChanges = true)
+    null, GitEntrySummary.Loading -> stringResource(R.string.panel_hub_git_loading)
+    GitEntrySummary.Hidden -> stringResource(R.string.panel_hub_git_none)
+    GitEntrySummary.PythonUnavailable, GitEntrySummary.Failed -> stringResource(R.string.panel_hub_git_unavailable)
 }
 
 /** 产物数量、待认领数等多段摘要以“ · ”连成一行；全部为空时为 null。 */

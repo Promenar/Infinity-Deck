@@ -273,7 +273,7 @@ fun InfinityNavGraph(
                 sessionId = sessionId,
                 navController = navController,
                 chatDestination = chatDestination,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = { navController.popBackStackFrom(backStackEntry) },
                 onNavigateToSession = { branchedSessionId ->
                     navController.navigate(NavDestinations.chatHero(branchedSessionId)) {
                         launchSingleTop = true
@@ -287,7 +287,7 @@ fun InfinityNavGraph(
             route = NavDestinations.SUBAGENT_VIEWER_ROUTE,
             arguments = SubagentViewerArguments,
         ) { backStackEntry ->
-            SubagentViewerDestination(app, backStackEntry, onBack = { navController.popBackStack() })
+            SubagentViewerDestination(app, backStackEntry, onBack = { navController.popBackStackFrom(backStackEntry) })
         }
 
         composablePage(
@@ -297,7 +297,7 @@ fun InfinityNavGraph(
             val agentId = backStackEntry.arguments?.getString("agentId") ?: ""
             AgentEditScreen(
                 agentId = agentId,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = { navController.popBackStackFrom(backStackEntry) },
                 onNavigateToSkills = { navController.navigate(NavDestinations.SKILLS_CONFIG) { launchSingleTop = true } },
                 onNavigateToKnowledgeSettings = {
                     navController.navigate(NavDestinations.RAG_GLOBAL_CONFIG) { launchSingleTop = true }
@@ -317,7 +317,7 @@ fun InfinityNavGraph(
             DocEditorScreen(
                 workspaceRootUuid = workspaceRootUuid,
                 docId = docId,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStackFrom(backStackEntry) }
             )
         }
 
@@ -328,7 +328,7 @@ fun InfinityNavGraph(
             val docId = backStackEntry.arguments?.getString("docId") ?: ""
             com.promenar.infinity.ui.library.LibraryDocumentRoute(
                 documentId = docId,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popBackStackFrom(backStackEntry) },
                 onNavigateToSecondary = { route -> navController.navigate(route) { launchSingleTop = true } },
                 onOpenSession = { sessionId -> navController.navigate(NavDestinations.chatHero(sessionId)) },
             )
@@ -346,7 +346,7 @@ fun InfinityNavGraph(
             com.promenar.infinity.ui.lab.LabVersionScreen(
                 versionId = backStackEntry.arguments?.getString("versionId").orEmpty(),
                 record = backStackEntry.arguments?.getBoolean("record") ?: false,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = { navController.popBackStackFrom(backStackEntry) },
             )
         }
 
@@ -356,7 +356,7 @@ fun InfinityNavGraph(
         ) { backStackEntry ->
             KnowledgeGraphScreen(
                 initialQuery = backStackEntry.arguments?.getString("query"),
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = { navController.popBackStackFrom(backStackEntry) },
                 onOpenSession = { sessionId -> navController.navigate(NavDestinations.chatHero(sessionId)) },
             )
         }
@@ -376,7 +376,7 @@ fun InfinityNavGraph(
             }
             com.promenar.infinity.ui.linux.terminal.LinuxTerminalScreen(
                 request = request,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popBackStackFrom(backStackEntry) },
                 onOpenEnvironment = { navController.navigate(NavDestinations.LINUX_ENVIRONMENT) },
             )
         }
@@ -391,14 +391,14 @@ fun InfinityNavGraph(
                     messageId = requireNotNull(args.getString("messageId")),
                     toolCallId = requireNotNull(args.getString("toolCallId")),
                 ),
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popBackStackFrom(backStackEntry) },
                 onRerunInTerminal = { command, sessionId -> navController.navigate(NavDestinations.linuxTerminal(sessionId = sessionId, command = command)) },
             )
         }
 
         composablePage(NavDestinations.SSH_TERMINAL) { entry ->
             val alias = entry.arguments?.getString("alias").orEmpty()
-            com.promenar.infinity.ui.ssh.SshTerminalScreen(alias, onBack = { navController.popBackStack() })
+            com.promenar.infinity.ui.ssh.SshTerminalScreen(alias, onBack = { navController.popBackStackFrom(entry) })
         }
     }
 }

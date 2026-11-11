@@ -328,6 +328,8 @@ data class ChatScreenState(
     val secretOutputCards: List<com.promenar.infinity.domain.secret.SecretOutputCard> = emptyList(),
     /** 会话工作区是 Git 仓库时的分支与改动摘要，显示在顶栏标题下方；否则为 null。 */
     val gitSummary: com.promenar.infinity.ui.git.GitEntrySummary.Repository? = null,
+    /** 会话工作区最近一次读出的 Git 状态（含不是仓库、读取失败）；还没读出时为 null。功能面板的 Git 摘要据此占位。 */
+    val gitEntry: com.promenar.infinity.ui.git.GitEntrySummary? = null,
     /** 本会话或其工作区因启动自检问题暂停写入，顶栏下方显示提示条。 */
     val startupWritePaused: Boolean = false,
     /** 侧载版顶栏标题旁的运行模式标识；Play 版为 null。 */
@@ -939,7 +941,7 @@ fun ChatScreenContent(
             ChatPage.Run to (dock?.label?.takeUnless { it is com.promenar.infinity.ui.chat.components.RunDockLabel.Board }
                 ?.let { com.promenar.infinity.ui.chat.components.runDockLabelText(it) } ?: stringResource(R.string.panel_hub_idle)),
             ChatPage.Explorer to state.workspace?.let { workspaceStatusName(it) },
-            ChatPage.Git to state.gitSummary?.let { com.promenar.infinity.ui.git.gitSummaryLine(it, compactChanges = true) },
+            ChatPage.Git to panelHubGitSummary(state.gitEntry ?: state.gitSummary),
             ChatPage.Browser to panelHubBrowserSummary(state.browser),
             ChatPage.Remote to remoteDotDescription(state.remote),
             ChatPage.Canvas to panelHubJoin(

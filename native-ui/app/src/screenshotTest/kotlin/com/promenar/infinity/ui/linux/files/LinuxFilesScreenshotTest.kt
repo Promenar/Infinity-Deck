@@ -184,6 +184,27 @@ fun linuxFileContentLightPreview() = Themed(InfinityThemeMode.LIGHT) {
     LinuxFileContent(FileState, LinuxFileActions())
 }
 
+/** 长文件名：页头省略中间、保留扩展名，完整路径在页头下方换行显示。 */
+private val LongNameEntry = ScriptEntry.copy(
+    path = "/root/projects/reports/助手功能介绍_20261029_131502_final_review.md",
+    name = "助手功能介绍_20261029_131502_final_review.md",
+    mode = "644".toInt(8),
+)
+
+private val LongNameState = FileState.copy(
+    path = LongNameEntry.path,
+    entry = LongNameEntry,
+    text = FileState.text?.copy(kind = LinuxFileKind.MARKDOWN),
+)
+
+@PreviewTest
+@Preview(name = "Linux 文件详情 长文件名 浅中392", widthDp = 392, heightDp = 860, locale = "zh-rCN")
+@Preview(name = "Linux 文件详情 长文件名 深英360 大字", widthDp = 360, heightDp = 1000, locale = "en", fontScale = 1.3f)
+@Composable
+fun linuxFileLongNamePreview() = Themed(InfinityThemeMode.LIGHT) {
+    LinuxFileContent(LongNameState, LinuxFileActions())
+}
+
 private val HexState = FileState.copy(tab = LinuxFileTab.HEX, hex = LinuxHexPage(0, 0, Script.toByteArray()))
 
 @PreviewTest

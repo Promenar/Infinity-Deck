@@ -6,6 +6,9 @@
     <string name="panel_hub_unused">未使用</string>
     <string name="panel_hub_idle">空闲</string>
     <string name="panel_hub_browser_closed">未打开</string>
+    <string name="panel_hub_git_loading">读取中</string>
+    <string name="panel_hub_git_none">非 Git 仓库</string>
+    <string name="panel_hub_git_unavailable">无法读取</string>
     <plurals name="panel_hub_pending">
         <item quantity="other">%d 项待处理</item>
     </plurals>

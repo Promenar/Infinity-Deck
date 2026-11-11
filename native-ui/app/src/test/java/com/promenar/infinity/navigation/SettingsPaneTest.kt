@@ -34,6 +34,9 @@ class SettingsPaneTest {
             NavDestinations.linuxFiles(), "linux_files?path=%2Froot", "linux_system_files?path=%2F",
             "linux_file?path=%2Froot%2Fa.pdf",
         ).forEach { assertThat(isSettingsPaneRoute(it)).isTrue() }
+        // 技能包里打开的商店与商店来源也在右列内推入。
+        listOf(NavDestinations.SKILL_STORE, NavDestinations.SKILL_STORE_SOURCES)
+            .forEach { assertThat(isSettingsPaneRoute(it)).isTrue() }
         listOf(
             NavDestinations.linuxTerminal(), "linux_terminal?dir=%2Froot", "ssh_terminal/host",
             NavDestinations.KNOWLEDGE_GRAPH, NavDestinations.chatHero("s1"), NavDestinations.agentEdit("a1"),
@@ -44,6 +47,8 @@ class SettingsPaneTest {
     fun `变宽时只收回从设置目录进入的整页设置子页`() {
         assertThat(settingsPagesAboveMainTabs(listOf("provider_list", "provider_form?providerId=x")))
             .containsExactly("provider_list", "provider_form?providerId=x").inOrder()
+        assertThat(settingsPagesAboveMainTabs(listOf("skills_config", "skill_store", "skill_store_sources")))
+            .containsExactly("skills_config", "skill_store", "skill_store_sources").inOrder()
         // 主标签页之上没有页面、夹着会话或终端、或底层不是设置目录条目（例如会话里打开的 Tailscale）都不收回。
         assertThat(settingsPagesAboveMainTabs(emptyList())).isNull()
         assertThat(settingsPagesAboveMainTabs(listOf("skills_config", "linux_terminal"))).isNull()

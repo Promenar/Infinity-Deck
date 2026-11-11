@@ -156,6 +156,8 @@ private fun SkillRow(
         title = title,
         subtitle = subtitle,
         subtitleMaxLines = 2,
+        // 技能名常带括注（如“Data / Business Analysis（经营分析）”）：最多两行，再长末尾省略，行尾开关不挤占。
+        titleMaxLines = 2,
         onClick = onOpen,
         modifier = Modifier.testTag("skill_row:${skill.id}"),
         trailingContent = {

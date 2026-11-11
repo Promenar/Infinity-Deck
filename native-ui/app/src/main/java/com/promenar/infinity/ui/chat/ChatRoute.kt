@@ -230,6 +230,8 @@ fun ChatRoute(
     val context = LocalContext.current
     val application = context.applicationContext as InfinityApplication
     var gitSummary by remember(sessionId) { mutableStateOf<com.promenar.infinity.ui.git.GitEntrySummary.Repository?>(null) }
+    // 最近一次读出的完整状态（不是仓库、读取失败也记下）；为 null 表示还没读出，功能面板显示“读取中”。
+    var gitEntry by remember(sessionId) { mutableStateOf<com.promenar.infinity.ui.git.GitEntrySummary?>(null) }
     var gitRefresh by remember(sessionId) { mutableStateOf(0) }
     val resolvedDependencies = remember(application, dependencies) {
         dependencies ?: ChatRouteDependencies.production(application)
@@ -784,7 +786,9 @@ fun ChatRoute(
         gitLifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
             application.gitStatusCache.observe(sessionId, GIT_HEADER_MAX_AGE_MILLIS).collect { snapshot ->
                 snapshot.result?.let { status ->
-                    gitSummary = com.promenar.infinity.ui.git.GitEntrySummary.from(status) as? com.promenar.infinity.ui.git.GitEntrySummary.Repository
+                    val entry = com.promenar.infinity.ui.git.GitEntrySummary.from(status)
+                    gitEntry = entry
+                    gitSummary = entry as? com.promenar.infinity.ui.git.GitEntrySummary.Repository
                 }
             }
         }
@@ -969,6 +973,7 @@ fun ChatRoute(
                 productionSource = chatViewModel.productionSource,
                 subagentApprovals = sessionSubagentApprovals,
                 gitSummary = gitSummary,
+                gitEntry = gitEntry,
                 startupWritePaused = startupWritePaused,
                 runMode = runModeBadge,
                 workspace = workspaceStatus,

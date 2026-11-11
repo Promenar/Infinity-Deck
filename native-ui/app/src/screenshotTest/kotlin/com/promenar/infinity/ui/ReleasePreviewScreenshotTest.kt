@@ -800,7 +800,7 @@ fun providerListChineseNarrowReleasePreview() {
 @Preview(
     name = "Agent skill packs Chinese",
     widthDp = 412,
-    heightDp = 640,
+    heightDp = 760,
     locale = "zh-rCN",
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
@@ -841,6 +841,13 @@ fun agentSkillPacksReleasePreview() {
                                 files = emptyList(),
                                 status = com.promenar.infinity.data.skills.SkillStatus.DISABLED,
                             ),
+                            // 长技能名：最多两行，再长末尾省略，不被行尾开关硬截断。
+                            releasePreviewSkill(
+                                "business-analysis",
+                                "预算对实际、同比环比的差异分解与瀑布分析；编制三大报表并标注重大差异。",
+                                files = emptyList(),
+                                status = com.promenar.infinity.data.skills.SkillStatus.ENABLED,
+                            ).copy(displayName = "Data / Business Analysis（经营分析与市场调研合并包）"),
                         ),
                     ),
                     com.promenar.infinity.data.skills.SkillSourceGroup(

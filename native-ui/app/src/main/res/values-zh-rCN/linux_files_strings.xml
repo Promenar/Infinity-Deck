@@ -86,7 +86,7 @@
     <string name="linux_file_run">在终端运行</string>
     <string name="linux_file_edit">编辑</string>
     <string name="linux_file_truncated">只读 · 显示前 %1$s，共 %2$s</string>
-    <string name="linux_file_binary">二进制文件，可在“十六进制”页查看。</string>
+    <string name="linux_file_binary">二进制文件</string>
     <string name="linux_file_empty">空文件</string>
     <string name="linux_file_load_failed">无法读取文件：%1$s</string>
     <string name="linux_file_hex_page">第 %1$d / %2$d 页</string>
