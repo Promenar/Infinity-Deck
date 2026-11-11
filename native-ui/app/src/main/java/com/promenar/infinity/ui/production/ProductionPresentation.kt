@@ -154,8 +154,3 @@ fun Asset.actions(): AssetActions = AssetActions(
     canRedo = status != AssetStatus.LOCKED && status != AssetStatus.REDO,
     canUnlock = status == AssetStatus.LOCKED,
 )
-
-/**
- * 项目里的路径相对工作区根、不带前导斜杠；解析媒体时按工作区根的绝对虚拟路径处理，与后端读写清单和校验候选一致。
- */
-fun workspacePath(path: String): String = if (path.startsWith('/')) path else "/$path"

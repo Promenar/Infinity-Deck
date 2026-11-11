@@ -62,7 +62,6 @@ import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
-import com.promenar.infinity.ui.media.WorkspaceMediaReference
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
 private val TabContentPadding = PaddingValues(start = InfinitySpacing.Large, end = InfinitySpacing.Large, top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XLarge)
@@ -283,7 +282,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                 Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                     ProductionSectionTitle(stringResource(R.string.production_panel_section_bible))
                     production.bible.forEach { document ->
-                        WorkspaceMediaReference(path = workspacePath(document.path), alt = document.title, asLink = true, modifier = Modifier.fillMaxWidth())
+                        ProductionMediaReference(path = document.path, alt = document.title, asLink = true, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
@@ -304,7 +303,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                 if (path == null) {
                     Text(stringResource(R.string.production_panel_no_script), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    WorkspaceMediaReference(path = workspacePath(path), alt = episode.title, asLink = true, modifier = Modifier.fillMaxWidth())
+                    ProductionMediaReference(path = path, alt = episode.title, asLink = true, modifier = Modifier.fillMaxWidth())
                 }
                 if (episode.scenes.isNotEmpty()) {
                     ProductionCard {

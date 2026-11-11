@@ -50,6 +50,9 @@ sealed interface MediaResolution {
 
 /** 按会话把工作区虚拟路径解析为媒体，范围与会话当前工作区的文件工具一致。 */
 interface WorkspaceMediaResolver {
+    /** 将制作清单的相对路径呈现为当前会话可解析的路径。 */
+    suspend fun productionPath(sessionId: String, path: String): String = throw UnsupportedOperationException("制作路径映射不可用")
+
     /** 解析 [path]；相对路径按工作区根解析。不读取全部字节，只读取识别类型与元数据所需的部分。 */
     suspend fun resolve(sessionId: String, path: String): MediaResolution
 

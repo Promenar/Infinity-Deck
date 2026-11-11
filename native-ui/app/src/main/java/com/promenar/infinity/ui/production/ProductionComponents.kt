@@ -23,9 +23,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +55,9 @@ import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
 import com.promenar.infinity.ui.media.WorkspaceMediaEnvironment
 import com.promenar.infinity.ui.media.WorkspaceMediaModel
+import com.promenar.infinity.ui.media.WorkspaceMediaReference
+import com.promenar.infinity.ui.media.WorkspaceMediaUnavailable
+import com.promenar.infinity.ui.media.MediaCardStyle
 import com.promenar.infinity.ui.media.rememberWorkspaceMediaResolution
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
@@ -89,6 +94,38 @@ object ProductionUiTags {
 }
 
 internal val ProductionThumbShape = RoundedCornerShape(8.dp)
+
+/** 制作相对路径映射为会话解析路径的进度；映射中不显示任何卡片，避免先闪出“不可用”。 */
+internal sealed interface ProductionPathState {
+    data object Loading : ProductionPathState
+    data class Ready(val path: String) : ProductionPathState
+    data object Failed : ProductionPathState
+}
+
+@Composable
+internal fun rememberProductionPath(environment: WorkspaceMediaEnvironment?, path: String): ProductionPathState {
+    return key(environment, path) {
+        val mapped by produceState<ProductionPathState>(ProductionPathState.Loading, environment, path) {
+            value = if (environment == null) ProductionPathState.Failed else try {
+                ProductionPathState.Ready(environment.resolver.productionPath(environment.sessionId, path))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ProductionPathState.Failed
+            }
+        }
+        mapped
+    }
+}
+
+@Composable
+internal fun ProductionMediaReference(path: String, modifier: Modifier = Modifier, alt: String? = null, asLink: Boolean = false, style: MediaCardStyle = MediaCardStyle.MARKDOWN) {
+    when (val mapped = rememberProductionPath(LocalWorkspaceMedia.current, path)) {
+        ProductionPathState.Loading -> Unit
+        is ProductionPathState.Ready -> WorkspaceMediaReference(path = mapped.path, modifier = modifier, alt = alt, asLink = asLink, style = style)
+        ProductionPathState.Failed -> WorkspaceMediaUnavailable(path = path, reason = null, onLocate = null, modifier = modifier)
+    }
+}
 
 /** 状态色调，映射到主题的状态色。 */
 internal enum class ProductionTone { NEUTRAL, INFO, WARNING, SUCCESS, ERROR }
@@ -255,7 +292,7 @@ private fun BoxScope.ResolvedThumbnail(
     contentDescription: String?,
 ) {
     val placeholderTint = MaterialTheme.colorScheme.onSurfaceVariant
-    val virtualPath = workspacePath(path)
+    val virtualPath = (rememberProductionPath(environment, path) as? ProductionPathState.Ready)?.path ?: return
     val resolved = rememberWorkspaceMediaResolution(environment, virtualPath)
     when (val resolution = resolved?.resolution) {
         is MediaResolution.Available -> {
