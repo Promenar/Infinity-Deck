@@ -59,9 +59,9 @@ class ComposerIslandGlowTest {
     fun `极光光带首字前慢转，流式时随速率加快，工具执行与审批时停下`() {
         fun speedIn(phase: GenerationMotionPhase, act: Float): Float {
             val motion = GenerationMotion(GenerationMotion.Source.LIVE)
-            motion.update(phase, retry = null, outputLength = 0, animate = false)
+            motion.update(phase, retry = null, outputTokens = 0, animate = false)
             // 流式阶段要有正文到达才按流式显示。
-            motion.update(phase, retry = null, outputLength = 1, animate = false)
+            motion.update(phase, retry = null, outputTokens = 1, animate = false)
             return auroraHeadSpeed(motion, act)
         }
         assertThat(speedIn(GenerationMotionPhase.WAIT, 1f)).isWithin(1e-3f).of(60f)

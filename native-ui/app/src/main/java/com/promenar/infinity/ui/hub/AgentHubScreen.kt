@@ -1214,7 +1214,7 @@ private fun HubGenerationIndicator(generation: GenerationTaskSnapshot?, modifier
     val motion = rememberGenerationMotion(
         phase = generationMotionPhase(generation.phase, awaitingUser = false),
         retry = generation.retry,
-        outputLength = generation.generatedChars,
+        outputTokens = generation.generatedChars * 0.6f,
     )
     CompositionLocalProvider(LocalGenerationMotion provides motion, content = dots)
 }

@@ -23,13 +23,13 @@ import kotlin.math.pow
 
 /**
  * 生成过程的动效阶段，浮岛光效与生成状态指示共用；每种样式在各阶段保持同一视觉家族，只换节奏与颜色。
- * 灯语借用交换机面板：首字前像链路协商（慢扫或呼吸，不闪），流式输出像 ACT 收发（随机闪烁，跟随实际出字速率），
+ * 灯语借用交换机面板：首字前像链路协商（慢扫或呼吸，不闪），流式输出像 ACT 收发（随机闪烁，跟随实际 Token 速率），
  * 工具执行像忙碌寻道（第三色按固定节拍推进），等待审批像告警慢闪（第三色每秒慢闪），重试等待像降速待机（压暗等间隔闪）。
  */
 enum class GenerationMotionPhase {
     /** 已发出请求、还没有任何内容到达；思考阶段在思考内容到达前也算在这里。 */
     WAIT,
-    /** 思考内容或正文逐字到达；两者共用同一套表现，速率按二者合计的字数估算。 */
+    /** 思考内容或正文逐字到达；两者共用同一套表现，速率按二者合计的 Token 数估算。 */
     STREAM,
     /** 在等工具结果。 */
     TOOL,
@@ -97,35 +97,34 @@ internal fun actOn(id: Int, time: Float, act: Float, seed: Float = 0f): Boolean 
     return motionHash(id * 3.3f, floor(time * hz + id * 5.1f)) < 0.08f + 0.8f * burst
 }
 
-/** 速率表上报的累计字数：正文加思考内容，二者都算“有内容到达”。 */
-internal fun generationOutputLength(content: String, reasoning: String?): Int = content.length + (reasoning?.length ?: 0)
-
-/** 出字速率达到这个值（字/秒）时流式动效最满。 */
-internal const val GenerationMotionFullRate = 60f
+/** Token 速率达到这个值（Token/秒）时流式动效最满。 */
+internal const val GenerationMotionFullRate = 36f
 
 /**
- * 出字速率：按上报的累计字数（正文加思考内容）估算，时间常数 0.5 秒的指数平滑；每 0.09 秒记一次历史，供点阵波形屏画柱状图。
- * 累计字数变小（新一轮回复）时只更新基准，不计入速率。
+ * Token 速率：按上报的累计 Token 数（正文加思考内容）估算，时间常数 0.5 秒的指数平滑；每 0.09 秒记一次历史，供点阵波形屏画柱状图。
+ * 累计 Token 数变小（新一轮回复）时只更新基准，不计入速率。
  */
 internal class OutputRateMeter {
-    private var lastLength = -1
-    private var pending = 0
+    private var lastLength = -1f
+    private var pending = 0f
 
-    /** 本轮累计到达的字数，只计增量；扫光点阵的写入头按它前进，点阵屏按它算平均速率。 */
-    var total = 0
+    /** 本轮累计到达的 Token 数，只计增量；扫光点阵的写入头按它前进，点阵屏按它算平均速率。 */
+    var total = 0f
         private set
     private var historyClock = 0f
     private val history = FloatArray(HistorySize)
     private var historyHead = 0
     private var historyCount = 0
 
-    /** 当前速率，字/秒。 */
+    /** 当前速率，Token/秒。 */
     var rate = 0f
         private set
 
     val act: Float get() = clamp01(rate / GenerationMotionFullRate)
 
-    fun report(length: Int) {
+    fun report(length: Int) = report(length.toFloat())
+
+    fun report(length: Float) {
         if (lastLength >= 0 && length > lastLength) {
             pending += length - lastLength
             total += length - lastLength
@@ -136,7 +135,7 @@ internal class OutputRateMeter {
     fun step(dt: Float) {
         if (dt <= 0f) return
         val instant = pending / dt
-        pending = 0
+        pending = 0f
         rate += (instant - rate) * (1 - exp(-dt / SmoothingSeconds))
         historyClock += dt
         while (historyClock >= HistoryStepSeconds) {
@@ -161,9 +160,9 @@ internal class OutputRateMeter {
     }
 
     fun reset() {
-        lastLength = -1
-        pending = 0
-        total = 0
+        lastLength = -1f
+        pending = 0f
+        total = 0f
         rate = 0f
         historyClock = 0f
         historyHead = 0
@@ -229,12 +228,12 @@ internal class MotionPhaseController {
 }
 
 /**
- * 一个会话界面共用的生成动效状态：显示阶段与各阶段权重、出字速率与重试倒计时，以及点阵屏读数（首字等待秒数、
+ * 一个会话界面共用的生成动效状态：显示阶段与各阶段权重、Token 速率与重试倒计时，以及点阵屏读数（首字等待秒数、
  * 工具轮次）。字段只在绘制阶段读取，推进时不触发重组。四种来源：
  * - 实时：由 [rememberGenerationMotion] 按生成任务推进；
  * - 演示：设置页预览按固定脚本轮播五个阶段，流式之前有一段思考；
  * - 环境：没有提供方时（首页会话列表、静态预览）固定为流式，速率取噪声；
- * - 固定：会话流中挂在某一步上的指示，阶段固定为该步的阶段，出字速率等读数取自 [delegate]。
+ * - 固定：会话流中挂在某一步上的指示，阶段固定为该步的阶段，Token 速率等读数取自 [delegate]。
  */
 @Stable
 class GenerationMotion internal constructor(
@@ -248,8 +247,8 @@ class GenerationMotion internal constructor(
     private val meter = OutputRateMeter()
     private var clock = 0f
     private var rawPhase: GenerationMotionPhase? = null
-    private var preStreamLength = 0
-    private var streamBaseLength = 0
+    private var preStreamLength = 0f
+    private var streamBaseLength = 0f
     private var basePhase: GenerationMotionPhase? = null
     private var retry: GenerationRetry? = null
     private var retryStartedAt = 0f
@@ -259,7 +258,7 @@ class GenerationMotion internal constructor(
     private var toolRounds = 0
     private var heldRate = 0f
     private var heldRateClock = 0f
-    private var lastTotal = 0
+    private var lastTotal = 0f
     private var outputStartedAt = -1f
     private var outputEndedAt = 0f
     private val lastRunHistory = FloatArray(OutputRateMeter.HistorySize)
@@ -300,7 +299,7 @@ class GenerationMotion internal constructor(
     var demoThinking: Boolean by mutableStateOf(false)
         private set
 
-    /** 流式动效强度 0..1：实际出字速率除以 [GenerationMotionFullRate]。环境与演示来源按 [time] 取噪声。 */
+    /** 流式动效强度 0..1：实际 Token 速率除以 [GenerationMotionFullRate]。环境与演示来源按 [time] 取噪声。 */
     fun act(time: Float): Float = when (source) {
         Source.LIVE -> meter.act
         Source.DEMO -> meter.act
@@ -317,17 +316,17 @@ class GenerationMotion internal constructor(
         else -> clamp01(meter.historyAt(back) / (GenerationMotionFullRate * 1.15f))
     }
 
-    /** 本轮累计到达的字数（正文加思考），扫光点阵的写入头按它前进；环境来源按 [time] 匀速合成。 */
-    fun writtenChars(time: Float): Float = when (source) {
-        Source.PINNED -> requireNotNull(delegate).writtenChars(time)
-        Source.LIVE -> meter.total.toFloat()
-        Source.DEMO -> demoChars
-        Source.AMBIENT -> time * 20f
+    /** 本轮累计到达的 Token 数（正文加思考），扫光点阵的写入头按它前进；环境来源按 [time] 匀速合成。 */
+    fun writtenTokens(time: Float): Float = when (source) {
+        Source.PINNED -> requireNotNull(delegate).writtenTokens(time)
+        Source.LIVE -> meter.total
+        Source.DEMO -> demoTokens
+        Source.AMBIENT -> time * 12f
     }
 
-    /** 点阵屏显示的每秒字数：每 [ScopeReadoutHoldSeconds] 取一次速率，数字不逐帧跳动。 */
+    /** 点阵屏显示的每秒 Token 数：每 [ScopeReadoutHoldSeconds] 取一次速率，数字不逐帧跳动。 */
     val readoutRate: Float get() = when (source) {
-        Source.AMBIENT -> 32f
+        Source.AMBIENT -> 19.2f
         Source.PINNED -> requireNotNull(delegate).readoutRate
         else -> heldRate
     }
@@ -342,9 +341,9 @@ class GenerationMotion internal constructor(
         else -> if (back in 0 until lastRunCount) clamp01(lastRunHistory[back] / (GenerationMotionFullRate * 1.15f)) else 0f
     }
 
-    /** 上一轮的平均出字速率（字/秒）：累计字数除以首字到末字的时长（至少 1 秒）；没有出过字时为 0。 */
+    /** 上一轮的平均 Token 速率（Token/秒）：累计 Token 数除以首字到末字的时长（至少 1 秒）；没有出过字时为 0。 */
     val lastRunRate: Float get() = when (source) {
-        Source.AMBIENT -> 28f
+        Source.AMBIENT -> 16.8f
         Source.PINNED -> requireNotNull(delegate).lastRunRate
         else -> lastRunAverage
     }
@@ -376,7 +375,10 @@ class GenerationMotion internal constructor(
 
     private fun retryDelaySeconds(): Float = (retry?.delayMs ?: 0L).coerceAtLeast(1L) / 1000f
 
-    internal fun update(phase: GenerationMotionPhase?, retry: GenerationRetry?, outputLength: Int, animate: Boolean) {
+    internal fun update(phase: GenerationMotionPhase?, retry: GenerationRetry?, outputTokens: Int, animate: Boolean) =
+        update(phase, retry, outputTokens.toFloat(), animate)
+
+    internal fun update(phase: GenerationMotionPhase?, retry: GenerationRetry?, outputTokens: Float, animate: Boolean) {
         if (phase != null && rawPhase == null) beginRun()
         if (retry != this.retry) {
             this.retry = retry
@@ -386,7 +388,7 @@ class GenerationMotion internal constructor(
             if (rawPhase != null) snapshotRun()
             meter.reset()
         } else {
-            meter.report(outputLength)
+            meter.report(outputTokens)
             if (meter.total > lastTotal) {
                 if (outputStartedAt < 0f) outputStartedAt = clock
                 outputEndedAt = clock
@@ -396,12 +398,12 @@ class GenerationMotion internal constructor(
         // 生成任务收到首个分片就进入流式；思考内容或正文比进入流式前有新增后才按流式显示，没有内容到达时仍是首字前。
         if (phase == GenerationMotionPhase.STREAM) {
             if (rawPhase != GenerationMotionPhase.STREAM) streamBaseLength = preStreamLength
-            if (outputLength < streamBaseLength) streamBaseLength = outputLength
+            if (outputTokens < streamBaseLength) streamBaseLength = outputTokens
         } else {
-            preStreamLength = outputLength
+            preStreamLength = outputTokens
         }
         rawPhase = phase
-        basePhase = if (phase == GenerationMotionPhase.STREAM && outputLength <= streamBaseLength) GenerationMotionPhase.WAIT else phase
+        basePhase = if (phase == GenerationMotionPhase.STREAM && outputTokens <= streamBaseLength) GenerationMotionPhase.WAIT else phase
         publishActual(resolveActual())
         // 不推进时（系统关闭动画）直接显示真实阶段。
         if (!animate) actual?.let(controller::snap)
@@ -409,10 +411,11 @@ class GenerationMotion internal constructor(
     }
 
     private fun beginRun() {
+        meter.report(0f)
         toolRounds = 0
         heldRate = 0f
         heldRateClock = 0f
-        lastTotal = 0
+        lastTotal = 0f
         outputStartedAt = -1f
     }
 
@@ -420,6 +423,15 @@ class GenerationMotion internal constructor(
     private fun snapshotRun() {
         lastRunCount = meter.copyHistory(lastRunHistory)
         lastRunAverage = if (meter.total > 0 && outputStartedAt >= 0f) meter.total / maxOf(1f, outputEndedAt - outputStartedAt) else 0f
+    }
+
+    private var currentTokens = 0f
+
+    internal fun updateCurrentTokens(tokens: Float) { currentTokens = tokens }
+    internal fun currentTokenEstimate(): Float = currentTokens
+
+    internal fun applyActualRate(tokens: Int, durationMs: Long) {
+        if (tokens > 0 && durationMs > 0) lastRunAverage = tokens * 1000f / durationMs
     }
 
     private fun resolveActual(): GenerationMotionPhase? {
@@ -479,20 +491,20 @@ class GenerationMotion internal constructor(
         if (phase == GenerationMotionPhase.STREAM) {
             val stall = valueNoise(clock * 0.8f + 7f) < 0.14f
             // 思考段出字慢一些，正文段快一些，预览能看出速率联动。
-            val base = if (segment.thinking) 18f else 32f
+            val base = if (segment.thinking) 10.8f else 19.2f
             val rate = if (stall) 0f else base * (0.3f + 1.4f * valueNoise(clock * 0.5f + 3f))
-            demoChars += rate * dt
-            meter.report(demoChars.toInt())
+            demoTokens += rate * dt
+            meter.report(demoTokens)
         }
     }
 
-    private var demoChars = 0f
+    private var demoTokens = 0f
     private var lastDemoTime = 0f
 
     private class DemoSegment(val phase: GenerationMotionPhase, val seconds: Float, val thinking: Boolean = false)
 
     internal companion object {
-        /** 点阵屏每秒字数读数的刷新间隔。 */
+        /** 点阵屏每秒 Token 数读数的刷新间隔。 */
         const val ScopeReadoutHoldSeconds = 0.25f
         private const val DemoStreamStart = 1.6f
         private const val DemoRetrySeconds = 2.6f
@@ -516,7 +528,7 @@ class GenerationMotion internal constructor(
 
         val Ambient = GenerationMotion(Source.AMBIENT)
 
-        /** 阶段固定为 [phase] 的指示状态；出字速率、点阵读数取自 [delegate]（通常是会话的实时状态）。 */
+        /** 阶段固定为 [phase] 的指示状态；Token 速率、点阵读数取自 [delegate]（通常是会话的实时状态）。 */
         fun pinned(phase: GenerationMotionPhase, delegate: GenerationMotion): GenerationMotion =
             GenerationMotion(Source.PINNED, pinned = phase, delegate = delegate)
     }
@@ -527,16 +539,19 @@ val LocalGenerationMotion = staticCompositionLocalOf { GenerationMotion.Ambient 
 
 /**
  * 会话界面的实时生成动效：[phase] 为 [generationMotionPhase] 的结果，[retry] 为正在等待的自动重试，
- * [outputLength] 为本轮已到达的正文加思考内容的字数（用于估算出字速率）。只在有进行中的生成时逐帧推进；
+ * [outputTokens] 为已到达的估算 Token 数；[tokenInput] 提供正文与思考增量及可校准的用量。只在有进行中的生成时逐帧推进；
  * 结束后各阶段权重停在最后一帧，浮岛光效与点阵屏随生成态动画一起淡出。
  */
 @Composable
-fun rememberGenerationMotion(phase: GenerationMotionPhase?, retry: GenerationRetry?, outputLength: Int): GenerationMotion {
-    val motion = remember { GenerationMotion(GenerationMotion.Source.LIVE) }
+internal fun rememberGenerationMotion(phase: GenerationMotionPhase?, retry: GenerationRetry?, outputTokens: Float = 0f, tokenInput: TokenMotionInput? = null, sessionKey: String? = null): GenerationMotion {
+    val motion = remember(sessionKey) { GenerationMotion(GenerationMotion.Source.LIVE) }
+    val tokenTracker = remember(sessionKey) { TokenMotionTracker(ProcessTokenRateCalibration.value) }
     val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
     var active by remember { mutableStateOf(false) }
     SideEffect {
-        motion.update(phase, retry, outputLength, animate)
+        tokenInput?.let { tokenTracker.update(phase != null, it, motion) }
+        motion.update(phase, retry, if (tokenInput != null) motion.currentTokenEstimate() else outputTokens, animate)
+        tokenInput?.let { tokenTracker.finish(it, motion) }
         active = phase != null
     }
     LaunchedEffect(motion, animate) {
