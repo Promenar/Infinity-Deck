@@ -734,6 +734,14 @@ tasks.withType<Test> {
         maxParallelForks = providers.gradleProperty("infinity.unitTestForks").orNull?.toIntOrNull()
             ?: (Runtime.getRuntime().availableProcessors() - 2).coerceIn(1, 8)
     }
+    // Play 渠道默认只跑 src/testPlay 里的渠道专属测试：共享测试与侧载渠道逐项相同，已由侧载单测覆盖。
+    // 准备 Play 上架或排查渠道差异时加 -Pinfinity.playFullUnitTests=true 跑完整集合。
+    if (name == "testPlayDebugUnitTest" &&
+        providers.gradleProperty("infinity.playFullUnitTests").orNull?.toBoolean() != true
+    ) {
+        val playOnly = fileTree("src/testPlay") { include("**/*.kt") }.files.map { it.nameWithoutExtension }
+        filter { playOnly.forEach { includeTestsMatching("*.$it") } }
+    }
     // MINA 的 NIO SPI 由 JDK 加载；保持同一加载器，避免污染 Robolectric 原生 SQLite 初始化。
     systemProperty("org.robolectric.packagesToNotAcquire", "org.apache.sshd.")
     // Robolectric 默认把 Conscrypt 插到 JVM 全局安全提供者首位且不还原（仅 Apple Silicon 例外），
