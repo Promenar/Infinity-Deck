@@ -22,6 +22,7 @@ internal object BackupPreferencePolicy {
             "enabled_skills",
             "known_builtin_skills",
             "agent_skills_enabled",
+            "skill_store_sources", "skill_store_records", "skill_store_auto_check",
             "long_term_memory_enabled",
             "pet_enabled", "pet_default_id", "pet_model_map", "pet_lines_enabled", "pet_lines_model", "pet_video_enabled",
             "pet_fling_gesture_enabled", "pet_motion_sensor_enabled", "pet_haptics_enabled", "pet_perch_kind", "pet_blow_enabled",
@@ -80,6 +81,7 @@ internal object BackupPreferencePolicy {
         "settings" to setOf(
             "local_models_enabled", "local_auto_load", "last_local_model", "unlimited_auto_confirmed",
             "termux_integration_enabled", "ssh_agent_host_management", "ssh_terminal_idle_disconnect", "script_approve_writes",
+            "skill_store_last_checked",
             "rolled_back_summary_usage_v1", "embedding_setup_hint_shown",
             "pet_dismissed", "pet_dismiss_hint_count", "pet_perch_x_fraction", "pet_perch_y_dp", "pet_mood_value", "pet_mood_at_millis",
             // 资料页长期记忆“新”标记的上次查看时间与侧栏固定文件夹（引用本机位置 id）只描述当前设备。

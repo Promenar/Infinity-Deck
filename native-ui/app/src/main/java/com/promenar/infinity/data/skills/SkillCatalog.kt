@@ -57,6 +57,7 @@ data class DiscoveredSkill(
     val brokenReason: String?,
     /** 解析成功时的元数据；BROKEN 时为 null。 */
     val metadata: AgentSkillMetadata?,
+    val contentHash: String? = null,
 )
 
 /** 一次扫描的结果；[workspace] 为 null 时没有项目级技能。 */
@@ -108,6 +109,6 @@ interface SkillCatalog {
     suspend fun delete(skill: DiscoveredSkill)
 
     /** 安装经逐次审批绑定的完整文件快照；调用方必须核验审批，扫描本身不授予安装权限。 */
-    suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean = false): DiscoveredSkill =
+    suspend fun installApproved(files: Map<String, ByteArray>, overwrite: Boolean = false, enableAfterInstall: Boolean? = null): DiscoveredSkill =
         throw UnsupportedOperationException("此技能来源不支持安装")
 }

@@ -47,6 +47,27 @@ class AndroidTransactionalBackupPreferenceStoreTest {
     }
 
     @Test
+    fun `技能商店来源记录与开关备份恢复且本机检查时间不变`() = runBlocking {
+        val settings = context.getSharedPreferences("infinity_settings", 0)
+        settings.edit().putString("skill_store_sources", "[\"https://example.com/index\"]")
+            .putString("skill_store_records", "[{\"name\":\"demo\"}]")
+            .putBoolean("skill_store_auto_check", false).putLong("skill_store_last_checked", 123L).commit()
+        val adapter = store()
+        val saved = adapter.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+        assertThat(saved.entries.map { it.key }).containsAtLeast("skill_store_sources", "skill_store_records", "skill_store_auto_check")
+        assertThat(saved.entries.map { it.key }).doesNotContain("skill_store_last_checked")
+        settings.edit().putString("skill_store_sources", "[]").putString("skill_store_records", "[]")
+            .putBoolean("skill_store_auto_check", true).putLong("skill_store_last_checked", 456L).commit()
+        val before = adapter.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+        adapter.prepare("tx-skill-store", before, saved)
+        adapter.commitPrepared("tx-skill-store")
+        assertThat(settings.getString("skill_store_sources", null)).isEqualTo("[\"https://example.com/index\"]")
+        assertThat(settings.getString("skill_store_records", null)).isEqualTo("[{\"name\":\"demo\"}]")
+        assertThat(settings.getBoolean("skill_store_auto_check", true)).isFalse()
+        assertThat(settings.getLong("skill_store_last_checked", 0)).isEqualTo(456L)
+    }
+
+    @Test
     fun `提供商状态不导出且备份恢复不会写入或覆盖状态文件`() = runBlocking {
         val status = context.getSharedPreferences("infinity_provider_status", 0)
         val settings = context.getSharedPreferences("infinity_settings", 0)

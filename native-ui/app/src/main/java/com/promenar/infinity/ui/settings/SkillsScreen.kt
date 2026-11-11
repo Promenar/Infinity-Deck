@@ -132,8 +132,11 @@ enum class AgentRuntimeSection { Budget, BuiltinTools, SkillPacks, Mcp }
 fun SkillsScreen(
     onNavigateBack: () -> Unit,
     section: AgentRuntimeSection = AgentRuntimeSection.SkillPacks,
+    onOpenStore: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val storeUpdateCount by (context.applicationContext as com.promenar.infinity.InfinityApplication)
+        .skillStore.updateCount.collectAsState()
     val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(context.applicationContext as android.app.Application))
     val agentSkillsViewModel: AgentSkillsViewModel =
         viewModel(factory = AgentSkillsViewModel.factory(context.applicationContext as android.app.Application))
@@ -238,6 +241,8 @@ fun SkillsScreen(
                             )
                         },
                         onCreate = { agentSkillEditor = AgentSkillEditorState(null, "", "", emptyList()) },
+                        onOpenStore = onOpenStore,
+                        storeUpdateCount = storeUpdateCount,
                     )
                     AgentRuntimeSection.Mcp -> McpServersSection(
                         servers = mcpServers,

@@ -70,10 +70,18 @@ fun AgentSkillsSection(
     onSetGroupEnabled: (SkillScope, Boolean) -> Unit,
     onImport: () -> Unit,
     onCreate: () -> Unit,
+    /** 非 null 时页首显示商店入口；[storeUpdateCount] 为可更新的商店技能数。 */
+    onOpenStore: (() -> Unit)? = null,
+    storeUpdateCount: Int = 0,
 ) {
     val builtin = groups.firstOrNull { it.scope == SkillScope.BUILTIN }
     val user = groups.firstOrNull { it.scope == SkillScope.USER }
     Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+        if (onOpenStore != null) {
+            BettboxListGroup(Modifier.fillMaxWidth()) {
+                com.promenar.infinity.ui.skills.store.SkillStoreEntryRow(updateCount = storeUpdateCount, onOpen = onOpenStore)
+            }
+        }
         if (builtin != null && builtin.skills.isNotEmpty()) {
             SkillScopeSection(
                 title = stringResource(R.string.skills_group_builtin),
