@@ -69,5 +69,8 @@ class ChatPagesTest {
         assertThat(chatPageStack(listOf(ChatPage.State), wideWindow = true)).isEmpty()
         assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.State)))).containsExactly(ChatPage.State)
         assertThat(ChatPage.State.inspectorGroup).isEqualTo(InspectorContentGroup.State)
+        assertThat(chatPageStack(listOf(ChatPage.Production), wideWindow = false)).isEmpty()
+        assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.Production)))).containsExactly(ChatPage.Production)
+        assertThat(ChatPage.Production.inspectorGroup).isEqualTo(InspectorContentGroup.Production)
     }
 }

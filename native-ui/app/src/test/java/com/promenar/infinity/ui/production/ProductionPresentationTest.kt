@@ -132,7 +132,7 @@ class ProductionPresentationTest {
         assertThat(productionEntryState(null, everBound = true))
             .isEqualTo(ProductionEntryState(enabled = true, hasProduction = false, pending = 0, running = false))
         assertThat(productionEntryState(ProductionSamples.snapshot(), everBound = true))
-            .isEqualTo(ProductionEntryState(enabled = true, hasProduction = true, pending = 2, running = true))
+            .isEqualTo(ProductionEntryState(enabled = true, hasProduction = true, pending = 2, running = true, title = ProductionSamples.snapshot().production?.title))
     }
 
     @Test

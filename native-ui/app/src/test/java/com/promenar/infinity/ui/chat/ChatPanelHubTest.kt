@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.chat
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.browser.BrowserMode
+import com.promenar.infinity.ui.production.ProductionEntryState
 import org.junit.Test
 
 class ChatPanelHubTest {
@@ -10,19 +11,19 @@ class ChatPanelHubTest {
 
     private fun List<PanelHubEntry>.pages() = map { it.page }
 
-    @Test fun `Agent 未调用过时画布与状态面板不可用并排到队尾，常驻条目保持固定顺序`() {
+    @Test fun `Agent 未调用过时画布、状态面板与制作面板不可用并排到队尾，常驻条目保持固定顺序`() {
         val list = entries(ChatPanelHubSignals())
         assertThat(list.pages()).containsExactly(
-            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote, ChatPage.Canvas, ChatPage.State,
+            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote, ChatPage.Canvas, ChatPage.State, ChatPage.Production,
         ).inOrder()
         assertThat(list.filter { it.available }.pages())
             .containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote).inOrder()
-        assertThat(list.filterNot { it.available }.pages()).containsExactly(ChatPage.Canvas, ChatPage.State).inOrder()
+        assertThat(list.filterNot { it.available }.pages()).containsExactly(ChatPage.Canvas, ChatPage.State, ChatPage.Production).inOrder()
     }
 
     @Test fun `只有状态面板被调用过时它排在画布之前，画布仍在队尾`() {
         val list = entries(ChatPanelHubSignals(hasStateBoard = true))
-        assertThat(list.pages().takeLast(2)).containsExactly(ChatPage.State, ChatPage.Canvas).inOrder()
+        assertThat(list.pages().takeLast(3)).containsExactly(ChatPage.State, ChatPage.Canvas, ChatPage.Production).inOrder()
         assertThat(list.first { it.page == ChatPage.State }.available).isTrue()
         assertThat(list.first { it.page == ChatPage.Canvas }.available).isFalse()
     }
@@ -50,9 +51,9 @@ class ChatPanelHubTest {
         val before = entries(ChatPanelHubSignals()).pages()
         val after = entries(ChatPanelHubSignals(canvases = 1)).pages()
         assertThat(after).containsExactly(
-            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote, ChatPage.Canvas, ChatPage.State,
+            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote, ChatPage.Canvas, ChatPage.State, ChatPage.Production,
         ).inOrder()
-        // 画布本就在状态面板之前，变为可用后相对位置不变；状态面板仍在队尾。
+        // 画布本就在状态面板之前，变为可用后相对位置不变；状态面板与制作面板仍在队尾。
         assertThat(after).isEqualTo(before)
         assertThat(entries(ChatPanelHubSignals(hasStateBoard = true)).pages().indexOf(ChatPage.State))
             .isLessThan(entries(ChatPanelHubSignals(hasStateBoard = true)).pages().indexOf(ChatPage.Canvas))
@@ -111,7 +112,28 @@ class ChatPanelHubTest {
         assertThat(opened).containsExactly(ChatPage.Git)
     }
 
-    @Test fun `只有画布与状态面板属于 Agent 创建内容的条目`() {
-        assertThat(ChatPage.entries.filter(::panelHubAgentCreated)).containsExactly(ChatPage.Canvas, ChatPage.State)
+    @Test fun `只有画布、状态面板与制作面板属于 Agent 创建内容的条目`() {
+        assertThat(ChatPage.entries.filter(::panelHubAgentCreated)).containsExactly(ChatPage.Canvas, ChatPage.State, ChatPage.Production)
+    }
+
+    @Test fun `制作面板：曾绑定后可用并排进可用条目，待审数为角标，生成中为运行点`() {
+        val bound = ProductionEntryState(enabled = true, hasProduction = true, pending = 2, running = true, title = "雾港")
+        val list = entries(ChatPanelHubSignals(production = bound))
+        val production = list.first { it.page == ChatPage.Production }
+        assertThat(production.available).isTrue()
+        assertThat(production.pending).isEqualTo(2)
+        assertThat(production.running).isTrue()
+        assertThat(list.pages().takeLast(2)).containsExactly(ChatPage.Canvas, ChatPage.State).inOrder()
+        assertThat(panelHubBadge(list)).isEqualTo(PanelHubBadge.Pending(2))
+        // 解绑后项目已不在，曾绑定仍保持可用。
+        val unbound = entries(ChatPanelHubSignals(production = bound.copy(hasProduction = false, pending = 0, running = false, title = null)))
+        assertThat(unbound.first { it.page == ChatPage.Production }.available).isTrue()
+    }
+
+    @Test fun `制作面板从未绑定时不可用，角标与运行点不计入入口标记`() {
+        val list = entries(ChatPanelHubSignals(production = ProductionEntryState.Disabled.copy(pending = 3, running = true)))
+        assertThat(list.first { it.page == ChatPage.Production }.available).isFalse()
+        assertThat(panelHubBadge(list)).isEqualTo(PanelHubBadge.None)
+        assertThat(restorePanelHubUsage(savePanelHubUsage(setOf(ChatPage.Production)))).containsExactly(ChatPage.Production)
     }
 }

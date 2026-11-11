@@ -64,6 +64,7 @@ internal val ChatPage.hubIcon: ImageVector
         ChatPage.Remote -> Icons.Rounded.Lan
         ChatPage.Canvas -> Icons.Rounded.Dashboard
         ChatPage.State -> Icons.Rounded.TableChart
+        ChatPage.Production -> com.promenar.infinity.ui.production.ProductionPanelEntry.icon
     }
 
 /** 功能面板条目的名称，同时是检视器页签名；新增条目时在这里补上。 */
@@ -77,6 +78,7 @@ internal fun ChatPage.hubLabel(): String = stringResource(
         ChatPage.Remote -> R.string.remote_panel_title
         ChatPage.Canvas -> R.string.chat_inspector_tab_canvas
         ChatPage.State -> R.string.panel_hub_tab_state
+        ChatPage.Production -> com.promenar.infinity.ui.production.ProductionPanelEntry.titleRes
     },
 )
 

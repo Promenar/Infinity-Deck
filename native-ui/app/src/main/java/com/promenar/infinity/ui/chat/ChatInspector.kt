@@ -523,6 +523,13 @@ internal fun ChatInspectorStateEmpty() = InspectorEmpty(
     title = stringResource(R.string.state_removed),
 )
 
+/** 制作面板页签没有数据源时的空状态。 */
+@Composable
+internal fun ChatInspectorProductionEmpty() = InspectorEmpty(
+    icon = ChatPage.Production.hubIcon,
+    title = stringResource(R.string.production_panel_empty),
+)
+
 @Composable
 private fun InspectorEmpty(icon: ImageVector, title: String, detail: String? = null, iconSize: Dp = 32.dp) {
     Column(

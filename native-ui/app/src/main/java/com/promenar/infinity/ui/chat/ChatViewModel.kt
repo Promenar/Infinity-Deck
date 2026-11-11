@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.production.observeEntry
 import com.promenar.infinity.ui.common.providerDisplayName
 import android.app.Application
 import android.net.Uri
@@ -732,6 +733,17 @@ class ChatViewModel(
         .flatMapLatest { (session, excluded) ->
             if (session == null) kotlinx.coroutines.flow.flowOf(null) else stateBoardRepository.observe(session, excluded)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 制作面板数据源；会话页的面板组件直接读写它。 */
+    val productionSource: com.promenar.infinity.data.production.ProductionPanelSource =
+        (application as InfinityApplication).productionRepository
+    /** 当前会话的制作面板入口状态：曾绑定时可用，待审数与生成中供功能面板入口显示。 */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val productionEntry = _currentSessionId
+        .flatMapLatest { session ->
+            if (session == null) kotlinx.coroutines.flow.flowOf(com.promenar.infinity.ui.production.ProductionEntryState.Disabled)
+            else productionSource.observeEntry(session)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.promenar.infinity.ui.production.ProductionEntryState.Disabled)
 
     suspend fun editStateField(revision: Long, operation: com.promenar.infinity.data.state.StateOperation): String? {
         val session = _currentSessionId.value ?: return stringResourceResolver(R.string.state_save_failed)

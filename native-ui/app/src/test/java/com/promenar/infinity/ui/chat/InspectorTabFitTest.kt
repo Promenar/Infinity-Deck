@@ -46,11 +46,11 @@ class InspectorTabFitTest {
     }
 
     @Test fun `功能面板入口的全部条目：队尾未使用的条目先收进更多菜单`() {
-        // 条目按入口排序传入：可用的在前，Agent 未调用过的画布与状态面板在队尾。
+        // 条目按入口排序传入：可用的在前，Agent 未调用过的画布、状态面板与制作面板在队尾。
         val hub = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {}).map { it.page }
         val fit = inspectorTabFit(hub, ChatPage.Run, availableWidth = 287f, selectedLabelExtra = 32f)
         assertThat(fit.visible).containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote).inOrder()
-        assertThat(fit.overflow).containsExactly(ChatPage.Canvas, ChatPage.State).inOrder()
+        assertThat(fit.overflow).containsExactly(ChatPage.Canvas, ChatPage.State, ChatPage.Production).inOrder()
     }
 
     @Test fun `每个页签都恰好出现一次`() {

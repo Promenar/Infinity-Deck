@@ -7,7 +7,7 @@ import com.promenar.infinity.data.browser.BrowserMode
  * 会话功能面板统一入口的一个条目。窄窗口的顶栏入口与弹出列表、宽窗口检视器的底部页签条与收起后的边缘条
  * 都只读这一份列表，条目来源、排序与可用性在两种形态下一致。
  *
- * 新增条目（例如“制作”面板）：
+ * 新增条目：
  * 1. [ChatPage] 增加一项，声明位置即可用条目之间的固定顺序；
  * 2. [panelHubAgentCreated] 决定它是否属于“由 Agent 创建内容”的条目；
  * 3. [ChatPanelHubSignals] 增加该面板需要的状态，[chatPanelHubEntries] 增加对应分支；
@@ -37,7 +37,7 @@ internal sealed interface PanelHubBadge {
 
 /** 由 Agent 创建内容的条目：本会话中 Agent 从未调用过时不可用。 */
 internal fun panelHubAgentCreated(page: ChatPage): Boolean = when (page) {
-    ChatPage.Canvas, ChatPage.State -> true
+    ChatPage.Canvas, ChatPage.State, ChatPage.Production -> true
     ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> false
 }
 
@@ -78,14 +78,17 @@ internal data class ChatPanelHubSignals(
     /** Agent 写出、等待用户认领或忽略的产物。 */
     val canvasCandidates: Int = 0,
     val hasStateBoard: Boolean = false,
+    /** 制作面板：会话曾绑定项目时可用，待审数挂角标，有镜头在生成时显示运行圆点。 */
+    val production: com.promenar.infinity.ui.production.ProductionEntryState = com.promenar.infinity.ui.production.ProductionEntryState.Disabled,
     /** 本会话中 Agent 调用过的条目（见 [panelHubUsage]）。 */
     val used: Set<ChatPage> = emptySet(),
 )
 
 /** 当前状态下 Agent 已在使用的条目，并入 [ChatPanelHubSignals.used]。 */
-internal fun panelHubActive(canvases: Int, canvasCandidates: Int, hasStateBoard: Boolean): Set<ChatPage> = buildSet {
+internal fun panelHubActive(canvases: Int, canvasCandidates: Int, hasStateBoard: Boolean, productionBound: Boolean = false): Set<ChatPage> = buildSet {
     if (canvases > 0 || canvasCandidates > 0) add(ChatPage.Canvas)
     if (hasStateBoard) add(ChatPage.State)
+    if (productionBound) add(ChatPage.Production)
 }
 
 /**
@@ -97,7 +100,7 @@ internal fun chatPanelHubEntries(
     summary: (ChatPage) -> String?,
     onOpen: (ChatPage) -> Unit,
 ): List<PanelHubEntry> {
-    val used = panelHubUsage(signals.used, panelHubActive(signals.canvases, signals.canvasCandidates, signals.hasStateBoard))
+    val used = panelHubUsage(signals.used, panelHubActive(signals.canvases, signals.canvasCandidates, signals.hasStateBoard, signals.production.enabled))
     return panelHubOrder(
         ChatPage.entries.map { page ->
             val (pending, running) = when (page) {
@@ -105,6 +108,7 @@ internal fun chatPanelHubEntries(
                 ChatPage.Browser -> (if (signals.browser == BrowserMode.HANDOFF) 1 else 0) to (signals.browser == BrowserMode.AGENT)
                 ChatPage.Remote -> (if (signals.remote == RemoteDot.ATTENTION) 1 else 0) to (signals.remote == RemoteDot.AGENT)
                 ChatPage.Canvas -> signals.canvasCandidates to false
+                ChatPage.Production -> signals.production.pending to signals.production.running
                 ChatPage.Explorer, ChatPage.Git, ChatPage.State -> 0 to false
             }
             PanelHubEntry(

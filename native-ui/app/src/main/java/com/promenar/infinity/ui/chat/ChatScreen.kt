@@ -311,6 +311,9 @@ data class ChatScreenState(
     /** 输入框斜杠命令目录（内置命令与当前会话可用技能）。 */
     val slashCommands: List<com.promenar.infinity.ui.chat.command.SlashCommand> = emptyList(),
     val stateBoard: com.promenar.infinity.data.state.StateBoardSnapshot? = null,
+    /** 制作面板入口状态与数据源；数据源为 null 时（预览、截图）面板显示空状态。 */
+    val production: com.promenar.infinity.ui.production.ProductionEntryState = com.promenar.infinity.ui.production.ProductionEntryState.Disabled,
+    val productionSource: com.promenar.infinity.data.production.ProductionPanelSource? = null,
     /** 当前会话中等待用户决定的子代理审批，按请求时间排列，在会话流底部以卡片呈现。 */
     val subagentApprovals: List<com.promenar.infinity.data.subagent.SubagentApproval> = emptyList(),
     /** 本轮因 `ask_user` 暂停、等待回答的提问；卡片在会话流底部，输入栏写下的文字作为其他回答提交。 */
@@ -886,6 +889,8 @@ fun ChatScreenContent(
         // 运行坞：计划、生成、审批、后台任务与状态面板合成一行，清单收进运行详情，统计挂在回复下方。
         var runSheetTab by remember(uiState.session?.id) { mutableStateOf<com.promenar.infinity.ui.chat.components.RunDetailTab?>(null) }
         var runSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
+        // 窄窗口制作面板以整屏上滑面板打开；宽窗口在检视器“制作”页签。
+        var productionSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
         // 后台任务只有运行详情“后台”页一份列表：宽窗口切到检视器“运行”页签，窄窗口打开运行详情。
         // 记下已处理的请求，重新进入组合时不再重复打开。
         var handledJobsRequest by remember { mutableIntStateOf(state.backgroundJobsRequest) }
@@ -928,7 +933,7 @@ fun ChatScreenContent(
         // 功能面板统一入口：窄窗口顶栏按钮与宽窗口检视器页签、边缘条共用这一份条目，排序与可用性一致。
         // 画布与状态面板在本会话被 Agent 调用过后保持可用，内容清空也不再回到“未使用”。
         var hubUsedToken by rememberSaveable(uiState.session?.id) { mutableStateOf("") }
-        val hubUsed = panelHubUsage(restorePanelHubUsage(hubUsedToken), panelHubActive(sideArtifacts.size, sideCandidates.size, sideBoard != null))
+        val hubUsed = panelHubUsage(restorePanelHubUsage(hubUsedToken), panelHubActive(sideArtifacts.size, sideCandidates.size, sideBoard != null, state.production.enabled))
         SideEffect { savePanelHubUsage(hubUsed).let { if (it != hubUsedToken) hubUsedToken = it } }
         val hubSummaries = mapOf(
             ChatPage.Run to (dock?.label?.takeUnless { it is com.promenar.infinity.ui.chat.components.RunDockLabel.Board }
@@ -944,6 +949,7 @@ fun ChatScreenContent(
                 ),
             ),
             ChatPage.State to boardTitle,
+            ChatPage.Production to state.production.title,
         )
         // 宽窗口切换检视器页签；窄窗口运行与状态面板打开运行详情，其余整页打开。
         val openHubPage: (ChatPage) -> Unit = { page ->
@@ -959,6 +965,7 @@ fun ChatScreenContent(
                 ChatPage.Browser -> actions.onOpenBrowser()
                 ChatPage.Remote -> actions.onOpenRemote()
                 ChatPage.Canvas -> canvasSession?.openList?.invoke()
+                ChatPage.Production -> productionSheetOpen = true
             }
         }
         val hubEntries = chatPanelHubEntries(
@@ -971,6 +978,7 @@ fun ChatScreenContent(
                 canvases = sideArtifacts.size,
                 canvasCandidates = sideCandidates.size,
                 hasStateBoard = sideBoard != null,
+                production = state.production,
                 used = hubUsed,
             ),
             summary = hubSummaries::get,
@@ -1827,6 +1835,20 @@ fun ChatScreenContent(
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }
+                                ChatPage.Production -> {
+                                    val sessionId = uiState.session?.id
+                                    val source = state.productionSource
+                                    if (sessionId == null || source == null) {
+                                        ChatInspectorProductionEmpty()
+                                    } else {
+                                        com.promenar.infinity.ui.production.ProductionPanel(
+                                            sessionId = sessionId,
+                                            source = source,
+                                            onLocate = actions.onLocateWorkspacePath,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
                                 ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> inspectorPageContent()
                             }
                             }
@@ -1867,6 +1889,25 @@ fun ChatScreenContent(
                     }
                 }
             }
+            }
+            val productionSessionId = uiState.session?.id
+            val productionSource = state.productionSource
+            if (productionSheetOpen && productionSessionId != null && productionSource != null) {
+                com.promenar.infinity.ui.common.InfinityModalSheet(
+                    onDismissRequest = { productionSheetOpen = false },
+                    height = com.promenar.infinity.ui.common.InfinitySheetHeight.Full,
+                    contentDragsSheet = false,
+                ) {
+                    com.promenar.infinity.ui.production.ProductionPanel(
+                        sessionId = productionSessionId,
+                        source = productionSource,
+                        onLocate = { path ->
+                            productionSheetOpen = false
+                            actions.onLocateWorkspacePath(path)
+                        },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
             }
             if (runSheetOpen) {
                 val sheetPlan = taskPanel ?: lastVisiblePlan
