@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.48.1-beta] - 2026-11-12
+
 ### 变更
 
 - Git 面板页头重排为三层：仓库名；分支与上游（上游与本地同名时只写远端名，如 `main → origin`）；落后、领先计数与抓取时间。展开屏宽面板中后两层合为一行。移除分支标签、HEAD 短号（游离 HEAD 时仍显示）与“状态 N 秒前”，抓取时间每分钟更新；刷新中由刷新按钮转圈表示，不再显示页头进度条。中文抓取文案改为“N 天前抓取”。
@@ -4426,6 +4428,8 @@ All notable changes to this project will be documented in this file.
 - 移除占位用的“工作台”功能。
 
 ## [Unreleased]
+
+## [0.48.1-beta] - 2026-11-12
 
 ### 新增
 - **智能上下文管理**:

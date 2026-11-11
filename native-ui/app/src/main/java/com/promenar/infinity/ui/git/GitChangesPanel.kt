@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.using
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -100,6 +99,7 @@ import com.promenar.infinity.data.git.GitCommitLog
 import com.promenar.infinity.data.git.GitCommitSummary
 import com.promenar.infinity.data.git.GitFileChange
 import com.promenar.infinity.data.git.GitStatus
+import com.promenar.infinity.ui.common.horizontalFadingEdges
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityBackButton
@@ -474,8 +474,11 @@ private fun BranchRefLine(status: GitStatus, modifier: Modifier) {
             tint = muted,
             modifier = Modifier.size(16.dp),
         )
+        val scroll = rememberScrollState()
         Row(
-            modifier = Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+            modifier = Modifier.weight(1f, fill = false)
+                .horizontalFadingEdges(start = scroll.canScrollBackward, end = scroll.canScrollForward, length = 20.dp)
+                .horizontalScroll(scroll),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -541,8 +544,12 @@ private fun SyncLine(status: GitStatus, now: Long) {
     val separator: @Composable () -> Unit = {
         Text(" · ", style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, softWrap = false)
     }
+    val scroll = rememberScrollState()
     Row(
-        modifier = Modifier.heightIn(min = 20.dp).horizontalScroll(rememberScrollState()).testTag(GitPanelTags.TRACKING),
+        modifier = Modifier.heightIn(min = 20.dp)
+            .horizontalFadingEdges(start = scroll.canScrollBackward, end = scroll.canScrollForward, length = 20.dp)
+            .horizontalScroll(scroll)
+            .testTag(GitPanelTags.TRACKING),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val synced = ahead == null && behind == null && !tracking.countsUnknown

@@ -38,11 +38,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -103,7 +99,6 @@ fun <T> InfinityPanelTabs(
     val density = LocalDensity.current
     val edge = (contentInset - PanelTabPadding).coerceAtLeast(0.dp)
     val edgePx = with(density) { edge.roundToPx() }
-    val fadePx = with(density) { PanelTabFadeWidth.toPx() }
     // 各页签在滚动行内的起点与宽度（像素），用来摆放指示条和把选中项滚入视野。
     val bounds = remember { mutableStateMapOf<Int, Pair<Int, Int>>() }
     var viewport by remember { mutableIntStateOf(0) }
@@ -144,28 +139,11 @@ fun <T> InfinityPanelTabs(
         Box(
             Modifier
                 .fillMaxWidth()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    drawContent()
-                    val fadeStart = scrollState.value > 0
-                    val fadeEnd = scrollState.value < scrollState.maxValue
-                    if (fadeStart || fadeEnd) {
-                        val edgeFraction = (fadePx / size.width).coerceIn(0f, 0.5f)
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                0f to (if (fadeStart) Color.Transparent else Color.Black),
-                                edgeFraction to Color.Black,
-                                1f - edgeFraction to Color.Black,
-                                1f to (if (fadeEnd) Color.Transparent else Color.Black),
-                                startX = 0f,
-                                endX = size.width,
-                            ),
-                            topLeft = Offset.Zero,
-                            size = size,
-                            blendMode = BlendMode.DstIn,
-                        )
-                    }
-                }
+                .horizontalFadingEdges(
+                    start = scrollState.canScrollBackward,
+                    end = scrollState.canScrollForward,
+                    length = PanelTabFadeWidth,
+                )
                 .horizontalScroll(scrollState),
         ) {
             Row(
@@ -173,12 +151,17 @@ fun <T> InfinityPanelTabs(
                     .selectableGroup()
                     .drawWithContent {
                         drawContent()
-                        if (target != null && indicatorWidth.value > 0f) {
+                        // 动画值尚未初始化（首帧）时直接按选中页签的位置绘制，避免指示条晚一帧出现。
+                        val placed = bounds[selectedIndex]
+                        val animated = indicatorWidth.value > 0f
+                        val x = if (animated) indicatorX.value else placed?.let { (it.first + padPx).toFloat() }
+                        val width = if (animated) indicatorWidth.value else placed?.let { (it.second - padPx * 2).coerceAtLeast(0).toFloat() }
+                        if (x != null && width != null && width > 0f) {
                             val height = PanelTabIndicatorHeight.toPx()
                             drawRoundRect(
                                 color = indicatorColor,
-                                topLeft = Offset(indicatorX.value, size.height - height),
-                                size = Size(indicatorWidth.value, height * 2),
+                                topLeft = Offset(x, size.height - height),
+                                size = Size(width, height * 2),
                                 cornerRadius = CornerRadius(height, height),
                             )
                         }
