@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import com.promenar.infinity.data.model.params.sampling
 import com.promenar.infinity.ui.common.params.ParameterSchemeSection
 import com.promenar.infinity.ui.common.params.SAMPLING_PARAM_ORDER
@@ -59,8 +61,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
-import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.ModelSelectionUiModel
 import com.promenar.infinity.ui.common.toModelSelectionUiModel
 import com.promenar.infinity.ui.common.ModelSelectionListItem
@@ -164,18 +164,13 @@ fun SessionSettingsSheet(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            val sessionTabs = remember(tabTitles) {
-                tabTitles.map { InfinityTabItem(title = it) }
-            }
-            InfinityCapsuleTabRow(
-                tabs = sessionTabs,
-                selectedIndex = pagerState.currentPage,
-                onTabSelected = { index ->
+            InfinityPanelTabs(
+                tabs = tabTitles.mapIndexed { index, title -> InfinityPanelTab(index, title) },
+                selected = pagerState.currentPage,
+                onSelect = { index ->
                     scope.launch { pagerState.animateScrollToPage(index) }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = InfinitySpacing.XLarge, vertical = InfinitySpacing.Small),
+                contentInset = InfinitySpacing.XLarge,
             )
 
             Spacer(modifier = Modifier.height(InfinitySpacing.Small))

@@ -1,5 +1,8 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.foundation.layout.PaddingValues
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
@@ -13,9 +16,6 @@ import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -175,20 +175,16 @@ internal fun SessionGraphBindingSection(
 @Composable
 private fun ReadModeRow(readOnly: Boolean, onChange: (Boolean) -> Unit) {
     val options = listOf(true to R.string.ks_graph_mode_read_only, false to R.string.ks_graph_mode_read_write)
-    SingleChoiceSegmentedButtonRow(
-        Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp)
-            .testTag("session_graph_mode"),
-    ) {
-        options.forEachIndexed { index, (value, label) ->
-            SegmentedButton(
-                selected = readOnly == value,
-                onClick = { if (readOnly != value) onChange(value) },
-                shape = SegmentedButtonDefaults.itemShape(index, options.size),
-                modifier = Modifier.testTag(if (value) "session_graph_mode_ro" else "session_graph_mode_rw"),
-                label = { Text(stringResource(label), maxLines = 1) },
-            )
-        }
-    }
+    InfinitySegmentedControl(
+        segments = options.map { (value, label) ->
+            InfinitySegment(value, stringResource(label), tag = if (value) "session_graph_mode_ro" else "session_graph_mode_rw")
+        },
+        selected = readOnly,
+        onSelect = { if (it != readOnly) onChange(it) },
+        fillWidth = true,
+        contentPadding = PaddingValues(horizontal = InfinitySpacing.RowHorizontal, vertical = 4.dp),
+        modifier = Modifier.testTag("session_graph_mode"),
+    )
 }
 
 /** 副标题：分组名、篇数（作品与通用知识）与实体数。 */

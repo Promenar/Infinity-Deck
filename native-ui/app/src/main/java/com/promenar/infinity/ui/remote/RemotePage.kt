@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.remote
 
+import com.promenar.infinity.ui.common.InfinityPanelTab
+import com.promenar.infinity.ui.common.InfinityPanelTabs
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -203,27 +205,25 @@ internal fun RemotePageContent(
         bodyPadding = PaddingValues(0.dp),
         modifier = Modifier.testTag(RemoteTags.PAGE),
     ) {
-        InfinitySegmentedControl(
-            segments = RemoteSegment.entries.map { value ->
-                val dot = when (value) {
-                    RemoteSegment.SSH -> if (agentActive) MaterialTheme.colorScheme.primary else null
-                    RemoteSegment.TAILSCALE -> if (tailscaleAttention) MaterialTheme.colorScheme.tertiary else null
-                    else -> null
-                }
-                InfinitySegment(
+        InfinityPanelTabs(
+            tabs = RemoteSegment.entries.map { value ->
+                InfinityPanelTab(
                     value = value,
                     label = stringResource(value.label),
-                    tag = RemoteTags.segment(value),
-                    leading = dot?.let { color -> { Box(Modifier.size(8.dp).background(color, CircleShape)) } },
+                    dot = when (value) {
+                        RemoteSegment.SSH -> if (agentActive) MaterialTheme.colorScheme.primary else null
+                        RemoteSegment.TAILSCALE -> if (tailscaleAttention) MaterialTheme.colorScheme.tertiary else null
+                        else -> null
+                    },
+                    testTag = RemoteTags.segment(value),
                 )
             },
             selected = segment,
             onSelect = onSelectSegment,
-            fillWidth = true,
-            contentPadding = PaddingValues(
-                start = InfinitySpacing.Large,
-                end = InfinitySpacing.Large,
-                top = if (onBack == null) inspectorTopGap(InfinitySpacing.Small, visualInset = InfinitySegmentTrackInset) else InfinitySpacing.Small,
+            contentInset = InfinitySpacing.Large,
+            // 检视器顶端与其它面板对齐：页签文字在 48dp 行内约有 12dp 上留白。
+            modifier = Modifier.padding(
+                top = if (onBack == null) inspectorTopGap(InfinitySpacing.XSmall, visualInset = InfinitySpacing.Medium) else InfinitySpacing.XSmall,
                 bottom = InfinitySpacing.XSmall,
             ),
         )

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.rag
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -84,11 +86,9 @@ import com.promenar.infinity.data.rag.KgEntitySources
 import com.promenar.infinity.data.rag.KgNode
 import com.promenar.infinity.data.rag.KgSessionOption
 import com.promenar.infinity.data.rag.KgSessionTurn
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityRetryButton
-import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.common.bettboxListGroup
 import com.promenar.infinity.ui.rag.canvas.KgEntityKind
 import com.promenar.infinity.ui.rag.canvas.kgEntityPalette
@@ -125,11 +125,12 @@ internal fun KnowledgeGraphModeSelector(
         KgViewMode.DOCUMENT to stringResource(R.string.kg_view_document),
         KgViewMode.SESSION to stringResource(R.string.kg_view_session),
     )
-    InfinityCapsuleTabRow(
-        tabs = modes.map { (mode, label) -> InfinityTabItem(title = label, testTag = UiTags.kgMode(mode.name)) },
-        selectedIndex = modes.indexOfFirst { it.first == viewMode },
-        onTabSelected = { index -> onModeSelected(modes[index].first) },
-        modifier = modifier.fillMaxWidth(),
+    InfinityPanelTabs(
+        tabs = modes.map { (mode, label) -> InfinityPanelTab(mode, label, testTag = UiTags.kgMode(mode.name)) },
+        selected = viewMode,
+        onSelect = onModeSelected,
+        modifier = modifier,
+        contentInset = InfinitySpacing.Large,
     )
 }
 

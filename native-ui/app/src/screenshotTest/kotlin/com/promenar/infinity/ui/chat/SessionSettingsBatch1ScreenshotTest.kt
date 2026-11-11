@@ -215,9 +215,12 @@ private fun SessionFrame(index: Int, light: Boolean = false, content: @Composabl
         Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.fillMaxSize()) {
                 Text(stringResource(R.string.sheet_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
-                InfinityCapsuleTabRow(tabs = listOf(R.string.sheet_tab_model, R.string.sheet_tab_thinking,
-                    R.string.sheet_tab_tools, R.string.sheet_tab_settings).map { InfinityTabItem(stringResource(it)) },
-                    selectedIndex = index, onTabSelected = {}, modifier = Modifier.padding(horizontal = 16.dp))
+                InfinityPanelTabs(
+                    tabs = listOf(R.string.sheet_tab_model, R.string.sheet_tab_thinking, R.string.sheet_tab_tools, R.string.sheet_tab_settings)
+                        .mapIndexed { i, res -> InfinityPanelTab(i, stringResource(res)) },
+                    selected = index,
+                    onSelect = {},
+                )
                 Box(Modifier.weight(1f)) { content() }
             }
         }

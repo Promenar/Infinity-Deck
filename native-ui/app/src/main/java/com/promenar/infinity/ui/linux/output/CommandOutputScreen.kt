@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.linux.output
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -65,7 +67,6 @@ import com.promenar.infinity.ui.common.InfinityRetryButton
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.common.InfinitySnackbarData
 import com.promenar.infinity.ui.common.InfinitySnackbarHost
-import com.promenar.infinity.ui.common.InfinityTabSwitcher
 import com.promenar.infinity.ui.common.SnackbarType
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -196,14 +197,14 @@ fun CommandOutputContent(
             OutputTags(output)
             if (state.segmentsAvailable) {
                 val segments = OutputSegment.entries
-                InfinityTabSwitcher(
-                    itemCount = segments.size,
-                    selectedIndex = segments.indexOf(state.segment),
-                    onTabSelected = { onSegmentSelected(segments[it]) },
-                    tabModifier = { Modifier.testTag(UiTags.linuxOutputSegment(segments[it].name.lowercase())) },
-                ) { index, _, color ->
-                    Text(stringResource(segmentLabel(segments[index])), color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                }
+                InfinityPanelTabs(
+                    tabs = segments.map {
+                        InfinityPanelTab(it, stringResource(segmentLabel(it)), testTag = UiTags.linuxOutputSegment(it.name.lowercase()))
+                    },
+                    selected = state.segment,
+                    onSelect = onSegmentSelected,
+                    bleed = InfinitySpacing.ScreenHorizontal,
+                )
             }
             SearchRow(state.search, onQueryChange, onPreviousMatch, onNextMatch)
             TruncationNotice(state, output)

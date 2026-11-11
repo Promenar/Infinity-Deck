@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.production
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,7 +37,6 @@ import com.promenar.infinity.data.production.ProductionKind
 import com.promenar.infinity.data.production.ProductionPanelSource
 import com.promenar.infinity.data.production.ProductionSnapshot
 import com.promenar.infinity.data.production.ProductionUserAction
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -43,7 +44,6 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
-import com.promenar.infinity.ui.common.InfinityTabItem
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
 import com.promenar.infinity.ui.media.rememberSessionWorkspaceMedia
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -193,17 +193,17 @@ fun ProductionPanelContent(
                 modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall).testTag(ProductionUiTags.ERROR),
             )
         }
-        val tabs = listOf(
-            InfinityTabItem(stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW),
-            InfinityTabItem(stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT),
-            InfinityTabItem(stringResource(R.string.production_panel_tab_assets), testTag = ProductionUiTags.TAB_ASSETS),
-            InfinityTabItem(stringResource(R.string.production_panel_tab_storyboard), testTag = ProductionUiTags.TAB_STORYBOARD),
-        )
-        InfinityCapsuleTabRow(
-            tabs = tabs,
-            selectedIndex = tab.ordinal,
-            onTabSelected = { tab = ProductionTab.entries[it] },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+        InfinityPanelTabs(
+            tabs = listOf(
+                InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW),
+                InfinityPanelTab(ProductionTab.SCRIPT, stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT),
+                InfinityPanelTab(ProductionTab.ASSETS, stringResource(R.string.production_panel_tab_assets), testTag = ProductionUiTags.TAB_ASSETS),
+                InfinityPanelTab(ProductionTab.STORYBOARD, stringResource(R.string.production_panel_tab_storyboard), testTag = ProductionUiTags.TAB_STORYBOARD),
+            ),
+            selected = tab,
+            onSelect = { tab = it },
+            contentInset = InfinitySpacing.Large,
+            modifier = Modifier.padding(bottom = InfinitySpacing.XSmall),
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {

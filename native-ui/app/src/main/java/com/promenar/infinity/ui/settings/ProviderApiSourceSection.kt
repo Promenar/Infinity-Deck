@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.settings
 
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -58,8 +61,6 @@ import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.infinityPopoverAnchor
 import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
 import com.promenar.infinity.ui.common.InfinityPopoverAlign
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
-import com.promenar.infinity.ui.common.InfinityTabItem
 import kotlinx.coroutines.flow.first
 
 /** 内置 Tailscale 状态行所需的本机信息。 */
@@ -98,16 +99,20 @@ internal fun ProviderApiSourceRows(
             Triple(ProviderApiSource.PUBLIC, R.string.provider_api_source_public, Icons.Rounded.Language),
             Triple(ProviderApiSource.TAILNET, R.string.provider_api_source_tailnet, Icons.Rounded.Lan),
         )
-        InfinityCapsuleTabRow(
-            tabs = options.map { (option, label, icon) ->
-                InfinityTabItem(title = stringResource(label), icon = icon, testTag = providerApiSourceOptionTag(option))
+        InfinitySegmentedControl(
+            segments = options.map { (option, label, icon) ->
+                InfinitySegment(
+                    value = option,
+                    label = stringResource(label),
+                    tag = providerApiSourceOptionTag(option),
+                    leading = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                )
             },
-            selectedIndex = options.indexOfFirst { it.first == source.selected },
-            onTabSelected = { index -> onSourceSelected(options[index].first) },
-            modifier = Modifier
-                .padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Medium)
-                .testTag(PROVIDER_API_SOURCE_TAG),
-            itemRole = Role.RadioButton,
+            selected = source.selected,
+            onSelect = onSourceSelected,
+            fillWidth = true,
+            contentPadding = PaddingValues(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Small),
+            modifier = Modifier.testTag(PROVIDER_API_SOURCE_TAG),
         )
         AnimatedVisibility(
             visible = source.selected == ProviderApiSource.TAILNET,

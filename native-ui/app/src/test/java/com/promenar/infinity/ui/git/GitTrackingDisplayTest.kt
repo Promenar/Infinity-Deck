@@ -28,6 +28,15 @@ class GitTrackingDisplayTest {
         assertThat(gitTrackingCount(GIT_TRACKING_COUNT_CAP, false)).isEqualTo("1000")
     }
 
+    @Test fun `上游与本地同名时只显示远端名，否则原样显示`() {
+        assertThat(gitUpstreamLabel("main", "origin/main")).isEqualTo("origin")
+        assertThat(gitUpstreamLabel("claude/tab-redesign", "origin/claude/tab-redesign")).isEqualTo("origin")
+        assertThat(gitUpstreamLabel("main", "upstream/develop")).isEqualTo("upstream/develop")
+        assertThat(gitUpstreamLabel("main", "origin/main-old")).isEqualTo("origin/main-old")
+        assertThat(gitUpstreamLabel("main", "main")).isEqualTo("main")
+        assertThat(gitUpstreamLabel(null, "origin/main")).isEqualTo("origin/main")
+    }
+
     @Test fun `计数未知只指有上游但遍历截断且两项都为空`() {
         assertThat(GitTracking("origin/main", null, null, false, true).countsUnknown).isTrue()
         assertThat(GitTracking("origin/main", 1000, 3, false, true).countsUnknown).isFalse()

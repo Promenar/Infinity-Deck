@@ -2,6 +2,9 @@ package com.promenar.infinity.ui.git
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.using
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -15,7 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -36,6 +39,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountTree
@@ -53,6 +57,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -95,16 +100,15 @@ import com.promenar.infinity.data.git.GitCommitLog
 import com.promenar.infinity.data.git.GitCommitSummary
 import com.promenar.infinity.data.git.GitFileChange
 import com.promenar.infinity.data.git.GitStatus
-import com.promenar.infinity.data.git.GitTracking
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityRetryButton
-import com.promenar.infinity.ui.common.InfinityTabItem
+import com.promenar.infinity.ui.common.InfinityPanelTab
+import com.promenar.infinity.ui.common.InfinityPanelTabs
 import com.promenar.infinity.ui.common.diff.FileDiffModel
 import com.promenar.infinity.ui.common.diff.FileDiffView
 import com.promenar.infinity.ui.theme.InfinityMonospace
@@ -189,39 +193,39 @@ fun GitChangesPanel(
 ) {
     val readyStatus = (state.status as? GitLoad.Ready)?.value
     Column(modifier = modifier.testTag(GitPanelTags.ROOT)) {
-        GitPanelHeader(state, actions, nowMillis)
+        GitPanelHeader(state, actions)
         AnimatedVisibility(visible = state.detail == null && readyStatus != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-            readyStatus?.let { TrackingChips(it.tracking) }
-        }
-        AnimatedVisibility(visible = state.refreshing, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = InfinitySpacing.XSmall))
+            readyStatus?.let { BranchSyncRows(it, nowMillis) }
         }
         Spacer(modifier = Modifier.height(InfinitySpacing.Small))
         // 列表、文件差异、提交详情、提交内文件差异之间按层级做共享 X 轴切换；同一页内的数据刷新不触发切换。
         AnimatedContent(
             targetState = state,
             contentKey = { it.detail.pageKey },
-            transitionSpec = { hierarchicalTransition { it.detail.depth } },
+            // 不裁剪：列表页的二级页签向两侧伸到面板边缘。
+            transitionSpec = { hierarchicalTransition { it.detail.depth } using SizeTransform(clip = false) },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             label = "git_panel_page",
         ) { shown ->
             when (val detail = shown.detail) {
                 null -> Column(Modifier.fillMaxSize()) {
-                    InfinityCapsuleTabRow(
+                    InfinityPanelTabs(
                         tabs = listOf(
-                            InfinityTabItem(
-                                title = stringResource(R.string.git_panel_tab_changes),
-                                badge = (shown.status as? GitLoad.Ready)?.value?.takeIf { !it.isClean }?.let { countBadge(it) },
+                            InfinityPanelTab(
+                                value = GitPanelTab.CHANGES,
+                                label = stringResource(R.string.git_panel_tab_changes),
+                                count = (shown.status as? GitLoad.Ready)?.value?.takeIf { !it.isClean }?.let { countBadge(it) },
                             ),
-                            InfinityTabItem(title = stringResource(R.string.git_panel_tab_commits), icon = Icons.Rounded.Commit),
-                            InfinityTabItem(
-                                title = stringResource(R.string.git_panel_tab_branches),
-                                badge = (shown.branches as? GitLoad.Ready)?.value?.branches?.size?.takeIf { it > 0 }?.toString(),
+                            InfinityPanelTab(value = GitPanelTab.COMMITS, label = stringResource(R.string.git_panel_tab_commits)),
+                            InfinityPanelTab(
+                                value = GitPanelTab.BRANCHES,
+                                label = stringResource(R.string.git_panel_tab_branches),
+                                count = (shown.branches as? GitLoad.Ready)?.value?.branches?.size?.takeIf { it > 0 }?.toString(),
                             ),
                         ),
-                        selectedIndex = shown.tab.ordinal,
-                        onTabSelected = { actions.onSelectTab(GitPanelTab.entries[it]) },
-                        modifier = Modifier.fillMaxWidth(),
+                        selected = shown.tab,
+                        onSelect = actions.onSelectTab,
+                        bleed = InfinitySpacing.ScreenHorizontal,
                     )
                     Spacer(modifier = Modifier.height(InfinitySpacing.Small))
                     AnimatedContent(
@@ -289,7 +293,7 @@ private fun countBadge(status: GitStatus): String =
     if (status.truncated) "${status.changeCount}+" else status.changeCount.toString()
 
 @Composable
-private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, nowMillis: Long?) {
+private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions) {
     val detail = state.detail
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
@@ -320,18 +324,7 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.RowTwoLineGap, Alignment.CenterVertically),
             ) {
                 when (detail) {
-                    null -> {
-                        val status = (shown.status as? GitLoad.Ready)?.value
-                        if (status == null) {
-                            InfinityHeaderTitle(
-                                text = stringResource(R.string.git_panel_title),
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        } else {
-                            BranchHeader(status, nowMillis, shown.refreshing, shown.statusReadAtMillis)
-                        }
-                    }
+                    null -> RepositoryTitle((shown.status as? GitLoad.Ready)?.value?.repositoryName)
                     is GitPanelDetail.Change -> HeaderTitles(
                         title = detail.change.path,
                         subtitle = stringResource(
@@ -358,15 +351,27 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions, now
                 }
             }
         }
-        IconButton(
-            onClick = actions.onRefresh,
-            modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).testTag(GitPanelTags.REFRESH),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Refresh,
-                contentDescription = stringResource(R.string.git_panel_refresh),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        RefreshButton(refreshing = state.refreshing, onClick = actions.onRefresh)
+    }
+}
+
+/** 刷新按钮；后台刷新期间图标换成转圈，仍可再次点按。 */
+@Composable
+private fun RefreshButton(refreshing: Boolean, onClick: () -> Unit) {
+    val label = stringResource(if (refreshing) R.string.git_panel_status_refreshing else R.string.git_panel_refresh)
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(InfinitySpacing.MinimumTouchTarget)
+            .semantics { contentDescription = label }
+            .testTag(GitPanelTags.REFRESH),
+    ) {
+        Crossfade(targetState = refreshing, animationSpec = tween(InfinityMotion.DurationShort), label = "git_panel_refresh") { busy ->
+            if (busy) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -389,16 +394,11 @@ private fun HeaderTitles(title: String, subtitle: String, identifier: Boolean) {
     )
 }
 
-/**
- * 列表页页头：首行仓库名，次行分支标签后接上游、HEAD 与上次抓取时间；窄窗口或大字体时元信息折到标签下方。
- * 旧检查端不输出仓库名时以分支为标题。上游在本地不存在属于异常，单独一行以错误色提示。
- */
+/** 列表页标题：仓库名；旧检查端不输出仓库名时用“Git”。 */
 @Composable
-private fun BranchHeader(status: GitStatus, nowMillis: Long?, refreshing: Boolean = false, readAtMillis: Long? = null) {
-    val repository = status.repositoryName?.takeIf { it.isNotBlank() }
-    val branch = branchLabel(status.branch, status.detached, status.head?.take(7), status.unborn)
+private fun RepositoryTitle(repositoryName: String?) {
+    val repository = repositoryName?.takeIf { it.isNotBlank() }
     Row(
-        // 首行与刷新按钮同高，二者居中对齐。
         modifier = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
@@ -412,80 +412,168 @@ private fun BranchHeader(status: GitStatus, nowMillis: Long?, refreshing: Boolea
             )
         }
         InfinityHeaderTitle(
-            text = repository ?: branch,
-            style = if (repository == null) InfinityTypography.titleMedium.copy(fontFamily = InfinityMonospace) else InfinityTypography.titleMedium,
+            text = repository ?: stringResource(R.string.git_panel_title),
+            style = InfinityTypography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-    val tracking = status.tracking
-    val upstream = tracking.upstream
-    val missing = tracking.upstreamMissing == true && upstream != null
-    // 显示缓存结果时每秒走一次时钟，“N 秒前”随之更新；截图测试传入固定时刻。
-    val ticking by produceState(System.currentTimeMillis(), status, readAtMillis, nowMillis) {
-        if (nowMillis != null || readAtMillis == null) return@produceState
-        while (true) {
-            delay(1_000)
-            value = System.currentTimeMillis()
-        }
-    }
-    val now = nowMillis ?: ticking
-    val meta = listOfNotNull(
-        when {
-            status.detached || missing -> null
-            upstream == null -> stringResource(R.string.git_panel_no_upstream)
-            else -> stringResource(R.string.git_panel_tracking, upstream)
-        },
-        // 分离 HEAD 的分支标签已含提交号，不再重复。
-        status.head?.take(7)?.takeUnless { status.detached },
-        fetchAgeLabel(gitFetchAge(status.lastFetchSeconds, now)),
-        statusFreshnessLabel(gitStatusFreshness(refreshing, readAtMillis, now)),
-    )
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
-        itemVerticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (repository != null) BranchChip(branch)
-        InfinityMetaLine(
-            segments = meta,
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-        )
-    }
-    if (missing) {
-        Text(
-            text = stringResource(R.string.git_panel_upstream_missing, upstream.orEmpty()),
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-/** 当前分支的小标签：分支图标加等宽分支名，过长时截断。 */
+/** 页头分为宽窄两种排布的分界：放得下分支行与同步行并排时合为一行。 */
+private val BranchSyncWideWidth = 520.dp
+
+/**
+ * 页头的第二、三层：分支与上游一行，同步状态与抓取时间一行；宽窗口两行并排。
+ * 分离 HEAD 与无上游时没有同步行；上游在本地不存在时同步行换成错误提示。
+ * 抓取时间每分钟重算一次；截图测试传入固定时刻。
+ */
 @Composable
-private fun BranchChip(branch: String) {
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(Icons.Rounded.AccountTree, contentDescription = null, modifier = Modifier.size(14.dp))
-            InfinityIdentifierText(
-                text = branch,
-                style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+private fun BranchSyncRows(status: GitStatus, nowMillis: Long?) {
+    val ticking by produceState(System.currentTimeMillis(), status.lastFetchSeconds, nowMillis) {
+        if (nowMillis != null || status.lastFetchSeconds == null) return@produceState
+        while (true) {
+            delay(GIT_FETCH_AGE_TICK_MILLIS)
+            value = System.currentTimeMillis()
         }
+    }
+    val now = nowMillis ?: ticking
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.XSmall)) {
+        if (maxWidth >= BranchSyncWideWidth) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
+            ) {
+                BranchRefLine(status, Modifier.weight(1f))
+                SyncLine(status, now)
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.RowTwoLineGap)) {
+                BranchRefLine(status, Modifier.fillMaxWidth())
+                SyncLine(status, now)
+            }
+        }
+    }
+}
+
+/** 分支行：分支名等宽显示，后接上游（与本地同名时只写远端名）；分离 HEAD 显示提交号；超出宽度时单行横滑。 */
+@Composable
+private fun BranchRefLine(status: GitStatus, modifier: Modifier) {
+    val tracking = status.tracking
+    val upstream = tracking.upstream
+    val missing = tracking.upstreamMissing == true && upstream != null
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val label = branchLabel(status.branch, status.detached, status.head?.take(7), status.unborn)
+    Row(
+        modifier = modifier.heightIn(min = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = if (status.detached) Icons.Rounded.Commit else Icons.Rounded.AccountTree,
+            contentDescription = null,
+            tint = muted,
+            modifier = Modifier.size(16.dp),
+        )
+        Row(
+            modifier = Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = InfinityTypography.labelLarge.copy(fontFamily = InfinityMonospace),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+            )
+            when {
+                status.detached || missing -> Unit
+                upstream == null -> Text(
+                    text = " · " + stringResource(R.string.git_panel_no_upstream),
+                    style = InfinityTypography.bodySmall,
+                    color = muted,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                else -> {
+                    Text(
+                        text = "  →  ",
+                        style = InfinityTypography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                    Text(
+                        text = gitUpstreamLabel(status.branch, upstream),
+                        style = InfinityTypography.labelLarge.copy(fontFamily = InfinityMonospace, fontWeight = FontWeight.Normal),
+                        color = muted,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 同步行：落后、领先计数（都为 0 时显示“已同步”，无法确定时显示中性提示），后接抓取时间。
+ */
+@Composable
+private fun SyncLine(status: GitStatus, now: Long) {
+    val tracking = status.tracking
+    val upstream = tracking.upstream
+    if (status.detached || upstream == null) return
+    if (tracking.upstreamMissing == true) {
+        Text(
+            text = stringResource(R.string.git_panel_upstream_missing, upstream),
+            style = InfinityTypography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag(GitPanelTags.TRACKING),
+        )
+        return
+    }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val fetchAge = gitFetchAge(status.lastFetchSeconds, now)
+    val ahead = gitTrackingCount(tracking.ahead, tracking.truncated)
+    val behind = gitTrackingCount(tracking.behind, tracking.truncated)
+    val separator: @Composable () -> Unit = {
+        Text(" · ", style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, softWrap = false)
+    }
+    Row(
+        modifier = Modifier.heightIn(min = 20.dp).horizontalScroll(rememberScrollState()).testTag(GitPanelTags.TRACKING),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val synced = ahead == null && behind == null && !tracking.countsUnknown
+        // 从未抓取时“已同步”没有依据，只显示抓取时间；本地领先或落后的计数照常显示。
+        if (!(synced && fetchAge == GitFetchAge.Never)) {
+            when {
+                tracking.countsUnknown -> SyncCount(Icons.AutoMirrored.Rounded.HelpOutline, stringResource(R.string.git_panel_tracking_unknown), muted)
+                synced -> SyncCount(Icons.Rounded.Check, stringResource(R.string.git_panel_synced), muted)
+                else -> {
+                    behind?.let { SyncCount(Icons.Rounded.ArrowDownward, stringResource(R.string.git_panel_behind, it), MaterialTheme.infinityDomainColors.warning) }
+                    if (behind != null && ahead != null) separator()
+                    ahead?.let { SyncCount(Icons.Rounded.ArrowUpward, stringResource(R.string.git_panel_ahead, it), MaterialTheme.colorScheme.primary) }
+                }
+            }
+            separator()
+        }
+        Text(fetchAgeLabel(fetchAge), style = InfinityTypography.bodySmall, color = muted, maxLines = 1, softWrap = false)
+    }
+}
+
+@Composable
+private fun SyncCount(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        Text(
+            text = text,
+            style = InfinityTypography.bodySmall.copy(fontWeight = FontWeight.Medium, fontFeatureSettings = "tnum"),
+            color = color,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
@@ -496,67 +584,6 @@ internal fun fetchAgeLabel(age: GitFetchAge): String = when (age) {
     is GitFetchAge.Minutes -> pluralStringResource(R.plurals.git_panel_fetch_minutes, age.value, age.value)
     is GitFetchAge.Hours -> pluralStringResource(R.plurals.git_panel_fetch_hours, age.value, age.value)
     is GitFetchAge.Days -> pluralStringResource(R.plurals.git_panel_fetch_days, age.value, age.value)
-}
-
-@Composable
-private fun statusFreshnessLabel(freshness: GitStatusFreshness?): String? = when (freshness) {
-    null -> null
-    GitStatusFreshness.Refreshing -> stringResource(R.string.git_panel_status_refreshing)
-    is GitStatusFreshness.Seconds -> pluralStringResource(R.plurals.git_panel_status_seconds, freshness.value, freshness.value)
-    is GitStatusFreshness.Minutes -> pluralStringResource(R.plurals.git_panel_status_minutes, freshness.value, freshness.value)
-}
-
-/** 领先、落后两枚标签；都为 0 时不占位，计数无法确定时显示一枚中性提示。 */
-@Composable
-private fun TrackingChips(tracking: GitTracking) {
-    val ahead = gitTrackingCount(tracking.ahead, tracking.truncated)
-    val behind = gitTrackingCount(tracking.behind, tracking.truncated)
-    val unknown = tracking.countsUnknown
-    if (ahead == null && behind == null && !unknown) return
-    val domain = MaterialTheme.infinityDomainColors
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = InfinitySpacing.Small).testTag(GitPanelTags.TRACKING),
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-    ) {
-        ahead?.let {
-            TrackingChip(
-                icon = Icons.Rounded.ArrowUpward,
-                text = stringResource(R.string.git_panel_ahead, it),
-                container = MaterialTheme.colorScheme.primaryContainer,
-                content = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
-        behind?.let {
-            TrackingChip(
-                icon = Icons.Rounded.ArrowDownward,
-                text = stringResource(R.string.git_panel_behind, it),
-                container = domain.warningContainer,
-                content = domain.onWarningContainer,
-            )
-        }
-        if (unknown) {
-            TrackingChip(
-                icon = Icons.AutoMirrored.Rounded.HelpOutline,
-                text = stringResource(R.string.git_panel_tracking_unknown),
-                container = MaterialTheme.colorScheme.surfaceContainerHigh,
-                content = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TrackingChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, container: Color, content: Color) {
-    Surface(shape = RoundedCornerShape(14.dp), color = container, contentColor = content) {
-        Row(
-            modifier = Modifier.heightIn(min = 28.dp).padding(horizontal = 10.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
-            Text(text = text, style = InfinityTypography.labelMedium.copy(fontWeight = FontWeight.Medium), maxLines = 1)
-        }
-    }
 }
 
 @Composable

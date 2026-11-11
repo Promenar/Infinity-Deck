@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.hub
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -69,11 +71,11 @@ import com.promenar.infinity.ui.common.InfinityChip
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.common.InfinitySheetHeight
-import com.promenar.infinity.ui.common.InfinityTabSwitcher
 import com.promenar.infinity.ui.common.parseAgentColor
 import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /** 选择器的三个页签。 */
 enum class AvatarPickerTab { SYMBOLS, GENERATED, PHOTO }
@@ -288,27 +290,24 @@ internal fun AgentAvatarPickerContent(
             ) { Text(stringResource(R.string.agent_avatar_done)) }
         }
 
-        val tabs = AvatarPickerTab.entries
-        InfinityTabSwitcher(
-            itemCount = tabs.size,
-            selectedIndex = tab.ordinal,
-            onTabSelected = { tab = tabs[it] },
-            modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
-            tabModifier = { Modifier.testTag(UiTags.agentAvatarPickerTab(tabs[it].name)) },
-        ) { index, isSelected, contentColor ->
-            Text(
-                text = stringResource(
-                    when (tabs[index]) {
-                        AvatarPickerTab.SYMBOLS -> R.string.agent_avatar_tab_symbols
-                        AvatarPickerTab.GENERATED -> R.string.agent_avatar_tab_generated
-                        AvatarPickerTab.PHOTO -> R.string.agent_avatar_tab_photo
-                    }
-                ),
-                style = InfinityTypography.labelMedium,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                color = contentColor,
-            )
-        }
+        InfinityPanelTabs(
+            tabs = AvatarPickerTab.entries.map {
+                InfinityPanelTab(
+                    value = it,
+                    label = stringResource(
+                        when (it) {
+                            AvatarPickerTab.SYMBOLS -> R.string.agent_avatar_tab_symbols
+                            AvatarPickerTab.GENERATED -> R.string.agent_avatar_tab_generated
+                            AvatarPickerTab.PHOTO -> R.string.agent_avatar_tab_photo
+                        },
+                    ),
+                    testTag = UiTags.agentAvatarPickerTab(it.name),
+                )
+            },
+            selected = tab,
+            onSelect = { tab = it },
+            modifier = Modifier.padding(bottom = InfinitySpacing.Small),
+        )
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {

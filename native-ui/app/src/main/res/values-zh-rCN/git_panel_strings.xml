@@ -55,24 +55,23 @@
     <string name="git_panel_error_unsafe_path">该路径无法安全显示</string>
     <string name="git_panel_error_failed">无法读取 Git 信息</string>
     <string name="git_panel_tab_branches">分支</string>
-    <string name="git_panel_tracking">跟踪 %1$s</string>
+    <string name="git_panel_synced">已同步</string>
     <string name="git_panel_no_upstream">未设上游</string>
     <string name="git_panel_upstream_missing">上游 %1$s 在本地不存在</string>
-    <string name="git_panel_head">HEAD %1$s</string>
     <string name="git_panel_fetch_never">尚未抓取</string>
     <string name="git_panel_fetch_just_now">刚刚抓取</string>
     <plurals name="git_panel_fetch_minutes">
-        <item quantity="other">上次抓取 %d 分钟前</item>
+        <item quantity="other">%d 分钟前抓取</item>
     </plurals>
     <plurals name="git_panel_fetch_hours">
-        <item quantity="other">上次抓取 %d 小时前</item>
+        <item quantity="other">%d 小时前抓取</item>
     </plurals>
     <plurals name="git_panel_fetch_days">
-        <item quantity="other">上次抓取 %d 天前</item>
+        <item quantity="other">%d 天前抓取</item>
     </plurals>
-    <string name="git_panel_ahead">领先 %1$s 个提交</string>
-    <string name="git_panel_behind">落后 %1$s 个提交</string>
-    <string name="git_panel_tracking_unknown">领先与落后数无法确定</string>
+    <string name="git_panel_ahead">领先 %1$s</string>
+    <string name="git_panel_behind">落后 %1$s</string>
+    <string name="git_panel_tracking_unknown">领先落后数未知</string>
     <string name="git_panel_lines_binary">二进制</string>
     <string name="git_panel_lines_a11y">新增 %1$d 行，删除 %2$d 行</string>
     <string name="git_panel_branch_current">当前</string>
@@ -85,10 +84,4 @@
     </plurals>
     <string name="git_top_bar_cd">打开 Git 面板：%1$s</string>
     <string name="git_panel_status_refreshing">刷新中</string>
-    <plurals name="git_panel_status_seconds">
-        <item quantity="other">状态 %d 秒前</item>
-    </plurals>
-    <plurals name="git_panel_status_minutes">
-        <item quantity="other">状态 %d 分钟前</item>
-    </plurals>
 </resources>

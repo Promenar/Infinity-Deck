@@ -21,7 +21,6 @@ class TagWrapContractTest {
     private val allowedFlowRowFiles = setOf(
         "common/CacheSegmentBar.kt",
         "common/params/SamplingParamsEditor.kt",
-        "git/GitChangesPanel.kt",
         "linux/output/CommandOutputScreen.kt",
         "linux/settings/LinuxManageContent.kt",
         "settings/AgentSkillsSection.kt",

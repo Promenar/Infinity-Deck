@@ -1,6 +1,8 @@
 // UNIT TEST EXEMPTION STATEMENT: 本文件仅涉及 Jetpack Compose 纯布局、UI 交互展现与跳转逻辑，不包含任何数据转换、判定、图算法或状态流转核心业务逻辑，故依全局开发规范 §4.2 予以单元测试豁免。
 package com.promenar.infinity.ui.chat.components
 
+import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.InfinityPanelTab
 import androidx.compose.ui.draw.clip
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.common.InfinitySheetHeight
@@ -51,8 +53,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import com.promenar.infinity.ui.common.InfinityCapsuleTabRow
-import com.promenar.infinity.ui.common.InfinityTabItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -274,17 +274,13 @@ fun RagDetailsSheetContent(
                     modifier = Modifier.padding(bottom = 8.dp).testTag(KNOWLEDGE_SEARCH_QUERY_TAG),
                 )
             }
-            val detailTabs = tabs.map { tab ->
-                InfinityTabItem(
-                    title = stringResource(tab.labelRes),
-                    testTag = tab.testTag(),
-                )
-            }
-            InfinityCapsuleTabRow(
-                tabs = detailTabs,
-                selectedIndex = selectedTabIndex,
-                onTabSelected = { selectedTabIndex = it },
-                modifier = Modifier.fillMaxWidth(),
+            InfinityPanelTabs(
+                tabs = tabs.mapIndexed { index, tab ->
+                    InfinityPanelTab(index, stringResource(tab.labelRes), testTag = tab.testTag())
+                },
+                selected = selectedTabIndex,
+                onSelect = { selectedTabIndex = it },
+                bleed = 16.dp,
             )
             Spacer(Modifier.height(8.dp))
             // 同级标签按左右顺序做共享 X 轴切换。
