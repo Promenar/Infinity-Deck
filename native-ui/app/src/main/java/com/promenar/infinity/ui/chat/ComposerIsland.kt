@@ -199,7 +199,7 @@ internal class ComposerGlowState {
     var sweepPhase = 0f
     /** 扫光点阵流式阶段的强度：[act] 按 [SweepGridSpec.RateExponent] 次方映射。 */
     var sweepLevel = 0f
-    /** 扫光点阵写入头的位置（格），平滑追赶已到达字数乘 [SweepGridSpec.CellsPerChar]。 */
+    /** 扫光点阵写入头的位置（格），平滑追赶已到达 Token 数乘 [SweepGridSpec.CellsPerToken]。 */
     var writeHead = 0f
     /** 输入区在浮岛里的上沿（像素）；运行坞等顶层内容在它之上，灯珠墙类样式只铺到这里以下。 */
     var lightsTop by mutableFloatStateOf(0f)
@@ -220,7 +220,7 @@ internal class ComposerGlowState {
         breathPhase += delta * (0.6f + 1.4f * act) / 2.6f
         stripPhase += delta * (0.4f + act)
         sweepPhase += delta * (0.5f + sweepLevel) / 2.4f
-        val target = motion.writtenChars(timeSeconds) * SweepGridSpec.CellsPerChar
+        val target = motion.writtenTokens(timeSeconds) * SweepGridSpec.CellsPerToken
         // 新一轮从头累计时直接回到起点；否则按时间常数追上，一批字到达时写入头平滑前进。
         writeHead = if (target < writeHead) target else writeHead + (target - writeHead) * (1 - exp(-delta / SweepGridSpec.HeadEaseSeconds))
     }

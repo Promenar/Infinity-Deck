@@ -794,8 +794,19 @@ fun ChatScreenContent(
                 state.pendingQuestion != null || state.pendingSecretInput != null,
         ),
         retry = state.generationRetry,
-        // 速率按正文加思考内容的到达字数估算：只有思考内容到达时也按流式显示。
-        outputLength = com.promenar.infinity.ui.common.motion.generationOutputLength(uiState.streamingContent, latestAssistantMsg?.reasoning),
+        sessionKey = uiState.session?.id,
+        tokenInput = com.promenar.infinity.ui.common.motion.TokenMotionInput(
+            content = uiState.streamingContent.ifEmpty { latestAssistantMsg?.content.orEmpty() },
+            reasoning = latestAssistantMsg?.reasoning.orEmpty(),
+            messageId = latestAssistantMsg?.id,
+            modelId = latestAssistantMsg?.modelId ?: uiState.session?.modelId,
+            runStartedAt = state.generationStartedAt,
+            requestStartedAt = latestAssistantMsg?.tokens?.timing?.requestStartedAt,
+            firstOutputAt = latestAssistantMsg?.tokens?.timing?.firstOutputAt,
+            endedAt = latestAssistantMsg?.tokens?.timing?.endedAt,
+            actualTokens = latestAssistantMsg?.tokens?.let { (it.output - it.summaryOutput).coerceAtLeast(0) },
+            eligibleUsage = latestAssistantMsg?.tokens?.estimated == false && latestAssistantMsg.toolCalls.isNullOrEmpty(),
+        ),
     )
     CompositionLocalProvider(
         com.promenar.infinity.ui.media.LocalWorkspaceMedia provides workspaceMedia,

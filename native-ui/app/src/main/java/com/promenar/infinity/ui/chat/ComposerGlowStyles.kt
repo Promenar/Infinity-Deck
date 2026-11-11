@@ -517,7 +517,7 @@ internal fun writeSecondsReadout(seconds: Int, out: CharArray, start: Int = 0): 
     return n
 }
 
-/** 每秒字数读数：不到 10 保留一位小数，以上取整，封顶 9999。返回写入后的位置。 */
+/** 每秒 Token 数读数：不到 10 保留一位小数，以上取整，封顶 9999。返回写入后的位置。 */
 internal fun writeRateReadout(rate: Float, out: CharArray, start: Int = 0): Int {
     val r = rate.coerceIn(0f, 9999f)
     if (r < 9.95f) {
@@ -531,7 +531,7 @@ internal fun writeRateReadout(rate: Float, out: CharArray, start: Int = 0): Int 
 }
 
 /**
- * 点阵屏在 [phase] 下的数字读数写入 [out]，返回字符数：首字前为已等待秒数，流式（含思考）为每秒字数，
+ * 点阵屏在 [phase] 下的数字读数写入 [out]，返回字符数：首字前为已等待秒数，流式（含思考）为每秒 Token 数，
  * 工具执行为“#轮次”，等待审批为“!”，重试为倒计时秒数。
  */
 internal fun scopeReadout(
@@ -722,9 +722,9 @@ internal object SweepGridSpec {
     const val MaxBands = 3
     /** 写入头所在的固定行数，从输入区顶部数起。 */
     const val WriteRows = 3
-    /** 每到一个字写入头前进的格数。 */
-    const val CellsPerChar = 1.1f
-    /** 写入头追赶目标位置的时间常数（秒）：一批字到达时平滑前进，不是瞬移。 */
+    /** 每到一个 Token 写入头前进的格数。 */
+    const val CellsPerToken = 1.1f / 0.6f
+    /** 写入头追赶目标位置的时间常数（秒）：一批 Token 到达时平滑前进，不是瞬移。 */
     const val HeadEaseSeconds = 0.08f
     /** 余辉时长：低速 0.35 秒，满速 0.6 秒。 */
     const val TrailMinSeconds = 0.35f
