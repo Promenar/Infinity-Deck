@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,6 +84,8 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FileTypeFilter
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
+import androidx.compose.foundation.layout.PaddingValues
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityMenuDivider
@@ -769,30 +769,49 @@ private val ModifiedBuckets = listOf(
     R.string.fm_modified_month to 30,
 )
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FileSearchFilters(search: FileSearchState, actions: FileManagerUiActions) {
     val controller = actions.controller
+    var scopeOpen by remember { mutableStateOf(false) }
     var typeOpen by remember { mutableStateOf(false) }
     var timeOpen by remember { mutableStateOf(false) }
     var bucket by rememberSaveable { mutableIntStateOf(0) }
     val activeBucket = if (search.modifiedAfter == null) 0 else bucket.coerceIn(1, ModifiedBuckets.lastIndex)
-    FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Medium),
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    // 范围、类型、修改时间各是一个下拉标签，单行排列，放不下时整行横向滚动。
+    InfinityTagScrollRow(
+        spacing = InfinitySpacing.Small,
+        contentPadding = PaddingValues(horizontal = InfinitySpacing.Medium),
     ) {
-        FilterChip(
-            selected = !search.withinCurrentFolder,
-            onClick = { controller.updateSearch { it.copy(withinCurrentFolder = false) } },
-            label = { Text(stringResource(R.string.fm_search_scope_location), maxLines = 1) },
-            modifier = Modifier.testTag(UiTags.FM_SEARCH_SCOPE_ALL),
-        )
-        FilterChip(
-            selected = search.withinCurrentFolder,
-            onClick = { controller.updateSearch { it.copy(withinCurrentFolder = true) } },
-            label = { Text(stringResource(R.string.fm_search_scope_folder), maxLines = 1) },
-            modifier = Modifier.testTag(UiTags.FM_SEARCH_SCOPE_FOLDER),
-        )
+        Box {
+            FilterChip(
+                selected = search.withinCurrentFolder,
+                onClick = { scopeOpen = true },
+                label = {
+                    Text(
+                        stringResource(if (search.withinCurrentFolder) R.string.fm_search_scope_folder else R.string.fm_search_scope_location),
+                        maxLines = 1,
+                    )
+                },
+                trailingIcon = { Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.testTag(UiTags.FM_SEARCH_SCOPE),
+            )
+            InfinityDropdownMenu(expanded = scopeOpen, onDismissRequest = { scopeOpen = false }) {
+                listOf(
+                    Triple(false, R.string.fm_search_scope_location, UiTags.FM_SEARCH_SCOPE_ALL),
+                    Triple(true, R.string.fm_search_scope_folder, UiTags.FM_SEARCH_SCOPE_FOLDER),
+                ).forEach { (withinFolder, label, tag) ->
+                    InfinityMenuItem(
+                        text = { Text(stringResource(label)) },
+                        selected = search.withinCurrentFolder == withinFolder,
+                        onClick = {
+                            scopeOpen = false
+                            controller.updateSearch { it.copy(withinCurrentFolder = withinFolder) }
+                        },
+                        modifier = Modifier.testTag(tag),
+                    )
+                }
+            }
+        }
         Box {
             FilterChip(
                 selected = search.types.isNotEmpty(),

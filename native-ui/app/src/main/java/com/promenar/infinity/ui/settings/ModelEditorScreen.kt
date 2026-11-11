@@ -50,7 +50,9 @@ import com.promenar.infinity.data.model.withRecordedUserEdits
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
-import com.promenar.infinity.ui.common.InfinityChoiceChips
+import com.promenar.infinity.ui.common.InfinityMultiChoiceSheet
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.selectedChoiceSummary
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityFieldRow
 import com.promenar.infinity.ui.common.InfinityGroupDivider
@@ -87,6 +89,7 @@ internal fun ModelEditorScreen(
     var sessionHeaderMode by remember(model.id) { mutableStateOf(model.sessionHeaderMode) }
     var activeCaps by remember(model.id) { mutableStateOf(model.capabilities.toSet()) }
     var editingLimit by remember(model.id) { mutableStateOf<ModelSpecField?>(null) }
+    var showCapabilities by remember(model.id) { mutableStateOf(false) }
 
     // 同步或其它入口改动了模型时，以最新快照为准重置本地编辑态。
     LaunchedEffect(
@@ -226,14 +229,16 @@ internal fun ModelEditorScreen(
             }
             item("type") {
                 InfinitySettingsSection(title = stringResource(R.string.provider_models_editor_type)) {
-                    InfinityChoiceChips(
-                        choices = modelTypeChoices(model.id),
-                        selected = setOf(selectedType),
-                        onToggle = { type ->
-                            activeCaps = capabilitiesForTypeChange(activeCaps, type)
-                            selectedType = type
+                    InfinitySegmentedControl(
+                        segments = modelTypeSegments(model.id),
+                        selected = selectedType,
+                        onSelect = { type ->
+                            if (type != selectedType) {
+                                activeCaps = capabilitiesForTypeChange(activeCaps, type)
+                                selectedType = type
+                            }
                         },
-                        multiSelect = false,
+                        contentPadding = PaddingValues(horizontal = InfinitySpacing.RowHorizontal),
                         modifier = Modifier
                             .padding(vertical = InfinitySpacing.Small)
                             .testTag("model_editor_type_picker"),
@@ -263,14 +268,25 @@ internal fun ModelEditorScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    val capabilityChoices = modelCapabilityChoices(model.id)
+                    val capabilitiesTitle = stringResource(R.string.provider_models_editor_capabilities)
                     InfinitySettingsGroup {
-                        InfinityChoiceChips(
-                            choices = modelCapabilityChoices(model.id),
-                            selected = activeCaps,
-                            onToggle = { key -> activeCaps = if (key in activeCaps) activeCaps - key else activeCaps + key },
-                            modifier = Modifier.padding(vertical = InfinitySpacing.Small),
+                        InfinitySettingsItem(
+                            title = selectedChoiceSummary(capabilityChoices, activeCaps, stringResource(R.string.params_list_separator))
+                                ?: stringResource(R.string.model_editor_capabilities_none),
+                            onClick = { showCapabilities = true },
+                            showChevron = true,
+                            modifier = Modifier.testTag(UiTags.providerModelsCapabilityPicker(model.id)),
                         )
                     }
+                    InfinityMultiChoiceSheet(
+                        show = showCapabilities,
+                        title = capabilitiesTitle,
+                        choices = capabilityChoices,
+                        selected = activeCaps,
+                        onToggle = { key -> activeCaps = if (key in activeCaps) activeCaps - key else activeCaps + key },
+                        onDismiss = { showCapabilities = false },
+                    )
                 }
             }
             item("session-headers") {

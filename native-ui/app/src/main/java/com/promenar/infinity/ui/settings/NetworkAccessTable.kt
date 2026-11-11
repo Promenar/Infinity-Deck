@@ -1,9 +1,13 @@
 package com.promenar.infinity.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -132,7 +136,7 @@ private fun meaningLabel(cell: NetworkCell): String = when (cell.meaning) {
 }
 
 /**
- * 网络访问总表：每个工具一行，名称与一句范围说明在上，四类目标的状态标签在下（窄屏自动换行）。
+ * 网络访问总表：每个工具一行，名称与一句范围说明在上，四类目标的状态标签在下，排成两列等宽网格。
  * 只做展示；规则来自 [AgentNetworkSnapshot.rows]，与工具执行时的判定同源。
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -170,12 +174,19 @@ internal fun NetworkAccessRows(
                         modifier = Modifier.testTag("network_scope_${row.tool.name.lowercase()}"),
                     )
                 }
-                FlowRow(
+                // 每个工具固定四类目标，排成两列等宽网格，同一行两格等高。
+                Column(
                     modifier = Modifier.padding(top = InfinitySpacing.XSmall),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    row.cells.forEach { cell -> NetworkCellChip(networkCell(cell.target, cell.state, snapshot)) }
+                    row.cells.chunked(2).forEach { pair ->
+                        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            pair.forEach { cell ->
+                                NetworkCellChip(networkCell(cell.target, cell.state, snapshot), Modifier.weight(1f).fillMaxHeight())
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }
@@ -183,7 +194,7 @@ internal fun NetworkAccessRows(
 }
 
 @Composable
-private fun NetworkCellChip(cell: NetworkCell) {
+private fun NetworkCellChip(cell: NetworkCell, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val (container, content) = when (cell.tone) {
         NetworkCellTone.OPEN -> scheme.primaryContainer to scheme.onPrimaryContainer
@@ -196,7 +207,7 @@ private fun NetworkCellChip(cell: NetworkCell) {
         color = container,
         contentColor = content,
         shape = MaterialTheme.shapes.small,
-        modifier = Modifier.clearAndSetSemantics { contentDescription = "$target：$meaning" },
+        modifier = modifier.clearAndSetSemantics { contentDescription = "$target：$meaning" },
     ) {
         InfinityMetaLine(
             segments = listOf(target, meaning),

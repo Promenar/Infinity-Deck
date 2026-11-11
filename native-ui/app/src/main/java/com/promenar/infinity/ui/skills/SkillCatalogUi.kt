@@ -1,9 +1,9 @@
 package com.promenar.infinity.ui.skills
 
+import com.promenar.infinity.ui.common.InfinityButtonGroup
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -265,7 +265,7 @@ private fun SkillDetailSheet(
                     pluralStringResource(R.plurals.agent_skills_files_count, skill.files.size, skill.files.size),
                 )
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            InfinityButtonGroup {
                 if (skill.status == SkillStatus.PENDING_TRUST) {
                     OutlinedButton(onClick = onRequestTrust) { Text(stringResource(R.string.skills_runtime_trust)) }
                 }

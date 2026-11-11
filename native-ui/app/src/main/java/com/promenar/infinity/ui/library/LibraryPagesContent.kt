@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.library
 
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.rag.KgDocumentSetting
 import com.promenar.infinity.data.rag.KgDocumentAssignment
@@ -26,7 +27,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
@@ -1155,10 +1155,7 @@ private fun DocumentGraphRows(info: DocumentInsight, pending: PendingDocument?, 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DocumentEntityChips(entities: List<String>) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
-    ) {
+    InfinityTagScrollRow(spacing = InfinitySpacing.XSmall) {
         entities.forEach { entity ->
             Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(

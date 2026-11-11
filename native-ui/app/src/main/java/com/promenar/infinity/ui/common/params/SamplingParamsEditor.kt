@@ -96,6 +96,7 @@ import com.promenar.infinity.data.model.params.SamplingValues
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityChip
+import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityStepperButton
@@ -208,11 +209,10 @@ class SamplingEditorActions(
 )
 
 /**
- * 参数方案分组：标题右侧注明方案所属模型；点已选中的方案打开还原、重命名与删除菜单，
+ * 参数方案分组：标题右侧注明方案所属模型；当前方案是一个下拉标签，菜单里切换方案，并对选中的方案还原、重命名与删除；
  * 修改过选中的方案时列出不同的参数并给出覆盖与另存。
  * 传入 [scrollState] 时，差异行因下方逐项调整而出现或消失，会按同样高度滚动，让手指下的编辑区留在原位。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ParameterSchemeSection(
     state: SamplingEditorState,
@@ -223,7 +223,6 @@ fun ParameterSchemeSection(
     /** 方案卡下方的说明，例如智能体编辑页注明方案全局共享。 */
     footer: String? = null,
 ) {
-    val haptics = LocalInfinityHaptics.current
     val selection = state.selection
     val selectedScheme = state.schemes.firstOrNull { it.id == selection.schemeId }
     var naming by remember { mutableStateOf<SchemeNaming?>(null) }
@@ -267,41 +266,17 @@ fun ParameterSchemeSection(
                     )
                     return@Column
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SchemeChip(
-                        label = stringResource(R.string.params_scheme_model_default),
-                        selected = selection.schemeId == MODEL_DEFAULT_SCHEME_ID,
-                        tag = "params_scheme_model_default",
-                        onClick = {
-                            haptics.select(selection.schemeId == MODEL_DEFAULT_SCHEME_ID && !selection.modified)
-                            own(actions.onApplyModelDefault)
-                        },
+                // 方案数量由用户决定：当前方案收成一个下拉标签，切换、还原、重命名与删除都在菜单里。
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SchemePicker(
+                        state = state,
+                        selectedScheme = selectedScheme,
+                        onApplyModelDefault = { own(actions.onApplyModelDefault) },
+                        onApplyScheme = { scheme -> own { actions.onApplyScheme(scheme) } },
+                        onRename = { naming = SchemeNaming.Rename(it) },
+                        onDelete = { deleting = it },
+                        modifier = Modifier.weight(1f, fill = false),
                     )
-                    state.schemes.forEach { scheme ->
-                        val selected = selection.schemeId == scheme.id
-                        SchemeChip(
-                            label = scheme.name,
-                            selected = selected,
-                            tag = "params_scheme_${scheme.id}",
-                            onClick = {
-                                haptics.select(false)
-                                own { actions.onApplyScheme(scheme) }
-                            },
-                            menu = { dismiss ->
-                                if (selected && selection.modified) {
-                                    InfinityMenuItem(text = { Text(stringResource(R.string.params_scheme_revert)) }, onClick = {
-                                        dismiss(); own { actions.onApplyScheme(scheme) }
-                                    })
-                                }
-                                InfinityMenuItem(text = { Text(stringResource(R.string.params_scheme_rename)) }, onClick = {
-                                    dismiss(); naming = SchemeNaming.Rename(scheme)
-                                })
-                                InfinityMenuItem(text = { Text(stringResource(R.string.params_scheme_delete), color = MaterialTheme.colorScheme.error) }, onClick = {
-                                    dismiss(); deleting = scheme
-                                })
-                            },
-                        )
-                    }
                     if (selection.schemeId == null) {
                         InfinityChip(
                             label = stringResource(R.string.params_scheme_save),
@@ -413,29 +388,59 @@ private sealed interface SchemeNaming {
 
 /** 已存方案选中后带下拉标记，再点打开管理菜单；未选中时点按即选用。 */
 @Composable
-private fun SchemeChip(
-    label: String,
-    selected: Boolean,
-    tag: String,
-    onClick: () -> Unit,
-    menu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+private fun SchemePicker(
+    state: SamplingEditorState,
+    selectedScheme: ParameterScheme?,
+    onApplyModelDefault: () -> Unit,
+    onApplyScheme: (ParameterScheme) -> Unit,
+    onRename: (ParameterScheme) -> Unit,
+    onDelete: (ParameterScheme) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
-    val opensMenu = selected && menu != null
-    Box {
+    val selection = state.selection
+    var open by remember { mutableStateOf(false) }
+    val label = when {
+        selection.schemeId == MODEL_DEFAULT_SCHEME_ID -> stringResource(R.string.params_scheme_model_default)
+        selectedScheme != null -> selectedScheme.name
+        else -> stringResource(R.string.params_scheme_custom)
+    }
+    Box(modifier) {
         InfinityChip(
             label = label,
-            onClick = { if (opensMenu) menuOpen = true else onClick() },
-            selected = selected,
-            trailing = if (opensMenu) {
-                { Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
-            } else null,
-            haptic = false,
-            modifier = Modifier.testTag(tag),
+            onClick = { open = true },
+            trailing = { Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) },
+            modifier = Modifier.testTag("params_scheme_picker"),
         )
-        if (menu != null) {
-            InfinityDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                menu { menuOpen = false }
+        InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            InfinityMenuItem(
+                text = { Text(stringResource(R.string.params_scheme_model_default)) },
+                selected = selection.schemeId == MODEL_DEFAULT_SCHEME_ID,
+                onClick = { open = false; onApplyModelDefault() },
+                modifier = Modifier.testTag("params_scheme_model_default"),
+            )
+            state.schemes.forEach { scheme ->
+                InfinityMenuItem(
+                    text = { Text(scheme.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    selected = selection.schemeId == scheme.id,
+                    onClick = { open = false; onApplyScheme(scheme) },
+                    modifier = Modifier.testTag("params_scheme_${scheme.id}"),
+                )
+            }
+            if (selectedScheme != null) {
+                InfinityMenuDivider()
+                if (selection.modified) {
+                    InfinityMenuItem(text = { Text(stringResource(R.string.params_scheme_revert)) }, onClick = {
+                        open = false; onApplyScheme(selectedScheme)
+                    })
+                }
+                InfinityMenuItem(text = { Text(stringResource(R.string.params_scheme_rename)) }, onClick = {
+                    open = false; onRename(selectedScheme)
+                })
+                InfinityMenuItem(
+                    text = { Text(stringResource(R.string.params_scheme_delete)) },
+                    destructive = true,
+                    onClick = { open = false; onDelete(selectedScheme) },
+                )
             }
         }
     }

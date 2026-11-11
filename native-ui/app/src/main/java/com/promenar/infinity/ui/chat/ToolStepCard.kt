@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -120,7 +120,7 @@ internal fun ToolStepCard(
             }
         }
         if (summary.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            InfinityTagScrollRow(spacing = 6.dp) {
                 summary.forEach { chip ->
                     Text(
                         chip, style = meta, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -43,8 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityBottomSheet
-import com.promenar.infinity.ui.common.InfinityChoice
-import com.promenar.infinity.ui.common.InfinityChoiceChips
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinityFieldRow
 import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.theme.InfinityMonospace
@@ -168,7 +169,7 @@ internal fun modelSpecSourceLabel(source: ModelSpecSource): Int = when (source) 
 }
 
 /**
- * token 上限编辑面板：一个数字输入行加一排快捷值；输入即生效（编辑页即改即存），“完成”只关闭面板。
+ * token 上限编辑面板：一个数字输入行加一条快捷值分段；输入即生效（编辑页即改即存），“完成”只关闭面板。
  */
 @Composable
 internal fun ModelTokenLimitSheet(
@@ -197,14 +198,15 @@ internal fun ModelTokenLimitSheet(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 fieldModifier = Modifier.testTag(fieldTag),
             )
-            InfinityChoiceChips(
-                choices = quickValues.map { InfinityChoice(it, formatTokenShort(it)) },
-                selected = setOfNotNull(text.toIntOrNull()),
-                onToggle = {
+            InfinitySegmentedControl(
+                segments = quickValues.map { InfinitySegment(it, formatTokenShort(it)) },
+                selected = text.toIntOrNull(),
+                onSelect = {
                     text = it.toString()
                     onValueChange(it)
                 },
-                multiSelect = false,
+                fillWidth = true,
+                contentPadding = PaddingValues(horizontal = InfinitySpacing.RowHorizontal),
                 modifier = Modifier.padding(top = InfinitySpacing.Small),
             )
             Button(

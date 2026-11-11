@@ -65,6 +65,7 @@
     <string name="model_editor_group_specs">规格</string>
     <string name="model_editor_specs_footer">点按数值手动设置，优先于规格库</string>
     <string name="model_editor_capabilities_selected">已选 %d 项</string>
+    <string name="model_editor_capabilities_none">未选择</string>
     <string name="model_editor_group_test">测试</string>
     <string name="model_editor_test_idle">未测试</string>
     <string name="model_editor_test_running">正在测试…</string>

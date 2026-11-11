@@ -17,7 +17,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,7 +43,6 @@ import com.promenar.infinity.ui.common.InfinityPillMenuButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -78,6 +76,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.domain.secret.SecretDestination
 import com.promenar.infinity.domain.secret.SecretInputOutcome
 import com.promenar.infinity.domain.secret.SecretOutputCard
@@ -631,21 +631,19 @@ internal fun SecretSaveAsContent(
     val destination = secretSaveAsDestination(kind, gitHost, sshHostId, sshField, providerId)
     val ready = destination != null && (kind != SecretSaveAsKind.GIT || gitUsername.isNotBlank())
     Column(modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(
+        InfinitySegmentedControl(
+            segments = listOf(
                 SecretSaveAsKind.GIT to R.string.secret_save_as_git,
                 SecretSaveAsKind.SSH to R.string.secret_save_as_ssh,
                 SecretSaveAsKind.PROVIDER to R.string.secret_save_as_provider,
-            ).forEach { (option, label) ->
-                FilterChip(
-                    selected = kind == option,
-                    onClick = { kind = option },
-                    enabled = !saving,
-                    label = { Text(stringResource(label)) },
-                    modifier = Modifier.testTag(UiTags.chatSecretSaveAsTarget(option.name.lowercase())),
-                )
-            }
-        }
+            ).map { (option, label) ->
+                InfinitySegment(option, stringResource(label), tag = UiTags.chatSecretSaveAsTarget(option.name.lowercase()))
+            },
+            selected = kind,
+            onSelect = { kind = it },
+            enabled = !saving,
+            fillWidth = true,
+        )
         when (kind) {
             SecretSaveAsKind.GIT -> {
                 OutlinedTextField(
@@ -674,19 +672,17 @@ internal fun SecretSaveAsContent(
                     SecretEmptyNote(stringResource(R.string.secret_save_as_no_ssh))
                 } else {
                     SecretTargetList(targets.sshHosts, sshHostId, enabled = !saving) { sshHostId = it }
-                    FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(
+                    InfinitySegmentedControl(
+                        segments = listOf(
                             SshSecretField.PASSWORD to R.string.secret_save_as_ssh_password,
                             SshSecretField.KEY_PASSPHRASE to R.string.secret_save_as_ssh_passphrase,
-                        ).forEach { (field, label) ->
-                            FilterChip(
-                                selected = sshField == field,
-                                onClick = { sshField = field },
-                                enabled = !saving,
-                                label = { Text(stringResource(label)) },
-                            )
-                        }
-                    }
+                        ).map { (field, label) -> InfinitySegment(field, stringResource(label)) },
+                        selected = sshField,
+                        onSelect = { sshField = it },
+                        enabled = !saving,
+                        fillWidth = true,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
             }
             SecretSaveAsKind.PROVIDER -> {

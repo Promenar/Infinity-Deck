@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.welcome
 
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -292,7 +292,7 @@ internal fun OnboardingAgentStep(state: OnboardingUiState, actions: OnboardingAc
             )
         }
         RiseIn(4) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+            InfinityTagScrollRow(spacing = InfinitySpacing.Small) {
                 suggestions.forEach { suggestion ->
                     InfinityChip(label = suggestion, onClick = { name = suggestion }, selected = name.trim() == suggestion, enabled = !state.busy)
                 }

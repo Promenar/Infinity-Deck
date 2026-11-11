@@ -1,8 +1,8 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.SpanStyle
@@ -221,7 +221,7 @@ internal fun TurnGraphSheetContent(
         }
         if (entities.isNotEmpty()) {
             SubsectionTitle(stringResource(R.string.turn_graph_entities_title))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            InfinityTagScrollRow(spacing = 6.dp) {
                 entities.forEach { entity ->
                     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                         Text(

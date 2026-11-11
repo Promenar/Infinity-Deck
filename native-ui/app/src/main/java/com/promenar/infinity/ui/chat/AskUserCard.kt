@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +27,6 @@ import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -48,7 +45,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,6 +56,8 @@ import com.promenar.infinity.domain.ask.AskUserRequest
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.testing.UiTags
@@ -211,27 +209,25 @@ internal fun AskUserCard(
                 )
             }
             if (count > 1) {
-                FlowRow(
-                    modifier = Modifier.padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    request.questions.forEachIndexed { index, item ->
+                val doneLabel = stringResource(R.string.ask_card_tab_done)
+                InfinitySegmentedControl(
+                    segments = request.questions.mapIndexed { index, item ->
                         val done = selections.getOrNull(index).orEmpty().isNotEmpty()
-                        val doneLabel = stringResource(R.string.ask_card_tab_done)
-                        FilterChip(
-                            selected = index == tab,
-                            onClick = { tab = index },
-                            label = { Text("${index + 1} ${item.header}") },
-                            leadingIcon = if (done && index != tab) {
-                                { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                        InfinitySegment(
+                            value = index,
+                            label = "${index + 1} ${item.header}",
+                            tag = UiTags.CHAT_ASK_TAB_PREFIX + index,
+                            // 已作答的题目在名称前加勾，读屏随页签一起读出“已回答”。
+                            leading = if (done) {
+                                { Icon(Icons.Rounded.Check, contentDescription = doneLabel, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) }
                             } else null,
-                            modifier = Modifier
-                                .semantics { if (done) stateDescription = doneLabel }
-                                .testTag(UiTags.CHAT_ASK_TAB_PREFIX + index),
                         )
-                    }
-                }
+                    },
+                    selected = tab,
+                    onSelect = { tab = it },
+                    compact = true,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
             }
             AnimatedContent(
                 targetState = tab,

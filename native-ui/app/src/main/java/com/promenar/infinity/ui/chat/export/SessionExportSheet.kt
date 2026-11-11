@@ -3,7 +3,6 @@ package com.promenar.infinity.ui.chat.export
 import android.text.format.Formatter
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,9 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,8 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -48,14 +42,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.export.SessionExportEstimate
 import com.promenar.infinity.domain.export.SessionExportFormat
 import com.promenar.infinity.domain.export.SessionExportOptions
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
@@ -166,19 +160,14 @@ fun SessionExportSheetContent(
         )
         SettingsSectionHeader(title = stringResource(R.string.session_export_section_format))
         Spacer(Modifier.height(InfinitySpacing.XSmall))
-        NaturalWidthFlowRow(
-            spacing = InfinitySpacing.Small,
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
-        ) {
-            SessionExportFormat.entries.forEach { format ->
-                FormatButton(
-                    format = format,
-                    selected = format == state.format,
-                    enabled = !busy,
-                    onClick = { actions.onFormat(format) },
-                )
-            }
-        }
+        InfinitySegmentedControl(
+            segments = SessionExportFormat.entries.map { format ->
+                InfinitySegment(format, stringResource(format.labelRes()), tag = SessionExportTags.format(format))
+            },
+            selected = state.format,
+            onSelect = { if (it != state.format) actions.onFormat(it) },
+            enabled = !busy,
+        )
         Spacer(Modifier.height(InfinitySpacing.Large))
         SettingsSectionHeader(title = stringResource(R.string.session_export_section_include))
         IncludeToggle(
@@ -239,109 +228,6 @@ fun SessionExportSheetContent(
                 modifier = Modifier.padding(top = InfinitySpacing.Small),
             )
         }
-    }
-}
-
-/**
- * 按子项自然宽度排行，放不下时换行；每行剩余宽度平均加到本行各项上，同一行等高。
- * 与 FlowRow 加 weight 不同，子项不会被压到自然宽度以下（等宽分配会让“Markdown”溢出）。
- */
-@Composable
-private fun NaturalWidthFlowRow(spacing: Dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Layout(content = content, modifier = modifier) { measurables, constraints ->
-        val gap = spacing.roundToPx()
-        val maxWidth = constraints.maxWidth
-        val natural = measurables.map { it.maxIntrinsicWidth(Constraints.Infinity).coerceAtMost(maxWidth) }
-        val lines = packNaturalWidthLines(natural, gap, maxWidth)
-        val placeables = arrayOfNulls<Placeable>(measurables.size)
-        val positions = IntArray(measurables.size * 2)
-        var y = 0
-        lines.forEachIndexed { lineIndex, line ->
-            if (lineIndex > 0) y += gap
-            val widths = stretchLine(line.map { natural[it] }, gap, maxWidth)
-            val height = line.indices.maxOf { measurables[line[it]].maxIntrinsicHeight(widths[it]) }
-            var x = 0
-            line.forEachIndexed { i, child ->
-                placeables[child] = measurables[child].measure(Constraints.fixed(widths[i], height))
-                positions[child * 2] = x
-                positions[child * 2 + 1] = y
-                x += widths[i] + gap
-            }
-            y += height
-        }
-        layout(maxWidth, y) {
-            placeables.forEachIndexed { i, placeable -> placeable?.place(positions[i * 2], positions[i * 2 + 1]) }
-        }
-    }
-}
-
-/** 按自然宽度贪心分行，返回每行的子项下标；单项超宽时独占一行。 */
-internal fun packNaturalWidthLines(widths: List<Int>, gap: Int, maxWidth: Int): List<List<Int>> {
-    val lines = mutableListOf<MutableList<Int>>()
-    var lineWidth = 0
-    widths.forEachIndexed { index, width ->
-        val current = lines.lastOrNull()
-        if (current == null || lineWidth + gap + width > maxWidth) {
-            lines += mutableListOf(index)
-            lineWidth = width
-        } else {
-            current += index
-            lineWidth += gap + width
-        }
-    }
-    return lines
-}
-
-/** 把一行的剩余宽度平均加到各项上（余数从左起逐项补 1px），各项不小于自然宽度。 */
-internal fun stretchLine(widths: List<Int>, gap: Int, maxWidth: Int): List<Int> {
-    val extra = (maxWidth - widths.sum() - gap * (widths.size - 1)).coerceAtLeast(0)
-    val share = extra / widths.size
-    val remainder = extra % widths.size
-    return widths.mapIndexed { i, width -> width + share + if (i < remainder) 1 else 0 }
-}
-
-@Composable
-private fun FormatButton(
-    format: SessionExportFormat,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val haptics = LocalInfinityHaptics.current
-    val shape = RoundedCornerShape(12.dp)
-    val colors = MaterialTheme.colorScheme
-    Column(
-        modifier = modifier
-            .widthIn(min = 64.dp)
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .clip(shape)
-            .background(if (selected) colors.secondaryContainer else Color.Transparent)
-            .border(1.dp, if (selected) colors.primary else colors.outlineVariant, shape)
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton) {
-                haptics.select(selected)
-                if (!selected) onClick()
-            }
-            .padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Small)
-            .testTag(SessionExportTags.format(format)),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = stringResource(format.labelRes()),
-            style = InfinityTypography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) colors.onSecondaryContainer else colors.onSurface,
-            maxLines = 1,
-            softWrap = false,
-        )
-        Text(
-            text = ".${format.extension}",
-            style = InfinityTypography.labelSmall,
-            color = colors.onSurfaceVariant,
-            maxLines = 1,
-            softWrap = false,
-        )
     }
 }
 

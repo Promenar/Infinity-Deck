@@ -1,12 +1,12 @@
 package com.promenar.infinity.ui.welcome
 
+import com.promenar.infinity.ui.common.InfinityTagScrollRow
 import android.text.format.DateUtils
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -335,7 +335,7 @@ private fun ConfirmPage(
                 InfinityMetaLine(segments = meta, style = OnboardingType.rowSubtitle(), color = onboardingFaintText)
             }
             peek.layers?.let { layers ->
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                InfinityTagScrollRow(spacing = 6.dp) {
                     BackupLayer.entries.filter { it in layers }.forEach { LayerChip(backupLayerName(it), included = true) }
                     if (BackupLayer.SECRETS !in layers) LayerChip(stringResource(R.string.onboarding_restore_keys_missing), included = false)
                 }
