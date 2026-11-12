@@ -53,14 +53,7 @@ lint 不分析测试源码（`lint { ignoreTestSources = true }`），门禁只�
 
 本机签名构建入口为 `python3 scripts/release/build-signed-local.py --sha <提交> [--play]`：它在仓库同级的长期发行工作树 `Nexara-release` 中切换到目标提交，复用 Gradle 增量编译、守护进程与构建缓存，并从 `secure_env/` 向 Gradle 子进程注入签名变量；默认只构建侧载渠道并检查 16KB 对齐，`--play` 同时构建 Play 渠道并检查发行清单。Release 构建需要安全注入既有四个 `INFINITY_*` 签名变量，在获得签名构建授权的主控会话执行 `:app:assembleSideloadRelease :app:assemblePlayRelease`，随后执行 `python3 ../scripts/ci/check-distribution-manifests.py --build-type release` 与 `python3 ../scripts/ci/check-native-page-alignment.py --build-type release`。不把秘密写入命令、文档或报告。
 
-Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`，检查内置模型目录、文本换行和工作流脚本契约；该入口也由发行工作流执行。发行工作流 `.github/workflows/release.yml` 只在推送 `v*` 注释标签（或在 `main` 上手动触发候选验证）时运行，日常推送不会构建 APK。`scripts/ci/release-metadata.py` 从 `native-ui/app/build.gradle.kts` 读取 versionName 与 versionCode，要求标签等于 `v<versionName>`、指向 `main` 历史中的提交，并从 `CHANGELOG.md` 的 `## 录音听写和本地推理
-
-- 两渠道的 Android 制品都含 Sherpa-ONNX v2.0.1 AAR 和中英 Zipformer 小版的 3 份 ONNX 权重与词表。构建按 SHA-256 核验官方 AAR（约 47 MiB）与模型压缩包（约 437 MiB），缓存位于 Gradle 用户目录的 `caches/infinity-recording/`。仅指定的模型文件进入 APK，生成目录为 `app/build/generated/recording/assets`。
-- llama.cpp CPU 锁定 `b12076`（`36ee3caf7aa2dcb0210bedab1b61ee9f269765d3`）和源码归档摘要，静态链接到 `libinfinity_llama.so`。签名侧载 Release 和 Debug 包含 JNI，Play Release、DeviceTest、MinifiedTest 关闭 GGUF 本地推理。发行 APK 均不随包分发 GGUF。
-- APK 验真核对各 ABI 的离线听写运行时、四份模型资产摘要与渠道 JNI 边界。为模型和多 ABI 原生库留出空间，APK 大小门限为 180 MiB。敏感扫描仅对固定 Sherpa/ONNX Runtime 上游构建路径和 Zipformer joiner 的数字序列做窄豁免。
-- 合并验收应覆盖两渠道的构建及 16 KiB 页检查，并在 Find N5 检查内外屏、麦克风权限拒绝、磁贴解锁、桌面快捷方式、外部 Intent、息屏长录、暂停续录、杀进程恢复、资料回听、断网重试、端侧 GGUF 固定加载和发热。
-
-## [<versionName>]` 小节生成发布说明；该小节缺失或为空时拒绝发布。
+Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`，检查内置模型目录、文本换行和工作流脚本契约；该入口也由发行工作流执行。发行工作流 `.github/workflows/release.yml` 只在推送 `v*` 注释标签（或在 `main` 上手动触发候选验证）时运行，日常推送不会构建 APK。`scripts/ci/release-metadata.py` 从 `native-ui/app/build.gradle.kts` 读取 versionName 与 versionCode，要求标签等于 `v<versionName>`、指向 `main` 历史中的提交，并从 `CHANGELOG.md` 的 `## [<versionName>]` 小节生成发布说明；该小节缺失或为空时拒绝发布。
 
 发行流水线的设备覆盖为 API 31 / `minimum` 的未混淆 deviceTest 核心可达性，以及 API 36 的 Release 等价 R8 minifiedTest 黑盒。签名构建使用 release 环境的 `NEXARA_*` 签名机密，整理侧载资产 `dist/infinity-v<版本>.apk` 及其 `.sha256`；R8 证据进入 `dist/r8/sideload/`，只作为保留 3 天的 Actions 制品。实际签名 APK 冷安装覆盖 API 31 与 API 36，校验哈希、包名、版本与发行证书。`publish` 等待版本输入校验、全部冷安装、API 31 deviceTest 及 API 36 minifiedTest 黑盒通过，再以 draft 上传资产、逐个回读哈希，最后公开 Release；版本名无后缀或为 `-beta` 时设为 Latest，其它后缀（如 `-alpha`、`-rc.1`）标为 prerelease。GitHub Release 不发布 Play 渠道安装包。手动触发只做候选验证，不发布。
 
@@ -69,6 +62,13 @@ Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`
 `scripts/ci/android-release-upgrade-smoke.sh` 依赖已下线的 v0.1 公开基线，目前不在工作流中运行，可在本机用同签名旧包手动执行。发行不代表 Play 商店审核通过。
 
 发布步骤：完成版本提交并推送 `main` 后，在用户授权下执行 `git tag -a v<版本> -m "Infinity Deck v<版本>"` 与 `git push origin v<版本>`。
+
+## 录音听写和本地推理
+
+- 两渠道的 Android 制品都含 Sherpa-ONNX v2.0.1 AAR 和中英 Zipformer 小版的 3 份 ONNX 权重与词表。构建按 SHA-256 核验官方 AAR（约 47 MiB）与模型压缩包（约 437 MiB），缓存位于 Gradle 用户目录的 `caches/infinity-recording/`。仅指定的模型文件进入 APK，生成目录为 `app/build/generated/recording/assets`。
+- llama.cpp CPU 锁定 `b12076`（`36ee3caf7aa2dcb0210bedab1b61ee9f269765d3`）和源码归档摘要，静态链接到 `libinfinity_llama.so`。签名侧载 Release 和 Debug 包含 JNI，Play Release、DeviceTest、MinifiedTest 关闭 GGUF 本地推理。发行 APK 均不随包分发 GGUF。
+- APK 验真核对各 ABI 的离线听写运行时、四份模型资产摘要与渠道 JNI 边界。为模型和多 ABI 原生库留出空间，APK 大小门限为 180 MiB。敏感扫描仅对固定 Sherpa/ONNX Runtime 上游构建路径和 Zipformer joiner 的数字序列做窄豁免。
+- 合并验收应覆盖两渠道的构建及 16 KiB 页检查，并在 Find N5 检查内外屏、麦克风权限拒绝、磁贴解锁、桌面快捷方式、外部 Intent、息屏长录、暂停续录、杀进程恢复、资料回听、断网重试、端侧 GGUF 固定加载和发热。
 
 ## 打包 Python
 
