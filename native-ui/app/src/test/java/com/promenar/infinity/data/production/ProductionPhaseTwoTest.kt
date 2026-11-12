@@ -57,14 +57,66 @@ class ProductionPhaseTwoTest {
         assertThat(shot(result).prompt).isEqualTo("用户文案")
     }
 
-    @Test fun `锁定场用户编辑记录已确认变更且旧值冲突不能批准`() {
+    @Test fun `锁定场用户编辑待审批且旧值冲突不能批准`() {
         val locked = fixture(true)
         val edited = ProductionUserEngine.apply(locked, 1, ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(locked).copy(title = "用户")), 2)
-        assertThat(shot(edited).title).isEqualTo("用户")
-        assertThat(edited.production.changeRequests.single().approved).isTrue()
-        val pending = update(locked, """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"智能体"}""")
-        val changed = ProductionUserEngine.apply(pending, pending.revision, ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(pending).copy(title = "用户")), 3)
-        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(changed, changed.revision, ProductionUserAction.ResolveChange(pending.production.changeRequests.single().id, true), 4) }
+        assertThat(shot(edited)).isEqualTo(shot(locked))
+        val userRequest = edited.production.changeRequests.single()
+        assertThat(userRequest.approved).isFalse()
+        assertThat(userRequest.source).isEqualTo(ChangeSource.USER)
+        val pending = update(edited, """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"智能体"}""")
+        assertThat(shot(pending).title).isEqualTo("镜头")
+        assertThat(pending.production.changeRequests).hasSize(2)
+        val approved = ProductionUserEngine.apply(pending, pending.revision, ProductionUserAction.ResolveChange(userRequest.id, true), 3)
+        assertThat(shot(approved).title).isEqualTo("用户")
+        val agentRequest = approved.production.changeRequests.first { it.source == ChangeSource.AGENT }
+        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(approved, approved.revision, ProductionUserAction.ResolveChange(agentRequest.id, true), 4) }
+    }
+
+    @Test fun `用户内容审批可批准或拒绝且修订号冲突不写入`() {
+        val initial = fixture(true)
+        val action = ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(initial).copy(title = "修改", visual = "雨夜"))
+        val pending = ProductionUserEngine.apply(initial, 1, action, 2)
+        val request = pending.production.changeRequests.single()
+        assertThat(request.changes.keys).containsExactly("title", "visual")
+        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(pending, 1, action, 3) }
+        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(pending, 1, ProductionUserAction.ResolveChange(request.id, true), 3) }
+        val approved = ProductionUserEngine.apply(pending, 2, ProductionUserAction.ResolveChange(request.id, true), 3)
+        assertThat(shot(approved).title).isEqualTo("修改")
+        assertThat(shot(approved).visual).isEqualTo("雨夜")
+        assertThat(approved.production.changeRequests.single().approved).isTrue()
+        val rejected = ProductionUserEngine.apply(pending, 2, ProductionUserAction.ResolveChange(request.id, false), 3)
+        assertThat(shot(rejected)).isEqualTo(shot(initial))
+        assertThat(rejected.production.changeRequests).isEmpty()
+        assertThat(pending.production.changeRequests.single().approved).isFalse()
+    }
+
+    @Test fun `未锁定场用户编辑直接写内容并保留规划候选`() {
+        val initial = fixture()
+        val old = shot(initial)
+        val edited = ProductionUserEngine.apply(initial, 1, ProductionUserAction.EditShotContent("S1E01", old.code, old.copy(title = "修改", channelId = "ignored", prompt = "ignored")), 2)
+        assertThat(shot(edited).title).isEqualTo("修改")
+        assertThat(shot(edited).channelId).isEqualTo(old.channelId)
+        assertThat(shot(edited).prompt).isEqualTo(old.prompt)
+        assertThat(shot(edited).changedAt).isEqualTo(2)
+        assertThat(edited.production.changeRequests).isEmpty()
+    }
+
+    @Test fun `锁定场对白来源作为规划直接调整且越界被拒绝`() {
+        val initial = fixture()
+        val withContent = ProductionUserEngine.apply(initial, 1, ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(initial).copy(dialogue = listOf(
+            ShotDialogue("char-a", "甲"), ShotDialogue("char-b", "乙")
+        ))), 2)
+        val locked = ProductionUserEngine.apply(withContent, 2, ProductionUserAction.LockScene("S1E01", "SC01", true), 3)
+        val changed = ProductionUserEngine.apply(locked, 3, ProductionUserAction.SetDialogueSource("S1E01", "SC01-01", 1, DialogueAudioSource.DUBBED), 4)
+        assertThat(shot(changed).dialogue.first()).isEqualTo(shot(locked).dialogue.first())
+        assertThat(shot(changed).dialogue.last()).isEqualTo(ShotDialogue("char-b", "乙", audioSource = DialogueAudioSource.DUBBED))
+        assertThat(changed.production.changeRequests).isEmpty()
+        assertThat(shot(changed).changedBy).isEqualTo(ChangeSource.USER)
+        listOf(-1, 2).forEach { index ->
+            assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(changed, 4, ProductionUserAction.SetDialogueSource("S1E01", "SC01-01", index, DialogueAudioSource.NATIVE), 5) }
+        }
+        assertThat(changed.revision).isEqualTo(4)
     }
 
     @Test fun `候选保存规划快照`() {

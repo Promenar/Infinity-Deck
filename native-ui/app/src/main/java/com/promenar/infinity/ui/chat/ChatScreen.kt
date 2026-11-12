@@ -1857,6 +1857,7 @@ fun ChatScreenContent(
                                         com.promenar.infinity.ui.production.ProductionPanel(
                                             sessionId = sessionId,
                                             source = source,
+                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, onOpenMediaModels = null),
                                             onLocate = actions.onLocateWorkspacePath,
                                             modifier = Modifier.fillMaxSize(),
                                         )
@@ -1914,6 +1915,7 @@ fun ChatScreenContent(
                     com.promenar.infinity.ui.production.ProductionPanel(
                         sessionId = productionSessionId,
                         source = productionSource,
+                        services = com.promenar.infinity.ui.production.rememberProductionPanelServices(productionSessionId, productionSource, onOpenMediaModels = null),
                         onLocate = { path ->
                             productionSheetOpen = false
                             actions.onLocateWorkspacePath(path)

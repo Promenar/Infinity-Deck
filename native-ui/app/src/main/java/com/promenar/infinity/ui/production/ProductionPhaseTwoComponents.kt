@@ -98,7 +98,11 @@ internal fun PromptFormat.label(): String = stringResource(when (this) {
 })
 
 @Composable
-internal fun MediaTask.stateLabel(): String = stringResource(when (state.name) {
+internal fun MediaTask.stateLabel(pendingRegistrations: Set<String> = emptySet()): String = stringResource(taskStatusRes(pendingRegistrations))
+
+internal fun MediaTask.taskStatusRes(pendingRegistrations: Set<String>): Int = if (awaitingRegistration(pendingRegistrations)) {
+    R.string.production_wire_pending_registration
+} else when (state.name) {
     "AWAITING_APPROVAL" -> R.string.p2_task_approval
     "QUEUED" -> R.string.p2_task_queued
     "SUBMITTING" -> R.string.p2_task_submitting
@@ -107,7 +111,7 @@ internal fun MediaTask.stateLabel(): String = stringResource(when (state.name) {
     "COMPLETED" -> R.string.p2_task_completed
     "RESULT_UNKNOWN" -> R.string.p2_task_unknown
     else -> R.string.p2_task_failed
-})
+}
 
 @Composable
 internal fun ProductionShotText(shot: Shot, production: Production) {

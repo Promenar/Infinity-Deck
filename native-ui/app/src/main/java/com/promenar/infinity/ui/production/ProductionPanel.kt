@@ -171,6 +171,7 @@ fun ProductionPanelContent(
     val signals = production.tabSignals(tasks)
     var openEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
     var openShotCode by rememberSaveable(production.id) { mutableStateOf(initialShot?.second) }
+    var addedShotAtRevision by rememberSaveable(production.id) { mutableStateOf<Long?>(null) }
     var storyboardEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -193,6 +194,7 @@ fun ProductionPanelContent(
     val submit: suspend (ProductionUserAction) -> String? = { action -> onAction(snapshot.revision, action) }
     val openShot: (String, String) -> Unit = { episodeId, code ->
         detailInitialTab = null
+        addedShotAtRevision = null
         openAssetId = null
         openEpisodeId = episodeId
         openShotCode = code
@@ -203,6 +205,24 @@ fun ProductionPanelContent(
         openShot(episodeId, code)
         detailInitialTab = ShotDetailTab.STORYBOARD
     }
+    val newShotTitle = stringResource(R.string.production_wire_new_shot)
+    val connectedServices = services.copy(onAddShot = services.onAddShot ?: { episodeId, sceneCode ->
+        if (!busy) {
+            busy = true
+            scope.launch {
+                try {
+                    error = addShotAndOpen(snapshot, episodeId, sceneCode, newShotTitle, onAction) { id, code ->
+                        openStoryboardShot(id, code)
+                        addedShotAtRevision = snapshot.revision + 1
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    error = stringResourceFallback
+                } finally { busy = false }
+            }
+        }
+    })
     val onQueue: (String, QueueAction) -> Unit = { taskId, action ->
         val queue = services.queue
         if (!busy && queue != null) {
@@ -221,9 +241,9 @@ fun ProductionPanelContent(
         }
     }
     val location = openEpisodeId?.let { episodeId -> openShotCode?.let { production.findShot(episodeId, it) } }
-    if (openShotCode != null && location == null) {
-        // 镜头被智能体移除时回到页签。
-        LaunchedEffect(openEpisodeId, openShotCode) { openShotCode = null }
+    if (openShotCode != null && location == null && (addedShotAtRevision == null || snapshot.revision >= requireNotNull(addedShotAtRevision))) {
+        // 等待新增事务的快照到达；镜头被移除时回到页签。
+        LaunchedEffect(openEpisodeId, openShotCode, snapshot.revision) { openShotCode = null; addedShotAtRevision = null }
     }
     Column(modifier.fillMaxSize().testTag(ProductionUiTags.PANEL)) {
         val asset = openAssetId?.let(production::findAsset)
@@ -294,7 +314,7 @@ fun ProductionPanelContent(
                     onSelectEpisode = { storyboardEpisodeId = it },
                     busy = busy,
                     onOpenShot = openStoryboardShot,
-                    onRun = run, services = services, channels = channels, channelOrder = channelOrder,
+                    onRun = run, services = connectedServices, channels = channels, channelOrder = channelOrder,
                 )
                 ProductionTab.OUTPUT -> ProductionOutputTab(production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot, { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
                 ProductionTab.CUT -> ProductionCutTab(production, services, openShot)

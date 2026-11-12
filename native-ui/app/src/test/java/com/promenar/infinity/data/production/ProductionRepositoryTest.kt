@@ -96,6 +96,31 @@ class ProductionRepositoryTest {
         repo.apply("s", created.revision, action)
         try { repo.apply("s", created.revision, action); org.junit.Assert.fail("应拒绝过期修订") } catch (e: IllegalArgumentException) { assertThat(e.message).isEqualTo("面板已更新，请重试。") }
     }
+    @Test fun `锁定内容编辑事务只保存待审请求并拒绝过期审批`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM)
+        val operations = Json.parseToJsonElement("""[
+            {"op":"upsert_season","id":"S1","number":1},
+            {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集"},
+            {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"场"},
+            {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"原镜头","duration_seconds":2}
+        ]""").jsonArray.map { it.jsonObject }
+        val created = repo.update("s", "m", operations)
+        val locked = repo.apply("s", created.revision, ProductionUserAction.LockScene("S1E01", "SC01", true))
+        fun shot(s: ProductionSnapshot) = s.production.seasons.single().episodes.single().scenes.single().shots.single()
+        val action = ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(locked).copy(title = "已审批镜头"))
+        val pending = repo.apply("s", locked.revision, action)
+        val request = pending.production.changeRequests.single()
+        assertThat(shot(repo.get("s")!!)).isEqualTo(shot(locked))
+        assertThat(request.approved).isFalse()
+        try { repo.apply("s", locked.revision, action); org.junit.Assert.fail("应拒绝过期编辑") } catch (_: ProductionRevisionConflictException) { }
+        try { repo.apply("s", locked.revision, ProductionUserAction.ResolveChange(request.id, true)); org.junit.Assert.fail("应拒绝过期审批") } catch (_: ProductionRevisionConflictException) { }
+        val persisted = repo.get("s")!!
+        assertThat(persisted.revision).isEqualTo(pending.revision)
+        assertThat(persisted.production.changeRequests).containsExactly(request)
+        val approved = repo.apply("s", pending.revision, ProductionUserAction.ResolveChange(request.id, true))
+        assertThat(shot(approved).title).isEqualTo("已审批镜头")
+        assertThat(approved.production.changeRequests.single().approved).isTrue()
+    }
     @Test fun `连续提交合并写出最新修订`() = runBlocking {
         val initial = repo.define("s", "影片", ProductionKind.FILM)
         val next = repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))

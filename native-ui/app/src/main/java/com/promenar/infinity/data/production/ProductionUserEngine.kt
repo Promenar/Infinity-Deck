@@ -3,7 +3,7 @@ package com.promenar.infinity.data.production
 /** 纯函数用户操作；调用方负责在事务中核对并保存返回值。 */
 object ProductionUserEngine {
     fun apply(snapshot: ProductionSnapshot, expectedRevision: Long, action: ProductionUserAction, now: Long): ProductionSnapshot {
-        require(snapshot.revision == expectedRevision) { "面板已更新，请重试。" }
+        if (snapshot.revision != expectedRevision) throw ProductionRevisionConflictException()
         require(snapshot.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
         val revision = snapshot.revision + 1
         var p = snapshot.production
@@ -40,19 +40,31 @@ object ProductionUserEngine {
         fun updateContent(episodeId: String, shotCode: String, transform: (Shot) -> Shot) {
             val scene = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }?.scenes?.firstOrNull { sc -> sc.shots.any { it.code == shotCode } }
                 ?: throw IllegalArgumentException("镜头 $shotCode 不存在。")
-            var confirmed: ShotChangeRequest? = null
-            updateShot(episodeId, shotCode) { old ->
-                val updated = transform(old)
-                val changes = ProductionRules.changes(old, updated)
-                if (scene.storyboardLocked && changes.isNotEmpty()) {
-                    val request = ShotChangeRequest(java.util.UUID.randomUUID().toString(), episodeId, scene.code, shotCode, changes, ChangeSource.USER, "用户确认")
-                    confirmed = request
-                    ProductionRules.applyChanges(old, request.changes)
-                } else updated
-            }
-            confirmed?.let { p = p.copy(changeRequests = p.changeRequests + it.copy(approved = true)) }
+            val old = scene.shots.first { it.code == shotCode }
+            val updated = transform(old)
+            val changes = ProductionRules.changes(old, updated)
+            require(!scene.storyboardLocked || action !is ProductionUserAction.EditShotContent || changes.isNotEmpty()) { "镜头内容没有变化。" }
+            if (scene.storyboardLocked && changes.isNotEmpty()) {
+                // 校验拟提交内容，但只保存请求，保留镜头内容和修订元数据。
+                ProductionManifestCodec.encode(p.mapShot(episodeId, shotCode) { updated }, revision)
+                val request = ShotChangeRequest(java.util.UUID.randomUUID().toString(), episodeId, scene.code, shotCode, changes, ChangeSource.USER)
+                p = p.copy(changeRequests = p.changeRequests + request)
+            } else if (!scene.storyboardLocked) updateShot(episodeId, shotCode) { updated }
         }
         when (action) {
+            is ProductionUserAction.AddShot -> {
+                var found = false
+                updateEpisode(action.episodeId) { episode -> episode.copy(scenes = episode.scenes.map { scene ->
+                    if (scene.code != action.sceneCode) scene else {
+                        found = true
+                        require(!scene.storyboardLocked) { "场 ${scene.code} 已锁定，请先解锁后新增镜头。" }
+                        val shot = Shot(ProductionRules.nextShotCode(scene), action.title, durationSeconds = 5.0,
+                            changedBy = ChangeSource.USER, changedAt = revision)
+                        scene.copy(shots = scene.shots + shot, changedBy = ChangeSource.USER, changedAt = revision)
+                    }
+                }) }
+                require(found) { "场 ${action.sceneCode} 不存在，请先读取该集。" }
+            }
             is ProductionUserAction.RegisterGeneratedTask -> p = requireNotNull(registerShotTask(p, action.task, now)) { "任务暂不能登记，请核对项目绑定、场锁定与候选容量。" }
             is ProductionUserAction.RecompilePrompt -> updateShot(action.episodeId, action.shotCode) { it.copy(prompt = action.prompt, promptUserEdited = false) }
             is ProductionUserAction.EditShotContent -> updateContent(action.episodeId, action.shotCode) { old ->
@@ -71,18 +83,18 @@ object ProductionUserEngine {
             is ProductionUserAction.SetCharacterLook -> updateContent(action.episodeId, action.shotCode) { shot ->
                 val character = p.assets.firstOrNull { it.id == action.characterAssetId && it.kind == AssetKind.CHARACTER }
                     ?: throw IllegalArgumentException("角色不存在。")
-                require(character.looks.any { it.id == action.lookId }) { "造型不存在。" }
+                val look = character.looks.firstOrNull { it.id == action.lookId } ?: throw IllegalArgumentException("造型不存在。")
                 require(shot.appearances.any { it.characterAssetId == character.id }) { "角色未在镜头中出场。" }
-                shot.copy(appearances = shot.appearances.map { if (it.characterAssetId == character.id) it.copy(lookId = action.lookId, referenceSlotIds = emptyList()) else it })
+                shot.copy(appearances = shot.appearances.map { if (it.characterAssetId == character.id) it.copy(lookId = action.lookId, referenceSlotIds = ProductionRules.defaultSlotIds(look)) else it })
             }
-            is ProductionUserAction.ToggleReferenceSlot -> updateContent(action.episodeId, action.shotCode) { shot ->
+            is ProductionUserAction.ToggleReferenceSlot -> updateShot(action.episodeId, action.shotCode) { shot ->
                 val appearance = shot.appearances.firstOrNull { it.characterAssetId == action.characterAssetId } ?: throw IllegalArgumentException("角色未在镜头中出场。")
                 val look = p.assets.firstOrNull { it.id == appearance.characterAssetId }?.looks?.firstOrNull { it.id == appearance.lookId }
                 require(look?.slots?.any { it.id == action.slotId } == true) { "参考位不存在。" }
                 shot.copy(appearances = shot.appearances.map { item -> if (item != appearance) item else item.copy(referenceSlotIds = if (action.selected) (item.referenceSlotIds + action.slotId).distinct() else item.referenceSlotIds - action.slotId) })
             }
             is ProductionUserAction.SetAppearances -> updateContent(action.episodeId, action.shotCode) { it.copy(appearances = action.appearances) }
-            is ProductionUserAction.SetDialogueSource -> updateContent(action.episodeId, action.shotCode) { shot ->
+            is ProductionUserAction.SetDialogueSource -> updateShot(action.episodeId, action.shotCode) { shot ->
                 require(action.index in shot.dialogue.indices) { "对白不存在。" }
                 shot.copy(dialogue = shot.dialogue.mapIndexed { index, line -> if (index == action.index) line.copy(audioSource = action.source) else line })
             }

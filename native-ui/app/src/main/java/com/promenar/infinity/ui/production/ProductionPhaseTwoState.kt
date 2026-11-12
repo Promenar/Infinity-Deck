@@ -15,6 +15,7 @@ data class ProductionPanelServices(
     val onOpenMediaModels: (() -> Unit)? = null,
     val onAddShot: ((String, String) -> Unit)? = null,
     val requestContentChange: (suspend (Long, ShotLocation, Shot) -> String?)? = null,
+    val pendingRegistrations: Set<String> = emptySet(),
     val cutVersions: List<ProductionCutVersion> = emptyList(),
     val onCreateCut: (() -> Unit)? = null,
     val onExportCut: ((String) -> Unit)? = null,
@@ -27,8 +28,10 @@ data class ProductionTabSignals(val approvals: Int, val storyboardDot: Boolean, 
     val entryBadge: Int get() = approvals + reviews
 }
 
-fun projectTasks(tasks: List<MediaTask>, prefix: String?): List<MediaTask> =
-    if (prefix.isNullOrBlank()) emptyList() else tasks.filter { it.request.sourceRef.startsWith(prefix) }
+fun projectTasks(tasks: List<MediaTask>, prefix: String?): List<MediaTask> {
+    val projectId = prefix?.let { ProductionSourceRef.projectIdFromPrefix(it) } ?: return emptyList()
+    return tasks.filter { ProductionSourceRef.parse(it.request.sourceRef)?.productionId == projectId }
+}
 
 fun Production.tabSignals(tasks: List<MediaTask>): ProductionTabSignals = ProductionTabSignals(
     approvals = tasks.count { it.state == MediaTaskState.AWAITING_APPROVAL },
@@ -96,8 +99,8 @@ fun sceneLockAction(location: ShotLocation): ProductionUserAction.LockScene =
 fun Scene.requiresLockConfirmation() = !storyboardLocked && shots.isNotEmpty()
 fun changeApprovalAction(request: ShotChangeRequest, approve: Boolean) = ProductionUserAction.ResolveChange(request.id, approve)
 
-/** 参考位列表由当前造型定义；切换造型后清空勾选，与用户操作接口保持一致。 */
-fun ShotAppearance.switchLook(look: CharacterLook) = copy(lookId = look.id, referenceSlotIds = emptyList())
+/** 参考位列表由当前造型定义；切换造型默认选中实际存在的默认位。 */
+fun ShotAppearance.switchLook(look: CharacterLook) = copy(lookId = look.id, referenceSlotIds = ProductionRules.defaultSlotIds(look))
 fun ShotAppearance.toggleSlot(look: CharacterLook, slotId: String): ShotAppearance {
     require(look.id == lookId && look.slots.any { it.id == slotId })
     return copy(referenceSlotIds = if (slotId in referenceSlotIds) referenceSlotIds - slotId else (referenceSlotIds + slotId).distinct())
@@ -120,6 +123,11 @@ fun MediaTask.allowedQueueActions(): Set<QueueAction> = when (state.name) {
     "FAILED", "DOWNLOAD_FAILED" -> setOf(QueueAction.RETRY)
     else -> emptySet()
 }
+fun MediaTask.awaitingRegistration(pendingIds: Set<String>) = state == MediaTaskState.COMPLETED && id in pendingIds
+fun List<MediaTask>.overviewQueueTasks(pendingIds: Set<String>) = filter { it.isActiveTask() || it.awaitingRegistration(pendingIds) }
+fun List<MediaTask>.recentQueueTasks(pendingIds: Set<String>) = filter {
+    !it.isActiveTask() && !it.awaitingRegistration(pendingIds) && it.state != MediaTaskState.AWAITING_APPROVAL
+}.takeLast(20).reversed()
 fun MediaTask.isActiveTask() = state.name in setOf("QUEUED", "SUBMITTING", "RUNNING", "DOWNLOADING")
 fun List<MediaTask>.spentByCurrency(): Map<String, BigDecimal> = filter { it.state == MediaTaskState.COMPLETED }
     .mapNotNull { it.actualCost }.groupBy { it.currency }.mapValues { (_, costs) -> costs.fold(BigDecimal.ZERO) { sum, cost -> sum + cost.amount } }
