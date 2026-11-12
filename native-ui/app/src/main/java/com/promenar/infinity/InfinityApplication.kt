@@ -570,6 +570,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             generationRunnerFactory.createRuntime(sessionId, "draft-budget").estimateDraftDocumentBudget(sessionId, text, documents)
         }
 
+    /** 应用其它位置新建会话时自动发出的首条用户消息，由前台聊天页取走。 */
+    val sessionLaunchInbox: com.promenar.infinity.data.session.SessionLaunchInbox by lazy {
+        com.promenar.infinity.data.session.SessionLaunchInbox()
+    }
+
     /** 外部文档查看器送往会话输入框的附件，由前台聊天页取走。 */
     val composerDocumentInbox: com.promenar.infinity.data.document.ComposerDocumentInbox by lazy {
         com.promenar.infinity.data.document.ComposerDocumentInbox()
@@ -1321,6 +1326,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             textSplitter,
             titleScope = generationScope,
         ).apply {
+            setTitleKeeper { sessionId -> sessionLaunchInbox.keepsTitle(sessionId) }
             setTitleGenerator { params ->
                 val quickModelId = settings.getString("preset_summary_model", "")
                 com.promenar.infinity.ui.chat.manager.PostProcessor.generateTitleWithFallback(

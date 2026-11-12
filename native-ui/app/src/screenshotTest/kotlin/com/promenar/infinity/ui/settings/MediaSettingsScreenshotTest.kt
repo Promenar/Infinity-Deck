@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.settings
 import android.content.res.Configuration
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -92,3 +94,23 @@ fun comfyTemplateSettingsPreview() = MediaPreviewTheme { ComfyTemplateScreenCont
 @Preview(name = "主机表单 浅色英文130", widthDp = 360, heightDp = 1100, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Composable
 fun comfyHostFormSettingsPreview() = MediaPreviewTheme { ComfyHostFormScreenContent(previewHost, true, previewState) }
+
+@PreviewTest
+@Preview(name = "交给智能体配置 深色中文", widthDp = 360, heightDp = 360, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "交给智能体配置 浅色英文", widthDp = 360, heightDp = 360, locale = "en", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "交给智能体配置 深色英文130", widthDp = 360, heightDp = 460, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "交给智能体配置 浅色中文内屏", widthDp = 640, heightDp = 320, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Composable
+fun comfyAgentConfigurePreview() = MediaPreviewTheme {
+    val status = listOf(
+        androidx.compose.ui.res.stringResource(com.promenar.infinity.R.string.media_settings_templates_count, 1),
+        androidx.compose.ui.res.stringResource(com.promenar.infinity.R.string.media_settings_locked_count, 1),
+        connectionLabel(ComfyConnection.ONLINE),
+    )
+    androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+        ComfyAgentConfigureContent(
+            hostName = "MAIN", status = status, target = "", onTarget = {},
+            busy = false, failed = false, onCopy = {}, onStart = {},
+        )
+    }
+}

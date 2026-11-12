@@ -183,17 +183,24 @@ internal fun ProductionTopBar(
     metaAccent: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    // 有返回键为窄屏整屏面板；没有时在检视器页签里，与文件页页头同一规格：最小 64dp、四周 4dp，标题块左右再留 8dp。
+    val inPane = onBack == null
     Row(
-        modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = if (onBack != null) 4.dp else InfinitySpacing.ScreenHorizontal, end = 4.dp),
+        modifier.fillMaxWidth().then(
+            if (inPane) Modifier.heightIn(min = ProductionPaneHeaderMinHeight).padding(InfinitySpacing.XSmall)
+            else Modifier.heightIn(min = 56.dp).padding(start = 4.dp, end = 4.dp),
+        ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
             InfinityBackButton(onClick = onBack)
             Spacer(Modifier.width(4.dp))
+        } else {
+            Spacer(Modifier.width(InfinitySpacing.Small))
         }
         InfinityPaneHeaderTitle(
             title = title,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).then(if (inPane) Modifier.padding(horizontal = InfinitySpacing.Small) else Modifier),
             meta = if (meta.isEmpty() && metaAccent == null) null else ({
                 Text(meta.joinToString(" · "), maxLines = 1, softWrap = false)
                 metaAccent?.let {
@@ -204,6 +211,9 @@ internal fun ProductionTopBar(
         actions()
     }
 }
+
+/** 检视器页签页头的最小高度，与文件页页头一致。 */
+private val ProductionPaneHeaderMinHeight = 64.dp
 
 /** 选项面板：每项一行，可带说明，当前项打勾；与原型的底部弹层同一形式。 */
 @Composable

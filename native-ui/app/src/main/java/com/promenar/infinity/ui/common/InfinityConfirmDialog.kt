@@ -160,6 +160,9 @@ internal fun InfinityConfirmDialogCard(
             .clip(InfinityShapes.extraLarge)
             .border(0.5.dp, scheme.outlineVariant, InfinityShapes.extraLarge),
         color = scheme.surfaceContainerHigh.copy(alpha = DIALOG_CARD_ALPHA),
+        // 半透明底色不是主题里的颜色，contentColorFor 推不出对应内容色，会沿用对话框窗口的默认黑色；
+        // content 槽里的文字、图标都继承这里，必须显式给出。
+        contentColor = scheme.onSurface,
         shape = InfinityShapes.extraLarge,
     ) {
         Column(

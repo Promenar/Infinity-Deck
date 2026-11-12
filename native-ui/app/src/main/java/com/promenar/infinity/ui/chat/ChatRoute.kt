@@ -260,6 +260,7 @@ fun ChatRoute(
     val runModeStatus by remember(sessionId) { application.sessionRunModes.observe(sessionId) }
         .collectAsStateWithLifecycle(initialValue = null)
     var runModeCheckpoint by remember(sessionId) { mutableStateOf<com.promenar.infinity.ui.chat.runmode.RunModeCheckpointStage?>(null) }
+    var runModeChecked by remember(sessionId) { mutableStateOf(false) }
     var showRunModePicker by remember(sessionId) { mutableStateOf(false) }
     val runModeScope = rememberCoroutineScope()
     LaunchedEffect(sessionId) {
@@ -267,6 +268,14 @@ fun ChatRoute(
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { application.sessionRunModes.check(sessionId) }
         }.getOrNull()
         runModeCheckpoint = check?.let { com.promenar.infinity.ui.chat.runmode.initialStage(it) }
+        runModeChecked = true
+    }
+    // 别处新建会话时预置的首条用户消息：会话已加载、运行模式检查点处理完后照常发送。
+    val launchPending by application.sessionLaunchInbox.pending.collectAsStateWithLifecycle()
+    val launchMessage = launchPending[sessionId]
+    LaunchedEffect(uiState.session?.id, launchMessage, runModeChecked, runModeCheckpoint) {
+        if (uiState.session?.id != sessionId || launchMessage == null || !runModeChecked || runModeCheckpoint != null) return@LaunchedEffect
+        application.sessionLaunchInbox.take(sessionId)?.let { chatViewModel.sendMessage(it) }
     }
     val runModeBadge = runModeStatus?.takeIf { linuxSupported }?.let { status ->
         com.promenar.infinity.ui.chat.runmode.RunModeBadge(status.mode,
