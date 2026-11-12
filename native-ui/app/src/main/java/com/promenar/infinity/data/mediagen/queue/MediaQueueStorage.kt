@@ -27,6 +27,9 @@ data class PersistentMediaTask(
     val usage: Map<String, Long> = emptyMap(),
     /** 备份恢复的历史记录只能查看，避免把历史记录重新调度。 */
     val historyOnly: Boolean = false,
+    /** 提交前校验有效模型、选项、价格或模板仍与入队时相同。 */
+    val configurationFingerprint: String? = null,
+    val expectedOutputs: Int = 1,
 )
 
 data class MediaUsageEntry(

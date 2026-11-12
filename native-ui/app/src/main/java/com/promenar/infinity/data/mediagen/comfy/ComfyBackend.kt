@@ -218,7 +218,7 @@ fun parseComfyHistory(history: JsonObject, promptId: String, slots: List<ComfySl
     return if (files.isEmpty()) RemoteStatus.Failed("ComfyUI 任务完成但声明的产出节点没有文件") else RemoteStatus.Succeeded(files)
 }
 
-private fun validateFilledComfySpecs(template: ComfyTemplate, workflow: JsonObject) {
+internal fun validateFilledComfySpecs(template: ComfyTemplate, workflow: JsonObject) {
     val sizes = template.channel().capabilities.resolutions
     if (sizes.isEmpty() || sizes.any { !it.matches(Regex("[0-9]+[xX×][0-9]+")) }) return
     fun dimension(kind: SlotKind): Int? = template.slots.firstOrNull { it.kind == kind }?.let { slot ->

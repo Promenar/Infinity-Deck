@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shot_plan_missing_project">当前会话没有制作项目。</string>
+    <string name="shot_plan_missing_shot">集或镜头不存在：%1$s</string>
+    <string name="shot_plan_unlocked">场尚未锁定：%1$s</string>
+    <string name="shot_plan_no_channel">没有支持当前模式的通道：%1$s</string>
+    <string name="shot_plan_missing_input">输入不存在或类型不符：%1$s</string>
+    <string name="shot_plan_overflow">输入超出通道上限：%1$s</string>
+    <string name="shot_plan_invalid">生成规划不完整：%1$s</string>
+    <string name="shot_plan_backend">通道后端尚未配置：%1$s</string>
+    <string name="shot_plan_reference_review">参考包待审：%1$s</string>
+    <string name="shot_plan_missing_voice">配音缺少角色参考语音：%1$s</string>
+    <string name="shot_plan_audio_failed">部分配音任务未入队：%1$s</string>
+    <string name="shot_plan_failed">生成规划提交失败，请核对输入与通道。</string>
+    <string name="shot_plan_workflow_timing">时长由锁定工作流决定：%1$s</string>
+    <string name="shot_plan_candidate_capacity">候选容量不足：%1$s</string>
+    <string name="shot_plan_changed">镜头规划已变化，请先预览。</string>
+</resources>

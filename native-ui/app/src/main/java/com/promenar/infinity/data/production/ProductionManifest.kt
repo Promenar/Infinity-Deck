@@ -115,7 +115,14 @@ object ProductionManifestCodec {
                         unique(shot.takes.map { it.id }, "候选")
                         shot.takes.forEach { take ->
                             require(take.id.isNotBlank()) { "候选 id 不能为空。" }
-                            validatePath(take.path); title(take.source.service, "候选服务"); note(take.note, "候选说明"); take.planSnapshot?.inputs?.forEach { validatePath(it.path) }
+                            validatePath(take.path); title(take.source.service, "候选服务"); note(take.note, "候选说明"); take.planSnapshot?.inputs?.forEach { validatePath(it.path) }; take.planSnapshot?.mediaInputs?.forEach { validatePath(it.location) }
+                        }
+                        unique(shot.audio.map { it.id }, "附属音频")
+                        shot.audio.forEach { audio ->
+                            validatePath(audio.path)
+                            require(audio.dialogueIndex >= 0 && audio.taskId.isNotBlank()) { "附属音频的对白序号和任务标识无效。" }
+                            audio.planSnapshot.inputs.forEach { validatePath(it.path) }
+                            audio.planSnapshot.mediaInputs.forEach { validatePath(it.location) }
                         }
                         require(shot.selectedTakeId == null || shot.takes.any { it.id == shot.selectedTakeId }) { "选定候选不存在，请重新选择。" }
                     }

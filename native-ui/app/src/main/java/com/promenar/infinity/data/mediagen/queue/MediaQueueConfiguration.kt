@@ -8,6 +8,10 @@ data class MediaBackendBinding(
     val providerId: String,
     val modelId: (MediaChannel) -> String,
     val backend: MediaGenerationBackend,
+    /** 动态来源在入队时解析资源组，值随任务持久化。 */
+    val providerFor: suspend (MediaChannel) -> String = { providerId },
+    val configurationFor: suspend (MediaChannel) -> String? = { null },
+    val expectedOutputsFor: suspend (MediaChannel) -> Int = { 1 },
 ) {
     init { require(id.isNotBlank() && providerId.isNotBlank()) }
 }
@@ -41,4 +45,9 @@ class InvalidMediaRequestException(val validation: RequestValidation) : IllegalA
 /** 文案由 Android 装配点从资源提供；异常原文不进入任务表，避免携带请求头或带鉴权的 URL。 */
 fun interface MediaQueueMessages {
     fun message(failure: MediaTaskFailure): String
+}
+
+/** 制作规划读取随入队冻结的候选容量占用。 */
+interface MediaOutputReservationReader {
+    suspend fun outputReservations(taskIds: Set<String>): Map<String, Int>
 }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shot_plan_missing_project">No production project is bound to this session.</string>
+    <string name="shot_plan_missing_shot">Episode or shot is missing: %1$s</string>
+    <string name="shot_plan_unlocked">Scene is unlocked: %1$s</string>
+    <string name="shot_plan_no_channel">No channel supports this mode: %1$s</string>
+    <string name="shot_plan_missing_input">Input is missing or has the wrong type: %1$s</string>
+    <string name="shot_plan_overflow">Inputs exceed the channel limit: %1$s</string>
+    <string name="shot_plan_invalid">Generation plan is incomplete: %1$s</string>
+    <string name="shot_plan_backend">Channel backend is unavailable: %1$s</string>
+    <string name="shot_plan_reference_review">Reference pack awaiting review: %1$s</string>
+    <string name="shot_plan_missing_voice">Dubbing needs a character voice reference: %1$s</string>
+    <string name="shot_plan_audio_failed">Some dubbing tasks were not queued: %1$s</string>
+    <string name="shot_plan_failed">Could not submit the generation plan. Check the inputs and channel.</string>
+    <string name="shot_plan_workflow_timing">Duration follows the locked workflow: %1$s</string>
+    <string name="shot_plan_candidate_capacity">Not enough candidate slots: %1$s</string>
+    <string name="shot_plan_changed">The shot plan changed. Preview it before submitting.</string>
+</resources>
