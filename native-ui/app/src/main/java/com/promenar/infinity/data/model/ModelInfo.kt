@@ -15,6 +15,7 @@ internal val USER_EDITABLE_MODEL_FIELDS = setOf(
     "capabilities",
     "contextLength",
     "maxOutputTokens",
+    "mediaSettings",
 )
 
 data class ModelInfo(
@@ -43,9 +44,11 @@ data class ModelInfo(
     val sourceProviderId: String? = null,
     val providerMetadata: ModelMetadataOverride? = null,
     val sessionHeaderMode: SessionHeaderMode = SessionHeaderMode.INHERIT,
+    val mediaSettings: MediaModelSettings? = null,
+    val mediaSettingsInvalid: Boolean = false,
 )
 
-internal fun ResolvedModelMetadata.toLegacyType(): String = when (workload) {
+internal fun ResolvedModelMetadata.toLegacyType(): String = mediaModelPreset(remoteModelId)?.group?.name?.lowercase() ?: when (workload) {
     ModelWorkload.GENERATIVE_TEXT -> if (
         capabilities[ModelCapability.REASONING] == SupportState.SUPPORTED
     ) {
@@ -127,7 +130,7 @@ internal fun ResolvedModelMetadata.toModelInfo(
     knowledgeCutoff = knowledgeCutoff,
     familyName = familyName,
     canonicalModelId = canonicalModelId,
-    chatEndpointCompatible = capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN,
+    chatEndpointCompatible = if (mediaModelPreset(remoteModelId) != null) SupportState.UNSUPPORTED else capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN,
     autoMetadataFingerprint = autoFingerprint(),
     metadataSourceByField = sourceByField,
     metadataDiagnostics = diagnostics,
@@ -138,8 +141,8 @@ internal fun ResolvedModelMetadata.toModelInfo(
 
 internal fun ModelInfo.mergeResolvedMetadata(resolved: ResolvedModelMetadata): ModelInfo {
     val userFields = userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS)
-    val resolvedChatEndpoint =
-        resolved.capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN
+    val resolvedChatEndpoint = if (mediaSettings != null || mediaModelPreset(remoteModelId) != null) SupportState.UNSUPPORTED
+        else resolved.capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN
     return copy(
         name = if ("name" in userFields) name else resolved.displayName,
         description = resolved.familyName ?: resolved.remoteModelId,
@@ -175,6 +178,7 @@ internal fun ModelInfo.withRecordedUserEdits(previous: ModelInfo): ModelInfo {
         if (capabilities.toSet() != previous.capabilities.toSet()) add("capabilities")
         if (contextLength != previous.contextLength) add("contextLength")
         if (maxOutputTokens != previous.maxOutputTokens) add("maxOutputTokens")
+        if (mediaSettings != previous.mediaSettings) add("mediaSettings")
     }
     return copy(
         userEditedFields = previous.userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS) +

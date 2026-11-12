@@ -98,6 +98,17 @@ class BackupPreferenceInventoryTest {
     }
 
     @Test
+    fun `媒体通道顺序与图像默认值登记在现有设置偏好中`() {
+        listOf(
+            "media_channel_order_image", "media_channel_order_video", "media_channel_order_audio",
+            "preset_image_model",
+        ).forEach { key ->
+            assertWithMessage("媒体默认配置应随设置备份: $key")
+                .that(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isTrue()
+        }
+    }
+
+    @Test
     fun `all literal production preference keys are explicitly allowed or denied`() {
         val sourceRoot = Path.of("app/src/main/java/com/promenar/infinity")
         val files = Files.walk(sourceRoot).use { stream ->
@@ -157,6 +168,7 @@ class BackupPreferenceInventoryTest {
             "data/manager/ProviderManager.kt#searchPrefs" to "infinity_search",
             "data/manager/ProviderManager.kt#backupPrefs" to "infinity_backup_settings",
             "data/remote/ModelTimeoutPreferenceStore.kt#prefs" to "infinity_settings",
+            "data/mediagen/registry/MediaChannelOrderStore.kt#prefs" to "infinity_settings",
             "data/model/catalog/ModelCatalogUpdater.kt#prefs" to "catalog_update_schedule",
             // 内置 Tailscale 设置：独立偏好文件，不在备份命名空间内（键为常量，见 TailnetSettingsStoreTest）。
             "data/tailnet/TailnetSettings.kt#preferences" to "infinity_tailnet",

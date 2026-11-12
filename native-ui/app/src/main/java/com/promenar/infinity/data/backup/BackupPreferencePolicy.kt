@@ -19,6 +19,7 @@ internal object BackupPreferencePolicy {
             "extra_providers_count", "extra_providers_ids", "all_models", "enabled_models", "all_models_order",
             "preset_summary_model", "preset_image_model", "preset_embedding_model", "preset_rerank_model",
             "preset_skills_migrated_v3",
+            "media_channel_order_image", "media_channel_order_video", "media_channel_order_audio",
             "enabled_skills",
             "known_builtin_skills",
             "agent_skills_enabled",
@@ -65,7 +66,7 @@ internal object BackupPreferencePolicy {
                     "input|family|canonical_id|chat_endpoint|auto_fingerprint|user_edited_fields|" +
                     "metadata_sources|metadata_diagnostics|provider_owned_by|source_provider_id|" +
                     "provider_display_name|provider_workload|provider_context|provider_input|provider_output|" +
-                    "provider_capabilities)"
+                    "provider_capabilities|media_generation)"
             ),
         ),
         "provider" to listOf(
@@ -121,6 +122,7 @@ internal object BackupPreferencePolicy {
         val normalizedNamespace = normalizeNamespace(namespace)
         val normalizedKey = normalize(key)
         if (sessionHeaderType(namespace, key) != null) return true
+        if (normalizedNamespace == "settings" && Regex("model_info_.+_media_generation").matches(normalizedKey)) return true
         if (isDenied(normalizedKey)) return false
         return normalizedKey in exactAllowed[normalizedNamespace].orEmpty() ||
             dynamicAllowed[normalizedNamespace].orEmpty().any { it.matches(normalizedKey) }

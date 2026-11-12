@@ -38,7 +38,7 @@ class ModelMetadataResolver private constructor(
         val lookupIds = lookupCandidates(remoteModelId, ownedBy)
         val normalizedId = lookupIds.first()
         val remoteId = remoteModelId
-        val allCandidates = lookupIds.flatMap { exactCandidatesById[it].orEmpty() }.distinct()
+        val allCandidates = (lookupIds.flatMap { exactCandidatesById[it].orEmpty() } + listOfNotNull(mediaModelCatalogRecord(remoteId))).distinct()
         val candidateResolution = resolveCatalogCandidates(allCandidates, sourceProviderId)
         val exactRecords = candidateResolution.fieldRecords
         val diagnostics = if (candidateResolution.ambiguous) {
