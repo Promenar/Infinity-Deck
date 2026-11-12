@@ -212,12 +212,31 @@ val PROVIDER_PRESETS = listOf(
     ProviderPreset("Kimi", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.drawable.ic_provider_kimi),
     ProviderPreset("通义千问", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.drawable.ic_provider_qwen, R.string.provider_preset_qwen),
     ProviderPreset("智谱", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.drawable.ic_provider_zhipu, R.string.provider_preset_zhipu),
-    ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_doubao),
+    ProviderPreset("火山方舟", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_ark_media),
+    ProviderPreset("MiniMax", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1"),
     ProviderPreset("百川", ProtocolType.Baichuan, "https://api.baichuan-ai.com", R.drawable.ic_provider_baichuan, R.string.provider_preset_baichuan),
     ProviderPreset("Mistral", ProtocolType.Mistral_Chat, "https://api.mistral.ai", R.drawable.ic_provider_mistral),
     ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local, R.string.provider_preset_local),
     ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom, R.string.provider_preset_custom),
 )
+
+/** 通用协议按主机匹配品牌，保留自定义提供商的协议选择入口。 */
+internal fun matchProviderPreset(presets: List<ProviderPreset>, protocol: ProtocolType, baseUrl: String): ProviderPreset? {
+    if (protocol != ProtocolType.Generic_OpenAI_Compat) return presets.firstOrNull { it.protocolType == protocol }
+    fun hostOrNull(value: String): String? = try {
+        java.net.URI(value).host?.lowercase()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: java.net.URISyntaxException) {
+        null
+    }
+    val host = hostOrNull(baseUrl)
+    return presets.firstOrNull { preset ->
+        preset.protocolType == protocol && preset.name != "Custom" && host != null &&
+            (host == hostOrNull(preset.defaultBaseUrl) ||
+                preset.name == "MiniMax" && host in setOf("api.minimax.io", "api.minimaxi.com"))
+    } ?: presets.firstOrNull { it.name == "Custom" }
+}
 
 internal val CUSTOM_PROTOCOL_OPTIONS = listOf(
     ProtocolType.Generic_OpenAI_Compat,
@@ -291,10 +310,7 @@ fun ProviderFormScreen(
                 hasCredential = config.hasApiKey || config.hasVertexCredentials
                 originalUsesVertex = config.hasVertexCredentials
                 legacyUnsupportedProtocol = config.protocolType.takeIf(::isRetiredProviderProtocol)
-                val matched = availableProviderPresets.find {
-                    it.protocolType == config.protocolType &&
-                        (it.name != "Custom" || config.protocolType == ProtocolType.Generic_OpenAI_Compat)
-                }
+                val matched = matchProviderPreset(availableProviderPresets, config.protocolType, config.baseUrl)
                 selectedPreset = when {
                     matched != null -> matched
                     legacyUnsupportedProtocol != null -> ProviderPreset(

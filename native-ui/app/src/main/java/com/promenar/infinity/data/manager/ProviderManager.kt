@@ -73,6 +73,8 @@ class ProviderManager private constructor(
     private val settingsPrefs: SharedPreferences =
         app.getSharedPreferences("infinity_settings", 0)
 
+    val mediaChannelOrders = com.promenar.infinity.data.mediagen.registry.MediaChannelOrderStore(settingsPrefs)
+
     private val modelTimeoutStore = ModelTimeoutPreferenceStore(settingsPrefs)
     val modelTimeouts = modelTimeoutStore.settings
 
@@ -118,6 +120,10 @@ class ProviderManager private constructor(
     // ── StateFlow: 当前模型摘要 ──────────────────────────────────────
     private val _currentModelSummary = MutableStateFlow("")
     val currentModelSummary: StateFlow<String> = _currentModelSummary.asStateFlow()
+
+    private val mediaDefaultListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "preset_image_model") _imageModelId.value = settingsPrefs.getString(key, "").orEmpty()
+    }.also(settingsPrefs::registerOnSharedPreferenceChangeListener)
 
     // ── 初始化 ───────────────────────────────────────────────────────
     init {
@@ -819,6 +825,8 @@ class ProviderManager private constructor(
                 ?.intersect(USER_EDITABLE_MODEL_FIELDS)
                 ?: emptySet()
 
+            val storedMedia = settingsPrefs.getString("${prefix}_media_generation", null)
+            val mediaSettings = com.promenar.infinity.data.model.MediaModelSettingsCodec.decode(storedMedia)
             var model = ModelInfo(
                 name = storedName,
                 id = id,
@@ -843,6 +851,8 @@ class ProviderManager private constructor(
                 providerOwnedBy = providerOwnedBy,
                 sourceProviderId = sourceProviderId,
                 providerMetadata = providerMetadata,
+                mediaSettings = mediaSettings,
+                mediaSettingsInvalid = storedMedia != null && mediaSettings == null,
             )
 
             val resolved = ModelCatalogRuntime.resolver.resolve(
@@ -1068,6 +1078,9 @@ class ProviderManager private constructor(
                     } else {
                         current.remoteModelId
                     },
+                    mediaSettings = if ("mediaSettings" in submittedFields) submitted.mediaSettings else current.mediaSettings,
+                    mediaSettingsInvalid = if ("mediaSettings" in submittedFields) false else current.mediaSettingsInvalid,
+                    chatEndpointCompatible = if ("mediaSettings" in submittedFields && submitted.mediaSettings != null) SupportState.UNSUPPORTED else current.chatEndpointCompatible,
                     name = if ("name" in submittedFields) submitted.name else current.name,
                     type = if ("type" in submittedFields) submitted.type else current.type,
                     capabilities = if ("capabilities" in submittedFields) {
@@ -1103,6 +1116,15 @@ class ProviderManager private constructor(
             models.map { if (it.id == sanitized.id) sanitized else it }
         }
         persistModels()
+    }
+
+    fun setMediaModelSettings(id: String, settings: com.promenar.infinity.data.model.MediaModelSettings?) {
+        val current = _providerModels.value.firstOrNull { it.id == id } ?: error("模型不存在")
+        applyUserModelUpdate(current.copy(
+            mediaSettings = settings,
+            type = settings?.group?.name?.lowercase() ?: current.type,
+            userEditedFields = if (settings == null) setOf("mediaSettings") else setOf("mediaSettings", "type"),
+        ))
     }
 
     fun deleteModel(id: String) {
@@ -1158,6 +1180,10 @@ class ProviderManager private constructor(
             models.forEach { model ->
                 val prefix = "model_info_${model.id}"
                 editor.apply {
+                    if (!model.mediaSettingsInvalid) {
+                        if (model.mediaSettings == null) remove("${prefix}_media_generation")
+                        else putString("${prefix}_media_generation", com.promenar.infinity.data.model.MediaModelSettingsCodec.encode(model.mediaSettings))
+                    }
                     putString("${prefix}_name", model.name)
                     putString("${prefix}_type", model.type)
                     putInt("${prefix}_context", model.contextLength)
@@ -1249,6 +1275,14 @@ class ProviderManager private constructor(
     fun setPresetModel(type: String, modelId: String) {
         require(modelId.isBlank() || _providerModels.value.any { it.id == modelId }) {
             "预设模型必须使用已注册的稳定复合 ID"
+        }
+        if (type == "image") {
+            val group = com.promenar.infinity.domain.mediagen.MediaGroup.IMAGE
+            val order = mediaChannelOrders.orders.value[group].orEmpty()
+            if (order.isNotEmpty()) {
+                if (modelId.isNotBlank()) mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
+                return
+            }
         }
         val key = when (type) {
             "summary" -> {

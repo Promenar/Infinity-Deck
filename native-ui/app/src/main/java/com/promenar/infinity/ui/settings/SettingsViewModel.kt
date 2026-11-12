@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.settings
 
+import com.promenar.infinity.data.model.effectiveMediaSettings
 import android.app.Application
 import com.promenar.infinity.data.generation.BuiltinToolPreferences
 import android.content.Intent
@@ -522,10 +523,15 @@ class SettingsViewModel(
                 // 步骤 2: 回退 — 从 ModelSpecs 数据库匹配该协议类型的已知模型
                 if (fetchedModels.isEmpty()) {
                     usedBuiltInFallback = true
-                    fetchedModels = getFallbackModelIds(config.protocolType).map {
+                    fetchedModels = (com.promenar.infinity.data.model.builtInMediaModelIds(config.baseUrl)
+                        .takeIf { it.isNotEmpty() } ?: getFallbackModelIds(config.protocolType)).map {
                         com.promenar.infinity.data.remote.protocol.RemoteModelDescriptor(it)
                     }
                 }
+
+                fetchedModels = (fetchedModels + com.promenar.infinity.data.model.builtInMediaModelIds(config.baseUrl).map {
+                    com.promenar.infinity.data.remote.protocol.RemoteModelDescriptor(it)
+                }).distinctBy { it.id }
 
                 // 步骤 3: 合并模型（新增 + 更新元数据）
                 if (fetchedModels.isNotEmpty()) {
@@ -831,6 +837,21 @@ class SettingsViewModel(
             pm.applyUserModelUpdate(updatedModel)
         }
         sessionHeaderRevision.update { it + 1 }
+    }
+
+    val mediaChannelOrders get() = pm.mediaChannelOrders.orders
+
+    fun setMediaChannelOrder(group: com.promenar.infinity.domain.mediagen.MediaGroup, channelIds: List<String>) =
+        viewModelScope.launch(Dispatchers.IO) { pm.mediaChannelOrders.reorder(group, channelIds) }
+
+    fun setMediaModelSettings(modelId: String, settings: com.promenar.infinity.data.model.MediaModelSettings?) =
+        pm.setMediaModelSettings(modelId, settings)
+
+    fun setMediaCharacterReferences(modelId: String, mode: com.promenar.infinity.domain.mediagen.CharacterReferenceMode, order: List<String>) {
+        val model = pm.providerModels.value.firstOrNull { it.id == modelId } ?: error("模型不存在")
+        val settings = model.effectiveMediaSettings()
+            ?: error("模型未配置媒体生成能力")
+        pm.setMediaModelSettings(modelId, settings.withCharacterReferences(mode, order))
     }
 
     fun toggleModel(id: String) = pm.toggleModel(id)
