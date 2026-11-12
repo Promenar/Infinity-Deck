@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
@@ -99,20 +101,32 @@ fun ProviderListScreen(
     val providers by viewModel.providers.collectAsState()
     val unsupportedProviders by viewModel.unsupportedProviders.collectAsState()
     val models by viewModel.providerModels.collectAsState()
+    val mediaViewModel = mediaSettingsViewModel()
+    val mediaState by mediaViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(mediaState.snapshot.hosts) {
+        if (mediaState.loaded) mediaViewModel.checkConnections()
+    }
+    LifecycleResumeEffect(mediaViewModel) {
+        mediaViewModel.checkConnections()
+        onPauseOrDispose { }
+    }
     val statuses by viewModel.providerStatuses.collectAsState()
     val tailnetState by app.tailnetManager.state.collectAsStateWithLifecycle()
 
     var showDeleteDialog by remember { mutableStateOf<String?>(null) }
 
     val modelCounts = remember(models) { providerModelCounts(models) }
+    val mediaCounts = remember(models) { providerMediaCounts(models) }
     val tailnetProviderIds = remember(providers, tailnetState) {
         providers.filter { TailnetEndpoints.isTailnetEndpoint(it.baseUrl, tailnetState) }.mapTo(mutableSetOf()) { it.id }
     }
-    val state = remember(providers, unsupportedProviders, modelCounts, statuses, tailnetProviderIds) {
+    val state = remember(providers, unsupportedProviders, modelCounts, mediaCounts, statuses, tailnetProviderIds, mediaState.snapshot.hosts.size) {
         ProviderListScreenState(
             providers = providers,
             unsupportedProviders = unsupportedProviders,
             modelCounts = modelCounts,
+            mediaCounts = mediaCounts,
+            comfyHostCount = mediaState.snapshot.hosts.size,
             statuses = statuses,
             tailnetProviderIds = tailnetProviderIds,
         )
@@ -130,7 +144,16 @@ fun ProviderListScreen(
 
     ProviderListScreenContent(
         state = state,
-        actions = actions
+        actions = actions,
+        comfyContent = {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                MediaOperationState(mediaState, mediaViewModel::reload)
+                ComfyHostsSection(mediaState,
+                    onOpen = { onNavigateToSecondary(MediaSettingsRoutes.host(it)) },
+                    onAdd = { onNavigateToSecondary(MediaSettingsRoutes.hostForm()) },
+                    onCheck = mediaViewModel::checkConnections)
+            }
+        },
     )
 
     if (showDeleteDialog != null) {
@@ -158,6 +181,8 @@ internal data class ProviderListScreenState(
     val statuses: Map<String, ProviderStatus> = emptyMap(),
     /** 地址指向 Tailscale 内网的提供商。 */
     val tailnetProviderIds: Set<String> = emptySet(),
+    val mediaCounts: Map<String, ProviderMediaCount> = emptyMap(),
+    val comfyHostCount: Int = 0,
 )
 
 internal data class ProviderListScreenActions(
@@ -171,7 +196,8 @@ internal data class ProviderListScreenActions(
 @Composable
 internal fun ProviderListScreenContent(
     state: ProviderListScreenState,
-    actions: ProviderListScreenActions
+    actions: ProviderListScreenActions,
+    comfyContent: (@Composable () -> Unit)? = null,
 ) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.settings_provider_management),
@@ -203,7 +229,7 @@ internal fun ProviderListScreenContent(
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            if (state.providers.isEmpty() && state.unsupportedProviders.isEmpty()) {
+            if (state.providers.isEmpty() && state.unsupportedProviders.isEmpty() && state.comfyHostCount == 0) {
                 item("provider-empty") {
                     Box(Modifier.animateItem()) {
                         ProviderEmptyState(compactHeight = compactHeightEmptyState, onAdd = actions.onAddProvider)
@@ -211,7 +237,7 @@ internal fun ProviderListScreenContent(
                 }
             } else {
                 item("provider-summary") {
-                    val summary = providerListSummary(state.providers, state.unsupportedProviders.size)
+                    val summary = mediaProviderListSummary(state.providers, state.unsupportedProviders.size, state.comfyHostCount)
                     Text(
                         text = pluralStringResource(R.plurals.provider_list_summary, summary.total, summary.total, summary.enabled),
                         style = MaterialTheme.typography.bodySmall,
@@ -223,7 +249,7 @@ internal fun ProviderListScreenContent(
                             .testTag(UiTags.PROVIDER_LIST_SUMMARY),
                     )
                 }
-                item("provider-group") {
+                if (state.providers.isNotEmpty() || state.unsupportedProviders.isNotEmpty()) item("provider-group") {
                     // 全部提供商在一张连续分组卡片里；新增或删除时卡片高度平滑过渡，空态与分组之间淡入淡出。
                     BettboxListGroup(
                         modifier = Modifier
@@ -237,6 +263,7 @@ internal fun ProviderListScreenContent(
                                 ProviderCard(
                                     provider = provider,
                                     counts = state.modelCounts[provider.id] ?: ProviderModelCount(0, 0),
+                                    mediaCounts = state.mediaCounts[provider.id] ?: ProviderMediaCount(),
                                     status = state.statuses[provider.id],
                                     onTailnet = provider.id in state.tailnetProviderIds,
                                     nowMillis = now,
@@ -262,6 +289,7 @@ internal fun ProviderListScreenContent(
                     }
                 }
             }
+            if (comfyContent != null) item("comfy-hosts") { comfyContent() }
         }
     }
 }
@@ -428,6 +456,7 @@ private fun ProviderEmptyIcon(size: androidx.compose.ui.unit.Dp) {
 private fun ProviderCard(
     provider: ProviderListItem,
     counts: ProviderModelCount,
+    mediaCounts: ProviderMediaCount? = null,
     status: ProviderStatus?,
     onTailnet: Boolean,
     nowMillis: Long,
@@ -567,6 +596,9 @@ private fun ProviderCard(
             overflow = TextOverflow.Ellipsis,
         )
         Text(metaLine, style = MaterialTheme.typography.bodySmall, color = secondary)
+        mediaCounts?.let { countsByType ->
+            Text(providerMediaCountLabel(countsByType), style = MaterialTheme.typography.bodySmall, color = secondary)
+        }
         ProviderConnectionLine(provider.id, status, nowMillis)
     }
 }

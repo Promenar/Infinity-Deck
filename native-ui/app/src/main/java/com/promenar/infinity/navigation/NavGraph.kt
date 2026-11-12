@@ -39,6 +39,8 @@ import com.promenar.infinity.ui.settings.ProviderModelsScreen
 import com.promenar.infinity.ui.settings.SettingsViewModel
 import com.promenar.infinity.ui.settings.ProviderListScreen
 import com.promenar.infinity.ui.settings.DefaultModelsScreen
+import com.promenar.infinity.ui.settings.mediaSettingsDestinations
+import com.promenar.infinity.ui.settings.MediaSettingsRoutes
 import com.promenar.infinity.ui.settings.AgentRuntimeSection
 import com.promenar.infinity.ui.settings.SkillsScreen
 import com.promenar.infinity.ui.settings.ThemeScreen
@@ -890,10 +892,13 @@ internal fun NavGraphBuilder.settingsDestinations(
         }
     }
 
+    mediaSettingsDestinations(navigator)
+
     composablePage(NavDestinations.DEFAULT_MODELS) { entry ->
         navigator.Page(entry) {
             DefaultModelsScreen(
-                onNavigateBack = { navigator.back() }
+                onNavigateBack = { navigator.back() },
+                onNavigateToMediaModels = { navigator.open(MediaSettingsRoutes.MODELS) },
             )
         }
     }
