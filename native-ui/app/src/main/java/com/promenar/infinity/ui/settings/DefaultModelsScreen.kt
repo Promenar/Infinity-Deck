@@ -46,7 +46,8 @@ enum class DefaultModelRole(
 
 @Composable
 fun DefaultModelsScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToMediaModels: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(context.applicationContext as android.app.Application))
@@ -93,7 +94,8 @@ fun DefaultModelsScreen(
 
     DefaultModelsScreenContent(
         state = state,
-        actions = actions
+        actions = actions,
+        onMediaModels = onNavigateToMediaModels,
     )
 
     if (activePickerRole != null) {
@@ -143,7 +145,8 @@ internal data class DefaultModelsScreenActions(
 @Composable
 internal fun DefaultModelsScreenContent(
     state: DefaultModelsScreenState,
-    actions: DefaultModelsScreenActions
+    actions: DefaultModelsScreenActions,
+    onMediaModels: (() -> Unit)? = null,
 ) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.settings_default_models),
@@ -170,6 +173,11 @@ internal fun DefaultModelsScreenContent(
                             onClearModel = { actions.onClearModel(role) },
                         )
                     }
+                }
+            }
+            if (onMediaModels != null) item("media-models") {
+                InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
+                    InfinitySettingsItem(title = stringResource(R.string.media_settings_title), onClick = onMediaModels, showChevron = true)
                 }
             }
             item("timeouts") {

@@ -147,6 +147,7 @@ internal data class ProviderModelsScreenActions(
     val onClearNotice: () -> Unit,
     val onRefreshCatalog: () -> Unit = {},
     val onEditProvider: () -> Unit = {},
+    val onOpenMediaModel: ((String) -> Unit)? = null,
 )
 
 @Composable
@@ -210,6 +211,7 @@ fun ProviderModelsScreen(
         onClearNotice = { viewModel.clearSyncNotice() },
         onRefreshCatalog = { viewModel.refreshModelCatalog() },
         onEditProvider = { onNavigateToSecondary(NavDestinations.providerForm(providerId)) },
+        onOpenMediaModel = { onNavigateToSecondary(MediaSettingsRoutes.model(it)) },
     )
 
     ProviderModelsScreenContent(
@@ -293,6 +295,7 @@ internal fun ProviderModelsScreenContent(
                     model = editing,
                     testState = state.modelTestStates[editing.id] ?: ModelTestState.Idle,
                     onClose = { selectedModelId = null },
+                    onOpenMediaSettings = actions.onOpenMediaModel?.let { open -> { open(editing.id) } },
                     onUpdate = actions.onUpdate,
                     onTest = { actions.onTest(editing.id) },
                     onCancel = { actions.onCancelTest(editing.id) },

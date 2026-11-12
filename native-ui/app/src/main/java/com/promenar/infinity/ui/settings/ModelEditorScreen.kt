@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.data.model.effectiveMediaSettings
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.withRecordedUserEdits
 import com.promenar.infinity.domain.generation.GenerationFailureCode
@@ -79,6 +80,7 @@ internal fun ModelEditorScreen(
     onCancel: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenMediaSettings: (() -> Unit)? = null,
 ) {
     var showDeleteConfirmation by remember(model.id) { mutableStateOf(false) }
     var selectedType by remember(model.id) { mutableStateOf(model.type) }
@@ -170,6 +172,11 @@ internal fun ModelEditorScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
+            if (onOpenMediaSettings != null && model.effectiveMediaSettings() != null) item("media-settings") {
+                InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
+                    InfinitySettingsItem(title = stringResource(R.string.media_settings_title), onClick = onOpenMediaSettings, showChevron = true)
+                }
+            }
             item("identity") {
                 InfinitySettingsSection(
                     title = stringResource(R.string.model_editor_group_identity),
