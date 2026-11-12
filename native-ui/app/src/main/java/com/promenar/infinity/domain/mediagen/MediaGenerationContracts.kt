@@ -31,10 +31,10 @@ data class MediaCapabilities(
     val referenceOrder: List<String> = emptyList(),
 ) {
     init {
-        require(maxImages >= 0 && maxVideos >= 0 && maxAudio >= 0)
-        require(minDurationSeconds == null || minDurationSeconds >= 0)
-        require(maxDurationSeconds == null || maxDurationSeconds >= 0)
-        require(minDurationSeconds == null || maxDurationSeconds == null || minDurationSeconds <= maxDurationSeconds)
+        require(maxImages >= 0 && maxVideos >= 0 && maxAudio >= 0) { "capabilities.maxImages/maxVideos/maxAudio: 不能小于 0" }
+        require(minDurationSeconds == null || minDurationSeconds >= 0) { "capabilities.minDurationSeconds: 不能小于 0" }
+        require(maxDurationSeconds == null || maxDurationSeconds >= 0) { "capabilities.maxDurationSeconds: 不能小于 0" }
+        require(minDurationSeconds == null || maxDurationSeconds == null || minDurationSeconds <= maxDurationSeconds) { "capabilities.minDurationSeconds/maxDurationSeconds: 最小时长不能超过最大时长" }
     }
 }
 
@@ -63,6 +63,7 @@ data class MediaGenerationRequest(
     val sessionId: String = "",
     /** 产物下载到的工作区相对目录，例如 productions/wugang/S1E01/takes。 */
     val outputDir: String = "",
+    val params: Map<String, kotlinx.serialization.json.JsonPrimitive> = emptyMap(),
 )
 
 data class RequestValidation(

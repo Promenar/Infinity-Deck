@@ -18,7 +18,6 @@
     <plurals name="production_panel_asset_usage">
         <item quantity="other">%d 个镜头引用</item>
     </plurals>
-    <string name="production_panel_locked_progress">已定 %1$d/%2$d</string>
     <string name="production_panel_episode_number">第 %d 集</string>
     <string name="production_panel_scene_number">第 %d 场</string>
     <string name="production_panel_seconds">%s 秒</string>
@@ -35,7 +34,7 @@
 
     <string name="production_panel_stage_not_started">未开始</string>
     <string name="production_panel_stage_in_progress">进行中</string>
-    <string name="production_panel_stage_locked">已锁定</string>
+    <string name="production_panel_stage_locked">已完成</string>
     <string name="production_panel_stage_skipped">已跳过</string>
 
     <string name="production_panel_shot_todo">待生成</string>
@@ -47,7 +46,7 @@
     <string name="production_panel_asset_draft">草稿</string>
     <string name="production_panel_asset_review">待审</string>
     <string name="production_panel_asset_locked">已批准</string>
-    <string name="production_panel_asset_redo">打回</string>
+    <string name="production_panel_asset_redo">已否决</string>
 
     <string name="production_panel_asset_all">全部</string>
     <string name="production_panel_asset_character">角色</string>
@@ -71,7 +70,6 @@
 
     <string name="production_panel_section_stages">阶段</string>
     <string name="production_panel_section_pending">待你处理</string>
-    <string name="production_panel_section_redo">待重做</string>
     <string name="production_panel_section_episodes">剧集</string>
     <string name="production_panel_section_bible">故事圣经</string>
     <string name="production_panel_section_takes">候选</string>
@@ -92,7 +90,6 @@
     <string name="production_panel_save">保存</string>
     <string name="production_panel_back">返回</string>
     <string name="production_panel_stage_menu">阶段状态</string>
-    <string name="production_panel_selected">已选</string>
     <string name="production_panel_take_number">候选 %d</string>
 
     <string name="production_panel_prompt_title">编辑提示词</string>

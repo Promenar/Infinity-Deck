@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.mediagen.comfy
 
 import kotlinx.coroutines.test.runTest
+import com.promenar.infinity.domain.mediagen.InputKind
 import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -26,9 +27,13 @@ class ComfyHttpTest {
         }.build()
         val http = OkHttpComfyHttp(client, credentials)
         assertEquals("infinity/input.wav", http.upload(host, "ref.png", "image/png", ByteArrayInputStream("data".toByteArray())))
-        http.upload(host, "ref.wav", "audio/wav", ByteArrayInputStream("audio-data".toByteArray()), audio = true)
+        http.upload(host, "ref.wav", "audio/wav", ByteArrayInputStream("audio-data".toByteArray()), kind = InputKind.AUDIO)
+        http.upload(host, "source.webm", "video/webm", ByteArrayInputStream("video-data".toByteArray()), kind = InputKind.VIDEO)
         assertEquals("/upload/image", requests[0].first.url.encodedPath)
         assertEquals("/upload/audio", requests[1].first.url.encodedPath)
+        assertEquals("/upload/image", requests[2].first.url.encodedPath)
+        assertTrue(requests[2].second.contains("name=\"image\"; filename=\"source.webm\""))
+        assertTrue(requests[2].second.contains("Content-Type: video/webm"))
         assertTrue(requests[0].second.contains("name=\"image\"; filename=\"ref.png\""))
         assertTrue(requests[1].second.contains("name=\"audio\"; filename=\"ref.wav\""))
         assertTrue(requests[0].second.contains("name=\"overwrite\""))

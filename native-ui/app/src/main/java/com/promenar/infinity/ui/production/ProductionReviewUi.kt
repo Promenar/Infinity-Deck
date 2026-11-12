@@ -31,6 +31,7 @@ import com.promenar.infinity.data.production.ReviewKind
 import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.data.production.unsentReviews
 import com.promenar.infinity.data.production.unsentSuggestions
+import com.promenar.infinity.data.production.queuedReviews
 import com.promenar.infinity.data.production.verdictOf
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityPillButton
@@ -39,9 +40,12 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /* 回合制审核的界面构件：页头“发送”、结论标签、批准/否决/建议三个动作与审核弹层。全界面只用这一组。 */
 
-/** 页头“发送”的状态：未发送条数、是否正在发送与点击回调。由面板提供，各页页头读取。 */
-internal data class ProductionSendState(val count: Int, val sending: Boolean, val onSend: () -> Unit) {
-    val enabled: Boolean get() = count > 0 && !sending
+/**
+ * 页头“发送”的状态：未发送条数、是否正在发送、是否有一轮正在会话队列里排队，以及点击回调。
+ * 由面板提供，各页页头读取。排队的一轮送达或撤回之前不能再发送。
+ */
+internal data class ProductionSendState(val count: Int, val sending: Boolean, val queued: Boolean = false, val onSend: () -> Unit) {
+    val enabled: Boolean get() = count > 0 && !sending && !queued
 }
 
 /** 面板内所有页头共用的“发送”；面板以外（加载中、空项目）为 null，页头不画。 */
@@ -53,7 +57,11 @@ internal fun Production.unsentCount(): Int = unsentReviews().size
 @Composable
 internal fun ProductionSendButton(state: ProductionSendState, modifier: Modifier = Modifier) {
     InfinityPillButton(
-        text = if (state.count > 0) stringResource(R.string.production_review_send_count, state.count) else stringResource(R.string.production_review_send),
+        text = when {
+            state.queued -> stringResource(R.string.production_review_queued)
+            state.count > 0 -> stringResource(R.string.production_review_send_count, state.count)
+            else -> stringResource(R.string.production_review_send)
+        },
         onClick = state.onSend,
         tone = InfinityPillTone.PRIMARY,
         enabled = state.enabled,
@@ -63,10 +71,11 @@ internal fun ProductionSendButton(state: ProductionSendState, modifier: Modifier
 }
 
 /** 对象上显示的结论标签。 */
-internal enum class ReviewChip { PENDING, APPROVED, REJECTED, UNSENT, SUGGESTION_UNSENT }
+internal enum class ReviewChip { PENDING, APPROVED, REJECTED, UNSENT, QUEUED, SUGGESTION_UNSENT }
 
 /**
- * 对象当前的结论标签：结论（没有结论时为待审）、结论未发送、有未发送的建议。
+ * 对象当前的结论标签：结论（没有结论时为待审）、结论未发送或已排队、有未发送的建议。
+ * 只有建议在排队时也标为已排队。
  * [settled] 为对象在审核记录之前已经定稿（例如旧版锁定的剧本），没有结论时显示已批准。
  * 只接受建议的对象（项目、集、镜头）不显示待审。
  */
@@ -78,18 +87,19 @@ internal fun Production.reviewChips(target: ReviewTarget, settled: Boolean = fal
             ReviewKind.REJECT -> add(ReviewChip.REJECTED)
             else -> if (target.acceptsVerdict) add(if (settled) ReviewChip.APPROVED else ReviewChip.PENDING)
         }
-        if (verdict != null && verdict.round == null) add(ReviewChip.UNSENT)
+        if (verdict != null && verdict.round == null) add(if (verdict.queuedRound != null) ReviewChip.QUEUED else ReviewChip.UNSENT)
         if (unsentSuggestions(target).isNotEmpty()) add(ReviewChip.SUGGESTION_UNSENT)
+        else if (ReviewChip.QUEUED !in this && queuedReviews().any { it.target == target && it.kind == ReviewKind.SUGGEST }) add(ReviewChip.QUEUED)
     }
 }
 
 /**
- * 点击批准或否决对应的用户动作：同种结论未发送时再点一次即撤回；其余情况记下新结论，
+ * 点击批准或否决对应的用户动作：同种结论未发送时再点一次即撤回；其余情况（含已排队的结论）记下新结论，
  * 已批准的对象可以直接改为否决，反之亦然。
  */
 internal fun Production.verdictAction(target: ReviewTarget, kind: ReviewKind, note: String? = null): ProductionUserAction {
     val current = verdictOf(target)
-    return if (current != null && current.kind == kind && current.round == null) ProductionUserAction.RetractReview(target, kind)
+    return if (current != null && current.kind == kind && current.round == null && current.queuedRound == null) ProductionUserAction.RetractReview(target, kind)
     else ProductionUserAction.Review(target, kind, note)
 }
 
@@ -99,6 +109,7 @@ internal fun ReviewChip.spec(): ProductionChipSpec = when (this) {
     ReviewChip.APPROVED -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
     ReviewChip.REJECTED -> ProductionChipSpec(stringResource(R.string.production_review_rejected), ProductionTone.ERROR)
     ReviewChip.UNSENT -> ProductionChipSpec(stringResource(R.string.production_review_unsent), ProductionTone.INFO)
+    ReviewChip.QUEUED -> ProductionChipSpec(stringResource(R.string.production_review_queued), ProductionTone.INFO)
     ReviewChip.SUGGESTION_UNSENT -> ProductionChipSpec(stringResource(R.string.production_review_suggestion_unsent), ProductionTone.INFO)
 }
 
@@ -107,11 +118,12 @@ internal fun ReviewChip.spec(): ProductionChipSpec = when (this) {
 internal fun Production.reviewChipSpec(target: ReviewTarget, settled: Boolean = false): ProductionChipSpec? {
     val chips = reviewChips(target, settled)
     val primary = chips.firstOrNull() ?: return null
-    // 结论未发送时把“未发送”并进同一个标签，行内只放一个标签。
+    // 结论未发送或已排队时并进同一个标签，行内只放一个标签。
     return when {
-        ReviewChip.UNSENT !in chips -> primary.spec()
-        primary == ReviewChip.APPROVED -> ProductionChipSpec(stringResource(R.string.production_review_approved_unsent), ProductionTone.SUCCESS)
-        primary == ReviewChip.REJECTED -> ProductionChipSpec(stringResource(R.string.production_review_rejected_unsent), ProductionTone.ERROR)
+        ReviewChip.UNSENT in chips && primary == ReviewChip.APPROVED -> ProductionChipSpec(stringResource(R.string.production_review_approved_unsent), ProductionTone.SUCCESS)
+        ReviewChip.UNSENT in chips && primary == ReviewChip.REJECTED -> ProductionChipSpec(stringResource(R.string.production_review_rejected_unsent), ProductionTone.ERROR)
+        ReviewChip.QUEUED in chips && primary == ReviewChip.APPROVED -> ProductionChipSpec(stringResource(R.string.production_review_approved_queued), ProductionTone.SUCCESS)
+        ReviewChip.QUEUED in chips && primary == ReviewChip.REJECTED -> ProductionChipSpec(stringResource(R.string.production_review_rejected_queued), ProductionTone.ERROR)
         else -> primary.spec()
     }
 }

@@ -21,7 +21,6 @@
         <item quantity="one">Used in %d shot</item>
         <item quantity="other">Used in %d shots</item>
     </plurals>
-    <string name="production_panel_locked_progress">%1$d/%2$d locked</string>
     <string name="production_panel_episode_number">Episode %d</string>
     <string name="production_panel_scene_number">Scene %d</string>
     <string name="production_panel_seconds">%ss</string>
@@ -38,7 +37,7 @@
 
     <string name="production_panel_stage_not_started">Not started</string>
     <string name="production_panel_stage_in_progress">In progress</string>
-    <string name="production_panel_stage_locked">Locked</string>
+    <string name="production_panel_stage_locked">Done</string>
     <string name="production_panel_stage_skipped">Skipped</string>
 
     <string name="production_panel_shot_todo">To do</string>
@@ -50,7 +49,7 @@
     <string name="production_panel_asset_draft">Draft</string>
     <string name="production_panel_asset_review">Review</string>
     <string name="production_panel_asset_locked">Approved</string>
-    <string name="production_panel_asset_redo">Redo</string>
+    <string name="production_panel_asset_redo">Rejected</string>
 
     <string name="production_panel_asset_all">All</string>
     <string name="production_panel_asset_character">Characters</string>
@@ -74,7 +73,6 @@
 
     <string name="production_panel_section_stages">Stages</string>
     <string name="production_panel_section_pending">Needs you</string>
-    <string name="production_panel_section_redo">Redo</string>
     <string name="production_panel_section_episodes">Episodes</string>
     <string name="production_panel_section_bible">Story bible</string>
     <string name="production_panel_section_takes">Takes</string>
@@ -95,7 +93,6 @@
     <string name="production_panel_save">Save</string>
     <string name="production_panel_back">Back</string>
     <string name="production_panel_stage_menu">Stage status</string>
-    <string name="production_panel_selected">Selected</string>
     <string name="production_panel_take_number">Take %d</string>
 
     <string name="production_panel_prompt_title">Edit prompt</string>

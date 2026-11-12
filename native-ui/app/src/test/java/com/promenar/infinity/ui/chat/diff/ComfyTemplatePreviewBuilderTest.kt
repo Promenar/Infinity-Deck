@@ -8,9 +8,14 @@ import com.promenar.infinity.domain.mediagen.ComfyTemplate
 import com.promenar.infinity.domain.mediagen.GenerationMode
 import com.promenar.infinity.domain.mediagen.MediaCapabilities
 import com.promenar.infinity.domain.mediagen.SlotKind
+import com.promenar.infinity.domain.mediagen.TemplateRole
+import com.promenar.infinity.domain.mediagen.TemplateOperation
+import com.promenar.infinity.domain.mediagen.TemplateParam
+import com.promenar.infinity.domain.mediagen.TemplateParamType
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -24,6 +29,26 @@ class ComfyTemplatePreviewBuilderTest {
         models = listOf(ComfyModelSlot("1", "model")),
         capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)),
     )
+
+    @Test
+    fun `角色操作参数和新槽位数量变化逐行展示并显示参数移除`() {
+        val requested = template.copy(role = TemplateRole.DERIVE, operation = TemplateOperation("超分"),
+            slots = template.slots + listOf(ComfySlot("1", "video", SlotKind.INPUT_VIDEO),
+                ComfySlot("1", "steps", SlotKind.PARAM, param = "steps"), ComfySlot("1", "seconds", SlotKind.DURATION),
+                ComfySlot("1", "mode", SlotKind.PARAM, param = "mode")),
+            params = listOf(TemplateParam("steps", "步数", TemplateParamType.NUMBER, JsonPrimitive(10), min = 1.0, max = 30.0, integer = true),
+                TemplateParam("mode", "模式", TemplateParamType.ENUM, JsonPrimitive("slow"), options = listOf("slow", "fast"))))
+        val rows = ComfyTemplatePreviewBuilder.build(template, requested, "工作站", "配置派生处理").capabilityChanges
+        assertThat(rows).containsAtLeast(FieldChange("role", "GENERATE", "DERIVE"), FieldChange("operation", null, "超分"),
+            FieldChange("slots.INPUT_VIDEO", "0", "1"), FieldChange("slots.PARAM", "0", "2"), FieldChange("slots.DURATION", "0", "1"),
+            FieldChange("param.steps", null, "步数 · NUMBER · 10 · 1.0～30.0 · 整数"), FieldChange("param.mode", null, "模式 · ENUM · slow · slow、fast"))
+        val removed = ComfyTemplatePreviewBuilder.build(requested, template, "工作站", "配置生成模板").capabilityChanges
+        assertThat(removed).contains(FieldChange("param.steps", "步数 · NUMBER · 10 · 1.0～30.0 · 整数", null))
+        val changed = requested.copy(operation = TemplateOperation("补帧"), params = requested.params.map { if (it.key == "steps") it.copy(default = JsonPrimitive(20)) else it })
+        val updates = ComfyTemplatePreviewBuilder.build(requested, changed, "工作站", "调整参数").capabilityChanges
+        assertThat(updates).containsAtLeast(FieldChange("operation", "超分", "补帧"),
+            FieldChange("param.steps", "步数 · NUMBER · 10 · 1.0～30.0 · 整数", "步数 · NUMBER · 20 · 1.0～30.0 · 整数"))
+    }
 
     @Test
     fun `新建模板显示节点类型模型和全部能力并保留审批说明`() {

@@ -930,6 +930,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             java.io.File(filesDir, "composer_queue"),
             { uri -> contentResolver.openInputStream(android.net.Uri.parse(uri)) },
             isUserPersisted = { _, userId -> messageRepository.getById(userId) != null },
+            applicationScope = generationScope,
+            panelMessageListener = { productionReviewDispatcher },
         )
     }
     val generationPresentationStore by lazy {
@@ -1877,6 +1879,18 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
     val stateBoardRepository by lazy { com.promenar.infinity.data.repository.StateBoardRepository(database) }
+    val productionReviewScope: CoroutineScope get() = generationScope
+    val productionReviewDispatcher by lazy {
+        com.promenar.infinity.data.production.ProductionReviewDispatcher(
+            repository = com.promenar.infinity.data.production.RoomProductionReviewDeliveryStore(database, productionRepository),
+            tasks = { withContext(Dispatchers.IO) { com.promenar.infinity.data.mediagen.queue.RoomMediaTaskStore(database).all().map { it.task } } },
+            strings = com.promenar.infinity.data.production.AndroidReviewMessageStrings(this),
+            queue = composerQueueStore,
+            sessionExists = { withContext(Dispatchers.IO) { database.sessionDao().getById(it) != null } },
+            applicationScope = generationScope,
+        )
+    }
+
     val productionRepository by lazy {
         com.promenar.infinity.data.repository.ProductionRepository(database, com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(workspaceRepository, fileOperationRepository, externalFolderManager, workspaceMediaResolver))
     }
@@ -2488,6 +2502,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 }
                 startupIssueManager.recover(StartupStep.MODEL_CATALOG, StartupIssueScope.subsystem(StartupSubsystem.MODEL_CATALOG)) { startModelCatalogUpdates() }
                 _startupState.value = BackupStartupState.Ready
+                productionReviewDispatcher.reconcileAll()
                 withContext(Dispatchers.IO) { productionMediaRuntime.install() }
                 _installedProductionMediaRuntime.value = productionMediaRuntime
                 if (skillStoreMonitorJob?.isActive != true) {

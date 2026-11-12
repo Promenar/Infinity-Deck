@@ -36,7 +36,6 @@ class ProductionPhaseTwoPresentationTest {
     private val snapshot = ProductionSnapshot(production, 1, ManifestSync.InSync)
     private fun task(id: String = "task", state: MediaTaskState = MediaTaskState.AWAITING_APPROVAL, ref: String = "p:$id") = MediaTask(id,
         MediaGenerationRequest(channel.id, GenerationMode.TEXT, "夜色", emptyList(), ref), Money(BigDecimal.ONE, "CNY"), state = state)
-    private fun preview(blocked: String? = null) = ShotPlanPreview(channel, true, "通道 A", ShotMode.TEXT, emptyList(), emptyList(), "夜色", false, PromptFormat.GENERIC, null, blocked, emptyList())
 
     @Test fun `任务行标题还原镜头编号与标题且只认本项目`() {
         val ref = ProductionSourceRef("p", "S1E01", "SC01-01")
@@ -156,16 +155,6 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(approved.production.findShot(episode.id, shot.code)!!.shot.appearances.single()).isEqualTo(switched)
         val toggled = ProductionUserEngine.apply(snapshot, 1, ProductionUserAction.ToggleReferenceSlot(episode.id, shot.code, asset.id, "side", true), 2)
         assertThat(toggled.production.findShot(episode.id, shot.code)!!.shot.appearances.single().referenceSlotIds).containsExactly("front", "side")
-    }
-
-    @Test fun `未锁定阻断与无规划禁止生成试验只豁免锁定`() {
-        assertThat(generationEnabled(false, false, preview(), false)).isFalse()
-        assertThat(generationEnabled(false, true, preview(), false)).isTrue()
-        assertThat(generationEnabled(true, false, preview("输入超限"), false)).isFalse()
-        assertThat(generationEnabled(true, true, preview("输入超限"), false)).isFalse()
-        assertThat(generationEnabled(true, false, null, false)).isFalse()
-        assertThat(generationEnabled(true, false, preview(), true)).isFalse()
-        assertThat(generationEnabled(true, false, preview().copy(channel = null), false)).isFalse()
     }
 
     @Test fun `只有进行中的任务可以取消`() {

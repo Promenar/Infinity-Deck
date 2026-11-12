@@ -105,11 +105,11 @@ class ComfyRepository(
         val caps = template.channel().capabilities
         require(template.slots.size in 1..200 && template.models.size <= 2000) { "模板最多包含 200 个槽位和 2000 个模型声明" }
         require(template.slots.count { it.kind == SlotKind.OUTPUT } in 1..32) { "模板需要 1～32 个产出槽位" }
-        require(template.slots.any { it.kind == SlotKind.PROMPT }) { "模板必须声明提示词槽位" }
+        require(template.role == TemplateRole.DERIVE || template.slots.any { it.kind == SlotKind.PROMPT }) { "slots.PROMPT: GENERATE 必须声明提示词槽位" }
         template.slots.filter { it.kind == SlotKind.OUTPUT }.forEach {
-            require(it.outputKind != null || it.input in setOf("images", "gifs", "videos", "audio")) { "自定义产出字段需要声明 outputKind" }
+            require(it.outputKind != null || it.input in setOf("images", "gifs", "videos", "video", "audio")) { "自定义产出字段需要声明 outputKind" }
         }
-        if (GenerationMode.REFERENCE in caps.modes) require(caps.maxImages > 0 || caps.maxAudio > 0) { "参考模式需要参考槽位" }
+        if (GenerationMode.REFERENCE in caps.modes) require(caps.maxImages > 0 || caps.maxAudio > 0 || caps.maxVideos > 0) { "参考模式需要参考槽位" }
         if (GenerationMode.FIRST_FRAME in caps.modes || GenerationMode.FIRST_LAST_FRAME in caps.modes) require(template.slots.any { it.kind == SlotKind.FIRST_FRAME }) { "首帧模式需要首帧槽位" }
         if (GenerationMode.FIRST_LAST_FRAME in caps.modes) require(template.slots.any { it.kind == SlotKind.LAST_FRAME }) { "首尾帧模式需要尾帧槽位" }
         require(caps.referenceOrder.size <= caps.maxImages && caps.referenceOrder.all { it.isNotBlank() }) { "参考位顺序超过容量或含空名称" }

@@ -36,7 +36,7 @@ class ProductionReviewMessageTest {
         val initial = reviewFixture()
         assertThat(ProductionReviewMessage.compose(initial.production, emptyList(), strings)).isNull()
         var s = reviewApply(initial, ProductionUserAction.Review(ReviewTarget.script("S1E01"), ReviewKind.APPROVE, null))
-        s = reviewApply(s, ProductionUserAction.MarkReviewSent(1, 30))
+        s = reviewSend(s, 1, 30)
         assertThat(ProductionReviewMessage.compose(s.production, emptyList(), strings)).isNull()
     }
 

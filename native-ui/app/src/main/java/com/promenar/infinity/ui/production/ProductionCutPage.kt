@@ -49,6 +49,8 @@ internal fun ProductionCutTab(
     busy: Boolean = false,
     onRun: (ProductionUserAction) -> Unit = {},
     onSubmit: suspend (ProductionUserAction) -> String? = { null },
+    focusCutId: String? = null,
+    onFocusHandled: () -> Unit = {},
 ) {
     val episodes = production.episodes()
     var episodeId by rememberSaveable(production.id) { mutableStateOf(production.defaultEpisodeId()) }
@@ -100,6 +102,11 @@ internal fun ProductionCutTab(
     val current = version.clips.getOrNull(clipIndex.coerceIn(0, (version.clips.size - 1).coerceAtLeast(0)))
     val totalSeconds = version.clips.sumOf { it.seconds }
     val select: (String) -> Unit = { versionId = it; clipIndex = 0; playing = false }
+    LaunchedEffect(focusCutId) {
+        if (focusCutId == null) return@LaunchedEffect
+        production.cuts.firstOrNull { it.id == focusCutId }?.let { episodeId = it.episodeId; select(it.id) }
+        onFocusHandled()
+    }
 
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
         if (episode != null && episodes.size > 1) {

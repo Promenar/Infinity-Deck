@@ -34,30 +34,38 @@ class ComfyBackend(
             check(template.locked) { "模板未锁定，请先保存模板" }
             check(checked.preflight.status == PreflightStatus.PASS) { "模板预检未通过，请复核节点、模型和槽位" }
             require(channel == template.channel()) { "通道能力已变化，请刷新通道" }
-            val validation = validateRequest(channel, request)
+            val validation = validateRequest(channel, request).let {
+                // 纯派生处理的输入合同由来源视频和参数组成。
+                if (template.role == TemplateRole.DERIVE && template.slots.none { slot -> slot.kind == SlotKind.PROMPT })
+                    it.copy(specErrors = it.specErrors.filterNot { field -> field == "prompt" }) else it
+            }
             require(validation.valid) { "生成请求不满足通道能力：超出 ${validation.excessInputs.size} 项，无效输入 ${validation.invalidInputs.size} 项；${validation.specErrors.joinToString("；")}" }
             require(request.sessionId.isNotBlank()) { "生成请求需要会话 id" }
             if (request.outputDir.isNotEmpty()) productionPath(request.outputDir)
-            require(request.specs.durationSeconds == null || request.specs.frames != null) { "ComfyUI 时长需要显式指定 frames" }
+            require(request.specs.durationSeconds == null || request.specs.frames != null || template.slots.any { it.kind == SlotKind.DURATION }) { "ComfyUI 时长需要 DURATION 槽位或显式指定 frames" }
+            val params = template.resolveParams(request.params)
+            require(template.role != TemplateRole.DERIVE || request.inputs.count { it.kind == InputKind.VIDEO } == 1) { "INPUT_VIDEO: DERIVE 需要一个来源视频" }
             val values = requestValues(template, request)
             // 先检查数值和数量，再读取或上传媒体。
-            validateFilledComfySpecs(template, fillComfyWorkflow(template, values + inputPlaceholders(request)))
+            validateFilledComfySpecs(template, fillComfyWorkflow(template, values + inputPlaceholders(request), params))
             request.inputs.forEach { input ->
                 val kind = slotKind(input)
                 val path = productionPath(input.location)
                 val resolution = resolver.resolve(request.sessionId, resolver.productionPath(request.sessionId, path)) as? MediaResolution.Available
                     ?: throw ComfyFailure("输入媒体不可读取，请检查会话工作区路径")
-                val expected = if (input.kind == InputKind.IMAGE) MediaKind.IMAGE else MediaKind.AUDIO
+                val expected = when (input.kind) { InputKind.IMAGE -> MediaKind.IMAGE; InputKind.VIDEO -> MediaKind.VIDEO; InputKind.AUDIO -> MediaKind.AUDIO }
                 require(resolution.ref.kind == expected) { "输入文件的媒体类型与请求不一致" }
-                val extension = extension(resolution.ref.mimeType, input.kind)
+                val mime = resolution.ref.mimeType.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+                    ?: inputMime(path, input.kind)
+                val extension = extension(mime, input.kind)
                 val filename = "input-${UUID.randomUUID()}.$extension"
-                val remoteFile = resolver.open(resolution).use { source -> http.upload(host, filename, resolution.ref.mimeType, source, input.kind == InputKind.AUDIO) }
+                val remoteFile = resolver.open(resolution).use { source -> http.upload(host, filename, mime, source, input.kind) }
                 values[kind] = values[kind].orEmpty() + remoteFile
             }
-            val workflow = fillComfyWorkflow(template, values)
+            val workflow = fillComfyWorkflow(template, values, params)
             validateFilledComfySpecs(template, workflow)
             val info = http.objectInfoFor(host, workflow)
-            val filledCheck = preflightComfy(template.copy(workflow = workflow, slots = emptyList()), info)
+            val filledCheck = preflightComfy(ComfyTemplate(template.id, workflow, emptyList()), info)
             if (filledCheck.status != PreflightStatus.PASS) {
                 repository.markReview(template.id, "填充后的动态输入预检未通过，请复核槽位连线与主机 schema")
                 throw ComfyFailure("动态输入预检未通过：${(filledCheck.missing + filledCheck.uncertain).take(8).joinToString("；")}")
@@ -133,7 +141,7 @@ class ComfyBackend(
         return host
     }
     private fun requestValues(template: ComfyTemplate, request: MediaGenerationRequest): MutableMap<SlotKind, List<String>> = mutableMapOf<SlotKind, List<String>>().apply {
-        put(SlotKind.PROMPT, listOf(request.prompt))
+        if (template.slots.any { it.kind == SlotKind.PROMPT }) put(SlotKind.PROMPT, listOf(request.prompt))
         request.specs.width?.let { put(SlotKind.WIDTH, listOf(it.toString())) }
         request.specs.height?.let { put(SlotKind.HEIGHT, listOf(it.toString())) }
         if (request.specs.resolution != null && (request.specs.width == null || request.specs.height == null)) {
@@ -143,11 +151,13 @@ class ComfyBackend(
             if (request.specs.height == null) put(SlotKind.HEIGHT, listOf(match.groupValues[2]))
         }
         request.specs.frames?.let { put(SlotKind.FRAMES, listOf(it.toString())) }
+        if (template.slots.any { it.kind == SlotKind.DURATION }) request.specs.durationSeconds?.let { put(SlotKind.DURATION, listOf(it.toString())) }
         if (template.slots.any { it.kind == SlotKind.SEED }) put(SlotKind.SEED, listOf((request.specs.seed ?: kotlin.random.Random.nextLong(0, Long.MAX_VALUE)).toString()))
         else require(request.specs.seed == null) { "模板未声明种子槽位" }
     }
     private fun inputPlaceholders(request: MediaGenerationRequest): Map<SlotKind, List<String>> = request.inputs.groupBy(::slotKind).mapValues { (_, v) -> v.map { "input-placeholder" } }
     private fun slotKind(input: MediaInput): SlotKind = when {
+        input.kind == InputKind.VIDEO -> SlotKind.INPUT_VIDEO
         input.kind == InputKind.IMAGE && input.role == InputRole.REFERENCE -> SlotKind.REFERENCE_IMAGES
         input.kind == InputKind.IMAGE && input.role == InputRole.FIRST_FRAME -> SlotKind.FIRST_FRAME
         input.kind == InputKind.IMAGE && input.role == InputRole.LAST_FRAME -> SlotKind.LAST_FRAME
@@ -167,7 +177,13 @@ internal fun productionPath(path: String): String {
 }
 private fun extension(mime: String?, kind: InputKind): String = when (mime) {
     "image/jpeg" -> "jpg"; "image/webp" -> "webp"; "image/png" -> "png"; "audio/wav", "audio/x-wav" -> "wav"; "audio/mpeg" -> "mp3"; "audio/flac" -> "flac"; "audio/ogg" -> "ogg"; "audio/mp4" -> "m4a"
+    "video/mp4" -> "mp4"; "video/webm" -> "webm"; "video/quicktime" -> "mov"
     else -> when (kind) { InputKind.IMAGE -> "png"; InputKind.VIDEO -> "mp4"; InputKind.AUDIO -> "wav" }
+}
+private fun inputMime(path: String, kind: InputKind): String = when (kind) {
+    InputKind.VIDEO -> when (path.substringAfterLast('.', "").lowercase()) { "mov" -> "video/quicktime"; "webm" -> "video/webm"; else -> "video/mp4" }
+    InputKind.IMAGE -> "image/png"
+    InputKind.AUDIO -> "audio/wav"
 }
 
 /** 产出声明随远端 ID 持久化，模板修改不会改变旧任务的下载解释。 */
@@ -204,13 +220,22 @@ fun parseComfyHistory(history: JsonObject, promptId: String, slots: List<ComfySl
     val outputs = entry["outputs"] as? JsonObject ?: return RemoteStatus.Failed("ComfyUI 任务完成但缺少产物")
     val files = slots.flatMap { slot ->
         val node = outputs[slot.nodeId] as? JsonObject
-        (node?.get(slot.input) as? JsonArray).orEmpty().mapNotNull { raw ->
+        val kind = slot.outputKind ?: when (slot.input) { "images" -> InputKind.IMAGE; "gifs", "videos", "video" -> InputKind.VIDEO; "audio" -> InputKind.AUDIO; else -> return@flatMap emptyList() }
+        val fields = when (kind) { InputKind.IMAGE -> listOf("images"); InputKind.VIDEO -> listOf("gifs", "videos", "video"); InputKind.AUDIO -> listOf("audio") }
+        // 自定义历史字段保留原合同；标准字段按媒体种类选择，避免混入预览图。
+        val selected = if (slot.input in setOf("images", "gifs", "videos", "video", "audio")) fields else listOf(slot.input)
+        selected.flatMap { field ->
+            when (val value = node?.get(field)) {
+                is JsonArray -> value.toList()
+                is JsonObject -> listOf(value)
+                else -> emptyList()
+            }
+        }.mapNotNull { raw ->
             val value = raw as? JsonObject ?: return@mapNotNull null
             val filename = (value["filename"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
             val folder = (value["subfolder"] as? JsonPrimitive)?.contentOrNull.orEmpty()
             val type = (value["type"] as? JsonPrimitive)?.contentOrNull ?: "output"
             require(safeComfyFile(filename, false) && safeComfyFile(folder, true) && type in setOf("output", "temp", "input")) { "产物路径无效" }
-            val kind = slot.outputKind ?: when (slot.input) { "images" -> InputKind.IMAGE; "gifs", "videos" -> InputKind.VIDEO; "audio" -> InputKind.AUDIO; else -> return@mapNotNull null }
             val view = "http://comfy.invalid/view".toHttpUrl().newBuilder().addQueryParameter("filename", filename).addQueryParameter("subfolder", folder).addQueryParameter("type", type).build()
             RemoteOutput("/view?${view.encodedQuery}", kind)
         }

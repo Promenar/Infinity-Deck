@@ -29,6 +29,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.mediagen.comfy.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
@@ -162,7 +163,14 @@ internal fun ComfyTemplateScreenContent(
         val fixed = remember(template) { runCatching { com.promenar.infinity.data.mediagen.comfyPlanningSpecs(template) }.getOrNull() }
         val workflowSpecs = listOfNotNull(fixed?.width?.let { w -> fixed.height?.let { h -> "$w×$h" } },
             fixed?.frames?.let { stringResource(R.string.media_settings_frames, it) }).joinToString(" · ").ifEmpty { null }
+        InfinitySettingsSection(title = stringResource(R.string.media_settings_role)) {
+            MediaValue(stringResource(R.string.media_settings_role), stringResource(if (template.role == TemplateRole.DERIVE) R.string.media_settings_role_derive else R.string.media_settings_role_generate))
+            template.operation?.let { MediaValue(stringResource(R.string.media_settings_operation), it.label) }
+        }
         MediaCapabilitiesSection(template.group, caps, workflowSpecs)
+        if (template.params.isNotEmpty()) InfinitySettingsSection(title = stringResource(R.string.media_settings_params)) {
+            template.params.forEach { TemplateParamRow(it) }
+        }
         if (caps.maxImages > 0) {
             MediaValue(stringResource(R.string.media_settings_reference_input), referenceDescription(ReferenceInputDescription(CharacterReferenceMode.SEPARATE, caps.maxImages)))
             InfinitySettingsSection(title = stringResource(R.string.media_settings_references)) {
@@ -191,6 +199,7 @@ internal fun ComfyTemplateScreenContent(
                             SlotKind.OUTPUT -> slot.outputKind?.let { Text(mediaGroupLabel(when (it) {
                                 InputKind.IMAGE -> MediaGroup.IMAGE; InputKind.VIDEO -> MediaGroup.VIDEO; InputKind.AUDIO -> MediaGroup.AUDIO
                             }), style = MaterialTheme.typography.bodySmall) }
+                            SlotKind.PARAM -> slot.param?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                             else -> Unit
                         }
                     }
@@ -207,7 +216,45 @@ private fun slotKindLabel(kind: SlotKind) = stringResource(when (kind) {
     SlotKind.REFERENCE_AUDIO -> R.string.media_settings_slot_audio; SlotKind.WIDTH -> R.string.media_settings_slot_width
     SlotKind.HEIGHT -> R.string.media_settings_slot_height; SlotKind.FRAMES -> R.string.media_settings_slot_frames
     SlotKind.SEED -> R.string.media_settings_slot_seed; SlotKind.OUTPUT -> R.string.media_settings_slot_output
+    SlotKind.INPUT_VIDEO -> R.string.media_settings_slot_input_video; SlotKind.PARAM -> R.string.media_settings_slot_param
+    SlotKind.DURATION -> R.string.media_settings_slot_duration
 })
+
+/** 模板参数：键名，以及类型、缺省值与选项或范围。 */
+@Composable
+private fun TemplateParamRow(param: TemplateParam) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(param.label, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            SelectionContainer { Text(param.key, style = MaterialTheme.typography.bodyMedium) }
+            InfinityMetaLine(segments = templateParamSegments(param), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun templateParamSegments(param: TemplateParam): List<String> {
+    val on = stringResource(R.string.media_settings_on)
+    val off = stringResource(R.string.media_settings_off)
+    val default = when (param.type) {
+        TemplateParamType.BOOLEAN -> if (param.default.content.toBooleanStrictOrNull() == true) on else off
+        else -> param.default.content
+    }
+    return listOfNotNull(
+        stringResource(when (param.type) {
+            TemplateParamType.ENUM -> R.string.media_settings_param_enum
+            TemplateParamType.NUMBER -> if (param.integer) R.string.media_settings_param_integer else R.string.media_settings_param_number
+            TemplateParamType.BOOLEAN -> R.string.media_settings_param_boolean
+        }),
+        stringResource(R.string.media_settings_param_default, default),
+        param.options.takeIf { param.type == TemplateParamType.ENUM && it.isNotEmpty() }?.joinToString("、"),
+        param.min?.let { min -> param.max?.let { max -> stringResource(R.string.media_settings_param_range, paramNumber(min), paramNumber(max)) } }
+            ?: param.min?.let { stringResource(R.string.media_settings_param_min, paramNumber(it)) }
+            ?: param.max?.let { stringResource(R.string.media_settings_param_max, paramNumber(it)) },
+    )
+}
+
+private fun paramNumber(value: Double): String = if (value % 1.0 == 0.0 && kotlin.math.abs(value) < 1e15) value.toLong().toString() else value.toString()
 
 @Composable
 internal fun ComfyHostFormScreenContent(

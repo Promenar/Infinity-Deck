@@ -4,6 +4,8 @@ package com.promenar.infinity.data.production
 object ProductionUserEngine {
     fun apply(snapshot: ProductionSnapshot, expectedRevision: Long, action: ProductionUserAction, now: Long): ProductionSnapshot {
         if (snapshot.revision != expectedRevision) throw ProductionRevisionConflictException()
+        if (action is ProductionUserAction.MarkReviewSent && snapshot.production.queuedReviews().none { it.queuedRound == action.round } ||
+            action is ProductionUserAction.RevertReviewQueued && snapshot.production.queuedReviews().none { it.queuedRound == action.round }) return snapshot
         require(snapshot.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
         val revision = snapshot.revision + 1
         var p = snapshot.production
@@ -54,6 +56,8 @@ object ProductionUserEngine {
         when (action) {
             is ProductionUserAction.Review -> p = ProductionReviews.review(p, action, revision, now)
             is ProductionUserAction.RetractReview -> p = ProductionReviews.retract(p, action, revision)
+            is ProductionUserAction.MarkReviewQueued -> p = ProductionReviews.queued(p, action)
+            is ProductionUserAction.RevertReviewQueued -> p = ProductionReviews.revertQueued(p, action, revision)
             is ProductionUserAction.MarkReviewSent -> p = ProductionReviews.sent(p, action, revision)
             is ProductionUserAction.CreateCut -> p = ProductionCuts.create(p, action.episodeId, action.mediaDurations, now)
             is ProductionUserAction.DeleteCut -> p = ProductionCuts.delete(p, action.cutId)

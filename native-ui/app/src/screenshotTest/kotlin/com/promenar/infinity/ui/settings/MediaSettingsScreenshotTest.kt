@@ -19,6 +19,7 @@ import com.promenar.infinity.data.model.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.theme.*
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /** 纯展示预览：不创建 ViewModel，不读写设置，不探测主机。 */
 @Composable
@@ -43,6 +44,17 @@ private val previewTemplate = ComfyTemplate("h3", JsonObject(emptyMap()),
     frameBase = 5, frameStep = 17, locked = true, capabilities = previewCaps, hostId = "main", group = MediaGroup.VIDEO,
     name = "H3 Reference", maxFrames = 260)
 private val previewEntry = ComfyTemplateState(previewTemplate, PreflightResult(PreflightStatus.PASS))
+private val previewParams = listOf(
+    TemplateParam("scale", "倍数", TemplateParamType.ENUM, JsonPrimitive("2"), options = listOf("2", "4")),
+    TemplateParam("steps", "步数", TemplateParamType.NUMBER, JsonPrimitive(20), min = 1.0, max = 50.0, integer = true),
+    TemplateParam("fast", "加速", TemplateParamType.BOOLEAN, JsonPrimitive(false)),
+)
+/** 派生处理模板：来源视频、参数表与视频产出。 */
+private val previewDeriveTemplate = ComfyTemplate("upscale", JsonObject(emptyMap()),
+    slots = listOf(ComfySlot("1", "video", SlotKind.INPUT_VIDEO), ComfySlot("9", "videos", SlotKind.OUTPUT, outputKind = InputKind.VIDEO)) +
+        previewParams.map { ComfySlot("5", it.key, SlotKind.PARAM, param = it.key) },
+    locked = true, capabilities = MediaCapabilities(setOf(GenerationMode.REFERENCE)), hostId = "main", group = MediaGroup.VIDEO,
+    name = "Upscale 4K", role = TemplateRole.DERIVE, operation = TemplateOperation("超分"), params = previewParams)
 private val previewModel = ModelInfo("Seedance 2.5", "seedance", "", true, "video", providerName = "Volcengine Ark", providerId = "ark",
     mediaSettings = MediaModelSettings(MediaGroup.VIDEO, previewCaps.copy(promptFormat = PromptFormat.SEEDANCE),
         tariff = MediaTariff("CNY", listOf(MediaRate(BillingUnit.TOKENS, "70", 1_000_000)))))
@@ -90,6 +102,12 @@ fun comfyHostSettingsPreview() = MediaPreviewTheme { ComfyHostScreenContent(prev
 @Preview(name = "模板详情 浅色中文130", widthDp = 360, heightDp = 2600, locale = "zh-rCN", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Composable
 fun comfyTemplateSettingsPreview() = MediaPreviewTheme { ComfyTemplateScreenContent(previewEntry, previewState) }
+
+@PreviewTest
+@Preview(name = "派生模板详情 浅色中文", widthDp = 360, heightDp = 1800, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "派生模板详情 深色英文130", widthDp = 360, heightDp = 2100, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun comfyDeriveTemplateSettingsPreview() = MediaPreviewTheme { ComfyTemplateScreenContent(ComfyTemplateState(previewDeriveTemplate, PreflightResult(PreflightStatus.PASS)), previewState) }
 
 @PreviewTest
 @Preview(name = "主机表单 深色中文130", widthDp = 360, heightDp = 1100, locale = "zh-rCN", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)

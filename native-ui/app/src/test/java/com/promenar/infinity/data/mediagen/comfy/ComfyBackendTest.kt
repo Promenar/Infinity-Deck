@@ -4,11 +4,84 @@ import com.promenar.infinity.domain.mediagen.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 
 class ComfyBackendTest {
+    @Test fun derivesVideoWithUploadedNamesMimeFallbackAndParameterOverrides() = runTest {
+        val f = ComfyFixture()
+        val graph = Json.parseToJsonElement("""{"1":{"class_type":"Test","inputs":{"file":"old.mp4","steps":10}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject
+        val template = f.template.copy(workflow = graph, slots = listOf(ComfySlot("1", "file", SlotKind.INPUT_VIDEO),
+            ComfySlot("1", "steps", SlotKind.PARAM, param = "steps"), ComfySlot("2", "videos", SlotKind.OUTPUT, outputKind = InputKind.VIDEO)),
+            role = TemplateRole.DERIVE, operation = TemplateOperation("超分"), group = MediaGroup.VIDEO,
+            params = listOf(TemplateParam("steps", "步数", TemplateParamType.NUMBER, JsonPrimitive(10), min = 1.0, max = 30.0, integer = true)),
+            capabilities = MediaCapabilities(setOf(GenerationMode.REFERENCE)))
+        f.http.info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"file":["STRING"],"steps":["INT",{"min":1,"max":30}]}}},"Save":{"input":{"required":{}},"output_node":true,"output":["IMAGE"]}}""").jsonObject
+        f.repository.saveHost(f.host); f.repository.defineTemplateByAgent(template)
+        for ((suffix, mime) in listOf("mp4" to "video/mp4", "mov" to "video/quicktime", "webm" to "video/webm")) {
+            val request = f.request.copy(prompt = "", inputs = listOf(MediaInput("refs/source.$suffix", InputKind.VIDEO, InputRole.REFERENCE)), specs = GenerationSpecs(),
+                params = mapOf("steps" to JsonPrimitive(20.0)))
+            f.backend.submit(template.channel(), request)
+            val inputs = f.http.calls.last { it.first == "/prompt" }.second!!["prompt"]!!.jsonObject["1"]!!.jsonObject["inputs"]!!.jsonObject
+            assertTrue(inputs["file"]!!.jsonPrimitive.content.endsWith(".$suffix"))
+            assertEquals("20", inputs["steps"].toString())
+            assertEquals(InputKind.VIDEO to mime, f.http.uploadTypes.last())
+        }
+        f.media.videoMime = "video/webm"
+        f.backend.submit(template.channel(), f.request.copy(inputs = listOf(MediaInput("refs/source.mp4", InputKind.VIDEO, InputRole.REFERENCE)), specs = GenerationSpecs()))
+        assertTrue(f.http.uploads.last().first.endsWith(".webm"))
+    }
+
+    @Test fun musicDurationUsesSecondsWithoutRequiringFramesAndUnknownParamsFailBeforeUpload() = runTest {
+        val f = ComfyFixture()
+        val graph = Json.parseToJsonElement("""{"1":{"class_type":"Test","inputs":{"prompt":"","seconds":5}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject
+        val template = f.template.copy(workflow = graph, slots = listOf(ComfySlot("1", "prompt", SlotKind.PROMPT),
+            ComfySlot("1", "seconds", SlotKind.DURATION), ComfySlot("2", "audio", SlotKind.OUTPUT, outputKind = InputKind.AUDIO)),
+            group = MediaGroup.AUDIO, capabilities = MediaCapabilities(setOf(GenerationMode.MUSIC)))
+        f.http.info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"prompt":["STRING"],"seconds":["FLOAT"]}}},"Save":{"input":{"required":{}},"output_node":true,"output":["AUDIO"]}}""").jsonObject
+        f.repository.saveHost(f.host); f.repository.defineTemplateByAgent(template)
+        val request = f.request.copy(mode = GenerationMode.MUSIC, inputs = emptyList(), specs = GenerationSpecs(durationSeconds = 12))
+        f.backend.submit(template.channel(), request)
+        val inputs = f.http.calls.last { it.first == "/prompt" }.second!!["prompt"]!!.jsonObject["1"]!!.jsonObject["inputs"]!!.jsonObject
+        assertEquals(JsonPrimitive(12), inputs["seconds"])
+        assertTrue(f.http.uploads.isEmpty())
+        try { f.backend.submit(template.channel(), request.copy(params = mapOf("unknown" to JsonPrimitive(1)))); fail("应拒绝未知参数") }
+        catch (e: IllegalArgumentException) { assertTrue(e.message.orEmpty().contains("unknown")) }
+        assertEquals(1, f.http.calls.count { it.first == "/prompt" })
+        assertTrue(f.http.uploads.isEmpty())
+    }
+
+    @Test fun historySelectsKindsAcrossVideoKeysAndKeepsAllProductsInStableOrder() {
+        val history = Json.parseToJsonElement("""{"p":{"status":{"completed":true},"outputs":{"2":{
+            "audio":[{"filename":"a.flac"},{"filename":"b.mp3"}],"videos":[{"filename":"v2.webm"}],
+            "images":[{"filename":"preview.png"}],"video":{"filename":"v3.mov"},"gifs":[{"filename":"v1.mp4"},{"filename":"v0.mp4"}]
+        }}}}""").jsonObject
+        fun files(kind: InputKind) = (parseComfyHistory(history, "p", listOf(ComfySlot("2", "images", SlotKind.OUTPUT, outputKind = kind))) as RemoteStatus.Succeeded).outputs
+        fun names(kind: InputKind) = files(kind).map { ("http://comfy.invalid" + it.location).toHttpUrl().queryParameter("filename") }
+        assertEquals(listOf("preview.png"), names(InputKind.IMAGE))
+        assertEquals(listOf("v1.mp4", "v0.mp4", "v2.webm", "v3.mov"), names(InputKind.VIDEO))
+        assertEquals(listOf("a.flac", "b.mp3"), names(InputKind.AUDIO))
+        assertTrue(files(InputKind.VIDEO).all { it.kind == InputKind.VIDEO })
+        val reordered = JsonObject(history.mapValues { (_, entry) ->
+            val e = entry.jsonObject
+            val node = e["outputs"]!!.jsonObject["2"]!!.jsonObject
+            JsonObject(e + ("outputs" to buildJsonObject { put("2", JsonObject(node.entries.reversed().associate { it.key to it.value })) }))
+        })
+        assertEquals(files(InputKind.VIDEO), (parseComfyHistory(reordered, "p", listOf(ComfySlot("2", "videos", SlotKind.OUTPUT))) as RemoteStatus.Succeeded).outputs)
+    }
+
+    @Test fun downloadsEveryProductWithFilenameExtensionOrKindFallback() = runTest {
+        val f = ComfyFixture(); f.prepare()
+        val id = f.backend.submit(f.template.channel(), f.request)
+        val names = listOf("a.flac", "b.mp3", "c.wav", "d.ogg", "e.mp4", "f.webm", "g.mov", "audio", "video")
+        val outputs = names.mapIndexed { index, name -> RemoteOutput("/view?filename=$name&type=output", if (index in 4..6 || index == 8) InputKind.VIDEO else InputKind.AUDIO) }
+        val paths = f.backend.download(f.template.channel(), f.request, id, outputs)
+        assertEquals(listOf("flac", "mp3", "wav", "ogg", "mp4", "webm", "mov", "wav", "mp4"), paths.map { it.substringAfterLast('.') })
+        assertEquals(paths.map { "/$it" }, f.media.saved)
+    }
+
     @Test fun submitsUploadsAndNumericValuesAndCostsNothing() = runTest {
         val f = ComfyFixture(); f.prepare()
         val id = f.backend.submit(f.template.channel(), f.request)

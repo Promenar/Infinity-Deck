@@ -49,8 +49,14 @@ internal fun ProductionShotDetail(
     val shot = location.shot
     val episodeId = location.episode.id
     var tab by rememberSaveable(episodeId, shot.code, initialTab) { mutableStateOf(initialTab ?: shot.defaultDetailTab()) }
+    // 查看的候选 id，或进行中占位项的 key。
     var viewingId by rememberSaveable(episodeId, shot.code) { mutableStateOf(shot.displayTake()?.id) }
-    val viewing = shot.takes.firstOrNull { it.id == viewingId } ?: shot.displayTake()
+    val placeholders = production.shotPlaceholders(episodeId, shot.code)
+    val viewingPlaceholder = placeholders.firstOrNull { it.key == viewingId }
+    // 正在查看的链完成后转到它登记的候选。
+    val chainTake = shot.chains.firstOrNull { "chain:${it.id}" == viewingId }?.takeId?.let { id -> shot.takes.firstOrNull { it.id == id } }
+    val viewing = if (viewingPlaceholder != null) null else shot.takes.firstOrNull { it.id == viewingId } ?: chainTake ?: shot.displayTake()
+    val now = rememberProductionNow(placeholders.any { it is ShotPlaceholder.Run })
     var dialog by rememberSaveable(episodeId, shot.code) { mutableStateOf<PlanningDialog?>(null) }
     var sheet by remember { mutableStateOf<PlanningSheet?>(null) }
     var lookCharacter by remember { mutableStateOf<String?>(null) }
@@ -63,7 +69,6 @@ internal fun ProductionShotDetail(
     val scope = rememberCoroutineScope()
     val failed = stringResource(R.string.production_panel_action_failed)
     val noPlanner = stringResource(R.string.p2_planner_unavailable)
-    val submitted = stringResource(R.string.p2_submitted)
     val working = busy || localBusy || loading
     LaunchedEffect(sessionId, episodeId, shot.code, revision, refresh, services.planner) {
         val planner = services.planner
@@ -110,13 +115,14 @@ internal fun ProductionShotDetail(
             if (tab == ShotDetailTab.CANDIDATES) {
                 item("player") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (viewing != null) key(viewing.id) { ProductionMediaReference(viewing.path, Modifier.fillMaxWidth(), alt = shot.title) }
+                        if (viewingPlaceholder != null) ProductionPlaceholderCard(viewingPlaceholder, now, working, onRun, episodeId, shot.code)
+                        else if (viewing != null) key(viewing.id) { ProductionMediaReference(viewing.path, Modifier.fillMaxWidth(), alt = shot.title) }
                         else ProductionSection(null) {
                             ProductionMutedRow(stringResource(R.string.production_panel_no_takes))
-                            ProductionRow(stringResource(R.string.p2_go_generate), titleColor = MaterialTheme.colorScheme.primary, onClick = { tab = ShotDetailTab.STORYBOARD })
                         }
-                        if (shot.takes.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (shot.takes.isNotEmpty() || placeholders.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabel(take.source.service)) { viewingId = take.id } }
+                            items(placeholders, key = { it.key }) { item -> PlaceholderThumb(item, item.key == viewingPlaceholder?.key, now) { viewingId = item.key } }
                         }
                         if (viewing != null) {
                             val number = shot.takes.indexOf(viewing) + 1
@@ -130,6 +136,8 @@ internal fun ProductionShotDetail(
                                 // 审核记录之前已选定的候选视为已批准。
                                 settled = viewing.id == shot.selectedTakeId && shot.status == ShotStatus.LOCKED,
                             )
+                            TakeSourceSection(viewing, shot, production) { viewingId = it }
+                            TakeSegmentsSection(viewing)
                         }
                     }
                 }
@@ -240,26 +248,6 @@ internal fun ProductionShotDetail(
                                 modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
                             )
                         }
-                    }
-                }
-                item("generate") {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        preview?.blockedReason?.let { InfinityStatusStrip(InfinityStatusKind.Warning, it) }
-                        InfinityPillButton(
-                            text = stringResource(R.string.p2_generate),
-                            tone = InfinityPillTone.PRIMARY,
-                            enabled = generationEnabled(location.scene.storyboardLocked, production.experimental, preview, working) && services.planner != null,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                            onClick = {
-                                execute {
-                                    when (val result = services.planner?.generate(sessionId, episodeId, shot.code)) {
-                                        is ShotGenerateResult.Submitted -> { notice = submitted; refresh++ }
-                                        is ShotGenerateResult.Rejected -> localError = result.reason
-                                        null -> localError = noPlanner
-                                    }
-                                }
-                            },
-                        )
                     }
                 }
             }

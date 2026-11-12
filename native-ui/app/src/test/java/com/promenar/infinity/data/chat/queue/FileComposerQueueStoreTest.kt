@@ -1,7 +1,9 @@
 package com.promenar.infinity.data.chat.queue
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.production.PanelMessageListener
 import com.promenar.infinity.data.model.MessageDocumentAttachment
+import kotlinx.coroutines.test.advanceUntilIdle
 import java.io.ByteArrayInputStream
 import java.io.File
 import kotlinx.coroutines.launch
@@ -13,6 +15,169 @@ import org.junit.rules.TemporaryFolder
 
 class FileComposerQueueStoreTest {
     @get:Rule val folder = TemporaryFolder()
+
+    private class Listener : PanelMessageListener {
+        val events = mutableListOf<Triple<String, PanelMessageOrigin, Boolean>>()
+        var fail = false
+        override suspend fun delivered(sessionId: String, origin: PanelMessageOrigin) {
+            if (fail) throw IllegalStateException("回调不可用")
+            events += Triple(sessionId, origin, true)
+        }
+        override suspend fun withdrawn(sessionId: String, origin: PanelMessageOrigin) { events += Triple(sessionId, origin, false) }
+    }
+
+    @Test fun `来源标记随文件往返且旧文件缺省没有来源`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val origin = PanelMessageOrigin("production", 3)
+        val store = FileComposerQueueStore(folder.root, { null }, dispatcher)
+        val item = store.enqueue("s", "审核", origin = origin)
+        val restored = FileComposerQueueStore(folder.root, { null }, dispatcher)
+        assertThat(restored.snapshot("s").items.single().origin).isEqualTo(origin)
+        val file = File(folder.root.listFiles()!!.single(), "queue.json")
+        file.writeText("""{"items":[{"id":"old","text":"旧消息","createdAt":1}]}""")
+        val old = FileComposerQueueStore(folder.root, { null }, dispatcher).snapshot("s")
+        assertThat(old.items.single().origin).isNull()
+        assertThat(item.origin).isEqualTo(origin)
+    }
+
+    @Test fun `队列撤回编辑取消和提交按实际持久化结果通知`() = runTest {
+        val listener = Listener()
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler),
+            applicationScope = this, panelMessageListener = { listener })
+        val origin = PanelMessageOrigin("p", 1)
+        val item = store.enqueue("s", "审核", origin = origin)
+        val draft = store.prepareEdit("s", item.id)!!
+        store.cancelEdit("s", draft)
+        advanceUntilIdle()
+        assertThat(listener.events).isEmpty()
+        val committed = store.prepareEdit("s", item.id)!!
+        assertThat(store.completeEdit("s", committed)).isTrue()
+        assertThat(store.completeEdit("s", committed)).isFalse()
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", origin, false))
+        store.remove("s", item.id)
+        val second = store.enqueue("s", "删除", origin = origin.copy(round = 2))
+        store.remove("s", second.id)
+        store.remove("s", second.id)
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", origin, false), Triple("s", origin.copy(round = 2), false)).inOrder()
+    }
+
+    @Test fun `派发失败回到队列不回调且引导送达回调一次`() = runTest {
+        val listener = Listener()
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler),
+            applicationScope = this, panelMessageListener = { listener })
+        val origin = PanelMessageOrigin("p", 1)
+        val item = store.enqueue("s", "审核", origin = origin)
+        store.claimNext("s")
+        store.rollback("s", item.id, QueuePauseReason.INTERRUPTED)
+        advanceUntilIdle()
+        assertThat(listener.events).isEmpty()
+        assertThat(store.snapshot("s").items.single().origin).isEqualTo(origin)
+        store.pause("s", null)
+        store.steer("s", item.id)
+        store.claimSteering("s")
+        store.bindSending("s", item.id, "user")
+        store.accept("s", item.id)
+        store.accept("s", item.id)
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", origin, true))
+        assertThat(store.snapshot("s").deliveredPanelMessages).isEmpty()
+    }
+
+    @Test fun `重启恢复保存过的用户消息并重投未完成的归档回执`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val origin = PanelMessageOrigin("p", 1)
+        val store = FileComposerQueueStore(folder.root, { null }, dispatcher)
+        val item = store.enqueue("s", "审核", origin = origin)
+        store.claimBoundary("s")
+        store.bindSending("s", item.id, "saved-user")
+        val failing = Listener().apply { fail = true }
+        val restored = FileComposerQueueStore(folder.root, { null }, dispatcher, isUserPersisted = { _, _ -> true },
+            applicationScope = this, panelMessageListener = { failing })
+        assertThat(restored.snapshot("s").items).isEmpty()
+        advanceUntilIdle()
+        assertThat(restored.snapshot("s").deliveredPanelMessages).containsExactly(origin)
+        val listener = Listener()
+        val recovered = FileComposerQueueStore(folder.root, { null }, dispatcher,
+            applicationScope = this, panelMessageListener = { listener })
+        recovered.snapshot("s")
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", origin, true))
+        assertThat(recovered.snapshot("s").deliveredPanelMessages).isEmpty()
+    }
+
+    @Test fun `直接准备的绑定在重启后按用户消息是否存在恢复`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val saved = PanelMessageOrigin("saved", 1)
+        val abandoned = PanelMessageOrigin("abandoned", 1)
+        val store = FileComposerQueueStore(folder.root, { null }, dispatcher)
+        store.bindPanelMessage("s", saved, "saved-user")
+        store.bindPanelMessage("s", abandoned, "missing-user")
+        val listener = Listener()
+        val restored = FileComposerQueueStore(folder.root, { null }, dispatcher, isUserPersisted = { _, id -> id == "saved-user" },
+            applicationScope = this, panelMessageListener = { listener })
+        restored.snapshot("s")
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", saved, true), Triple("s", abandoned, false))
+        assertThat(restored.snapshot("s").panelPreparations).isEmpty()
+        assertThat(restored.snapshot("s").items).isEmpty()
+    }
+
+    @Test fun `删除会话撤回待发和认领条目且普通消息不触发审核`() = runTest {
+        val listener = Listener()
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler),
+            applicationScope = this, panelMessageListener = { listener })
+        val first = PanelMessageOrigin("p", 1)
+        val second = PanelMessageOrigin("other", 1)
+        store.enqueue("s", "已认领", origin = first)
+        store.enqueue("s", "等待", origin = second)
+        store.enqueue("s", "普通")
+        store.claimNext("s")
+        store.deleteSession("s")
+        store.deleteSession("s")
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", first, false), Triple("s", second, false))
+        assertThat(store.snapshot("s").items).isEmpty()
+    }
+
+    @Test fun `直接准备由运行时接受或回滚且重复结清不重发回调`() = runTest {
+        val listener = Listener()
+        val store = FileComposerQueueStore(folder.root, { null }, StandardTestDispatcher(testScheduler),
+            applicationScope = this, panelMessageListener = { listener })
+        val delivered = PanelMessageOrigin("saved", 1)
+        val withdrawn = PanelMessageOrigin("abandoned", 1)
+        store.bindPanelMessage("s", delivered, "user-one")
+        store.bindPanelMessage("s", withdrawn, "user-two")
+        advanceUntilIdle()
+        assertThat(listener.events).isEmpty()
+        store.acceptForUser("s", "user-one")
+        store.acceptForUser("s", "user-one")
+        store.rollbackForUser("s", "user-two")
+        store.rollbackForUser("s", "user-two")
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", delivered, true), Triple("s", withdrawn, false))
+    }
+
+    @Test fun `删除会话后的送达回执独立持久化直到重启成功归档`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val origin = PanelMessageOrigin("p", 1)
+        val failing = Listener().apply { fail = true }
+        val store = FileComposerQueueStore(folder.root, { null }, dispatcher,
+            applicationScope = this, panelMessageListener = { failing })
+        store.finishPanelMessage("s", origin, true)
+        advanceUntilIdle()
+        store.deleteSession("s")
+        advanceUntilIdle()
+        assertThat(folder.root.listFiles()!!.single().name).endsWith(".reviews.json")
+        val listener = Listener()
+        val restored = FileComposerQueueStore(folder.root, { null }, dispatcher,
+            applicationScope = this, panelMessageListener = { listener })
+        assertThat(restored.recoverPanelMessages()).containsExactly("s" to origin)
+        advanceUntilIdle()
+        assertThat(listener.events).containsExactly(Triple("s", origin, true))
+        assertThat(folder.root.listFiles()).isEmpty()
+    }
 
     @Test fun `预览PNG私有块在排队和编辑副本中保留`() = runTest {
         val png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=")

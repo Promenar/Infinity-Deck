@@ -258,7 +258,7 @@ data class Production(
     val reviews: List<ReviewEntry> = emptyList(),
     val reviewRounds: List<ReviewRound> = emptyList(),
     val nextReviewRound: Int = 1,
-    /** 未发送结论的回退基线；发送后清空。 */
+    /** 未发送与已排队结论的回退基线。 */
     val reviewDrafts: List<ReviewDraft> = emptyList(),
 )
 
@@ -288,6 +288,8 @@ class ProductionRevisionConflictException : IllegalArgumentException("面板已�
 sealed interface ProductionUserAction {
     data class Review(val target: ReviewTarget, val kind: ReviewKind, val note: String?) : ProductionUserAction
     data class RetractReview(val target: ReviewTarget, val kind: ReviewKind) : ProductionUserAction
+    data class MarkReviewQueued(val round: Int, val at: Long) : ProductionUserAction
+    data class RevertReviewQueued(val round: Int) : ProductionUserAction
     data class MarkReviewSent(val round: Int, val sentAt: Long) : ProductionUserAction
     /** 时长表以素材虚拟路径为键，由媒体探测层提供实际时长。 */
     data class CreateCut(val episodeId: String, val mediaDurations: Map<String, Double> = emptyMap()) : ProductionUserAction

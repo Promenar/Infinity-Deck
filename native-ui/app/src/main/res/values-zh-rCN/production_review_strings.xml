@@ -12,6 +12,13 @@
     <string name="production_review_approved_unsent">已批准 · 未发送</string>
     <string name="production_review_rejected_unsent">已否决 · 未发送</string>
     <string name="production_review_suggestion_unsent">建议 · 未发送</string>
+    <string name="production_review_queued">已排队</string>
+    <string name="production_review_approved_queued">已批准 · 已排队</string>
+    <string name="production_review_rejected_queued">已否决 · 已排队</string>
+    <string name="production_review_already_queued">上一轮排队中</string>
+    <plurals name="production_review_queued_round">
+        <item quantity="other">已排队 · 第 %1$d 轮 · %2$d 条</item>
+    </plurals>
     <string name="production_review_reason">原因</string>
     <string name="production_review_content">建议</string>
     <string name="production_review_actions">审核</string>
@@ -21,7 +28,6 @@
     <plurals name="production_review_sent">
         <item quantity="other">已发送 · 第 %1$d 轮 · %2$d 条</item>
     </plurals>
-    <string name="production_review_unarchived">已发送 · 归档失败：%1$s</string>
     <string name="production_review_rounds">审核记录</string>
     <string name="production_review_round">第 %1$d 轮</string>
     <plurals name="production_review_round_items">

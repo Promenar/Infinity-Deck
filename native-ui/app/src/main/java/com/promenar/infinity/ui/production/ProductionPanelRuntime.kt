@@ -20,7 +20,7 @@ fun rememberProductionPanelServices(
     sessionId: String,
     source: ProductionPanelSource,
     openRoute: ((String) -> Unit)?,
-    sendReviewMessage: (suspend (String) -> ReviewDelivery)? = null,
+    sendPanelMessage: (suspend (String, com.promenar.infinity.data.chat.queue.PanelMessageOrigin) -> com.promenar.infinity.ui.chat.PanelSendResult)? = null,
 ): ProductionPanelServices {
     val app = LocalContext.current.applicationContext as? InfinityApplication ?: return ProductionPanelServices()
     val runtime by app.installedProductionMediaRuntime.collectAsStateWithLifecycle()
@@ -46,9 +46,14 @@ fun rememberProductionPanelServices(
         value = emptySet()
         runtime?.pendingRegistrations?.collect { value = it }
     }
-    return remember(runtime, labels, pending, sessionId, source, openRoute, sendReviewMessage, conflict, invalid, failed) {
+    return remember(runtime, labels, pending, sessionId, source, openRoute, sendPanelMessage, conflict, invalid, failed) {
+        val dispatcher = app.productionReviewDispatcher
+        val sendReview: (suspend () -> com.promenar.infinity.data.production.ReviewDispatch)? =
+            if (sendPanelMessage == null) null else suspend { dispatcher.send(sessionId) { text, origin -> sendPanelMessage(text, origin) } }
         ProductionPanelServices(
-            sendReviewMessage = sendReviewMessage,
+            sendReview = sendReview,
+            reconcileReviews = { dispatcher.reconcile(sessionId) },
+            auditFiles = { app.productionFileAudit.scan(sessionId) },
             cutExport = app.productionCutRuntime.controller,
             planner = runtime?.let { app.shotGenerationPlanner },
             queue = runtime?.let { app.mediaGenerationQueue },

@@ -9,12 +9,19 @@ internal fun validateProductionReviews(p: Production, revision: Long = Long.MAX_
         require(value.kind == ReviewKind.SUGGEST || value.target.acceptsVerdict) { "这个对象只接受建议。" }
         require(value.kind != ReviewKind.SUGGEST || !value.note.isNullOrBlank()) { "建议内容不能为空。" }
         require(value.round == null || value.round in 1 until p.nextReviewRound) { "审核意见轮次无效。" }
+        require(value.queuedRound == null || value.round == null && value.queuedRound == p.nextReviewRound && value.queuedRound < Int.MAX_VALUE) { "审核排队轮次无效。" }
         require(value.sentAt == null || value.sentAt >= 0) { "审核发送时间无效。" }
         require(value.sentRevision == null || value.sentRevision in 0..revision) { "审核发送修订号无效。" }
         require(value.round != null || value.sentAt == null && value.sentRevision == null) { "未发送意见不能包含发送信息。" }
     }
     p.reviews.forEach(::entry)
-    val verdicts = p.reviews.filter { it.kind != ReviewKind.SUGGEST }
+    require(p.queuedReviews().map { it.queuedRound }.distinct().size <= 1) { "只能有一个已排队审核轮次。" }
+    val verdicts = p.currentReviewVerdicts()
+    val unqueuedVerdicts = p.reviews.filter { it.kind != ReviewKind.SUGGEST && it.queuedRound == null }
+    require(unqueuedVerdicts.map { it.target }.distinct().size == unqueuedVerdicts.size) { "对象结论重复。" }
+    val queuedVerdicts = p.queuedReviews().filter { it.kind != ReviewKind.SUGGEST }
+    require(queuedVerdicts.map { it.target }.distinct().size == queuedVerdicts.size) { "排队对象结论重复。" }
+    require(queuedVerdicts.filter { it.kind == ReviewKind.APPROVE }.groupBy { it.target.reviewGroup() }.values.all { it.size <= 1 }) { "排队批准结论冲突。" }
     require(verdicts.map { it.target }.distinct().size == verdicts.size) { "每个对象只能保留一条结论。" }
     require(verdicts.filter { it.kind == ReviewKind.APPROVE }.groupBy { it.target.reviewGroup() }.values.all { it.size <= 1 }) { "同一对象只能批准一个候选或版本。" }
     require(p.reviews.none { it.kind == ReviewKind.SUGGEST && it.round != null }) { "已发送建议应保存在审核轮次。" }
@@ -27,8 +34,12 @@ internal fun validateProductionReviews(p: Production, revision: Long = Long.MAX_
                 (value.sentRevision == null || value.sentRevision == round.revision)) { "审核记录的发送信息不一致。" }
         }
     }
-    require(p.reviewDrafts.map { it.group }.distinct().size == p.reviewDrafts.size) { "审核回退基线重复。" }
-    p.reviewDrafts.forEach { draft ->
+    require(p.queuedReviewDrafts.isEmpty() || p.queuedReviewRound != null) { "排队回退基线缺少轮次。" }
+    val allDrafts = p.reviewDrafts
+    require(p.queuedReviewDrafts.map { it.group }.distinct().size == p.queuedReviewDrafts.size) { "排队回退基线重复。" }
+    require(p.pendingReviewDrafts.map { it.group }.distinct().size == p.pendingReviewDrafts.size) { "审核回退基线重复。" }
+    allDrafts.forEach { draft ->
+        val queued = draft.queued
         require(draft.pendingVerdicts.isNotEmpty()) { "审核基线必须有未发送结论。" }
         when (draft.group.kind) {
             ReviewTargetKind.SHOT -> { draft.group.requireReviewShape(); require(draft.shotStatus != null) { "缺少镜头回退状态。" } }
@@ -44,15 +55,16 @@ internal fun validateProductionReviews(p: Production, revision: Long = Long.MAX_
             entry(value)
             require(value.kind != ReviewKind.SUGGEST && value.target.reviewGroup() == draft.group) { "审核基线包含其它对象的意见。" }
         }
-        require(draft.previousVerdicts.all { it.round != null } && draft.pendingVerdicts.all { it.round == null }) { "审核基线的发送状态无效。" }
-        require(draft.pendingVerdicts.map { it.target }.distinct().size == draft.pendingVerdicts.size && draft.pendingVerdicts.all { p.verdictOf(it.target) == it }) { "未发送结论与回退基线不一致。" }
+        require(draft.previousVerdicts.all { it.round != null || !queued && it.queuedRound != null } &&
+            draft.pendingVerdicts.all { it.round == null && (if (queued) it.queuedRound == p.queuedReviewRound else it.queuedRound == null) }) { "审核基线的发送状态无效。" }
+        require(draft.pendingVerdicts.map { it.target }.distinct().size == draft.pendingVerdicts.size && draft.pendingVerdicts.all { if (queued) it in p.queuedReviews() else p.verdictOf(it.target) == it }) { "未发送结论与回退基线不一致。" }
         draft.displacements.forEach { history ->
             history.target.requireReviewShape()
             require(draft.pendingVerdicts.any { it.target == history.target } && (history.approvedVersion == null || history.approvedVersion > 0)) { "审核替换记录无效。" }
             history.displacedTargets.forEach { it.requireReviewShape(); require(it.reviewGroup() == draft.group) { "审核替换记录包含其它对象。" } }
         }
     }
-    require(verdicts.filter { it.round == null }.all { value -> p.reviewDrafts.any { draft -> value in draft.pendingVerdicts } }) { "未发送结论缺少回退基线。" }
+    require(p.reviews.filter { it.kind != ReviewKind.SUGGEST && it.round == null }.all { value -> allDrafts.any { draft -> value in draft.pendingVerdicts } }) { "未发送结论缺少回退基线。" }
     require(p.changeRequests.all { it.changedAt in 0..revision && (!it.approved || !it.rejected) }) { "改动请求状态或修订号无效。" }
     p.seasons.flatMap { it.episodes }.forEach { episode ->
         require(episode.contentChangedAt == null || episode.contentChangedAt in 0..revision) { "剧本内容修订号无效。" }

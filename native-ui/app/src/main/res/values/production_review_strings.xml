@@ -12,6 +12,14 @@
     <string name="production_review_approved_unsent">Approved · Unsent</string>
     <string name="production_review_rejected_unsent">Rejected · Unsent</string>
     <string name="production_review_suggestion_unsent">Suggestion · Unsent</string>
+    <string name="production_review_queued">Queued</string>
+    <string name="production_review_approved_queued">Approved · Queued</string>
+    <string name="production_review_rejected_queued">Rejected · Queued</string>
+    <string name="production_review_already_queued">Previous round queued</string>
+    <plurals name="production_review_queued_round">
+        <item quantity="one">Queued · Round %1$d · %2$d item</item>
+        <item quantity="other">Queued · Round %1$d · %2$d items</item>
+    </plurals>
     <string name="production_review_reason">Reason</string>
     <string name="production_review_content">Suggestion</string>
     <string name="production_review_actions">Review</string>
@@ -22,7 +30,6 @@
         <item quantity="one">Sent · Round %1$d · %2$d item</item>
         <item quantity="other">Sent · Round %1$d · %2$d items</item>
     </plurals>
-    <string name="production_review_unarchived">Sent · Archive failed: %1$s</string>
     <string name="production_review_rounds">Review history</string>
     <string name="production_review_round">Round %1$d</string>
     <plurals name="production_review_round_items">
