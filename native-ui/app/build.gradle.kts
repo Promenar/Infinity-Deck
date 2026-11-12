@@ -339,7 +339,7 @@ val prepareRecordingAssets = tasks.register<PrepareRecordingAssets>("prepareReco
 androidComponents.onVariants { variant ->
     variant.sources.assets?.addGeneratedSourceDirectory(prepareRecordingAssets, PrepareRecordingAssets::getOutputDirectory)
     if (variant.buildType == "release" && ("distribution" to "sideload") in variant.productFlavors) {
-        variant.buildConfigFields.put("LOCAL_INFERENCE_AVAILABLE", BuildConfigField("boolean", "true", null))
+        variant.buildConfigFields?.put("LOCAL_INFERENCE_AVAILABLE", BuildConfigField("boolean", "true", null))
     }
     val capitalizedName = variant.name.replaceFirstChar { it.uppercaseChar() }
     // 本地 PTY 仅供侧载版使用，Play 版继续只保留 Java 终端仿真。
