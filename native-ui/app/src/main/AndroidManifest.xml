@@ -109,6 +109,11 @@
             android:foregroundServiceType="dataSync" />
 
         <service
+            android:name=".background.mediagen.MediaGenerationForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name=".background.generation.GenerationForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

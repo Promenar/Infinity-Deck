@@ -36,7 +36,7 @@ class MediaGenerationContractTest {
         val errors = validateRequest(channel, request)
         assertTrue(errors.channelMismatch)
         assertTrue(errors.unsupportedMode)
-        assertTrue(errors.invalidInputs.isNotEmpty())
+        assertTrue("firstFrameCount" in errors.specErrors)
     }
 
     @Test fun pricingUsesExactDecimalAndUnknownUsageRemainsUnknown() {

@@ -40,10 +40,10 @@ class KeychainMigration36Test {
                 db.version = 36
             }
             val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION, MIGRATION_38_39_MEDIA_GENERATION).allowMainThreadQueries().build()
             try {
                 val db = room.openHelper.writableDatabase
-                assertThat(db.version).isEqualTo(38)
+                assertThat(db.version).isEqualTo(39)
                 db.query("SELECT alias,hostname,key_entry_id FROM ssh_hosts WHERE id='host'").use { cursor ->
                     assertThat(cursor.moveToFirst()).isTrue()
                     assertThat(cursor.getString(0)).isEqualTo("server")

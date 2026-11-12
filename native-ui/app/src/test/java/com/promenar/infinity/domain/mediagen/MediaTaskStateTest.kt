@@ -19,9 +19,9 @@ class MediaTaskStateTest {
 
     @Test fun retryRetainsRemoteIdWhenDownloadFails() {
         val running = MediaTask("t", request, estimate).approve().started("remote")
-        val retry = running.failed("download failed").retry()
+        val retry = running.copy(state = MediaTaskState.DOWNLOAD_FAILED, failure = MediaTaskFailure.DOWNLOAD).retry()
         assertEquals("remote", retry.remoteId)
-        assertEquals(MediaTaskState.RUNNING, retry.state)
+        assertEquals(MediaTaskState.DOWNLOADING, retry.state)
         assertThrows(IllegalStateException::class.java) { running.approve() }
     }
 

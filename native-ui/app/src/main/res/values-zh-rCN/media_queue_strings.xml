@@ -1,0 +1,15 @@
+<resources>
+    <string name="media_queue_notification_channel">媒体生成</string>
+    <string name="media_queue_notification_title">正在生成媒体</string>
+    <string name="media_queue_notification_body">查询任务并保存产物</string>
+    <string name="media_queue_result_unknown">请求可能已被提供商接收，但远端任务编号未保存。请先核对提供商任务历史，再决定是否新建请求。</string>
+    <string name="media_queue_remote_failed">提供商报告生成失败。</string>
+    <string name="media_queue_poll_failed">无法查询任务状态。重试将查询已保存的远端任务。</string>
+    <string name="media_queue_download_failed">生成已完成。重试可下载产物。</string>
+    <string name="media_queue_channel_unavailable">通道配置已变化或后端不可用。</string>
+    <string name="media_queue_invalid_output">后端未返回指定目录内的产物文件。</string>
+    <string name="media_usage_title">媒体生成费用</string>
+    <string name="media_usage_unknown">费用未知</string>
+    <string name="media_usage_tasks">%1$d 个任务</string>
+    <string name="media_usage_load_failed">无法加载媒体费用。</string>
+</resources>

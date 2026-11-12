@@ -15,6 +15,7 @@ import com.promenar.infinity.domain.repository.ITokenStatsRepository
 import com.promenar.infinity.domain.repository.SessionTokenUsage
 import com.promenar.infinity.domain.repository.TokenUsageAggregate
 import com.promenar.infinity.utils.InfinityLogger
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +46,8 @@ data class TokenStatsState(
     val globalCache: CacheUsageAggregate = CacheUsageAggregate(),
     val globalCacheDiscountMissing: Boolean = false,
     val modelBreakdown: List<ModelCostInfo> = emptyList(),
+    val mediaUsage: List<com.promenar.infinity.data.mediagen.queue.MediaUsageSummary> = emptyList(),
+    val mediaUsageUnavailable: Boolean = false,
     val topSessions: List<SessionTokenUsage> = emptyList(),
     val dailyTrend: List<DailyTokenStats> = emptyList(),
     val categoryBreakdown: List<CategoryTokenStats> = emptyList(),
@@ -55,17 +58,37 @@ data class TokenStatsState(
 
 class TokenUsageViewModel(
     application: Application,
-    private val tokenStatsRepository: ITokenStatsRepository
+    private val tokenStatsRepository: ITokenStatsRepository,
+    private val mediaUsageRepository: com.promenar.infinity.data.mediagen.queue.MediaUsageRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TokenStatsState())
     val state: StateFlow<TokenStatsState> = _state.asStateFlow()
 
-    init {
-        loadStats()
+    private var mediaUsageObserver: Job? = null
+
+    init { loadStats() }
+
+    private fun observeMediaUsage() {
+        val repository = mediaUsageRepository ?: return
+        if (mediaUsageObserver?.isActive == true) return
+        mediaUsageObserver = viewModelScope.launch {
+            try {
+                repository.observeSummary().collect { rows ->
+                    _state.value = _state.value.copy(mediaUsage = rows, mediaUsageUnavailable = false)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                InfinityLogger.log("$TAG.mediaUsage type=${error.javaClass.simpleName}")
+                _state.value = _state.value.copy(mediaUsageUnavailable = true)
+            }
+        }
     }
 
+    fun retryMediaUsage() { observeMediaUsage() }
+
     fun loadStats() {
+        observeMediaUsage()
         if (_state.value.operation != TokenStatsOperation.READY) return
         viewModelScope.launch {
             _state.value = _state.value.copy(
@@ -96,6 +119,8 @@ class TokenUsageViewModel(
                 }
 
                 _state.value = TokenStatsState(
+                    mediaUsage = _state.value.mediaUsage,
+                    mediaUsageUnavailable = _state.value.mediaUsageUnavailable,
                     globalInput = totalUsage.inputTokens,
                     globalOutput = totalUsage.outputTokens,
                     globalCostUSD = modelBreakdown.sumOf { it.costUSD },
@@ -138,7 +163,7 @@ class TokenUsageViewModel(
             )
             try {
                 tokenStatsRepository.resetStats()
-                _state.value = TokenStatsState(operation = TokenStatsOperation.READY)
+                _state.value = TokenStatsState(operation = TokenStatsOperation.READY, mediaUsage = _state.value.mediaUsage, mediaUsageUnavailable = _state.value.mediaUsageUnavailable)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
@@ -159,7 +184,7 @@ class TokenUsageViewModel(
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     val app = application as InfinityApplication
-                    return TokenUsageViewModel(application, app.tokenStatsRepository) as T
+                    return TokenUsageViewModel(application, app.tokenStatsRepository, app.mediaUsageRepository) as T
                 }
             }
     }

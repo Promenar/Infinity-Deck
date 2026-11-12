@@ -147,6 +147,49 @@ class TokenUsageViewModelTest {
         assertThat(state.globalCostUSD).isWithin(1e-9).of(gpt.costUSD + deepSeek.costUSD)
     }
 
+    @Test fun `媒体未知费用独立展示且清理token后保留账本`() = runTest {
+        val rows = listOf(com.promenar.infinity.data.mediagen.queue.MediaUsageSummary("provider", "model", null, null, 1, 1))
+        val media = mockk<com.promenar.infinity.data.mediagen.queue.MediaUsageRepository>()
+        io.mockk.every { media.observeSummary() } returns kotlinx.coroutines.flow.flowOf(rows)
+        val vm = TokenUsageViewModel(mockk<Application>(relaxed = true), successfulRepository(), media)
+        advanceUntilIdle()
+        assertThat(vm.state.value.mediaUsage).isEqualTo(rows)
+        assertThat(vm.state.value.globalCostUSD).isEqualTo(0.0)
+        vm.clearStats()
+        advanceUntilIdle()
+        assertThat(vm.state.value.mediaUsage).isEqualTo(rows)
+    }
+
+    @Test fun `媒体费用加载失败可重试且不伪装为空账本`() = runTest {
+        val media = mockk<com.promenar.infinity.data.mediagen.queue.MediaUsageRepository>()
+        io.mockk.every { media.observeSummary() } returns kotlinx.coroutines.flow.flow { throw IllegalStateException("database") }
+        val vm = TokenUsageViewModel(mockk<Application>(relaxed = true), successfulRepository(), media)
+        advanceUntilIdle()
+        assertThat(vm.state.value.mediaUsageUnavailable).isTrue()
+        io.mockk.every { media.observeSummary() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        vm.loadStats()
+        advanceUntilIdle()
+        assertThat(vm.state.value.mediaUsageUnavailable).isFalse()
+    }
+
+    @Test fun `媒体重试不触发已失败的token清理`() = runTest {
+        val tokens = successfulRepository()
+        coEvery { tokens.resetStats() } throws IllegalStateException("clear")
+        val media = mockk<com.promenar.infinity.data.mediagen.queue.MediaUsageRepository>()
+        io.mockk.every { media.observeSummary() } returns kotlinx.coroutines.flow.flow { throw IllegalStateException("database") }
+        val vm = TokenUsageViewModel(mockk<Application>(relaxed = true), tokens, media)
+        advanceUntilIdle()
+        vm.clearStats()
+        advanceUntilIdle()
+        assertThat(vm.state.value.error).isEqualTo(TokenStatsErrorCode.CLEAR_FAILED)
+        io.mockk.every { media.observeSummary() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        vm.retryMediaUsage()
+        advanceUntilIdle()
+        assertThat(vm.state.value.mediaUsageUnavailable).isFalse()
+        assertThat(vm.state.value.error).isEqualTo(TokenStatsErrorCode.CLEAR_FAILED)
+        io.mockk.coVerify(exactly = 1) { tokens.resetStats() }
+    }
+
     private fun successfulRepository(): ITokenStatsRepository = mockk(relaxed = true) {
         coEvery { getTotalUsage() } returns TokenUsageAggregate()
         coEvery { getUsageByModel() } returns emptyList()

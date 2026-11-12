@@ -1,0 +1,15 @@
+<resources>
+    <string name="media_queue_notification_channel">Media generation</string>
+    <string name="media_queue_notification_title">Generating media</string>
+    <string name="media_queue_notification_body">Checking tasks and saving outputs</string>
+    <string name="media_queue_result_unknown">The submission may have reached the provider, but its remote task ID was not saved. Check the provider’s task history before creating another request.</string>
+    <string name="media_queue_remote_failed">The provider reported a generation failure.</string>
+    <string name="media_queue_poll_failed">Task status could not be checked. Retry to check the saved remote task.</string>
+    <string name="media_queue_download_failed">Generation finished. Retry to download the output.</string>
+    <string name="media_queue_channel_unavailable">The channel configuration changed or its backend is unavailable.</string>
+    <string name="media_queue_invalid_output">The backend did not return output files in the requested directory.</string>
+    <string name="media_usage_title">Media generation costs</string>
+    <string name="media_usage_unknown">Unknown cost</string>
+    <string name="media_usage_tasks">%1$d tasks</string>
+    <string name="media_usage_load_failed">Media costs could not be loaded.</string>
+</resources>

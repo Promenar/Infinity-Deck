@@ -88,7 +88,7 @@ class SshRecoveryDatabaseCompatibilityTest {
                 sqlite.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use {
                     check(it.moveToFirst() && it.getInt(0) == 0)
                 }
-                sqlite.version = 38
+                sqlite.version = 39
                 RandomAccessFile(main, "r").use { file -> file.seek(60); assertThat(file.readInt()).isEqualTo(5) }
                 val before = sourceHashes(context)
                 assertThat(before.keys).contains("infinity_v2.db-wal")
@@ -104,8 +104,15 @@ class SshRecoveryDatabaseCompatibilityTest {
     }
 
     @Test
-    fun `WAL隔离副本的当前版本白名单包含完整v25至v37身份`() {
+    fun `WAL隔离副本的当前版本白名单包含完整v25至v39身份`() {
         val accepted = com.promenar.infinity.data.local.db.recovery.CURRENT_RECOVERY_SOURCE_IDENTITIES
+        val latest = com.promenar.infinity.data.local.db.recovery.CURRENT_V39_IDENTITY
+        assertThat(accepted).contains(39 to latest)
+        assertThat(accepted).contains(38 to com.promenar.infinity.data.local.db.recovery.CURRENT_V38_IDENTITY)
+        assertThat(com.promenar.infinity.data.local.db.recovery.isTrustedCurrentRoomSchema(39, latest)).isTrue()
+        assertThat(com.promenar.infinity.data.local.db.recovery.isTrustedCurrentRoomSchema(39, "wrong-identity")).isFalse()
+        assertThat(com.promenar.infinity.data.local.db.recovery.isTrustedCurrentRoomSchema(39,
+            com.promenar.infinity.data.local.db.recovery.CURRENT_V38_IDENTITY)).isFalse()
         assertThat(accepted).contains(37 to com.promenar.infinity.data.local.db.recovery.CURRENT_V37_IDENTITY)
         assertThat(accepted).contains(35 to INFINITY_SCHEMA_V35_IDENTITY_HASH)
         assertThat(accepted).contains(36 to INFINITY_SCHEMA_V36_IDENTITY_HASH)

@@ -50,9 +50,9 @@ class ScheduledTaskMigrationTest {
                 db.insertOrThrow("sessions", null, values)
                 db.version = 25
             }
-            val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION).allowMainThreadQueries().build()
+            val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION, MIGRATION_38_39_MEDIA_GENERATION).allowMainThreadQueries().build()
             try {
-                assertThat(room.openHelper.writableDatabase.version).isEqualTo(38)
+                assertThat(room.openHelper.writableDatabase.version).isEqualTo(39)
                 assertThat(room.sessionDao().getById("s")!!.title).isEqualTo("原会话")
                 room.scheduledTaskDao().insert(ScheduledTaskEntity("sch", "s", "检查", "检查状态", "interval", "15", "UTC", false, false, true, 1000, 0, null, null, null, null, 1, 47))
                 assertThat(room.scheduledTaskDao().claim("sch", "claim", 1000)).isEqualTo(1)
