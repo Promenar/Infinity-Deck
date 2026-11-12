@@ -29,8 +29,8 @@
     <string name="recording_consent_detail">%1$s 会收到待整理的逐字稿、相关上下文和术语表。录音保存在本机。</string>
     <string name="recording_allow">允许发送文本</string>
     <string name="recording_revoke">停用此录音的云端整理</string>
-    <string name="recording_mode_auto">跟随默认 · 优先云端</string>
-    <string name="recording_mode_local">仅本地整理</string>
+    <string name="recording_mode_auto">优先云端</string>
+    <string name="recording_mode_local">本地整理</string>
     <string name="recording_mode_raw">仅转写</string>
     <string name="recording_route_cloud">云端 · 快速模型</string>
     <string name="recording_route_consent">云端整理待确认</string>

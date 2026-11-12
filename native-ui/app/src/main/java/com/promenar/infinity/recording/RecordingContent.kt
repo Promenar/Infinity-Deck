@@ -301,10 +301,10 @@ internal fun RecordingEditFields(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = InfinitySpacing.Small),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
-        CompactOutlinedTextField(title, onTitle, label = stringResource(R.string.recording_document_title), modifier = Modifier.fillMaxWidth())
+        SettingsInput(title, onTitle, label = stringResource(R.string.recording_document_title))
         SettingsInput(glossary, onGlossary, label = stringResource(R.string.recording_glossary), singleLine = false, maxLines = 2)
         SettingsInput(draft, onDraft, label = stringResource(R.string.recording_organized), singleLine = false, maxLines = 5)
     }

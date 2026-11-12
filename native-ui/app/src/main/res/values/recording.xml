@@ -29,8 +29,8 @@
     <string name="recording_consent_detail">%1$s receives the transcript, related context, and glossary. The audio stays on this device.</string>
     <string name="recording_allow">Allow text sharing</string>
     <string name="recording_revoke">Stop cloud cleanup for this recording</string>
-    <string name="recording_mode_auto">Automatic · Prefer cloud</string>
-    <string name="recording_mode_local">Local cleanup only</string>
+    <string name="recording_mode_auto">Cloud first</string>
+    <string name="recording_mode_local">Local cleanup</string>
     <string name="recording_mode_raw">Transcribe only</string>
     <string name="recording_route_cloud">Cloud · Fast model</string>
     <string name="recording_route_consent">Cloud cleanup needs consent</string>
