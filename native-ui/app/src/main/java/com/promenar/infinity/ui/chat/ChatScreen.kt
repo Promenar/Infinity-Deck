@@ -1862,7 +1862,7 @@ fun ChatScreenContent(
                                         com.promenar.infinity.ui.production.ProductionPanel(
                                             sessionId = sessionId,
                                             source = source,
-                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, onOpenMediaModels = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openMediaModels),
+                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openRoute),
                                             onLocate = actions.onLocateWorkspacePath,
                                             modifier = Modifier.fillMaxSize(),
                                         )

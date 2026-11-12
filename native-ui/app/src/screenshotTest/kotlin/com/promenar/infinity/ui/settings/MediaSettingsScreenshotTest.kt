@@ -2,7 +2,9 @@ package com.promenar.infinity.ui.settings
 
 import android.content.res.Configuration
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
@@ -112,5 +114,20 @@ fun comfyAgentConfigurePreview() = MediaPreviewTheme {
             hostName = "MAIN", status = status, target = "", onTarget = {},
             busy = false, failed = false, onCopy = {}, onStart = {},
         )
+    }
+}
+
+/** 制作面板内打开的媒体模型子页：检视器宽度（宽屏）与整屏容器（窄屏），都带返回。 */
+@PreviewTest
+@Preview(name = "媒体模型 面板内 检视器 浅中", widthDp = 400, heightDp = 880, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "媒体模型 面板内 检视器 深英大字", widthDp = 400, heightDp = 1000, locale = "en", fontScale = 1.3f, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "媒体模型 面板内 整屏 浅中360", widthDp = 360, heightDp = 880, locale = "zh-rCN", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "媒体模型 面板内 整屏 深英360", widthDp = 360, heightDp = 880, locale = "en", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun mediaModelsPanelHostPreview() = MediaPreviewTheme {
+    androidx.compose.foundation.layout.Box(
+        Modifier.fillMaxSize().consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.systemBars),
+    ) {
+        MediaModelsScreenContent(previewState, onBack = {})
     }
 }

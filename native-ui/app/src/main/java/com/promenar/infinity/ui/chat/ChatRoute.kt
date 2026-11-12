@@ -904,7 +904,7 @@ fun ChatRoute(
                                 com.promenar.infinity.ui.production.ProductionPanel(
                                     sessionId = sessionId,
                                     source = source,
-                                    services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, onOpenMediaModels = settingsNavigation?.openMediaModels),
+                                    services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = settingsNavigation?.openRoute),
                                     // 在资源管理器中定位时叠在制作页之上，返回仍回到制作页。
                                     onLocate = { path ->
                                         workspaceLocatePath = path

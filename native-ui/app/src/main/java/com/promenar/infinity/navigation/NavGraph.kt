@@ -438,9 +438,7 @@ private fun ChatHeroDestination(
                 }
                 navController.navigate(route) { launchSingleTop = true }
             },
-            openMediaModels = {
-                navController.navigate(com.promenar.infinity.ui.settings.MediaSettingsRoutes.MODELS) { launchSingleTop = true }
-            },
+            openRoute = { route -> navController.navigate(route) },
         )
     }
     // 对话“本轮用到的资料”的文档行：整页打开资料文档并定位到被引用的段落。
