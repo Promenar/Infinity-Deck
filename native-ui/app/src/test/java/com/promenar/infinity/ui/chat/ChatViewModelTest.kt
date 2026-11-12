@@ -2950,6 +2950,22 @@ class ChatViewModelTest {
         assertThat(viewModel.inputText.value).isEqualTo("保留新草稿")
     }
 
+    @Test fun `运行中删除排队审核立即撤回而不等本轮结束`() = runTest {
+        seedSession(); advanceUntilIdle()
+        holdStreamOpen = true
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("处理中"))
+        viewModel.sendMessage("长任务"); advanceUntilIdle()
+        val origin = PanelMessageOrigin("p", 1)
+        assertThat(viewModel.sendPanelMessage("s1", "排队审核", origin)).isEqualTo(PanelSendResult.QUEUED)
+        advanceUntilIdle()
+        val item = queueStore.snapshot("s1").items.single()
+        viewModel.removeQueuedMessage(item.id)
+        awaitReal { panelEvents.isNotEmpty() }
+        assertThat(viewModel.uiState.value.isGenerating).isTrue()
+        assertThat(queueStore.snapshot("s1").items).isEmpty()
+        assertThat(panelEvents).containsExactly(Triple("s1", origin, false))
+    }
+
     @Test fun `删除队列与移回输入框只在提交成功时撤回审核`() = runTest {
         seedSession(); advanceUntilIdle()
         val removed = PanelMessageOrigin("p", 1)
