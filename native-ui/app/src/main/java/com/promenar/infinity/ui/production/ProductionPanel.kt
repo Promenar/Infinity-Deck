@@ -30,6 +30,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalDensity
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.ManifestResolution
 import com.promenar.infinity.data.production.ManifestSync
@@ -49,6 +53,10 @@ import com.promenar.infinity.ui.media.rememberSessionWorkspaceMedia
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import com.promenar.infinity.domain.mediagen.MediaTask
+import com.promenar.infinity.domain.mediagen.MediaChannel
+import com.promenar.infinity.domain.mediagen.MediaGroup
+import com.promenar.infinity.data.production.AssetKind
 
 /** 面板加载状态。 */
 private sealed interface ProductionLoad {
@@ -73,11 +81,21 @@ fun ProductionPanel(
     source: ProductionPanelSource,
     modifier: Modifier = Modifier,
     onLocate: (String) -> Unit = {},
+    services: ProductionPanelServices = ProductionPanelServices(),
 ) {
     val load by produceState<ProductionLoad>(ProductionLoad.Loading, sessionId, source) {
         source.observe(sessionId).collect { snapshot ->
             value = if (snapshot == null) ProductionLoad.Empty else ProductionLoad.Ready(snapshot)
         }
+    }
+    val tasks by produceState<List<MediaTask>>(emptyList(), services.queue) {
+        services.queue?.observeTasks()?.collect { value = it }
+    }
+    val channels by produceState<List<MediaChannel>>(emptyList(), services.registry) {
+        services.registry?.observeChannels()?.collect { value = it }
+    }
+    val channelOrder by produceState<List<String>>(emptyList(), services.registry) {
+        services.registry?.observeOrder(MediaGroup.VIDEO)?.collect { value = it }
     }
     val failed = stringResource(R.string.production_panel_action_failed)
     val media = rememberSessionWorkspaceMedia(sessionId, onLocate)
@@ -92,6 +110,11 @@ fun ProductionPanel(
                 },
                 onResolve = { resolution -> userFacing(failed) { source.resolveManifest(sessionId, resolution) } },
                 modifier = modifier,
+                sessionId = sessionId,
+                services = services,
+                tasks = projectTasks(tasks, services.projectSourcePrefix?.invoke(current.snapshot.production)),
+                channels = channels,
+                channelOrder = channelOrder,
             )
         }
     }
@@ -131,15 +154,28 @@ fun ProductionPanelContent(
     modifier: Modifier = Modifier,
     initialTab: ProductionTab = ProductionTab.OVERVIEW,
     initialShot: Pair<String, String>? = null,
+    initialShotTab: ShotDetailTab? = null,
+    initialAssetId: String? = null,
+    initialPlanPreview: com.promenar.infinity.data.production.ShotPlanPreview? = null,
+    sessionId: String = "",
+    services: ProductionPanelServices = ProductionPanelServices(),
+    tasks: List<MediaTask> = emptyList(),
+    channels: List<MediaChannel> = emptyList(),
+    channelOrder: List<String> = emptyList(),
 ) {
     val production = snapshot.production
-    var tab by rememberSaveable { mutableStateOf(initialTab) }
-    var openEpisodeId by rememberSaveable { mutableStateOf(initialShot?.first) }
-    var openShotCode by rememberSaveable { mutableStateOf(initialShot?.second) }
-    var storyboardEpisodeId by rememberSaveable { mutableStateOf(initialShot?.first) }
+    var tab by rememberSaveable(production.id) { mutableStateOf(initialTab) }
+    var outputFilter by rememberSaveable(production.id) { mutableStateOf(OutputFilter.ALL) }
+    var detailInitialTab by rememberSaveable(production.id) { mutableStateOf(initialShotTab) }
+    var openAssetId by rememberSaveable(production.id) { mutableStateOf(initialAssetId) }
+    val signals = production.tabSignals(tasks)
+    var openEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
+    var openShotCode by rememberSaveable(production.id) { mutableStateOf(initialShot?.second) }
+    var storyboardEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val stringResourceFallback = stringResource(R.string.production_panel_action_failed)
 
     /** 统一执行用户操作：执行期间禁用按钮，错误显示在顶部。 */
     val run: (ProductionUserAction) -> Unit = { action ->
@@ -156,17 +192,49 @@ fun ProductionPanelContent(
     }
     val submit: suspend (ProductionUserAction) -> String? = { action -> onAction(snapshot.revision, action) }
     val openShot: (String, String) -> Unit = { episodeId, code ->
+        detailInitialTab = null
+        openAssetId = null
         openEpisodeId = episodeId
         openShotCode = code
         storyboardEpisodeId = episodeId
     }
 
+    val openStoryboardShot: (String, String) -> Unit = { episodeId, code ->
+        openShot(episodeId, code)
+        detailInitialTab = ShotDetailTab.STORYBOARD
+    }
+    val onQueue: (String, QueueAction) -> Unit = { taskId, action ->
+        val queue = services.queue
+        if (!busy && queue != null) {
+            busy = true
+            scope.launch {
+                try {
+                    error = userFacing(stringResourceFallback) {
+                        when (action) {
+                            QueueAction.APPROVE -> queue.approve(taskId)
+                            QueueAction.REJECT -> queue.reject(taskId)
+                            QueueAction.RETRY -> queue.retry(taskId)
+                        }
+                    }
+                } finally { busy = false }
+            }
+        }
+    }
     val location = openEpisodeId?.let { episodeId -> openShotCode?.let { production.findShot(episodeId, it) } }
     if (openShotCode != null && location == null) {
         // 镜头被智能体移除时回到页签。
         LaunchedEffect(openEpisodeId, openShotCode) { openShotCode = null }
     }
     Column(modifier.fillMaxSize().testTag(ProductionUiTags.PANEL)) {
+        val asset = openAssetId?.let(production::findAsset)
+        if (openAssetId != null && asset == null) LaunchedEffect(openAssetId) { openAssetId = null }
+        if (asset?.kind == AssetKind.CHARACTER) {
+            BackHandler { openAssetId = null }
+            error?.let { InfinityStatusStrip(InfinityStatusKind.Error, it, onDismiss = { error = null }, modifier = Modifier.padding(16.dp)) }
+            ProductionCharacterPage(asset, production, busy, { openAssetId = null }, openShot, run, submit, Modifier.weight(1f))
+            return@Column
+        }
+        if (asset != null) ProductionAssetSheet(asset, production.shotsUsingAsset(asset.id), busy, { openAssetId = null }, run, submit)
         if (location != null) {
             BackHandler { openShotCode = null }
             ProductionShotDetail(
@@ -178,6 +246,9 @@ fun ProductionPanelContent(
                 onRun = run,
                 onSubmit = submit,
                 modifier = Modifier.weight(1f),
+                production = production, revision = snapshot.revision, sessionId = sessionId, services = services,
+                channels = channels, channelOrder = channelOrder, initialTab = detailInitialTab,
+                onOpenCharacter = { openAssetId = it }, initialPreview = initialPlanPreview,
             )
             return@Column
         }
@@ -195,10 +266,12 @@ fun ProductionPanelContent(
         }
         InfinityPanelTabs(
             tabs = listOf(
-                InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW),
+                InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), count = signals.approvals.takeIf { it > 0 }?.toString(), testTag = ProductionUiTags.TAB_OVERVIEW),
                 InfinityPanelTab(ProductionTab.SCRIPT, stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT),
                 InfinityPanelTab(ProductionTab.ASSETS, stringResource(R.string.production_panel_tab_assets), testTag = ProductionUiTags.TAB_ASSETS),
-                InfinityPanelTab(ProductionTab.STORYBOARD, stringResource(R.string.production_panel_tab_storyboard), testTag = ProductionUiTags.TAB_STORYBOARD),
+                InfinityPanelTab(ProductionTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { signals.storyboardDot }, testTag = ProductionUiTags.TAB_STORYBOARD),
+                InfinityPanelTab(ProductionTab.OUTPUT, stringResource(R.string.p2_tab_output), count = signals.reviews.takeIf { it > 0 }?.toString()),
+                InfinityPanelTab(ProductionTab.CUT, stringResource(R.string.p2_tab_cut)),
             ),
             selected = tab,
             onSelect = { tab = it },
@@ -207,27 +280,24 @@ fun ProductionPanelContent(
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
-                ProductionTab.OVERVIEW -> ProductionOverviewTab(
-                    production = production,
-                    busy = busy,
-                    onOpenShot = openShot,
-                    onOpenEpisode = { episodeId ->
-                        storyboardEpisodeId = episodeId
-                        tab = ProductionTab.STORYBOARD
-                    },
-                    onOpenAssets = { tab = ProductionTab.ASSETS },
-                    onRun = run,
+                ProductionTab.OVERVIEW -> ProductionManagementTab(
+                    production, tasks, busy, services,
+                    onOutput = { outputFilter = it; tab = ProductionTab.OUTPUT },
+                    onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
+                    onAsset = { openAssetId = it }, onRun = run, onQueue = onQueue,
                 )
-                ProductionTab.SCRIPT -> ProductionScriptTab(production = production, busy = busy, onRun = run)
-                ProductionTab.ASSETS -> ProductionAssetsTab(production = production, busy = busy, onRun = run, onSubmit = submit)
+                ProductionTab.SCRIPT -> ProductionScriptTab(production = production, busy = busy, onRun = run, onOpenEpisode = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
+                ProductionTab.ASSETS -> ProductionAssetsTab(production = production, busy = busy, onRun = run, onSubmit = submit, onOpenCharacter = { openAssetId = it })
                 ProductionTab.STORYBOARD -> ProductionStoryboardTab(
                     production = production,
                     episodeId = storyboardEpisodeId ?: production.defaultEpisodeId(),
                     onSelectEpisode = { storyboardEpisodeId = it },
                     busy = busy,
-                    onOpenShot = openShot,
-                    onRun = run,
+                    onOpenShot = openStoryboardShot,
+                    onRun = run, services = services, channels = channels, channelOrder = channelOrder,
                 )
+                ProductionTab.OUTPUT -> ProductionOutputTab(production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot, { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
+                ProductionTab.CUT -> ProductionCutTab(production, services, openShot)
             }
         }
     }
@@ -293,7 +363,7 @@ private fun ManifestBanner(manifest: ManifestSync, onResolve: suspend (ManifestR
                     onClick = { confirming = ManifestResolution.ADOPT_FILE },
                     enabled = !resolving,
                     compact = true,
-                    modifier = Modifier.testTag(ProductionUiTags.MANIFEST_ADOPT),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag(ProductionUiTags.MANIFEST_ADOPT),
                 )
             }
             InfinityPillButton(
@@ -301,7 +371,7 @@ private fun ManifestBanner(manifest: ManifestSync, onResolve: suspend (ManifestR
                 onClick = { confirming = ManifestResolution.OVERWRITE_FILE },
                 enabled = !resolving,
                 compact = true,
-                modifier = Modifier.testTag(ProductionUiTags.MANIFEST_OVERWRITE),
+                modifier = Modifier.heightIn(min = 48.dp).testTag(ProductionUiTags.MANIFEST_OVERWRITE),
             )
         }
     }
@@ -333,11 +403,13 @@ internal fun ProductionActionRow(
     modifier: Modifier = Modifier,
 ) {
     if (actions.isEmpty()) return
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium)
+    val labelWidth = actions.maxOf { measurer.measure(AnnotatedString(it.text), style = style, softWrap = false, maxLines = 1).size.width }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
-        val longest = actions.maxOf { it.text.length }
-        // 每个字符约 14dp 加左右内边距与图标；估算宽度超过可用宽度时整组竖排。
-        val estimated = actions.size * (longest * 14 + 56) + (actions.size - 1) * 8
-        if (estimated <= maxWidth.value) {
+        val estimated = actions.size * (labelWidth + with(density) { 32.dp.toPx() }) + (actions.size - 1) * with(density) { InfinitySpacing.Small.toPx() }
+        if (estimated <= with(density) { maxWidth.toPx() }) {
             Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                 actions.forEach { button -> ProductionPill(button, Modifier.weight(1f)) }
             }

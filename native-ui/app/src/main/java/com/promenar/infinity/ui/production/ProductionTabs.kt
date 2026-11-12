@@ -81,79 +81,7 @@ internal fun episodeName(episode: Episode): List<String> =
 // ---------- 总览 ----------
 
 @Composable
-internal fun ProductionOverviewTab(
-    production: Production,
-    busy: Boolean,
-    onOpenShot: (episodeId: String, shotCode: String) -> Unit,
-    onOpenEpisode: (episodeId: String) -> Unit,
-    onOpenAssets: () -> Unit,
-    onRun: (ProductionUserAction) -> Unit,
-) {
-    val pending = remember(production) { production.pendingItems() }
-    val redo = remember(production) { production.redoShots() }
-    val current = remember(production) { production.currentStage() }
-    LazyColumn(contentPadding = TabContentPadding, verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-        item("stages") {
-            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                ProductionSectionTitle(stringResource(R.string.production_panel_section_stages))
-                ProductionCard {
-                    production.visibleStages().forEach { stage ->
-                        StageRow(stage, current = stage.stage == current, busy = busy, onSet = { onRun(ProductionUserAction.SetStage(stage.stage, it)) })
-                    }
-                }
-            }
-        }
-        item("pending") {
-            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                ProductionSectionTitle(stringResource(R.string.production_panel_section_pending))
-                ProductionCard {
-                    if (pending.isEmpty()) {
-                        Text(
-                            stringResource(R.string.production_panel_nothing_pending),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
-                        )
-                    }
-                    pending.take(OVERVIEW_PENDING_LIMIT).forEach { item ->
-                        when (item) {
-                            is PendingItem.ShotReview -> ShotLine(item.location, onClick = { onOpenShot(item.location.episode.id, item.location.shot.code) })
-                            is PendingItem.AssetReview -> AssetLine(item.asset, onClick = onOpenAssets)
-                        }
-                    }
-                }
-            }
-        }
-        if (redo.isNotEmpty()) {
-            item("redo") {
-                Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                    ProductionSectionTitle(stringResource(R.string.production_panel_section_redo))
-                    ProductionCard {
-                        redo.take(OVERVIEW_PENDING_LIMIT).forEach { location ->
-                            ShotLine(location, onClick = { onOpenShot(location.episode.id, location.shot.code) })
-                        }
-                    }
-                }
-            }
-        }
-        val episodes = production.episodes()
-        if (episodes.isNotEmpty()) {
-            item("episodes") {
-                Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                    ProductionSectionTitle(stringResource(R.string.production_panel_section_episodes))
-                    ProductionCard {
-                        episodes.forEach { episode -> EpisodeProgressRow(episode, onClick = { onOpenEpisode(episode.id) }) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private const val OVERVIEW_PENDING_LIMIT = 20
-
-@Composable
-private fun StageRow(stage: StageState, current: Boolean, busy: Boolean, onSet: (StageStatus) -> Unit) {
+internal fun StageRow(stage: StageState, current: Boolean, busy: Boolean, onSet: (StageStatus) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -195,54 +123,7 @@ internal fun stageChoices(stage: ProductionStage): List<StageStatus> =
     if (stage == ProductionStage.ANIMATIC) StageStatus.entries else StageStatus.entries - StageStatus.SKIPPED
 
 @Composable
-private fun ShotLine(location: ShotLocation, onClick: () -> Unit) {
-    val shot = location.shot
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)
-            .testTag(ProductionUiTags.SHOT_ROW),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-    ) {
-        ProductionThumbnail(shot.thumbnailPath(), Modifier.width(64.dp).aspectRatio(16f / 9f))
-        Column(Modifier.weight(1f)) {
-            Text(shot.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            InfinityMetaLine(
-                segments = listOf(location.episode.id, shot.code),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-        ProductionStatusChip(shot.status.label(), shot.status.tone())
-    }
-}
-
-@Composable
-private fun AssetLine(asset: Asset, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-    ) {
-        ProductionThumbnail(asset.currentPath(), Modifier.size(40.dp))
-        Column(Modifier.weight(1f)) {
-            Text(asset.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(asset.kind.label(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        }
-        ProductionStatusChip(asset.status.label(), asset.status.tone())
-    }
-}
-
-@Composable
-private fun EpisodeProgressRow(episode: Episode, onClick: () -> Unit) {
+internal fun EpisodeProgressRow(episode: Episode, onClick: () -> Unit) {
     val stats = remember(episode) { episode.shotStats() }
     Column(
         Modifier
@@ -274,7 +155,7 @@ private fun EpisodeProgressRow(episode: Episode, onClick: () -> Unit) {
 // ---------- 剧本 ----------
 
 @Composable
-internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit) {
+internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit, onOpenEpisode: (String) -> Unit = {}) {
     val episodes = production.episodes()
     LazyColumn(contentPadding = TabContentPadding, verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
         if (production.bible.isNotEmpty()) {
@@ -307,7 +188,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                 }
                 if (episode.scenes.isNotEmpty()) {
                     ProductionCard {
-                        episode.scenes.forEach { scene -> SceneHeadingLine(scene) }
+                        episode.scenes.forEach { scene -> SceneHeadingLine(scene) { onOpenEpisode(episode.id) } }
                     }
                 }
                 if (path != null) {
@@ -317,6 +198,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                         enabled = !busy,
                         icon = if (episode.scriptLocked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
                         compact = true,
+                        modifier = Modifier.heightIn(min = 48.dp),
                     )
                 }
             }
@@ -325,11 +207,11 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
 }
 
 @Composable
-private fun SceneHeadingLine(scene: Scene) {
+private fun SceneHeadingLine(scene: Scene, onClick: () -> Unit) {
     InfinityMetaLine(
-        segments = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading),
+        segments = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading, stringResource(if (scene.storyboardLocked) R.string.p2_content_locked else R.string.p2_content_editable), stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds }))),
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
     )
 }
 
@@ -343,7 +225,11 @@ internal fun ProductionStoryboardTab(
     busy: Boolean,
     onOpenShot: (episodeId: String, shotCode: String) -> Unit,
     onRun: (ProductionUserAction) -> Unit,
+    services: ProductionPanelServices = ProductionPanelServices(),
+    channels: List<com.promenar.infinity.domain.mediagen.MediaChannel> = emptyList(),
+    channelOrder: List<String> = emptyList(),
 ) {
+    var confirming by remember { mutableStateOf<Scene?>(null) }
     val episodes = production.episodes()
     val episode = episodes.firstOrNull { it.id == episodeId } ?: episodes.firstOrNull()
     if (episode == null) {
@@ -359,21 +245,41 @@ internal fun ProductionStoryboardTab(
         }
         episode.scenes.forEach { scene ->
             item(key = "scene-${scene.code}") {
-                SceneHeader(scene, busy = busy, onToggleLock = { onRun(ProductionUserAction.LockScene(episode.id, scene.code, !scene.storyboardLocked)) })
+                SceneHeader(scene, busy = busy, onToggleLock = { if (scene.requiresLockConfirmation()) confirming = scene else onRun(ProductionUserAction.LockScene(episode.id, scene.code, !scene.storyboardLocked)) })
             }
             item(key = "shots-${scene.code}") {
                 ProductionCard {
                     scene.shots.forEach { shot ->
-                        ShotLine(ShotLocation(episode, scene, shot), onClick = { onOpenShot(episode.id, shot.code) })
+                        Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenShot(episode.id, shot.code) }.padding(InfinitySpacing.Medium), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("${shot.code} · ${shot.title}", style = MaterialTheme.typography.titleSmall)
+                            ProductionShotText(shot, production)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                production.importedReferencePaths(shot).take(5).forEach { ProductionThumbnail(it, Modifier.size(28.dp)) }
+                            }
+                            val channel = resolvedShotChannel(shot, channels, channelOrder)
+                            ShotPlanSummary(shot, channel, (shot.channelId ?: channel?.id)?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel))
+                        }
+                    }
+                    if (!scene.storyboardLocked) {
+                        androidx.compose.material3.TextButton(onClick = { services.onAddShot?.invoke(episode.id, scene.code) }, enabled = !busy && services.onAddShot != null, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.p2_add_shot), maxLines = 1)
+                        }
+                        if (services.onAddShot == null) Text(stringResource(R.string.p2_add_shot_unavailable), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(InfinitySpacing.Medium))
                     }
                 }
             }
         }
     }
+    confirming?.let { scene ->
+        com.promenar.infinity.ui.common.InfinityConfirmDialog(
+            title = stringResource(R.string.p2_lock_scene), message = stringResource(R.string.p2_lock_scene_message), confirmText = stringResource(R.string.p2_lock_scene),
+            onConfirm = { onRun(ProductionUserAction.LockScene(episode.id, scene.code, true)); confirming = null }, onCancel = { confirming = null },
+        )
+    }
 }
 
 @Composable
-private fun EpisodePicker(episodes: List<Episode>, current: Episode, onSelect: (String) -> Unit) {
+internal fun EpisodePicker(episodes: List<Episode>, current: Episode, onSelect: (String) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -401,7 +307,7 @@ private fun EpisodePicker(episodes: List<Episode>, current: Episode, onSelect: (
 }
 
 @Composable
-private fun SceneHeader(scene: Scene, busy: Boolean, onToggleLock: () -> Unit) {
+internal fun SceneHeader(scene: Scene, busy: Boolean, onToggleLock: () -> Unit) {
     val stats = remember(scene) { scene.shotStats() }
     Row(
         Modifier.fillMaxWidth().padding(top = InfinitySpacing.Small),
@@ -445,12 +351,13 @@ internal fun ProductionAssetsTab(
     busy: Boolean,
     onRun: (ProductionUserAction) -> Unit,
     onSubmit: suspend (ProductionUserAction) -> String?,
+    onOpenCharacter: (String) -> Unit = {},
 ) {
     var kind by rememberSaveable { mutableStateOf<AssetKind?>(null) }
     var openAssetId by rememberSaveable { mutableStateOf<String?>(null) }
     val assets = production.assets.filter { kind == null || it.kind == kind }
     val choices = listOf(InfinityChoice<AssetKind?>(null, stringResource(R.string.production_panel_asset_all))) +
-        AssetKind.entries.filter { k -> production.assets.any { it.kind == k } }.map { InfinityChoice<AssetKind?>(it, it.label()) }
+        AssetKind.entries.map { InfinityChoice<AssetKind?>(it, it.label()) }
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 144.dp),
         contentPadding = TabContentPadding,
@@ -464,7 +371,7 @@ internal fun ProductionAssetsTab(
                 ProductionChoiceRow(choices = choices, selected = kind, onSelect = { kind = it })
             }
         }
-        items(assets, key = { it.id }) { asset -> AssetCard(asset, onClick = { openAssetId = asset.id }) }
+        items(assets, key = { it.id }) { asset -> AssetCard(asset, onClick = { if (asset.kind == AssetKind.CHARACTER) onOpenCharacter(asset.id) else openAssetId = asset.id }) }
     }
     openAssetId?.let { id ->
         val asset = production.findAsset(id)
@@ -494,6 +401,10 @@ private fun AssetCard(asset: Asset, onClick: () -> Unit) {
     ) {
         Column(Modifier.padding(InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ProductionThumbnail(asset.currentPath(), Modifier.fillMaxWidth().aspectRatio(1f), contentDescription = asset.name)
+            if (asset.kind == AssetKind.CHARACTER) {
+                Text(stringResource(R.string.p2_look_count, asset.looks.size), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(if (asset.referenceVoice?.path != null) R.string.p2_has_voice else R.string.p2_no_voice), style = MaterialTheme.typography.labelSmall)
+            }
             Text(asset.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(

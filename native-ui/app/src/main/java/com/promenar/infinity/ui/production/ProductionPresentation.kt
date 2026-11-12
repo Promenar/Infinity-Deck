@@ -13,8 +13,8 @@ import com.promenar.infinity.data.production.Take
 
 /* 制作面板的纯展示逻辑：统计、待处理清单与定位。界面只读这些结果，不直接遍历快照。 */
 
-/** 面板内的页签；剪辑与任务在后续分期加入。 */
-enum class ProductionTab { OVERVIEW, SCRIPT, ASSETS, STORYBOARD }
+/** 面板内的六个流程与管理页签。 */
+enum class ProductionTab { OVERVIEW, SCRIPT, ASSETS, STORYBOARD, OUTPUT, CUT }
 
 /** 镜头统计。[pending] 是等待用户处理的数量（待审）。 */
 data class ShotStats(
@@ -80,7 +80,7 @@ fun Production.pendingItems(): List<PendingItem> =
 
 /** 功能面板入口的待处理角标数。 */
 fun Production.pendingCount(): Int =
-    shotLocations().count { it.shot.status == ShotStatus.REVIEW } + assets.count { it.status == AssetStatus.REVIEW }
+    shotLocations().count { it.shot.status == ShotStatus.REVIEW }
 
 /** 是否有正在生成的镜头；入口据此显示运行点。 */
 fun Production.isGenerating(): Boolean = shotLocations().any { it.shot.status == ShotStatus.GENERATING }
@@ -102,7 +102,7 @@ fun Production.findAsset(assetId: String): Asset? = assets.firstOrNull { it.id =
 
 /** 引用该资产的镜头数。 */
 fun Production.shotsUsingAsset(assetId: String): Int =
-    shotLocations().count { location -> location.shot.inputs.any { it.assetId == assetId } }
+    findAsset(assetId)?.referenceLocations(this)?.size ?: 0
 
 fun Shot.selectedTake(): Take? = selectedTakeId?.let { id -> takes.firstOrNull { it.id == id } }
 
@@ -150,7 +150,7 @@ fun Shot.actions(takeId: String?): ShotActions {
 data class AssetActions(val canApprove: Boolean, val canRedo: Boolean, val canUnlock: Boolean)
 
 fun Asset.actions(): AssetActions = AssetActions(
-    canApprove = status != AssetStatus.LOCKED && versions.isNotEmpty(),
+    canApprove = status != AssetStatus.LOCKED && (versions.isNotEmpty() || (kind == com.promenar.infinity.data.production.AssetKind.CHARACTER && looks.any { look -> com.promenar.infinity.data.production.ProductionRules.defaultSlotOrder.all { id -> look.slots.any { it.id == id && !it.path.isNullOrBlank() } } })),
     canRedo = status != AssetStatus.LOCKED && status != AssetStatus.REDO,
     canUnlock = status == AssetStatus.LOCKED,
 )

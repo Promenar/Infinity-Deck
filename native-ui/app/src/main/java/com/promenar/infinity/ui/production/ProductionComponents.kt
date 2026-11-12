@@ -410,13 +410,10 @@ internal fun <T> ProductionChoiceRow(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    com.promenar.infinity.ui.common.InfinityTagScrollRow(modifier = modifier, spacing = com.promenar.infinity.ui.theme.InfinitySpacing.Small) {
-        choices.forEach { choice ->
-            androidx.compose.material3.FilterChip(
-                selected = choice.value == selected,
-                onClick = { onSelect(choice.value) },
-                label = { Text(choice.label, maxLines = 1) },
-            )
-        }
-    }
+    com.promenar.infinity.ui.common.InfinitySegmentedControl(
+        segments = choices.map { com.promenar.infinity.ui.common.InfinitySegment(it.value, it.label) },
+        selected = selected,
+        onSelect = onSelect,
+        modifier = modifier,
+    )
 }
