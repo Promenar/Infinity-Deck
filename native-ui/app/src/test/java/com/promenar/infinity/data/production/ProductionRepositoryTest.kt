@@ -37,6 +37,17 @@ class ProductionRepositoryTest {
         repo = ProductionRepository(db, files, now = { 10 }, newId = { "project" })
     }
     @After fun close() { repo.close(); db.close() }
+    @Test fun `剪辑写入在事务中核对项目标识与修订号`() = runBlocking {
+        val created = repo.define("s", "影片", ProductionKind.FILM)
+        val action = ProductionUserAction.SetStage(ProductionStage.EDIT, StageStatus.IN_PROGRESS)
+        try {
+            repo.applyForProduction("s", "other-project", created.revision, action)
+            org.junit.Assert.fail("应拒绝错误项目绑定")
+        } catch (_: IllegalArgumentException) { }
+        assertThat(db.productionDao().get("project")!!.revision).isEqualTo(created.revision)
+        val updated = repo.applyForProduction("s", "project", created.revision, action)
+        assertThat(updated.production.stages.first { it.stage == ProductionStage.EDIT }.status).isEqualTo(StageStatus.IN_PROGRESS)
+    }
     @Test fun `定义解绑重新绑定与曾经绑定`() = runBlocking {
         val created = repo.define("s", "影片", ProductionKind.FILM)
         assertThat(created.manifest).isEqualTo(ManifestSync.Pending)

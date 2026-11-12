@@ -250,6 +250,9 @@ data class Production(
     val changeRequests: List<ShotChangeRequest> = emptyList(),
     val policyChangedBy: ChangeSource = ChangeSource.AGENT,
     val policyChangedAt: Long = 0,
+    val cuts: List<CutVersion> = emptyList(),
+    /** 每集已使用的最大剪辑编号；删除版本后保留。 */
+    val cutVersionHighWatermarks: Map<String, Int> = emptyMap(),
 )
 
 /** 清单文件与数据库的同步状态。 */
@@ -276,6 +279,11 @@ class ProductionRevisionConflictException : IllegalArgumentException("面板已�
 
 /** 用户在面板里的操作；全部记为 [ChangeSource.USER]，失败时抛 [IllegalArgumentException]，消息可直接显示。 */
 sealed interface ProductionUserAction {
+    /** 时长表以素材虚拟路径为键，由媒体探测层提供实际时长。 */
+    data class CreateCut(val episodeId: String, val mediaDurations: Map<String, Double> = emptyMap()) : ProductionUserAction
+    data class DeleteCut(val cutId: String) : ProductionUserAction
+    data class SetCutSubtitles(val cutId: String, val burnSubtitles: Boolean) : ProductionUserAction
+    data class RegisterCutExport(val cutId: String, val record: CutExportRecord) : ProductionUserAction
     data class AddShot(val episodeId: String, val sceneCode: String, val title: String) : ProductionUserAction
     data class EditShotContent(val episodeId: String, val shotCode: String, val proposed: Shot) : ProductionUserAction
     data class ResolveChange(val requestId: String, val approve: Boolean) : ProductionUserAction

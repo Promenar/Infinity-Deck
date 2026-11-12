@@ -47,6 +47,7 @@ fun rememberProductionPanelServices(
     }
     return remember(runtime, labels, pending, sessionId, source, onOpenMediaModels, conflict, invalid, failed) {
         ProductionPanelServices(
+            cutExport = app.productionCutRuntime.controller,
             planner = runtime?.let { app.shotGenerationPlanner },
             queue = runtime?.let { app.mediaGenerationQueue },
             registry = runtime?.let { app.mediaChannelRegistry },

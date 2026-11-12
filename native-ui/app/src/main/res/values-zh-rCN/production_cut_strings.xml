@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_cut_notification_channel">成片导出</string>
+    <string name="production_cut_exporting">正在导出</string>
+    <string name="production_cut_cancel">取消</string>
+    <string name="production_cut_busy">已有导出任务</string>
+    <string name="production_cut_missing_project">项目不可用</string>
+    <string name="production_cut_missing_version">剪辑版本不可用</string>
+    <string name="production_cut_changed">项目已更新</string>
+    <string name="production_cut_failed">导出失败</string>
+    <string name="production_cut_interrupted">导出已中断</string>
+    <string name="production_cut_recovery_required">产物需要恢复</string>
+    <string name="production_cut_media_unavailable">媒体不可用</string>
+    <string name="production_cut_unsupported_size">输出尺寸不受支持</string>
+    <string name="production_cut_source_changed">素材时长已变化</string>
+    <string name="production_cut_invalid_output">产物校验失败</string>
+    <string name="production_cut_encoding_failed">编码失败</string>
+    <string name="production_cut_storage_full">存储空间不足</string>
+</resources>

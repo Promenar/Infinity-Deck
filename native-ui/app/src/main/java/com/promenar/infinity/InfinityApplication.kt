@@ -1427,6 +1427,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private val _installedProductionMediaRuntime = MutableStateFlow<com.promenar.infinity.data.mediagen.ProductionMediaRuntime?>(null)
     /** 安装完成后才对界面发布，避免启动 Ready 与队列安装之间的竞态。 */
     val installedProductionMediaRuntime: StateFlow<com.promenar.infinity.data.mediagen.ProductionMediaRuntime?> = _installedProductionMediaRuntime.asStateFlow()
+    val productionCutRuntime by lazy { com.promenar.infinity.data.cut.ProductionCutRuntime(this) }
     val productionMediaRuntime by lazy { com.promenar.infinity.data.mediagen.ProductionMediaRuntime(this) }
     val shotGenerationPlanner: com.promenar.infinity.data.production.ShotGenerationPlanner get() = productionMediaRuntime.planner
     val mediaGenerationQueue: com.promenar.infinity.domain.mediagen.MediaGenerationQueue get() = productionMediaRuntime.queue
@@ -2049,6 +2050,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionCutSkill({ productionRepository.get(it) }, { productionCutRuntime.controller }))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionPlanSkill { shotGenerationPlanner })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerateSkill { shotGenerationPlanner })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerationTasksSkill({ productionMediaRuntime.store }, { mediaGenerationQueue }))

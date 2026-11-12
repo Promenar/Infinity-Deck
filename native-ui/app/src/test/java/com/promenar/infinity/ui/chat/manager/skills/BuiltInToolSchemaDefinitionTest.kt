@@ -47,6 +47,7 @@ class BuiltInToolSchemaDefinitionTest {
             ExecJsSkill(mockk<ScriptToolRunner>()),
             RunScriptSkill(mockk<ScriptToolRunner>()),
             TermuxExecSkill({ error("不应派发") }, { true }),
+            ProductionCutSkill({ error("不应读库") }, { error("不应派发") }),
         ) + scheduleSkillRegistry(mockk<DefaultScheduledTaskController>(relaxed = true)).getAllSkills() +
             backgroundJobTools(mockk<BackgroundJobManager>(relaxed = true))
         definitions.forEach { assertValid(it.id, it.parametersSchema) }

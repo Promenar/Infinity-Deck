@@ -52,6 +52,10 @@ object ProductionUserEngine {
             } else if (!scene.storyboardLocked) updateShot(episodeId, shotCode) { updated }
         }
         when (action) {
+            is ProductionUserAction.CreateCut -> p = ProductionCuts.create(p, action.episodeId, action.mediaDurations, now)
+            is ProductionUserAction.DeleteCut -> p = ProductionCuts.delete(p, action.cutId)
+            is ProductionUserAction.SetCutSubtitles -> p = ProductionCuts.setSubtitles(p, action.cutId, action.burnSubtitles)
+            is ProductionUserAction.RegisterCutExport -> p = ProductionCuts.registerExport(p, action.cutId, action.record)
             is ProductionUserAction.AddShot -> {
                 var found = false
                 updateEpisode(action.episodeId) { episode -> episode.copy(scenes = episode.scenes.map { scene ->
