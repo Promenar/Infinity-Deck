@@ -230,6 +230,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.network.PublicNetworkMonitor(this)
     }
     val themePreferenceStore: ThemePreferenceStore by lazy { ThemePreferenceStore(this) }
+    internal val recordings by lazy { com.promenar.infinity.recording.RecordingController(this) }
     val petMemoryStore: com.promenar.infinity.data.pet.PetMemoryStore by lazy { com.promenar.infinity.data.pet.PetMemoryStore(this) }
 
     val petPreferenceStore: com.promenar.infinity.data.pet.PetPreferenceStore by lazy {
@@ -2581,10 +2582,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         // 第一阶段仅执行读取和不注册外部资源的对象构造。
         val settingsPrefs = getSharedPreferences("infinity_settings", MODE_PRIVATE)
         val nextHapticEnabled = settingsPrefs.getBoolean("haptic_enabled", true)
+        val localRevision = com.promenar.infinity.data.local.inference.LocalModelRevisionStore(this).read()
         val lastModelToLoad = localInferenceRuntimeGate.startupModelPath(
             localModelsEnabled = settingsPrefs.getBoolean("local_models_enabled", false),
-            autoLoadEnabled = settingsPrefs.getBoolean("local_auto_load", false),
-            persistedModelPath = prefs.getString("last_local_model", null),
+            autoLoadEnabled = localRevision != null || settingsPrefs.getBoolean("local_auto_load", false),
+            persistedModelPath = localRevision?.path ?: prefs.getString("last_local_model", null),
         )
         val inferenceEngine = if (localInferenceRuntimeGate.isAvailable) localInferenceEngine else null
         val processObserver = inferenceEngine?.let { engine ->
@@ -2674,6 +2676,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                         task = StartupBackgroundTask.LOCAL_MODEL_AUTO_LOAD,
                         start = CoroutineStart.LAZY,
                     ) {
+                        val revisions = com.promenar.infinity.data.local.inference.LocalModelRevisionStore(this@InfinityApplication)
+                        val revision = revisions.read()
+                        check(revision == null || revision.path == modelPath && revisions.verify(revision)) { "本地模型固定版本校验失败" }
                         checkNotNull(prepared.inferenceEngine) { "本地推理启动计划与运行时能力不一致" }
                             .loadModel(SlotType.MAIN, modelPath).getOrThrow()
                     }
@@ -2964,7 +2969,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         protocolFactory = ::createRoutedModelProtocol,
     )
 
-    private fun createRoutedModelProtocol(resolved: com.promenar.infinity.data.remote.ResolvedProviderModel): com.promenar.infinity.data.remote.protocol.LlmProtocol {
+    internal fun createRoutedModelProtocol(resolved: com.promenar.infinity.data.remote.ResolvedProviderModel): com.promenar.infinity.data.remote.protocol.LlmProtocol {
         val config = resolved.config
         if (config.protocolType == ProtocolType.Local) {
             return generationLocalProviders.create(resolved.remoteModelId).protocol

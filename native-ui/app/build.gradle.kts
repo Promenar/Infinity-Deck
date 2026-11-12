@@ -3,6 +3,8 @@ import com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask
 import com.promenar.infinity.buildlogic.BuildTailnetBinary
 import com.promenar.infinity.buildlogic.BuildLinuxRuntime
 import com.promenar.infinity.buildlogic.FetchVerifiedFile
+import com.promenar.infinity.buildlogic.PrepareRecordingAssets
+import com.android.build.api.variant.BuildConfigField
 import com.promenar.infinity.buildlogic.GenerateLauncherIcons
 import com.promenar.infinity.buildlogic.PackagedPythonRelease
 import com.promenar.infinity.buildlogic.PackagedPythonWheels
@@ -317,7 +319,28 @@ val prepareLinuxRuntimeAssets = tasks.register<PrepareLinuxRuntimeAssets>("prepa
     outputDirectory.set(layout.buildDirectory.dir("generated/linuxRuntime/assets"))
 }
 
+val recordingInputs = gradle.gradleUserHomeDir.resolve("caches/infinity-recording")
+val sherpaAndroidAar = tasks.register<FetchVerifiedFile>("fetchSherpaAndroidAar") {
+    url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar")
+    sha256.set("a8d09d1d32f3eb8520482c6d3d43fae674681c5b050385967c70a3c2c9bf0ee7")
+    outputFile.set(recordingInputs.resolve("sherpa-onnx-2.0.1.aar"))
+}
+val zipformerModel = "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2"
+val fetchZipformer = tasks.register<FetchVerifiedFile>("fetchRecordingZipformer") {
+    url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$zipformerModel")
+    sha256.set("2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7")
+    outputFile.set(recordingInputs.resolve(zipformerModel))
+}
+val prepareRecordingAssets = tasks.register<PrepareRecordingAssets>("prepareRecordingAssets") {
+    archive.set(fetchZipformer.flatMap { it.outputFile })
+    outputDirectory.set(layout.buildDirectory.dir("generated/recording/assets"))
+}
+
 androidComponents.onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(prepareRecordingAssets, PrepareRecordingAssets::getOutputDirectory)
+    if (variant.buildType == "release" && ("distribution" to "sideload") in variant.productFlavors) {
+        variant.buildConfigFields.put("LOCAL_INFERENCE_AVAILABLE", BuildConfigField("boolean", "true", null))
+    }
     val capitalizedName = variant.name.replaceFirstChar { it.uppercaseChar() }
     // 本地 PTY 仅供侧载版使用，Play 版继续只保留 Java 终端仿真。
     if (variant.productFlavors.any { it.first == "distribution" && it.second == "play" }) {
@@ -401,6 +424,7 @@ android {
             buildConfigField("String", "DISTRIBUTION", "\"sideload\"")
             buildConfigField("boolean", "ALL_FILES_ACCESS_AVAILABLE", "true")
             buildConfigField("boolean", "EXACT_ALARM_AVAILABLE", "true")
+            externalNativeBuild { cmake { arguments += "-DINFINITY_SIDELOAD=ON" } }
         }
     }
 
@@ -474,7 +498,7 @@ android {
             buildConfigField("boolean", "LOCAL_INFERENCE_AVAILABLE", "false")
             externalNativeBuild {
                 cmake {
-                    arguments += "-DINFINITY_ENABLE_LOCAL_INFERENCE=OFF"
+                    arguments += "-DINFINITY_RELEASE=ON"
                 }
             }
             proguardFiles(
@@ -575,6 +599,7 @@ ksp {
 }
 
 dependencies {
+    implementation(files(sherpaAndroidAar.flatMap { it.outputFile }).builtBy(sherpaAndroidAar))
     implementation("io.github.dokar3:quickjs-kt:1.0.17")
     // ─── Jetpack Compose BOM ───
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")

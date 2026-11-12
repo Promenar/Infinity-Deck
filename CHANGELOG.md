@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- 资料首页、Android 快捷设置和桌面快捷方式可启动录音听写。小版中英 Zipformer 在设备上实时转写，支持后台持续录音、暂停续录、时间戳回听和保存到资料。外部 Intent 打开录音页后由用户确认开始。
+- 录音整理可使用默认快速模型、本地 GGUF 主生成器或仅转写。云端发送按录音与模型路线确认，断网后保留整理进度；自动资料索引不会发送录音文档。
+- 签名侧载版开放 llama.cpp CPU 本地推理。已导入 GGUF 支持 SHA-256 固定与版本切换，可选下载固定版本的 Qwen3-0.6B；Play 正式版支持离线听写和云端整理。
+
+
 ## [0.48.5-beta] - 2026-11-12
 
 ### 修复

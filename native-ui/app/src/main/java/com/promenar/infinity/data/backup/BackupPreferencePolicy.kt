@@ -78,6 +78,8 @@ internal object BackupPreferencePolicy {
     // 权限询问、本地执行能力与一次性提示属于设备状态，不能随备份迁移到能力或授权不同的新设备。
     private val exactDenied = mapOf(
         "provider" to setOf("last_local_model"),
+        "recording_defaults" to setOf("mode", "fallback"),
+        "local_model_revision" to setOf("name", "sha256"),
         // 连接探测结果与模型同步时间仅描述当前设备，不随备份迁移。
         "provider_status" to setOf("statuses"),
         "settings" to setOf(

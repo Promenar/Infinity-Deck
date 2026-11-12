@@ -2,12 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 宠物“吹气吹散云朵”：用户在宠物页开启后才申请，只读取音量。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -33,6 +34,33 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:usesCleartextTraffic="true">
+
+        <activity android:name=".recording.RecordingActivity" android:exported="false" />
+        <activity android:name=".recording.RecordingLinkActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="com.promenar.infinity.action.OPEN_RECORDING" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="infinitydeck" android:host="recording" android:path="/open" />
+            </intent-filter>
+        </activity>
+        <service android:name=".recording.RecordingRetryService"
+            android:exported="true" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".recording.RecordingService"
+            android:exported="false" android:foregroundServiceType="microphone" />
+        <service android:name=".recording.RecordingTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_recording_mic"
+            android:label="@string/recording_title"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <activity
             android:name=".MainActivity"

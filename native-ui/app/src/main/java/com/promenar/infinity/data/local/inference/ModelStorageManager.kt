@@ -3,10 +3,14 @@ package com.promenar.infinity.data.local.inference
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
 
 data class StoredModel(
     val id: String,
@@ -23,52 +27,47 @@ data class StoredModel(
 )
 
 class ModelStorageManager(private val context: Context) {
+    private companion object {
+        val importCommit = Any()
+    }
 
     val modelsDir: File
         get() = File(context.filesDir, "models").also { it.mkdirs() }
 
     suspend fun importModel(uri: Uri): Result<StoredModel> = withContext(Dispatchers.IO) {
+        var staged: File? = null
         try {
-            val fileName = resolveFileName(uri) ?: "unknown.gguf"
-            if (!fileName.endsWith(".gguf", ignoreCase = true)) {
-                return@withContext Result.failure(
-                    IllegalArgumentException("Only .gguf files are supported")
-                )
-            }
-
-            val destFile = resolveUniqueDestination(fileName)
-            var totalBytes = 0L
-
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(destFile).use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        totalBytes += bytesRead
-                    }
+            val filename = resolveFileName(uri)?.substringAfterLast('/')?.substringAfterLast(92.toChar()) ?: "model.gguf"
+            require(filename.endsWith(".gguf", ignoreCase = true) && filename.length <= 180)
+            val temp = File.createTempFile("import-", ".part", modelsDir)
+            staged = temp
+            val source = requireNotNull(context.contentResolver.openInputStream(uri)) { "无法打开模型" }
+            source.use { input ->
+                FileOutputStream(temp).use { output ->
+                    input.copyTo(output, 65536)
+                    output.fd.sync()
                 }
-            } ?: throw IllegalStateException("Cannot open URI: $uri")
-
-            val metadata = GgufParser.parse(destFile.absolutePath)
-
-            Result.success(
-                StoredModel(
-                    id = "model_${System.currentTimeMillis()}",
-                    fileName = destFile.name,
-                    filePath = destFile.absolutePath,
-                    sizeBytes = totalBytes,
-                    format = "GGUF",
-                    addedAt = System.currentTimeMillis(),
-                    architecture = metadata.architecture,
-                    quantization = metadata.quantization,
-                    contextLength = metadata.contextLength,
-                    embeddingLength = metadata.embeddingLength,
-                    parameterCount = metadata.parameterCount
-                )
+            }
+            val metadata = GgufParser.parse(temp.absolutePath)
+            currentCoroutineContext().ensureActive()
+            val file = synchronized(importCommit) {
+                val destination = resolveUniqueDestination(filename)
+                Files.move(temp.toPath(), destination.toPath()).toFile()
+            }
+            val model = StoredModel(
+                id = "model_${file.nameWithoutExtension}", fileName = file.name,
+                filePath = file.absolutePath, sizeBytes = file.length(), format = "GGUF", addedAt = file.lastModified(),
+                architecture = metadata.architecture, quantization = metadata.quantization,
+                contextLength = metadata.contextLength, embeddingLength = metadata.embeddingLength,
+                parameterCount = metadata.parameterCount,
             )
-        } catch (e: Exception) {
-            Result.failure(e)
+            Result.success(model)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        } finally {
+            staged?.delete()
         }
     }
 

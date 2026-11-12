@@ -1,16 +1,20 @@
 package com.promenar.infinity.data.local.inference
 
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 
 class LlamaContext private constructor(
-    private val nativePtr: Long,
+    nativePtr: Long,
     val modelPath: String,
     val contextSize: Int,
     val gpuAccelerated: Boolean
 ) {
+    private val handle = AtomicLong(nativePtr)
+    private val nativePtr get() = handle.get().also { check(it != 0L) }
+
     companion object {
         init {
             System.loadLibrary("infinity_llama")
@@ -22,29 +26,29 @@ class LlamaContext private constructor(
             nThreads: Int = GpuDetector.recommendedThreadCount(),
             useGpu: Boolean = false
         ): LlamaContext? = withContext(Dispatchers.IO) {
-            val ptr = nativeLoadModel(modelPath, contextSize, nThreads, useGpu)
+            val ptr = nativeLoadModel(modelPath.encodeToByteArray(), contextSize, nThreads, useGpu)
             if (ptr == 0L) null
             else LlamaContext(ptr, modelPath, contextSize, useGpu)
         }
 
         private external fun nativeLoadModel(
-            modelPath: String, nCtx: Int, nThreads: Int, useGpu: Boolean
+            modelPath: ByteArray, nCtx: Int, nThreads: Int, useGpu: Boolean
         ): Long
     }
 
     suspend fun tokenize(text: String, addBos: Boolean = true): IntArray =
         withContext(Dispatchers.IO) {
-            nativeTokenize(nativePtr, text, addBos)
+            nativeTokenize(nativePtr, text.encodeToByteArray(), addBos)
         }
 
     suspend fun detokenize(tokens: IntArray): String =
         withContext(Dispatchers.IO) {
-            nativeDetokenize(nativePtr, tokens)
+            nativeDetokenize(nativePtr, tokens).decodeToString()
         }
 
     suspend fun ingestPrompt(tokens: IntArray) {
         withContext(Dispatchers.IO) {
-            nativeIngestPrompt(nativePtr, tokens)
+            check(nativeIngestPrompt(nativePtr, tokens)) { "模型无法读取提示词" }
         }
     }
 
@@ -57,23 +61,16 @@ class LlamaContext private constructor(
     }
 
     suspend fun embed(text: String): FloatArray = withContext(Dispatchers.IO) {
-        nativeEmbed(nativePtr, text)
-    }
-
-    suspend fun getEosToken(): Int = withContext(Dispatchers.IO) {
-        nativeGetEosToken(nativePtr)
+        nativeEmbed(nativePtr, text.encodeToByteArray())
     }
 
     fun clear() {
-        if (nativePtr != 0L) {
-            nativeClear(nativePtr)
-        }
+        nativeClear(nativePtr)
     }
 
     fun release() {
-        if (nativePtr != 0L) {
-            nativeFree(nativePtr)
-        }
+        val pointer = handle.getAndSet(0L)
+        if (pointer != 0L) nativeFree(pointer)
     }
 
     protected fun finalize() {
@@ -88,28 +85,32 @@ class LlamaContext private constructor(
 
         ingestPrompt(promptTokens)
 
-        val eosToken = getEosToken()
+        val utf8 = Utf8TokenBuffer()
         var currentToken = sample()
-        if (currentToken < 0) return@flow
-
-        for (i in 0 until config.maxTokens) {
-            if (currentToken == eosToken) break
-
-            val text = detokenize(intArrayOf(currentToken))
-            if (text.isNotEmpty()) emit(text)
-
-            currentToken = decode(currentToken)
-            if (currentToken < 0) break
+        val limit = minOf(config.maxTokens, contextSize - promptTokens.size)
+        check(limit > 0 && currentToken >= 0) { "本地模型上下文不足或采样失败" }
+        repeat(limit) { index ->
+            if (nativeIsEndToken(nativePtr, currentToken)) {
+                utf8.finish().takeIf(String::isNotEmpty)?.let { emit(it) }
+                return@flow
+            }
+            val bytes = withContext(Dispatchers.IO) { nativeDetokenize(nativePtr, intArrayOf(currentToken)) }
+            utf8.append(bytes).takeIf(String::isNotEmpty)?.let { emit(it) }
+            if (index + 1 < limit) {
+                currentToken = decode(currentToken)
+                check(currentToken >= 0) { "本地模型生成中断" }
+            }
         }
+        utf8.finish().takeIf(String::isNotEmpty)?.let { emit(it) }
     }
 
-    private external fun nativeTokenize(ptr: Long, text: String, addBos: Boolean): IntArray
-    private external fun nativeDetokenize(ptr: Long, tokens: IntArray): String
-    private external fun nativeIngestPrompt(ptr: Long, tokens: IntArray)
+    private external fun nativeTokenize(ptr: Long, text: ByteArray, addBos: Boolean): IntArray
+    private external fun nativeDetokenize(ptr: Long, tokens: IntArray): ByteArray
+    private external fun nativeIngestPrompt(ptr: Long, tokens: IntArray): Boolean
     private external fun nativeSample(ptr: Long): Int
     private external fun nativeDecode(ptr: Long, token: Int): Int
-    private external fun nativeEmbed(ptr: Long, text: String): FloatArray
-    private external fun nativeGetEosToken(ptr: Long): Int
+    private external fun nativeEmbed(ptr: Long, text: ByteArray): FloatArray
+    private external fun nativeIsEndToken(ptr: Long, token: Int): Boolean
     private external fun nativeClear(ptr: Long)
     private external fun nativeFree(ptr: Long)
 }

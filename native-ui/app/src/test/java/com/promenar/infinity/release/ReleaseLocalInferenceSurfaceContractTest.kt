@@ -38,6 +38,8 @@ class ReleaseLocalInferenceSurfaceContractTest {
         assertThat(releaseBuildType).contains(
             "buildConfigField(\"boolean\", \"LOCAL_INFERENCE_AVAILABLE\", \"false\")",
         )
+        assertThat(buildScript).contains("variant.buildType == \"release\" && (\"distribution\" to \"sideload\")")
+        assertThat(buildScript).contains("BuildConfigField(\"boolean\", \"true\", null)")
         assertThat(navGraph).contains("if (BuildConfig.LOCAL_INFERENCE_AVAILABLE)")
         assertThat(chatViewModel).contains("ProviderResolutionError.LOCAL_INFERENCE_UNAVAILABLE")
         assertThat(chatViewModel).contains("R.string.local_inference_release_unavailable")

@@ -2,7 +2,8 @@
 #include <string>
 #include <vector>
 #include <cmath>
-#include <cstring>
+#include <mutex>
+#include <algorithm>
 #include <android/log.h>
 
 #include "llama.h"
@@ -15,8 +16,16 @@ struct LlamaSession {
     llama_model   *model = nullptr;
     llama_context *ctx   = nullptr;
     const llama_vocab *vocab = nullptr;
-    bool gpu_offloaded = false;
 };
+
+static std::once_flag backend_once;
+
+static std::string utf8_bytes(JNIEnv *env, jbyteArray bytes) {
+    const jsize length = env->GetArrayLength(bytes);
+    std::string result(static_cast<size_t>(length), '\0');
+    env->GetByteArrayRegion(bytes, 0, length, reinterpret_cast<jbyte *>(result.data()));
+    return result;
+}
 
 static llama_token greedy_sample(const llama_vocab *vocab, const float *logits) {
     int32_t n_vocab = llama_vocab_n_tokens(vocab);
@@ -35,26 +44,24 @@ static llama_token greedy_sample(const llama_vocab *vocab, const float *logits) 
 // 1. Model loading
 // ═══════════════════════════════════════════════
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeLoadModel(
+Java_com_promenar_infinity_data_local_inference_LlamaContext_00024Companion_nativeLoadModel(
         JNIEnv *env, jobject /* this */,
-        jstring modelPath, jint nCtx, jint nThreads, jboolean useGpu) {
+        jbyteArray modelPath, jint nCtx, jint nThreads, jboolean useGpu) {
 
     auto *session = new LlamaSession();
 
-    llama_backend_init();
+    std::call_once(backend_once, llama_backend_init);
 
     llama_model_params model_params = llama_model_default_params();
     if (useGpu) {
         model_params.n_gpu_layers = 999;
     }
 
-    const char *path = env->GetStringUTFChars(modelPath, nullptr);
-    session->model = llama_model_load_from_file(path, model_params);
-    env->ReleaseStringUTFChars(modelPath, path);
+    const auto path = utf8_bytes(env, modelPath);
+    session->model = llama_model_load_from_file(path.c_str(), model_params);
 
     if (!session->model) {
         LOGE("Failed to load model");
-        llama_backend_free();
         delete session;
         return 0;
     }
@@ -69,13 +76,11 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeLoadModel(
     if (!session->ctx) {
         LOGE("Failed to create context");
         llama_model_free(session->model);
-        llama_backend_free();
         delete session;
         return 0;
     }
 
     session->vocab = llama_model_get_vocab(session->model);
-    session->gpu_offloaded = useGpu;
 
     LOGI("Model loaded (n_ctx=%d, threads=%d, gpu=%s)",
          nCtx, nThreads, useGpu ? "on" : "off");
@@ -87,11 +92,12 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeLoadModel(
 // ═══════════════════════════════════════════════
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeTokenize(
-        JNIEnv *env, jobject, jlong ptr, jstring text, jboolean addBos) {
+        JNIEnv *env, jobject, jlong ptr, jbyteArray text, jboolean addBos) {
 
     auto *session = reinterpret_cast<LlamaSession *>(ptr);
-    const char *str = env->GetStringUTFChars(text, nullptr);
-    int32_t text_len = static_cast<int32_t>(strlen(str));
+    const auto utf8 = utf8_bytes(env, text);
+    const auto *str = utf8.data();
+    int32_t text_len = static_cast<int32_t>(utf8.size());
 
     std::vector<llama_token> tokens(text_len + 4);
     int32_t n_tokens = llama_tokenize(
@@ -107,7 +113,6 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeTokenize(
                 addBos, true);
     }
 
-    env->ReleaseStringUTFChars(text, str);
 
     if (n_tokens < 0) {
         LOGE("Tokenization failed");
@@ -123,7 +128,7 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeTokenize(
 // ═══════════════════════════════════════════════
 // 3. Detokenize
 // ═══════════════════════════════════════════════
-extern "C" JNIEXPORT jstring JNICALL
+extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeDetokenize(
         JNIEnv *env, jobject, jlong ptr, jintArray tokens) {
 
@@ -153,7 +158,11 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeDetokenize(
     }
 
     env->ReleaseIntArrayElements(tokens, token_arr, 0);
-    return env->NewStringUTF(result.c_str());
+    auto bytes = env->NewByteArray(static_cast<jsize>(result.size()));
+    if (bytes && !result.empty()) {
+        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(result.size()), reinterpret_cast<const jbyte *>(result.data()));
+    }
+    return bytes;
 }
 
 // ═══════════════════════════════════════════════
@@ -162,7 +171,7 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeDetokenize(
 //    via llama_batch_get_one. Only the last token
 //    generates logits (default when logits == nullptr).
 // ═══════════════════════════════════════════════
-extern "C" JNIEXPORT void JNICALL
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeIngestPrompt(
         JNIEnv *env, jobject, jlong ptr, jintArray tokens) {
 
@@ -172,6 +181,7 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeIngestPrompt(
 
     uint32_t n_batch = llama_n_batch(session->ctx);
 
+    bool succeeded = true;
     for (jsize i = 0; i < len; i += static_cast<jsize>(n_batch)) {
         int32_t batch_size = static_cast<int32_t>(
             std::min(static_cast<jsize>(n_batch), len - i));
@@ -182,11 +192,13 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeIngestPrompt(
         int32_t ret = llama_decode(session->ctx, batch);
         if (ret != 0) {
             LOGE("llama_decode failed during prompt ingestion: %d", ret);
+            succeeded = false;
             break;
         }
     }
 
-    env->ReleaseIntArrayElements(tokens, token_arr, 0);
+    env->ReleaseIntArrayElements(tokens, token_arr, JNI_ABORT);
+    return succeeded;
 }
 
 // ═══════════════════════════════════════════════
@@ -242,7 +254,7 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeDecode(
 // ═══════════════════════════════════════════════
 extern "C" JNIEXPORT jfloatArray JNICALL
 Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeEmbed(
-        JNIEnv *env, jobject, jlong ptr, jstring text) {
+        JNIEnv *env, jobject, jlong ptr, jbyteArray text) {
 
     auto *session = reinterpret_cast<LlamaSession *>(ptr);
 
@@ -250,8 +262,9 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeEmbed(
     llama_memory_t mem = llama_get_memory(session->ctx);
     llama_memory_clear(mem, true);
 
-    const char *str = env->GetStringUTFChars(text, nullptr);
-    int32_t text_len = static_cast<int32_t>(strlen(str));
+    const auto utf8 = utf8_bytes(env, text);
+    const auto *str = utf8.data();
+    int32_t text_len = static_cast<int32_t>(utf8.size());
 
     std::vector<llama_token> tokens(text_len + 4);
     int32_t n_tokens = llama_tokenize(
@@ -265,7 +278,6 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeEmbed(
                 tokens.data(), static_cast<int32_t>(tokens.size()),
                 false, true);
     }
-    env->ReleaseStringUTFChars(text, str);
 
     if (n_tokens <= 0) {
         LOGE("Embedding: tokenization returned %d tokens", n_tokens);
@@ -315,11 +327,11 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeEmbed(
 // ═══════════════════════════════════════════════
 // 8. Get EOS token
 // ═══════════════════════════════════════════════
-extern "C" JNIEXPORT jint JNICALL
-Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeGetEosToken(
-        JNIEnv *, jobject, jlong ptr) {
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeIsEndToken(
+        JNIEnv *, jobject, jlong ptr, jint token) {
     auto *session = reinterpret_cast<LlamaSession *>(ptr);
-    return static_cast<jint>(llama_vocab_eos(session->vocab));
+    return llama_vocab_is_eog(session->vocab, token);
 }
 
 // ═══════════════════════════════════════════════
@@ -342,7 +354,6 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeFree(
     auto *session = reinterpret_cast<LlamaSession *>(ptr);
     if (session->ctx)   llama_free(session->ctx);
     if (session->model) llama_model_free(session->model);
-    llama_backend_free();
     LOGI("Session released");
     delete session;
 }

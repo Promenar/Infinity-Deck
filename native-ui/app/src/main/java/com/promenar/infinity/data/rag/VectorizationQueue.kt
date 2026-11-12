@@ -84,6 +84,7 @@ class VectorizationQueue(
                 val dao = requireNotNull(fileEntryDao) { "文件索引 DAO 未配置" }
                 val entry = dao.getActiveByUuid(event.workspaceRootUuid, event.fileUuid)
                     ?: throw java.io.FileNotFoundException("索引文件不存在")
+                if (entry.mimeType == com.promenar.infinity.recording.LOCAL_RECORDING_MIME) return
                 enqueueDocumentReference(
                     workspaceRootUuid = event.workspaceRootUuid,
                     docId = event.fileUuid,

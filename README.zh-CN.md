@@ -176,6 +176,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 
 **资料与知识**
 
+- 从资料页或 Android 快捷设置一键录音，中英混读可在本机实时转写，按时间戳回听。整理可使用快速模型（需确认发送文本），侧载版也可使用本地 GGUF。
 - 文档、长期记忆和知识图谱一起检索，答案带引用
 - 图谱按作品分开，可按篇序查人物关系的变化
 - 挂载外部文件夹；支持 PDF、Word、Markdown、HTML 等格式

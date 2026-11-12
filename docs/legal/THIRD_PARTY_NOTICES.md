@@ -126,3 +126,10 @@ SSH 与终端依赖保持版本固定；终端原生进程桥接库只用于侧�
 - [tailscale/tailscale v1.104.1](https://github.com/tailscale/tailscale/tree/v1.104.1)：`tsnet` 节点、本地 API 客户端、`proxymux` 与 `feature/androidbin`，编译进 `libnxtailnet.so`（App 子进程，不占用系统 VPN）。三条款 BSD，Copyright (c) 2020 Tailscale Inc & contributors；完整许可见 [tailnet/tailscale-LICENSE.txt](tailnet/tailscale-LICENSE.txt)。
 - Go 1.27.1 标准库与运行时（三条款 BSD），以及经 `native-ui/app/tailnet/go.sum` 固定、实际链接的依赖：golang.org/x/crypto、net、sys、sync、term、text、time、oauth2、exp（三条款 BSD）；tailscale/wireguard-go、mdlayher/netlink 与 socket、jsimonetti/rtnetlink、fxamacker/cbor、x448/float16、gaissmai/bart、mitchellh/go-ps（MIT）；gvisor.dev/gvisor、klauspost/compress、google/btree、golang/groupcache、go4.org/mem、pires/go-proxyproto、safchain/ethtool（Apache-2.0）；coder/websocket（ISC）；godbus/dbus、huin/goupnp（两条款 BSD）；filippo.io/edwards25519、hdevalence/ed25519consensus、creachadair/msync、go-json-experiment/json、go4.org/netipx、tailscale/hujson、peercred、web-client-prebuilt（三条款 BSD）。各模块版本与许可原文汇总在 [tailnet/go-modules-LICENSES.txt](tailnet/go-modules-LICENSES.txt)。
 - 上述许可均可与 GPL-3.0 组合分发（Apache-2.0 兼容 GPLv3）。升级 Go 依赖时以 `go version -m libnxtailnet.so` 重新核对链接清单并更新许可汇总。
+
+
+## 录音听写与 GGUF
+
+- [Sherpa-ONNX v2.0.1](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1) 为 Apache-2.0，Android AAR 包含 [ONNX Runtime v1.28.2](https://github.com/microsoft/onnxruntime/tree/v1.28.2)（MIT）。原始许可和 ONNX Runtime 第三方声明随 APK 存放于 `assets/licenses/`。
+- [中英 Zipformer 小版](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/zipformer-transducer-models.html#sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16-bilingual-chinese-english) 源于 [Apache-2.0 权重](https://huggingface.co/csukuangfj/k2fsa-zipformer-bilingual-zh-en-t)，随 APK 分发三份 ONNX 权重和词表。
+- [llama.cpp b12076](https://github.com/ggml-org/llama.cpp/tree/36ee3caf7aa2dcb0210bedab1b61ee9f269765d3) 为 MIT，用于侧载本地推理。用户可单独选择下载 [Qwen3-0.6B Q8 GGUF](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/tree/23749fefcc72300e3a2ad315e1317431b06b590a)（Apache-2.0）。

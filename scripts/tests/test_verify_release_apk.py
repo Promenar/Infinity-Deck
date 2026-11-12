@@ -52,7 +52,7 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
                     verify_release_apk.VerificationError,
                     "本地推理制品",
                 ):
-                    verify_release_apk.verify_no_local_inference_artifacts(apk)
+                    verify_release_apk.verify_local_inference_artifacts(apk, "play")
 
     def test_allows_ordinary_multi_abi_libraries_and_llama_text(self) -> None:
         apk = self.make_apk(
@@ -66,7 +66,37 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
             ]
         )
 
-        verify_release_apk.verify_no_local_inference_artifacts(apk)
+        verify_release_apk.verify_local_inference_artifacts(apk, "play")
+
+    def test_sideload_requires_a_bridge_for_each_abi_and_rejects_gguf(self) -> None:
+        entries = [
+            "lib/arm64-v8a/libinfinity_llama.so",
+            "lib/x86_64/libinfinity_workspace_fs.so",
+        ]
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "缺少本地推理制品"):
+            verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries), "sideload")
+        entries.append("lib/x86_64/libinfinity_llama.so")
+        verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries), "sideload")
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "禁用的本地推理制品"):
+            verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries + ["assets/model.gguf"]), "sideload")
+
+    def test_sherpa_only_exempts_the_verified_upstream_build_path(self) -> None:
+        entry = "lib/arm64-v8a/libsherpa-onnx-jni.so"
+        self.assertEqual([], verify_release_apk.scan_stream(io.BytesIO(b"/home/runner/work/"), entry))
+        self.assertEqual([(entry, "Linux 用户绝对路径")],
+                         verify_release_apk.scan_stream(io.BytesIO(b"/home/developer/source/"), entry))
+
+    def test_recording_requires_complete_artifacts_and_fixed_model_bytes(self) -> None:
+        native = [f"lib/arm64-v8a/{name}" for name in (
+            "libonnxruntime.so", "libsherpa-onnx-jni.so", "libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so",
+        )]
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "缺少离线听写制品"):
+            verify_release_apk.verify_recording_artifacts(self.make_apk(native))
+        assets = [f"assets/asr/{name}" for name in (
+            "decoder-epoch-99-avg-1.onnx", "encoder-epoch-99-avg-1.int8.onnx", "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt",
+        )]
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "模型摘要不符"):
+            verify_release_apk.verify_recording_artifacts(self.make_apk(native + assets))
 
 
 class ZipAndSizeVerificationTest(ApkFixtureTestCase):

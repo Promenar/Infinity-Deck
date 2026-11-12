@@ -63,6 +63,13 @@ Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`
 
 发布步骤：完成版本提交并推送 `main` 后，在用户授权下执行 `git tag -a v<版本> -m "Infinity Deck v<版本>"` 与 `git push origin v<版本>`。
 
+## 录音听写和本地推理
+
+- 两渠道的 Android 制品都含 Sherpa-ONNX v2.0.1 AAR 和中英 Zipformer 小版的 3 份 ONNX 权重与词表。构建按 SHA-256 核验官方 AAR（约 47 MiB）与模型压缩包（约 437 MiB），缓存位于 Gradle 用户目录的 `caches/infinity-recording/`。仅指定的模型文件进入 APK，生成目录为 `app/build/generated/recording/assets`。
+- llama.cpp CPU 锁定 `b12076`（`36ee3caf7aa2dcb0210bedab1b61ee9f269765d3`）和源码归档摘要，静态链接到 `libinfinity_llama.so`。签名侧载 Release 和 Debug 包含 JNI，Play Release、DeviceTest、MinifiedTest 关闭 GGUF 本地推理。发行 APK 均不随包分发 GGUF。
+- APK 验真核对各 ABI 的离线听写运行时、四份模型资产摘要与渠道 JNI 边界。为模型和多 ABI 原生库留出空间，APK 大小门限为 180 MiB。敏感扫描仅对固定 Sherpa/ONNX Runtime 上游构建路径和 Zipformer joiner 的数字序列做窄豁免。
+- 合并验收应覆盖两渠道的构建及 16 KiB 页检查，并在 Find N5 检查内外屏、麦克风权限拒绝、磁贴解锁、桌面快捷方式、外部 Intent、息屏长录、暂停续录、杀进程恢复、资料回听、断网重试、端侧 GGUF 固定加载和发热。
+
 ## 打包 Python
 
 两个渠道都随 APK 打包官方 CPython Android 嵌入包（版本与 SHA-256 见 `native-ui/app/python/python-android.properties`，与 python.org 发布页及 sigstore 包内摘要一致）。官方只提供 arm64-v8a 与 x86_64：设了 `abiFilters` 的变体（Debug、DeviceTest、MinifiedTest）按过滤准备；未设过滤的 Release 通用包只带 arm64-v8a，x86_64 Python 约 11.5 MB 只服务 x86_64 设备，不放进通用包。armeabi-v7a、x86 与 x86_64 设备上的 Release 没有 Python。
@@ -84,7 +91,7 @@ Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`
 
 设备回归类为 `com.promenar.infinity.data.exec.PackagedPythonDeviceTest`，已纳入 `android-device-core-e2e.sh`：检查原生库已解压、版本与 `BuildConfig.PACKAGED_PYTHON_VERSION` 一致、ssl/sqlite3/hashlib/zlib/ctypes/decimal/socket 可用且扩展来自 `nativeLibraryDir`、`test` 包已裁剪，以及退出码与 stderr 原样返回。
 
-发行校验 `scripts/verify-release-apk.py` 的敏感信息扫描对这些条目有窄豁免：`libpython3.*`、`lib*_python.so`、`libpyext_*.so` 与 `libpystdlib.so` 放行 python.org 构建机的 `/Users/runner/`、`/home/runner/`；`libpystdlib.so` 另放行标准库中的保留地址常量与 venv 激活脚本里的 `C:\Users\` 示例；`libpysite.so` 只放行 urllib3 文档中的占位地址 `https://username:password@`。凭据类模式、其它用户路径和自编译的 `libnxpython.so` 不在豁免内。校验还要求每个 ABI 同时带 `libpystdlib.so` 与 `libpysite.so`，`os`、`encodings`、`sitecustomize`、`infinity_git`、`dulwich`、`dulwich.repo` 有不核对源码的哈希 pyc，且同一 ABI 内 magic 一致。Release 通用 APK 实测约 34.7 MB（其中内置 git 依赖约 2.5 MB，预编译字节码合计约 3.6 MB），校验上限 50 MB。
+发行校验 `scripts/verify-release-apk.py` 的敏感信息扫描对这些条目有窄豁免：`libpython3.*`、`lib*_python.so`、`libpyext_*.so` 与 `libpystdlib.so` 放行 python.org 构建机的 `/Users/runner/`、`/home/runner/`；`libpystdlib.so` 另放行标准库中的保留地址常量与 venv 激活脚本里的 `C:\Users\` 示例；`libpysite.so` 只放行 urllib3 文档中的占位地址 `https://username:password@`。凭据类模式、其它用户路径和自编译的 `libnxpython.so` 不在豁免内。校验还要求每个 ABI 同时带 `libpystdlib.so` 与 `libpysite.so`，`os`、`encodings`、`sitecustomize`、`infinity_git`、`dulwich`、`dulwich.repo` 有不核对源码的哈希 pyc，且同一 ABI 内 magic 一致。Release 通用 APK 实测约 34.7 MB（其中内置 git 依赖约 2.5 MB，预编译字节码合计约 3.6 MB），该数据来自加入录音运行时之前的制品。
 
 升级 Python：在 python.org 发布页、sigstore 包内摘要与本地下载三处核对 SHA-256 后修改 `python-android.properties`，按新包的 `pycore_magic_number.h` 更新 `pycMagic`，准备同主次版本的宿主解释器（本机与 CI 的 `python-version`），再运行设备回归。升级 dulwich 或 urllib3：核对 PyPI 文件页的 SHA-256 与 dulwich 的依赖要求后修改 `python-site.properties`，再运行 `BuiltinExecDeviceTest`（含本地提交、裸仓库推拉、HTTPS 克隆与侧载 pip 安装）与 `com.promenar.infinity.data.git.remote.GitRemoteAuthDeviceTest`（`android-device-core-e2e.sh` 的 `git-remote-auth` 阶段：本机 dulwich 智能 HTTP 上游经凭据注入代理 clone/push、未配置主机直连、SSH 远端经 SSH 桥 clone/push，不需要外网）。
 

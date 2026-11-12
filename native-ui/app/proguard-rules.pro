@@ -206,3 +206,10 @@
 
 
 -keep class com.jcraft.jsch.bc.ChaCha20Poly1305 { *; }
+
+
+# sherpa-onnx JNI 按 Kotlin 类名和成员名读取配置，并构造识别结果。
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+# LlamaContext JNI 通过导出符号绑定类名和 native 方法名。
+-keep,allowshrinking class com.promenar.infinity.data.local.inference.LlamaContext { native <methods>; }
+-keep,allowshrinking class com.promenar.infinity.data.local.inference.LlamaContext$Companion { native <methods>; }
