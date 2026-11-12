@@ -47,7 +47,7 @@ internal class PlanningFiles : ProductionWorkspaceFiles {
             this.bytes[path] = bytes; writes++
         }
     }
-    override suspend fun isImageOrVideo(sessionId: String, path: String) = path in bytes
+    override suspend fun isImageOrVideo(sessionId: String, path: String) = bytes.containsKey(path)
 }
 internal fun planningChannel(id: String = "video", pack: CharacterReferenceMode = CharacterReferenceMode.SEPARATE, max: Int = 9, format: PromptFormat = PromptFormat.GENERIC) = MediaChannel(id, MediaGroup.VIDEO,
     MediaCapabilities(setOf(GenerationMode.TEXT, GenerationMode.REFERENCE, GenerationMode.FIRST_FRAME, GenerationMode.FIRST_LAST_FRAME), maxImages = max, maxAudio = 1, nativeAudio = true, promptFormat = format,
