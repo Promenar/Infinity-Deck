@@ -1,6 +1,7 @@
 package com.promenar.infinity.recording
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
@@ -40,6 +41,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
+import com.promenar.infinity.util.LocaleHelper
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
@@ -53,6 +55,10 @@ class RecordingActivity : ComponentActivity() {
         resumeAfterPermission = null
         if (granted) beginWhenVisible(id, reopenActive = false)
         else controller.report(R.string.recording_permission_denied)
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.applyLanguage(newBase, LocaleHelper.getSavedLanguage(newBase)))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -470,7 +476,7 @@ private fun RecordingWaveform(levels: List<Float>, paused: Boolean) {
 @Composable
 internal fun LibraryRecordingPlayback(documentId: String) {
     val context = LocalContext.current
-    val controller = context.recordingController()
+    val controller = (context.applicationContext as? InfinityApplication)?.recordings ?: return
     val state by controller.state.collectAsStateWithLifecycle()
     if (state.sessions.none { it.id == documentId && it.durationMs > 0 }) return
     IconButton(onClick = {
