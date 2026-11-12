@@ -190,6 +190,10 @@ class BackupPreferenceInventoryTest {
             "data/files/DefaultPinnedFolderStore.kt#preferences" to "infinity_settings",
             // 外部文档查看器“存入存储空间”上次用过的文件夹：本机界面状态，独立偏好文件，不参与备份。
             "ui/document/external/AppExternalDocumentTargets.kt#preferences" to "external_document_viewer",
+            // 录音默认模式与回退：本机设备配置，独立偏好文件，不参与备份。
+            "recording/RecordingStore.kt#prefs" to "recording_defaults",
+            // 本地模型固定版本：随本机模型文件走，独立偏好文件，不参与备份。
+            "data/local/inference/LocalModelRevision.kt#preferences" to "local_model_revision",
         )
         val editorChain = Regex("(\\w+)\\s*\\.edit\\(\\)([\\s\\S]{0,2000}?)\\.apply\\(\\)")
         val editorPut = Regex("\\.put(?:String|StringSet|Boolean|Int|Long|Float)\\(\\s*\"([^\"]+)\"")
