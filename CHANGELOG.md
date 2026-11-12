@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.50.1-beta] - 2026-11-12
+
+### 修复
+
+- 成片导出在部分系统上无法进入前台服务、立即显示“导出已中断”：系统拒绝媒体处理类型时改用数据同步类型启动。
+
 ## [0.50.0-beta] - 2026-11-12
 
 ### 新增

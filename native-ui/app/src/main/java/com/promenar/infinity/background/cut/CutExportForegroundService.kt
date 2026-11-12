@@ -50,8 +50,7 @@ class CutExportForegroundService : Service() {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .addAction(0, getString(R.string.production_cut_cancel), cancel).build()
         try {
-            val type = if (Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+            startForegroundWithFallback(notification)
             if (worker?.isActive != true) {
                 finished = false
                 wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Infinity Deck:cut-export").apply {
@@ -71,7 +70,8 @@ class CutExportForegroundService : Service() {
                     }
                 }
             }
-        } catch (_: RuntimeException) {
+        } catch (failure: RuntimeException) {
+            com.promenar.infinity.utils.InfinityLogger.logError("成片导出前台服务启动失败", failure)
             val stoppedLease = lease
             scope.launch {
                 controller?.serviceStopped(stoppedLease)
@@ -79,6 +79,19 @@ class CutExportForegroundService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    /** API 35+ 优先 mediaProcessing；部分系统拒绝该类型时退回 dataSync，两者都在清单中声明。 */
+    private fun startForegroundWithFallback(notification: android.app.Notification) {
+        if (Build.VERSION.SDK_INT >= 35) {
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING)
+                return
+            } catch (failure: RuntimeException) {
+                com.promenar.infinity.utils.InfinityLogger.logError("成片导出 mediaProcessing 类型不可用", failure)
+            }
+        }
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
