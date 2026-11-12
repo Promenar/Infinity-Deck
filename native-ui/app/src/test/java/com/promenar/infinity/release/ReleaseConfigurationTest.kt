@@ -43,21 +43,25 @@ class ReleaseConfigurationTest {
     }
 
     @Test
-    fun `release 关闭 native 且 CMake 在拉取 llama 前短路`() {
+    fun `release 仅侧载开启 native 且 CMake 在拉取 llama 前短路`() {
         assertThat(buildTypeBody("debug"))
             .contains("-DINFINITY_ENABLE_LOCAL_INFERENCE=ON")
-        assertThat(buildTypeBody("release"))
-            .contains("-DINFINITY_ENABLE_LOCAL_INFERENCE=OFF")
+        // Release 只在侧载渠道开启本地推理：release 传 INFINITY_RELEASE，CMake 以侧载标记决定是否编译。
+        assertThat(buildTypeBody("release")).contains("-DINFINITY_RELEASE=ON")
+        assertThat(buildTypeBody("release")).doesNotContain("-DINFINITY_ENABLE_LOCAL_INFERENCE=ON")
+        assertThat(cmake).contains("set(INFINITY_ENABLE_LOCAL_INFERENCE \${INFINITY_SIDELOAD})")
+        assertThat(gradle).contains("arguments += \"-DINFINITY_SIDELOAD=ON\"")
 
         val option = cmake.indexOf("option(INFINITY_ENABLE_LOCAL_INFERENCE")
         val earlyReturn = cmake.indexOf("return()")
         val fetchContent = cmake.indexOf("FetchContent_Declare")
-        val mutableMasterTag = cmake.indexOf("GIT_TAG        master")
+        val pinnedArchive = cmake.indexOf("URL_HASH SHA256=")
         val nativeLibrary = cmake.indexOf("add_library(infinity_llama")
         assertThat(option).isAtLeast(0)
         assertThat(earlyReturn).isGreaterThan(option)
         assertThat(fetchContent).isGreaterThan(earlyReturn)
-        assertThat(mutableMasterTag).isGreaterThan(earlyReturn)
+        assertThat(pinnedArchive).isGreaterThan(earlyReturn)
+        assertThat(cmake).doesNotContain("GIT_TAG        master")
         assertThat(nativeLibrary).isGreaterThan(earlyReturn)
         val disabledBranch = cmake.substring(option, earlyReturn)
         listOf(

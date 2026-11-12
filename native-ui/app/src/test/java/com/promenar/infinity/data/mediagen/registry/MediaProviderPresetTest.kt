@@ -15,6 +15,6 @@ class MediaProviderPresetTest {
         assertTrue(isProviderEndpointAllowed(minimax.protocolType, minimax.defaultBaseUrl))
         assertEquals("MiniMax", matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1")!!.name)
         assertEquals("MiniMax", matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Generic_OpenAI_Compat, "https://api.minimaxi.com")!!.name)
-        assertEquals("火山方舟", matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api")!!.name)
+        assertEquals("豆包", matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api")!!.name)
     }
 }
