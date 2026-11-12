@@ -33,6 +33,7 @@ class ComfyBackend(
             check(host == firstHost) { "主机配置已变化，请重新提交" }
             check(template.locked) { "模板未锁定，请先保存模板" }
             check(checked.preflight.status == PreflightStatus.PASS) { "模板预检未通过，请复核节点、模型和槽位" }
+            request.productionContext?.templateFingerprint?.let { require(it == template.fingerprint()) { "模板已变化" } }
             require(channel == template.channel()) { "通道能力已变化，请刷新通道" }
             val validation = validateRequest(channel, request).let {
                 // 纯派生处理的输入合同由来源视频和参数组成。
@@ -43,6 +44,7 @@ class ComfyBackend(
             require(request.sessionId.isNotBlank()) { "生成请求需要会话 id" }
             if (request.outputDir.isNotEmpty()) productionPath(request.outputDir)
             require(request.specs.durationSeconds == null || request.specs.frames != null || template.slots.any { it.kind == SlotKind.DURATION }) { "ComfyUI 时长需要 DURATION 槽位或显式指定 frames" }
+            require(request.specs.durationSecondsExact == null || template.slots.any { it.kind == SlotKind.DURATION }) { "指定小数秒数需要 DURATION 槽位" }
             val params = template.resolveParams(request.params)
             require(template.role != TemplateRole.DERIVE || request.inputs.count { it.kind == InputKind.VIDEO } == 1) { "INPUT_VIDEO: DERIVE 需要一个来源视频" }
             val values = requestValues(template, request)
@@ -124,8 +126,15 @@ class ComfyBackend(
             val original = url.queryParameter("filename").orEmpty()
             val suffix = original.substringAfterLast('.', "").lowercase().takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
                 ?: extension(null, output.kind)
-            val relative = "$directory/comfy-${UUID.randomUUID()}.$suffix"
+            val chain = request.productionContext?.chainId
+            require(chain == null || outputs.size == 1 && output.kind == InputKind.VIDEO && suffix == "mp4") { "链段模板需要一个 MP4 视频产物" }
+            val relative = if (chain != null) "$directory/seg-${requireNotNull(request.productionContext?.segmentIndex)}.mp4" else "$directory/comfy-${UUID.randomUUID()}.$suffix"
             val target = resolver.productionPath(request.sessionId, relative)
+            val existing = resolver.resolve(request.sessionId, target)
+            if (chain != null && existing is MediaResolution.Available) {
+                require(existing.ref.kind == MediaKind.VIDEO && existing.ref.sizeBytes > 0) { "链段目标已被其它内容占用" }
+                return@map relative
+            }
             http.download(host, output.location) { input, mime ->
                 store.save(request.sessionId, MediaPayload.Stream { input }, MediaOrigin.GENERATED, mime, original, target)
                 relative
@@ -151,7 +160,7 @@ class ComfyBackend(
             if (request.specs.height == null) put(SlotKind.HEIGHT, listOf(match.groupValues[2]))
         }
         request.specs.frames?.let { put(SlotKind.FRAMES, listOf(it.toString())) }
-        if (template.slots.any { it.kind == SlotKind.DURATION }) request.specs.durationSeconds?.let { put(SlotKind.DURATION, listOf(it.toString())) }
+        if (template.slots.any { it.kind == SlotKind.DURATION }) (request.specs.durationSecondsExact?.toString() ?: request.specs.durationSeconds?.toString())?.let { put(SlotKind.DURATION, listOf(it)) }
         if (template.slots.any { it.kind == SlotKind.SEED }) put(SlotKind.SEED, listOf((request.specs.seed ?: kotlin.random.Random.nextLong(0, Long.MAX_VALUE)).toString()))
         else require(request.specs.seed == null) { "模板未声明种子槽位" }
     }

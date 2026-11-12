@@ -14,7 +14,7 @@ import com.promenar.infinity.domain.mediagen.MediaTask
 
 class ProductionDefineSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_define", "定义或更新当前会话的制作项目。title 最多120字；kind 为 film 或 series；root_path 为工作区相对路径，默认 productions/标题 slug；logline 最多1000字。", """{"type":"object","properties":{"title":{"type":"string"},"kind":{"type":"string","enum":["film","series"]},"root_path":{"type":"string"},"logline":{"type":"string"},"aspect_ratio":{"type":"string"}},"required":["title","kind"],"additionalProperties":false}""")
 class ProductionAttachSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_attach", "从工作区 production.json 导入并绑定项目；已有同 id 项目时保留数据库内容并报告文件冲突。", """{"type":"object","properties":{"manifest_path":{"type":"string"}},"required":["manifest_path"],"additionalProperties":false}""")
-class ProductionGetSkill(repo: ProductionRepository, tasks: suspend () -> List<MediaTask> = { emptyList() }) : ProductionSkill(repo, "production_get", "读取制作项目修订号和清单同步状态。scope 为 overview、episode、shot、assets 或 changes；overview 包含阶段生成次数与达到6次的镜头、资产；shot 与 assets 包含各自生成次数；changes 返回 change_requests、最近3轮 review_rounds、open_items。episode 需要 episode_id，shot 还需要 shot_code。内容过长会截断。", """{"type":"object","properties":{"scope":{"type":"string","enum":["overview","episode","shot","assets","changes"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"}},"required":["scope"],"additionalProperties":false}""", tasks)
+class ProductionGetSkill(repo: ProductionRepository, tasks: suspend () -> List<MediaTask> = { emptyList() }) : ProductionSkill(repo, "production_get", "读取制作项目修订号和清单同步状态。scope 为 overview、episode、shot、assets 或 changes；overview 包含阶段生成次数与达到6次的镜头、资产；shot 与 assets 包含各自生成次数；changes 返回 change_requests、最近3轮 review_rounds、open_items、runs、chains、unregistered_files；limit（1～50，默认10）与 offset 分页。episode 需要 episode_id，shot 还需要 shot_code。内容过长会截断。", """{"type":"object","properties":{"scope":{"type":"string","enum":["overview","episode","shot","assets","changes"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0}},"required":["scope"],"additionalProperties":false}""", tasks)
 class ProductionUpdateSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_update", "原子执行制作操作。upsert_episode 提供 script_path 表示登记一份剧本产出，同路径正文更新后也须提供；upsert_shot 支持 size、camera、camera_movement、duration_seconds、visual、performance、dialogue、sound、transition、continuity、appearances、location_asset_id、prop_asset_ids、channel_id、mode、prompt、inputs、preview；upsert_asset 支持 sound 种类、looks、reference_voice。dialogue 用 characterAssetId、text、tone、audioSource（native、dubbed）；appearances 用 characterAssetId、lookId、referenceSlotIds；looks 用 id、name、slots（id、name、path、version）；reference_voice 用 path、transcript、voiceSetting、tone。add_take 使用 episode_id、shot_code、path、service、model、mode、task_id、usage_ref、plan_snapshot（channelId、mode、inputs、prompt）；add_asset_version 使用 asset_id、path、note、task_id；set_experimental（enabled）、set_stage、set_bible、set_preview_enabled、upsert_season、upsert_episode、upsert_scene、set_shot_status、set_asset_status、remove 沿用原参数。锁定场内容修改生成改动请求，由用户面板审核；收到审核回合后逐条处理，用 agent_note、change_note 或资产 description 写明结果。用户改写的提示词受保护。", """{"type":"object","properties":{"operations":{"type":"array","description":"1～100 项","items":{"type":"object"}}},"required":["operations"],"additionalProperties":false}""")
 class ProductionRemoveSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_remove", "解除当前会话与制作项目的绑定，保留项目和文件。", """{"type":"object","properties":{},"additionalProperties":false}""")
 
@@ -40,9 +40,11 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
                 repo.update(context.sessionId, requireNotNull(context.assistantMessageId) { "缺少所属助手消息。" }, ops)
             }
             "production_remove" -> { keys(emptySet(), emptySet()); repo.unbind(context.sessionId); null }
-            else -> { keys(setOf("scope"), setOf("scope", "episode_id", "shot_code")); repo.get(context.sessionId) }
+            else -> { keys(setOf("scope"), setOf("scope", "episode_id", "shot_code", "limit", "offset")); repo.get(context.sessionId) }
         }
-        val body = if (name == "production_get") productionGetResult(result, text("scope"), optional("episode_id"), optional("shot_code"), tasks()) else buildJsonObject {
+        val body = if (name == "production_get") productionGetResult(result, text("scope"), optional("episode_id"), optional("shot_code"), tasks(),
+            limit = if ("limit" !in args) 10 else (args["limit"] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: throw IllegalArgumentException("limit 需要整数。"),
+            offset = if ("offset" !in args) 0 else (args["offset"] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: throw IllegalArgumentException("offset 需要整数。")) else buildJsonObject {
             put("action", name); put("revision", result?.revision ?: 0); put("manifest", manifestJson(result?.manifest)); put("production_id", result?.production?.id?.let(::JsonPrimitive) ?: JsonNull)
             if (name == "production_update") {
                 val pending = result?.production?.changeRequests.orEmpty().filter { !it.approved && !it.rejected }
@@ -162,7 +164,8 @@ private fun cutState(cut: CutVersion, state: CutExportState?) = buildJsonObject 
     }
 }
 
-internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, episodeId: String?, shotCode: String?, tasks: List<MediaTask> = emptyList()): String {
+internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, episodeId: String?, shotCode: String?, tasks: List<MediaTask> = emptyList(), limit: Int = 10, offset: Int = 0): String {
+    require(limit in 1..50 && offset >= 0) { "limit 需要 1～50，offset 不能为负数。" }
     require(scope in setOf("overview", "episode", "shot", "assets", "changes")) { "scope 仅支持 overview、episode、shot、assets、changes。" }
     val p = snapshot?.production ?: throw IllegalArgumentException("当前会话没有制作项目，请先定义或附加。")
     val stats = productionCostStats(p, tasks)
@@ -186,10 +189,22 @@ internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, e
             put("generation_count", count(stats.asset(asset.id)))
         }) } }
         "changes" -> buildJsonObject {
+            val chains = p.seasons.flatMap { it.episodes }.flatMap { ep -> ep.scenes.flatMap { it.shots }.flatMap { shot -> shot.chains.map { chain -> buildJsonObject {
+                put("episode_id", ep.id); put("shot_code", shot.code)
+                put("chain", snake(ProductionToolJson.encodeToJsonElement(chain.copy(planSnapshot = null, segments = chain.segments.map { it.copy(prompt = null) }))))
+            } } } }
+            put("runs", snake(ProductionToolJson.encodeToJsonElement(p.runs.drop(offset).take(limit))))
+            put("chains", JsonArray(chains.drop(offset).take(limit)))
+            put("unregistered_files", JsonArray(p.unregisteredFiles.drop(offset).take(limit).map(::JsonPrimitive)))
+            put("totals", buildJsonObject { put("runs", p.runs.size); put("chains", chains.size); put("unregistered_files", p.unregisteredFiles.size); put("open_items", productionOpenItems(p, tasks, stats).size) })
+            put("offset", offset); put("limit", limit)
             put("change_requests", snake(ProductionToolJson.encodeToJsonElement(p.changeRequests)))
             put("review_rounds", snake(ProductionToolJson.encodeToJsonElement(p.reviewRounds.take(3))))
-            put("open_items", buildJsonArray { productionOpenItems(p, tasks, stats).forEach { item -> add(buildJsonObject {
+            put("open_items", buildJsonArray { productionOpenItems(p, tasks, stats).drop(offset).take(limit).forEach { item -> add(buildJsonObject {
                 when (item) {
+                    is OpenItem.Run -> { put("kind", "run"); put("run_id", item.run.id); put("unreported", item.unreported); put("message", productionProgressItemText(item)) }
+                    is OpenItem.Chain -> { put("kind", "chain"); put("chain_id", item.chain.id); put("episode_id", item.episodeId); put("shot_code", item.shotCode); put("message", productionProgressItemText(item)) }
+                    is OpenItem.UnregisteredFile -> { put("kind", "unregistered_file"); put("path", item.path) }
                     is OpenItem.FailedTask -> { put("kind", "failed_task"); put("task_id", item.taskId); put("target", item.target?.let(::target) ?: JsonNull); put("error", item.error?.let(::JsonPrimitive) ?: JsonNull) }
                     is OpenItem.CanceledTask -> { put("kind", "canceled_task"); put("task_id", item.taskId); put("target", item.target?.let(::target) ?: JsonNull) }
                     is OpenItem.Rejected -> { put("kind", "rejected"); put("target", target(item.target)) }
@@ -213,11 +228,11 @@ internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, e
     val full = wrap(selected, false)
     if (full.toByteArray(Charsets.UTF_8).size <= 24 * 1024) return full
     val raw = selected.toString()
-    var limit = minOf(raw.length, 12000)
-    while (limit > 0) {
-        val output = wrap(JsonPrimitive(raw.take(limit)), true)
+    var charLimit = minOf(raw.length, 12000)
+    while (charLimit > 0) {
+        val output = wrap(JsonPrimitive(raw.take(charLimit)), true)
         if (output.toByteArray(Charsets.UTF_8).size <= 24 * 1024) return output
-        limit /= 2
+        charLimit /= 2
     }
     return wrap(JsonPrimitive(""), true)
 }

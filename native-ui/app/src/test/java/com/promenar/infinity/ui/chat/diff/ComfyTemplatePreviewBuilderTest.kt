@@ -41,13 +41,13 @@ class ComfyTemplatePreviewBuilderTest {
         val rows = ComfyTemplatePreviewBuilder.build(template, requested, "工作站", "配置派生处理").capabilityChanges
         assertThat(rows).containsAtLeast(FieldChange("role", "GENERATE", "DERIVE"), FieldChange("operation", null, "超分"),
             FieldChange("slots.INPUT_VIDEO", "0", "1"), FieldChange("slots.PARAM", "0", "2"), FieldChange("slots.DURATION", "0", "1"),
-            FieldChange("param.steps", null, "步数 · NUMBER · 10 · 1.0～30.0 · 整数"), FieldChange("param.mode", null, "模式 · ENUM · slow · slow、fast"))
+            FieldChange("param.steps", null, "步数；NUMBER；10；1.0～30.0；整数"), FieldChange("param.mode", null, "模式；ENUM；slow；slow、fast"))
         val removed = ComfyTemplatePreviewBuilder.build(requested, template, "工作站", "配置生成模板").capabilityChanges
-        assertThat(removed).contains(FieldChange("param.steps", "步数 · NUMBER · 10 · 1.0～30.0 · 整数", null))
+        assertThat(removed).contains(FieldChange("param.steps", "步数；NUMBER；10；1.0～30.0；整数", null))
         val changed = requested.copy(operation = TemplateOperation("补帧"), params = requested.params.map { if (it.key == "steps") it.copy(default = JsonPrimitive(20)) else it })
         val updates = ComfyTemplatePreviewBuilder.build(requested, changed, "工作站", "调整参数").capabilityChanges
         assertThat(updates).containsAtLeast(FieldChange("operation", "超分", "补帧"),
-            FieldChange("param.steps", "步数 · NUMBER · 10 · 1.0～30.0 · 整数", "步数 · NUMBER · 20 · 1.0～30.0 · 整数"))
+            FieldChange("param.steps", "步数；NUMBER；10；1.0～30.0；整数", "步数；NUMBER；20；1.0～30.0；整数"))
     }
 
     @Test

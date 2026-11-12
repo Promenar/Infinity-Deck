@@ -67,4 +67,15 @@ class ProductionMediaPlanningTest {
         assertFalse(productionRequestAvailable(request, store))
     }
 
+    @Test fun `配乐排队后资产删除或项目切换不再执行`() = kotlinx.coroutines.test.runTest {
+        val store = com.promenar.infinity.data.production.PlanningStore()
+        store.production = store.production.copy(assets = store.production.assets + com.promenar.infinity.data.production.Asset("music", com.promenar.infinity.data.production.AssetKind.SOUND, "配乐"))
+        val request = MediaGenerationRequest("c", GenerationMode.MUSIC, "配乐", emptyList(), com.promenar.infinity.data.production.ProductionAssetSourceRef(store.production.id, "music").encode(), sessionId = "s", outputDir = "assets/music")
+        assertTrue(productionRequestAvailable(request, store))
+        store.production = store.production.copy(assets = store.production.assets.filterNot { it.id == "music" })
+        assertFalse(productionRequestAvailable(request, store))
+        store.production = store.production.copy(id = "other")
+        assertFalse(productionRequestAvailable(request, store))
+    }
+
 }

@@ -3,6 +3,7 @@ package com.promenar.infinity.data.production
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
 
 /*
  * 制作面板的领域模型：项目 → 季 → 集 → 场 → 镜头 → 候选，横切资产库与阶段。
@@ -98,6 +99,11 @@ data class Take(
     /** 第 2 期起由生成任务填写。 */
     val taskId: String? = null,
     val planSnapshot: TakePlanSnapshot? = null,
+    val derivedFrom: TakeDerivation? = null,
+    val segments: List<TakeSegment> = emptyList(),
+    val spec: MediaSpec? = null,
+    val runId: String? = null,
+    val chainId: String? = null,
 )
 
 @Serializable
@@ -136,6 +142,7 @@ data class Shot(
     val channelId: String? = null,
     val promptUserEdited: Boolean = false,
     val audio: List<ShotAudio> = emptyList(),
+    val chains: List<ShotChain> = emptyList(),
 )
 
 @Serializable
@@ -151,7 +158,9 @@ data class ShotAppearance(val characterAssetId: String, val lookId: String, val 
 data class TakePlanSnapshot(val channelId: String? = null, val mode: ShotMode, val inputs: List<ShotInput>, val prompt: String,
     val mediaInputs: List<com.promenar.infinity.domain.mediagen.MediaInput> = emptyList(),
     val specs: com.promenar.infinity.domain.mediagen.GenerationSpecs = com.promenar.infinity.domain.mediagen.GenerationSpecs(),
-    val generationMode: com.promenar.infinity.domain.mediagen.GenerationMode? = null)
+    val generationMode: com.promenar.infinity.domain.mediagen.GenerationMode? = null,
+    val templateFingerprint: String? = null,
+    val params: Map<String, JsonPrimitive> = emptyMap())
 
 @Serializable
 data class ShotAudio(val id: String, val path: String, val dialogueIndex: Int, val taskId: String, val planSnapshot: TakePlanSnapshot, val createdAt: Long)
@@ -212,7 +221,8 @@ data class Season(
 )
 
 @Serializable
-data class AssetVersion(val number: Int, val path: String, val createdAt: Long, val note: String? = null, val taskId: String? = null)
+data class AssetVersion(val number: Int, val path: String, val createdAt: Long, val note: String? = null, val taskId: String? = null,
+    val seed: Long? = null, val durationSeconds: Double? = null, val derivedFrom: TakeDerivation? = null)
 
 @Serializable
 data class Asset(
@@ -260,6 +270,8 @@ data class Production(
     val nextReviewRound: Int = 1,
     /** 未发送与已排队结论的回退基线。 */
     val reviewDrafts: List<ReviewDraft> = emptyList(),
+    val runs: List<ProductionRun> = emptyList(),
+    val unregisteredFiles: List<String> = emptyList(),
 )
 
 /** 清单文件与数据库的同步状态。 */
@@ -286,6 +298,12 @@ class ProductionRevisionConflictException : IllegalArgumentException("面板已�
 
 /** 用户在面板里的操作；全部记为 [ChangeSource.USER]，失败时抛 [IllegalArgumentException]，消息可直接显示。 */
 sealed interface ProductionUserAction {
+    data class CancelChain(val episodeId: String, val shotCode: String, val chainId: String) : ProductionUserAction
+    data class CancelRun(val runId: String) : ProductionUserAction
+    /** 后台协调器使用修订号比较写入，保证取消与新进度不会相互覆盖。 */
+    data class SaveChain(val episodeId: String, val shotCode: String, val chain: ShotChain, val take: Take? = null) : ProductionUserAction
+    data class SaveRun(val run: ProductionRun, val take: Take? = null, val assetVersion: AssetVersion? = null) : ProductionUserAction
+    data class SetUnregisteredFiles(val paths: List<String>) : ProductionUserAction
     data class Review(val target: ReviewTarget, val kind: ReviewKind, val note: String?) : ProductionUserAction
     data class RetractReview(val target: ReviewTarget, val kind: ReviewKind) : ProductionUserAction
     data class MarkReviewQueued(val round: Int, val at: Long) : ProductionUserAction
@@ -302,7 +320,7 @@ sealed interface ProductionUserAction {
     data class SetShotPlan(val episodeId: String, val shotCode: String, val channelId: String?, val mode: ShotMode) : ProductionUserAction
     data class RecompilePrompt(val episodeId: String, val shotCode: String, val prompt: String) : ProductionUserAction
     /** 生成层登记已完成任务；保留用户状态与内容决定。 */
-    data class RegisterGeneratedTask(val task: com.promenar.infinity.domain.mediagen.MediaTask) : ProductionUserAction
+    data class RegisterGeneratedTask(val task: com.promenar.infinity.domain.mediagen.MediaTask, val specs: Map<String, MediaSpec> = emptyMap()) : ProductionUserAction
     data class ClearPromptEdited(val episodeId: String, val shotCode: String) : ProductionUserAction
     data class SetCharacterLook(val episodeId: String, val shotCode: String, val characterAssetId: String, val lookId: String) : ProductionUserAction
     data class ToggleReferenceSlot(val episodeId: String, val shotCode: String, val characterAssetId: String, val slotId: String, val selected: Boolean) : ProductionUserAction

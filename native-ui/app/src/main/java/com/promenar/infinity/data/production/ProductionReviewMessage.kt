@@ -76,12 +76,13 @@ object ProductionReviewMessage {
                 openItems.take(MAX_OPEN_ITEMS).forEach { item ->
                     fun label(target: ReviewTarget?) = target?.let { reviewTargetLabel(production, it, strings) }.orEmpty()
                     val text = when (item) {
+                        is OpenItem.Run, is OpenItem.Chain, is OpenItem.UnregisteredFile -> productionProgressItemText(item).orEmpty().take(300)
                         is OpenItem.FailedTask -> strings.text("failed", item.taskId, label(item.target), item.error.orEmpty())
                         is OpenItem.CanceledTask -> strings.text("canceled", item.taskId, label(item.target))
                         is OpenItem.Rejected -> strings.text("rejected", label(item.target))
                         is OpenItem.CostAlert -> strings.text("cost", label(item.target), item.count.total)
                     }
-                    appendLine("- $text")
+                    appendLine("- ${text.take(300)}")
                 }
                 if (openItems.size > MAX_OPEN_ITEMS) appendLine(strings.text("overflow", openItems.size))
             }

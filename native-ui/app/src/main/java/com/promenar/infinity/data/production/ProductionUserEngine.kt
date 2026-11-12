@@ -54,6 +54,9 @@ object ProductionUserEngine {
             } else if (!scene.storyboardLocked) updateShot(episodeId, shotCode) { updated }
         }
         when (action) {
+            is ProductionUserAction.CancelChain, is ProductionUserAction.CancelRun,
+            is ProductionUserAction.SaveChain, is ProductionUserAction.SaveRun,
+            is ProductionUserAction.SetUnregisteredFiles -> p = applyProductionProgress(p, action, now)
             is ProductionUserAction.Review -> p = ProductionReviews.review(p, action, revision, now)
             is ProductionUserAction.RetractReview -> p = ProductionReviews.retract(p, action, revision)
             is ProductionUserAction.MarkReviewQueued -> p = ProductionReviews.queued(p, action)
@@ -76,7 +79,7 @@ object ProductionUserEngine {
                 }) }
                 require(found) { "场 ${action.sceneCode} 不存在，请先读取该集。" }
             }
-            is ProductionUserAction.RegisterGeneratedTask -> p = requireNotNull(registerShotTask(p, action.task, now)) { "任务暂不能登记，请核对项目绑定、场锁定与候选容量。" }
+            is ProductionUserAction.RegisterGeneratedTask -> p = requireNotNull(registerProductionTask(p, action.task, now, action.specs)) { "任务暂不能登记，请核对项目绑定、场锁定与候选容量。" }
             is ProductionUserAction.RecompilePrompt -> updateShot(action.episodeId, action.shotCode) { it.copy(prompt = action.prompt, promptUserEdited = false) }
             is ProductionUserAction.EditShotContent -> updateContent(action.episodeId, action.shotCode) { old ->
                 require(action.proposed.code == old.code) { "镜头标识不能修改。" }
@@ -123,6 +126,7 @@ object ProductionUserEngine {
                 if (stage.stage == action.stage) stage.copy(status = action.status, changedBy = ChangeSource.USER, changedAt = revision) else stage
             })
         }
+        if (action is ProductionUserAction.CancelChain) p = p.mapShot(action.episodeId, action.shotCode) { it.copy(changedBy = ChangeSource.USER, changedAt = revision) }
         if (action is ProductionUserAction.CreateCut || action is ProductionUserAction.SetCutSubtitles || action is ProductionUserAction.RegisterCutExport) {
             p = p.copy(cuts = p.cuts.map { cut ->
                 if (cut != snapshot.production.cuts.firstOrNull { it.id == cut.id }) cut.copy(changedAt = revision, changedBy = ChangeSource.USER) else cut

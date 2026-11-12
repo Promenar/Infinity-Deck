@@ -116,7 +116,7 @@ object ComfyTemplatePreviewBuilder {
                 buildString {
                     append("${slot.kind.name}: ${slot.nodeId}.${slot.input} × ${slot.capacity}")
                     slot.outputKind?.let { append(" → ${it.name}") }
-                    slot.param?.let { append(" · param.$it") }
+                    slot.param?.let { append("；param.$it") }
                     if (slot.uploadTargets.isNotEmpty()) append(" [${slot.uploadTargets.joinToString("、") { "${it.nodeId}.${it.input}" }}]")
                 }
             }.ifEmpty { null },
@@ -126,12 +126,12 @@ object ComfyTemplatePreviewBuilder {
             }
             params.forEach { param ->
                 put("param.${param.key}", buildString {
-                    append("${param.label} · ${param.type.name} · ${param.default.displayValue()}")
+                    append(listOf(param.label, param.type.name, param.default.displayValue()).joinToString("；"))
                     when (param.type) {
-                        TemplateParamType.ENUM -> append(" · ${param.options.joinToString("、")}")
+                        TemplateParamType.ENUM -> append("；${param.options.joinToString("、")}")
                         TemplateParamType.NUMBER -> {
-                            append(" · ${param.min ?: "不限"}～${param.max ?: "不限"}")
-                            if (param.integer) append(" · 整数")
+                            append("；${param.min ?: "不限"}～${param.max ?: "不限"}")
+                            if (param.integer) append("；整数")
                         }
                         TemplateParamType.BOOLEAN -> Unit
                     }

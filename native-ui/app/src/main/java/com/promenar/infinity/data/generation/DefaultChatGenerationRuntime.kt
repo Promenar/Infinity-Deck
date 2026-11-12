@@ -201,6 +201,8 @@ internal class DefaultChatGenerationRuntime(
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
     private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
     private val productionRepository: com.promenar.infinity.data.repository.ProductionRepository? = null,
+    /** 回合结束时扫描制作项目的未登记文件；在应用作用域异步执行，失败不影响本轮结果。 */
+    private val productionTurnEnd: (suspend (String) -> Unit)? = null,
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
@@ -842,8 +844,6 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun stream(request: GenerationRequest, attempt: Int): Flow<GenerationChunk> {
-        // 页面已切走或销毁时，仍由应用级运行时结清已接受的队列发送租约。
-        composerQueueStore?.acceptForUser(request.sessionId, request.userMessageId)
         // 每次实际发送前刷新配置；冻结块与已发送的尾部指令仍原文复用。
         refreshingForSend = true
         val refreshed = try { buildContext(request) } finally { refreshingForSend = false }
@@ -873,6 +873,9 @@ internal class DefaultChatGenerationRuntime(
             handleDocumentBudgetFailure(request, failure)
             return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(failure))
         }
+        // 准备与最终预算都通过、用户消息不会再被回滚后才结清队列发送租约；页面已切走或销毁时仍由应用级运行时完成。
+        // 之前的失败路径由 releaseToolResources 按用户消息是否存在确认或撤回。
+        composerQueueStore?.acceptForUser(request.sessionId, request.userMessageId)
         preparedPrompt = prompt
         if (!route.useLocalProvider) {
             awaitTailnet(route)?.let { failure -> return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(failure)) }
@@ -1697,7 +1700,16 @@ internal class DefaultChatGenerationRuntime(
             val owner = "agent:${request.sessionId}"
             try {
                 if (awaitingApproval) sshRuntime?.pauseOwner(owner) else sshRuntime?.closeOwner(owner)
-            } finally { stateBoardRepository?.endGeneration(request.sessionId, request.assistantMessageId) }
+            } finally {
+                stateBoardRepository?.endGeneration(request.sessionId, request.assistantMessageId)
+                if (!awaitingApproval) productionTurnEnd?.let { scan ->
+                    applicationScope.launch {
+                        try { scan(request.sessionId) } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) {
+                            InfinityLogger.logError("ProductionFileAudit.TurnEnd", e)
+                        }
+                    }
+                }
+            }
         }
     }
 

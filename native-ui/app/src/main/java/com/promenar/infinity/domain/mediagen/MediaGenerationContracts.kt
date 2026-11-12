@@ -50,6 +50,8 @@ data class GenerationSpecs(
     val height: Int? = null,
     val frames: Int? = null,
     val seed: Long? = null,
+    /** 秒数槽位支持的小数时长；整数时长字段保持原有通道语义。 */
+    val durationSecondsExact: Double? = null,
 )
 @Serializable
 data class MediaGenerationRequest(
@@ -64,6 +66,7 @@ data class MediaGenerationRequest(
     /** 产物下载到的工作区相对目录，例如 productions/wugang/S1E01/takes。 */
     val outputDir: String = "",
     val params: Map<String, kotlinx.serialization.json.JsonPrimitive> = emptyMap(),
+    val productionContext: ProductionMediaContext? = null,
 )
 
 data class RequestValidation(
@@ -129,6 +132,9 @@ fun validateRequest(channel: MediaChannel, request: MediaGenerationRequest): Req
         if (request.specs.width?.let { it <= 0 } == true) add("width")
         if (request.specs.height?.let { it <= 0 } == true) add("height")
         if ((request.specs.width == null) != (request.specs.height == null)) add("dimensions")
+        request.specs.durationSecondsExact?.let {
+            if (!it.isFinite() || it <= 0 || caps.minDurationSeconds?.let { min -> it < min } == true || caps.maxDurationSeconds?.let { max -> it > max } == true) add("durationSecondsExact")
+        }
         if (request.specs.frames?.let { it <= 0 } == true) add("frames")
     }
     return RequestValidation(channel.id != request.channelId, request.mode !in caps.modes, excess, invalid, specs)
@@ -224,3 +230,16 @@ interface MediaChannelRegistry {
     suspend fun setOrder(group: MediaGroup, channelIds: List<String>)
     suspend fun channel(id: String): MediaChannel?
 }
+
+/** 制作任务的冻结来源；随任务持久化，恢复登记时无需依赖当前模板配置。 */
+@Serializable
+data class ProductionMediaContext(
+    val templateFingerprint: String? = null,
+    val sourceTakeId: String? = null,
+    val operation: String? = null,
+    val templateId: String? = null,
+    val assetId: String? = null,
+    val chainId: String? = null,
+    val segmentIndex: Int? = null,
+    val attempt: Int = 0,
+)

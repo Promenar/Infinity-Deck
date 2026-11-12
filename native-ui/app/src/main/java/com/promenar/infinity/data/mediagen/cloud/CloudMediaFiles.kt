@@ -84,7 +84,9 @@ class WorkspaceCloudMediaOutputStore(
             InputKind.AUDIO -> setOf("mp3", "wav", "flac")
         }) }
         val identity = UUID.nameUUIDFromBytes("${request.channelId}:$remoteId".toByteArray()).toString()
-        val relative = "$dir/gen-$identity-$index.$suffix"
+        val chain = request.productionContext?.chainId
+        require(chain == null || output.kind == InputKind.VIDEO && index == 0) { "链段需要单个视频产物" }
+        val relative = if (chain != null) "$dir/seg-${requireNotNull(request.productionContext?.segmentIndex)}.mp4" else "$dir/gen-$identity-$index.$suffix"
         val target = resolver.productionPath(request.sessionId, relative)
         val expected = when (output.kind) { InputKind.IMAGE -> MediaKind.IMAGE; InputKind.VIDEO -> MediaKind.VIDEO; InputKind.AUDIO -> MediaKind.AUDIO }
         val existing = resolver.resolve(request.sessionId, target)

@@ -1283,6 +1283,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             taskRepository = taskRepository,
             stateBoardRepository = stateBoardRepository,
             productionRepository = productionRepository,
+            productionTasks = { withContext(Dispatchers.IO) { com.promenar.infinity.data.mediagen.queue.RoomMediaTaskStore(database).all().map { it.task } } },
             longTermMemoryRepository = longTermMemoryRepository,
             longTermMemoryAccess = longTermMemoryAccess,
             onEmbeddingNotConfigured = embeddingSetupHint::onEmbeddingNotConfigured,
@@ -1377,6 +1378,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             composerQueueStore = composerQueueStore,
             stateBoardRepository = stateBoardRepository,
             productionRepository = productionRepository,
+            productionTurnEnd = { sessionId -> productionFileAudit.scan(sessionId) },
             runModeCheck = ::checkSessionRunMode,
             linuxFiles = linuxSessionFiles,
             askUserLedger = askUserLedger,
@@ -1431,6 +1433,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     val installedProductionMediaRuntime: StateFlow<com.promenar.infinity.data.mediagen.ProductionMediaRuntime?> = _installedProductionMediaRuntime.asStateFlow()
     val productionCutRuntime by lazy { com.promenar.infinity.data.cut.ProductionCutRuntime(this) }
     val productionMediaRuntime by lazy { com.promenar.infinity.data.mediagen.ProductionMediaRuntime(this) }
+    val productionFileAudit: com.promenar.infinity.data.production.ProductionFileAudit get() = productionMediaRuntime.fileAudit
     val shotGenerationPlanner: com.promenar.infinity.data.production.ShotGenerationPlanner get() = productionMediaRuntime.planner
     val mediaGenerationQueue: com.promenar.infinity.domain.mediagen.MediaGenerationQueue get() = productionMediaRuntime.queue
     val mediaChannelRegistry: com.promenar.infinity.domain.mediagen.MediaChannelRegistry get() = productionMediaRuntime.registry
@@ -2066,6 +2069,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionCutSkill({ productionRepository.get(it) }, { productionCutRuntime.controller }))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionPlanSkill { shotGenerationPlanner })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerateSkill { shotGenerationPlanner })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionOperationsSkill { productionMediaRuntime.processing })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionDeriveSkill { productionMediaRuntime.processing })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionScoreSkill { productionMediaRuntime.processing })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionExtendSkill { productionMediaRuntime.chains })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionRunSkill { productionMediaRuntime.runs })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerationTasksSkill({ productionMediaRuntime.store }, { mediaGenerationQueue }))
             com.promenar.infinity.ui.chat.manager.skills.comfyTools(comfyMedia.repository).forEach(::register)
             register(InitializePlanSkill(taskRepository))

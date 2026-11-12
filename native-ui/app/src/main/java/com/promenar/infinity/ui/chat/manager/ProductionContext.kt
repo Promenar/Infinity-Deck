@@ -4,7 +4,8 @@ import com.promenar.infinity.data.production.*
 import com.promenar.infinity.ui.chat.manager.skills.manifestJson
 import kotlinx.serialization.json.*
 
-internal fun productionContext(snapshot: ProductionSnapshot?, seen: Long): String {
+/** [openItems] 为 [productionOpenItemsSummary] 的结果，自带篇幅上限，接在项目 JSON 之后。 */
+internal fun productionContext(snapshot: ProductionSnapshot?, seen: Long, openItems: String = ""): String {
     if (snapshot == null) return ""
     val p = snapshot.production
     val episodes = p.seasons.flatMap { it.episodes }
@@ -37,5 +38,5 @@ internal fun productionContext(snapshot: ProductionSnapshot?, seen: Long): Strin
     var c = counts.size; var d = minOf(20, decisions.size); var q = minOf(20, pending.size)
     var out = render(c, d, q)
     while (out.length > 3000 && c + d + q > 0) { when { c > 0 && c >= d && c >= q -> c--; d >= q && d > 0 -> d--; q > 0 -> q-- }; out = render(c, d, q) }
-    return out
+    return if (openItems.isEmpty()) out else out + "\n" + openItems
 }
