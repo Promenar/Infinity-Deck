@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -30,9 +31,20 @@ internal fun ProductionCutPlayer(clip: ProductionCutClip?, playing: Boolean, onC
     }
     val path = clip?.path
     if (path == null) {
-        ProductionBlock {
-            Text(clip?.title ?: stringResource(R.string.p2_no_shots), style = MaterialTheme.typography.titleMedium)
-            clip?.let { Text(secondsLabel(it.seconds)) }
+        // 没有选定候选的镜头按文字卡占位，与成片同为 16:9。
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+        ) {
+            androidx.compose.foundation.layout.Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            ) {
+                Text(clip?.title ?: stringResource(R.string.p2_no_shots), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                clip?.let { Text(secondsLabel(it.seconds), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
         }
         LaunchedEffect(clip, playing) { if (playing && clip != null) { delay((clip.seconds * 1000).toLong().coerceAtLeast(1)); complete() } }
         return

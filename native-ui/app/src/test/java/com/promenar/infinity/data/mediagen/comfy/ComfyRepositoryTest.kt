@@ -22,6 +22,13 @@ class ComfyRepositoryTest {
         assertTrue(f.repository.defineTemplateByAgent(f.template.copy(name = "新版")).template.locked)
     }
 
+    @Test fun connectionCheckOnlyRequestsLightweightSystemStats() = runTest {
+        val f = ComfyFixture()
+        f.repository.saveHost(f.host)
+        f.repository.checkConnection(f.host.id)
+        assertEquals(listOf("/system_stats"), f.http.calls.map { it.first })
+    }
+
     @Test fun channelsDeriveReferenceLimitsFromSlotsAndPreserveId() = runTest {
         val f = ComfyFixture()
         f.repository.saveHost(f.host)

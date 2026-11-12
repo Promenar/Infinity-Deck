@@ -115,6 +115,11 @@ class ComfyRepository(
         if (GenerationMode.FIRST_LAST_FRAME in caps.modes) require(template.slots.any { it.kind == SlotKind.LAST_FRAME }) { "首尾帧模式需要尾帧槽位" }
         require(caps.referenceOrder.size <= caps.maxImages && caps.referenceOrder.all { it.isNotBlank() }) { "参考位顺序超过容量或含空名称" }
     }
+    /** 连接检测只读轻量的 /system_stats；完整节点清单留给预检与探测。 */
+    suspend fun checkConnection(hostId: String) {
+        val stats = http.get(host(hostId), "/system_stats")
+        if (stats["system"] !is JsonObject) throw ComfyFailure("主机响应不是 ComfyUI 系统信息")
+    }
     suspend fun probe(hostId: String, nodeType: String? = null): JsonObject {
         val host = host(hostId)
         require(nodeType == null || (nodeType.isNotBlank() && nodeType.length <= 200 && nodeType.none { it < ' ' || it == '\u007f' })) { "node_type 格式无效" }

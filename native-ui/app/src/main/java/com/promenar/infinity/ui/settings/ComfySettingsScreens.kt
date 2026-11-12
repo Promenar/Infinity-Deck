@@ -4,10 +4,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.KeyboardType
@@ -38,14 +47,21 @@ internal fun ComfyHostsSection(
                 icon = Icons.Rounded.Dns,
                 title = "ComfyUI · ${host.name}",
                 subtitle = listOf(host.endpoint,
-                    stringResource(R.string.media_settings_templates_count, state.snapshot.templates.count { it.template.hostId == host.id }),
-                    connectionLabel(state.connections[host.id] ?: ComfyConnection.UNKNOWN)).joinToString(" · "),
-                subtitleMaxLines = Int.MAX_VALUE, titleMaxLines = 2,
-                onClick = { onOpen(host.id) }, showChevron = true,
+                    stringResource(R.string.media_settings_templates_count, state.snapshot.templates.count { it.template.hostId == host.id })).joinToString(" · "),
+                subtitleMaxLines = 2, titleMaxLines = 2,
+                onClick = { onOpen(host.id) },
+                trailingContent = {
+                    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                        ConnectionChip(state.connections[host.id] ?: ComfyConnection.UNKNOWN)
+                        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
             )
         }
-        MediaAction(stringResource(R.string.media_settings_add_host), onAdd, !state.busy)
-        if (state.snapshot.hosts.isNotEmpty()) MediaAction(stringResource(R.string.media_settings_check_connection), onCheck, !state.busy)
+        InfinitySettingsItem(icon = Icons.Rounded.Add, title = stringResource(R.string.media_settings_add_host), onClick = onAdd, enabled = !state.busy)
+        if (state.snapshot.hosts.isNotEmpty()) InfinitySettingsItem(icon = Icons.Rounded.NetworkCheck,
+            title = stringResource(R.string.media_settings_check_connection), onClick = onCheck, enabled = !state.busy)
     }
 }
 
@@ -65,9 +81,15 @@ internal fun ComfyHostScreenContent(
     var deleting by remember(host.id) { mutableStateOf(false) }
     MediaSettingsPage("ComfyUI · ${host.name}", onBack) {
         MediaOperationState(state, onRetry)
-        MediaValue(stringResource(R.string.media_settings_host_address), host.endpoint)
-        MediaNotice(connectionLabel(state.connections[host.id] ?: ComfyConnection.UNKNOWN))
-        MediaAction(stringResource(R.string.media_settings_check_connection), onCheck, !state.busy)
+        InfinitySettingsSection(title = stringResource(R.string.media_settings_connection)) {
+            MediaValue(stringResource(R.string.media_settings_host_address), host.endpoint)
+            InfinitySettingsItem(
+                icon = Icons.Rounded.NetworkCheck,
+                title = stringResource(R.string.media_settings_check_connection),
+                onClick = onCheck, enabled = !state.busy,
+                trailingContent = { ConnectionChip(state.connections[host.id] ?: ComfyConnection.UNKNOWN) },
+            )
+        }
         InfinitySettingsSection(title = stringResource(R.string.media_settings_templates)) {
             val templates = state.snapshot.templates.filter { it.template.hostId == host.id }
             if (templates.isEmpty()) MediaNotice(stringResource(R.string.media_settings_no_templates))
@@ -78,20 +100,17 @@ internal fun ComfyHostScreenContent(
                 val subtitle = (listOf(mediaGroupLabel(template.group)) + channel.capabilities.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) } +
                     listOfNotNull(range)).joinToString(" · ")
                 InfinitySettingsItem(icon = mediaGroupIcon(template.group), title = template.name, subtitle = subtitle,
-                    subtitleMaxLines = Int.MAX_VALUE, titleMaxLines = 2, onClick = { onOpenTemplate(template.id) },
-                    subtitleContent = {
-                        Column {
-                            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(preflightLabel(entry.preflight), style = MaterialTheme.typography.labelMedium,
-                                color = if (entry.preflight.status == PreflightStatus.PASS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                        }
-                    }, showChevron = true)
+                    subtitleMaxLines = 2, titleMaxLines = 2, onClick = { onOpenTemplate(template.id) },
+                    trailingContent = { PreflightChip(entry.preflight) })
             }
-            MediaAction(stringResource(R.string.media_settings_recheck), onPreflight, templates.isNotEmpty() && !state.busy)
+            if (templates.isNotEmpty()) InfinitySettingsItem(icon = Icons.Rounded.Refresh, title = stringResource(R.string.media_settings_recheck), onClick = onPreflight, enabled = !state.busy)
         }
-        MediaAction(stringResource(R.string.media_settings_configure), onConfigure, !state.busy)
-        MediaAction(stringResource(R.string.media_settings_edit_host), onEdit, !state.busy)
-        MediaAction(stringResource(R.string.media_settings_delete), { deleting = true }, !state.busy)
+        InfinitySettingsSection(title = stringResource(R.string.media_settings_host_actions)) {
+            InfinitySettingsItem(icon = Icons.Rounded.TravelExplore, title = stringResource(R.string.media_settings_configure), onClick = onConfigure, enabled = !state.busy, showChevron = true)
+            InfinitySettingsItem(icon = Icons.Rounded.Edit, title = stringResource(R.string.media_settings_edit_host), onClick = onEdit, enabled = !state.busy, showChevron = true)
+            InfinitySettingsItem(icon = Icons.Rounded.Delete, title = stringResource(R.string.media_settings_delete), onClick = { deleting = true }, enabled = !state.busy,
+                titleColor = MaterialTheme.colorScheme.error)
+        }
     }
     if (deleting) InfinityConfirmDialog(
         title = stringResource(R.string.media_settings_delete_host_title), message = stringResource(R.string.media_settings_delete_host_message),
@@ -118,13 +137,12 @@ internal fun ComfyTemplateScreenContent(
     MediaSettingsPage(template.name, onBack) {
         MediaOperationState(state, onRetry)
         InfinitySettingsSection(title = stringResource(R.string.media_settings_preflight)) {
-            MediaNotice(preflightLabel(entry.preflight), error = entry.preflight.status != PreflightStatus.PASS)
+            InfinitySettingsItem(icon = Icons.Rounded.Refresh, title = stringResource(R.string.media_settings_recheck), onClick = onPreflight, enabled = !state.busy, trailingContent = { PreflightChip(entry.preflight) })
             val time = state.snapshot.preflightTimes[template.id]
             MediaValue(stringResource(R.string.media_settings_preflight_time), time?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, locale).format(Date(it)) }
                 ?: stringResource(R.string.media_settings_time_unknown))
             entry.preflight.missing.forEach { MediaNotice(mediaDiagnosticLabel(it), error = true) }
             entry.preflight.uncertain.forEach { MediaNotice(mediaDiagnosticLabel(it)) }
-            MediaAction(stringResource(R.string.media_settings_recheck), onPreflight, !state.busy)
             MediaNotice(stringResource(if (template.locked) R.string.media_settings_locked else R.string.media_settings_unlocked))
             MediaAction(stringResource(if (template.locked) R.string.media_settings_unlock else R.string.media_settings_lock),
                 { if (template.locked) onUnlock() else onLock(order) }, !state.busy)

@@ -9,6 +9,7 @@ class AndroidShotPlanningMessages(private val context: Context) : ShotPlanningMe
         "missing_shot" -> R.string.shot_plan_missing_shot
         "unlocked" -> R.string.shot_plan_unlocked
         "no_channel" -> R.string.shot_plan_no_channel
+        "no_channel_mode" -> R.string.shot_plan_no_channel_mode
         "missing_input" -> R.string.shot_plan_missing_input
         "overflow" -> R.string.shot_plan_overflow
         "invalid_plan" -> R.string.shot_plan_invalid

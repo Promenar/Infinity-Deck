@@ -36,6 +36,7 @@ internal class FakeComfyHttp : ComfyHttp {
             path.startsWith("/object_info/") -> info
             path.startsWith("/history/") -> history
             path == "/queue" -> queue
+            path == "/system_stats" -> buildJsonObject { putJsonObject("system") { put("comfyui_version", "test") } }
             else -> error("未配置假响应")
         }
     }

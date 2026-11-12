@@ -160,4 +160,6 @@
     <string name="media_settings_diagnostic_27">Node %1$s · missing dynamic input %2$s</string>
     <string name="media_settings_diagnostic_28">Node %1$s · dynamic type %2$s requires review</string>
     <string name="media_settings_diagnostic_29">Node %1$s</string>
+    <string name="media_settings_connection">Connection</string>
+    <string name="media_settings_host_actions">Host</string>
 </resources>

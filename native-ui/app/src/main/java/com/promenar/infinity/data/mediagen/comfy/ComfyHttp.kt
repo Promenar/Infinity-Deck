@@ -83,7 +83,9 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
     }
     private suspend fun <T> response(host: ComfyHost, builder: Request.Builder, consume: suspend (Response) -> T): T = withContext(Dispatchers.IO) {
         credentials.authorization(host)?.let { builder.header("Authorization", it) }
-        val call = client.newBuilder().callTimeout(host.timeoutSeconds.toLong(), TimeUnit.SECONDS)
+        // 不设整次调用总时限：经 tailnet 中转的大响应只是慢；连续无数据达到主机超时才判失败。
+        val call = client.newBuilder().callTimeout(0, TimeUnit.SECONDS)
+            .writeTimeout(host.timeoutSeconds.toLong(), TimeUnit.SECONDS)
             .connectTimeout(minOf(host.timeoutSeconds, 30).toLong(), TimeUnit.SECONDS)
             .readTimeout(host.timeoutSeconds.toLong(), TimeUnit.SECONDS).build().newCall(builder.build())
         try {

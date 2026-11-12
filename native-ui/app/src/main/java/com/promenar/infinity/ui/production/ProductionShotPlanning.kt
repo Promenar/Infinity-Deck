@@ -174,8 +174,10 @@ internal fun ProductionShotDetail(
                 item("channel-mode") {
                     ProductionSection(stringResource(R.string.p2_channel_mode)) {
                         ProductionRow(stringResource(R.string.p2_mode), value = shot.mode.label(), enabled = !working, onClick = { sheet = PlanningSheet.MODE })
-                        val channelName = preview?.channelLabel ?: shot.channelId?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel)
-                        val channelValue = if (preview?.channelIsDefault == true && preview?.channelLabel != null) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
+                        val noChannel = preview != null && preview?.channel == null
+                        val channelName = preview?.channelLabel?.takeIf(String::isNotBlank) ?: shot.channelId?.let(services.channelLabel)
+                            ?: stringResource(if (noChannel) R.string.p2_no_channels else R.string.p2_default_channel)
+                        val channelValue = if (!noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank()) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
                         ProductionRow(stringResource(R.string.p2_channel), value = channelValue, enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
                         ProductionRow(stringResource(R.string.p2_specs), value = (preview?.channel?.capabilities?.resolutions.orEmpty() + listOfNotNull(production.aspectRatio, secondsLabel(shot.durationSeconds))).joinToString(" · "))
                         ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))

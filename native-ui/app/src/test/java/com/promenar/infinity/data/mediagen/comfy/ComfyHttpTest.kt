@@ -72,6 +72,20 @@ class ComfyHttpTest {
         try { OkHttpComfyHttp(client, ComfyCredentials(f.secrets)).get(f.host, "/object_info"); fail("应超时") }
         catch (e: ComfyFailure) { assertTrue(e.retryable); assertTrue(e.message!!.contains("超时")); assertFalse(e.message!!.contains("internal")) }
     }
+    @Test fun slowRelayedTransfersOnlyTimeOutWhenIdle() = runTest {
+        // 经中转的大响应只是慢：不设整次调用总时限，只在连续无数据达到主机超时才失败。
+        val f = ComfyFixture(); val host = f.host.copy(timeoutSeconds = 45)
+        var callTimeout = -1L; var readTimeout = -1; var connectTimeout = -1
+        val client = OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).addInterceptor { chain ->
+            callTimeout = chain.call().timeout().timeoutNanos()
+            readTimeout = chain.readTimeoutMillis(); connectTimeout = chain.connectTimeoutMillis()
+            response(chain.request(), "{}")
+        }.build()
+        OkHttpComfyHttp(client, ComfyCredentials(f.secrets)).get(host, "/object_info")
+        assertEquals(0L, callTimeout)
+        assertEquals(45_000, readTimeout)
+        assertEquals(30_000, connectTimeout)
+    }
     @Test fun promptTransportTimeoutRequiresCheckingHostBeforeRetry() = runTest {
         val f = ComfyFixture()
         val client = OkHttpClient.Builder().addInterceptor { throw java.net.SocketTimeoutException("private details") }.build()

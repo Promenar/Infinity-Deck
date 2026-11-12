@@ -71,6 +71,17 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(p.copy(experimental = true).outputItems(OutputFilter.REVIEW)).hasSize(2)
     }
 
+    @Test fun `未锁定场里已有候选的镜头仍出现在出片与待审筛选中`() {
+        val reviewed = shot.copy(code = "SC01-02", status = ShotStatus.REVIEW, takes = listOf(Take("t1", "t1.mp4", TakeSource("ComfyUI"), 1)))
+        val p = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene.copy(storyboardLocked = false, shots = listOf(shot.copy(status = ShotStatus.TODO), reviewed))))))))
+        val all = p.outputItems(OutputFilter.ALL)
+        assertThat(all).hasSize(2)
+        assertThat(all.first()).isInstanceOf(OutputItem.UnlockedScene::class.java)
+        assertThat((all.last() as OutputItem.ShotRow).location.shot.code).isEqualTo("SC01-02")
+        assertThat(p.outputItems(OutputFilter.REVIEW).map { (it as OutputItem.ShotRow).location.shot.code }).containsExactly("SC01-02")
+        assertThat(p.outputItems(OutputFilter.TODO)).isEmpty()
+    }
+
     @Test fun `出片按状态筛选未生成不包含已有候选`() {
         val shots = ShotStatus.entries.mapIndexed { index, status -> shot.copy(code = "SC01-${index + 1}", status = status) }
         val p = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene.copy(shots = shots)))))))

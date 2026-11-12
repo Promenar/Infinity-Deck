@@ -48,9 +48,10 @@ sealed interface OutputItem {
 }
 fun Production.outputItems(filter: OutputFilter): List<OutputItem> = buildList {
     episodes().forEach { episode -> episode.scenes.forEach { scene ->
-        if (!experimental && !scene.storyboardLocked) {
-            if (filter == OutputFilter.ALL) add(OutputItem.UnlockedScene(episode, scene))
-        } else scene.shots.filter { shot ->
+        val unlocked = !experimental && !scene.storyboardLocked
+        // 未锁定场先占一行提示；已有候选的镜头仍列出，审片入口才能找到它们。
+        if (unlocked && filter == OutputFilter.ALL) add(OutputItem.UnlockedScene(episode, scene))
+        scene.shots.filter { shot -> !unlocked || shot.takes.isNotEmpty() }.filter { shot ->
             when (filter) {
                 OutputFilter.ALL -> true
                 OutputFilter.REVIEW -> shot.status == ShotStatus.REVIEW

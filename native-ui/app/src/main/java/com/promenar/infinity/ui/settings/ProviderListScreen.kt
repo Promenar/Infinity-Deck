@@ -146,7 +146,7 @@ fun ProviderListScreen(
         state = state,
         actions = actions,
         comfyContent = {
-            Column(Modifier.padding(horizontal = 16.dp)) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(top = InfinitySpacing.SectionGap)) {
                 MediaOperationState(mediaState, mediaViewModel::reload)
                 ComfyHostsSection(mediaState,
                     onOpen = { onNavigateToSecondary(MediaSettingsRoutes.host(it)) },

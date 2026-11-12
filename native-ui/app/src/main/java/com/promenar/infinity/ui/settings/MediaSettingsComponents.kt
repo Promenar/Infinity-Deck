@@ -31,10 +31,31 @@ internal fun MediaSettingsPage(title: String, onBack: () -> Unit, content: @Comp
 
 @Composable
 internal fun MediaValue(label: String, value: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(label, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+/** 预检结果标签：通过为绿色，缺项为红色，需复核为黄色。 */
+@Composable
+internal fun PreflightChip(result: PreflightResult) {
+    com.promenar.infinity.ui.production.ProductionStatusChip(preflightLabel(result), when (result.status) {
+        PreflightStatus.PASS -> com.promenar.infinity.ui.production.ProductionTone.SUCCESS
+        PreflightStatus.MISSING -> com.promenar.infinity.ui.production.ProductionTone.ERROR
+        PreflightStatus.REVIEW -> com.promenar.infinity.ui.production.ProductionTone.WARNING
+    })
+}
+
+@Composable
+internal fun ConnectionChip(value: ComfyConnection) {
+    com.promenar.infinity.ui.production.ProductionStatusChip(connectionLabel(value), when (value) {
+        ComfyConnection.ONLINE -> com.promenar.infinity.ui.production.ProductionTone.SUCCESS
+        ComfyConnection.OFFLINE -> com.promenar.infinity.ui.production.ProductionTone.ERROR
+        ComfyConnection.CHECKING -> com.promenar.infinity.ui.production.ProductionTone.INFO
+        ComfyConnection.UNKNOWN -> com.promenar.infinity.ui.production.ProductionTone.NEUTRAL
+    })
 }
 
 @Composable

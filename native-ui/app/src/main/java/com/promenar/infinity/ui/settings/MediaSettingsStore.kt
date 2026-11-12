@@ -71,7 +71,7 @@ internal class ApplicationMediaSettingsStore(
         repository.saveHost(host, credential.credential(host.authKind))
     }
     override suspend fun removeHost(id: String) = repository.removeHost(id)
-    override suspend fun probe(id: String) { repository.probe(id) }
+    override suspend fun probe(id: String) { repository.checkConnection(id) }
     override suspend fun preflight(id: String) { recordTime(repository.preflight(id)) }
     override suspend fun unlock(id: String) { repository.unlockTemplateByUser(id) }
     override suspend fun lock(id: String, referenceOrder: List<String>) {

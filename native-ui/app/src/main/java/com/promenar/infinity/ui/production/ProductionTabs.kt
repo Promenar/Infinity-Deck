@@ -82,8 +82,10 @@ import com.promenar.infinity.ui.media.rememberWorkspaceMediaResolution
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
 @Composable
-internal fun episodeName(episode: Episode): List<String> =
-    listOf(stringResource(R.string.production_panel_episode_number, episode.number), episode.title).filter(String::isNotBlank)
+internal fun episodeName(episode: Episode): List<String> {
+    val number = stringResource(R.string.production_panel_episode_number, episode.number)
+    return listOf(number, episode.title).filter(String::isNotBlank).distinctBy { it.filterNot(Char::isWhitespace).lowercase() }
+}
 
 // ---------- 总览 ----------
 

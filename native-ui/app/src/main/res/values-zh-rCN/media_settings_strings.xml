@@ -160,4 +160,6 @@
     <string name="media_settings_diagnostic_27">节点 %1$s 缺少动态输入 %2$s</string>
     <string name="media_settings_diagnostic_28">节点 %1$s 动态类型 %2$s 需复核</string>
     <string name="media_settings_diagnostic_29">节点 %1$s</string>
+    <string name="media_settings_connection">连接</string>
+    <string name="media_settings_host_actions">主机</string>
 </resources>

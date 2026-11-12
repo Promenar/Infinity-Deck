@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -43,15 +44,14 @@ internal fun MediaModelsScreenContent(
                             }
                         },
                         trailingContent = if (row.isDefault) ({
-                            Text(stringResource(R.string.media_settings_default), style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary)
+                            com.promenar.infinity.ui.production.ProductionStatusChip(stringResource(R.string.media_settings_default), com.promenar.infinity.ui.production.ProductionTone.INFO)
                         }) else null,
                     )
                 }
             }
         }
         InfinitySettingsSection(title = stringResource(R.string.media_settings_providers)) {
-            InfinitySettingsItem(title = stringResource(R.string.media_settings_providers), onClick = onProviders, showChevron = true)
+            InfinitySettingsItem(icon = androidx.compose.material.icons.Icons.Rounded.Hub, title = stringResource(R.string.media_settings_providers), onClick = onProviders, showChevron = true)
         }
     }
 }

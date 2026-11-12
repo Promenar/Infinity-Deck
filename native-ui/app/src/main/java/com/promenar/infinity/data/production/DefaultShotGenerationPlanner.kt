@@ -14,6 +14,7 @@ val ChineseShotPlanningMessages = ShotPlanningMessages { key, detail -> when (ke
     "missing_shot" -> "集或镜头不存在：$detail"
     "unlocked" -> "场尚未锁定：$detail"
     "no_channel" -> "没有支持当前模式的通道：$detail"
+    "no_channel_mode" -> "没有支持当前模式的通道"
     "missing_input" -> "输入不存在或类型不符：$detail"
     "overflow" -> "输入超出通道上限：$detail"
     "invalid_plan" -> "生成规划不完整：$detail"
@@ -65,7 +66,7 @@ class DefaultShotGenerationPlanner(
             else registry.channel(shot.channelId)?.takeIf { it.group == MediaGroup.VIDEO && mode in it.capabilities.modes }
         val issues = mutableListOf<String>()
         if (!p.experimental && !scene.storyboardLocked) issues += text("unlocked", scene.code)
-        if (channel == null) issues += text("no_channel", shot.channelId.orEmpty())
+        if (channel == null) issues += shot.channelId?.let { text("no_channel", it) } ?: text("no_channel_mode", "")
         val warnings = shot.appearances.mapNotNull { appearance -> p.assets.find { it.id == appearance.characterAssetId }?.takeIf { it.status != AssetStatus.LOCKED }?.name }
             .distinct().map { text("reference_review", it) }.toMutableList()
         val packed = mutableListOf<PlannedInput>()

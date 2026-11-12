@@ -15,4 +15,5 @@
     <string name="shot_plan_workflow_timing">Duration follows the locked workflow: %1$s</string>
     <string name="shot_plan_candidate_capacity">Not enough candidate slots: %1$s</string>
     <string name="shot_plan_changed">The shot plan changed. Preview it before submitting.</string>
+    <string name="shot_plan_no_channel_mode">No channel supports this mode</string>
 </resources>

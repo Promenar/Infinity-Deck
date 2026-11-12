@@ -15,4 +15,5 @@
     <string name="shot_plan_workflow_timing">时长由锁定工作流决定：%1$s</string>
     <string name="shot_plan_candidate_capacity">候选容量不足：%1$s</string>
     <string name="shot_plan_changed">镜头规划已变化，请先预览。</string>
+    <string name="shot_plan_no_channel_mode">没有支持当前模式的通道</string>
 </resources>
