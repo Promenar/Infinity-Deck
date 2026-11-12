@@ -44,12 +44,12 @@
     <string name="production_panel_shot_todo">To do</string>
     <string name="production_panel_shot_generating">Generating</string>
     <string name="production_panel_shot_review">Review</string>
-    <string name="production_panel_shot_locked">Locked</string>
-    <string name="production_panel_shot_redo">Redo</string>
+    <string name="production_panel_shot_locked">Approved</string>
+    <string name="production_panel_shot_redo">Rejected</string>
 
     <string name="production_panel_asset_draft">Draft</string>
     <string name="production_panel_asset_review">Review</string>
-    <string name="production_panel_asset_locked">Locked</string>
+    <string name="production_panel_asset_locked">Approved</string>
     <string name="production_panel_asset_redo">Redo</string>
 
     <string name="production_panel_asset_all">All</string>

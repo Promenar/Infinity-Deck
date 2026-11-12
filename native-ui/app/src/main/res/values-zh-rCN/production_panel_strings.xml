@@ -41,12 +41,12 @@
     <string name="production_panel_shot_todo">待生成</string>
     <string name="production_panel_shot_generating">生成中</string>
     <string name="production_panel_shot_review">待审</string>
-    <string name="production_panel_shot_locked">已定</string>
-    <string name="production_panel_shot_redo">重做</string>
+    <string name="production_panel_shot_locked">已批准</string>
+    <string name="production_panel_shot_redo">已否决</string>
 
     <string name="production_panel_asset_draft">草稿</string>
     <string name="production_panel_asset_review">待审</string>
-    <string name="production_panel_asset_locked">已定</string>
+    <string name="production_panel_asset_locked">已批准</string>
     <string name="production_panel_asset_redo">打回</string>
 
     <string name="production_panel_asset_all">全部</string>

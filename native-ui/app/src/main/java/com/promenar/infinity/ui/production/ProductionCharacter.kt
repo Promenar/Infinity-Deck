@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,7 +11,6 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -159,9 +159,7 @@ private fun AddSlotCard(enabled: Boolean, modifier: Modifier, onClick: () -> Uni
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, onClick = onClick, enabled = enabled, modifier = modifier) {
         Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(
-                Modifier.fillMaxWidth().aspectRatio(0.75f).drawBehind {
-                    drawRoundRect(outline, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))), cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx()))
-                },
+                Modifier.fillMaxWidth().aspectRatio(0.75f).border(1.dp, outline, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Rounded.Add, stringResource(R.string.p2_add_slot), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             Text(stringResource(R.string.p2_reference_slots), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 2.dp))

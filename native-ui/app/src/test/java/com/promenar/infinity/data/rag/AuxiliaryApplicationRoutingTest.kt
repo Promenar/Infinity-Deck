@@ -45,6 +45,8 @@ class AuxiliaryApplicationRoutingTest {
         every { app.getString(R.string.model_request_route_failed, any<String>()) } returns "模型不可用。请在设置中检查所选模型及其提供商。"
         every { app.providerRequestRouter } returns router
         every { app.localInferenceEngine } returns mockk(relaxed = true)
+        // Robolectric 4.11 的 android.os.Process 没有 is64Bit()，门禁在此直接给定。
+        every { app.localInferenceRuntimeGate } returns com.promenar.infinity.data.local.inference.LocalInferenceRuntimeGate(com.promenar.infinity.BuildConfig.LOCAL_INFERENCE_AVAILABLE)
         val secrets = mockk<SecretStore>()
         every { secrets.get(SecretCatalog.embeddingApiKey) } returns "fake-manual-key".toByteArray()
         every { app.secretStore } returns secrets

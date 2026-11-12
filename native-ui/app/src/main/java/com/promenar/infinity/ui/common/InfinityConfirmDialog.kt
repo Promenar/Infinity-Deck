@@ -83,6 +83,8 @@ fun InfinityConfirmDialog(
     onDismissRequest: () -> Unit = onCancel,
     properties: DialogProperties = DialogProperties(),
     icon: ImageVector? = null,
+    /** 多段元数据正文：非空时取代 [message]。 */
+    messageSegments: List<String>? = null,
     content: @Composable (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
@@ -112,6 +114,7 @@ fun InfinityConfirmDialog(
             },
             confirmEnabled = confirmEnabled,
             cancelEnabled = cancelEnabled,
+            messageSegments = messageSegments,
             icon = icon,
             content = content,
         )

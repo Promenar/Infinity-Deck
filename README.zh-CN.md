@@ -119,7 +119,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
 
-当前源码版本为 `v0.51.0-beta`（versionCode `142`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.52.0-beta`（versionCode `143`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
 <summary><b>从源码构建</b></summary>
@@ -189,7 +189,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 输入 `localhost:8888` 直接打开 Linux 或 Termux 里跑的服务
 - 画布页面、可点击的多屏原型、带版本的产物
 - 生图，可在画板上圈注和涂抹选区
-- 制作面板把剧本、资产、分镜、出片和剪辑串成一条线：每个镜头的通道、参考图和提示词都能预览，付费任务先批准再提交，按预算自动放行；可接火山方舟 Seedance、MiniMax 和自己的 ComfyUI 工作流
+- 制作面板把剧本、资产、分镜、出片和剪辑串成一条线：每个镜头的通道、参考图和提示词都能预览，审核按回合进行，批准、否决、建议只做记录，由“发送”一次交给智能体；按阶段、镜头和资产记录生成次数；可接火山方舟 Seedance、MiniMax 和自己的 ComfyUI 工作流
 - 会话导出为网页、A4 PDF 或长图
 
 **折叠屏**
