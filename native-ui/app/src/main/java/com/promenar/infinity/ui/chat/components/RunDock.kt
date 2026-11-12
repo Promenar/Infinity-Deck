@@ -67,7 +67,7 @@ import kotlinx.coroutines.delay
 
 /**
  * 输入浮岛顶层的运行坞：一行显示当前在做什么、计划进度（“2/5”）与本轮用时，最左是后台任务圆环（或完成、暂停标记），
- * 右侧是点阵波形屏（[RunDockScope]）；点按整行打开运行详情。待批准数由工具行的执行模式盾牌承载，锁定触摸与状态面板入口在顶栏。
+ * 右侧是点阵波形屏（[RunDockScope]）；运行坞只做整轮摘要，步骤级的等待、重试与无响应由会话流末尾的状态行表达；点按整行打开运行详情。待批准数由工具行的执行模式盾牌承载，锁定触摸与状态面板入口在顶栏。
  * 与输入区之间的细灯带由浮岛绘制。[startedAt] 为本轮开始时间（毫秒），不为 null 时用时每秒刷新，只重组运行坞这一行。
  */
 @Composable
@@ -193,7 +193,7 @@ private val RunDockScopeHeight = 30.dp
 
 /**
  * 运行坞右侧的点阵波形屏：常驻一层熄灭的底格，屏的位置不会因状态切换空出来；生成中按阶段绘制（等待审批时“!”慢闪、
- * 波形区为静止的第三色基线），计划完成时停在本轮波形，暂停时停在本轮波形并调暗。
+ * 波形区为静止的第三色基线；等待、工具与重试阶段不画数字，波形铺满），计划完成时停在本轮波形，暂停时停在本轮波形并调暗。
  * 生成进度与时钟取自浮岛的 [LocalComposerGlow]，并把自己的中心回报给浮岛作为环境光柔光的中心。纯装饰，不进入无障碍树。
  */
 @Composable
@@ -234,6 +234,7 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
                 drawScopeFrame(
                     native, k, sx, sy, cols, rows, phase, gen * weight, time, motion, palette, painter, digits,
                     colors = if (phase == GenerationMotionPhase.APPROVAL) approvalColors else palette.leds, drawOff = false,
+                    stepReadouts = false,
                 )
             }
             val rest = when (mode) {

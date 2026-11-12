@@ -240,7 +240,6 @@ import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Compress
-import com.promenar.infinity.ui.common.InfinityMetaLine
 
 /** 未配置嵌入模型或无检索范围的历史轨迹表示检索未执行，不单独构成检索步骤。 */
 internal fun Message.hasRagArtifacts(): Boolean =
@@ -536,9 +535,14 @@ fun ChatScreenContent(
     val liveToolKeys = LocalToolLiveOutput.current?.activeKeys?.collectAsState()?.value.orEmpty()
     val lastAssistantGroup = pipelineGroups.lastOrNull()?.takeIf { !it.isUser && !it.isNotice }
     val visibleApproval = uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting }
+    // 自动重试并入流末尾的状态行：记下界面收到这次重试的时刻，作为退避倒计时与重新连接计时的起点。
+    val fixedNow = LocalLiveStepNow.current
+    val liveRetry = remember(state.generationRetry, fixedNow) {
+        state.generationRetry?.let { LiveRetry(it, fixedNow ?: System.currentTimeMillis()) }
+    }
     val liveStep = remember(
         lastAssistantGroup?.messages, state.generationPhase, uiState.isGenerating, uiState.streamingContent.isNotEmpty(),
-        visibleApproval, state.pendingQuestion, liveToolKeys, state.generationStartedAt,
+        visibleApproval, state.pendingQuestion, liveToolKeys, state.generationStartedAt, liveRetry,
     ) {
         lastAssistantGroup?.let { group ->
             val groupIds = group.messages.mapTo(HashSet()) { it.id }
@@ -554,6 +558,7 @@ fun ChatScreenContent(
                     questionMessageId = state.pendingQuestion?.assistantMessageId,
                     liveToolKeys = liveToolKeys,
                     generationStartedAt = state.generationStartedAt,
+                    retry = liveRetry,
                 ),
             )
         }
@@ -1454,7 +1459,6 @@ fun ChatScreenContent(
                 ChatComposerStatusBar(
                     taskPanel = taskPanel.takeUnless { planBarVisible },
                     postProcessTasks = state.postProcessTasks,
-                    retry = state.generationRetry,
                     onRemovePostProcessTask = actions.onRemovePostProcessTask,
                     onTaskClick = { hiddenPlanSignature = null },
                 )
@@ -2019,66 +2023,18 @@ fun ContextCircularIndicator(
     }
 }
 
-/** 自动重试提示：与任务胶囊同为无底色文字，用强调色显示原因、倒计时与次数；倒计时结束后显示“正在重试”直到新一轮开始输出。 */
-@Composable
-internal fun GenerationRetryCapsule(retry: com.promenar.infinity.domain.generation.GenerationRetry) {
-    var remainingSeconds by remember(retry) { mutableStateOf(((retry.delayMs + 999) / 1_000).toInt()) }
-    LaunchedEffect(retry) {
-        while (remainingSeconds > 0) {
-            delay(1_000)
-            remainingSeconds--
-        }
-    }
-    val reason = stringResource(
-        when (retry.code) {
-            com.promenar.infinity.domain.generation.GenerationFailureCode.RATE_LIMIT -> R.string.chat_retry_reason_rate_limit
-            com.promenar.infinity.domain.generation.GenerationFailureCode.SERVER,
-            com.promenar.infinity.domain.generation.GenerationFailureCode.UNKNOWN -> R.string.chat_retry_reason_server
-            else -> R.string.chat_retry_reason_network
-        },
-    )
-    val label = listOf(
-        if (remainingSeconds > 0) {
-            stringResource(R.string.chat_retry_countdown, reason, remainingSeconds)
-        } else {
-            stringResource(R.string.chat_retry_in_progress, reason)
-        },
-        stringResource(R.string.chat_retry_attempt, retry.attempt, retry.maxAttempts),
-    )
-    Row(
-        modifier = Modifier.height(28.dp).padding(horizontal = 8.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite }
-            .testTag(UiTags.CHAT_RETRY_CAPSULE),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(12.dp),
-            strokeWidth = 1.5.dp,
-            color = MaterialTheme.colorScheme.tertiary,
-        )
-        InfinityMetaLine(
-            segments = label,
-            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
-            color = MaterialTheme.colorScheme.tertiary,
-            maxLines = 1,
-        )
-    }
-}
-
 @Composable
 internal fun ChatComposerStatusBar(
     taskPanel: TaskPanelUiState?,
     postProcessTasks: List<PostProcessTask>,
     onRemovePostProcessTask: (String) -> Unit = {},
     onTaskClick: () -> Unit = {},
-    retry: com.promenar.infinity.domain.generation.GenerationRetry? = null,
 ) {
     val livePanel = taskPanel?.takeUnless { it.isCompleted }
-    val visible = livePanel != null || postProcessTasks.isNotEmpty() || retry != null
+    val visible = livePanel != null || postProcessTasks.isNotEmpty()
     // 整条出现与消失时纵向展开收起；收起期间沿用最后一次的胶囊内容，不在动画中途变空。
     val shown = remember { arrayOfNulls<ComposerStatusContent>(1) }
-    if (visible) shown[0] = ComposerStatusContent(livePanel, postProcessTasks, retry)
+    if (visible) shown[0] = ComposerStatusContent(livePanel, postProcessTasks)
     AnimatedVisibility(visible = visible, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
         val content = shown[0] ?: return@AnimatedVisibility
         ComposerStatusRow(content, onRemovePostProcessTask, onTaskClick)
@@ -2088,7 +2044,6 @@ internal fun ChatComposerStatusBar(
 private data class ComposerStatusContent(
     val panel: TaskPanelUiState?,
     val postProcessTasks: List<PostProcessTask>,
-    val retry: com.promenar.infinity.domain.generation.GenerationRetry?,
 )
 
 @Composable
@@ -2105,7 +2060,6 @@ private fun ComposerStatusRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        content.retry?.let { GenerationRetryCapsule(it) }
         panel?.let {
             val generating = it.capsuleMode == TaskCapsuleMode.GENERATING
             val description = if (generating) stringResource(R.string.chat_task_generating)

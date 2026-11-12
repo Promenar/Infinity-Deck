@@ -113,7 +113,6 @@ object UiTags {
     const val CHAT_APPROVAL_KIND_TOOL = "chat_approval_kind_tool"
     const val CHAT_RUNTIME_CHANGES = "chat_runtime_changes"
     const val CHAT_APPROVAL_REQUIRED = "chat_approval_required"
-    const val CHAT_RETRY_CAPSULE = "chat_retry_capsule"
     const val CHAT_APPROVAL_EXECUTED = "chat_approval_executed"
     const val CHAT_APPROVAL_APPROVE = "chat_approval_approve"
     const val CHAT_APPROVAL_APPROVE_ALL = "chat_approval_approve_all"

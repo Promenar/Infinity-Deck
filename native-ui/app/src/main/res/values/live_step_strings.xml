@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 会话流里正在进行的那一步 -->
     <string name="live_step_waiting_model">Waiting for model response</string>
     <string name="live_step_preparing_tool">Preparing tool call</string>
-    <string name="live_step_stalled_hint">No response for 30 s</string>
-    <string name="live_step_stop">Stop generating</string>
-    <string name="live_step_waited">Waited %1$s</string>
-    <string name="live_step_thinking_elapsed">Thinking · %1$s</string>
+    <string name="live_step_waiting_approval">Waiting for approval</string>
+    <string name="live_step_waiting_answer">Waiting for answer</string>
+    <string name="live_step_stalled_badge">No response</string>
+    <string name="live_step_retry_badge">Retry %1$d/%2$d</string>
+    <string name="live_step_stop_short">Stop</string>
+    <string name="live_step_thinking_elapsed">Thinking %1$s</string>
 </resources>

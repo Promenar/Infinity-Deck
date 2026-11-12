@@ -1,17 +1,11 @@
 package com.promenar.infinity.ui.chat
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,12 +18,17 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,13 +36,17 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.domain.ask.AskUserLimits
+import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.generation.GenerationPhase
+import com.promenar.infinity.domain.generation.GenerationRetry
 import com.promenar.infinity.ui.common.GenerationDots
+import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.motion.GenerationMotion
 import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
 import com.promenar.infinity.ui.common.motion.LocalGenerationMotion
+import com.promenar.infinity.ui.production.ProductionStatusChip
+import com.promenar.infinity.ui.production.ProductionTone
 import com.promenar.infinity.ui.theme.InfinityTypography
-import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.delay
 
 // ─────────────────────────────────────────────────────────────────
@@ -68,8 +71,19 @@ enum class LiveStepKind {
     WAITING_MODEL,
 }
 
-/** 等待模型超过这个时长仍无输出时改为警示样式，并提供停止入口。 */
+/** 同一次连接超过这个时长仍无输出时，状态行行尾换成“无响应”标签并给出停止入口。 */
 internal const val LiveStepStallThresholdMs = 30_000L
+
+/**
+ * 等待模型期间的自动重试：[retry] 为本次重试，[scheduledAt] 为界面收到重试的墙钟毫秒。
+ * 退避结束（[reconnectAt]）后重新连接，状态行计时从这一刻起算。
+ */
+data class LiveRetry(
+    val retry: GenerationRetry,
+    val scheduledAt: Long,
+) {
+    val reconnectAt: Long get() = scheduledAt + retry.delayMs.coerceAtLeast(0)
+}
 
 /**
  * 当前进行中的一步：显示在哪个元素上（[kind] 与 [targetId]）、动画阶段 [motionPhase]、计时起点 [startedAt]。
@@ -84,14 +98,17 @@ data class LiveStep(
      * 思考、正文、审批与提问为所属助手消息 id；流末尾的等待行为 null。
      */
     val targetId: String? = null,
+    /** 等待模型期间的自动重试；只有“等待模型响应”携带。 */
+    val retry: LiveRetry? = null,
 ) {
-    /** 进行中元素的说明文字；工具行沿用自身标题，正文不显示文字，二者为 null。 */
+    /** 进行中元素的名称；工具行沿用自身标题，正文不显示文字，二者为 null。 */
     @get:StringRes
     internal val labelRes: Int?
         get() = when (kind) {
             LiveStepKind.WAITING_MODEL -> R.string.live_step_waiting_model
             LiveStepKind.PREPARING_TOOL -> R.string.live_step_preparing_tool
-            LiveStepKind.APPROVAL, LiveStepKind.QUESTION -> R.string.live_step_waited
+            LiveStepKind.APPROVAL -> R.string.live_step_waiting_approval
+            LiveStepKind.QUESTION -> R.string.live_step_waiting_answer
             LiveStepKind.THINKING -> R.string.live_step_thinking_elapsed
             LiveStepKind.TOOL, LiveStepKind.CONTENT -> null
         }
@@ -102,9 +119,77 @@ data class LiveStep(
     /** 从计时起点到 [nowMs] 的整秒数；没有起点时为 null，时钟回拨时不为负。 */
     internal fun elapsedSeconds(nowMs: Long): Long? = startedAt?.let { (nowMs - it).coerceAtLeast(0) / 1_000 }
 
-    /** 等待模型已超过 [LiveStepStallThresholdMs] 仍无输出。只有“等待模型响应”会进入警示。 */
-    internal fun isStalled(nowMs: Long): Boolean =
-        kind == LiveStepKind.WAITING_MODEL && startedAt != null && nowMs - startedAt >= LiveStepStallThresholdMs
+    /** 重试退避尚未结束：这段时间在等重试，不算模型无响应。 */
+    internal fun isBackingOff(nowMs: Long): Boolean = retry != null && nowMs < retry.reconnectAt
+
+    /** 状态行计时起点：重试后从重新连接起算，否则为 [startedAt]。 */
+    internal val clockStart: Long? get() = retry?.reconnectAt ?: startedAt
+
+    /** 同一次连接已超过 [LiveStepStallThresholdMs] 仍无输出。只有“等待模型响应”会升级，退避期间不算。 */
+    internal fun isStalled(nowMs: Long): Boolean {
+        val start = clockStart ?: return false
+        return kind == LiveStepKind.WAITING_MODEL && !isBackingOff(nowMs) && nowMs - start >= LiveStepStallThresholdMs
+    }
+
+    /** [nowMs] 时刻的状态行：名称或重试倒计时、计时、行尾标签与动画阶段。 */
+    internal fun statusLine(nowMs: Long): LiveStatusLine {
+        val pending = this.retry
+        if (pending != null && isBackingOff(nowMs)) {
+            val left = ((pending.reconnectAt - nowMs + 999) / 1_000).toInt().coerceAtLeast(1)
+            return LiveStatusLine(
+                labelRes = null,
+                countdown = LiveRetryCountdown(retryReasonRes(pending.retry.code), left),
+                clockSeconds = null,
+                badge = LiveStatusBadge.Retry(pending.retry.attempt, pending.retry.maxAttempts),
+                motionPhase = GenerationMotionPhase.RETRY,
+            )
+        }
+        val badge = when {
+            isStalled(nowMs) -> LiveStatusBadge.Stalled
+            pending != null -> LiveStatusBadge.Retry(pending.retry.attempt, pending.retry.maxAttempts)
+            else -> null
+        }
+        return LiveStatusLine(
+            labelRes = labelRes,
+            countdown = null,
+            clockSeconds = clockStart?.let { (nowMs - it).coerceAtLeast(0) / 1_000 },
+            badge = badge,
+            motionPhase = motionPhase,
+        )
+    }
+}
+
+/** 状态行行尾的状态标签；同一时刻至多一个。 */
+internal sealed interface LiveStatusBadge {
+    /** 自动重试的第几次与上限，中性色。 */
+    data class Retry(val attempt: Int, val maxAttempts: Int) : LiveStatusBadge
+    /** 同一次连接超时无输出，警示色，并配停止按钮。 */
+    data object Stalled : LiveStatusBadge
+}
+
+/** 重试退避中的名称：原因与剩余整秒数。 */
+internal data class LiveRetryCountdown(@StringRes val reasonRes: Int, val seconds: Int)
+
+/**
+ * 一行状态的全部内容，格式统一为 `[动画] 名称 m:ss … [标签] [操作]`：
+ * 名称为 [labelRes]，退避中改为 [countdown] 且不显示计时；[clockSeconds] 为 m:ss 计时的整秒数。
+ */
+internal data class LiveStatusLine(
+    @StringRes val labelRes: Int?,
+    val countdown: LiveRetryCountdown?,
+    val clockSeconds: Long?,
+    val badge: LiveStatusBadge?,
+    val motionPhase: GenerationMotionPhase,
+) {
+    val stalled: Boolean get() = badge == LiveStatusBadge.Stalled
+}
+
+/** 重试原因的文字：限流、服务异常，其余按网络波动。 */
+@StringRes
+internal fun retryReasonRes(code: GenerationFailureCode): Int = when (code) {
+    GenerationFailureCode.RATE_LIMIT -> R.string.chat_retry_reason_rate_limit
+    GenerationFailureCode.SERVER, GenerationFailureCode.UNKNOWN -> R.string.chat_retry_reason_server
+    else -> R.string.chat_retry_reason_network
 }
 
 /** 判定进行中元素所需的会话信号；只为最后一个助手分组构造。 */
@@ -126,6 +211,8 @@ internal data class LiveTurnSignals(
     val liveToolKeys: Set<String> = emptySet(),
     /** 本次生成任务开始的墙钟时间。 */
     val generationStartedAt: Long? = null,
+    /** 正在进行的自动重试；收到新一轮输出后由生成任务清除。 */
+    val retry: LiveRetry? = null,
 )
 
 /** 等待用户处理、由会话流底部的专用卡片承载的工具；它们未完成时不算“正在运行”。 */
@@ -154,7 +241,9 @@ internal fun resolveLiveStep(messages: List<Message>, signals: LiveTurnSignals):
     }
     if (!signals.isGenerating) return null
 
-    val waiting = LiveStep(LiveStepKind.WAITING_MODEL, GenerationMotionPhase.WAIT, modelWaitStart(assistants, finalAssistant, signals))
+    val waiting = LiveStep(
+        LiveStepKind.WAITING_MODEL, GenerationMotionPhase.WAIT, modelWaitStart(assistants, finalAssistant, signals), retry = signals.retry,
+    )
     return when (signals.phase) {
         GenerationPhase.QUEUED,
         GenerationPhase.PREPARING,
@@ -184,7 +273,7 @@ private fun modelOutputStep(finalAssistant: Message?, signals: LiveTurnSignals, 
     // 流式期间工具调用先写进消息的 toolCalls，开始执行时才登记调用步骤；有调用尚未登记说明参数还在输出。
     val recorded = final.executionSteps.orEmpty().mapNotNullTo(HashSet()) { it.toolCallId }
     if (final.toolCalls.orEmpty().any { it.id !in recorded }) {
-        return waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM)
+        return waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM, retry = null)
     }
     if (signals.hasStreamingContent || final.content.isNotBlank()) {
         return LiveStep(LiveStepKind.CONTENT, GenerationMotionPhase.STREAM, targetId = final.id)
@@ -243,7 +332,8 @@ internal fun liveClockText(seconds: Long): String = "%d:%02d".format(java.util.L
 // ─────────────────────────────────────────────────────────────────
 
 private const val LIVE_STEP_WAITING_ROW_TAG = "CHAT_LIVE_STEP_WAITING"
-private const val LIVE_STEP_STALLED_HINT_TAG = "CHAT_LIVE_STEP_STALLED_HINT"
+private const val LIVE_STEP_STALLED_TAG = "CHAT_LIVE_STEP_STALLED"
+private const val LIVE_STEP_RETRY_TAG = "CHAT_LIVE_STEP_RETRY"
 private const val LIVE_STEP_STOP_TAG = "CHAT_LIVE_STEP_STOP"
 private const val LIVE_STEP_ELAPSED_TAG = "CHAT_LIVE_STEP_ELAPSED"
 private const val LIVE_STEP_WAIT_BADGE_TAG = "CHAT_LIVE_STEP_WAIT_BADGE"
@@ -332,36 +422,37 @@ internal fun LiveToolTicker(step: LiveStep) {
 }
 
 /**
- * 流末尾的等待行：“等待模型响应”或“正在准备工具调用”，前为动画、后为计时。
- * 等待模型超过 30 秒仍无输出时文字改为警示色，下方说明可能原因，并提供 [onStopGeneration] 只停止本轮、不重跑已执行的工具。
+ * 一行状态：`[动画] 名称 m:ss … [标签] [操作]`，固定单行、最小高度与工具行一致，升级时不增高。
+ * 名称与计时同为中性色；只有“无响应”标签用警示色，并在行尾给出 [onStop]（只停止本轮，不重跑已执行的工具）。
  */
 @Composable
-internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, modifier: Modifier = Modifier) {
-    val startedAt = step.startedAt
-    val now = startedAt?.let { rememberLiveNow(it).value }
-    val stalled = now != null && step.isStalled(now)
-    val warning = MaterialTheme.infinityDomainColors.warning
-    val textColor = if (stalled) warning else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-    Column(modifier = modifier.fillMaxWidth().testTag(LIVE_STEP_WAITING_ROW_TAG)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = CompactStepRowHeight),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LiveStepDots(step.motionPhase, Modifier.padding(end = 8.dp).testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_GENERATING_INDICATOR))
-            step.labelRes?.let { label ->
+internal fun LiveStatusRow(line: LiveStatusLine, onStop: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+    Row(
+        modifier = modifier.fillMaxWidth().heightIn(min = CompactStepRowHeight),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LiveStepDots(line.motionPhase, Modifier.padding(end = 8.dp).testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_GENERATING_INDICATOR))
+        // 名称与计时一组占满剩余宽度：窄屏先省略名称，计时与行尾标签不被挤掉。
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            // 退避中名称只放原因，倒计时占计时位：窄屏省略原因，秒数始终可见。
+            val label = line.countdown?.let { stringResource(it.reasonRes) }
+                ?: line.labelRes?.let { stringResource(it) }
+            if (label != null) {
                 Text(
-                    text = stringResource(label),
+                    text = label,
                     style = LiveClockStyle,
-                    color = textColor,
+                    color = color,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
             }
-            if (startedAt != null && now != null) {
+            (line.countdown?.let { stringResource(R.string.chat_retry_countdown, it.seconds) } ?: line.clockSeconds?.let(::liveClockText))?.let { clock ->
                 Text(
-                    text = liveClockText((now - startedAt).coerceAtLeast(0) / 1_000),
+                    text = clock,
                     style = LiveClockStyle,
-                    color = textColor,
+                    color = color,
                     maxLines = 1,
                     softWrap = false,
                     // 计时每秒变化，读屏不逐秒播报。
@@ -369,58 +460,71 @@ internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, mod
                 )
             }
         }
-        if (stalled) {
-            // 说明在左，停止图标按钮在行尾；说明过长时自行换行，不挤压按钮。
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.live_step_stalled_hint),
-                    style = InfinityTypography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f).testTag(LIVE_STEP_STALLED_HINT_TAG),
-                )
-                if (onStopGeneration != null) {
-                    IconButton(onClick = onStopGeneration, modifier = Modifier.testTag(LIVE_STEP_STOP_TAG)) {
-                        Icon(
-                            Icons.Rounded.Stop,
-                            contentDescription = stringResource(R.string.live_step_stop),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-            }
+        line.badge?.let { badge ->
+            ProductionStatusChip(
+                text = when (badge) {
+                    is LiveStatusBadge.Retry -> stringResource(R.string.live_step_retry_badge, badge.attempt, badge.maxAttempts)
+                    LiveStatusBadge.Stalled -> stringResource(R.string.live_step_stalled_badge)
+                },
+                tone = if (badge == LiveStatusBadge.Stalled) ProductionTone.WARNING else ProductionTone.NEUTRAL,
+                // 每次重试与升级为无响应时读屏播报一次；倒计时与计时不播报。
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .testTag(if (badge == LiveStatusBadge.Stalled) LIVE_STEP_STALLED_TAG else LIVE_STEP_RETRY_TAG),
+            )
+        }
+        if (line.stalled && onStop != null) {
+            InfinityPillButton(
+                text = stringResource(R.string.live_step_stop_short),
+                onClick = onStop,
+                compact = true,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .overflowVertically(CompactStepRowHeight)
+                    .testTag(LIVE_STEP_STOP_TAG),
+            )
         }
     }
 }
 
 /**
- * 审批卡、提问卡上方的“已等待 m:ss”，前为等待审批阶段的动画。
+ * 按钮的 48dp 触控区上下溢出到行外，行高仍按 [rowHeight] 计：状态升级出现按钮时整行不增高。
+ * 可见的胶囊（32dp）落在行内。
+ */
+private fun Modifier.overflowVertically(rowHeight: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minHeight = 0))
+    val limit = rowHeight.roundToPx()
+    val height = minOf(placeable.height, limit)
+    layout(placeable.width, height) { placeable.place(0, (height - placeable.height) / 2) }
+}
+
+/**
+ * 流末尾的状态行：“等待模型响应”“正在准备工具调用”，以及等待期间的自动重试与无响应升级。
+ * 计时每秒刷新，只重组这一行；锚点为本次连接的起点，退避期间倒计时同样按整秒刷新。
+ */
+@Composable
+internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val anchor = step.clockStart
+    val now = anchor?.let { rememberLiveNow(it).value }
+    val line = if (now != null) step.statusLine(now) else step.statusLine(0L).copy(clockSeconds = null)
+    LiveStatusRow(line, onStopGeneration, modifier.testTag(LIVE_STEP_WAITING_ROW_TAG))
+}
+
+/**
+ * 审批卡、提问卡上方的状态行：“等待审批 m:ss”“等待回答 m:ss”，前为等待审批阶段的动画。
  * 卡片外层是读屏即时播报区域，这一行只做视觉提示，不进入无障碍树，避免每秒播报。
  */
 @Composable
 internal fun LiveWaitBadge(step: LiveStep, modifier: Modifier = Modifier) {
     val startedAt = step.startedAt
     val now = startedAt?.let { rememberLiveNow(it).value }
-    Row(
+    LiveStatusRow(
+        line = step.statusLine(now ?: 0L).let { if (now == null) it.copy(clockSeconds = null) else it },
+        onStop = null,
         modifier = modifier
-            .fillMaxWidth()
             .padding(bottom = 4.dp)
             .clearAndSetSemantics {}
             .testTag(LIVE_STEP_WAIT_BADGE_TAG),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LiveStepDots(step.motionPhase, Modifier.padding(end = 8.dp))
-        val elapsed = if (startedAt != null && now != null) liveClockText((now - startedAt).coerceAtLeast(0) / 1_000) else null
-        if (elapsed != null) {
-            Text(
-                text = stringResource(R.string.live_step_waited, elapsed),
-                style = LiveClockStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                maxLines = 1,
-            )
-        }
-    }
+    )
 }
