@@ -64,6 +64,8 @@ internal class DefaultFileOperations(
     private val pendingTargets: () -> List<FileIndexEvent.Changed> = { emptyList() },
     private val database: InfinityDatabase? = null,
     private val liveTasks: () -> List<VectorizationTask> = { emptyList() },
+    /** 用户删除存储空间条目成功后回报被删文件的 id（目录含其下全部文件）。 */
+    private val onFilesDeleted: (List<String>) -> Unit = {},
 ) : FileOperations {
     private val importer = AndroidSafContentSource(context.contentResolver)
 
@@ -256,9 +258,13 @@ internal class DefaultFileOperations(
                         if ((entry.identity != null && entry.identity != row.uuid) || entry.isDirectory != row.isDirectory) {
                             throw FileOpException(FileOpCode.CONFLICT)
                         }
+                        val removed = if (row.isDirectory) {
+                            repository.getSubtree(handle.roomRoot, row.materializedPath).filterNot { it.isDirectory }.map { it.uuid }
+                        } else listOf(row.uuid)
                         if (!entry.isDirectory && entry.sha256 != null) {
                             repository.permanentDeleteIfHash(handle.roomRoot, row.uuid, entry.sha256)
                         } else repository.permanentDelete(handle.roomRoot, row.uuid)
+                        if (removed.isNotEmpty()) onFilesDeleted(removed)
                     } else handle.backend.delete(path, entry.sha256)
                     succeeded += ref.copy(path = path)
                 }

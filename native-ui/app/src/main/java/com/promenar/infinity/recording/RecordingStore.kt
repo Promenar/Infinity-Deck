@@ -12,8 +12,16 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
 
+private fun recordingRoot(context: Context) = File(context.filesDir, "recording-sessions")
+
+/** 本机是否存有这些 id 中任一条录音；只读目录，不创建录音控制器。 */
+internal fun hasRecordingSessions(context: Context, ids: Collection<String>): Boolean {
+    val root = recordingRoot(context)
+    return ids.any { id -> runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) && File(root, id).isDirectory }
+}
+
 internal class RecordingStore(private val context: Context) {
-    private val root = File(context.filesDir, "recording-sessions")
+    private val root = recordingRoot(context)
     private val json = Json { ignoreUnknownKeys = true }
     private val prefs = context.getSharedPreferences("recording_defaults", Context.MODE_PRIVATE)
 

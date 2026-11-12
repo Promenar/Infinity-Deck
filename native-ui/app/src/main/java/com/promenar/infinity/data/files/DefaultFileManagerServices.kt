@@ -11,6 +11,7 @@ import com.promenar.infinity.domain.files.FileManagerServices
 import com.promenar.infinity.domain.files.FileOperations
 import com.promenar.infinity.domain.files.PinnedFolderStore
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
+import com.promenar.infinity.recording.hasRecordingSessions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -57,7 +58,11 @@ class DefaultFileManagerServices(
             val operations = DefaultFileOperations(app, backends::resolve, { app.database.sessionDao().getAll() },
                 app.workspaceRepository, app.database.vectorizationTaskDao(), app.pendingDocumentIndexCoordinator, guard,
                 pendingTargets = app.pendingDocumentIndexCoordinator::snapshot, database = app.database,
-                liveTasks = { app.vectorizationQueueState.value.queue })
+                liveTasks = { app.vectorizationQueueState.value.queue },
+                onFilesDeleted = { ids ->
+                    // 录音生成的资料文档与录音同 id；本机没有对应录音时不创建录音控制器。
+                    if (hasRecordingSessions(app, ids)) app.recordings.deleteForDocuments(ids)
+                })
             val validLocations = combine(locations.observeLibraryLocationIds(), sessions) { ids, rows ->
                 ids + rows.filter(::isPrivateSessionFolder).map { "session:${it.id}" }
             }

@@ -80,11 +80,71 @@ class FileManagerOperationsTest {
         assertEquals(null, item.knowledge?.folderCollection)
     }
 
-    private fun roomOperations(backend: ExternalFolderBackend, repository: IWorkspaceRepository) = DefaultFileOperations(
+    @Test fun `存储空间删除成功后回报被删文件的身份`() = runBlocking {
+        val hash = "a".repeat(64)
+        val row = FileEntry(uuid = "item", workspaceRootUuid = "root", parentUuid = "root", name = "a.md",
+            hash = hash, physicalRootPath = "/fixture", materializedPath = "/a.md", createdAt = 1, updatedAt = 1)
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/a.md") } returns ExternalFolderEntry("/a.md", "a.md", false, 1, 1, hash, "item")
+        }
+        val repository = mockk<IWorkspaceRepository> {
+            coEvery { getByMaterializedPath("root", "/a.md") } returns row
+            coEvery { permanentDeleteIfHash("root", "item", hash) } returns Unit
+        }
+        val reported = mutableListOf<List<String>>()
+        val result = roomOperations(backend, repository) { reported += it }.delete(listOf(FileRef("private", "/a.md")))
+        assertTrue(result.failed.isEmpty())
+        assertEquals(listOf(listOf("item")), reported)
+    }
+
+    @Test fun `存储空间删除目录时回报其下全部文件`() = runBlocking {
+        val directory = FileEntry(uuid = "dir", workspaceRootUuid = "root", parentUuid = "root", name = "dir", hash = "",
+            isDirectory = true, physicalRootPath = "/fixture", materializedPath = "/dir", createdAt = 1, updatedAt = 1)
+        val nested = FileEntry(uuid = "nested", workspaceRootUuid = "root", parentUuid = "dir", name = "sub", hash = "",
+            isDirectory = true, physicalRootPath = "/fixture", materializedPath = "/dir/sub", createdAt = 1, updatedAt = 1)
+        val file = FileEntry(uuid = "file", workspaceRootUuid = "root", parentUuid = "nested", name = "a.md", hash = "h",
+            physicalRootPath = "/fixture", materializedPath = "/dir/sub/a.md", createdAt = 1, updatedAt = 1)
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/dir") } returns ExternalFolderEntry("/dir", "dir", true, 0, 1, null, "dir")
+        }
+        val repository = mockk<IWorkspaceRepository> {
+            coEvery { getByMaterializedPath("root", "/dir") } returns directory
+            coEvery { getSubtree("root", "/dir", false) } returns listOf(directory, nested, file)
+            coEvery { permanentDelete("root", "dir") } returns Unit
+        }
+        val reported = mutableListOf<List<String>>()
+        val result = roomOperations(backend, repository) { reported += it }.delete(listOf(FileRef("private", "/dir")))
+        assertTrue(result.failed.isEmpty())
+        assertEquals(listOf(listOf("file")), reported)
+    }
+
+    @Test fun `存储空间删除失败时不回报`() = runBlocking {
+        val hash = "a".repeat(64)
+        val row = FileEntry(uuid = "item", workspaceRootUuid = "root", parentUuid = "root", name = "a.md",
+            hash = hash, physicalRootPath = "/fixture", materializedPath = "/a.md", createdAt = 1, updatedAt = 1)
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/a.md") } returns ExternalFolderEntry("/a.md", "a.md", false, 1, 1, hash, "item")
+        }
+        val repository = mockk<IWorkspaceRepository> {
+            coEvery { getByMaterializedPath("root", "/a.md") } returns row
+            coEvery { permanentDeleteIfHash("root", "item", hash) } throws IllegalStateException("注入失败")
+        }
+        val reported = mutableListOf<List<String>>()
+        val result = roomOperations(backend, repository) { reported += it }.delete(listOf(FileRef("private", "/a.md")))
+        assertEquals(1, result.failed.size)
+        assertTrue(reported.isEmpty())
+    }
+
+    private fun roomOperations(
+        backend: ExternalFolderBackend,
+        repository: IWorkspaceRepository,
+        onFilesDeleted: (List<String>) -> Unit = {},
+    ) = DefaultFileOperations(
         ApplicationProvider.getApplicationContext<Context>(),
         { FileBackendHandle("private", backend, emptyList(), true, roomRoot = "root") },
         { emptyList() }, repository, mockk<VectorizationTaskDao>(relaxed = true), FileIndexEventSink.None,
         FileMutationGuard(SessionExecutionGate()) { false },
+        onFilesDeleted = onFilesDeleted,
     )
 
     @Test fun `删除目录及子文件且不影响同级文件`() = runBlocking {
