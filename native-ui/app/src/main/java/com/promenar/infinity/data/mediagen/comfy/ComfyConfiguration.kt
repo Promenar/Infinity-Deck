@@ -46,6 +46,8 @@ data class ComfyTemplateState(
     val preflight: PreflightResult = PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("尚未预检")),
     /** 保存通过预检时的主机 schema 摘要，用于区分初次缺失与主机变化。 */
     val passedFingerprint: String? = null,
+    /** 最近一次向主机读取节点信息完成预检的时间（毫秒）；界面与智能体触发的预检都会记录。 */
+    val checkedAt: Long? = null,
 )
 data class ComfyConfiguration(val hosts: List<ComfyHost> = emptyList(), val templates: List<ComfyTemplateState> = emptyList())
 
@@ -82,7 +84,7 @@ class PreferenceComfyConfigurationStorage(private val preferences: SharedPrefere
 object ComfyConfigurationCodec {
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
     @Serializable private data class ConfigurationRecord(val version: Int = 1, val hosts: List<ComfyHost>, val templates: List<TemplateStateRecord>)
-    @Serializable private data class TemplateStateRecord(val template: TemplateRecord, val status: String, val missing: List<String>, val uncertain: List<String>, val passedFingerprint: String?)
+    @Serializable private data class TemplateStateRecord(val template: TemplateRecord, val status: String, val missing: List<String>, val uncertain: List<String>, val passedFingerprint: String?, val checkedAt: Long? = null)
     @Serializable private data class UploadRecord(val nodeId: String, val input: String)
     @Serializable private data class SlotRecord(val nodeId: String, val input: String, val kind: String, val capacity: Int = 1,
         val uploadTargets: List<UploadRecord> = emptyList(), val outputKind: String? = null)
@@ -96,7 +98,7 @@ object ComfyConfigurationCodec {
     fun encode(configuration: ComfyConfiguration): String {
         val raw = json.encodeToString(ConfigurationRecord(hosts = configuration.hosts,
             templates = configuration.templates.map { state -> TemplateStateRecord(record(state.template), state.preflight.status.name,
-                state.preflight.missing, state.preflight.uncertain, state.passedFingerprint) }))
+                state.preflight.missing, state.preflight.uncertain, state.passedFingerprint, state.checkedAt) }))
         require(raw.toByteArray().size <= 8 * 1024 * 1024) { "ComfyUI 配置超过 8 MiB" }
         return raw
     }
@@ -105,7 +107,7 @@ object ComfyConfigurationCodec {
         val value = json.decodeFromString<ConfigurationRecord>(raw)
         require(value.version == 1) { "ComfyUI 配置版本不受支持" }
         val result = ComfyConfiguration(value.hosts, value.templates.map { ComfyTemplateState(template(it.template),
-            PreflightResult(PreflightStatus.valueOf(it.status), it.missing, it.uncertain), it.passedFingerprint) })
+            PreflightResult(PreflightStatus.valueOf(it.status), it.missing, it.uncertain), it.passedFingerprint, it.checkedAt?.takeIf { at -> at > 0 }) })
         require(result.hosts.size <= 100 && result.templates.size <= 500 && result.hosts.distinctBy { it.id }.size == result.hosts.size &&
             result.templates.distinctBy { it.template.id }.size == result.templates.size) { "主机或模板数量无效，或 id 重复" }
         require(result.templates.all { state -> result.hosts.any { it.id == state.template.hostId } }) { "模板引用的主机不存在" }

@@ -29,6 +29,16 @@ class ComfySkillsTest {
         val define = comfyTools(f.repository).single { it.name == "comfy_define_template" }
         assertTrue(validator.validate(define.parametersSchema, buildJsonObject { put("template", template) }) is com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid)
     }
+    @Test fun nonNodeWorkflowEntriesAreRejectedWithActionableMessage() = runTest {
+        // 部分中转会给自由对象补占位属性（如 reason），模型随之写进 workflow；ComfyUI 必然拒绝这类条目。
+        val f = ComfyFixture(); f.repository.saveHost(f.host)
+        val encoded = ComfyConfigurationCodec.encodeTemplate(f.template).jsonObject
+        val polluted = JsonObject(encoded + ("workflow" to JsonObject(encoded.getValue("workflow").jsonObject + ("reason" to JsonPrimitive("配置模板")))))
+        val result = ComfyDefineTemplateSkill(f.repository).execute(buildJsonObject { put("template", polluted) }, context)
+        assertEquals("error", result.status)
+        assertTrue(result.content, result.content.contains("reason") && result.content.contains("class_type"))
+        assertTrue(f.repository.templates().isEmpty())
+    }
     @Test fun rejectsWrongTypesUnknownArgumentsAndUserUnlockParameters() = runTest {
         val f = ComfyFixture(); f.prepare()
         val probe = ComfyProbeSkill(f.repository)

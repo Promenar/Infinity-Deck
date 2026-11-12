@@ -66,7 +66,7 @@ internal const val PRODUCTION_PROMPT_MAX = 7000
 internal const val PRODUCTION_NOTE_MAX = 1000
 
 @Composable
-internal fun TakeThumb(take: Take, index: Int, viewing: Boolean, selected: Boolean, onClick: () -> Unit) {
+internal fun TakeThumb(take: Take, index: Int, viewing: Boolean, selected: Boolean, serviceLabel: String = take.source.service, onClick: () -> Unit) {
     val label = stringResource(R.string.production_panel_take_number, index)
     Column(
         Modifier
@@ -107,7 +107,7 @@ internal fun TakeThumb(take: Take, index: Int, viewing: Boolean, selected: Boole
             color = if (viewing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
-        Text(take.source.service, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+        Text(serviceLabel, style = MaterialTheme.typography.labelSmall, maxLines = 2)
     }
 }
 

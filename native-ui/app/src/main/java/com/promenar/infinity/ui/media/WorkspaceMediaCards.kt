@@ -86,10 +86,10 @@ fun mediaAspectRatio(width: Int?, height: Int?, fallback: Float): Float {
     return (width.toFloat() / height.toFloat()).coerceIn(0.5f, 3f)
 }
 
-/** `mm:ss` 或 `h:mm:ss`；未知时返回 null。 */
+/** `mm:ss` 或 `h:mm:ss`；未知时返回 null。不足 1 秒的非零时长记为 1 秒。 */
 fun formatMediaDuration(durationMs: Long?): String? {
     if (durationMs == null || durationMs < 0) return null
-    val totalSeconds = durationMs / 1000
+    val totalSeconds = if (durationMs in 1..999) 1 else durationMs / 1000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60

@@ -126,8 +126,15 @@ class ShotGenerationPlannerTest {
         val preview = planner.preview("s", "S1E01", "SC01-01")
         assertEquals(121, preview.specs.frames)
         assertNull(preview.specs.durationSeconds)
+        assertTrue("时长由锁定工作流决定：121 帧" in preview.warnings)
         planner.generate("s", "S1E01", "SC01-01")
         assertEquals(preview.specs, queue.tasks.value.single().request.specs)
+    }
+
+    @Test fun `模板未给出帧数时时长提示显示模板名称`() = runTest {
+        val planner = DefaultShotGenerationPlanner(store, PlanningRegistry(planningChannel("comfy:video")), queue, files, CachedCharacterCompositor(files, HorizontalImageCodec { it.first() }),
+            labelOf = { "H3 冒烟" }, ioDispatcher = StandardTestDispatcher(testScheduler))
+        assertTrue("时长由锁定工作流决定：H3 冒烟" in planner.preview("s", "S1E01", "SC01-01").warnings)
     }
 
     @Test fun `候选已满和云端非整数时长在入队前阻断`() = runTest {

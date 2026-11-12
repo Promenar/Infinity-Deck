@@ -116,7 +116,7 @@ internal fun ProductionShotDetail(
                             ProductionRow(stringResource(R.string.p2_go_generate), titleColor = MaterialTheme.colorScheme.primary, onClick = { tab = ShotDetailTab.STORYBOARD })
                         }
                         if (shot.takes.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId) { viewingId = take.id } }
+                            items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabel(take.source.service)) { viewingId = take.id } }
                         }
                         if (shot.status == ShotStatus.REDO && !shot.userNote.isNullOrBlank()) InfinityStatusStrip(InfinityStatusKind.Warning, shot.userNote)
                         val actions = shot.actions(viewing?.id)
@@ -179,7 +179,7 @@ internal fun ProductionShotDetail(
                             ?: stringResource(if (noChannel) R.string.p2_no_channels else R.string.p2_default_channel)
                         val channelValue = if (!noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank()) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
                         ProductionRow(stringResource(R.string.p2_channel), value = channelValue, enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
-                        ProductionRow(stringResource(R.string.p2_specs), value = (preview?.channel?.capabilities?.resolutions.orEmpty() + listOfNotNull(production.aspectRatio, secondsLabel(shot.durationSeconds))).joinToString(" · "))
+                        ProductionRow(stringResource(R.string.p2_specs), value = planSpecsLabel(preview, production, shot))
                         ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
                         shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
                     }

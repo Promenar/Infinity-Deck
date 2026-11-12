@@ -23,6 +23,7 @@ val ChineseShotPlanningMessages = ShotPlanningMessages { key, detail -> when (ke
     "reference_review" -> "参考包待审：$detail"
     "missing_voice" -> "配音缺少角色参考语音：$detail"
     "workflow_timing" -> "时长由锁定工作流决定：$detail"
+    "workflow_timing_frames" -> "时长由锁定工作流决定：$detail 帧"
     "plan_changed" -> "镜头规划已变化，请先预览。"
     "candidate_capacity" -> "候选容量不足：$detail"
     "audio_failed" -> "部分配音任务未入队：$detail"
@@ -138,7 +139,7 @@ class DefaultShotGenerationPlanner(
         val specs = if (channel == null) GenerationSpecs() else try { specsFor(channel, shot) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { issues += text("invalid_plan", "specs"); GenerationSpecs() }
-        if (channel?.id?.startsWith("comfy:") == true) warnings += text("workflow_timing", specs.frames?.toString() ?: channel.id)
+        if (channel?.id?.startsWith("comfy:") == true) warnings += specs.frames?.let { text("workflow_timing_frames", it.toString()) } ?: text("workflow_timing", labelOf(channel))
         else if (shot.durationSeconds % 1.0 != 0.0) issues += text("invalid_plan", "durationSeconds")
         val request = request(p, episodeId, shot, channel?.id.orEmpty(), prompt, accepted, sessionId, specs)
         if (channel != null) {

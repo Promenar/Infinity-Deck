@@ -65,6 +65,7 @@
     <string name="p2_music_track">Sound assets</string>
     <string name="p2_gaps">Gaps</string>
     <string name="p2_specs">Specs</string>
+    <string name="p2_frames">%1$d frames</string>
     <string name="p2_output_path">Output</string>
     <string name="p2_stop_sequence">Stop sequence</string>
     <string name="p2_play_sequence">Play sequence</string>

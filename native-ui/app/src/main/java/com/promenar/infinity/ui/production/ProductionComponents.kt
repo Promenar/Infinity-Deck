@@ -270,6 +270,16 @@ internal fun PreviewKind.label(): String = stringResource(
 @Composable
 internal fun secondsLabel(seconds: Double): String = stringResource(R.string.production_panel_seconds, formatShotSeconds(seconds))
 
+/** 锁定工作流给出画幅或帧数时以其为准；否则显示通道分辨率、项目画幅与镜头时长。 */
+@Composable
+internal fun planSpecsLabel(preview: com.promenar.infinity.data.production.ShotPlanPreview?, production: com.promenar.infinity.data.production.Production, shot: com.promenar.infinity.data.production.Shot): String {
+    val specs = preview?.specs
+    val size = specs?.width?.let { w -> specs.height?.let { h -> "$w×$h" } } ?: specs?.resolution
+    val frames = specs?.frames?.let { stringResource(R.string.p2_frames, it) }
+    if (size != null || frames != null) return listOfNotNull(size, frames).joinToString(" · ")
+    return (preview?.channel?.capabilities?.resolutions.orEmpty() + listOfNotNull(production.aspectRatio, secondsLabel(shot.durationSeconds))).joinToString(" · ")
+}
+
 /**
  * 工作区媒体缩略图：图片原图、视频取帧，裁切填满。路径为空、媒体环境缺失或文件不可用时显示占位图标。
  * 只展示，不响应点按；点按行为由外层决定。

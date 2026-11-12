@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -174,7 +175,12 @@ private fun ComfyAgentHandoff(host: ComfyHost, onDismiss: () -> Unit, onSession:
                 if (failed) MediaNotice(stringResource(R.string.media_settings_failed), error = true)
                 else if (sessions == null) MediaNotice(stringResource(R.string.media_settings_loading))
                 else if (sessions!!.isEmpty()) MediaNotice(stringResource(R.string.media_settings_no_sessions))
-                sessions.orEmpty().forEach { (id, title) -> MediaAction(title, { copy(); onSession(id) }) }
+                sessions.orEmpty().forEach { (id, title) ->
+                    com.promenar.infinity.ui.common.InfinitySettingsItem(
+                        icon = androidx.compose.material.icons.Icons.Rounded.ChatBubbleOutline, title = title,
+                        onClick = { copy(); onSession(id) }, showChevron = true, horizontalPadding = 0.dp, titleMaxLines = 1,
+                    )
+                }
             }
         })
 }

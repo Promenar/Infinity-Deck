@@ -65,6 +65,7 @@
     <string name="p2_music_track">声音资产</string>
     <string name="p2_gaps">缺口</string>
     <string name="p2_specs">规格</string>
+    <string name="p2_frames">%1$d 帧</string>
     <string name="p2_output_path">输出</string>
     <string name="p2_stop_sequence">停止连播</string>
     <string name="p2_play_sequence">连播</string>

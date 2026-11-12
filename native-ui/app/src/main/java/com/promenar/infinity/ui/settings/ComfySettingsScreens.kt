@@ -9,6 +9,8 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.TravelExplore
@@ -138,14 +140,22 @@ internal fun ComfyTemplateScreenContent(
         MediaOperationState(state, onRetry)
         InfinitySettingsSection(title = stringResource(R.string.media_settings_preflight)) {
             InfinitySettingsItem(icon = Icons.Rounded.Refresh, title = stringResource(R.string.media_settings_recheck), onClick = onPreflight, enabled = !state.busy, trailingContent = { PreflightChip(entry.preflight) })
-            val time = state.snapshot.preflightTimes[template.id]
+            val time = state.snapshot.preflightTimes[template.id] ?: entry.checkedAt
             MediaValue(stringResource(R.string.media_settings_preflight_time), time?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, locale).format(Date(it)) }
                 ?: stringResource(R.string.media_settings_time_unknown))
             entry.preflight.missing.forEach { MediaNotice(mediaDiagnosticLabel(it), error = true) }
             entry.preflight.uncertain.forEach { MediaNotice(mediaDiagnosticLabel(it)) }
-            MediaNotice(stringResource(if (template.locked) R.string.media_settings_locked else R.string.media_settings_unlocked))
-            MediaAction(stringResource(if (template.locked) R.string.media_settings_unlock else R.string.media_settings_lock),
-                { if (template.locked) onUnlock() else onLock(order) }, !state.busy)
+        }
+        InfinitySettingsSection(title = stringResource(R.string.media_settings_lock_section)) {
+            com.promenar.infinity.ui.common.InfinitySettingsRowLayout(
+                icon = if (template.locked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                title = stringResource(if (template.locked) R.string.media_settings_locked else R.string.media_settings_unlocked),
+            )
+            InfinitySettingsItem(
+                icon = if (template.locked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                title = stringResource(if (template.locked) R.string.media_settings_unlock else R.string.media_settings_lock),
+                onClick = { if (template.locked) onUnlock() else onLock(order) }, enabled = !state.busy,
+            )
         }
         MediaCapabilitiesSection(template.group, caps)
         if (caps.maxImages > 0) {

@@ -15,6 +15,7 @@ class ComfyRepository(
     private val storage: ComfyConfigurationStorage,
     private val credentials: ComfyCredentials,
     private val http: ComfyHttp,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : ComfyTemplateChannelSource {
     // 所有实例共同串行化同一设置键的读改写，包括设置页与工具。
     private companion object { val mutation = Mutex() }
@@ -97,12 +98,18 @@ class ComfyRepository(
         val reviewed = if (passed != null && result.status != PreflightStatus.PASS) result.copy(status = PreflightStatus.REVIEW,
             uncertain = result.uncertain + "主机节点或模型可能已变化，请复核缺项") else result
         val fingerprint = if (result.status == PreflightStatus.PASS) fingerprint(info.toString()) else passed
-        ComfyTemplateState(template, reviewed, fingerprint)
+        ComfyTemplateState(template, reviewed, fingerprint, clock())
     } catch (e: CancellationException) { throw e }
-    catch (_: Exception) { ComfyTemplateState(template, PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("无法读取主机节点信息，请检查连接与鉴权后重新预检")), passed) }
+    catch (_: Exception) { ComfyTemplateState(template, PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("无法读取主机节点信息，请检查连接与鉴权后重新预检")), passed, clock()) }
 
     private fun validateDefinition(template: ComfyTemplate) {
         require(template.workflow.isNotEmpty() && template.workflow.size <= 2000 && template.workflow.toString().toByteArray().size <= 1024 * 1024) { "工作流需包含 1～2000 个节点且不超过 1 MiB" }
+        // ComfyUI 拒绝非节点条目；部分模型中转会给自由对象补占位键，需原样告知智能体移除。
+        template.workflow.forEach { (id, node) ->
+            val type = ((node as? JsonObject)?.get("class_type") as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (type.isNullOrBlank() || (node as JsonObject)["inputs"] !is JsonObject)
+                throw ComfyFailure("workflow 条目 ${id.take(40)} 不是 API Format 节点（需要 class_type 与 inputs 对象），请移除该键或补全后重试")
+        }
         val caps = template.channel().capabilities
         require(template.slots.size in 1..200 && template.models.size <= 2000) { "模板最多包含 200 个槽位和 2000 个模型声明" }
         require(template.slots.count { it.kind == SlotKind.OUTPUT } in 1..32) { "模板需要 1～32 个产出槽位" }

@@ -91,6 +91,8 @@ class WorkspaceMediaModelTest {
     fun `时长、大小与宽高比格式`() {
         assertThat(formatMediaDuration(null)).isNull()
         assertThat(formatMediaDuration(65_000)).isEqualTo("01:05")
+        assertThat(formatMediaDuration(920)).isEqualTo("00:01")
+        assertThat(formatMediaDuration(0)).isEqualTo("00:00")
         assertThat(formatMediaDuration(3_725_000)).isEqualTo("1:02:05")
         assertThat(formatMediaSize(512)).isEqualTo("512 B")
         assertThat(formatMediaSize(1536)).isEqualTo("1.5 KB")

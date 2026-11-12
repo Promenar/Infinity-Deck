@@ -13,6 +13,7 @@
     <string name="shot_plan_audio_failed">部分配音任务未入队：%1$s</string>
     <string name="shot_plan_failed">生成规划提交失败，请核对输入与通道。</string>
     <string name="shot_plan_workflow_timing">时长由锁定工作流决定：%1$s</string>
+    <string name="shot_plan_workflow_frames">时长由锁定工作流决定：%1$s 帧</string>
     <string name="shot_plan_candidate_capacity">候选容量不足：%1$s</string>
     <string name="shot_plan_changed">镜头规划已变化，请先预览。</string>
     <string name="shot_plan_no_channel_mode">没有支持当前模式的通道</string>

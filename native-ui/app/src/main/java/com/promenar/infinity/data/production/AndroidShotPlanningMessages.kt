@@ -17,6 +17,7 @@ class AndroidShotPlanningMessages(private val context: Context) : ShotPlanningMe
         "reference_review" -> R.string.shot_plan_reference_review
         "missing_voice" -> R.string.shot_plan_missing_voice
         "workflow_timing" -> R.string.shot_plan_workflow_timing
+        "workflow_timing_frames" -> R.string.shot_plan_workflow_frames
         "plan_changed" -> R.string.shot_plan_changed
         "candidate_capacity" -> R.string.shot_plan_candidate_capacity
         "audio_failed" -> R.string.shot_plan_audio_failed

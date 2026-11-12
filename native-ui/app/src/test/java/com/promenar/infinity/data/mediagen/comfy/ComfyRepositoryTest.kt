@@ -37,6 +37,17 @@ class ComfyRepositoryTest {
         assertEquals(setOf("/object_info/Test", "/object_info/Save"), f.http.calls.map { it.first }.toSet())
     }
 
+    @Test fun agentDefinitionRecordsCheckTimeThatSurvivesStorage() = runTest {
+        val f = ComfyFixture()
+        val repository = ComfyRepository(f.storage, ComfyCredentials(f.secrets), f.http, clock = { 1_700_000_000_000L })
+        repository.saveHost(f.host)
+        assertEquals(1_700_000_000_000L, repository.defineTemplateByAgent(f.template).checkedAt)
+        assertEquals(1_700_000_000_000L, ComfyConfigurationCodec.decode(ComfyConfigurationCodec.encode(f.storage.read())).templates.single().checkedAt)
+        val legacy = ComfyConfigurationCodec.encode(f.storage.read()).replace(",\"checkedAt\":1700000000000", "")
+        assertFalse(legacy.contains("checkedAt"))
+        assertNull(ComfyConfigurationCodec.decode(legacy).templates.single().checkedAt)
+    }
+
     @Test fun channelsDeriveReferenceLimitsFromSlotsAndPreserveId() = runTest {
         val f = ComfyFixture()
         f.repository.saveHost(f.host)

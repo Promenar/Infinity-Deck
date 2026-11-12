@@ -387,7 +387,7 @@ private fun OutputShotRow(production: Production, location: ShotLocation, servic
     val running = services.shotSourceRef?.invoke(production, location)?.let { ref -> tasks.lastOrNull { it.request.sourceRef == ref && it.isActiveTask() } }
     val take = shot.displayTake()
     val chip = if (running != null) ProductionChipSpec(running.stateLabel() + (running.progress?.let { " ${(it * 100).toInt()}%" } ?: ""), ProductionTone.INFO) else ProductionChipSpec(shot.status.label(), shot.status.tone())
-    val detail = if (take != null) stringResource(R.string.p2_candidates_channel, shot.takes.size, take.source.service)
+    val detail = if (take != null) stringResource(R.string.p2_candidates_channel, shot.takes.size, services.channelLabel(take.source.service))
     else listOf(resolvedShotChannel(shot, channels, channelOrder)?.id?.let(services.channelLabel) ?: shot.channelId?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel), shot.mode.label()).joinToString(" · ")
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button) { onShot(location.episode.id, shot.code) }
@@ -433,6 +433,8 @@ internal fun ProductionSceneHeader(scene: Scene, meta: List<String>, modifier: M
 // ---------- 剪辑 ----------
 
 private val ClipDpPerSecond = 14.dp
+/** 片段宽度按时长比例；过短的片段保留能完整显示镜号角标的最小宽度。 */
+private fun cutClipWidth(clip: ProductionCutClip): Dp = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(48.dp)
 
 /** 预演与粗剪是同一条时间线的不同版本：上方版本切换与播放器，下方时间线与三条音轨。 */
 @Composable
@@ -505,18 +507,18 @@ internal fun ProductionCutTab(production: Production, services: ProductionPanelS
 @Composable
 private fun CutTimeline(production: Production, version: ProductionCutVersion, isPreview: Boolean, onShot: (String, String) -> Unit) {
     val locations = production.shotLocations().toList()
-    val total = version.clips.sumOf { it.seconds }
-    val width = (ClipDpPerSecond * total.toFloat()).coerceAtLeast(120.dp)
+    val clipWidths = version.clips.map(::cutClipWidth)
+    val width = clipWidths.fold(0.dp) { sum, it -> sum + it }.coerceAtLeast(120.dp)
     val domain = MaterialTheme.infinityDomainColors
     val scheme = MaterialTheme.colorScheme
     Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
         Column(Modifier.width(width + 3.dp * version.clips.size), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                version.clips.forEach { clip ->
-                    val clipWidth = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(28.dp)
+                version.clips.forEachIndexed { index, clip ->
+                    val clipWidth = clipWidths[index]
                     val shot = locations.firstOrNull { it.episode.id == clip.episodeId && it.shot.code == clip.shotCode }?.shot
                     val shape = RoundedCornerShape(7.dp)
-                    val label = clip.shotCode.substringAfterLast('-').let { if (it.length < clip.shotCode.length) clip.shotCode.takeLast(5) else clip.shotCode }
+                    val label = clip.shotCode.removePrefix("SC").ifBlank { clip.shotCode }
                     Box(
                         Modifier.width(clipWidth).height(54.dp).clip(shape)
                             .then(if (clip.path == null && !isPreview) Modifier.border(1.dp, scheme.outline, shape) else Modifier.background(scheme.surfaceContainerHighest))
@@ -538,8 +540,8 @@ private fun CutTimeline(production: Production, version: ProductionCutVersion, i
             }
             // 对白轨：分镜对白，标明原生或配音。
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                version.clips.forEach { clip ->
-                    val clipWidth = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(28.dp)
+                version.clips.forEachIndexed { index, clip ->
+                    val clipWidth = clipWidths[index]
                     val line = locations.firstOrNull { it.episode.id == clip.episodeId && it.shot.code == clip.shotCode }?.shot?.dialogue?.firstOrNull()
                     if (line == null) Spacer(Modifier.width(clipWidth).height(18.dp))
                     else TrackSpan(
