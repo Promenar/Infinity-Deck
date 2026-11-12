@@ -24,8 +24,9 @@ internal class GuardedCutBackend(private val backend: ExternalFolderBackend, pri
     override suspend fun read(path: String, maxBytes: Long) = checked { backend.read(path, maxBytes) }
     override suspend fun <T> readStream(path: String, maxBytes: Long, consume: suspend (InputStream) -> T): T = checked { backend.readStream(path, maxBytes, consume) }
     override suspend fun write(path: String, content: ByteArray, expectedSha256: String?, createOnly: Boolean) = checked { backend.write(path, content, expectedSha256, createOnly) }
+    // 私有工作区写入期间持有不可重入的根锁，核验须留在回调之外；写后核验由调用方的 stat 与 afterWrite 承担。
     override suspend fun writeStream(path: String, expectedSize: Long, createOnly: Boolean, produce: suspend (OutputStream) -> Unit) = checked {
-        backend.writeStream(path, expectedSize, createOnly) { output -> verify(); produce(output); verify() }
+        backend.writeStream(path, expectedSize, createOnly, produce)
     }
     override suspend fun createDirectory(path: String) = checked { backend.createDirectory(path) }
     override suspend fun delete(path: String, expectedSha256: String?) = checked { backend.delete(path, expectedSha256) }

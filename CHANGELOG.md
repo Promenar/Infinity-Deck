@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.50.2-beta] - 2026-11-12
+
+### 修复
+
+- 成片导出写入会话私有工作区时卡在进度条不再前进：写入期间不再重复核验工作区，避免与工作区写锁互相等待。
+
 ## [0.50.1-beta] - 2026-11-12
 
 ### 修复

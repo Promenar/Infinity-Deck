@@ -18,6 +18,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -312,6 +313,27 @@ class WorkspaceCutOutputStoreTest {
         }
 
         assertOldOutputs(backend)
+    }
+
+    @Test fun `守卫后端在写入回调外核验命名空间以免重入工作区根锁`() = runBlocking {
+        // 私有工作区在流式写入期间持有不可重入的根锁，命名空间核验也会取得同一把锁。
+        val rootLock = kotlinx.coroutines.sync.Mutex()
+        val memory = MemoryBackend()
+        val locked = object : ExternalFolderBackend by memory {
+            override suspend fun writeStream(path: String, expectedSize: Long, createOnly: Boolean, produce: suspend (OutputStream) -> Unit) =
+                rootLock.withLock { memory.writeStream(path, expectedSize, createOnly, produce) }
+        }
+        var checks = 0
+        val guarded = GuardedCutBackend(locked) {
+            check(!rootLock.isLocked) { "核验发生在根锁持有期间" }
+            rootLock.withLock { checks++ }
+        }
+        val store = WorkspaceCutOutputStore(cache(), resolveTarget = { _, _ -> CutOutputTarget(guarded) })
+
+        kotlinx.coroutines.withTimeout(5_000) { store.publish("session", plan(), video()) {} }
+
+        assertThat(memory.text(videoPath)).isEqualTo(videoBytes.toString(Charsets.UTF_8))
+        assertThat(checks).isGreaterThan(0)
     }
 
     private suspend fun assertOldOutputs(backend: MemoryBackend) {
