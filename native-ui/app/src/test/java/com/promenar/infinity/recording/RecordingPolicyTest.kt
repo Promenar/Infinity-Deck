@@ -48,6 +48,22 @@ class RecordingPolicyTest {
         assertEquals(session.segments, recoverRecordingTranscript(session, 1300 * 32L).segments)
     }
 
+    @Test fun playbackPositionMapsToTheSegmentThatStartedLast() {
+        val segments = listOf(
+            RecordingSegment(1_000, 5_000, "a"),
+            RecordingSegment(5_000, 9_000, "b"),
+            RecordingSegment(12_000, 15_000, "c"),
+        )
+        assertEquals(-1, recordingSegmentAt(emptyList(), 3_000))
+        assertEquals(-1, recordingSegmentAt(segments, 999))
+        assertEquals(0, recordingSegmentAt(segments, 1_000))
+        assertEquals(0, recordingSegmentAt(segments, 4_999))
+        assertEquals(1, recordingSegmentAt(segments, 5_000))
+        // 两段之间的停顿仍算前一段。
+        assertEquals(1, recordingSegmentAt(segments, 10_500))
+        assertEquals(2, recordingSegmentAt(segments, 60_000))
+    }
+
     @Test fun recordingDocumentsAreNotEligibleForAutomaticRemoteIndexing() {
         assertFalse(LOCAL_RECORDING_MIME in DocumentReferenceExtractor.SUPPORTED_MIME_TYPES)
     }

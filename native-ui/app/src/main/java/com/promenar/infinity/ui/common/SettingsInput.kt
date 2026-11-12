@@ -15,7 +15,8 @@ fun SettingsInput(
     label: String,
     placeholder: String = "",
     singleLine: Boolean = true,
-    maxLines: Int = if (singleLine) 1 else 5
+    maxLines: Int = if (singleLine) 1 else 5,
+    modifier: Modifier = Modifier,
 ) {
     OutlinedTextField(
         value = value,
@@ -25,6 +26,6 @@ fun SettingsInput(
         singleLine = singleLine,
         maxLines = maxLines,
         textStyle = MaterialTheme.typography.bodyMedium.forInput(),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     )
 }

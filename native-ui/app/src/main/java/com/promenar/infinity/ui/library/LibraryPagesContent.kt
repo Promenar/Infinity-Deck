@@ -279,33 +279,20 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
         val wide = maxWidth >= WideContentWidth
         val sections: List<@Composable () -> Unit> = listOf(
             {
-                LibraryCard(
-                    title = stringResource(R.string.library_pending_title),
-                    count = pending.size,
-                    onViewAll = if (pending.size > OVERVIEW_PENDING) ({ host.navigator.openSection(LibraryPageKeys.PENDING) }) else null,
-                ) {
-                    if (pending.isEmpty()) {
-                        LibraryEmptyText(stringResource(R.string.library_pending_empty))
-                    } else {
-                        pending.take(OVERVIEW_PENDING).forEach { doc ->
-                            PendingRow(doc, busy = doc.documentId in busy, onOpen = { host.navigator.push(LibraryPageKeys.document(doc.documentId)) }, onResolve = { vm.resolve(doc) })
-                        }
-                    }
-                }
+                LibraryPendingCard(
+                    pending = pending,
+                    busy = busy,
+                    onViewAll = { host.navigator.openSection(LibraryPageKeys.PENDING) },
+                    onOpen = { host.navigator.push(LibraryPageKeys.document(it.documentId)) },
+                    onResolve = { vm.resolve(it) },
+                )
             },
             {
-                LibraryCard(
-                    title = stringResource(R.string.library_recent_title),
-                    onViewAll = if (recent.size > OVERVIEW_RECENT) ({ host.navigator.openSection(LibraryPageKeys.RECENT) }) else null,
-                ) {
-                    if (recent.isEmpty()) {
-                        LibraryEmptyText(stringResource(R.string.library_recent_empty))
-                    } else {
-                        recent.take(OVERVIEW_RECENT).forEach { doc ->
-                            DocumentRow(doc, onOpen = { host.navigator.push(LibraryPageKeys.document(doc.documentId)) })
-                        }
-                    }
-                }
+                LibraryRecentCard(
+                    recent = recent,
+                    onViewAll = { host.navigator.openSection(LibraryPageKeys.RECENT) },
+                    onOpen = { host.navigator.push(LibraryPageKeys.document(it.documentId)) },
+                )
             },
             { CollectCard(host) },
             { RecentCitedCard(host) },
@@ -322,18 +309,8 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                 }
             }
             if (wide) {
-                // 宽版：待处理与最近并排，“智能体最近用到”与收集卡在下并排。
-                item(key = "pair") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-                        Box(Modifier.weight(1f)) { sections[0]() }
-                        Box(Modifier.weight(1f)) { sections[1]() }
-                    }
-                }
-                item(key = "pair2") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-                        Box(Modifier.weight(1f)) { sections[3]() }
-                        Box(Modifier.weight(1f)) { sections[2]() }
-                    }
+                item(key = "columns") {
+                    LibraryOverviewColumns(pending = sections[0], cited = sections[3], recent = sections[1], collect = sections[2])
                 }
             } else {
                 item(key = "pending") { sections[0]() }
@@ -341,6 +318,72 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                 item(key = "cited") { sections[3]() }
                 item(key = "collect") { sections[2]() }
             }
+        }
+    }
+}
+
+/**
+ * 宽版概览的四张卡固定排成两列：左列待处理、最近被引用，右列最近加入、收集。
+ * 两列各自从上往下堆叠，卡片高度随自身内容，不与另一列的卡片等高。
+ */
+@Composable
+internal fun LibraryOverviewColumns(
+    pending: @Composable () -> Unit,
+    cited: @Composable () -> Unit,
+    recent: @Composable () -> Unit,
+    collect: @Composable () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large), verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+            pending()
+            cited()
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+            recent()
+            collect()
+        }
+    }
+}
+
+/** 概览“待处理”卡：最多列出 [OVERVIEW_PENDING] 条，更多时给出“查看全部”。 */
+@Composable
+internal fun LibraryPendingCard(
+    pending: List<PendingDocument>,
+    busy: Set<String>,
+    onViewAll: () -> Unit,
+    onOpen: (PendingDocument) -> Unit,
+    onResolve: (PendingDocument) -> Unit,
+) {
+    LibraryCard(
+        title = stringResource(R.string.library_pending_title),
+        count = pending.size,
+        onViewAll = if (pending.size > OVERVIEW_PENDING) onViewAll else null,
+    ) {
+        if (pending.isEmpty()) {
+            LibraryEmptyText(stringResource(R.string.library_pending_empty))
+        } else {
+            pending.take(OVERVIEW_PENDING).forEach { doc ->
+                PendingRow(doc, busy = doc.documentId in busy, onOpen = { onOpen(doc) }, onResolve = { onResolve(doc) })
+            }
+        }
+    }
+}
+
+/** 概览“最近加入”卡：最多列出 [OVERVIEW_RECENT] 条，更多时给出“查看全部”。 */
+@Composable
+internal fun LibraryRecentCard(
+    recent: List<LibraryDocumentSummary>,
+    onViewAll: () -> Unit,
+    onOpen: (LibraryDocumentSummary) -> Unit,
+) {
+    LibraryCard(
+        title = stringResource(R.string.library_recent_title),
+        onViewAll = if (recent.size > OVERVIEW_RECENT) onViewAll else null,
+    ) {
+        if (recent.isEmpty()) {
+            LibraryEmptyText(stringResource(R.string.library_recent_empty))
+        } else {
+            recent.take(OVERVIEW_RECENT).forEach { doc -> DocumentRow(doc, onOpen = { onOpen(doc) }) }
         }
     }
 }
@@ -607,6 +650,20 @@ private fun CollectCard(host: LibraryPageHost) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         vm.importToLibrary(uris.map { it.toString() })
     }
+    LibraryCollectCardContent(onImport = { launcher.launch(arrayOf("*/*")) }, onNote = { noteOpen = true })
+    if (noteOpen) {
+        NoteDialog(
+            onDismiss = { noteOpen = false },
+            onSave = { name, text ->
+                noteOpen = false
+                vm.saveNote(name, text)
+            },
+        )
+    }
+}
+
+@Composable
+internal fun LibraryCollectCardContent(onImport: () -> Unit, onNote: () -> Unit) {
     LibraryCard(title = stringResource(R.string.library_collect_title)) {
         Text(
             stringResource(R.string.library_collect_hint),
@@ -618,26 +675,17 @@ private fun CollectCard(host: LibraryPageHost) {
             Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
             horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         ) {
-            FilledTonalButton(onClick = { launcher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
+            FilledTonalButton(onClick = onImport, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Rounded.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(InfinitySpacing.Small))
                 Text(stringResource(R.string.library_collect_import), maxLines = 1)
             }
-            FilledTonalButton(onClick = { noteOpen = true }, modifier = Modifier.weight(1f)) {
+            FilledTonalButton(onClick = onNote, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Rounded.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(InfinitySpacing.Small))
                 Text(stringResource(R.string.library_collect_note), maxLines = 1)
             }
         }
-    }
-    if (noteOpen) {
-        NoteDialog(
-            onDismiss = { noteOpen = false },
-            onSave = { name, text ->
-                noteOpen = false
-                vm.saveNote(name, text)
-            },
-        )
     }
 }
 

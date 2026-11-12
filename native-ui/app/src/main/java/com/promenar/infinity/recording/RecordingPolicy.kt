@@ -128,6 +128,10 @@ internal fun recordingTimestamp(ms: Long): String {
     else String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)
 }
 
+/** 播放位置所在的逐字稿段落下标：起点不晚于该位置的最后一段；位置早于首段或没有段落时为 -1。 */
+internal fun recordingSegmentAt(segments: List<RecordingSegment>, positionMs: Long): Int =
+    segments.indexOfLast { it.startMs <= positionMs }
+
 internal fun recordingRawText(session: RecordingSession): String =
     session.segments.joinToString("\n") { "${recordingTimestamp(it.startMs)} ${it.text}" }
 

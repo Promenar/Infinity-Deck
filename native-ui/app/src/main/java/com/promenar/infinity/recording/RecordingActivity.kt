@@ -11,14 +11,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -34,7 +32,6 @@ import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
-import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.util.LocaleHelper
 import kotlinx.coroutines.flow.first
@@ -154,6 +151,8 @@ private fun RecordingScreen(
         if (state.activeId != null) {
             selected = state.activeId
             organized = false
+            // 删除确认只针对打开它时的那条录音；开始新录音后不再保留。
+            if (dialog == "delete") dialog = null
         }
     }
     val route = chooseRecordingRoute(current?.mode ?: defaultMode, state.cloudKey, current?.cloudConsent, state.localReady, current?.fallback ?: controller.store.fallback)
@@ -206,6 +205,8 @@ private fun RecordingScreen(
         onResumeInterrupted = { current?.let { onBegin(it.id) } },
         onOrganize = { dialog = "organize" },
         onPublish = { current?.let { controller.publish(it.id) } },
+        onDelete = { dialog = "delete" },
+        onDismissFailure = controller::dismissFailure,
     )
 
     when (dialog) {
@@ -215,21 +216,22 @@ private fun RecordingScreen(
             title = stringResource(R.string.recording_settings),
             height = InfinitySheetHeight.Content,
         ) {
-            Column(Modifier.padding(InfinitySpacing.ScreenHorizontal)) {
-                RecordingModeOptions(current?.mode ?: defaultMode) { mode ->
+            // 面板自带左右留白，选项直接与标题左对齐。
+            RecordingModeSheetContent(
+                selected = current?.mode ?: defaultMode,
+                cloudLabel = state.cloudLabel,
+                localLabel = state.localLabel,
+                cloudAllowed = current?.cloudConsent != null,
+                onSelect = { mode ->
                     if (current == null) defaultMode = mode
                     controller.setMode(current?.id, mode)
                     dialog = null
-                }
-                if (current?.cloudConsent != null) {
-                    InfinityPillButton(
-                        text = stringResource(R.string.recording_ui_revoke_cloud),
-                        onClick = { controller.allowCloud(current.id, null); dialog = null },
-                        modifier = Modifier.fillMaxWidth(),
-                        tone = InfinityPillTone.DANGER,
-                    )
-                }
-            }
+                },
+                onRevoke = {
+                    current?.let { controller.allowCloud(it.id, null) }
+                    dialog = null
+                },
+            )
         }
 
         "finish" -> RecordingConfirm(R.string.recording_ui_stop, stringResource(R.string.recording_finish_detail),
@@ -251,6 +253,24 @@ private fun RecordingScreen(
                         organized = true
                     } else controller.report(if (route == RecordingRoute.Raw) R.string.recording_mode_raw else R.string.recording_route_unavailable)
                 })
+        }
+        "delete" -> if (current != null && !active) {
+            InfinityConfirmDialog(
+                title = stringResource(R.string.recording_ui_delete),
+                message = stringResource(
+                    if (current.documentId == null) R.string.recording_ui_delete_detail
+                    else R.string.recording_ui_delete_detail_document,
+                ),
+                confirmText = stringResource(R.string.recording_ui_delete_confirm),
+                cancelText = stringResource(R.string.recording_cancel),
+                onConfirm = {
+                    dialog = null
+                    selected = null
+                    controller.delete(current.id)
+                },
+                onCancel = { dialog = null },
+                isDestructive = true,
+            )
         }
         "edit" -> if (current != null) RecordingEditDialog(current, { dialog = null }) { title, glossary, draft ->
             controller.updateDraft(current.id, title, glossary, draft)

@@ -71,6 +71,13 @@ internal class RecordingStore(private val context: Context) {
         }.sortedByDescending { it.createdAt }
     }
 
+    /** 删除一条录音的目录：音频与逐字稿、整理稿元数据一并移除。 */
+    suspend fun delete(id: String) = withContext(Dispatchers.IO) {
+        require(validSessionId(id))
+        val directory = File(root, id)
+        check(!directory.exists() || directory.deleteRecursively())
+    }
+
     private fun validSessionId(value: String) = runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
 
     fun recover(session: RecordingSession): RecordingSession {
