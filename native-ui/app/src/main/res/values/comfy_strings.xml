@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="comfy_hosts">ComfyUI hosts</string>
+    <string name="comfy_templates">Workflow templates</string>
+    <string name="comfy_preflight_pass">Passed</string>
+    <string name="comfy_preflight_missing">Missing nodes or models</string>
+    <string name="comfy_preflight_review">Review required</string>
+    <string name="comfy_preflight_retry">Check again</string>
+    <string name="comfy_template_locked">Locked</string>
+    <string name="comfy_template_unlocked">Unlocked</string>
+    <string name="comfy_template_unlock">Unlock</string>
+    <string name="comfy_template_unlock_required">Unlock this template in settings before the agent can edit it.</string>
+    <string name="comfy_host_changed">Host settings changed. Check the template again.</string>
+    <string name="comfy_host_auth_required">Configure authentication in host settings.</string>
+    <string name="comfy_queued">Queued</string>
+    <string name="comfy_running">Generating</string>
+    <string name="comfy_node_progress">Current node progress</string>
+    <string name="comfy_preflight_missing_count">Missing items: %1$d</string>
+</resources>
