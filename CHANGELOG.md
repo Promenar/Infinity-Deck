@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.49.0-beta] - 2026-11-12
+
 ### 新增
 
 - 资料首页、Android 快捷设置和桌面快捷方式可启动录音听写。小版中英 Zipformer 在设备上实时转写，支持后台持续录音、暂停续录、时间戳回听和保存到资料。外部 Intent 打开录音页后由用户确认开始。
