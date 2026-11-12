@@ -70,7 +70,7 @@
     <string name="production_panel_preview_text_card">文字卡</string>
 
     <string name="production_panel_section_stages">阶段</string>
-    <string name="production_panel_section_pending">待处理</string>
+    <string name="production_panel_section_pending">待你处理</string>
     <string name="production_panel_section_redo">待重做</string>
     <string name="production_panel_section_episodes">剧集</string>
     <string name="production_panel_section_bible">故事圣经</string>

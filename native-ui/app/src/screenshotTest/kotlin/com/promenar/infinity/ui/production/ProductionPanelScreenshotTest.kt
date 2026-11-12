@@ -24,7 +24,7 @@ private fun Frame(dark: Boolean = false, content: @Composable () -> Unit) {
             colorSource = InfinityColorSource.INFINITY,
         ),
     ) {
-        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxSize()) { content() }
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) { content() }
     }
 }
 

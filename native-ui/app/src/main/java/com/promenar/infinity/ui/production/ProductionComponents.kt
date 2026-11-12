@@ -67,6 +67,8 @@ import kotlinx.coroutines.launch
 /** 制作面板的测试标签。 */
 object ProductionUiTags {
     const val PANEL = "production_panel"
+    const val HEADER = "production_header"
+    const val MENU = "production_menu"
     const val EMPTY = "production_panel_empty"
     const val TAB_OVERVIEW = "production_tab_overview"
     const val TAB_SCRIPT = "production_tab_script"

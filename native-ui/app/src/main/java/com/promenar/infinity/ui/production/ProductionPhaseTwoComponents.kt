@@ -23,38 +23,15 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 internal val ProductionPagePadding = PaddingValues(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)
 
 @Composable
-internal fun ProductionBlock(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-        title?.let { ProductionSectionTitle(it) }
-        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(InfinitySpacing.Medium), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small), content = content)
-        }
-    }
-}
+internal fun ProductionBlock(title: String? = null, content: @Composable ColumnScope.() -> Unit) = ProductionSection(title, content = content)
 
 @Composable
-internal fun ProductionValueRow(title: String, value: String? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).then(if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        value?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)) }
-    }
-}
+internal fun ProductionValueRow(title: String, value: String? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) =
+    ProductionRow(title, value = value, enabled = enabled, onClick = onClick)
 
 @Composable
-internal fun ProductionBackHeader(title: String, subtitle: String, onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(end = InfinitySpacing.Large), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.production_panel_back))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
+internal fun ProductionBackHeader(title: String, subtitle: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) =
+    ProductionTopBar(title, listOf(subtitle).filter(String::isNotBlank), onBack, actions = actions)
 
 @Composable
 internal fun ProductionCommand(text: String, enabled: Boolean = true, primary: Boolean = false, onClick: () -> Unit) {
@@ -62,17 +39,8 @@ internal fun ProductionCommand(text: String, enabled: Boolean = true, primary: B
 }
 
 @Composable
-internal fun <T> ProductionOptionSheet(title: String, options: List<Pair<T, String>>, selected: T?, onDismiss: () -> Unit, onSelect: (T) -> Unit) {
-    InfinityBottomSheet(show = true, onDismiss = onDismiss, title = title, scrollContent = true) {
-        InfinitySegmentedControl(
-            segments = options.map { (value, label) -> InfinitySegment(value, label) },
-            selected = selected,
-            onSelect = { onSelect(it); onDismiss() },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (options.isEmpty()) Text(stringResource(R.string.p2_no_channels), style = MaterialTheme.typography.bodyMedium)
-    }
-}
+internal fun <T> ProductionOptionSheet(title: String, options: List<Pair<T, String>>, selected: T?, onDismiss: () -> Unit, onSelect: (T) -> Unit) =
+    ProductionChoiceSheet(title, options.map { (value, label) -> ProductionChoice(value, label) }, selected, onDismiss, emptyText = stringResource(R.string.p2_no_channels), onSelect = onSelect)
 
 @Composable
 internal fun ReferenceSlot.displayName(): String = when (id) {

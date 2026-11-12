@@ -73,7 +73,7 @@
     <string name="production_panel_preview_text_card">Text card</string>
 
     <string name="production_panel_section_stages">Stages</string>
-    <string name="production_panel_section_pending">Pending</string>
+    <string name="production_panel_section_pending">Needs you</string>
     <string name="production_panel_section_redo">Redo</string>
     <string name="production_panel_section_episodes">Episodes</string>
     <string name="production_panel_section_bible">Story bible</string>

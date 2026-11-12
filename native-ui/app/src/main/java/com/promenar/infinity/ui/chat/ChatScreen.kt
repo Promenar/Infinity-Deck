@@ -363,6 +363,8 @@ data class ChatScreenActions(
     val onOpenBrowser: () -> Unit = {},
     /** 窄窗口打开“远程”整页；宽窗口由检视器页签承载。 */
     val onOpenRemote: () -> Unit = {},
+    /** 窄窗口以整页打开制作面板。 */
+    val onOpenProduction: () -> Unit = {},
     /** 宽窗口检视器：替换整个层级（打开页签、收起）。 */
     val onSetInspectorPages: (List<ChatPage>) -> Unit = {},
     /** 宽窗口检视器的返回：弹出最上层，只剩根层时收起。 */
@@ -903,7 +905,6 @@ fun ChatScreenContent(
         var runSheetTab by remember(uiState.session?.id) { mutableStateOf<com.promenar.infinity.ui.chat.components.RunDetailTab?>(null) }
         var runSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
         // 窄窗口制作面板以整屏上滑面板打开；宽窗口在检视器“制作”页签。
-        var productionSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
         // 后台任务只有运行详情“后台”页一份列表：宽窗口切到检视器“运行”页签，窄窗口打开运行详情。
         // 记下已处理的请求，重新进入组合时不再重复打开。
         var handledJobsRequest by remember { mutableIntStateOf(state.backgroundJobsRequest) }
@@ -978,7 +979,7 @@ fun ChatScreenContent(
                 ChatPage.Browser -> actions.onOpenBrowser()
                 ChatPage.Remote -> actions.onOpenRemote()
                 ChatPage.Canvas -> canvasSession?.openList?.invoke()
-                ChatPage.Production -> productionSheetOpen = true
+                ChatPage.Production -> actions.onOpenProduction()
             }
         }
         val hubEntries = chatPanelHubEntries(
@@ -1903,32 +1904,6 @@ fun ChatScreenContent(
                     }
                 }
             }
-            }
-            val productionSessionId = uiState.session?.id
-            val productionSource = state.productionSource
-            if (productionSheetOpen && productionSessionId != null && productionSource != null) {
-                com.promenar.infinity.ui.common.InfinityModalSheet(
-                    onDismissRequest = { productionSheetOpen = false },
-                    height = com.promenar.infinity.ui.common.InfinitySheetHeight.Full,
-                    contentDragsSheet = false,
-                ) {
-                    com.promenar.infinity.ui.production.ProductionPanel(
-                        sessionId = productionSessionId,
-                        source = productionSource,
-                        services = com.promenar.infinity.ui.production.rememberProductionPanelServices(
-                            productionSessionId,
-                            productionSource,
-                            onOpenMediaModels = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openMediaModels?.let { open ->
-                                remember(open) { { productionSheetOpen = false; open() } }
-                            },
-                        ),
-                        onLocate = { path ->
-                            productionSheetOpen = false
-                            actions.onLocateWorkspacePath(path)
-                        },
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                    )
-                }
             }
             if (runSheetOpen) {
                 val sheetPlan = taskPanel ?: lastVisiblePlan

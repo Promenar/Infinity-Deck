@@ -12,7 +12,7 @@ import com.promenar.infinity.ui.theme.*
 @Composable
 private fun PhaseTwoFrame(dark: Boolean = false, tab: ProductionTab = ProductionTab.OVERVIEW, shot: Boolean = false, detail: ShotDetailTab? = null, character: Boolean = false) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = if (dark) InfinityThemeMode.DARK else InfinityThemeMode.LIGHT, colorSource = InfinityColorSource.INFINITY)) {
-        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxSize()) {
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             ProductionPanelContent(
                 snapshot = ProductionPhaseTwoSamples.snapshot, onAction = { _, _ -> null }, onResolve = { null }, initialTab = tab,
                 initialShot = if (shot) "S1E01" to "SC01-02" else null, initialShotTab = detail,

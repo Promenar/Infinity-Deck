@@ -12,6 +12,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarDuration
@@ -887,7 +890,22 @@ fun ChatRoute(
                             ChatPage.Canvas -> com.promenar.infinity.ui.canvas.CanvasListPage(
                                 onBack = closeTopChatPage.takeUnless { inInspector },
                             )
-                            ChatPage.Run, ChatPage.State, ChatPage.Production -> Unit
+                            ChatPage.Production -> {
+                                val source = chatViewModel.productionSource
+                                com.promenar.infinity.ui.production.ProductionPanel(
+                                    sessionId = sessionId,
+                                    source = source,
+                                    services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, onOpenMediaModels = settingsNavigation?.openMediaModels),
+                                    // 在资源管理器中定位时叠在制作页之上，返回仍回到制作页。
+                                    onLocate = { path ->
+                                        workspaceLocatePath = path
+                                        setChatPages(pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Explorer))
+                                    },
+                                    onBack = closeTopChatPage.takeUnless { inInspector },
+                                    modifier = Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.safeDrawing),
+                                )
+                            }
+                            ChatPage.Run, ChatPage.State -> Unit
                         }
                     }
                 }
@@ -1010,6 +1028,7 @@ fun ChatRoute(
                 onOpenGit = { openChatPage(ChatPage.Git) },
                 onOpenBrowser = { openChatPage(ChatPage.Browser) },
                 onOpenRemote = { openChatPage(ChatPage.Remote) },
+                onOpenProduction = { openChatPage(ChatPage.Production) },
                 onSetInspectorPages = setChatPages,
                 onInspectorBack = closeTopChatPage,
                 onLocateWorkspacePath = { path ->

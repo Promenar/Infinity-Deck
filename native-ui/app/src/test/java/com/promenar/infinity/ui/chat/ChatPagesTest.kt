@@ -69,7 +69,13 @@ class ChatPagesTest {
         assertThat(chatPageStack(listOf(ChatPage.State), wideWindow = true)).isEmpty()
         assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.State)))).containsExactly(ChatPage.State)
         assertThat(ChatPage.State.inspectorGroup).isEqualTo(InspectorContentGroup.State)
-        assertThat(chatPageStack(listOf(ChatPage.Production), wideWindow = false)).isEmpty()
+    }
+
+    @Test fun `制作面板窄窗口整页进入层级，宽窗口只是检视器页签`() {
+        assertThat(chatPageStack(listOf(ChatPage.Production), wideWindow = false)).containsExactly(ChatPage.Production)
+        assertThat(chatPageStack(listOf(ChatPage.Production, ChatPage.Explorer), wideWindow = false))
+            .containsExactly(ChatPage.Production, ChatPage.Explorer).inOrder()
+        assertThat(chatPageStack(listOf(ChatPage.Production), wideWindow = true)).isEmpty()
         assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.Production)))).containsExactly(ChatPage.Production)
         assertThat(ChatPage.Production.inspectorGroup).isEqualTo(InspectorContentGroup.Production)
     }
