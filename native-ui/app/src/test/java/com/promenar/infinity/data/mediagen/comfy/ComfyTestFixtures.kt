@@ -33,7 +33,12 @@ internal class FakeComfyHttp : ComfyHttp {
         calls += path to null
         return when {
             path == "/object_info" -> { if (failInfo) throw ComfyFailure("无法连接 ComfyUI 主机"); info }
-            path.startsWith("/object_info/") -> info
+            path.startsWith("/object_info/") -> {
+                if (failInfo) throw ComfyFailure("无法连接 ComfyUI 主机")
+                // 与 ComfyUI 一致：未知节点类型返回空对象。
+                val type = java.net.URLDecoder.decode(path.removePrefix("/object_info/"), Charsets.UTF_8.name())
+                info[type]?.let { buildJsonObject { put(type, it) } } ?: JsonObject(emptyMap())
+            }
             path.startsWith("/history/") -> history
             path == "/queue" -> queue
             path == "/system_stats" -> buildJsonObject { putJsonObject("system") { put("comfyui_version", "test") } }

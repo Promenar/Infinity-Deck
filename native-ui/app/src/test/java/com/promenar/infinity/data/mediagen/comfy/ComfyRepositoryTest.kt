@@ -29,6 +29,14 @@ class ComfyRepositoryTest {
         assertEquals(listOf("/system_stats"), f.http.calls.map { it.first })
     }
 
+    @Test fun preflightOnlyRequestsNodeTypesUsedByTemplate() = runTest {
+        val f = ComfyFixture()
+        f.prepare()
+        f.http.calls.clear()
+        assertEquals(PreflightStatus.PASS, f.repository.preflight(f.template.id).preflight.status)
+        assertEquals(setOf("/object_info/Test", "/object_info/Save"), f.http.calls.map { it.first }.toSet())
+    }
+
     @Test fun channelsDeriveReferenceLimitsFromSlotsAndPreserveId() = runTest {
         val f = ComfyFixture()
         f.repository.saveHost(f.host)

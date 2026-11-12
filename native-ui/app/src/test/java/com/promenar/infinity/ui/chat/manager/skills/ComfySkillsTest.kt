@@ -15,6 +15,20 @@ class ComfySkillsTest {
         override val workspacePath: String? = null
         override val workspaceRootUuid = "workspace"
     }
+    @Test fun toolSchemasPassClientValidationAndAcceptAgentTemplate() = runTest {
+        // 客户端在发给模型前校验工具 schema；不支持的关键字会让整个工具不可调用。
+        val f = ComfyFixture(); f.prepare()
+        val validator = com.promenar.infinity.domain.tool.ToolSchemaValidator()
+        comfyTools(f.repository).forEach { tool ->
+            assertTrue(tool.name, validator.validateDefinition(tool.parametersSchema) is com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid)
+        }
+        val template = Json.parseToJsonElement("""{"id":"h3_smoke","name":"H3","hostId":"host","group":"VIDEO","frameBase":5,"frameStep":17,"maxFrames":22,
+            "workflow":{"1":{"class_type":"Test","inputs":{"prompt":""}}},
+            "slots":[{"nodeId":"1","input":"prompt","kind":"PROMPT"},{"nodeId":"2","input":"images","kind":"OUTPUT","outputKind":"VIDEO","capacity":1}],
+            "models":[{"nodeId":"1","input":"prompt"}],"capabilities":{"modes":["TEXT"],"nativeAudio":true,"promptFormat":"H3"}}""").jsonObject
+        val define = comfyTools(f.repository).single { it.name == "comfy_define_template" }
+        assertTrue(validator.validate(define.parametersSchema, buildJsonObject { put("template", template) }) is com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid)
+    }
     @Test fun rejectsWrongTypesUnknownArgumentsAndUserUnlockParameters() = runTest {
         val f = ComfyFixture(); f.prepare()
         val probe = ComfyProbeSkill(f.repository)

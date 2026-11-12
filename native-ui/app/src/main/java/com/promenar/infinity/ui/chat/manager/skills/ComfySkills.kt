@@ -106,11 +106,11 @@ private const val COMFY_TEMPLATE_SCHEMA = """{
   "type":"object","additionalProperties":false,"required":["id","hostId","group","workflow","slots","capabilities"],"properties":{
    "id":{"type":"string","description":"稳定 id，字母数字下划线或连字符"},"name":{"type":"string"},"hostId":{"type":"string"},
    "group":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},"workflow":{"type":"object","description":"ComfyUI API Format 节点字典"},
-   "frameBase":{"type":"integer","minimum":1},"frameStep":{"type":"integer","minimum":1},"maxFrames":{"type":"integer","minimum":1},
+   "frameBase":{"type":"integer","description":"正整数"},"frameStep":{"type":"integer","description":"正整数"},"maxFrames":{"type":"integer","description":"正整数"},
    "slots":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["nodeId","input","kind"],"properties":{
     "nodeId":{"type":"string"},"input":{"type":"string","description":"精确输入键；动态键使用组名.成员数字后缀；OUTPUT 填历史输出字段 images/gifs/videos/audio"},
     "kind":{"type":"string","enum":["PROMPT","REFERENCE_IMAGES","FIRST_FRAME","LAST_FRAME","REFERENCE_AUDIO","WIDTH","HEIGHT","FRAMES","SEED","OUTPUT"]},
-    "capacity":{"type":"integer","minimum":1,"maximum":100},"outputKind":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},
+    "capacity":{"type":"integer","description":"1～100"},"outputKind":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},
     "uploadTargets":{"type":"array","description":"媒体槽位是节点连线时必填，按容量顺序填写上传文件输入，不修改图片连线","items":{"type":"object","additionalProperties":false,"required":["nodeId","input"],"properties":{"nodeId":{"type":"string"},"input":{"type":"string"}}}}
    }}},
    "models":{"type":"array","description":"显式声明需检查文件可选值的输入","items":{"type":"object","additionalProperties":false,"required":["nodeId","input"],"properties":{"nodeId":{"type":"string"},"input":{"type":"string"}}}},

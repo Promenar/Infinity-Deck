@@ -16,6 +16,7 @@ class ComfyBackendTest {
         assertEquals("prompt-1", ticket.promptId)
         assertEquals(listOf("abc"), f.http.uploads.map { it.second })
         val payload = f.http.calls.single { it.first == "/prompt" }.second!!
+        assertTrue(f.http.calls.none { it.first == "/object_info" })
         assertTrue(payload["client_id"]!!.jsonPrimitive.content.isNotBlank())
         val inputs = payload.getValue("prompt").jsonObject.getValue("1").jsonObject.getValue("inputs").jsonObject
         assertEquals("提示", inputs["prompt"]!!.jsonPrimitive.content)

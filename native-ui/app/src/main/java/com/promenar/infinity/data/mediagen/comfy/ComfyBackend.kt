@@ -56,7 +56,7 @@ class ComfyBackend(
             }
             val workflow = fillComfyWorkflow(template, values)
             validateFilledComfySpecs(template, workflow)
-            val info = http.get(host, "/object_info")
+            val info = http.objectInfoFor(host, workflow)
             val filledCheck = preflightComfy(template.copy(workflow = workflow, slots = emptyList()), info)
             if (filledCheck.status != PreflightStatus.PASS) {
                 repository.markReview(template.id, "填充后的动态输入预检未通过，请复核槽位连线与主机 schema")

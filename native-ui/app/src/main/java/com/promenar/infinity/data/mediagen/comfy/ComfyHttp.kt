@@ -2,6 +2,7 @@ package com.promenar.infinity.data.mediagen.comfy
 
 import com.promenar.infinity.domain.media.MAX_WORKSPACE_MEDIA_BYTES
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -117,6 +118,25 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
         require(path.startsWith('/') && !path.startsWith("//") && !path.contains('\\')) { "ComfyUI 接口路径无效" }
         return (host.endpoint + path).toHttpUrl()
     }
+}
+/**
+ * 只读取工作流实际用到的节点类型 schema（逐个 /object_info/<类型>，最多 4 个并发），
+ * 慢速中转下不再拉取整份节点清单；主机缺少的类型返回空对象，由预检判为缺项。
+ */
+internal suspend fun ComfyHttp.objectInfoFor(host: ComfyHost, workflow: JsonObject): JsonObject {
+    val types = workflow.values.mapNotNull { ((it as? JsonObject)?.get("class_type") as? JsonPrimitive)?.contentOrNull }
+        .filter { type -> type.isNotBlank() && type.length <= 200 && type.none { it < ' ' || it == '\u007f' } }.distinct()
+    val permits = kotlinx.coroutines.sync.Semaphore(4)
+    val parts = coroutineScope {
+        types.map { type ->
+            async {
+                permits.withPermit {
+                    get(host, "/object_info/" + java.net.URLEncoder.encode(type, Charsets.UTF_8.name()).replace("+", "%20"))[type]?.let { type to it }
+                }
+            }
+        }.awaitAll()
+    }
+    return JsonObject(parts.filterNotNull().toMap())
 }
 private fun currentThreadActive() { if (Thread.currentThread().isInterrupted) throw IOException("传输已中断") }
 private suspend fun Call.awaitComfyResponse(): Response = suspendCancellableCoroutine { continuation ->

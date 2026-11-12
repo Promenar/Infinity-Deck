@@ -92,7 +92,7 @@ class ComfyRepository(
             preflight = PreflightResult(PreflightStatus.REVIEW, uncertain = listOf(reason))) else it }))
     }
     private suspend fun inspect(template: ComfyTemplate, host: ComfyHost, passed: String?): ComfyTemplateState = try {
-        val info = http.get(host, "/object_info")
+        val info = http.objectInfoFor(host, template.workflow)
         val result = preflightComfy(template, info)
         val reviewed = if (passed != null && result.status != PreflightStatus.PASS) result.copy(status = PreflightStatus.REVIEW,
             uncertain = result.uncertain + "主机节点或模型可能已变化，请复核缺项") else result

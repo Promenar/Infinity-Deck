@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.49.3-beta] - 2026-11-12
+
+### 修复
+
+- 智能体的 ComfyUI 模板定义工具因参数 schema 含客户端不支持的数值范围关键字而整体不可调用；改为在说明中写明范围，由服务端校验。
+- ComfyUI 模板预检与生成前的动态预检只读取工作流用到的节点类型，不再拉取整份节点清单，经 tailnet 中转时预检从数分钟降到数秒。
+
 ## [0.49.2-beta] - 2026-11-12
 
 ### 修复
