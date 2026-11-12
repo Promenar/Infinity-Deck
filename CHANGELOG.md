@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.53.1-beta] - 2026-11-13
+
+### 修复
+
+- 智能体在 Linux 中运行命令时，制作面板的批准、否决和撤回排队审核会立即生效，不再等到命令结束；制作清单文件在后台补写。
+
 ## [0.53.0-beta] - 2026-11-13
 
 ### 新增

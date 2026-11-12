@@ -6,6 +6,7 @@ import com.promenar.infinity.data.local.db.entity.ProductionEntity
 import com.promenar.infinity.data.local.db.entity.SessionProductionEntity
 import com.promenar.infinity.data.production.*
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -75,7 +76,27 @@ class ProductionRepository(
     override fun observeEverBound(sessionId: String): Flow<Boolean> = dao.observeEverBound(sessionId).flowOn(Dispatchers.IO)
 
     suspend fun get(sessionId: String): ProductionSnapshot? = withContext(Dispatchers.IO) {
-        mutex.withLock { dao.getForSession(sessionId)?.let { inspect(sessionId, it) } }
+        val row = mutex.withLock { dao.getForSession(sessionId) } ?: return@withContext null
+        val fileMutex = projectFileMutex(row.id)
+        // 面板与审核回执只读取当前数据库快照，不等待正在进行的工作区写入。
+        if (!fileMutex.tryLock()) return@withContext pendingSnapshot(sessionId)
+        try {
+            val work = mutex.withLock { dao.getForSession(sessionId)?.takeIf { it.id == row.id }?.let { work(sessionId, it) } }
+                ?: return@withContext mutex.withLock { dao.getForSession(sessionId)?.let { snapshot(it) } }
+            val pathMutex = manifestPathMutex(sessionId, path(work.row))
+            if (!pathMutex.tryLock()) return@withContext pendingSnapshot(sessionId)
+            try {
+                val result = inspectFile(work)
+                mutex.withLock { record(work, result) }
+                mutex.withLock { dao.getForSession(sessionId)?.let { snapshot(it) } }
+            } finally { pathMutex.unlock() }
+        } finally { fileMutex.unlock() }
+    }
+    private suspend fun pendingSnapshot(sessionId: String): ProductionSnapshot? = mutex.withLock {
+        dao.getForSession(sessionId)?.let { row ->
+            enqueue(row.id)
+            snapshot(row, ManifestSync.Pending)
+        }
     }
     fun recordContextRead(sessionId: String, owner: String, revision: Long, productionId: String) { synchronized(reads) { val k = "$sessionId:$owner:$productionId"; val projectKey = "$sessionId:$productionId"; reads[k] = maxOf(reads[k] ?: 0, revision); sessionReads[projectKey] = maxOf(sessionReads[projectKey] ?: 0, revision) } }
 
@@ -84,73 +105,97 @@ class ProductionRepository(
     suspend fun define(sessionId: String, title: String, kind: ProductionKind, rootPath: String? = null, logline: String? = null, aspectRatio: String? = null): ProductionSnapshot = withContext(Dispatchers.IO) {
         mutex.withLock {
             val old = dao.getForSession(sessionId)
-            val t = now()
-            val p = if (old == null) {
-                val id = newId(); val slug = title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { id }
-                Production(id, title, kind, rootPath ?: "productions/$slug", logline, aspectRatio, createdAt = t, updatedAt = t)
-            } else snapshot(old).production.copy(title = title, kind = kind, rootPath = rootPath ?: old.rootPath, logline = logline, aspectRatio = aspectRatio, updatedAt = t)
-            require(old == null || old.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
-            if (old == null) {
+            if (old != null) {
+                val p = snapshot(old).production.copy(title = title, kind = kind, rootPath = rootPath ?: old.rootPath, logline = logline, aspectRatio = aspectRatio, updatedAt = now())
+                require(old.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
+                val next = ProductionSnapshot(p, old.revision + 1, ManifestSync.Pending)
+                ProductionManifestCodec.encode(p, next.revision)
+                database.withTransaction {
+                    dao.update(entity(next, old).let { if (p.rootPath != old.rootPath) it.copy(manifestSha256 = null, manifestError = null) else it })
+                }
+                enqueue(p.id)
+                return@withContext next
+            }
+        }
+        val t = now()
+        val id = newId()
+        val slug = title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { id }
+        val p = Production(id, title, kind, rootPath ?: "productions/$slug", logline, aspectRatio, createdAt = t, updatedAt = t)
+        val next = ProductionSnapshot(p, 1, ManifestSync.Pending)
+        ProductionManifestCodec.encode(p, next.revision)
+        projectFileMutex(id).withLock {
+            manifestPathMutex(sessionId, "${p.rootPath}/production.json").withLock {
                 val existingBytes = files.read(sessionId, "${p.rootPath}/production.json")
                 if (existingBytes != null) {
                     val existing = ProductionManifestCodec.decode(existingBytes)
-                    require(existing.production.id == p.id) { "目标目录已有其他制作项目清单，请更换 root_path。" }
+                    require(existing.production.id == id) { "目标目录已有其他制作项目清单，请更换 root_path。" }
+                }
+                mutex.withLock {
+                    database.withTransaction {
+                        require(dao.getForSession(sessionId) == null) { "会话绑定已改变，请重试。" }
+                        dao.insert(entity(next))
+                        dao.bind(SessionProductionEntity(sessionId, id, true, t))
+                    }
+                    clearReads(sessionId)
+                    enqueue(id)
+                    next
                 }
             }
-            val next = ProductionSnapshot(p, (old?.revision ?: 0) + 1, ManifestSync.Pending)
-            ProductionManifestCodec.encode(p, next.revision)
-            database.withTransaction {
-                if (old == null) { dao.insert(entity(next)); dao.bind(SessionProductionEntity(sessionId, p.id, true, t)) }
-                else dao.update(entity(next, old).let { if (p.rootPath != old.rootPath) it.copy(manifestSha256 = null, manifestError = null) else it })
-            }
-            if (old == null) clearReads(sessionId)
-            enqueue(p.id)
-            snapshot(requireNotNull(dao.get(p.id)), ManifestSync.Pending)
         }
     }
 
     suspend fun attach(sessionId: String, manifestPath: String): ProductionSnapshot = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            ProductionManifestCodec.validatePath(manifestPath)
-            val bytes = files.read(sessionId, manifestPath) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。")
-            val manifest = ProductionManifestCodec.decode(bytes)
-            require(manifestPath == "${manifest.production.rootPath}/production.json") { "清单路径与项目根目录不一致，请检查路径。" }
-            val existing = dao.get(manifest.production.id)
-            database.withTransaction {
-                val bound = dao.otherActiveSession(manifest.production.id, sessionId)
-                require(bound == null) { "该项目已绑定到另一个会话，请先在原会话解除绑定。" }
-                if (existing == null) dao.insert(entity(ProductionSnapshot(manifest.production, manifest.revision, ManifestSync.InSync)).copy(manifestSha256 = ProductionManifestCodec.sha256(bytes)))
-                dao.bind(SessionProductionEntity(sessionId, manifest.production.id, true, now()))
+        ProductionManifestCodec.validatePath(manifestPath)
+        // 未知项目先按文件路径发现身份，再按项目锁顺序重新读取与核对。
+        val discovered = manifestPathMutex(sessionId, manifestPath).withLock {
+            ProductionManifestCodec.decode(files.read(sessionId, manifestPath) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。"))
+        }
+        projectFileMutex(discovered.production.id).withLock {
+            manifestPathMutex(sessionId, manifestPath).withLock {
+                val bytes = files.read(sessionId, manifestPath) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。")
+                val manifest = ProductionManifestCodec.decode(bytes)
+                require(manifest.production.id == discovered.production.id) { "清单已变化，请重新查看。" }
+                require(manifestPath == "${manifest.production.rootPath}/production.json") { "清单路径与项目根目录不一致，请检查路径。" }
+                val work = mutex.withLock {
+                    database.withTransaction {
+                        val bound = dao.otherActiveSession(manifest.production.id, sessionId)
+                        require(bound == null) { "该项目已绑定到另一个会话，请先在原会话解除绑定。" }
+                        if (dao.get(manifest.production.id) == null) dao.insert(entity(ProductionSnapshot(manifest.production, manifest.revision, ManifestSync.InSync)).copy(manifestSha256 = ProductionManifestCodec.sha256(bytes)))
+                        dao.bind(SessionProductionEntity(sessionId, manifest.production.id, true, now()))
+                    }
+                    clearReads(sessionId)
+                    work(sessionId, requireNotNull(dao.get(manifest.production.id)))
+                }
+                val result = inspectBytes(work, bytes)
+                mutex.withLock { record(work, result) }
             }
-            clearReads(sessionId)
-            inspect(sessionId, requireNotNull(dao.get(manifest.production.id)), allowMissingWrite = false)
         }
     }
     suspend fun unbind(sessionId: String) = withContext(Dispatchers.IO) { mutex.withLock { dao.unbind(sessionId); clearReads(sessionId) } }
 
     suspend fun update(sessionId: String, owner: String, operations: List<JsonObject>): ProductionSnapshot = withContext(Dispatchers.IO) {
+        val row = mutex.withLock { required(sessionId) }
+        val validMedia = mutableSetOf<String>()
+        val mediaPaths = mutableSetOf<String>()
+        fun collectPaths(element: JsonElement) {
+            when (element) {
+                is JsonObject -> element.forEach { (key, value) ->
+                    if (key == "path" && value is JsonPrimitive && value.isString) mediaPaths += value.content
+                    else collectPaths(value)
+                }
+                is JsonArray -> element.forEach(::collectPaths)
+                else -> Unit
+            }
+        }
+        operations.forEach { op ->
+            when ((op["op"] as? JsonPrimitive)?.content) {
+                "add_take", "add_asset_version" -> (op["path"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { mediaPaths += it }
+                "upsert_shot" -> op["inputs"]?.let(::collectPaths)
+                "upsert_asset" -> { op["looks"]?.let(::collectPaths); op["reference_voice"]?.let(::collectPaths) }
+            }
+        }
+        mediaPaths.forEach { path -> if (files.isImageOrVideo(sessionId, path)) validMedia += path }
         mutex.withLock {
-            val row = required(sessionId)
-            val validMedia = mutableSetOf<String>()
-            val mediaPaths = mutableSetOf<String>()
-            fun collectPaths(element: JsonElement) {
-                when (element) {
-                    is JsonObject -> element.forEach { (key, value) ->
-                        if (key == "path" && value is JsonPrimitive && value.isString) mediaPaths += value.content
-                        else collectPaths(value)
-                    }
-                    is JsonArray -> element.forEach(::collectPaths)
-                    else -> Unit
-                }
-            }
-            operations.forEach { op ->
-                when ((op["op"] as? JsonPrimitive)?.content) {
-                    "add_take", "add_asset_version" -> (op["path"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { mediaPaths += it }
-                    "upsert_shot" -> op["inputs"]?.let(::collectPaths)
-                    "upsert_asset" -> { op["looks"]?.let(::collectPaths); op["reference_voice"]?.let(::collectPaths) }
-                }
-            }
-            mediaPaths.forEach { path -> if (files.isImageOrVideo(sessionId, path)) validMedia += path }
             val seen = reads["$sessionId:$owner:${row.id}"]
             database.withTransaction {
                 val current = required(sessionId)
@@ -183,33 +228,51 @@ class ProductionRepository(
         }
     }
     override suspend fun resolveManifest(sessionId: String, resolution: ManifestResolution): ProductionSnapshot = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            var row = required(sessionId)
-            if (resolution == ManifestResolution.ADOPT_FILE) {
-                fun changed(): Nothing { externalObservations.remove(sessionId to row.id); throw IllegalArgumentException("清单已变化，请重新查看。") }
-                val observed = externalObservations[sessionId to row.id] ?: changed()
-                val bytes = try { files.read(sessionId, path(row)) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-                if (bytes == null || ProductionManifestCodec.sha256(bytes) != observed.hash || row.revision != observed.revision) changed()
-                val imported = try { ProductionManifestCodec.decode(bytes) } catch (_: IllegalArgumentException) { changed() }
-                val current = snapshot(row).production
-                if (observed.hash == row.manifestSha256 || imported.production == current && imported.revision == row.revision) changed()
-                require(imported.production.id == row.id && imported.production.rootPath == row.rootPath) { "清单项目身份或根目录不一致，无法采纳。" }
-                val prior = maxOf(row.revision, imported.revision)
-                require(prior < Long.MAX_VALUE) { "项目修订号已达到上限。" }
-                val result = ProductionSnapshot(imported.production.copy(updatedAt = now()), prior + 1, ManifestSync.Pending)
-                ProductionManifestCodec.encode(result.production, result.revision)
-                row = entity(result, row).copy(manifestSha256 = observed.hash, manifestError = null)
-                database.withTransaction { dao.update(row) }
-                clearReads(sessionId)
-                externalObservations.remove(sessionId to row.id)
+        val id = mutex.withLock { required(sessionId).id }
+        projectFileMutex(id).withLock {
+            val initial = mutex.withLock {
+                val row = required(sessionId)
+                require(row.id == id) { "会话绑定已改变，请重试。" }
+                if (resolution == ManifestResolution.OVERWRITE_FILE) {
+                    externalObservations.remove(sessionId to id)
+                    state(id, ManifestSync.Pending)
+                }
+                work(sessionId, row)
             }
-            write(sessionId, row, overwrite = resolution == ManifestResolution.OVERWRITE_FILE)
+            manifestPathMutex(sessionId, path(initial.row)).withLock {
+                val work = if (resolution == ManifestResolution.ADOPT_FILE) {
+                    val observed = mutex.withLock { externalObservations[sessionId to id] }
+                    val bytes = try { files.read(sessionId, path(initial.row)) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                    val imported = bytes?.let { try { ProductionManifestCodec.decode(it) } catch (_: IllegalArgumentException) { null } }
+                    mutex.withLock {
+                        database.withTransaction {
+                            val row = required(sessionId)
+                            fun changed(): Nothing { externalObservations.remove(sessionId to id); throw IllegalArgumentException("清单已变化，请重新查看。") }
+                            if (observed == null || bytes == null || imported == null || row.id != id || row.rootPath != initial.row.rootPath || row.revision != observed.revision || externalObservations[sessionId to id] != observed || ProductionManifestCodec.sha256(bytes) != observed.hash) changed()
+                            val current = snapshot(row).production
+                            if (observed.hash == row.manifestSha256 || imported.production == current && imported.revision == row.revision) changed()
+                            require(imported.production.id == row.id && imported.production.rootPath == row.rootPath) { "清单项目身份或根目录不一致，无法采纳。" }
+                            val prior = maxOf(row.revision, imported.revision)
+                            require(prior < Long.MAX_VALUE) { "项目修订号已达到上限。" }
+                            val result = ProductionSnapshot(imported.production.copy(updatedAt = now()), prior + 1, ManifestSync.Pending)
+                            val next = entity(result, row).copy(manifestSha256 = observed.hash, manifestError = null)
+                            val work = work(sessionId, next)
+                            dao.update(next)
+                            clearReads(sessionId)
+                            state(id, ManifestSync.Pending)
+                            work
+                        }
+                    }
+                } else initial
+                val result = writeFile(work, overwrite = resolution == ManifestResolution.OVERWRITE_FILE)
+                mutex.withLock { record(work, result) }
+            }
         }
     }
 
     /** 每个项目合并短时间内的提交，最长等待 500 毫秒，写入始终串行。 */
-    private fun enqueue(id: String) {
-        state(id, ManifestSync.Pending)
+    private fun enqueue(id: String, markPending: Boolean = true) {
+        if (markPending) state(id, ManifestSync.Pending)
         synchronized(queues) {
             val queue = queues.getOrPut(id) {
                 Channel<Unit>(Channel.CONFLATED).also { channel ->
@@ -223,10 +286,19 @@ class ProductionRepository(
                                         delay(100)
                                         again = channel.tryReceive().isSuccess
                                     } while (again && System.nanoTime() < deadline)
-                                    mutex.withLock {
-                                        val row = dao.get(id)
-                                        val session = dao.activeSession(id)
-                                        if (row != null && session != null) write(session, row)
+                                    projectFileMutex(id).withLock {
+                                        val work = mutex.withLock {
+                                            val row = dao.get(id)
+                                            val session = dao.activeSession(id)
+                                            if (row != null && session != null) {
+                                                state(id, ManifestSync.Pending)
+                                                work(session, row)
+                                            } else null
+                                        }
+                                        if (work != null) manifestPathMutex(work.sessionId, path(work.row)).withLock {
+                                            val result = writeFile(work)
+                                            mutex.withLock { record(work, result) }
+                                        }
                                     }
                                 } catch (e: CancellationException) { throw e } catch (e: Exception) {
                                     state(id, ManifestSync.WriteFailed(message(e)))
@@ -247,50 +319,94 @@ class ProductionRepository(
         }
     }
     fun close() { scope.cancel() }
-    companion object { private val sharedMutex = Mutex() }
+    companion object {
+        private val sharedMutex = Mutex()
+        private val projectFileMutexes = ConcurrentHashMap<String, Mutex>()
+        private val manifestPathMutexes = ConcurrentHashMap<Pair<String, String>, Mutex>()
+        private fun projectFileMutex(id: String) = projectFileMutexes.computeIfAbsent(id) { Mutex() }
+        private fun manifestPathMutex(sessionId: String, path: String) = manifestPathMutexes.computeIfAbsent(sessionId to path) { Mutex() }
+    }
 
-    private suspend fun inspect(sessionId: String, row: ProductionEntity, allowMissingWrite: Boolean = true): ProductionSnapshot {
-        externalObservations.remove(sessionId to row.id)
-        try {
-            val bytes = files.read(sessionId, path(row))
-            if (bytes == null) return if (allowMissingWrite) write(sessionId, row) else snapshot(row, ManifestSync.ExternalChange(null)).also { state(row.id, it.manifest) }
-            val hash = ProductionManifestCodec.sha256(bytes)
-            val file = try { ProductionManifestCodec.decode(bytes) } catch (e: IllegalArgumentException) {
-                return snapshot(row, ManifestSync.Invalid(message(e))).also { state(row.id, it.manifest) }
+    private data class ManifestWork(val sessionId: String, val row: ProductionEntity, val bytes: ByteArray)
+    private data class ManifestResult(
+        val sync: ManifestSync,
+        val hash: String? = null,
+        val externalHash: String? = null,
+        val retry: Boolean = false,
+    )
+    // 调用方持项目文件锁后短暂持 sharedMutex；编码与数据库读取属于同一快照。
+    private fun work(sessionId: String, row: ProductionEntity) = ManifestWork(sessionId, row, ProductionManifestCodec.encode(snapshot(row).production, row.revision))
+
+    private suspend fun inspectFile(work: ManifestWork): ManifestResult = try {
+        inspectBytes(work, files.read(work.sessionId, path(work.row)))
+    } catch (e: CancellationException) { throw e } catch (e: Exception) {
+        ManifestResult(ManifestSync.WriteFailed(message(e)))
+    }
+
+    private fun inspectBytes(work: ManifestWork, bytes: ByteArray?): ManifestResult {
+        val row = work.row
+        fun needsWrite() = ManifestResult(row.manifestError?.let { ManifestSync.WriteFailed(it) } ?: ManifestSync.Pending, retry = true)
+        if (bytes == null) return needsWrite()
+        val hash = ProductionManifestCodec.sha256(bytes)
+        val file = try { ProductionManifestCodec.decode(bytes) } catch (e: IllegalArgumentException) {
+            return ManifestResult(ManifestSync.Invalid(message(e)))
+        }
+        val db = snapshot(row)
+        if (hash == row.manifestSha256 && (file.production != db.production || file.revision != row.revision)) return needsWrite()
+        return if (file.production == db.production && file.revision == row.revision) ManifestResult(ManifestSync.InSync, hash = hash)
+        else ManifestResult(ManifestSync.ExternalChange(file.revision), externalHash = hash)
+    }
+
+    /** 仅持项目与路径文件锁；工作区等待和条件写入均不占用 sharedMutex。 */
+    private suspend fun writeFile(work: ManifestWork, overwrite: Boolean = false): ManifestResult {
+        var expectedHash: String? = null
+        var writing = false
+        return try {
+            val current = files.read(work.sessionId, path(work.row))
+            expectedHash = current?.let(ProductionManifestCodec::sha256)
+            if (!overwrite && current != null && expectedHash != work.row.manifestSha256) {
+                val parsed = try { ProductionManifestCodec.decode(current) } catch (e: IllegalArgumentException) {
+                    return ManifestResult(ManifestSync.Invalid(message(e)))
+                }
+                return ManifestResult(ManifestSync.ExternalChange(parsed.revision), externalHash = expectedHash)
             }
-            val db = snapshot(row)
-            if (hash == row.manifestSha256 && (file.production != db.production || file.revision != row.revision)) return write(sessionId, row)
-            val sync = if (file.production == db.production && file.revision == row.revision) ManifestSync.InSync else ManifestSync.ExternalChange(file.revision)
-            if (sync is ManifestSync.ExternalChange) externalObservations[sessionId to row.id] = ExternalObservation(hash, row.revision) else externalObservations.remove(sessionId to row.id)
-            if (sync == ManifestSync.InSync && (row.manifestSha256 != hash || row.manifestError != null)) database.withTransaction { dao.update(row.copy(manifestSha256 = hash, manifestError = null)) }
-            state(row.id, sync)
-            return snapshot(row, sync)
+            if (!overwrite && current != null && current.contentEquals(work.bytes)) {
+                return ManifestResult(ManifestSync.InSync, hash = expectedHash)
+            }
+            writing = true
+            files.write(work.sessionId, path(work.row), work.bytes, expectedHash)
+            ManifestResult(ManifestSync.InSync, hash = ProductionManifestCodec.sha256(work.bytes))
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            val sync = ManifestSync.WriteFailed(message(e)); state(row.id, sync); return snapshot(row, sync)
+            // 条件写入失败后，仅当文件确实变化才排队重新判定，普通 IO 错误留待用户重试。
+            val changed = if (writing) try {
+                files.read(work.sessionId, path(work.row))?.let(ProductionManifestCodec::sha256) != expectedHash
+            } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false } else false
+            ManifestResult(ManifestSync.WriteFailed(message(e)), retry = changed)
         }
     }
-    private suspend fun write(sessionId: String, row: ProductionEntity, overwrite: Boolean = false): ProductionSnapshot {
-        externalObservations.remove(sessionId to row.id)
-        state(row.id, ManifestSync.Pending)
-        return try {
-            val current = files.read(sessionId, path(row))
-            val currentHash = current?.let(ProductionManifestCodec::sha256)
-            if (!overwrite && current != null && currentHash != row.manifestSha256) {
-                val parsed = try { ProductionManifestCodec.decode(current) } catch (e: IllegalArgumentException) {
-                    return snapshot(row, ManifestSync.Invalid(message(e))).also { state(row.id, it.manifest) }
-                }
-                externalObservations[sessionId to row.id] = ExternalObservation(requireNotNull(currentHash), row.revision)
-                return snapshot(row, ManifestSync.ExternalChange(parsed.revision)).also { state(row.id, it.manifest) }
-            }
-            val bytes = ProductionManifestCodec.encode(snapshot(row).production, row.revision)
-            files.write(sessionId, path(row), bytes, currentHash)
-            database.withTransaction { dao.update(row.copy(manifestSha256 = ProductionManifestCodec.sha256(bytes), manifestError = null)) }
-            state(row.id, ManifestSync.InSync)
-            snapshot(row, ManifestSync.InSync)
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            val reason = message(e)
-            database.withTransaction { dao.update(row.copy(manifestError = reason)) }
-            val failed = ManifestSync.WriteFailed(reason); state(row.id, failed); snapshot(row, failed)
+
+    /** 持 sharedMutex，以事务中的当前行合并清单字段，保留并发提交的业务快照。 */
+    private suspend fun record(work: ManifestWork, result: ManifestResult): ProductionSnapshot = database.withTransaction {
+        val current = dao.get(work.row.id) ?: return@withTransaction snapshot(work.row)
+        val bound = dao.getForSession(work.sessionId)
+        if (bound?.id != current.id || current.rootPath != work.row.rootPath) {
+            if (dao.activeSession(current.id) != null) enqueue(current.id)
+            return@withTransaction snapshot(current)
         }
+        externalObservations.remove(work.sessionId to current.id)
+        val updated = when (val sync = result.sync) {
+            ManifestSync.InSync -> current.copy(manifestSha256 = result.hash, manifestError = null)
+            is ManifestSync.WriteFailed -> current.copy(manifestError = sync.reason)
+            else -> current
+        }
+        if (updated != current) dao.update(updated)
+        val stale = current.revision != work.row.revision
+        val sync = if (stale) ManifestSync.Pending else result.sync
+        if (sync is ManifestSync.ExternalChange && result.externalHash != null) {
+            externalObservations[work.sessionId to current.id] = ExternalObservation(result.externalHash, current.revision)
+        }
+        state(current.id, sync)
+        if (stale || result.retry) enqueue(current.id, markPending = sync !is ManifestSync.WriteFailed)
+        snapshot(updated, sync)
     }
 }

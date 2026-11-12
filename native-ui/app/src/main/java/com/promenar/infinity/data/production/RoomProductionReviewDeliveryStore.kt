@@ -34,7 +34,7 @@ class RoomProductionReviewDeliveryStore(
                 throw failure
             }
         } else {
-            // 先等候清单写入结束；无绑定项目的回执不访问已经删除的工作区。
+            // 无绑定项目仅核对数据库；回执不等待清单写入，也不访问已经删除的工作区。
             repository.get(sessionId)
             val next = database.withTransaction {
                 if (dao.activeSession(productionId) != null) throw ProductionRevisionConflictException()
@@ -44,7 +44,7 @@ class RoomProductionReviewDeliveryStore(
                 dao.update(row.copy(revision = updated.revision, snapshot = json.encodeToString(updated.production), updatedAt = updated.production.updatedAt))
                 updated
             } ?: return@withContext
-            // 提交后再排空仓库写入并复读，旧清单 writer 的整行更新不能获得成功回执。
+            // 复读数据库核对回执结果；清单同步仅合并清单字段，保留已提交的业务修订。
             repository.get(sessionId)
             val committed = dao.get(productionId) ?: return@withContext
             val production = json.decodeFromString<Production>(committed.snapshot)

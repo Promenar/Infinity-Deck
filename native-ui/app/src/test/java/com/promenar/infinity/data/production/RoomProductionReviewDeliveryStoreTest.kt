@@ -66,16 +66,18 @@ class RoomProductionReviewDeliveryStoreTest {
         assertThat(store.getById("missing")).isNull()
     }
 
-    @Test fun `清单写入持有旧快照时删除会话回执等待写入结束再提交`() = runBlocking {
+    @Test fun `清单写入持有旧快照时删除会话回执立即提交且不被旧快照覆盖`() = runBlocking {
         holdQueuedWrite = true
         val queued = queue()
         withTimeout(5000) { writing.await() }
         db.sessionDao().deleteById("s")
         val receipt = async { store.apply("s", "p", queued.revision, ProductionUserAction.MarkReviewSent(1, 20)) }
-        kotlinx.coroutines.yield()
-        assertThat(receipt.isCompleted).isFalse()
+        withTimeout(2000) { receipt.await() }
+        assertThat(requireNotNull(store.getById("p")).production.nextReviewRound).isEqualTo(2)
         release.complete(Unit)
-        withTimeout(5000) { receipt.await() }
+        // 重建测试会话后等待同路径与同项目文件锁，确保旧写入的结果已处理。
+        db.sessionDao().insert(SessionEntity("s", "a", createdAt = 1, updatedAt = 1))
+        withTimeout(5000) { repository.attach("s", "productions/p/production.json") }
         val sent = requireNotNull(store.getById("p"))
         assertThat(sent.production.nextReviewRound).isEqualTo(2)
         assertThat(sent.production.reviewRounds.single().entries.single().note).isEqualTo("审核意见")

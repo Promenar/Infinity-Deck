@@ -10,6 +10,8 @@ import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.repository.ProductionRepository
 import com.promenar.infinity.domain.mediagen.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
 import org.junit.*
 import org.junit.runner.RunWith
@@ -54,7 +56,8 @@ class RepositoryShotGenerationStoreTest {
         Assert.assertEquals("提交时文本", shot.takes.single().planSnapshot?.prompt)
     }
     @Test fun `解绑时保留任务且重新绑定后可登记`() = runBlocking {
-        repository.get("s")
+        // 清单由后台同步写出；等写盘完成后再解绑。
+        withTimeout(5000) { while (files.bytes["productions/p/production.json"] == null) delay(20) }
         repository.unbind("s")
         Assert.assertFalse(store.register(task()))
         repository.attach("s", "productions/p/production.json")

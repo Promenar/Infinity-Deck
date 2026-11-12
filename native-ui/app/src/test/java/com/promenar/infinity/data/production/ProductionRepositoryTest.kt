@@ -7,14 +7,22 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.entity.AgentEntity
+import com.promenar.infinity.data.local.db.entity.ProductionEntity
+import com.promenar.infinity.data.local.db.entity.SessionProductionEntity
 import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.repository.ProductionRepository
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -51,7 +59,7 @@ class ProductionRepositoryTest {
     @Test fun `定义解绑重新绑定与曾经绑定`() = runBlocking {
         val created = repo.define("s", "影片", ProductionKind.FILM)
         assertThat(created.manifest).isEqualTo(ManifestSync.Pending)
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.InSync)
+        assertThat(awaitInSync().manifest).isEqualTo(ManifestSync.InSync)
         assertThat(files.bytes).isNotEmpty()
         repo.unbind("s")
         assertThat(repo.observeEverBound("s").first()).isTrue()
@@ -62,21 +70,23 @@ class ProductionRepositoryTest {
     @Test fun `外部变化采纳与覆盖`() = runBlocking {
         val initial = repo.define("s", "影片", ProductionKind.FILM)
         val path = "productions/project/production.json"
-        repo.get("s")
+        awaitInSync()
         files.bytes["s" to path] = ProductionManifestCodec.encode(initial.production.copy(title = "外部"), 5)
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.ExternalChange(5))
+        assertThat(awaitManifest { it is ManifestSync.ExternalChange }.manifest).isEqualTo(ManifestSync.ExternalChange(5))
         val adopted = repo.resolveManifest("s", ManifestResolution.ADOPT_FILE)
         assertThat(adopted.production.title).isEqualTo("外部")
         assertThat(adopted.revision).isEqualTo(6)
         files.bytes["s" to path] = "invalid".toByteArray()
-        assertThat(repo.get("s")!!.manifest).isInstanceOf(ManifestSync.Invalid::class.java)
+        assertThat(awaitManifest { it is ManifestSync.Invalid }.manifest).isInstanceOf(ManifestSync.Invalid::class.java)
         assertThat(repo.resolveManifest("s", ManifestResolution.OVERWRITE_FILE).manifest).isEqualTo(ManifestSync.InSync)
     }
     @Test fun `写入失败记录错误并能重试`() = runBlocking {
         files.failWrite = true
         val result = repo.define("s", "影片", ProductionKind.FILM)
         assertThat(result.manifest).isEqualTo(ManifestSync.Pending)
-        assertThat(repo.get("s")!!.manifest).isInstanceOf(ManifestSync.WriteFailed::class.java)
+        withTimeout(5000) { while (db.productionDao().get("project")?.manifestError == null) delay(20) }
+        val failed = withTimeout(5000) { repo.observe("s").first { it?.manifest is ManifestSync.WriteFailed } }
+        assertThat(failed!!.manifest).isInstanceOf(ManifestSync.WriteFailed::class.java)
         assertThat(db.productionDao().get("project")!!.manifestError).isNotNull()
         files.failWrite = false
         assertThat(repo.resolveManifest("s", ManifestResolution.OVERWRITE_FILE).manifest).isEqualTo(ManifestSync.InSync)
@@ -89,7 +99,7 @@ class ProductionRepositoryTest {
     }
     @Test fun `附加同一项目时拒绝其他活动会话`() = runBlocking {
         repo.define("s", "影片", ProductionKind.FILM)
-        repo.get("s")
+        awaitInSync()
         val path = "productions/project/production.json"
         files.bytes["s2" to path] = files.bytes.getValue("s" to path).copyOf()
         try { repo.attach("s2", path); org.junit.Assert.fail("应拒绝绑定") } catch (e: IllegalArgumentException) {
@@ -100,8 +110,9 @@ class ProductionRepositoryTest {
     }
     @Test fun `缺失清单时重写且过期用户操作被拒绝`() = runBlocking {
         val created = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
         files.bytes.clear()
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.InSync)
+        assertThat(awaitInSync().manifest).isEqualTo(ManifestSync.InSync)
         assertThat(files.bytes).isNotEmpty()
         val action = ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.LOCKED)
         repo.apply("s", created.revision, action)
@@ -142,6 +153,187 @@ class ProductionRepositoryTest {
         assertThat(file.revision).isEqualTo(3)
         assertThat(file.production.stages.first().status).isEqualTo(StageStatus.LOCKED)
     }
+    @Test fun `清单写入挂起时后续提交与读取立即完成且最终同步最新修订`() = runBlocking {
+        val initial = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val gate = files.holdNextWrite()
+        try {
+            val first = repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
+            withTimeout(5000) { gate.started.await() }
+            val latest = withTimeout(2000) {
+                repo.apply("s", first.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.LOCKED))
+            }
+            val read = withTimeout(2000) { requireNotNull(repo.get("s")) }
+            assertThat(read.revision).isEqualTo(latest.revision)
+            assertThat(read.production).isEqualTo(latest.production)
+            assertThat(read.manifest).isEqualTo(ManifestSync.Pending)
+            gate.release.complete(Unit)
+            val settled = awaitInSync()
+            val bytes = files.bytes.getValue("s" to "productions/project/production.json")
+            val file = ProductionManifestCodec.decode(bytes)
+            assertThat(file.revision).isEqualTo(latest.revision)
+            assertThat(file.production).isEqualTo(latest.production)
+            assertThat(settled.revision).isEqualTo(latest.revision)
+            assertThat(db.productionDao().get("project")!!.manifestSha256).isEqualTo(ProductionManifestCodec.sha256(bytes))
+            assertThat(db.productionDao().get("project")!!.manifestError).isNull()
+        } finally { gate.release.complete(Unit) }
+    }
+    @Test fun `清单挂起时按项目审批与其他会话数据库操作不等待文件锁`() = runBlocking {
+        val initial = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val other = ProductionRepository(db, files, now = { 10 }, newId = { "other" })
+        val gate = files.holdNextWrite()
+        try {
+            val first = repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
+            withTimeout(5000) { gate.started.await() }
+            val latest = withTimeout(2000) {
+                val latest = repo.applyForProduction("s", "project", first.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.LOCKED))
+                assertThat(other.get("s")!!.revision).isEqualTo(latest.revision)
+                val second = other.define("s2", "其他", ProductionKind.FILM)
+                assertThat(other.get("s2")!!.production.id).isEqualTo(second.production.id)
+                other.unbind("s2")
+                assertThat(other.get("s2")).isNull()
+                latest
+            }
+            val watching = CompletableDeferred<Unit>()
+            val observed = async {
+                other.observe("s").onEach { if (it?.manifest == ManifestSync.Pending) watching.complete(Unit) }
+                    .first { it?.manifest == ManifestSync.InSync && it.revision == latest.revision }
+            }
+            withTimeout(2000) { watching.await() }
+            gate.release.complete(Unit)
+            assertThat(withTimeout(5000) { observed.await() }!!.production).isEqualTo(latest.production)
+        } finally { gate.release.complete(Unit); other.close() }
+    }
+    @Test fun `写入挂起期间外部改动在条件写失败后被识别且不覆盖`() = runBlocking {
+        val initial = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val watching = CompletableDeferred<Unit>()
+        val observed = async {
+            repo.observe("s").onEach { if (it?.manifest == ManifestSync.InSync) watching.complete(Unit) }
+                .first { it?.manifest == ManifestSync.ExternalChange(50) }
+        }
+        withTimeout(2000) { watching.await() }
+        val gate = files.holdNextWrite()
+        try {
+            repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
+            withTimeout(5000) { gate.started.await() }
+            val external = ProductionManifestCodec.encode(initial.production.copy(title = "外部修改"), 50)
+            files.bytes["s" to "productions/project/production.json"] = external
+            gate.release.complete(Unit)
+            assertThat(withTimeout(5000) { observed.await() }!!.manifest).isEqualTo(ManifestSync.ExternalChange(50))
+            assertThat(files.bytes.getValue("s" to "productions/project/production.json")).isEqualTo(external)
+            assertThat(db.productionDao().get("project")!!.revision).isEqualTo(initial.revision + 1)
+            val adopted = repo.resolveManifest("s", ManifestResolution.ADOPT_FILE)
+            assertThat(adopted.production.title).isEqualTo("外部修改")
+        } finally { gate.release.complete(Unit) }
+    }
+    @Test fun `读取缺失清单只排队修复且不等待工作区写入`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val gate = files.holdNextWrite()
+        files.bytes.clear()
+        try {
+            val read = withTimeout(2000) { requireNotNull(repo.get("s")) }
+            assertThat(read.manifest).isEqualTo(ManifestSync.Pending)
+            withTimeout(5000) { gate.started.await() }
+            assertThat(withTimeout(2000) { repo.observe("s").first() }!!.revision).isEqualTo(read.revision)
+        } finally { gate.release.complete(Unit) }
+        awaitInSync()
+        Unit
+    }
+    @Test fun `文件读取挂起时数据库提交与第二次读取不被锁住`() = runBlocking {
+        val initial = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val gate = files.holdNextRead("manifest-read")
+        val reading = async(CoroutineName("manifest-read")) {
+            var result = repo.get("s")
+            while (!gate.started.isCompleted) {
+                delay(20)
+                result = repo.get("s")
+            }
+            result
+        }
+        try {
+            withTimeout(5000) { gate.started.await() }
+            val latest = withTimeout(2000) {
+                repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
+            }
+            assertThat(withTimeout(2000) { repo.get("s") }!!.revision).isEqualTo(latest.revision)
+            gate.release.complete(Unit)
+            assertThat(withTimeout(2000) { reading.await() }!!.revision).isEqualTo(latest.revision)
+            assertThat(awaitInSync().revision).isEqualTo(latest.revision)
+        } finally { gate.release.complete(Unit) }
+    }
+    @Test fun `显式覆盖写入挂起时审批仍可提交且旧结果不会覆盖修订`() = runBlocking {
+        val initial = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val gate = files.holdNextWrite()
+        val resolving = async { repo.resolveManifest("s", ManifestResolution.OVERWRITE_FILE) }
+        try {
+            withTimeout(5000) { gate.started.await() }
+            val latest = withTimeout(2000) {
+                repo.applyForProduction("s", "project", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
+            }
+            assertThat(withTimeout(2000) { repo.get("s") }!!.revision).isEqualTo(latest.revision)
+            gate.release.complete(Unit)
+            withTimeout(5000) { resolving.await() }
+            val settled = awaitInSync()
+            val bytes = files.bytes.getValue("s" to "productions/project/production.json")
+            assertThat(ProductionManifestCodec.decode(bytes).revision).isEqualTo(latest.revision)
+            assertThat(settled.production).isEqualTo(latest.production)
+            assertThat(db.productionDao().get("project")!!.manifestSha256).isEqualTo(ProductionManifestCodec.sha256(bytes))
+        } finally { gate.release.complete(Unit) }
+    }
+    @Test fun `显式覆盖挂起期间既有观察流发出待同步状态`() = runBlocking {
+        // 直接建立已同步夹具，避免背景队列的 Pending 掩盖显式覆盖的状态通知。
+        val production = Production("project", "影片", ProductionKind.FILM, "productions/project", createdAt = 1, updatedAt = 1)
+        val bytes = ProductionManifestCodec.encode(production, 1)
+        db.productionDao().insert(ProductionEntity("project", production.title, production.rootPath, 1,
+            Json { encodeDefaults = true }.encodeToString(production), ProductionManifestCodec.sha256(bytes), null, 1, 1))
+        db.productionDao().bind(SessionProductionEntity("s", "project", true, 1))
+        files.bytes["s" to "productions/project/production.json"] = bytes
+        val watching = CompletableDeferred<Unit>()
+        val pending = async {
+            repo.observe("s").onEach { if (it?.manifest == ManifestSync.InSync) watching.complete(Unit) }
+                .first { watching.isCompleted && it?.manifest == ManifestSync.Pending }
+        }
+        withTimeout(2000) { watching.await() }
+        val gate = files.holdNextWrite()
+        val resolving = async { repo.resolveManifest("s", ManifestResolution.OVERWRITE_FILE) }
+        try {
+            withTimeout(5000) { gate.started.await() }
+            assertThat(withTimeout(2000) { pending.await() }!!.manifest).isEqualTo(ManifestSync.Pending)
+            gate.release.complete(Unit)
+            assertThat(withTimeout(5000) { resolving.await() }.manifest).isEqualTo(ManifestSync.InSync)
+        } finally { gate.release.complete(Unit) }
+    }
+    @Test fun `写入期间重定义根目录不会把旧文件哈希记录到新路径`() = runBlocking {
+        val initial = repo.define("s", "影片", ProductionKind.FILM)
+        awaitInSync()
+        val gate = files.holdNextWrite()
+        try {
+            repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
+            withTimeout(5000) { gate.started.await() }
+            val latest = withTimeout(2000) { repo.define("s", "新影片", ProductionKind.FILM, rootPath = "productions/new") }
+            assertThat(db.productionDao().get("project")!!.manifestSha256).isNull()
+            gate.release.complete(Unit)
+            val settled = awaitInSync()
+            val bytes = files.bytes.getValue("s" to "productions/new/production.json")
+            assertThat(settled.revision).isEqualTo(latest.revision)
+            assertThat(ProductionManifestCodec.decode(bytes).production).isEqualTo(latest.production)
+            assertThat(db.productionDao().get("project")!!.manifestSha256).isEqualTo(ProductionManifestCodec.sha256(bytes))
+        } finally { gate.release.complete(Unit) }
+    }
+    private suspend fun awaitInSync(sessionId: String = "s") = awaitManifest(sessionId) { it == ManifestSync.InSync }
+    private suspend fun awaitManifest(sessionId: String = "s", matches: (ManifestSync) -> Boolean): ProductionSnapshot = withTimeout(5000) {
+        var result = requireNotNull(repo.get(sessionId))
+        while (!matches(result.manifest)) {
+            delay(20)
+            result = requireNotNull(repo.get(sessionId))
+        }
+        result
+    }
     @Test fun `登记候选必须由工作区识别为媒体`() = runBlocking {
         repo.define("s", "影片", ProductionKind.FILM)
         fun operations(raw: String) = Json.parseToJsonElement(raw).jsonArray.map { it.jsonObject }
@@ -159,11 +351,11 @@ class ProductionRepositoryTest {
     }
     @Test fun `清单变化后拒绝采纳旧判定`() = runBlocking {
         val created = repo.define("s", "影片", ProductionKind.FILM)
-        repo.get("s")
+        awaitInSync()
         val path = "productions/project/production.json"
         val first = ProductionManifestCodec.encode(created.production.copy(title = "外部一"), 5)
         files.bytes["s" to path] = first
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.ExternalChange(5))
+        assertThat(awaitManifest { it is ManifestSync.ExternalChange }.manifest).isEqualTo(ManifestSync.ExternalChange(5))
         files.bytes["s" to path] = ProductionManifestCodec.encode(created.production.copy(title = "外部二"), 6)
         try { repo.resolveManifest("s", ManifestResolution.ADOPT_FILE); org.junit.Assert.fail("应拒绝采纳") } catch (e: IllegalArgumentException) { assertThat(e.message).isEqualTo("清单已变化，请重新查看。") }
         files.bytes["s" to path] = first
@@ -177,7 +369,7 @@ class ProductionRepositoryTest {
     }
     @Test fun `修改根目录清除旧哈希`() = runBlocking {
         repo.define("s", "影片", ProductionKind.FILM)
-        repo.get("s")
+        awaitInSync()
         assertThat(db.productionDao().get("project")!!.manifestSha256).isNotNull()
         files.failWrite = true
         repo.define("s", "影片", ProductionKind.FILM, rootPath = "productions/new")
@@ -188,20 +380,21 @@ class ProductionRepositoryTest {
         val initial = repo.define("s", "影片", ProductionKind.FILM)
         withTimeout(5000) { while (db.productionDao().get("project")?.manifestError == null) delay(20) }
         assertThat(db.productionDao().get("project")!!.manifestError).isEqualTo("写入失败")
-        assertThat(repo.observe("s").first()!!.manifest).isInstanceOf(ManifestSync.WriteFailed::class.java)
+        val failed = withTimeout(5000) { repo.observe("s").first { it?.manifest is ManifestSync.WriteFailed } }
+        assertThat(failed!!.manifest).isInstanceOf(ManifestSync.WriteFailed::class.java)
         files.failWrite = false
         repo.apply("s", initial.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.IN_PROGRESS))
         withTimeout(5000) { while (files.bytes.isEmpty()) delay(20) }
         assertThat(files.bytes).isNotEmpty()
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.InSync)
+        assertThat(awaitInSync().manifest).isEqualTo(ManifestSync.InSync)
     }
     @Test fun `采纳文件清除已读取修订`() = runBlocking {
         val initial = repo.define("s", "影片", ProductionKind.FILM)
-        repo.get("s")
+        awaitInSync()
         repo.recordContextRead("s", "m", 5, "project")
         val external = initial.production.copy(stages = ProductionStage.entries.map { StageState(it, changedBy = ChangeSource.USER, changedAt = 5) })
         files.bytes["s" to "productions/project/production.json"] = ProductionManifestCodec.encode(external, 5)
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.ExternalChange(5))
+        assertThat(awaitManifest { it is ManifestSync.ExternalChange }.manifest).isEqualTo(ManifestSync.ExternalChange(5))
         repo.resolveManifest("s", ManifestResolution.ADOPT_FILE)
         val ops = Json.parseToJsonElement("""[{"op":"set_stage","stage":"script","status":"in_progress"}]""").jsonArray.map { it.jsonObject }
         try { repo.update("s", "m", ops); org.junit.Assert.fail("采纳后必须重新读取") } catch (e: IllegalArgumentException) { assertThat(e.message).contains("production_get") }
@@ -216,16 +409,36 @@ class ProductionRepositoryTest {
     }
     @Test fun `未判定为外部变化时不能采纳`() = runBlocking {
         repo.define("s", "影片", ProductionKind.FILM)
-        assertThat(repo.get("s")!!.manifest).isEqualTo(ManifestSync.InSync)
+        assertThat(awaitInSync().manifest).isEqualTo(ManifestSync.InSync)
         try { repo.resolveManifest("s", ManifestResolution.ADOPT_FILE); org.junit.Assert.fail("应拒绝采纳") } catch (e: IllegalArgumentException) { assertThat(e.message).isEqualTo("清单已变化，请重新查看。") }
     }
     private class FakeFiles : ProductionWorkspaceFiles {
         val bytes = ConcurrentHashMap<Pair<String, String>, ByteArray>()
         val writes = AtomicInteger()
         val mediaPaths = ConcurrentHashMap.newKeySet<Pair<String, String>>()
+        class FileGate {
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+        }
+        @Volatile private var writeGate: FileGate? = null
+        @Volatile private var readGate: Pair<String, FileGate>? = null
+        fun holdNextRead(owner: String) = FileGate().also { readGate = owner to it }
+        fun holdNextWrite() = FileGate().also { writeGate = it }
         @Volatile var failWrite = false
-        override suspend fun read(sessionId: String, path: String) = bytes[sessionId to path]
+        override suspend fun read(sessionId: String, path: String): ByteArray? {
+            readGate?.takeIf { it.first == currentCoroutineContext()[CoroutineName]?.name }?.second?.let { gate ->
+                readGate = null
+                gate.started.complete(Unit)
+                gate.release.await()
+            }
+            return bytes[sessionId to path]
+        }
         override suspend fun write(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?) {
+            writeGate?.let { gate ->
+                writeGate = null
+                gate.started.complete(Unit)
+                gate.release.await()
+            }
             check(!failWrite) { "写入失败" }
             check(this.bytes[sessionId to path]?.let(ProductionManifestCodec::sha256) == expectedSha256) { "文件已改变" }
             this.bytes[sessionId to path] = bytes
