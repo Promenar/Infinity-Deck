@@ -40,9 +40,9 @@ internal object ProductionPhaseTwoSamples {
         PlannedInput(null, "林晚 · 参考语音", "原生对白", InputKind.AUDIO, InputRole.REFERENCE_VOICE, "productions/harbor/voices/char-linwan.wav"),
     ), listOf(PlannedInput(4, "怀表链", "参考位", InputKind.IMAGE, InputRole.REFERENCE, "productions/harbor/assets/detail.png")), "图1中的林晚停步回头。镜头平视缓推，目光警觉。低声说：你听见了吗？", true, PromptFormat.SEEDANCE, Money(BigDecimal("1.20"), "CNY"), null, listOf("老周的参考包待审"))
     val tasks = listOf(
-        MediaTask("approve", MediaGenerationRequest("seedance", GenerationMode.REFERENCE, "海雾", emptyList(), "harbor:SC01-02"), Money(BigDecimal("1.20"), "CNY")),
-        MediaTask("run", MediaGenerationRequest("h3", GenerationMode.REFERENCE, "推门", emptyList(), "harbor:SC02-01"), Money(BigDecimal.ZERO, "CNY"), state = MediaTaskState.RUNNING, progress = 0.42f),
-        MediaTask("failed", MediaGenerationRequest("h3", GenerationMode.REFERENCE, "信封", emptyList(), "harbor:SC01-03"), Money(BigDecimal.ZERO, "CNY"), state = MediaTaskState.FAILED, error = "主机暂不可用"),
+        MediaTask("approve", MediaGenerationRequest("seedance", GenerationMode.REFERENCE, "海雾", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC01-02").encode()), Money(BigDecimal("1.20"), "CNY")),
+        MediaTask("run", MediaGenerationRequest("h3", GenerationMode.REFERENCE, "推门", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC02-01").encode()), Money(BigDecimal.ZERO, "CNY"), state = MediaTaskState.RUNNING, progress = 0.42f),
+        MediaTask("failed", MediaGenerationRequest("h3", GenerationMode.REFERENCE, "信封", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC01-03").encode()), Money(BigDecimal.ZERO, "CNY"), state = MediaTaskState.FAILED, error = "主机暂不可用"),
     )
     val services = ProductionPanelServices(
         planner = object : ShotGenerationPlanner {

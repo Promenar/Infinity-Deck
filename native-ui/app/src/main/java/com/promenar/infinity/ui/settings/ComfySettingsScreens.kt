@@ -17,6 +17,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.mediagen.comfy.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
@@ -205,7 +206,7 @@ internal fun ComfyHostFormScreenContent(
                     label = { Text(stringResource(if (draft.authKind == ComfyAuthKind.BEARER) R.string.media_settings_token else R.string.media_settings_password)) },
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = com.promenar.infinity.ui.common.SecretKeyboardOptions,
                     singleLine = true, enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp))
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).excludeFromAutofill())
             }
             if (submitted && error != null) MediaNotice(formErrorLabel(error), error = true)
             MediaAction(stringResource(R.string.media_settings_save), {
