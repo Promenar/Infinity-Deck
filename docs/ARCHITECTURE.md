@@ -125,6 +125,14 @@ graph TD
 
 - **资料索引保活（background/indexing）**: 应用作用域控制器在进程可见且存在活动文档任务时尝试启动独立的 `dataSync` 前台服务，服务观察队列快照并以独立渠道展示分块进度；失败、取消或完成的任务与对话类任务不维持服务。服务失败或超时不取消索引，后续可见期可再次尝试；侧载版保活期间持有定时续期的 CPU 唤醒锁，Play 版仅在应用可见时持有。Android 15 起 `dataSync` 时限由应用的同类型服务共享。
 
+### 制作与媒体生成（2026-11 第 2 期）
+
+- **制作数据（data/production）**: 项目清单分七个阶段（剧本、视觉开发、分镜、动态预演、出片、剪辑、成片，阶段 id `generation` 显示为“出片”）。镜头含机位、运镜、画面、表演、对白、声音、转场、出场角色（造型与参考位）与生成规划（`channelId`、`mode`、`prompt`、`promptUserEdited`、输入清单），候选保存 `TakePlanSnapshot` 规划快照。场锁定后，用户或智能体对镜头内容的修改生成 `ShotChangeRequest`，经 `ProductionUserAction.ResolveChange` 批准才生效；生成规划可直接调整。`ProductionRules.generationRejection` 在非试验项目中拒绝未锁定场的生成。`budgetCents` 以人民币分计。
+- **镜头生成规划（ShotGenerationPlanner / DefaultShotGenerationPlanner）**: `preview` 按默认或指定通道打包输入（关键帧、场景、道具、角色参考位合图或分张、参考语音），列出超限项、规格、估价与阻断原因；`generate` 冻结请求后入队，配音为独立 SPEECH 任务；`recompilePrompt` 是显式用户操作，原子清除改写标记。提示词由 `ShotPromptCompiler` 按通道格式编译（H3 基础三段 / 参考六段、Seedance 图号、通用）。合图由 `CharacterCompositor` 写入 `<rootPath>/derived/character-sheets/<内容键>.png`，不改原图。任务 `sourceRef` 为 `production:<编码项目 id>/episode:<编码集 id>/shot:<编码镜头编号>`（配音追加 `/dialogue:<序号>`），关联与筛选按字段严格解析。
+- **媒体生成层（domain/mediagen、data/mediagen、background/mediagen）**: `MediaChannelRegistry` 汇总云端模型与 ComfyUI 模板（通道 id `comfy:<模板 id>`），图像、视频、音频三组顺序存于 `infinity_settings`。云端后端接火山方舟 Seedance 与 MiniMax；ComfyUI 主机凭据进 SecretStore，模板经预检后锁定，解锁需用户确认。`PersistentMediaGenerationQueue` 持久化任务（Room v39 `media_generation_tasks`），总并发 3、单提供商与单通道 1；提交与执行前核对冻结配置，配置变化使任务需重新规划。`WithinBudgetAutoSubmitPolicy` 在项目预算内自动放行，未知费用或异币种进入用户批准。前台服务续查进度，费用记入用量专区。完成任务由登记器在事务内写入候选，场解锁、项目解绑或容量不足时保留为待登记（`productionMediaRuntime.pendingRegistrations`）并重试。应用在启动恢复完成后安装运行时，入口为 `InfinityApplication` 的 `shotGenerationPlanner`、`mediaGenerationQueue`、`mediaChannelRegistry`。可移植备份结构 21 纳入任务与通道顺序。
+- **界面**: 制作面板（ui/production）六个页签总览、剧本、资产、分镜、出片、剪辑，入口角标为待审镜头与待批准付费任务之和；镜头详情分“分镜”“候选”两个页签。媒体设置（ui/settings 的 `MediaSettingsRoutes`）提供媒体模型列表、云端模型详情、ComfyUI 主机与模板详情，可在设置右列打开。剪辑页的成片版本与导出属于第 3 期。
+- **录音听写（recording/）**: 前台服务录音，sherpa-onnx 小版中英 Zipformer 在本机实时转写；整理可走快速模型（发送前确认）、本地 GGUF 或仅转写。录音默认设置（`recording_defaults`）与本地模型固定版本（`local_model_revision`）为本机偏好，不进入备份。Release 只在侧载渠道开启 llama.cpp 本地推理（CMake 以 `INFINITY_RELEASE` 与 `INFINITY_SIDELOAD` 决定，llama.cpp 以固定归档与 SHA-256 拉取）。
+
 ### 架构决策记录 (ADR)
 - **ADR-001 (2026-05-13)**: **取消 Super Assistant 概念** — 统一 Agent 模型，移除 `isSuperAssistant` 特殊逻辑。✅ 已实施（Phase 3, 2026-05-13）。
 - **ADR-002 (2026-05-14)**: **Embedding/Rerank 配置回退策略** — Rerank 专用键为空时回退到主 LLM Provider 配置；Embedding 只使用手动配置的地址或“默认模型”中选定的嵌入模型，Provider 中已有嵌入模型也不会被自动选用。未配置嵌入模型时记忆与文档检索静默跳过（检索轨迹 `unavailable`，不在回复中显示检索步骤），会话页给出一次指向“默认模型”的引导。✅ 已实施。

@@ -189,6 +189,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 - 输入 `localhost:8888` 直接打开 Linux 或 Termux 里跑的服务
 - 画布页面、可点击的多屏原型、带版本的产物
 - 生图，可在画板上圈注和涂抹选区
+- 制作面板把剧本、资产、分镜、出片和剪辑串成一条线：每个镜头的通道、参考图和提示词都能预览，付费任务先批准再提交，按预算自动放行；可接火山方舟 Seedance、MiniMax 和自己的 ComfyUI 工作流
 - 会话导出为网页、A4 PDF 或长图
 
 **折叠屏**

@@ -189,6 +189,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Type `localhost:8888` to open services running in Linux or Termux
 - Canvas pages, clickable multi-screen prototypes and versioned artifacts
 - Image generation with a drawing board for markup and masks
+- A production panel ties script, assets, storyboard, takes and cut together. Preview each shot's channel, references and prompt; paid jobs wait for approval or pass within budget. Works with Volcano Ark Seedance, MiniMax and your own ComfyUI workflows
 - Export chats as a web page, A4 PDF or long image
 
 **Foldables**
