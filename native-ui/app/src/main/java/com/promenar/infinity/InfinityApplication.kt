@@ -1424,6 +1424,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.rag.PreferencesKgUsageStore(getSharedPreferences("pet_usage", MODE_PRIVATE))
     }
 
+    val productionMediaRuntime by lazy { com.promenar.infinity.data.mediagen.ProductionMediaRuntime(this) }
+    val shotGenerationPlanner: com.promenar.infinity.data.production.ShotGenerationPlanner get() = productionMediaRuntime.planner
+    val mediaGenerationQueue: com.promenar.infinity.domain.mediagen.MediaGenerationQueue get() = productionMediaRuntime.queue
+    val mediaChannelRegistry: com.promenar.infinity.domain.mediagen.MediaChannelRegistry get() = productionMediaRuntime.registry
+
     val mediaUsageRepository by lazy { com.promenar.infinity.data.mediagen.queue.MediaUsageRepository(database.mediaGenerationDao()) }
 
     @Volatile
@@ -1437,10 +1442,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         bindings: List<com.promenar.infinity.data.mediagen.queue.MediaBackendBinding>,
         policy: com.promenar.infinity.domain.mediagen.AutoSubmitPolicy = com.promenar.infinity.domain.mediagen.RequireApproval,
         concurrency: com.promenar.infinity.data.mediagen.queue.MediaQueueConcurrency = com.promenar.infinity.data.mediagen.queue.MediaQueueConcurrency(),
+        requestAvailable: suspend (com.promenar.infinity.domain.mediagen.MediaGenerationRequest) -> Boolean = { true },
     ): com.promenar.infinity.data.mediagen.queue.MediaGenerationModule {
         check(startupState.value == BackupStartupState.Ready) { "MEDIA_GENERATION_REQUIRES_READY_STARTUP" }
         check(mediaGenerationModule == null) { "MEDIA_GENERATION_ALREADY_INSTALLED" }
-        return com.promenar.infinity.data.mediagen.queue.MediaGenerationModule(this, database, registry, bindings, policy, concurrency)
+        return com.promenar.infinity.data.mediagen.queue.MediaGenerationModule(this, database, registry, bindings, policy, concurrency, requestAvailable)
             .also { mediaGenerationModule = it; it.start() }
     }
 
@@ -2040,6 +2046,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionPlanSkill { shotGenerationPlanner })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerateSkill { shotGenerationPlanner })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerationTasksSkill({ productionMediaRuntime.store }, { mediaGenerationQueue }))
             com.promenar.infinity.ui.chat.manager.skills.comfyTools(comfyMedia.repository).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
@@ -2475,7 +2484,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 }
                 startupIssueManager.recover(StartupStep.MODEL_CATALOG, StartupIssueScope.subsystem(StartupSubsystem.MODEL_CATALOG)) { startModelCatalogUpdates() }
                 _startupState.value = BackupStartupState.Ready
-                mediaGenerationModule?.resume()
+                withContext(Dispatchers.IO) { productionMediaRuntime.install() }
                 if (skillStoreMonitorJob?.isActive != true) {
                     skillStoreMonitorJob = startupScope.launch(Dispatchers.IO) {
                         try {

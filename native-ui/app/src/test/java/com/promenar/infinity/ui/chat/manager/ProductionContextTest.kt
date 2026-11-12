@@ -15,6 +15,9 @@ class ProductionContextTest {
         assertThat(text).contains("user_decisions")
         assertThat(text).contains("需重做")
         assertThat(text).contains("production_get")
+        assertThat(text).contains("production_plan")
+        assertThat(text).contains("production_generate")
+        assertThat(text).contains("总览批准")
         assertThat(text).contains("\"truncated\":true")
     }
 }

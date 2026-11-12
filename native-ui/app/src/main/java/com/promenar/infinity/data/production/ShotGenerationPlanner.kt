@@ -41,6 +41,8 @@ data class ShotPlanPreview(
     val blockedReason: String?,
     /** 非阻断提示，例如出场角色参考包待审。 */
     val warnings: List<String>,
+    val audioPlans: List<PlannedDialogueAudio> = emptyList(),
+    val specs: com.promenar.infinity.domain.mediagen.GenerationSpecs = com.promenar.infinity.domain.mediagen.GenerationSpecs(),
 )
 
 data class PlannedInput(
@@ -58,7 +60,10 @@ data class PlannedInput(
     val compositeOf: List<String> = emptyList(),
 )
 
+data class PlannedDialogueAudio(val dialogueIndex: Int, val characterAssetId: String, val tone: String?,
+    val request: com.promenar.infinity.domain.mediagen.MediaGenerationRequest)
+
 sealed interface ShotGenerateResult {
-    data class Submitted(val taskId: String, val awaitingApproval: Boolean) : ShotGenerateResult
+    data class Submitted(val taskId: String, val awaitingApproval: Boolean, val audioTaskIds: List<String> = emptyList(), val warnings: List<String> = emptyList()) : ShotGenerateResult
     data class Rejected(val reason: String) : ShotGenerateResult
 }

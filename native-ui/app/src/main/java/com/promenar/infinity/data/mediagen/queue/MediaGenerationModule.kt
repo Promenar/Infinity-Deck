@@ -23,6 +23,7 @@ class MediaGenerationModule(
     bindings: List<MediaBackendBinding>,
     autoSubmitPolicy: AutoSubmitPolicy = RequireApproval,
     concurrency: MediaQueueConcurrency = MediaQueueConcurrency(),
+    requestAvailable: suspend (MediaGenerationRequest) -> Boolean = { true },
 ) {
     private val context = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -32,7 +33,7 @@ class MediaGenerationModule(
         concurrency = concurrency,
         messages = MediaQueueMessages { failure -> this.context.getString(mediaQueueErrorResource(failure)) },
         wake = ::resume,
-        requestAvailable = { request -> database.sessionDao().getById(request.sessionId) != null },
+        requestAvailable = { request -> database.sessionDao().getById(request.sessionId) != null && requestAvailable(request) },
     )
 
     internal fun start() {

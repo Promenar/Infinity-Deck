@@ -21,7 +21,7 @@ class PersistentMediaGenerationQueue(
     private val messages: MediaQueueMessages = MediaQueueMessages { it.name },
     private val wake: () -> Unit = {},
     private val requestAvailable: suspend (MediaGenerationRequest) -> Boolean = { true },
-) : MediaGenerationQueue {
+) : MediaGenerationQueue, MediaOutputReservationReader {
     private val bindings = bindings.toList().also { require(it.map { binding -> binding.id }.distinct().size == it.size) }
     private val mutations = Mutex()
     private val runner = Mutex()
@@ -34,13 +34,21 @@ class PersistentMediaGenerationQueue(
             val channel = registry.channel(frozen.channelId) ?: throw IllegalArgumentException("MEDIA_CHANNEL_NOT_FOUND")
             validate(channel, frozen)
             val binding = selectBinding(channel)
+            val fingerprint = binding.configurationFor(channel)
+            val providerId = binding.providerFor(channel).also { require(it.isNotBlank()) }
+            val modelId = binding.modelId(channel).also { require(it.isNotBlank()) }
+            val expectedOutputs = binding.expectedOutputsFor(channel).also { require(it > 0) }
             val estimate = binding.backend.estimate(channel, frozen)
             val task = MediaTask(UUID.randomUUID().toString(), frozen, estimate, initialState(frozen, estimate))
-            val modelId = binding.modelId(channel).also { require(it.isNotBlank()) }
-            store.save(PersistentMediaTask(task, channel, binding.id, binding.providerId, modelId, clock()))
+            require(binding.configurationFor(channel) == fingerprint && binding.providerFor(channel) == providerId && binding.modelId(channel) == modelId && binding.expectedOutputsFor(channel) == expectedOutputs) { "MEDIA_CONFIGURATION_CHANGED" }
+            store.save(PersistentMediaTask(task, channel, binding.id, providerId, modelId, clock(), configurationFingerprint = fingerprint, expectedOutputs = expectedOutputs))
             signal()
             task
         }
+    }
+
+    override suspend fun outputReservations(taskIds: Set<String>): Map<String, Int> = withContext(ioDispatcher) {
+        store.all().filter { it.task.id in taskIds }.associate { it.task.id to it.expectedOutputs }
     }
 
     override fun observeTasks(): Flow<List<MediaTask>> = store.observe().map { records -> records.map { it.task } }
@@ -74,11 +82,17 @@ class PersistentMediaGenerationQueue(
                     val channel = registry.channel(task.request.channelId) ?: throw IllegalArgumentException("MEDIA_CHANNEL_NOT_FOUND")
                     validate(channel, task.request)
                     val binding = selectBinding(channel)
+                    val fingerprint = binding.configurationFor(channel)
+                    val providerId = binding.providerFor(channel)
+                    val modelId = binding.modelId(channel)
+                    val expectedOutputs = binding.expectedOutputsFor(channel).also { require(it > 0) }
                     val estimate = binding.backend.estimate(channel, task.request)
+                    val state = initialState(task.request, estimate)
+                    require(binding.configurationFor(channel) == fingerprint && binding.providerFor(channel) == providerId && binding.modelId(channel) == modelId && binding.expectedOutputsFor(channel) == expectedOutputs) { "MEDIA_CONFIGURATION_CHANGED" }
                     PersistentMediaTask(
-                        task.copy(estimate = estimate, state = initialState(task.request, estimate), remoteId = null,
+                        task.copy(estimate = estimate, state = state, remoteId = null,
                             progress = null, outputPaths = emptyList(), actualCost = null, error = null, failure = null),
-                        channel, binding.id, binding.providerId, binding.modelId(channel), clock(),
+                        channel, binding.id, providerId, modelId, clock(), configurationFingerprint = fingerprint, expectedOutputs = expectedOutputs,
                     )
                 }
                 else -> error("MEDIA_TASK_CANNOT_RETRY")
@@ -161,7 +175,7 @@ class PersistentMediaGenerationQueue(
     private suspend fun execute(id: String) {
         var record = required(id)
         if (!runnable(record)) return
-        val binding = bindings.find { it.id == record.bindingId && it.providerId == record.providerId }
+        val binding = bindings.find { it.id == record.bindingId }
         if (binding == null) {
             if (record.remoteSucceeded) downloadFailed(record, MediaTaskFailure.DOWNLOAD)
             else store.save(record.copy(task = record.task.copy(state = MediaTaskState.FAILED,
@@ -171,8 +185,10 @@ class PersistentMediaGenerationQueue(
         }
         val backend = binding.backend
         if (record.task.state == MediaTaskState.QUEUED) {
-            val current = registry.channel(record.channel.id)
-            if (current != record.channel || !backend.handles(record.channel) || !requestAvailable(record.task.request)) {
+            val available = try {
+                registry.channel(record.channel.id) == record.channel && backend.handles(record.channel) && bindingMatches(binding, record) && requestAvailable(record.task.request)
+            } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+            if (!available) {
                 store.save(record.copy(task = record.task.copy(state = MediaTaskState.FAILED,
                     failure = MediaTaskFailure.CHANNEL_UNAVAILABLE, error = messages.message(MediaTaskFailure.CHANNEL_UNAVAILABLE)), updatedAt = clock()))
                 return
@@ -222,7 +238,7 @@ class PersistentMediaGenerationQueue(
                     store.save(record)
                 }
                 is RemoteStatus.Succeeded -> {
-                    val cost = try { backend.actualCost(record.channel, result.usage) } catch (_: Exception) { null }
+                    val cost = try { if (bindingMatches(binding, record)) backend.actualCost(record.channel, result.usage) else null } catch (_: Exception) { null }
                     record = record.copy(task = record.task.copy(state = MediaTaskState.DOWNLOADING, actualCost = cost, progress = 1f),
                         remoteSucceeded = true, remoteOutputs = result.outputs.toList(), usage = result.usage.toMap(), updatedAt = clock(), nextPollAt = 0)
                     store.save(record, MediaUsageEntry(record.task.id, record.providerId, record.modelId, record.task.request.sourceRef, cost, clock()))
@@ -260,6 +276,10 @@ class PersistentMediaGenerationQueue(
     )
     private suspend fun initialState(request: MediaGenerationRequest, estimate: Money?): MediaTaskState =
         if (estimate != null && autoSubmitPolicy.allowsAutoSubmit(request.sourceRef, estimate)) MediaTaskState.QUEUED else MediaTaskState.AWAITING_APPROVAL
+    private suspend fun bindingMatches(binding: MediaBackendBinding, record: PersistentMediaTask): Boolean = try {
+        binding.modelId(record.channel) == record.modelId && binding.providerFor(record.channel) == record.providerId &&
+            (record.configurationFingerprint == null || binding.configurationFor(record.channel) == record.configurationFingerprint)
+    } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
     private fun selectBinding(channel: MediaChannel): MediaBackendBinding = bindings.filter { it.backend.handles(channel) }.singleOrNull()
         ?: throw IllegalArgumentException("MEDIA_BACKEND_MISSING_OR_AMBIGUOUS")
     private suspend fun required(id: String): PersistentMediaTask = store.get(id) ?: throw IllegalArgumentException("MEDIA_TASK_NOT_FOUND")

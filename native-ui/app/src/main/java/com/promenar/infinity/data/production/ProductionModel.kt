@@ -135,6 +135,7 @@ data class Shot(
     val propAssetIds: List<String> = emptyList(),
     val channelId: String? = null,
     val promptUserEdited: Boolean = false,
+    val audio: List<ShotAudio> = emptyList(),
 )
 
 @Serializable
@@ -147,7 +148,13 @@ data class ShotDialogue(val characterAssetId: String, val text: String, val tone
 data class ShotAppearance(val characterAssetId: String, val lookId: String, val referenceSlotIds: List<String> = emptyList())
 
 @Serializable
-data class TakePlanSnapshot(val channelId: String? = null, val mode: ShotMode, val inputs: List<ShotInput>, val prompt: String)
+data class TakePlanSnapshot(val channelId: String? = null, val mode: ShotMode, val inputs: List<ShotInput>, val prompt: String,
+    val mediaInputs: List<com.promenar.infinity.domain.mediagen.MediaInput> = emptyList(),
+    val specs: com.promenar.infinity.domain.mediagen.GenerationSpecs = com.promenar.infinity.domain.mediagen.GenerationSpecs(),
+    val generationMode: com.promenar.infinity.domain.mediagen.GenerationMode? = null)
+
+@Serializable
+data class ShotAudio(val id: String, val path: String, val dialogueIndex: Int, val taskId: String, val planSnapshot: TakePlanSnapshot, val createdAt: Long)
 
 @Serializable
 data class ReferenceSlot(val id: String, val name: String, val path: String? = null, val version: Int? = null)
@@ -271,6 +278,9 @@ sealed interface ProductionUserAction {
     data class SetExperimental(val enabled: Boolean) : ProductionUserAction
     data class SetBudget(val cents: Long?) : ProductionUserAction
     data class SetShotPlan(val episodeId: String, val shotCode: String, val channelId: String?, val mode: ShotMode) : ProductionUserAction
+    data class RecompilePrompt(val episodeId: String, val shotCode: String, val prompt: String) : ProductionUserAction
+    /** 生成层登记已完成任务；保留用户状态与内容决定。 */
+    data class RegisterGeneratedTask(val task: com.promenar.infinity.domain.mediagen.MediaTask) : ProductionUserAction
     data class ClearPromptEdited(val episodeId: String, val shotCode: String) : ProductionUserAction
     data class SetCharacterLook(val episodeId: String, val shotCode: String, val characterAssetId: String, val lookId: String) : ProductionUserAction
     data class ToggleReferenceSlot(val episodeId: String, val shotCode: String, val characterAssetId: String, val slotId: String, val selected: Boolean) : ProductionUserAction

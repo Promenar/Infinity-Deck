@@ -53,6 +53,8 @@ object ProductionUserEngine {
             confirmed?.let { p = p.copy(changeRequests = p.changeRequests + it.copy(approved = true)) }
         }
         when (action) {
+            is ProductionUserAction.RegisterGeneratedTask -> p = requireNotNull(registerShotTask(p, action.task, now)) { "任务暂不能登记，请核对项目绑定、场锁定与候选容量。" }
+            is ProductionUserAction.RecompilePrompt -> updateShot(action.episodeId, action.shotCode) { it.copy(prompt = action.prompt, promptUserEdited = false) }
             is ProductionUserAction.EditShotContent -> updateContent(action.episodeId, action.shotCode) { old ->
                 require(action.proposed.code == old.code) { "镜头标识不能修改。" }
                 ProductionRules.applyChanges(old, ProductionRules.changes(old, action.proposed))
