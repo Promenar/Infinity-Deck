@@ -235,6 +235,44 @@ internal class RecordingController(private val app: InfinityApplication) {
         }
     }
 
+    /** 删除已结束或中断的录音；录音进行中的那一条不删。资料库里已保存的文档不受影响。 */
+    fun delete(id: String) {
+        io.launch {
+            publishing.withLock {
+                lock.withLock {
+                    val item = session(id) ?: return@withLock
+                    if (recordingDeletable(item, _state.value.activeId)) discard(id)
+                }
+            }
+        }
+    }
+
+    /** 用户删除资料文档后，一并删除它对应的录音；正在录的那一条保留，结束后会重新保存到资料库。 */
+    fun deleteForDocuments(documentIds: Collection<String>) {
+        if (documentIds.isEmpty()) return
+        io.launch {
+            state.first { it.ready }
+            publishing.withLock {
+                lock.withLock {
+                    recordingsRemovedWithDocuments(_state.value.sessions, documentIds, _state.value.activeId)
+                        .forEach { discard(it) }
+                }
+            }
+        }
+    }
+
+    // 调用方持有 publishing 与 lock。删除失败时录音保留并提示。
+    private suspend fun discard(id: String) {
+        if (id == _state.value.organizingId) organize?.cancel()
+        try {
+            store.delete(id)
+            _state.value = _state.value.copy(sessions = _state.value.sessions.filterNot { it.id == id })
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            report(R.string.recording_storage_failed)
+        }
+    }
+
     fun publish(id: String) {
         io.launch {
             publishing.withLock {
@@ -379,6 +417,16 @@ internal class RecordingController(private val app: InfinityApplication) {
 
     fun report(message: Int) {
         io.launch { lock.withLock { _state.value = _state.value.copy(failure = message) } }
+    }
+
+    /** 失败提示收起后清除这条失败；整理失败保留到下次整理成功，页面据此显示“待整理”。 */
+    fun dismissFailure(message: Int) {
+        if (message == R.string.recording_organize_failed) return
+        io.launch {
+            lock.withLock {
+                if (_state.value.failure == message) _state.value = _state.value.copy(failure = null)
+            }
+        }
     }
 }
 

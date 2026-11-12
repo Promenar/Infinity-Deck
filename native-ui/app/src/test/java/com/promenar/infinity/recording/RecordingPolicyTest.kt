@@ -48,6 +48,36 @@ class RecordingPolicyTest {
         assertEquals(session.segments, recoverRecordingTranscript(session, 1300 * 32L).segments)
     }
 
+    @Test fun deletedDocumentsRemoveOnlyTheirFinishedRecordings() {
+        val finished = RecordingSession(id = "finished", createdAt = 0, title = "a", phase = RecordingPhase.Finished)
+        val interrupted = RecordingSession(id = "interrupted", createdAt = 0, title = "b", phase = RecordingPhase.Interrupted)
+        val active = RecordingSession(id = "active", createdAt = 0, title = "c", phase = RecordingPhase.Interrupted)
+        val paused = RecordingSession(id = "paused", createdAt = 0, title = "d", phase = RecordingPhase.Paused)
+        val other = RecordingSession(id = "other", createdAt = 0, title = "e", phase = RecordingPhase.Finished)
+        val sessions = listOf(finished, interrupted, active, paused, other)
+        assertEquals(
+            listOf("finished", "interrupted"),
+            recordingsRemovedWithDocuments(sessions, listOf("finished", "interrupted", "active", "paused", "note"), "active"),
+        )
+        assertEquals(emptyList<String>(), recordingsRemovedWithDocuments(sessions, emptyList(), null))
+    }
+
+    @Test fun playbackPositionMapsToTheSegmentThatStartedLast() {
+        val segments = listOf(
+            RecordingSegment(1_000, 5_000, "a"),
+            RecordingSegment(5_000, 9_000, "b"),
+            RecordingSegment(12_000, 15_000, "c"),
+        )
+        assertEquals(-1, recordingSegmentAt(emptyList(), 3_000))
+        assertEquals(-1, recordingSegmentAt(segments, 999))
+        assertEquals(0, recordingSegmentAt(segments, 1_000))
+        assertEquals(0, recordingSegmentAt(segments, 4_999))
+        assertEquals(1, recordingSegmentAt(segments, 5_000))
+        // 两段之间的停顿仍算前一段。
+        assertEquals(1, recordingSegmentAt(segments, 10_500))
+        assertEquals(2, recordingSegmentAt(segments, 60_000))
+    }
+
     @Test fun recordingDocumentsAreNotEligibleForAutomaticRemoteIndexing() {
         assertFalse(LOCAL_RECORDING_MIME in DocumentReferenceExtractor.SUPPORTED_MIME_TYPES)
     }

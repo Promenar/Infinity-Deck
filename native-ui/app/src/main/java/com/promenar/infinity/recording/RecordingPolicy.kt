@@ -128,6 +128,24 @@ internal fun recordingTimestamp(ms: Long): String {
     else String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)
 }
 
+/** 播放位置所在的逐字稿段落下标：起点不晚于该位置的最后一段；位置早于首段或没有段落时为 -1。 */
+internal fun recordingSegmentAt(segments: List<RecordingSegment>, positionMs: Long): Int =
+    segments.indexOfLast { it.startMs <= positionMs }
+
+/** 录音可删除：已结束或中断，且不是正在录的那一条。 */
+internal fun recordingDeletable(session: RecordingSession, activeId: String?): Boolean =
+    session.id != activeId && session.phase in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished)
+
+/** 资料文档被删除后一并删除的录音 id：资料文档的 id 就是录音 id，只取可删除的录音。 */
+internal fun recordingsRemovedWithDocuments(
+    sessions: List<RecordingSession>,
+    documentIds: Collection<String>,
+    activeId: String?,
+): List<String> {
+    val ids = documentIds.toSet()
+    return sessions.filter { it.id in ids && recordingDeletable(it, activeId) }.map { it.id }
+}
+
 internal fun recordingRawText(session: RecordingSession): String =
     session.segments.joinToString("\n") { "${recordingTimestamp(it.startMs)} ${it.text}" }
 

@@ -7,21 +7,33 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.os.Build
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.common.ProvideUniformRowHeight
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
@@ -40,21 +52,70 @@ internal fun registerRecordingShortcut(context: Context) {
     }
 }
 
+/** 当前发行渠道可选的整理方式。 */
+private val recordingModes get() = RecordingMode.entries
+    .filter { it != RecordingMode.Local || BuildConfig.LOCAL_INFERENCE_AVAILABLE }
+
+private fun recordingModeLabel(mode: RecordingMode): Int = when (mode) {
+    RecordingMode.Auto -> R.string.recording_mode_auto
+    RecordingMode.Local -> R.string.recording_mode_local
+    RecordingMode.Raw -> R.string.recording_mode_raw
+}
+
+/** 录音页弹层里的整理方式：每项写明实际使用的模型，行文字与弹层标题左对齐。 */
+@Composable
+internal fun RecordingModeSheetContent(
+    selected: RecordingMode,
+    cloudLabel: String?,
+    localLabel: String?,
+    cloudAllowed: Boolean,
+    onSelect: (RecordingMode) -> Unit,
+    onRevoke: () -> Unit,
+) {
+    val unavailable = stringResource(R.string.recording_not_configured)
+    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+        ProvideUniformRowHeight {
+            Column(Modifier.selectableGroup()) {
+                recordingModes.forEach { mode ->
+                    val chosen = mode == selected
+                    InfinitySettingsItem(
+                        title = stringResource(recordingModeLabel(mode)),
+                        subtitle = when (mode) {
+                            RecordingMode.Auto -> cloudLabel ?: unavailable
+                            RecordingMode.Local -> localLabel ?: unavailable
+                            RecordingMode.Raw -> null
+                        },
+                        onClick = { onSelect(mode) },
+                        horizontalPadding = 0.dp,
+                        role = Role.RadioButton,
+                        selected = chosen,
+                        trailingContent = {
+                            if (chosen) {
+                                androidx.compose.material3.Icon(
+                                    Icons.Rounded.Check, contentDescription = null,
+                                    modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        if (cloudAllowed) {
+            InfinityPillButton(
+                text = stringResource(R.string.recording_ui_revoke_cloud),
+                onClick = onRevoke,
+                modifier = Modifier.fillMaxWidth(),
+                tone = InfinityPillTone.DANGER,
+            )
+        }
+    }
+}
+
 @Composable
 internal fun RecordingModeOptions(selected: RecordingMode, onSelect: (RecordingMode) -> Unit) {
     InfinitySegmentedControl(
-        segments = RecordingMode.entries
-            .filter { it != RecordingMode.Local || BuildConfig.LOCAL_INFERENCE_AVAILABLE }
-            .map { mode ->
-                InfinitySegment(
-                    value = mode,
-                    label = stringResource(when (mode) {
-                        RecordingMode.Auto -> R.string.recording_mode_auto
-                        RecordingMode.Local -> R.string.recording_mode_local
-                        RecordingMode.Raw -> R.string.recording_mode_raw
-                    }),
-                )
-            },
+        segments = recordingModes.map { mode -> InfinitySegment(value = mode, label = stringResource(recordingModeLabel(mode))) },
         selected = selected,
         onSelect = onSelect,
         modifier = Modifier.fillMaxWidth(),
