@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.chat.manager.skills
 import com.promenar.infinity.data.model.ToolResult
 import com.promenar.infinity.data.production.*
 import com.promenar.infinity.data.repository.ProductionRepository
+import com.promenar.infinity.data.cut.CutExportController
+import com.promenar.infinity.data.cut.CutExportState
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
@@ -68,6 +70,92 @@ internal fun manifestJson(sync: ManifestSync?): JsonObject = buildJsonObject {
 
 /** 读取结果保留默认值字段（如 todo、not_started），智能体不必猜测缺省含义。 */
 private val ProductionToolJson = Json { encodeDefaults = true }
+
+/** 版本写入和导出与面板共享控制器；状态读取必须先核对会话绑定。 */
+class ProductionCutSkill(
+    private val load: suspend (String) -> ProductionSnapshot?,
+    private val controller: () -> CutExportController,
+) : SkillDefinition {
+    override val id = "production_cut"
+    override val name = id
+    override val mcpServerId: String? = null
+    override val risk = ToolRisk.SESSION_STATE
+    override val description = "管理当前会话的剪辑版本。action 为 list、create、export、status。create 需要 episodeId；export、status 需要 versionId。burnSubtitles 仅用于 create 或 export。每集最多20个版本。export 接受任务后立即返回，status 查询进度与结果。"
+    override val parametersSchema = """{"type":"object","properties":{"action":{"type":"string","enum":["list","create","export","status"]},"episodeId":{"type":"string"},"versionId":{"type":"string"},"burnSubtitles":{"type":"boolean"}},"required":["action"],"additionalProperties":false}"""
+
+    override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = try {
+        val parameters = parseCutArguments(args)
+        val snapshot = requireNotNull(load(context.sessionId)) { "当前会话没有制作项目。" }
+        val p = snapshot.production
+        parameters.episodeId?.let { episode -> require(p.seasons.flatMap { it.episodes }.any { it.id == episode }) { "集不存在。" } }
+        val version = parameters.versionId?.let { id ->
+            requireNotNull(p.cuts.firstOrNull { it.id == id && (parameters.episodeId == null || it.episodeId == parameters.episodeId) }) { "剪辑版本不存在。" }
+        }
+        val cuts = controller()
+        val body = when (parameters.action) {
+            "list" -> buildJsonObject {
+                put("versions", buildJsonArray { p.cuts.filter { parameters.episodeId == null || it.episodeId == parameters.episodeId }.forEach { cut ->
+                    add(cutSummary(cut))
+                } })
+            }
+            "create" -> {
+                val cut = cuts.createVersion(context.sessionId, requireNotNull(parameters.episodeId))
+                if (parameters.burnSubtitles == true) cuts.setBurnSubtitles(context.sessionId, cut.id, true)
+                cutSummary(cut.copy(burnSubtitles = parameters.burnSubtitles ?: false))
+            }
+            "export" -> {
+                val cut = requireNotNull(version)
+                cuts.export(context.sessionId, cut.id, parameters.burnSubtitles)
+                buildJsonObject { put("versionId", cut.id); put("status", "accepted") }
+            }
+            else -> cutState(requireNotNull(version), cuts.observe().value[version.id])
+        }
+        ToolResult(id = id, content = body.toString())
+    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+    catch (_: Exception) {
+        ToolResult(id = id, status = "error", content = """{"error":"INVALID_PRODUCTION_CUT","message":"请核对剪辑参数、当前项目与导出状态。"}""")
+    }
+}
+
+internal data class CutArguments(val action: String, val episodeId: String?, val versionId: String?, val burnSubtitles: Boolean?)
+
+internal fun parseCutArguments(args: JsonObject): CutArguments {
+    require(args.keys.all { it in setOf("action", "episodeId", "versionId", "burnSubtitles") })
+    fun text(key: String): String? = if (key !in args) null else
+        (args[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() && it.length <= 300 }
+            ?: throw IllegalArgumentException(key)
+    val action = requireNotNull(text("action"))
+    require(action in setOf("list", "create", "export", "status"))
+    val episode = text("episodeId")
+    val version = text("versionId")
+    val burn = if ("burnSubtitles" !in args) null else
+        (args["burnSubtitles"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: throw IllegalArgumentException("burnSubtitles")
+    when (action) {
+        "create" -> require(episode != null && version == null)
+        "export" -> require(version != null)
+        "status" -> require(version != null && burn == null)
+        "list" -> require(version == null && burn == null)
+    }
+    return CutArguments(action, episode, version, burn)
+}
+
+private fun cutSummary(cut: CutVersion) = buildJsonObject {
+    put("versionId", cut.id); put("episodeId", cut.episodeId); put("number", cut.number)
+    put("clipCount", cut.clips.size); put("gapCount", cut.clips.count { it.path == null })
+    put("durationSeconds", cut.clips.sumOf { it.seconds }); put("burnSubtitles", cut.burnSubtitles)
+    put("export", cut.export?.let { ProductionToolJson.encodeToJsonElement(it) } ?: JsonNull)
+}
+
+private fun cutState(cut: CutVersion, state: CutExportState?) = buildJsonObject {
+    put("versionId", cut.id)
+    when (val effective = state ?: cut.export?.let(CutExportState::Succeeded) ?: CutExportState.Idle) {
+        CutExportState.Idle -> put("status", "idle")
+        is CutExportState.Running -> { put("status", "running"); put("progress", effective.progress?.let(::JsonPrimitive) ?: JsonNull) }
+        is CutExportState.Succeeded -> { put("status", "succeeded"); put("record", ProductionToolJson.encodeToJsonElement(effective.record)) }
+        is CutExportState.Failed -> { put("status", "failed"); put("reason", effective.reason)
+            effective.recoveryReference?.let { put("recoveryReference", it) } }
+    }
+}
 
 internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, episodeId: String?, shotCode: String?): String {
     require(scope in setOf("overview", "episode", "shot", "assets", "changes")) { "scope 仅支持 overview、episode、shot、assets、changes。" }

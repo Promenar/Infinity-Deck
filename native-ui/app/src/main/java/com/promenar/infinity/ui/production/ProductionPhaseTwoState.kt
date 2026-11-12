@@ -19,6 +19,7 @@ data class ProductionPanelServices(
     val cutVersions: List<ProductionCutVersion> = emptyList(),
     val onCreateCut: (() -> Unit)? = null,
     val onExportCut: ((String) -> Unit)? = null,
+    val cutExport: com.promenar.infinity.data.cut.CutExportController? = null,
 )
 
 enum class ShotDetailTab { STORYBOARD, CANDIDATES }

@@ -162,10 +162,18 @@ class ProductionRepository(
             snapshot(requireNotNull(dao.get(row.id)), ManifestSync.Pending)
         }
     }
-    override suspend fun apply(sessionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot = withContext(Dispatchers.IO) {
+    override suspend fun apply(sessionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot =
+        applyChecked(sessionId, null, expectedRevision, action)
+
+    /** 媒体导出把项目绑定与修订号放在同一事务核对，避免登记到同修订号的新绑定。 */
+    suspend fun applyForProduction(sessionId: String, productionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot =
+        applyChecked(sessionId, productionId, expectedRevision, action)
+
+    private suspend fun applyChecked(sessionId: String, productionId: String?, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot = withContext(Dispatchers.IO) {
         mutex.withLock {
             val id = database.withTransaction {
                 val row = required(sessionId)
+                require(productionId == null || row.id == productionId) { "制作项目绑定已变化。" }
                 val result = ProductionUserEngine.apply(snapshot(row), expectedRevision, action, now())
                 dao.update(entity(result, row))
                 row.id

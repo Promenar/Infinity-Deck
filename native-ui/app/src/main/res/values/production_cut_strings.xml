@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_cut_notification_channel">Cut export</string>
+    <string name="production_cut_exporting">Exporting cut</string>
+    <string name="production_cut_cancel">Cancel</string>
+    <string name="production_cut_busy">An export is running</string>
+    <string name="production_cut_missing_project">Production unavailable</string>
+    <string name="production_cut_missing_version">Cut unavailable</string>
+    <string name="production_cut_changed">Production changed</string>
+    <string name="production_cut_failed">Export failed</string>
+    <string name="production_cut_interrupted">Export interrupted</string>
+    <string name="production_cut_recovery_required">Output recovery required</string>
+    <string name="production_cut_media_unavailable">Media unavailable</string>
+    <string name="production_cut_unsupported_size">Output size unsupported</string>
+    <string name="production_cut_source_changed">Media duration changed</string>
+    <string name="production_cut_invalid_output">Output validation failed</string>
+    <string name="production_cut_encoding_failed">Encoding failed</string>
+    <string name="production_cut_storage_full">Insufficient storage</string>
+</resources>

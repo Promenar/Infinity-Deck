@@ -652,6 +652,8 @@ dependencies {
     // ─── 音视频播放（会话内工作区媒体） ───
     val media3Version = "1.11.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-transformer:$media3Version")
+    implementation("androidx.media3:media3-effect:$media3Version")
     implementation("androidx.media3:media3-ui-compose-material3:$media3Version")
 
     // ─── Room (SQLite ORM) ───

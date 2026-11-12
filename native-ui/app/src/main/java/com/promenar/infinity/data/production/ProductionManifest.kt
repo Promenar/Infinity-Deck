@@ -149,5 +149,6 @@ object ProductionManifestCodec {
             asset.referenceVoice?.let { voice -> path(voice.path); note(voice.transcript, "转写"); note(voice.voiceSetting, "音色设定"); note(voice.tone, "语气") }
             require(asset.currentVersion == null || asset.versions.any { it.number == asset.currentVersion }) { "资产当前版本不存在。" }
         }
+        ProductionCuts.validate(p)
     }
 }
