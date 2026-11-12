@@ -4,7 +4,7 @@ import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 
 @Serializable
 data class ProductionManifest(val schema: String, val revision: Long, val production: Production)
@@ -29,7 +29,10 @@ object ProductionManifestCodec {
     fun decode(bytes: ByteArray): ProductionManifest {
         require(bytes.size <= MAX_MANIFEST_BYTES) { "清单文件过大，请减少项目内容。" }
         val manifest = try {
-            json.decodeFromString<ProductionManifest>(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString())
+            val root = json.parseToJsonElement(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()).jsonObject
+            val production = root["production"] as? JsonObject ?: throw IllegalArgumentException("缺少项目内容。")
+            // 只兼容移除的预算字段，其它未知字段继续报错。
+            json.decodeFromJsonElement<ProductionManifest>(JsonObject(root + ("production" to JsonObject(production - "budgetCents"))))
         } catch (e: Exception) {
             throw IllegalArgumentException("清单结构损坏，请检查 JSON 和字段。", e)
         }
@@ -53,8 +56,9 @@ object ProductionManifestCodec {
     fun validate(p: Production, revision: Long) {
         require(revision >= 0) { "清单修订号不能为负数。" }
         validate(p)
-        val changed = listOf(p.policyChangedAt) + p.stages.map { it.changedAt } + p.assets.map { it.changedAt } + p.seasons.flatMap { season -> season.episodes.flatMap { ep -> listOf(ep.changedAt) + ep.scenes.flatMap { scene -> listOf(scene.changedAt) + scene.shots.map { it.changedAt } } } }
-        require(changed.all { it <= revision }) { "实体修订号不能大于清单修订号，请检查清单。" }
+        validateProductionReviews(p, revision)
+        val changed = p.cuts.map { it.changedAt } + p.changeRequests.map { it.changedAt } + p.reviewRounds.map { it.revision } + listOf(p.policyChangedAt) + p.stages.map { it.changedAt } + p.assets.map { it.changedAt } + p.seasons.flatMap { season -> season.episodes.flatMap { ep -> listOf(ep.changedAt) + ep.scenes.flatMap { scene -> listOf(scene.changedAt) + scene.shots.map { it.changedAt } } } }
+        require(changed.all { it in 0..revision }) { "实体修订号不能大于清单修订号，请检查清单。" }
     }
 
     fun validate(p: Production) {
@@ -64,7 +68,6 @@ object ProductionManifestCodec {
         fun unique(values: List<String>, field: String) = require(values.distinct().size == values.size) { "$field 标识重复，请使用唯一标识。" }
         fun path(value: String?) { if (value != null) validatePath(value) }
         require(p.policyChangedAt >= 0) { "项目设置修订号不能为负数。" }
-        require(p.budgetCents == null || p.budgetCents >= 0) { "预算不能为负数。" }
         unique(p.changeRequests.map { it.id }, "变更请求")
         require(p.id.isNotBlank()) { "项目 id 不能为空。" }
         title(p.title, "项目标题")
@@ -149,6 +152,7 @@ object ProductionManifestCodec {
             asset.referenceVoice?.let { voice -> path(voice.path); note(voice.transcript, "转写"); note(voice.voiceSetting, "音色设定"); note(voice.tone, "语气") }
             require(asset.currentVersion == null || asset.versions.any { it.number == asset.currentVersion }) { "资产当前版本不存在。" }
         }
+        validateProductionReviews(p)
         ProductionCuts.validate(p)
     }
 }

@@ -1,7 +1,6 @@
 package com.promenar.infinity.domain.mediagen
 
 import java.math.BigDecimal
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -65,15 +64,5 @@ class MediaGenerationContractsTest {
         assertThrows(IllegalArgumentException::class.java) { MediaPricing(listOf(BillingItem("a", UnitPrice(BigDecimal.ONE, "USD")), BillingItem("b", UnitPrice(BigDecimal.ONE, "CNY")))) }
         assertThrows(IllegalArgumentException::class.java) { UnitPrice(BigDecimal.ONE, "USD").cost(-1) }
         assertThrows(IllegalArgumentException::class.java) { BillingItem("a", UnitPrice(BigDecimal.ONE, "USD"), BigDecimal.ZERO) }
-    }
-    @Test fun `预算策略缺预算币种不匹配和超额需批准`() = runTest {
-        var budget: MediaBudget? = MediaBudget(Money(BigDecimal.TEN, "USD"), Money(BigDecimal("8"), "USD"))
-        val policy = WithinBudgetAutoSubmitPolicy { budget }
-        assertTrue(policy.allowsAutoSubmit("project/shot", Money(BigDecimal("2"), "USD")))
-        assertFalse(policy.allowsAutoSubmit("project/shot", Money(BigDecimal("2.01"), "USD")))
-        assertFalse(policy.allowsAutoSubmit("project/shot", Money(BigDecimal.ONE, "CNY")))
-        budget = null
-        assertFalse(policy.allowsAutoSubmit("project/shot", Money(BigDecimal.ZERO, "USD")))
-        assertFalse(RequireApproval.allowsAutoSubmit("project/shot", Money(BigDecimal.ZERO, "USD")))
     }
 }

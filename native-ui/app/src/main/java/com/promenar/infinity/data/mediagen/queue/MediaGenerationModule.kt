@@ -21,7 +21,6 @@ class MediaGenerationModule(
     database: InfinityDatabase,
     val registry: MediaChannelRegistry,
     bindings: List<MediaBackendBinding>,
-    autoSubmitPolicy: AutoSubmitPolicy = RequireApproval,
     concurrency: MediaQueueConcurrency = MediaQueueConcurrency(),
     requestAvailable: suspend (MediaGenerationRequest) -> Boolean = { true },
 ) {
@@ -29,7 +28,7 @@ class MediaGenerationModule(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _background = MutableStateFlow(MediaQueueBackgroundState.IDLE)
     val background: StateFlow<MediaQueueBackgroundState> = _background.asStateFlow()
-    val queue = PersistentMediaGenerationQueue(RoomMediaTaskStore(database), registry, bindings, autoSubmitPolicy,
+    val queue = PersistentMediaGenerationQueue(RoomMediaTaskStore(database), registry, bindings,
         concurrency = concurrency,
         messages = MediaQueueMessages { failure -> this.context.getString(mediaQueueErrorResource(failure)) },
         wake = ::resume,

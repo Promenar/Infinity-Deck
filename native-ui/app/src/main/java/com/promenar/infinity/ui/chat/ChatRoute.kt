@@ -241,6 +241,10 @@ fun ChatRoute(
     }
     val chatViewModel: ChatViewModel = viewModel(factory = resolvedDependencies.viewModelFactory)
     val uiState by chatViewModel.uiState.collectAsStateWithLifecycle()
+    // 制作面板的“发送”：只发给定的审核消息，不读取也不清空输入框草稿；开轮或入队时为 true。
+    val sendProductionReview: suspend (String) -> com.promenar.infinity.ui.production.ReviewDelivery = remember(chatViewModel, sessionId) {
+        { text -> chatViewModel.sendPanelMessage(sessionId, text).toReviewDelivery() }
+    }
     // 外部文档查看器送来的附件：只由前台的聊天页取走（返回栈里的页面不在 STARTED，不收集），
     // 并等本会话的草稿恢复完成后再并入，避免被恢复覆盖。
     val inboxPending by application.composerDocumentInbox.pending.collectAsStateWithLifecycle()
@@ -269,13 +273,6 @@ fun ChatRoute(
         }.getOrNull()
         runModeCheckpoint = check?.let { com.promenar.infinity.ui.chat.runmode.initialStage(it) }
         runModeChecked = true
-    }
-    // 别处新建会话时预置的首条用户消息：会话已加载、运行模式检查点处理完后照常发送。
-    val launchPending by application.sessionLaunchInbox.pending.collectAsStateWithLifecycle()
-    val launchMessage = launchPending[sessionId]
-    LaunchedEffect(uiState.session?.id, launchMessage, runModeChecked, runModeCheckpoint) {
-        if (uiState.session?.id != sessionId || launchMessage == null || !runModeChecked || runModeCheckpoint != null) return@LaunchedEffect
-        application.sessionLaunchInbox.take(sessionId)?.let { chatViewModel.sendMessage(it) }
     }
     val runModeBadge = runModeStatus?.takeIf { linuxSupported }?.let { status ->
         com.promenar.infinity.ui.chat.runmode.RunModeBadge(status.mode,
@@ -904,7 +901,7 @@ fun ChatRoute(
                                 com.promenar.infinity.ui.production.ProductionPanel(
                                     sessionId = sessionId,
                                     source = source,
-                                    services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = settingsNavigation?.openRoute),
+                                    services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = settingsNavigation?.openRoute, sendReviewMessage = sendProductionReview),
                                     // 在资源管理器中定位时叠在制作页之上，返回仍回到制作页。
                                     onLocate = { path ->
                                         workspaceLocatePath = path
@@ -1044,6 +1041,7 @@ fun ChatRoute(
                     workspaceLocatePath = path
                     openChatPage(ChatPage.Explorer)
                 },
+                onSendProductionReview = sendProductionReview,
                 onOpenSettings = { requestOverlay(ChatOverlay.ModelSettings) },
                 onOpenModelPicker = {
                     val anchor = popoverAnchors.model
@@ -1462,3 +1460,10 @@ fun ChatScreen(sessionId: String, onNavigateBack: () -> Unit = {}) =
 
 /** 会话顶栏的 Git 状态最长复用时间：仓库元数据变化与工具写入另行失效。 */
 private const val GIT_HEADER_MAX_AGE_MILLIS = 5 * 60_000L
+
+private fun PanelSendResult.toReviewDelivery(): com.promenar.infinity.ui.production.ReviewDelivery = when (this) {
+    PanelSendResult.STARTED, PanelSendResult.QUEUED -> com.promenar.infinity.ui.production.ReviewDelivery.ACCEPTED
+    PanelSendResult.IMPORTING -> com.promenar.infinity.ui.production.ReviewDelivery.IMPORTING
+    PanelSendResult.APPROVAL_PENDING -> com.promenar.infinity.ui.production.ReviewDelivery.APPROVAL_PENDING
+    PanelSendResult.UNAVAILABLE -> com.promenar.infinity.ui.production.ReviewDelivery.UNAVAILABLE
+}

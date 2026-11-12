@@ -13,6 +13,9 @@ data class CutVersion(
     val clips: List<CutClip>,
     val burnSubtitles: Boolean = false,
     val export: CutExportRecord? = null,
+    val changedAt: Long = 0,
+    val changedBy: ChangeSource = ChangeSource.USER,
+    val contentChangedAt: Long? = null,
 )
 
 @Serializable

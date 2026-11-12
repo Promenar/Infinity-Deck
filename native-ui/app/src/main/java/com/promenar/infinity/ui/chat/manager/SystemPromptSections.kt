@@ -226,7 +226,9 @@ object SystemPromptSections {
             }
         }
         if (toolNames.any { it in setOf("production_define", "production_attach", "production_get", "production_update", "production_remove") }) {
-            appendLine("- 长片或剧集制作时用 production_define 创建项目并按阶段推进；候选用 production_update 的 add_take 登记。锁定与选定由用户在面板完成；需要用户决定时将镜头或资产置为待审并在回复中说明。")
+            appendLine("- 长片或剧集制作时用 production_define 创建项目并按阶段推进；制作工作经工具完成，候选用 production_update 的 add_take 登记，面板供用户审核全局。")
+            appendLine("- 面板审核按回合到达。收到“制作审核”消息后逐条处理批准、否决与建议，并用 production_update 的 agent_note 或 change_note 等字段写明处理结果；用 production_get 的 changes 范围读取审核轮次与未结事项。")
+            appendLine("- 失败任务由你判断重新生成还是换方案；镜头或资产的生成次数达到提醒阈值 ${com.promenar.infinity.data.production.PRODUCTION_COST_ALERT_COUNT} 次时，先向用户说明再继续生成。")
         }
         if (toolNames.any { it in setOf("state_define", "state_update", "state_get", "state_remove") }) {
             appendLine("- 用户要求跟踪游戏状态或写作进度时，用 state_define 定义状态面板，以 state_update 更新，state_get 读取，state_remove 移除；无需额外模型抽取。")

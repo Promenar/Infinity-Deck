@@ -127,7 +127,7 @@ internal fun ProductionCharacterPage(asset: Asset, production: Production, busy:
     remove?.let { slot ->
         InfinityConfirmDialog(stringResource(R.string.p2_remove_slot), slot.name, stringResource(R.string.p2_remove_slot), onConfirm = { look?.let { onRun(ProductionUserAction.RemoveReferenceSlot(asset.id, it.id, slot.id)) }; remove = null }, onCancel = { remove = null }, isDestructive = true)
     }
-    if (assetReview) ProductionAssetSheet(asset, asset.referenceLocations(production).size, busy, { assetReview = false }, onRun, onSubmit)
+    if (assetReview) ProductionAssetSheet(asset, production, busy, { assetReview = false }, onRun, onSubmit)
 }
 
 /** 参考位卡片：3:4 图、名称；默认位标“默认”，自定义位右上角可移除。 */

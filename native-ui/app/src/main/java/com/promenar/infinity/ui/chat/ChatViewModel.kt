@@ -142,6 +142,9 @@ enum class GenerationStatus {
     ERROR
 }
 
+/** 面板发送结果：开轮、入队，或按原因暂不能发送（文档导入中、有待批准项、目标会话不是当前会话或已不存在）。 */
+enum class PanelSendResult { STARTED, QUEUED, IMPORTING, APPROVAL_PENDING, UNAVAILABLE }
+
 internal fun mergeToolCallsById(
     existing: List<ToolCall>,
     incoming: List<ToolCall>,
@@ -253,6 +256,7 @@ internal data class PendingPermissionTurn(
     val quotes: List<MessageQuote> = emptyList(),
     val imageAnnotations: List<ImageAnnotation?> = emptyList(),
     val imageAnnotationContext: ImageAnnotationContext? = null,
+    val consumeComposerDraft: Boolean = true,
 )
 
 internal fun ContextBuilderResult.hasPersistableRagContext(): Boolean =
@@ -1279,6 +1283,55 @@ class ChatViewModel(
         _draftQuotes.update { quotes -> quotes.filterNot { it.id == id } }
     }
 
+    /** 面板只发送指定文本；运行中等待队列写盘，输入区的草稿及附件保持独立。 */
+    suspend fun sendPanelMessage(sessionId: String, text: String): PanelSendResult = withContext(Dispatchers.Main.immediate) {
+        val session = store.getSession(sessionId)
+        if (_currentSessionId.value != sessionId || session == null) return@withContext PanelSendResult.UNAVAILABLE
+        if (_isImportingDocument.value) return@withContext PanelSendResult.IMPORTING
+        if (session.approvalRequest != null) return@withContext PanelSendResult.APPROVAL_PENDING
+        if (isSessionGenerating(sessionId)) {
+            pendingQueueWrites[sessionId] = (pendingQueueWrites[sessionId] ?: 0) + 1
+            try {
+                composerQueueStore.enqueue(sessionId, text)
+                if (_currentSessionId.value != sessionId || !viewModelScope.isActive) {
+                    composerQueueStore.pause(sessionId, queuePauseOverrides[sessionId] ?: QueuePauseReason.INTERRUPTED)
+                } else if (queueTerminalPhases[sessionId] in DRAFT_SETTLING_PHASES && sessionId !in stopAndSendSessions) {
+                    val state = composerQueueStore.snapshot(sessionId)
+                    if (state.pauseReason == null) composerQueueStore.pause(sessionId, queuePauseOverrides[sessionId] ?: QueuePauseReason.FAILED)
+                }
+            } finally {
+                val remaining = (pendingQueueWrites[sessionId] ?: 1) - 1
+                if (remaining == 0) pendingQueueWrites.remove(sessionId) else pendingQueueWrites[sessionId] = remaining
+                if (viewModelScope.isActive && dispatchesAfterTerminal(sessionId, queueTerminalPhases[sessionId])) dispatchComposerQueue(sessionId)
+            }
+            return@withContext PanelSendResult.QUEUED
+        }
+
+        cancelPendingPreparation(sessionId)
+        preparingSessions.add(sessionId)
+        generationJobs[sessionId] = viewModelScope.launch {
+            try {
+                sendPreparationMutex(sessionId).withLock {
+                    val current = store.getSession(sessionId) ?: return@withLock
+                    if (_currentSessionId.value != sessionId || _isImportingDocument.value || current.approvalRequest != null) return@withLock
+                    closePendingApprovalBeforeNewTurn(sessionId)
+                    _generationStatus.value = GenerationStatus.UPLOADING
+                    _isGenerating.value = true
+                    _error.value = null
+                    _generationNotice.value = null
+                    _backgroundServiceStoppedError.value = null
+                    _backgroundWarning.value = null
+                    _providerResolutionFailure.value = null
+                    applyBackgroundPolicyGate(sessionId, current, text, emptyList(), emptyList(), consumeComposerDraft = false)
+                }
+            } finally {
+                preparingSessions.remove(sessionId)
+                if (queueTerminalPhases[sessionId] == GenerationPhase.COMPLETED) dispatchComposerQueue(sessionId)
+            }
+        }
+        PanelSendResult.STARTED
+    }
+
     fun sendMessage(text: String, imageUris: List<Uri> = emptyList()) {
         val sessionId = _currentSessionId.value
         if (sessionId == null) return
@@ -1722,6 +1775,7 @@ class ChatViewModel(
         reuseUserMessageId: String? = null,
         imageAnnotations: List<ImageAnnotation?> = emptyList(),
         imageAnnotationContext: ImageAnnotationContext? = null,
+        consumeComposerDraft: Boolean = true,
     ) {
         when (
             com.promenar.infinity.background.generation.resolveBackgroundGenerationPolicy(
@@ -1741,6 +1795,7 @@ class ChatViewModel(
                     quotes = quotes,
                     imageAnnotations = imageAnnotations,
                     imageAnnotationContext = imageAnnotationContext,
+                    consumeComposerDraft = consumeComposerDraft,
                 )
             com.promenar.infinity.background.generation.BackgroundGenerationPolicy.FOREGROUND_ONLY ->
                 enqueuePreparedUserTurnAfterReplacement(
@@ -1755,6 +1810,7 @@ class ChatViewModel(
                     quotes = quotes,
                     imageAnnotations = imageAnnotations,
                     imageAnnotationContext = imageAnnotationContext,
+                    consumeComposerDraft = consumeComposerDraft,
                 )
             com.promenar.infinity.background.generation.BackgroundGenerationPolicy.REQUIRES_PERMISSION -> {
                 if (_currentSessionId.value != sessionId) {
@@ -1773,6 +1829,7 @@ class ChatViewModel(
                     quotes,
                     imageAnnotations,
                     imageAnnotationContext,
+                    consumeComposerDraft,
                 )
                 mutableNotificationPermissionRequest.value = NotificationPermissionRequest(token)
                 _isGenerating.value = false
@@ -1818,6 +1875,7 @@ class ChatViewModel(
                             quotes = pending.quotes,
                             imageAnnotations = pending.imageAnnotations,
                             imageAnnotationContext = pending.imageAnnotationContext,
+                            consumeComposerDraft = pending.consumeComposerDraft,
                         )
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -1851,6 +1909,7 @@ class ChatViewModel(
         quotes: List<MessageQuote> = emptyList(),
         imageAnnotations: List<ImageAnnotation?> = emptyList(),
         imageAnnotationContext: ImageAnnotationContext? = null,
+        consumeComposerDraft: Boolean = true,
     ) {
         if (reuseUserMessageId != null) {
             enqueuePreparedAssistantRetry(
@@ -1862,7 +1921,7 @@ class ChatViewModel(
                 assistantMessageIdsToReplace,
             )
         } else {
-            enqueuePreparedUserTurn(sessionId, session, text, imageDataUrls, documents, backgroundAllowed, quotes, imageAnnotations, imageAnnotationContext)
+            enqueuePreparedUserTurn(sessionId, session, text, imageDataUrls, documents, backgroundAllowed, quotes, imageAnnotations, imageAnnotationContext, consumeComposerDraft)
         }
     }
 
@@ -1944,11 +2003,12 @@ class ChatViewModel(
         quotes: List<MessageQuote> = emptyList(),
         imageAnnotations: List<ImageAnnotation?> = emptyList(),
         imageAnnotationContext: ImageAnnotationContext? = null,
+        consumeComposerDraft: Boolean = true,
     ) = store.turnAdmission.withLock(sessionId) {
         val userMsgId = IdGenerator.message("user")
         val assistantMsgId = IdGenerator.message("ai")
         val queuedSubmission = queueSubmissions[sessionId]
-        if (queuedSubmission == null) {
+        if (consumeComposerDraft && queuedSubmission == null) {
             generationPresentationStore.submittedDraft(sessionId)?.copy(userMessageId = userMsgId)?.let { draft ->
                 if (_currentSessionId.value == sessionId) submittedDraft = draft
                 generationPresentationStore.retainSubmittedDraft(draft)
@@ -1993,7 +2053,7 @@ class ChatViewModel(
                     text,
                     backgroundAllowed,
                     rollbackUserOnPreparationFailure = true,
-                    clearDraftOnConnecting = queuedSubmission == null,
+                    clearDraftOnConnecting = consumeComposerDraft && queuedSubmission == null,
                 )
             ) {
                 is com.promenar.infinity.domain.generation.StartGenerationResult.Started,
@@ -2008,7 +2068,7 @@ class ChatViewModel(
                             }
                             if (queueTerminalPhases[sessionId] == GenerationPhase.COMPLETED) dispatchComposerQueue(sessionId)
                         }
-                    } else if (
+                    } else if (consumeComposerDraft &&
                         _currentSessionId.value == sessionId &&
                         pendingDraftClearTaskId != null &&
                         generationPresentationStore.observe(sessionId).value == null &&

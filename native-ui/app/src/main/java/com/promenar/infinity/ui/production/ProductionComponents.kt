@@ -80,19 +80,19 @@ object ProductionUiTags {
     const val ERROR = "production_panel_error"
     const val SHOT_DETAIL = "production_shot_detail"
     const val SHOT_ROW = "production_shot_row"
-    const val SHOT_SELECT = "production_shot_select"
-    const val SHOT_REDO = "production_shot_redo"
-    const val SHOT_UNLOCK = "production_shot_unlock"
     const val SHOT_PROMPT_EDIT = "production_shot_prompt_edit"
     const val TAKE = "production_take"
     const val ASSET_CARD = "production_asset_card"
     const val ASSET_SHEET = "production_asset_sheet"
-    const val ASSET_APPROVE = "production_asset_approve"
-    const val ASSET_REJECT = "production_asset_reject"
-    const val ASSET_UNLOCK = "production_asset_unlock"
     const val REASON_FIELD = "production_reason_field"
     const val PROMPT_FIELD = "production_prompt_field"
     const val DIALOG_CONFIRM = "production_dialog_confirm"
+    const val SEND = "production_send"
+    const val REVIEW_APPROVE = "production_review_approve"
+    const val REVIEW_REJECT = "production_review_reject"
+    const val REVIEW_SUGGEST = "production_review_suggest"
+    const val REVIEW_SHEET = "production_review_sheet"
+    const val TASK_CANCEL = "production_task_cancel"
 }
 
 internal val ProductionThumbShape = RoundedCornerShape(8.dp)
@@ -350,7 +350,8 @@ internal fun ProductionSectionTitle(text: String, modifier: Modifier = Modifier,
 }
 
 /**
- * 单字段文本输入对话框：打回原因、编辑提示词共用。[onSubmit] 返回错误文本，成功时返回 null 并关闭。
+ * 单字段文本输入对话框：否决原因、建议、编辑提示词共用。[message] 为输入框上方的对象称呼。
+ * [onSubmit] 返回错误文本，成功时返回 null 并关闭。
  */
 @Composable
 internal fun ProductionTextDialog(
@@ -364,6 +365,8 @@ internal fun ProductionTextDialog(
     onDismiss: () -> Unit,
     onSubmit: suspend (String) -> String?,
     allowEmpty: Boolean = true,
+    message: String = "",
+    messageSegments: List<String>? = null,
 ) {
     var text by remember { mutableStateOf(initial) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -371,7 +374,8 @@ internal fun ProductionTextDialog(
     val scope = rememberCoroutineScope()
     InfinityConfirmDialog(
         title = title,
-        message = "",
+        message = message,
+        messageSegments = messageSegments,
         confirmText = confirmText,
         onConfirm = {
             saving = true

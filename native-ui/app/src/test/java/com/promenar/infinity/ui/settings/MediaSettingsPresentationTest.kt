@@ -79,14 +79,6 @@ class MediaSettingsPresentationTest {
         assertEquals(PreflightStatus.REVIEW, templateStatusLabel(PreflightResult(PreflightStatus.REVIEW, listOf("node"))).status)
     }
 
-    @Test fun unlockRequiresARequestAndExplicitConfirmationAndCanBeCancelled() {
-        val locked = TemplateUnlockState()
-        assertNull(locked.confirm())
-        assertEquals("template", locked.request("template", true).confirm())
-        assertNull(locked.request("template", true).cancel().confirm())
-        assertNull(locked.request("template", false).confirm())
-    }
-
     @Test fun providerSummaryIncludesConfiguredHostsWithoutTreatingOfflineAsDisabled() {
         val summary = mediaProviderListSummary(listOf(ProviderListItem(enabled = true), ProviderListItem(enabled = false)), 1, 2)
         assertEquals(5, summary.total)

@@ -186,26 +186,6 @@ class MediaPricing(val items: List<BillingItem>) {
     }
 }
 
-/** 读取器按不透明 sourceRef 定位项目；spent 应包含项目已经占用的预算。 */
-data class MediaBudget(val limit: Money, val spent: Money)
-fun interface MediaBudgetReader {
-    suspend fun readBudget(sourceRef: String): MediaBudget?
-}
-class WithinBudgetAutoSubmitPolicy(private val budgets: MediaBudgetReader) : AutoSubmitPolicy {
-    override suspend fun allowsAutoSubmit(sourceRef: String, estimate: Money): Boolean {
-        val budget = budgets.readBudget(sourceRef) ?: return false
-        return budget.limit.currency == estimate.currency && budget.spent.currency == estimate.currency &&
-            budget.spent.amount.add(estimate.amount) <= budget.limit.amount
-    }
-}
-
-fun interface AutoSubmitPolicy {
-    suspend fun allowsAutoSubmit(sourceRef: String, estimate: Money): Boolean
-}
-object RequireApproval : AutoSubmitPolicy {
-    override suspend fun allowsAutoSubmit(sourceRef: String, estimate: Money) = false
-}
-
 /** 远端任务状态；由各后端把提供商的响应翻译成这几种。 */
 sealed interface RemoteStatus {
     data class Running(val progress: Float? = null) : RemoteStatus
@@ -227,6 +207,8 @@ interface MediaGenerationBackend {
     suspend fun estimate(channel: MediaChannel, request: MediaGenerationRequest): Money?
     suspend fun submit(channel: MediaChannel, request: MediaGenerationRequest): String
     suspend fun poll(channel: MediaChannel, remoteId: String): RemoteStatus
+    /** true 表示远端明确接受取消；不支持取消的后端返回 false。 */
+    suspend fun cancel(channel: MediaChannel, remoteId: String): Boolean = false
     /** 下载产物到 request.outputDir，返回工作区相对路径。 */
     suspend fun download(channel: MediaChannel, request: MediaGenerationRequest, remoteId: String, outputs: List<RemoteOutput>): List<String>
     /** 按完成时的用量计算实际费用；不计费返回 0，未知返回 null。 */

@@ -145,6 +145,51 @@ class ShotGenerationPlannerTest {
         assertNotNull(planner().preview("s", "S1E01", "SC01-01").blockedReason)
     }
 
+    @Test fun `取消任务释放候选容量并允许独立生成新任务`() = runTest {
+        edit { shot -> shot.copy(takes = List(29) { Take("take-$it", "takes/$it.mp4", TakeSource("服务"), 1) }) }
+        val planner = planner()
+        val first = planner.generate("s", "S1E01", "SC01-01") as ShotGenerateResult.Submitted
+        assertTrue(planner.preview("s", "S1E01", "SC01-01").blockedReason.orEmpty().contains("候选容量不足"))
+        assertTrue(planner.generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Rejected)
+        assertEquals(1, queue.tasks.value.size)
+
+        queue.cancel(first.taskId)
+        assertNull(planner.preview("s", "S1E01", "SC01-01").blockedReason)
+        val second = planner.generate("s", "S1E01", "SC01-01") as ShotGenerateResult.Submitted
+        assertNotEquals(first.taskId, second.taskId)
+        assertEquals(listOf(MediaTaskState.CANCELED, MediaTaskState.QUEUED), queue.tasks.value.map { it.state })
+        assertEquals(29, shot().takes.size)
+    }
+
+    @Test fun `预览与提交镜头及配音均不调用后端估价`() = runTest {
+        edit { it.copy(dialogue = listOf(ShotDialogue("lin", "门开着", audioSource = DialogueAudioSource.DUBBED))) }
+        val speech = MediaChannel("speech", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.SPEECH), maxAudio = 1))
+        val estimatedChannels = mutableListOf<String>()
+        val backend = object : MediaGenerationBackend {
+            override fun handles(channel: MediaChannel) = true
+            override suspend fun estimate(channel: MediaChannel, request: MediaGenerationRequest): Money? {
+                estimatedChannels += channel.id
+                error("规划阶段不得估价")
+            }
+            override suspend fun submit(channel: MediaChannel, request: MediaGenerationRequest): String = error("测试仅检查规划入队")
+            override suspend fun poll(channel: MediaChannel, remoteId: String): RemoteStatus = error("测试仅检查规划入队")
+            override suspend fun download(channel: MediaChannel, request: MediaGenerationRequest, remoteId: String, outputs: List<RemoteOutput>): List<String> = error("测试仅检查规划入队")
+            override fun actualCost(channel: MediaChannel, usage: Map<String, Long>): Money? = null
+        }
+        val planner = DefaultShotGenerationPlanner(store, PlanningRegistry(planningChannel(), speech), queue, files,
+            CachedCharacterCompositor(files), backendFor = { backend }, ioDispatcher = StandardTestDispatcher(testScheduler))
+        val preview = planner.preview("s", "S1E01", "SC01-01")
+        assertNull(preview.blockedReason)
+        assertNull(preview.estimate)
+        assertEquals(1, preview.audioPlans.size)
+        assertTrue(estimatedChannels.isEmpty())
+
+        val submitted = planner.generate("s", "S1E01", "SC01-01") as ShotGenerateResult.Submitted
+        assertEquals(1, submitted.audioTaskIds.size)
+        assertEquals(listOf(GenerationMode.REFERENCE, GenerationMode.SPEECH), queue.tasks.value.map { it.request.mode })
+        assertTrue(estimatedChannels.isEmpty())
+    }
+
     @Test fun `拼合期间规划变化后拒绝按过期快照提交`() = runTest {
         val codec = HorizontalImageCodec { parts -> store.revision++; parts.first() }
         val planner = DefaultShotGenerationPlanner(store, PlanningRegistry(planningChannel(pack = CharacterReferenceMode.COMPOSITE)), queue, files, CachedCharacterCompositor(files, codec), ioDispatcher = StandardTestDispatcher(testScheduler))

@@ -9,9 +9,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
 class ProductionPanelActionsTest {
-    private fun snapshot(): ProductionSnapshot {
+    private fun snapshot(storyboardLocked: Boolean = true): ProductionSnapshot {
         val shot = Shot("SC01-01", "原镜头", durationSeconds = 3.0)
-        val scene = Scene("SC01", 1, "场", storyboardLocked = true, shots = listOf(shot))
+        val scene = Scene("SC01", 1, "场", storyboardLocked = storyboardLocked, shots = listOf(shot))
         return ProductionSnapshot(Production("p", "项目", ProductionKind.FILM, "p",
             seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = listOf(scene))))),
             createdAt = 1, updatedAt = 1), 1, ManifestSync.InSync)
@@ -60,8 +60,7 @@ class ProductionPanelActionsTest {
     }
 
     @Test fun `新增成功后打开新镜头失败时不导航`() = runTest {
-        val locked = snapshot()
-        val source = Source(ProductionUserEngine.apply(locked, 1, ProductionUserAction.LockScene("S1E01", "SC01", false), 2))
+        val source = Source(snapshot(storyboardLocked = false))
         val initial = source.state.value
         val opened = mutableListOf<Pair<String, String>>()
         val handler: ProductionActionHandler = { revision, action ->

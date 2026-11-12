@@ -171,8 +171,8 @@ internal fun ProductionProgressBar(progress: Float?, modifier: Modifier = Modifi
 }
 
 /**
- * 面板与次级页的页头：返回、标题与一行信息、右侧操作。
- * [onBack] 为空时（宽屏检视器根层）不画返回。
+ * 面板与次级页的页头：返回、标题与一行信息、右侧“发送”与操作。
+ * [onBack] 为空时（宽屏检视器根层）不画返回；“发送”由 [LocalProductionSend] 提供，面板以外不画。
  */
 @Composable
 internal fun ProductionTopBar(
@@ -208,6 +208,7 @@ internal fun ProductionTopBar(
                 }
             }),
         )
+        LocalProductionSend.current?.let { send -> ProductionSendButton(send, Modifier.padding(start = InfinitySpacing.XSmall, end = if (inPane) InfinitySpacing.Small else 4.dp)) }
         actions()
     }
 }

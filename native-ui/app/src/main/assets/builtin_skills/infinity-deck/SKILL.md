@@ -79,7 +79,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 
 MCP 工具由用户连接的服务器动态提供，名称不是固定内置清单的一部分：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 的工具需逐次审批，其它按实际工具名、参数目标和会话权限规则判定；连接不代表可以越过外部服务权限。自定义数据库/脚本 Skill 当前没有隔离执行器，不向模型暴露执行。`request_secret` 和 `show_secret` 免工具执行审批，但其保密卡需要用户输入或查看；不要让用户把秘密贴进聊天。`capture_secret` 是命令参数机制，不是独立模型工具。
 
-ComfyUI 主机由用户在界面配置。`comfy_probe` 读取主机节点与模型摘要，`comfy_templates` 列出模板、通道、锁定状态与预检结果，指定 `template_id` 和 `recheck=true` 可重新预检；这两个工具免执行审批。`comfy_define_template` 定义并锁定 API Format 工作流模板，属于配置变更，每次都需用户审批且不可限时免批。修改已锁定模板前须由用户在界面解锁；这些工具不提交生成任务。
+ComfyUI 主机由用户在界面配置。`comfy_probe` 读取主机节点与模型摘要，`comfy_templates` 列出模板、通道、锁定状态与预检结果，指定 `template_id` 和 `recheck=true` 可重新预检；这两个工具免执行审批。`comfy_define_template` 定义并锁定 API Format 工作流模板，属于配置变更，每次都需用户审批且不可限时免批；新建与修改同一 id 的已锁定模板都走这一审批，批准后模板保持锁定并重新预检。这些工具不提交生成任务。
 
 ### 仅用户可操作的配置
 

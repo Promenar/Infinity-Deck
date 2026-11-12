@@ -36,6 +36,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -55,11 +57,12 @@ import com.promenar.infinity.ui.theme.infinityDomainColors
 internal fun ProductionManagementTab(
     production: Production, tasks: List<MediaTask>, busy: Boolean, services: ProductionPanelServices,
     onOutput: (OutputFilter) -> Unit, onScene: (String) -> Unit, onAsset: (String) -> Unit,
-    onRun: (ProductionUserAction) -> Unit, onQueue: (String, QueueAction) -> Unit,
+    onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String?, onCancelTask: (String) -> Unit,
     channels: List<MediaChannel> = emptyList(),
+    costStats: ProductionCostStats = productionCostStats(production, tasks),
+    onShot: (String, String) -> Unit = { _, _ -> },
 ) {
-    var budgetSheet by remember { mutableStateOf(false) }
-    val pending = production.overviewItems(tasks)
+    val pending = production.overviewItems()
     val active = tasks.overviewQueueTasks(services.pendingRegistrations)
     val recent = tasks.recentQueueTasks(services.pendingRegistrations)
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
@@ -67,7 +70,7 @@ internal fun ProductionManagementTab(
         item("pending") {
             ProductionSection(stringResource(R.string.production_panel_section_pending)) {
                 if (pending.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_nothing_pending))
-                pending.forEach { item -> PendingRow(item, production, tasks, services, busy, onOutput, onScene, onAsset, onRun, onQueue, channels) }
+                pending.forEach { item -> PendingRow(item, production, busy, onOutput, onScene, onAsset, onRun, onSubmit) }
             }
         }
         item("stages") {
@@ -81,36 +84,16 @@ internal fun ProductionManagementTab(
             ProductionSection(stringResource(R.string.p2_tasks), trailing = stringResource(R.string.p2_tasks_active, active.count { it.isActiveTask() })) {
                 if (services.queue == null || services.projectSourcePrefix == null) ProductionMutedRow(stringResource(R.string.p2_queue_unavailable))
                 else if (active.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_empty_queue))
-                active.forEach { ProductionTaskRow(it, services, busy, onQueue, production.taskTitle(it.request.sourceRef), channels) }
+                active.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitle(it.request.sourceRef), channels) }
             }
         }
         if (recent.isNotEmpty()) item("recent") {
             ProductionSection(stringResource(R.string.p2_recent)) {
-                recent.forEach { ProductionTaskRow(it, services, busy, onQueue, production.taskTitle(it.request.sourceRef), channels) }
+                recent.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitle(it.request.sourceRef), channels) }
             }
         }
-        item("budget") {
-            ProductionSection(stringResource(R.string.p2_budget_section)) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-                        val spent = tasks.spentByCurrency()
-                        val amount = if (spent.isEmpty()) moneyText("CNY", java.math.BigDecimal.ZERO) else spent.entries.joinToString(" · ") { moneyText(it.key, it.value) }
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
-                            Text(amount, style = MaterialTheme.typography.headlineSmall, maxLines = 1)
-                            production.budgetCents?.let {
-                                Text(" / ${moneyText("CNY", java.math.BigDecimal.valueOf(it, 2))}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp), maxLines = 1)
-                            }
-                        }
-                        InfinityPillButton(stringResource(if (production.budgetCents == null) R.string.p2_set_limit else R.string.p2_modify), onClick = { budgetSheet = true }, enabled = !busy, compact = true)
-                    }
-                    Text(
-                        stringResource(if (production.budgetCents == null) R.string.p2_budget_each_detail else R.string.p2_auto_budget),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
+        item("cost") { ProductionCostSection(production, costStats, onShot, onAsset) }
+        if (production.reviewRounds.isNotEmpty()) item("rounds") { ProductionReviewRounds(production.reviewRounds) }
         production.seasons.filter { it.episodes.isNotEmpty() }.forEach { season ->
             item("season-${season.id}") {
                 ProductionSection(season.title ?: stringResource(R.string.p2_season, season.number)) {
@@ -131,32 +114,22 @@ internal fun ProductionManagementTab(
             }
         }
     }
-    if (budgetSheet) ProductionChoiceSheet(
-        title = stringResource(R.string.p2_budget),
-        options = listOf(
-            ProductionChoice<Long?>(null, stringResource(R.string.p2_no_limit), stringResource(R.string.p2_approval_each)),
-            ProductionChoice<Long?>(10000L, "¥100.00", stringResource(R.string.p2_auto_budget)),
-            ProductionChoice<Long?>(30000L, "¥300.00", stringResource(R.string.p2_auto_budget)),
-            ProductionChoice<Long?>(100000L, "¥1000.00", stringResource(R.string.p2_auto_budget)),
-        ),
-        selected = production.budgetCents, onDismiss = { budgetSheet = false }, onSelect = { onRun(ProductionUserAction.SetBudget(it)) },
-    )
 }
 
 @Composable
 private fun PendingRow(
-    item: OverviewItem, production: Production, tasks: List<MediaTask>, services: ProductionPanelServices, busy: Boolean,
+    item: OverviewItem, production: Production, busy: Boolean,
     onOutput: (OutputFilter) -> Unit, onScene: (String) -> Unit, onAsset: (String) -> Unit,
-    onRun: (ProductionUserAction) -> Unit, onQueue: (String, QueueAction) -> Unit, channels: List<MediaChannel>,
+    onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
     when (item) {
         is OverviewItem.Review -> ProductionRow(stringResource(R.string.p2_review_shots, item.count), icon = Icons.Rounded.RateReview, onClick = { onOutput(OutputFilter.REVIEW) })
-        is OverviewItem.Approval -> ProductionTaskRow(item.task, services, busy, onQueue, production.taskTitle(item.task.request.sourceRef), channels)
         is OverviewItem.Redo -> ProductionRow(stringResource(R.string.p2_redo_shots, item.count), icon = Icons.Rounded.Replay, onClick = { onOutput(OutputFilter.REDO) })
         is OverviewItem.SceneLock -> ProductionRow(
             stringResource(R.string.p2_scene_waiting, item.scene.number),
             icon = Icons.Rounded.LockOpen,
             subtitle = stringResource(R.string.p2_scene_pending_detail, item.scene.heading),
+            chip = production.reviewChipSpec(ReviewTarget.scene(item.episode.id, item.scene.code)),
             onClick = { onScene(item.episode.id) },
         )
         is OverviewItem.ReferenceReview -> {
@@ -170,20 +143,85 @@ private fun PendingRow(
         }
         is OverviewItem.ChangeReview -> {
             val request = item.request
-            ProductionRow(stringResource(R.string.p2_change_request), icon = Icons.Rounded.EditNote, subtitle = "${request.episodeId} · ${request.shotCode}")
+            val target = ReviewTarget.change(request.id)
+            ProductionRow(stringResource(R.string.p2_change_request), icon = Icons.Rounded.EditNote, subtitle = "${request.episodeId} · ${request.shotCode}", chip = production.reviewChipSpec(target), chevron = false)
             Column(Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal + InfinitySpacing.RowIconSize + InfinitySpacing.RowIconGap, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 request.changes.forEach { (field, change) ->
                     Text(stringResource(R.string.p2_change_diff, contentFieldLabel(field), change.oldValue.toString(), change.newValue.toString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 request.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                ProductionActionRow(listOf(
-                    ProductionButton(stringResource(R.string.p2_reject), InfinityPillTone.NEUTRAL, !busy, "p2_change_reject") { onRun(changeApprovalAction(request, false)) },
-                    ProductionButton(stringResource(R.string.p2_approve), InfinityPillTone.PRIMARY, !busy, "p2_change_approve") { onRun(changeApprovalAction(request, true)) },
-                ), modifier = Modifier.padding(top = 4.dp))
+                ProductionReviewNotes(production, target)
+                ProductionReviewActions(production, target, listOf(request.shotCode, stringResource(R.string.p2_change_request)), busy, onRun, onSubmit, Modifier.padding(top = 4.dp))
+            }
+        }
+        is OverviewItem.CutReview -> ProductionRow(
+            stringResource(R.string.p3_cut_version, item.cut.number),
+            icon = Icons.Rounded.ContentCut,
+            subtitle = production.episodes().firstOrNull { it.id == item.cut.episodeId }?.let { episodeName(it).joinToString(" ") },
+            chip = production.reviewChipSpec(ReviewTarget.cut(item.cut.id)),
+            chevron = false,
+        )
+    }
+}
+
+/** 成本：各阶段生成次数，以及达到提醒阈值的镜头与资产。只记录次数，费用在用量专区。 */
+@Composable
+private fun ProductionCostSection(production: Production, stats: ProductionCostStats, onShot: (String, String) -> Unit, onAsset: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+        ProductionSection(stringResource(R.string.production_cost_section), trailing = stringResource(R.string.production_cost_unit)) {
+            val stages = ProductionStage.entries.mapNotNull { stage -> stats.byStage[stage]?.takeIf { it.total > 0 }?.let { stage to it } }
+            if (stages.isEmpty()) ProductionMutedRow(stringResource(R.string.production_cost_none))
+            stages.forEach { (stage, count) -> ProductionRow(stage.label(), icon = stage.icon(), value = generationTimes(count.total), subtitle = count.failed.takeIf { it > 0 }?.let { stringResource(R.string.production_cost_failed, it) }, chevron = false) }
+        }
+        if (stats.alertShots.isNotEmpty() || stats.alertAssets.isNotEmpty()) ProductionSection(null) {
+            stats.alertShots.forEach { (key, count) ->
+                val shot = production.findShot(key.episodeId, key.shotCode)?.shot
+                ProductionRow(
+                    listOfNotNull(key.shotCode, shot?.title).joinToString(" "),
+                    chip = ProductionChipSpec(generationTimes(count.total), ProductionTone.WARNING),
+                    onClick = { onShot(key.episodeId, key.shotCode) },
+                )
+            }
+            stats.alertAssets.forEach { (assetId, count) ->
+                ProductionRow(
+                    production.findAsset(assetId)?.name ?: assetId,
+                    chip = ProductionChipSpec(generationTimes(count.total), ProductionTone.WARNING),
+                    onClick = { onAsset(assetId) },
+                )
             }
         }
     }
 }
+
+/** 生成次数：“N 次”，有失败时追加失败次数。 */
+/** 次数达到提醒阈值：在总览与对象上用警示色标出。 */
+internal fun costAlert(count: GenerationCount): Boolean = count.total >= PRODUCTION_COST_ALERT_COUNT
+
+@Composable
+internal fun generationTimes(total: Int): String = pluralStringResource(R.plurals.production_cost_times, total, total)
+
+@Composable
+internal fun generatedTimes(total: Int): String = pluralStringResource(R.plurals.production_cost_generated, total, total)
+
+/** 审核记录：已发送的轮次，只读。 */
+@Composable
+private fun ProductionReviewRounds(rounds: List<ReviewRound>) {
+    val context = LocalContext.current
+    ProductionSection(stringResource(R.string.production_review_rounds)) {
+        // 最新一轮在前。
+        rounds.sortedByDescending { it.number }.take(REVIEW_ROUNDS_SHOWN).forEach { round ->
+            ProductionRow(
+                stringResource(R.string.production_review_round, round.number),
+                subtitle = pluralStringResource(R.plurals.production_review_round_items, round.entries.size, round.entries.size),
+                value = android.text.format.DateUtils.formatDateTime(context, round.sentAt,
+                    android.text.format.DateUtils.FORMAT_SHOW_DATE or android.text.format.DateUtils.FORMAT_SHOW_TIME or android.text.format.DateUtils.FORMAT_ABBREV_MONTH),
+                chevron = false,
+            )
+        }
+    }
+}
+
+private const val REVIEW_ROUNDS_SHOWN = 10
 
 /** 试验项目提示条：页内置顶，带烧瓶图标。 */
 @Composable
@@ -255,23 +293,11 @@ internal fun Production.taskTitle(sourceRef: String): String? {
     return ref.dialogueIndex?.let { "$base · #${it + 1}" } ?: base
 }
 
-internal fun centsAmount(cents: Long) = java.math.BigDecimal.valueOf(cents, 2).toPlainString()
-
-/** 金额显示：人民币与美元用符号，其余币种写代码。 */
-internal fun moneyText(currency: String, amount: java.math.BigDecimal): String {
-    val value = amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
-    return when (currency.uppercase()) {
-        "CNY", "RMB" -> "¥$value"
-        "USD" -> "$$value"
-        else -> "$currency $value"
-    }
-}
-
 internal fun MediaTask.tone(pendingRegistrations: Set<String>): ProductionTone = when {
     awaitingRegistration(pendingRegistrations) -> ProductionTone.INFO
     else -> when (state) {
         MediaTaskState.AWAITING_APPROVAL, MediaTaskState.RESULT_UNKNOWN -> ProductionTone.WARNING
-        MediaTaskState.QUEUED, MediaTaskState.SUBMITTING -> ProductionTone.NEUTRAL
+        MediaTaskState.QUEUED, MediaTaskState.SUBMITTING, MediaTaskState.CANCELED -> ProductionTone.NEUTRAL
         MediaTaskState.RUNNING, MediaTaskState.DOWNLOADING -> ProductionTone.INFO
         MediaTaskState.COMPLETED -> ProductionTone.SUCCESS
         MediaTaskState.FAILED, MediaTaskState.DOWNLOAD_FAILED -> ProductionTone.ERROR
@@ -291,19 +317,16 @@ private fun MediaTask.kindLabel(channels: List<MediaChannel>): String = stringRe
     },
 )
 
+/** 任务行：对象、种类、通道与错误，右侧状态；进行中的任务只有“取消”。 */
 @Composable
-internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onQueue: (String, QueueAction) -> Unit, title: String? = null, channels: List<MediaChannel> = emptyList()) {
+internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onCancel: (String) -> Unit, title: String? = null, channels: List<MediaChannel> = emptyList()) {
     val running = task.isActiveTask() && task.state != MediaTaskState.QUEUED
     Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(listOf(title ?: task.request.sourceRef, task.kindLabel(channels)).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 InfinityMetaLine(
-                    segments = listOfNotNull(
-                        services.channelLabel(task.request.channelId),
-                        task.estimate?.takeIf { task.state == MediaTaskState.AWAITING_APPROVAL }?.let { stringResource(R.string.p2_estimate, moneyText(it.currency, it.amount)) },
-                        task.error,
-                    ),
+                    segments = listOfNotNull(services.channelLabel(task.request.channelId), task.error),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -313,14 +336,9 @@ internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelService
             ProductionStatusChip(task.stateLabel(services.pendingRegistrations) + percent, task.tone(services.pendingRegistrations))
         }
         if (running) ProductionProgressBar(task.progress)
-        val actions = task.allowedQueueActions()
-        if (actions.isNotEmpty()) ProductionActionRow(actions.sortedBy { if (it == QueueAction.APPROVE) 1 else 0 }.map { action ->
-            ProductionButton(
-                stringResource(when (action) { QueueAction.APPROVE -> R.string.p2_approve; QueueAction.REJECT -> R.string.p2_reject; QueueAction.RETRY -> R.string.p2_retry }),
-                if (action == QueueAction.APPROVE) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
-                !busy && services.queue != null, "p2_task_${action.name}",
-            ) { onQueue(task.id, action) }
-        })
+        if (task.canCancel()) ProductionActionRow(listOf(
+            ProductionButton(stringResource(R.string.production_task_cancel), InfinityPillTone.NEUTRAL, !busy && services.queue != null, ProductionUiTags.TASK_CANCEL) { onCancel(task.id) },
+        ))
     }
 }
 

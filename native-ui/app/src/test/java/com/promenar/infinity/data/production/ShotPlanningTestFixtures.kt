@@ -8,7 +8,7 @@ import java.math.BigDecimal
 internal fun planningProduction(shot: Shot = Shot("SC01-01", "交信", durationSeconds = 5.0, mode = ShotMode.REFERENCE,
     visual = "递出信封", performance = "迟疑，眼神警惕", camera = "平视", cameraMovement = "缓慢推近", size = "近景",
     appearances = listOf(ShotAppearance("lin", "coat", listOf("back", "front"))), locationAssetId = "pier")) = Production(
-    "p/1", "雾港", ProductionKind.SERIES, "productions/fog", createdAt = 1, updatedAt = 1, budgetCents = 1000,
+    "p/1", "雾港", ProductionKind.SERIES, "productions/fog", createdAt = 1, updatedAt = 1,
     seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "开场", scenes = listOf(Scene("SC01", 1, "码头", true, listOf(shot))))))),
     assets = listOf(Asset("lin", AssetKind.CHARACTER, "林晚", status = AssetStatus.REVIEW, looks = listOf(CharacterLook("coat", "风衣", listOf(
         ReferenceSlot("back", "背面全身", "ref/back.png"), ReferenceSlot("front", "正面全身", "ref/front.png"), ReferenceSlot("side", "侧面全身", "ref/side.png")))), referenceVoice = ReferenceVoice("ref/voice.wav")),
@@ -57,7 +57,5 @@ internal class PlanningQueue : MediaGenerationQueue {
     override suspend fun submit(request: MediaGenerationRequest) = MediaTask("task-${tasks.value.size}", request, Money(BigDecimal.ONE, "CNY")).also { tasks.value += it }
     override fun observeTasks() = tasks
     override fun observeTask(id: String) = tasks.map { it.find { t -> t.id == id } }
-    override suspend fun approve(id: String) { tasks.value = tasks.value.map { if (it.id == id) it.approve() else it } }
-    override suspend fun reject(id: String) { tasks.value = tasks.value.filterNot { it.id == id } }
-    override suspend fun retry(id: String) = Unit
+    override suspend fun cancel(id: String) { tasks.value = tasks.value.map { if (it.id == id) it.canceled() else it } }
 }

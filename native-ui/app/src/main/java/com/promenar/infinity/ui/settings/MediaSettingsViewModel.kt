@@ -18,7 +18,6 @@ internal data class MediaSettingsUiState(
     val loaded: Boolean = false,
     val busy: Boolean = false,
     val failed: Boolean = false,
-    val unlock: TemplateUnlockState = TemplateUnlockState(),
     val connections: Map<String, ComfyConnection> = emptyMap(),
 ) {
     val groups: Map<MediaGroup, List<MediaChannelRow>> get() = with(snapshot) { mediaChannelRows(channels, models, templates, hosts) }
@@ -86,21 +85,6 @@ internal class MediaSettingsViewModel(
     fun preflight(id: String) = perform { store.preflight(id) }
     fun preflightHost(id: String) = perform {
         state.value.snapshot.templates.filter { it.template.hostId == id }.forEach { store.preflight(it.template.id) }
-    }
-    fun requestUnlock(id: String) {
-        if (state.value.busy) return
-        val locked = state.value.snapshot.templates.firstOrNull { it.template.id == id }?.template?.locked == true
-        mutable.update { it.copy(unlock = it.unlock.request(id, locked)) }
-    }
-    fun cancelUnlock() { mutable.update { it.copy(unlock = it.unlock.cancel()) } }
-    fun confirmUnlock() {
-        if (state.value.busy) return
-        val id = state.value.unlock.confirm() ?: return
-        cancelUnlock()
-        perform {
-            check(state.value.snapshot.templates.first { it.template.id == id }.template.locked)
-            store.unlock(id)
-        }
     }
     fun lockTemplate(id: String, order: List<String>) = perform { store.lock(id, order) }
     fun checkConnections() {

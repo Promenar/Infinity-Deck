@@ -26,28 +26,32 @@ class ProductionPhaseTwoTest {
         assertThat(shot(update(trial, op)).takes).hasSize(1)
     }
 
-    @Test fun `锁定场修改内容待审批而规划直接生效`() {
+    @Test fun `锁定场修改内容待审核而规划直接生效`() {
         val s = fixture(true)
         val changed = update(s, """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"新标题","channel_id":"video-a"}""")
         assertThat(shot(changed).title).isEqualTo("镜头")
         assertThat(shot(changed).channelId).isEqualTo("video-a")
         val id = changed.production.changeRequests.single().id
-        val approved = ProductionUserEngine.apply(changed, changed.revision, ProductionUserAction.ResolveChange(id, true), 3)
+        val approved = ProductionUserEngine.apply(changed, changed.revision, ProductionUserAction.Review(ReviewTarget.change(id), ReviewKind.APPROVE, null), 3)
         assertThat(shot(approved).title).isEqualTo("新标题")
-        val rejected = ProductionUserEngine.apply(changed, changed.revision, ProductionUserAction.ResolveChange(id, false), 3)
+        val rejected = ProductionUserEngine.apply(changed, changed.revision, ProductionUserAction.Review(ReviewTarget.change(id), ReviewKind.REJECT, null), 3)
         assertThat(shot(rejected).title).isEqualTo("镜头")
-        assertThat(rejected.production.changeRequests).isEmpty()
+        assertThat(rejected.production.changeRequests.single().id).isEqualTo(id)
+        assertThat(rejected.production.changeRequests.single().rejected).isTrue()
+        assertThat(rejected.production.changeRequests.single().approved).isFalse()
+        assertThat(rejected.production.changeRequests.single().changedBy).isEqualTo(ChangeSource.USER)
+        assertThat(rejected.production.changeRequests.single().changedAt).isEqualTo(rejected.revision)
     }
 
-    @Test fun `预算参数校验与用户决定保护`() {
-        val s = fixture()
-        val budget = ProductionUserEngine.apply(s, 1, ProductionUserAction.SetBudget(1000), 2)
-        assertThat(budget.production.budgetCents).isEqualTo(1000)
-        val invalid = """[{"op":"set_budget","cents":"100"}]"""
-        val error = assertThrows(IllegalArgumentException::class.java) { ProductionEngine.update(budget, Json.parseToJsonElement(invalid).jsonArray.map { it.jsonObject }, budget.revision, 3) { true } }
-        assertThat(error.message).contains("cents")
-        val valid = """[{"op":"set_budget","cents":2000}]"""
-        assertThrows(IllegalArgumentException::class.java) { ProductionEngine.update(budget, Json.parseToJsonElement(valid).jsonArray.map { it.jsonObject }, 1, 3) { true } }
+    @Test fun `预算操作作为未知操作拒绝且不改变快照`() {
+        val initial = fixture()
+        for (cents in listOf("1000", "\"100\"")) {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                update(initial, """{"op":"set_budget","cents":$cents}""")
+            }
+            assertThat(error.message).contains("未知 op")
+        }
+        assertThat(initial).isEqualTo(fixture())
     }
 
     @Test fun `用户改写提示词受到保护`() {
@@ -57,7 +61,7 @@ class ProductionPhaseTwoTest {
         assertThat(shot(result).prompt).isEqualTo("用户文案")
     }
 
-    @Test fun `锁定场用户编辑待审批且旧值冲突不能批准`() {
+    @Test fun `锁定场用户编辑待审核且旧值冲突不能通过`() {
         val locked = fixture(true)
         val edited = ProductionUserEngine.apply(locked, 1, ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(locked).copy(title = "用户")), 2)
         assertThat(shot(edited)).isEqualTo(shot(locked))
@@ -67,27 +71,33 @@ class ProductionPhaseTwoTest {
         val pending = update(edited, """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"智能体"}""")
         assertThat(shot(pending).title).isEqualTo("镜头")
         assertThat(pending.production.changeRequests).hasSize(2)
-        val approved = ProductionUserEngine.apply(pending, pending.revision, ProductionUserAction.ResolveChange(userRequest.id, true), 3)
+        val approved = ProductionUserEngine.apply(pending, pending.revision, ProductionUserAction.Review(ReviewTarget.change(userRequest.id), ReviewKind.APPROVE, null), 3)
         assertThat(shot(approved).title).isEqualTo("用户")
         val agentRequest = approved.production.changeRequests.first { it.source == ChangeSource.AGENT }
-        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(approved, approved.revision, ProductionUserAction.ResolveChange(agentRequest.id, true), 4) }
+        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(approved, approved.revision, ProductionUserAction.Review(ReviewTarget.change(agentRequest.id), ReviewKind.APPROVE, null), 4) }
     }
 
-    @Test fun `用户内容审批可批准或拒绝且修订号冲突不写入`() {
+    @Test fun `用户内容审核可通过或否决且修订号冲突不写入`() {
         val initial = fixture(true)
         val action = ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(initial).copy(title = "修改", visual = "雨夜"))
         val pending = ProductionUserEngine.apply(initial, 1, action, 2)
         val request = pending.production.changeRequests.single()
         assertThat(request.changes.keys).containsExactly("title", "visual")
         assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(pending, 1, action, 3) }
-        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(pending, 1, ProductionUserAction.ResolveChange(request.id, true), 3) }
-        val approved = ProductionUserEngine.apply(pending, 2, ProductionUserAction.ResolveChange(request.id, true), 3)
+        assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(pending, 1, ProductionUserAction.Review(ReviewTarget.change(request.id), ReviewKind.APPROVE, null), 3) }
+        val approved = ProductionUserEngine.apply(pending, 2, ProductionUserAction.Review(ReviewTarget.change(request.id), ReviewKind.APPROVE, null), 3)
         assertThat(shot(approved).title).isEqualTo("修改")
         assertThat(shot(approved).visual).isEqualTo("雨夜")
         assertThat(approved.production.changeRequests.single().approved).isTrue()
-        val rejected = ProductionUserEngine.apply(pending, 2, ProductionUserAction.ResolveChange(request.id, false), 3)
+        val rejected = ProductionUserEngine.apply(pending, 2, ProductionUserAction.Review(ReviewTarget.change(request.id), ReviewKind.REJECT, null), 3)
         assertThat(shot(rejected)).isEqualTo(shot(initial))
-        assertThat(rejected.production.changeRequests).isEmpty()
+        val rejectedRequest = rejected.production.changeRequests.single()
+        assertThat(rejectedRequest.id).isEqualTo(request.id)
+        assertThat(rejectedRequest.rejected).isTrue()
+        assertThat(rejectedRequest.approved).isFalse()
+        assertThat(rejectedRequest.changedBy).isEqualTo(ChangeSource.USER)
+        assertThat(rejectedRequest.changedAt).isEqualTo(rejected.revision)
+        assertThat(rejected.production.reviews.single().kind).isEqualTo(ReviewKind.REJECT)
         assertThat(pending.production.changeRequests.single().approved).isFalse()
     }
 
@@ -107,7 +117,7 @@ class ProductionPhaseTwoTest {
         val withContent = ProductionUserEngine.apply(initial, 1, ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(initial).copy(dialogue = listOf(
             ShotDialogue("char-a", "甲"), ShotDialogue("char-b", "乙")
         ))), 2)
-        val locked = ProductionUserEngine.apply(withContent, 2, ProductionUserAction.LockScene("S1E01", "SC01", true), 3)
+        val locked = ProductionUserEngine.apply(withContent, 2, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null), 3)
         val changed = ProductionUserEngine.apply(locked, 3, ProductionUserAction.SetDialogueSource("S1E01", "SC01-01", 1, DialogueAudioSource.DUBBED), 4)
         assertThat(shot(changed).dialogue.first()).isEqualTo(shot(locked).dialogue.first())
         assertThat(shot(changed).dialogue.last()).isEqualTo(ShotDialogue("char-b", "乙", audioSource = DialogueAudioSource.DUBBED))

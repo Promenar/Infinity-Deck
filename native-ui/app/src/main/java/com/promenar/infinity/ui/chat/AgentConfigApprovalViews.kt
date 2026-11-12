@@ -115,7 +115,7 @@ internal fun agentConfigTitle(preview: ApprovalDiffPreview.AgentConfig): String 
 }
 
 @Composable
-private fun AgentConfigReason(reason: String) {
+internal fun AgentConfigReason(reason: String) {
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             Modifier

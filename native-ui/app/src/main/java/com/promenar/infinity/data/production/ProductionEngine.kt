@@ -52,7 +52,7 @@ object ProductionEngine {
                         val existing = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == id }
                         require(existing == null || season.episodes.any { it.id == id }) { "集 $id 已属于其他季。" }
                         existing?.let { checkEpisode(it); require(!it.scriptLocked || "script_path" !in op || optional(op, "script_path", it.scriptPath) == it.scriptPath) { "剧本已锁定，请先由用户解锁。" } }
-                        val e = (existing ?: Episode(id, int(op, "number"), text(op, "title"))).copy(number = int(op, "number"), title = text(op, "title"), scriptPath = optional(op, "script_path", existing?.scriptPath), changedBy = existing?.changedBy ?: ChangeSource.AGENT, changedAt = if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev)
+                        val e = (existing ?: Episode(id, int(op, "number"), text(op, "title"))).copy(number = int(op, "number"), title = text(op, "title"), scriptPath = optional(op, "script_path", existing?.scriptPath), changedBy = existing?.changedBy ?: ChangeSource.AGENT, changedAt = if ("script_path" in op) rev else if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev, contentChangedAt = if ("script_path" in op) rev else existing?.contentChangedAt)
                         p = p.copy(seasons = p.seasons.map { if (it.id != sid) it else it.copy(episodes = if (existing == null) it.episodes + e else it.episodes.map { item -> if (item.id == id) e else item }) })
                     }
                     "upsert_scene" -> {
@@ -84,7 +84,7 @@ object ProductionEngine {
                         val changes = ProductionRules.changes(old, updated)
                         val stored = if (sc.storyboardLocked && changes.isNotEmpty()) {
                             val id = UUID.nameUUIDFromBytes("${p.id}:$rev:$index:change".toByteArray(Charsets.UTF_8)).toString()
-                            p = p.copy(changeRequests = p.changeRequests + ShotChangeRequest(id, ep.id, sc.code, code, changes, ChangeSource.AGENT, optional(op, "change_note", null)))
+                            p = p.copy(changeRequests = p.changeRequests + ShotChangeRequest(id, ep.id, sc.code, code, changes, ChangeSource.AGENT, optional(op, "change_note", null), changedAt = rev))
                             ProductionRules.applyChanges(updated, changes.mapValues { (_, change) -> ShotFieldChange(change.newValue, change.oldValue) })
                         } else updated
                         val remaining = sc.shots.filterNot { it.code == code }.toMutableList()
@@ -117,7 +117,7 @@ object ProductionEngine {
                     "add_asset_version" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old); val path = text(op, "path"); media(path)
                         val number = (old.versions.maxOfOrNull { it.number } ?: 0) + 1
-                        setAsset(old.copy(versions = old.versions + AssetVersion(number, path, now, optional(op, "note", null)), currentVersion = if (old.status == AssetStatus.LOCKED) old.currentVersion else number, status = if (old.status == AssetStatus.LOCKED) old.status else AssetStatus.REVIEW, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        setAsset(old.copy(versions = old.versions + AssetVersion(number, path, now, optional(op, "note", null), taskId = optional(op, "task_id", null)), currentVersion = if (old.status == AssetStatus.LOCKED) old.currentVersion else number, status = if (old.status == AssetStatus.LOCKED) old.status else AssetStatus.REVIEW, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "set_asset_status" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old); require(old.status != AssetStatus.LOCKED) { "资产 ${old.id} 已锁定，请先由用户解锁。" }
@@ -138,12 +138,6 @@ object ProductionEngine {
                         check(p.policyChangedBy, p.policyChangedAt, "项目设置")
                         p = p.copy(experimental = bool(op, "enabled"), policyChangedAt = if (p.policyChangedBy == ChangeSource.USER) p.policyChangedAt else rev)
                     }
-                    "set_budget" -> {
-                        check(p.policyChangedBy, p.policyChangedAt, "项目设置")
-                        val value = if (op["cents"] == JsonNull) null else (op["cents"] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull ?: throw IllegalArgumentException("cents 必须是非负整数或 null。")
-                        require(value == null || value >= 0) { "预算不能为负数。" }
-                        p = p.copy(budgetCents = value, policyChangedAt = if (p.policyChangedBy == ChangeSource.USER) p.policyChangedAt else rev)
-                    }
                     "set_preview_enabled" -> p = p.copy(previewEnabled = bool(op, "enabled"))
                     "remove" -> {
                         val target = text(op, "target"); val ids = (op["ids"] as? JsonArray)?.map { (it as? JsonPrimitive)?.takeIf { item -> item.isString }?.content ?: throw IllegalArgumentException("ids 必须是字符串数组。") } ?: throw IllegalArgumentException("ids 必须是字符串数组。")
@@ -161,7 +155,7 @@ object ProductionEngine {
                 }
             } catch (e: IllegalArgumentException) { throw IllegalArgumentException("第 ${index + 1} 项：${e.message}", e) }
         }
-        p = p.copy(updatedAt = now)
+        p = stampProductionContent(snapshot.production, p, rev).pruneDeletedReviewTargets().copy(updatedAt = now)
         ProductionManifestCodec.encode(p, rev)
         return ProductionSnapshot(p, rev, ManifestSync.Pending)
     }

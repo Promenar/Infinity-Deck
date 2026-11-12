@@ -570,11 +570,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             generationRunnerFactory.createRuntime(sessionId, "draft-budget").estimateDraftDocumentBudget(sessionId, text, documents)
         }
 
-    /** 应用其它位置新建会话时自动发出的首条用户消息，由前台聊天页取走。 */
-    val sessionLaunchInbox: com.promenar.infinity.data.session.SessionLaunchInbox by lazy {
-        com.promenar.infinity.data.session.SessionLaunchInbox()
-    }
-
     /** 外部文档查看器送往会话输入框的附件，由前台聊天页取走。 */
     val composerDocumentInbox: com.promenar.infinity.data.document.ComposerDocumentInbox by lazy {
         com.promenar.infinity.data.document.ComposerDocumentInbox()
@@ -1326,7 +1321,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             textSplitter,
             titleScope = generationScope,
         ).apply {
-            setTitleKeeper { sessionId -> sessionLaunchInbox.keepsTitle(sessionId) }
             setTitleGenerator { params ->
                 val quickModelId = settings.getString("preset_summary_model", "")
                 com.promenar.infinity.ui.chat.manager.PostProcessor.generateTitleWithFallback(
@@ -1445,18 +1439,17 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     var mediaGenerationModule: com.promenar.infinity.data.mediagen.queue.MediaGenerationModule? = null
         private set
 
-    /** 主控在真实通道注册表和后端创建后调用；预算策略缺省逐次批准。 */
+    /** 主控在真实通道注册表和后端创建后调用；生成请求直接入队。 */
     @Synchronized
     fun installMediaGeneration(
         registry: com.promenar.infinity.domain.mediagen.MediaChannelRegistry,
         bindings: List<com.promenar.infinity.data.mediagen.queue.MediaBackendBinding>,
-        policy: com.promenar.infinity.domain.mediagen.AutoSubmitPolicy = com.promenar.infinity.domain.mediagen.RequireApproval,
         concurrency: com.promenar.infinity.data.mediagen.queue.MediaQueueConcurrency = com.promenar.infinity.data.mediagen.queue.MediaQueueConcurrency(),
         requestAvailable: suspend (com.promenar.infinity.domain.mediagen.MediaGenerationRequest) -> Boolean = { true },
     ): com.promenar.infinity.data.mediagen.queue.MediaGenerationModule {
         check(startupState.value == BackupStartupState.Ready) { "MEDIA_GENERATION_REQUIRES_READY_STARTUP" }
         check(mediaGenerationModule == null) { "MEDIA_GENERATION_ALREADY_INSTALLED" }
-        return com.promenar.infinity.data.mediagen.queue.MediaGenerationModule(this, database, registry, bindings, policy, concurrency, requestAvailable)
+        return com.promenar.infinity.data.mediagen.queue.MediaGenerationModule(this, database, registry, bindings, concurrency, requestAvailable)
             .also { mediaGenerationModule = it; it.start() }
     }
 
@@ -2053,7 +2046,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.StateRemoveSkill(stateBoardRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionDefineSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionAttachSkill(productionRepository))
-            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository) { withContext(Dispatchers.IO) { com.promenar.infinity.data.mediagen.queue.RoomMediaTaskStore(database).all().map { it.task } } })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionCutSkill({ productionRepository.get(it) }, { productionCutRuntime.controller }))

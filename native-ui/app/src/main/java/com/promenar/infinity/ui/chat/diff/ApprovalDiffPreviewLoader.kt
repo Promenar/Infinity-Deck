@@ -56,6 +56,18 @@ sealed interface ApprovalDiffPreview {
         val impact: AgentConfigImpact,
         val reason: String = "",
     ) : ApprovalDiffPreview
+
+    /** 模板审批展示节点类型、模型输入和有效通道能力的变化。 */
+    data class ComfyTemplate(
+        val templateName: String,
+        val hostName: String,
+        val isNew: Boolean,
+        val reason: String,
+        val addedNodeTypes: List<String>,
+        val removedNodeTypes: List<String>,
+        val modelChanges: List<FieldChange>,
+        val capabilityChanges: List<FieldChange>,
+    ) : ApprovalDiffPreview
 }
 
 /** 审批卡字段表的一行；[key] 为工具字段键，[oldValue]/[newValue] 已格式化为显示文本，旧值为空表示新建。 */
@@ -171,6 +183,7 @@ internal fun rememberApprovalDiffPreview(
     assistantMessageId: String?,
     sessionId: String?,
     privateWorkspaceRootUuid: String?,
+    approvalReason: String = "",
 ): ApprovalDiffPreview? {
     // 实验室沙箱里不读工作区，审批卡回退为参数片段。
     val sandboxed = com.promenar.infinity.ui.common.LocalLabSandbox.current
@@ -182,7 +195,7 @@ internal fun rememberApprovalDiffPreview(
         ApprovalPreview.arguments(call, messages, assistantMessageId)
     }
     val agentConfigLabels = rememberAgentConfigValueLabels()
-    val preview by produceState<ApprovalDiffPreview?>(null, loader, call.toolName, arguments, sessionId, privateWorkspaceRootUuid) {
+    val preview by produceState<ApprovalDiffPreview?>(null, loader, call.toolName, arguments, sessionId, privateWorkspaceRootUuid, approvalReason) {
         value = when {
             loader == null || application == null || arguments == null || sessionId == null -> null
             call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> try {
@@ -194,6 +207,9 @@ internal fun rememberApprovalDiffPreview(
             } catch (_: Exception) {
                 null
             }
+            call.toolName == "comfy_define_template" ->
+                ComfyTemplatePreviewLoader(AppComfyTemplatePreviewSources(application.comfyMedia.repository))
+                    .load(arguments, approvalReason)
             else -> loader.load(call.toolName, arguments, sessionId, privateWorkspaceRootUuid)
         }
     }

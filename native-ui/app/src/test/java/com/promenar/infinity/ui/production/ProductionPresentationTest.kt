@@ -70,37 +70,6 @@ class ProductionPresentationTest {
     }
 
     @Test
-    fun `镜头操作随状态与候选变化`() {
-        val review = production.findShot("S1E01", "SC01-02")!!.shot
-        assertThat(review.actions("t02")).isEqualTo(ShotActions(canSelect = true, canRedo = true, canUnlock = false, canEditPrompt = true))
-        assertThat(review.actions("missing").canSelect).isFalse()
-        assertThat(review.actions(null).canSelect).isFalse()
-
-        val locked = production.findShot("S1E01", "SC01-01")!!.shot
-        assertThat(locked.actions("t01")).isEqualTo(ShotActions(canSelect = false, canRedo = false, canUnlock = true, canEditPrompt = false))
-
-        val generating = review.copy(status = ShotStatus.GENERATING)
-        assertThat(generating.actions("t02").canSelect).isFalse()
-        assertThat(generating.actions("t02").canRedo).isFalse()
-
-        val redo = review.copy(status = ShotStatus.REDO)
-        assertThat(redo.actions("t02").canRedo).isFalse()
-        assertThat(redo.actions("t02").canSelect).isTrue()
-    }
-
-    @Test
-    fun `资产操作要求有版本才能通过`() {
-        val locked = production.findAsset("char-linwan")!!
-        assertThat(locked.actions()).isEqualTo(AssetActions(canApprove = false, canRedo = false, canUnlock = true))
-        val review = production.findAsset("char-zhou")!!
-        assertThat(review.actions()).isEqualTo(AssetActions(canApprove = true, canRedo = true, canUnlock = false))
-        val noVersion = production.findAsset("prop-letter")!!
-        assertThat(noVersion.actions().canApprove).isFalse()
-        assertThat(noVersion.actions().canRedo).isFalse()
-        assertThat(noVersion.copy(status = AssetStatus.DRAFT).actions().canRedo).isTrue()
-    }
-
-    @Test
     fun `资产当前版本与引用计数`() {
         val asset = production.findAsset("char-linwan")!!
         assertThat(asset.currentPath()).isEqualTo("productions/harbor/assets/linwan-v2.png")

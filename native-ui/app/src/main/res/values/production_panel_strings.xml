@@ -91,25 +91,13 @@
     <string name="production_panel_no_assets">No assets</string>
     <string name="production_panel_no_shots">No shots</string>
 
-    <string name="production_panel_lock_script">Lock script</string>
-    <string name="production_panel_unlock_script">Unlock script</string>
-    <string name="production_panel_lock_storyboard">Lock storyboard</string>
-    <string name="production_panel_unlock_storyboard">Unlock storyboard</string>
-    <string name="production_panel_select">Select</string>
-    <string name="production_panel_redo">Redo</string>
-    <string name="production_panel_unlock">Unlock</string>
     <string name="production_panel_edit">Edit</string>
     <string name="production_panel_save">Save</string>
-    <string name="production_panel_approve">Approve</string>
-    <string name="production_panel_reject">Reject</string>
     <string name="production_panel_back">Back</string>
     <string name="production_panel_stage_menu">Stage status</string>
     <string name="production_panel_selected">Selected</string>
     <string name="production_panel_take_number">Take %d</string>
 
-    <string name="production_panel_redo_title">Redo shot</string>
-    <string name="production_panel_reject_title">Reject asset</string>
-    <string name="production_panel_reason">Reason</string>
     <string name="production_panel_prompt_title">Edit prompt</string>
 
     <string name="production_panel_manifest_write_failed">Manifest write failed: %s</string>

@@ -12,19 +12,19 @@ import kotlinx.serialization.json.*
 
 private const val ShotArguments = """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"}},"required":["episode_id","shot_code"],"additionalProperties":false}"""
 
-class ProductionPlanSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_plan", "预览镜头的通道、实际输入顺序、提示词、费用与阻断原因；提交前调用。", ShotArguments, ToolRisk.SAFE_READ) {
+class ProductionPlanSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_plan", "预览镜头的通道、实际输入顺序、提示词与阻断原因；提交前调用。", ShotArguments, ToolRisk.SAFE_READ) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         val (episode, shot) = shotArguments(args)
         return shotPlanJson(planner().preview(context.sessionId, episode, shot))
     }
 }
-class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_generate", "按已预览的当前规划生成镜头及配音，返回任务 id 或拒绝原因；付费任务可能待用户在总览批准。", ShotArguments, ToolRisk.SESSION_STATE) {
+class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_generate", "按已预览的当前规划生成镜头及配音，返回任务 id 或拒绝原因；任务直接入队。", ShotArguments, ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         val (episode, shot) = shotArguments(args)
         return when (val result = planner().generate(context.sessionId, episode, shot)) {
             is ShotGenerateResult.Rejected -> buildJsonObject { put("status", "rejected"); put("reason", result.reason) }
             is ShotGenerateResult.Submitted -> buildJsonObject {
-                put("status", "submitted"); put("task_id", result.taskId); put("awaiting_approval", result.awaitingApproval)
+                put("status", "submitted"); put("task_id", result.taskId)
                 put("audio_task_ids", JsonArray(result.audioTaskIds.map(::JsonPrimitive))); put("warnings", JsonArray(result.warnings.map(::JsonPrimitive)))
             }
         }
@@ -43,14 +43,14 @@ class ProductionGenerationTasksSkill(private val store: () -> ShotGenerationStor
         val offset = integer("offset", 0).also { require(it >= 0) }
         val project = store().load(context.sessionId)?.production ?: throw IllegalArgumentException("project")
         val tasks = queue().observeTasks().first().filter { task ->
-            val source = ProductionSourceRef.parse(task.request.sourceRef)
-            source?.productionId == project.id && (episode == null || source.episodeId == episode) && (shot == null || source.shotCode == shot)
+            val source = ProductionSourceRef.parse(task.request.sourceRef.removeSuffix("/preview"))
+            project.ownsTask(task) && (episode == null || source?.episodeId == episode) && (shot == null || source?.shotCode == shot)
         }
         return buildJsonObject {
             put("production_id", project.id); put("total", tasks.size); put("offset", offset)
             put("tasks", buildJsonArray { tasks.drop(offset).take(limit).forEach { task -> add(buildJsonObject {
                 put("id", task.id); put("source_ref", task.request.sourceRef); put("channel_id", task.request.channelId); put("state", task.state.name.lowercase())
-                task.progress?.let { put("progress", it) }; put("estimate", moneyJson(task.estimate)); put("actual_cost", moneyJson(task.actualCost))
+                task.progress?.let { put("progress", it) }; put("actual_cost", moneyJson(task.actualCost))
                 put("failure", task.failure?.name?.let(::JsonPrimitive) ?: JsonNull)
             }) } })
         }
@@ -78,7 +78,7 @@ internal fun shotPlanJson(plan: ShotPlanPreview): JsonObject = buildJsonObject {
         put("number", input.number?.let(::JsonPrimitive) ?: JsonNull); put("title", input.title); put("detail", input.detail); put("kind", input.kind.name.lowercase()); put("role", input.role.name.lowercase())
         put("path", input.path?.let(::JsonPrimitive) ?: JsonNull); put("composite_of", JsonArray(input.compositeOf.map(::JsonPrimitive)))
     }) } }
-    put("inputs", inputs(plan.inputs)); put("overflow", inputs(plan.overflow)); put("estimate", moneyJson(plan.estimate))
+    put("inputs", inputs(plan.inputs)); put("overflow", inputs(plan.overflow))
     put("blocked_reason", plan.blockedReason?.let(::JsonPrimitive) ?: JsonNull); put("warnings", JsonArray(plan.warnings.map(::JsonPrimitive)))
     put("dubbing", buildJsonArray { plan.audioPlans.forEach { audio -> add(buildJsonObject { put("dialogue_index", audio.dialogueIndex); put("channel_id", audio.request.channelId); put("text", audio.request.prompt) }) } })
 }

@@ -147,7 +147,7 @@ class DefaultShotGenerationPlanner(
             val occupiedTasks = queue.observeTasks().first().filter { task ->
                 val source = ProductionSourceRef.parse(task.request.sourceRef)
                 source?.productionId == p.id && source.episodeId == episodeId && source.shotCode == shotCode && source.dialogueIndex == null &&
-                    (task.state !in setOf(MediaTaskState.FAILED, MediaTaskState.COMPLETED) || task.state == MediaTaskState.FAILED && task.failure == MediaTaskFailure.POLL || task.state == MediaTaskState.COMPLETED && shot.takes.none { it.taskId == task.id })
+                    (task.state !in setOf(MediaTaskState.FAILED, MediaTaskState.COMPLETED, MediaTaskState.CANCELED) || task.state == MediaTaskState.FAILED && task.failure == MediaTaskFailure.POLL || task.state == MediaTaskState.COMPLETED && shot.takes.none { it.taskId == task.id })
             }
             val reservations = (queue as? com.promenar.infinity.data.mediagen.queue.MediaOutputReservationReader)?.outputReservations(occupiedTasks.map { it.id }.toSet()).orEmpty()
             var occupied = 0
@@ -177,14 +177,8 @@ class DefaultShotGenerationPlanner(
             issues += validateBackend(speech, audioRequest).map { text("invalid_plan", it) }
             audioPlans += PlannedDialogueAudio(index, dialogue.characterAssetId, dialogue.tone, audioRequest)
         }
-        suspend fun estimate(c: MediaChannel, r: MediaGenerationRequest): Money? {
-            val backend = backendFor?.invoke(c) ?: return null
-            return try { backend.estimate(c, r) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
-        }
-        val costs = if (channel != null && issues.isEmpty()) listOf(estimate(channel, request)) + audioPlans.map { estimate(requireNotNull(registry.channel(it.request.channelId)), it.request) } else listOf(null)
-        val cost = costs.firstOrNull()?.let { first -> if (costs.all { it?.currency == first.currency }) Money(costs.fold(java.math.BigDecimal.ZERO) { sum, amount -> sum.add(requireNotNull(amount).amount) }, first.currency) else null }
         return Plan(snapshot, shot, ShotPlanPreview(channel, shot.channelId.isNullOrBlank(), channel?.let { labelOf(it) }.orEmpty(), shot.mode, accepted, overflow,
-            prompt, shot.promptUserEdited && !compile, format, cost, issues.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n"), warnings, audioPlans, specs))
+            prompt, shot.promptUserEdited && !compile, format, null, issues.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n"), warnings, audioPlans, specs))
     }
 
     override suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult = withContext(ioDispatcher) {
@@ -200,11 +194,11 @@ class DefaultShotGenerationPlanner(
                     return@withLock ShotGenerateResult.Rejected(text("plan_changed"))
                 submitted += queue.submit(actual)
                 plan.preview.audioPlans.forEach { submitted += queue.submit(it.request) }
-                ShotGenerateResult.Submitted(submitted.first().id, submitted.any { it.state == MediaTaskState.AWAITING_APPROVAL }, submitted.drop(1).map { it.id })
+                ShotGenerateResult.Submitted(submitted.first().id, false, submitted.drop(1).map { it.id })
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
                 if (submitted.isEmpty()) ShotGenerateResult.Rejected(text("failed"))
-                else ShotGenerateResult.Submitted(submitted.first().id, submitted.any { it.state == MediaTaskState.AWAITING_APPROVAL }, submitted.drop(1).map { it.id }, listOf(text("audio_failed", submitted.first().id)))
+                else ShotGenerateResult.Submitted(submitted.first().id, false, submitted.drop(1).map { it.id }, listOf(text("audio_failed", submitted.first().id)))
             }
         }
     }

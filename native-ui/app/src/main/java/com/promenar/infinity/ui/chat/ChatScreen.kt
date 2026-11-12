@@ -374,6 +374,8 @@ data class ChatScreenActions(
     val onOpenRunMode: () -> Unit = {},
     /** 打开资源管理器并定位到给定的工作区虚拟目录（媒体不可用占位的“在资源管理器中定位”）。 */
     val onLocateWorkspacePath: (String) -> Unit = {},
+    /** 制作面板的“发送”：把一轮审核消息发到本会话；开轮或入队返回 true，暂不能接收返回 false。 */
+    val onSendProductionReview: (suspend (String) -> com.promenar.infinity.ui.production.ReviewDelivery)? = null,
     val onOpenSettings: () -> Unit = {},
     /** 点输入区模型按钮；为 null 时与 [onOpenSettings] 相同。 */
     val onOpenModelPicker: (() -> Unit)? = null,
@@ -1352,6 +1354,7 @@ fun ChatScreenContent(
                                                 assistantMessageId = request.assistantMessageId,
                                                 sessionId = uiState.session?.id,
                                                 privateWorkspaceRootUuid = uiState.session?.workspaceRootUuid,
+                                                approvalReason = request.reason.orEmpty(),
                                             ),
                                             schedule = if (call.toolName != "schedule_create") null else {
                                                 val context = LocalContext.current
@@ -1862,7 +1865,7 @@ fun ChatScreenContent(
                                         com.promenar.infinity.ui.production.ProductionPanel(
                                             sessionId = sessionId,
                                             source = source,
-                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openRoute),
+                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openRoute, sendReviewMessage = actions.onSendProductionReview),
                                             onLocate = actions.onLocateWorkspacePath,
                                             modifier = Modifier.fillMaxSize(),
                                         )

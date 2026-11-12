@@ -66,7 +66,6 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
     val pendingRegistrations get() = completionRegistrar.pending
     fun install() {
         if (app.mediaGenerationModule == null) app.installMediaGeneration(registry, bindings,
-            WithinBudgetAutoSubmitPolicy(MediaBudgetReader { ProductionMediaBudgetReader(store, queue).readBudget(it) }),
             MediaQueueConcurrency(maxTotal = 3, defaultProvider = 1, defaultChannel = 1),
             requestAvailable = { request ->
                 productionRequestAvailable(request, store)

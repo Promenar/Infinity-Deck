@@ -62,6 +62,7 @@ import com.promenar.infinity.data.production.Episode
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionStage
 import com.promenar.infinity.data.production.ProductionUserAction
+import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Shot
 import com.promenar.infinity.data.production.ShotMode
@@ -169,8 +170,9 @@ internal fun ProductionFileRow(path: String, title: String, icon: ImageVector, s
 // ---------- 剧本 ----------
 
 @Composable
-internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit, onOpenEpisode: (String) -> Unit = {}) {
+internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String? = { null }, onOpenEpisode: (String) -> Unit = {}) {
     val episodes = production.episodes()
+    var reviewing by remember { mutableStateOf<Episode?>(null) }
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
         production.logline?.takeIf(String::isNotBlank)?.let { logline ->
             item("logline") {
@@ -183,17 +185,8 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
             ProductionSection(if (production.logline.isNullOrBlank()) null else stringResource(R.string.production_panel_stage_script)) {
                 if (episodes.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_no_script))
                 episodes.forEach { episode ->
-                    val chip = if (episode.scriptLocked) ProductionChipSpec(stringResource(R.string.production_panel_stage_locked), ProductionTone.SUCCESS)
-                    else ProductionChipSpec(stringResource(R.string.p2_content_editable), ProductionTone.NEUTRAL)
-                    val lockButton: @Composable () -> Unit = {
-                        IconButton(onClick = { onRun(ProductionUserAction.LockScript(episode.id, !episode.scriptLocked)) }, enabled = !busy, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                if (episode.scriptLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                                contentDescription = stringResource(if (episode.scriptLocked) R.string.production_panel_unlock_script else R.string.production_panel_lock_script),
-                                tint = if (episode.scriptLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    val chip = production.reviewChipSpec(ReviewTarget.script(episode.id), settled = episode.scriptLocked)
+                    val lockButton: @Composable () -> Unit = { ProductionReviewIconButton(enabled = !busy) { reviewing = episode } }
                     val path = episode.scriptPath
                     if (path == null) ProductionRow(episodeName(episode).joinToString(" "), icon = Icons.Rounded.Description, subtitle = stringResource(R.string.production_panel_no_script), chevron = false)
                     else ProductionFileRow(path, episodeName(episode).joinToString(" "), Icons.Rounded.Description, subtitle = path, chip = chip, trailing = lockButton)
@@ -205,11 +198,8 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                 ProductionSection(if (episodes.size > 1) "${episodeName(episode).joinToString(" ")} · ${stringResource(R.string.p2_scenes)}" else stringResource(R.string.p2_scenes)) {
                     if (episode.scenes.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_no_shots))
                     episode.scenes.forEach { scene ->
-                        val chip = when {
-                            scene.shots.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
-                            scene.storyboardLocked -> ProductionChipSpec(stringResource(R.string.p2_board_locked), ProductionTone.SUCCESS)
-                            else -> ProductionChipSpec(stringResource(R.string.p2_board_pending), ProductionTone.WARNING)
-                        }
+                        val chip = if (scene.shots.isEmpty()) ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                        else production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)
                         ProductionRow(
                             title = scene.heading,
                             subtitle = if (scene.shots.isEmpty()) stringResource(R.string.p2_no_shots_split) else stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds })),
@@ -230,6 +220,19 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
             }
         }
     }
+    reviewing?.let { episode ->
+        ProductionReviewSheet(
+            title = episodeName(episode).joinToString(" "),
+            subtitle = episode.scriptPath,
+            production = production,
+            target = ReviewTarget.script(episode.id),
+            busy = busy,
+            onRun = onRun,
+            onSubmit = onSubmit,
+            onDismiss = { reviewing = null },
+            settled = episode.scriptLocked,
+        )
+    }
 }
 
 // ---------- 分镜 ----------
@@ -245,8 +248,9 @@ internal fun ProductionStoryboardTab(
     services: ProductionPanelServices = ProductionPanelServices(),
     channels: List<MediaChannel> = emptyList(),
     channelOrder: List<String> = emptyList(),
+    onSubmit: suspend (ProductionUserAction) -> String? = { null },
 ) {
-    var confirming by remember { mutableStateOf<Scene?>(null) }
+    var reviewing by remember { mutableStateOf<Scene?>(null) }
     val episodes = production.episodes()
     val episode = episodes.firstOrNull { it.id == episodeId } ?: episodes.firstOrNull()
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
@@ -261,20 +265,10 @@ internal fun ProductionStoryboardTab(
                 Column {
                     val meta = listOf(
                         stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds })),
-                        stringResource(if (scene.storyboardLocked) R.string.production_panel_stage_locked else R.string.p2_scene_pending),
-                    )
+                        production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)?.text,
+                    ).filterNotNull()
                     ProductionSceneHeader(scene, meta, action = if (scene.shots.isEmpty()) null else ({
-                        IconButton(
-                            onClick = { if (scene.requiresLockConfirmation()) confirming = scene else onRun(ProductionUserAction.LockScene(episode.id, scene.code, !scene.storyboardLocked)) },
-                            enabled = !busy,
-                            modifier = Modifier.size(48.dp),
-                        ) {
-                            Icon(
-                                if (scene.storyboardLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                                contentDescription = stringResource(if (scene.storyboardLocked) R.string.production_panel_unlock_storyboard else R.string.production_panel_lock_storyboard),
-                                tint = if (scene.storyboardLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        ProductionReviewIconButton(enabled = !busy, modifier = Modifier.size(48.dp)) { reviewing = scene }
                     }))
                     BettboxListGroup {
                         Column(Modifier.padding(vertical = InfinitySpacing.XSmall)) {
@@ -298,10 +292,17 @@ internal fun ProductionStoryboardTab(
             }
         }
     }
-    confirming?.let { scene ->
-        com.promenar.infinity.ui.common.InfinityConfirmDialog(
-            title = stringResource(R.string.p2_lock_scene), message = stringResource(R.string.p2_lock_scene_message), confirmText = stringResource(R.string.p2_lock_scene),
-            onConfirm = { episode?.let { onRun(ProductionUserAction.LockScene(it.id, scene.code, true)) }; confirming = null }, onCancel = { confirming = null },
+    reviewing?.let { scene ->
+        if (episode != null) ProductionReviewSheet(
+            title = stringResource(R.string.production_panel_scene_number, scene.number),
+            subtitle = scene.heading,
+            production = production,
+            target = ReviewTarget.scene(episode.id, scene.code),
+            busy = busy,
+            onRun = onRun,
+            onSubmit = onSubmit,
+            onDismiss = { reviewing = null },
+            settled = scene.storyboardLocked,
         )
     }
 }
@@ -439,7 +440,7 @@ internal fun ProductionAssetsTab(
         } else {
             ProductionAssetSheet(
                 asset = asset,
-                usage = production.shotsUsingAsset(asset.id),
+                production = production,
                 busy = busy,
                 onDismiss = { openAssetId = null },
                 onRun = onRun,

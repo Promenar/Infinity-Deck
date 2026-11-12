@@ -10,7 +10,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import java.security.MessageDigest
 
-/** 界面持有完整仓库；工具只调用定义、探测、列表，不暴露主机与解锁操作。 */
+/** 界面持有完整仓库；工具只调用需审批的模板定义与只读探测、列表。 */
 class ComfyRepository(
     private val storage: ComfyConfigurationStorage,
     private val credentials: ComfyCredentials,
@@ -47,13 +47,6 @@ class ComfyRepository(
         storage.write(old.copy(hosts = old.hosts.filterNot { it.id == hostId }, templates = old.templates.filterNot { it.template.hostId == hostId }))
         credentials.remove(hostId)
     }
-    suspend fun unlockTemplateByUser(templateId: String): ComfyTemplateState = mutation.withLock {
-        val old = storage.read()
-        val state = old.templates.firstOrNull { it.template.id == templateId } ?: throw ComfyFailure("模板不存在")
-        val next = state.copy(template = state.template.unlock(userApproved = true), preflight = PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("模板已解锁，保存后需要预检")))
-        storage.write(old.copy(templates = old.templates.map { if (it.template.id == templateId) next else it }))
-        next
-    }
     suspend fun removeTemplateByUser(templateId: String) = mutation.withLock {
         val old = storage.read()
         storage.write(old.copy(templates = old.templates.filterNot { it.template.id == templateId }))
@@ -62,7 +55,6 @@ class ComfyRepository(
         validateDefinition(template)
         val before = storage.read()
         val previous = before.templates.firstOrNull { it.template.id == template.id }
-        check(previous?.template?.locked != true) { "模板已锁定，请用户在界面解锁后修改" }
         val host = before.hosts.firstOrNull { it.id == template.hostId } ?: throw ComfyFailure("主机不存在，请用户配置")
         val normalized = template.copy(capabilities = template.channel().capabilities)
         val locked = previous?.template?.updateByAgent(normalized) ?: normalized.copy(locked = true)

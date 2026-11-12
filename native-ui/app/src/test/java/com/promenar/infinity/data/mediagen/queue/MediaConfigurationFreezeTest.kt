@@ -17,7 +17,7 @@ class MediaConfigurationFreezeTest {
         override suspend fun setOrder(group: MediaGroup, channelIds: List<String>) = Unit
     }
     private val request = MediaGenerationRequest("c", GenerationMode.TEXT, "镜头", emptyList(), "project", sessionId = "s", outputDir = "takes")
-    @Test fun `已批准任务的模型选项变化不会发出新请求`() = runTest {
+    @Test fun `排队任务的模型选项变化不会发出新请求`() = runTest {
         var configuration = "first"
         var submitted = 0
         val store = MemoryMediaTaskStore()
@@ -30,7 +30,7 @@ class MediaConfigurationFreezeTest {
             override fun actualCost(channel: MediaChannel, usage: Map<String, Long>) = Money(BigDecimal.ONE, "CNY")
         }
         val binding = MediaBackendBinding("b", "p", { "model" }, backend, configurationFor = { configuration })
-        val queue = PersistentMediaGenerationQueue(store, registry, listOf(binding), AutoSubmitPolicy { _, _ -> true }, ioDispatcher = StandardTestDispatcher(testScheduler))
+        val queue = PersistentMediaGenerationQueue(store, registry, listOf(binding), ioDispatcher = StandardTestDispatcher(testScheduler))
         val task = queue.submit(request)
         assertEquals("first", store.get(task.id)?.configurationFingerprint)
         configuration = "changed"
@@ -51,7 +51,7 @@ class MediaConfigurationFreezeTest {
             override fun actualCost(channel: MediaChannel, usage: Map<String, Long>) = null
         }
         val binding = MediaBackendBinding("b", "p", { "model" }, backend, providerFor = { check(configured); "p" })
-        val queue = PersistentMediaGenerationQueue(store, registry, listOf(binding), AutoSubmitPolicy { _, _ -> true }, ioDispatcher = StandardTestDispatcher(testScheduler))
+        val queue = PersistentMediaGenerationQueue(store, registry, listOf(binding), ioDispatcher = StandardTestDispatcher(testScheduler))
         val task = queue.submit(request)
         configured = false
         queue.runUntilIdle()
@@ -70,38 +70,29 @@ class MediaConfigurationFreezeTest {
             override fun actualCost(channel: MediaChannel, usage: Map<String, Long>) = Money(BigDecimal.TEN, "CNY")
         }
         val queue = PersistentMediaGenerationQueue(store, registry, listOf(MediaBackendBinding("b", "p", { "model" }, backend, configurationFor = { configuration })),
-            AutoSubmitPolicy { _, _ -> true }, ioDispatcher = StandardTestDispatcher(testScheduler))
+            ioDispatcher = StandardTestDispatcher(testScheduler))
         val task = queue.submit(request)
         queue.runUntilIdle()
         assertEquals(MediaTaskState.COMPLETED, queue.observeTask(task.id).first()?.state)
         assertNull(queue.observeTask(task.id).first()?.actualCost)
         assertNull(store.usage[task.id]?.cost)
     }
-    @Test fun `预算检查期间配置变化使提交与重试保持原记录`() = runTest {
-        var configuration = "first"
-        var changeDuringPolicy = false
+    @Test fun `入队冻结配置期间变化使提交保持空记录`() = runTest {
+        var reads = 0
+        var submitted = 0
         val store = MemoryMediaTaskStore()
         val backend = object : MediaGenerationBackend {
             override fun handles(channel: MediaChannel) = true
-            override suspend fun estimate(channel: MediaChannel, request: MediaGenerationRequest) = Money(BigDecimal.ONE, "CNY")
-            override suspend fun submit(channel: MediaChannel, request: MediaGenerationRequest) = "remote"
-            override suspend fun poll(channel: MediaChannel, remoteId: String) = RemoteStatus.Failed("failed")
+            override suspend fun estimate(channel: MediaChannel, request: MediaGenerationRequest): Money? = error("不应在队列入队时估价")
+            override suspend fun submit(channel: MediaChannel, request: MediaGenerationRequest): String { submitted++; return "remote" }
+            override suspend fun poll(channel: MediaChannel, remoteId: String) = RemoteStatus.Failed("失败")
             override suspend fun download(channel: MediaChannel, request: MediaGenerationRequest, remoteId: String, outputs: List<RemoteOutput>) = emptyList<String>()
             override fun actualCost(channel: MediaChannel, usage: Map<String, Long>) = null
         }
-        val policy = AutoSubmitPolicy { _, _ -> if (changeDuringPolicy) configuration += "-changed"; true }
-        val queue = PersistentMediaGenerationQueue(store, registry, listOf(MediaBackendBinding("b", "p", { "model" }, backend, configurationFor = { configuration })), policy, ioDispatcher = StandardTestDispatcher(testScheduler))
-        changeDuringPolicy = true
+        val binding = MediaBackendBinding("b", "p", { "model" }, backend, configurationFor = { if (++reads == 1) "first" else "changed" })
+        val queue = PersistentMediaGenerationQueue(store, registry, listOf(binding), ioDispatcher = StandardTestDispatcher(testScheduler))
         try { queue.submit(request); fail() } catch (_: IllegalArgumentException) { }
         assertTrue(store.all().isEmpty())
-        changeDuringPolicy = false
-        val task = queue.submit(request)
-        val previous = store.get(task.id)!!
-        store.save(previous.copy(task = previous.task.copy(state = MediaTaskState.FAILED, failure = MediaTaskFailure.CHANNEL_UNAVAILABLE)))
-        changeDuringPolicy = true
-        try { queue.retry(task.id); fail() } catch (_: IllegalArgumentException) { }
-        assertEquals(MediaTaskState.FAILED, store.get(task.id)?.task?.state)
-        assertEquals(previous.configurationFingerprint, store.get(task.id)?.configurationFingerprint)
+        assertEquals(0, submitted)
     }
-
 }

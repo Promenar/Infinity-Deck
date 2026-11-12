@@ -31,12 +31,13 @@ class ProductionGenerationSkillsTest {
     }
     @Test fun `生成返回任务编号或拒绝原因`() = runTest {
         val planner = mockk<ShotGenerationPlanner>()
-        coEvery { planner.generate("s", "S1E01", "SC01-01") } returns ShotGenerateResult.Submitted("task", true, listOf("audio"))
+        coEvery { planner.generate("s", "S1E01", "SC01-01") } returns ShotGenerateResult.Submitted("task", false, listOf("audio"))
         val skill = ProductionGenerateSkill { planner }
         val params = args("""{"episode_id":"S1E01","shot_code":"SC01-01"}""")
         val result = args(skill.execute(params, context).content)
         assertEquals("task", result["task_id"]?.jsonPrimitive?.content)
-        assertTrue(result.getValue("awaiting_approval").jsonPrimitive.boolean)
+        assertFalse(result.containsKey("awaiting_approval"))
+        assertEquals("audio", result.getValue("audio_task_ids").jsonArray.single().jsonPrimitive.content)
         coEvery { planner.generate(any(), any(), any()) } returns ShotGenerateResult.Rejected("场未锁定")
         assertEquals("rejected", args(skill.execute(params, context).content)["status"]?.jsonPrimitive?.content)
     }

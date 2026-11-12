@@ -97,9 +97,6 @@
     <string name="media_settings_locked">Locked</string>
     <string name="media_settings_unlocked">Unlocked</string>
     <string name="media_settings_lock">Lock</string>
-    <string name="media_settings_unlock">Unlock</string>
-    <string name="media_settings_unlock_title">Unlock template?</string>
-    <string name="media_settings_unlock_message">Allow agent changes to this template?</string>
     <string name="media_settings_delete_host_title">Delete host?</string>
     <string name="media_settings_delete_host_message">Templates will be deleted. Unfinished tasks will lose access to this host.</string>
     <string name="media_settings_slots">Slots</string>
@@ -118,9 +115,6 @@
     <string name="media_settings_frame_constraint">%1$d + %2$d × n</string>
     <string name="media_settings_max_frames">≤%1$d frames</string>
     <string name="media_settings_upload">Upload → %1$s</string>
-    <string name="media_settings_configure">Configure with agent</string>
-    <string name="media_settings_copy_instruction">Copy instruction</string>
-    <string name="media_settings_instruction">Configure workflow templates on ComfyUI host %1$s (host_id: %2$s). Use comfy_probe to inspect nodes and models, then define API Format templates with comfy_define_template. Declare media type, modes, reference slots and order, prompt format, output slots, resolution alignment and frame constraints. Check templates with comfy_templates. Keep locked templates unchanged; ask me to unlock them in settings when required.</string>
     <string name="media_settings_error_name">Name: 1–120 characters</string>
     <string name="media_settings_error_address">Invalid HTTP(S) address</string>
     <string name="media_settings_error_credential">Invalid or missing credential</string>
@@ -162,12 +156,4 @@
     <string name="media_settings_diagnostic_29">Node %1$s</string>
     <string name="media_settings_connection">Connection</string>
     <string name="media_settings_host_actions">Host</string>
-    <string name="media_settings_configure_title">Configure %1$s</string>
-    <string name="media_settings_configure_host">%1$s · Configure with agent</string>
-    <string name="media_settings_locked_count">Locked %1$d</string>
-    <string name="media_settings_target_workflow">Target workflow</string>
-    <string name="media_settings_target_placeholder">Qwen Image 2.1 text-to-image</string>
-    <string name="media_settings_new_session">Configure in new chat</string>
-    <string name="media_settings_session_title">Configure ComfyUI · %1$s</string>
-    <string name="media_settings_instruction_target">Target workflow: %1$s. Probe the nodes and models it needs, then define the matching template.</string>
 </resources>

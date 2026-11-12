@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.production
 
 import com.promenar.infinity.data.production.*
 import com.promenar.infinity.domain.mediagen.*
-import java.math.BigDecimal
 
 /** 接线由宿主负责，sourceRef 按规划器实际契约提供，避免跨项目混入任务。 */
 data class ProductionPanelServices(
@@ -19,22 +18,23 @@ data class ProductionPanelServices(
     val requestContentChange: (suspend (Long, ShotLocation, Shot) -> String?)? = null,
     val pendingRegistrations: Set<String> = emptySet(),
     val cutExport: com.promenar.infinity.data.cut.CutExportController? = null,
+    /** 把一轮审核消息发到项目绑定的会话，返回会话是否接收或暂不能接收的原因。 */
+    val sendReviewMessage: (suspend (String) -> ReviewDelivery)? = null,
 )
+
+/** 会话对一轮审核消息的处理：接收（开轮或入队），或暂不能接收的原因。 */
+enum class ReviewDelivery { ACCEPTED, IMPORTING, APPROVAL_PENDING, UNAVAILABLE }
 
 enum class ShotDetailTab { STORYBOARD, CANDIDATES }
 enum class OutputFilter { ALL, REVIEW, REDO, LOCKED, TODO }
-enum class QueueAction { APPROVE, REJECT, RETRY }
-data class ProductionTabSignals(val approvals: Int, val storyboardDot: Boolean, val reviews: Int) {
-    val entryBadge: Int get() = approvals + reviews
-}
+data class ProductionTabSignals(val storyboardDot: Boolean, val reviews: Int)
 
 fun projectTasks(tasks: List<MediaTask>, prefix: String?): List<MediaTask> {
     val projectId = prefix?.let { ProductionSourceRef.projectIdFromPrefix(it) } ?: return emptyList()
     return tasks.filter { ProductionSourceRef.parse(it.request.sourceRef)?.productionId == projectId }
 }
 
-fun Production.tabSignals(tasks: List<MediaTask>): ProductionTabSignals = ProductionTabSignals(
-    approvals = tasks.count { it.state == MediaTaskState.AWAITING_APPROVAL },
+fun Production.tabSignals(): ProductionTabSignals = ProductionTabSignals(
     storyboardDot = episodes().any { episode -> episode.scenes.any { !it.storyboardLocked } },
     reviews = shotLocations().count { it.shot.status == ShotStatus.REVIEW },
 )
@@ -63,23 +63,39 @@ fun Production.outputItems(filter: OutputFilter): List<OutputItem> = buildList {
     } }
 }
 
+/** 总览“待你处理”的条目：待审的镜头候选、场、资产、剪辑版本与改动请求。 */
 sealed interface OverviewItem {
     data class Review(val count: Int) : OverviewItem
-    data class Approval(val task: MediaTask) : OverviewItem
     data class Redo(val count: Int) : OverviewItem
     data class SceneLock(val episode: Episode, val scene: Scene) : OverviewItem
     data class ReferenceReview(val asset: Asset) : OverviewItem
     data class ChangeReview(val request: ShotChangeRequest) : OverviewItem
+    data class CutReview(val cut: CutVersion) : OverviewItem
 }
-fun Production.overviewItems(tasks: List<MediaTask>): List<OverviewItem> = buildList {
-    val signals = tabSignals(tasks)
+fun Production.overviewItems(): List<OverviewItem> = buildList {
+    val signals = tabSignals()
     if (signals.reviews > 0) add(OverviewItem.Review(signals.reviews))
-    tasks.filter { it.state == MediaTaskState.AWAITING_APPROVAL }.forEach { add(OverviewItem.Approval(it)) }
     val redo = redoShots().size
     if (redo > 0) add(OverviewItem.Redo(redo))
-    if (!experimental) episodes().forEach { episode -> episode.scenes.filterNot { it.storyboardLocked }.forEach { add(OverviewItem.SceneLock(episode, it)) } }
+    if (!experimental) episodes().forEach { episode -> episode.scenes.filter { it.awaitsReview(this@overviewItems, episode) }.forEach { add(OverviewItem.SceneLock(episode, it)) } }
     assets.filter { it.status == AssetStatus.REVIEW }.forEach { add(OverviewItem.ReferenceReview(it)) }
-    changeRequests.filterNot { it.approved }.forEach { add(OverviewItem.ChangeReview(it)) }
+    changeRequests.filter { it.awaitsReview(this@overviewItems) }.forEach { add(OverviewItem.ChangeReview(it)) }
+    // 每集只列最新一个还没有结论的剪辑版本。
+    cuts.groupBy { it.episodeId }.values.mapNotNull { versions -> versions.maxByOrNull { it.number } }
+        .filter { verdictOf(ReviewTarget.cut(it.id)) == null }
+        .forEach { add(OverviewItem.CutReview(it)) }
+}
+
+/** 场待审：未定稿，或这一轮刚给出、尚未发送的结论（发送前仍可在总览里改）。 */
+internal fun Scene.awaitsReview(production: Production, episode: Episode): Boolean {
+    val verdict = production.verdictOf(ReviewTarget.scene(episode.id, code))
+    return if (verdict != null) verdict.round == null else !storyboardLocked
+}
+
+/** 改动请求待审：没有结论且未应用，或结论尚未发送。 */
+internal fun ShotChangeRequest.awaitsReview(production: Production): Boolean {
+    val verdict = production.verdictOf(ReviewTarget.change(id))
+    return if (verdict != null) verdict.round == null else !approved
 }
 
 fun ShotMode.generationMode(): GenerationMode = when (this) {
@@ -95,10 +111,6 @@ fun channelChoices(channels: List<MediaChannel>, order: List<String>, mode: Shot
     return order.distinct().mapNotNull { id -> supported.firstOrNull { it.id == id } } + supported.filter { it.id !in order }
 }
 
-fun sceneLockAction(location: ShotLocation): ProductionUserAction.LockScene =
-    ProductionUserAction.LockScene(location.episode.id, location.scene.code, !location.scene.storyboardLocked)
-fun Scene.requiresLockConfirmation() = !storyboardLocked && shots.isNotEmpty()
-fun changeApprovalAction(request: ShotChangeRequest, approve: Boolean) = ProductionUserAction.ResolveChange(request.id, approve)
 
 /** 参考位列表由当前造型定义；切换造型默认选中实际存在的默认位。 */
 fun ShotAppearance.switchLook(look: CharacterLook) = copy(lookId = look.id, referenceSlotIds = ProductionRules.defaultSlotIds(look))
@@ -119,19 +131,14 @@ fun planSummary(channel: String, mode: String, packing: String?, edited: Boolean
 fun generationEnabled(sceneLocked: Boolean, experimental: Boolean, preview: ShotPlanPreview?, busy: Boolean): Boolean =
     !busy && (sceneLocked || experimental) && preview != null && preview.channel != null && preview.blockedReason == null
 
-fun MediaTask.allowedQueueActions(): Set<QueueAction> = when (state.name) {
-    "AWAITING_APPROVAL" -> setOf(QueueAction.REJECT, QueueAction.APPROVE)
-    "FAILED", "DOWNLOAD_FAILED" -> setOf(QueueAction.RETRY)
-    else -> emptySet()
-}
+/** 进行中的任务可以取消；这是面板上唯一立即生效的动作。 */
+fun MediaTask.canCancel(): Boolean = isActiveTask()
 fun MediaTask.awaitingRegistration(pendingIds: Set<String>) = state == MediaTaskState.COMPLETED && id in pendingIds
 fun List<MediaTask>.overviewQueueTasks(pendingIds: Set<String>) = filter { it.isActiveTask() || it.awaitingRegistration(pendingIds) }
 fun List<MediaTask>.recentQueueTasks(pendingIds: Set<String>) = filter {
-    !it.isActiveTask() && !it.awaitingRegistration(pendingIds) && it.state != MediaTaskState.AWAITING_APPROVAL
+    !it.isActiveTask() && !it.awaitingRegistration(pendingIds)
 }.takeLast(20).reversed()
 fun MediaTask.isActiveTask() = state.name in setOf("QUEUED", "SUBMITTING", "RUNNING", "DOWNLOADING")
-fun List<MediaTask>.spentByCurrency(): Map<String, BigDecimal> = filter { it.state == MediaTaskState.COMPLETED }
-    .mapNotNull { it.actualCost }.groupBy { it.currency }.mapValues { (_, costs) -> costs.fold(BigDecimal.ZERO) { sum, cost -> sum + cost.amount } }
 
 /** 剪辑版本由成片层注入；预演与当前选定候选可直接由项目快照浏览。 */
 data class ProductionCutVersion(val id: String, val title: String, val path: String?, val clips: List<ProductionCutClip>, val specs: String? = null)
