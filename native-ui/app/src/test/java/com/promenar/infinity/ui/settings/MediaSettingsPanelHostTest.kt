@@ -9,11 +9,16 @@ class MediaSettingsPanelHostTest {
     fun `媒体设置这组目的地留在面板内的导航栈`() {
         listOf(
             MediaSettingsRoutes.MODELS,
-            MediaSettingsRoutes.model("cloud:seedance"),
-            MediaSettingsRoutes.host("main"),
-            MediaSettingsRoutes.hostForm(),
-            MediaSettingsRoutes.hostForm("main"),
-            MediaSettingsRoutes.template("main/qwen-image"),
+            // JVM 单测没有 android.net.Uri，按 Uri.encode 的结果直接写出实际路由与登记的路由模式。
+            MediaSettingsRoutes.MODEL,
+            MediaSettingsRoutes.HOST,
+            MediaSettingsRoutes.HOST_FORM,
+            MediaSettingsRoutes.TEMPLATE,
+            "media_model/cloud%3Aseedance",
+            "comfy_host/main",
+            "comfy_host_form",
+            "comfy_host_form?hostId=main",
+            "comfy_template/main%2Fqwen-image",
         ).forEach { assertThat(isMediaSettingsRoute(it)).isTrue() }
     }
 

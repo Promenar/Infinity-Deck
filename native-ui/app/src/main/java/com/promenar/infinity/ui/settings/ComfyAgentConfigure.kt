@@ -25,7 +25,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
-import com.promenar.infinity.data.mediagen.comfy.ComfyConnection
 import com.promenar.infinity.data.mediagen.comfy.ComfyHost
 import com.promenar.infinity.data.rag.RagConfiguration
 import com.promenar.infinity.domain.mediagen.MediaGroup
