@@ -30,6 +30,6 @@ class LocalInferenceRuntimeGate(
 
     companion object {
         fun fromBuildConfig(): LocalInferenceRuntimeGate =
-            LocalInferenceRuntimeGate(BuildConfig.LOCAL_INFERENCE_AVAILABLE)
+            LocalInferenceRuntimeGate(BuildConfig.LOCAL_INFERENCE_AVAILABLE && android.os.Process.is64Bit())
     }
 }

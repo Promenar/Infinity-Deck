@@ -7,6 +7,10 @@ option(INFINITY_RELEASE "Signed release build type" OFF)
 if(INFINITY_RELEASE)
     set(INFINITY_ENABLE_LOCAL_INFERENCE ${INFINITY_SIDELOAD})
 endif()
+# llama.cpp 的 CPU 内核依赖 64 位 NEON 与 fp16 指令；32 位 ABI 不编译推理引擎，运行时门禁同步判定不可用。
+if(ANDROID_ABI STREQUAL "armeabi-v7a" OR ANDROID_ABI STREQUAL "x86")
+    set(INFINITY_ENABLE_LOCAL_INFERENCE OFF)
+endif()
 
 # 本工程所有共享库（含 FetchContent 拉取的 llama/ggml）显式按 16KB 最大页大小链接，兼容 16KB 页设备；
 # APK 级检查见 scripts/ci/check-native-page-alignment.py。

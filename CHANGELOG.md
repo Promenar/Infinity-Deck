@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 
 - 数据库升至 v39（媒体生成任务表），可移植备份结构升至 21，纳入媒体任务与通道顺序；录音默认设置与本地模型固定版本留在本机。
 - 豆包预设显示名改为火山方舟（英文 Volcano Ark），稳定键不变。
+- 本地推理引擎只编入 64 位 ABI；32 位设备上本地推理显示为不可用。
 
 
 ## [0.48.5-beta] - 2026-11-12
