@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
 class ProductionEngineTest {
-    private fun base() = ProductionSnapshot(Production("p", "项目", ProductionKind.SERIES, "productions/p", createdAt = 1, updatedAt = 1), 1, ManifestSync.InSync)
+    private fun base() = ProductionSnapshot(Production("p", "项目", ProductionKind.SERIES, "productions/p", createdAt = 1, updatedAt = 1, experimental = true), 1, ManifestSync.InSync)
     private fun ops(text: String) = Json.parseToJsonElement(text).jsonArray.map { it.jsonObject }
     private fun update(s: ProductionSnapshot, text: String, seen: Long = s.revision) = ProductionEngine.update(s, ops(text), seen, 2) { true }
     private fun fixture() = update(base(), """[
@@ -47,7 +47,7 @@ class ProductionEngineTest {
         assertThat(shot(update(redone, operation)).prompt).isEqualTo("新提示")
         val withTake = update(redone, """[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"a.png","service":"服务"}]""")
         val locked = ProductionUserEngine.apply(withTake, withTake.revision, ProductionUserAction.SelectTake("S1E01", "SC01-01", shot(withTake).takes.single().id), 4)
-        assertThrows(IllegalArgumentException::class.java) { update(locked, operation) }
+        assertThat(shot(update(locked, operation)).prompt).isEqualTo("新提示")
         val added = update(locked, """[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"b.png","service":"服务"}]""")
         assertThat(shot(added).status).isEqualTo(ShotStatus.LOCKED)
         assertThat(shot(added).takes).hasSize(2)

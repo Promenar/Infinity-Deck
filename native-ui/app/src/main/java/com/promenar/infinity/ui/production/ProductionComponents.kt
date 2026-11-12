@@ -219,7 +219,7 @@ internal fun ProductionStage.label(): String = stringResource(
         ProductionStage.VISUAL_DEV -> R.string.production_panel_stage_visual_dev
         ProductionStage.STORYBOARD -> R.string.production_panel_stage_storyboard
         ProductionStage.ANIMATIC -> R.string.production_panel_stage_animatic
-        ProductionStage.GENERATION -> R.string.production_panel_stage_generation
+        ProductionStage.GENERATION -> R.string.production_phase2_stage_output
         ProductionStage.SOUND -> R.string.production_panel_stage_sound
         ProductionStage.EDIT -> R.string.production_panel_stage_edit
     },
@@ -232,6 +232,7 @@ internal fun AssetKind.label(): String = stringResource(
         AssetKind.LOCATION -> R.string.production_panel_asset_location
         AssetKind.PROP -> R.string.production_panel_asset_prop
         AssetKind.STYLE -> R.string.production_panel_asset_style
+        AssetKind.SOUND -> R.string.production_phase2_asset_sound
     },
 )
 

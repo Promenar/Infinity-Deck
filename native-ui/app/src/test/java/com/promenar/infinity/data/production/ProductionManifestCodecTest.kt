@@ -13,6 +13,17 @@ class ProductionManifestCodecTest {
         ))))),
     )
 
+    @Test fun `旧清单按现有阶段语义读取并写回新版本`() {
+        val legacy = """{"schema":"infinity.production/1","revision":1,"production":{"id":"p1","title":"项目","kind":"series","rootPath":"productions/p1","createdAt":1,"updatedAt":1,"stages":[{"stage":"script"},{"stage":"visual_dev"},{"stage":"storyboard","status":"locked"},{"stage":"animatic"},{"stage":"generation","status":"in_progress"},{"stage":"sound"},{"stage":"edit"}],"seasons":[{"id":"S1","number":1,"episodes":[{"id":"S1E01","number":1,"title":"集","scenes":[{"code":"SC01","number":1,"heading":"场","shots":[{"code":"SC01-01","title":"镜头","durationSeconds":3.0}]}]}]}]}}"""
+        val decoded = ProductionManifestCodec.decode(legacy.toByteArray())
+        assertThat(decoded.production.stages.map { it.stage }).containsExactlyElementsIn(ProductionStage.entries).inOrder()
+        assertThat(decoded.production.stages[2].stage).isEqualTo(ProductionStage.STORYBOARD)
+        assertThat(decoded.production.stages[4].stage).isEqualTo(ProductionStage.GENERATION)
+        assertThat(decoded.production.stages[2].status).isEqualTo(StageStatus.LOCKED)
+        assertThat(decoded.production.stages[4].status).isEqualTo(StageStatus.IN_PROGRESS)
+        assertThat(ProductionManifestCodec.encode(decoded.production, 1).toString(Charsets.UTF_8)).contains(ProductionManifestCodec.SCHEMA)
+    }
+
     @Test fun `清单往返保留项目和修订号`() {
         val value = production()
         val bytes = ProductionManifestCodec.encode(value, 7)
@@ -24,7 +35,7 @@ class ProductionManifestCodecTest {
 
     @Test fun `拒绝错误 schema 与损坏结构`() {
         val text = ProductionManifestCodec.encode(production(), 1).toString(Charsets.UTF_8)
-        assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.decode(text.replace("infinity.production/1", "other").toByteArray()) }
+        assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.decode(text.replace(ProductionManifestCodec.SCHEMA, "other").toByteArray()) }
         assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.decode("{".toByteArray()) }
     }
 

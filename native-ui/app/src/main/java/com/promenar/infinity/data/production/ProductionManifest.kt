@@ -11,7 +11,8 @@ data class ProductionManifest(val schema: String, val revision: Long, val produc
 
 /** 清单的结构和领域约束共用同一校验入口。 */
 object ProductionManifestCodec {
-    const val SCHEMA = "infinity.production/1"
+    const val SCHEMA = "infinity.production/2"
+    private const val LEGACY_SCHEMA = "infinity.production/1"
     const val MAX_BYTES = 4 * 1024 * 1024
     private const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
     private val json = Json { prettyPrint = true; encodeDefaults = true }
@@ -32,7 +33,7 @@ object ProductionManifestCodec {
         } catch (e: Exception) {
             throw IllegalArgumentException("清单结构损坏，请检查 JSON 和字段。", e)
         }
-        require(manifest.schema == SCHEMA) { "清单 schema 不受支持，请使用 $SCHEMA。" }
+        require(manifest.schema == SCHEMA || manifest.schema == LEGACY_SCHEMA) { "清单 schema 不受支持，请使用 $SCHEMA。" }
         require(manifest.revision >= 0) { "清单修订号不能为负数。" }
         validate(manifest.production, manifest.revision)
         return manifest
@@ -52,7 +53,7 @@ object ProductionManifestCodec {
     fun validate(p: Production, revision: Long) {
         require(revision >= 0) { "清单修订号不能为负数。" }
         validate(p)
-        val changed = p.stages.map { it.changedAt } + p.assets.map { it.changedAt } + p.seasons.flatMap { season -> season.episodes.flatMap { ep -> listOf(ep.changedAt) + ep.scenes.flatMap { scene -> listOf(scene.changedAt) + scene.shots.map { it.changedAt } } } }
+        val changed = listOf(p.policyChangedAt) + p.stages.map { it.changedAt } + p.assets.map { it.changedAt } + p.seasons.flatMap { season -> season.episodes.flatMap { ep -> listOf(ep.changedAt) + ep.scenes.flatMap { scene -> listOf(scene.changedAt) + scene.shots.map { it.changedAt } } } }
         require(changed.all { it <= revision }) { "实体修订号不能大于清单修订号，请检查清单。" }
     }
 
@@ -62,6 +63,9 @@ object ProductionManifestCodec {
         fun note(value: String?, field: String) = require(value == null || value.length <= 1000) { "$field 最多 1000 字。" }
         fun unique(values: List<String>, field: String) = require(values.distinct().size == values.size) { "$field 标识重复，请使用唯一标识。" }
         fun path(value: String?) { if (value != null) validatePath(value) }
+        require(p.policyChangedAt >= 0) { "项目设置修订号不能为负数。" }
+        require(p.budgetCents == null || p.budgetCents >= 0) { "预算不能为负数。" }
+        unique(p.changeRequests.map { it.id }, "变更请求")
         require(p.id.isNotBlank()) { "项目 id 不能为空。" }
         title(p.title, "项目标题")
         validatePath(p.rootPath)
@@ -103,12 +107,15 @@ object ProductionManifestCodec {
                             validatePath(input.path); input.label?.let { title(it, "输入名称") }
                             require(input.atSeconds == null || input.role == InputRole.ANCHOR && input.atSeconds.isFinite() && input.atSeconds >= 0) { "锚点时间须为非负有限数值，且仅用于 anchor 输入。" }
                         }
+                        listOf(shot.camera, shot.cameraMovement, shot.visual, shot.performance, shot.sound, shot.transition, shot.continuity).forEach { note(it, "镜头内容") }
+                        shot.dialogue.forEach { title(it.characterAssetId, "对白角色"); require(it.text.length <= 7000) { "台词最多 7000 字。" }; note(it.tone, "对白语气") }
+                        shot.appearances.forEach { title(it.characterAssetId, "出场角色"); title(it.lookId, "造型"); unique(it.referenceSlotIds, "出场参考位") }
                         path(shot.previewPath)
                         require(shot.takes.size <= 30) { "每个镜头最多 30 个候选。" }
                         unique(shot.takes.map { it.id }, "候选")
                         shot.takes.forEach { take ->
                             require(take.id.isNotBlank()) { "候选 id 不能为空。" }
-                            validatePath(take.path); title(take.source.service, "候选服务"); note(take.note, "候选说明")
+                            validatePath(take.path); title(take.source.service, "候选服务"); note(take.note, "候选说明"); take.planSnapshot?.inputs?.forEach { validatePath(it.path) }
                         }
                         require(shot.selectedTakeId == null || shot.takes.any { it.id == shot.selectedTakeId }) { "选定候选不存在，请重新选择。" }
                     }
@@ -125,6 +132,14 @@ object ProductionManifestCodec {
             require(asset.versions.size <= 30) { "每个资产最多 30 个版本。" }
             require(asset.versions.map { it.number }.distinct().size == asset.versions.size && asset.versions.all { it.number > 0 }) { "资产版本号须为唯一正整数。" }
             asset.versions.forEach { validatePath(it.path); note(it.note, "资产版本说明") }
+            require(asset.kind == AssetKind.CHARACTER || asset.looks.isEmpty() && asset.referenceVoice == null) { "造型和参考语音仅用于角色资产。" }
+            unique(asset.looks.map { it.id }, "造型")
+            asset.looks.forEach { look ->
+                title(look.id, "造型标识"); title(look.name, "造型名称"); unique(look.slots.map { it.id }, "参考位")
+                require(look.slots.map { it.id }.containsAll(ProductionRules.defaultSlotOrder)) { "造型必须包含三个默认参考位。" }
+                look.slots.forEach { slot -> title(slot.id, "参考位标识"); title(slot.name, "参考位名称"); path(slot.path); require(slot.version == null || slot.version > 0) { "参考位版本必须为正整数。" } }
+            }
+            asset.referenceVoice?.let { voice -> path(voice.path); note(voice.transcript, "转写"); note(voice.voiceSetting, "音色设定"); note(voice.tone, "语气") }
             require(asset.currentVersion == null || asset.versions.any { it.number == asset.currentVersion }) { "资产当前版本不存在。" }
         }
     }

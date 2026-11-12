@@ -11,8 +11,8 @@ import kotlinx.serialization.json.*
 
 class ProductionDefineSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_define", "定义或更新当前会话的制作项目。title 最多120字；kind 为 film 或 series；root_path 为工作区相对路径，默认 productions/标题 slug；logline 最多1000字。", """{"type":"object","properties":{"title":{"type":"string"},"kind":{"type":"string","enum":["film","series"]},"root_path":{"type":"string"},"logline":{"type":"string"},"aspect_ratio":{"type":"string"}},"required":["title","kind"],"additionalProperties":false}""")
 class ProductionAttachSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_attach", "从工作区 production.json 导入并绑定项目；已有同 id 项目时保留数据库内容并报告文件冲突。", """{"type":"object","properties":{"manifest_path":{"type":"string"}},"required":["manifest_path"],"additionalProperties":false}""")
-class ProductionGetSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_get", "读取制作项目修订号和清单同步状态。scope 为 overview、episode、shot 或 assets；episode 需要 episode_id，shot 还需要 shot_code。内容过长会截断。", """{"type":"object","properties":{"scope":{"type":"string","enum":["overview","episode","shot","assets"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"}},"required":["scope"],"additionalProperties":false}""")
-class ProductionUpdateSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_update", "原子执行 1～100 项 operations。upsert_season: id,number,title?；upsert_episode: season_id,id,number,title,script_path?；upsert_scene: episode_id,code,number,heading；upsert_shot: episode_id,scene_code,code,title,duration_seconds,size?,mode?,prompt?,inputs?,preview?,preview_path?,agent_note?,position?，已有镜头只需给修改字段；remove: target,ids，场或镜头另给 episode_id；set_shot_status: episode_id,shot_code,status（todo、generating、review）；add_take: episode_id,shot_code,path,service,model?,mode?,note?；upsert_asset: id,kind,name,description?；add_asset_version: asset_id,path,note?；set_asset_status: asset_id,status（draft、review）；set_stage: stage,status, note?（status 为 not_started、in_progress、skipped）；set_bible: documents（title、path 数组）；set_preview_enabled: enabled。路径为工作区相对路径；锁定和候选选定由用户完成，修改用户决定前先读取。最多20季、每季100集、每集200场、每场100镜头、每镜头30候选和12输入、500资产且每个30版本、50文档，标题120字、提示词7000字、说明1000字。", """{"type":"object","properties":{"operations":{"type":"array","description":"1～100 项","items":{"type":"object","description":"填写 op 及对应操作参数"}}},"required":["operations"],"additionalProperties":false}""")
+class ProductionGetSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_get", "读取制作项目修订号和清单同步状态。scope 为 overview、episode、shot、assets 或 changes；episode 需要 episode_id，shot 还需要 shot_code。内容过长会截断。", """{"type":"object","properties":{"scope":{"type":"string","enum":["overview","episode","shot","assets","changes"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"}},"required":["scope"],"additionalProperties":false}""")
+class ProductionUpdateSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_update", "原子执行制作操作。upsert_shot 支持 size、camera、camera_movement、duration_seconds、visual、performance、dialogue、sound、transition、continuity、appearances、location_asset_id、prop_asset_ids、channel_id、mode、prompt、inputs、preview；upsert_asset 支持 sound 种类、looks、reference_voice。dialogue 用 characterAssetId、text、tone、audioSource（native、dubbed）；appearances 用 characterAssetId、lookId、referenceSlotIds；looks 用 id、name、slots（id、name、path、version）；reference_voice 用 path、transcript、voiceSetting、tone。add_take 使用 episode_id、shot_code、path、service、model、mode、task_id、usage_ref、plan_snapshot（channelId、mode、inputs、prompt）；add_asset_version 使用 asset_id、path、note；set_budget（cents，整数或 null）、set_experimental（enabled）、set_stage、set_bible、set_preview_enabled、upsert_season、upsert_episode、upsert_scene、set_shot_status、set_asset_status、remove 沿用原参数。锁定场内容修改需审批，用户改写的提示词受保护。", """{"type":"object","properties":{"operations":{"type":"array","description":"1～100 项","items":{"type":"object"}}},"required":["operations"],"additionalProperties":false}""")
 class ProductionRemoveSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_remove", "解除当前会话与制作项目的绑定，保留项目和文件。", """{"type":"object","properties":{},"additionalProperties":false}""")
 
 abstract class ProductionSkill(private val repo: ProductionRepository, override val name: String, override val description: String, override val parametersSchema: String) : SkillDefinition {
@@ -41,6 +41,10 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
         }
         val body = if (name == "production_get") productionGetResult(result, text("scope"), optional("episode_id"), optional("shot_code")) else buildJsonObject {
             put("action", name); put("revision", result?.revision ?: 0); put("manifest", manifestJson(result?.manifest)); put("production_id", result?.production?.id?.let(::JsonPrimitive) ?: JsonNull)
+            if (name == "production_update") {
+                val pending = result?.production?.changeRequests.orEmpty().filter { !it.approved }
+                put("change_requests", buildJsonArray { pending.forEach { add(buildJsonObject { put("id", it.id); put("status", "待用户审批") }) } })
+            }
         }.toString()
         if (name == "production_get" && context.assistantMessageId != null) repo.recordContextRead(context.sessionId, context.assistantMessageId!!, result!!.revision, result.production.id)
         ToolResult(id = name, content = body)
@@ -66,17 +70,21 @@ internal fun manifestJson(sync: ManifestSync?): JsonObject = buildJsonObject {
 private val ProductionToolJson = Json { encodeDefaults = true }
 
 internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, episodeId: String?, shotCode: String?): String {
-    require(scope in setOf("overview", "episode", "shot", "assets")) { "scope 仅支持 overview、episode、shot、assets。" }
+    require(scope in setOf("overview", "episode", "shot", "assets", "changes")) { "scope 仅支持 overview、episode、shot、assets、changes。" }
     val p = snapshot?.production ?: throw IllegalArgumentException("当前会话没有制作项目，请先定义或附加。")
     val selected: JsonElement = when (scope) {
         "overview" -> ProductionToolJson.encodeToJsonElement(p.copy(seasons = p.seasons.map { it.copy(episodes = it.episodes.map { ep -> ep.copy(scenes = emptyList()) }) }, assets = emptyList(), bible = p.bible.take(10)))
         "assets" -> ProductionToolJson.encodeToJsonElement(p.assets)
+        "changes" -> ProductionToolJson.encodeToJsonElement(p.changeRequests)
         else -> {
             val ep = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId } ?: throw IllegalArgumentException("需要有效的 episode_id。")
             if (scope == "episode") ProductionToolJson.encodeToJsonElement(ep) else ProductionToolJson.encodeToJsonElement(ep.scenes.flatMap { it.shots }.firstOrNull { it.code == shotCode } ?: throw IllegalArgumentException("需要有效的 shot_code。"))
         }
     }
-    fun wrap(value: JsonElement, truncated: Boolean) = buildJsonObject { put("revision", snapshot.revision); put("production_id", snapshot.production.id); put("manifest", manifestJson(snapshot.manifest)); put("scope", scope); put("content", value); put("truncated", truncated) }.toString()
+    fun wrap(value: JsonElement, truncated: Boolean) = buildJsonObject { put("revision", snapshot.revision); put("production_id", snapshot.production.id); put("manifest", manifestJson(snapshot.manifest)); put("scope", scope); put("content", value); put("truncated", truncated)
+        if (scope == "shot") p.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }?.scenes?.flatMap { it.shots }?.firstOrNull { it.code == shotCode }?.let { shot ->
+            put("reference_warnings", JsonArray(ProductionRules.referenceWarnings(p, shot).map(::JsonPrimitive)))
+        } }.toString()
     val full = wrap(selected, false)
     if (full.toByteArray(Charsets.UTF_8).size <= 24 * 1024) return full
     val raw = selected.toString()

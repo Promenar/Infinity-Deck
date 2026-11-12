@@ -63,6 +63,15 @@ class ProductionSkillsTest {
         }
     }
 
+    @Test fun `变更请求可读取且错误范围给出提示`() {
+        val request = ShotChangeRequest("r", "S1E01", "SC01", "SC01-01", mapOf("title" to ShotFieldChange(JsonPrimitive("旧"), JsonPrimitive("新"))), ChangeSource.AGENT)
+        val p = Production("p", "项目", ProductionKind.FILM, "p", createdAt = 1, updatedAt = 1, changeRequests = listOf(request))
+        val snap = ProductionSnapshot(p, 1, ManifestSync.InSync)
+        assertThat(productionGetResult(snap, "changes", null, null)).contains("SC01-01")
+        val error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) { productionGetResult(snap, "unknown", null, null) }
+        assertThat(error.message).contains("changes")
+    }
+
     @Test fun `读取结果包含默认状态字段`() {
         val p = Production("p", "项目", ProductionKind.FILM, "productions/p", createdAt = 1, updatedAt = 1,
             seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = listOf(

@@ -69,6 +69,8 @@ class DefaultProductionWorkspaceFiles(
     override suspend fun isImageOrVideo(sessionId: String, path: String): Boolean = withContext(Dispatchers.IO) {
         ProductionManifestCodec.validatePath(path)
         val result = media.resolve(sessionId, media.productionPath(sessionId, path))
-        result is MediaResolution.Available && result.ref.kind in setOf(MediaKind.IMAGE, MediaKind.VIDEO)
+        result is MediaResolution.Available && isProductionMediaKind(result.ref.kind)
     }
 }
+
+internal fun isProductionMediaKind(kind: MediaKind): Boolean = kind in setOf(MediaKind.IMAGE, MediaKind.VIDEO, MediaKind.AUDIO)

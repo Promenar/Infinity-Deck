@@ -35,7 +35,7 @@ enum class ShotStatus { @SerialName("todo") TODO, @SerialName("generating") GENE
 enum class AssetStatus { @SerialName("draft") DRAFT, @SerialName("review") REVIEW, @SerialName("locked") LOCKED, @SerialName("redo") REDO }
 
 @Serializable
-enum class AssetKind { @SerialName("character") CHARACTER, @SerialName("location") LOCATION, @SerialName("prop") PROP, @SerialName("style") STYLE }
+enum class AssetKind { @SerialName("character") CHARACTER, @SerialName("location") LOCATION, @SerialName("prop") PROP, @SerialName("style") STYLE, @SerialName("sound") SOUND }
 
 /** 生成模式；与具体服务无关。 */
 @Serializable
@@ -97,6 +97,7 @@ data class Take(
     val note: String? = null,
     /** 第 2 期起由生成任务填写。 */
     val taskId: String? = null,
+    val planSnapshot: TakePlanSnapshot? = null,
 )
 
 @Serializable
@@ -121,7 +122,49 @@ data class Shot(
     val agentNote: String? = null,
     val changedBy: ChangeSource = ChangeSource.AGENT,
     val changedAt: Long = 0,
+    val camera: String? = null,
+    val cameraMovement: String? = null,
+    val visual: String? = null,
+    val performance: String? = null,
+    val dialogue: List<ShotDialogue> = emptyList(),
+    val sound: String? = null,
+    val transition: String? = null,
+    val continuity: String? = null,
+    val appearances: List<ShotAppearance> = emptyList(),
+    val locationAssetId: String? = null,
+    val propAssetIds: List<String> = emptyList(),
+    val channelId: String? = null,
+    val promptUserEdited: Boolean = false,
 )
+
+@Serializable
+enum class DialogueAudioSource { @SerialName("native") NATIVE, @SerialName("dubbed") DUBBED }
+
+@Serializable
+data class ShotDialogue(val characterAssetId: String, val text: String, val tone: String? = null, val audioSource: DialogueAudioSource = DialogueAudioSource.NATIVE)
+
+@Serializable
+data class ShotAppearance(val characterAssetId: String, val lookId: String, val referenceSlotIds: List<String> = emptyList())
+
+@Serializable
+data class TakePlanSnapshot(val channelId: String? = null, val mode: ShotMode, val inputs: List<ShotInput>, val prompt: String)
+
+@Serializable
+data class ReferenceSlot(val id: String, val name: String, val path: String? = null, val version: Int? = null)
+
+@Serializable
+data class CharacterLook(val id: String, val name: String, val slots: List<ReferenceSlot> = defaultReferenceSlots())
+
+fun defaultReferenceSlots() = listOf(ReferenceSlot("front", "正面全身"), ReferenceSlot("side", "侧面全身"), ReferenceSlot("back", "背面全身"))
+
+@Serializable
+data class ReferenceVoice(val path: String? = null, val transcript: String? = null, val voiceSetting: String? = null, val tone: String? = null)
+
+@Serializable
+data class ShotChangeRequest(val id: String, val episodeId: String, val sceneCode: String, val shotCode: String, val changes: Map<String, ShotFieldChange>, val source: ChangeSource, val note: String? = null, val approved: Boolean = false)
+
+@Serializable
+data class ShotFieldChange(val oldValue: kotlinx.serialization.json.JsonElement, val newValue: kotlinx.serialization.json.JsonElement)
 
 @Serializable
 data class Scene(
@@ -174,6 +217,8 @@ data class Asset(
     val userNote: String? = null,
     val changedBy: ChangeSource = ChangeSource.AGENT,
     val changedAt: Long = 0,
+    val looks: List<CharacterLook> = emptyList(),
+    val referenceVoice: ReferenceVoice? = null,
 )
 
 @Serializable
@@ -193,6 +238,11 @@ data class Production(
     val previewEnabled: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
+    val experimental: Boolean = false,
+    val budgetCents: Long? = null,
+    val changeRequests: List<ShotChangeRequest> = emptyList(),
+    val policyChangedBy: ChangeSource = ChangeSource.AGENT,
+    val policyChangedAt: Long = 0,
 )
 
 /** 清单文件与数据库的同步状态。 */
@@ -216,6 +266,19 @@ data class ProductionSnapshot(
 
 /** 用户在面板里的操作；全部记为 [ChangeSource.USER]，失败时抛 [IllegalArgumentException]，消息可直接显示。 */
 sealed interface ProductionUserAction {
+    data class EditShotContent(val episodeId: String, val shotCode: String, val proposed: Shot) : ProductionUserAction
+    data class ResolveChange(val requestId: String, val approve: Boolean) : ProductionUserAction
+    data class SetExperimental(val enabled: Boolean) : ProductionUserAction
+    data class SetBudget(val cents: Long?) : ProductionUserAction
+    data class SetShotPlan(val episodeId: String, val shotCode: String, val channelId: String?, val mode: ShotMode) : ProductionUserAction
+    data class ClearPromptEdited(val episodeId: String, val shotCode: String) : ProductionUserAction
+    data class SetCharacterLook(val episodeId: String, val shotCode: String, val characterAssetId: String, val lookId: String) : ProductionUserAction
+    data class ToggleReferenceSlot(val episodeId: String, val shotCode: String, val characterAssetId: String, val slotId: String, val selected: Boolean) : ProductionUserAction
+    data class SetAppearances(val episodeId: String, val shotCode: String, val appearances: List<ShotAppearance>) : ProductionUserAction
+    data class SetDialogueSource(val episodeId: String, val shotCode: String, val index: Int, val source: DialogueAudioSource) : ProductionUserAction
+    data class AddLook(val assetId: String, val look: CharacterLook) : ProductionUserAction
+    data class AddReferenceSlot(val assetId: String, val lookId: String, val slot: ReferenceSlot) : ProductionUserAction
+    data class RemoveReferenceSlot(val assetId: String, val lookId: String, val slotId: String) : ProductionUserAction
     data class SelectTake(val episodeId: String, val shotCode: String, val takeId: String) : ProductionUserAction
     data class RequestRedo(val episodeId: String, val shotCode: String, val note: String?) : ProductionUserAction
     /** 已定镜头回到待审。 */

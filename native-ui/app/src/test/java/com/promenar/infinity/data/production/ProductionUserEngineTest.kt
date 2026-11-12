@@ -21,7 +21,7 @@ class ProductionUserEngineTest {
         assertThat(shot(selected).selectedTakeId).isEqualTo("t1")
         assertThat(shot(selected).changedBy).isEqualTo(ChangeSource.USER)
         assertThat(shot(selected).changedAt).isEqualTo(2)
-        assertThrows(IllegalArgumentException::class.java) { apply(selected, ProductionUserAction.EditPrompt("S1E01", "SC01-01", "提示")) }
+        assertThat(shot(apply(selected, ProductionUserAction.EditPrompt("S1E01", "SC01-01", "提示"))).promptUserEdited).isTrue()
         val conflict = assertThrows(IllegalArgumentException::class.java) { ProductionUserEngine.apply(selected, 1, ProductionUserAction.UnlockShot("S1E01", "SC01-01"), 10) }
         assertThat(conflict.message).isEqualTo("面板已更新，请重试。")
         val unlocked = apply(selected, ProductionUserAction.UnlockShot("S1E01", "SC01-01"))

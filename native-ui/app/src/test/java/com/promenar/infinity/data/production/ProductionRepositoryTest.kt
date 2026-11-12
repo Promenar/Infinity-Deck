@@ -110,6 +110,9 @@ class ProductionRepositoryTest {
         repo.define("s", "影片", ProductionKind.FILM)
         fun operations(raw: String) = Json.parseToJsonElement(raw).jsonArray.map { it.jsonObject }
         repo.update("s", "m", operations("""[{"op":"upsert_season","id":"S1","number":1},{"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集"},{"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"场"},{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"镜头","duration_seconds":2}]"""))
+        val beforeLock = repo.get("s")!!
+        repo.apply("s", beforeLock.revision, ProductionUserAction.LockScene("S1E01", "SC01", true))
+        repo.recordContextRead("s", "m", beforeLock.revision + 1, beforeLock.production.id)
         val take = operations("""[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"media/a.mp4","service":"服务"}]""")
         try { repo.update("s", "m", take); org.junit.Assert.fail("缺失媒体应被拒绝") } catch (_: IllegalArgumentException) { }
         files.bytes["s" to "media/a.mp4"] = byteArrayOf(1)

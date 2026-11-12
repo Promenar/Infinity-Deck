@@ -28,7 +28,75 @@ object ProductionUserEngine {
             }
             require(found) { "镜头 $shotCode 不存在，请先读取该集。" }
         }
+        fun updateLook(assetId: String, lookId: String, transform: (CharacterLook) -> CharacterLook) {
+            var found = false
+            p = p.copy(assets = p.assets.map { asset ->
+                if (asset.id != assetId) asset else asset.copy(looks = asset.looks.map { look ->
+                    if (look.id == lookId) { found = true; transform(look) } else look
+                }, changedBy = ChangeSource.USER, changedAt = revision)
+            })
+            require(found) { "角色造型不存在。" }
+        }
+        fun updateContent(episodeId: String, shotCode: String, transform: (Shot) -> Shot) {
+            val scene = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }?.scenes?.firstOrNull { sc -> sc.shots.any { it.code == shotCode } }
+                ?: throw IllegalArgumentException("镜头 $shotCode 不存在。")
+            var confirmed: ShotChangeRequest? = null
+            updateShot(episodeId, shotCode) { old ->
+                val updated = transform(old)
+                val changes = ProductionRules.changes(old, updated)
+                if (scene.storyboardLocked && changes.isNotEmpty()) {
+                    val request = ShotChangeRequest(java.util.UUID.randomUUID().toString(), episodeId, scene.code, shotCode, changes, ChangeSource.USER, "用户确认")
+                    confirmed = request
+                    ProductionRules.applyChanges(old, request.changes)
+                } else updated
+            }
+            confirmed?.let { p = p.copy(changeRequests = p.changeRequests + it.copy(approved = true)) }
+        }
         when (action) {
+            is ProductionUserAction.EditShotContent -> updateContent(action.episodeId, action.shotCode) { old ->
+                require(action.proposed.code == old.code) { "镜头标识不能修改。" }
+                ProductionRules.applyChanges(old, ProductionRules.changes(old, action.proposed))
+            }
+            is ProductionUserAction.ResolveChange -> {
+                val request = p.changeRequests.firstOrNull { it.id == action.requestId && !it.approved } ?: throw IllegalArgumentException("变更请求不存在。")
+                if (action.approve) updateShot(request.episodeId, request.shotCode) { ProductionRules.applyChanges(it, request.changes) }
+                p = p.copy(changeRequests = if (action.approve) p.changeRequests.map { if (it.id == request.id) it.copy(approved = true) else it } else p.changeRequests.filterNot { it.id == request.id })
+            }
+            is ProductionUserAction.SetExperimental -> p = p.copy(experimental = action.enabled, policyChangedBy = ChangeSource.USER, policyChangedAt = revision)
+            is ProductionUserAction.SetBudget -> { require(action.cents == null || action.cents >= 0) { "预算不能为负数。" }; p = p.copy(budgetCents = action.cents, policyChangedBy = ChangeSource.USER, policyChangedAt = revision) }
+            is ProductionUserAction.SetShotPlan -> updateShot(action.episodeId, action.shotCode) { it.copy(channelId = action.channelId, mode = action.mode) }
+            is ProductionUserAction.ClearPromptEdited -> updateShot(action.episodeId, action.shotCode) { it.copy(promptUserEdited = false) }
+            is ProductionUserAction.SetCharacterLook -> updateContent(action.episodeId, action.shotCode) { shot ->
+                val character = p.assets.firstOrNull { it.id == action.characterAssetId && it.kind == AssetKind.CHARACTER }
+                    ?: throw IllegalArgumentException("角色不存在。")
+                require(character.looks.any { it.id == action.lookId }) { "造型不存在。" }
+                require(shot.appearances.any { it.characterAssetId == character.id }) { "角色未在镜头中出场。" }
+                shot.copy(appearances = shot.appearances.map { if (it.characterAssetId == character.id) it.copy(lookId = action.lookId, referenceSlotIds = emptyList()) else it })
+            }
+            is ProductionUserAction.ToggleReferenceSlot -> updateContent(action.episodeId, action.shotCode) { shot ->
+                val appearance = shot.appearances.firstOrNull { it.characterAssetId == action.characterAssetId } ?: throw IllegalArgumentException("角色未在镜头中出场。")
+                val look = p.assets.firstOrNull { it.id == appearance.characterAssetId }?.looks?.firstOrNull { it.id == appearance.lookId }
+                require(look?.slots?.any { it.id == action.slotId } == true) { "参考位不存在。" }
+                shot.copy(appearances = shot.appearances.map { item -> if (item != appearance) item else item.copy(referenceSlotIds = if (action.selected) (item.referenceSlotIds + action.slotId).distinct() else item.referenceSlotIds - action.slotId) })
+            }
+            is ProductionUserAction.SetAppearances -> updateContent(action.episodeId, action.shotCode) { it.copy(appearances = action.appearances) }
+            is ProductionUserAction.SetDialogueSource -> updateContent(action.episodeId, action.shotCode) { shot ->
+                require(action.index in shot.dialogue.indices) { "对白不存在。" }
+                shot.copy(dialogue = shot.dialogue.mapIndexed { index, line -> if (index == action.index) line.copy(audioSource = action.source) else line })
+            }
+            is ProductionUserAction.AddLook -> {
+                var found = false
+                p = p.copy(assets = p.assets.map { asset -> if (asset.id == action.assetId) {
+                    found = true; require(asset.kind == AssetKind.CHARACTER && asset.looks.none { it.id == action.look.id }) { "角色或造型无效。" }
+                    asset.copy(looks = asset.looks + action.look, changedBy = ChangeSource.USER, changedAt = revision)
+                } else asset })
+                require(found) { "角色不存在。" }
+            }
+            is ProductionUserAction.AddReferenceSlot -> updateLook(action.assetId, action.lookId) { look ->
+                require(look.slots.none { it.id == action.slot.id }) { "参考位已存在。" }
+                look.copy(slots = look.slots + action.slot)
+            }
+            is ProductionUserAction.RemoveReferenceSlot -> updateLook(action.assetId, action.lookId) { ProductionRules.removeSlot(it, action.slotId) }
             is ProductionUserAction.SelectTake -> updateShot(action.episodeId, action.shotCode) { shot ->
                 require(shot.takes.any { it.id == action.takeId }) { "候选 ${action.takeId} 不存在，请重新选择。" }
                 shot.copy(selectedTakeId = action.takeId, status = ShotStatus.LOCKED, userNote = null)
@@ -41,8 +109,7 @@ object ProductionUserEngine {
                 shot.copy(status = ShotStatus.REVIEW)
             }
             is ProductionUserAction.EditPrompt -> updateShot(action.episodeId, action.shotCode) { shot ->
-                require(shot.status != ShotStatus.LOCKED) { "镜头已锁定，请先解锁。" }
-                shot.copy(prompt = action.prompt)
+                shot.copy(prompt = action.prompt, promptUserEdited = true)
             }
             is ProductionUserAction.SetAssetStatus -> {
                 var found = false

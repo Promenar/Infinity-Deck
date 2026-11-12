@@ -28,6 +28,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -130,10 +132,25 @@ class ProductionRepository(
         mutex.withLock {
             val row = required(sessionId)
             val validMedia = mutableSetOf<String>()
-            operations.filter { (it["op"] as? JsonPrimitive)?.content == "add_take" }.forEach { op ->
-                val value = (op["path"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-                if (value != null && files.isImageOrVideo(sessionId, value)) validMedia += value
+            val mediaPaths = mutableSetOf<String>()
+            fun collectPaths(element: JsonElement) {
+                when (element) {
+                    is JsonObject -> element.forEach { (key, value) ->
+                        if (key == "path" && value is JsonPrimitive && value.isString) mediaPaths += value.content
+                        else collectPaths(value)
+                    }
+                    is JsonArray -> element.forEach(::collectPaths)
+                    else -> Unit
+                }
             }
+            operations.forEach { op ->
+                when ((op["op"] as? JsonPrimitive)?.content) {
+                    "add_take", "add_asset_version" -> (op["path"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { mediaPaths += it }
+                    "upsert_shot" -> op["inputs"]?.let(::collectPaths)
+                    "upsert_asset" -> { op["looks"]?.let(::collectPaths); op["reference_voice"]?.let(::collectPaths) }
+                }
+            }
+            mediaPaths.forEach { path -> if (files.isImageOrVideo(sessionId, path)) validMedia += path }
             val seen = reads["$sessionId:$owner:${row.id}"]
             database.withTransaction {
                 val current = required(sessionId)
