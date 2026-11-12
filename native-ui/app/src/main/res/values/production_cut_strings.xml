@@ -16,4 +16,12 @@
     <string name="production_cut_invalid_output">Output validation failed</string>
     <string name="production_cut_encoding_failed">Encoding failed</string>
     <string name="production_cut_storage_full">Insufficient storage</string>
+    <string name="p3_cut_version">Rough cut v%1$d</string>
+    <string name="p3_cut_codec">H.264 · AAC</string>
+    <string name="p3_cut_file">File</string>
+    <string name="p3_cut_status">Export</string>
+    <string name="p3_cut_share">Share</string>
+    <string name="p3_cut_reexport">Re-export</string>
+    <string name="p3_cut_burn_subtitles">Burn in subtitles</string>
+    <string name="p3_cut_delete">Delete version</string>
 </resources>

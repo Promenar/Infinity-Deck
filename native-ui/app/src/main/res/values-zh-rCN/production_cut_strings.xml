@@ -16,4 +16,12 @@
     <string name="production_cut_invalid_output">产物校验失败</string>
     <string name="production_cut_encoding_failed">编码失败</string>
     <string name="production_cut_storage_full">存储空间不足</string>
+    <string name="p3_cut_version">粗剪 v%1$d</string>
+    <string name="p3_cut_codec">H.264 · AAC</string>
+    <string name="p3_cut_file">成片</string>
+    <string name="p3_cut_status">导出</string>
+    <string name="p3_cut_share">分享</string>
+    <string name="p3_cut_reexport">重新导出</string>
+    <string name="p3_cut_burn_subtitles">烧录字幕</string>
+    <string name="p3_cut_delete">删除版本</string>
 </resources>

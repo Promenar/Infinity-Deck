@@ -336,7 +336,7 @@ fun ProductionPanelContent(
                     onRun = run, services = connectedServices, channels = channels, channelOrder = channelOrder,
                 )
                 ProductionTab.OUTPUT -> ProductionOutputTab(production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot, { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
-                ProductionTab.CUT -> ProductionCutTab(production, services, openShot)
+                ProductionTab.CUT -> ProductionCutTab(production, services, sessionId, openShot, onError = { error = it })
             }
         }
     }

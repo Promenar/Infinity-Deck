@@ -224,7 +224,7 @@ internal fun stageChip(production: Production, state: StageState, services: Prod
             return ProductionChipSpec(stringResource(R.string.p2_stage_sound, dialogue, sounds), if (state.status == StageStatus.IN_PROGRESS) ProductionTone.INFO else ProductionTone.NEUTRAL)
         }
         ProductionStage.EDIT -> {
-            val versions = services.cutVersions.size
+            val versions = production.cuts.size
             return if (versions > 0) ProductionChipSpec(stringResource(R.string.p2_stage_cuts, versions), ProductionTone.INFO)
             else ProductionChipSpec(state.note ?: state.status.label(), state.status.tone())
         }
@@ -436,76 +436,8 @@ private val ClipDpPerSecond = 14.dp
 /** 片段宽度按时长比例；过短的片段保留能完整显示镜号角标的最小宽度。 */
 private fun cutClipWidth(clip: ProductionCutClip): Dp = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(48.dp)
 
-/** 预演与粗剪是同一条时间线的不同版本：上方版本切换与播放器，下方时间线与三条音轨。 */
 @Composable
-internal fun ProductionCutTab(production: Production, services: ProductionPanelServices, onShot: (String, String) -> Unit) {
-    var versionId by rememberSaveable { mutableStateOf("preview") }
-    var playing by rememberSaveable { mutableStateOf(false) }
-    var clipIndex by rememberSaveable { mutableStateOf(0) }
-    val versions = listOf(
-        ProductionCutVersion("preview", stringResource(R.string.p2_cut_preview), null, production.cutClips(true)),
-        ProductionCutVersion("selected", stringResource(R.string.p2_cut_selected), null, production.cutClips(false)),
-    ) + services.cutVersions.filter { it.id != "preview" && it.id != "selected" }.distinctBy { it.id }
-    val version = versions.firstOrNull { it.id == versionId } ?: versions.first()
-    val isPreview = version.id == "preview"
-    val current = version.clips.getOrNull(clipIndex.coerceIn(0, (version.clips.size - 1).coerceAtLeast(0)))
-    val totalSeconds = version.clips.sumOf { it.seconds }
-    LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-        item("versions") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                InfinitySegmentedControl(versions.map { InfinitySegment(it.id, it.title) }, selected = version.id, onSelect = { versionId = it; clipIndex = 0; playing = false }, modifier = Modifier.weight(1f))
-                services.onCreateCut?.let { create ->
-                    IconButton(onClick = create, modifier = Modifier.size(48.dp)) { Icon(Icons.Rounded.Add, stringResource(R.string.p2_new_cut)) }
-                }
-            }
-        }
-        item("player") {
-            val clip = version.path?.let { ProductionCutClip("", version.id, version.title, totalSeconds, it) } ?: current
-            key(version.id, clip?.episodeId, clip?.shotCode, clip?.path) {
-                ProductionCutPlayer(clip, playing, onComplete = {
-                    if (version.path != null || clipIndex + 1 >= version.clips.size) playing = false else clipIndex++
-                }, onStop = { playing = false })
-            }
-        }
-        item("timeline") {
-            ProductionSection(null) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row {
-                        Text(production.episodes().singleOrNull()?.let { episodeName(it).joinToString(" ") } ?: stringResource(R.string.p2_timeline), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Text(secondsLabel(totalSeconds), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    CutTimeline(production, version, isPreview, onShot)
-                }
-            }
-        }
-        item("output") {
-            ProductionSection(null) {
-                val gaps = version.clips.count { it.path == null }
-                ProductionRow(stringResource(R.string.p2_gaps), value = if (isPreview) stringResource(R.string.p2_gaps_placeholder) else stringResource(R.string.p2_gap_count, gaps))
-                ProductionRow(stringResource(R.string.p2_specs), value = version.specs ?: production.aspectRatio ?: "—")
-                version.path?.let { ProductionRow(stringResource(R.string.p2_output_path), value = it) }
-            }
-        }
-        item("actions") {
-            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                ProductionActionRow(listOf(
-                    ProductionButton(stringResource(if (playing) R.string.p2_stop_sequence else R.string.p2_play_sequence), InfinityPillTone.NEUTRAL, version.path != null || version.clips.isNotEmpty(), "p2_cut_play") { playing = !playing; clipIndex = 0 },
-                    ProductionButton(stringResource(R.string.p2_export), InfinityPillTone.PRIMARY, services.onExportCut != null, "p2_cut_export") { services.onExportCut?.invoke(version.id) },
-                ))
-                if (playing && version.path == null && clipIndex + 1 < version.clips.size) ProductionCommand(stringResource(R.string.p2_next_clip)) { clipIndex++ }
-            }
-        }
-        item("packaging") {
-            ProductionSection(stringResource(R.string.p2_packaging)) {
-                ProductionRow(stringResource(R.string.p2_subtitles), icon = Icons.Rounded.Subtitles, value = stringResource(R.string.p2_subtitles_source))
-                ProductionRow(stringResource(R.string.p2_titles_effects), icon = Icons.Rounded.Terminal, value = stringResource(R.string.p2_linux_composite))
-            }
-        }
-    }
-}
-
-@Composable
-private fun CutTimeline(production: Production, version: ProductionCutVersion, isPreview: Boolean, onShot: (String, String) -> Unit) {
+internal fun CutTimeline(production: Production, version: ProductionCutVersion, isPreview: Boolean, onShot: (String, String) -> Unit) {
     val locations = production.shotLocations().toList()
     val clipWidths = version.clips.map(::cutClipWidth)
     val width = clipWidths.fold(0.dp) { sum, it -> sum + it }.coerceAtLeast(120.dp)
@@ -552,8 +484,9 @@ private fun CutTimeline(production: Production, version: ProductionCutVersion, i
             }
             val ambience = locations.mapNotNull { it.shot.sound }.flatMap { it.split(" · ", "·") }.map(String::trim).filter(String::isNotBlank).distinct().take(3)
             TrackSpan(listOf(stringResource(R.string.p2_track_environment)).plus(ambience).joinToString(" · "), domain.successContainer, domain.onSuccessContainer, width)
-            val music = production.assets.filter { it.kind == AssetKind.SOUND }.map { it.name }
-            TrackSpan(listOf(stringResource(R.string.p2_track_music)).plus(music.ifEmpty { listOf(stringResource(R.string.p2_none)) }).joinToString(" · "), domain.infoContainer, domain.onInfoContainer, width)
+            // 与导出一致：第一个已锁定的声音资产作为音乐铺底。
+            val music = production.assets.firstOrNull { it.kind == AssetKind.SOUND && it.status == AssetStatus.LOCKED }?.name ?: stringResource(R.string.p2_none)
+            TrackSpan(listOf(stringResource(R.string.p2_track_music), music).joinToString(" · "), domain.infoContainer, domain.onInfoContainer, width)
         }
     }
 }

@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The source tree is at `v0.49.5-beta` (versionCode `138`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.50.0-beta` (versionCode `139`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>
@@ -189,7 +189,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Type `localhost:8888` to open services running in Linux or Termux
 - Canvas pages, clickable multi-screen prototypes and versioned artifacts
 - Image generation with a drawing board for markup and masks
-- A production panel ties script, assets, storyboard, takes and cut together. Preview each shot's channel, references and prompt; paid jobs wait for approval or pass within budget. Works with Volcano Ark Seedance, MiniMax and your own ComfyUI workflows
+- A production panel ties script, assets, storyboard, takes and cut together. Preview each shot's channel, references and prompt; paid jobs wait for approval or pass within budget. Works with Volcano Ark Seedance, MiniMax and your own ComfyUI workflows. Save rough cuts per episode and export them on the phone as MP4 with an SRT subtitle file
 - Export chats as a web page, A4 PDF or long image
 
 **Foldables**

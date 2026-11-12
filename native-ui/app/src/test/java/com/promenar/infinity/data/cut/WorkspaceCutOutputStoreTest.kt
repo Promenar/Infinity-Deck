@@ -133,7 +133,9 @@ class WorkspaceCutOutputStoreTest {
 
         val failure = failure { store(backend).publish("session", plan(), video()) { throw registrationFailure } }
 
-        assertThat(failure).isSameInstanceAs(registrationFailure)
+        // 协程栈恢复可能复制异常对象，按类型与消息确认保留的是登记异常。
+        assertThat(failure).isInstanceOf(IllegalStateException::class.java)
+        assertThat(failure).hasMessageThat().isEqualTo(registrationFailure.message)
         assertOldOutputs(backend)
         assertThat(cache().listFiles().orEmpty()).isEmpty()
     }

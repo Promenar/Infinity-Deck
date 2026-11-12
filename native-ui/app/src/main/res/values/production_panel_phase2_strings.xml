@@ -55,7 +55,7 @@
     <string name="p2_lock_before_output">Board unlocked · Open board</string>
     <string name="p2_candidates_channel">%1$d takes · %2$s</string>
     <string name="p2_cut_preview">Animatic</string>
-    <string name="p2_cut_selected">Rough cut</string>
+    <string name="p2_cut_selected">Selected</string>
     <string name="p2_new_cut">New version</string>
     <string name="p2_no_shots">No shots</string>
     <string name="p2_timeline">Timeline</string>
@@ -75,8 +75,8 @@
     <string name="p2_packaging">Packaging</string>
     <string name="p2_subtitles">Subtitles</string>
     <string name="p2_subtitles_source">Shot dialogue</string>
-    <string name="p2_titles_effects">Titles and effects</string>
-    <string name="p2_linux_composite">Linux · Agent composition</string>
+    <string name="p2_titles_effects">Titles &amp; FX</string>
+    <string name="p2_linux_composite">Agent · Linux</string>
     <string name="p2_lock_scene">Lock</string>
     <string name="p2_lock_scene_message">Confirm the storyboard and generation plans for this scene?</string>
     <string name="p2_add_shot">Add shot</string>

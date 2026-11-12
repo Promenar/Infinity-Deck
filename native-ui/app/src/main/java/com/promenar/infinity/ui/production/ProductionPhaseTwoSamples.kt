@@ -23,7 +23,7 @@ internal object ProductionPhaseTwoSamples {
     )
     val order = channels.map { it.id }
     private val look = CharacterLook("coat", "风衣", defaultReferenceSlots().map { it.copy(path = "productions/harbor/assets/${it.id}.png") } + ReferenceSlot("detail", "怀表链", "productions/harbor/assets/detail.png"))
-    val production = ProductionSamples.production.copy(
+    private val base = ProductionSamples.production.copy(
         budgetCents = 10000,
         assets = ProductionSamples.production.assets.map { asset -> if (asset.kind != AssetKind.CHARACTER) asset else asset.copy(looks = listOf(look, CharacterLook("suit", "西服")), referenceVoice = ReferenceVoice("productions/harbor/voices/${asset.id}.wav", "有些事情，总得有人记得。", "低沉、微哑", "克制")) },
         seasons = ProductionSamples.production.seasons.map { season -> season.copy(episodes = season.episodes.map { episode -> episode.copy(scenes = episode.scenes.map { scene -> scene.copy(shots = scene.shots.map { shot ->
@@ -34,6 +34,12 @@ internal object ProductionPhaseTwoSamples {
             )
         }) }) }) },
     )
+    /** 两个粗剪版本：v1 已导出，v2 正在导出。 */
+    private val withCuts = ProductionCuts.create(ProductionCuts.create(base, "S1E01", emptyMap(), 1_000), "S1E01", emptyMap(), 2_000).let { p ->
+        val first = p.cuts.first()
+        ProductionCuts.registerExport(p, first.id, CutExportRecord(ProductionCuts.videoPath(p, first), ProductionCuts.subtitlePath(p, first), 42.0, 18_400_000, 3_000))
+    }
+    val production = withCuts
     val snapshot = ProductionSnapshot(production, 12, ManifestSync.InSync)
     val preview = ShotPlanPreview(channels.first(), true, "Seedance 2.5 · 火山方舟", ShotMode.REFERENCE, listOf(
         PlannedInput(1, "林晚 · 风衣 · 合图", "正面全身 / 侧面全身 / 背面全身", InputKind.IMAGE, InputRole.REFERENCE, null, look.slots.take(3).mapNotNull { it.path }),
@@ -61,5 +67,15 @@ internal object ProductionPhaseTwoSamples {
         projectSourcePrefix = { "${it.id}:" },
         shotSourceRef = { p, location -> "${p.id}:${location.shot.code}" },
         channelLabel = { if (it == "seedance") "Seedance 2.5" else "本机 H3" },
+        cutExport = object : com.promenar.infinity.data.cut.CutExportController {
+            override suspend fun createVersion(sessionId: String, episodeId: String): CutVersion = error("预览环境")
+            override suspend fun deleteVersion(sessionId: String, versionId: String) = Unit
+            override suspend fun setBurnSubtitles(sessionId: String, versionId: String, burn: Boolean) = Unit
+            override suspend fun export(sessionId: String, versionId: String, burnSubtitles: Boolean?) = Unit
+            override suspend fun cancel(versionId: String) = Unit
+            override fun observe() = kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.promenar.infinity.data.cut.CutExportState>>(
+                mapOf(production.cuts.last().id to com.promenar.infinity.data.cut.CutExportState.Running(0.42f)),
+            )
+        },
     )
 }

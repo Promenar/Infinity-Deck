@@ -112,8 +112,12 @@ class ProductionCutSkill(
         }
         ToolResult(id = id, content = body.toString())
     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-    catch (_: Exception) {
-        ToolResult(id = id, status = "error", content = """{"error":"INVALID_PRODUCTION_CUT","message":"请核对剪辑参数、当前项目与导出状态。"}""")
+    catch (error: Exception) {
+        // 领域与控制器的参数错误消息已是简短中文，直接交给智能体；其余异常不暴露底层细节。
+        val reason = (error as? IllegalArgumentException ?: error as? IllegalStateException)?.message
+            ?.takeIf { it.isNotBlank() && it.length <= 200 && it.any { c -> c.code > 0x2E80 } }
+            ?: "请核对剪辑参数、当前项目与导出状态。"
+        ToolResult(id = id, status = "error", content = buildJsonObject { put("error", "INVALID_PRODUCTION_CUT"); put("message", reason) }.toString())
     }
 }
 

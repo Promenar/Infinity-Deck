@@ -10,7 +10,7 @@ import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.ui.theme.*
 
 @Composable
-private fun PhaseTwoFrame(dark: Boolean = false, tab: ProductionTab = ProductionTab.OVERVIEW, shot: Boolean = false, detail: ShotDetailTab? = null, character: Boolean = false) {
+private fun PhaseTwoFrame(dark: Boolean = false, tab: ProductionTab = ProductionTab.OVERVIEW, shot: Boolean = false, detail: ShotDetailTab? = null, character: Boolean = false, sessionId: String = "") {
     InfinityTheme(preferences = InfinityThemePreferences(mode = if (dark) InfinityThemeMode.DARK else InfinityThemeMode.LIGHT, colorSource = InfinityColorSource.INFINITY)) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             ProductionPanelContent(
@@ -18,7 +18,7 @@ private fun PhaseTwoFrame(dark: Boolean = false, tab: ProductionTab = Production
                 initialShot = if (shot) "S1E01" to "SC01-02" else null, initialShotTab = detail,
                 initialAssetId = if (character) "char-linwan" else null,
                 initialPlanPreview = if (shot) ProductionPhaseTwoSamples.preview else null,
-                services = ProductionPhaseTwoSamples.services, tasks = ProductionPhaseTwoSamples.tasks,
+                sessionId = sessionId, services = ProductionPhaseTwoSamples.services, tasks = ProductionPhaseTwoSamples.tasks,
                 channels = ProductionPhaseTwoSamples.channels, channelOrder = ProductionPhaseTwoSamples.order,
             )
         }
@@ -94,3 +94,13 @@ fun productionPhaseTwoCharacterFoldPreview() = PhaseTwoFrame(character = true)
 @Preview(name = "二期 剪辑 内屏", widthDp = 720, heightDp = 1000, locale = "zh-rCN")
 @Composable
 fun productionPhaseTwoCutFoldPreview() = PhaseTwoFrame(tab = ProductionTab.CUT)
+
+@PreviewTest
+@Preview(name = "三期 剪辑 浅中360", widthDp = 360, heightDp = 1200, locale = "zh-rCN")
+@Composable
+fun productionPhaseThreeCutPreview() = PhaseTwoFrame(tab = ProductionTab.CUT, sessionId = "preview")
+
+@PreviewTest
+@Preview(name = "三期 剪辑 深英大字360", widthDp = 360, heightDp = 1300, locale = "en", fontScale = 1.3f)
+@Composable
+fun productionPhaseThreeCutEnglishPreview() = PhaseTwoFrame(dark = true, tab = ProductionTab.CUT, sessionId = "preview")

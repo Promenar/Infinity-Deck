@@ -16,9 +16,6 @@ data class ProductionPanelServices(
     val onAddShot: ((String, String) -> Unit)? = null,
     val requestContentChange: (suspend (Long, ShotLocation, Shot) -> String?)? = null,
     val pendingRegistrations: Set<String> = emptySet(),
-    val cutVersions: List<ProductionCutVersion> = emptyList(),
-    val onCreateCut: (() -> Unit)? = null,
-    val onExportCut: ((String) -> Unit)? = null,
     val cutExport: com.promenar.infinity.data.cut.CutExportController? = null,
 )
 

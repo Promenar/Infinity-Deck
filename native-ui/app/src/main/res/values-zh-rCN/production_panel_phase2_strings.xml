@@ -55,7 +55,7 @@
     <string name="p2_lock_before_output">分镜待定 · 前往锁定</string>
     <string name="p2_candidates_channel">候选 %1$d · %2$s</string>
     <string name="p2_cut_preview">预演</string>
-    <string name="p2_cut_selected">粗剪</string>
+    <string name="p2_cut_selected">选定</string>
     <string name="p2_new_cut">新建版本</string>
     <string name="p2_no_shots">暂无镜头</string>
     <string name="p2_timeline">时间线</string>
