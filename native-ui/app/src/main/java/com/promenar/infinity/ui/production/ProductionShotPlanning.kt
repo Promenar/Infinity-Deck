@@ -151,8 +151,9 @@ internal fun ProductionShotDetail(
                 item("channel-mode") {
                     ProductionBlock(stringResource(R.string.p2_channel_mode)) {
                         ProductionValueRow(stringResource(R.string.p2_mode), shot.mode.label(), enabled = !working) { sheet = PlanningSheet.MODE }
-                        ProductionValueRow(stringResource(R.string.p2_channel), preview?.channelLabel ?: shot.channelId?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel), enabled = !working) { sheet = PlanningSheet.CHANNEL }
-                        if (preview?.channelIsDefault == true) Text(stringResource(R.string.p2_default), style = MaterialTheme.typography.labelSmall)
+                        val channelName = preview?.channelLabel ?: shot.channelId?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel)
+                        val channelValue = if (preview?.channelIsDefault == true && preview.channelLabel != null) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
+                        ProductionValueRow(stringResource(R.string.p2_channel), channelValue, enabled = !working) { sheet = PlanningSheet.CHANNEL }
                         ProductionValueRow(stringResource(R.string.p2_specs), (preview?.channel?.capabilities?.resolutions.orEmpty() + listOfNotNull(production.aspectRatio, secondsLabel(shot.durationSeconds))).joinToString(" · "))
                         ProductionValueRow(stringResource(R.string.production_panel_section_preview), shot.preview?.label() ?: stringResource(R.string.p2_none))
                         shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth(), asLink = shot.preview == PreviewKind.TEXT_CARD) }

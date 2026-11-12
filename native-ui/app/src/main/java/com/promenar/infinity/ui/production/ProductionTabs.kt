@@ -81,7 +81,7 @@ internal fun episodeName(episode: Episode): List<String> =
 // ---------- 总览 ----------
 
 @Composable
-internal fun StageRow(stage: StageState, current: Boolean, busy: Boolean, onSet: (StageStatus) -> Unit) {
+internal fun StageRow(stage: StageState, current: Boolean, busy: Boolean, progress: String? = null, inset: Boolean = true, onSet: (StageStatus) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -89,17 +89,19 @@ internal fun StageRow(stage: StageState, current: Boolean, busy: Boolean, onSet:
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
                 .clickable(enabled = !busy, role = Role.Button, onClickLabel = stringResource(R.string.production_panel_stage_menu)) { menu = true }
-                .padding(horizontal = InfinitySpacing.Large),
+                .padding(horizontal = if (inset) InfinitySpacing.Large else 0.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
         ) {
-            Text(
-                stage.stage.label(),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stage.stage.label(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+                progress?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
             ProductionStatusChip(stage.status.label(), stage.status.tone())
         }
         InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

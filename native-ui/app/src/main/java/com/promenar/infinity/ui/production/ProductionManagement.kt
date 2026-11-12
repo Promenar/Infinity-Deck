@@ -39,7 +39,7 @@ internal fun ProductionManagementTab(
                 if (pending.isEmpty()) Text(stringResource(R.string.production_panel_nothing_pending))
                 pending.forEach { item -> when (item) {
                     is OverviewItem.Review -> ProductionValueRow(stringResource(R.string.p2_review_shots, item.count), onClick = { onOutput(OutputFilter.REVIEW) })
-                    is OverviewItem.Approval -> ProductionTaskRow(item.task, services, busy, onQueue)
+                    is OverviewItem.Approval -> ProductionTaskRow(item.task, services, busy, onQueue, production.taskTitle(item.task.request.sourceRef))
                     is OverviewItem.Redo -> ProductionValueRow(stringResource(R.string.p2_redo_shots, item.count), onClick = { onOutput(OutputFilter.REDO) })
                     is OverviewItem.SceneLock -> ProductionValueRow(stringResource(R.string.p2_scene_waiting, item.scene.number), item.scene.heading, onClick = { onScene(item.episode.id) })
                     is OverviewItem.ReferenceReview -> ProductionValueRow(item.asset.name, stringResource(R.string.p2_reference_review), onClick = { onAsset(item.asset.id) })
@@ -61,8 +61,7 @@ internal fun ProductionManagementTab(
         item("stages") {
             ProductionBlock(stringResource(R.string.production_panel_section_stages)) {
                 production.stages.forEach { stage ->
-                    StageRow(stage, stage.stage == production.currentStage(), busy) { onRun(ProductionUserAction.SetStage(stage.stage, it)) }
-                    Text(stageProgress(production, stage), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    StageRow(stage, stage.stage == production.currentStage(), busy, progress = stageProgress(production, stage), inset = false) { onRun(ProductionUserAction.SetStage(stage.stage, it)) }
                 }
             }
         }
@@ -71,14 +70,14 @@ internal fun ProductionManagementTab(
                 if (services.queue == null || services.projectSourcePrefix == null) Text(stringResource(R.string.p2_queue_unavailable), style = MaterialTheme.typography.bodySmall)
                 val active = tasks.overviewQueueTasks(services.pendingRegistrations)
                 if (active.isEmpty()) Text(stringResource(R.string.p2_empty_queue))
-                active.forEach { ProductionTaskRow(it, services, busy, onQueue) }
+                active.forEach { ProductionTaskRow(it, services, busy, onQueue, production.taskTitle(it.request.sourceRef)) }
             }
         }
         item("recent") {
             ProductionBlock(stringResource(R.string.p2_recent)) {
                 val recent = tasks.recentQueueTasks(services.pendingRegistrations)
                 if (recent.isEmpty()) Text(stringResource(R.string.p2_no_recent))
-                recent.forEach { ProductionTaskRow(it, services, busy, onQueue) }
+                recent.forEach { ProductionTaskRow(it, services, busy, onQueue, production.taskTitle(it.request.sourceRef)) }
             }
         }
         item("budget") {
@@ -110,6 +109,15 @@ internal fun ProductionManagementTab(
     )
 }
 
+/** 任务行标题：镜头编号与标题，配音追加对白序号；无法解析时由调用方回退到原始引用。 */
+internal fun Production.taskTitle(sourceRef: String): String? {
+    val ref = ProductionSourceRef.parse(sourceRef) ?: return null
+    if (ref.productionId != id) return null
+    val shot = shotLocations().firstOrNull { it.episode.id == ref.episodeId && it.shot.code == ref.shotCode }?.shot
+    val base = shot?.let { "${it.code} · ${it.title}" } ?: ref.shotCode
+    return ref.dialogueIndex?.let { "$base · #${it + 1}" } ?: base
+}
+
 internal fun centsAmount(cents: Long) = java.math.BigDecimal.valueOf(cents, 2).toPlainString()
 
 @Composable
@@ -119,9 +127,9 @@ private fun stageProgress(production: Production, state: StageState): String {
 }
 
 @Composable
-internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onQueue: (String, QueueAction) -> Unit) {
+internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onQueue: (String, QueueAction) -> Unit, title: String? = null) {
     Column(Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(task.request.sourceRef, style = MaterialTheme.typography.labelMedium)
+        Text(title ?: task.request.sourceRef, style = MaterialTheme.typography.labelMedium)
         Text(services.channelLabel(task.request.channelId), style = MaterialTheme.typography.bodyMedium)
         val estimate: Money? = task.estimate
         estimate?.let { Text(stringResource(R.string.p2_estimate, "${it.currency} ${it.amount.toPlainString()}"), style = MaterialTheme.typography.bodySmall) }

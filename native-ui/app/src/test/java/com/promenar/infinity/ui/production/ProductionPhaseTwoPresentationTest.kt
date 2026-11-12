@@ -39,6 +39,15 @@ class ProductionPhaseTwoPresentationTest {
         MediaGenerationRequest(channel.id, GenerationMode.TEXT, "夜色", emptyList(), ref), Money(BigDecimal.ONE, "CNY"), state = state)
     private fun preview(blocked: String? = null) = ShotPlanPreview(channel, true, "通道 A", ShotMode.TEXT, emptyList(), emptyList(), "夜色", false, PromptFormat.GENERIC, null, blocked, emptyList())
 
+    @Test fun `任务行标题还原镜头编号与标题且只认本项目`() {
+        val ref = ProductionSourceRef("p", "S1E01", "SC01-01")
+        assertThat(production.taskTitle(ref.encode())).isEqualTo("SC01-01 · 回头")
+        assertThat(production.taskTitle(ref.copy(dialogueIndex = 0).encode())).isEqualTo("SC01-01 · 回头 · #1")
+        assertThat(production.taskTitle(ref.copy(shotCode = "SC09-09").encode())).isEqualTo("SC09-09")
+        assertThat(production.taskTitle(ref.copy(productionId = "p2").encode())).isNull()
+        assertThat(production.taskTitle("p:task")).isNull()
+    }
+
     @Test fun `页签批准数与待审数独立且待定场显示圆点`() {
         val p = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = emptyList())))))))
         assertThat(p.tabSignals(listOf(task(), task("done", MediaTaskState.COMPLETED)))).isEqualTo(ProductionTabSignals(1, true, 1))

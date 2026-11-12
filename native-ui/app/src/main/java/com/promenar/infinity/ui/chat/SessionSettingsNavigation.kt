@@ -15,6 +15,8 @@ class SessionSettingsNavigation(
     val openAgentEdit: (agentId: String) -> Unit,
     /** “远程”面板底部的 Linux 环境、Termux、后台与定时设置页；为 null 时不显示该行。 */
     val openRemoteSettings: ((com.promenar.infinity.ui.remote.RemoteSettingsLink) -> Unit)? = null,
+    /** 设置中的“媒体模型”页；为 null 时制作面板的入口显示为不可用。 */
+    val openMediaModels: (() -> Unit)? = null,
 )
 
 val LocalSessionSettingsNavigation = staticCompositionLocalOf<SessionSettingsNavigation?> { null }
