@@ -41,10 +41,9 @@
     <string name="p2_filter_locked">Approved</string>
     <string name="p2_filter_todo">Ungenerated</string>
     <string name="p2_no_output">No shots</string>
-    <string name="p2_lock_before_output">Board unlocked · Open board</string>
     <string name="p2_candidates_channel">%1$d takes · %2$s</string>
     <string name="p2_cut_preview">Animatic</string>
-    <string name="p2_cut_selected">Approved</string>
+    <string name="p2_cut_selected">Approved takes</string>
     <string name="p2_new_cut">New version</string>
     <string name="p2_no_shots">No shots</string>
     <string name="p2_timeline">Timeline</string>
@@ -76,8 +75,6 @@
     <string name="p2_format_seedance">Seedance format</string>
     <string name="p2_format_generic">Generic</string>
     <string name="p2_planner_unavailable">Generation planner unavailable</string>
-    <string name="p2_submitted">Queued</string>
-    <string name="p2_go_generate">Open plan</string>
     <string name="p2_unlocked_scene">Scene pending review</string>
     <string name="p2_shot_content">Shot content</string>
     <string name="p2_content_locked">Approved</string>
@@ -101,7 +98,6 @@
     <string name="p2_submission_prompt">Submission prompt</string>
     <string name="p2_recompile">Recompile</string>
     <string name="p2_recompile_message">Recompile and replace the submission prompt for the current channel?</string>
-    <string name="p2_generate">Generate</string>
     <string name="p2_no_channels">No available channels</string>
     <string name="p2_image_number">Image %1$d</string>
     <string name="p2_content_request_hint">Submit a change request</string>

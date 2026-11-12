@@ -183,7 +183,17 @@ class ContextBuilder(
     private val longTermMemoryAccess: LongTermMemoryAccess? = null,
     private val projectRulesReader: ProjectRulesReader = ProjectRulesReader(),
     private val productionRepository: com.promenar.infinity.data.repository.ProductionRepository? = null,
+    private val productionTasks: suspend () -> List<com.promenar.infinity.domain.mediagen.MediaTask> = { emptyList() },
 ) {
+    /** 每轮写入上下文的制作未结事项；读取任务失败时只用项目快照本身。 */
+    private suspend fun productionOpenItems(snapshot: com.promenar.infinity.data.production.ProductionSnapshot?): String {
+        if (snapshot == null) return ""
+        val tasks = try { productionTasks() } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) {
+            InfinityLogger.logError("ContextBuilder.ProductionTasks", e); emptyList()
+        }
+        return com.promenar.infinity.data.production.productionOpenItemsSummary(snapshot.production, tasks)
+    }
+
     suspend fun buildContext(params: ContextBuilderParams): ContextBuilderResult {
         val frozen = params.cachedTurnContext
         val retrieval = params.cachedRetrieval ?: if (frozen == null) retrieve(params) else
@@ -236,7 +246,7 @@ class ContextBuilder(
         val turnContext = frozen ?: buildTurnContext(params, retrieval, activePlan, memoryContext,
             stateBoardContext(stateSnapshot?.board,
                 params.session.options.toolsEnabled && (params.availableToolNames == null || "state_update" in params.availableToolNames)),
-            stateRevision, productionContext(productionSnapshot, productionSeen), productionRevision, productionId)
+            stateRevision, productionContext(productionSnapshot, productionSeen, productionOpenItems(productionSnapshot)), productionRevision, productionId)
 
         return ContextBuilderResult(
             searchContext = retrieval.searchContext,

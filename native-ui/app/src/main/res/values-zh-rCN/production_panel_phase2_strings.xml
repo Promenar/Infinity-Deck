@@ -41,10 +41,9 @@
     <string name="p2_filter_locked">已批准</string>
     <string name="p2_filter_todo">未生成</string>
     <string name="p2_no_output">暂无镜头</string>
-    <string name="p2_lock_before_output">分镜待定 · 前往锁定</string>
     <string name="p2_candidates_channel">候选 %1$d · %2$s</string>
     <string name="p2_cut_preview">预演</string>
-    <string name="p2_cut_selected">已批准</string>
+    <string name="p2_cut_selected">已批准候选</string>
     <string name="p2_new_cut">新建版本</string>
     <string name="p2_no_shots">暂无镜头</string>
     <string name="p2_timeline">时间线</string>
@@ -76,8 +75,6 @@
     <string name="p2_format_seedance">Seedance 写法</string>
     <string name="p2_format_generic">通用</string>
     <string name="p2_planner_unavailable">生成规划未连接</string>
-    <string name="p2_submitted">已加入队列</string>
-    <string name="p2_go_generate">去生成</string>
     <string name="p2_unlocked_scene">本场待审</string>
     <string name="p2_shot_content">镜头内容</string>
     <string name="p2_content_locked">已批准</string>
@@ -101,7 +98,6 @@
     <string name="p2_submission_prompt">提交提示词</string>
     <string name="p2_recompile">重新编译</string>
     <string name="p2_recompile_message">按当前通道重新编译并覆盖提交提示词？</string>
-    <string name="p2_generate">生成</string>
     <string name="p2_no_channels">无可用通道</string>
     <string name="p2_image_number">图%1$d</string>
     <string name="p2_content_request_hint">提交待审变更请求</string>

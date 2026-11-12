@@ -20,4 +20,16 @@ class ProductionContextTest {
         assertThat(text).contains("总览批准")
         assertThat(text).contains("\"truncated\":true")
     }
+
+    @Test fun `未结事项摘要接在项目数据之后且不受项目数据截断影响`() {
+        val project = Production("p", "项目", ProductionKind.SERIES, "productions/p", createdAt = 1, updatedAt = 1,
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = listOf(Scene("SC01", 1, "场", shots = listOf(Shot("SC01-01", "镜头", durationSeconds = 2.0)))))))),
+            runs = listOf(ProductionRun("r1", RunTarget("S1E01", "SC01-01"), "外部续接", startedAt = 0, reportedAt = 0)),
+            unregisteredFiles = listOf("productions/p/S1E01/takes/x.mp4"))
+        val summary = productionOpenItemsSummary(project, now = RUN_UNREPORTED_MILLIS)
+        assertThat(summary).startsWith("制作未结事项（共 ")
+        val text = productionContext(ProductionSnapshot(project, 4, ManifestSync.InSync), 1, summary)
+        assertThat(text).endsWith("\n" + summary)
+        assertThat(productionContext(ProductionSnapshot(project, 4, ManifestSync.InSync), 1)).doesNotContain("制作未结事项")
+    }
 }

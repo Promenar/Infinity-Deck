@@ -78,7 +78,7 @@ internal object ProductionPhaseTwoSamples {
         projectSourcePrefix = { "${it.id}:" },
         shotSourceRef = { p, location -> "${p.id}:${location.shot.code}" },
         channelLabel = { if (it == "seedance") "Seedance 2.5" else "本机 H3" },
-        sendReviewMessage = { ReviewDelivery.ACCEPTED },
+        sendReview = { ReviewDispatch(ReviewDispatchResult.STARTED, round = 3, count = 2) },
         cutExport = object : com.promenar.infinity.data.cut.CutExportController {
             override suspend fun createVersion(sessionId: String, episodeId: String): CutVersion = error("预览环境")
             override suspend fun deleteVersion(sessionId: String, versionId: String) = Unit

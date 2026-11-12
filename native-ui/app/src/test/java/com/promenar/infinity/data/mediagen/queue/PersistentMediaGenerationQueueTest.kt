@@ -182,7 +182,9 @@ class PersistentMediaGenerationQueueTest {
         recovered.runUntilIdle()
         assertEquals(MediaTaskState.RESULT_UNKNOWN, store.get(task.id)!!.task.state)
         assertEquals(0, backend.submitted)
+        assertTrue(task.id in recovered.unresolvedTaskIds())
         recovered.archiveUnknown(task.id)
+        assertFalse(task.id in recovered.unresolvedTaskIds())
         val failedBackend = Backend().apply { submitFails = true }
         val next = queue(failedBackend)
         val second = next.submit(request)

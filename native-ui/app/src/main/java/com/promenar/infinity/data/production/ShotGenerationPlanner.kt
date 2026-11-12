@@ -17,6 +17,9 @@ interface ShotGenerationPlanner {
     /** 按当前规划提交生成任务；场未锁定（非试验项目）、通道缺失、输入超限等情况返回拒绝原因。 */
     suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult
 
+    suspend fun generate(sessionId: String, episodeId: String, shotCode: String, params: Map<String, kotlinx.serialization.json.JsonPrimitive>): ShotGenerateResult =
+        if (params.isEmpty()) generate(sessionId, episodeId, shotCode) else ShotGenerateResult.Rejected("当前规划器不支持模板参数。")
+
     /** 按当前通道的提示词格式从分镜字段重新编译提示词并写回，同时清除“已改写”标记。界面调用前需用户确认。 */
     suspend fun recompilePrompt(sessionId: String, episodeId: String, shotCode: String): String
 }
@@ -43,6 +46,7 @@ data class ShotPlanPreview(
     val warnings: List<String>,
     val audioPlans: List<PlannedDialogueAudio> = emptyList(),
     val specs: com.promenar.infinity.domain.mediagen.GenerationSpecs = com.promenar.infinity.domain.mediagen.GenerationSpecs(),
+    val params: Map<String, kotlinx.serialization.json.JsonPrimitive> = emptyMap(),
 )
 
 data class PlannedInput(

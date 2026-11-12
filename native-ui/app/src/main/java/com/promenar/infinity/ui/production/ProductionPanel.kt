@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Hub
@@ -221,6 +222,8 @@ fun ProductionPanelContent(
     var openShotCode by rememberSaveable(production.id) { mutableStateOf(initialShot?.second) }
     var addedShotAtRevision by rememberSaveable(production.id) { mutableStateOf<Long?>(null) }
     var storyboardEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
+    // 总览点剪辑版本后，剪辑页打开时选中该版本；用过即清空。
+    var focusCutId by rememberSaveable(production.id) { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<ProductionNotice?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -285,7 +288,15 @@ fun ProductionPanelContent(
         }
     }
     val costStats = remember(production, tasks) { productionCostStats(production, tasks) }
-    val sendState = rememberProductionSend(snapshot, tasks, services, onAction) { notice = it }
+    val sendState = rememberProductionSend(snapshot, services) { notice = it }
+    // 打开面板时核对排队中的审核轮次并扫描未登记文件；失败不打断面板。
+    LaunchedEffect(sessionId, services.reconcileReviews, services.auditFiles) {
+        listOfNotNull(services.reconcileReviews, services.auditFiles).forEach { step ->
+            try { step() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { }
+        }
+    }
     val location = openEpisodeId?.let { episodeId -> openShotCode?.let { production.findShot(episodeId, it) } }
     if (openShotCode != null && location == null && (addedShotAtRevision == null || snapshot.revision >= requireNotNull(addedShotAtRevision))) {
         // 等待新增事务的快照到达；镜头被移除时回到页签。
@@ -355,6 +366,7 @@ fun ProductionPanelContent(
                             onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
                             onAsset = { openAssetId = it }, onRun = run, onSubmit = submit, onCancelTask = onCancelTask, channels = channels,
                             costStats = costStats, onShot = openShot,
+                            onCut = { focusCutId = it; tab = ProductionTab.CUT },
                         )
                         ProductionTab.SCRIPT -> ProductionScriptTab(production = production, busy = busy, onRun = run, onSubmit = submit, onOpenEpisode = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
                         ProductionTab.ASSETS -> ProductionAssetsTab(production = production, busy = busy, onRun = run, onSubmit = submit, onOpenCharacter = { openAssetId = it })
@@ -368,7 +380,7 @@ fun ProductionPanelContent(
                             onSubmit = submit,
                         )
                         ProductionTab.OUTPUT -> ProductionOutputTab(production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot, { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
-                        ProductionTab.CUT -> ProductionCutTab(production, services, sessionId, openShot, onError = { error = it }, busy = busy, onRun = run, onSubmit = submit)
+                        ProductionTab.CUT -> ProductionCutTab(production, services, sessionId, openShot, onError = { error = it }, busy = busy, onRun = run, onSubmit = submit, focusCutId = focusCutId, onFocusHandled = { focusCutId = null })
                     }
                 }
             }
@@ -533,8 +545,12 @@ internal fun ProductionActionRow(
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
         val estimated = actions.size * (labelWidth + with(density) { 32.dp.toPx() }) + (actions.size - 1) * with(density) { InfinitySpacing.Small.toPx() }
         if (estimated <= with(density) { maxWidth.toPx() }) {
-            Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                actions.forEach { button -> ProductionPill(button, Modifier.weight(1f)) }
+            // 窄屏平分整行；内屏等宽屏每个按钮不超过上限，整组靠右。
+            val gap = InfinitySpacing.Small
+            val share = (maxWidth - gap * (actions.size - 1)) / actions.size
+            val cap = maxOf(ProductionActionMaxWidth, with(density) { labelWidth.toDp() } + 32.dp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.End)) {
+                actions.forEach { button -> ProductionPill(button, Modifier.width(minOf(share, cap))) }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
@@ -543,6 +559,9 @@ internal fun ProductionActionRow(
         }
     }
 }
+
+/** 横排操作按钮的单个宽度上限。 */
+private val ProductionActionMaxWidth = 168.dp
 
 internal data class ProductionButton(
     val text: String,

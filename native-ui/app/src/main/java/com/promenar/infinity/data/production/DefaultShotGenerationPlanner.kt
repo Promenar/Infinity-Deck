@@ -4,7 +4,6 @@ import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.domain.mediagen.InputRole as MediaRole
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** 文案由应用资源注入；测试及独立工具使用中文缺省值。 */
@@ -45,9 +44,10 @@ class DefaultShotGenerationPlanner(
     private val kindOf: suspend (String, String) -> InputKind? = { _, path -> mediaKindFromPath(path) },
     private val labelOf: suspend (MediaChannel) -> String = { it.id },
     private val messages: ShotPlanningMessages = ChineseShotPlanningMessages,
+    private val templateFor: suspend (MediaChannel) -> ComfyTemplate? = { null },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ShotGenerationPlanner {
-    private val submissions = Mutex()
+    private val submissions = ProductionSubmissionMutex
     private data class Plan(val snapshot: ProductionSnapshot, val shot: Shot, val preview: ShotPlanPreview)
     private fun text(key: String, detail: String = "") = messages.text(key, detail)
 
@@ -55,7 +55,7 @@ class DefaultShotGenerationPlanner(
         plan(sessionId, episodeId, shotCode).preview
     }
 
-    private suspend fun plan(sessionId: String, episodeId: String, shotCode: String, compile: Boolean = false): Plan {
+    private suspend fun plan(sessionId: String, episodeId: String, shotCode: String, compile: Boolean = false, params: Map<String, kotlinx.serialization.json.JsonPrimitive> = emptyMap()): Plan {
         val snapshot = store.load(sessionId) ?: throw IllegalArgumentException(text("missing_project"))
         val p = snapshot.production
         val scene = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }?.scenes?.firstOrNull { sc -> sc.shots.any { it.code == shotCode } }
@@ -141,19 +141,15 @@ class DefaultShotGenerationPlanner(
             catch (_: Exception) { issues += text("invalid_plan", "specs"); GenerationSpecs() }
         if (channel?.id?.startsWith("comfy:") == true) warnings += specs.frames?.let { text("workflow_timing_frames", it.toString()) } ?: text("workflow_timing", labelOf(channel))
         else if (shot.durationSeconds % 1.0 != 0.0) issues += text("invalid_plan", "durationSeconds")
-        val request = request(p, episodeId, shot, channel?.id.orEmpty(), prompt, accepted, sessionId, specs)
+        val request = request(p, episodeId, shot, channel?.id.orEmpty(), prompt, accepted, sessionId, specs).let { planned ->
+            val template = channel?.let { templateFor(it) }
+            require(params.isEmpty() || template != null) { "该通道不接受模板参数。" }
+            planned.copy(params = template?.resolveParams(params) ?: emptyMap(), productionContext = template?.let { ProductionMediaContext(templateFingerprint = it.fingerprint()) })
+        }
         if (channel != null) {
             if (backendFor != null && backendFor.invoke(channel) == null) issues += text("unavailable_backend", channel.id)
-            val occupiedTasks = queue.observeTasks().first().filter { task ->
-                val source = ProductionSourceRef.parse(task.request.sourceRef)
-                source?.productionId == p.id && source.episodeId == episodeId && source.shotCode == shotCode && source.dialogueIndex == null &&
-                    (task.state !in setOf(MediaTaskState.FAILED, MediaTaskState.COMPLETED, MediaTaskState.CANCELED) || task.state == MediaTaskState.FAILED && task.failure == MediaTaskFailure.POLL || task.state == MediaTaskState.COMPLETED && shot.takes.none { it.taskId == task.id })
-            }
-            val reservations = (queue as? com.promenar.infinity.data.mediagen.queue.MediaOutputReservationReader)?.outputReservations(occupiedTasks.map { it.id }.toSet()).orEmpty()
-            var occupied = 0
-            for (task in occupiedTasks) occupied += if (task.state == MediaTaskState.COMPLETED) task.outputPaths.distinct().count { path -> shot.takes.none { it.taskId == task.id && it.path == path } }
-                else reservations[task.id] ?: registry.channel(task.request.channelId)?.let { expectedOutputs(it) } ?: 1
-            if (shot.takes.size + occupied + expectedOutputs(channel) > 30) issues += text("candidate_capacity", shotCode)
+            val occupied = occupiedShotCandidates(p, episodeId, shotCode, queue) { task -> registry.channel(task.request.channelId)?.let { expectedOutputs(it) } ?: 1 }
+            if (occupied + expectedOutputs(channel) > 30) issues += text("candidate_capacity", shotCode)
             issues += validateBackend(channel, request).map { text("invalid_plan", it) }
             val validation = validateRequest(channel, request)
             if (!validation.valid && overflow.isEmpty()) issues += text("invalid_plan", (validation.specErrors + validation.invalidInputs.map { it.location }).joinToString())
@@ -178,26 +174,32 @@ class DefaultShotGenerationPlanner(
             audioPlans += PlannedDialogueAudio(index, dialogue.characterAssetId, dialogue.tone, audioRequest)
         }
         return Plan(snapshot, shot, ShotPlanPreview(channel, shot.channelId.isNullOrBlank(), channel?.let { labelOf(it) }.orEmpty(), shot.mode, accepted, overflow,
-            prompt, shot.promptUserEdited && !compile, format, null, issues.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n"), warnings, audioPlans, specs))
+            prompt, shot.promptUserEdited && !compile, format, null, issues.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n"), warnings, audioPlans, specs, params = request.params))
     }
 
-    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult = withContext(ioDispatcher) {
+    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult = generate(sessionId, episodeId, shotCode, emptyMap())
+    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String, params: Map<String, kotlinx.serialization.json.JsonPrimitive>): ShotGenerateResult = withContext(ioDispatcher) {
         submissions.withLock {
             val submitted = mutableListOf<MediaTask>()
             try {
-                val plan = plan(sessionId, episodeId, shotCode)
+                val plan = plan(sessionId, episodeId, shotCode, params = params)
                 plan.preview.blockedReason?.let { return@withLock ShotGenerateResult.Rejected(it) }
                 val channel = requireNotNull(plan.preview.channel)
                 val inputs = plan.preview.inputs.map { input -> if (input.compositeOf.isEmpty()) input else input.copy(path = compositor.materialize(sessionId, plan.snapshot.production.rootPath, input.compositeOf)) }
-                val actual = request(plan.snapshot.production, episodeId, plan.shot, channel.id, plan.preview.prompt, inputs, sessionId, plan.preview.specs)
+                val actual = request(plan.snapshot.production, episodeId, plan.shot, channel.id, plan.preview.prompt, inputs, sessionId, plan.preview.specs).let { planned ->
+                    val template = templateFor(channel)
+                    require(params.isEmpty() || template != null) { "该通道不接受模板参数。" }
+                    planned.copy(params = template?.resolveParams(params) ?: emptyMap(), productionContext = template?.let { ProductionMediaContext(templateFingerprint = it.fingerprint()) })
+                }
                 if (store.load(sessionId)?.let { it.production.id == plan.snapshot.production.id && it.revision == plan.snapshot.revision } != true)
                     return@withLock ShotGenerateResult.Rejected(text("plan_changed"))
                 submitted += queue.submit(actual)
                 plan.preview.audioPlans.forEach { submitted += queue.submit(it.request) }
                 ShotGenerateResult.Submitted(submitted.first().id, false, submitted.drop(1).map { it.id })
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
-                if (submitted.isEmpty()) ShotGenerateResult.Rejected(text("failed"))
+            catch (failure: Exception) {
+                val reason = (failure as? IllegalArgumentException)?.message?.takeIf { it.any { c -> c.code > 0x2E80 } }?.take(500) ?: text("failed")
+                if (submitted.isEmpty()) ShotGenerateResult.Rejected(reason)
                 else ShotGenerateResult.Submitted(submitted.first().id, false, submitted.drop(1).map { it.id }, listOf(text("audio_failed", submitted.first().id)))
             }
         }

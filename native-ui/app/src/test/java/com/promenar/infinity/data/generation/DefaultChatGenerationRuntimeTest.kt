@@ -1099,6 +1099,21 @@ class DefaultChatGenerationRuntimeTest {
     }
 
     @Test
+    fun `发送前门禁失败不结清队列发送租约`() = runTest {
+        val queue = mockk<com.promenar.infinity.data.chat.queue.ComposerQueueStore>(relaxed = true)
+        val fixture = documentBudgetFixture(toolRounds = 0, composerQueueStore = queue)
+        val request = fixture.request.copy(rollbackUserOnPreparationFailure = true)
+
+        fixture.runtime.prepare(request)
+        val chunk = fixture.runtime.stream(request, attempt = 0).toList().single()
+
+        // 预算失败可能删除本轮用户消息；租约留给 releaseToolResources 按消息是否存在结清，审核轮次不会先被归档。
+        assertThat(chunk).isInstanceOf(GenerationChunk.Failure::class.java)
+        coVerify(exactly = 0) { queue.acceptForUser(any(), any()) }
+        assertThat(fixture.providerEntered()).isFalse()
+    }
+
+    @Test
     fun `工具续轮最终门禁失败不删除既有用户或工具历史`() = runTest {
         val fixture = documentBudgetFixture(toolRounds = 1)
 
@@ -1119,6 +1134,7 @@ class DefaultChatGenerationRuntimeTest {
 
     private fun kotlinx.coroutines.test.TestScope.documentBudgetFixture(
         toolRounds: Int,
+        composerQueueStore: com.promenar.infinity.data.chat.queue.ComposerQueueStore? = null,
     ): DocumentBudgetFixture {
         val settings = mockk<SharedPreferences>()
         every { settings.getInt(any(), any()) } returns 100
@@ -1209,6 +1225,7 @@ class DefaultChatGenerationRuntimeTest {
             sessionManager = sessionManager,
             contentStrategy = contentStrategy,
             ui = mockk(relaxed = true),
+            composerQueueStore = composerQueueStore,
         )
         DefaultChatGenerationRuntime::class.java.getDeclaredField("toolRounds").apply {
             isAccessible = true

@@ -66,6 +66,34 @@ class DefaultProductionWorkspaceFiles(
             Unit
         }
     }
+    suspend fun publishChainMedia(sessionId: String, path: String, file: java.io.File, cacheDir: java.io.File): Unit = withContext(Dispatchers.IO) {
+        val target = target(sessionId, path)
+        withContext(ExternalMountOperationBindings(target.bindings)) {
+            WorkspaceChainOutputStore(cacheDir).publish(target.backend, path, file) {
+                (target.backend as? PrivateWorkspaceTransferBackend)?.confirmCreated()
+            }
+        }
+    }
+    suspend fun listProductionMedia(sessionId: String, production: Production): List<String> = withContext(Dispatchers.IO) {
+        val target = target(sessionId, production.rootPath)
+        withContext(ExternalMountOperationBindings(target.bindings)) {
+            val found = mutableListOf<String>()
+            suspend fun visit(path: String, depth: Int) {
+                require(depth <= 32 && found.size <= 100_000) { "制作媒体目录超过扫描上限。" }
+                val entry = target.backend.stat("/$path") ?: return
+                if (!entry.isDirectory) { if (mediaKindFromPath(path) != null) found += path; return }
+                target.backend.list("/$path").forEach { child ->
+                    val next = child.path.removePrefix("/")
+                    require(next.startsWith(path + "/") && next.substringAfter(path + "/").indexOf('/') < 0) { "媒体目录返回了越界条目。" }
+                    ProductionManifestCodec.validatePath(next)
+                    visit(next, depth + 1)
+                }
+            }
+            val directories = listOf("${production.rootPath}/assets", "${production.rootPath}/takes") + production.seasons.flatMap { it.episodes }.map { "${production.rootPath}/${it.id}/takes" }
+            directories.distinct().forEach { visit(it, 0) }
+            found
+        }
+    }
     override suspend fun isImageOrVideo(sessionId: String, path: String): Boolean = withContext(Dispatchers.IO) {
         ProductionManifestCodec.validatePath(path)
         val result = media.resolve(sessionId, media.productionPath(sessionId, path))

@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.Asset
+import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.AssetStatus
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ReviewTarget
@@ -95,7 +96,7 @@ internal fun TakeThumb(take: Take, index: Int, viewing: Boolean, selected: Boole
                 ) {
                     Icon(
                         Icons.Rounded.Check,
-                        contentDescription = stringResource(R.string.production_panel_selected),
+                        contentDescription = stringResource(R.string.production_review_approved),
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.padding(2.dp),
                     )
@@ -155,7 +156,9 @@ internal fun ProductionAssetSheet(
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (asset.versions.size > 1) {
+            if (asset.kind == AssetKind.SOUND && asset.versions.isNotEmpty()) {
+                ScoreVersionList(asset, production, version?.number) { versionNumber = it }
+            } else if (asset.versions.size > 1) {
                 Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                     ProductionSectionTitle(stringResource(R.string.production_panel_section_versions))
                     ProductionChoiceRow(

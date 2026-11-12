@@ -2,10 +2,8 @@ package com.promenar.infinity.ui.production
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.production.Episode
-import com.promenar.infinity.data.production.ManifestSync
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionKind
-import com.promenar.infinity.data.production.ProductionSnapshot
 import com.promenar.infinity.data.production.ProductionUserAction
 import com.promenar.infinity.data.production.ReviewEntry
 import com.promenar.infinity.data.production.ReviewKind
@@ -13,7 +11,6 @@ import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Season
 import com.promenar.infinity.data.production.Shot
-import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
 class ProductionReviewUiTest {
@@ -72,63 +69,27 @@ class ProductionReviewUiTest {
         assertThat(ProductionSendState(2, true) {}.enabled).isFalse()
     }
 
-    private val unsent = ProductionSnapshot(withReviews(ReviewEntry(take, ReviewKind.APPROVE, at = 1), ReviewEntry(shot, ReviewKind.SUGGEST, "慢一点", at = 2)), 5, ManifestSync.InSync)
-
-    @Test fun `没有可发送内容时不调用会话`() = runTest {
-        var sent = 0
-        val outcome = sendReviewRound({ unsent }, compose = { null }, send = { sent++; ReviewDelivery.ACCEPTED }, apply = { _, _ -> error("不归档") })
-        assertThat(outcome).isEqualTo(ReviewSendOutcome.Empty)
-        assertThat(sent).isEqualTo(0)
+    @Test fun `排队期间发送不可点并显示已排队`() {
+        assertThat(ProductionSendState(2, false, queued = true) {}.enabled).isFalse()
+        assertThat(ProductionSendState(0, false, queued = true) {}.enabled).isFalse()
     }
 
-    @Test fun `会话不接收时带原因返回且不归档意见保持未发送`() = runTest {
-        listOf(ReviewDelivery.IMPORTING, ReviewDelivery.APPROVAL_PENDING, ReviewDelivery.UNAVAILABLE).forEach { reason ->
-            var applied = 0
-            val outcome = sendReviewRound({ unsent }, compose = { "消息" }, send = { reason }, apply = { _, _ -> applied++; null })
-            assertThat(outcome).isEqualTo(ReviewSendOutcome.Busy(reason))
-            assertThat(applied).isEqualTo(0)
-        }
+    @Test fun `已排队的结论与建议标为已排队且不计入未发送`() {
+        val queued = withReviews(
+            ReviewEntry(take, ReviewKind.APPROVE, at = 1, queuedRound = 1),
+            ReviewEntry(shot, ReviewKind.SUGGEST, "慢一点", at = 2, queuedRound = 1),
+        )
+        assertThat(queued.reviewChips(take)).containsExactly(ReviewChip.APPROVED, ReviewChip.QUEUED).inOrder()
+        assertThat(queued.reviewChips(shot)).containsExactly(ReviewChip.QUEUED)
+        assertThat(queued.unsentCount()).isEqualTo(0)
+        // 排队期间新的建议属于下一轮，标为未发送。
+        val next = queued.copy(reviews = queued.reviews + ReviewEntry(shot, ReviewKind.SUGGEST, "再慢一点", at = 3))
+        assertThat(next.reviewChips(shot)).containsExactly(ReviewChip.SUGGESTION_UNSENT)
+        assertThat(next.unsentCount()).isEqualTo(1)
     }
 
-    @Test fun `会话接收后按当前修订归档本轮`() = runTest {
-        val messages = mutableListOf<String>()
-        val applied = mutableListOf<Pair<Long, ProductionUserAction>>()
-        val outcome = sendReviewRound({ unsent }, compose = { "第 ${it.nextReviewRound} 轮" }, send = { messages += it; ReviewDelivery.ACCEPTED },
-            apply = { revision, action -> applied += revision to action; null }, now = { 42 })
-        assertThat(outcome).isEqualTo(ReviewSendOutcome.Sent(round = 1, count = 2))
-        assertThat(messages).containsExactly("第 1 轮")
-        assertThat(applied).containsExactly(5L to ProductionUserAction.MarkReviewSent(1, 42))
-    }
-
-    @Test fun `归档遇到修订冲突时取最新快照重试`() = runTest {
-        var current = unsent
-        val revisions = mutableListOf<Long>()
-        val outcome = sendReviewRound({ current }, compose = { "消息" }, send = { ReviewDelivery.ACCEPTED }, apply = { revision, _ ->
-            revisions += revision
-            if (revisions.size == 1) { current = current.copy(revision = 6); "面板已更新" } else null
-        })
-        assertThat(outcome).isEqualTo(ReviewSendOutcome.Sent(1, 2))
-        assertThat(revisions).containsExactly(5L, 6L).inOrder()
-    }
-
-    @Test fun `最新快照已越过本轮视为已归档`() = runTest {
-        var current = unsent
-        var applied = 0
-        val outcome = sendReviewRound({ current }, compose = { "消息" }, send = { ReviewDelivery.ACCEPTED }, apply = { _, _ ->
-            applied++
-            current = current.copy(production = current.production.copy(nextReviewRound = 2), revision = 7)
-            "面板已更新"
-        })
-        assertThat(outcome).isEqualTo(ReviewSendOutcome.Sent(1, 2))
-        assertThat(applied).isEqualTo(1)
-    }
-
-    @Test fun `归档始终失败时报告最后一个原因且消息不重发`() = runTest {
-        var sent = 0
-        var applied = 0
-        val outcome = sendReviewRound({ unsent }, compose = { "消息" }, send = { sent++; ReviewDelivery.ACCEPTED }, apply = { _, _ -> applied++; "写入失败 $applied" })
-        assertThat(outcome).isEqualTo(ReviewSendOutcome.Unarchived("写入失败 3"))
-        assertThat(sent).isEqualTo(1)
-        assertThat(applied).isEqualTo(3)
+    @Test fun `已排队的结论再点同种结论记为新结论不撤回`() {
+        val queued = withReviews(ReviewEntry(take, ReviewKind.APPROVE, at = 1, queuedRound = 1))
+        assertThat(queued.verdictAction(take, ReviewKind.APPROVE)).isEqualTo(ProductionUserAction.Review(take, ReviewKind.APPROVE, null))
     }
 }

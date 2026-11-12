@@ -44,6 +44,7 @@ class RepositoryShotGenerationStore(
     private val repository: ProductionRepository,
     private val byId: suspend (String) -> Production?,
     private val activeSession: suspend (String) -> String?,
+    private val probe: suspend (String, String) -> MediaSpec = { _, _ -> MediaSpec() },
 ) : ShotGenerationStore {
     override suspend fun load(sessionId: String) = repository.get(sessionId)
     override suspend fun production(id: String) = byId(id)
@@ -51,13 +52,14 @@ class RepositoryShotGenerationStore(
         repository.apply(sessionId, revision, ProductionUserAction.RecompilePrompt(episodeId, shotCode, prompt))
     }
     override suspend fun register(task: MediaTask): Boolean {
-        val ref = ProductionSourceRef.parse(task.request.sourceRef) ?: return false
-        val session = activeSession(ref.productionId) ?: return false
+        val projectId = ProductionSourceRef.parse(task.request.sourceRef)?.productionId ?: ProductionAssetSourceRef.parse(task.request.sourceRef)?.productionId ?: return false
+        val session = activeSession(projectId) ?: return false
         if (session != task.request.sessionId) return false
-        val snapshot = repository.get(session)?.takeIf { it.production.id == ref.productionId } ?: return false
-        val changed = registerShotTask(snapshot.production, task, System.currentTimeMillis()) ?: return false
+        val snapshot = repository.get(session)?.takeIf { it.production.id == projectId } ?: return false
+        val specs = if (task.request.productionContext != null) task.outputPaths.associateWith { probe(session, it) } else emptyMap()
+        val changed = registerProductionTask(snapshot.production, task, System.currentTimeMillis(), specs) ?: return false
         if (changed == snapshot.production) return true
-        repository.apply(session, snapshot.revision, ProductionUserAction.RegisterGeneratedTask(task))
+        repository.applyForProduction(session, projectId, snapshot.revision, ProductionUserAction.RegisterGeneratedTask(task, specs))
         return true
     }
 }
@@ -69,7 +71,8 @@ internal fun Production.mapShot(episodeId: String, shotCode: String, transform: 
 })
 
 /** 只使用任务冻结的请求；用户在提交后编辑的规划不影响候选谱系。 */
-internal fun registerShotTask(production: Production, task: MediaTask, now: Long): Production? {
+internal fun registerShotTask(production: Production, task: MediaTask, now: Long, specs: Map<String, MediaSpec> = emptyMap()): Production? {
+    if (task.request.productionContext?.chainId != null) return null
     if (task.state != MediaTaskState.COMPLETED || task.outputPaths.isEmpty()) return null
     val ref = ProductionSourceRef.parse(task.request.sourceRef)?.takeIf { it.productionId == production.id } ?: return null
     if (production.seasons.flatMap { it.episodes }.filter { it.id == ref.episodeId }.flatMap { it.scenes }.flatMap { it.shots }.none { it.code == ref.shotCode }) return null
@@ -85,7 +88,7 @@ internal fun registerShotTask(production: Production, task: MediaTask, now: Long
             com.promenar.infinity.domain.mediagen.InputRole.LAST_FRAME -> InputRole.LAST_FRAME
             else -> InputRole.REFERENCE
         }, input.location)
-    }, request.prompt, mediaInputs = request.inputs, specs = request.specs, generationMode = request.mode)
+    }, request.prompt, mediaInputs = request.inputs, specs = request.specs, generationMode = request.mode, templateFingerprint = request.productionContext?.templateFingerprint, params = request.params)
     return production.mapShot(ref.episodeId, ref.shotCode) { shot ->
         if (ref.dialogueIndex != null) {
             val additions = task.outputPaths.distinct().filter { path -> shot.audio.none { it.taskId == task.id && it.path == path } }.map { path ->
@@ -95,7 +98,8 @@ internal fun registerShotTask(production: Production, task: MediaTask, now: Long
         } else {
             val additions = task.outputPaths.distinct().filter { path -> shot.takes.none { it.taskId == task.id && it.path == path } }.map { path ->
                 Take(UUID.nameUUIDFromBytes("${task.id}:$path".toByteArray()).toString(), path,
-                    TakeSource(request.channelId.take(120), mode = snapshot.mode, usageRef = task.id), now, taskId = task.id, planSnapshot = snapshot)
+                    TakeSource(request.channelId.take(120), mode = snapshot.mode, usageRef = task.id), now, taskId = task.id, planSnapshot = snapshot, spec = specs[path],
+                    derivedFrom = request.productionContext?.sourceTakeId?.let { source -> TakeDerivation(source, requireNotNull(request.productionContext?.operation), request.productionContext?.templateId, request.params) })
             }
             shot.copy(takes = shot.takes + additions, status = if (additions.isNotEmpty() && shot.status !in setOf(ShotStatus.LOCKED, ShotStatus.REDO)) ShotStatus.REVIEW else shot.status)
         }
@@ -103,12 +107,13 @@ internal fun registerShotTask(production: Production, task: MediaTask, now: Long
 }
 
 /** 首轮即扫持久任务；登记失败按任务隔离重试，取消不吞掉。 */
-class ShotTaskCompletionRegistrar(private val queue: MediaGenerationQueue, private val store: ShotGenerationStore) {
+class ShotTaskCompletionRegistrar(private val queue: MediaGenerationQueue, private val store: ShotGenerationStore, private val reconcileProgress: suspend () -> Unit = {}) {
     private val registered = mutableSetOf<String>()
     private val _pending = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
     val pending: kotlinx.coroutines.flow.StateFlow<Set<String>> = _pending
     suspend fun reconcile(): Set<String> = buildSet {
-        queue.observeTasks().first().filter { it.id !in registered && it.state == MediaTaskState.COMPLETED && ProductionSourceRef.parse(it.request.sourceRef) != null }.forEach { task ->
+        reconcileProgress()
+        queue.observeTasks().first().filter { it.id !in registered && it.state == MediaTaskState.COMPLETED && (ProductionSourceRef.parse(it.request.sourceRef) != null || ProductionAssetSourceRef.parse(it.request.sourceRef) != null) && it.request.productionContext?.chainId == null }.forEach { task ->
             try { if (!store.register(task)) add(task.id) else registered += task.id }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { add(task.id) }
@@ -134,4 +139,21 @@ private fun GenerationMode.toShotMode(): ShotMode = when (this) {
     GenerationMode.FIRST_LAST_FRAME -> ShotMode.FIRST_LAST
     GenerationMode.REFERENCE -> ShotMode.REFERENCE
     else -> ShotMode.TEXT
+}
+
+internal fun registerProductionTask(production: Production, task: MediaTask, now: Long, specs: Map<String, MediaSpec> = emptyMap()): Production? {
+    val ref = ProductionAssetSourceRef.parse(task.request.sourceRef) ?: return registerShotTask(production, task, now, specs)
+    if (ref.productionId != production.id || task.state != MediaTaskState.COMPLETED || task.outputPaths.isEmpty()) return null
+    val asset = production.assets.firstOrNull { it.id == ref.assetId } ?: return null
+    if (task.request.productionContext?.assetId != asset.id || asset.kind != AssetKind.SOUND) return null
+    var updated = asset
+    for (path in task.outputPaths.distinct()) {
+        ProductionCuts.validateProjectPath(production, path)
+        if (!path.startsWith(task.request.outputDir + "/") || mediaKindFromPath(path) != InputKind.AUDIO) return null
+        if (updated.versions.any { it.taskId == task.id && it.path == path }) continue
+        val number = (updated.versions.maxOfOrNull { it.number } ?: 0) + 1
+        updated = updated.addProductionVersion(AssetVersion(number, path, now, taskId = task.id, seed = task.request.specs.seed,
+            durationSeconds = specs[path]?.durationSeconds ?: task.request.specs.durationSecondsExact ?: task.request.specs.durationSeconds?.toDouble()))
+    }
+    return production.copy(assets = production.assets.map { if (it.id == updated.id) updated else it })
 }

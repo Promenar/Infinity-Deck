@@ -40,9 +40,9 @@ data class ReviewTarget(
     }
 }
 
-/** 一条意见。[round] 为 null 表示未发送，否则为发送时的轮次。 */
+/** 一条意见；[round] 记录已发送轮次，[queuedRound] 记录待送达轮次。 */
 @Serializable
-data class ReviewEntry(val target: ReviewTarget, val kind: ReviewKind, val note: String? = null, val at: Long, val round: Int? = null, val sentAt: Long? = null, val sentRevision: Long? = null)
+data class ReviewEntry(val target: ReviewTarget, val kind: ReviewKind, val note: String? = null, val at: Long, val round: Int? = null, val sentAt: Long? = null, val sentRevision: Long? = null, val queuedRound: Int? = null)
 
 /** 已发送的一轮，只读；revision 用于和实体修订号比较。 */
 @Serializable
@@ -62,13 +62,35 @@ data class ReviewDraft(
     val changeApproved: Boolean = false,
     val changeRejected: Boolean = false,
     val displacements: List<ReviewDisplacement> = emptyList(),
+    /** 已排队轮次的回退基线，与下一轮未发送草稿分别保存。 */
+    val queued: Boolean = false,
 )
 
 @Serializable
 data class ReviewDisplacement(val target: ReviewTarget, val displacedTargets: List<ReviewTarget> = emptyList(), val approvedVersion: Int? = null)
 
-fun Production.verdictOf(target: ReviewTarget): ReviewEntry? = reviews.lastOrNull { it.target == target && it.kind != ReviewKind.SUGGEST }
-fun Production.unsentReviews(): List<ReviewEntry> = reviews.filter { it.round == null }.sortedBy { it.at }
+fun Production.verdictOf(target: ReviewTarget): ReviewEntry? = currentReviewVerdicts().lastOrNull { it.target == target }
+fun Production.unsentReviews(): List<ReviewEntry> = reviews.filter { it.round == null && it.queuedRound == null }.sortedBy { it.at }
+fun Production.queuedReviews(): List<ReviewEntry> = reviews.filter { it.round == null && it.queuedRound != null }.sortedBy { it.at }
+internal val Production.queuedReviewDrafts: List<ReviewDraft> get() = reviewDrafts.filter { it.queued }
+internal val Production.pendingReviewDrafts: List<ReviewDraft> get() = reviewDrafts.filterNot { it.queued }
+val Production.queuedReviewRound: Int? get() = queuedReviews().firstOrNull()?.queuedRound
+
+/** 排队原文独立保留，当前效果按未发送草稿的替换关系计算。 */
+internal fun Production.currentReviewVerdicts(): List<ReviewEntry> {
+    val drafts = reviewDrafts.filterNot { it.queued }.associateBy { it.group }
+    return reviews.filter { it.kind != ReviewKind.SUGGEST }.groupBy { it.target.reviewGroup() }.flatMap { (group, entries) ->
+        drafts[group]?.let(::reviewDraftVerdicts) ?: entries
+    }
+}
+
+internal fun reviewDraftVerdicts(draft: ReviewDraft): List<ReviewEntry> {
+    val suppressed = draft.displacements.flatMap { it.displacedTargets }.toSet()
+    return draft.pendingVerdicts.fold(draft.previousVerdicts.filterNot { it.target in suppressed }) { entries, value ->
+        entries.filterNot { it.target == value.target || value.kind == ReviewKind.APPROVE && it.kind == ReviewKind.APPROVE } + value
+    }
+}
+
 fun Production.unsentSuggestions(target: ReviewTarget): List<ReviewEntry> = unsentReviews().filter { it.target == target && it.kind == ReviewKind.SUGGEST }
 
 /** 候选结论决定镜头状态；空镜头保留原状态。 */
@@ -146,9 +168,9 @@ internal fun stampProductionContent(before: Production, after: Production, revis
     },
 )
 
-/** 删除制作对象时移除其当前意见；已发送轮次继续保留原记录。 */
+/** 删除制作对象时保留锁定的排队原文及历史；未发送意见同步移除。 */
 internal fun Production.pruneDeletedReviewTargets(): Production {
     fun exists(target: ReviewTarget) = runCatching { requireReviewTarget(target) }.isSuccess
-    return copy(reviews = reviews.filter { exists(it.target) },
-        reviewDrafts = reviewDrafts.filter { draft -> draft.pendingVerdicts.all { exists(it.target) } })
+    return copy(reviews = reviews.filter { it.queuedRound != null || exists(it.target) },
+        reviewDrafts = reviewDrafts.filter { draft -> draft.queued || draft.pendingVerdicts.all { exists(it.target) } })
 }

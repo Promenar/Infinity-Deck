@@ -67,6 +67,14 @@ import kotlinx.coroutines.launch
 /** 制作面板的测试标签。 */
 object ProductionUiTags {
     const val PANEL = "production_panel"
+    const val PLACEHOLDER = "production_placeholder"
+    const val PLACEHOLDER_CARD = "production_placeholder_card"
+    const val PLACEHOLDER_CANCEL = "production_placeholder_cancel"
+    const val SEGMENT = "production_segment"
+    const val SOURCE_CARD = "production_source_card"
+    const val PROGRESS_ROW = "production_progress_row"
+    const val UNREGISTERED = "production_unregistered"
+    const val SCORE_VERSION = "production_score_version"
     const val HEADER = "production_header"
     const val MENU = "production_menu"
     const val EMPTY = "production_panel_empty"

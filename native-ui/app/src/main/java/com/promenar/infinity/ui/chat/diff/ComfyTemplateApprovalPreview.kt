@@ -4,6 +4,8 @@ import com.promenar.infinity.data.mediagen.comfy.ComfyConfigurationCodec
 import com.promenar.infinity.data.mediagen.comfy.ComfyRepository
 import com.promenar.infinity.domain.mediagen.ComfyModelSlot
 import com.promenar.infinity.domain.mediagen.ComfyTemplate
+import com.promenar.infinity.domain.mediagen.SlotKind
+import com.promenar.infinity.domain.mediagen.TemplateParamType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,6 +54,7 @@ object ComfyTemplatePreviewBuilder {
         val oldTypes = previous?.nodeTypes().orEmpty()
         val newTypes = requested.nodeTypes()
         val before = previous?.capabilityFields().orEmpty()
+        val after = requested.capabilityFields()
         return ApprovalDiffPreview.ComfyTemplate(
             templateName = requested.name,
             hostName = hostName,
@@ -60,7 +63,8 @@ object ComfyTemplatePreviewBuilder {
             addedNodeTypes = (newTypes - oldTypes).sorted(),
             removedNodeTypes = (oldTypes - newTypes).sorted(),
             modelChanges = modelChanges(previous, requested),
-            capabilityChanges = requested.capabilityFields().mapNotNull { (key, value) ->
+            capabilityChanges = (before.keys + after.keys).mapNotNull { key ->
+                val value = after[key]
                 val old = before[key]
                 if ((previous == null && value != null) || (previous != null && old != value)) FieldChange(key, old, value) else null
             },
@@ -93,8 +97,11 @@ object ComfyTemplatePreviewBuilder {
             "name" to name,
             "hostId" to hostId,
             "group" to group.name,
+            "role" to role.name,
+            "operation" to operation?.label,
             "modes" to c.modes.map { it.name }.sorted().joinToString("、"),
             "maxImages" to c.maxImages.toString(),
+            "maxVideos" to c.maxVideos.toString(),
             "maxAudio" to c.maxAudio.toString(),
             "nativeAudio" to c.nativeAudio.toString(),
             "resolutions" to c.resolutions.joinToString("、").ifEmpty { null },
@@ -109,10 +116,28 @@ object ComfyTemplatePreviewBuilder {
                 buildString {
                     append("${slot.kind.name}: ${slot.nodeId}.${slot.input} × ${slot.capacity}")
                     slot.outputKind?.let { append(" → ${it.name}") }
+                    slot.param?.let { append("；param.$it") }
                     if (slot.uploadTargets.isNotEmpty()) append(" [${slot.uploadTargets.joinToString("、") { "${it.nodeId}.${it.input}" }}]")
                 }
             }.ifEmpty { null },
-        )
+        ).apply {
+            listOf(SlotKind.INPUT_VIDEO, SlotKind.PARAM, SlotKind.DURATION).forEach { kind ->
+                put("slots.${kind.name}", slots.filter { it.kind == kind }.sumOf { it.capacity }.toString())
+            }
+            params.forEach { param ->
+                put("param.${param.key}", buildString {
+                    append(listOf(param.label, param.type.name, param.default.displayValue()).joinToString("；"))
+                    when (param.type) {
+                        TemplateParamType.ENUM -> append("；${param.options.joinToString("、")}")
+                        TemplateParamType.NUMBER -> {
+                            append("；${param.min ?: "不限"}～${param.max ?: "不限"}")
+                            if (param.integer) append("；整数")
+                        }
+                        TemplateParamType.BOOLEAN -> Unit
+                    }
+                })
+            }
+        }
     }
 }
 

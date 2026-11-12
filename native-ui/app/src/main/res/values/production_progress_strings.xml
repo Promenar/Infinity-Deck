@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_chain_title">Chain</string>
+    <string name="production_chain_planned">Planned</string>
+    <string name="production_chain_segment_of">Segment %1$d/%2$d</string>
+    <string name="production_chain_handoff">Handoff %1$d/%2$d</string>
+    <string name="production_chain_concatenating">Joining</string>
+    <string name="production_progress_running">Running</string>
+    <string name="production_progress_completed">Done</string>
+    <string name="production_progress_failed">Failed</string>
+    <string name="production_progress_canceled">Canceled</string>
+    <string name="production_segment_pending">Pending</string>
+    <string name="production_segment_running">Generating</string>
+    <string name="production_segment_number">Segment %1$d</string>
+    <string name="production_segment_range">%1$s–%2$s s</string>
+    <string name="production_segments_title">Segments</string>
+    <string name="production_run_unreported">No report</string>
+    <string name="production_run_steps">Step %1$d/%2$d</string>
+    <string name="production_source_title">Source</string>
+    <string name="production_source_take">Source take</string>
+    <string name="production_source_operation">Operation</string>
+    <string name="production_source_params">Parameters</string>
+    <string name="production_source_run">Run</string>
+    <string name="production_spec_fps">%1$s fps</string>
+    <string name="production_unregistered_title">Unregistered</string>
+    <string name="production_unregistered_more">%1$d more</string>
+    <string name="production_score_seed">Seed %1$s</string>
+</resources>

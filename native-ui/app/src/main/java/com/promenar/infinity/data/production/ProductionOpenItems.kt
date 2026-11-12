@@ -4,6 +4,9 @@ import com.promenar.infinity.domain.mediagen.MediaTask
 import com.promenar.infinity.domain.mediagen.MediaTaskState
 
 sealed interface OpenItem {
+    data class Run(val run: ProductionRun, val unreported: Boolean) : OpenItem
+    data class Chain(val episodeId: String, val shotCode: String, val chain: ShotChain) : OpenItem
+    data class UnregisteredFile(val path: String) : OpenItem
     data class FailedTask(val taskId: String, val target: ReviewTarget?, val error: String?) : OpenItem
     data class CanceledTask(val taskId: String, val target: ReviewTarget?) : OpenItem
     data class Rejected(val target: ReviewTarget) : OpenItem
@@ -32,7 +35,12 @@ fun isSentRejectionUnresolved(production: Production, entry: ReviewEntry): Boole
     }
 }
 
-fun productionOpenItems(production: Production, tasks: List<MediaTask>, stats: ProductionCostStats): List<OpenItem> = buildList {
+fun productionOpenItems(production: Production, tasks: List<MediaTask>, stats: ProductionCostStats, now: Long = System.currentTimeMillis()): List<OpenItem> = buildList {
+    production.runs.filter { it.state != RunState.COMPLETED }.forEach { add(OpenItem.Run(it, it.isUnreported(now))) }
+    production.seasons.flatMap { it.episodes }.forEach { ep -> ep.scenes.flatMap { it.shots }.forEach { shot ->
+        shot.chains.filter { it.isActive() || it.state == ChainState.FAILED }.forEach { add(OpenItem.Chain(ep.id, shot.code, it)) }
+    } }
+    production.unregisteredFiles.forEach { add(OpenItem.UnregisteredFile(it)) }
     val projectTasks = tasks.distinctBy { it.id }.filter { production.ownsTask(it) }
     projectTasks.forEach { task ->
         val location = production.taskLocation(task)
@@ -54,4 +62,40 @@ fun productionOpenItems(production: Production, tasks: List<MediaTask>, stats: P
         // 成本目标允许尚无成功版本的资产，用于失败任务已达到阈值的情形。
         add(OpenItem.CostAlert(ReviewTarget(ReviewTargetKind.ASSET_VERSION, assetId = id, version = version), count))
     }
+}
+
+/** 审核发送与每轮上下文共享的简短描述。 */
+fun productionProgressItemText(item: OpenItem): String? = when (item) {
+    is OpenItem.Run -> "登记 ${item.run.id} · ${item.run.label} · " + when {
+        item.unreported -> "超过 30 分钟未回报"
+        item.run.state == RunState.CANCELED -> "用户已取消（外部脚本需自行停止）"
+        item.run.state == RunState.FAILED -> "失败：${item.run.failure.orEmpty()}"
+        else -> "进行中 ${item.run.completedSteps}/${item.run.steps ?: "?"} · ${item.run.message.orEmpty()}"
+    }
+    is OpenItem.Chain -> "衔接链 ${item.chain.id} · ${item.episodeId}/${item.shotCode} · ${item.chain.state} · 第 ${item.chain.current + 1}/${item.chain.segments.size} 段" + (item.chain.failure?.let { " · $it" } ?: "")
+    is OpenItem.UnregisteredFile -> "未登记媒体：${item.path}"
+    else -> null
+}
+
+/** maxChars 包括读取提示；超出时同时给出总数和省略数。 */
+fun productionOpenItemsSummary(production: Production, tasks: List<MediaTask> = emptyList(), now: Long = System.currentTimeMillis(), maxChars: Int = 2400): String {
+    require(maxChars >= 180) { "未结事项摘要长度至少 180 字符。" }
+    val items = productionOpenItems(production, tasks, productionCostStats(production, tasks), now)
+    if (items.isEmpty()) return ""
+    val lines = mutableListOf<String>()
+    var used = 0
+    for (item in items.take(12)) {
+        val text = productionProgressItemText(item) ?: when (item) {
+            is OpenItem.FailedTask -> "失败任务 ${item.taskId}：${item.error.orEmpty()}"
+            is OpenItem.CanceledTask -> "升级后取消的任务 ${item.taskId}"
+            is OpenItem.Rejected -> "尚未处理的否决：${item.target}"
+            is OpenItem.CostAlert -> "生成次数提醒：${item.target} · ${item.count.total} 次"
+            else -> ""
+        }
+        val line = "- " + text.take(300)
+        if (used + line.length + 1 > maxChars - 160) break
+        lines += line; used += line.length + 1
+    }
+    return (listOf("制作未结事项（共 ${items.size} 条）：") + lines +
+        if (lines.size < items.size) listOf("省略 ${items.size - lines.size} 条；使用 production_get 的 changes 范围，按 limit、offset 分页读取。") else emptyList()).joinToString("\n").take(maxChars)
 }

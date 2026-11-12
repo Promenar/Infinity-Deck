@@ -25,6 +25,7 @@ internal class FakeComfyHttp : ComfyHttp {
     var info = JsonObject(emptyMap())
     val calls = mutableListOf<Pair<String, JsonObject?>>()
     val uploads = mutableListOf<Pair<String, String>>()
+    val uploadTypes = mutableListOf<Pair<InputKind, String>>()
     var history = JsonObject(emptyMap())
     var queue = JsonObject(emptyMap())
     var onPrompt: suspend () -> Unit = {}
@@ -50,8 +51,9 @@ internal class FakeComfyHttp : ComfyHttp {
         onPrompt()
         return buildJsonObject { put("prompt_id", "prompt-${calls.count { it.first == "/prompt" }}") }
     }
-    override suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, audio: Boolean): String {
+    override suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, kind: InputKind): String {
         uploads += filename to source.readBytes().decodeToString()
+        uploadTypes += kind to mimeType
         return "infinity/$filename"
     }
     override suspend fun download(host: ComfyHost, location: String, save: suspend (InputStream, String?) -> String): String =
@@ -59,9 +61,11 @@ internal class FakeComfyHttp : ComfyHttp {
 }
 internal class FakeComfyMedia : WorkspaceMediaResolver, WorkspaceMediaStore {
     val saved = mutableListOf<String>()
+    var videoMime: String? = null
     override suspend fun productionPath(sessionId: String, path: String) = "/$path"
     override suspend fun resolve(sessionId: String, path: String) = MediaResolution.Available(
-        MediaRef(path, if (path.endsWith("wav")) "audio/wav" else "image/png", if (path.endsWith("wav")) MediaKind.AUDIO else MediaKind.IMAGE, 3),
+        MediaRef(path, when (path.substringAfterLast('.')) { "wav" -> "audio/wav"; "mp4", "mov", "webm" -> videoMime.orEmpty(); else -> "image/png" },
+            when (path.substringAfterLast('.')) { "wav" -> MediaKind.AUDIO; "mp4", "mov", "webm" -> MediaKind.VIDEO; else -> MediaKind.IMAGE }, 3),
         MediaSource.ContentUri("content://fake"))
     override suspend fun open(resolution: MediaResolution.Available) = ByteArrayInputStream("abc".toByteArray())
     override suspend fun save(sessionId: String, payload: MediaPayload, origin: MediaOrigin, mimeTypeHint: String?, suggestedName: String?, targetPath: String?): MediaRef {
@@ -76,7 +80,7 @@ internal class ComfyFixture {
     val secrets = MemoryComfySecrets()
     val host = ComfyHost("host", "测试主机", "http://comfy.test:8188")
     val graph = Json.parseToJsonElement("""{"1":{"class_type":"Test","inputs":{"prompt":"","image":"","width":32,"height":32,"frames":22,"seed":1}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject
-    val info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"prompt":["STRING"],"image":["STRING"]}}},"Save":{"input":{"required":{}},"output_node":true}}""").jsonObject
+    val info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"prompt":["STRING"],"image":["STRING"]}}},"Save":{"input":{"required":{}},"output_node":true,"output":["IMAGE","AUDIO"]}}""").jsonObject
     val template = ComfyTemplate("test", graph, listOf(
         ComfySlot("1", "prompt", SlotKind.PROMPT), ComfySlot("1", "image", SlotKind.REFERENCE_IMAGES),
         ComfySlot("1", "width", SlotKind.WIDTH), ComfySlot("1", "height", SlotKind.HEIGHT),

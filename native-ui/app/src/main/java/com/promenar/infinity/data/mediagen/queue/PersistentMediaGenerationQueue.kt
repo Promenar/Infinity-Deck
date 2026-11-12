@@ -20,7 +20,7 @@ class PersistentMediaGenerationQueue(
     private val messages: MediaQueueMessages = MediaQueueMessages { it.name },
     private val wake: () -> Unit = {},
     private val requestAvailable: suspend (MediaGenerationRequest) -> Boolean = { true },
-) : MediaGenerationQueue, MediaOutputReservationReader {
+) : MediaGenerationQueue, MediaOutputReservationReader, MediaTaskRecoveryReader {
     private val bindings = bindings.toList().also { require(it.map { binding -> binding.id }.distinct().size == it.size) }
     private val mutations = Mutex()
     private val runner = Mutex()
@@ -47,6 +47,8 @@ class PersistentMediaGenerationQueue(
             task
         }
     }
+
+    override suspend fun unresolvedTaskIds(): Set<String> = withContext(ioDispatcher) { store.all().filter(::unresolvedRemote).map { it.task.id }.toSet() }
 
     override suspend fun outputReservations(taskIds: Set<String>): Map<String, Int> = withContext(ioDispatcher) {
         store.all().filter { it.task.id in taskIds }.associate { it.task.id to it.expectedOutputs }

@@ -18,10 +18,12 @@ class ProductionPlanSkill(private val planner: () -> ShotGenerationPlanner) : Pr
         return shotPlanJson(planner().preview(context.sessionId, episode, shot))
     }
 }
-class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_generate", "按已预览的当前规划生成镜头及配音，返回任务 id 或拒绝原因；任务直接入队。", ShotArguments, ToolRisk.SESSION_STATE) {
+class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_generate", "按已预览的当前规划生成镜头及配音，返回任务 id 或拒绝原因；任务直接入队。", """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"params":{"type":"object"}},"required":["episode_id","shot_code"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
-        val (episode, shot) = shotArguments(args)
-        return when (val result = planner().generate(context.sessionId, episode, shot)) {
+        arguments(args, setOf("episode_id", "shot_code"), setOf("episode_id", "shot_code", "params"))
+        val episode = stringArgument(args, "episode_id"); val shot = stringArgument(args, "shot_code")
+        val params = productionParams(args)
+        return when (val result = if (params.isEmpty()) planner().generate(context.sessionId, episode, shot) else planner().generate(context.sessionId, episode, shot, params)) {
             is ShotGenerateResult.Rejected -> buildJsonObject { put("status", "rejected"); put("reason", result.reason) }
             is ShotGenerateResult.Submitted -> buildJsonObject {
                 put("status", "submitted"); put("task_id", result.taskId)
@@ -63,7 +65,7 @@ abstract class ProductionGenerationTool(override val name: String, override val 
     final override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
         try { ToolResult(id = name, content = run(args, context).toString()) }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { ToolResult(id = name, status = "error", content = buildJsonObject { put("error", "INVALID_PRODUCTION_GENERATION"); put("message", "请核对工具参数、当前项目和生成通道。") }.toString()) }
+        catch (failure: Exception) { ToolResult(id = name, status = "error", content = buildJsonObject { put("error", "INVALID_PRODUCTION_GENERATION"); put("message", (failure as? IllegalArgumentException)?.message?.takeIf { it.any { c -> c.code > 0x2E80 } }?.take(1200) ?: "请核对工具参数、当前项目和生成通道。") }.toString()) }
     }
 }
 private fun arguments(args: JsonObject, required: Set<String>, allowed: Set<String>) { require(args.keys.containsAll(required) && args.keys.all { it in allowed }) }
@@ -73,6 +75,7 @@ private fun moneyJson(money: Money?): JsonElement = money?.let { buildJsonObject
 internal fun shotPlanJson(plan: ShotPlanPreview): JsonObject = buildJsonObject {
     put("channel_id", plan.channel?.id?.let(::JsonPrimitive) ?: JsonNull); put("channel_label", plan.channelLabel); put("channel_is_default", plan.channelIsDefault)
     put("specs", Json.encodeToJsonElement(GenerationSpecs.serializer(), plan.specs))
+    put("params", JsonObject(plan.params))
     put("mode", plan.mode.name.lowercase()); put("prompt", plan.prompt); put("prompt_user_edited", plan.promptEdited); put("prompt_format", plan.promptFormat.name.lowercase())
     fun inputs(values: List<PlannedInput>) = buildJsonArray { values.forEach { input -> add(buildJsonObject {
         put("number", input.number?.let(::JsonPrimitive) ?: JsonNull); put("title", input.title); put("detail", input.detail); put("kind", input.kind.name.lowercase()); put("role", input.role.name.lowercase())

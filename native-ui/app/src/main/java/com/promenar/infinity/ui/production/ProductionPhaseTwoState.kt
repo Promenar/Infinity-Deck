@@ -18,12 +18,13 @@ data class ProductionPanelServices(
     val requestContentChange: (suspend (Long, ShotLocation, Shot) -> String?)? = null,
     val pendingRegistrations: Set<String> = emptySet(),
     val cutExport: com.promenar.infinity.data.cut.CutExportController? = null,
-    /** 把一轮审核消息发到项目绑定的会话，返回会话是否接收或暂不能接收的原因。 */
-    val sendReviewMessage: (suspend (String) -> ReviewDelivery)? = null,
+    /** 把本轮审核经应用级派发器发到项目绑定的会话。 */
+    val sendReview: (suspend () -> com.promenar.infinity.data.production.ReviewDispatch)? = null,
+    /** 打开面板时核对正在排队的审核轮次。 */
+    val reconcileReviews: (suspend () -> Unit)? = null,
+    /** 打开面板时扫描项目目录里的未登记文件。 */
+    val auditFiles: (suspend () -> Unit)? = null,
 )
-
-/** 会话对一轮审核消息的处理：接收（开轮或入队），或暂不能接收的原因。 */
-enum class ReviewDelivery { ACCEPTED, IMPORTING, APPROVAL_PENDING, UNAVAILABLE }
 
 enum class ShotDetailTab { STORYBOARD, CANDIDATES }
 enum class OutputFilter { ALL, REVIEW, REDO, LOCKED, TODO }
@@ -127,9 +128,6 @@ fun Asset.referenceLocations(production: Production): List<ShotLocation> = produ
 /** 规划摘要只拼接当前有效数据；本地化词汇由界面传入。 */
 fun planSummary(channel: String, mode: String, packing: String?, edited: Boolean, editedLabel: String): String =
     listOfNotNull(channel.takeIf { it.isNotBlank() }, mode, packing?.takeIf { it.isNotBlank() }, editedLabel.takeIf { edited }).joinToString(" · ")
-
-fun generationEnabled(sceneLocked: Boolean, experimental: Boolean, preview: ShotPlanPreview?, busy: Boolean): Boolean =
-    !busy && (sceneLocked || experimental) && preview != null && preview.channel != null && preview.blockedReason == null
 
 /** 进行中的任务可以取消；这是面板上唯一立即生效的动作。 */
 fun MediaTask.canCancel(): Boolean = isActiveTask()

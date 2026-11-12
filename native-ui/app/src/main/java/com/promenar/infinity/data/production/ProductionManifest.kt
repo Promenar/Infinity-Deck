@@ -154,5 +154,6 @@ object ProductionManifestCodec {
         }
         validateProductionReviews(p)
         ProductionCuts.validate(p)
+        validateProductionProgress(p)
     }
 }

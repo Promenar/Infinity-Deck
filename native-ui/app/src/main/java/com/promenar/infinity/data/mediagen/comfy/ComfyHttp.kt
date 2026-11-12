@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.mediagen.comfy
 
 import com.promenar.infinity.domain.media.MAX_WORKSPACE_MEDIA_BYTES
+import com.promenar.infinity.domain.mediagen.InputKind
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.*
@@ -24,7 +25,7 @@ class ComfyFailure(message: String, val retryable: Boolean = false) : IOExceptio
 interface ComfyHttp {
     suspend fun get(host: ComfyHost, path: String): JsonObject
     suspend fun post(host: ComfyHost, path: String, body: JsonObject): JsonObject
-    suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, audio: Boolean = false): String
+    suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, kind: InputKind = InputKind.IMAGE): String
     suspend fun download(host: ComfyHost, location: String, save: suspend (InputStream, String?) -> String): String
 }
 
@@ -38,7 +39,8 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
         if (e.retryable) throw ComfyFailure("${e.message}；提交结果未知，请检查主机队列后决定是否重试")
         throw e
     }
-    override suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, audio: Boolean): String {
+    override suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, kind: InputKind): String {
+        val audio = kind == InputKind.AUDIO
         require(filename.matches(Regex("[A-Za-z0-9_.-]{1,200}"))) { "上传文件名无效" }
         val payload = object : RequestBody() {
             override fun contentType() = mimeType.toMediaType()

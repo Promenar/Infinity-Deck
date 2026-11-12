@@ -189,7 +189,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 - Type `localhost:8888` to open services running in Linux or Termux
 - Canvas pages, clickable multi-screen prototypes and versioned artifacts
 - Image generation with a drawing board for markup and masks
-- A production panel ties script, assets, storyboard, takes and cut together. Preview each shot's channel, references and prompt; review in rounds with approve, reject and suggest, then send the round to the agent; generation counts are tracked per stage, shot and asset. Works with Volcano Ark Seedance, MiniMax and your own ComfyUI workflows. Save rough cuts per episode and export them on the phone as MP4 with an SRT subtitle file
+- A production panel ties script, assets, storyboard, takes and cut together. Preview each shot's channel, references and prompt; review in rounds with approve, reject and suggest, then send the round to the agent; generation counts are tracked per stage, shot and asset. The agent can extend a shot by chaining segments from each last frame, run ComfyUI upscale or frame-interpolation templates on a take, and generate score versions; scripted work it runs outside the app is shown with progress, and unregistered media files are flagged. Works with Volcano Ark Seedance, MiniMax and your own ComfyUI workflows. Save rough cuts per episode and export them on the phone as MP4 with an SRT subtitle file
 - Export chats as a web page, A4 PDF or long image
 
 **Foldables**

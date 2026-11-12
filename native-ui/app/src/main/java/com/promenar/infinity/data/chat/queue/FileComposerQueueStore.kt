@@ -10,6 +10,10 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.UUID
+import com.promenar.infinity.data.production.PanelMessageListener
+import com.promenar.infinity.data.production.captureWithdrawal
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -18,9 +22,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+@Serializable
+private data class PanelDeliveryReceipts(val sessionId: String, val origins: List<PanelMessageOrigin>)
 
 /** 队列写盘成功后才发布状态；正文及附件不进入诊断日志。 */
 class FileComposerQueueStore(
@@ -28,11 +36,16 @@ class FileComposerQueueStore(
     private val openImage: (String) -> InputStream?,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val isUserPersisted: suspend (String, String) -> Boolean = { _, _ -> false },
+    private val applicationScope: CoroutineScope? = null,
+    private val panelMessageListener: (() -> PanelMessageListener)? = null,
 ) : ComposerQueueStore {
+    override val handlesPanelMessages: Boolean get() = applicationScope != null && panelMessageListener != null
     private val mutex = Mutex()
     private val states = mutableMapOf<String, MutableStateFlow<ComposerQueueState>>()
     private val deletedSessions = mutableSetOf<String>()
     private val preparedEdits = mutableMapOf<String, QueuedMessage>()
+    private val receiptOnlySessions = mutableSetOf<String>()
+    private val notifying = mutableSetOf<Pair<String, PanelMessageOrigin>>()
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 
     private fun directory(sessionId: String): File {
@@ -44,6 +57,8 @@ class FileComposerQueueStore(
     private suspend fun load(sessionId: String): MutableStateFlow<ComposerQueueState> = states.getOrPut(sessionId) {
         val dir = directory(sessionId)
         val file = File(dir, "queue.json")
+        val detached = readReceipts(sessionId)
+        if (!file.exists() && detached.isNotEmpty()) receiptOnlySessions += sessionId
         var restored = false
         val state = if (sessionId in deletedSessions || !file.exists()) ComposerQueueState() else {
             // 读取失败必须保留原文件；只有内容损坏才丢弃队列。
@@ -58,17 +73,23 @@ class FileComposerQueueStore(
                 require(items.all { item -> item.imagePaths.all { path ->
                     File(path).canonicalFile.parentFile?.parentFile == File(dir, "images").canonicalFile
                 } })
+                val direct = saved.panelPreparations.filter { isUserPersisted(sessionId, it.userMessageId) }.map { it.origin }
+                val delivered = (saved.deliveredPanelMessages + direct + listOfNotNull(saved.sending?.origin.takeIf { accepted })).distinct()
                 if (accepted) deleteImages(saved.sending)
+                saved.panelPreparations.filterNot { it.origin in direct }.forEach { notifyPanel(sessionId, it.origin, false) }
                 restored = true
-                saved.copy(items = items, sending = null, sendingUserMessageId = null, sendingInLoop = false, pauseReason = QueuePauseReason.RESTORED.takeIf { items.isNotEmpty() })
+                saved.copy(items = items, sending = null, sendingUserMessageId = null, sendingInLoop = false,
+                    deliveredPanelMessages = delivered, panelPreparations = emptyList(), pauseReason = QueuePauseReason.RESTORED.takeIf { items.isNotEmpty() })
             } catch (_: IllegalArgumentException) {
                 discardCorrupt(dir)
             } catch (_: SerializationException) {
                 discardCorrupt(dir)
             }
         }
-        if (restored) write(sessionId, state)
-        MutableStateFlow(state)
+        val recovered = state.copy(deliveredPanelMessages = (state.deliveredPanelMessages + detached).distinct())
+        if (restored) write(sessionId, recovered)
+        recovered.deliveredPanelMessages.forEach { notifyPanel(sessionId, it, true) }
+        MutableStateFlow(recovered)
     }
 
     private fun discardCorrupt(dir: File): ComposerQueueState {
@@ -111,12 +132,14 @@ class FileComposerQueueStore(
         if (!state.sendingInLoop) return
         val userId = state.sendingUserMessageId ?: return
         if (!isUserPersisted(sessionId, userId)) return
-        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null, sendingInLoop = false) }
+        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null, sendingInLoop = false,
+            deliveredPanelMessages = (it.deliveredPanelMessages + listOfNotNull(sending.origin)).distinct()) }
+        sending.origin?.let { notifyPanel(sessionId, it, true) }
         deleteImages(sending)
     }
     override suspend fun observe(sessionId: String): StateFlow<ComposerQueueState> = locked { reconcileSending(sessionId); load(sessionId) }
 
-    override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>): QueuedMessage = locked {
+    override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>, origin: PanelMessageOrigin?): QueuedMessage = locked {
         check(sessionId !in deletedSessions) { "会话已删除" }
         load(sessionId)
         val id = UUID.randomUUID().toString()
@@ -130,12 +153,105 @@ class FileComposerQueueStore(
                 }
                 target.absolutePath
             }
-            QueuedMessage(id, text, paths, documents, System.currentTimeMillis(), quotes = quotes).also { item ->
+            QueuedMessage(id, text, paths, documents, System.currentTimeMillis(), quotes = quotes, origin = origin).also { item ->
                 update(sessionId) { it.copy(items = it.items + item) }
             }
         } catch (failure: Throwable) {
             imageDir.deleteRecursively()
             throw failure
+        }
+    }
+
+    private fun receiptFile(sessionId: String) = File(root, "${directory(sessionId).name}.reviews.json")
+    private fun readReceipts(sessionId: String): List<PanelMessageOrigin> {
+        val file = receiptFile(sessionId)
+        if (!file.exists()) return emptyList()
+        val receipt = json.decodeFromString<PanelDeliveryReceipts>(file.readText())
+        require(receipt.sessionId == sessionId) { "审核回执会话不一致。" }
+        return receipt.origins
+    }
+    private fun writeReceipts(sessionId: String, origins: List<PanelMessageOrigin>) {
+        val file = receiptFile(sessionId)
+        if (origins.isEmpty()) {
+            check(!file.exists() || file.delete()) { "无法清理审核回执。" }
+            return
+        }
+        check(root.isDirectory || root.mkdirs()) { "无法创建审核回执目录。" }
+        val temp = File(root, "${file.name}.tmp")
+        try {
+            FileOutputStream(temp).use { output ->
+                output.write(json.encodeToString(PanelDeliveryReceipts(sessionId, origins.distinct())).toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally { temp.delete() }
+    }
+
+    override suspend fun recoverPanelMessages(): List<Pair<String, PanelMessageOrigin>> = locked {
+        root.listFiles().orEmpty().filter { it.name.endsWith(".reviews.json") }.flatMap { file ->
+            val receipt = json.decodeFromString<PanelDeliveryReceipts>(file.readText())
+            load(receipt.sessionId).value.deliveredPanelMessages.map { receipt.sessionId to it }
+        }
+    }
+
+    /** 直接开轮与排队派发均由应用级生成运行时结清，准备失败仍可回退。 */
+    override suspend fun acceptForUser(sessionId: String, userMessageId: String?) {
+        val direct = locked {
+            val preparation = load(sessionId).value.panelPreparations.firstOrNull { it.userMessageId == userMessageId } ?: return@locked false
+            update(sessionId) { it.copy(panelPreparations = it.panelPreparations - preparation,
+                deliveredPanelMessages = (it.deliveredPanelMessages + preparation.origin).distinct()) }
+            notifyPanel(sessionId, preparation.origin, true)
+            true
+        }
+        if (!direct) super<ComposerQueueStore>.acceptForUser(sessionId, userMessageId)
+    }
+
+    override suspend fun rollbackForUser(sessionId: String, userMessageId: String?) {
+        val direct = locked {
+            val preparation = load(sessionId).value.panelPreparations.firstOrNull { it.userMessageId == userMessageId } ?: return@locked false
+            update(sessionId) { it.copy(panelPreparations = it.panelPreparations - preparation) }
+            notifyPanel(sessionId, preparation.origin, false)
+            true
+        }
+        if (!direct) super<ComposerQueueStore>.rollbackForUser(sessionId, userMessageId)
+    }
+
+    override suspend fun bindPanelMessage(sessionId: String, origin: PanelMessageOrigin, userMessageId: String) = locked {
+        check(sessionId !in deletedSessions) { "会话已删除" }
+        update(sessionId) { it.copy(panelPreparations = it.panelPreparations.filterNot { value -> value.origin == origin } + PanelMessagePreparation(origin, userMessageId)) }
+    }
+
+    override suspend fun finishPanelMessage(sessionId: String, origin: PanelMessageOrigin, persisted: Boolean) = locked {
+        update(sessionId) { it.copy(panelPreparations = it.panelPreparations.filterNot { value -> value.origin == origin },
+            deliveredPanelMessages = if (persisted) (it.deliveredPanelMessages + origin).distinct() else it.deliveredPanelMessages) }
+        notifyPanel(sessionId, origin, persisted)
+    }
+
+    /** 回调只投递到应用作用域；成功归档之前，已送达回执持续保留在磁盘。 */
+    private fun notifyPanel(sessionId: String, origin: PanelMessageOrigin, delivered: Boolean) {
+        val scope = applicationScope ?: return
+        val listener = panelMessageListener ?: return
+        val key = sessionId to origin
+        if (delivered && !notifying.add(key)) return
+        val withdrawal = try { if (delivered) null else listener().captureWithdrawal(sessionId, origin) }
+        catch (_: Exception) {
+            InfinityLogger.diagnostic("production_review.callback_failed", mapOf("delivered" to delivered.toString()))
+            return
+        }
+        scope.launch {
+            try {
+                if (delivered) listener().delivered(sessionId, origin) else withdrawal?.invoke()
+                if (delivered) locked {
+                    writeReceipts(sessionId, readReceipts(sessionId) - origin)
+                    if (sessionId in deletedSessions || sessionId in receiptOnlySessions) {
+                        states[sessionId]?.let { it.value = it.value.copy(deliveredPanelMessages = it.value.deliveredPanelMessages - origin) }
+                    } else update(sessionId) { it.copy(deliveredPanelMessages = it.deliveredPanelMessages - origin) }
+                }
+            } catch (_: Exception) {
+                InfinityLogger.diagnostic("production_review.callback_failed", mapOf("delivered" to delivered.toString()))
+            } finally {
+                if (delivered) locked { notifying.remove(key) }
+            }
         }
     }
 
@@ -149,6 +265,7 @@ class FileComposerQueueStore(
     override suspend fun remove(sessionId: String, id: String) = locked {
         val item = load(sessionId).value.items.find { it.id == id }
         update(sessionId) { it.copy(items = it.items.filterNot { item -> item.id == id }) }
+        item?.origin?.let { notifyPanel(sessionId, it, false) }
         deleteImages(item)
     }
     override suspend fun moveToFront(sessionId: String, id: String) = locked {
@@ -192,7 +309,9 @@ class FileComposerQueueStore(
     }
     override suspend fun accept(sessionId: String, id: String) = locked {
         val sending = load(sessionId).value.sending?.takeIf { it.id == id } ?: return@locked
-        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null, sendingInLoop = false) }
+        update(sessionId) { it.copy(sending = null, sendingUserMessageId = null, sendingInLoop = false,
+            deliveredPanelMessages = (it.deliveredPanelMessages + listOfNotNull(sending.origin)).distinct()) }
+        sending.origin?.let { notifyPanel(sessionId, it, true) }
         deleteImages(sending)
     }
     override suspend fun rollback(sessionId: String, id: String, reason: QueuePauseReason) = locked {
@@ -225,6 +344,7 @@ class FileComposerQueueStore(
         val original = load(sessionId).value.items.find { it.id == draft.id } ?: return@locked false
         update(sessionId) { it.copy(items = it.items.filterNot { queued -> queued.id == draft.id }, editingId = null) }
         preparedEdits.remove(sessionId)
+        original.origin?.let { notifyPanel(sessionId, it, false) }
         // 已提交的草稿副本不能因原图片清理失败而丢失。
         runCatching { deleteImages(original) }.onFailure {
             InfinityLogger.diagnostic("composer_queue.image_cleanup_failed", mapOf("operation" to "edit"))
@@ -246,10 +366,17 @@ class FileComposerQueueStore(
         }
     }
     override suspend fun deleteSession(sessionId: String) = locked {
+        val state = load(sessionId).value
+        val delivered = state.deliveredPanelMessages.toSet() + state.panelPreparations.filter { isUserPersisted(sessionId, it.userMessageId) }.map { it.origin } +
+            listOfNotNull(state.sending?.origin.takeIf { state.sendingUserMessageId?.let { isUserPersisted(sessionId, it) } == true })
+        val origins = (state.items.mapNotNull { it.origin } + listOfNotNull(state.sending?.origin) + state.panelPreparations.map { it.origin }).toSet()
+        writeReceipts(sessionId, (readReceipts(sessionId) + delivered).distinct())
         val dir = directory(sessionId)
         check(!dir.exists() || dir.deleteRecursively()) { "无法删除会话消息队列" }
         deletedSessions += sessionId
         preparedEdits.remove(sessionId)
-        load(sessionId).value = ComposerQueueState()
+        states.getValue(sessionId).value = ComposerQueueState(deliveredPanelMessages = delivered.toList())
+        delivered.forEach { notifyPanel(sessionId, it, true) }
+        (origins - delivered).forEach { notifyPanel(sessionId, it, false) }
     }
 }

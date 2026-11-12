@@ -61,16 +61,19 @@ internal fun ProductionManagementTab(
     channels: List<MediaChannel> = emptyList(),
     costStats: ProductionCostStats = productionCostStats(production, tasks),
     onShot: (String, String) -> Unit = { _, _ -> },
+    onCut: (String) -> Unit = {},
 ) {
     val pending = production.overviewItems()
     val active = tasks.overviewQueueTasks(services.pendingRegistrations)
     val recent = tasks.recentQueueTasks(services.pendingRegistrations)
+    val progress = production.progressItems()
+    val now = rememberProductionNow(progress.any { it is ProgressItem.Run })
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
         if (production.experimental) item("experiment") { ProductionTrialStrip() }
         item("pending") {
             ProductionSection(stringResource(R.string.production_panel_section_pending)) {
                 if (pending.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_nothing_pending))
-                pending.forEach { item -> PendingRow(item, production, busy, onOutput, onScene, onAsset, onRun, onSubmit) }
+                pending.forEach { item -> PendingRow(item, production, busy, onOutput, onScene, onAsset, onCut, onRun, onSubmit) }
             }
         }
         item("stages") {
@@ -81,9 +84,10 @@ internal fun ProductionManagementTab(
             }
         }
         item("tasks") {
-            ProductionSection(stringResource(R.string.p2_tasks), trailing = stringResource(R.string.p2_tasks_active, active.count { it.isActiveTask() })) {
+            ProductionSection(stringResource(R.string.p2_tasks), trailing = stringResource(R.string.p2_tasks_active, active.count { it.isActiveTask() } + progress.size)) {
                 if (services.queue == null || services.projectSourcePrefix == null) ProductionMutedRow(stringResource(R.string.p2_queue_unavailable))
-                else if (active.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_empty_queue))
+                else if (active.isEmpty() && progress.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_empty_queue))
+                progress.forEach { ProductionProgressRow(it, production, now, busy, onRun, onShot) }
                 active.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitle(it.request.sourceRef), channels) }
             }
         }
@@ -93,6 +97,7 @@ internal fun ProductionManagementTab(
             }
         }
         item("cost") { ProductionCostSection(production, costStats, onShot, onAsset) }
+        if (production.unregisteredFiles.isNotEmpty()) item("unregistered") { ProductionUnregisteredSection(production) }
         if (production.reviewRounds.isNotEmpty()) item("rounds") { ProductionReviewRounds(production.reviewRounds) }
         production.seasons.filter { it.episodes.isNotEmpty() }.forEach { season ->
             item("season-${season.id}") {
@@ -119,7 +124,7 @@ internal fun ProductionManagementTab(
 @Composable
 private fun PendingRow(
     item: OverviewItem, production: Production, busy: Boolean,
-    onOutput: (OutputFilter) -> Unit, onScene: (String) -> Unit, onAsset: (String) -> Unit,
+    onOutput: (OutputFilter) -> Unit, onScene: (String) -> Unit, onAsset: (String) -> Unit, onCut: (String) -> Unit,
     onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
     when (item) {
@@ -159,7 +164,7 @@ private fun PendingRow(
             icon = Icons.Rounded.ContentCut,
             subtitle = production.episodes().firstOrNull { it.id == item.cut.episodeId }?.let { episodeName(it).joinToString(" ") },
             chip = production.reviewChipSpec(ReviewTarget.cut(item.cut.id)),
-            chevron = false,
+            onClick = { onCut(item.cut.id) },
         )
     }
 }

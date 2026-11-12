@@ -87,6 +87,9 @@ import com.promenar.infinity.ui.common.status.UiStatusNotice
 import com.promenar.infinity.data.chat.queue.ComposerQueueStore
 import com.promenar.infinity.data.chat.queue.QueuePauseReason
 import com.promenar.infinity.data.chat.queue.QueuedMessage
+import com.promenar.infinity.data.chat.queue.PanelMessageOrigin
+import com.promenar.infinity.data.production.PanelMessageListener
+import com.promenar.infinity.data.production.captureWithdrawal
 import com.promenar.infinity.domain.generation.GenerationPhase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -350,6 +353,8 @@ class ChatViewModel(
     /** 参数方案；为 null 时读取应用实例。 */
     private val parameterSchemeRepositoryOverride: com.promenar.infinity.data.repository.ParameterSchemeRepository? = null,
     composerQueueStoreOverride: ComposerQueueStore? = null,
+    private val panelMessageListenerOverride: PanelMessageListener? = null,
+    private val panelMessageScopeOverride: CoroutineScope? = null,
     composerDraftRecoveryOverride: com.promenar.infinity.data.chat.queue.ComposerDraftRecoveryStore? = null,
     /** 保密输入与输出的界面入口；默认取应用实例上的实现。 */
     secretInputCoordinator: com.promenar.infinity.domain.secret.SecretInputCoordinator =
@@ -371,6 +376,43 @@ class ChatViewModel(
     private fun queueMutex(sessionId: String) = queueMutexes.getOrPut(sessionId) { Mutex() }
     private val queueSubmissions = mutableMapOf<String, QueuedMessage>()
     private val queueUserMessageIds = mutableMapOf<String, String>()
+    private class PanelSubmission(val origin: PanelMessageOrigin, var userMessageId: String? = null, var accepted: Boolean = false)
+    private val panelSubmissions = ConcurrentHashMap<String, PanelSubmission>()
+    private val panelMessageScope: CoroutineScope get() = panelMessageScopeOverride ?: (application as InfinityApplication).productionReviewScope
+
+    private fun postPanelMessage(sessionId: String, origin: PanelMessageOrigin?, delivered: Boolean) {
+        if (origin == null) return
+        val listener = try { panelMessageListenerOverride ?: (application as InfinityApplication).productionReviewDispatcher }
+        catch (_: Exception) { InfinityLogger.diagnostic("production_review.callback_failed", emptyMap()); return }
+        val withdrawal = if (delivered) null else listener.captureWithdrawal(sessionId, origin)
+        panelMessageScope.launch {
+            try {
+                if (delivered) listener.delivered(sessionId, origin) else withdrawal?.invoke()
+            } catch (_: Exception) {
+                InfinityLogger.diagnostic("production_review.callback_failed", mapOf("delivered" to delivered.toString()))
+            }
+        }
+    }
+
+    private fun settlePanelSubmission(sessionId: String, submission: PanelSubmission) {
+        if (!panelSubmissions.remove(sessionId, submission)) return
+        if (submission.accepted && composerQueueStore.handlesPanelMessages) return
+        panelMessageScope.launch {
+            val persisted = try { submission.userMessageId?.let { withContext(Dispatchers.IO) { messageRepository.getById(it) != null } } == true }
+            catch (_: Exception) {
+                InfinityLogger.diagnostic("production_review.receipt_query_failed", emptyMap())
+                return@launch
+            }
+            try {
+                composerQueueStore.finishPanelMessage(sessionId, submission.origin, persisted)
+                if (!composerQueueStore.handlesPanelMessages) postPanelMessage(sessionId, submission.origin, persisted)
+            } catch (_: Exception) {
+                postPanelMessage(sessionId, submission.origin, persisted)
+                InfinityLogger.diagnostic("production_review.receipt_failed", emptyMap())
+            }
+        }
+    }
+
     private val pendingQueueWrites = mutableMapOf<String, Int>()
     private val queueTerminalPhases = mutableMapOf<String, GenerationPhase>()
     private val queuePauseOverrides = mutableMapOf<String, QueuePauseReason>()
@@ -1284,21 +1326,29 @@ class ChatViewModel(
     }
 
     /** 面板只发送指定文本；运行中等待队列写盘，输入区的草稿及附件保持独立。 */
-    suspend fun sendPanelMessage(sessionId: String, text: String): PanelSendResult = withContext(Dispatchers.Main.immediate) {
+    suspend fun sendPanelMessage(sessionId: String, text: String, origin: PanelMessageOrigin? = null): PanelSendResult = withContext(Dispatchers.Main.immediate) {
         val session = store.getSession(sessionId)
         if (_currentSessionId.value != sessionId || session == null) return@withContext PanelSendResult.UNAVAILABLE
         if (_isImportingDocument.value) return@withContext PanelSendResult.IMPORTING
         if (session.approvalRequest != null) return@withContext PanelSendResult.APPROVAL_PENDING
         if (isSessionGenerating(sessionId)) {
             pendingQueueWrites[sessionId] = (pendingQueueWrites[sessionId] ?: 0) + 1
+            var stored = false
             try {
-                composerQueueStore.enqueue(sessionId, text)
+                composerQueueStore.enqueue(sessionId, text, origin = origin)
+                stored = true
                 if (_currentSessionId.value != sessionId || !viewModelScope.isActive) {
                     composerQueueStore.pause(sessionId, queuePauseOverrides[sessionId] ?: QueuePauseReason.INTERRUPTED)
                 } else if (queueTerminalPhases[sessionId] in DRAFT_SETTLING_PHASES && sessionId !in stopAndSendSessions) {
                     val state = composerQueueStore.snapshot(sessionId)
                     if (state.pauseReason == null) composerQueueStore.pause(sessionId, queuePauseOverrides[sessionId] ?: QueuePauseReason.FAILED)
                 }
+            } catch (failure: Throwable) {
+                if (!stored) {
+                    postPanelMessage(sessionId, origin, false)
+                    throw failure
+                }
+                InfinityLogger.diagnostic("production_review.queue_maintenance_failed", emptyMap())
             } finally {
                 val remaining = (pendingQueueWrites[sessionId] ?: 1) - 1
                 if (remaining == 0) pendingQueueWrites.remove(sessionId) else pendingQueueWrites[sessionId] = remaining
@@ -1308,6 +1358,8 @@ class ChatViewModel(
         }
 
         cancelPendingPreparation(sessionId)
+        val panelSubmission = origin?.let { PanelSubmission(it) }
+        if (panelSubmission != null) panelSubmissions[sessionId] = panelSubmission
         preparingSessions.add(sessionId)
         generationJobs[sessionId] = viewModelScope.launch {
             try {
@@ -1327,6 +1379,10 @@ class ChatViewModel(
             } finally {
                 preparingSessions.remove(sessionId)
                 if (queueTerminalPhases[sessionId] == GenerationPhase.COMPLETED) dispatchComposerQueue(sessionId)
+            }
+        }.also { job ->
+            job.invokeOnCompletion {
+                if (panelSubmission != null && pendingPermissionTurn?.sessionId != sessionId) settlePanelSubmission(sessionId, panelSubmission)
             }
         }
         PanelSendResult.STARTED
@@ -1588,7 +1644,16 @@ class ChatViewModel(
 
     fun removeQueuedMessage(id: String) {
         val sessionId = _currentSessionId.value ?: return
-        queueAction { composerQueueStore.remove(sessionId, id) }
+        queueAction {
+            queueMutex(sessionId).withLock {
+                val item = composerQueueStore.snapshot(sessionId).items.firstOrNull { it.id == id }
+                try { composerQueueStore.remove(sessionId, id) }
+                finally {
+                    if (!composerQueueStore.handlesPanelMessages && item != null && composerQueueStore.snapshot(sessionId).items.none { it.id == id })
+                        postPanelMessage(sessionId, item.origin, false)
+                }
+            }
+        }
     }
 
     fun moveQueuedMessageToFront(id: String) {
@@ -1629,6 +1694,7 @@ class ChatViewModel(
                         if (!committed) {
                             releaseUncommittedEditFromComposer(sessionId, item)
                         } else {
+                            if (!composerQueueStore.handlesPanelMessages) postPanelMessage(sessionId, item.origin, false)
                             sessionManager.updateSessionDraft(sessionId, if (_currentSessionId.value == sessionId) _inputText.value.ifBlank { null } else item.text.ifBlank { null })
                             if (_currentSessionId.value != sessionId || !viewModelScope.isActive) {
                                 composerDraftRecovery.retain(sessionId, com.promenar.infinity.data.chat.queue.RecoverableComposerDraft(item.text, item.imagePaths.map { Uri.fromFile(java.io.File(it)).toString() }, item.documents, item.quotes))
@@ -1888,6 +1954,7 @@ class ChatViewModel(
                     }
                 }
             } finally {
+                panelSubmissions[pending.sessionId]?.let { settlePanelSubmission(pending.sessionId, it) }
                 if (generationPresentationStore.submittedDraft(pending.sessionId)?.taskId == null) {
                     withContext(NonCancellable) {
                         restoreSubmittedDraftFromPresentation(pending.sessionId)
@@ -2008,6 +2075,13 @@ class ChatViewModel(
         val userMsgId = IdGenerator.message("user")
         val assistantMsgId = IdGenerator.message("ai")
         val queuedSubmission = queueSubmissions[sessionId]
+        val panelSubmission = panelSubmissions[sessionId]?.takeIf { queuedSubmission == null }
+        if (panelSubmission != null) {
+            withContext(NonCancellable) {
+                composerQueueStore.bindPanelMessage(sessionId, panelSubmission.origin, userMsgId)
+                panelSubmission.userMessageId = userMsgId
+            }
+        }
         if (consumeComposerDraft && queuedSubmission == null) {
             generationPresentationStore.submittedDraft(sessionId)?.copy(userMessageId = userMsgId)?.let { draft ->
                 if (_currentSessionId.value == sessionId) submittedDraft = draft
@@ -2059,6 +2133,7 @@ class ChatViewModel(
                 is com.promenar.infinity.domain.generation.StartGenerationResult.Started,
                 is com.promenar.infinity.domain.generation.StartGenerationResult.Queued,
                 is com.promenar.infinity.domain.generation.StartGenerationResult.Existing -> {
+                    if (panelSubmission != null) panelSubmission.accepted = true
                     if (queuedSubmission != null) {
                         viewModelScope.launch {
                             composerQueueStore.observe(sessionId).first { it.sending?.id != queuedSubmission.id }
@@ -2578,6 +2653,7 @@ class ChatViewModel(
         _backgroundServiceStoppedError.value = null
         _backgroundWarning.value = null
         foregroundTrackedTaskId = null
+        pendingPermissionTurn?.sessionId?.let { id -> panelSubmissions[id]?.let { settlePanelSubmission(id, it) } }
         pendingPermissionTurn = null
         pendingDraftClearTaskId = null
         mutableNotificationPermissionRequest.value = null
@@ -2700,6 +2776,7 @@ class ChatViewModel(
         if (pendingPermissionTurn?.sessionId == sessionId) {
             val pendingSession = pendingPermissionTurn?.sessionId
             pendingPermissionTurn = null
+            pendingSession?.let { id -> panelSubmissions[id]?.let { settlePanelSubmission(id, it) } }
             if (pendingSession != null) {
                 queueAction { restoreSubmittedDraft(pendingSession, queueReason = QueuePauseReason.INTERRUPTED) }
             }
@@ -3395,6 +3472,7 @@ class ChatViewModel(
         directoryBusyRegistration?.close()
         super.onCleared()
         abandonedPermissionSession?.let(generationPresentationStore::markSubmittedDraftRecoverable)
+        abandonedPermissionSession?.let { id -> panelSubmissions[id]?.let { settlePanelSubmission(id, it) } }
         // 生成由应用级 owner 持有；ViewModel 销毁只移除观察者，不终止请求。
     }
 
@@ -3675,7 +3753,9 @@ class ChatViewModel(
      */
     private suspend fun consumeAcceptedDraft(sessionId: String) {
         queueSubmissions[sessionId]?.let { item ->
-            composerQueueStore.accept(sessionId, item.id)
+            // 审核消息的持久租约由应用运行时结清，界面连接态只消费本地提交映射。
+            if (item.origin == null || !composerQueueStore.handlesPanelMessages) composerQueueStore.accept(sessionId, item.id)
+            if (!composerQueueStore.handlesPanelMessages) postPanelMessage(sessionId, item.origin, true)
             queueSubmissions.remove(sessionId)
             queueUserMessageIds.remove(sessionId)
             if (queueTerminalPhases[sessionId] == GenerationPhase.COMPLETED) dispatchComposerQueue(sessionId)
@@ -3772,6 +3852,8 @@ class ChatViewModel(
                             },
                         ),
                         generationCoordinatorOverride = generationCoordinatorOverride,
+                        panelMessageListenerOverride = app.productionReviewDispatcher,
+                        panelMessageScopeOverride = app.productionReviewScope,
                         notificationPermissionGateway = {
                             val prefs = application.getSharedPreferences(
                                 com.promenar.infinity.background.generation

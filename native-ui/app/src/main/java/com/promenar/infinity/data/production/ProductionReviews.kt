@@ -13,7 +13,7 @@ internal object ProductionReviews {
         }
         require(action.target.acceptsVerdict) { "这个对象只接受建议。" }
         val group = action.target.reviewGroup()
-        val baseline = production.reviewDrafts.firstOrNull { it.group == group } ?: baseline(production, group)
+        val baseline = production.pendingReviewDrafts.firstOrNull { it.group == group } ?: baseline(production, group)
         val pending = baseline.pendingVerdicts.filterNot {
             it.target == action.target || action.kind == ReviewKind.APPROVE && it.kind == ReviewKind.APPROVE
         } + entry
@@ -26,42 +26,97 @@ internal object ProductionReviews {
             if (action.kind == ReviewKind.APPROVE) action.target.version else baseline.displacements.firstOrNull { it.target == action.target }?.approvedVersion)
         val draft = baseline.copy(pendingVerdicts = pending,
             displacements = baseline.displacements.filter { item -> item.target != action.target && pending.any { it.target == item.target } } + history)
-        return rebuild(production, draft, revision).copy(reviewDrafts = production.reviewDrafts.filterNot { it.group == group } + draft)
+        return rebuild(production, draft, revision).copy(reviewDrafts = production.reviewDrafts.filterNot { it.group == group && !it.queued } + draft)
     }
 
     fun retract(production: Production, action: ProductionUserAction.RetractReview, revision: Long): Production {
         production.requireReviewTarget(action.target)
         if (action.kind == ReviewKind.SUGGEST) return production.copy(reviews = production.reviews.filterNot {
-            it.target == action.target && it.kind == ReviewKind.SUGGEST && it.round == null
+            it.target == action.target && it.kind == ReviewKind.SUGGEST && it.round == null && it.queuedRound == null
         })
         require(action.target.acceptsVerdict) { "这个对象只接受建议。" }
         val current = production.verdictOf(action.target)
-        if (current?.round != null || current?.kind != action.kind) return production
+        if (current?.round != null || current?.queuedRound != null || current?.kind != action.kind) return production
         val group = action.target.reviewGroup()
-        val baseline = production.reviewDrafts.firstOrNull { it.group == group }
+        val baseline = production.pendingReviewDrafts.firstOrNull { it.group == group }
             ?: throw IllegalArgumentException("未发送结论缺少回退信息，请刷新制作面板。")
         val draft = baseline.copy(pendingVerdicts = baseline.pendingVerdicts.filterNot { it.target == action.target },
             displacements = baseline.displacements.filterNot { it.target == action.target })
-        return rebuild(production, draft, revision).copy(reviewDrafts = production.reviewDrafts.filterNot { it.group == group } +
+        return rebuild(production, draft, revision).copy(reviewDrafts = production.reviewDrafts.filterNot { it.group == group && !it.queued } +
             if (draft.pendingVerdicts.isEmpty()) emptyList() else listOf(draft))
     }
 
-    fun sent(production: Production, action: ProductionUserAction.MarkReviewSent, revision: Long): Production {
+    fun queued(production: Production, action: ProductionUserAction.MarkReviewQueued): Production {
         if (action.round != production.nextReviewRound) throw ProductionRevisionConflictException()
-        require(action.round < Int.MAX_VALUE) { "审核轮次已达到上限。" }
-        require(action.sentAt >= 0) { "发送时间不能为负数。" }
-        val entries = production.unsentReviews().map { it.copy(round = action.round, sentAt = action.sentAt, sentRevision = revision) }
-        require(entries.isNotEmpty()) { "没有未发送的审核意见。" }
+        require(action.round < Int.MAX_VALUE && action.at >= 0) { "审核轮次或排队时间无效。" }
+        require(production.queuedReviewRound == null) { "已有审核意见等待发送。" }
+        require(production.unsentReviews().isNotEmpty()) { "没有未发送的审核意见。" }
+        fun mark(value: ReviewEntry) = if (value.round == null && value.queuedRound == null) value.copy(queuedRound = action.round) else value
+        return production.copy(reviews = production.reviews.map(::mark),
+            reviewDrafts = production.reviewDrafts.map { it.copy(pendingVerdicts = it.pendingVerdicts.map(::mark), queued = true) })
+    }
+
+    fun revertQueued(production: Production, action: ProductionUserAction.RevertReviewQueued, revision: Long): Production {
+        if (production.queuedReviews().none { it.queuedRound == action.round }) return production
+        fun revert(value: ReviewEntry) = if (value.queuedRound == action.round) value.copy(queuedRound = null) else value
+        fun exists(target: ReviewTarget) = runCatching { production.requireReviewTarget(target) }.isSuccess
+        var result = production.copy(reviews = production.reviews.map(::revert).filter { exists(it.target) }, reviewDrafts = emptyList())
+        val originals = production.queuedReviewDrafts.mapNotNull { draft ->
+            draft.copy(pendingVerdicts = draft.pendingVerdicts.filter { exists(it.target) },
+                previousVerdicts = draft.previousVerdicts.filter { exists(it.target) }).takeIf { it.pendingVerdicts.isNotEmpty() }
+        }.associateBy { it.group }
+        val current = production.pendingReviewDrafts.associateBy { it.group }
+        val drafts = (originals.keys + current.keys).map { group ->
+            val old = originals[group]
+            val newer = current[group]
+            val base = old ?: requireNotNull(newer)
+            val suppressed = newer?.displacements.orEmpty().flatMap { it.displacedTargets }.toSet()
+            val lineage = (old?.displacements.orEmpty() + newer?.displacements.orEmpty()).groupBy { it.target }
+            fun ancestors(targets: List<ReviewTarget>): List<ReviewTarget> {
+                val found = targets.toMutableSet()
+                val pendingTargets = java.util.ArrayDeque(targets)
+                while (pendingTargets.isNotEmpty()) {
+                    lineage[pendingTargets.removeFirst()].orEmpty().flatMap { it.displacedTargets }.forEach { target ->
+                        if (found.add(target)) pendingTargets.addLast(target)
+                    }
+                }
+                return found.toList()
+            }
+            val pending = (old?.pendingVerdicts.orEmpty().filterNot { it.target in suppressed }.map(::revert) + newer?.pendingVerdicts.orEmpty())
+                .fold(emptyList<ReviewEntry>()) { entries, value ->
+                    entries.filterNot { it.target == value.target || value.kind == ReviewKind.APPROVE && it.kind == ReviewKind.APPROVE } + value
+                }
+            val histories = pending.mapNotNull { value ->
+                val older = old?.displacements?.firstOrNull { it.target == value.target }
+                val latest = newer?.displacements?.firstOrNull { it.target == value.target }
+                (latest ?: older)?.let { history -> history.copy(approvedVersion = history.approvedVersion ?: older?.approvedVersion, displacedTargets =
+                    ancestors(older?.displacedTargets.orEmpty() + history.displacedTargets).filterNot { it == value.target }) }
+            }
+            base.copy(previousVerdicts = base.previousVerdicts.map(::revert), pendingVerdicts = pending, displacements = histories, queued = false)
+        }
+        result = result.copy(reviewDrafts = drafts)
+        drafts.forEach { result = rebuild(result, it, revision) }
+        return result
+    }
+
+    fun sent(production: Production, action: ProductionUserAction.MarkReviewSent, revision: Long): Production {
+        val queued = production.queuedReviews().filter { it.queuedRound == action.round }
+        if (queued.isEmpty()) return production
+        if (action.round != production.nextReviewRound) throw ProductionRevisionConflictException()
+        require(action.round < Int.MAX_VALUE && action.sentAt >= 0) { "审核轮次或发送时间无效。" }
+        fun archive(value: ReviewEntry) = if (value.queuedRound == action.round)
+            value.copy(round = action.round, sentAt = action.sentAt, sentRevision = revision, queuedRound = null) else value
+        val entries = queued.map(::archive)
         return production.copy(
-            reviews = production.reviews.filterNot { it.kind == ReviewKind.SUGGEST }.map { if (it.round == null) it.copy(round = action.round, sentAt = action.sentAt, sentRevision = revision) else it },
+            reviews = production.currentReviewVerdicts().filter { runCatching { production.requireReviewTarget(it.target) }.isSuccess }.map(::archive) + production.reviews.filter { it.kind == ReviewKind.SUGGEST && it.queuedRound != action.round },
             reviewRounds = (listOf(ReviewRound(action.round, action.sentAt, entries, revision)) + production.reviewRounds).take(50),
             nextReviewRound = action.round + 1,
-            reviewDrafts = emptyList(),
+            reviewDrafts = production.pendingReviewDrafts.map { it.copy(previousVerdicts = it.previousVerdicts.map(::archive)) },
         )
     }
 
     private fun baseline(p: Production, group: ReviewTarget): ReviewDraft {
-        val verdicts = p.reviews.filter { it.kind != ReviewKind.SUGGEST && it.target.reviewGroup() == group }
+        val verdicts = p.currentReviewVerdicts().filter { it.target.reviewGroup() == group }
         val shot = if (group.kind == ReviewTargetKind.SHOT) p.reviewShot(group) else null
         val asset = if (group.kind == ReviewTargetKind.ASSET_VERSION) p.assets.firstOrNull { it.id == group.assetId } else null
         val locked = when (group.kind) {
@@ -77,12 +132,10 @@ internal object ProductionReviews {
 
     private fun rebuild(p: Production, draft: ReviewDraft, revision: Long): Production {
         val suppressed = draft.displacements.flatMap { it.displacedTargets }.toSet()
-        var verdicts = draft.previousVerdicts.filterNot { it.target in suppressed }
-        draft.pendingVerdicts.forEach { entry ->
-            verdicts = verdicts.filterNot { it.target == entry.target || entry.kind == ReviewKind.APPROVE && it.kind == ReviewKind.APPROVE } + entry
-        }
+        val verdicts = reviewDraftVerdicts(draft)
         val group = draft.group
-        var result = p.copy(reviews = p.reviews.filterNot { it.kind != ReviewKind.SUGGEST && it.target.reviewGroup() == group } + verdicts)
+        val queued = p.queuedReviews().filter { it.kind != ReviewKind.SUGGEST && it.target.reviewGroup() == group }
+        var result = p.copy(reviews = p.reviews.filterNot { it.kind != ReviewKind.SUGGEST && it.target.reviewGroup() == group } + (queued + verdicts).distinct())
         val current = verdicts.lastOrNull()
         val pending = draft.pendingVerdicts.isNotEmpty()
         fun userShot(episodeId: String, code: String, transform: (Shot) -> Shot) {

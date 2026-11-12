@@ -9,6 +9,13 @@ import kotlinx.serialization.Serializable
 enum class QueuePauseReason { STOPPED, FAILED, RESTORED, INTERRUPTED, BUSY }
 
 @Serializable
+data class PanelMessageOrigin(val productionId: String, val round: Int)
+
+/** 直接开轮在写入用户消息前保留绑定，供进程恢复核实落盘结果。 */
+@Serializable
+data class PanelMessagePreparation(val origin: PanelMessageOrigin, val userMessageId: String)
+
+@Serializable
 data class QueuedMessage(
     val id: String,
     val text: String,
@@ -18,6 +25,7 @@ data class QueuedMessage(
     val steering: Boolean = false,
     /** 写了批注的引用；未写批注的引用卡在入队前已丢弃。 */
     val quotes: List<MessageQuote> = emptyList(),
+    val origin: PanelMessageOrigin? = null,
 )
 
 @Serializable
@@ -29,14 +37,22 @@ data class ComposerQueueState(
     val sendingUserMessageId: String? = null,
     /** 当前生成循环持有的注入租约，涵盖普通排队和插队。 */
     val sendingInLoop: Boolean = false,
+    /** 已落盘、尚未完成审核归档的回执；归档成功后清除。 */
+    val deliveredPanelMessages: List<PanelMessageOrigin> = emptyList(),
+    val panelPreparations: List<PanelMessagePreparation> = emptyList(),
     /** 编辑中的队首暂不参与插队唤醒；草稿租约不跨进程恢复。 */
     @kotlinx.serialization.Transient val editingId: String? = null,
 )
 
 interface ComposerQueueStore {
+    val handlesPanelMessages: Boolean get() = false
     suspend fun observe(sessionId: String): StateFlow<ComposerQueueState>
     suspend fun snapshot(sessionId: String): ComposerQueueState = observe(sessionId).value
-    suspend fun enqueue(sessionId: String, text: String, imageUris: List<String> = emptyList(), documents: List<MessageDocumentAttachment> = emptyList(), quotes: List<MessageQuote> = emptyList()): QueuedMessage
+    suspend fun enqueue(sessionId: String, text: String, imageUris: List<String> = emptyList(), documents: List<MessageDocumentAttachment> = emptyList(), quotes: List<MessageQuote> = emptyList(), origin: PanelMessageOrigin? = null): QueuedMessage
+    /** 恢复会话删除后独立保留的送达回执。 */
+    suspend fun recoverPanelMessages(): List<Pair<String, PanelMessageOrigin>> = emptyList()
+    suspend fun bindPanelMessage(sessionId: String, origin: PanelMessageOrigin, userMessageId: String) {}
+    suspend fun finishPanelMessage(sessionId: String, origin: PanelMessageOrigin, persisted: Boolean) {}
     suspend fun remove(sessionId: String, id: String)
     suspend fun moveToFront(sessionId: String, id: String)
     suspend fun steer(sessionId: String, id: String): Boolean

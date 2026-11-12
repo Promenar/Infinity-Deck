@@ -67,3 +67,8 @@ interface MediaGenerationQueue {
 /** sourceRef 保持不透明，前缀约定由制作项目调用方维护。 */
 fun MediaGenerationQueue.observeTasks(sourceRefPrefix: String): Flow<List<MediaTask>> =
     observeTasks().map { tasks -> tasks.filter { it.request.sourceRef.startsWith(sourceRefPrefix) } }
+
+/** 区分仍占远端额度的任务与已经人工核实归档的历史任务。 */
+interface MediaTaskRecoveryReader {
+    suspend fun unresolvedTaskIds(): Set<String>
+}

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.chat
 
+import com.promenar.infinity.data.chat.queue.PanelMessageOrigin
+import com.promenar.infinity.data.production.PanelMessageListener
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
@@ -465,6 +467,11 @@ class ChatViewModelTest {
 
     private lateinit var viewModel: ChatViewModel
     private lateinit var presentationStore: com.promenar.infinity.data.generation.GenerationPresentationStore
+    private val panelEvents = mutableListOf<Triple<String, PanelMessageOrigin, Boolean>>()
+    private val panelListener = object : PanelMessageListener {
+        override suspend fun delivered(sessionId: String, origin: PanelMessageOrigin) { panelEvents += Triple(sessionId, origin, true) }
+        override suspend fun withdrawn(sessionId: String, origin: PanelMessageOrigin) { panelEvents += Triple(sessionId, origin, false) }
+    }
     private lateinit var queueStore: com.promenar.infinity.data.chat.queue.FileComposerQueueStore
     private var claimFailure: Throwable? = null
     private var editGate: CompletableDeferred<Unit>? = null
@@ -1074,14 +1081,19 @@ class ChatViewModelTest {
         claimFailure = null; editGate = null; queueEnqueueGate = null; beforeQueueImageOpen = {}
         stoppedPauseGate = null; stoppedPauseDone = null
         recoveryStore = com.promenar.infinity.data.chat.queue.ComposerDraftRecoveryStore()
+        generationScope = CoroutineScope(SupervisorJob() + testDispatcher)
+        panelEvents.clear()
         queueStore = com.promenar.infinity.data.chat.queue.FileComposerQueueStore(
             java.nio.file.Files.createTempDirectory("infinity-vm-queue").toFile(),
             { beforeQueueImageOpen(); app.contentResolver.openInputStream(android.net.Uri.parse(it)) }, testDispatcher,
+            isUserPersisted = { _, userId -> stubMessageRepo.getById(userId) != null },
+            applicationScope = generationScope,
+            panelMessageListener = { panelListener },
         )
         queuePort = object : com.promenar.infinity.data.chat.queue.ComposerQueueStore by queueStore {
-            override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<com.promenar.infinity.data.model.MessageQuote>): com.promenar.infinity.data.chat.queue.QueuedMessage {
+            override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<com.promenar.infinity.data.model.MessageQuote>, origin: com.promenar.infinity.data.chat.queue.PanelMessageOrigin?): com.promenar.infinity.data.chat.queue.QueuedMessage {
                 queueEnqueueGate?.await()
-                return queueStore.enqueue(sessionId, text, imageUris, documents, quotes)
+                return queueStore.enqueue(sessionId, text, imageUris, documents, quotes, origin)
             }
             override suspend fun claimNext(sessionId: String): com.promenar.infinity.data.chat.queue.QueuedMessage? {
                 claimFailure?.let { throw it }
@@ -1148,7 +1160,6 @@ class ChatViewModelTest {
         val configResolver = AgentConfigResolver(
             app.getSharedPreferences("infinity_settings", 0)
         )
-        generationScope = CoroutineScope(SupervisorJob() + testDispatcher)
         presentationStore = com.promenar.infinity.data.generation.GenerationPresentationStore()
         val generationSessionManager = com.promenar.infinity.ui.chat.manager.SessionManager(app.chatStore, stubSessionRepo)
         val generationMessageManager = com.promenar.infinity.ui.chat.manager.MessageManager(
@@ -1228,6 +1239,8 @@ class ChatViewModelTest {
             generationCoordinatorOverride = generationCoordinator,
             generationPresentationStoreOverride = presentationStore,
             composerQueueStoreOverride = queuePort,
+            panelMessageListenerOverride = panelListener,
+            panelMessageScopeOverride = generationScope,
             composerDraftRecoveryOverride = recoveryStore,
             generationForegroundControllerOverride =
                 object : com.promenar.infinity.background.generation.GenerationForegroundController {
@@ -2864,6 +2877,134 @@ class ChatViewModelTest {
         assertThat(savedMessages.filter { it.first.role == MessageRole.USER }.map { it.first.content }).containsExactly("first", "second").inOrder()
     }
 
+    @Test fun `面板入队成功后暂停维护失败仍返回已排队`() = runTest {
+        seedSession(); advanceUntilIdle()
+        holdStreamOpen = true
+        viewModel.sendMessage("运行中"); advanceUntilIdle()
+        presentationStore.accept("s1", "settling", com.promenar.infinity.domain.generation.GenerationEvent.PhaseChanged(com.promenar.infinity.domain.generation.GenerationPhase.FAILED))
+        @Suppress("UNCHECKED_CAST")
+        val phases = ChatViewModel::class.java.getDeclaredField("queueTerminalPhases").apply { isAccessible = true }
+            .get(viewModel) as MutableMap<String, com.promenar.infinity.domain.generation.GenerationPhase>
+        phases["s1"] = com.promenar.infinity.domain.generation.GenerationPhase.FAILED
+        val failingMaintenance = object : com.promenar.infinity.data.chat.queue.ComposerQueueStore by queuePort {
+            override suspend fun pause(sessionId: String, reason: com.promenar.infinity.data.chat.queue.QueuePauseReason?) { throw java.io.IOException("暂停写入失败") }
+        }
+        ChatViewModel::class.java.getDeclaredField("composerQueueStore").apply { isAccessible = true }.set(viewModel, failingMaintenance)
+        val origin = PanelMessageOrigin("p", 1)
+        assertThat(viewModel.sendPanelMessage("s1", "已入队", origin)).isEqualTo(PanelSendResult.QUEUED)
+        assertThat(queueStore.snapshot("s1").items.single().origin).isEqualTo(origin)
+        assertThat(panelEvents).isEmpty()
+        ChatViewModel::class.java.getDeclaredField("composerQueueStore").apply { isAccessible = true }.set(viewModel, queuePort)
+    }
+
+    @Test fun `直接审核在应用运行时准备失败回滚用户消息后撤回`() = runTest {
+        seedSession(); advanceUntilIdle()
+        forcedProviderFailure = ProviderResolution.Failure(ProviderResolutionError.API_KEY_MISSING, "gpt-4o", "missing-provider")
+        val origin = PanelMessageOrigin("p", 1)
+        viewModel.updateInputText("保留草稿")
+        viewModel.sendPanelMessage("s1", "无法准备的审核", origin)
+        awaitReal { panelEvents.size == 1 && !viewModel.uiState.value.isGenerating }
+        assertThat(panelEvents).containsExactly(Triple("s1", origin, false))
+        assertThat(savedMessages.none { it.first.content == "无法准备的审核" }).isTrue()
+        assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
+    }
+
+    @Test fun `无来源的面板发送和队列删除不通知审核监听器`() = runTest {
+        seedSession(); advanceUntilIdle()
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+        viewModel.sendPanelMessage("s1", "普通面板消息")
+        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating }
+        val item = queueStore.enqueue("s1", "普通队列消息")
+        viewModel.removeQueuedMessage(item.id)
+        advanceUntilIdle()
+        assertThat(panelEvents).isEmpty()
+    }
+
+    @Test fun `带来源的队列派发在用户消息保存后只通知一次`() = runTest {
+        seedSession(); advanceUntilIdle()
+        val origin = PanelMessageOrigin("p", 1)
+        queueStore.enqueue("s1", "审核消息", origin = origin)
+        viewModel.updateInputText("保留草稿")
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+        viewModel.resumeComposerQueue()
+        awaitReal { panelEvents.size == 1 && !viewModel.uiState.value.isGenerating }
+        assertThat(panelEvents).containsExactly(Triple("s1", origin, true))
+        assertThat(savedMessages.map { it.first }.single { it.role == MessageRole.USER }.content).isEqualTo("审核消息")
+        assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
+    }
+
+    @Test fun `带来源的引导注入保存用户消息后只通知一次`() = runTest {
+        seedSession(); advanceUntilIdle()
+        holdStreamOpen = true
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("处理中"))
+        viewModel.sendMessage("先处理任务"); advanceUntilIdle()
+        val origin = PanelMessageOrigin("p", 1)
+        viewModel.sendPanelMessage("s1", "审核插队", origin)
+        viewModel.updateInputText("保留新草稿")
+        val item = queueStore.snapshot("s1").items.single()
+        viewModel.steerQueuedMessage(item.id)
+        awaitReal { panelEvents.size == 1 && savedMessages.any { it.first.content == "审核插队" } }
+        assertThat(panelEvents).containsExactly(Triple("s1", origin, true))
+        assertThat(savedMessages.map { it.first }.single { it.content == "审核插队" }.id).startsWith("steer_")
+        assertThat(viewModel.inputText.value).isEqualTo("保留新草稿")
+    }
+
+    @Test fun `删除队列与移回输入框只在提交成功时撤回审核`() = runTest {
+        seedSession(); advanceUntilIdle()
+        val removed = PanelMessageOrigin("p", 1)
+        val edited = PanelMessageOrigin("p", 2)
+        val first = queueStore.enqueue("s1", "删除", origin = removed)
+        viewModel.removeQueuedMessage(first.id); advanceUntilIdle()
+        viewModel.removeQueuedMessage(first.id); advanceUntilIdle()
+        val second = queueStore.enqueue("s1", "移回", origin = edited); advanceUntilIdle()
+        viewModel.updateInputText("已有草稿")
+        assertThat(viewModel.editQueuedMessage(second.id)).isFalse()
+        assertThat(panelEvents).containsExactly(Triple("s1", removed, false))
+        viewModel.updateInputText("")
+        assertThat(viewModel.editQueuedMessage(second.id)).isTrue()
+        advanceUntilIdle()
+        assertThat(viewModel.inputText.value).isEqualTo("移回")
+        assertThat(panelEvents).containsExactly(Triple("s1", removed, false), Triple("s1", edited, false)).inOrder()
+    }
+
+    @Test fun `返回开轮后锁内发现导入或审批会撤回来源`() = runTest {
+        seedSession(); advanceUntilIdle()
+        @Suppress("UNCHECKED_CAST")
+        val locks = ChatViewModel::class.java.getDeclaredField("sendPreparationMutexes").apply { isAccessible = true }
+            .get(viewModel) as java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>
+        val lock = locks.getOrPut("s1") { kotlinx.coroutines.sync.Mutex() }
+        @Suppress("UNCHECKED_CAST")
+        val importing = ChatViewModel::class.java.getDeclaredField("_isImportingDocument").apply { isAccessible = true }
+            .get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<Boolean>
+        val app = ApplicationProvider.getApplicationContext<InfinityApplication>()
+        for (round in 1..2) {
+            lock.lock()
+            val origin = PanelMessageOrigin("p", round)
+            assertThat(viewModel.sendPanelMessage("s1", "放弃的审核", origin)).isEqualTo(PanelSendResult.STARTED)
+            if (round == 1) importing.value = true else app.chatStore.updateSession("s1") { it.copy(approvalRequest = ApprovalRequest(toolName = "write_file", args = "{}", reason = "等待审批")) }
+            lock.unlock()
+            advanceUntilIdle()
+            assertThat(panelEvents).contains(Triple("s1", origin, false))
+            importing.value = false
+            app.chatStore.updateSession("s1") { it.copy(approvalRequest = null) }
+        }
+        assertThat(panelEvents).hasSize(2)
+        assertThat(savedMessages).isEmpty()
+    }
+
+    @Test fun `通知权限等待被停止时回退审核且不改输入草稿`() = runTest {
+        notificationPermissionState = com.promenar.infinity.background.generation.NotificationPermissionPromptState(35, false, false)
+        seedSession(); advanceUntilIdle()
+        val origin = PanelMessageOrigin("p", 1)
+        viewModel.updateInputText("保留草稿")
+        viewModel.sendPanelMessage("s1", "权限等待中的审核", origin); advanceUntilIdle()
+        assertThat(panelEvents).isEmpty()
+        viewModel.stopGeneration(); advanceUntilIdle()
+        assertThat(panelEvents).containsExactly(Triple("s1", origin, false))
+        assertThat(savedMessages).isEmpty()
+        assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
+    }
+
     @Test
     fun `面板在空闲时只发送指定文本并保留全部输入草稿`() = runTest {
         seedSession(); advanceUntilIdle()
@@ -2882,9 +3023,10 @@ class ChatViewModelTest {
         val epoch = viewModel.draftConsumptionEpoch.value
         fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
 
-        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.STARTED)
-        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating }
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息", PanelMessageOrigin("p", 1))).isEqualTo(PanelSendResult.STARTED)
+        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating && panelEvents.size == 1 }
 
+        assertThat(panelEvents).containsExactly(Triple("s1", PanelMessageOrigin("p", 1), true))
         val sent = savedMessages.map { it.first }.single { it.role == MessageRole.USER }
         assertThat(sent.content).isEqualTo("面板消息")
         assertThat(sent.userImages).isNull()
@@ -2918,9 +3060,11 @@ class ChatViewModelTest {
         val quotes = viewModel.draftQuotes.value
         val epoch = viewModel.draftConsumptionEpoch.value
 
-        assertThat(viewModel.sendPanelMessage("s1", "排队的面板消息")).isEqualTo(PanelSendResult.QUEUED)
+        assertThat(viewModel.sendPanelMessage("s1", "排队的面板消息", PanelMessageOrigin("p", 1))).isEqualTo(PanelSendResult.QUEUED)
 
         val queued = queueStore.snapshot("s1").items.single()
+        assertThat(queued.origin).isEqualTo(PanelMessageOrigin("p", 1))
+        assertThat(panelEvents).isEmpty()
         assertThat(queued.text).isEqualTo("排队的面板消息")
         assertThat(queued.imagePaths).isEmpty()
         assertThat(queued.documents).isEmpty()
@@ -2961,12 +3105,14 @@ class ChatViewModelTest {
         viewModel.updateInputText("保留草稿")
         val failure = java.io.IOException("panel queue write failed")
         val failingQueue = object : com.promenar.infinity.data.chat.queue.ComposerQueueStore by queuePort {
-            override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>): com.promenar.infinity.data.chat.queue.QueuedMessage = throw failure
+            override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>, origin: com.promenar.infinity.data.chat.queue.PanelMessageOrigin?): com.promenar.infinity.data.chat.queue.QueuedMessage = throw failure
         }
         ChatViewModel::class.java.getDeclaredField("composerQueueStore").apply { isAccessible = true }.set(viewModel, failingQueue)
 
-        val result = runCatching { viewModel.sendPanelMessage("s1", "面板消息") }
+        val result = runCatching { viewModel.sendPanelMessage("s1", "面板消息", PanelMessageOrigin("p", 1)) }
 
+        advanceUntilIdle()
+        assertThat(panelEvents).containsExactly(Triple("s1", PanelMessageOrigin("p", 1), false))
         assertThat(result.exceptionOrNull()).isInstanceOf(java.io.IOException::class.java)
         assertThat(result.exceptionOrNull()?.message).isEqualTo("panel queue write failed")
         assertThat(queueStore.snapshot("s1").items).isEmpty()
@@ -3050,18 +3196,20 @@ class ChatViewModelTest {
         viewModel.updateInputText("权限等待期间的草稿")
         fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
 
-        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.STARTED)
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息", PanelMessageOrigin("p", 1))).isEqualTo(PanelSendResult.STARTED)
         advanceUntilIdle()
+        assertThat(panelEvents).isEmpty()
         assertThat(savedMessages).isEmpty()
         assertThat(protocolRequestCount).isEqualTo(0)
         val token = requireNotNull(viewModel.notificationPermissionRequests.value).taskId
         notificationPermissionState = notificationPermissionState!!.copy(alreadyAsked = true)
         viewModel.onNotificationPermissionResult(token, granted = false)
-        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating }
+        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating && panelEvents.size == 1 }
 
         assertThat(savedMessages.map { it.first }.single { it.role == MessageRole.USER }.content).isEqualTo("面板消息")
         assertThat(viewModel.inputText.value).isEqualTo("权限等待期间的草稿")
         assertThat(foregroundTrackedTasks).isEmpty()
+        assertThat(panelEvents).containsExactly(Triple("s1", PanelMessageOrigin("p", 1), true))
     }
 
     @Test
@@ -3178,7 +3326,7 @@ class ChatViewModelTest {
         seedSession(); advanceUntilIdle()
         val doc = MessageDocumentAttachment("large", "large.txt", "text/plain", "中".repeat(200_000), 600_000, "hash", 200_000)
         ApplicationProvider.getApplicationContext<TestInfinityApplication>().getSharedPreferences("infinity_settings", 0).edit().putInt("model_info_gpt-4o_context", 128_000).commit()
-        queueStore.enqueue("s1", "queued", documents = listOf(doc))
+        queueStore.enqueue("s1", "queued", documents = listOf(doc), origin = PanelMessageOrigin("p", 1))
         queueStore.pause("s1", com.promenar.infinity.data.chat.queue.QueuePauseReason.FAILED)
         viewModel.updateInputText("保留草稿")
         viewModel.resumeComposerQueue()
@@ -3187,6 +3335,8 @@ class ChatViewModelTest {
         assertThat(viewModel.composerQueue.value.pauseReason).isEqualTo(ComposerQueuePauseReason.FAILED)
         assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
         assertThat(savedMessages).isEmpty()
+        assertThat(queueStore.snapshot("s1").items.single().origin).isEqualTo(PanelMessageOrigin("p", 1))
+        assertThat(panelEvents).isEmpty()
     }
 
     @Test

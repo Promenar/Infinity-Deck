@@ -1,6 +1,8 @@
 package com.promenar.infinity.domain.mediagen
 
 import java.math.BigDecimal
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -11,6 +13,14 @@ class MediaGenerationContractsTest {
     ))
     private fun request(mode: GenerationMode = GenerationMode.TEXT, inputs: List<MediaInput> = emptyList()) =
         MediaGenerationRequest("video", mode, "风吹过树林", inputs, "project/shot", sessionId = "session", outputDir = "takes")
+
+    @Test fun `请求参数保留 JSON 类型且旧请求缺省为空`() {
+        val values = mapOf("steps" to JsonPrimitive(12), "fast" to JsonPrimitive(true), "mode" to JsonPrimitive("fast"))
+        val typed = request().copy(params = values)
+        assertEquals(typed, Json.decodeFromString<MediaGenerationRequest>(Json.encodeToString(typed)))
+        val legacy = JsonObject(Json.parseToJsonElement(Json.encodeToString(typed)).jsonObject - "params")
+        assertTrue(Json.decodeFromJsonElement<MediaGenerationRequest>(legacy).params.isEmpty())
+    }
 
     @Test fun `空提示词与不支持的规格分别列出`() {
         val result = validateRequest(channel, request().copy(prompt = "  ", specs = GenerationSpecs(resolution = "4k", durationSeconds = 20, width = 0, height = 2, frames = -1)))

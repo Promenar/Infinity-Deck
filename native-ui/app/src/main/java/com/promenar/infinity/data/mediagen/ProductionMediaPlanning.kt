@@ -5,6 +5,7 @@ import com.promenar.infinity.data.mediagen.comfy.ComfyConfigurationCodec
 import com.promenar.infinity.data.mediagen.comfy.validateFilledComfySpecs
 import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.production.Shot
+import com.promenar.infinity.data.production.isActive
 import com.promenar.infinity.domain.mediagen.*
 import kotlinx.serialization.json.*
 
@@ -62,13 +63,17 @@ internal fun comfyExpectedOutputCount(template: ComfyTemplate): Int = template.s
 
 internal fun validateComfyShotPlan(template: ComfyTemplate, request: MediaGenerationRequest): List<String> = try {
     require(template.locked)
-    val values = mutableMapOf(SlotKind.PROMPT to listOf(request.prompt))
+    val values = mutableMapOf<SlotKind, List<String>>()
+    if (template.role != TemplateRole.DERIVE || template.slots.any { it.kind == SlotKind.PROMPT }) values[SlotKind.PROMPT] = listOf(request.prompt)
     request.inputs.forEach { input ->
-        val kind = when (input.role) {
+        val kind = when {
+            input.kind == InputKind.VIDEO -> SlotKind.INPUT_VIDEO
+            else -> when (input.role) {
             InputRole.FIRST_FRAME -> SlotKind.FIRST_FRAME
             InputRole.LAST_FRAME -> SlotKind.LAST_FRAME
             InputRole.REFERENCE_VOICE -> SlotKind.REFERENCE_AUDIO
             InputRole.REFERENCE -> if (input.kind == InputKind.IMAGE) SlotKind.REFERENCE_IMAGES else SlotKind.REFERENCE_AUDIO
+        }
         }
         values[kind] = values[kind].orEmpty() + input.location
     }
@@ -76,14 +81,24 @@ internal fun validateComfyShotPlan(template: ComfyTemplate, request: MediaGenera
     request.specs.seed?.let { values[SlotKind.SEED] = listOf(it.toString()) }
     request.specs.width?.let { values[SlotKind.WIDTH] = listOf(it.toString()) }
     request.specs.height?.let { values[SlotKind.HEIGHT] = listOf(it.toString()) }
-    require(request.specs.durationSeconds == null || request.specs.frames != null)
-    validateFilledComfySpecs(template, fillComfyWorkflow(template, values))
+    if (template.slots.any { it.kind == SlotKind.DURATION }) (request.specs.durationSecondsExact?.toString() ?: request.specs.durationSeconds?.toString())?.let { values[SlotKind.DURATION] = listOf(it) }
+    require(request.specs.durationSeconds == null || request.specs.frames != null || template.slots.any { it.kind == SlotKind.DURATION })
+    require(request.specs.durationSecondsExact == null || template.slots.any { it.kind == SlotKind.DURATION })
+    validateFilledComfySpecs(template, fillComfyWorkflow(template, values, request.params))
     emptyList()
 } catch (_: Exception) { listOf("模板尚未锁定或输入与工作流槽位不兼容") }
 
 internal suspend fun productionRequestAvailable(request: MediaGenerationRequest, store: com.promenar.infinity.data.production.ShotGenerationStore): Boolean {
+    val asset = com.promenar.infinity.data.production.ProductionAssetSourceRef.parse(request.sourceRef)
+    if (asset != null) return store.load(request.sessionId)?.production?.let { project -> project.id == asset.productionId && project.assets.any { it.id == asset.assetId } } == true
     val ref = com.promenar.infinity.data.production.ProductionSourceRef.parse(request.sourceRef) ?: return true
     return store.load(request.sessionId)?.production?.let { project ->
-        project.id == ref.productionId && com.promenar.infinity.data.production.ProductionRules.generationRejection(project, ref.episodeId, ref.shotCode) == null
+        val context = request.productionContext
+        val chainAvailable = context?.chainId?.let { id ->
+            project.seasons.flatMap { it.episodes }.firstOrNull { it.id == ref.episodeId }?.scenes?.flatMap { it.shots }?.firstOrNull { it.code == ref.shotCode }?.chains?.any {
+                it.id == id && it.isActive() && it.attempt == context.attempt && it.templateFingerprint == context.templateFingerprint
+            } == true
+        } ?: true
+        project.id == ref.productionId && chainAvailable && com.promenar.infinity.data.production.ProductionRules.generationRejection(project, ref.episodeId, ref.shotCode) == null
     } == true
 }

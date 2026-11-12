@@ -18,13 +18,17 @@ internal fun reviewFixture(): ProductionSnapshot {
         cuts = listOf(CutVersion("c", episode.id, 1, 10, listOf(CutClip(episode.id, shot.code, seconds = 3.0)))), changeRequests = listOf(request)), 1, ManifestSync.InSync)
 }
 internal fun reviewApply(s: ProductionSnapshot, action: ProductionUserAction, now: Long = s.production.updatedAt + 1) = ProductionUserEngine.apply(s, s.revision, action, now)
+internal fun reviewSend(s: ProductionSnapshot, round: Int = s.production.nextReviewRound, sentAt: Long = s.production.updatedAt + 1): ProductionSnapshot {
+    val queued = reviewApply(s, ProductionUserAction.MarkReviewQueued(round, sentAt), sentAt)
+    return reviewApply(queued, ProductionUserAction.MarkReviewSent(round, sentAt), sentAt)
+}
 internal fun reviewShot(s: ProductionSnapshot) = s.production.seasons.single().episodes.single().scenes.single().shots.single()
 
 class ProductionReviewTest {
     private val a = ReviewTarget.take("S1E01", "SC01-01", "t1")
     private val b = ReviewTarget.take("S1E01", "SC01-01", "t2")
     private fun verdict(s: ProductionSnapshot, target: ReviewTarget, kind: ReviewKind) = reviewApply(s, ProductionUserAction.Review(target, kind, null))
-    private fun sent(s: ProductionSnapshot) = reviewApply(s, ProductionUserAction.MarkReviewSent(s.production.nextReviewRound, s.production.updatedAt + 1))
+    private fun sent(s: ProductionSnapshot) = reviewSend(s)
 
     @Test fun `候选结论只保留最后一次并推导全部状态`() {
         var s = verdict(reviewFixture(), a, ReviewKind.APPROVE)
@@ -160,7 +164,7 @@ class ProductionReviewTest {
     @Test fun `发送归档轮次清理建议并拒绝冲突保留最多五十轮`() {
         var s = verdict(reviewFixture(), a, ReviewKind.REJECT)
         s = reviewApply(s, ProductionUserAction.Review(ReviewTarget.project(), ReviewKind.SUGGEST, "建议"))
-        assertThrows(ProductionRevisionConflictException::class.java) { reviewApply(s, ProductionUserAction.MarkReviewSent(2, 50)) }
+        assertThrows(ProductionRevisionConflictException::class.java) { reviewApply(s, ProductionUserAction.MarkReviewQueued(2, 50)) }
         s = sent(s)
         assertThat(s.production.nextReviewRound).isEqualTo(2)
         assertThat(s.production.reviewRounds.single().entries).hasSize(2)

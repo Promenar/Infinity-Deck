@@ -66,7 +66,7 @@ class ProductionCostAndOpenItemsTest {
     @Test fun `候选否决发送后有无新产出以及归档裁剪的结果一致`() {
         val target = ReviewTarget.take("S1E01", "SC01-01", "t1")
         val rejected = reviewApply(reviewFixture(), ProductionUserAction.Review(target, ReviewKind.REJECT, null), 30)
-        val sent = reviewApply(rejected, ProductionUserAction.MarkReviewSent(1, 40), 40)
+        val sent = reviewSend(rejected, 1, 40)
         val entry = sent.production.verdictOf(target)!!
         assertThat(isSentRejectionUnresolved(rejected.production, rejected.production.verdictOf(target)!!)).isFalse()
         assertThat(isSentRejectionUnresolved(sent.production, entry)).isTrue()
@@ -81,7 +81,7 @@ class ProductionCostAndOpenItemsTest {
         val targets = listOf(ReviewTarget.assetVersion("char", 2), ReviewTarget.script("S1E01"), ReviewTarget.scene("S1E01", "SC01"), ReviewTarget.cut("c"))
         targets.forEach { target ->
             val pending = reviewApply(reviewFixture(), ProductionUserAction.Review(target, ReviewKind.REJECT, null))
-            val sent = reviewApply(pending, ProductionUserAction.MarkReviewSent(1, 40))
+            val sent = reviewSend(pending, 1, 40)
             val entry = sent.production.verdictOf(target)!!
             assertThat(isSentRejectionUnresolved(sent.production, entry)).isTrue()
             val changed = when (target.kind) {
@@ -97,7 +97,7 @@ class ProductionCostAndOpenItemsTest {
     @Test fun `撤回临时批准恢复否决后依旧未结真实修改内容才消除`() {
         val target = ReviewTarget.script("S1E01")
         var s = reviewApply(reviewFixture(), ProductionUserAction.Review(target, ReviewKind.REJECT, null))
-        s = reviewApply(s, ProductionUserAction.MarkReviewSent(1, 30))
+        s = reviewSend(s, 1, 30)
         val old = s.production.verdictOf(target)!!
         s = reviewApply(s, ProductionUserAction.Review(target, ReviewKind.APPROVE, null))
         s = reviewApply(s, ProductionUserAction.RetractReview(target, ReviewKind.APPROVE))
@@ -110,7 +110,7 @@ class ProductionCostAndOpenItemsTest {
     @Test fun `同路径剧本重新登记也推进内容修订`() {
         val target = ReviewTarget.script("S1E01")
         var s = reviewApply(reviewFixture(), ProductionUserAction.Review(target, ReviewKind.REJECT, null))
-        s = reviewApply(s, ProductionUserAction.MarkReviewSent(1, 30))
+        s = reviewSend(s, 1, 30)
         val old = s.production.verdictOf(target)!!
         val op = kotlinx.serialization.json.Json.parseToJsonElement("""{"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"雾港","script_path":"p/script.md"}""") as kotlinx.serialization.json.JsonObject
         val changed = ProductionEngine.update(s, listOf(op), s.revision, 60) { true }
