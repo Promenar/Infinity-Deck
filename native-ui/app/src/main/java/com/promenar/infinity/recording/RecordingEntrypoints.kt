@@ -44,10 +44,15 @@ class RecordingTileService : TileService() {
             val intent = recordingIntent(this, autoStart = true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (Build.VERSION.SDK_INT >= 34) {
                 startActivityAndCollapse(PendingIntent.getActivity(this, 400, intent, PendingIntent.FLAG_IMMUTABLE))
-            } else startActivityAndCollapse(intent)
+            } else collapseAndStartLegacy(intent)
         }
         if (isLocked) unlockAndRun(open) else open.run()
     }
+
+    /** API 33 及以下只有 Intent 版本。 */
+    @Suppress("DEPRECATION")
+    @android.annotation.SuppressLint("StartActivityAndCollapseDeprecated")
+    private fun collapseAndStartLegacy(intent: Intent) = startActivityAndCollapse(intent)
 }
 
 class RecordingService : Service() {

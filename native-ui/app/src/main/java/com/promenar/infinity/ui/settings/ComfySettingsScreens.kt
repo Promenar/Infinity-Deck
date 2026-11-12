@@ -203,7 +203,7 @@ internal fun ComfyHostFormScreenContent(
                 OutlinedTextField(value = if (draft.authKind == ComfyAuthKind.BEARER) token else password,
                     onValueChange = { if (draft.authKind == ComfyAuthKind.BEARER) token = it else password = it },
                     label = { Text(stringResource(if (draft.authKind == ComfyAuthKind.BEARER) R.string.media_settings_token else R.string.media_settings_password)) },
-                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = com.promenar.infinity.ui.common.SecretKeyboardOptions,
                     singleLine = true, enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp))
             }

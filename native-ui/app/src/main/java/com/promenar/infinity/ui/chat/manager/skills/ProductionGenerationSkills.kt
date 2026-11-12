@@ -32,7 +32,7 @@ class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) 
 }
 class ProductionGenerationTasksSkill(private val store: () -> ShotGenerationStore, private val queue: () -> MediaGenerationQueue) : ProductionGenerationTool(
     "production_generation_tasks", "查看当前制作项目的生成任务；可用 episode_id、shot_code 筛选。limit 为1～100，offset 为非负整数。",
-    """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}},"additionalProperties":false}""", ToolRisk.SAFE_READ) {
+    """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"limit":{"type":"integer"},"offset":{"type":"integer"}},"additionalProperties":false}""", ToolRisk.SAFE_READ) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         arguments(args, emptySet(), setOf("episode_id", "shot_code", "limit", "offset"))
         val episode = if ("episode_id" in args) stringArgument(args, "episode_id") else null

@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -137,7 +138,7 @@ internal fun ProductionShotDetail(
                         ProductionBlock {
                             ProductionValueRow(asset?.name ?: appearance.characterAssetId, stringResource(R.string.p2_reference_pack), onClick = { onOpenCharacter(appearance.characterAssetId) })
                             ProductionValueRow(stringResource(R.string.p2_look), look?.name ?: stringResource(R.string.p2_missing_look), enabled = !working) { lookCharacter = appearance.characterAssetId; sheet = PlanningSheet.LOOK }
-                            if (look != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (look != null) Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 look.slots.forEach { slot ->
                                     InfinityChip(slot.displayName(), selected = slot.id in appearance.referenceSlotIds, enabled = !working, onClick = {
                                         val updated = appearance.toggleSlot(look, slot.id)

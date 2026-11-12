@@ -106,13 +106,14 @@ internal fun RecordingSettingsScreen(
                 }
             }
             item {
+                val tileLabel = stringResource(R.string.recording_title)
                 InfinitySettingsSection(title = stringResource(R.string.recording_shortcuts)) {
                     if (Build.VERSION.SDK_INT >= 33) {
                         InfinitySettingsItem(title = stringResource(R.string.recording_add_tile), onClick = {
                             runCatching {
                                 context.getSystemService(StatusBarManager::class.java).requestAddTileService(
                                     ComponentName(context, RecordingTileService::class.java),
-                                    context.getString(R.string.recording_title),
+                                    tileLabel,
                                     Icon.createWithResource(context, R.drawable.ic_recording_mic),
                                     context.mainExecutor,
                                 ) { }
