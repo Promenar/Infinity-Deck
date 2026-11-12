@@ -34,10 +34,10 @@ class ProductionMigrationTest {
                 schema.getValue("setupQueries").jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
                 db.version = 37
             }
-            val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_37_38_PRODUCTION).allowMainThreadQueries().build()
+            val room = Room.databaseBuilder(context, InfinityDatabase::class.java, name).addMigrations(MIGRATION_37_38_PRODUCTION, MIGRATION_38_39_MEDIA_GENERATION).allowMainThreadQueries().build()
             try {
                 val db = room.openHelper.writableDatabase
-                assertThat(db.version).isEqualTo(38)
+                assertThat(db.version).isEqualTo(39)
                 assertThat(db.query("PRAGMA foreign_key_list(session_productions)").use { it.count }).isEqualTo(2)
                 assertThat(db.query("SELECT count(*) FROM productions").use { it.moveToFirst(); it.getInt(0) }).isEqualTo(0)
             } finally { room.close() }

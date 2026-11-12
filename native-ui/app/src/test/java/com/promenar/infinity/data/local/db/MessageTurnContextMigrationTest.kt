@@ -51,14 +51,14 @@ class MessageTurnContextMigrationTest {
                 sqlite.version = 31
             }
             fun open() = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION, MIGRATION_38_39_MEDIA_GENERATION).allowMainThreadQueries().build()
             suspend fun withDatabase(block: suspend (InfinityDatabase) -> Unit) {
                 val room = open()
                 try { block(room) } finally { room.close() }
             }
             withDatabase { room ->
                 val sqlite = room.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(38)
+                assertThat(sqlite.version).isEqualTo(39)
                 assertThat(room.messageDao().getById("legacy")!!.turnContext).isNull()
                 assertThat(room.messageDao().getById("legacy")!!.requestInstruction).isNull()
                 sqlite.query("PRAGMA table_info(messages)").use { cursor ->

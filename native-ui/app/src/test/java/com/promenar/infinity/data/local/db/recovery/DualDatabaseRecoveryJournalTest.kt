@@ -88,7 +88,7 @@ class DualDatabaseRecoveryJournalTest {
     }
 
     @Test
-    fun `发布journal接受v18至v34可信候选并拒绝未知身份`() {
+    fun `发布journal接受v18至v39可信候选并拒绝未知身份`() {
         val root = Files.createTempDirectory("dual-db-journal-schema")
         try {
             val journal = FileDualDatabaseRecoveryJournal(root, DigestAuthenticator)
@@ -105,7 +105,8 @@ class DualDatabaseRecoveryJournalTest {
             )
             listOf(CURRENT_V18_IDENTITY, CURRENT_V19_IDENTITY, CURRENT_V20_IDENTITY, CURRENT_V21_IDENTITY,
                 CURRENT_V22_IDENTITY, CURRENT_V23_IDENTITY, CURRENT_V24_IDENTITY, CURRENT_V25_IDENTITY,
-                CURRENT_V26_IDENTITY, CURRENT_V27_IDENTITY, CURRENT_V28_IDENTITY, CURRENT_V29_IDENTITY, CURRENT_V30_IDENTITY, CURRENT_V31_IDENTITY, CURRENT_V32_IDENTITY, CURRENT_V33_IDENTITY, CURRENT_V34_IDENTITY, CURRENT_V35_IDENTITY).forEach { identity ->
+                CURRENT_V26_IDENTITY, CURRENT_V27_IDENTITY, CURRENT_V28_IDENTITY, CURRENT_V29_IDENTITY, CURRENT_V30_IDENTITY, CURRENT_V31_IDENTITY, CURRENT_V32_IDENTITY, CURRENT_V33_IDENTITY, CURRENT_V34_IDENTITY, CURRENT_V35_IDENTITY,
+                CURRENT_V36_IDENTITY, CURRENT_V37_IDENTITY, CURRENT_V38_IDENTITY, CURRENT_V39_IDENTITY).forEach { identity ->
                 journal.write(publishing.copy(candidateRoomIdentity = identity))
                 assertThat(journal.read()?.candidateRoomIdentity).isEqualTo(identity)
             }

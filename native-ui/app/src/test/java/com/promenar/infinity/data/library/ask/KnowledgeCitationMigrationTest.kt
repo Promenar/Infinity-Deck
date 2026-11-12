@@ -2,6 +2,7 @@ package com.promenar.infinity.data.library.ask
 
 import com.promenar.infinity.data.local.db.MIGRATION_36_37_KEYCHAIN
 import com.promenar.infinity.data.local.db.MIGRATION_37_38_PRODUCTION
+import com.promenar.infinity.data.local.db.MIGRATION_38_39_MEDIA_GENERATION
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -55,10 +56,10 @@ class KnowledgeCitationMigrationTest {
                 sqlite.version = 32
             }
             val db = Room.databaseBuilder(context, InfinityDatabase::class.java, name)
-                .addMigrations(MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION).allowMainThreadQueries().build()
+                .addMigrations(MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36_TIMELINE, MIGRATION_36_37_KEYCHAIN, MIGRATION_37_38_PRODUCTION, MIGRATION_38_39_MEDIA_GENERATION).allowMainThreadQueries().build()
             try {
                 val sqlite = db.openHelper.writableDatabase
-                assertThat(sqlite.version).isEqualTo(38)
+                assertThat(sqlite.version).isEqualTo(39)
                 assertThat(db.messageDao().getById("m")!!.content).isEqualTo("原文")
                 val repository = RoomKnowledgeCitationRepository(db)
                 val first = KnowledgeCitationEntity("c1", "d1", 2, "v1", "CHAT", "s", "m", null, "K1", 10)

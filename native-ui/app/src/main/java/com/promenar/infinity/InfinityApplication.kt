@@ -1423,6 +1423,26 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.rag.PreferencesKgUsageStore(getSharedPreferences("pet_usage", MODE_PRIVATE))
     }
 
+    val mediaUsageRepository by lazy { com.promenar.infinity.data.mediagen.queue.MediaUsageRepository(database.mediaGenerationDao()) }
+
+    @Volatile
+    var mediaGenerationModule: com.promenar.infinity.data.mediagen.queue.MediaGenerationModule? = null
+        private set
+
+    /** 主控在真实通道注册表和后端创建后调用；预算策略缺省逐次批准。 */
+    @Synchronized
+    fun installMediaGeneration(
+        registry: com.promenar.infinity.domain.mediagen.MediaChannelRegistry,
+        bindings: List<com.promenar.infinity.data.mediagen.queue.MediaBackendBinding>,
+        policy: com.promenar.infinity.domain.mediagen.AutoSubmitPolicy = com.promenar.infinity.domain.mediagen.RequireApproval,
+        concurrency: com.promenar.infinity.data.mediagen.queue.MediaQueueConcurrency = com.promenar.infinity.data.mediagen.queue.MediaQueueConcurrency(),
+    ): com.promenar.infinity.data.mediagen.queue.MediaGenerationModule {
+        check(startupState.value == BackupStartupState.Ready) { "MEDIA_GENERATION_REQUIRES_READY_STARTUP" }
+        check(mediaGenerationModule == null) { "MEDIA_GENERATION_ALREADY_INSTALLED" }
+        return com.promenar.infinity.data.mediagen.queue.MediaGenerationModule(this, database, registry, bindings, policy, concurrency)
+            .also { mediaGenerationModule = it; it.start() }
+    }
+
     val tokenStatsRepository: ITokenStatsRepository by lazy {
         com.promenar.infinity.data.subagent.SubagentTokenStatsRepository(TokenStatsRepository(
             database.messageDao(), kgUsageStore,
@@ -2446,6 +2466,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 }
                 startupIssueManager.recover(StartupStep.MODEL_CATALOG, StartupIssueScope.subsystem(StartupSubsystem.MODEL_CATALOG)) { startModelCatalogUpdates() }
                 _startupState.value = BackupStartupState.Ready
+                mediaGenerationModule?.resume()
                 if (skillStoreMonitorJob?.isActive != true) {
                     skillStoreMonitorJob = startupScope.launch(Dispatchers.IO) {
                         try {

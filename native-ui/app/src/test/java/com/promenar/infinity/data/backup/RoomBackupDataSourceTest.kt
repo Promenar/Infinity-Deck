@@ -88,6 +88,54 @@ import kotlinx.serialization.json.jsonPrimitive
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [33])
 class RoomBackupDataSourceTest {
+    @Test fun `全量恢复旧备份保留本机在途媒体任务和费用`() = runBlocking {
+        verifyMediaRuntimeSurvivesRestore(layered = false)
+    }
+
+    @Test fun `核心层恢复历史任务同ID冲突保留本机远端事实`() = runBlocking {
+        verifyMediaRuntimeSurvivesRestore(layered = true)
+    }
+
+    private suspend fun verifyMediaRuntimeSurvivesRestore(layered: Boolean) {
+        emptyWorkspaceBackup().wipe()
+        val channel = com.promenar.infinity.domain.mediagen.MediaChannel("c", com.promenar.infinity.domain.mediagen.MediaGroup.VIDEO,
+            com.promenar.infinity.domain.mediagen.MediaCapabilities(setOf(com.promenar.infinity.domain.mediagen.GenerationMode.TEXT)))
+        val task = com.promenar.infinity.domain.mediagen.MediaTask("media-task",
+            com.promenar.infinity.domain.mediagen.MediaGenerationRequest("c", com.promenar.infinity.domain.mediagen.GenerationMode.TEXT, "树林", emptyList(), "project/shot"),
+            null, state = com.promenar.infinity.domain.mediagen.MediaTaskState.COMPLETED, outputPaths = listOf("takes/a.mp4"))
+        val history = com.promenar.infinity.data.mediagen.queue.PersistentMediaTask(task, channel, "binding", "provider", "model", 1)
+        val store = com.promenar.infinity.data.mediagen.queue.RoomMediaTaskStore(db)
+        store.save(history)
+        val source = newDataSource()
+        val cache = Files.createTempDirectory(sourceBase, "media-restore")
+        try {
+            val codec = DefaultBackupPackageCodec()
+            val streamFile = cache.resolve("media.iwb")
+            val legacy = if (layered) {
+                val snapshot = source.snapshotTo(setOf(BackupLayer.CORE), cache)
+                try { Files.newOutputStream(streamFile).use { codec.encodeTo(snapshot, BackupOptions(CANONICAL_CONTENT), it) } }
+                finally { snapshot.wipe() }
+                null
+            } else {
+                val snapshot = source.snapshot(CANONICAL_CONTENT)
+                val root = Json.parseToJsonElement(snapshot.database.decodeToString()).jsonObject
+                val tables = root.getValue("tables").jsonObject - "media_generation_tasks" - "media_generation_usage"
+                val old = JsonObject(root + ("schemaVersion" to JsonPrimitive(20)) + ("tables" to JsonObject(tables))).toString().toByteArray()
+                validated(snapshot.copy(databaseSchemaVersion = 20), database = old)
+            }
+            val running = history.copy(task = task.copy(state = com.promenar.infinity.domain.mediagen.MediaTaskState.RUNNING, remoteId = "remote-id"))
+            val unknown = history.copy(task = task.copy(id = "media-unknown", state = com.promenar.infinity.domain.mediagen.MediaTaskState.RESULT_UNKNOWN))
+            val fee = com.promenar.infinity.data.mediagen.queue.MediaUsageEntry("charged", "provider", "model", "project/shot", null, 2)
+            store.save(running, fee)
+            store.save(unknown)
+            if (legacy != null) legacy.use { source.restore(it) }
+            else Files.newInputStream(streamFile).use { codec.decodeFrom(it, null, cache).use { decoded -> source.restore(decoded) } }
+            assertThat(store.get(task.id)).isEqualTo(running)
+            assertThat(store.get("media-unknown")).isEqualTo(unknown)
+            assertThat(db.mediaGenerationDao().usage().single().toEntry()).isEqualTo(fee)
+        } finally { BackupStreams.deleteTree(cache) }
+    }
+
     @Test
     fun `完整备份保留图谱来源向量字节全文索引和完成标记`() = runBlocking {
         seedCompleteGraph()

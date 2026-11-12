@@ -1,6 +1,12 @@
 package com.promenar.infinity.domain.mediagen
 
 import java.math.BigDecimal
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 /** 生成层使用的不透明标识由上游维护，不解析其内部结构。 */
 enum class MediaGroup { IMAGE, VIDEO, AUDIO }
@@ -10,6 +16,7 @@ enum class InputRole { REFERENCE, FIRST_FRAME, LAST_FRAME, REFERENCE_VOICE }
 enum class PromptFormat { H3, SEEDANCE, GENERIC }
 enum class CharacterReferenceMode { COMPOSITE, SEPARATE }
 
+@Serializable
 data class MediaCapabilities(
     val modes: Set<GenerationMode>,
     val maxImages: Int = 0,
@@ -31,8 +38,11 @@ data class MediaCapabilities(
     }
 }
 
+@Serializable
 data class MediaChannel(val id: String, val group: MediaGroup, val capabilities: MediaCapabilities)
+@Serializable
 data class MediaInput(val location: String, val kind: InputKind, val role: InputRole)
+@Serializable
 data class GenerationSpecs(
     val resolution: String? = null,
     val durationSeconds: Int? = null,
@@ -41,6 +51,7 @@ data class GenerationSpecs(
     val frames: Int? = null,
     val seed: Long? = null,
 )
+@Serializable
 data class MediaGenerationRequest(
     val channelId: String,
     val mode: GenerationMode,
@@ -94,28 +105,40 @@ fun validateRequest(channel: MediaChannel, request: MediaGenerationRequest): Req
         }
         if (!validRole || !validMode || input.location.isBlank()) invalid.add(input)
     }
-    if (request.mode == GenerationMode.FIRST_FRAME || request.mode == GenerationMode.FIRST_LAST_FRAME) {
+    val specs = buildList {
+        if (request.prompt.isBlank()) add("prompt")
         val first = request.inputs.count { it.role == InputRole.FIRST_FRAME }
         val last = request.inputs.count { it.role == InputRole.LAST_FRAME }
-        if (first != 1 || last != if (request.mode == GenerationMode.FIRST_LAST_FRAME) 1 else 0) {
-            invalid.addAll(request.inputs.filter { it !in invalid })
-            if (request.inputs.isEmpty()) invalid.add(MediaInput("", InputKind.IMAGE, InputRole.FIRST_FRAME))
+        when (request.mode) {
+            GenerationMode.FIRST_FRAME -> if (first != 1 || last != 0) add("firstFrameCount")
+            GenerationMode.FIRST_LAST_FRAME -> {
+                if (first != 1) add("firstFrameCount")
+                if (last != 1) add("lastFrameCount")
+            }
+            GenerationMode.REFERENCE -> if (request.inputs.isEmpty()) add("referenceRequired")
+            else -> Unit
         }
-    }
-    val specs = buildList {
-        request.specs.resolution?.let { if (caps.resolutions.isNotEmpty() && it !in caps.resolutions) add("resolution") }
-        request.specs.durationSeconds?.let { if (it <= 0 || caps.minDurationSeconds?.let { min -> it < min } == true || caps.maxDurationSeconds?.let { max -> it > max } == true) add("durationSeconds") }
+        request.specs.resolution?.let {
+            if (it.isBlank() || (caps.resolutions.isNotEmpty() && it !in caps.resolutions)) add("resolution")
+        }
+        request.specs.durationSeconds?.let {
+            if (it <= 0 || caps.minDurationSeconds?.let { min -> it < min } == true ||
+                caps.maxDurationSeconds?.let { max -> it > max } == true) add("durationSeconds")
+        }
         if (request.specs.width?.let { it <= 0 } == true) add("width")
         if (request.specs.height?.let { it <= 0 } == true) add("height")
+        if ((request.specs.width == null) != (request.specs.height == null)) add("dimensions")
         if (request.specs.frames?.let { it <= 0 } == true) add("frames")
     }
     return RequestValidation(channel.id != request.channelId, request.mode !in caps.modes, excess, invalid, specs)
 }
 
-data class Money(val amount: BigDecimal, val currency: String) {
+@Serializable
+data class Money(@Serializable(with = DecimalStringSerializer::class) val amount: BigDecimal, val currency: String) {
     init { require(amount >= BigDecimal.ZERO && currency.isNotBlank()) }
 }
-data class UnitPrice(val amount: BigDecimal, val currency: String) {
+@Serializable
+data class UnitPrice(@Serializable(with = DecimalStringSerializer::class) val amount: BigDecimal, val currency: String) {
     init { require(amount >= BigDecimal.ZERO && currency.isNotBlank()) }
     fun cost(units: Long): Money { require(units >= 0); return Money(amount.multiply(BigDecimal.valueOf(units)), currency) }
 }
@@ -123,6 +146,57 @@ fun costFromUsage(price: UnitPrice?, units: Long?): Money? = when {
     price == null -> null
     units == null -> null
     else -> price.cost(units)
+}
+
+/** 金额以十进制字符串持久化，避免二进制浮点累计误差。 */
+object DecimalStringSerializer : KSerializer<BigDecimal> {
+    override val descriptor = PrimitiveSerialDescriptor("DecimalString", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: BigDecimal) = encoder.encodeString(value.toPlainString())
+    override fun deserialize(decoder: Decoder): BigDecimal = decoder.decodeString().toBigDecimal()
+}
+
+/** usageKey 直接对应后端的用量键；unitsPerPrice 可表达每百万 token、每千字符等单价。 */
+data class BillingItem(
+    val usageKey: String,
+    val price: UnitPrice,
+    val unitsPerPrice: BigDecimal = BigDecimal.ONE,
+    val fixedUnits: BigDecimal? = null,
+) {
+    init {
+        require(usageKey.isNotBlank() && unitsPerPrice > BigDecimal.ZERO)
+        require(fixedUnits == null || fixedUnits >= BigDecimal.ZERO)
+    }
+}
+
+class MediaPricing(val items: List<BillingItem>) {
+    init {
+        require(items.isNotEmpty())
+        require(items.map { it.usageKey }.distinct().size == items.size)
+        require(items.map { it.price.currency }.distinct().size == 1)
+    }
+    /** 任一计费项缺少用量时，合计费用未知。零用量必须由后端明确提供。 */
+    fun cost(usage: Map<String, Long>): Money? {
+        var sum = BigDecimal.ZERO
+        for (item in items) {
+            val units = item.fixedUnits ?: usage[item.usageKey]?.let(BigDecimal::valueOf) ?: return null
+            require(units >= BigDecimal.ZERO)
+            sum = sum.add(item.price.amount.multiply(units).divide(item.unitsPerPrice, java.math.MathContext.DECIMAL128))
+        }
+        return Money(sum, items.first().price.currency)
+    }
+}
+
+/** 读取器按不透明 sourceRef 定位项目；spent 应包含项目已经占用的预算。 */
+data class MediaBudget(val limit: Money, val spent: Money)
+fun interface MediaBudgetReader {
+    suspend fun readBudget(sourceRef: String): MediaBudget?
+}
+class WithinBudgetAutoSubmitPolicy(private val budgets: MediaBudgetReader) : AutoSubmitPolicy {
+    override suspend fun allowsAutoSubmit(sourceRef: String, estimate: Money): Boolean {
+        val budget = budgets.readBudget(sourceRef) ?: return false
+        return budget.limit.currency == estimate.currency && budget.spent.currency == estimate.currency &&
+            budget.spent.amount.add(estimate.amount) <= budget.limit.amount
+    }
 }
 
 fun interface AutoSubmitPolicy {
@@ -140,6 +214,7 @@ sealed interface RemoteStatus {
 }
 
 /** 远端产物：下载地址（ComfyUI 为 /view 查询串）与媒体种类。 */
+@Serializable
 data class RemoteOutput(val location: String, val kind: InputKind)
 
 /**

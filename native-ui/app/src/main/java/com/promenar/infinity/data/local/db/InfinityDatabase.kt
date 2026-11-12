@@ -72,6 +72,8 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
     entities = [
         com.promenar.infinity.data.local.db.entity.ScheduledTaskEntity::class,
         AgentEntity::class,
+        com.promenar.infinity.data.mediagen.queue.MediaTaskEntity::class,
+        com.promenar.infinity.data.mediagen.queue.MediaUsageEntity::class,
         com.promenar.infinity.data.memory.LongTermMemoryEntity::class,
         com.promenar.infinity.data.library.ask.KnowledgeCitationEntity::class,
         com.promenar.infinity.data.library.ask.MemoryEmbeddingEntity::class,
@@ -118,11 +120,12 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
         com.promenar.infinity.data.local.db.entity.ProductionEntity::class,
         com.promenar.infinity.data.local.db.entity.SessionProductionEntity::class,
     ],
-    version = 38,
+    version = 39,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class InfinityDatabase : RoomDatabase() {
+    abstract fun mediaGenerationDao(): com.promenar.infinity.data.mediagen.queue.MediaGenerationDao
     abstract fun knowledgeCitationDao(): com.promenar.infinity.data.library.ask.KnowledgeCitationDao
     abstract fun longTermMemoryDao(): com.promenar.infinity.data.memory.LongTermMemoryDao
     abstract fun scheduledTaskDao(): com.promenar.infinity.data.local.db.dao.ScheduledTaskDao

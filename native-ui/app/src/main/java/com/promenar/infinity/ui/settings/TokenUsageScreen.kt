@@ -94,6 +94,7 @@ fun TokenUsageScreen(
             }
         },
         onClear = viewModel::showClearConfirm,
+        onRetryMediaUsage = viewModel::retryMediaUsage,
     )
 }
 
@@ -103,6 +104,7 @@ internal fun TokenUsageScreenContent(
     onNavigateBack: () -> Unit = {},
     onRetry: () -> Unit = {},
     onClear: () -> Unit = {},
+    onRetryMediaUsage: () -> Unit = {},
 ) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.token_title),
@@ -144,6 +146,15 @@ internal fun TokenUsageScreenContent(
             }
         } else {
             GlobalStatsCard(state)
+
+            if (state.mediaUsageUnavailable) {
+                Text(stringResource(R.string.media_usage_load_failed), color = MaterialTheme.colorScheme.error)
+                InfinityRetryButton(onClick = onRetryMediaUsage)
+            }
+            if (state.mediaUsage.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(20.dp))
+                MediaUsageSection(state.mediaUsage)
+            }
 
             if (state.globalCache.requests > 0) {
                 Spacer(modifier = Modifier.height(12.dp))

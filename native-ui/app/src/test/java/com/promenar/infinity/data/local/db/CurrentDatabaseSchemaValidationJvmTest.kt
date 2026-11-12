@@ -43,22 +43,40 @@ class CurrentDatabaseSchemaValidationJvmTest {
     }
 
     @Test
-    fun completeExportedV18ThroughV38DatabasesPassBothProductionGates() = verify(Mutation.NONE)
+    fun `版本39的Room身份必须不同于版本38`() {
+        assertThat(GeneratedCurrentRoomSchemas.schemas.getValue(39).identityHash)
+            .isNotEqualTo(GeneratedCurrentRoomSchemas.schemas.getValue(38).identityHash)
+    }
+
+    @Test
+    fun completeExportedV18ThroughV39DatabasesPassBothProductionGates() = verify(Mutation.NONE)
 
     @Test
     fun productionMigrationChainFromV18PassesBothProductionGatesAtEveryVersion() {
         createLegacyDatabase()
         createCurrentDatabase(18, Mutation.NONE)
-        for (version in 18..38) {
+        for (version in 18..39) {
             for (gate in Gate.entries) {
                 val source = context.getDatabasePath("infinity_v2.db")
                 val originalBytes = source.readBytes()
                 validate(gate, version)
                 assertThat(source.readBytes()).isEqualTo(originalBytes)
             }
-            if (version < 38) migrateCurrentDatabase(version + 1)
+            if (version < 39) migrateCurrentDatabase(version + 1)
         }
     }
+
+    @Test
+    fun `版本39缺少媒体任务表时两个生产门禁均拒绝`() = verify(Mutation.MISSING_MEDIA_TASK_TABLE, 39..39)
+
+    @Test
+    fun `版本39缺少费用表时两个生产门禁均拒绝`() = verify(Mutation.MISSING_MEDIA_USAGE_TABLE, 39..39)
+
+    @Test
+    fun `版本39费用字段类型错误时两个生产门禁均拒绝`() = verify(Mutation.MEDIA_USAGE_COLUMN_TYPE, 39..39)
+
+    @Test
+    fun `版本39缺少媒体索引时两个生产门禁均拒绝`() = verify(Mutation.MISSING_MEDIA_USAGE_INDEX, 39..39)
 
     @Test
     fun matchingIdentityWithMissingTaskNodesTableFailsBothProductionGates() = verify(Mutation.MISSING_TABLE)
@@ -113,7 +131,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
     @Test
     fun matchingIdentityWithWrongFtsDeclarationFailsBothProductionGates() = verify(Mutation.FTS_DECLARATION)
 
-    private fun verify(mutation: Mutation, versions: IntRange = 18..38) {
+    private fun verify(mutation: Mutation, versions: IntRange = 18..39) {
         val failures = mutableListOf<String>()
         for (version in versions) {
             for (gate in Gate.entries) {
@@ -165,6 +183,8 @@ class CurrentDatabaseSchemaValidationJvmTest {
                 val table = entity.getValue("tableName").jsonPrimitive.content
                 if (table == "task_nodes" && mutation == Mutation.MISSING_TABLE) return@forEach
                 if (table == "long_term_memories" && mutation == Mutation.MISSING_LONG_TERM_MEMORY_TABLE) return@forEach
+                if (table == "media_generation_tasks" && mutation == Mutation.MISSING_MEDIA_TASK_TABLE) return@forEach
+                if (table == "media_generation_usage" && mutation == Mutation.MISSING_MEDIA_USAGE_TABLE) return@forEach
                 var sql = entity.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table)
                 if (table == "task_nodes") {
                     sql = when (mutation) {
@@ -177,6 +197,9 @@ class CurrentDatabaseSchemaValidationJvmTest {
                         Mutation.FOREIGN_KEY -> replaceChecked(sql, "ON DELETE CASCADE", "ON DELETE RESTRICT")
                         else -> sql
                     }
+                }
+                if (table == "media_generation_usage" && mutation == Mutation.MEDIA_USAGE_COLUMN_TYPE) {
+                    sql = replaceChecked(sql, "`amount` TEXT", "`amount` INTEGER")
                 }
                 if (table == "vectors_fts" && mutation == Mutation.FTS_DECLARATION) {
                     sql = replaceChecked(sql, "`content` TEXT NOT NULL", "`content` INTEGER")
@@ -212,6 +235,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
             36 -> MIGRATION_35_36_TIMELINE
             37 -> MIGRATION_36_37_KEYCHAIN
             38 -> MIGRATION_37_38_PRODUCTION
+            39 -> MIGRATION_38_39_MEDIA_GENERATION
             else -> error("数据库测试没有对应的生产迁移")
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -254,6 +278,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
             val index = element.jsonObject
             val name = index.getValue("name").jsonPrimitive.content
             if (name == "index_long_term_memories_updated_at" && mutation == Mutation.MISSING_LONG_TERM_MEMORY_INDEX) return@forEach
+            if (name == "index_media_generation_usage_provider_id_model_id" && mutation == Mutation.MISSING_MEDIA_USAGE_INDEX) return@forEach
             var sql = index.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table)
             if (name == "index_task_nodes_status") {
                 sql = when (mutation) {
@@ -294,6 +319,7 @@ class CurrentDatabaseSchemaValidationJvmTest {
 
     private enum class Mutation {
         NONE, MISSING_TABLE, MISSING_LONG_TERM_MEMORY_TABLE, MISSING_LONG_TERM_MEMORY_INDEX,
+        MISSING_MEDIA_TASK_TABLE, MISSING_MEDIA_USAGE_TABLE, MEDIA_USAGE_COLUMN_TYPE, MISSING_MEDIA_USAGE_INDEX,
         MISSING_COLUMN, RENAMED_COLUMN, COLUMN_TYPE, NULLABILITY, PRIMARY_KEY,
         DEFAULT_VALUE, MISSING_INDEX, RENAMED_INDEX, INDEX_UNIQUENESS, INDEX_COLUMN_ORDER, INDEX_SORT_ORDER,
         PARTIAL_INDEX, FOREIGN_KEY, FTS_DECLARATION,

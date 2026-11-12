@@ -186,16 +186,20 @@ class RoomBackupDataSource(
     private fun readLivePayload(layers: Set<BackupLayer>? = null): DatabaseBackupPayload {
         val sqlite = database.openHelper.writableDatabase
         return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, backupTables().associateWith { table ->
-            val ids = sqlite.query("SELECT rowid FROM `$table`" + selectedRowsSql(table, layers)).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+            val ids = sqlite.query("SELECT rowid FROM `$table`" + mediaSnapshotRowsSql(table, layers)).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
             object : AbstractList<JsonObject>() {
                 override val size get() = ids.size
                 override fun get(index: Int): JsonObject = sqlite.query("SELECT * FROM `$table` WHERE rowid = ?", arrayOf<Any>(ids[index])).use { cursor ->
                     if (!cursor.moveToFirst()) throw BackupValidationException("恢复验证期间本机记录发生变化")
-                    cursorRow(cursor, table)
+                    MediaQueueBackupPolicy.snapshotRow(table, cursorRow(cursor, table))
                 }
             }
         })
     }
+
+    private fun mediaSnapshotRowsSql(table: String, layers: Set<BackupLayer>?): String =
+        if (table == "media_generation_tasks" && (layers == null || BackupLayer.CORE in layers)) MediaQueueBackupPolicy.selection(table)
+        else selectedRowsSql(table, layers)
 
     private fun selectedRowsSql(table: String, layers: Set<BackupLayer>?): String {
         if (table == "kg_folder_settings") {
@@ -268,10 +272,13 @@ class RoomBackupDataSource(
         }
     }
 
-    private fun readDiskPayload(directory: Path, layers: Set<BackupLayer>? = null): DatabaseBackupPayload {
+    private fun readDiskPayload(directory: Path, layers: Set<BackupLayer>? = null, mediaHistoryOnly: Boolean = false): DatabaseBackupPayload {
         val tables = backupTables().associateWith { table ->
-            val entries = database.openHelper.writableDatabase.query("SELECT * FROM `$table`" + selectedRowsSql(table, layers)).use { cursor ->
-                BackupDatabaseRows.write(sequence { while (cursor.moveToNext()) yield(cursorRow(cursor, table)) }, directory, table, BackupLayer.CORE)
+            val entries = database.openHelper.writableDatabase.query("SELECT * FROM `$table`" + (if (mediaHistoryOnly) mediaSnapshotRowsSql(table, layers) else selectedRowsSql(table, layers))).use { cursor ->
+                BackupDatabaseRows.write(sequence { while (cursor.moveToNext()) {
+                    val row = cursorRow(cursor, table)
+                    yield(if (mediaHistoryOnly) MediaQueueBackupPolicy.snapshotRow(table, row) else row)
+                } }, directory, table, BackupLayer.CORE)
             }
             BackupDatabaseRows.read(entries.map { it.blob })
         }
@@ -282,7 +289,7 @@ class RoomBackupDataSource(
         val root = Files.createTempDirectory(directory, "snapshot-")
         try {
             requireWorkspaceMutationJournalRecovered()
-            var payload = database.withTransaction { readDiskPayload(root, layers) }
+            var payload = database.withTransaction { readDiskPayload(root, layers, mediaHistoryOnly = true) }
             val policy = BackupLayerPolicy.Index(payload.tables)
             var prefs = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES))
             val skipped = mutableListOf<BackupSkippedItem>()
@@ -701,7 +708,7 @@ class RoomBackupDataSource(
         val sqlite = database.openHelper.writableDatabase
         val budget = MaterializationBudget(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
         val tables = backupTables().associateWith { table ->
-            sqlite.query("SELECT * FROM `$table`" + selectedRowsSql(table, null)).use { cursor -> cursorRows(cursor, budget, table) }
+            sqlite.query("SELECT * FROM `$table`" + mediaSnapshotRowsSql(table, null)).use { cursor -> cursorRows(cursor, budget, table).map { MediaQueueBackupPolicy.snapshotRow(table, it) } }
         }
         return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables).also(::validateLongTermMemories)
     }
@@ -902,13 +909,16 @@ class RoomBackupDataSource(
         else validated.blobs["preferences.json"]?.open()?.use { sanitizePreferences(json.decodeFromStream<BackupPreferenceSnapshot>(it), rejectUnsafe = true) }
             ?: throw BackupValidationException("核心层缺少偏好")
 
-    private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload {
+    private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload =
+        parseValidatedDatabaseContent(validated).also { MediaQueueBackupPolicy.validateRows(it.tables) }
+
+    private fun parseValidatedDatabaseContent(validated: ValidatedBackup): DatabaseBackupPayload {
         if (validated.manifest.layers == null) {
             val parsed = parseDatabase(validated.database)
             val optionalTables = setOf("agent_rule_revisions") + if (validated.manifest.databaseSchemaVersion < 19) KEYCHAIN_TABLES else emptySet()
             return parsed.copy(tables = parsed.tables + optionalTables.filter { it in backupTables() && it !in parsed.tables }.associateWith { emptyList() })
         }
-        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, 18, 19, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
+        if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, 18, 19, 20, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
         if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
         val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
@@ -925,6 +935,7 @@ class RoomBackupDataSource(
                 !(table in TIMELINE_TABLES && validated.manifest.databaseSchemaVersion < 18) &&
                 !(table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) &&
                 !(table in setOf("productions", "session_productions") && validated.manifest.databaseSchemaVersion < 20) &&
+                !(table in MediaQueueBackupPolicy.tables && validated.manifest.databaseSchemaVersion < 21) &&
                 !(table == "kg_folder_settings" && validated.manifest.databaseSchemaVersion < 15)) {
                 throw BackupValidationException("备份层缺少数据表: $table")
             }
@@ -984,7 +995,9 @@ class RoomBackupDataSource(
             }
         }
         val tables = backupTables().associateWith { table ->
-            if (table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) {
+            if (table in MediaQueueBackupPolicy.tables) {
+                MediaQueueBackupPolicy.mergeRows(table, local.rows(table), imported.rows(table))
+            } else if (table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) {
                 local.rows(table)
             } else if (table in GRAPH_TABLES) {
                 if (validated.manifest.databaseSchemaVersion >= 16) imported.rows(table) else local.rows(table)
@@ -1110,7 +1123,7 @@ class RoomBackupDataSource(
         sqlite.execSQL("DELETE FROM mcp_tool_snapshots")
         // 任一父表的分层替换都可能级联引用，先清空并在所有父表恢复后重建合并结果。
         sqlite.execSQL("DELETE FROM knowledge_citations")
-        backupTables().reversed().filterNot { it in GRAPH_VECTOR_TABLES }.forEach { table ->
+        backupTables().reversed().filterNot { it in GRAPH_VECTOR_TABLES || it in MediaQueueBackupPolicy.tables }.forEach { table ->
             val deletion = deletions.getValue(table)
             val statement = "DELETE FROM `$table` WHERE " + deletion.columns.joinToString(" AND ") { "`$it` = ?" }
             deletion.keys.forEach { sqlite.execSQL(statement, it.toTypedArray()) }
@@ -1137,19 +1150,24 @@ class RoomBackupDataSource(
 
     private fun parseDatabase(bytes: ByteArray): DatabaseBackupPayload {
         if (bytes.isEmpty()) throw BackupValidationException("恢复包缺少 database.json")
-        val original: DatabaseBackupPayload = try {
+        val originalPayload: DatabaseBackupPayload = try {
             json.decodeFromString(bytes.toString(Charsets.UTF_8))
         } catch (error: SerializationException) {
             throw BackupValidationException("数据库 payload 无效", error)
         } catch (error: IllegalArgumentException) {
             throw BackupValidationException("数据库 payload 无效", error)
         }
+        val original = if (originalPayload.schemaVersion in 1..20) {
+            if (MediaQueueBackupPolicy.tables.any { originalPayload.tables[it].orEmpty().isNotEmpty() })
+                throw BackupValidationException("历史备份不应包含媒体任务数据")
+            originalPayload.copy(tables = originalPayload.tables + MediaQueueBackupPolicy.tables.associateWith { emptyList() })
+        } else originalPayload
         val decoded = if (original.schemaVersion in 1..19) {
             if (listOf("productions", "session_productions").any { original.tables[it].orEmpty().isNotEmpty() }) throw BackupValidationException("历史备份不应包含制作项目数据")
             original.copy(tables = original.tables + mapOf("productions" to emptyList(), "session_productions" to emptyList()))
         } else original
         val upgraded = when (decoded.schemaVersion) {
-            DATABASE_SCHEMA_VERSION, 18, 19 -> return filterFolderSettings(decoded.copy(schemaVersion = DATABASE_SCHEMA_VERSION))
+            DATABASE_SCHEMA_VERSION, 18, 19, 20 -> return filterFolderSettings(decoded.copy(schemaVersion = DATABASE_SCHEMA_VERSION))
             17 -> return filterFolderSettings(withTimelineTables(decoded))
             16 -> return filterFolderSettings(withTimelineTables(upgradeRetrievalPermissions(decoded)))
             14, 15 -> decoded
@@ -1597,9 +1615,9 @@ class RoomBackupDataSource(
         val identityHash = sqlite.query(
             "SELECT identity_hash FROM room_master_table WHERE id = 42"
         ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        val expectedIdentity = com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[38]?.identityHash
-        if (sqlite.version != 38 || expectedIdentity == null || identityHash != expectedIdentity) {
-            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v38")
+        val expectedIdentity = com.promenar.infinity.data.local.db.GeneratedCurrentRoomSchemas.schemas[39]?.identityHash
+        if (sqlite.version != 39 || expectedIdentity == null || identityHash != expectedIdentity) {
+            throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v39")
         }
         backupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
@@ -1852,7 +1870,7 @@ class RoomBackupDataSource(
 
     private fun clearAllRestorableTables() {
         val sqlite = database.openHelper.writableDatabase
-        (DERIVED_DELETE_ORDER + backupTables().reversed()).forEach { sqlite.execSQL("DELETE FROM `$it`") }
+        (DERIVED_DELETE_ORDER + backupTables().reversed()).filterNot { it in MediaQueueBackupPolicy.tables }.forEach { sqlite.execSQL("DELETE FROM `$it`") }
     }
 
     private fun insertPayload(payload: DatabaseBackupPayload) {
@@ -1879,8 +1897,12 @@ class RoomBackupDataSource(
                         else -> throw BackupValidationException("数据库字段类型无效")
                     }
                 }
-                if (sqlite.insert(table, 0, values) == -1L) {
-                    throw BackupValidationException("恢复数据库表失败: $table")
+                val conflict = if (table in MediaQueueBackupPolicy.tables) android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE else 0
+                if (sqlite.insert(table, conflict, values) == -1L) {
+                    val key = if (table == "media_generation_usage") "task_id" else "id"
+                    val retained = table in MediaQueueBackupPolicy.tables && sqlite.query("SELECT 1 FROM `$table` WHERE `$key` = ?",
+                        arrayOf<Any?>(row.requiredString(key))).use { it.moveToFirst() }
+                    if (!retained) throw BackupValidationException("恢复数据库表失败: $table")
                 }
             }
         }
@@ -2474,6 +2496,8 @@ class RoomBackupDataSource(
             "state_board_versions",
             "productions",
             "session_productions",
+            "media_generation_tasks",
+            "media_generation_usage",
             LONG_TERM_MEMORY_TABLE,
             "custom_skills",
             "mcp_servers",
