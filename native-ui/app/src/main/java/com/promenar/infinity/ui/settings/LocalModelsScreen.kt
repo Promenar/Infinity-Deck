@@ -65,6 +65,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.data.local.inference.RecordingModelPackage
+import com.promenar.infinity.data.local.inference.LocalModelRevision
 import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.local.inference.SlotType
 import com.promenar.infinity.data.local.inference.StoredModel
@@ -91,6 +93,10 @@ fun LocalModelsScreen(
     val embeddingSlot by viewModel.embeddingSlot.collectAsState()
     val rerankSlot by viewModel.rerankSlot.collectAsState()
     val isImporting by viewModel.isImporting.collectAsState()
+    val pinned by viewModel.pinnedRevision.collectAsState()
+    val modelError by viewModel.modelError.collectAsState()
+    val download by viewModel.downloadState.collectAsState()
+
     val ggufPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -107,6 +113,14 @@ fun LocalModelsScreen(
         gpuAvailable = viewModel.gpuAvailable,
         onNavigateBack = onNavigateBack,
         onImport = { ggufPickerLauncher.launch(arrayOf("*/*")) },
+        onInstall = viewModel::installRecordingModel,
+        onCancelInstall = viewModel::cancelDownload,
+        onTogglePin = viewModel::toggleRevision,
+        pinned = pinned,
+        modelError = modelError,
+        downloadProgress = download?.takeIf { it.isDownloading && it.totalBytes > 0 }
+            ?.let { (it.downloadedBytes * 100 / it.totalBytes).toInt() },
+
         onEngineEnabledChange = viewModel::setEngineEnabled,
         onLoadModel = viewModel::loadModel,
         onUnloadModel = viewModel::unloadModel,
@@ -135,6 +149,12 @@ internal fun LocalModelsScreenContent(
     isModelLoadedInSlot: (String) -> Boolean = { false },
     findSlotForModel: (String) -> SlotType? = { null },
     formatFileSize: (Long) -> String = { it.toString() },
+    onInstall: (() -> Unit)? = null,
+    onCancelInstall: () -> Unit = {},
+    onTogglePin: ((String) -> Unit)? = null,
+    pinned: LocalModelRevision? = null,
+    modelError: Int? = null,
+    downloadProgress: Int? = null,
 ) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.local_models_title),
@@ -165,6 +185,17 @@ internal fun LocalModelsScreenContent(
                         showChevron = true,
                         trailingContent = if (isImporting) ({ CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }) else null,
                     )
+                    if (onInstall != null && availableModels.none { it.fileName == RecordingModelPackage.filename }) {
+                        InfinitySettingsItem(
+                            title = stringResource(if (downloadProgress == null) R.string.recording_model_download else R.string.recording_model_cancel_download),
+                            subtitle = if (downloadProgress == null) stringResource(R.string.recording_model_download_details)
+                                else stringResource(R.string.recording_model_download_progress, downloadProgress),
+                            onClick = if (downloadProgress == null) onInstall else onCancelInstall,
+                            enabled = !isImporting,
+                        )
+                    }
+                    if (modelError != null) Text(stringResource(modelError), color = MaterialTheme.colorScheme.error)
+
                 }
             }
 
@@ -223,7 +254,9 @@ internal fun LocalModelsScreenContent(
                                 onLoadModel(slot, model.filePath)
                             }
                         },
-                        onDelete = { onDeleteModel(model.filePath) }
+                        onDelete = { onDeleteModel(model.filePath) },
+                        revision = pinned?.takeIf { it.path == model.filePath },
+                        onTogglePin = onTogglePin?.let { { it(model.filePath) } },
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
@@ -351,12 +384,15 @@ private fun ModelCard(
     engineEnabled: Boolean,
     formatFileSize: (Long) -> String,
     onLoad: (SlotType) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    revision: LocalModelRevision? = null,
+    onTogglePin: (() -> Unit)? = null,
 ) {
     InfinitySettingsSection(
         title = stringResource(R.string.local_models_imported),
         footer = listOfNotNull(
             formatFileSize(model.sizeBytes), model.quantization.ifEmpty { "N/A" }, model.architecture.ifEmpty { null },
+            revision?.let { stringResource(R.string.recording_model_revision, it.sha256.take(12)) },
             if (model.quantization.contains("Q8", ignoreCase = true)) stringResource(R.string.local_models_memory_heavy) else null,
             if (isLoadedInSlot && loadedSlot != null) stringResource(when (loadedSlot) {
                 SlotType.MAIN -> R.string.local_models_active_main
@@ -380,11 +416,15 @@ private fun ModelCard(
                         enabled = engineEnabled,
                         compact = true,
                     )
-                    IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
+                    IconButton(onClick = onDelete, enabled = revision == null, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.local_models_cd_delete), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             },
+        )
+        if (onTogglePin != null) InfinitySettingsItem(
+            title = stringResource(if (revision == null) R.string.recording_model_pin else R.string.recording_model_unpin),
+            onClick = onTogglePin,
         )
     }
 }

@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.pet
 
+import com.promenar.infinity.recording.recordingController
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -310,11 +311,13 @@ private fun PetLayer(
     }
 
     // 吹散云朵：宠物在云朵上、页面在前台、键盘没有弹出时才监听麦克风。
-    val listening = blowEnabled && runtime?.onCloud == true && !keyboardUp
+    val recordings = context.recordingController()
+    val recordingState by recordings.state.collectAsStateWithLifecycle()
+    val listening = recordingState.activeId == null && blowEnabled && runtime?.onCloud == true && !keyboardUp
     LaunchedEffect(listening, runtime, lifecycleOwner) {
         if (!listening || runtime == null) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            petListenForBlow(context) { runtime.blow() }
+            recordings.listenForPet { petListenForBlow(context) { runtime.blow() } }
         }
     }
 

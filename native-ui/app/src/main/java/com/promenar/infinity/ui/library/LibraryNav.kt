@@ -84,6 +84,7 @@ import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.recording.LibraryRecordingAction
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.files.FileBreadcrumbs
@@ -210,7 +211,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
     ).filter { it.entries.isNotEmpty() }
 }
 
-/** 内屏左列：标题、问资料与四组导航。新建与导入放在右侧内容区，页头不放按钮。 */
+/** 内屏左列：标题、问资料与四组导航。新建与导入放在右侧内容区，录音入口放在资料标题旁。 */
 @Composable
 internal fun LibraryNavColumn(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
@@ -222,7 +223,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
             .background(MaterialTheme.colorScheme.surface)
             .testTag(LibraryTags.NAV_COLUMN),
     ) {
-        InfinityTabHeader(title = stringResource(R.string.nav_tab_library))
+        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { LibraryRecordingAction() }
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,

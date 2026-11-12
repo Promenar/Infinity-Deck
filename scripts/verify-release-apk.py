@@ -15,8 +15,8 @@ import sys
 import zipfile
 
 
-# 内置 Python、Tailscale 与 Linux 运行时的 arm64 原生库约 24 MiB，侧载包已超过 50 MiB；瘦身另行立项。
-MAX_APK_BYTES = 60 * 1024 * 1024
+# 为随包分发的双语 Zipformer、多 ABI ONNX Runtime 和侧载 llama.cpp 留出有界空间。
+MAX_APK_BYTES = 180 * 1024 * 1024
 READ_CHUNK_BYTES = 1024 * 1024
 SCAN_OVERLAP_BYTES = 512
 MAX_ZIP_ENTRIES = 100_000
@@ -229,19 +229,48 @@ def verify_zip(apk: Path) -> None:
         raise VerificationError(f"APK ZIP 条目损坏：{corrupt}")
 
 
-def verify_no_local_inference_artifacts(apk: Path) -> None:
-    """确认发行 APK 未携带本地推理原生库或 GGUF 模型。"""
-    findings: list[str] = []
+def verify_local_inference_artifacts(apk: Path, distribution: str) -> None:
+    """两渠道禁止捆绑 GGUF。侧载含静态链接的 llama.cpp JNI；Play 不含本地 LLM。"""
     with zipfile.ZipFile(apk) as archive:
-        for info in archive.infolist():
-            normalized_name = info.filename.replace("\\", "/")
-            basename = normalized_name.rsplit("/", 1)[-1]
-            if basename.lower().endswith(".gguf") or LOCAL_INFERENCE_LIBRARY_PATTERN.fullmatch(
-                basename
-            ):
-                findings.append(normalized_name)
-    if findings:
-        raise VerificationError(f"APK 包含禁用的本地推理制品：{', '.join(sorted(findings))}")
+        names = {info.filename.replace("\\", "/") for info in archive.infolist()}
+    forbidden = []
+    for name in names:
+        basename = name.rsplit("/", 1)[-1]
+        allowed_bridge = distribution == "sideload" and re.fullmatch(r"lib/[^/]+/libinfinity_llama\.so", name)
+        if basename.lower().endswith(".gguf") or (LOCAL_INFERENCE_LIBRARY_PATTERN.fullmatch(basename) and not allowed_bridge):
+            forbidden.append(name)
+    if forbidden:
+        raise VerificationError(f"APK 包含禁用的本地推理制品：{', '.join(sorted(forbidden))}")
+    if distribution == "sideload":
+        abis = {"arm64-v8a"} | {name.split("/")[1] for name in names if name.endswith("/libinfinity_workspace_fs.so")}
+        missing = {f"lib/{abi}/libinfinity_llama.so" for abi in abis} - names
+        if missing:
+            raise VerificationError(f"侧载 APK 缺少本地推理制品：{', '.join(sorted(missing))}")
+
+
+def verify_recording_artifacts(apk: Path) -> None:
+    """确认离线听写的四份模型资产及各 ABI 的原生运行时完整。"""
+    assets = {
+        "decoder-epoch-99-avg-1.onnx": "89be509a83175261695bdef5fd1c7b9ab1129a663d1284e7ba9f8507b21e0906",
+        "encoder-epoch-99-avg-1.int8.onnx": "db6f51551762e40e549166fe041ea3e45464370b595e9ad23f06478ec3794fbb",
+        "joiner-epoch-99-avg-1.int8.onnx": "bdda356d6f9b8c2d7cee9ee0e26075fa537490f7fd06520be408d287073667b9",
+        "tokens.txt": "a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3",
+    }
+    with zipfile.ZipFile(apk) as archive:
+        names = set(archive.namelist())
+        abis = {"arm64-v8a"} | {name.split("/")[1] for name in names if name.endswith("/libinfinity_workspace_fs.so")}
+        libraries = ("libonnxruntime.so", "libsherpa-onnx-jni.so", "libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so")
+        required = {f"lib/{abi}/{lib}" for abi in abis for lib in libraries}
+        required.update(f"assets/asr/{name}" for name in assets)
+        if missing := required - names:
+            raise VerificationError(f"APK 缺少离线听写制品：{', '.join(sorted(missing))}")
+        for name, expected in assets.items():
+            digest = hashlib.sha256()
+            with archive.open(f"assets/asr/{name}") as stream:
+                for chunk in iter(lambda: stream.read(READ_CHUNK_BYTES), b""):
+                    digest.update(chunk)
+            if digest.hexdigest() != expected:
+                raise VerificationError(f"离线听写模型摘要不符：{name}")
 
 
 def verify_linux_runtime(apk: Path, distribution: str, properties: Path | None = None) -> None:
@@ -406,7 +435,15 @@ def verify_signature(apk: Path, expected_digest: str) -> None:
         raise VerificationError("APK 签名证书与登记的发行证书不一致")
 
 
+SHERPA_NATIVE_PATTERN = re.compile(r"lib/[^/]+/(?:libonnxruntime|libsherpa-onnx-(?:c-api|cxx-api|jni))\.so\Z")
+
+
 def upstream_allowances(entry_name: str) -> dict[str, re.Pattern[bytes]]:
+    if SHERPA_NATIVE_PATTERN.fullmatch(entry_name):
+        return {"Linux 用户绝对路径": re.compile(rb"/home/runner/")}
+    if entry_name == "assets/asr/joiner-epoch-99-avg-1.int8.onnx":
+        # 固定权重中的数字序列，末段 434 不是有效的 IPv4。
+        return {"私网或 CGNAT 测试地址": re.compile(rb"10\.13\.31\.434")}
     if TAILNET_BINARY_PATTERN.fullmatch(entry_name):
         return TAILNET_ALLOWANCES
     if PACKAGED_PYTHON_STDLIB_PATTERN.fullmatch(entry_name):
@@ -486,7 +523,8 @@ def main() -> int:
     size = verify_file_size(apk, args.max_size_bytes)
 
     verify_zip(apk)
-    verify_no_local_inference_artifacts(apk)
+    verify_local_inference_artifacts(apk, args.distribution)
+    verify_recording_artifacts(apk)
     verify_packaged_python_bytecode(apk)
     verify_tailnet_binary(apk)
     verify_linux_runtime(apk, args.distribution)

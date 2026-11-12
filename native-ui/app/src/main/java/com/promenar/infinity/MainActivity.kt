@@ -142,6 +142,7 @@ open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.promenar.infinity.recording.registerRecordingShortcut(this)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 shareIntentViewModel.stagingCoordinator.outcomes.collect { outcome ->

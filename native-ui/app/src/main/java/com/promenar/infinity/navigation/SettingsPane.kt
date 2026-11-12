@@ -50,6 +50,7 @@ internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.PROVIDER_LIST,
     NavDestinations.DEFAULT_MODELS,
     NavDestinations.LOCAL_MODELS,
+    NavDestinations.RECORDING_SETTINGS,
     NavDestinations.AGENT_BUDGET,
     NavDestinations.BUILTIN_TOOLS,
     NavDestinations.SKILLS_CONFIG,

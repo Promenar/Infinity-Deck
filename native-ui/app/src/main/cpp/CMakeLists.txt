@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22.1)
 project("infinity_llama")
 
 option(INFINITY_ENABLE_LOCAL_INFERENCE "Build the local llama.cpp inference engine" OFF)
+option(INFINITY_SIDELOAD "Sideload distribution" OFF)
+option(INFINITY_RELEASE "Signed release build type" OFF)
+if(INFINITY_RELEASE)
+    set(INFINITY_ENABLE_LOCAL_INFERENCE ${INFINITY_SIDELOAD})
+endif()
 
 # 本工程所有共享库（含 FetchContent 拉取的 llama/ggml）显式按 16KB 最大页大小链接，兼容 16KB 页设备；
 # APK 级检查见 scripts/ci/check-native-page-alignment.py。
@@ -40,8 +45,18 @@ option(INFINITY_LLAMA_PREBUILT "Use pre-built llama.cpp .so files" OFF)
 if(NOT INFINITY_LLAMA_PREBUILT)
     # ── Build llama.cpp from source via FetchContent ──
     include(FetchContent)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    add_compile_options(
+        "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=infinity-native"
+        "-ffile-prefix-map=${CMAKE_BINARY_DIR}=infinity-native-build"
+        "-ffile-prefix-map=${CMAKE_ANDROID_NDK}=android-ndk"
+    )
 
     # Configure llama.cpp options BEFORE fetching
+    set(BUILD_SHARED_LIBS      OFF CACHE BOOL "静态链接 llama/ggml 到 JNI 库" FORCE)
+    set(GGML_NATIVE            OFF CACHE BOOL "不使用构建主机 CPU 特性" FORCE)
+    set(LLAMA_BUILD_TOOLS      OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_COMMON     OFF CACHE BOOL "" FORCE)
     set(GGML_VULKAN            OFF CACHE BOOL "Vulkan needs host shader cross-compilation; enable only with proper host build" FORCE)
     set(GGML_CUDA              OFF CACHE BOOL "Disable CUDA (not on Android)" FORCE)
     set(GGML_METAL             OFF CACHE BOOL "Disable Metal (not on Android)" FORCE)
@@ -53,9 +68,9 @@ if(NOT INFINITY_LLAMA_PREBUILT)
 
     FetchContent_Declare(
         llama_cpp
-        GIT_REPOSITORY https://github.com/ggml-org/llama.cpp
-        GIT_TAG        master
-        GIT_SHALLOW    TRUE
+        # llama.cpp b12076，升版时一起校验 JNI API 和实际模型加载。
+        URL https://codeload.github.com/ggml-org/llama.cpp/tar.gz/36ee3caf7aa2dcb0210bedab1b61ee9f269765d3
+        URL_HASH SHA256=f10eaf455fff10745f702a78760ea42c00a482db1ad6be16136de9b744653deb
     )
     FetchContent_MakeAvailable(llama_cpp)
 endif()

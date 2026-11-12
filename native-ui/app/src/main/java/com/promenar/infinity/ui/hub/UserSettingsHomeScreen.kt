@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Pets
@@ -490,6 +491,13 @@ internal fun UserSettingsHomeScreenContent(
                     title = stringResource(R.string.settings_ia_section_knowledge),
                     headerStartPadding = InfinitySpacing.ScreenHorizontal,
                 ) {
+                    UserSettingsNavigationItem(
+                        icon = Icons.Rounded.Mic,
+                        title = stringResource(R.string.recording_settings),
+                        subtitle = stringResource(R.string.recording_settings_summary),
+                        onClick = { actions.onNavigateToSecondary(NavDestinations.RECORDING_SETTINGS) },
+                        selected = state.selectedRoute == NavDestinations.RECORDING_SETTINGS,
+                    )
                     UserSettingsNavigationItem(
                         icon = Icons.Rounded.Psychology,
                         title = stringResource(R.string.settings_ia_kb_settings_title),

@@ -118,6 +118,9 @@ import com.promenar.infinity.ui.common.IndexingIndicator
 import com.promenar.infinity.domain.library.DocumentGraphState
 import com.promenar.infinity.domain.library.GraphStopReason
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
+import com.promenar.infinity.recording.LibraryRecordingAction
+import com.promenar.infinity.recording.LibraryRecordingPlayback
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.LocalInfinitySettingsLeading
 import com.promenar.infinity.ui.common.MarkdownText
@@ -250,7 +253,7 @@ private fun libraryContentPadding(): PaddingValues = PaddingValues(
 @Composable
 internal fun LibraryHome(host: LibraryPageHost) {
     Column(Modifier.fillMaxSize().testTag(LibraryTags.page("home"))) {
-        InfinityTabHeader(title = stringResource(R.string.nav_tab_library))
+        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { LibraryRecordingAction() }
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,
@@ -813,6 +816,7 @@ private fun LibraryDocumentPage(
                         }
                     }
                 }
+                if (!notFound) LibraryRecordingPlayback(documentId)
                 val root = rootUuid
                 if (root != null) {
                     IconButton(onClick = { host.onNavigateToSecondary(NavDestinations.docEditor(root, documentId)) }) {
@@ -961,7 +965,11 @@ private fun DocumentDetailSheet(info: DocumentInsight, livePending: PendingDocum
         DocumentStatusRow(info, pending, enabled, host)
         InfinityPropertyRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
         InfinityPropertyDivider()
-        DocumentGraphRows(info, pending, enabled, host)
+        if (info.mimeType == LOCAL_RECORDING_MIME) {
+            LibraryEmptyText(stringResource(R.string.recording_local_document))
+        } else {
+            DocumentGraphRows(info, pending, enabled, host)
+        }
         InfinityPropertyDivider()
         InfinityPropertyRow(
             label = stringResource(R.string.library_doc_location),

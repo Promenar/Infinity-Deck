@@ -96,6 +96,7 @@ object NavDestinations {
     const val PET_SETTINGS = "pet_settings"
     const val BACKUP_SETTINGS = "backup_settings"
     const val LOCAL_MODELS = "local_models"
+    const val RECORDING_SETTINGS = "recording_settings"
     const val PROVIDER_LIST = "provider_list"
     const val DEFAULT_MODELS = "default_models"
     /** 开发者页：版本号连点解锁后才在设置首页出现。 */
@@ -901,6 +902,16 @@ internal fun NavGraphBuilder.settingsDestinations(
         navigator.Page(entry) {
             BackupSettingsScreen(
                 onNavigateBack = { navigator.back() }
+            )
+        }
+    }
+
+    composablePage(NavDestinations.RECORDING_SETTINGS) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.recording.RecordingSettingsScreen(
+                onBack = { navigator.back() },
+                onQuickModels = { navigator.open(NavDestinations.DEFAULT_MODELS) },
+                onLocalModels = { navigator.open(NavDestinations.LOCAL_MODELS) },
             )
         }
     }
