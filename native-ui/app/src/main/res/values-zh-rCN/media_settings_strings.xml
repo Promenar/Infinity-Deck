@@ -118,10 +118,8 @@
     <string name="media_settings_frame_constraint">%1$d + %2$d × n</string>
     <string name="media_settings_max_frames">≤%1$d 帧</string>
     <string name="media_settings_upload">上传 → %1$s</string>
-    <string name="media_settings_configure">探测并配置</string>
+    <string name="media_settings_configure">交给智能体配置</string>
     <string name="media_settings_copy_instruction">复制指令</string>
-    <string name="media_settings_sessions">前往会话</string>
-    <string name="media_settings_no_sessions">暂无会话</string>
     <string name="media_settings_instruction">请配置 ComfyUI 主机「%1$s」（host_id：%2$s）的工作流模板。使用 comfy_probe 核对节点与模型，用 comfy_define_template 定义 API Format 模板，声明媒体类型、模式、参考槽位及顺序、提示词格式、产出槽位、宽高对齐与帧数约束，再用 comfy_templates 核对预检结果。已锁定模板保持现状；需要修改时请让我到设置页解锁。</string>
     <string name="media_settings_error_name">名称需为 1–120 字符</string>
     <string name="media_settings_error_address">HTTP(S) 地址无效</string>
@@ -164,4 +162,12 @@
     <string name="media_settings_diagnostic_29">节点 %1$s</string>
     <string name="media_settings_connection">连接</string>
     <string name="media_settings_host_actions">主机</string>
+    <string name="media_settings_configure_title">配置 %1$s</string>
+    <string name="media_settings_configure_host">%1$s · 交给智能体配置</string>
+    <string name="media_settings_locked_count">已锁定 %1$d</string>
+    <string name="media_settings_target_workflow">目标工作流</string>
+    <string name="media_settings_target_placeholder">Qwen Image 2.1 文生图</string>
+    <string name="media_settings_new_session">新会话配置</string>
+    <string name="media_settings_session_title">配置 ComfyUI · %1$s</string>
+    <string name="media_settings_instruction_target">目标工作流：%1$s。按这个目标探测所需节点与模型，并定义对应模板。</string>
 </resources>

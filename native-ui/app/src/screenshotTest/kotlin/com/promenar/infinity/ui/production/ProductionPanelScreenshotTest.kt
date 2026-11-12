@@ -33,6 +33,7 @@ private fun Panel(
     tab: ProductionTab,
     snapshot: ProductionSnapshot = ProductionSamples.snapshot(),
     shot: Pair<String, String>? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     ProductionPanelContent(
         snapshot = snapshot,
@@ -40,6 +41,7 @@ private fun Panel(
         onResolve = { null },
         initialTab = tab,
         initialShot = shot,
+        onBack = onBack,
     )
 }
 
@@ -94,3 +96,16 @@ fun productionLockedShotPreview() = Frame { Panel(ProductionTab.STORYBOARD, shot
 @Preview(name = "制作面板 空 浅中360", widthDp = 360, heightDp = 400, locale = "zh-rCN")
 @Composable
 fun productionEmptyPreview() = Frame { ProductionPanelEmpty() }
+
+// 页头：检视器页签（无返回）与窄屏整屏面板（有返回）两种规格。
+@PreviewTest
+@Preview(name = "制作面板 页头 检视器 浅中内屏", widthDp = 400, heightDp = 360, locale = "zh-rCN")
+@Preview(name = "制作面板 页头 检视器 深英内屏 大字", widthDp = 400, heightDp = 360, locale = "en", fontScale = 1.3f, uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun productionInspectorHeaderPreview() = Frame(dark = androidx.compose.foundation.isSystemInDarkTheme()) { Panel(ProductionTab.OVERVIEW) }
+
+@PreviewTest
+@Preview(name = "制作面板 页头 整屏 浅中360", widthDp = 360, heightDp = 360, locale = "zh-rCN")
+@Preview(name = "制作面板 页头 整屏 浅英360", widthDp = 360, heightDp = 360, locale = "en")
+@Composable
+fun productionSheetHeaderPreview() = Frame { Panel(ProductionTab.OVERVIEW, onBack = {}) }

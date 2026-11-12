@@ -13,6 +13,8 @@ data class ProductionPanelServices(
     val shotSourceRef: ((Production, ShotLocation) -> String)? = null,
     val channelLabel: (String) -> String = { it },
     val onOpenMediaModels: (() -> Unit)? = null,
+    /** 主导航打开任意页面；给出时制作面板在自身容器内打开媒体设置子页，[onOpenMediaModels] 由面板填入。 */
+    val openRoute: ((String) -> Unit)? = null,
     val onAddShot: ((String, String) -> Unit)? = null,
     val requestContentChange: (suspend (Long, ShotLocation, Shot) -> String?)? = null,
     val pendingRegistrations: Set<String> = emptySet(),

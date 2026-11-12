@@ -14,20 +14,27 @@ import com.promenar.infinity.ui.common.LocalInfinitySettingsPaneRoot
  * 设置子页之间的跳转。主导航中 [outside] 为 null，行为与直接调用 NavController 相同；
  * 宽屏设置右列中 [nav] 是右列自己的导航，打开不属于右列的页面（[isSettingsPaneRoute] 为 false）时交给 [outside]，
  * [paneRootId] 给出右列根层页面的条目 id。
+ * 嵌在其它容器里的设置栈（例如制作面板内的媒体设置）用 [handles] 限定自己承载的路由，
+ * 并在栈底返回时调用 [onExhausted] 关闭整个子页。
  */
 class SettingsNavigator internal constructor(
     private val nav: NavHostController,
     private val outside: ((String) -> Unit)? = null,
     private val paneRootId: (() -> String?)? = null,
+    private val handles: (String) -> Boolean = ::isSettingsPaneRoute,
+    private val onExhausted: (() -> Unit)? = null,
 ) {
     fun open(route: String, builder: NavOptionsBuilder.() -> Unit = {}) {
         val handOff = outside
-        if (handOff != null && !isSettingsPaneRoute(route)) handOff(route) else nav.navigate(route, builder)
+        if (handOff != null && !handles(route)) handOff(route) else nav.navigate(route, builder)
     }
 
-    /** 下面没有页面时不弹出：退场动画中重复返回不会把主导航起始页或右列根层也弹掉、留下空白。 */
+    /**
+     * 下面没有页面时不弹出：退场动画中重复返回不会把主导航起始页或右列根层也弹掉、留下空白。
+     * 给出 [onExhausted] 时改为交给它关闭子页。
+     */
     fun back() {
-        if (nav.previousBackStackEntry != null) nav.popBackStack()
+        if (nav.previousBackStackEntry != null) nav.popBackStack() else onExhausted?.invoke()
     }
 
     /**

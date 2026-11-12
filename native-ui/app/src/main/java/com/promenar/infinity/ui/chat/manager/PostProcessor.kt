@@ -53,6 +53,13 @@ class PostProcessor(
         onGenerateTitle = generator
     }
 
+    /** 返回 true 的会话标题由发起方预设：首轮结束后不按首条消息改名，默认标题仍照常命名。 */
+    private var keepsTitle: (String) -> Boolean = { false }
+
+    fun setTitleKeeper(keeper: (sessionId: String) -> Boolean) {
+        keepsTitle = keeper
+    }
+
     suspend fun updateStats(params: PostProcessorParams) {
         val finalUsage = params.accumulatedUsage ?: TokenUsage(
             input = params.totalContextTokens,
@@ -83,7 +90,7 @@ class PostProcessor(
                 params.session.title.startsWith("New Conversation") ||
                 params.session.title.startsWith("New Chat")
 
-        if (params.session.messages.size <= 2 || isDefaultTitle) {
+        if ((params.session.messages.size <= 2 && !keepsTitle(params.sessionId)) || isDefaultTitle) {
             val fallback = fallbackTitle(params.userContent)
             sessionManager.updateSessionTitle(params.sessionId, fallback)
             val titleGenerator = onGenerateTitle ?: return

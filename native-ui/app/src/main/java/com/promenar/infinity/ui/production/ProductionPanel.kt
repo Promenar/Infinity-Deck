@@ -3,6 +3,10 @@ package com.promenar.infinity.ui.production
 import com.promenar.infinity.ui.common.InfinityPanelTabs
 import com.promenar.infinity.ui.common.InfinityPanelTab
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import com.promenar.infinity.ui.settings.MediaSettingsPanelHost
+import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -110,29 +114,53 @@ fun ProductionPanel(
     }
     val failed = stringResource(R.string.production_panel_action_failed)
     val media = rememberSessionWorkspaceMedia(sessionId, onLocate)
-    CompositionLocalProvider(LocalWorkspaceMedia provides (media ?: LocalWorkspaceMedia.current)) {
-        when (val current = load) {
-            ProductionLoad.Loading -> Column(modifier.fillMaxSize()) {
-                if (onBack != null) ProductionTopBar(stringResource(R.string.p2_production_title), emptyList(), onBack)
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
+    // 媒体模型在面板所在的容器里以子页打开：宽屏在检视器内，窄屏在同一个整屏容器内，会话页不被盖住。
+    var mediaSettingsOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
+    val openRoute = services.openRoute
+    val panelServices = remember(services) {
+        if (services.openRoute == null) services else services.copy(onOpenMediaModels = { mediaSettingsOpen = true })
+    }
+    Box(modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().then(if (mediaSettingsOpen) Modifier.clearAndSetSemantics {} else Modifier)) {
+            CompositionLocalProvider(LocalWorkspaceMedia provides (media ?: LocalWorkspaceMedia.current)) {
+                when (val current = load) {
+                    ProductionLoad.Loading -> Column(Modifier.fillMaxSize()) {
+                        if (onBack != null) ProductionTopBar(stringResource(R.string.p2_production_title), emptyList(), onBack)
+                        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
+                    }
+                    ProductionLoad.Empty -> Column(Modifier.fillMaxSize()) {
+                        if (onBack != null) ProductionTopBar(stringResource(R.string.p2_production_title), emptyList(), onBack)
+                        ProductionPanelEmpty(Modifier.weight(1f))
+                    }
+                    is ProductionLoad.Ready -> ProductionPanelContent(
+                        snapshot = current.snapshot,
+                        onAction = { revision, action ->
+                            userFacing(failed) { source.apply(sessionId, revision, action) }
+                        },
+                        onResolve = { resolution -> userFacing(failed) { source.resolveManifest(sessionId, resolution) } },
+                        modifier = Modifier.fillMaxSize(),
+                        sessionId = sessionId,
+                        services = panelServices,
+                        tasks = projectTasks(tasks, services.projectSourcePrefix?.invoke(current.snapshot.production)),
+                        channels = channels,
+                        channelOrder = channelOrder,
+                        onBack = onBack,
+                    )
+                }
             }
-            ProductionLoad.Empty -> Column(modifier.fillMaxSize()) {
-                if (onBack != null) ProductionTopBar(stringResource(R.string.p2_production_title), emptyList(), onBack)
-                ProductionPanelEmpty(Modifier.weight(1f))
-            }
-            is ProductionLoad.Ready -> ProductionPanelContent(
-                snapshot = current.snapshot,
-                onAction = { revision, action ->
-                    userFacing(failed) { source.apply(sessionId, revision, action) }
+        }
+        if (openRoute != null) AnimatedVisibility(
+            visible = mediaSettingsOpen,
+            enter = InfinityMotion.pageEnter(pop = false),
+            exit = InfinityMotion.pageExit(pop = true),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            MediaSettingsPanelHost(
+                onClose = { mediaSettingsOpen = false },
+                openOutside = { route ->
+                    mediaSettingsOpen = false
+                    openRoute(route)
                 },
-                onResolve = { resolution -> userFacing(failed) { source.resolveManifest(sessionId, resolution) } },
-                modifier = modifier,
-                sessionId = sessionId,
-                services = services,
-                tasks = projectTasks(tasks, services.projectSourcePrefix?.invoke(current.snapshot.production)),
-                channels = channels,
-                channelOrder = channelOrder,
-                onBack = onBack,
             )
         }
     }
