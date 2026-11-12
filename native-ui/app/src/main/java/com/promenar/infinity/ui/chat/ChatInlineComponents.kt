@@ -1122,6 +1122,10 @@ private fun ApprovalCallBody(call: ApprovalDisplayCall, description: String, pen
         AgentConfigApprovalBody(agentConfig, call.name, pending)
         return
     }
+    (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyTemplate)?.let { template ->
+        ComfyTemplateApprovalBody(template, call.name, pending)
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ApprovalCallTitle(call.name, pending)
         ApprovalReason(description)

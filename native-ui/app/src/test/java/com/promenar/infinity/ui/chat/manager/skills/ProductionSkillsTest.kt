@@ -85,4 +85,51 @@ class ProductionSkillsTest {
             .jsonObject.getValue("content").jsonObject
         assertThat(overview.getValue("stages").jsonArray.first().jsonObject.getValue("status").jsonPrimitive.content).isEqualTo("not_started")
     }
+
+    @Test fun `制作读取返回阶段次数镜头资产提醒和最近三轮未结事项`() {
+        val take = Take("t", "p/t.mp4", TakeSource("服务"), 1)
+        val shot = Shot("SC01-01", "镜头", durationSeconds = 1.0, takes = listOf(take))
+        val target = ReviewTarget.take("S1E01", "SC01-01", "t")
+        val entry = ReviewEntry(target, ReviewKind.REJECT, "原因", 1, round = 1, sentAt = 2, sentRevision = 2)
+        val p = Production("p", "项目", ProductionKind.FILM, "p", createdAt = 1, updatedAt = 2,
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = listOf(Scene("SC01", 1, "场", shots = listOf(shot))))))),
+            assets = listOf(Asset("a", AssetKind.PROP, "道具", versions = listOf(AssetVersion(1, "p/a.png", 1)))),
+            reviews = listOf(entry), nextReviewRound = 6,
+            reviewRounds = (5 downTo 1).map { ReviewRound(it, it.toLong(), if (it == 1) listOf(entry) else emptyList(), it.toLong()) })
+        val tasks = List(6) { com.promenar.infinity.domain.mediagen.MediaTask("task$it",
+            com.promenar.infinity.domain.mediagen.MediaGenerationRequest("channel", com.promenar.infinity.domain.mediagen.GenerationMode.TEXT, "描述", emptyList(), ProductionSourceRef("p", "S1E01", "SC01-01").encode()),
+            state = com.promenar.infinity.domain.mediagen.MediaTaskState.FAILED, error = "失败") } + List(6) {
+            com.promenar.infinity.domain.mediagen.MediaTask("asset$it", com.promenar.infinity.domain.mediagen.MediaGenerationRequest("channel", com.promenar.infinity.domain.mediagen.GenerationMode.TEXT, "描述", emptyList(), ProductionAssetSourceRef("p", "a").encode()), state = com.promenar.infinity.domain.mediagen.MediaTaskState.COMPLETED)
+        }
+        val canceled = com.promenar.infinity.domain.mediagen.MediaTask("canceled", com.promenar.infinity.domain.mediagen.MediaGenerationRequest("channel", com.promenar.infinity.domain.mediagen.GenerationMode.TEXT, "描述", emptyList(), ProductionSourceRef("p", "S1E01", "SC01-01").encode()), state = com.promenar.infinity.domain.mediagen.MediaTaskState.CANCELED, error = "升级后取消")
+        val foreign = tasks.first().copy(id = "foreign", request = tasks.first().request.copy(sourceRef = ProductionSourceRef("foreign", "S1E01", "SC01-01").encode()))
+        val snapshot = ProductionSnapshot(p, 10, ManifestSync.InSync)
+        fun content(scope: String) = Json.parseToJsonElement(productionGetResult(snapshot, scope, "S1E01", "SC01-01", tasks + canceled + foreign)).jsonObject.getValue("content")
+        val overview = content("overview").jsonObject
+        assertThat(overview.getValue("generation_counts").jsonObject.getValue("generation").jsonObject.getValue("failed").jsonPrimitive.int).isEqualTo(6)
+        assertThat(overview.getValue("alert_shots").jsonArray.single().jsonObject.getValue("shot_code").jsonPrimitive.content).isEqualTo("SC01-01")
+        assertThat(overview.getValue("alert_assets").jsonArray.single().jsonObject.getValue("asset_id").jsonPrimitive.content).isEqualTo("a")
+        assertThat(overview.keys).doesNotContain("reviewDrafts")
+        assertThat(content("shot").jsonObject.getValue("generation_count").jsonObject.getValue("total").jsonPrimitive.int).isEqualTo(7)
+        assertThat(content("assets").jsonArray.single().jsonObject.getValue("generation_count").jsonObject.getValue("total").jsonPrimitive.int).isEqualTo(7)
+        val changes = content("changes").jsonObject
+        assertThat(changes.keys).containsExactly("change_requests", "review_rounds", "open_items")
+        assertThat(changes.getValue("review_rounds").jsonArray.map { it.jsonObject.getValue("number").jsonPrimitive.int }).containsExactly(5, 4, 3).inOrder()
+        val items = changes.getValue("open_items").jsonArray.map { it.jsonObject }
+        assertThat(items.map { it.getValue("kind").jsonPrimitive.content }).containsAtLeast("failed_task", "canceled_task", "rejected", "cost_alert")
+        assertThat(items.any { it["task_id"] == JsonPrimitive("foreign") }).isFalse()
+        assertThat(items.first { it["kind"] == JsonPrimitive("rejected") }.getValue("target").jsonObject.keys).contains("take_id")
+    }
+
+    @Test fun `制作读取工具使用真实任务供应入口`() = runBlocking {
+        val repo = mockk<ProductionRepository>(relaxed = true)
+        val p = Production("p", "项目", ProductionKind.FILM, "p", createdAt = 1, updatedAt = 1)
+        io.mockk.coEvery { repo.get("s") } returns ProductionSnapshot(p, 1, ManifestSync.InSync)
+        var reads = 0
+        val skill = ProductionGetSkill(repo) { reads++; emptyList() }
+        assertThat(skill.execute(buildJsonObject { put("scope", "changes") }, context).status).isEqualTo("success")
+        assertThat(reads).isEqualTo(1)
+        assertThat(skill.description).contains("open_items")
+        assertThat(ProductionUpdateSkill(repo).description).doesNotContain("set_budget")
+    }
 }

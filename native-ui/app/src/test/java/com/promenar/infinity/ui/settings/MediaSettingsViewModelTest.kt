@@ -41,23 +41,11 @@ class MediaSettingsViewModelTest {
         vm.viewModelScopeCancelForTest()
     }
 
-    @Test fun openingAndDismissingConfirmationNeverUnlocksTheTemplate() = runTest(dispatcher) {
+    @Test fun lockingAnUnlockedTemplateWritesTheChosenReferenceOrder() = runTest(dispatcher) {
         val store = FakeMediaSettingsStore()
+        store.snapshots.value = store.snapshots.value.copy(templates = store.snapshots.value.templates.map { it.copy(template = it.template.copy(locked = false)) })
         val vm = MediaSettingsViewModel({ store }, dispatcher)
         runCurrent()
-        vm.confirmUnlock()
-        vm.requestUnlock("tpl")
-        assertEquals("tpl", vm.state.value.unlock.pendingId)
-        assertEquals(0, store.unlockCalls)
-        vm.cancelUnlock()
-        vm.confirmUnlock()
-        advanceUntilIdle()
-        assertEquals(0, store.unlockCalls)
-        vm.requestUnlock("tpl")
-        vm.confirmUnlock()
-        advanceUntilIdle()
-        assertEquals(1, store.unlockCalls)
-        assertNull(vm.state.value.unlock.pendingId)
         assertFalse(vm.state.value.snapshot.templates.single().template.locked)
         vm.lockTemplate("tpl", listOf("side", "front"))
         advanceUntilIdle()
@@ -124,7 +112,6 @@ private class FakeMediaSettingsStore : MediaSettingsStore {
     var lastOrder = emptyList<String>()
     var lastMode: CharacterReferenceMode? = null
     var lastReferenceOrder = emptyList<String>()
-    var unlockCalls = 0
     var tariffWrites = 0
     var fail = false
     override fun observe() = snapshots
@@ -143,10 +130,6 @@ private class FakeMediaSettingsStore : MediaSettingsStore {
     override suspend fun removeHost(id: String) = Unit
     override suspend fun probe(id: String) { if (fail) error("fixture") }
     override suspend fun preflight(id: String) = Unit
-    override suspend fun unlock(id: String) {
-        unlockCalls++
-        snapshots.value = snapshots.value.copy(templates = snapshots.value.templates.map { it.copy(template = it.template.unlock(true)) })
-    }
     override suspend fun lock(id: String, referenceOrder: List<String>) {
         lastReferenceOrder = referenceOrder
         snapshots.value = snapshots.value.copy(templates = snapshots.value.templates.map { it.copy(template = it.template.copy(locked = true)) })

@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.Asset
 import com.promenar.infinity.data.production.AssetStatus
+import com.promenar.infinity.data.production.Production
+import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.data.production.PreviewKind
 import com.promenar.infinity.data.production.ProductionUserAction
 import com.promenar.infinity.data.production.Shot
@@ -121,20 +123,19 @@ private fun NoteBlock(title: String, text: String) {
     }
 }
 
-/** 资产详情：查看各版本，通过、打回或解锁。 */
+/** 资产详情：查看各版本，对选中的版本批准、否决或建议。 */
 @Composable
 internal fun ProductionAssetSheet(
     asset: Asset,
-    usage: Int,
+    production: Production,
     busy: Boolean,
     onDismiss: () -> Unit,
     onRun: (ProductionUserAction) -> Unit,
     onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
     var versionNumber by rememberSaveable(asset.id) { mutableStateOf(asset.currentVersion ?: asset.versions.maxOfOrNull { it.number }) }
-    var rejecting by rememberSaveable(asset.id) { mutableStateOf(false) }
     val version = asset.versions.firstOrNull { it.number == versionNumber } ?: asset.versions.maxByOrNull { it.number }
-    val actions = asset.actions()
+    val usage = production.shotsUsingAsset(asset.id)
     InfinityBottomSheet(show = true, onDismiss = onDismiss, title = asset.name, scrollContent = true) {
         Column(Modifier.fillMaxWidth().testTag(ProductionUiTags.ASSET_SHEET), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
@@ -168,35 +169,18 @@ internal fun ProductionAssetSheet(
             }
             asset.description?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             asset.userNote?.takeIf(String::isNotBlank)?.let { NoteBlock(stringResource(R.string.production_panel_section_user_note), it) }
-            ProductionActionRow(
-                buildList {
-                    if (actions.canUnlock) {
-                        add(ProductionButton(stringResource(R.string.production_panel_unlock), InfinityPillTone.NEUTRAL, !busy, ProductionUiTags.ASSET_UNLOCK) {
-                            onRun(ProductionUserAction.SetAssetStatus(asset.id, AssetStatus.REVIEW, null))
-                        })
-                    } else {
-                        add(ProductionButton(stringResource(R.string.production_panel_reject), InfinityPillTone.NEUTRAL, !busy && actions.canRedo, ProductionUiTags.ASSET_REJECT) {
-                            rejecting = true
-                        })
-                        add(ProductionButton(stringResource(R.string.production_panel_approve), InfinityPillTone.PRIMARY, !busy && actions.canApprove, ProductionUiTags.ASSET_APPROVE) {
-                            onRun(ProductionUserAction.SetAssetStatus(asset.id, AssetStatus.LOCKED, null))
-                        })
-                    }
-                },
-            )
+            version?.let { selected ->
+                ProductionReviewBlock(
+                    production = production,
+                    target = ReviewTarget.assetVersion(asset.id, selected.number),
+                    label = listOf(asset.name, stringResource(R.string.production_panel_version, selected.number)),
+                    busy = busy,
+                    onRun = onRun,
+                    onSubmit = onSubmit,
+                    // 审核记录之前已定稿的当前版本视为已批准。
+                    settled = asset.status == AssetStatus.LOCKED && selected.number == asset.currentVersion,
+                )
+            }
         }
-    }
-    if (rejecting) {
-        ProductionTextDialog(
-            title = stringResource(R.string.production_panel_reject_title),
-            label = stringResource(R.string.production_panel_reason),
-            initial = "",
-            confirmText = stringResource(R.string.production_panel_reject),
-            maxLength = PRODUCTION_NOTE_MAX,
-            minLines = 3,
-            fieldTag = ProductionUiTags.REASON_FIELD,
-            onDismiss = { rejecting = false },
-            onSubmit = { note -> onSubmit(ProductionUserAction.SetAssetStatus(asset.id, AssetStatus.REDO, note.ifBlank { null })) },
-        )
     }
 }

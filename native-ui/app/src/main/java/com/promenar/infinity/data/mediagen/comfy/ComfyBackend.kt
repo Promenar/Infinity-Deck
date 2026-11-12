@@ -170,7 +170,7 @@ private fun extension(mime: String?, kind: InputKind): String = when (mime) {
     else -> when (kind) { InputKind.IMAGE -> "png"; InputKind.VIDEO -> "mp4"; InputKind.AUDIO -> "wav" }
 }
 
-/** 产出声明随远端 ID 持久化，解锁模板后的改动不会改变旧任务的下载解释。 */
+/** 产出声明随远端 ID 持久化，模板修改不会改变旧任务的下载解释。 */
 internal data class ComfyRemoteTicket(val promptId: String, val templateId: String, val hostId: String, val endpointFingerprint: String, val clientId: String, val outputs: List<ComfySlot>) {
     fun encode(): String = "comfy1:" + Base64.getUrlEncoder().withoutPadding().encodeToString(buildJsonObject {
         put("prompt", promptId); put("template", templateId); put("host", hostId); put("endpoint", endpointFingerprint); put("client", clientId)

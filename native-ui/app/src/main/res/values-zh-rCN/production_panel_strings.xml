@@ -88,25 +88,13 @@
     <string name="production_panel_no_assets">暂无资产</string>
     <string name="production_panel_no_shots">暂无镜头</string>
 
-    <string name="production_panel_lock_script">锁定剧本</string>
-    <string name="production_panel_unlock_script">解锁剧本</string>
-    <string name="production_panel_lock_storyboard">锁定分镜</string>
-    <string name="production_panel_unlock_storyboard">解锁分镜</string>
-    <string name="production_panel_select">选定</string>
-    <string name="production_panel_redo">重做</string>
-    <string name="production_panel_unlock">解锁</string>
     <string name="production_panel_edit">编辑</string>
     <string name="production_panel_save">保存</string>
-    <string name="production_panel_approve">通过</string>
-    <string name="production_panel_reject">打回</string>
     <string name="production_panel_back">返回</string>
     <string name="production_panel_stage_menu">阶段状态</string>
     <string name="production_panel_selected">已选</string>
     <string name="production_panel_take_number">候选 %d</string>
 
-    <string name="production_panel_redo_title">重做镜头</string>
-    <string name="production_panel_reject_title">打回资产</string>
-    <string name="production_panel_reason">原因</string>
     <string name="production_panel_prompt_title">编辑提示词</string>
 
     <string name="production_panel_manifest_write_failed">清单写入失败：%s</string>

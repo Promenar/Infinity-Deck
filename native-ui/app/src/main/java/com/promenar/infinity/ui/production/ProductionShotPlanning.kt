@@ -33,7 +33,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private enum class PlanningSheet { MODE, CHANNEL, LOOK }
-private enum class PlanningDialog { REDO, PROMPT, RECOMPILE, LOCK, CONTENT }
+private enum class PlanningDialog { PROMPT, RECOMPILE, SCENE_REVIEW, CONTENT }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -44,6 +44,7 @@ internal fun ProductionShotDetail(
     channels: List<MediaChannel>, channelOrder: List<String>, initialTab: ShotDetailTab? = null,
     onOpenCharacter: (String) -> Unit = {},
     initialPreview: ShotPlanPreview? = null,
+    generations: GenerationCount = GenerationCount(),
 ) {
     val shot = location.shot
     val episodeId = location.episode.id
@@ -62,7 +63,6 @@ internal fun ProductionShotDetail(
     val scope = rememberCoroutineScope()
     val failed = stringResource(R.string.production_panel_action_failed)
     val noPlanner = stringResource(R.string.p2_planner_unavailable)
-    val awaiting = stringResource(R.string.p2_task_approval)
     val submitted = stringResource(R.string.p2_submitted)
     val working = busy || localBusy || loading
     LaunchedEffect(sessionId, episodeId, shot.code, revision, refresh, services.planner) {
@@ -94,11 +94,11 @@ internal fun ProductionShotDetail(
                 stringResource(R.string.production_panel_scene_number, location.scene.number),
                 shot.size?.takeIf(String::isNotBlank),
                 secondsLabel(shot.durationSeconds),
+                generatedTimes(generations.total).takeIf { generations.total > 0 && !costAlert(generations) },
             ),
             onBack = onBack,
-        ) {
-            ProductionStatusChip(shot.status.label(), shot.status.tone(), Modifier.padding(end = 12.dp))
-        }
+            metaAccent = generatedTimes(generations.total).takeIf { costAlert(generations) },
+        )
         InfinityPanelTabs(listOf(
             InfinityPanelTab(ShotDetailTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { !location.scene.storyboardLocked }),
             InfinityPanelTab(ShotDetailTab.CANDIDATES, stringResource(R.string.p2_tab_candidates), count = shot.takes.size.takeIf { it > 0 }?.toString()),
@@ -118,15 +118,19 @@ internal fun ProductionShotDetail(
                         if (shot.takes.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabel(take.source.service)) { viewingId = take.id } }
                         }
-                        if (shot.status == ShotStatus.REDO && !shot.userNote.isNullOrBlank()) InfinityStatusStrip(InfinityStatusKind.Warning, shot.userNote)
-                        val actions = shot.actions(viewing?.id)
-                        ProductionActionRow(buildList {
-                            if (actions.canUnlock) add(ProductionButton(stringResource(R.string.production_panel_unlock), InfinityPillTone.NEUTRAL, !working, ProductionUiTags.SHOT_UNLOCK) { onRun(ProductionUserAction.UnlockShot(episodeId, shot.code)) })
-                            else if (shot.takes.isNotEmpty()) {
-                                add(ProductionButton(stringResource(R.string.production_panel_redo), InfinityPillTone.DANGER, !working && actions.canRedo, ProductionUiTags.SHOT_REDO) { dialog = PlanningDialog.REDO })
-                                add(ProductionButton(stringResource(R.string.production_panel_select), InfinityPillTone.PRIMARY, !working && actions.canSelect, ProductionUiTags.SHOT_SELECT) { viewing?.let { onRun(ProductionUserAction.SelectTake(episodeId, shot.code, it.id)) } })
-                            }
-                        })
+                        if (viewing != null) {
+                            val number = shot.takes.indexOf(viewing) + 1
+                            ProductionReviewBlock(
+                                production = production,
+                                target = ReviewTarget.take(episodeId, shot.code, viewing.id),
+                                label = listOf(shot.code, stringResource(R.string.production_panel_take_number, number)),
+                                busy = working,
+                                onRun = onRun,
+                                onSubmit = onSubmit,
+                                // 审核记录之前已选定的候选视为已批准。
+                                settled = viewing.id == shot.selectedTakeId && shot.status == ShotStatus.LOCKED,
+                            )
+                        }
                     }
                 }
             } else {
@@ -135,8 +139,9 @@ internal fun ProductionShotDetail(
                         ProductionRow(
                             stringResource(R.string.p2_unlocked_scene),
                             icon = Icons.Rounded.LockOpen,
-                            trailing = { ProductionCommand(stringResource(R.string.p2_lock_scene), enabled = !working) { dialog = PlanningDialog.LOCK } },
-                            chevron = false,
+                            chip = production.reviewChipSpec(ReviewTarget.scene(episodeId, location.scene.code)),
+                            enabled = !working,
+                            onClick = { dialog = PlanningDialog.SCENE_REVIEW },
                         )
                     }
                 }
@@ -240,7 +245,6 @@ internal fun ProductionShotDetail(
                 item("generate") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         preview?.blockedReason?.let { InfinityStatusStrip(InfinityStatusKind.Warning, it) }
-                        preview?.estimate?.let { Text(stringResource(R.string.p2_estimate, moneyText(it.currency, it.amount)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal)) }
                         InfinityPillButton(
                             text = stringResource(R.string.p2_generate),
                             tone = InfinityPillTone.PRIMARY,
@@ -249,7 +253,7 @@ internal fun ProductionShotDetail(
                             onClick = {
                                 execute {
                                     when (val result = services.planner?.generate(sessionId, episodeId, shot.code)) {
-                                        is ShotGenerateResult.Submitted -> { notice = if (result.awaitingApproval) awaiting else submitted; refresh++ }
+                                        is ShotGenerateResult.Submitted -> { notice = submitted; refresh++ }
                                         is ShotGenerateResult.Rejected -> localError = result.reason
                                         null -> localError = noPlanner
                                     }
@@ -274,12 +278,20 @@ internal fun ProductionShotDetail(
         null -> Unit
     }
     when (dialog) {
-        PlanningDialog.LOCK -> InfinityConfirmDialog(stringResource(R.string.p2_lock_scene), stringResource(R.string.p2_lock_scene_message), stringResource(R.string.p2_lock_scene), onConfirm = { onRun(ProductionUserAction.LockScene(episodeId, location.scene.code, true)); dialog = null }, onCancel = { dialog = null })
+        PlanningDialog.SCENE_REVIEW -> ProductionReviewSheet(
+            title = stringResource(R.string.production_panel_scene_number, location.scene.number),
+            subtitle = location.scene.heading,
+            production = production,
+            target = ReviewTarget.scene(episodeId, location.scene.code),
+            busy = working,
+            onRun = onRun,
+            onSubmit = onSubmit,
+            onDismiss = { dialog = null },
+        )
         PlanningDialog.RECOMPILE -> InfinityConfirmDialog(stringResource(R.string.p2_recompile), stringResource(R.string.p2_recompile_message), stringResource(R.string.p2_recompile), onConfirm = {
             dialog = null; execute { services.planner?.recompilePrompt(sessionId, episodeId, shot.code); refresh++ }
         }, onCancel = { dialog = null })
         PlanningDialog.PROMPT -> ProductionTextDialog(stringResource(R.string.production_panel_prompt_title), stringResource(R.string.production_panel_section_prompt), preview?.prompt ?: shot.prompt, stringResource(R.string.production_panel_save), PRODUCTION_PROMPT_MAX, 6, ProductionUiTags.PROMPT_FIELD, { dialog = null }, { onSubmit(ProductionUserAction.EditPrompt(episodeId, shot.code, it)) })
-        PlanningDialog.REDO -> ProductionTextDialog(stringResource(R.string.production_panel_redo_title), stringResource(R.string.production_panel_reason), "", stringResource(R.string.production_panel_redo), PRODUCTION_NOTE_MAX, 3, ProductionUiTags.REASON_FIELD, { dialog = null }, { onSubmit(ProductionUserAction.RequestRedo(episodeId, shot.code, it)) }, allowEmpty = false)
         PlanningDialog.CONTENT -> ProductionShotContentEditor(location, production, revision, services, onSubmit) { dialog = null }
         null -> Unit
     }

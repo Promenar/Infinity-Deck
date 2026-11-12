@@ -1,0 +1,36 @@
+<resources>
+    <string name="production_review_message_intro">这是用户在制作面板里的一轮审核。请逐条处理，并用 production_update 写明处理结果。</string>
+    <string name="production_review_message_title">制作审核 · 第 %1$d 轮</string>
+    <string name="production_review_message_approve">批准</string>
+    <string name="production_review_message_reject">否决</string>
+    <string name="production_review_message_suggest">建议</string>
+    <string name="production_review_message_open">未结事项</string>
+    <string name="production_review_message_overflow">共 %1$d 条未结事项，请用 production_get 的 changes 范围读取完整内容。</string>
+    <string name="production_review_message_episode">第 %1$s 集 · %2$s</string>
+    <string name="production_review_message_shot">%1$s / %2$s · %3$s</string>
+    <string name="production_review_message_take">%1$s / 候选 %2$s</string>
+    <string name="production_review_message_asset">%1$s / 版本 %2$s</string>
+    <string name="production_review_message_script">%1$s / 剧本</string>
+    <string name="production_review_message_scene">%1$s / %2$s · %3$s</string>
+    <string name="production_review_message_cut">%1$s / 剪辑 v%2$s</string>
+    <string name="production_review_message_change">%1$s / 改动：%2$s</string>
+    <string name="production_review_message_project">项目 · %1$s</string>
+    <string name="production_review_message_failed">失败任务 %1$s · %2$s · %3$s</string>
+    <string name="production_review_message_canceled">升级时取消的任务 %1$s · %2$s</string>
+    <string name="production_review_message_rejected">否决后待处理 · %1$s</string>
+    <string name="production_review_message_cost">生成次数提醒 · %1$s · %2$d 次</string>
+    <string name="production_review_message_field_title">标题</string>
+    <string name="production_review_message_field_size">景别</string>
+    <string name="production_review_message_field_durationseconds">时长</string>
+    <string name="production_review_message_field_camera">机位</string>
+    <string name="production_review_message_field_cameramovement">运镜</string>
+    <string name="production_review_message_field_visual">画面</string>
+    <string name="production_review_message_field_performance">表演</string>
+    <string name="production_review_message_field_dialogue">对白</string>
+    <string name="production_review_message_field_sound">声音</string>
+    <string name="production_review_message_field_transition">转场</string>
+    <string name="production_review_message_field_continuity">连续性</string>
+    <string name="production_review_message_field_appearances">出场角色</string>
+    <string name="production_review_message_field_locationassetid">场景资产</string>
+    <string name="production_review_message_field_propassetids">道具资产</string>
+</resources>

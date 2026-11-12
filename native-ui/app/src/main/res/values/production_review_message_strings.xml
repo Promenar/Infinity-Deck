@@ -1,0 +1,36 @@
+<resources>
+    <string name="production_review_message_intro">This is a round of user reviews from the production panel. Address each item and record the outcome with production_update.</string>
+    <string name="production_review_message_title">Production review · Round %1$d</string>
+    <string name="production_review_message_approve">Approved</string>
+    <string name="production_review_message_reject">Rejected</string>
+    <string name="production_review_message_suggest">Suggestions</string>
+    <string name="production_review_message_open">Open items</string>
+    <string name="production_review_message_overflow">%1$d open items in total. Read the changes scope of production_get for the complete list.</string>
+    <string name="production_review_message_episode">Episode %1$s · %2$s</string>
+    <string name="production_review_message_shot">%1$s / %2$s · %3$s</string>
+    <string name="production_review_message_take">%1$s / Take %2$s</string>
+    <string name="production_review_message_asset">%1$s / Version %2$s</string>
+    <string name="production_review_message_script">%1$s / Script</string>
+    <string name="production_review_message_scene">%1$s / %2$s · %3$s</string>
+    <string name="production_review_message_cut">%1$s / Cut v%2$s</string>
+    <string name="production_review_message_change">%1$s / Change: %2$s</string>
+    <string name="production_review_message_project">Project · %1$s</string>
+    <string name="production_review_message_failed">Failed task %1$s · %2$s · %3$s</string>
+    <string name="production_review_message_canceled">Task canceled during upgrade %1$s · %2$s</string>
+    <string name="production_review_message_rejected">Rejection awaiting action · %1$s</string>
+    <string name="production_review_message_cost">Generation alert · %1$s · %2$d attempts</string>
+    <string name="production_review_message_field_title">Title</string>
+    <string name="production_review_message_field_size">Shot size</string>
+    <string name="production_review_message_field_durationseconds">Duration</string>
+    <string name="production_review_message_field_camera">Camera</string>
+    <string name="production_review_message_field_cameramovement">Camera movement</string>
+    <string name="production_review_message_field_visual">Visual</string>
+    <string name="production_review_message_field_performance">Performance</string>
+    <string name="production_review_message_field_dialogue">Dialogue</string>
+    <string name="production_review_message_field_sound">Sound</string>
+    <string name="production_review_message_field_transition">Transition</string>
+    <string name="production_review_message_field_continuity">Continuity</string>
+    <string name="production_review_message_field_appearances">Appearances</string>
+    <string name="production_review_message_field_locationassetid">Location asset</string>
+    <string name="production_review_message_field_propassetids">Prop assets</string>
+</resources>

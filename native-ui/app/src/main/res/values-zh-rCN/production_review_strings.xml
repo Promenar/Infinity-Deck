@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_review_send">发送</string>
+    <string name="production_review_send_count">发送 %1$d</string>
+    <string name="production_review_approve">批准</string>
+    <string name="production_review_reject">否决</string>
+    <string name="production_review_suggest">建议</string>
+    <string name="production_review_pending">待审</string>
+    <string name="production_review_approved">已批准</string>
+    <string name="production_review_rejected">已否决</string>
+    <string name="production_review_unsent">未发送</string>
+    <string name="production_review_approved_unsent">已批准 · 未发送</string>
+    <string name="production_review_rejected_unsent">已否决 · 未发送</string>
+    <string name="production_review_suggestion_unsent">建议 · 未发送</string>
+    <string name="production_review_reason">原因</string>
+    <string name="production_review_content">建议</string>
+    <string name="production_review_actions">审核</string>
+    <string name="production_review_busy">会话不可用 · 未发送</string>
+    <string name="production_review_busy_importing">文档导入中 · 未发送</string>
+    <string name="production_review_busy_approval">会话有待批准项 · 未发送</string>
+    <plurals name="production_review_sent">
+        <item quantity="other">已发送 · 第 %1$d 轮 · %2$d 条</item>
+    </plurals>
+    <string name="production_review_unarchived">已发送 · 归档失败：%1$s</string>
+    <string name="production_review_rounds">审核记录</string>
+    <string name="production_review_round">第 %1$d 轮</string>
+    <plurals name="production_review_round_items">
+        <item quantity="other">%d 条</item>
+    </plurals>
+
+    <string name="production_cost_section">成本</string>
+    <string name="production_cost_unit">生成次数</string>
+    <string name="production_cost_none">暂无生成</string>
+    <string name="production_cost_failed">失败 %1$d</string>
+    <plurals name="production_cost_times">
+        <item quantity="other">%d 次</item>
+    </plurals>
+    <plurals name="production_cost_generated">
+        <item quantity="other">生成 %d 次</item>
+    </plurals>
+
+    <string name="production_task_cancel">取消</string>
+    <string name="p2_task_canceled">已取消</string>
+
+    <string name="media_settings_templates_in_session">模板由智能体在会话中管理，修改在会话内批准</string>
+
+    <string name="comfy_template_approval_new">新建工作流模板</string>
+    <string name="comfy_template_approval_edit">修改工作流模板</string>
+    <string name="comfy_template_approval_template">模板</string>
+    <string name="comfy_template_approval_host">主机</string>
+    <string name="comfy_template_approval_nodes">节点</string>
+    <string name="comfy_template_approval_added">新增 %1$s</string>
+    <string name="comfy_template_approval_removed">删除 %1$s</string>
+    <string name="comfy_template_approval_model">模型 · %1$s</string>
+</resources>

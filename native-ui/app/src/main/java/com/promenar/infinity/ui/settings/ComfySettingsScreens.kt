@@ -13,7 +13,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -77,7 +78,6 @@ internal fun ComfyHostScreenContent(
     onOpenTemplate: (String) -> Unit = {},
     onPreflight: () -> Unit = {},
     onCheck: () -> Unit = {},
-    onConfigure: () -> Unit = {},
     onRetry: () -> Unit = {},
 ) {
     var deleting by remember(host.id) { mutableStateOf(false) }
@@ -94,6 +94,7 @@ internal fun ComfyHostScreenContent(
         }
         InfinitySettingsSection(title = stringResource(R.string.media_settings_templates)) {
             val templates = state.snapshot.templates.filter { it.template.hostId == host.id }
+            TemplatesManagedInSession()
             if (templates.isEmpty()) MediaNotice(stringResource(R.string.media_settings_no_templates))
             templates.forEach { entry ->
                 val template = entry.template
@@ -108,7 +109,6 @@ internal fun ComfyHostScreenContent(
             if (templates.isNotEmpty()) InfinitySettingsItem(icon = Icons.Rounded.Refresh, title = stringResource(R.string.media_settings_recheck), onClick = onPreflight, enabled = !state.busy)
         }
         InfinitySettingsSection(title = stringResource(R.string.media_settings_host_actions)) {
-            InfinitySettingsItem(icon = Icons.Rounded.TravelExplore, title = stringResource(R.string.media_settings_configure), onClick = onConfigure, enabled = !state.busy, showChevron = true)
             InfinitySettingsItem(icon = Icons.Rounded.Edit, title = stringResource(R.string.media_settings_edit_host), onClick = onEdit, enabled = !state.busy, showChevron = true)
             InfinitySettingsItem(icon = Icons.Rounded.Delete, title = stringResource(R.string.media_settings_delete), onClick = { deleting = true }, enabled = !state.busy,
                 titleColor = MaterialTheme.colorScheme.error)
@@ -127,7 +127,6 @@ internal fun ComfyTemplateScreenContent(
     entry: ComfyTemplateState,
     state: MediaSettingsUiState,
     onBack: () -> Unit = {},
-    onUnlock: () -> Unit = {},
     onLock: (List<String>) -> Unit = {},
     onPreflight: () -> Unit = {},
     onRetry: () -> Unit = {},
@@ -147,14 +146,16 @@ internal fun ComfyTemplateScreenContent(
             entry.preflight.uncertain.forEach { MediaNotice(mediaDiagnosticLabel(it)) }
         }
         InfinitySettingsSection(title = stringResource(R.string.media_settings_lock_section)) {
+            TemplatesManagedInSession()
             com.promenar.infinity.ui.common.InfinitySettingsRowLayout(
                 icon = if (template.locked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
                 title = stringResource(if (template.locked) R.string.media_settings_locked else R.string.media_settings_unlocked),
             )
-            InfinitySettingsItem(
-                icon = if (template.locked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                title = stringResource(if (template.locked) R.string.media_settings_unlock else R.string.media_settings_lock),
-                onClick = { if (template.locked) onUnlock() else onLock(order) }, enabled = !state.busy,
+            // 已锁定的模板由智能体在会话里经审批卡修改；未锁定的模板仍可在这里按当前参考顺序锁定。
+            if (!template.locked) InfinitySettingsItem(
+                icon = Icons.Rounded.Lock,
+                title = stringResource(R.string.media_settings_lock),
+                onClick = { onLock(order) }, enabled = !state.busy,
             )
         }
         // 模板未声明规格时，显示锁定工作流里写定的画幅与帧数。
@@ -247,4 +248,19 @@ internal fun ComfyHostFormScreenContent(
             }, !state.busy)
         }
     }
+}
+
+/** 模板由智能体在会话中管理的说明行：主机页与模板详情共用。 */
+@Composable
+private fun TemplatesManagedInSession() {
+    com.promenar.infinity.ui.common.InfinitySettingsRowLayout(
+        icon = Icons.Rounded.Forum,
+        title = stringResource(R.string.media_settings_templates_in_session),
+        titleMaxLines = 3,
+        modifier = Modifier.testTag(MediaSettingsTags.TEMPLATES_IN_SESSION),
+    )
+}
+
+object MediaSettingsTags {
+    const val TEMPLATES_IN_SESSION = "media_settings_templates_in_session"
 }

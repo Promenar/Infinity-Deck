@@ -6,7 +6,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class MediaTaskState {
-    AWAITING_APPROVAL, QUEUED, SUBMITTING, RUNNING, DOWNLOADING, COMPLETED, FAILED, DOWNLOAD_FAILED, RESULT_UNKNOWN,
+    /** 仅用于读取升级前的待批准记录。 */
+    AWAITING_APPROVAL,
+    QUEUED, SUBMITTING, RUNNING, DOWNLOADING, COMPLETED, FAILED, DOWNLOAD_FAILED, RESULT_UNKNOWN, CANCELED,
 }
 
 @Serializable
@@ -17,20 +19,18 @@ data class MediaTask(
     val id: String,
     val request: MediaGenerationRequest,
     /** null 表示未知，不使用零费用代替。 */
-    val estimate: Money?,
-    val state: MediaTaskState = MediaTaskState.AWAITING_APPROVAL,
+    val estimate: Money? = null,
+    val state: MediaTaskState = MediaTaskState.QUEUED,
     val remoteId: String? = null,
     val progress: Float? = null,
     val outputPaths: List<String> = emptyList(),
     val actualCost: Money? = null,
     val error: String? = null,
     val failure: MediaTaskFailure? = null,
+    /** 旧记录缺少创建时间时为 0。 */
+    val createdAt: Long = 0,
 ) {
     init { require(id.isNotBlank() && (progress == null || progress in 0f..1f)) }
-    fun approve(): MediaTask {
-        check(state == MediaTaskState.AWAITING_APPROVAL)
-        return copy(state = MediaTaskState.QUEUED)
-    }
     fun submitting(): MediaTask {
         check(state == MediaTaskState.QUEUED && remoteId == null)
         return copy(state = MediaTaskState.SUBMITTING, failure = null, error = null)
@@ -45,10 +45,9 @@ data class MediaTask(
         require(message.isNotBlank())
         return copy(state = MediaTaskState.FAILED, error = message)
     }
-    /** 远端明确失败的新生成须由队列重新估价并走批准；本方法只恢复查询或下载。 */
-    fun retry(): MediaTask {
-        check(state == MediaTaskState.DOWNLOAD_FAILED || (state == MediaTaskState.FAILED && failure == MediaTaskFailure.POLL && remoteId != null))
-        return copy(state = if (state == MediaTaskState.DOWNLOAD_FAILED) MediaTaskState.DOWNLOADING else MediaTaskState.RUNNING, error = null, failure = null)
+    fun canceled(): MediaTask {
+        check(state in setOf(MediaTaskState.QUEUED, MediaTaskState.SUBMITTING, MediaTaskState.RUNNING, MediaTaskState.DOWNLOADING))
+        return copy(state = MediaTaskState.CANCELED, error = null, failure = null)
     }
     fun completed(paths: List<String>, actual: Money?): MediaTask {
         check(state in setOf(MediaTaskState.RUNNING, MediaTaskState.DOWNLOADING))
@@ -62,9 +61,7 @@ interface MediaGenerationQueue {
     suspend fun submit(request: MediaGenerationRequest): MediaTask
     fun observeTasks(): Flow<List<MediaTask>>
     fun observeTask(id: String): Flow<MediaTask?>
-    suspend fun approve(id: String)
-    suspend fun reject(id: String)
-    suspend fun retry(id: String)
+    suspend fun cancel(id: String)
 }
 
 /** sourceRef 保持不透明，前缀约定由制作项目调用方维护。 */

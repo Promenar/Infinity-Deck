@@ -156,32 +156,6 @@ class PostProcessorTest {
     }
 
     @Test
-    fun `预设标题的会话首轮结束后不改名，未预设的照常命名`() = testScope.runTest {
-        val store = ChatStore()
-        val sessionManager = SessionManager(store, stubSessionRepo)
-        val messageManager = MessageManager(store, stubMessageRepo, stubSessionRepo, testScope)
-        val postProcessor = PostProcessor(store, sessionManager, messageManager).apply {
-            setTitleKeeper { it == "preset" }
-            setTitleGenerator { "生成的标题" }
-        }
-        val agent = Agent(id = "a1", name = "Test Agent")
-        sessionManager.addSession(Session(id = "preset", agentId = "a1", title = "配置 ComfyUI · MAIN"))
-        sessionManager.addSession(Session(id = "other", agentId = "a1", title = "配置 ComfyUI · MAIN"))
-        testScope.advanceUntilIdle()
-        listOf("preset", "other").forEach { id ->
-            postProcessor.updateStats(PostProcessorParams(
-                sessionId = id, assistantMsgId = "m2", userMsgId = "m1",
-                userContent = "请配置 ComfyUI 主机", assistantContent = "好的",
-                agent = agent, session = store.getSession(id)!!, ragEnabled = false, modelId = "gpt-4o",
-            ))
-        }
-        testScope.advanceUntilIdle()
-
-        assertThat(store.getSession("preset")!!.title).isEqualTo("配置 ComfyUI · MAIN")
-        assertThat(store.getSession("other")!!.title).isEqualTo("生成的标题")
-    }
-
-    @Test
     fun cleanTitleSanitizesPunctuationAndLimitsLength() {
         assertThat(PostProcessor.cleanTitle("《超级人工智能大模型深度思考与解析指南》")).isEqualTo("超级人工智能大模型深")
         assertThat(PostProcessor.cleanTitle("“今日北京天气：多云”")).isEqualTo("今日北京天气多云")

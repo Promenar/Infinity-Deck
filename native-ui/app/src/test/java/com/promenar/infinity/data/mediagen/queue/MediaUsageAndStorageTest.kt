@@ -2,6 +2,7 @@ package com.promenar.infinity.data.mediagen.queue
 
 import com.promenar.infinity.domain.mediagen.*
 import java.math.BigDecimal
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -20,10 +21,24 @@ class MediaUsageAndStorageTest {
     @Test fun `持久化保留费用精度远端输出与恢复时间`() {
         val channel = MediaChannel("c", MediaGroup.VIDEO, MediaCapabilities(setOf(GenerationMode.TEXT)))
         val task = MediaTask("task", MediaGenerationRequest("c", GenerationMode.TEXT, "树林", emptyList(), "project/shot", sessionId = "s", outputDir = "takes"), Money(BigDecimal("0.12345678901234567890"), "CNY"))
-            .approve().submitting().started("remote")
+            .submitting().started("remote")
         val record = PersistentMediaTask(task, channel, "binding", "provider", "model", 100,
             pollAttempt = 4, nextPollAt = 500, remoteOutputs = listOf(RemoteOutput("output", InputKind.VIDEO)), usage = mapOf("tokens" to 100))
         assertEquals(record, MediaTaskCodec.decode(MediaTaskCodec.encode(record)))
+    }
+    @Test fun `旧记录缺少创建时间与估价时可读取并保留兼容状态`() {
+        val channel = MediaChannel("c", MediaGroup.VIDEO, MediaCapabilities(setOf(GenerationMode.TEXT)))
+        val record = PersistentMediaTask(MediaTask("task", MediaGenerationRequest("c", GenerationMode.TEXT, "树林", emptyList(), "project/shot"),
+            state = MediaTaskState.AWAITING_APPROVAL), channel, "binding", "provider", "model", 23)
+        val encoded = Json.parseToJsonElement(MediaTaskCodec.encode(record)).jsonObject
+        val task = encoded.getValue("task").jsonObject
+        val legacy = JsonObject(encoded + ("task" to JsonObject(task - "createdAt" - "estimate"))).toString()
+        val decoded = MediaTaskCodec.decode(legacy)
+        assertEquals(MediaTaskState.AWAITING_APPROVAL, decoded.task.state)
+        assertEquals(0L, decoded.task.createdAt)
+        assertNull(decoded.task.estimate)
+        val canceled = record.copy(task = record.task.copy(state = MediaTaskState.CANCELED, createdAt = 23))
+        assertEquals(canceled, MediaTaskCodec.decode(MediaTaskCodec.encode(canceled)))
     }
     @Test fun `退避封顶不会溢出且拒绝非法并发配置`() {
         assertEquals(30000L, MediaPollingPolicy().delayAfter(Int.MAX_VALUE))

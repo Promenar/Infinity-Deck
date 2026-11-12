@@ -116,7 +116,7 @@ class ProductionRepositoryTest {
             {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"原镜头","duration_seconds":2}
         ]""").jsonArray.map { it.jsonObject }
         val created = repo.update("s", "m", operations)
-        val locked = repo.apply("s", created.revision, ProductionUserAction.LockScene("S1E01", "SC01", true))
+        val locked = repo.apply("s", created.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null))
         fun shot(s: ProductionSnapshot) = s.production.seasons.single().episodes.single().scenes.single().shots.single()
         val action = ProductionUserAction.EditShotContent("S1E01", "SC01-01", shot(locked).copy(title = "已审批镜头"))
         val pending = repo.apply("s", locked.revision, action)
@@ -124,11 +124,11 @@ class ProductionRepositoryTest {
         assertThat(shot(repo.get("s")!!)).isEqualTo(shot(locked))
         assertThat(request.approved).isFalse()
         try { repo.apply("s", locked.revision, action); org.junit.Assert.fail("应拒绝过期编辑") } catch (_: ProductionRevisionConflictException) { }
-        try { repo.apply("s", locked.revision, ProductionUserAction.ResolveChange(request.id, true)); org.junit.Assert.fail("应拒绝过期审批") } catch (_: ProductionRevisionConflictException) { }
+        try { repo.apply("s", locked.revision, ProductionUserAction.Review(ReviewTarget.change(request.id), ReviewKind.APPROVE, null)); org.junit.Assert.fail("应拒绝过期审批") } catch (_: ProductionRevisionConflictException) { }
         val persisted = repo.get("s")!!
         assertThat(persisted.revision).isEqualTo(pending.revision)
         assertThat(persisted.production.changeRequests).containsExactly(request)
-        val approved = repo.apply("s", pending.revision, ProductionUserAction.ResolveChange(request.id, true))
+        val approved = repo.apply("s", pending.revision, ProductionUserAction.Review(ReviewTarget.change(request.id), ReviewKind.APPROVE, null))
         assertThat(shot(approved).title).isEqualTo("已审批镜头")
         assertThat(approved.production.changeRequests.single().approved).isTrue()
     }
@@ -147,7 +147,7 @@ class ProductionRepositoryTest {
         fun operations(raw: String) = Json.parseToJsonElement(raw).jsonArray.map { it.jsonObject }
         repo.update("s", "m", operations("""[{"op":"upsert_season","id":"S1","number":1},{"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集"},{"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"场"},{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"镜头","duration_seconds":2}]"""))
         val beforeLock = repo.get("s")!!
-        repo.apply("s", beforeLock.revision, ProductionUserAction.LockScene("S1E01", "SC01", true))
+        repo.apply("s", beforeLock.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null))
         repo.recordContextRead("s", "m", beforeLock.revision + 1, beforeLock.production.id)
         val take = operations("""[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"media/a.mp4","service":"服务"}]""")
         try { repo.update("s", "m", take); org.junit.Assert.fail("缺失媒体应被拒绝") } catch (_: IllegalArgumentException) { }

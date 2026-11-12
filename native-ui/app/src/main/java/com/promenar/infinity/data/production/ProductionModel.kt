@@ -168,7 +168,7 @@ fun defaultReferenceSlots() = listOf(ReferenceSlot("front", "正面全身"), Ref
 data class ReferenceVoice(val path: String? = null, val transcript: String? = null, val voiceSetting: String? = null, val tone: String? = null)
 
 @Serializable
-data class ShotChangeRequest(val id: String, val episodeId: String, val sceneCode: String, val shotCode: String, val changes: Map<String, ShotFieldChange>, val source: ChangeSource, val note: String? = null, val approved: Boolean = false)
+data class ShotChangeRequest(val id: String, val episodeId: String, val sceneCode: String, val shotCode: String, val changes: Map<String, ShotFieldChange>, val source: ChangeSource, val note: String? = null, val approved: Boolean = false, val rejected: Boolean = false, val changedBy: ChangeSource = source, val changedAt: Long = 0)
 
 @Serializable
 data class ShotFieldChange(val oldValue: kotlinx.serialization.json.JsonElement, val newValue: kotlinx.serialization.json.JsonElement)
@@ -184,6 +184,8 @@ data class Scene(
     val shots: List<Shot> = emptyList(),
     val changedBy: ChangeSource = ChangeSource.AGENT,
     val changedAt: Long = 0,
+    /** 最后一次实际内容更新的修订；审核锁定操作不推进。 */
+    val contentChangedAt: Long? = null,
 )
 
 @Serializable
@@ -197,6 +199,7 @@ data class Episode(
     val scenes: List<Scene> = emptyList(),
     val changedBy: ChangeSource = ChangeSource.AGENT,
     val changedAt: Long = 0,
+    val contentChangedAt: Long? = null,
 )
 
 @Serializable
@@ -209,7 +212,7 @@ data class Season(
 )
 
 @Serializable
-data class AssetVersion(val number: Int, val path: String, val createdAt: Long, val note: String? = null)
+data class AssetVersion(val number: Int, val path: String, val createdAt: Long, val note: String? = null, val taskId: String? = null)
 
 @Serializable
 data class Asset(
@@ -246,13 +249,17 @@ data class Production(
     val createdAt: Long,
     val updatedAt: Long,
     val experimental: Boolean = false,
-    val budgetCents: Long? = null,
     val changeRequests: List<ShotChangeRequest> = emptyList(),
     val policyChangedBy: ChangeSource = ChangeSource.AGENT,
     val policyChangedAt: Long = 0,
     val cuts: List<CutVersion> = emptyList(),
     /** 每集已使用的最大剪辑编号；删除版本后保留。 */
     val cutVersionHighWatermarks: Map<String, Int> = emptyMap(),
+    val reviews: List<ReviewEntry> = emptyList(),
+    val reviewRounds: List<ReviewRound> = emptyList(),
+    val nextReviewRound: Int = 1,
+    /** 未发送结论的回退基线；发送后清空。 */
+    val reviewDrafts: List<ReviewDraft> = emptyList(),
 )
 
 /** 清单文件与数据库的同步状态。 */
@@ -279,6 +286,9 @@ class ProductionRevisionConflictException : IllegalArgumentException("面板已�
 
 /** 用户在面板里的操作；全部记为 [ChangeSource.USER]，失败时抛 [IllegalArgumentException]，消息可直接显示。 */
 sealed interface ProductionUserAction {
+    data class Review(val target: ReviewTarget, val kind: ReviewKind, val note: String?) : ProductionUserAction
+    data class RetractReview(val target: ReviewTarget, val kind: ReviewKind) : ProductionUserAction
+    data class MarkReviewSent(val round: Int, val sentAt: Long) : ProductionUserAction
     /** 时长表以素材虚拟路径为键，由媒体探测层提供实际时长。 */
     data class CreateCut(val episodeId: String, val mediaDurations: Map<String, Double> = emptyMap()) : ProductionUserAction
     data class DeleteCut(val cutId: String) : ProductionUserAction
@@ -286,9 +296,7 @@ sealed interface ProductionUserAction {
     data class RegisterCutExport(val cutId: String, val record: CutExportRecord) : ProductionUserAction
     data class AddShot(val episodeId: String, val sceneCode: String, val title: String) : ProductionUserAction
     data class EditShotContent(val episodeId: String, val shotCode: String, val proposed: Shot) : ProductionUserAction
-    data class ResolveChange(val requestId: String, val approve: Boolean) : ProductionUserAction
     data class SetExperimental(val enabled: Boolean) : ProductionUserAction
-    data class SetBudget(val cents: Long?) : ProductionUserAction
     data class SetShotPlan(val episodeId: String, val shotCode: String, val channelId: String?, val mode: ShotMode) : ProductionUserAction
     data class RecompilePrompt(val episodeId: String, val shotCode: String, val prompt: String) : ProductionUserAction
     /** 生成层登记已完成任务；保留用户状态与内容决定。 */
@@ -301,14 +309,7 @@ sealed interface ProductionUserAction {
     data class AddLook(val assetId: String, val look: CharacterLook) : ProductionUserAction
     data class AddReferenceSlot(val assetId: String, val lookId: String, val slot: ReferenceSlot) : ProductionUserAction
     data class RemoveReferenceSlot(val assetId: String, val lookId: String, val slotId: String) : ProductionUserAction
-    data class SelectTake(val episodeId: String, val shotCode: String, val takeId: String) : ProductionUserAction
-    data class RequestRedo(val episodeId: String, val shotCode: String, val note: String?) : ProductionUserAction
-    /** 已定镜头回到待审。 */
-    data class UnlockShot(val episodeId: String, val shotCode: String) : ProductionUserAction
     data class EditPrompt(val episodeId: String, val shotCode: String, val prompt: String) : ProductionUserAction
-    data class SetAssetStatus(val assetId: String, val status: AssetStatus, val note: String?) : ProductionUserAction
-    data class LockScene(val episodeId: String, val sceneCode: String, val locked: Boolean) : ProductionUserAction
-    data class LockScript(val episodeId: String, val locked: Boolean) : ProductionUserAction
     data class SetStage(val stage: ProductionStage, val status: StageStatus) : ProductionUserAction
 }
 

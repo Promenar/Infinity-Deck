@@ -23,6 +23,8 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.cut.CutExportState
 import com.promenar.infinity.data.production.CutVersion
 import com.promenar.infinity.data.production.Production
+import com.promenar.infinity.data.production.ProductionUserAction
+import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
@@ -44,6 +46,9 @@ internal fun ProductionCutTab(
     sessionId: String,
     onShot: (String, String) -> Unit,
     onError: (String?) -> Unit,
+    busy: Boolean = false,
+    onRun: (ProductionUserAction) -> Unit = {},
+    onSubmit: suspend (ProductionUserAction) -> String? = { null },
 ) {
     val episodes = production.episodes()
     var episodeId by rememberSaveable(production.id) { mutableStateOf(production.defaultEpisodeId()) }
@@ -184,6 +189,10 @@ internal fun ProductionCutTab(
                 ProductionActionRow(actions)
                 if (playing && version.path == null && clipIndex + 1 < version.clips.size) ProductionCommand(stringResource(R.string.p2_next_clip)) { clipIndex++ }
             }
+        }
+        // 保存的剪辑版本可以审核；预演与选定是即时视图，不审核。
+        if (cut != null) item("review") {
+            ProductionReviewBlock(production, ReviewTarget.cut(cut.id), listOf(version.title), busy, onRun, onSubmit)
         }
         item("packaging") {
             ProductionSection(stringResource(R.string.p2_packaging)) {

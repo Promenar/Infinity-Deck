@@ -20,6 +20,7 @@ fun rememberProductionPanelServices(
     sessionId: String,
     source: ProductionPanelSource,
     openRoute: ((String) -> Unit)?,
+    sendReviewMessage: (suspend (String) -> ReviewDelivery)? = null,
 ): ProductionPanelServices {
     val app = LocalContext.current.applicationContext as? InfinityApplication ?: return ProductionPanelServices()
     val runtime by app.installedProductionMediaRuntime.collectAsStateWithLifecycle()
@@ -45,8 +46,9 @@ fun rememberProductionPanelServices(
         value = emptySet()
         runtime?.pendingRegistrations?.collect { value = it }
     }
-    return remember(runtime, labels, pending, sessionId, source, openRoute, conflict, invalid, failed) {
+    return remember(runtime, labels, pending, sessionId, source, openRoute, sendReviewMessage, conflict, invalid, failed) {
         ProductionPanelServices(
+            sendReviewMessage = sendReviewMessage,
             cutExport = app.productionCutRuntime.controller,
             planner = runtime?.let { app.shotGenerationPlanner },
             queue = runtime?.let { app.mediaGenerationQueue },

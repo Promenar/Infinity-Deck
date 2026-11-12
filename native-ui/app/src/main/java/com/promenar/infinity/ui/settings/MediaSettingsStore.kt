@@ -31,7 +31,6 @@ internal interface MediaSettingsStore {
     suspend fun removeHost(id: String)
     suspend fun probe(id: String)
     suspend fun preflight(id: String)
-    suspend fun unlock(id: String)
     suspend fun lock(id: String, referenceOrder: List<String>)
 }
 
@@ -73,7 +72,6 @@ internal class ApplicationMediaSettingsStore(
     override suspend fun removeHost(id: String) = repository.removeHost(id)
     override suspend fun probe(id: String) { repository.checkConnection(id) }
     override suspend fun preflight(id: String) { recordTime(repository.preflight(id)) }
-    override suspend fun unlock(id: String) { repository.unlockTemplateByUser(id) }
     override suspend fun lock(id: String, referenceOrder: List<String>) {
         val state = repository.templates().first { it.template.id == id }
         check(!state.template.locked)

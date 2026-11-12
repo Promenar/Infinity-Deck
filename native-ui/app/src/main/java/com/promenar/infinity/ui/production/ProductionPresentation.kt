@@ -126,31 +126,3 @@ fun formatShotSeconds(seconds: Double): String {
     val rounded = Math.round(seconds * 10) / 10.0
     return if (rounded % 1.0 == 0.0) rounded.toLong().toString() else rounded.toString()
 }
-
-/** 镜头状态允许的用户操作。 */
-data class ShotActions(val canSelect: Boolean, val canRedo: Boolean, val canUnlock: Boolean, val canEditPrompt: Boolean)
-
-/**
- * [takeId] 为当前展示的候选。已定镜头只能解锁；生成中不能选定或重做；
- * 选定要求候选存在且不是已选定的那条。
- */
-fun Shot.actions(takeId: String?): ShotActions {
-    val locked = status == ShotStatus.LOCKED
-    val generating = status == ShotStatus.GENERATING
-    val take = takeId?.let { id -> takes.firstOrNull { it.id == id } }
-    return ShotActions(
-        canSelect = !locked && !generating && take != null,
-        canRedo = !locked && !generating && status != ShotStatus.REDO,
-        canUnlock = locked,
-        canEditPrompt = !locked,
-    )
-}
-
-/** 资产状态允许的用户操作。 */
-data class AssetActions(val canApprove: Boolean, val canRedo: Boolean, val canUnlock: Boolean)
-
-fun Asset.actions(): AssetActions = AssetActions(
-    canApprove = status != AssetStatus.LOCKED && (versions.isNotEmpty() || (kind == com.promenar.infinity.data.production.AssetKind.CHARACTER && looks.any { look -> com.promenar.infinity.data.production.ProductionRules.defaultSlotOrder.all { id -> look.slots.any { it.id == id && !it.path.isNullOrBlank() } } })),
-    canRedo = status != AssetStatus.LOCKED && status != AssetStatus.REDO,
-    canUnlock = status == AssetStatus.LOCKED,
-)

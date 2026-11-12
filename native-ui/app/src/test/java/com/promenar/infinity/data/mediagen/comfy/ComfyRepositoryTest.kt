@@ -10,16 +10,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ComfyRepositoryTest {
-    @Test fun locksAgentUpdatesAndOnlyUserUnlockAllowsReplacement() = runTest {
+    @Test fun approvedAgentReplacementStaysLockedAndRunsPreflight() = runTest {
         val f = ComfyFixture()
         f.repository.saveHost(f.host)
         val created = f.repository.defineTemplateByAgent(f.template)
         assertTrue(created.template.locked)
         assertEquals(PreflightStatus.PASS, created.preflight.status)
-        try { f.repository.defineTemplateByAgent(f.template); fail("锁定后应拒绝") }
-        catch (e: IllegalStateException) { assertTrue(e.message!!.contains("用户")) }
-        f.repository.unlockTemplateByUser(f.template.id)
-        assertTrue(f.repository.defineTemplateByAgent(f.template.copy(name = "新版")).template.locked)
+        f.http.calls.clear()
+        f.http.info = JsonObject(emptyMap())
+        val updated = f.repository.defineTemplateByAgent(f.template.copy(name = "新版", locked = false))
+        assertTrue(updated.template.locked)
+        assertEquals("新版", updated.template.name)
+        assertEquals(PreflightStatus.REVIEW, updated.preflight.status)
+        assertTrue(updated.preflight.missing.isNotEmpty())
+        assertEquals(setOf("/object_info/Test", "/object_info/Save"), f.http.calls.map { it.first }.toSet())
+        assertEquals(listOf(updated), f.repository.templates())
     }
 
     @Test fun connectionCheckOnlyRequestsLightweightSystemStats() = runTest {

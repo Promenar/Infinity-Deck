@@ -40,22 +40,22 @@ class ProductionEngineTest {
     }
 
     @Test fun `用户变更需要先读取且锁定镜头保护关键字段`() {
-        val s = fixture()
-        val redone = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.RequestRedo("S1E01", "SC01-01", "调整"), 3)
+        val s = update(fixture(), """[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"initial.mp4","service":"服务"}]""")
+        val redone = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.take("S1E01", "SC01-01", shot(s).takes.single().id), ReviewKind.REJECT, "调整"), 3)
         val operation = """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","prompt":"新提示"}]"""
         assertThrows(IllegalArgumentException::class.java) { update(redone, operation, s.revision) }
         assertThat(shot(update(redone, operation)).prompt).isEqualTo("新提示")
         val withTake = update(redone, """[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"a.png","service":"服务"}]""")
-        val locked = ProductionUserEngine.apply(withTake, withTake.revision, ProductionUserAction.SelectTake("S1E01", "SC01-01", shot(withTake).takes.single().id), 4)
+        val locked = ProductionUserEngine.apply(withTake, withTake.revision, ProductionUserAction.Review(ReviewTarget.take("S1E01", "SC01-01", shot(withTake).takes.last().id), ReviewKind.APPROVE, null), 4)
         assertThat(shot(update(locked, operation)).prompt).isEqualTo("新提示")
         val added = update(locked, """[{"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"b.png","service":"服务"}]""")
         assertThat(shot(added).status).isEqualTo(ShotStatus.LOCKED)
-        assertThat(shot(added).takes).hasSize(2)
+        assertThat(shot(added).takes).hasSize(3)
     }
 
     @Test fun `锁定场禁止增删重排而允许更新说明`() {
         val s = fixture()
-        val locked = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.LockScene("S1E01", "SC01", true), 3)
+        val locked = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null), 3)
         val add = """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-02","title":"二","duration_seconds":2}]"""
         val remove = """[{"op":"remove","target":"shot","episode_id":"S1E01","ids":["SC01-01"]}]"""
         assertThrows(IllegalArgumentException::class.java) { update(locked, add) }
@@ -77,11 +77,13 @@ class ProductionEngineTest {
         assertThat(changed.production.assets.single().status).isEqualTo(AssetStatus.REVIEW)
         assertThrows(IllegalArgumentException::class.java) { update(s, """[{"op":"set_asset_status","asset_id":"a","status":"locked"}]""") }
         assertThrows(IllegalArgumentException::class.java) { update(s, """[{"op":"set_stage","stage":"script","status":"locked"}]""") }
-        val user = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.SetAssetStatus("a", AssetStatus.LOCKED, "定稿"), 3)
+        val withVersion = update(s, """[{"op":"add_asset_version","asset_id":"a","path":"initial.png"}]""")
+        val user = ProductionUserEngine.apply(withVersion, withVersion.revision, ProductionUserAction.Review(ReviewTarget.assetVersion("a", 1), ReviewKind.APPROVE, "定稿"), 3)
         assertThrows(IllegalArgumentException::class.java) { update(user, """[{"op":"add_asset_version","asset_id":"a","path":"a.png"}]""", s.revision) }
         val result = update(user, """[{"op":"add_asset_version","asset_id":"a","path":"a.png"}]""")
         assertThat(result.production.assets.single().status).isEqualTo(AssetStatus.LOCKED)
-        assertThat(result.production.assets.single().currentVersion).isNull()
+        assertThat(result.production.assets.single().currentVersion).isEqualTo(1)
+        assertThat(result.production.assets.single().versions).hasSize(2)
     }
 
     @Test fun `无效路径媒体与操作数量被拒绝`() {
@@ -102,7 +104,7 @@ class ProductionEngineTest {
 
     @Test fun `已锁剧本阻止删除集及所在季`() {
         val s = fixture()
-        val locked = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.LockScript("S1E01", true), 3)
+        val locked = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.script("S1E01"), ReviewKind.APPROVE, null), 3)
         for (target in listOf("episode", "season")) {
             val id = if (target == "episode") "S1E01" else "S1"
             assertThrows(IllegalArgumentException::class.java) { update(locked, """[{"op":"remove","target":"$target","ids":["$id"]}]""") }
@@ -110,7 +112,7 @@ class ProductionEngineTest {
     }
     @Test fun `锁定资产追加版本保持当前版本且不能改名称或种类`() {
         val s = update(fixture(), """[{"op":"add_asset_version","asset_id":"a","path":"a.png"}]""")
-        val locked = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.SetAssetStatus("a", AssetStatus.LOCKED, null), 3)
+        val locked = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.assetVersion("a", 1), ReviewKind.APPROVE, null), 3)
         val appended = update(locked, """[{"op":"add_asset_version","asset_id":"a","path":"b.png"}]""")
         assertThat(appended.production.assets.single().currentVersion).isEqualTo(1)
         assertThat(appended.production.assets.single().versions).hasSize(2)
@@ -127,11 +129,11 @@ class ProductionEngineTest {
         assertThrows(IllegalArgumentException::class.java) { update(fresh, """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","prompt":"旧提示"}]""", s.revision) }
     }
 
-    @Test fun `场集资产阶段的智能体更新保留用户修订标记`() {
-        var s = fixture()
-        s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.LockScript("S1E01", false), 3)
-        s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.LockScene("S1E01", "SC01", false), 3)
-        s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.SetAssetStatus("a", AssetStatus.REVIEW, null), 3)
+    @Test fun `场集内容更新推进修订且各对象保留用户来源`() {
+        var s = update(fixture(), """[{"op":"add_asset_version","asset_id":"a","path":"initial.png"}]""")
+        s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.script("S1E01"), ReviewKind.REJECT, null), 3)
+        s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.REJECT, null), 3)
+        s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.Review(ReviewTarget.assetVersion("a", 1), ReviewKind.REJECT, null), 3)
         s = ProductionUserEngine.apply(s, s.revision, ProductionUserAction.SetStage(ProductionStage.SCRIPT, StageStatus.NOT_STARTED), 3)
         val episode = s.production.seasons.single().episodes.single()
         val scene = episode.scenes.single()
@@ -139,8 +141,10 @@ class ProductionEngineTest {
         val stage = s.production.stages.first()
         val out = update(s, """[{"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"新集"},{"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"新场"},{"op":"upsert_asset","id":"a","kind":"prop","name":"道具","description":"说明"},{"op":"set_stage","stage":"script","status":"in_progress"}]""")
         val afterEpisode = out.production.seasons.single().episodes.single()
-        assertThat(afterEpisode.changedAt).isEqualTo(episode.changedAt)
-        assertThat(afterEpisode.scenes.single().changedAt).isEqualTo(scene.changedAt)
+        assertThat(afterEpisode.changedAt).isEqualTo(out.revision)
+        assertThat(afterEpisode.changedAt).isGreaterThan(episode.changedAt)
+        assertThat(afterEpisode.scenes.single().changedAt).isEqualTo(out.revision)
+        assertThat(afterEpisode.scenes.single().changedAt).isGreaterThan(scene.changedAt)
         assertThat(out.production.assets.single().changedAt).isEqualTo(asset.changedAt)
         assertThat(out.production.stages.first().changedAt).isEqualTo(stage.changedAt)
         assertThat(listOf(afterEpisode.changedBy, afterEpisode.scenes.single().changedBy, out.production.assets.single().changedBy, out.production.stages.first().changedBy)).containsExactly(ChangeSource.USER, ChangeSource.USER, ChangeSource.USER, ChangeSource.USER)

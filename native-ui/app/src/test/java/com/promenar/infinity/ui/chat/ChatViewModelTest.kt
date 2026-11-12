@@ -2865,6 +2865,206 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun `面板在空闲时只发送指定文本并保留全部输入草稿`() = runTest {
+        seedSession(); advanceUntilIdle()
+        val document = MessageDocumentAttachment("panel-draft", "draft.txt", "text/plain", "草稿文档", 12, "draft-hash", 4)
+        val image = android.net.Uri.parse("content://panel/unsent-image")
+        viewModel.updateInputText("尚未发送的草稿")
+        viewModel.addDraftDocuments(listOf(document))
+        viewModel.addQuote("source", "未发送的引用")
+        viewModel.updateQuoteAnnotation(viewModel.draftQuotes.value.single().id, "草稿批注")
+        viewModel.updateComposerImages(listOf(image))
+        @Suppress("UNCHECKED_CAST")
+        val restoredImages = ChatViewModel::class.java.getDeclaredField("_restoredDraftImages").apply { isAccessible = true }
+            .get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<List<String>?>
+        restoredImages.value = listOf(image.toString())
+        val quotes = viewModel.draftQuotes.value
+        val epoch = viewModel.draftConsumptionEpoch.value
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.STARTED)
+        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating }
+
+        val sent = savedMessages.map { it.first }.single { it.role == MessageRole.USER }
+        assertThat(sent.content).isEqualTo("面板消息")
+        assertThat(sent.userImages).isNull()
+        assertThat(sent.userDocuments).isNull()
+        assertThat(sent.quotes).isNull()
+        assertThat(viewModel.inputText.value).isEqualTo("尚未发送的草稿")
+        assertThat(viewModel.draftDocuments.value).containsExactly(document)
+        assertThat(viewModel.draftQuotes.value).isEqualTo(quotes)
+        assertThat(viewModel.draftConsumptionEpoch.value).isEqualTo(epoch)
+        assertThat(viewModel.restoredDraftImages.value).containsExactly(image.toString())
+        assertThat(ChatViewModel::class.java.getDeclaredField("composerImages").apply { isAccessible = true }.get(viewModel))
+            .isEqualTo(listOf(image))
+    }
+
+    @Test
+    fun `面板在运行中持久化纯文本队列并保留全部输入草稿`() = runTest {
+        seedSession(); advanceUntilIdle()
+        holdStreamOpen = true
+        viewModel.sendMessage("运行中的消息"); advanceUntilIdle()
+        val document = MessageDocumentAttachment("panel-queued-draft", "draft.txt", "text/plain", "草稿文档", 12, "draft-hash", 4)
+        val image = android.net.Uri.parse("content://panel/unsent-image")
+        viewModel.updateInputText("运行期间的新草稿")
+        viewModel.addDraftDocuments(listOf(document))
+        viewModel.addQuote("source", "未发送的引用")
+        viewModel.updateQuoteAnnotation(viewModel.draftQuotes.value.single().id, "草稿批注")
+        viewModel.updateComposerImages(listOf(image))
+        @Suppress("UNCHECKED_CAST")
+        val restoredImages = ChatViewModel::class.java.getDeclaredField("_restoredDraftImages").apply { isAccessible = true }
+            .get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<List<String>?>
+        restoredImages.value = listOf(image.toString())
+        val quotes = viewModel.draftQuotes.value
+        val epoch = viewModel.draftConsumptionEpoch.value
+
+        assertThat(viewModel.sendPanelMessage("s1", "排队的面板消息")).isEqualTo(PanelSendResult.QUEUED)
+
+        val queued = queueStore.snapshot("s1").items.single()
+        assertThat(queued.text).isEqualTo("排队的面板消息")
+        assertThat(queued.imagePaths).isEmpty()
+        assertThat(queued.documents).isEmpty()
+        assertThat(queued.quotes).isEmpty()
+        assertThat(protocolRequestCount).isEqualTo(1)
+        assertThat(viewModel.inputText.value).isEqualTo("运行期间的新草稿")
+        assertThat(viewModel.draftDocuments.value).containsExactly(document)
+        assertThat(viewModel.draftQuotes.value).isEqualTo(quotes)
+        assertThat(viewModel.draftConsumptionEpoch.value).isEqualTo(epoch)
+        assertThat(viewModel.restoredDraftImages.value).containsExactly(image.toString())
+        assertThat(ChatViewModel::class.java.getDeclaredField("composerImages").apply { isAccessible = true }.get(viewModel))
+            .isEqualTo(listOf(image))
+    }
+
+    @Test
+    fun `面板排队写盘完成前不返回已排队`() = runTest {
+        seedSession(); advanceUntilIdle()
+        holdStreamOpen = true
+        viewModel.sendMessage("运行中"); advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        queueEnqueueGate = gate
+
+        val sending = async { viewModel.sendPanelMessage("s1", "等待落盘") }
+        runCurrent()
+        assertThat(sending.isCompleted).isFalse()
+        assertThat(queueStore.snapshot("s1").items).isEmpty()
+        gate.complete(Unit)
+
+        assertThat(sending.await()).isEqualTo(PanelSendResult.QUEUED)
+        assertThat(queueStore.snapshot("s1").items.single().text).isEqualTo("等待落盘")
+    }
+
+    @Test
+    fun `面板排队写盘失败不会返回已排队或改写草稿`() = runTest {
+        seedSession(); advanceUntilIdle()
+        holdStreamOpen = true
+        viewModel.sendMessage("运行中"); advanceUntilIdle()
+        viewModel.updateInputText("保留草稿")
+        val failure = java.io.IOException("panel queue write failed")
+        val failingQueue = object : com.promenar.infinity.data.chat.queue.ComposerQueueStore by queuePort {
+            override suspend fun enqueue(sessionId: String, text: String, imageUris: List<String>, documents: List<MessageDocumentAttachment>, quotes: List<MessageQuote>): com.promenar.infinity.data.chat.queue.QueuedMessage = throw failure
+        }
+        ChatViewModel::class.java.getDeclaredField("composerQueueStore").apply { isAccessible = true }.set(viewModel, failingQueue)
+
+        val result = runCatching { viewModel.sendPanelMessage("s1", "面板消息") }
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(java.io.IOException::class.java)
+        assertThat(result.exceptionOrNull()?.message).isEqualTo("panel queue write failed")
+        assertThat(queueStore.snapshot("s1").items).isEmpty()
+        assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
+    }
+
+    @Test
+    fun `面板没有当前会话时返回不可用且不写消息和队列`() = runTest {
+        assertThat(viewModel.sendPanelMessage("missing", "面板消息")).isEqualTo(PanelSendResult.UNAVAILABLE)
+        assertThat(savedMessages).isEmpty()
+        assertThat(queueStore.snapshot("missing").items).isEmpty()
+        assertThat(protocolRequestCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `面板目标不匹配当前会话时返回不可用且不改草稿`() = runTest {
+        seedSession("other"); advanceUntilIdle()
+        seedSession("current"); advanceUntilIdle()
+        viewModel.updateInputText("保留草稿")
+
+        assertThat(viewModel.sendPanelMessage("other", "面板消息")).isEqualTo(PanelSendResult.UNAVAILABLE)
+
+        assertThat(savedMessages).isEmpty()
+        assertThat(queueStore.snapshot("other").items).isEmpty()
+        assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
+        assertThat(protocolRequestCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `面板当前会话已删除时返回不可用且不写消息和队列`() = runTest {
+        seedSession(); advanceUntilIdle()
+        ApplicationProvider.getApplicationContext<InfinityApplication>().chatStore.clear()
+
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.UNAVAILABLE)
+
+        assertThat(savedMessages).isEmpty()
+        assertThat(queueStore.snapshot("s1").items).isEmpty()
+        assertThat(protocolRequestCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `面板在文档导入中返回导入中且不改变错误与草稿`() = runTest {
+        seedSession(); advanceUntilIdle()
+        viewModel.updateInputText("保留草稿")
+        val gate = CompletableDeferred<Unit>()
+        io.mockk.coEvery { documentReader.read(any()) } coAnswers {
+            gate.await()
+            DocumentReadResult.Rejected(com.promenar.infinity.data.document.DocumentReadRejectReason.ReadFailed)
+        }
+        viewModel.importFullContextDocument(android.net.Uri.parse("content://panel/import")); runCurrent()
+        val error = viewModel.uiState.value.error
+
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.IMPORTING)
+        assertThat(savedMessages).isEmpty()
+        assertThat(queueStore.snapshot("s1").items).isEmpty()
+        assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
+        assertThat(viewModel.uiState.value.error).isEqualTo(error)
+        assertThat(protocolRequestCount).isEqualTo(0)
+        gate.complete(Unit); advanceUntilIdle()
+    }
+
+    @Test
+    fun `面板遇到待审批卡返回有待批准项且保留审批`() = runTest {
+        val approval = ApprovalRequest(toolName = "write_file", args = "{}", reason = "等待审批")
+        seedSession(approvalRequest = approval); advanceUntilIdle()
+
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.APPROVAL_PENDING)
+
+        assertThat(savedMessages).isEmpty()
+        assertThat(queueStore.snapshot("s1").items).isEmpty()
+        assertThat(ApplicationProvider.getApplicationContext<InfinityApplication>().chatStore.getSession("s1")?.approvalRequest)
+            .isEqualTo(approval)
+        assertThat(protocolRequestCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `面板遵循通知权限门且权限返回后保留输入草稿`() = runTest {
+        notificationPermissionState = com.promenar.infinity.background.generation.NotificationPermissionPromptState(
+            sdkInt = 35, granted = false, alreadyAsked = false)
+        seedSession(); advanceUntilIdle()
+        viewModel.updateInputText("权限等待期间的草稿")
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN))
+
+        assertThat(viewModel.sendPanelMessage("s1", "面板消息")).isEqualTo(PanelSendResult.STARTED)
+        advanceUntilIdle()
+        assertThat(savedMessages).isEmpty()
+        assertThat(protocolRequestCount).isEqualTo(0)
+        val token = requireNotNull(viewModel.notificationPermissionRequests.value).taskId
+        notificationPermissionState = notificationPermissionState!!.copy(alreadyAsked = true)
+        viewModel.onNotificationPermissionResult(token, granted = false)
+        awaitReal { protocolRequestCount == 1 && !viewModel.uiState.value.isGenerating }
+
+        assertThat(savedMessages.map { it.first }.single { it.role == MessageRole.USER }.content).isEqualTo("面板消息")
+        assertThat(viewModel.inputText.value).isEqualTo("权限等待期间的草稿")
+        assertThat(foregroundTrackedTasks).isEmpty()
+    }
+
+    @Test
     fun `生成中发送的技能命令进入队列原样保留，出队生成时预加载该技能`() = runTest {
         slashSkillCatalog.skills = listOf(com.promenar.infinity.ui.chat.command.slashTestSkill("demo"))
         seedSession(); advanceUntilIdle()

@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Test
 
 class ProductionPhaseTwoPresentationTest {
@@ -48,12 +47,10 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(production.taskTitle("p:task")).isNull()
     }
 
-    @Test fun `页签批准数与待审数独立且待定场显示圆点`() {
+    @Test fun `页签待审数只看镜头状态且待定场显示圆点`() {
         val p = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = emptyList())))))))
-        assertThat(p.tabSignals(listOf(task(), task("done", MediaTaskState.COMPLETED)))).isEqualTo(ProductionTabSignals(1, true, 1))
-        assertThat(p.copy(experimental = true).tabSignals(emptyList()).storyboardDot).isTrue()
-        assertThat(production.tabSignals(emptyList()).storyboardDot).isFalse()
-        assertThat(p.tabSignals(listOf(task())).entryBadge).isEqualTo(2)
+        assertThat(p.tabSignals()).isEqualTo(ProductionTabSignals(storyboardDot = true, reviews = 1))
+        assertThat(production.tabSignals()).isEqualTo(ProductionTabSignals(storyboardDot = false, reviews = 1))
     }
 
     @Test fun `项目队列按完整前缀隔离且空前缀不扩大范围`() {
@@ -93,10 +90,35 @@ class ProductionPhaseTwoPresentationTest {
 
     @Test fun `总览组装全部待处理类型并排除已批准变更`() {
         val change = ShotChangeRequest("req", episode.id, scene.code, shot.code, emptyMap(), ChangeSource.AGENT)
-        val p = production.copy(changeRequests = listOf(change, change.copy(id = "approved", approved = true)), seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = listOf(shot.copy(code = "SC02-01", status = ShotStatus.REDO)))))))))
-        val items = p.overviewItems(listOf(task()))
-        assertThat(items.map { it.javaClass.simpleName }).containsExactly("Review", "Approval", "Redo", "SceneLock", "ReferenceReview", "ChangeReview").inOrder()
-        assertThat(p.copy(experimental = true).overviewItems(emptyList()).filterIsInstance<OverviewItem.SceneLock>()).isEmpty()
+        val cuts = listOf(CutVersion("cut-1", episode.id, 1, 1, emptyList()), CutVersion("cut-2", episode.id, 2, 2, emptyList()))
+        val p = production.copy(changeRequests = listOf(change, change.copy(id = "approved", approved = true)), cuts = cuts, seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = listOf(shot.copy(code = "SC02-01", status = ShotStatus.REDO)))))))))
+        val items = p.overviewItems()
+        assertThat(items.map { it.javaClass.simpleName }).containsExactly("Review", "Redo", "SceneLock", "ReferenceReview", "ChangeReview", "CutReview").inOrder()
+        assertThat(items.filterIsInstance<OverviewItem.ChangeReview>().single().request.id).isEqualTo("req")
+        assertThat(items.filterIsInstance<OverviewItem.CutReview>().single().cut.id).isEqualTo("cut-2")
+        assertThat(p.copy(experimental = true).overviewItems().filterIsInstance<OverviewItem.SceneLock>()).isEmpty()
+        val reviewed = p.copy(reviews = listOf(ReviewEntry(ReviewTarget.cut("cut-2"), ReviewKind.APPROVE, at = 1, round = 1)))
+        assertThat(reviewed.overviewItems().filterIsInstance<OverviewItem.CutReview>()).isEmpty()
+    }
+
+    @Test fun `场与改动请求的结论未发送时仍待处理发送后退出`() {
+        val unlocked = scene.copy(storyboardLocked = false)
+        assertThat(unlocked.awaitsReview(production, episode)).isTrue()
+        assertThat(scene.awaitsReview(production, episode)).isFalse()
+        val target = ReviewTarget.scene(episode.id, scene.code)
+        val unsent = production.copy(reviews = listOf(ReviewEntry(target, ReviewKind.APPROVE, at = 1)))
+        assertThat(scene.awaitsReview(unsent, episode)).isTrue()
+        val sent = production.copy(reviews = listOf(ReviewEntry(target, ReviewKind.REJECT, at = 1, round = 1)))
+        assertThat(unlocked.awaitsReview(sent, episode)).isFalse()
+        val suggestionOnly = production.copy(reviews = listOf(ReviewEntry(target, ReviewKind.SUGGEST, "暖一点", at = 1)))
+        assertThat(unlocked.awaitsReview(suggestionOnly, episode)).isTrue()
+
+        val request = ShotChangeRequest("req", episode.id, scene.code, shot.code, emptyMap(), ChangeSource.AGENT)
+        assertThat(request.awaitsReview(production)).isTrue()
+        assertThat(request.copy(approved = true).awaitsReview(production)).isFalse()
+        val change = ReviewTarget.change("req")
+        assertThat(request.awaitsReview(production.copy(reviews = listOf(ReviewEntry(change, ReviewKind.REJECT, at = 1))))).isTrue()
+        assertThat(request.awaitsReview(production.copy(reviews = listOf(ReviewEntry(change, ReviewKind.REJECT, at = 1, round = 2))))).isFalse()
     }
 
     @Test fun `镜头默认页签仅由候选存在决定`() {
@@ -120,28 +142,6 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(channelChoices(listOf(textOnly), emptyList(), ShotMode.FIRST_LAST)).isEmpty()
     }
 
-    @Test fun `场锁定需确认已存在的分镜且操作由用户动作驱动`() {
-        val unlocked = scene.copy(storyboardLocked = false)
-        assertThat(unlocked.requiresLockConfirmation()).isTrue()
-        assertThat(unlocked.copy(shots = emptyList()).requiresLockConfirmation()).isFalse()
-        assertThat(scene.requiresLockConfirmation()).isFalse()
-        val action = sceneLockAction(ShotLocation(episode, unlocked, shot))
-        val result = ProductionUserEngine.apply(snapshot, 1, action, 2)
-        assertThat(result.production.findShot(episode.id, shot.code)!!.scene.storyboardLocked).isTrue()
-        assertThat(result.production.findShot(episode.id, shot.code)!!.scene.changedBy).isEqualTo(ChangeSource.USER)
-    }
-
-    @Test fun `审批变更批准才应用拒绝保留原内容`() {
-        val request = ShotChangeRequest("req", episode.id, scene.code, shot.code, mapOf("title" to ShotFieldChange(JsonPrimitive(shot.title), JsonPrimitive("新标题"))), ChangeSource.AGENT)
-        val pending = snapshot.copy(production = production.copy(changeRequests = listOf(request)))
-        val rejected = ProductionUserEngine.apply(pending, 1, changeApprovalAction(request, false), 2)
-        assertThat(rejected.production.findShot(episode.id, shot.code)!!.shot.title).isEqualTo(shot.title)
-        assertThat(rejected.production.changeRequests).isEmpty()
-        val approved = ProductionUserEngine.apply(pending, 1, changeApprovalAction(request, true), 2)
-        assertThat(approved.production.findShot(episode.id, shot.code)!!.shot.title).isEqualTo("新标题")
-        assertThat(approved.production.changeRequests.single().approved).isTrue()
-    }
-
     @Test fun `参考位多选可逆造型切换默认三位并经审批写入`() {
         val appearance = shot.appearances.single()
         assertThat(appearance.toggleSlot(look, "side").referenceSlotIds).containsExactly("front", "side").inOrder()
@@ -152,7 +152,7 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(result.production.findShot(episode.id, shot.code)!!.shot.appearances.single()).isEqualTo(appearance)
         val request = result.production.changeRequests.single()
         assertThat(request.approved).isFalse()
-        val approved = ProductionUserEngine.apply(result, 2, ProductionUserAction.ResolveChange(request.id, true), 3)
+        val approved = ProductionUserEngine.apply(result, 2, ProductionUserAction.Review(ReviewTarget.change(request.id), ReviewKind.APPROVE, null), 3)
         assertThat(approved.production.findShot(episode.id, shot.code)!!.shot.appearances.single()).isEqualTo(switched)
         val toggled = ProductionUserEngine.apply(snapshot, 1, ProductionUserAction.ToggleReferenceSlot(episode.id, shot.code, asset.id, "side", true), 2)
         assertThat(toggled.production.findShot(episode.id, shot.code)!!.shot.appearances.single().referenceSlotIds).containsExactly("front", "side")
@@ -168,18 +168,15 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(generationEnabled(true, false, preview().copy(channel = null), false)).isFalse()
     }
 
-    @Test fun `队列仅待批可批准拒绝且仅失败可重试`() {
-        assertThat(task().allowedQueueActions()).containsExactly(QueueAction.REJECT, QueueAction.APPROVE)
-        assertThat(task(state = MediaTaskState.FAILED).allowedQueueActions()).containsExactly(QueueAction.RETRY)
-        assertThat(task(state = MediaTaskState.RUNNING).allowedQueueActions()).isEmpty()
+    @Test fun `只有进行中的任务可以取消`() {
+        listOf(MediaTaskState.QUEUED, MediaTaskState.SUBMITTING, MediaTaskState.RUNNING, MediaTaskState.DOWNLOADING).forEach {
+            assertThat(task(state = it).canCancel()).isTrue()
+        }
+        listOf(MediaTaskState.COMPLETED, MediaTaskState.FAILED, MediaTaskState.CANCELED, MediaTaskState.AWAITING_APPROVAL).forEach {
+            assertThat(task(state = it).canCancel()).isFalse()
+        }
         assertThat(task(state = MediaTaskState.RUNNING).isActiveTask()).isTrue()
         assertThat(task(state = MediaTaskState.COMPLETED).isActiveTask()).isFalse()
-    }
-
-    @Test fun `费用仅汇总已完成实际记账且币种独立`() {
-        val tasks = listOf(task().copy(actualCost = Money(BigDecimal.TEN, "CNY")), task("a", MediaTaskState.COMPLETED).copy(actualCost = Money(BigDecimal("1.23"), "CNY")), task("b", MediaTaskState.COMPLETED).copy(actualCost = Money(BigDecimal("2.00"), "USD")))
-        assertThat(tasks.spentByCurrency()).containsExactly("CNY", BigDecimal("1.23"), "USD", BigDecimal("2.00"))
-        assertThat(centsAmount(10001)).isEqualTo("100.01")
     }
 
     @Test fun `引用列表识别出场角色且时间线保留没有素材的缺口`() {
@@ -188,10 +185,15 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(production.cutClips(true).single().title).isEqualTo(shot.title)
     }
 
-    @Test fun `入口只汇总待审镜头和本项目待批准任务`() = runTest {
-        val tasks = MutableStateFlow(listOf(task(ref = "production:p/episode:e/shot:s"), task("other", ref = "production:other/episode:e/shot:s")))
+    @Test fun `入口汇总待审镜头与未发送意见且运行点只看本项目任务`() = runTest {
+        val tasks = MutableStateFlow(listOf(task(state = MediaTaskState.QUEUED, ref = "production:other/episode:e/shot:s")))
+        val reviewed = snapshot.copy(production = production.copy(reviews = listOf(
+            ReviewEntry(ReviewTarget.scene(episode.id, scene.code), ReviewKind.APPROVE, at = 1),
+            ReviewEntry(ReviewTarget.shot(episode.id, shot.code), ReviewKind.SUGGEST, "慢一点", at = 2),
+            ReviewEntry(ReviewTarget.script(episode.id), ReviewKind.APPROVE, at = 0, round = 1),
+        )))
         val source = object : ProductionPanelSource {
-            override fun observe(sessionId: String) = flowOf(snapshot)
+            override fun observe(sessionId: String) = flowOf(reviewed)
             override fun observeEverBound(sessionId: String) = flowOf(true)
             override suspend fun apply(sessionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot = error("不写入")
             override suspend fun resolveManifest(sessionId: String, resolution: ManifestResolution): ProductionSnapshot = error("不写入")
@@ -200,27 +202,19 @@ class ProductionPhaseTwoPresentationTest {
             override fun observeTasks() = tasks
             override fun observeTask(id: String) = flowOf(tasks.value.firstOrNull { it.id == id })
             override suspend fun submit(request: MediaGenerationRequest): MediaTask = error("不提交")
-            override suspend fun approve(id: String) = Unit
-            override suspend fun reject(id: String) = Unit
-            override suspend fun retry(id: String) = Unit
+            override suspend fun cancel(id: String) = Unit
         }
         val state = source.observeEntry("session", queue) { ProductionSourceRef.projectPrefix(it.id) }.first()
         assertThat(state.pending).isEqualTo(1)
-        assertThat(state.pendingApprovals).isEqualTo(1)
-        assertThat(state.attentionCount).isEqualTo(2)
+        assertThat(state.unsent).isEqualTo(2)
+        assertThat(state.attentionCount).isEqualTo(3)
+        assertThat(state.running).isFalse()
         assertThat(productionEntryState(null, false, tasks.value).attentionCount).isEqualTo(0)
     }
     @Test fun `模式切换保留兼容通道并让不兼容通道回默认`() {
         val location = ShotLocation(episode, scene, shot.copy(channelId = channel.id))
         assertThat(modeSelectionAction(location, ShotMode.REFERENCE, listOf(channel), emptyList()).channelId).isEqualTo(channel.id)
         assertThat(modeSelectionAction(location, ShotMode.FIRST_LAST, listOf(channel), emptyList()).channelId).isNull()
-    }
-
-    @Test fun `角色参考包完整默认位可审核且未填满不可通过`() {
-        val incomplete = asset.copy(looks = listOf(look))
-        assertThat(incomplete.actions().canApprove).isFalse()
-        val complete = asset.copy(looks = listOf(look.copy(slots = look.slots.map { it.copy(path = "assets/${it.id}.png") })))
-        assertThat(complete.actions().canApprove).isTrue()
     }
 
     @Test fun `阶段统计与默认通道使用当前快照和用户顺序`() {
@@ -260,7 +254,7 @@ class ProductionPhaseTwoPresentationTest {
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    @Test fun `入口持续观察队列批准完成与项目切换`() = runTest {
+    @Test fun `入口持续观察队列运行完成与项目切换`() = runTest {
         val current = MutableStateFlow<ProductionSnapshot?>(snapshot.copy(production = production.copy(id = "p1")))
         val tasks = MutableStateFlow(listOf(
             task("ours", ref = "production:p1/episode:e/shot:s"),
@@ -277,9 +271,7 @@ class ProductionPhaseTwoPresentationTest {
             override fun observeTasks() = tasks
             override fun observeTask(id: String) = flowOf(tasks.value.firstOrNull { it.id == id })
             override suspend fun submit(request: MediaGenerationRequest): MediaTask = error("不提交")
-            override suspend fun approve(id: String) = Unit
-            override suspend fun reject(id: String) = Unit
-            override suspend fun retry(id: String) = Unit
+            override suspend fun cancel(id: String) = Unit
         }
         assertThat(source.observeEntry("session").first().attentionCount).isEqualTo(1)
         var entry = ProductionEntryState.Disabled
@@ -287,19 +279,22 @@ class ProductionPhaseTwoPresentationTest {
             source.observeEntry("session", queue) { ProductionSourceRef.projectPrefix(it.id) }.collect { entry = it }
         }
         runCurrent()
-        assertThat(entry.pendingApprovals).isEqualTo(2)
-        assertThat(entry.attentionCount).isEqualTo(3)
+        assertThat(entry.attentionCount).isEqualTo(1)
+        assertThat(entry.running).isFalse()
         tasks.value = tasks.value.map { if (it.id == "ours") it.copy(state = MediaTaskState.RUNNING) else it }
         runCurrent()
-        assertThat(entry.attentionCount).isEqualTo(2)
+        assertThat(entry.attentionCount).isEqualTo(1)
         assertThat(entry.running).isTrue()
         tasks.value = tasks.value.map { if (it.id in setOf("ours", "audio")) it.copy(state = MediaTaskState.COMPLETED) else it }
         runCurrent()
-        assertThat(entry.attentionCount).isEqualTo(1)
+        assertThat(entry.running).isFalse()
+        tasks.value = tasks.value.map { if (it.id == "other") it.copy(state = MediaTaskState.RUNNING) else it }
+        runCurrent()
         assertThat(entry.running).isFalse()
         current.value = snapshot.copy(production = production.copy(id = "p10"))
         runCurrent()
-        assertThat(entry.attentionCount).isEqualTo(2)
+        assertThat(entry.running).isTrue()
+        assertThat(entry.attentionCount).isEqualTo(1)
         current.value = null
         runCurrent()
         assertThat(entry.attentionCount).isEqualTo(0)

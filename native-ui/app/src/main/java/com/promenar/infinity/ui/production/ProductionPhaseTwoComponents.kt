@@ -71,7 +71,8 @@ internal fun MediaTask.stateLabel(pendingRegistrations: Set<String> = emptySet()
 internal fun MediaTask.taskStatusRes(pendingRegistrations: Set<String>): Int = if (awaitingRegistration(pendingRegistrations)) {
     R.string.production_wire_pending_registration
 } else when (state.name) {
-    "AWAITING_APPROVAL" -> R.string.p2_task_approval
+    // 旧数据里的待批准任务升级后转为已取消。
+    "CANCELED", "AWAITING_APPROVAL" -> R.string.p2_task_canceled
     "QUEUED" -> R.string.p2_task_queued
     "SUBMITTING" -> R.string.p2_task_submitting
     "RUNNING" -> R.string.p2_task_running

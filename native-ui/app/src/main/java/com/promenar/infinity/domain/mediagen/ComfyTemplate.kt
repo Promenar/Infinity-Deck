@@ -73,14 +73,10 @@ data class ComfyTemplate(
             characterReferenceMode = CharacterReferenceMode.SEPARATE,
         ))
     }
+    /** 会话审批通过后的替换保持锁定，模板身份由稳定 id 约束。 */
     fun updateByAgent(replacement: ComfyTemplate): ComfyTemplate {
-        check(!locked) { "模板已锁定，请用户在界面解锁后修改" }
         require(replacement.id == id) { "模板 id 不可修改" }
         return replacement.copy(locked = true)
-    }
-    fun unlock(userApproved: Boolean): ComfyTemplate {
-        check(userApproved) { "解锁模板需要用户批准" }
-        return copy(locked = false)
     }
 }
 

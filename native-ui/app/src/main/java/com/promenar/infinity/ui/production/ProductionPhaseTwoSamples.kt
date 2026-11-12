@@ -23,8 +23,21 @@ internal object ProductionPhaseTwoSamples {
     )
     val order = channels.map { it.id }
     private val look = CharacterLook("coat", "风衣", defaultReferenceSlots().map { it.copy(path = "productions/harbor/assets/${it.id}.png") } + ReferenceSlot("detail", "怀表链", "productions/harbor/assets/detail.png"))
+    private val take02 = ReviewTarget.take("S1E01", "SC01-02", "t02")
+    private val take03 = ReviewTarget.take("S1E01", "SC01-02", "t03")
+    private val pier = ReviewTarget.assetVersion("loc-pier", 1)
+    private val firstRound = listOf(ReviewEntry(pier, ReviewKind.APPROVE, at = 1_000, round = 1, sentAt = 1_762_930_800_000))
+    private val secondRound = listOf(
+        ReviewEntry(take03, ReviewKind.REJECT, "脸型漂移", at = 2_000, round = 2, sentAt = 1_762_934_400_000),
+        ReviewEntry(ReviewTarget.shot("S1E01", "SC01-03"), ReviewKind.SUGGEST, "信封字迹再清楚些", at = 2_100, round = 2, sentAt = 1_762_934_400_000),
+    )
     private val base = ProductionSamples.production.copy(
-        budgetCents = 10000,
+        reviews = firstRound + secondRound + listOf(
+            ReviewEntry(take02, ReviewKind.APPROVE, at = 3_000),
+            ReviewEntry(ReviewTarget.scene("S1E01", "SC02"), ReviewKind.SUGGEST, "货架阴影再重一点", at = 3_100),
+        ),
+        reviewRounds = listOf(ReviewRound(1, 1_762_930_800_000, firstRound), ReviewRound(2, 1_762_934_400_000, secondRound)),
+        nextReviewRound = 3,
         assets = ProductionSamples.production.assets.map { asset -> if (asset.kind != AssetKind.CHARACTER) asset else asset.copy(looks = listOf(look, CharacterLook("suit", "西服")), referenceVoice = ReferenceVoice("productions/harbor/voices/${asset.id}.wav", "有些事情，总得有人记得。", "低沉、微哑", "克制")) },
         seasons = ProductionSamples.production.seasons.map { season -> season.copy(episodes = season.episodes.map { episode -> episode.copy(scenes = episode.scenes.map { scene -> scene.copy(shots = scene.shots.map { shot ->
             if (shot.code != "SC01-02") shot else shot.copy(
@@ -46,7 +59,7 @@ internal object ProductionPhaseTwoSamples {
         PlannedInput(null, "林晚 · 参考语音", "原生对白", InputKind.AUDIO, InputRole.REFERENCE_VOICE, "productions/harbor/voices/char-linwan.wav"),
     ), listOf(PlannedInput(4, "怀表链", "参考位", InputKind.IMAGE, InputRole.REFERENCE, "productions/harbor/assets/detail.png")), "图1中的林晚停步回头。镜头平视缓推，目光警觉。低声说：你听见了吗？", true, PromptFormat.SEEDANCE, Money(BigDecimal("1.20"), "CNY"), null, listOf("老周的参考包待审"))
     val tasks = listOf(
-        MediaTask("approve", MediaGenerationRequest("seedance", GenerationMode.REFERENCE, "海雾", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC01-02").encode()), Money(BigDecimal("1.20"), "CNY")),
+        MediaTask("queued", MediaGenerationRequest("seedance", GenerationMode.REFERENCE, "海雾", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC01-02").encode()), Money(BigDecimal("1.20"), "CNY"), state = MediaTaskState.QUEUED),
         MediaTask("run", MediaGenerationRequest("h3", GenerationMode.REFERENCE, "推门", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC02-01").encode()), Money(BigDecimal.ZERO, "CNY"), state = MediaTaskState.RUNNING, progress = 0.42f),
         MediaTask("failed", MediaGenerationRequest("h3", GenerationMode.REFERENCE, "信封", emptyList(), ProductionSourceRef("harbor", "S1E01", "SC01-03").encode()), Money(BigDecimal.ZERO, "CNY"), state = MediaTaskState.FAILED, error = "主机暂不可用"),
     )
@@ -60,13 +73,12 @@ internal object ProductionPhaseTwoSamples {
             override fun observeTasks() = kotlinx.coroutines.flow.flowOf(tasks)
             override fun observeTask(id: String) = kotlinx.coroutines.flow.flowOf(tasks.firstOrNull { it.id == id })
             override suspend fun submit(request: MediaGenerationRequest): MediaTask = error("预览环境不提交")
-            override suspend fun approve(id: String) = Unit
-            override suspend fun reject(id: String) = Unit
-            override suspend fun retry(id: String) = Unit
+            override suspend fun cancel(id: String) = Unit
         },
         projectSourcePrefix = { "${it.id}:" },
         shotSourceRef = { p, location -> "${p.id}:${location.shot.code}" },
         channelLabel = { if (it == "seedance") "Seedance 2.5" else "本机 H3" },
+        sendReviewMessage = { ReviewDelivery.ACCEPTED },
         cutExport = object : com.promenar.infinity.data.cut.CutExportController {
             override suspend fun createVersion(sessionId: String, episodeId: String): CutVersion = error("预览环境")
             override suspend fun deleteVersion(sessionId: String, versionId: String) = Unit

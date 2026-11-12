@@ -26,12 +26,12 @@ private fun PhaseTwoFrame(dark: Boolean = false, tab: ProductionTab = Production
 }
 
 @PreviewTest
-@Preview(name = "二期 总览 浅中360", widthDp = 360, heightDp = 1100, locale = "zh-rCN")
+@Preview(name = "二期 总览 浅中360", widthDp = 360, heightDp = 1700, locale = "zh-rCN")
 @Composable
 fun productionPhaseTwoOverviewPreview() = PhaseTwoFrame()
 
 @PreviewTest
-@Preview(name = "二期 总览 深英大字360", widthDp = 360, heightDp = 1100, locale = "en", fontScale = 1.3f)
+@Preview(name = "二期 总览 深英大字360", widthDp = 360, heightDp = 2100, locale = "en", fontScale = 1.3f)
 @Composable
 fun productionPhaseTwoOverviewDarkEnglishPreview() = PhaseTwoFrame(dark = true)
 
@@ -104,3 +104,13 @@ fun productionPhaseThreeCutPreview() = PhaseTwoFrame(tab = ProductionTab.CUT, se
 @Preview(name = "三期 剪辑 深英大字360", widthDp = 360, heightDp = 1300, locale = "en", fontScale = 1.3f)
 @Composable
 fun productionPhaseThreeCutEnglishPreview() = PhaseTwoFrame(dark = true, tab = ProductionTab.CUT, sessionId = "preview")
+
+@PreviewTest
+@Preview(name = "四期 总览 内屏", widthDp = 720, heightDp = 1400, locale = "zh-rCN")
+@Composable
+fun productionPhaseFourOverviewFoldPreview() = PhaseTwoFrame()
+
+@PreviewTest
+@Preview(name = "四期 镜头候选 内屏", widthDp = 720, heightDp = 1000, locale = "zh-rCN")
+@Composable
+fun productionPhaseFourShotCandidatesFoldPreview() = PhaseTwoFrame(shot = true, detail = ShotDetailTab.CANDIDATES)

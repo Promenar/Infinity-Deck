@@ -10,7 +10,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.*
 import java.util.UUID
 
-/** 主机配置与解锁只存在于用户界面接口，工具没有对应动作或参数。 */
+/** 主机由用户界面配置；模板创建与更新逐次经过会话审批。 */
 fun comfyTools(repository: ComfyRepository): List<SkillDefinition> = listOf(
     ComfyProbeSkill(repository), ComfyDefineTemplateSkill(repository), ComfyListTemplatesSkill(repository),
 )
@@ -21,7 +21,7 @@ class ComfyListTemplatesSkill(repository: ComfyRepository) : ComfySkill(reposito
     "列出已配置主机和 ComfyUI 模板、通道 id、锁定状态、预检结果。recheck=true 重新预检指定模板。",
     """{"type":"object","properties":{"template_id":{"type":"string"},"recheck":{"type":"boolean"}},"additionalProperties":false}""")
 class ComfyDefineTemplateSkill(repository: ComfyRepository) : ComfySkill(repository, "comfy_define_template",
-    "定义 API Format 工作流模板并锁定。模型文件由 models 显式声明。锁定模板需用户在界面解锁后修改。",
+    "创建或按同一 id 更新 API Format 工作流模板。每次变更须经用户审批，保存后保持锁定并重新预检。模型文件由 models 显式声明。",
     COMFY_TEMPLATE_SCHEMA)
 
 abstract class ComfySkill(private val repository: ComfyRepository, override val name: String,
@@ -65,7 +65,7 @@ abstract class ComfySkill(private val repository: ComfyRepository, override val 
         ToolResult(id = "comfy_${UUID.randomUUID()}", content = content.toString())
     } catch (e: CancellationException) { throw e }
     catch (e: ComfyFailure) { errorResult(e.message ?: "ComfyUI 操作失败") }
-    catch (e: IllegalStateException) { errorResult(if (e.message?.contains("锁定") == true) "模板已锁定，请用户在界面解锁后修改" else "配置已变化，请重新读取后操作") }
+    catch (_: IllegalStateException) { errorResult("配置已变化，请重新读取后操作") }
     catch (e: IllegalArgumentException) { errorResult(safeParameterError(e)) }
     catch (_: Exception) { errorResult("ComfyUI 操作失败，请检查参数、主机连接和配置") }
 

@@ -34,11 +34,12 @@ class ComfyTemplateContractTest {
         assertEquals(PreflightStatus.REVIEW, preflightComfy(template, unknown).status)
     }
 
-    @Test fun lockedTemplateRequiresUserToUnlockBeforeEditing() {
+    @Test fun approvedReplacementKeepsTemplateLockedAndPreservesIdentity() {
         val locked = template.copy(locked = true)
-        assertThrows(IllegalStateException::class.java) { locked.updateByAgent(template) }
-        assertThrows(IllegalStateException::class.java) { locked.unlock(userApproved = false) }
-        assertFalse(locked.unlock(userApproved = true).locked)
+        val updated = locked.updateByAgent(template.copy(name = "新版", locked = false))
+        assertTrue(updated.locked)
+        assertEquals("新版", updated.name)
+        assertThrows(IllegalArgumentException::class.java) { locked.updateByAgent(template.copy(id = "other")) }
     }
 
     @Test fun explicitModelDeclarationDoesNotDependOnFieldName() {

@@ -29,6 +29,31 @@ class MediaQueueBackupPolicyTest {
         assertFalse(clean.toString().contains("signed-url"))
         MediaQueueBackupPolicy.validateRows(mapOf("media_generation_tasks" to listOf(clean)))
     }
+    @Test fun `取消任务纳入静态历史且保留创建时间与实际费用`() {
+        val original = record(MediaTaskState.CANCELED).let { it.copy(task = it.task.copy(createdAt = 17,
+            actualCost = Money(java.math.BigDecimal("1.25"), "CNY"))) }
+        val clean = MediaQueueBackupPolicy.snapshotRow("media_generation_tasks", row(original))
+        val decoded = MediaTaskCodec.decode(clean.getValue("record_json").jsonPrimitive.content)
+        assertEquals(MediaTaskState.CANCELED, decoded.task.state)
+        assertEquals(17L, decoded.task.createdAt)
+        assertEquals(original.task.actualCost, decoded.task.actualCost)
+        assertTrue(decoded.historyOnly)
+        assertNull(decoded.task.remoteId)
+        assertTrue(MediaQueueBackupPolicy.selection("media_generation_tasks").contains("'CANCELED'"))
+        MediaQueueBackupPolicy.validateRows(mapOf("media_generation_tasks" to listOf(clean)))
+    }
+    @Test fun `升级取消原因在备份恢复中保留且其它错误清除`() {
+        for (state in listOf(MediaTaskState.CANCELED, MediaTaskState.FAILED)) {
+            for (error in listOf("升级后取消", "远端异常")) {
+                val original = record(state).let { it.copy(task = it.task.copy(error = error)) }
+                val clean = MediaQueueBackupPolicy.snapshotRow("media_generation_tasks", row(original))
+                val decoded = MediaTaskCodec.decode(clean.getValue("record_json").jsonPrimitive.content)
+                if (state == MediaTaskState.CANCELED && error == "升级后取消") assertEquals(error, decoded.task.error)
+                else assertNull(decoded.task.error)
+                MediaQueueBackupPolicy.validateRows(mapOf("media_generation_tasks" to listOf(clean)))
+            }
+        }
+    }
     @Test fun `恢复拒绝可调度任务与远端状态`() {
         assertThrows(BackupValidationException::class.java) {
             MediaQueueBackupPolicy.validateRows(mapOf("media_generation_tasks" to listOf(row(record(MediaTaskState.RUNNING)))))

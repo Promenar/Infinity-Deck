@@ -16,7 +16,6 @@ import com.promenar.infinity.data.model.effectiveMediaSettings
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.navigation.SettingsNavigator
 import com.promenar.infinity.navigation.composablePage
-import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import java.util.UUID
 
 /** 制作面板通过现有 onNavigateToSecondary 回调打开 [MODELS]。 */
@@ -43,19 +42,11 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
         navigator.Page(entry) {
             val vm = mediaSettingsViewModel()
             val state by vm.state.collectAsStateWithLifecycle()
-            var configure by remember { mutableStateOf<ComfyConfigureRequest?>(null) }
             MediaModelsScreenContent(state, onBack = { navigator.back() }, onMoveUp = vm::moveChannelUp,
                 onOpen = { row ->
                     row.modelId?.let { navigator.open(MediaSettingsRoutes.model(it)) }
                         ?: row.templateId?.let { navigator.open(MediaSettingsRoutes.template(it)) }
-                }, onProviders = { navigator.open(NavDestinations.PROVIDER_LIST) }, onRetry = vm::reload,
-                onConfigure = { configure = it })
-            configure?.let { request ->
-                ComfyAgentConfigureSheet(request, state, onDismiss = { configure = null }, onSession = {
-                    configure = null
-                    navigator.open(NavDestinations.chatHero(it))
-                })
-            }
+                }, onProviders = { navigator.open(NavDestinations.PROVIDER_LIST) }, onRetry = vm::reload)
         }
     }
     composablePage(MediaSettingsRoutes.MODEL, arguments = listOf(navArgument("modelId") { type = NavType.StringType })) { entry ->
@@ -77,7 +68,6 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
             val state by vm.state.collectAsStateWithLifecycle()
             val id = entry.arguments?.getString("hostId").orEmpty()
             val host = state.snapshot.hosts.firstOrNull { it.id == id }
-            var configure by remember { mutableStateOf(false) }
             if (host == null) MediaMissingScreen(state, { navigator.back() }, vm::reload) else {
                 LifecycleResumeEffect(host) {
                     vm.checkConnections()
@@ -87,12 +77,7 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
                     onEdit = { navigator.open(MediaSettingsRoutes.hostForm(id)) },
                     onDelete = { vm.removeHost(id) { navigator.back() } },
                     onOpenTemplate = { navigator.open(MediaSettingsRoutes.template(it)) },
-                    onPreflight = { vm.preflightHost(id) }, onCheck = vm::checkConnections,
-                    onConfigure = { configure = true }, onRetry = vm::reload)
-                if (configure) ComfyAgentConfigureSheet(ComfyConfigureRequest(id), state, onDismiss = { configure = false }, onSession = {
-                    configure = false
-                    navigator.open(NavDestinations.chatHero(it))
-                })
+                    onPreflight = { vm.preflightHost(id) }, onCheck = vm::checkConnections, onRetry = vm::reload)
             }
         }
     }
@@ -120,13 +105,8 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
             val id = entry.arguments?.getString("templateId").orEmpty()
             val template = state.snapshot.templates.firstOrNull { it.template.id == id }
             if (template == null) MediaMissingScreen(state, { navigator.back() }, vm::reload) else {
-                ComfyTemplateScreenContent(template, state, onBack = { navigator.back() }, onUnlock = { vm.requestUnlock(id) },
+                ComfyTemplateScreenContent(template, state, onBack = { navigator.back() },
                     onLock = { vm.lockTemplate(id, it) }, onPreflight = { vm.preflight(id) }, onRetry = vm::reload)
-                if (state.unlock.pendingId != null) InfinityConfirmDialog(
-                    title = stringResource(R.string.media_settings_unlock_title), message = stringResource(R.string.media_settings_unlock_message),
-                    confirmText = stringResource(R.string.media_settings_unlock), cancelText = stringResource(R.string.media_settings_cancel),
-                    onConfirm = vm::confirmUnlock, onCancel = vm::cancelUnlock, confirmEnabled = !state.busy,
-                )
             }
         }
     }

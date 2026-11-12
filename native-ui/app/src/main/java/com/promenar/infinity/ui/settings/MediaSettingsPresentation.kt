@@ -73,13 +73,6 @@ internal fun mediaProviderListSummary(providers: List<ProviderListItem>, unsuppo
 internal data class TemplateStatusLabel(val status: PreflightStatus, val missingCount: Int)
 internal fun templateStatusLabel(result: PreflightResult) = TemplateStatusLabel(result.status, result.missing.distinct().size)
 
-/** 只有确认事件返回模板 id，打开和关闭弹窗都不触发仓库解锁。 */
-internal data class TemplateUnlockState(val pendingId: String? = null) {
-    fun request(id: String, locked: Boolean) = if (locked) copy(pendingId = id) else this
-    fun cancel() = copy(pendingId = null)
-    fun confirm(): String? = pendingId
-}
-
 internal enum class MediaFormError { NAME, ADDRESS, CREDENTIAL, CURRENCY, AMOUNT, PER_UNITS, FREE_UNITS, DUPLICATE_UNIT }
 internal data class MediaRateDraft(
     val unit: BillingUnit = BillingUnit.TASK,

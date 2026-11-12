@@ -35,7 +35,7 @@ class RepositoryShotGenerationStoreTest {
             {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"镜头","duration_seconds":5}
         ]""").jsonArray.map { it.jsonObject })
         val snapshot = repository.get("s")!!
-        repository.apply("s", snapshot.revision, ProductionUserAction.LockScene("S1E01", "SC01", true))
+        repository.apply("s", snapshot.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null))
         store = RepositoryShotGenerationStore(repository,
             { id -> database.productionDao().get(id)?.let { Json { ignoreUnknownKeys = true }.decodeFromString(Production.serializer(), it.snapshot) } },
             { id -> database.productionDao().activeSession(id) })

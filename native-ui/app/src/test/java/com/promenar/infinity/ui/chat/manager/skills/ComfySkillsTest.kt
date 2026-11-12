@@ -39,7 +39,7 @@ class ComfySkillsTest {
         assertTrue(result.content, result.content.contains("reason") && result.content.contains("class_type"))
         assertTrue(f.repository.templates().isEmpty())
     }
-    @Test fun rejectsWrongTypesUnknownArgumentsAndUserUnlockParameters() = runTest {
+    @Test fun rejectsWrongTypesAndUnknownArguments() = runTest {
         val f = ComfyFixture(); f.prepare()
         val probe = ComfyProbeSkill(f.repository)
         assertEquals("error", probe.execute(buildJsonObject { put("host_id", 7) }, context).status)
@@ -48,17 +48,16 @@ class ComfySkillsTest {
         assertEquals("error", list.execute(buildJsonObject { put("recheck", "true") }, context).status)
         assertEquals("error", list.execute(buildJsonObject { put("recheck", true) }, context).status)
         val define = ComfyDefineTemplateSkill(f.repository)
-        val args = buildJsonObject { put("template", ComfyConfigurationCodec.encodeTemplate(f.template)); put("unlock", true) }
+        val args = buildJsonObject { put("template", ComfyConfigurationCodec.encodeTemplate(f.template)); put("unexpected", true) }
         assertEquals("error", define.execute(args, context).status)
-        assertFalse(comfyTools(f.repository).any { it.name.contains("unlock") })
     }
-    @Test fun lockedDefinitionGivesUserUnlockGuidanceAndRecheckReturnsStatus() = runTest {
+    @Test fun replacesLockedDefinitionAndRecheckReturnsStatus() = runTest {
         val f = ComfyFixture(); f.prepare()
         val define = ComfyDefineTemplateSkill(f.repository)
-        val result = define.execute(buildJsonObject { put("template", ComfyConfigurationCodec.encodeTemplate(f.template)) }, context)
-        assertEquals("error", result.status); assertTrue(result.content.contains("用户")); assertTrue(result.content.contains("解锁"))
-        f.repository.unlockTemplateByUser(f.template.id)
-        assertNotEquals("error", define.execute(buildJsonObject { put("template", ComfyConfigurationCodec.encodeTemplate(f.template)) }, context).status)
+        val result = define.execute(buildJsonObject { put("template", ComfyConfigurationCodec.encodeTemplate(f.template.copy(name = "新版"))) }, context)
+        assertNotEquals("error", result.status)
+        assertEquals("新版", f.repository.templates().single().template.name)
+        assertTrue(f.repository.templates().single().template.locked)
         val listed = ComfyListTemplatesSkill(f.repository).execute(buildJsonObject { put("template_id", "test"); put("recheck", true) }, context)
         assertNotEquals("error", listed.status)
         val template = Json.parseToJsonElement(listed.content).jsonObject["templates"]!!.jsonArray.single().jsonObject

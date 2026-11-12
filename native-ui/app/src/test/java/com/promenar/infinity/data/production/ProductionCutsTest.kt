@@ -42,7 +42,7 @@ class ProductionCutsTest {
         assertThat(result.manifest).isEqualTo(ManifestSync.Pending)
         assertThat(result.production.cutVersionHighWatermarks).containsExactly("S1E01", 1)
         assertThat(before.production.cuts).isEmpty()
-        val redo = apply(result, ProductionUserAction.RequestRedo("S1E01", "SC01-02", "重新选择"))
+        val redo = apply(result, ProductionUserAction.Review(ReviewTarget.take("S1E01", "SC01-02", "take"), ReviewKind.REJECT, "重新选择"))
         assertThat(redo.production.cuts).containsExactly(cut)
     }
 

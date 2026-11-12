@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_review_send">Send</string>
+    <string name="production_review_send_count">Send %1$d</string>
+    <string name="production_review_approve">Approve</string>
+    <string name="production_review_reject">Reject</string>
+    <string name="production_review_suggest">Suggest</string>
+    <string name="production_review_pending">Pending</string>
+    <string name="production_review_approved">Approved</string>
+    <string name="production_review_rejected">Rejected</string>
+    <string name="production_review_unsent">Unsent</string>
+    <string name="production_review_approved_unsent">Approved · Unsent</string>
+    <string name="production_review_rejected_unsent">Rejected · Unsent</string>
+    <string name="production_review_suggestion_unsent">Suggestion · Unsent</string>
+    <string name="production_review_reason">Reason</string>
+    <string name="production_review_content">Suggestion</string>
+    <string name="production_review_actions">Review</string>
+    <string name="production_review_busy">Session unavailable · Not sent</string>
+    <string name="production_review_busy_importing">Importing document · Not sent</string>
+    <string name="production_review_busy_approval">Session has pending approvals · Not sent</string>
+    <plurals name="production_review_sent">
+        <item quantity="one">Sent · Round %1$d · %2$d item</item>
+        <item quantity="other">Sent · Round %1$d · %2$d items</item>
+    </plurals>
+    <string name="production_review_unarchived">Sent · Archive failed: %1$s</string>
+    <string name="production_review_rounds">Review history</string>
+    <string name="production_review_round">Round %1$d</string>
+    <plurals name="production_review_round_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+
+    <string name="production_cost_section">Cost</string>
+    <string name="production_cost_unit">Generations</string>
+    <string name="production_cost_none">No generations</string>
+    <string name="production_cost_failed">Failed %1$d</string>
+    <plurals name="production_cost_times">
+        <item quantity="one">%d time</item>
+        <item quantity="other">%d times</item>
+    </plurals>
+    <plurals name="production_cost_generated">
+        <item quantity="one">Generated %d time</item>
+        <item quantity="other">Generated %d times</item>
+    </plurals>
+
+    <string name="production_task_cancel">Cancel</string>
+    <string name="p2_task_canceled">Canceled</string>
+
+    <string name="media_settings_templates_in_session">Templates are managed by the agent in a session; changes are approved there</string>
+
+    <string name="comfy_template_approval_new">New workflow template</string>
+    <string name="comfy_template_approval_edit">Edit workflow template</string>
+    <string name="comfy_template_approval_template">Template</string>
+    <string name="comfy_template_approval_host">Host</string>
+    <string name="comfy_template_approval_nodes">Nodes</string>
+    <string name="comfy_template_approval_added">Added %1$s</string>
+    <string name="comfy_template_approval_removed">Removed %1$s</string>
+    <string name="comfy_template_approval_model">Model · %1$s</string>
+</resources>
