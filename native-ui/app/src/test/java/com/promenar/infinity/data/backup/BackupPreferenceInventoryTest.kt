@@ -106,6 +106,7 @@ class BackupPreferenceInventoryTest {
             assertWithMessage("媒体默认配置应随设置备份: $key")
                 .that(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isTrue()
         }
+    }
 
     @Test
     fun `录音配置与本地模型固定版本留在设备`() {
