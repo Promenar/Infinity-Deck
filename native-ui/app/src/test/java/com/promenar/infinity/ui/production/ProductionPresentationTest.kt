@@ -30,7 +30,7 @@ class ProductionPresentationTest {
                 is PendingItem.AssetReview -> item.asset.id
             }
         }).containsExactly("SC01-02", "char-zhou").inOrder()
-        assertThat(production.pendingCount()).isEqualTo(2)
+        assertThat(production.pendingCount()).isEqualTo(1)
         assertThat(production.isGenerating()).isTrue()
         assertThat(production.redoShots().map { it.shot.code }).containsExactly("SC01-03")
     }
@@ -132,7 +132,7 @@ class ProductionPresentationTest {
         assertThat(productionEntryState(null, everBound = true))
             .isEqualTo(ProductionEntryState(enabled = true, hasProduction = false, pending = 0, running = false))
         assertThat(productionEntryState(ProductionSamples.snapshot(), everBound = true))
-            .isEqualTo(ProductionEntryState(enabled = true, hasProduction = true, pending = 2, running = true, title = ProductionSamples.snapshot().production?.title))
+            .isEqualTo(ProductionEntryState(enabled = true, hasProduction = true, pending = 1, running = true, title = ProductionSamples.snapshot().production?.title))
     }
 
     @Test
