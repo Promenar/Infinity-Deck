@@ -1423,7 +1423,7 @@ class RoomBackupDataSourceTest {
         seedCompleteGraph()
         insertMemory("memory-1", sourceSessionId = "deleted-session")
         val snapshot = newDataSource().snapshot(CANONICAL_CONTENT)
-        assertThat(snapshot.databaseSchemaVersion).isEqualTo(20)
+        assertThat(snapshot.databaseSchemaVersion).isEqualTo(21)
         db.clearAllTables()
         newDataSource().restore(validated(snapshot))
         db.openHelper.writableDatabase.query("SELECT * FROM long_term_memories WHERE id=?", arrayOf(memoryId("memory-1"))).use {
@@ -2215,12 +2215,12 @@ class RoomBackupDataSourceTest {
             val text = snapshot.database.toString(Charsets.UTF_8)
             val payload = Json.parseToJsonElement(text).jsonObject
 
-            assertThat(snapshot.databaseSchemaVersion).isEqualTo(20)
-            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("20")
+            assertThat(snapshot.databaseSchemaVersion).isEqualTo(21)
+            assertThat(payload.getValue("schemaVersion").jsonPrimitive.content).isEqualTo("21")
 
             listOf(
                 "workspaces", "agents", "sessions", "messages", "attachments", "artifacts", "context_summaries",
-                "tags", "document_tags", "task_nodes", "productions", "session_productions", "custom_skills", "mcp_servers",
+                "tags", "document_tags", "task_nodes", "productions", "session_productions", "media_generation_tasks", "media_generation_usage", "custom_skills", "mcp_servers",
                 "workspace_files", "workspace_seq", "parameter_schemes", "long_term_memories", "agent_rule_revisions", "knowledge_citations", "kg_folder_settings", "kg_collections", "kg_collection_members", "kg_nodes", "kg_edges", "kg_evidence", "kg_edge_mentions", "kg_edge_validity", "kg_entity_links", "vectors",
             ).forEach { assertThat(text).contains("\"$it\"") }
             listOf(

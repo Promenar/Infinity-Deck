@@ -11,25 +11,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -38,7 +29,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withResumed
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
-import com.promenar.infinity.ui.common.InfinityTabHeader
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinitySheetHeight
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.util.LocaleHelper
@@ -124,11 +119,12 @@ class RecordingActivity : ComponentActivity() {
 @Composable
 internal fun LibraryRecordingAction() {
     val context = LocalContext.current
-    FilledTonalButton(onClick = { context.startActivity(recordingIntent(context, autoStart = true)) }) {
-        Icon(Icons.Rounded.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(InfinitySpacing.XSmall))
-        Text(stringResource(R.string.recording_entry), maxLines = 1)
-    }
+    InfinityPillButton(
+        text = stringResource(R.string.recording_entry),
+        onClick = { context.startActivity(recordingIntent(context, autoStart = true)) },
+        icon = Icons.Rounded.Mic,
+        tone = InfinityPillTone.PRIMARY,
+    )
 }
 
 @Composable
@@ -172,191 +168,72 @@ private fun RecordingScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            InfinityTabHeader(title = stringResource(R.string.recording_title)) {
-                if (!active && current != null) {
-                    IconButton(onClick = { selected = null }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.recording_history))
-                    }
-                }
-                IconButton(onClick = { dialog = "mode" }) {
-                    Icon(Icons.Rounded.Settings, stringResource(R.string.recording_settings))
-                }
-                TextButton(onClick = onBack) { Text(stringResource(R.string.recording_close)) }
+    LaunchedEffect(playback, playback.playing) {
+        while (playback.playing) {
+            kotlinx.coroutines.delay(250)
+            playback.refreshPosition()
+        }
+    }
+    RecordingPageContent(
+        state = state,
+        current = current,
+        organized = organized,
+        route = route,
+        playing = playback.playing,
+        positionMs = playback.position,
+        onBack = onBack,
+        onHistory = { selected = null },
+        onMode = { dialog = "mode" },
+        onSelect = { selected = it.id; organized = false },
+        onOrganizedChange = { organized = it },
+        onEdit = { dialog = "edit" },
+        onConsent = { dialog = "consent" },
+        onExport = {
+            current?.let {
+                exportId = it.id
+                export.launch("recording-${it.id.take(8)}.txt")
             }
         },
-        bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(InfinitySpacing.ScreenHorizontal),
-                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-                ) {
-                    when {
-                        current == null -> Button(enabled = state.ready, onClick = { onBegin(null) }, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.recording_start))
-                        }
-                        active -> {
-                            FilledTonalButton(onClick = { if (paused) onBegin(current.id) else controller.pause() },
-                                modifier = Modifier.weight(1f)) {
-                                Text(stringResource(if (paused) R.string.recording_resume else R.string.recording_pause))
-                            }
-                            Button(onClick = { dialog = "finish" }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
-                                    contentColor = MaterialTheme.colorScheme.onError)) {
-                                Text(stringResource(R.string.recording_finish))
-                            }
-                        }
-                        else -> {
-                            if (current.phase == RecordingPhase.Interrupted) {
-                                FilledTonalButton(onClick = { onBegin(current.id) }, modifier = Modifier.weight(1f)) {
-                                    Text(stringResource(R.string.recording_resume))
-                                }
-                            } else {
-                                FilledTonalButton(onClick = { dialog = "organize" }, modifier = Modifier.weight(1f),
-                                    enabled = current.segments.isNotEmpty()) {
-                                    Text(stringResource(R.string.recording_reorganize))
-                                }
-                            }
-                            Button(onClick = { controller.publish(current.id) }, modifier = Modifier.weight(1f)) {
-                                Text(stringResource(if (current.documentId == null) R.string.recording_save_library else R.string.recording_update_library))
-                            }
-                        }
-                    }
-                }
-            }
+        onPlay = play,
+        onTogglePlayback = {
+            if (playback.playing) playback.pause() else play(playback.position.toLong())
         },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = InfinitySpacing.ScreenHorizontal)) {
-            state.failure?.let { Text(stringResource(it), Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.error) }
-            if (current == null) {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        Text(stringResource(R.string.recording_ready), style = MaterialTheme.typography.headlineSmall)
-                        Text(stringResource(R.string.recording_local_audio), modifier = Modifier.padding(vertical = 8.dp))
-                        FilledTonalButton(onClick = { dialog = "mode" }) { Text(stringResource(routeLabel(route))) }
-                    }
-                    if (state.sessions.isNotEmpty()) item {
-                        Text(stringResource(R.string.recording_history), style = MaterialTheme.typography.titleMedium)
-                    }
-                    items(state.sessions, key = { it.id }) { item ->
-                        OutlinedCard(onClick = { selected = item.id; organized = false }, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(item.title, style = MaterialTheme.typography.titleMedium)
-                                Text(recordingTimestamp(item.durationMs))
-                            }
-                        }
-                    }
+        onSeek = { playback.position = it },
+        onSeekFinished = { play(playback.position.toLong()) },
+        onBegin = { onBegin(null) },
+        onPauseResume = { current?.let { if (paused) onBegin(it.id) else controller.pause() } },
+        onFinish = { dialog = "finish" },
+        onResumeInterrupted = { current?.let { onBegin(it.id) } },
+        onOrganize = { dialog = "organize" },
+        onPublish = { current?.let { controller.publish(it.id) } },
+    )
+
+    when (dialog) {
+        "mode" -> InfinityBottomSheet(
+            show = true,
+            onDismiss = { dialog = null },
+            title = stringResource(R.string.recording_settings),
+            height = InfinitySheetHeight.Content,
+        ) {
+            Column(Modifier.padding(InfinitySpacing.ScreenHorizontal)) {
+                RecordingModeOptions(current?.mode ?: defaultMode) { mode ->
+                    if (current == null) defaultMode = mode
+                    controller.setMode(current?.id, mode)
+                    dialog = null
                 }
-            } else {
-                OutlinedCard(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(current.title, style = MaterialTheme.typography.titleMedium)
-                        Text(recordingTimestamp(if (active) state.durationMs else current.durationMs),
-                            style = MaterialTheme.typography.headlineMedium)
-                        Text(stringResource(when {
-                            paused -> R.string.recording_paused
-                            active && state.opening -> R.string.recording_opening
-                            active -> R.string.recording_running
-                            current.phase == RecordingPhase.Interrupted -> R.string.recording_interrupted
-                            else -> R.string.recording_local_audio
-                        }))
-                        if (active) RecordingWaveform(state.levels, paused)
-                        if (!active && current.durationMs > 0) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = {
-                                    if (playback.playing) playback.pause() else play(playback.position.toLong())
-                                }) {
-                                    Text(stringResource(if (playback.playing) R.string.recording_pause else R.string.recording_play))
-                                }
-                                Text(recordingTimestamp(playback.position.toLong()), style = MaterialTheme.typography.bodySmall)
-                            }
-                            Slider(value = playback.position.coerceIn(0f, current.durationMs.toFloat()),
-                                onValueChange = { playback.position = it },
-                                onValueChangeFinished = { play(playback.position.toLong()) },
-                                valueRange = 0f..current.durationMs.toFloat())
-                            LaunchedEffect(playback, playback.playing) {
-                                while (playback.playing) {
-                                    kotlinx.coroutines.delay(250)
-                                    playback.refreshPosition()
-                                }
-                            }
-                        }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(when {
-                        state.organizingId == current.id -> R.string.recording_organizing
-                        state.failure == R.string.recording_organize_failed -> R.string.recording_queued
-                        else -> routeLabel(route)
-                    }), Modifier.weight(1f))
-                    if (route == RecordingRoute.Consent) {
-                        TextButton(onClick = { dialog = "consent" }) { Text(stringResource(R.string.recording_enable_cloud)) }
-                    }
-                    TextButton(onClick = { dialog = "edit" }) { Text(stringResource(R.string.recording_edit)) }
-                }
-                if (!active && current.segments.isNotEmpty()) {
-                    TextButton(onClick = {
-                        exportId = current.id
-                        export.launch("recording-${current.id.take(8)}.txt")
-                    }) { Text(stringResource(R.string.recording_export_raw)) }
-                }
-                if (current.documentId != null) {
-                    Text(stringResource(R.string.recording_library_path, current.documentId),
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
-                }
-                TabRow(selectedTabIndex = if (organized) 1 else 0) {
-                    Tab(selected = !organized, onClick = { organized = false }, text = { Text(stringResource(R.string.recording_raw)) })
-                    Tab(selected = organized, onClick = { organized = true }, text = { Text(stringResource(R.string.recording_organized)) })
-                }
-                val list = rememberLazyListState()
-                LaunchedEffect(current.id, current.segments.size, organized, active) {
-                    if (active && !organized && current.segments.isNotEmpty() && !list.isScrollInProgress) {
-                        list.scrollToItem(current.segments.size - 1)
-                    }
-                }
-                LazyColumn(state = list, contentPadding = PaddingValues(vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (organized) item {
-                        Text(current.organized.ifBlank { stringResource(R.string.recording_no_organized) })
-                    } else {
-                        items(current.segments, key = { it.startMs }) { segment ->
-                            Column {
-                                if (active) Text(recordingTimestamp(segment.startMs), color = MaterialTheme.colorScheme.primary)
-                                else TextButton(onClick = { play(segment.startMs) }) { Text(recordingTimestamp(segment.startMs)) }
-                                Text(segment.text, style = MaterialTheme.typography.bodyLarge)
-                                HorizontalDivider(Modifier.padding(top = 8.dp))
-                            }
-                        }
-                        if (active) item { Text(state.partial.ifBlank { stringResource(R.string.recording_waiting) }) }
-                    }
+                if (current?.cloudConsent != null) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.recording_ui_revoke_cloud),
+                        onClick = { controller.allowCloud(current.id, null); dialog = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        tone = InfinityPillTone.DANGER,
+                    )
                 }
             }
         }
-    }
 
-    when (dialog) {
-        "mode" -> AlertDialog(
-            onDismissRequest = { dialog = null },
-            title = { Text(stringResource(R.string.recording_settings)) },
-            text = {
-                Column {
-                    RecordingModeOptions(current?.mode ?: defaultMode) { mode ->
-                        if (current == null) defaultMode = mode
-                        controller.setMode(current?.id, mode)
-                        dialog = null
-                    }
-                    if (current?.cloudConsent != null) {
-                        TextButton(onClick = { controller.allowCloud(current.id, null); dialog = null }) {
-                            Text(stringResource(R.string.recording_revoke))
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.recording_close)) } },
-        )
-        "finish" -> RecordingConfirm(R.string.recording_finish, stringResource(R.string.recording_finish_detail),
-            R.string.recording_finish, { dialog = null }, { dialog = null; onFinish() })
+        "finish" -> RecordingConfirm(R.string.recording_ui_stop, stringResource(R.string.recording_finish_detail),
+            R.string.recording_ui_stop, { dialog = null }, { dialog = null; onFinish() })
         "consent" -> {
             val key = state.cloudKey
             val name = state.cloudLabel
@@ -366,8 +243,8 @@ private fun RecordingScreen(
             }
         }
         "organize" -> if (current != null) {
-            RecordingConfirm(R.string.recording_reorganize, stringResource(R.string.recording_reorganize_detail),
-                R.string.recording_reorganize, { dialog = null }, {
+            RecordingConfirm(R.string.recording_ui_reprocess, stringResource(R.string.recording_reorganize_detail),
+                R.string.recording_ui_reprocess, { dialog = null }, {
                     dialog = if (route == RecordingRoute.Consent) "consent" else null
                     if (route == RecordingRoute.Local || route == RecordingRoute.Cloud || route == RecordingRoute.Consent) {
                         controller.retry(current.id)
@@ -384,9 +261,14 @@ private fun RecordingScreen(
 
 @Composable
 private fun RecordingConfirm(title: Int, details: String, confirm: Int, dismiss: () -> Unit, action: () -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(title)) }, text = { Text(details) },
-        confirmButton = { TextButton(onClick = action) { Text(stringResource(confirm)) } },
-        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.recording_cancel)) } })
+    InfinityConfirmDialog(
+        title = stringResource(title),
+        message = details,
+        confirmText = stringResource(confirm),
+        cancelText = stringResource(R.string.recording_cancel),
+        onConfirm = action,
+        onCancel = dismiss,
+    )
 }
 
 @Composable
@@ -395,20 +277,15 @@ private fun RecordingEditDialog(item: RecordingSession, dismiss: () -> Unit, sav
     var glossary by rememberSaveable(item.id) { mutableStateOf(item.glossary) }
     val original = remember(item.id) { item.organized }
     var draft by remember(item.id) { mutableStateOf(original) }
-    AlertDialog(
-        onDismissRequest = dismiss,
-        title = { Text(stringResource(R.string.recording_edit)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text(stringResource(R.string.recording_document_title)) },
-                    singleLine = true)
-                OutlinedTextField(glossary, { glossary = it }, label = { Text(stringResource(R.string.recording_glossary)) }, maxLines = 2)
-                OutlinedTextField(draft, { draft = it }, label = { Text(stringResource(R.string.recording_organized)) }, maxLines = 5)
-            }
-        },
-        confirmButton = { TextButton(onClick = { save(title, glossary, draft.takeIf { it != original }) }) { Text(stringResource(R.string.recording_save)) } },
-        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.recording_cancel)) } },
-    )
+    InfinityBottomSheet(
+        show = true,
+        onDismiss = dismiss,
+        height = InfinitySheetHeight.Full,
+        dragGesturesEnabled = false,
+    ) {
+        RecordingEditorContent(title, glossary, draft, { title = it }, { glossary = it }, { draft = it },
+            onSave = { save(title, glossary, draft.takeIf { it != original }) }, onCancel = dismiss)
+    }
 }
 
 private class RecordingPlayback {
@@ -459,21 +336,6 @@ internal fun routeLabel(route: RecordingRoute): Int = when (route) {
 }
 
 @Composable
-private fun RecordingWaveform(levels: List<Float>, paused: Boolean) {
-    val color = if (paused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error
-    Canvas(Modifier.fillMaxWidth().height(32.dp)) {
-        val step = size.width / 48
-        repeat(48) { index ->
-            val level = levels.getOrNull(index - (48 - levels.size)) ?: 0f
-            val half = (level * 0.45f + 0.06f) * size.height
-            val x = (index + 0.5f) * step
-            drawLine(color, Offset(x, center.y - half), Offset(x, center.y + half),
-                strokeWidth = minOf(2.dp.toPx(), step * 0.7f), cap = StrokeCap.Round)
-        }
-    }
-}
-
-@Composable
 internal fun LibraryRecordingPlayback(documentId: String) {
     val context = LocalContext.current
     val controller = (context.applicationContext as? InfinityApplication)?.recordings ?: return
@@ -482,6 +344,6 @@ internal fun LibraryRecordingPlayback(documentId: String) {
     IconButton(onClick = {
         context.startActivity(recordingIntent(context).putExtra("viewSession", documentId))
     }) {
-        Icon(Icons.Rounded.Mic, stringResource(R.string.recording_play))
+        Icon(Icons.Rounded.PlayArrow, stringResource(R.string.recording_play))
     }
 }

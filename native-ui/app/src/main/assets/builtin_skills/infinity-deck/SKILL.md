@@ -46,6 +46,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `agents_read` | 自由 | 自由 | 自由 | 自由 | 无 |
 | `agents_write` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `browser_eval` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
+| `comfy_define_template` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `copy_knowledge_to_linux` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
@@ -77,6 +78,8 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 技能目录变更与 SSH 主机配置始终逐次审批；Linux rootfs 的文件变更在工作区档审批、完全访问档免批。命令的审批分类不会解析命令文本来单独识别技能目录，因此不要用命令修改用户技能，改用经技能目录审批的文件工具。修改项目技能前也应明确说明目标，沿用执行工具的审批。定时任务仅创建需执行审批，列表、暂停、恢复和取消免执行审批。SSH 的远端 `sftp_write` 目前免执行审批，`sftp_upload`、`sftp_download` 属命令类；`sftp_download` 向用户/项目技能目录下载被直接拒绝，审批不能放行，改用经技能目录审批的文件工具创建或编辑。首次主机信任、变更的主机指纹及秘密输入仍可能需要用户处理。
 
 MCP 工具由用户连接的服务器动态提供，名称不是固定内置清单的一部分：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 的工具需逐次审批，其它按实际工具名、参数目标和会话权限规则判定；连接不代表可以越过外部服务权限。自定义数据库/脚本 Skill 当前没有隔离执行器，不向模型暴露执行。`request_secret` 和 `show_secret` 免工具执行审批，但其保密卡需要用户输入或查看；不要让用户把秘密贴进聊天。`capture_secret` 是命令参数机制，不是独立模型工具。
+
+ComfyUI 主机由用户在界面配置。`comfy_probe` 读取主机节点与模型摘要，`comfy_templates` 列出模板、通道、锁定状态与预检结果，指定 `template_id` 和 `recheck=true` 可重新预检；这两个工具免执行审批。`comfy_define_template` 定义并锁定 API Format 工作流模板，属于配置变更，每次都需用户审批且不可限时免批。修改已锁定模板前须由用户在界面解锁；这些工具不提交生成任务。
 
 ### 仅用户可操作的配置
 

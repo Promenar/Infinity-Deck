@@ -7,25 +7,23 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.os.Build
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.SettingsToggle
+import com.promenar.infinity.ui.theme.InfinitySpacing
 
 private fun Context.recordingShortcut() = ShortcutInfo.Builder(this, "open_recording")
     .setShortLabel(getString(R.string.recording_start))
@@ -44,20 +42,24 @@ internal fun registerRecordingShortcut(context: Context) {
 
 @Composable
 internal fun RecordingModeOptions(selected: RecordingMode, onSelect: (RecordingMode) -> Unit) {
-    Column {
-        RecordingMode.entries.filter { it != RecordingMode.Local || BuildConfig.LOCAL_INFERENCE_AVAILABLE }.forEach { mode ->
-            val active = selected == mode
-            ListItem(
-                modifier = Modifier.fillMaxWidth().selectable(active, role = Role.RadioButton) { onSelect(mode) },
-                headlineContent = { Text(stringResource(when (mode) {
-                    RecordingMode.Auto -> R.string.recording_mode_auto
-                    RecordingMode.Local -> R.string.recording_mode_local
-                    RecordingMode.Raw -> R.string.recording_mode_raw
-                })) },
-                leadingContent = { RadioButton(selected = active, onClick = null) },
-            )
-        }
-    }
+    InfinitySegmentedControl(
+        segments = RecordingMode.entries
+            .filter { it != RecordingMode.Local || BuildConfig.LOCAL_INFERENCE_AVAILABLE }
+            .map { mode ->
+                InfinitySegment(
+                    value = mode,
+                    label = stringResource(when (mode) {
+                        RecordingMode.Auto -> R.string.recording_mode_auto
+                        RecordingMode.Local -> R.string.recording_mode_local
+                        RecordingMode.Raw -> R.string.recording_mode_raw
+                    }),
+                )
+            },
+        selected = selected,
+        onSelect = onSelect,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = InfinitySpacing.RowHorizontal),
+    )
 }
 
 @Composable

@@ -3,7 +3,15 @@ package com.promenar.infinity.data.generation
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.remote.protocol.*
 import org.junit.Test
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.CoroutineContext
 
 class PromptPrefixFingerprintTest {
     private val tool = ProtocolTool(function = ProtocolToolFunction("read", "读取", "{}"))
@@ -39,14 +47,83 @@ class PromptPrefixFingerprintTest {
         tracker.observe("另一个", request)
         assertThat(tracker.observe("秘密会话", request)).contains("toolsChanged=null")
     }
-    @Test fun `发行模式跳过指纹计算和日志`() = runBlocking {
+    @Test fun `发行模式跳过诊断调度指纹计算和日志`() = runBlocking {
         var calculations = 0
         val logs = mutableListOf<String>()
-        logPrefixDiagnostic(false, { calculations++; "fingerprint" }, { logs.add(it) })
+        val forbiddenDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) =
+                error("发行模式不应派发诊断任务")
+        }
+        logPrefixDiagnostic(false, { calculations++; "fingerprint" }, { logs.add(it) }, forbiddenDispatcher)
         assertThat(calculations).isEqualTo(0)
         assertThat(logs).isEmpty()
-        logPrefixDiagnostic(true, { calculations++; "fingerprint" }, { logs.add(it) })
-        assertThat(calculations).isEqualTo(1)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `调试诊断在注入的准备调度器内完成后返回`() = runTest {
+        val delegate = StandardTestDispatcher(testScheduler)
+        val caller = Thread.currentThread()
+        val threads = mutableListOf<Thread>()
+        val events = mutableListOf<String>()
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                events += "调度"
+                delegate.dispatch(context, block)
+            }
+        }
+        val job = launch {
+            logPrefixDiagnostic(true, {
+                threads += Thread.currentThread()
+                events += "计算"
+                "fingerprint"
+            }, {
+                threads += Thread.currentThread()
+                events += "日志:$it"
+            }, dispatcher)
+            events += "返回"
+        }
+
+        runCurrent()
+
+        assertThat(job.isCompleted).isTrue()
+        assertThat(events).containsExactly("调度", "计算", "日志:fingerprint", "返回").inOrder()
+        assertThat(threads).containsExactly(caller, caller)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `诊断任务派发后取消不会计算或记录日志`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val events = mutableListOf<String>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            logPrefixDiagnostic(true, { events += "计算"; "fingerprint" },
+                { events += "日志:$it" }, dispatcher)
+        }
+        assertThat(events).isEmpty()
+
+        job.cancel()
+        runCurrent()
+
+        assertThat(job.isCancelled).isTrue()
+        assertThat(job.isCompleted).isTrue()
+        assertThat(events).isEmpty()
+    }
+
+    @Test fun `默认诊断计算和日志离开调用线程且完成后返回`() = runBlocking {
+        val caller = Thread.currentThread()
+        var calculationThread: Thread? = null
+        var logThread: Thread? = null
+        val logs = mutableListOf<String>()
+        logPrefixDiagnostic(true, {
+            calculationThread = Thread.currentThread()
+            "fingerprint"
+        }, {
+            logThread = Thread.currentThread()
+            logs += it
+        })
+
+        assertThat(calculationThread).isNotNull()
+        assertThat(calculationThread).isNotEqualTo(caller)
+        assertThat(logThread).isEqualTo(calculationThread)
         assertThat(logs).containsExactly("fingerprint")
         Unit
     }

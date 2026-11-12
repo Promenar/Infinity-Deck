@@ -62,7 +62,12 @@ private fun prefixHash(value: String): String = MessageDigest.getInstance("SHA-2
 internal val mainPromptPrefixTracker = PromptPrefixTracker()
 
 /** 发行版本不构造诊断指纹；调试版本的序列化、哈希与日志写入不占用主线程。 */
-internal suspend fun logPrefixDiagnostic(enabled: Boolean, calculate: () -> String, log: (String) -> Unit) {
+internal suspend fun logPrefixDiagnostic(
+    enabled: Boolean,
+    calculate: () -> String,
+    log: (String) -> Unit,
+    dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
+) {
     if (!enabled) return
-    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { log(calculate()) }
+    kotlinx.coroutines.withContext(dispatcher) { log(calculate()) }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recording_library_ui_local_model">录音整理模型</string>
+    <string name="recording_library_ui_download">下载模型</string>
+    <string name="recording_library_ui_cancel_download">取消下载</string>
+    <string name="recording_library_ui_pin_model">固定用于录音整理</string>
+    <string name="recording_library_ui_unload">卸载</string>
+    <string name="recording_library_ui_document">录音</string>
+</resources>

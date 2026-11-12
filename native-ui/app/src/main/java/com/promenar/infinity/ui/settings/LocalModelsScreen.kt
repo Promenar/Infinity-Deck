@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillRow
+import com.promenar.infinity.ui.common.InfinityPillTone
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +29,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.SdCard
 import androidx.compose.material.icons.rounded.Speed
@@ -39,8 +39,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -50,7 +48,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -78,6 +75,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.theme.InfinitySpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,15 +184,24 @@ internal fun LocalModelsScreenContent(
                         trailingContent = if (isImporting) ({ CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }) else null,
                     )
                     if (onInstall != null && availableModels.none { it.fileName == RecordingModelPackage.filename }) {
-                        InfinitySettingsItem(
-                            title = stringResource(if (downloadProgress == null) R.string.recording_model_download else R.string.recording_model_cancel_download),
-                            subtitle = if (downloadProgress == null) stringResource(R.string.recording_model_download_details)
-                                else stringResource(R.string.recording_model_download_progress, downloadProgress),
-                            onClick = if (downloadProgress == null) onInstall else onCancelInstall,
+                        RecordingModelDownloadRow(
+                            progress = downloadProgress,
                             enabled = !isImporting,
+                            onInstall = onInstall,
+                            onCancel = onCancelInstall,
                         )
                     }
-                    if (modelError != null) Text(stringResource(modelError), color = MaterialTheme.colorScheme.error)
+                    if (modelError != null) {
+                        Text(
+                            text = stringResource(modelError),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(
+                                horizontal = InfinitySpacing.RowHorizontal,
+                                vertical = InfinitySpacing.Small,
+                            ),
+                        )
+                    }
 
                 }
             }
@@ -303,6 +310,48 @@ internal fun LocalModelsScreenContent(
 }
 
 @Composable
+private fun RecordingModelDownloadRow(
+    progress: Int?,
+    enabled: Boolean,
+    onInstall: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(
+            horizontal = InfinitySpacing.RowHorizontal,
+            vertical = InfinitySpacing.Small,
+        ),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    ) {
+        Text(
+            text = stringResource(R.string.recording_library_ui_local_model),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = if (progress == null) stringResource(R.string.recording_model_download_details)
+                else stringResource(R.string.recording_model_download_progress, progress),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (progress != null) {
+            LinearProgressIndicator(
+                progress = { progress / 100f },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        InfinityPillRow(Modifier.fillMaxWidth()) {
+            InfinityPillButton(
+                text = stringResource(if (progress == null) R.string.recording_library_ui_download else R.string.recording_library_ui_cancel_download),
+                onClick = if (progress == null) onInstall else onCancel,
+                enabled = enabled,
+                tone = if (progress == null) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
+            )
+        }
+    }
+}
+
+@Composable
 private fun SlotCard(
     label: String,
     slotState: SlotState,
@@ -403,29 +452,39 @@ private fun ModelCard(
     ) {
         InfinitySettingsItem(
             title = model.fileName,
+            enabled = engineEnabled,
             onClick = {
-                if (engineEnabled) onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
-            },
-            trailingContent = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    InfinityPillButton(
-                        text = stringResource(if (isLoadedInSlot) R.string.local_models_loaded else R.string.local_models_load),
-                        onClick = {
-                            if (engineEnabled) onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
-                        },
-                        enabled = engineEnabled,
-                        compact = true,
-                    )
-                    IconButton(onClick = onDelete, enabled = revision == null, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.local_models_cd_delete), tint = MaterialTheme.colorScheme.error)
-                    }
-                }
+                onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
             },
         )
-        if (onTogglePin != null) InfinitySettingsItem(
-            title = stringResource(if (revision == null) R.string.recording_model_pin else R.string.recording_model_unpin),
-            onClick = onTogglePin,
-        )
+        InfinityPillRow(
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = InfinitySpacing.RowHorizontal,
+                vertical = InfinitySpacing.XSmall,
+            ),
+        ) {
+            InfinityPillButton(
+                text = stringResource(R.string.local_models_cd_delete),
+                onClick = onDelete,
+                tone = InfinityPillTone.DANGER,
+                enabled = revision == null,
+            )
+            InfinityPillButton(
+                text = stringResource(if (isLoadedInSlot) R.string.recording_library_ui_unload else R.string.local_models_load),
+                onClick = {
+                    onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
+                },
+                tone = InfinityPillTone.PRIMARY,
+                enabled = engineEnabled,
+            )
+        }
+        if (onTogglePin != null) {
+            SettingsToggle(
+                title = stringResource(R.string.recording_library_ui_pin_model),
+                checked = revision != null,
+                onCheckedChange = { onTogglePin() },
+            )
+        }
     }
 }
 

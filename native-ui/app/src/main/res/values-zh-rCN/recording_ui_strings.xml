@@ -1,0 +1,15 @@
+<resources>
+    <string name="recording_ui_stop">停止并保存</string>
+    <string name="recording_ui_reprocess">重新整理</string>
+    <string name="recording_ui_update">更新文档</string>
+    <string name="recording_ui_cloud">云端整理</string>
+    <string name="recording_ui_revoke_cloud">停用云端整理</string>
+    <string name="recording_ui_audio_local">本机音频</string>
+    <string name="recording_ui_library">资料文档</string>
+    <string name="recording_ui_position">播放位置</string>
+    <string name="recording_ui_opening">准备麦克风</string>
+    <string name="recording_ui_interrupted">录音中断</string>
+    <string name="recording_ui_organizing">整理中</string>
+    <string name="recording_ui_queued">待整理</string>
+    <string name="recording_ui_listening">聆听中</string>
+</resources>

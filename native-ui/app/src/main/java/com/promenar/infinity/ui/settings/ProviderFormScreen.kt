@@ -212,7 +212,7 @@ val PROVIDER_PRESETS = listOf(
     ProviderPreset("Kimi", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.drawable.ic_provider_kimi),
     ProviderPreset("通义千问", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.drawable.ic_provider_qwen, R.string.provider_preset_qwen),
     ProviderPreset("智谱", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.drawable.ic_provider_zhipu, R.string.provider_preset_zhipu),
-    ProviderPreset("火山方舟", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_ark_media),
+    ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_ark_media),
     ProviderPreset("MiniMax", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1"),
     ProviderPreset("百川", ProtocolType.Baichuan, "https://api.baichuan-ai.com", R.drawable.ic_provider_baichuan, R.string.provider_preset_baichuan),
     ProviderPreset("Mistral", ProtocolType.Mistral_Chat, "https://api.mistral.ai", R.drawable.ic_provider_mistral),

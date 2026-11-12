@@ -26,8 +26,9 @@ class ProtocolTypeLabelTest {
         assertThat(withCjk).isEmpty()
         assertThat(PROVIDER_PRESETS.map { it.name }).containsExactly(
             "OpenAI", "DeepSeek", "Anthropic", "Gemini", "Vertex AI", "Kimi",
-            "通义千问", "智谱", "豆包", "百川", "Mistral", "Local", "Custom",
+            "通义千问", "智谱", "豆包", "MiniMax", "百川", "Mistral", "Local", "Custom",
         ).inOrder()
+        assertThat(PROVIDER_PRESETS.first { it.name == "豆包" }.label(resources)).isEqualTo("Volcano Ark")
     }
 
     @Test
@@ -36,6 +37,7 @@ class ProtocolTypeLabelTest {
         assertThat(ProtocolType.Qwen_DashScope.label(resources)).isEqualTo("通义千问 (Qwen)")
         assertThat(ProtocolType.Generic_OpenAI_Compat.label(resources)).isEqualTo("OpenAI 兼容（通用）")
         assertThat(PROVIDER_PRESETS.first { it.name == "Custom" }.label(resources)).isEqualTo("自定义")
+        assertThat(PROVIDER_PRESETS.first { it.name == "豆包" }.label(resources)).isEqualTo("火山方舟")
     }
 
     @Test

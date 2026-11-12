@@ -880,7 +880,8 @@ internal class DefaultChatGenerationRuntime(
         unsentInstructionIds.remove(assistantMessageId(request))
         emptyReplyReminder = false
         logPrefixDiagnostic(com.promenar.infinity.BuildConfig.DEBUG,
-            { mainPromptPrefixTracker.observe(request.sessionId, prompt) }, InfinityLogger::log)
+            { mainPromptPrefixTracker.observe(request.sessionId, prompt) }, InfinityLogger::log,
+            dispatcher = toolBuildDispatcher)
         val traceId = java.util.UUID.randomUUID().toString()
         val trace = com.promenar.infinity.data.remote.ModelLatencyTrace(
             latencyPreparationStart.takeIf { it > 0 } ?: System.nanoTime() / 1_000_000,

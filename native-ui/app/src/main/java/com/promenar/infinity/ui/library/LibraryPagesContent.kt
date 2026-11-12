@@ -966,7 +966,10 @@ private fun DocumentDetailSheet(info: DocumentInsight, livePending: PendingDocum
         InfinityPropertyRow(stringResource(R.string.library_doc_chunks), info.chunkCount.toString())
         InfinityPropertyDivider()
         if (info.mimeType == LOCAL_RECORDING_MIME) {
-            LibraryEmptyText(stringResource(R.string.recording_local_document))
+            InfinityPropertyRow(
+                label = stringResource(R.string.recording_library_ui_document),
+                value = stringResource(R.string.recording_local_document),
+            )
         } else {
             DocumentGraphRows(info, pending, enabled, host)
         }
