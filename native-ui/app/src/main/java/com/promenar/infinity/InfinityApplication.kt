@@ -1851,6 +1851,13 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.repository.ProductionRepository(database, com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(workspaceRepository, fileOperationRepository, externalFolderManager, workspaceMediaResolver))
     }
 
+    val comfyMedia by lazy {
+        com.promenar.infinity.data.mediagen.comfy.ComfyModule(
+            getSharedPreferences("infinity_settings", MODE_PRIVATE), secretStore, gitRemoteHttpClient,
+            workspaceMediaResolver, workspaceMediaStore,
+        )
+    }
+
     val taskRepository: com.promenar.infinity.domain.repository.ITaskRepository by lazy {
         TaskRepository(database.taskNodeDao(), database)
     }
@@ -2012,6 +2019,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
+            com.promenar.infinity.ui.chat.manager.skills.comfyTools(comfyMedia.repository).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasUpdateSkill(canvasStore))

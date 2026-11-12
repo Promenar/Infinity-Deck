@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="comfy_hosts">ComfyUI 主机</string>
+    <string name="comfy_templates">工作流模板</string>
+    <string name="comfy_preflight_pass">通过</string>
+    <string name="comfy_preflight_missing">缺少节点或模型</string>
+    <string name="comfy_preflight_review">需复核</string>
+    <string name="comfy_preflight_retry">重新预检</string>
+    <string name="comfy_template_locked">已锁定</string>
+    <string name="comfy_template_unlocked">已解锁</string>
+    <string name="comfy_template_unlock">解锁</string>
+    <string name="comfy_template_unlock_required">请在设置中解锁模板后再让智能体修改。</string>
+    <string name="comfy_host_changed">主机配置已变化，请重新预检。</string>
+    <string name="comfy_host_auth_required">请在主机设置中配置鉴权。</string>
+    <string name="comfy_queued">排队中</string>
+    <string name="comfy_running">生成中</string>
+    <string name="comfy_node_progress">当前节点进度</string>
+    <string name="comfy_preflight_missing_count">缺少 %1$d 项</string>
+</resources>
