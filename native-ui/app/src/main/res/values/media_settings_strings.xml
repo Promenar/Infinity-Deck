@@ -92,6 +92,7 @@
     <string name="media_settings_pass">Validated</string>
     <string name="media_settings_missing_items">Missing %1$d items</string>
     <string name="media_settings_review">Review required</string>
+    <string name="media_settings_frames">%1$d frames</string>
     <string name="media_settings_lock_section">Template lock</string>
     <string name="media_settings_locked">Locked</string>
     <string name="media_settings_unlocked">Unlocked</string>

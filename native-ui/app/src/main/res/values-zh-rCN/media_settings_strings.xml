@@ -92,6 +92,7 @@
     <string name="media_settings_pass">校验通过</string>
     <string name="media_settings_missing_items">缺 %1$d 项</string>
     <string name="media_settings_review">需复核</string>
+    <string name="media_settings_frames">%1$d 帧</string>
     <string name="media_settings_lock_section">模板锁定</string>
     <string name="media_settings_locked">已锁定</string>
     <string name="media_settings_unlocked">未锁定</string>

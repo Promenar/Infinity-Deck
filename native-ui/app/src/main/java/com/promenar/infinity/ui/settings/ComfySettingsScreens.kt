@@ -157,7 +157,11 @@ internal fun ComfyTemplateScreenContent(
                 onClick = { if (template.locked) onUnlock() else onLock(order) }, enabled = !state.busy,
             )
         }
-        MediaCapabilitiesSection(template.group, caps)
+        // 模板未声明规格时，显示锁定工作流里写定的画幅与帧数。
+        val fixed = remember(template) { runCatching { com.promenar.infinity.data.mediagen.comfyPlanningSpecs(template) }.getOrNull() }
+        val workflowSpecs = listOfNotNull(fixed?.width?.let { w -> fixed.height?.let { h -> "$w×$h" } },
+            fixed?.frames?.let { stringResource(R.string.media_settings_frames, it) }).joinToString(" · ").ifEmpty { null }
+        MediaCapabilitiesSection(template.group, caps, workflowSpecs)
         if (caps.maxImages > 0) {
             MediaValue(stringResource(R.string.media_settings_reference_input), referenceDescription(ReferenceInputDescription(CharacterReferenceMode.SEPARATE, caps.maxImages)))
             InfinitySettingsSection(title = stringResource(R.string.media_settings_references)) {

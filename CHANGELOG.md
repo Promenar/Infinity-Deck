@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 修复
+
+- ComfyUI 模板详情的“能力 · 规格”在模板未声明分辨率时，显示锁定工作流写定的画幅与帧数（如 864×480 · 22 帧），不再显示“—”。
+
 ## [0.49.4-beta] - 2026-11-12
 
 ### 修复

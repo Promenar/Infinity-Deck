@@ -69,7 +69,7 @@ internal fun MediaModelDetailScreenContent(
 }
 
 @Composable
-internal fun MediaCapabilitiesSection(group: MediaGroup, caps: MediaCapabilities) {
+internal fun MediaCapabilitiesSection(group: MediaGroup, caps: MediaCapabilities, workflowSpecs: String? = null) {
     InfinitySettingsSection(title = stringResource(R.string.media_settings_capabilities)) {
         MediaValue(stringResource(R.string.media_settings_type), mediaGroupLabel(group))
         MediaValue(stringResource(R.string.media_settings_modes), caps.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) }.joinToString(" · "))
@@ -78,7 +78,7 @@ internal fun MediaCapabilitiesSection(group: MediaGroup, caps: MediaCapabilities
         val specs = caps.resolutions + if (caps.minDurationSeconds != null || caps.maxDurationSeconds != null) {
             listOf(stringResource(R.string.media_settings_duration, caps.minDurationSeconds?.toString() ?: "—", caps.maxDurationSeconds?.toString() ?: "—"))
         } else emptyList()
-        MediaValue(stringResource(R.string.media_settings_specs), specs.joinToString(" · ").ifEmpty { "—" })
+        MediaValue(stringResource(R.string.media_settings_specs), specs.joinToString(" · ").ifEmpty { workflowSpecs ?: "—" })
         MediaValue(stringResource(R.string.media_settings_prompt_format), stringResource(when (caps.promptFormat) {
             PromptFormat.H3 -> R.string.media_settings_prompt_h3
             PromptFormat.SEEDANCE -> R.string.media_settings_prompt_seedance
