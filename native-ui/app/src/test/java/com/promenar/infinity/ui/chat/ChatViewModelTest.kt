@@ -2897,15 +2897,16 @@ class ChatViewModelTest {
         ChatViewModel::class.java.getDeclaredField("composerQueueStore").apply { isAccessible = true }.set(viewModel, queuePort)
     }
 
-    @Test fun `直接审核在应用运行时准备失败回滚用户消息后撤回`() = runTest {
+    @Test fun `直接审核在提供商不可用时保留用户消息并确认送达`() = runTest {
         seedSession(); advanceUntilIdle()
         forcedProviderFailure = ProviderResolution.Failure(ProviderResolutionError.API_KEY_MISSING, "gpt-4o", "missing-provider")
         val origin = PanelMessageOrigin("p", 1)
         viewModel.updateInputText("保留草稿")
         viewModel.sendPanelMessage("s1", "无法准备的审核", origin)
         awaitReal { panelEvents.size == 1 && !viewModel.uiState.value.isGenerating }
-        assertThat(panelEvents).containsExactly(Triple("s1", origin, false))
-        assertThat(savedMessages.none { it.first.content == "无法准备的审核" }).isTrue()
+        // 提供商失败以行内错误呈现，用户消息留在会话里可重试，审核按已送达归档。
+        assertThat(panelEvents).containsExactly(Triple("s1", origin, true))
+        assertThat(savedMessages.count { it.first.content == "无法准备的审核" }).isEqualTo(1)
         assertThat(viewModel.inputText.value).isEqualTo("保留草稿")
     }
 

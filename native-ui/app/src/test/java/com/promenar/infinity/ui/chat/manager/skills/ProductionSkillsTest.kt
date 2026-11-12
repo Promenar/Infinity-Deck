@@ -113,7 +113,7 @@ class ProductionSkillsTest {
         assertThat(content("shot").jsonObject.getValue("generation_count").jsonObject.getValue("total").jsonPrimitive.int).isEqualTo(7)
         assertThat(content("assets").jsonArray.single().jsonObject.getValue("generation_count").jsonObject.getValue("total").jsonPrimitive.int).isEqualTo(7)
         val changes = content("changes").jsonObject
-        assertThat(changes.keys).containsExactly("change_requests", "review_rounds", "open_items")
+        assertThat(changes.keys).containsExactly("change_requests", "review_rounds", "open_items", "runs", "chains", "unregistered_files", "totals", "offset", "limit")
         assertThat(changes.getValue("review_rounds").jsonArray.map { it.jsonObject.getValue("number").jsonPrimitive.int }).containsExactly(5, 4, 3).inOrder()
         val items = changes.getValue("open_items").jsonArray.map { it.jsonObject }
         assertThat(items.map { it.getValue("kind").jsonPrimitive.content }).containsAtLeast("failed_task", "canceled_task", "rejected", "cost_alert")

@@ -60,7 +60,7 @@ class ProductionDeriveSkill(private val processing: () -> ProductionProcessing) 
 }
 class ProductionScoreSkill(private val processing: () -> ProductionProcessing) : ProductionGenerationTool("production_score",
     "用已通过预检的 AUDIO/GENERATE 配乐模板生成声音资产版本。默认4版、种子互异；默认时长为最新剪辑版本成片时长；直接入队。",
-    """{"type":"object","properties":{"asset_id":{"type":"string"},"template_id":{"type":"string"},"prompt":{"type":"string"},"duration_seconds":{"type":"number"},"versions":{"type":"integer","minimum":1,"maximum":30}},"required":["asset_id"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
+    """{"type":"object","properties":{"asset_id":{"type":"string"},"template_id":{"type":"string"},"prompt":{"type":"string"},"duration_seconds":{"type":"number"},"versions":{"type":"integer"}},"required":["asset_id"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         args.keys(setOf("asset_id"), setOf("asset_id", "template_id", "prompt", "duration_seconds", "versions"))
         val versions = requireNotNull(args.integer("versions", 4)).also { require(it in 1..30) { "versions 需要 1～30。" } }
@@ -70,7 +70,7 @@ class ProductionScoreSkill(private val processing: () -> ProductionProcessing) :
 }
 class ProductionExtendSkill(private val coordinator: () -> ShotChainCoordinator) : ProductionGenerationTool("production_extend",
     "管理逐段尾帧衔接。start 的 segments 默认3（含起点段），最多8；segment_prompts 为空或与段数相同。status/retry/cancel 需要 chain_id。重试保留已成功段。",
-    """{"type":"object","properties":{"action":{"type":"string","enum":["start","status","retry","cancel"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"},"chain_id":{"type":"string"},"start_take_id":{"type":"string"},"segments":{"type":"integer","minimum":1,"maximum":8},"segment_seconds":{"type":"number"},"segment_prompts":{"type":"array","items":{"type":"string"}}},"required":["action","episode_id","shot_code"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
+    """{"type":"object","properties":{"action":{"type":"string","enum":["start","status","retry","cancel"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"},"chain_id":{"type":"string"},"start_take_id":{"type":"string"},"segments":{"type":"integer"},"segment_seconds":{"type":"number"},"segment_prompts":{"type":"array","items":{"type":"string"}}},"required":["action","episode_id","shot_code"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         val action = args.text("action")
         val base = setOf("action", "episode_id", "shot_code")

@@ -103,7 +103,7 @@ class BuiltinSkillCatalog(
         const val ASSET_PATH = "$ASSET_DIR/SKILL.md"
 
         /** 随 APK 打包的附带文件白名单（相对技能目录，按字典序）；新增文件须同时登记在这里。 */
-        val REFERENCE_FILES = listOf("references/background-processes.md", "references/command-execution.md")
+        val REFERENCE_FILES = listOf("references/background-processes.md", "references/command-execution.md", "references/production.md")
 
         fun isVirtualPath(path: String): Boolean {
             val segments = path.replace('\\', '/').split('/').filter(String::isNotEmpty)

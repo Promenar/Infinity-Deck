@@ -101,7 +101,9 @@ class ProductionReviewDeliveryTest {
         val dispatcher = dispatcher(repo, queue, this)
         val failure = java.io.IOException("写盘失败")
         val result = runCatching { dispatcher.send("s") { _, _ -> throw failure } }
-        assertThat(result.exceptionOrNull()).isSameInstanceAs(failure)
+        // 协程跨挂起点会复制异常以恢复调用栈，按类型与消息比对。
+        assertThat(result.exceptionOrNull()).isInstanceOf(java.io.IOException::class.java)
+        assertThat(result.exceptionOrNull()).hasMessageThat().isEqualTo(failure.message)
         assertThat(repo.snapshot!!.production.unsentReviews()).hasSize(1)
         assertThat(repo.snapshot!!.production.nextReviewRound).isEqualTo(1)
     }

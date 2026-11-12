@@ -92,6 +92,7 @@ import com.promenar.infinity.data.production.PanelMessageListener
 import com.promenar.infinity.data.production.captureWithdrawal
 import com.promenar.infinity.domain.generation.GenerationPhase
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineDispatcher

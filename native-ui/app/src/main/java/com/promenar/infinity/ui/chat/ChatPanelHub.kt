@@ -78,7 +78,7 @@ internal data class ChatPanelHubSignals(
     /** Agent 写出、等待用户认领或忽略的产物。 */
     val canvasCandidates: Int = 0,
     val hasStateBoard: Boolean = false,
-    /** 制作面板：会话曾绑定项目时可用，待审镜头与待批准付费任务之和挂角标，有镜头在生成时显示运行圆点。 */
+    /** 制作面板：会话曾绑定项目时可用，待审镜头与未发送意见之和挂角标，有镜头在生成时显示运行圆点。 */
     val production: com.promenar.infinity.ui.production.ProductionEntryState = com.promenar.infinity.ui.production.ProductionEntryState.Disabled,
     /** 本会话中 Agent 调用过的条目（见 [panelHubUsage]）。 */
     val used: Set<ChatPage> = emptySet(),
