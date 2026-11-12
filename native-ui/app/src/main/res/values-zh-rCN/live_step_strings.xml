@@ -3,8 +3,10 @@
     <!-- 会话流里正在进行的那一步 -->
     <string name="live_step_waiting_model">等待模型响应</string>
     <string name="live_step_preparing_tool">正在准备工具调用</string>
-    <string name="live_step_stalled_hint">30 秒无响应</string>
-    <string name="live_step_stop">停止生成</string>
-    <string name="live_step_waited">已等待 %1$s</string>
-    <string name="live_step_thinking_elapsed">思考中 · %1$s</string>
+    <string name="live_step_waiting_approval">等待审批</string>
+    <string name="live_step_waiting_answer">等待回答</string>
+    <string name="live_step_stalled_badge">无响应</string>
+    <string name="live_step_retry_badge">重试 %1$d/%2$d</string>
+    <string name="live_step_stop_short">停止</string>
+    <string name="live_step_thinking_elapsed">思考中 %1$s</string>
 </resources>

@@ -19,8 +19,6 @@ import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.model.params.ReasoningEffort
 import com.promenar.infinity.data.model.params.resolveModelParameterProfile
 import com.promenar.infinity.data.remote.protocol.ProtocolType
-import com.promenar.infinity.domain.generation.GenerationFailureCode
-import com.promenar.infinity.domain.generation.GenerationRetry
 import com.promenar.infinity.ui.theme.*
 
 @PreviewTest
@@ -119,15 +117,6 @@ fun chatComposerAnnotatedImagesPreview() = ComposerFrame("把圈出的杯子换�
 fun chatComposerTaskBatch2Preview() = ComposerFrame("继续核对报告。", task = true)
 
 @PreviewTest
-@Preview(name = "输入重试状态 深中411", widthDp = 411, heightDp = 202, locale = "zh-rCN")
-@Preview(name = "输入重试状态 深英360", widthDp = 360, heightDp = 220, locale = "en", fontScale = 1.3f)
-@Composable
-fun chatComposerRetryBatch2Preview() = ComposerFrame(
-    "请分析这份材料。", generating = true,
-    retry = GenerationRetry(attempt = 3, maxAttempts = 10, code = GenerationFailureCode.NETWORK, delayMs = 4_000),
-)
-
-@PreviewTest
 @Preview(name = "输入放大字号 深中411", widthDp = 411, heightDp = 180, locale = "zh-rCN", fontScale = 1.3f)
 @Preview(name = "输入窄屏 深中360", widthDp = 360, heightDp = 180, locale = "zh-rCN", fontScale = 1.3f)
 @Composable
@@ -136,13 +125,12 @@ fun chatComposerLargeFontBatch2Preview() = ComposerFrame("请比较这两份报�
 @Composable
 private fun ComposerFrame(
     text: String = "", generating: Boolean = false, attachments: Boolean = false, task: Boolean = false,
-    modelName: String = "Gemini 2.5 Flash", retry: GenerationRetry? = null, reasoning: ChatReasoningControl? = null,
+    modelName: String = "Gemini 2.5 Flash", reasoning: ChatReasoningControl? = null,
     executionMode: com.promenar.infinity.ui.common.ExecutionMode? = null, dark: Boolean = true,
     annotated: Boolean = false,
 ) {
     ChatBatch2Frame(dark) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            if (retry != null) ChatComposerStatusBar(taskPanel = null, postProcessTasks = emptyList(), retry = retry)
             if (task) ChatComposerStatusBar(
                 taskPanel = taskPanelUiState(listOf(TaskStep("plan", "分析报告", status = "doing")), false),
                 postProcessTasks = listOf(PostProcessTask("summary", PostProcessType.AUTO_SUMMARY, PostProcessStatus.RUNNING)),

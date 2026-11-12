@@ -581,6 +581,11 @@ internal fun drawScopeFrame(
     colors: List<Color> = palette.leds,
     /** 是否画熄灭的灯珠；运行坞点阵屏另画常驻底格，这里不重复。 */
     drawOff: Boolean = true,
+    /**
+     * 等待、工具与重试阶段是否显示数字（首字前秒数、工具轮次、重试倒计时）。为 false 时这些阶段波形铺满整块屏，
+     * 只有流式速率、停在上一轮的平均速率与审批“!”保留数字区；运行坞用 false，步骤级计时由会话流里的状态行承担。
+     */
+    stepReadouts: Boolean = true,
 ) {
     if (alpha <= 0.004f) return
     val pitch = ScopeScreenSpec.PitchDp * k
@@ -619,7 +624,8 @@ internal fun drawScopeFrame(
             c += width + 1
         }
     }
-    val readout = digits && cols >= ScopeScreenSpec.MinColsForReadout
+    val readout = digits && cols >= ScopeScreenSpec.MinColsForReadout &&
+        (stepReadouts || rest || phase == GenerationMotionPhase.STREAM || phase == GenerationMotionPhase.APPROVAL)
     // 波形区起始列；没有数字区时从 0 开始铺满。
     val w0 = if (readout) ScopeScreenSpec.ReadoutCols + ScopeScreenSpec.ReadoutGapCols else 0
     val waveCols = cols - w0

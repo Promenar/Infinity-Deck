@@ -1581,8 +1581,6 @@
     <string name="chat_retry_reason_rate_limit">Rate limited</string>
     <string name="chat_retry_reason_server">Server error</string>
     <string name="chat_retry_countdown">%1$s. Retrying in %2$ds</string>
-    <string name="chat_retry_in_progress">%1$s. Retrying</string>
-    <string name="chat_retry_attempt">%1$d/%2$d</string>
     <string name="settings_stream_retry_limit">Auto-retry on network failure</string>
     <string name="settings_stream_retry_limit_desc">Resend on drops or rate limits; 0 = off</string>
     <string name="settings_tailscale_entry">Tailscale</string>
