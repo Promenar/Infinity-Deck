@@ -271,8 +271,12 @@ data class ProductionSnapshot(
     val manifest: ManifestSync,
 )
 
+/** 修订冲突可由宿主映射为当前语言的错误消息。 */
+class ProductionRevisionConflictException : IllegalArgumentException("面板已更新，请重试。")
+
 /** 用户在面板里的操作；全部记为 [ChangeSource.USER]，失败时抛 [IllegalArgumentException]，消息可直接显示。 */
 sealed interface ProductionUserAction {
+    data class AddShot(val episodeId: String, val sceneCode: String, val title: String) : ProductionUserAction
     data class EditShotContent(val episodeId: String, val shotCode: String, val proposed: Shot) : ProductionUserAction
     data class ResolveChange(val requestId: String, val approve: Boolean) : ProductionUserAction
     data class SetExperimental(val enabled: Boolean) : ProductionUserAction

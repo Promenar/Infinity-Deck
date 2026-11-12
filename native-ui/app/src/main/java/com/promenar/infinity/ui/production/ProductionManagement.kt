@@ -69,14 +69,14 @@ internal fun ProductionManagementTab(
         item("tasks") {
             ProductionBlock(stringResource(R.string.p2_tasks)) {
                 if (services.queue == null || services.projectSourcePrefix == null) Text(stringResource(R.string.p2_queue_unavailable), style = MaterialTheme.typography.bodySmall)
-                val active = tasks.filter { it.isActiveTask() }
+                val active = tasks.overviewQueueTasks(services.pendingRegistrations)
                 if (active.isEmpty()) Text(stringResource(R.string.p2_empty_queue))
                 active.forEach { ProductionTaskRow(it, services, busy, onQueue) }
             }
         }
         item("recent") {
             ProductionBlock(stringResource(R.string.p2_recent)) {
-                val recent = tasks.filter { !it.isActiveTask() && it.state != MediaTaskState.AWAITING_APPROVAL }.takeLast(20).reversed()
+                val recent = tasks.recentQueueTasks(services.pendingRegistrations)
                 if (recent.isEmpty()) Text(stringResource(R.string.p2_no_recent))
                 recent.forEach { ProductionTaskRow(it, services, busy, onQueue) }
             }
@@ -125,7 +125,7 @@ internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelService
         Text(services.channelLabel(task.request.channelId), style = MaterialTheme.typography.bodyMedium)
         val estimate: Money? = task.estimate
         estimate?.let { Text(stringResource(R.string.p2_estimate, "${it.currency} ${it.amount.toPlainString()}"), style = MaterialTheme.typography.bodySmall) }
-        Text(task.stateLabel(), style = MaterialTheme.typography.labelSmall)
+        Text(task.stateLabel(services.pendingRegistrations), style = MaterialTheme.typography.labelSmall)
         if (task.isActiveTask()) {
             val progress = task.progress
             if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth()) else {

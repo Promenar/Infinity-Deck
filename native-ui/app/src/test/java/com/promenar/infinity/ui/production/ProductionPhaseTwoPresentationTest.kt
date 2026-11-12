@@ -14,6 +14,10 @@ import com.promenar.infinity.domain.mediagen.MediaTaskState
 import com.promenar.infinity.domain.mediagen.Money
 import com.promenar.infinity.domain.mediagen.PromptFormat
 import java.math.BigDecimal
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -44,8 +48,8 @@ class ProductionPhaseTwoPresentationTest {
     }
 
     @Test fun `项目队列按完整前缀隔离且空前缀不扩大范围`() {
-        val tasks = listOf(task(ref = "p:one"), task("other", ref = "p2:one"))
-        assertThat(projectTasks(tasks, "p:")).containsExactly(tasks.first())
+        val tasks = listOf(task(ref = "production:p/episode:e/shot:s"), task("other", ref = "production:p2/episode:e/shot:s"))
+        assertThat(projectTasks(tasks, ProductionSourceRef.projectPrefix("p"))).containsExactly(tasks.first())
         assertThat(projectTasks(tasks, "")).isEmpty()
         assertThat(projectTasks(tasks, null)).isEmpty()
     }
@@ -118,14 +122,18 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(approved.production.changeRequests.single().approved).isTrue()
     }
 
-    @Test fun `参考位多选可逆造型切换清空选择并写入用户操作`() {
+    @Test fun `参考位多选可逆造型切换默认三位并经审批写入`() {
         val appearance = shot.appearances.single()
         assertThat(appearance.toggleSlot(look, "side").referenceSlotIds).containsExactly("front", "side").inOrder()
         assertThat(appearance.toggleSlot(look, "front").referenceSlotIds).isEmpty()
         val switched = appearance.switchLook(asset.looks.last())
-        assertThat(switched.referenceSlotIds).isEmpty()
+        assertThat(switched.referenceSlotIds).containsExactly("front", "side", "back").inOrder()
         val result = ProductionUserEngine.apply(snapshot, 1, ProductionUserAction.SetCharacterLook(episode.id, shot.code, asset.id, switched.lookId), 2)
-        assertThat(result.production.findShot(episode.id, shot.code)!!.shot.appearances.single()).isEqualTo(switched)
+        assertThat(result.production.findShot(episode.id, shot.code)!!.shot.appearances.single()).isEqualTo(appearance)
+        val request = result.production.changeRequests.single()
+        assertThat(request.approved).isFalse()
+        val approved = ProductionUserEngine.apply(result, 2, ProductionUserAction.ResolveChange(request.id, true), 3)
+        assertThat(approved.production.findShot(episode.id, shot.code)!!.shot.appearances.single()).isEqualTo(switched)
         val toggled = ProductionUserEngine.apply(snapshot, 1, ProductionUserAction.ToggleReferenceSlot(episode.id, shot.code, asset.id, "side", true), 2)
         assertThat(toggled.production.findShot(episode.id, shot.code)!!.shot.appearances.single().referenceSlotIds).containsExactly("front", "side")
     }
@@ -161,7 +169,7 @@ class ProductionPhaseTwoPresentationTest {
     }
 
     @Test fun `入口只汇总待审镜头和本项目待批准任务`() = runTest {
-        val tasks = MutableStateFlow(listOf(task(ref = "p:shot"), task("other", ref = "other:shot")))
+        val tasks = MutableStateFlow(listOf(task(ref = "production:p/episode:e/shot:s"), task("other", ref = "production:other/episode:e/shot:s")))
         val source = object : ProductionPanelSource {
             override fun observe(sessionId: String) = flowOf(snapshot)
             override fun observeEverBound(sessionId: String) = flowOf(true)
@@ -176,7 +184,7 @@ class ProductionPhaseTwoPresentationTest {
             override suspend fun reject(id: String) = Unit
             override suspend fun retry(id: String) = Unit
         }
-        val state = source.observeEntry("session", queue) { "${it.id}:" }.first()
+        val state = source.observeEntry("session", queue) { ProductionSourceRef.projectPrefix(it.id) }.first()
         assertThat(state.pending).isEqualTo(1)
         assertThat(state.pendingApprovals).isEqualTo(1)
         assertThat(state.attentionCount).isEqualTo(2)
@@ -201,6 +209,81 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(production.stageProgressCounts(ProductionStage.EDIT)).isNull()
         assertThat(resolvedShotChannel(shot, listOf(channel), listOf(channel.id))).isEqualTo(channel)
         assertThat(resolvedShotChannel(shot.copy(channelId = "missing"), listOf(channel), emptyList())).isNull()
+    }
+
+    @Test fun `项目任务严格解析字段隔离前缀碰撞和特殊字符`() {
+        val p1 = task(ref = "production:p1/episode:e/shot:s")
+        val p10 = task("p10", ref = "production:p10/episode:e/shot:s")
+        val special = task("special", ref = "production:p%2F1%20%2B%3A%25%E9%9B%BE/episode:e/shot:s/dialogue:0")
+        val malformed = task("malformed", ref = "production:p1/episode:e/shot:s/unknown:0")
+        val tasks = listOf(p1, p10, special, malformed)
+        assertThat(ProductionSourceRef.projectPrefix("p/1 +:%雾")).isEqualTo("production:p%2F1%20%2B%3A%25%E9%9B%BE/")
+        assertThat(projectTasks(tasks, ProductionSourceRef.projectPrefix("p1"))).containsExactly(p1)
+        assertThat(projectTasks(tasks, ProductionSourceRef.projectPrefix("p10"))).containsExactly(p10)
+        assertThat(projectTasks(tasks, ProductionSourceRef.projectPrefix("p/1 +:%雾"))).containsExactly(special)
+        assertThat(projectTasks(tasks, "production:p1")).isEmpty()
+        assertThat(projectTasks(tasks, "production:p1/episode:")).isEmpty()
+    }
+
+    @Test fun `待登记完成任务留在任务区并使用待登记状态`() {
+        val pending = task("pending", MediaTaskState.COMPLETED)
+        val done = task("done", MediaTaskState.COMPLETED)
+        val active = task("active", MediaTaskState.RUNNING)
+        val pendingIds = setOf("pending", "active", "other-project")
+        assertThat(pending.awaitingRegistration(pendingIds)).isTrue()
+        assertThat(active.awaitingRegistration(pendingIds)).isFalse()
+        assertThat(pending.taskStatusRes(pendingIds)).isEqualTo(com.promenar.infinity.R.string.production_wire_pending_registration)
+        assertThat(done.taskStatusRes(pendingIds)).isEqualTo(com.promenar.infinity.R.string.p2_task_completed)
+        assertThat(listOf(pending, done, active).overviewQueueTasks(pendingIds)).containsExactly(pending, active).inOrder()
+        assertThat(listOf(pending, done, active).recentQueueTasks(pendingIds)).containsExactly(done)
+        assertThat(listOf(pending, done).recentQueueTasks(emptySet())).containsExactly(done, pending).inOrder()
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun `入口持续观察队列批准完成与项目切换`() = runTest {
+        val current = MutableStateFlow<ProductionSnapshot?>(snapshot.copy(production = production.copy(id = "p1")))
+        val tasks = MutableStateFlow(listOf(
+            task("ours", ref = "production:p1/episode:e/shot:s"),
+            task("other", ref = "production:p10/episode:e/shot:s"),
+            task("audio", ref = "production:p1/episode:e/shot:s/dialogue:0"),
+        ))
+        val source = object : ProductionPanelSource {
+            override fun observe(sessionId: String) = current
+            override fun observeEverBound(sessionId: String) = flowOf(true)
+            override suspend fun apply(sessionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot = error("不写入")
+            override suspend fun resolveManifest(sessionId: String, resolution: ManifestResolution): ProductionSnapshot = error("不写入")
+        }
+        val queue = object : MediaGenerationQueue {
+            override fun observeTasks() = tasks
+            override fun observeTask(id: String) = flowOf(tasks.value.firstOrNull { it.id == id })
+            override suspend fun submit(request: MediaGenerationRequest): MediaTask = error("不提交")
+            override suspend fun approve(id: String) = Unit
+            override suspend fun reject(id: String) = Unit
+            override suspend fun retry(id: String) = Unit
+        }
+        assertThat(source.observeEntry("session").first().attentionCount).isEqualTo(1)
+        var entry = ProductionEntryState.Disabled
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            source.observeEntry("session", queue) { ProductionSourceRef.projectPrefix(it.id) }.collect { entry = it }
+        }
+        runCurrent()
+        assertThat(entry.pendingApprovals).isEqualTo(2)
+        assertThat(entry.attentionCount).isEqualTo(3)
+        tasks.value = tasks.value.map { if (it.id == "ours") it.copy(state = MediaTaskState.RUNNING) else it }
+        runCurrent()
+        assertThat(entry.attentionCount).isEqualTo(2)
+        assertThat(entry.running).isTrue()
+        tasks.value = tasks.value.map { if (it.id in setOf("ours", "audio")) it.copy(state = MediaTaskState.COMPLETED) else it }
+        runCurrent()
+        assertThat(entry.attentionCount).isEqualTo(1)
+        assertThat(entry.running).isFalse()
+        current.value = snapshot.copy(production = production.copy(id = "p10"))
+        runCurrent()
+        assertThat(entry.attentionCount).isEqualTo(2)
+        current.value = null
+        runCurrent()
+        assertThat(entry.attentionCount).isEqualTo(0)
+        assertThat(entry.hasProduction).isFalse()
     }
 
 }

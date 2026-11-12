@@ -8,6 +8,16 @@ object ProductionRules {
     private val json = Json { encodeDefaults = true }
     val contentFields = listOf("title", "size", "durationSeconds", "camera", "cameraMovement", "visual", "performance", "dialogue", "sound", "transition", "continuity", "appearances", "locationAssetId", "propAssetIds")
 
+    fun defaultSlotIds(look: CharacterLook): List<String> = defaultSlotOrder.filter { id -> look.slots.any { it.id == id } }
+
+    /** 使用场内最大序号加一，并保留既有数字宽度；空场从 01 开始。 */
+    fun nextShotCode(scene: Scene): String {
+        val suffixes = scene.shots.map { it.code.removePrefix("${scene.code}-") }
+        val next = (suffixes.map { it.toBigInteger() }.maxOrNull() ?: java.math.BigInteger.ZERO) + java.math.BigInteger.ONE
+        val width = suffixes.maxOfOrNull { it.length } ?: 2
+        return "${scene.code}-${next.toString().padStart(width, '0')}"
+    }
+
     fun generationRejection(production: Production, episodeId: String, shotCode: String): String? {
         val episode = production.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }
             ?: return "集 $episodeId 不存在。"

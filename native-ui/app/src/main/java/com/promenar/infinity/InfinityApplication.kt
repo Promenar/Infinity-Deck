@@ -1424,6 +1424,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.rag.PreferencesKgUsageStore(getSharedPreferences("pet_usage", MODE_PRIVATE))
     }
 
+    private val _installedProductionMediaRuntime = MutableStateFlow<com.promenar.infinity.data.mediagen.ProductionMediaRuntime?>(null)
+    /** 安装完成后才对界面发布，避免启动 Ready 与队列安装之间的竞态。 */
+    val installedProductionMediaRuntime: StateFlow<com.promenar.infinity.data.mediagen.ProductionMediaRuntime?> = _installedProductionMediaRuntime.asStateFlow()
     val productionMediaRuntime by lazy { com.promenar.infinity.data.mediagen.ProductionMediaRuntime(this) }
     val shotGenerationPlanner: com.promenar.infinity.data.production.ShotGenerationPlanner get() = productionMediaRuntime.planner
     val mediaGenerationQueue: com.promenar.infinity.domain.mediagen.MediaGenerationQueue get() = productionMediaRuntime.queue
@@ -2485,6 +2488,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 startupIssueManager.recover(StartupStep.MODEL_CATALOG, StartupIssueScope.subsystem(StartupSubsystem.MODEL_CATALOG)) { startModelCatalogUpdates() }
                 _startupState.value = BackupStartupState.Ready
                 withContext(Dispatchers.IO) { productionMediaRuntime.install() }
+                _installedProductionMediaRuntime.value = productionMediaRuntime
                 if (skillStoreMonitorJob?.isActive != true) {
                     skillStoreMonitorJob = startupScope.launch(Dispatchers.IO) {
                         try {

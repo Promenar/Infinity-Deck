@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="production_wire_pending_registration">待登记</string>
+    <string name="production_wire_new_shot">新镜头</string>
+    <string name="production_wire_conflict">面板已更新，请重试。</string>
+    <string name="production_wire_invalid_content">镜头保存失败，请检查内容。</string>
+</resources>

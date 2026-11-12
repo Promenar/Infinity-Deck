@@ -10,9 +10,18 @@ import kotlinx.coroutines.flow.first
 
 /** 引用段逐段 UTF-8 百分号编码；对白后缀只用于镜头附属音频。 */
 data class ProductionSourceRef(val productionId: String, val episodeId: String, val shotCode: String, val dialogueIndex: Int? = null) {
-    fun encode(): String = "production:${encodePart(productionId)}/episode:${encodePart(episodeId)}/shot:${encodePart(shotCode)}" +
+    fun encode(): String = "${projectPrefix(productionId)}episode:${encodePart(episodeId)}/shot:${encodePart(shotCode)}" +
         (dialogueIndex?.let { "/dialogue:$it" } ?: "")
     companion object {
+        fun projectPrefix(productionId: String): String {
+            require(productionId.isNotBlank()) { "项目 id 不能为空。" }
+            return "production:${encodePart(productionId)}/"
+        }
+        fun projectIdFromPrefix(prefix: String): String? = runCatching {
+            if (!prefix.startsWith("production:") || !prefix.endsWith("/")) return null
+            val id = URLDecoder.decode(prefix.removePrefix("production:").removeSuffix("/"), "UTF-8")
+            id.takeIf { it.isNotBlank() && projectPrefix(it) == prefix }
+        }.getOrNull()
         private fun encodePart(value: String) = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
         fun parse(value: String): ProductionSourceRef? = runCatching {
             val match = Regex("^production:([^/]+)/episode:([^/]+)/shot:([^/]+)(?:/dialogue:([0-9]+))?$").matchEntire(value) ?: return null

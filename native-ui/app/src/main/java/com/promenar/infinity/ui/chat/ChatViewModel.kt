@@ -739,11 +739,15 @@ class ChatViewModel(
         (application as InfinityApplication).productionRepository
     /** 当前会话的制作面板入口状态：曾绑定时可用，待审数与生成中供功能面板入口显示。 */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val productionEntry = _currentSessionId
-        .flatMapLatest { session ->
-            if (session == null) kotlinx.coroutines.flow.flowOf(com.promenar.infinity.ui.production.ProductionEntryState.Disabled)
-            else productionSource.observeEntry(session)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.promenar.infinity.ui.production.ProductionEntryState.Disabled)
+    val productionEntry = combine(_currentSessionId, (application as InfinityApplication).installedProductionMediaRuntime) { session, runtime ->
+        session to runtime?.queue
+    }.flatMapLatest { (session, queue) ->
+        when {
+            session == null -> kotlinx.coroutines.flow.flowOf(com.promenar.infinity.ui.production.ProductionEntryState.Disabled)
+            queue == null -> productionSource.observeEntry(session)
+            else -> productionSource.observeEntry(session, queue) { com.promenar.infinity.data.production.ProductionSourceRef.projectPrefix(it.id) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.promenar.infinity.ui.production.ProductionEntryState.Disabled)
 
     suspend fun editStateField(revision: Long, operation: com.promenar.infinity.data.state.StateOperation): String? {
         val session = _currentSessionId.value ?: return stringResourceResolver(R.string.state_save_failed)
