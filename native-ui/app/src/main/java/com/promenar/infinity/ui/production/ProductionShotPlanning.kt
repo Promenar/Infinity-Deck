@@ -152,7 +152,7 @@ internal fun ProductionShotDetail(
                     ProductionBlock(stringResource(R.string.p2_channel_mode)) {
                         ProductionValueRow(stringResource(R.string.p2_mode), shot.mode.label(), enabled = !working) { sheet = PlanningSheet.MODE }
                         val channelName = preview?.channelLabel ?: shot.channelId?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel)
-                        val channelValue = if (preview?.channelIsDefault == true && preview.channelLabel != null) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
+                        val channelValue = if (preview?.channelIsDefault == true && preview?.channelLabel != null) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
                         ProductionValueRow(stringResource(R.string.p2_channel), channelValue, enabled = !working) { sheet = PlanningSheet.CHANNEL }
                         ProductionValueRow(stringResource(R.string.p2_specs), (preview?.channel?.capabilities?.resolutions.orEmpty() + listOfNotNull(production.aspectRatio, secondsLabel(shot.durationSeconds))).joinToString(" · "))
                         ProductionValueRow(stringResource(R.string.production_panel_section_preview), shot.preview?.label() ?: stringResource(R.string.p2_none))
