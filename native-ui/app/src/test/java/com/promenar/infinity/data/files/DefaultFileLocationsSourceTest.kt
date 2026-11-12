@@ -132,6 +132,27 @@ class DefaultFileLocationsSourceTest {
         assertFalse(private.single().capabilities.git)
     }
 
+    @Test fun `会话表持续写入其它字段时位置仍能发出`() = runBlocking {
+        // 会话表每 5ms 写一次时间戳，位置的快速通道读缓存要 50ms：只按影响位置的字段去重才不会被反复取消。
+        val writes = kotlinx.coroutines.flow.flow {
+            var tick = 1L
+            while (true) {
+                emit(listOf(SessionEntity("private", "agent", title = "专用空间", createdAt = 1, updatedAt = tick++)))
+                delay(5)
+            }
+        }
+        val locations = DefaultFileLocationsSource(
+            sessions = writes, workspaces = flowOf(emptyList()), linuxReady = flowOf(true),
+            mounts = { flowOf(emptyList()) }, resolveSession = { SessionWorkspace.Private },
+            resolveWorkspace = { SessionWorkspace.Private }, mountAvailable = { true },
+            gitStatus = { awaitCancellation() }, workspaceGitStatus = { awaitCancellation() },
+            titles = LocationTitles("资料", "会话", "Linux"),
+            cachedGitStatus = { delay(50); null },
+        )
+        val items = withTimeout(5_000) { locations.observeSessionLocations("private").first() }
+        assertEquals(listOf("session:private"), items.map { it.id })
+    }
+
     @Test fun `刷新 Git 状态后位置补发新分支`() = runBlocking {
         val workspace = WorkspaceEntity("project", WorkspaceEntity.KIND_PROJECT, "项目", "project", 1)
         val directory = SessionWorkspace.Directory(workspace, File("/fictional/project"))

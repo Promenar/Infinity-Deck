@@ -1,7 +1,6 @@
 package com.promenar.infinity.ui.skills.store
 
 import android.app.Application
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +19,8 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Storefront
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
+import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.data.skills.store.ConfirmReason
 import com.promenar.infinity.data.skills.store.SkillChannel
 import com.promenar.infinity.data.skills.store.SkillStoreSource
@@ -122,40 +124,50 @@ fun SkillStoreScreen(onBack: () -> Unit, onOpenSources: () -> Unit) {
         }
     }
 
+    // 列表滚动位置放在页面栈外，进出详情时列表页重新组合也保持原位。
+    val listState = rememberLazyListState()
     Box(Modifier.fillMaxSize()) {
-        val opened = openedKey
-        if (opened == null) {
-            SkillStoreListContent(
-                state = state,
-                actions = SkillStoreListActions(
-                    onBack = onBack,
-                    onRefresh = viewModel::refresh,
-                    onOpenSources = onOpenSources,
-                    onQueryChange = viewModel::setQuery,
-                    onFilterChange = viewModel::setFilter,
-                    onCategoryChange = viewModel::setCategory,
-                    onOpen = { openedKey = it },
-                    onInstall = { viewModel.install(it) },
-                    onCancel = viewModel::cancel,
-                ),
-            )
-        } else {
-            BackHandler { openedKey = null }
-            val item by remember(opened) { viewModel.item(opened) }.collectAsState()
-            val current = item
-            if (current == null) {
-                // 条目已从全部来源中消失（例如目录被移除）：回到列表。
-                LaunchedEffect(opened) { openedKey = null }
-            } else {
-                SkillStoreDetailScreen(
-                    item = current,
-                    operation = state.operations[current.key],
-                    onBack = { openedKey = null },
-                    onInstall = { viewModel.install(current.key) },
-                    onCancel = { viewModel.cancel(current.key) },
-                    onUninstall = { viewModel.uninstall(current.key) },
-                    loadSkillMarkdown = { viewModel.loadSkillMarkdown(current.key) },
+        // 详情与设置二级页同为视差推入，系统返回手势跟手。
+        InfinityPageStack(
+            pages = listOfNotNull(openedKey),
+            popped = openedKey?.let { emptyList() },
+            onPop = { openedKey = null },
+            modifier = Modifier.fillMaxSize(),
+        ) { pages ->
+            val opened = pages.lastOrNull()
+            if (opened == null) {
+                SkillStoreListContent(
+                    state = state,
+                    listState = listState,
+                    actions = SkillStoreListActions(
+                        onBack = onBack,
+                        onRefresh = viewModel::refresh,
+                        onOpenSources = onOpenSources,
+                        onQueryChange = viewModel::setQuery,
+                        onFilterChange = viewModel::setFilter,
+                        onCategoryChange = viewModel::setCategory,
+                        onOpen = { openedKey = it },
+                        onInstall = { viewModel.install(it) },
+                        onCancel = viewModel::cancel,
+                    ),
                 )
+            } else {
+                val item by remember(opened) { viewModel.item(opened) }.collectAsState()
+                val current = item
+                if (current == null) {
+                    // 条目已从全部来源中消失（例如目录被移除）：回到列表。
+                    LaunchedEffect(opened) { if (openedKey == opened) openedKey = null }
+                } else {
+                    SkillStoreDetailScreen(
+                        item = current,
+                        operation = state.operations[current.key],
+                        onBack = { openedKey = null },
+                        onInstall = { viewModel.install(current.key) },
+                        onCancel = { viewModel.cancel(current.key) },
+                        onUninstall = { viewModel.uninstall(current.key) },
+                        loadSkillMarkdown = { viewModel.loadSkillMarkdown(current.key) },
+                    )
+                }
             }
         }
         SnackbarHost(
@@ -212,7 +224,7 @@ class SkillStoreListActions(
  * 分类再多也只在下拉菜单里增长，筛选区始终一行。
  */
 @Composable
-fun SkillStoreListContent(state: SkillStoreUiState, actions: SkillStoreListActions) {
+fun SkillStoreListContent(state: SkillStoreUiState, actions: SkillStoreListActions, listState: LazyListState = rememberLazyListState()) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.skill_store_title),
         onBack = actions.onBack,
@@ -227,6 +239,7 @@ fun SkillStoreListContent(state: SkillStoreUiState, actions: SkillStoreListActio
     ) { contentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("skill_store_list"),
+            state = listState,
             contentPadding = contentPadding,
         ) {
             item(key = "search") {

@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The source tree is at `v0.48.4-beta` (versionCode `131`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.48.5-beta` (versionCode `132`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>

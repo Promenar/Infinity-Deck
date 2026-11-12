@@ -103,17 +103,37 @@ internal class DefaultFileLocationsSource(
 
     /** 与资料页同样先发出不含 Git 信息的位置，Git 状态较慢时不会先显示“此位置暂不可用”。 */
     override fun observeSessionLocations(sessionId: String): Flow<List<FileLocation>> =
-        combine(sessions, linuxReady, mounts(sessionId), gitRefresh) { rows, linux, attached, _ ->
-            Triple(rows, linux, attached)
-        }.onStart { invalidateGitStatus() }.transformLatest { (rows, linux, attached) ->
-            emit(sessionLocations(sessionId, rows, linux, attached, git = false))
-            emit(sessionLocations(sessionId, rows, linux, attached, git = true))
+        // 会话表任何一行的写入（含其它会话的时间戳）都会让 Room 重新发值；只按本会话决定位置的字段去重，
+        // 否则频繁写入会不断取消尚未算完的位置，面板一直停在“此位置暂不可用”。
+        combine(sessions.map { rows -> rows.firstOrNull { it.id == sessionId }?.let(::SessionLocationInputs) }.distinctUntilChanged(),
+            linuxReady, mounts(sessionId), gitRefresh) { inputs, linux, attached, _ ->
+            Triple(inputs, linux, attached)
+        }.onStart { invalidateGitStatus() }.transformLatest { (inputs, linux, attached) ->
+            emit(sessionLocations(sessionId, inputs, linux, attached, git = false))
+            emit(sessionLocations(sessionId, inputs, linux, attached, git = true))
         }.distinctUntilChanged()
 
+    /** 会话行中影响其文件位置的字段；时间戳、消息计数等变化不重算位置。 */
+    private data class SessionLocationInputs(
+        val session: SessionEntity,
+        val title: String,
+        val agentId: String?,
+        val workspaceId: String?,
+        val worktreeDirectory: String?,
+        val branchPlanJson: String?,
+    ) {
+        constructor(session: SessionEntity) : this(
+            session, session.title, session.agentId, session.workspaceId, session.worktreeDirectory, session.branchPlanJson,
+        )
+        override fun equals(other: Any?) = other is SessionLocationInputs && title == other.title && agentId == other.agentId &&
+            workspaceId == other.workspaceId && worktreeDirectory == other.worktreeDirectory && branchPlanJson == other.branchPlanJson
+        override fun hashCode() = listOf(title, agentId, workspaceId, worktreeDirectory, branchPlanJson).hashCode()
+    }
+
     private suspend fun sessionLocations(
-        sessionId: String, rows: List<SessionEntity>, linux: Boolean, attached: List<ExternalMount>, git: Boolean,
+        sessionId: String, inputs: SessionLocationInputs?, linux: Boolean, attached: List<ExternalMount>, git: Boolean,
     ): List<FileLocation> = withContext(Dispatchers.IO) {
-        val session = rows.firstOrNull { it.id == sessionId && !isSystemSession(it) } ?: return@withContext emptyList()
+        val session = inputs?.session?.takeUnless(::isSystemSession) ?: return@withContext emptyList()
         val current = when (val workspace = resolveSession(session.id)) {
             SessionWorkspace.Private -> sessionLocation(session, linux, git)
             is SessionWorkspace.Directory -> workspaceLocation(workspace.workspace, session.id, linux, workspace, git)
