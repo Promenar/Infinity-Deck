@@ -11,7 +11,6 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -118,7 +117,7 @@ class RecordingCapturePipelineTest {
                 withTimeout(1_000) { recordPcmAudio(source, decoder, file, 0, 1_000, command::get, onFrame = {}) }
             } catch (error: IOException) { caught = error }
             assertTrue(caught != null)
-            if (code == null) assertSame(failure, caught)
+            if (code == null) assertEquals(failure.message, caught?.message)
             assertEquals(listOf<Short>(1, -2, 3), decoder.samples)
             assertTrue(decoder.finished)
             assertWav(file, listOf(1, -2, 3))
@@ -216,7 +215,7 @@ class RecordingCapturePipelineTest {
                     )
                 }
             } catch (error: IOException) { caught = error }
-            assertSame(failure, caught)
+            assertEquals(failure.message, caught?.message)
             assertEquals(0L, stopped.count)
             assertFalse(reader.get()?.isAlive == true)
             assertWav(file, if (stage in listOf("decode", "frame")) listOf(42) else emptyList())

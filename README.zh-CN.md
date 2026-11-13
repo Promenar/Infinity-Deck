@@ -119,7 +119,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
 
-当前源码版本为 `v0.53.1-beta`（versionCode `145`），变更见[更新日志](CHANGELOG.md)。
+当前源码版本为 `v0.53.2-beta`（versionCode `146`），变更见[更新日志](CHANGELOG.md)。
 
 <details>
 <summary><b>从源码构建</b></summary>
