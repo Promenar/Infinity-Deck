@@ -36,6 +36,7 @@ class RecordingControllerRecognitionTest {
         val published = AtomicInteger()
         init {
             every { app.filesDir } returns root
+            every { app.noBackupFilesDir } returns root.resolve("no-backup").also { it.mkdirs() }
             every { app.getSharedPreferences(any(), any()) } answers {
                 context.getSharedPreferences("${root.name}-${firstArg<String>()}", 0)
             }

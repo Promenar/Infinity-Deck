@@ -234,6 +234,8 @@ interface BackupDataSource {
     suspend fun snapshotTo(layers: Set<BackupLayer>, directory: java.nio.file.Path): BackupSnapshot =
         snapshot(setOf(BackupContent.DATABASE, BackupContent.PREFERENCES, BackupContent.FILES) +
             if (BackupLayer.SECRETS in layers) setOf(BackupContent.SECRETS) else emptySet())
+    suspend fun snapshotTo(layers: Set<BackupLayer>, directory: java.nio.file.Path, encrypted: Boolean): BackupSnapshot =
+        snapshotTo(layers, directory)
     suspend fun validateStaged(validated: ValidatedBackup) = Unit
     suspend fun restore(validated: ValidatedBackup)
     suspend fun restore(validated: ValidatedBackup, operationId: String) = restore(validated)

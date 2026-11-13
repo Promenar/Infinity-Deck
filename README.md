@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The source tree is at `v0.54.0-beta` (versionCode `147`). See the [changelog](CHANGELOG.md) for what changed.
+The source tree is at `v0.55.0-beta` (versionCode `148`). See the [changelog](CHANGELOG.md) for what changed.
 
 <details>
 <summary><b>Build from source</b></summary>
@@ -176,7 +176,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 
 **Documents & knowledge**
 
-- Open the recorder from the Library, then start a new recording or continue a saved one. Android Quick Settings can start recording directly. Download X-ASR for on-device Chinese–English transcription, add hotwords, and transcribe saved recordings again. Transcript cleanup can use the fast model with consent, or a local GGUF model in the sideload build.
+- Open the recorder from the Library, then start a new recording or continue a saved one. Android Quick Settings can start recording directly. Download X-ASR for on-device Chinese–English transcription, add hotwords, and transcribe saved recordings again. Speaker analysis runs on-device and supports a local voiceprint library. Transcript cleanup can use the fast model with consent, or a local GGUF model in the sideload build.
 - Search documents, long-term memory and the knowledge graph together, with cited answers
 - One graph per work — follow how two characters stand with each other, chapter by chapter
 - Mount outside folders; PDF, Word, Markdown, HTML and more

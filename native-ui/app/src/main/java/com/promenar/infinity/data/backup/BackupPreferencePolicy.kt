@@ -1,6 +1,9 @@
 package com.promenar.infinity.data.backup
 
 internal object BackupPreferencePolicy {
+    const val VOICE_NAMESPACE = "recording_voiceprints"
+    const val VOICE_ENTRY = "voiceprints.json"
+
     private val deniedFragments = listOf(
         "api_key", "apikey", "authorization", "cookie", "token", "password", "passwd", "secret",
         "private_key", "privatekey", "service_account", "serviceaccount", "vertex_json", "vertexjson",
@@ -10,6 +13,7 @@ internal object BackupPreferencePolicy {
 
     private val exactAllowed = mapOf(
         "recording_hotwords" to setOf("library"),
+        VOICE_NAMESPACE to setOf("library"),
         "provider" to setOf(
             "protocol_id", "protocol_id_name", "base_url", "model", "provider_name",
             "embedding_base_url", "embedding_model",

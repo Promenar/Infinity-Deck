@@ -59,6 +59,7 @@ private fun RecordingExample(
     history: List<RecordingSession> = listOfNotNull(session),
     asr: RecordingAsrModelState = RecordingAsrModelState.Installed,
     recognizing: Boolean = false,
+    analyzing: Boolean = false,
 ) {
     val active = session?.phase == RecordingPhase.Recording || session?.phase == RecordingPhase.Paused
     RecordingPageContent(
@@ -67,6 +68,8 @@ private fun RecordingExample(
             activeId = session?.id.takeIf { active },
             recognizingId = session?.id.takeIf { recognizing },
             recognizeProgress = if (recognizing) .45f else 0f,
+            speakerAnalysisId = session?.id.takeIf { analyzing },
+            speakerProgress = if (analyzing) .45f else 0f,
             durationMs = 92_000,
             levels = List(48) { ((it * 7) % 13) / 13f },
             partial = partial,
@@ -295,5 +298,48 @@ fun recordingHotwordLibraryPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
         ready = true,
         unknown = { text -> listOf('蔺').filter { it in text } },
         onSave = { null }, onDelete = {}, onToggle = { _, _ -> }, onImport = { null }, onBack = {},
+    )
+}
+
+private fun speakerRecordingSample() = recordingSample().let { sample ->
+    sample.copy(
+        distinguishSpeakers = true,
+        speakers = listOf(RecordingSpeaker(0, "林妍"), RecordingSpeaker(1)),
+        segments = sample.segments.mapIndexed { index, segment -> segment.copy(speakerId = index) },
+        speakerAnalyzedBytes = sample.audioBytes,
+        organized = "**林妍**\n\n本周完成热词库。\n\n**说话人 2**\n\n内屏逐字稿与整理稿并排。",
+    )
+}
+
+@PreviewTest
+@Preview(name = "说话人 深中840 内屏", widthDp = 840, heightDp = 800, locale = "zh-rCN")
+@Preview(name = "说话人 深英360 外屏", widthDp = 360, heightDp = 800, locale = "en", fontScale = 1.3f)
+@Composable
+fun recordingSpeakerDetailPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    RecordingExample(speakerRecordingSample())
+}
+
+@PreviewTest
+@Preview(name = "说话人分析 浅中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")
+@Composable
+fun recordingSpeakerAnalysisPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    RecordingExample(recordingSample().copy(distinguishSpeakers = true), analyzing = true)
+}
+
+@PreviewTest
+@Preview(name = "声纹库 浅中840 内屏", widthDp = 840, heightDp = 800, locale = "zh-rCN")
+@Preview(name = "声纹库 浅英360 外屏", widthDp = 360, heightDp = 800, locale = "en", fontScale = 1.3f)
+@Composable
+fun recordingVoiceLibraryPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    RecordingVoiceLibraryContent(
+        people = listOf(
+            RecordingVoicePerson(id = "preview-1", name = "林妍", samples = listOf(
+                RecordingVoiceSample(id = "preview-s1", source = "产品讨论", durationMs = 15_000L,
+                    createdAt = 1_763_000_000_000, embedding = emptyList()),
+            )),
+            RecordingVoicePerson(id = "preview-2", name = "James Park"),
+        ),
+        model = RecordingAsrModelState.Installed, ready = true, onBack = {}, onPerson = {}, onEnroll = {},
+        onDownload = {}, onCancelDownload = {},
     )
 }

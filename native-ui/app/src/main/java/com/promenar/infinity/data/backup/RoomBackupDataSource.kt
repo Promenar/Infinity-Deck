@@ -153,7 +153,10 @@ class RoomBackupDataSource(
         }
     }
 
-    override suspend fun snapshotTo(layers: Set<BackupLayer>, directory: Path): BackupSnapshot = withContext(Dispatchers.IO) {
+    override suspend fun snapshotTo(layers: Set<BackupLayer>, directory: Path): BackupSnapshot =
+        snapshotTo(layers, directory, encrypted = false)
+
+    override suspend fun snapshotTo(layers: Set<BackupLayer>, directory: Path, encrypted: Boolean): BackupSnapshot = withContext(Dispatchers.IO) {
         if (BackupLayer.CORE !in layers) throw BackupValidationException("核心层必须包含")
         val estimate = estimateFor(layers).filterKeys { it in layers }.values.sumOf { it.sizeBytes }
         if (estimate > BackupPackageLimits.MAX_TOTAL_BYTES) throw BackupValidationException("所选内容超过整包上限", reason = BackupFailureReason.CAPACITY_EXCEEDED)
@@ -163,7 +166,7 @@ class RoomBackupDataSource(
             val before = configurationRevision()
             val secretBefore = SecretMutationRevision.current()
             if (before and 1L != 0L || secretBefore and 1L != 0L) return@repeat
-            val captured = streamSnapshotOnce(layers, directory)
+            val captured = streamSnapshotOnce(layers, directory, encrypted)
             if (before == configurationRevision() && secretBefore == SecretMutationRevision.current()) return@withContext captured
             captured.wipe()
         }
@@ -285,13 +288,15 @@ class RoomBackupDataSource(
         return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables)
     }
 
-    private suspend fun streamSnapshotOnce(layers: Set<BackupLayer>, directory: Path): BackupSnapshot {
+    private suspend fun streamSnapshotOnce(layers: Set<BackupLayer>, directory: Path, encrypted: Boolean): BackupSnapshot {
         val root = Files.createTempDirectory(directory, "snapshot-")
         try {
             requireWorkspaceMutationJournalRecovered()
             var payload = database.withTransaction { readDiskPayload(root, layers, mediaHistoryOnly = true) }
             val policy = BackupLayerPolicy.Index(payload.tables)
-            var prefs = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES))
+            var prefs = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES, includeVoiceprints = encrypted))
+            val voiceprints = prefs.entries.firstOrNull { it.namespace == BackupPreferencePolicy.VOICE_NAMESPACE }
+            prefs = prefs.withoutVoiceprints()
             val skipped = mutableListOf<BackupSkippedItem>()
             val entries = mutableListOf<BackupSourceEntry>()
             val fileRows = mutableListOf<JsonObject>()
@@ -353,6 +358,15 @@ class RoomBackupDataSource(
                 val path = root.resolve("preferences.json"); Files.write(path, preferenceBytes)
                 entries += BackupSourceEntry("preferences.json", BackupLayer.CORE, BackupBlob.File(path))
             } finally { preferenceBytes.fill(0) }
+            if (encrypted && voiceprints != null) {
+                val bytes = voiceprints.value.encodeToByteArray()
+                try {
+                    require(bytes.size <= com.promenar.infinity.recording.RecordingVoiceStore.MAX_BYTES)
+                    val path = root.resolve(BackupPreferencePolicy.VOICE_ENTRY)
+                    Files.write(path, bytes)
+                    entries += BackupSourceEntry(BackupPreferencePolicy.VOICE_ENTRY, BackupLayer.CORE, BackupBlob.File(path))
+                } finally { bytes.fill(0) }
+            }
             if (BackupLayer.SECRETS in layers) {
                 val values = snapshotSecrets(prefs.providerIds, BackupPackageLimits.MAX_ENTRY_BYTES)
                 try {
@@ -390,7 +404,7 @@ class RoomBackupDataSource(
     private suspend fun snapshotOnce(content: Set<BackupContent>): BackupSnapshot {
         requireCanonicalSnapshotContent(content)
         requireWorkspaceMutationJournalRecovered()
-        val safePreferences = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES))
+        val safePreferences = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES)).withoutVoiceprints()
         var preferenceBytes = json.encodeToString(safePreferences).toByteArray(Charsets.UTF_8)
         if (preferenceBytes.size.toLong() > BackupPackageLimits.MAX_IN_MEMORY_BYTES) {
             throw BackupValidationException("偏好数据超过内存安全限制", reason = BackupFailureReason.CAPACITY_EXCEEDED)
@@ -504,7 +518,15 @@ class RoomBackupDataSource(
         }
         val importedFileIds = importedPayload.rows(FILE_TABLE).map { it.requiredString("uuid") }.toSet()
         val preferenceSnapshot = avatarPlan.preferences
-        val beforePreferences = preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES)
+        val importsVoiceprints = preferenceSnapshot.entries.any { it.namespace == BackupPreferencePolicy.VOICE_NAMESPACE }
+        val localPreferences = preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES, includeVoiceprints = importsVoiceprints)
+        val beforePreferences = when {
+            !importsVoiceprints -> localPreferences.withoutVoiceprints()
+            localPreferences.entries.any { it.namespace == BackupPreferencePolicy.VOICE_NAMESPACE } -> localPreferences
+            else -> localPreferences.copy(entries = localPreferences.entries + BackupPreferenceEntry(
+                BackupPreferencePolicy.VOICE_NAMESPACE, "library", "[]",
+            ))
+        }
         val unchangedEmbeddingSettings = sameEmbeddingSettings(beforePreferences, preferenceSnapshot)
         val currentEmbeddingSpace = if (unchangedEmbeddingSettings) runCatching(embeddingSpaceKey).getOrNull() else null
         val parsedPayload = prepareRestoredGraphAndVectors(
@@ -904,10 +926,35 @@ class RoomBackupDataSource(
         Unit
     }
 
-    private fun parseValidatedPreferences(validated: ValidatedBackup): BackupPreferenceSnapshot =
-        if (validated.manifest.layers == null) parsePreferences(validated.preferences)
-        else validated.blobs["preferences.json"]?.open()?.use { sanitizePreferences(json.decodeFromStream<BackupPreferenceSnapshot>(it), rejectUnsafe = true) }
-            ?: throw BackupValidationException("核心层缺少偏好")
+    private fun BackupPreferenceSnapshot.withoutVoiceprints() =
+        copy(entries = entries.filterNot { it.namespace == BackupPreferencePolicy.VOICE_NAMESPACE })
+
+    private fun parseValidatedPreferences(validated: ValidatedBackup): BackupPreferenceSnapshot {
+        val prefs = if (validated.manifest.layers == null) parsePreferences(validated.preferences)
+        else validated.blobs["preferences.json"]?.open()?.use {
+            sanitizePreferences(json.decodeFromStream<BackupPreferenceSnapshot>(it), rejectUnsafe = true)
+        } ?: throw BackupValidationException("核心层缺少偏好")
+        if (prefs.entries.any { it.namespace == BackupPreferencePolicy.VOICE_NAMESPACE }) {
+            throw BackupValidationException("声纹需要独立的加密备份条目")
+        }
+        val source = validated.blobs[BackupPreferencePolicy.VOICE_ENTRY] ?: return prefs
+        if (!validated.manifest.encrypted || source.size !in 2..com.promenar.infinity.recording.RecordingVoiceStore.MAX_BYTES.toLong()) {
+            throw BackupValidationException("声纹备份必须加密且符合大小限制")
+        }
+        val bytes = ByteArray(source.size.toInt())
+        val value = try {
+            java.io.DataInputStream(source.open()).use { input ->
+                input.readFully(bytes)
+                if (input.read() != -1) throw BackupValidationException("声纹库备份内容大小无效")
+            }
+            val text = bytes.decodeToString(throwOnInvalidSequence = true)
+            com.promenar.infinity.recording.RecordingVoiceStore.decode(text)
+            text
+        } catch (error: Exception) {
+            throw BackupValidationException("声纹库备份内容无效", error)
+        } finally { bytes.fill(0) }
+        return prefs.copy(entries = prefs.entries + BackupPreferenceEntry(BackupPreferencePolicy.VOICE_NAMESPACE, "library", value))
+    }
 
     private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload =
         parseValidatedDatabaseContent(validated).also { MediaQueueBackupPolicy.validateRows(it.tables) }

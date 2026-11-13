@@ -1,0 +1,51 @@
+<resources>
+    <string name="recording_speaker_download_failed">声纹模型下载或校验失败</string>
+    <string name="recording_speaker_model">声纹模型</string>
+    <string name="recording_speaker_analysis">分析说话人</string>
+    <string name="recording_speaker_analysis_failed">说话人分析失败</string>
+    <string name="recording_speaker_distinguish">区分说话人</string>
+    <string name="recording_speaker_library">声纹库</string>
+    <plurals name="recording_speaker_count">
+        <item quantity="other">%1$d 人</item>
+    </plurals>
+    <string name="recording_speaker_section">说话人</string>
+    <string name="recording_speaker_default">说话人 %1$d</string>
+    <string name="recording_speaker_stats">%1$d 段，%2$s</string>
+    <string name="recording_speaker_unmatched">未匹配</string>
+    <string name="recording_speaker_matched">声纹 %1$d%%</string>
+    <string name="recording_speaker_assigned">声纹已指定</string>
+    <string name="recording_speaker_this_segment">此段 %1$s</string>
+    <string name="recording_speaker_all_segments">%1$s · 全部 %2$d 段</string>
+    <string name="recording_speaker_new">新说话人</string>
+    <string name="recording_speaker_rename">改名</string>
+    <string name="recording_speaker_assign">指定为</string>
+    <string name="recording_speaker_merge">合并到</string>
+    <string name="recording_speaker_save_sample">保存声纹</string>
+    <string name="recording_speaker_update_sample">更新声纹</string>
+    <string name="recording_speaker_unmatch">取消匹配</string>
+    <string name="recording_speaker_new_person">新建人员</string>
+    <string name="recording_speaker_name">姓名</string>
+    <string name="recording_speaker_model_missing">声纹模型未安装</string>
+    <string name="recording_speaker_analyze_action">分析说话人</string>
+    <string name="recording_voice_enroll">录入声纹</string>
+    <string name="recording_voice_local">本机</string>
+    <string name="recording_voice_storage">存储</string>
+    <string name="recording_voice_backup">备份</string>
+    <string name="recording_voice_encrypted_backup">加密备份</string>
+    <string name="recording_voice_people">人员</string>
+    <string name="recording_voice_empty">还没有声纹</string>
+    <plurals name="recording_voice_sample_count">
+        <item quantity="other">%1$d 段样本</item>
+    </plurals>
+    <string name="recording_voice_recent">最近 %1$s</string>
+    <string name="recording_voice_samples">样本</string>
+    <string name="recording_voice_remove_sample">删除样本</string>
+    <string name="recording_voice_remove_person">删除此人</string>
+    <string name="recording_voice_remove_confirm">删除 %1$s 的全部声纹？</string>
+    <string name="recording_voice_record_again">重录</string>
+    <string name="recording_voice_reading">今天下午三点在三楼会议室碰一下录音模块的进度。热词库先做导入和读法，说话人分析放在录音结束以后自动跑，结果写进整理稿。</string>
+    <string name="recording_voice_sample_failed">声纹保存失败，请使用清晰的语音样本重试。</string>
+    <string name="recording_speaker_recognition_settings">识别</string>
+    <string name="recording_voice_begin">开始</string>
+    <string name="recording_speaker_model_size">CAM++ 中文 · 下载 %1$d MB · 安装后 %2$d MB</string>
+</resources>

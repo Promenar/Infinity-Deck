@@ -25,23 +25,29 @@ internal fun RecordingAsrControls(
     onDownload: () -> Unit,
     onCancel: () -> Unit,
     inTranscript: Boolean = false,
+    speaker: Boolean = false,
 ) {
     val spec = RecordingAsrPackage.CURRENT
+    val modelTitle = if (speaker) R.string.recording_speaker_model else R.string.recording_asr_title
+    val modelMissing = if (speaker) R.string.recording_speaker_model_missing else R.string.recording_asr_missing
+    val downloadBytes = if (speaker) RecordingSpeakerModelManager.DOWNLOAD_BYTES else spec.bytes
+    val installedBytes = if (speaker) RecordingSpeakerModelManager.INSTALLED_BYTES else spec.installedBytes
     val installed = state == RecordingAsrModelState.Installed
     Column(
         Modifier.fillMaxWidth().padding(InfinitySpacing.RowHorizontal),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
         Text(
-            stringResource(if (inTranscript && !installed) R.string.recording_asr_missing else R.string.recording_asr_title),
+            stringResource(if (inTranscript && !installed) modelMissing else modelTitle),
             style = InfinityTypography.titleSmall,
         )
         Text(
-            stringResource(R.string.recording_asr_size, (spec.bytes + 500_000) / 1_000_000, (spec.installedBytes + 500_000) / 1_000_000),
+            stringResource(if (speaker) R.string.recording_speaker_model_size else R.string.recording_asr_size,
+                (downloadBytes + 500_000) / 1_000_000, (installedBytes + 500_000) / 1_000_000),
             style = InfinityTypography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (inTranscript && state == RecordingAsrModelState.Missing) {
+        if (inTranscript && !speaker && state == RecordingAsrModelState.Missing) {
             Text(stringResource(R.string.recording_asr_audio_only), style = InfinityTypography.bodySmall)
         }
         when (state) {

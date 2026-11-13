@@ -8,6 +8,7 @@ import com.promenar.infinity.data.security.SecretId
  */
 interface TransactionalBackupPreferenceStore {
     suspend fun snapshot(maxTotalBytes: Long): BackupPreferenceSnapshot
+    suspend fun snapshot(maxTotalBytes: Long, includeVoiceprints: Boolean): BackupPreferenceSnapshot = snapshot(maxTotalBytes)
     /** 只读验证 typed/providerIds 与 prepared ledger 容量；失败不得产生持久化写入。 */
     suspend fun preflightRestore(
         txId: String,

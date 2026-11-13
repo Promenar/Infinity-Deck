@@ -44,6 +44,8 @@ internal data class RecordingScreenState(
     val organizingId: String? = null,
     val recognizingId: String? = null,
     val recognizeProgress: Float = 0f,
+    val speakerAnalysisId: String? = null,
+    val speakerProgress: Float = 0f,
     val failure: Int? = null,
     val ready: Boolean = false,
     val cloudKey: String? = null,
@@ -73,6 +75,15 @@ internal class RecordingController(
     private val hotwordStore = RecordingHotwordStore(java.io.File(app.filesDir, RecordingHotwordStore.FILE_NAME))
     private val _hotwords = MutableStateFlow<List<RecordingHotword>>(emptyList())
     val hotwords = _hotwords.asStateFlow()
+    private val speakerModels = RecordingSpeakerModelManager(app, io)
+    val speakerModel = speakerModels.state
+    private val voiceStore = RecordingVoiceStore(java.io.File(app.noBackupFilesDir, RecordingVoiceStore.FILE_NAME))
+    private val voicePeopleValue = MutableStateFlow<List<RecordingVoicePerson>>(emptyList())
+    val voicePeople = voicePeopleValue.asStateFlow()
+    private val speakerUse = Mutex()
+    private var speakerJob: Job? = null
+    private val speakerAnalysisFailures = mutableMapOf<String, Long>()
+
     private val recognizerUse = Mutex()
     @Volatile private var recognition: Job? = null
     private val lock = Mutex()
@@ -102,11 +113,22 @@ internal class RecordingController(
                 if (failure is CancellationException) throw failure
                 R.string.recording_hotword_storage
             }
+            voicePeopleValue.value = runCatching { voiceStore.read() }.getOrDefault(emptyList())
             lock.withLock { _state.value = RecordingScreenState(sessions = restored, ready = true, failure = hotwordFailure) }
             restored.filter { it.phase == RecordingPhase.Finished && it.documentHash == null }.forEach { publish(it.id) }
+            speakerModel.collect { model ->
+                if (model == RecordingAsrModelState.Installed) lock.withLock { scheduleSpeakerAnalysis() }
+            }
+        }
+        io.launch {
             while (true) {
                 try {
-                    lock.withLock { if (organizationEnabled) scheduleOrganization() }
+                    lock.withLock {
+                        if (organizationEnabled) {
+                            scheduleSpeakerAnalysis()
+                            scheduleOrganization()
+                        }
+                    }
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     report(R.string.recording_organize_failed)
@@ -146,6 +168,7 @@ internal class RecordingController(
                     return@withLock
                 }
                 recognition?.cancel()
+                speakerJob?.cancel()
                 quiet = false
                 command.set(CaptureCommand.Continue)
                 organize?.cancel()
@@ -213,7 +236,10 @@ internal class RecordingController(
             _state.value = _state.value.copy(
                 activeId = item.id.takeIf { outcome == RecordingPhase.Paused }, opening = false, partial = "", durationMs = final.durationMs,
             )
-            if (outcome == RecordingPhase.Finished) publish(item.id)
+            if (outcome == RecordingPhase.Finished) {
+                publish(item.id)
+                startSpeakerAnalysis(item.id)
+            }
             if (outcome != RecordingPhase.Paused) onIdle()
         }
     }
@@ -236,10 +262,206 @@ internal class RecordingController(
                     }
                     _state.value = _state.value.copy(activeId = null)
                     publish(current.id)
+                    startSpeakerAnalysis(current.id)
                 }
                 onIdle()
             }
         }
+    }
+
+    fun downloadSpeakerModel() = speakerModels.start()
+    fun cancelSpeakerModel() = speakerModels.cancel()
+
+    fun distinguishSpeakers(id: String?, enabled: Boolean) {
+        if (enabled && speakerModels.state.value == RecordingAsrModelState.Missing) speakerModels.start()
+        if (id == null) store.distinguishSpeakers = enabled
+        else io.launch {
+            lock.withLock {
+                val item = session(id) ?: return@withLock
+                if (!enabled && _state.value.speakerAnalysisId == id) speakerJob?.cancel()
+                val updated = item.copy(distinguishSpeakers = enabled)
+                save(if (enabled && item.speakerAnalyzedBytes != item.audioBytes) updated else updated.forSpeakerOrganization())
+                if (enabled) startSpeakerAnalysis(id)
+                else publish(id)
+            }
+        }
+    }
+
+    fun analyzeSpeakers(id: String) = io.launch { lock.withLock { startSpeakerAnalysis(id, force = true) } }
+
+    private fun scheduleSpeakerAnalysis() {
+        if (speakerModels.state.value != RecordingAsrModelState.Installed || _state.value.activeId != null ||
+            speakerJob?.isCompleted == false || _state.value.recognizingId != null) return
+        _state.value.sessions.firstOrNull {
+            it.distinguishSpeakers && it.audioBytes > 0 && it.speakerAnalyzedBytes != it.audioBytes &&
+                speakerAnalysisFailures[it.id] != it.audioBytes &&
+                it.phase in setOf(RecordingPhase.Finished, RecordingPhase.Interrupted)
+        }?.let { startSpeakerAnalysis(it.id) }
+    }
+
+    private fun RecordingSession.forSpeakerOrganization(): RecordingSession =
+        if (manualEdit || organized.isBlank()) this else copy(reprocessThrough = 0, reprocessText = "")
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun startSpeakerAnalysis(id: String, force: Boolean = false) {
+        val item = session(id) ?: return
+        val files = speakerModels.installed() ?: return
+        if (!item.distinguishSpeakers || item.audioBytes == 0L || _state.value.activeId != null ||
+            _state.value.recognizingId != null || speakerJob?.isCompleted == false ||
+            (!force && item.speakerAnalyzedBytes == item.audioBytes) ||
+            item.phase !in setOf(RecordingPhase.Finished, RecordingPhase.Interrupted)) return
+        if (_state.value.organizingId == id) organize?.cancel()
+        speakerAnalysisFailures.remove(id)
+        _state.value = _state.value.copy(speakerAnalysisId = id, speakerProgress = 0f)
+        speakerJob = io.launch(start = CoroutineStart.ATOMIC) {
+            try {
+                val request = lock.withLock { decoderRequest(item) }
+                val people = voicePeopleValue.value
+                val (result, refined) = withRecordingRecognitionWakeLock(app) {
+                    analyzeSpeakerRecording(item, files, item.segments, request, people) { fraction ->
+                        lock.withLock { _state.value = _state.value.copy(speakerProgress = fraction) }
+                    }
+                }
+                lock.withLock {
+                    val current = session(id) ?: return@withLock
+                    if (current.audioBytes != item.audioBytes || current.segments != item.segments ||
+                        current.speakers != item.speakers || !current.distinguishSpeakers ||
+                        effective(current) != request.hotwords || voicePeopleValue.value != people) return@withLock
+                    val analyzed = current.copy(segments = refined).applySpeakerAnalysis(result)
+                    save(analyzed.forSpeakerOrganization())
+                    publish(id)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                lock.withLock { speakerAnalysisFailures[id] = item.audioBytes }
+                report(R.string.recording_speaker_analysis_failed)
+            } catch (_: LinkageError) {
+                lock.withLock { speakerAnalysisFailures[id] = item.audioBytes }
+                report(R.string.recording_speaker_analysis_failed)
+            } finally {
+                withContext(NonCancellable) {
+                    lock.withLock { _state.value = _state.value.copy(speakerAnalysisId = null, speakerProgress = 0f) }
+                }
+            }
+        }
+    }
+
+    private suspend fun analyzeSpeakerRecording(
+        item: RecordingSession,
+        files: RecordingSpeakerModels,
+        segments: List<RecordingSegment>,
+        request: RecordingDecoderRequest,
+        people: List<RecordingVoicePerson>,
+        progress: suspend (Float) -> Unit,
+    ): Pair<RecordingSpeakerResult, List<RecordingSegment>> {
+        val audio = store.audio(item.id)
+        val result = speakerUse.withLock {
+            RecordingSpeakerAnalysis.analyze(files, audio, item.durationMs, people) { progress(it * .8f) }
+        }
+        val preserved = if (item.speakerAssignmentsEdited) segments else segments.map { it.copy(speakerId = null) }
+        val needsRefinement = request.directory != null && result.speakers.size > 1 && preserved.isNotEmpty()
+        val refined = if (!needsRefinement) preserved else recognizerUse.withLock {
+            decoderFactory.create(request).use { refineRecordingSpeakerSegments(audio, preserved, result.turns, it) }
+        }
+        progress(1f)
+        return result to refined
+    }
+
+    fun updateSpeaker(id: String, speakerId: Int, name: String, personId: String? = null) {
+        editSpeaker(id) { item ->
+            val trimmed = name.trim()
+            require(trimmed.length <= 50)
+            item.copy(speakers = item.speakers.map {
+                if (it.id == speakerId) it.copy(name = trimmed, personId = personId, confidence = null) else it
+            })
+        }
+    }
+
+    fun moveSpeaker(id: String, from: Int, to: Int?, segmentStartMs: Long? = null) {
+        editSpeaker(id) { item ->
+            if (to != null) item.withSpeakerChange(from, to, segmentStartMs)
+            else {
+                val next = (item.speakers.maxOfOrNull { it.id } ?: -1) + 1
+                item.copy(speakers = item.speakers + RecordingSpeaker(next)).withSpeakerChange(from, next, segmentStartMs)
+            }
+        }
+    }
+
+    private fun editSpeaker(id: String, transform: (RecordingSession) -> RecordingSession) = io.launch {
+        lock.withLock {
+            val item = session(id) ?: return@withLock
+            try {
+                if (_state.value.organizingId == id) organize?.cancel()
+                save(transform(item).copy(speakerAssignmentsEdited = true).forSpeakerOrganization())
+                publish(id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                report(R.string.recording_storage_failed)
+            }
+        }
+    }
+
+    suspend fun saveVoicePerson(person: RecordingVoicePerson) = lock.withLock {
+        val people = voicePeopleValue.value
+        val old = people.firstOrNull { it.id == person.id }
+        writeVoicePeople(if (old == null) people + person else people.map { if (it.id == person.id) person else it })
+        if (old != null && old.name != person.name) syncVoiceName(person.id, person.name)
+    }
+
+    suspend fun renameVoicePerson(id: String, name: String) = lock.withLock {
+        val people = voicePeopleValue.value
+        val person = people.firstOrNull { it.id == id } ?: return@withLock
+        if (person.name == name) return@withLock
+        writeVoicePeople(people.map { if (it.id == id) it.copy(name = name) else it })
+        syncVoiceName(id, name)
+    }
+
+    suspend fun removeVoiceSample(id: String, sampleId: String) = lock.withLock {
+        val people = voicePeopleValue.value
+        val person = people.firstOrNull { it.id == id } ?: return@withLock
+        require(person.samples.size > 1)
+        writeVoicePeople(people.map {
+            if (it.id == id) it.copy(samples = it.samples.filterNot { sample -> sample.id == sampleId }) else it
+        })
+    }
+
+    suspend fun deleteVoicePerson(id: String) = lock.withLock {
+        writeVoicePeople(voicePeopleValue.value.filterNot { it.id == id })
+        syncVoiceName(id, null)
+    }
+
+    private suspend fun writeVoicePeople(people: List<RecordingVoicePerson>) = withContext(Dispatchers.IO + NonCancellable) {
+        voiceStore.write(people)
+        voicePeopleValue.value = people
+    }
+
+    private suspend fun syncVoiceName(personId: String, name: String?) {
+        for (item in _state.value.sessions.filter { item -> item.speakers.any { it.personId == personId } }) {
+            save(item.copy(speakers = item.speakers.map {
+                if (it.personId != personId) it else it.copy(name = name.orEmpty(), personId = personId.takeIf { name != null }, confidence = null)
+            }).forSpeakerOrganization())
+            publish(item.id)
+        }
+    }
+
+    suspend fun speakerSample(id: String, speakerId: Int): RecordingVoiceSample = withContext(Dispatchers.IO) {
+        val item = lock.withLock { session(id) } ?: error("录音不存在")
+        val segment = item.segments.filter { it.speakerId == speakerId }.maxByOrNull { it.endMs - it.startMs }
+            ?: error("说话人没有可用音频")
+        val files = speakerModels.installed() ?: error("声纹模型未安装")
+        speakerUse.withLock { RecordingSpeakerAnalysis.sample(files, store.audio(id), segment, item.title) }
+    }
+
+    suspend fun enrollVoice(input: FloatArray): RecordingVoiceSample = withContext(Dispatchers.IO) {
+        val files = speakerModels.installed() ?: error("声纹模型未安装")
+        speakerUse.withLock { RecordingSpeakerAnalysis.sample(files, input, app.getString(R.string.recording_voice_enroll)) }
+    }
+
+    suspend fun <T> useVoiceMicrophone(action: suspend () -> T): T = microphone.withLock {
+        check(_state.value.activeId == null)
+        action()
     }
 
     fun setMode(id: String?, mode: RecordingMode) {
@@ -338,18 +560,45 @@ internal class RecordingController(
                 if (!recordingCanRecognize(item, _state.value.activeId, _state.value.recognizingId) ||
                     capture?.isActive == true || recognition?.isCompleted == false || !asr.isInstalled()) return@withLock
                 if (_state.value.organizingId == id) organize?.cancel()
+                if (_state.value.speakerAnalysisId == id) speakerJob?.cancel()
                 val request = decoderRequest(item)
                 // 即使刚派发就被取消，也要执行 finally 清除界面上的识别状态。
                 recognition = io.launch(start = CoroutineStart.ATOMIC) {
                     try {
                         currentCoroutineContext().ensureActive()
+                        val speakerFiles = speakerModels.installed()?.takeIf { item.distinguishSpeakers }
+                        val recognitionShare = if (speakerFiles == null) 1f else .85f
+                        val people = voicePeopleValue.value
                         val segments = recognizerUse.withLock {
                             recognizeWithWakeLock {
                                 decoderFactory.create(request).use { decoder ->
-                                    recognizeRecordingWav(store.audio(id), decoder) { progress ->
-                                        lock.withLock { _state.value = _state.value.copy(recognizeProgress = progress.coerceIn(0f, 1f)) }
+                                    val audio = store.audio(id)
+                                    val recognized = recognizeRecordingWav(audio, decoder) { progress ->
+                                        lock.withLock { _state.value = _state.value.copy(recognizeProgress = progress.coerceIn(0f, 1f) * recognitionShare) }
+                                    }
+                                    if (!item.distinguishSpeakers || !item.speakerAssignmentsEdited) recognized
+                                    else {
+                                        decoder.reset()
+                                        val refined = refineRecordingSpeakerSegments(
+                                            audio, recognized, item.assignedSpeakerTurns(), decoder, protectAssignments = true,
+                                        )
+                                        item.copy(segments = refined).preserveSpeakerAssignments(item).segments
                                     }
                                 }
+                            }
+                        }
+                        val speakerResult = speakerFiles?.let { files ->
+                            try {
+                                withRecordingRecognitionWakeLock(app) {
+                                    analyzeSpeakerRecording(item, files, segments, request, people) { fraction ->
+                                        lock.withLock { _state.value = _state.value.copy(recognizeProgress = .85f + fraction * .15f) }
+                                    }
+                                }
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                report(R.string.recording_speaker_analysis_failed)
+                                null
                             }
                         }
                         lock.withLock {
@@ -357,7 +606,15 @@ internal class RecordingController(
                             val current = session(id) ?: return@withLock
                             if (current.copy(documentId = item.documentId, documentHash = item.documentHash) != item ||
                                 effective(current) != request.hotwords) return@withLock
-                            withContext(NonCancellable) { save(recordingRecognitionResult(current, segments, rewriteOrganized)) }
+                            val result = speakerResult.takeIf { voicePeopleValue.value == people }
+                            val next = recordingRecognitionResult(current, result?.second ?: segments, rewriteOrganized)
+                            withContext(NonCancellable) {
+                                save(if (result == null) {
+                                    next.preserveSpeakerAssignments(current).copy(
+                                        speakerAnalyzedBytes = if (current.distinguishSpeakers) 0 else current.speakerAnalyzedBytes,
+                                    )
+                                } else next.applySpeakerAnalysis(result.first))
+                            }
                             nextAttempt = 0
                             publish(id)
                         }
@@ -428,6 +685,7 @@ internal class RecordingController(
     private suspend fun discard(id: String) {
         if (id == _state.value.organizingId) organize?.cancel()
         if (id == _state.value.recognizingId) recognition?.cancel()
+        if (id == _state.value.speakerAnalysisId) speakerJob?.cancel()
         try {
             store.delete(id)
             _state.value = _state.value.copy(sessions = _state.value.sessions.filterNot { it.id == id })
@@ -512,7 +770,11 @@ internal class RecordingController(
         if (active != null && !quiet) return
         if (active == null && !foreground && !cloudJobRunning) return
         val item = _state.value.sessions.firstOrNull {
-            it.id != _state.value.recognizingId && !it.manualEdit && it.organizationCursor < it.segments.size &&
+            it.id != _state.value.recognizingId && it.id != _state.value.speakerAnalysisId &&
+                (!it.distinguishSpeakers || it.phase != RecordingPhase.Recording &&
+                    (speakerModels.state.value != RecordingAsrModelState.Installed || it.speakerAnalyzedBytes == it.audioBytes ||
+                        speakerAnalysisFailures[it.id] == it.audioBytes)) &&
+                !it.manualEdit && it.organizationCursor < it.segments.size &&
                 (active == null || it.id == active) &&
                 chooseRecordingRoute(it.mode, cloud?.key, it.cloudConsent, local != null, it.fallback) in
                 (if (active != null || foreground) setOf(RecordingRoute.Cloud, RecordingRoute.Local)
@@ -520,7 +782,8 @@ internal class RecordingController(
         } ?: return
         val useCloud = item.mode == RecordingMode.Auto && cloud != null
         organizingCloud = useCloud
-        val range = nextRecordingBatch(item.segments, item.organizationCursor, if (useCloud) 2000 else 300) ?: return
+        val range = nextRecordingBatch(item.segments, item.organizationCursor, if (useCloud) 2000 else 300,
+            separateSpeakers = item.distinguishSpeakers) ?: return
         _state.value = _state.value.copy(organizingId = item.id)
         val hotwords = effective(item)
         organize = io.launch {
@@ -531,7 +794,9 @@ internal class RecordingController(
                 lock.withLock {
                     val current = session(item.id) ?: return@withLock
                     if (current.mode != item.mode || current.cloudConsent != item.cloudConsent || current.manualEdit ||
-                        current.organizationCursor != range.first || effective(current) != hotwords
+                        current.organizationCursor != range.first || current.segments != item.segments ||
+                        current.distinguishSpeakers != item.distinguishSpeakers ||
+                        current.speakers != item.speakers || effective(current) != hotwords
                     ) return@withLock
                     val cursor = range.last + 1
                     val staging = current.reprocessThrough != null

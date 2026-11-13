@@ -86,7 +86,7 @@ class BackupRepository internal constructor(
         var snapshot: com.promenar.infinity.data.backup.BackupSnapshot? = null
         try {
             if (BackupLayer.SECRETS in layers && !options.includeSecrets) throw BackupValidationException("密钥层需要加密密码确认")
-            snapshot = dataSource.snapshotTo(layers, root)
+            snapshot = dataSource.snapshotTo(layers, root, encrypted = options.encryptPackage || options.includeSecrets)
             val target = root.resolve("export.iwb")
             val summary = java.nio.file.Files.newOutputStream(target).use { output -> codec.encodeTo(snapshot,
                 BackupOptions(CANONICAL_CONTENT + if (options.includeSecrets) setOf(BackupContent.SECRETS) else emptySet(),

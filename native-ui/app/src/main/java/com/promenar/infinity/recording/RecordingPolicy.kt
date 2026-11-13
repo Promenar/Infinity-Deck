@@ -15,7 +15,7 @@ internal enum class RecordingRoute { Cloud, Local, Raw, Consent, Unavailable }
 internal enum class RecordingPhase { Recording, Paused, Interrupted, Finished }
 
 @Serializable
-internal data class RecordingSegment(val startMs: Long, val endMs: Long, val text: String)
+internal data class RecordingSegment(val startMs: Long, val endMs: Long, val text: String, val speakerId: Int? = null)
 
 @Serializable
 internal data class RecordingSession(
@@ -38,6 +38,10 @@ internal data class RecordingSession(
     val manualEdit: Boolean = false,
     val hotwords: List<String> = emptyList(),
     val useHotwordLibrary: Boolean = true,
+    val distinguishSpeakers: Boolean = false,
+    val speakers: List<RecordingSpeaker> = emptyList(),
+    val speakerAnalyzedBytes: Long = 0,
+    val speakerAssignmentsEdited: Boolean = false,
 ) {
     val durationMs get() = audioBytes / 32
     val organizationCursor get() = reprocessThrough ?: organizedThrough
@@ -71,13 +75,16 @@ internal fun chooseRecordingRoute(
     else -> RecordingRoute.Unavailable
 }
 
-internal fun nextRecordingBatch(segments: List<RecordingSegment>, from: Int, budget: Int): IntRange? {
+internal fun nextRecordingBatch(
+    segments: List<RecordingSegment>, from: Int, budget: Int, separateSpeakers: Boolean = false,
+): IntRange? {
     if (from >= segments.size) return null
     var end = from
     var chars = 0
     while (end < segments.size) {
         val length = segments[end].text.length
-        if (end > from && chars + length > budget) break
+        if (end > from && (chars + length > budget ||
+            separateSpeakers && segments[end].speakerId != segments[from].speakerId)) break
         chars += length
         end++
     }
@@ -149,13 +156,23 @@ internal fun recordingsRemovedWithDocuments(
 }
 
 internal fun recordingRawText(session: RecordingSession): String =
-    session.segments.joinToString("\n") { "${recordingTimestamp(it.startMs)} ${it.text}" }
+    session.segments.joinToString("\n") { segment ->
+        val speaker = session.exportSpeaker(segment)
+        "${recordingTimestamp(segment.startMs)} ${if (speaker == null) "" else "$speaker  "}${segment.text}"
+    }
+
+private fun RecordingSession.exportSpeaker(segment: RecordingSegment): String? =
+    segment.speakerId?.takeIf { distinguishSpeakers }?.let { speakerName(it) { index -> "说话人 $index" } }
 
 internal fun recordingMarkdown(session: RecordingSession): String = buildString {
     append("# ").append(session.title.trim().replace(Regex("[\\r\\n]+"), " "))
     if (session.organized.isNotBlank()) append("\n\n## 整理稿\n\n").append(session.organized)
     if (session.segments.isNotEmpty()) {
         append("\n\n## 原始转写\n")
-        session.segments.forEach { append("\n- ").append(recordingTimestamp(it.startMs)).append(' ').append(it.text) }
+        session.segments.forEach { segment ->
+            append("\n- ").append(recordingTimestamp(segment.startMs)).append(' ')
+            session.exportSpeaker(segment)?.let { append(it).append("  ") }
+            append(segment.text)
+        }
     }
 }

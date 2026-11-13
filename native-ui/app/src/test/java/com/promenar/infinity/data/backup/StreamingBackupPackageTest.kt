@@ -5,6 +5,42 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
 class StreamingBackupPackageTest {
+    @Test fun `声纹条目只能经认证的加密备份往返`() {
+        val root = Files.createTempDirectory("voiceprint-backup-test")
+        try {
+            val codec = DefaultBackupPackageCodec()
+            val password = "合成测试备份".toCharArray()
+            val voice = "[{\"id\":\"fixture\"}]".toByteArray()
+            val entries = listOf(
+                BackupSourceEntry("preferences.json", BackupLayer.CORE, BackupBlob.Bytes("{}".toByteArray())),
+                BackupSourceEntry(BackupPreferencePolicy.VOICE_ENTRY, BackupLayer.CORE, BackupBlob.Bytes(voice)),
+            )
+            val snapshot = BackupSnapshot(
+                databaseSchemaVersion = DATABASE_BACKUP_SCHEMA_VERSION, appVersion = "test",
+                layers = setOf(BackupLayer.CORE), streamEntries = entries,
+            )
+            assertThrows(BackupValidationException::class.java) {
+                codec.encodeTo(snapshot, BackupOptions(emptySet()), java.io.ByteArrayOutputStream())
+            }
+            val target = java.io.ByteArrayOutputStream()
+            codec.encodeTo(snapshot, BackupOptions(emptySet(), password = password, encryptPackage = true), target)
+            val wire = target.toByteArray()
+            assertFalse(wire.toString(Charsets.ISO_8859_1).contains(BackupPreferencePolicy.VOICE_ENTRY))
+            assertThrows(BackupValidationException::class.java) { codec.decodeFrom(wire.inputStream(), null, root) }
+            codec.decodeFrom(wire.inputStream(), password, root).use { restored ->
+                assertTrue(restored.manifest.encrypted)
+                assertArrayEquals(voice, restored.blobs.getValue(BackupPreferencePolicy.VOICE_ENTRY).open().use { it.readBytes() })
+            }
+            val zip = java.io.ByteArrayOutputStream()
+            BackupCrypto().decryptStream(wire.inputStream(), zip, password)
+            assertThrows(BackupValidationException::class.java) {
+                codec.decodeFrom(zip.toByteArray().inputStream(), null, root)
+            }
+        } finally {
+            BackupStreams.deleteTree(root)
+        }
+    }
+
     @Test fun `三十MiB技能采用小缓冲打包和磁盘恢复`() {
         val root = Files.createTempDirectory("stream-backup-test")
         try {

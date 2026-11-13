@@ -1,0 +1,53 @@
+<resources>
+    <string name="recording_speaker_download_failed">Speaker model download or verification failed</string>
+    <string name="recording_speaker_model">Voiceprint model</string>
+    <string name="recording_speaker_analysis">Analyzing speakers</string>
+    <string name="recording_speaker_analysis_failed">Speaker analysis failed</string>
+    <string name="recording_speaker_distinguish">Distinguish speakers</string>
+    <string name="recording_speaker_library">Voiceprint library</string>
+    <plurals name="recording_speaker_count">
+        <item quantity="one">%1$d person</item>
+        <item quantity="other">%1$d people</item>
+    </plurals>
+    <string name="recording_speaker_section">Speakers</string>
+    <string name="recording_speaker_default">Speaker %1$d</string>
+    <string name="recording_speaker_stats">%1$d segments, %2$s</string>
+    <string name="recording_speaker_unmatched">Unmatched</string>
+    <string name="recording_speaker_matched">Voiceprint %1$d%%</string>
+    <string name="recording_speaker_assigned">Voiceprint assigned</string>
+    <string name="recording_speaker_this_segment">This segment %1$s</string>
+    <string name="recording_speaker_all_segments">%1$s, all %2$d segments</string>
+    <string name="recording_speaker_new">New speaker</string>
+    <string name="recording_speaker_rename">Rename</string>
+    <string name="recording_speaker_assign">Assign to</string>
+    <string name="recording_speaker_merge">Merge into</string>
+    <string name="recording_speaker_save_sample">Save voiceprint</string>
+    <string name="recording_speaker_update_sample">Update voiceprint</string>
+    <string name="recording_speaker_unmatch">Remove match</string>
+    <string name="recording_speaker_new_person">New person</string>
+    <string name="recording_speaker_name">Name</string>
+    <string name="recording_speaker_model_missing">Voiceprint model not installed</string>
+    <string name="recording_speaker_analyze_action">Analyze speakers</string>
+    <string name="recording_voice_enroll">Enroll voiceprint</string>
+    <string name="recording_voice_local">On this device</string>
+    <string name="recording_voice_storage">Storage</string>
+    <string name="recording_voice_backup">Backup</string>
+    <string name="recording_voice_encrypted_backup">Encrypted backup</string>
+    <string name="recording_voice_people">People</string>
+    <string name="recording_voice_empty">No voiceprints yet</string>
+    <plurals name="recording_voice_sample_count">
+        <item quantity="one">%1$d sample</item>
+        <item quantity="other">%1$d samples</item>
+    </plurals>
+    <string name="recording_voice_recent">Last added %1$s</string>
+    <string name="recording_voice_samples">Samples</string>
+    <string name="recording_voice_remove_sample">Delete sample</string>
+    <string name="recording_voice_remove_person">Delete person</string>
+    <string name="recording_voice_remove_confirm">Delete all voiceprints for %1$s?</string>
+    <string name="recording_voice_record_again">Record again</string>
+    <string name="recording_voice_reading">At three this afternoon, meet in the conference room on the third floor to review the recording feature. We will discuss the hotword library and check the speakers in the transcript.</string>
+    <string name="recording_voice_sample_failed">Voiceprint could not be saved. Use a clear voice sample and try again.</string>
+    <string name="recording_speaker_recognition_settings">Recognition</string>
+    <string name="recording_voice_begin">Start</string>
+    <string name="recording_speaker_model_size">CAM++ Chinese · Download %1$d MB · Installed %2$d MB</string>
+</resources>

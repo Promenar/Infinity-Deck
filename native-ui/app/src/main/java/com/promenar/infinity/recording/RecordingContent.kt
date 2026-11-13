@@ -79,6 +79,7 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -165,10 +166,19 @@ internal fun RecordingPageContent(
     onCancelDownload: () -> Unit = {},
     onRecognize: () -> Unit = {},
     onCancelRecognize: () -> Unit = {},
+    speakerModel: RecordingAsrModelState = RecordingAsrModelState.Installed,
+    onAnalyzeSpeakers: () -> Unit = {},
+    onSpeakerSettings: () -> Unit = {},
+    onSpeakerSelect: (RecordingSpeakerSelection) -> Unit = {},
 ) {
     val view = RecordingView(state, current, route, playing, positionMs, asrModel, effectiveHotwords)
     val transcriptTools: @Composable (Boolean) -> Unit = { titled ->
         TranscriptPaneHeader(view, titled, onExport, onDownloadAsr, onCancelDownload, onRecognize, onCancelRecognize)
+    }
+    val speakerTools: @Composable () -> Unit = {
+        if (current?.distinguishSpeakers == true && !view.active) {
+            RecordingSpeakerStatus(current, state, speakerModel, onAnalyzeSpeakers, onSpeakerSettings)
+        }
     }
     InfinityPageLayout(
         title = stringResource(R.string.recording_title),
@@ -200,12 +210,12 @@ internal fun RecordingPageContent(
                     if (wide) {
                         RecordingWideBody(
                             view, onMode, onSelect, onEdit, onConsent, transcriptTools, onPlay,
-                            onTogglePlayback, onSeek, onSeekFinished, onOrganize, buttons,
+                            onTogglePlayback, onSeek, onSeekFinished, onOrganize, buttons, speakerTools, onSpeakerSelect,
                         )
                     } else {
                         RecordingNarrowBody(
                             view, organized, pinned, onMode, onSelect, onOrganizedChange, onEdit, onConsent, transcriptTools,
-                            onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onContinue,
+                            onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onContinue, speakerTools, onSpeakerSelect,
                         )
                     }
                     // 失败提示浮在正文之上、操作区上方，出现与消失都不推动页面内容。
@@ -246,6 +256,8 @@ private fun RecordingNarrowBody(
     onSeekFinished: () -> Unit,
     onOrganize: () -> Unit,
     onContinue: () -> Unit,
+    speakerTools: @Composable () -> Unit,
+    onSpeakerSelect: (RecordingSpeakerSelection) -> Unit,
 ) {
     val current = view.current
     val edge = InfinitySpacing.ScreenHorizontal
@@ -280,7 +292,13 @@ private fun RecordingNarrowBody(
                     bleed = edge,
                 )
                 if (organized) OrganizedPaneHeader(view, titled = false, onOrganize)
-                else transcriptTools(false)
+                else {
+                    transcriptTools(false)
+                    speakerTools()
+                    if (current.distinguishSpeakers && !view.active && view.state.speakerAnalysisId != current.id) {
+                        RecordingSpeakerStrip(current, onSpeakerSelect)
+                    }
+                }
             }
         }
     }
@@ -292,7 +310,7 @@ private fun RecordingNarrowBody(
         when {
             current == null -> RecordingHistoryList(view.state.sessions, leading, showEmpty = false, padding, onSelect, pane)
             organized -> RecordingOrganizedList(view, leading, fill = pinned, padding, onMode, pane)
-            else -> RecordingTranscriptList(view, leading, fill = pinned, padding, onPlay, pane)
+            else -> RecordingTranscriptList(view, leading, fill = pinned, padding, onPlay, pane, onSpeakerSelect)
         }
     }
 }
@@ -312,6 +330,8 @@ private fun RecordingWideBody(
     onSeekFinished: () -> Unit,
     onOrganize: () -> Unit,
     buttons: @Composable (Boolean) -> Unit,
+    speakerTools: @Composable () -> Unit,
+    onSpeakerSelect: (RecordingSpeakerSelection) -> Unit,
 ) {
     val edge = InfinitySpacing.ScreenHorizontal
     val padding = PaddingValues(top = InfinitySpacing.Small, bottom = edge)
@@ -332,7 +352,8 @@ private fun RecordingWideBody(
                     RecordingHistoryList(view.state.sessions, null, showEmpty = true, padding, onSelect, Modifier.weight(1f).fillMaxWidth())
                 } else {
                     transcriptTools(true)
-                    RecordingTranscriptList(view, null, fill = true, padding, onPlay, Modifier.weight(1f).fillMaxWidth())
+                    speakerTools()
+                    RecordingTranscriptList(view, null, fill = true, padding, onPlay, Modifier.weight(1f).fillMaxWidth(), onSpeakerSelect)
                 }
             }
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -341,9 +362,24 @@ private fun RecordingWideBody(
                     RecordingPaneHeader(stringResource(R.string.recording_settings)) {}
                     Box(Modifier.padding(top = InfinitySpacing.Small)) { RecordingModeRow(view.route, onMode) }
                 } else {
-                    OrganizedPaneHeader(view, titled = true, onOrganize)
-                    if (view.consent) RecordingConsentBar(onConsent, Modifier.padding(top = InfinitySpacing.Small))
-                    RecordingOrganizedList(view, null, fill = true, padding, onMode, Modifier.weight(1f).fillMaxWidth())
+                    val session = view.current
+                    val summary = session.distinguishSpeakers
+                    val header: (@Composable () -> Unit)? = if (!summary) null else {
+                        {
+                            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+                                if (!view.active && view.state.speakerAnalysisId != session.id) {
+                                    RecordingSpeakerSummary(session, onSpeakerSelect)
+                                }
+                                OrganizedPaneHeader(view, titled = true, onOrganize)
+                                if (view.consent) RecordingConsentBar(onConsent)
+                            }
+                        }
+                    }
+                    if (header == null) {
+                        OrganizedPaneHeader(view, titled = true, onOrganize)
+                        if (view.consent) RecordingConsentBar(onConsent, Modifier.padding(top = InfinitySpacing.Small))
+                    }
+                    RecordingOrganizedList(view, header, fill = true, padding, onMode, Modifier.weight(1f).fillMaxWidth())
                 }
             }
         }
@@ -778,6 +814,7 @@ private fun RecordingTranscriptList(
     contentPadding: PaddingValues,
     onPlay: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    onSpeakerSelect: (RecordingSpeakerSelection) -> Unit = {},
 ) {
     val current = view.current ?: return
     val list = key(current.id) { rememberLazyListState() }
@@ -793,6 +830,7 @@ private fun RecordingTranscriptList(
     val stamp = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace)
     val reading = InfinityTypography.bodyLarge.forReading()
     val hotwordPattern = remember(view.effectiveHotwords) { recordingHotwordPattern(view.effectiveHotwords) }
+    val speakers = remember(current.speakers) { current.speakers.associateBy { it.id } }
     LazyColumn(state = list, modifier = modifier, contentPadding = contentPadding) {
         if (leading != null) item(key = "recording_header") { RecordingLeading(leading) }
         itemsIndexed(current.segments, key = { _, segment -> segment.startMs }) { index, segment ->
@@ -800,16 +838,27 @@ private fun RecordingTranscriptList(
                 Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Large),
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
             ) {
-                if (view.active) {
-                    Text(recordingTimestamp(segment.startMs), color = MaterialTheme.colorScheme.primary, style = stamp)
-                } else {
-                    InfinityPillButton(
-                        text = recordingTimestamp(segment.startMs),
-                        onClick = { onPlay(segment.startMs) },
-                        tone = if (index == playingIndex) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
-                        icon = Icons.Rounded.PlayArrow,
-                        compact = true,
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                ) {
+                    if (view.active) {
+                        Text(recordingTimestamp(segment.startMs), color = MaterialTheme.colorScheme.primary, style = stamp)
+                    } else {
+                        InfinityPillButton(
+                            text = recordingTimestamp(segment.startMs),
+                            onClick = { onPlay(segment.startMs) },
+                            tone = if (index == playingIndex) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
+                            icon = Icons.Rounded.PlayArrow,
+                            compact = true,
+                        )
+                    }
+                    if (current.distinguishSpeakers && !view.active) {
+                        if (view.state.speakerAnalysisId == current.id) RecordingSpeakerPendingChip()
+                        else speakers[segment.speakerId]?.let { speaker ->
+                            RecordingSpeakerChip(speaker) { onSpeakerSelect(RecordingSpeakerSelection(speaker.id, segment.startMs)) }
+                        }
+                    }
                 }
                 val text = remember(segment.text, hotwordPattern) {
                     buildAnnotatedString {
@@ -895,17 +944,29 @@ private fun RecordingOrganizedList(
     modifier: Modifier = Modifier,
 ) {
     val current = view.current ?: return
-    val list = key(current.id) { rememberLazyListState() }
+    val list = key(current.id, current.distinguishSpeakers) { rememberLazyListState() }
     LazyColumn(state = list, modifier = modifier, contentPadding = contentPadding) {
         if (leading != null) item(key = "recording_header") { RecordingLeading(leading) }
         item(key = "organized") {
             when {
                 current.organized.isNotBlank() -> Text(
-                    current.organized,
+                    remember(current.organized, current.distinguishSpeakers, current.manualEdit) {
+                        if (!current.distinguishSpeakers || current.manualEdit) buildAnnotatedString { append(current.organized) }
+                        else buildAnnotatedString {
+                            current.organized.lineSequence().forEachIndexed { index, line ->
+                                if (index > 0) append('\n')
+                                if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
+                                    val start = length
+                                    append(line.substring(2, line.length - 2))
+                                    addStyle(SpanStyle(fontWeight = FontWeight.SemiBold), start, length)
+                                } else append(line)
+                            }
+                        }
+                    },
                     style = InfinityTypography.bodyLarge.forReading(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                view.organizing -> RecordingEmpty(fill) {
+                view.organizing -> RecordingEmpty(fill && leading == null) {
                     GenerationDots()
                     Text(
                         stringResource(R.string.recording_ui_organizing),
@@ -913,11 +974,11 @@ private fun RecordingOrganizedList(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                view.route == RecordingRoute.Raw -> RecordingEmpty(fill) {
+                view.route == RecordingRoute.Raw -> RecordingEmpty(fill && leading == null) {
                     RecordingEmptyLabel(Icons.Rounded.Description, stringResource(R.string.recording_mode_raw))
                     InfinityPillButton(text = stringResource(R.string.recording_settings), onClick = onMode, compact = true)
                 }
-                else -> RecordingEmpty(fill) {
+                else -> RecordingEmpty(fill && leading == null) {
                     RecordingEmptyLabel(Icons.Rounded.Description, stringResource(R.string.recording_no_organized))
                 }
             }

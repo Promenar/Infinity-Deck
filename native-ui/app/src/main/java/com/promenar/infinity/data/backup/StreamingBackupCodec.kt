@@ -37,6 +37,9 @@ internal class StreamingBackupCodec(private val crypto: BackupCrypto) {
             zip.use {
                 snapshot.streamEntries.forEach { source ->
                     validatePath(source.path)
+                    if (source.path == BackupPreferencePolicy.VOICE_ENTRY && !encrypted) {
+                        throw BackupValidationException("声纹备份必须加密")
+                    }
                     if (!paths.add(source.path) || source.layer !in layers ||
                         paths.size + (snapshot.skills?.metadata?.directories?.size ?: 0) > BackupPackageLimits.MAX_ENTRIES
                     ) throw BackupValidationException("备份内容路径或层归属无效")
@@ -161,6 +164,9 @@ internal class StreamingBackupCodec(private val crypto: BackupCrypto) {
         val seen = mutableSetOf("manifest.json")
         manifest.entries.forEach { entry ->
             validatePath(entry.path)
+            if (entry.path == BackupPreferencePolicy.VOICE_ENTRY && kdf == null) {
+                throw BackupValidationException("声纹备份必须加密")
+            }
             if (!seen.add(entry.path) || entry.layer !in layers || entry.sizeBytes < 0 || entry.sizeBytes > BackupPackageLimits.MAX_ENTRY_BYTES ||
                 entry.sizeBytes > BackupPackageLimits.MAX_TOTAL_BYTES - total || !Regex("[0-9a-f]{64}").matches(entry.sha256)
             ) throw BackupValidationException("备份条目清单无效")
@@ -185,7 +191,7 @@ internal class StreamingBackupCodec(private val crypto: BackupCrypto) {
     }
     private fun validatePath(path: String) {
         when {
-            path == "preferences.json" || path == "secrets.json" -> Unit
+            path == "preferences.json" || path == "secrets.json" || path == BackupPreferencePolicy.VOICE_ENTRY -> Unit
             path.startsWith("skills/") -> SkillBackupPaths.parts(path.removePrefix("skills/"))
             path.startsWith("avatars/") -> AvatarBackupFiles.requireId(path.removePrefix("avatars/"))
             path.startsWith("files/") -> if (!Regex("files/[A-Za-z0-9._-]{1,128}").matches(path)) throw BackupValidationException("文件标识无效")

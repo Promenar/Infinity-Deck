@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.AtomicFile
 import com.promenar.infinity.recording.RecordingHotwordPolicy
 import com.promenar.infinity.recording.RecordingHotwordStore
+import com.promenar.infinity.recording.RecordingVoiceStore
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,13 +38,17 @@ internal class AndroidTransactionalBackupPreferenceStore(
     private val atomicLedger = AtomicFile(ledgerFile)
     private val hotwordFile = File(appContext.filesDir, RecordingHotwordStore.FILE_NAME)
     private val hotwordStore = RecordingHotwordStore(hotwordFile)
+    private val voiceStore = RecordingVoiceStore(File(appContext.noBackupFilesDir, RecordingVoiceStore.FILE_NAME))
     private val json = Json {
         encodeDefaults = true
         explicitNulls = true
         ignoreUnknownKeys = false
     }
 
-    override suspend fun snapshot(maxTotalBytes: Long): BackupPreferenceSnapshot = processMutex.withLock {
+    override suspend fun snapshot(maxTotalBytes: Long): BackupPreferenceSnapshot =
+        snapshot(maxTotalBytes, includeVoiceprints = false)
+
+    override suspend fun snapshot(maxTotalBytes: Long, includeVoiceprints: Boolean): BackupPreferenceSnapshot = processMutex.withLock {
         val entries = buildList {
             namespaceSpecs.forEach { spec ->
                 val prefs = appContext.getSharedPreferences(spec.physicalName, Context.MODE_PRIVATE)
@@ -56,7 +61,11 @@ internal class AndroidTransactionalBackupPreferenceStore(
         val withHotwords = if (!hotwordFile.exists()) entries else entries + BackupPreferenceEntry(
             "recording_hotwords", "library", RecordingHotwordPolicy.encode(hotwordStore.read()), PreferenceValueType.STRING,
         )
-        validateSnapshot(canonicalSnapshot(withHotwords, deriveProviderIds(withHotwords))).also {
+        val voiceprints = if (includeVoiceprints) voiceStore.read() else emptyList()
+        val all = if (voiceprints.isEmpty()) withHotwords else withHotwords + BackupPreferenceEntry(
+            BackupPreferencePolicy.VOICE_NAMESPACE, "library", RecordingVoiceStore.encode(voiceprints),
+        )
+        validateSnapshot(canonicalSnapshot(all, deriveProviderIds(all))).also {
             if (json.encodeToString(it).toByteArray().size.toLong() > maxTotalBytes) {
                 throw BackupValidationException("偏好快照超过内存预算")
             }
@@ -166,6 +175,10 @@ internal class AndroidTransactionalBackupPreferenceStore(
         val hotwords = byNamespace["recording_hotwords"].orEmpty().singleOrNull()
         if (hotwords == null) hotwordStore.delete() else hotwordStore.write(RecordingHotwordPolicy.decode(hotwords.value))
         namespaceAppliedHook("recording_hotwords", direction)
+        byNamespace[BackupPreferencePolicy.VOICE_NAMESPACE]?.singleOrNull()?.let { entry ->
+            voiceStore.write(RecordingVoiceStore.decode(entry.value))
+            namespaceAppliedHook(BackupPreferencePolicy.VOICE_NAMESPACE, direction)
+        }
     }
 
     private fun SharedPreferences.Editor.put(entry: BackupPreferenceEntry) {
@@ -231,6 +244,11 @@ internal class AndroidTransactionalBackupPreferenceStore(
         if (entry.namespace == "recording_hotwords") {
             try { RecordingHotwordPolicy.decode(entry.value) } catch (error: Exception) {
                 throw BackupValidationException("热词库备份内容无效", error)
+            }
+        }
+        if (entry.namespace == BackupPreferencePolicy.VOICE_NAMESPACE) {
+            try { RecordingVoiceStore.decode(entry.value) } catch (error: Exception) {
+                throw BackupValidationException("声纹库备份内容无效", error)
             }
         }
         if (entry.type != expected) throw BackupValidationException("偏好值类型与策略不一致: ${entry.namespace}.${entry.key}")
@@ -422,7 +440,7 @@ internal class AndroidTransactionalBackupPreferenceStore(
             NamespaceSpec("ui", "infinity_prefs"),
             NamespaceSpec("backup", "infinity_backup_settings"),
         )
-        val logicalNamespaces = namespaceSpecs.mapTo(mutableSetOf()) { it.logicalName } + "recording_hotwords"
+        val logicalNamespaces = namespaceSpecs.mapTo(mutableSetOf()) { it.logicalName } + setOf("recording_hotwords", BackupPreferencePolicy.VOICE_NAMESPACE)
         val preferenceTypes = buildMap<Pair<String, String>, PreferenceValueType> {
             fun typed(namespace: String, type: PreferenceValueType, vararg keys: String) {
                 keys.forEach { put(namespace to it, type) }

@@ -143,6 +143,10 @@ private fun RecordingScreen(
     val asr by controller.asrModel.collectAsStateWithLifecycle()
     val hotwords by controller.hotwords.collectAsStateWithLifecycle()
     var showHotwords by rememberSaveable { mutableStateOf(false) }
+    var showVoice by rememberSaveable { mutableStateOf(false) }
+    var speakerId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var speakerSegment by rememberSaveable { mutableStateOf<Long?>(null) }
+    val speakerModel by controller.speakerModel.collectAsStateWithLifecycle()
     var selected by rememberSaveable(incomingDocument) { mutableStateOf(incomingDocument) }
     var organized by rememberSaveable { mutableStateOf(false) }
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -187,6 +191,12 @@ private fun RecordingScreen(
     BackHandler(enabled = showHotwords, onBack = closeHotwords)
     if (showHotwords) {
         RecordingHotwordLibrary(controller, onBack = closeHotwords)
+        return
+    }
+    val closeVoice = { showVoice = false; dialog = "mode" }
+    BackHandler(enabled = showVoice, onBack = closeVoice)
+    if (showVoice) {
+        RecordingVoiceLibrary(controller, onBack = closeVoice)
         return
     }
     val effectiveHotwords = remember(current?.hotwords, current?.useHotwordLibrary, hotwords) {
@@ -239,6 +249,10 @@ private fun RecordingScreen(
             }
         },
         onCancelRecognize = controller::cancelRecognize,
+        speakerModel = speakerModel,
+        onAnalyzeSpeakers = { current?.let { controller.analyzeSpeakers(it.id) } },
+        onSpeakerSettings = { dialog = "mode" },
+        onSpeakerSelect = { speakerId = it.id; speakerSegment = it.segmentStartMs; dialog = "speaker" },
     )
 
     when (dialog) {
@@ -266,12 +280,21 @@ private fun RecordingScreen(
                         dialog = null
                     },
                 )
+                BettboxListGroup { RecordingModelDownloads(controller) }
                 BettboxListGroup {
-                    RecordingModelSettings(controller, onHotwords = { dialog = null; showHotwords = true })
+                    RecordingModelSettings(
+                        controller, onHotwords = { dialog = null; showHotwords = true },
+                        onVoice = { dialog = null; showVoice = true }, session = current,
+                    )
                 }
             }
         }
 
+        "speaker" -> if (current != null) {
+            speakerId?.let { id ->
+                RecordingSpeakerSheet(current, RecordingSpeakerSelection(id, speakerSegment), controller) { dialog = null }
+            }
+        }
         "finish" -> RecordingConfirm(R.string.recording_ui_stop, stringResource(R.string.recording_finish_detail),
             R.string.recording_ui_stop, { dialog = null }, { dialog = null; onFinish() })
         "consent" -> {

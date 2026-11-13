@@ -23,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -139,7 +140,14 @@ internal fun RecordingSettingsScreen(
     var fallback by remember { mutableStateOf(controller.store.fallback) }
     val shortcuts = context.getSystemService(ShortcutManager::class.java)
     var showHotwords by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = showHotwords) { showHotwords = false }
+    var showVoice by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showHotwords || showVoice) { showHotwords = false; showVoice = false }
+    if (showVoice) {
+        CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
+            RecordingVoiceLibrary(controller, onBack = { showVoice = false })
+        }
+        return
+    }
     if (showHotwords) {
         CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
             RecordingHotwordLibrary(controller, onBack = { showHotwords = false })
@@ -169,7 +177,12 @@ internal fun RecordingSettingsScreen(
             }
             item {
                 InfinitySettingsSection(title = stringResource(R.string.recording_asr_section)) {
-                    RecordingModelSettings(controller, onHotwords = { showHotwords = true })
+                    RecordingModelDownloads(controller)
+                }
+            }
+            item {
+                InfinitySettingsSection(title = stringResource(R.string.recording_speaker_recognition_settings)) {
+                    RecordingModelSettings(controller, onHotwords = { showHotwords = true }, onVoice = { showVoice = true })
                 }
             }
             item {
@@ -212,10 +225,15 @@ internal fun RecordingSettingsScreen(
 }
 
 @Composable
-internal fun RecordingModelSettings(controller: RecordingController, onHotwords: () -> Unit) {
-    val asr by controller.asrModel.collectAsStateWithLifecycle()
+internal fun RecordingModelSettings(
+    controller: RecordingController,
+    onHotwords: () -> Unit,
+    onVoice: () -> Unit,
+    session: RecordingSession? = null,
+) {
     val hotwords by controller.hotwords.collectAsStateWithLifecycle()
-    RecordingAsrControls(asr, controller::downloadAsrModel, controller::cancelAsrModelDownload)
+    val people by controller.voicePeople.collectAsStateWithLifecycle()
+    var defaultSpeakers by remember { mutableStateOf(controller.store.distinguishSpeakers) }
     InfinitySettingsItem(
         title = stringResource(R.string.recording_hotword_library),
         subtitle = stringResource(R.string.recording_hotword_count, hotwords.count { it.enabled }, hotwords.size),
@@ -223,4 +241,26 @@ internal fun RecordingModelSettings(controller: RecordingController, onHotwords:
         showChevron = true,
         subtitleMaxLines = 2,
     )
+    InfinitySettingsItem(
+        title = stringResource(R.string.recording_speaker_library),
+        subtitle = pluralStringResource(R.plurals.recording_speaker_count, people.size, people.size),
+        onClick = onVoice, showChevron = true,
+    )
+    SettingsToggle(
+        title = stringResource(R.string.recording_speaker_distinguish),
+        checked = session?.distinguishSpeakers ?: defaultSpeakers,
+        onCheckedChange = {
+            if (session == null) defaultSpeakers = it
+            controller.distinguishSpeakers(session?.id, it)
+        },
+    )
+}
+
+
+@Composable
+internal fun RecordingModelDownloads(controller: RecordingController) {
+    val asr by controller.asrModel.collectAsStateWithLifecycle()
+    val speakerModel by controller.speakerModel.collectAsStateWithLifecycle()
+    RecordingAsrControls(asr, controller::downloadAsrModel, controller::cancelAsrModelDownload)
+    RecordingAsrControls(speakerModel, controller::downloadSpeakerModel, controller::cancelSpeakerModel, speaker = true)
 }

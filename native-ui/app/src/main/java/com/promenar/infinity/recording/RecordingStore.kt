@@ -35,12 +35,17 @@ internal class RecordingStore(
         get() = prefs.getBoolean("fallback", true)
         set(value) { prefs.edit().putBoolean("fallback", value).apply() }
 
+    var distinguishSpeakers: Boolean
+        get() = prefs.getBoolean("distinguish_speakers", false)
+        set(value) { prefs.edit().putBoolean("distinguish_speakers", value).apply() }
+
     fun newSession(title: String) = RecordingSession(
         id = UUID.randomUUID().toString(),
         createdAt = System.currentTimeMillis(),
         title = title,
         mode = mode,
         fallback = fallback,
+        distinguishSpeakers = distinguishSpeakers,
     )
 
     private fun metadata(id: String) = AtomicFile(File(File(root, id), "transcript.json"))
