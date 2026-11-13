@@ -60,6 +60,8 @@
 -dontwarn aQute.bnd.annotation.spi.ServiceConsumer
 -dontwarn aQute.bnd.annotation.spi.ServiceProvider
 -dontwarn com.gemalto.jp2.JP2Decoder
+# Commons Compress 的 Zstandard 集成是可选的，听写模型直接使用 bzip2 解码。
+-dontwarn com.github.luben.zstd.ZstdInputStream
 -dontwarn java.awt.Color
 # poi-scratchpad（旧版 .doc）的 EscherMetafileBlip 只在读取嵌入图元文件尺寸时引用，正文抽取不经过。
 -dontwarn java.awt.Dimension
