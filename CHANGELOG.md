@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.55.0-beta] - 2026-11-14
+## [0.55.1-beta] - 2026-11-14
 
 - 录音可在本机区分说话人并按时间戳标注，支持改单段归属、改名、指定人员与合并。整理稿可按说话人分段。
 - 声纹库支持录入样本、从录音添加样本及加密备份。CAM++ 声纹与说话人分段模型按需下载。

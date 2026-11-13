@@ -702,7 +702,7 @@ class DocEditorInteractionTest {
         rule.onNodeWithTag(UiTags.DOC_EDITOR_SAVE).assertIsEnabled()
         rule.onNodeWithTag(UiTags.DOC_EDITOR_MODE_EDIT)
             .assertIsSelected()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
         rule.onNodeWithTag(UiTags.DOC_EDITOR_TITLE_INPUT).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.DOC_EDITOR_INPUT).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.DOC_EDITOR_STATUS).assertIsDisplayed()
@@ -832,7 +832,7 @@ class DocEditorInteractionTest {
         }
         rule.onNodeWithTag(UiTags.DOC_EDITOR_MODE_SPLIT)
             .assertIsSelected()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
         rule.onNodeWithTag(UiTags.DOC_EDITOR_BACK).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.DOC_EDITOR_SAVE).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.DOC_EDITOR_TITLE_INPUT).assertIsDisplayed()

@@ -87,7 +87,7 @@ class UnifiedPromptEditorE2ETest {
         rule.onNodeWithText(resources.getString(R.string.prompt_editor_tab_edit))
             .assertIsSelected()
             .assertHasClickAction()
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
 
         save.performClick()
         rule.runOnIdle { assertThat(saved).isEqualTo("before") }
