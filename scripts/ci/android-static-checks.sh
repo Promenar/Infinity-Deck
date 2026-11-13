@@ -10,6 +10,7 @@ python3 scripts/ci/tests/check-text-wrapping-test.py
 python3 scripts/ci/check-text-wrapping.py
 python3 scripts/ci/tests/check-distribution-manifests-test.py
 python3 scripts/ci/tests/check-native-page-alignment-test.py
+python3 -m unittest scripts.tests.test_verify_release_apk
 python3 scripts/ci/tests/screenshot-baseline-test.py
 python3 scripts/ci/tests/screenshot-results-test.py
 python3 scripts/ci/tests/release-workflow-reliability-test.py

@@ -68,10 +68,12 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
 
         verify_release_apk.verify_local_inference_artifacts(apk, "play")
 
-    def test_sideload_requires_a_bridge_for_each_abi_and_rejects_gguf(self) -> None:
+    def test_sideload_requires_a_bridge_for_each_packaged_64_bit_abi_and_rejects_gguf(self) -> None:
         entries = [
             "lib/arm64-v8a/libinfinity_llama.so",
             "lib/x86_64/libinfinity_workspace_fs.so",
+            "lib/armeabi-v7a/libinfinity_workspace_fs.so",
+            "lib/x86/libinfinity_workspace_fs.so",
         ]
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "缺少本地推理制品"):
             verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries), "sideload")
@@ -79,6 +81,11 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
         verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries), "sideload")
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "禁用的本地推理制品"):
             verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries + ["assets/model.gguf"]), "sideload")
+
+    def test_sideload_rejects_a_32_bit_inference_bridge(self) -> None:
+        entries = ["lib/arm64-v8a/libinfinity_llama.so", "lib/armeabi-v7a/libinfinity_llama.so"]
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "禁用的本地推理制品"):
+            verify_release_apk.verify_local_inference_artifacts(self.make_apk(entries), "sideload")
 
     def test_sherpa_only_exempts_the_verified_upstream_build_path(self) -> None:
         entry = "lib/arm64-v8a/libsherpa-onnx-jni.so"

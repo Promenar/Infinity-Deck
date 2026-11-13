@@ -230,19 +230,20 @@ def verify_zip(apk: Path) -> None:
 
 
 def verify_local_inference_artifacts(apk: Path, distribution: str) -> None:
-    """两渠道禁止捆绑 GGUF。侧载含静态链接的 llama.cpp JNI；Play 不含本地 LLM。"""
+    """两渠道禁止捆绑 GGUF，仅侧载的 64 位 ABI 含 llama.cpp JNI。"""
     with zipfile.ZipFile(apk) as archive:
         names = {info.filename.replace("\\", "/") for info in archive.infolist()}
+    supported_abis = {"arm64-v8a", "x86_64"}
+    allowed_bridges = {f"lib/{abi}/libinfinity_llama.so" for abi in supported_abis} if distribution == "sideload" else set()
     forbidden = []
     for name in names:
         basename = name.rsplit("/", 1)[-1]
-        allowed_bridge = distribution == "sideload" and re.fullmatch(r"lib/[^/]+/libinfinity_llama\.so", name)
-        if basename.lower().endswith(".gguf") or (LOCAL_INFERENCE_LIBRARY_PATTERN.fullmatch(basename) and not allowed_bridge):
+        if basename.lower().endswith(".gguf") or (LOCAL_INFERENCE_LIBRARY_PATTERN.fullmatch(basename) and name not in allowed_bridges):
             forbidden.append(name)
     if forbidden:
         raise VerificationError(f"APK 包含禁用的本地推理制品：{', '.join(sorted(forbidden))}")
     if distribution == "sideload":
-        abis = {"arm64-v8a"} | {name.split("/")[1] for name in names if name.endswith("/libinfinity_workspace_fs.so")}
+        abis = {"arm64-v8a"} | {abi for abi in supported_abis if f"lib/{abi}/libinfinity_workspace_fs.so" in names}
         missing = {f"lib/{abi}/libinfinity_llama.so" for abi in abis} - names
         if missing:
             raise VerificationError(f"侧载 APK 缺少本地推理制品：{', '.join(sorted(missing))}")
