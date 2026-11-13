@@ -41,6 +41,7 @@ internal data class RecordingSession(
 ) {
     val durationMs get() = audioBytes / 32
     val organizationCursor get() = reprocessThrough ?: organizedThrough
+    val canContinue get() = audioBytes < RecordingStore.MAX_AUDIO_BYTES && phase != RecordingPhase.Recording
 }
 
 internal fun recoverRecordingTranscript(session: RecordingSession, audioBytes: Long): RecordingSession {

@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -78,6 +79,7 @@ internal fun RecordingHotwordLibraryContent(
     var pending by remember { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     val selected = entries.firstOrNull { it.id == selectedId }
     val visible = remember(entries, query) {
         val search = query.trim()
@@ -91,11 +93,13 @@ internal fun RecordingHotwordLibraryContent(
     }
     val preview = computedPreview?.takeIf { it.first == importText }?.second
     fun closePane() {
+        focusManager.clearFocus()
         pane = null
         selectedId = null
         error = null
     }
     fun openEditor(entry: RecordingHotword?) {
+        focusManager.clearFocus()
         selectedId = entry?.id
         writing = entry?.text.orEmpty()
         spoken = entry?.spoken.orEmpty()

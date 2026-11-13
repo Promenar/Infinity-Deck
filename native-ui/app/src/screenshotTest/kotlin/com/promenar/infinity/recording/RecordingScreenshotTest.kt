@@ -116,7 +116,12 @@ fun recordingIdleEmptyWidePreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
 @Preview(name = "录音中 深英360 大字", widthDp = 360, heightDp = 800, locale = "en", fontScale = 1.3f)
 @Preview(name = "录音中 深中840 内屏", widthDp = 840, heightDp = 720, locale = "zh-rCN")
 @Composable
-fun recordingRunningPreview() = RecordingFrame(InfinityThemeMode.DARK) { RecordingExample(recordingSample(RecordingPhase.Recording)) }
+fun recordingRunningPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    RecordingExample(
+        recordingSample(RecordingPhase.Recording),
+        partial = "这是正在听写的同一个段落。The live transcription wraps onto the next line and keeps the indicator after the last word.",
+    )
+}
 
 @PreviewTest
 @Preview(name = "录音刚开始 浅中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")

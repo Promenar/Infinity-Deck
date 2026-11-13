@@ -3,7 +3,6 @@
     <string name="recording_ui_reprocess">Reprocess</string>
     <string name="recording_ui_update">Update document</string>
     <string name="recording_ui_revoke_cloud">Disable cloud cleanup</string>
-    <string name="recording_ui_audio_local">Local audio</string>
     <string name="recording_ui_library">Library document</string>
     <string name="recording_ui_position">Playback position</string>
     <string name="recording_ui_opening">Preparing microphone</string>
@@ -14,10 +13,6 @@
     <string name="recording_ui_enable">Enable</string>
     <string name="recording_ui_no_raw">No transcript yet</string>
     <string name="recording_ui_no_history">No recordings yet</string>
-    <plurals name="recording_ui_segments">
-        <item quantity="one">%1$d segment</item>
-        <item quantity="other">%1$d segments</item>
-    </plurals>
     <string name="recording_ui_delete">Delete recording</string>
     <string name="recording_ui_delete_confirm">Delete</string>
     <string name="recording_ui_delete_detail">The audio, transcript, and cleaned-up text will be deleted from this device.</string>

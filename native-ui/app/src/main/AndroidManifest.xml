@@ -36,7 +36,10 @@
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:usesCleartextTraffic="true">
 
-        <activity android:name=".recording.RecordingActivity" android:exported="false" />
+        <!-- 持续更新波形和逐字稿时，避开部分设备上持续保留 framebuffer 的 Vulkan 路径。 -->
+        <activity android:name=".recording.RecordingActivity"
+            android:exported="false"
+            android:hardwareAccelerated="false" />
         <activity android:name=".recording.RecordingLinkActivity" android:exported="true">
             <intent-filter>
                 <action android:name="com.promenar.infinity.action.OPEN_RECORDING" />

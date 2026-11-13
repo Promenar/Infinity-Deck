@@ -21,8 +21,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -48,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,25 +70,30 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import java.util.Locale
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.*
+import com.promenar.infinity.ui.common.motion.indicatorDesignSize
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
+import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.ceil
@@ -146,7 +154,7 @@ internal fun RecordingPageContent(
     onBegin: () -> Unit = {},
     onPauseResume: () -> Unit = {},
     onFinish: () -> Unit = {},
-    onResumeInterrupted: () -> Unit = {},
+    onContinue: () -> Unit = {},
     onOrganize: () -> Unit = {},
     onPublish: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -184,8 +192,8 @@ internal fun RecordingPageContent(
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val wide = maxWidth >= RecordingWideWidth && maxHeight >= RecordingWideHeight
             val pinned = maxHeight >= RecordingPinnedHeight
-            val buttons: @Composable () -> Unit = {
-                RecordingActionButtons(view, onBegin, onPauseResume, onFinish, onResumeInterrupted, onPublish)
+            val buttons: @Composable (Boolean) -> Unit = { compact ->
+                RecordingActionButtons(view, compact, onBegin, onPauseResume, onFinish, onContinue, onPublish)
             }
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -197,7 +205,7 @@ internal fun RecordingPageContent(
                     } else {
                         RecordingNarrowBody(
                             view, organized, pinned, onMode, onSelect, onOrganizedChange, onEdit, onConsent, transcriptTools,
-                            onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize,
+                            onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onContinue,
                         )
                     }
                     // 失败提示浮在正文之上、操作区上方，出现与消失都不推动页面内容。
@@ -213,7 +221,7 @@ internal fun RecordingPageContent(
                         modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
                         spacing = InfinitySpacing.Small,
                         stackedSpacing = InfinitySpacing.XSmall,
-                    ) { buttons() }
+                    ) { buttons(false) }
                 }
             }
         }
@@ -237,12 +245,15 @@ private fun RecordingNarrowBody(
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
     onOrganize: () -> Unit,
+    onContinue: () -> Unit,
 ) {
     val current = view.current
     val edge = InfinitySpacing.ScreenHorizontal
     val header: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-            RecorderCard(view, band = false, onEdit, onTogglePlayback, onSeek, onSeekFinished) {}
+            RecorderCard(view, band = false, onEdit, onTogglePlayback, onSeek, onSeekFinished) {
+                if (current?.canContinue == true && !view.active) RecordingContinueButton(view, onContinue)
+            }
             if (current == null) {
                 RecordingModeRow(view.route, onMode)
                 if (view.state.sessions.isNotEmpty()) {
@@ -300,32 +311,36 @@ private fun RecordingWideBody(
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
     onOrganize: () -> Unit,
-    buttons: @Composable () -> Unit,
+    buttons: @Composable (Boolean) -> Unit,
 ) {
     val edge = InfinitySpacing.ScreenHorizontal
     val padding = PaddingValues(top = InfinitySpacing.Small, bottom = edge)
-    Column(
-        Modifier.fillMaxSize().padding(start = edge, end = edge, top = edge),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-    ) {
-        RecorderCard(view, band = true, onEdit, onTogglePlayback, onSeek, onSeekFinished, buttons)
-        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XLarge)) {
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.padding(horizontal = edge)) {
+            RecorderCard(view, band = true, onEdit, onTogglePlayback, onSeek, onSeekFinished) { buttons(true) }
+        }
+        HorizontalDivider(
+            Modifier.padding(top = InfinitySpacing.Medium),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        Row(Modifier.weight(1f).fillMaxWidth()) {
             val column = Modifier.weight(1f).fillMaxHeight()
-            if (view.current == null) {
-                Column(column) {
+                .padding(horizontal = edge).padding(top = InfinitySpacing.Small)
+            Column(column) {
+                if (view.current == null) {
                     RecordingPaneHeader(stringResource(R.string.recording_history)) {}
                     RecordingHistoryList(view.state.sessions, null, showEmpty = true, padding, onSelect, Modifier.weight(1f).fillMaxWidth())
-                }
-                Column(column) {
-                    RecordingPaneHeader(stringResource(R.string.recording_settings)) {}
-                    Box(Modifier.padding(top = InfinitySpacing.Small)) { RecordingModeRow(view.route, onMode) }
-                }
-            } else {
-                Column(column) {
+                } else {
                     transcriptTools(true)
                     RecordingTranscriptList(view, null, fill = true, padding, onPlay, Modifier.weight(1f).fillMaxWidth())
                 }
-                Column(column) {
+            }
+            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Column(column) {
+                if (view.current == null) {
+                    RecordingPaneHeader(stringResource(R.string.recording_settings)) {}
+                    Box(Modifier.padding(top = InfinitySpacing.Small)) { RecordingModeRow(view.route, onMode) }
+                } else {
                     OrganizedPaneHeader(view, titled = true, onOrganize)
                     if (view.consent) RecordingConsentBar(onConsent, Modifier.padding(top = InfinitySpacing.Small))
                     RecordingOrganizedList(view, null, fill = true, padding, onMode, Modifier.weight(1f).fillMaxWidth())
@@ -335,7 +350,7 @@ private fun RecordingWideBody(
     }
 }
 
-/** 录音卡：标题与编辑；录音中是状态、计时与波形，结束后是音频信息与播放条。[band] 时操作按钮排在卡片右侧。 */
+/** 录音卡的标题和操作共用首行，音频播放或实时波形独占下一行。 */
 @Composable
 private fun RecorderCard(
     view: RecordingView,
@@ -348,37 +363,54 @@ private fun RecorderCard(
 ) {
     val current = view.current
     BettboxListGroup {
-        Row(
-            Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XLarge),
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-                if (current != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+        Column(Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)) {
+            if (current != null || band) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                ) {
+                    if (current == null) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
                         Text(
                             current.title,
                             style = InfinityTypography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            // 外屏标题占满整行，编辑按钮靠右；内屏按钮紧跟标题。
-                            modifier = Modifier.weight(1f, fill = !band),
+                            modifier = Modifier.weight(1f),
                         )
                         InfinityPillButton(text = stringResource(R.string.recording_edit), onClick = onEdit, compact = true)
                     }
+                    actions()
                 }
-                if (current == null || view.active) RecorderLive(view, band)
-                else RecorderPlayback(view, current, onTogglePlayback, onSeek, onSeekFinished)
             }
-            if (band) Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) { actions() }
+            if (current == null || view.active) RecorderLive(view, band)
+            else RecorderPlayback(view, current, onTogglePlayback, onSeek, onSeekFinished)
         }
         current?.documentId?.let {
             HorizontalDivider(
                 Modifier.padding(horizontal = InfinitySpacing.Large),
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
-            InfinityPropertySheet {
-                InfinityPropertyRow(label = stringResource(R.string.recording_ui_library), value = it)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+            ) {
+                Text(
+                    stringResource(R.string.recording_ui_library),
+                    style = InfinityTypography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    it,
+                    modifier = Modifier.weight(1f),
+                    style = InfinityTypography.bodyMedium.copy(fontFamily = InfinityMonospace),
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -436,7 +468,7 @@ private fun RecorderLive(view: RecordingView, band: Boolean) {
     }
 }
 
-/** 已结束或中断的录音：音频信息一行，下面是播放键、进度条与时间。 */
+/** 已结束或中断的录音：播放键、进度条与时间同排。 */
 @Composable
 private fun RecorderPlayback(
     view: RecordingView,
@@ -445,52 +477,48 @@ private fun RecorderPlayback(
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
 ) {
-    val interrupted = current.phase == RecordingPhase.Interrupted
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val duration = recordingTimestamp(current.durationMs)
-    Row(
-        Modifier.heightIn(min = StatusLineHeight),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-    ) {
-        if (interrupted) {
+    if (current.phase == RecordingPhase.Interrupted) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
             Icon(
                 Icons.Rounded.WarningAmber, contentDescription = null,
                 tint = MaterialTheme.infinityDomainColors.warning, modifier = Modifier.size(StatusIconSize),
             )
+            Text(stringResource(R.string.recording_ui_interrupted), style = InfinityTypography.bodySmall, color = muted)
         }
-        InfinityMetaLine(
-            listOf(stringResource(if (interrupted) R.string.recording_ui_interrupted else R.string.recording_ui_audio_local), duration),
-            style = InfinityTypography.bodySmall,
-            color = muted,
-            maxLines = 1,
-        )
     }
     if (current.durationMs > 0) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+        ) {
             FilledTonalIconButton(onClick = onTogglePlayback, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
                 Icon(
                     if (view.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     stringResource(if (view.playing) R.string.recording_pause else R.string.recording_play),
                 )
             }
-            // 进度条自带 48dp 触控高度，时间行上移一些贴近轨道。
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(PlaybackTimeLift)) {
-                val seekLabel = stringResource(R.string.recording_ui_position)
-                InfinitySlider(
-                    value = view.positionMs.coerceIn(0f, current.durationMs.toFloat()),
-                    onValueChange = onSeek,
-                    onValueChangeFinished = onSeekFinished,
-                    valueRange = 0f..current.durationMs.toFloat(),
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = seekLabel },
-                )
-                val time = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace)
-                Row(Modifier.fillMaxWidth()) {
-                    Text(recordingTimestamp(view.positionMs.toLong()), style = time, color = muted)
-                    Spacer(Modifier.weight(1f))
-                    Text(duration, style = time, color = muted)
-                }
-            }
+            val seekLabel = stringResource(R.string.recording_ui_position)
+            val position = view.positionMs.coerceIn(0f, current.durationMs.toFloat())
+            InfinitySlider(
+                value = position,
+                onValueChange = onSeek,
+                onValueChangeFinished = onSeekFinished,
+                valueRange = 0f..current.durationMs.toFloat(),
+                thumbSize = 16.dp,
+                modifier = Modifier.weight(1f).semantics { contentDescription = seekLabel },
+            )
+            Text(
+                "${recordingTimestamp(position.toLong())} / ${recordingTimestamp(current.durationMs)}",
+                style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
+                color = muted,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
 }
@@ -513,7 +541,6 @@ private fun RecordingDot() {
 private val StatusLineHeight = 24.dp
 private val StatusIconSize = 16.dp
 private val StatusSpinnerSize = 14.dp
-private val PlaybackTimeLift = (-8).dp
 
 private val WaveformHeight = 40.dp
 private val WaveformPitch = 6.dp
@@ -628,22 +655,21 @@ private fun RecordingConsentBar(onConsent: () -> Unit, modifier: Modifier = Modi
 /** 一栏正文上方的页头行；带 [title] 时是内屏的栏标题，下方加分隔线。 */
 @Composable
 private fun RecordingPaneHeader(title: String?, content: @Composable RowScope.() -> Unit) {
-    Column {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = if (title != null) InfinitySpacing.MinimumTouchTarget else PaneHeaderHeight),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        ) {
-            if (title != null) Text(title, style = InfinityTypography.titleSmall, maxLines = 1)
-            content()
-        }
-        if (title != null) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = PaneHeaderHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    ) {
+        if (title != null) Text(title, style = InfinityTypography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        else Spacer(Modifier.weight(1f))
+        content()
     }
 }
 
 private val PaneHeaderHeight = 40.dp
 
 /** 逐字稿操作与进度跟随栏位；缺少模型时可在同处下载。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TranscriptPaneHeader(
     view: RecordingView,
@@ -655,28 +681,24 @@ private fun TranscriptPaneHeader(
     onCancelRecognize: () -> Unit,
 ) {
     val current = view.current ?: return
-    val count = current.segments.size
-    val exportable = !view.active && count > 0
-    val canShowActions = exportable || view.canRecognize
+    val actions: @Composable () -> Unit = {
+        InfinityPillButton(
+            stringResource(R.string.recording_recognize), onRecognize, compact = true, enabled = view.canRecognize,
+        )
+        InfinityPillButton(
+            stringResource(R.string.recording_export_raw), onExport, compact = true, enabled = current.segments.isNotEmpty(),
+        )
+    }
     if (titled) {
         RecordingPaneHeader(stringResource(R.string.recording_raw)) {
-            Text(
-                if (count > 0) pluralStringResource(R.plurals.recording_ui_segments, count, count) else "",
-                style = InfinityTypography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            if (!view.active) actions()
         }
-    }
-    if (canShowActions) {
-        InfinityPillRow(Modifier.fillMaxWidth(), reverseWhenStacked = false) {
-            if (view.canRecognize) {
-                InfinityPillButton(stringResource(R.string.recording_recognize), onRecognize, compact = true)
-            }
-            if (exportable) InfinityPillButton(stringResource(R.string.recording_export_raw), onExport, compact = true)
-        }
+    } else if (!view.active) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) { actions() }
     }
     if (view.recognizing) {
         RecordingWorkProgress(R.string.recording_recognizing, view.state.recognizeProgress, onCancelRecognize)
@@ -693,32 +715,41 @@ private fun OrganizedPaneHeader(view: RecordingView, titled: Boolean, onOrganize
     val current = view.current ?: return
     val reprocessable = !view.active && current.phase == RecordingPhase.Finished &&
         current.segments.isNotEmpty() && view.route != RecordingRoute.Raw
-    // 云端待确认由提示条说明，页头不重复。
-    val status = view.organizing || view.queued || !view.consent
-    if (!titled && !status && !reprocessable) return
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val warning = MaterialTheme.infinityDomainColors.warning
-    RecordingPaneHeader(if (titled) stringResource(R.string.recording_organized) else null) {
+    if (titled || !view.active || current.manualEdit) {
+        RecordingPaneHeader(if (titled) stringResource(R.string.recording_organized) else null) {
+            if (current.manualEdit) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)) {
+                    Text(
+                        stringResource(R.string.recording_manual_status),
+                        modifier = Modifier.padding(horizontal = InfinitySpacing.Small, vertical = InfinitySpacing.XSmall),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = InfinityTypography.labelSmall,
+                        maxLines = 1,
+                    )
+                }
+            }
+            if (!view.active) {
+                InfinityPillButton(
+                    text = stringResource(R.string.recording_ui_reprocess), onClick = onOrganize,
+                    compact = true, enabled = reprocessable,
+                )
+            }
+        }
+    }
+    if (view.organizing || view.queued) {
         Row(
-            Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         ) {
-            when {
-                view.organizing -> {
-                    CircularProgressIndicator(Modifier.size(StatusSpinnerSize), strokeWidth = 2.dp)
-                    PaneStatusText(stringResource(R.string.recording_ui_organizing), muted)
-                }
-                view.queued -> {
-                    Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = warning, modifier = Modifier.size(StatusIconSize))
-                    PaneStatusText(stringResource(R.string.recording_ui_queued), warning)
-                }
-                current.manualEdit -> PaneStatusText(stringResource(R.string.recording_manual_status), muted)
-                !view.consent -> PaneStatusText(stringResource(routeLabel(view.route)), muted)
+            if (view.organizing) {
+                CircularProgressIndicator(Modifier.size(StatusSpinnerSize), strokeWidth = 2.dp)
+                PaneStatusText(stringResource(R.string.recording_ui_organizing), muted)
+            } else {
+                Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = warning, modifier = Modifier.size(StatusIconSize))
+                PaneStatusText(stringResource(R.string.recording_ui_queued), warning)
             }
-        }
-        if (reprocessable) {
-            InfinityPillButton(text = stringResource(R.string.recording_ui_reprocess), onClick = onOrganize, compact = true)
         }
     }
 }
@@ -800,26 +831,15 @@ private fun RecordingTranscriptList(
                     recordingTimestamp(current.segments.lastOrNull()?.endMs ?: 0L),
                     color = MaterialTheme.colorScheme.primary, style = stamp,
                 )
-                val opening = view.state.opening
-                // 指示点与文字末行的中线对齐。
-                val line = reading.lineHeight
-                val lift = with(LocalDensity.current) {
-                    (((if (line.isSp) line.toDp() else LiveLineHeight) - LiveDotSize) / 2).coerceAtLeast(0.dp)
-                }
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-                    Text(
-                        when {
-                            opening -> stringResource(R.string.recording_ui_opening)
-                            view.state.audioOnly -> stringResource(R.string.recording_asr_audio_only_live)
-                            view.state.partial.isBlank() -> stringResource(R.string.recording_ui_listening)
-                            else -> view.state.partial
-                        },
-                        style = reading,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (!opening && !view.state.audioOnly) GenerationDots(Modifier.padding(bottom = lift), dotSize = LiveDotSize)
-                }
+                LiveTranscriptText(
+                    text = when {
+                        view.state.opening -> stringResource(R.string.recording_ui_opening)
+                        view.state.audioOnly -> stringResource(R.string.recording_asr_audio_only_live)
+                        view.state.partial.isBlank() -> stringResource(R.string.recording_ui_listening)
+                        else -> view.state.partial
+                    },
+                    animate = !view.state.opening && !view.state.audioOnly,
+                )
             }
         }
         if (current.segments.isEmpty() && !live && !view.recognizing) item(key = "empty") {
@@ -830,8 +850,39 @@ private fun RecordingTranscriptList(
     }
 }
 
-private val LiveDotSize = 6.dp
-private val LiveLineHeight = 24.dp
+/** 动画参与正文排版，始终跟在最后一个字后面。 */
+@Composable
+private fun LiveTranscriptText(text: String, animate: Boolean) {
+    val reading = InfinityTypography.bodyLarge.forReading()
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    if (!animate) {
+        Text(text, style = reading, color = color)
+        return
+    }
+
+    val indicator = LocalInfinityMotionStyles.current.indicator
+    val design = indicatorDesignSize(indicator)
+    val gap = InfinitySpacing.Small
+    val placeholder = with(LocalDensity.current) {
+        Placeholder((design.width + gap).toSp(), design.height.toSp(), PlaceholderVerticalAlign.TextCenter)
+    }
+    val inline = remember(placeholder, gap, indicator) {
+        mapOf(LiveIndicatorId to InlineTextContent(placeholder) {
+            Box(Modifier.fillMaxSize().padding(start = gap), contentAlignment = Alignment.Center) {
+                GenerationDots(style = indicator)
+            }
+        })
+    }
+    val annotated = remember(text) {
+        buildAnnotatedString {
+            append(text)
+            appendInlineContent(LiveIndicatorId)
+        }
+    }
+    Text(annotated, inlineContent = inline, style = reading, color = color)
+}
+
+private const val LiveIndicatorId = "recording-live-indicator"
 
 /** 整理稿：全文；没有内容时按整理中、仅转写、尚未整理分别说明。 */
 @Composable
@@ -933,47 +984,49 @@ private fun RecordingEmptyLabel(icon: ImageVector, text: String) {
 
 private val EmptyIconSize = 28.dp
 
-/** 底部或录音卡右侧的操作按钮：录音控制，以及结束后的“保存到资料 / 更新文档”。 */
+/** 内屏操作位于录音卡首行，外屏主操作位于底栏。 */
 @Composable
 private fun RecordingActionButtons(
     view: RecordingView,
+    compact: Boolean,
     onBegin: () -> Unit,
     onPauseResume: () -> Unit,
     onFinish: () -> Unit,
-    onResumeInterrupted: () -> Unit,
+    onContinue: () -> Unit,
     onPublish: () -> Unit,
 ) {
     val current = view.current
-    val target = Modifier.heightIn(min = InfinitySpacing.MinimumTouchTarget)
-    when {
-        current == null -> InfinityPillButton(
-            text = stringResource(R.string.recording_start), onClick = onBegin, modifier = target,
-            tone = InfinityPillTone.PRIMARY, enabled = view.state.ready, icon = Icons.Rounded.Mic,
+    if (view.active) {
+        InfinityPillButton(
+            text = stringResource(if (view.paused) R.string.recording_resume else R.string.recording_pause),
+            onClick = onPauseResume, compact = compact,
+            icon = if (view.paused) Icons.Rounded.Mic else Icons.Rounded.Pause,
         )
-        view.active -> {
-            InfinityPillButton(
-                text = stringResource(if (view.paused) R.string.recording_resume else R.string.recording_pause),
-                onClick = onPauseResume, modifier = target,
-                icon = if (view.paused) Icons.Rounded.Mic else Icons.Rounded.Pause,
-            )
-            InfinityPillButton(
-                text = stringResource(R.string.recording_ui_stop), onClick = onFinish, modifier = target,
-                tone = InfinityPillTone.PRIMARY, icon = Icons.Rounded.Stop,
-            )
-        }
-        else -> {
-            if (current.phase == RecordingPhase.Interrupted) {
-                InfinityPillButton(
-                    text = stringResource(R.string.recording_resume), onClick = onResumeInterrupted,
-                    modifier = target, icon = Icons.Rounded.Mic,
-                )
-            }
+        InfinityPillButton(
+            text = stringResource(R.string.recording_ui_stop), onClick = onFinish, compact = compact,
+            tone = InfinityPillTone.PRIMARY, icon = Icons.Rounded.Stop,
+        )
+    } else {
+        if (current != null) {
             InfinityPillButton(
                 text = stringResource(if (current.documentId == null) R.string.recording_save_library else R.string.recording_ui_update),
-                onClick = onPublish, modifier = target, tone = InfinityPillTone.PRIMARY,
+                onClick = onPublish, compact = compact,
             )
+            if (compact && current.canContinue) RecordingContinueButton(view, onContinue)
         }
+        InfinityPillButton(
+            text = stringResource(R.string.recording_start), onClick = onBegin, compact = compact,
+            tone = InfinityPillTone.PRIMARY, enabled = view.state.ready, icon = Icons.Rounded.Mic,
+        )
     }
+}
+
+@Composable
+private fun RecordingContinueButton(view: RecordingView, onContinue: () -> Unit) {
+    InfinityPillButton(
+        text = stringResource(R.string.recording_resume), onClick = onContinue, compact = true,
+        icon = Icons.Rounded.Mic, enabled = !view.recognizing,
+    )
 }
 
 /** 浮动提示连同自带外边距的最大宽度：内屏居中，不横贯整屏。 */
@@ -1081,6 +1134,7 @@ internal fun RecordingEditorContent(
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
+                textStyle = InfinityTypography.bodyLarge.forInput(),
                 label = { Text(stringResource(R.string.recording_hotword_session)) },
                 singleLine = true,
                 isError = error != null,

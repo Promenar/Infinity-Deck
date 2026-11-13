@@ -59,7 +59,7 @@
 
 ## 录音听写
 
-资料首页页头的「录音」可直接进入录制。设置 → 知识库 → 录音整理提供快捷设置磁贴和桌面快捷方式。外部应用可调用 `ACTION_VIEW` 打开 `infinitydeck://recording/open`，或用 `com.promenar.infinity.action.OPEN_RECORDING` 打开录音页，用户点击开始后才申请麦克风。磁贴在锁屏时先请求解锁。
+资料首页页头的「录音」打开待录页，点击「开始录音」才使用麦克风。打开已有录音后可点「继续录音」，将新音频和逐字稿追加到原记录，并保留手工整理稿。设置 → 知识库 → 录音整理提供快捷设置磁贴和桌面快捷方式。外部应用可调用 `ACTION_VIEW` 打开 `infinitydeck://recording/open`，或用 `com.promenar.infinity.action.OPEN_RECORDING` 打开录音页，用户点击开始后才申请麦克风。磁贴在锁屏时先请求解锁。
 
 实时转写使用应用内下载的 [X-ASR 480ms 中英标点流式 Zipformer2](https://github.com/Gilgamesh-J/X-ASR)（Apache-2.0，由 [sherpa-onnx asr-models 发布页](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)分发），输出自带标点和大小写。在「录音整理」或逐字稿栏下载模型，约 134 MB，安装后约 169 MB。模型未装时照常保存音频，安装后可点「重新识别」生成逐字稿。录音支持暂停、续录、后台前台服务、系统中断后的恢复和按段时间戳回听。结束后在资料库存储空间根目录生成 Markdown，可从文档页的麦克风按钮打开原音。原始音频保存在应用私有目录，每小时约 115 MB，单次上限约 17 小时；原音和设备上的整理授权不随应用备份迁移。资料库 Markdown 可按资料层备份，自动向量化与图谱抽取跳过这类文档。已结束或中断的录音可在录音页顶栏删除：音频、逐字稿和整理稿从本机移除，已保存到资料库的 Markdown 保留。反过来，在文件管理或资料库里删除录音生成的 Markdown（或包含它的文件夹）时，对应录音一并删除；正在录的那一条保留，结束后重新保存到资料库。
 

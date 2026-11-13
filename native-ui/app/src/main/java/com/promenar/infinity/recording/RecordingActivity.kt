@@ -125,7 +125,7 @@ internal fun LibraryRecordingAction() {
     val context = LocalContext.current
     InfinityPillButton(
         text = stringResource(R.string.recording_entry),
-        onClick = { context.startActivity(recordingIntent(context, autoStart = true)) },
+        onClick = { context.startActivity(recordingIntent(context)) },
         icon = Icons.Rounded.Mic,
         tone = InfinityPillTone.PRIMARY,
     )
@@ -192,7 +192,7 @@ private fun RecordingScreen(
     val effectiveHotwords = remember(current?.hotwords, current?.useHotwordLibrary, hotwords) {
         current?.let { effectiveRecordingHotwords(it, hotwords) }.orEmpty()
     }
-    val canRecognize = current?.let { recordingCanRecognize(it, state.activeId, state.recognizingId) } == true &&
+    val canRecognize = current != null && recordingCanRecognize(current, state.activeId, state.recognizingId) &&
         asr == RecordingAsrModelState.Installed
     RecordingPageContent(
         state = state,
@@ -223,7 +223,7 @@ private fun RecordingScreen(
         onBegin = { onBegin(null) },
         onPauseResume = { current?.let { if (paused) onBegin(it.id) else controller.pause() } },
         onFinish = { dialog = "finish" },
-        onResumeInterrupted = { current?.let { onBegin(it.id) } },
+        onContinue = { current?.let { onBegin(it.id) } },
         onOrganize = { dialog = "organize" },
         onPublish = { current?.let { controller.publish(it.id) } },
         onDelete = { dialog = "delete" },

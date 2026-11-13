@@ -79,6 +79,83 @@ class RecordingCapturePipelineTest {
         assertArrayEquals(samples.toShortArray(), actual)
     }
 
+    @Test fun resumedCapturePreservesExistingPcmAndDecodesOnlyNewSamples() = runBlocking {
+        withWav { file ->
+            val existing = shortArrayOf(1, -2, 3, -4)
+            updateRecordingWavHeader(file, existing.size * 2L)
+            file.seek(44)
+            existing.forEach { file.writeShort(java.lang.Short.reverseBytes(it).toInt()) }
+            val command = AtomicReference(CaptureCommand.Continue)
+            val block = ShortArray(640) { index -> (1000 + index).toShort() }
+            val source = Source(command, listOf(block))
+            val decoder = Decoder(source.stopped)
+            val frames = mutableListOf<CaptureFrame>()
+
+            recordPcmAudio(source, decoder, file, existing.size * 2L, 10_000, command::get) { frame ->
+                if (frame.checkpoint) {
+                    file.seek(40)
+                    assertEquals(frame.bytes, Integer.reverseBytes(file.readInt()).toLong())
+                }
+                frames += frame
+            }
+
+            assertWav(file, existing.toList() + block.toList())
+            assertEquals(block.toList(), decoder.samples)
+            assertEquals((existing.size + block.size) * 2L, frames.last().bytes)
+        }
+    }
+
+    @Test fun resumeRefusesMismatchedAudioLengthWithoutChangingExistingBytes() = runBlocking {
+        for (actual in listOf(2, 6)) withWav { file ->
+            updateRecordingWavHeader(file, actual.toLong())
+            file.seek(44)
+            repeat(actual / 2) { file.writeShort(500 + it) }
+            val before = ByteArray(file.length().toInt())
+            file.seek(0)
+            file.readFully(before)
+            val command = AtomicReference(CaptureCommand.Continue)
+            val source = Source(command, listOf(shortArrayOf(1, 2)))
+            val decoder = Decoder(source.stopped)
+
+            var rejected = false
+            try {
+                recordPcmAudio(source, decoder, file, 4, 100, command::get) {}
+            } catch (_: IOException) {
+                rejected = true
+            }
+            assertTrue(rejected)
+            assertEquals(before.size.toLong(), file.length())
+            file.seek(0)
+            assertArrayEquals(before, ByteArray(before.size).also(file::readFully))
+        }
+    }
+
+    @Test fun endpointPreservesFinalWordsBeforeResettingTheDecoder() = runBlocking {
+        withWav { file ->
+            val command = AtomicReference(CaptureCommand.Continue)
+            val blocks = List(3) { ShortArray(640) { 1000 } }
+            val source = Source(command, blocks, CaptureCommand.Finish)
+            val decoder = object : RecordingDecoder {
+                private var accepted = 0
+                private var segment = 0
+
+                override fun accept(pcm: ShortArray): RecordingRecognition {
+                    accepted++
+                    return RecordingRecognition(if (segment == 0) "第一段" else "第二段", accepted == 2)
+                }
+
+                override fun finish() = if (segment == 0) "第一段末尾" else "第二段开头"
+                override fun reset() { accepted = 0; segment++ }
+            }
+            val segments = mutableListOf<RecordingSegment>()
+            recordPcmAudio(source, decoder, file, 0, 1_000_000, command::get) { frame ->
+                frame.segment?.let(segments::add)
+            }
+            assertEquals(listOf(RecordingSegment(0, 80, "第一段末尾"), RecordingSegment(80, 120, "第二段开头")), segments)
+            assertWav(file, blocks.flatMap { it.toList() })
+        }
+    }
+
     @Test(timeout = 2_000) fun slowConsumerPreservesEverySampleAndDrainsBeforeTail() = runBlocking {
         for (ending in listOf(CaptureCommand.Pause, CaptureCommand.Finish)) withWav { file ->
             val command = AtomicReference(CaptureCommand.Continue)
@@ -103,6 +180,28 @@ class RecordingCapturePipelineTest {
             assertEquals(RecordingSegment(0, 1_200, "尾段，完整。"), frames.last().segment)
             assertTrue(requireNotNull(stats).maxQueuedMs > 0)
             assertEquals(1_200L, requireNotNull(stats).durationMs)
+        }
+    }
+
+    @Test(timeout = 5_000) fun capturePersistsAudioWhileRecognitionIsBlocked() = runBlocking {
+        withWav { file ->
+            val command = AtomicReference(CaptureCommand.Continue)
+            val blocks = List(100) { index -> ShortArray(640) { (index * 640 + it).toShort() } }
+            val source = Source(command, blocks)
+            val decoder = Decoder(source.stopped)
+            val expected = blocks.flatMap { it.toList() }
+            var checked = false
+            val result = recordPcmAudio(source, decoder, file, 0, 1_000_000, command::get, onFrame = {
+                if (!checked) {
+                    assertTrue(source.stopped.await(2, TimeUnit.SECONDS))
+                    assertEquals(44L + expected.size * 2, file.length())
+                    checked = true
+                }
+            })
+            assertTrue(checked)
+            assertEquals(CaptureCommand.Finish, result)
+            assertEquals(expected, decoder.samples)
+            assertWav(file, expected)
         }
     }
 

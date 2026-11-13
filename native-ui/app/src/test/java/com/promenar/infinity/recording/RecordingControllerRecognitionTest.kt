@@ -97,6 +97,42 @@ class RecordingControllerRecognitionTest {
         }
     }
 
+    @Test fun continuingFinishedRecordingAppendsAudioAndKeepsItsDocumentAndManualDraft() = runBlocking {
+        val f = Fixture()
+        try {
+            f.seed()
+            val captured = CompletableDeferred<RecordingSession>()
+            val controller = f.controller(capture = { _, store, item, _, _, emit ->
+                captured.complete(item)
+                val end = item.audioBytes + 640 * 2L
+                RandomAccessFile(store.audio(item.id), "rw").use { file ->
+                    assertEquals(44 + f.original.audioBytes, file.length())
+                    file.seek(file.length())
+                    file.write(ByteArray(640 * 2) { 17 })
+                    updateRecordingWavHeader(file, end)
+                }
+                val segment = RecordingSegment(item.durationMs, end / 32, "新增逐字稿")
+                emit(CaptureFrame(end, "", null, segment, quiet = true, checkpoint = true, level = 0f))
+                CaptureCommand.Finish
+            })
+            withTimeout(5_000) { controller.state.first { it.ready } }
+            controller.capture(f.original.id) {}
+            val resumed = withTimeout(2_000) { captured.await() }
+            assertEquals(f.original.copy(phase = RecordingPhase.Recording), resumed)
+            val saved = withTimeout(5_000) {
+                controller.state.first { it.activeId == null && it.sessions.single().audioBytes > f.original.audioBytes }
+            }.sessions.single()
+            assertEquals(f.original.id, saved.id)
+            assertEquals(f.original.segments.single(), saved.segments.first())
+            assertEquals(f.original.organized, saved.organized)
+            assertTrue(saved.manualEdit)
+            assertEquals(f.original.documentId, saved.documentId)
+            assertEquals(RecordingPhase.Finished, saved.phase)
+            assertEquals(44 + saved.audioBytes, RecordingStore(f.app).audio(saved.id).length())
+            waitFor { f.published.get() > 0 }
+        } finally { f.close() }
+    }
+
     @Test fun failedAndCancelledRecognitionLeaveSessionUnchanged() = runBlocking {
         for (cancel in listOf(false, true)) {
             val f = Fixture()

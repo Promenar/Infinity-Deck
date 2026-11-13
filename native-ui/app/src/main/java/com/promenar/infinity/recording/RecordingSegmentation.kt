@@ -40,7 +40,12 @@ internal class RecordingSegmentation(initialBytes: Long) {
     private var lastVoice = initialBytes
     private var speechAt: Long? = null
 
-    fun accept(pcm: ShortArray, rawText: String, endpoint: Boolean): RecordingCaptureStep {
+    fun accept(
+        pcm: ShortArray,
+        rawText: String,
+        endpoint: Boolean,
+        finalizeSegment: (() -> String)? = null,
+    ): RecordingCaptureStep {
         var energy = 0.0
         for (sample in pcm) {
             val normalized = sample / 32768f
@@ -51,8 +56,9 @@ internal class RecordingSegmentation(initialBytes: Long) {
             if (speechAt == null) speechAt = (bytes - pcm.size * 2L) / 32
             lastVoice = bytes
         }
-        val text = normalizeRecordingText(rawText)
         val end = endpoint || bytes / 32 - segmentStart >= RecordingCapturePolicy.FORCE_SEGMENT_MS
+        val finalText = if (end) finalizeSegment?.invoke()?.takeIf(String::isNotBlank) else null
+        val text = normalizeRecordingText(finalText ?: rawText)
         val segment = if (end && text.isNotEmpty()) segment(text) else null
         if (end) {
             segmentStart = bytes / 32

@@ -49,10 +49,18 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
         decodingMethod = if (beamSearch) "modified_beam_search" else "greedy_search",
         maxActivePaths = 4, hotwordsScore = 2.5f,
     ))
-    val stream = try { recognizer.createStream(phrases.joinToString("/")) } catch (error: Throwable) { recognizer.release(); throw error }
+    val hotwordList = phrases.joinToString("/")
     val decoder = object : RecordingDecoder {
+        private var stream = try { recognizer.createStream(hotwordList) } catch (error: Throwable) {
+            recognizer.release()
+            throw error
+        }
         private var text = ""
+        private val tail = FloatArray(rate * RecordingCapturePolicy.TAIL_SILENCE_SECONDS)
+        private var hasAudio = false
+
         override fun accept(pcm: ShortArray): RecordingRecognition {
+            hasAudio = true
             stream.acceptWaveform(FloatArray(pcm.size) { pcm[it] / 32768f }, rate)
             var decoded = false
             while (recognizer.isReady(stream)) {
@@ -62,9 +70,17 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
             if (decoded) text = recognizer.getResult(stream).text
             return RecordingRecognition(text, decoded && recognizer.isEndpoint(stream))
         }
-        override fun reset() { recognizer.reset(stream); text = "" }
+        override fun reset() {
+            // inputFinished 结束了旧流的特征提取器。下一段使用新流并沿用同一识别器和热词。
+            val previous = stream
+            stream = recognizer.createStream(hotwordList)
+            previous.release()
+            text = ""
+            hasAudio = false
+        }
         override fun finish(): String {
-            stream.acceptWaveform(FloatArray(rate * RecordingCapturePolicy.TAIL_SILENCE_SECONDS), rate)
+            if (!hasAudio) return ""
+            stream.acceptWaveform(tail, rate)
             stream.inputFinished()
             while (recognizer.isReady(stream)) recognizer.decode(stream)
             return recognizer.getResult(stream).text

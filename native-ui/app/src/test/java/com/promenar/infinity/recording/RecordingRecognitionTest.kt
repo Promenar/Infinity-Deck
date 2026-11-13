@@ -36,7 +36,7 @@ class RecordingRecognitionTest {
                     return RecordingRecognition("第${++calls}段", endpoint = calls == 2)
                 }
                 override fun reset() = Unit
-                override fun finish() = "尾段"
+                override fun finish() = if (calls == 2) "第2段" else "尾段"
             }
             val progress = mutableListOf<Float>()
             val segments = recognizeRecordingWav(audio, decoder) { progress += it }
@@ -45,6 +45,25 @@ class RecordingRecognitionTest {
             assertEquals(0f, progress.first())
             assertEquals(1f, progress.last())
             assertTrue(progress.zipWithNext().all { (a, b) -> a <= b })
+        } finally { audio.delete() }
+    }
+
+    @Test fun forcedBoundaryFinalizesTheTailWithoutMovingTheAudioTimestamp() = runBlocking {
+        val rate = RecordingCapturePolicy.SAMPLE_RATE
+        val boundary = RecordingCapturePolicy.FORCE_SEGMENT_MS
+        val audio = wav((boundary * rate / 1_000).toInt() + RecordingCapturePolicy.BLOCK_SAMPLES)
+        try {
+            val decoder = object : RecordingDecoder {
+                private var first = true
+                override fun accept(pcm: ShortArray) = RecordingRecognition(if (first) "断段前" else "断段后", false)
+                override fun finish() = if (first) "断段前最后几个字" else "断段后继续"
+                override fun reset() { first = false }
+            }
+            val segments = recognizeRecordingWav(audio, decoder) {}
+            assertEquals(listOf(
+                RecordingSegment(0, boundary, "断段前最后几个字"),
+                RecordingSegment(boundary, boundary + 40, "断段后继续"),
+            ), segments)
         } finally { audio.delete() }
     }
 

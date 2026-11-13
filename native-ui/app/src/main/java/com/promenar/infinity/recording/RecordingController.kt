@@ -129,7 +129,7 @@ internal class RecordingController(
                 val previous = _state.value.activeId?.let(::session)
                 if (previous != null && (previous.id != id || previous.phase != RecordingPhase.Paused)) return@withLock
                 val resume = id?.let(::session)
-                if (id != null && resume?.phase !in setOf(RecordingPhase.Paused, RecordingPhase.Interrupted)) {
+                if (id != null && resume?.canContinue != true) {
                     if (_state.value.activeId == null) onIdle()
                     return@withLock
                 }
