@@ -20,6 +20,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.mediagen.cloud.BillingUnit
 import com.promenar.infinity.data.mediagen.comfy.ComfyAuthKind
 import com.promenar.infinity.domain.mediagen.*
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 
 @Composable
@@ -30,11 +31,18 @@ internal fun MediaSettingsPage(title: String, onBack: () -> Unit, content: @Comp
 }
 
 @Composable
-internal fun MediaValue(label: String, value: String) {
+internal fun MediaValue(label: String, value: String) = MediaValue(label, listOf(value))
+
+@Composable
+internal fun MediaValue(label: String, segments: List<String>) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(label, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        if (segments.size <= 1) {
+            Text(segments.firstOrNull().orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        } else {
+            InfinityMetaLine(segments, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
@@ -121,9 +129,9 @@ internal fun referenceModeLabel(mode: CharacterReferenceMode) = stringResource(i
 @Composable
 internal fun referenceDescription(value: ReferenceInputDescription) = stringResource(R.string.media_settings_reference_limit, referenceModeLabel(value.mode), value.limit)
 @Composable
-internal fun channelDescription(row: MediaChannelRow): String = (listOf(row.source).filter { it.isNotBlank() } +
+internal fun channelDescriptionSegments(row: MediaChannelRow): List<String> = row.sourceSegments +
     row.channel.capabilities.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) } +
-    listOfNotNull(row.references?.let { referenceDescription(it) })).joinToString(" · ")
+    listOfNotNull(row.references?.let { referenceDescription(it) })
 @Composable
 internal fun preflightLabel(result: PreflightResult): String {
     val label = templateStatusLabel(result)
@@ -157,9 +165,9 @@ internal fun formErrorLabel(error: MediaFormError) = stringResource(when (error)
 })
 
 @Composable
-internal fun providerMediaCountLabel(count: ProviderMediaCount): String = listOf(
+internal fun providerMediaCountSegments(count: ProviderMediaCount): List<String> = listOf(
     "${stringResource(R.string.media_settings_chat)} ${count.chat}",
     "${stringResource(R.string.media_settings_video)} ${count.video}",
     "${stringResource(R.string.media_settings_speech)} ${count.speech}",
     "${stringResource(R.string.media_settings_image)} ${count.image}",
-).joinToString(" · ")
+)

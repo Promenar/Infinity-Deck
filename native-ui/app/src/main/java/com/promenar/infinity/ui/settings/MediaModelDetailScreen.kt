@@ -17,6 +17,7 @@ import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.theme.forInput
 
 @Composable
 internal fun MediaModelDetailScreenContent(
@@ -69,16 +70,16 @@ internal fun MediaModelDetailScreenContent(
 }
 
 @Composable
-internal fun MediaCapabilitiesSection(group: MediaGroup, caps: MediaCapabilities, workflowSpecs: String? = null) {
+internal fun MediaCapabilitiesSection(group: MediaGroup, caps: MediaCapabilities, workflowSpecs: List<String> = emptyList()) {
     InfinitySettingsSection(title = stringResource(R.string.media_settings_capabilities)) {
         MediaValue(stringResource(R.string.media_settings_type), mediaGroupLabel(group))
-        MediaValue(stringResource(R.string.media_settings_modes), caps.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) }.joinToString(" · "))
+        MediaValue(stringResource(R.string.media_settings_modes), caps.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) })
         MediaValue(stringResource(R.string.media_settings_limits), stringResource(R.string.media_settings_limits_value, caps.maxImages, caps.maxVideos, caps.maxAudio))
         MediaValue(stringResource(R.string.media_settings_native_audio), stringResource(if (caps.nativeAudio) R.string.media_settings_supported else R.string.media_settings_unsupported))
         val specs = caps.resolutions + if (caps.minDurationSeconds != null || caps.maxDurationSeconds != null) {
             listOf(stringResource(R.string.media_settings_duration, caps.minDurationSeconds?.toString() ?: "—", caps.maxDurationSeconds?.toString() ?: "—"))
         } else emptyList()
-        MediaValue(stringResource(R.string.media_settings_specs), specs.joinToString(" · ").ifEmpty { workflowSpecs ?: "—" })
+        MediaValue(stringResource(R.string.media_settings_specs), specs.ifEmpty { workflowSpecs.ifEmpty { listOf("—") } })
         MediaValue(stringResource(R.string.media_settings_prompt_format), stringResource(when (caps.promptFormat) {
             PromptFormat.H3 -> R.string.media_settings_prompt_h3
             PromptFormat.SEEDANCE -> R.string.media_settings_prompt_seedance
@@ -124,5 +125,6 @@ private fun MediaTariffEditor(draft: MediaTariffDraft, enabled: Boolean, onChang
 @Composable
 internal fun MediaFormField(label: String, value: String, onChange: (String) -> Unit, enabled: Boolean, keyboardType: KeyboardType = KeyboardType.Text) {
     OutlinedTextField(value = value, onValueChange = onChange, label = { Text(label) }, singleLine = true, enabled = enabled,
+        textStyle = LocalTextStyle.current.forInput(),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp))
 }

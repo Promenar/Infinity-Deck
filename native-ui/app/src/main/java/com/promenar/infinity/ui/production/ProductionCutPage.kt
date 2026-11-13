@@ -150,13 +150,13 @@ internal fun ProductionCutTab(
             ProductionSection(null) {
                 val gaps = version.clips.count { it.path == null }
                 ProductionRow(stringResource(R.string.p2_gaps), value = if (isPreview) stringResource(R.string.p2_gaps_placeholder) else stringResource(R.string.p2_gap_count, gaps))
-                ProductionRow(stringResource(R.string.p2_specs), value = listOfNotNull(production.aspectRatio ?: "16:9", stringResource(R.string.p3_cut_codec)).joinToString(" · "))
+                ProductionRow(stringResource(R.string.p2_specs), valueSegments = listOf(production.aspectRatio ?: "16:9", stringResource(R.string.p3_cut_codec)))
                 if (cut != null) {
                     val record = cut.export
                     ProductionRow(stringResource(R.string.p2_output_path), value = (record?.videoPath ?: cutOutputPath(production, cut)).removePrefix(production.rootPath + "/"))
                     if (record != null) {
                         val context = LocalContext.current
-                        ProductionRow(stringResource(R.string.p3_cut_file), value = listOf(secondsLabel(record.durationSeconds), Formatter.formatShortFileSize(context, record.sizeBytes)).joinToString(" · "))
+                        ProductionRow(stringResource(R.string.p3_cut_file), valueSegments = listOf(secondsLabel(record.durationSeconds), Formatter.formatShortFileSize(context, record.sizeBytes)))
                     }
                     when (state) {
                         is CutExportState.Running -> Column(Modifier.padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(6.dp)) {

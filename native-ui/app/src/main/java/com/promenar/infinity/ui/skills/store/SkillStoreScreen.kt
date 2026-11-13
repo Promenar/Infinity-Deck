@@ -264,7 +264,7 @@ fun SkillStoreListContent(state: SkillStoreUiState, actions: SkillStoreListActio
                 InfinityStatusStrip(
                     kind = InfinityStatusKind.Warning,
                     message = stringResource(R.string.skill_store_source_failed, sourceName(source)) +
-                        " · " + storeFailureText(status.failure, status.httpStatus),
+                        " · " + storeFailureText(status.failure, status.httpStatus), // wrap-check: allow 单条警告句包含原因并由同一状态区播报
                     modifier = Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Small),
                 )
             }
@@ -439,7 +439,7 @@ private fun StoreMetaRow(item: StoreSkillItem) {
     val source = if (item.source.official) stringResource(R.string.skill_store_official) else item.source.host
     InfinityTagScrollRow {
         Text(
-            listOf(source, entry.version, storeSizeText(entry.size)).joinToString(" · "),
+            listOf(source, entry.version, storeSizeText(entry.size)).joinToString(" · "), // wrap-check: allow 技能来源标签固定单行横滑
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,

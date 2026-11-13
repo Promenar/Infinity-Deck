@@ -51,12 +51,15 @@ fun InfinitySettingsItem(
     subtitleSegments: List<String>? = null,
     /** 自定义副标题：非空时取代 [subtitle] 与 [subtitleSegments]，由调用方固定行数以保持列表等高。 */
     subtitleContent: (@Composable () -> Unit)? = null,
+    /** 多段元数据标题使用 [InfinityMetaLine]，并沿用标题的行数和横滑规则。 */
+    titleSegments: List<String>? = null,
 ) {
     val haptics = LocalInfinityHaptics.current
     // 单选行在选中项变化时轻振；按钮行是导航或打开面板，不振动。
     val radioSelected = selected.takeIf { role == Role.RadioButton }
     InfinitySettingsRowLayout(
         title = title,
+        titleSegments = titleSegments,
         subtitle = subtitle,
         icon = icon,
         modifier = modifier.semantics { if (selected != null) this.selected = selected }
@@ -113,6 +116,7 @@ internal fun InfinitySettingsRowLayout(
     subtitleSegments: List<String>? = null,
     /** 自定义副标题（如文字后跟状态标签）：非空时取代 [subtitle] 与 [subtitleSegments]。 */
     subtitleContent: (@Composable () -> Unit)? = null,
+    titleSegments: List<String>? = null,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val segments = subtitleSegments?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() }
@@ -148,10 +152,17 @@ internal fun InfinitySettingsRowLayout(
                     else -> 1
                 }
                 // 单行标题放不下时横滑查看、右侧渐隐，不用省略号；调用方指定行数时按行数末尾省略。
+                val titleParts = titleSegments?.takeIf { parts -> parts.any(String::isNotBlank) }
                 if (titleLines == 1 && titleMaxLines == null) {
                     InfinityScrollingLine(Modifier.fillMaxWidth()) {
-                        Text(title, style = titleStyle, color = titleTextColor, maxLines = 1, softWrap = false)
+                        if (titleParts != null) {
+                            InfinityMetaLine(titleParts, style = titleStyle, color = titleTextColor, maxLines = 1)
+                        } else {
+                            Text(title, style = titleStyle, color = titleTextColor, maxLines = 1, softWrap = false)
+                        }
                     }
+                } else if (titleParts != null) {
+                    InfinityMetaLine(titleParts, style = titleStyle, color = titleTextColor, maxLines = titleLines)
                 } else {
                     Text(title, style = titleStyle, color = titleTextColor, maxLines = titleLines, overflow = TextOverflow.Ellipsis)
                 }

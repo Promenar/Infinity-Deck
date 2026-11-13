@@ -35,6 +35,7 @@ import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.theme.forInput
 import java.text.DateFormat
 import java.util.Date
 
@@ -49,9 +50,12 @@ internal fun ComfyHostsSection(
         state.snapshot.hosts.forEach { host ->
             InfinitySettingsItem(
                 icon = Icons.Rounded.Dns,
-                title = "ComfyUI · ${host.name}",
-                subtitle = listOf(host.endpoint,
-                    stringResource(R.string.media_settings_templates_count, state.snapshot.templates.count { it.template.hostId == host.id })).joinToString(" · "),
+                title = host.name,
+                titleSegments = listOf("ComfyUI", host.name),
+                subtitleSegments = listOf(
+                    host.endpoint,
+                    stringResource(R.string.media_settings_templates_count, state.snapshot.templates.count { it.template.hostId == host.id }),
+                ),
                 subtitleMaxLines = 2, titleMaxLines = 2,
                 onClick = { onOpen(host.id) },
                 trailingContent = {
@@ -82,7 +86,7 @@ internal fun ComfyHostScreenContent(
     onRetry: () -> Unit = {},
 ) {
     var deleting by remember(host.id) { mutableStateOf(false) }
-    MediaSettingsPage("ComfyUI · ${host.name}", onBack) {
+    MediaSettingsPage("ComfyUI · ${host.name}", onBack) { // wrap-check: allow 设置页标题固定单行横滑
         MediaOperationState(state, onRetry)
         InfinitySettingsSection(title = stringResource(R.string.media_settings_connection)) {
             MediaValue(stringResource(R.string.media_settings_host_address), host.endpoint)
@@ -101,9 +105,9 @@ internal fun ComfyHostScreenContent(
                 val template = entry.template
                 val channel = template.channel()
                 val range = referenceInputDescription(channel.capabilities)?.let { referenceDescription(it) }
-                val subtitle = (listOf(mediaGroupLabel(template.group)) + channel.capabilities.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) } +
-                    listOfNotNull(range)).joinToString(" · ")
-                InfinitySettingsItem(icon = mediaGroupIcon(template.group), title = template.name, subtitle = subtitle,
+                val subtitle = listOf(mediaGroupLabel(template.group)) + channel.capabilities.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) } +
+                    listOfNotNull(range)
+                InfinitySettingsItem(icon = mediaGroupIcon(template.group), title = template.name, subtitleSegments = subtitle,
                     subtitleMaxLines = 2, titleMaxLines = 2, onClick = { onOpenTemplate(template.id) },
                     trailingContent = { PreflightChip(entry.preflight) })
             }
@@ -161,8 +165,10 @@ internal fun ComfyTemplateScreenContent(
         }
         // 模板未声明规格时，显示锁定工作流里写定的画幅与帧数。
         val fixed = remember(template) { runCatching { com.promenar.infinity.data.mediagen.comfyPlanningSpecs(template) }.getOrNull() }
-        val workflowSpecs = listOfNotNull(fixed?.width?.let { w -> fixed.height?.let { h -> "$w×$h" } },
-            fixed?.frames?.let { stringResource(R.string.media_settings_frames, it) }).joinToString(" · ").ifEmpty { null }
+        val workflowSpecs = listOfNotNull(
+            fixed?.width?.let { w -> fixed.height?.let { h -> "$w×$h" } },
+            fixed?.frames?.let { stringResource(R.string.media_settings_frames, it) },
+        )
         InfinitySettingsSection(title = stringResource(R.string.media_settings_role)) {
             MediaValue(stringResource(R.string.media_settings_role), stringResource(if (template.role == TemplateRole.DERIVE) R.string.media_settings_role_derive else R.string.media_settings_role_generate))
             template.operation?.let { MediaValue(stringResource(R.string.media_settings_operation), it.label) }
@@ -284,6 +290,7 @@ internal fun ComfyHostFormScreenContent(
                 OutlinedTextField(value = if (draft.authKind == ComfyAuthKind.BEARER) token else password,
                     onValueChange = { if (draft.authKind == ComfyAuthKind.BEARER) token = it else password = it },
                     label = { Text(stringResource(if (draft.authKind == ComfyAuthKind.BEARER) R.string.media_settings_token else R.string.media_settings_password)) },
+                    textStyle = LocalTextStyle.current.forInput(),
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = com.promenar.infinity.ui.common.SecretKeyboardOptions,
                     singleLine = true, enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).excludeFromAutofill())

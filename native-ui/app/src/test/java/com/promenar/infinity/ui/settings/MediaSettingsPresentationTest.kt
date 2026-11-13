@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.data.mediagen.cloud.BillingUnit
 import com.promenar.infinity.data.mediagen.comfy.ComfyAuthKind
+import com.promenar.infinity.data.mediagen.comfy.ComfyHost
 import com.promenar.infinity.data.mediagen.comfy.ComfyTemplateState
 import kotlinx.serialization.json.JsonObject
 import com.promenar.infinity.data.model.ModelInfo
@@ -21,10 +22,31 @@ class MediaSettingsPresentationTest {
         MediaGroup.entries.forEach { g ->
             assertEquals(listOf(true, false), groups.getValue(g).map { it.isDefault })
             assertEquals(ReferenceInputDescription(CharacterReferenceMode.SEPARATE, 3), groups.getValue(g).first().references)
+            assertTrue(groups.getValue(g).all { it.sourceSegments.isEmpty() })
         }
         assertEquals(ReferenceInputDescription(CharacterReferenceMode.COMPOSITE, 3),
             referenceInputDescription(capabilities.copy(characterReferenceMode = CharacterReferenceMode.COMPOSITE)))
         assertNull(referenceInputDescription(capabilities.copy(maxImages = 0)))
+    }
+
+    @Test fun channelSourceSegmentsPreserveProviderAndHostNames() {
+        val cloud = ModelInfo("视频模型", "video", "", true, "video", providerName = "服务方 · 华东")
+        val template = ComfyTemplate(
+            "template",
+            JsonObject(emptyMap()),
+            emptyList(),
+            capabilities = capabilities,
+            hostId = "main",
+            group = MediaGroup.VIDEO,
+        )
+        val channels = listOf(MediaChannel("cloud:${cloud.id}", MediaGroup.VIDEO, capabilities), template.channel())
+        val hosts = listOf(ComfyHost("main", "工作站 · 主机", "http://main:8188"))
+        val templates = listOf(ComfyTemplateState(template))
+        val groups = mediaChannelRows(channels, listOf(cloud), templates, hosts)
+        val sources = groups.getValue(MediaGroup.VIDEO).map { it.sourceSegments }
+        assertEquals(listOf(listOf("服务方 · 华东"), listOf("ComfyUI", "工作站 · 主机")), sources)
+        assertEquals(listOf("ComfyUI"), mediaChannelRows(channels, listOf(cloud), templates, emptyList())
+            .getValue(MediaGroup.VIDEO).last().sourceSegments)
     }
 
     @Test fun moveUpOnlyExchangesTheSelectedItemWithItsPredecessor() {

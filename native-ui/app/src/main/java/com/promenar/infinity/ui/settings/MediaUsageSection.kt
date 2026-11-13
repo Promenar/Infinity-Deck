@@ -15,7 +15,8 @@ internal fun MediaUsageSection(rows: List<MediaUsageSummary>) {
     InfinitySettingsSection(title = stringResource(R.string.media_usage_title)) {
         rows.forEach { row ->
             InfinitySettingsRowLayout(
-                title = "${row.providerId} · ${row.modelId}",
+                title = row.providerId,
+                titleSegments = listOf(row.providerId, row.modelId),
                 subtitle = stringResource(R.string.media_usage_tasks, row.tasks),
                 trailingContent = {
                     Text(row.knownCost?.let { "${it.amount.stripTrailingZeros().toPlainString()} ${it.currency}" }

@@ -195,7 +195,9 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
         }
         episodes.forEach { episode ->
             item("scenes-${episode.id}") {
-                ProductionSection(if (episodes.size > 1) "${episodeName(episode).joinToString(" ")} · ${stringResource(R.string.p2_scenes)}" else stringResource(R.string.p2_scenes)) {
+                val scenes = stringResource(R.string.p2_scenes)
+                val titleSegments = if (episodes.size > 1) listOf(episodeName(episode).joinToString(" "), scenes) else null
+                ProductionSection(scenes, titleSegments = titleSegments) {
                     if (episode.scenes.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_no_shots))
                     episode.scenes.forEach { scene ->
                         val chip = if (scene.shots.isEmpty()) ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
@@ -326,7 +328,7 @@ private fun StoryboardShotRow(shot: Shot, production: Production, services: Prod
             listOfNotNull(shot.sound, shot.transition).filter(String::isNotBlank).takeIf { it.isNotEmpty() }?.let { parts ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(Icons.Rounded.GraphicEq, null, Modifier.size(14.dp), muted)
-                    Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    InfinityMetaLine(parts, style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 2)
                 }
             }
             PlanLine(shot, production, services, channels, channelOrder)
@@ -354,7 +356,7 @@ internal fun DialogueLine(name: String, text: String, tone: String?, modifier: M
 @Composable
 private fun PlanLine(shot: Shot, production: Production, services: ProductionPanelServices, channels: List<MediaChannel>, channelOrder: List<String>) {
     val channel = resolvedShotChannel(shot, channels, channelOrder)
-    val channelName = (shot.channelId ?: channel?.id)?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel)
+    val channelName = (shot.channelId ?: channel?.id)?.let(services.channelLabelSegments) ?: listOf(stringResource(R.string.p2_default_channel))
     val packing = if (shot.mode == ShotMode.REFERENCE && channel != null) stringResource(
         if (channel.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate,
     ) else null
@@ -366,8 +368,9 @@ private fun PlanLine(shot: Shot, production: Production, services: ProductionPan
             Icon(Icons.Rounded.GraphicEq, null, Modifier.size(13.dp), MaterialTheme.colorScheme.onTertiaryContainer)
         }
         if (paths.isNotEmpty() || voice) Spacer(Modifier.width(3.dp))
+        val summary = planSummarySegments(channelName, shot.mode.label(), packing, shot.promptUserEdited, stringResource(R.string.p2_edited))
         Text(
-            planSummary(channelName, shot.mode.label(), packing, shot.promptUserEdited, stringResource(R.string.p2_edited)),
+            summary.joinToString(" · "), // wrap-check: allow 分镜规划摘要与缩略图同排，固定单行省略
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -476,7 +479,7 @@ private fun AssetCard(asset: Asset, onClick: () -> Unit) {
             Text(asset.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
             Row(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    if (asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty()) asset.looks.joinToString(" · ") { it.name } else asset.kind.label(),
+                    if (asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty()) asset.looks.joinToString(" · ") { it.name } else asset.kind.label(), // wrap-check: allow 素材网格说明固定单行省略，右侧为状态
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

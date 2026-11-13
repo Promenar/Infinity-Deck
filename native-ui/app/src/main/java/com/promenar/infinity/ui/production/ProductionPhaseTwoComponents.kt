@@ -55,7 +55,11 @@ internal fun ShotPlanSummary(shot: Shot, channel: MediaChannel?, channelLabel: S
     val packing = if (shot.mode == ShotMode.REFERENCE && channel != null) stringResource(
         if (channel.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate,
     ) else null
-    Text(planSummary(channelLabel, shot.mode.label(), packing, shot.promptUserEdited, stringResource(R.string.p2_edited)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    InfinityMetaLine(
+        planSummarySegments(listOf(channelLabel), shot.mode.label(), packing, shot.promptUserEdited, stringResource(R.string.p2_edited)),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -87,7 +91,10 @@ internal fun ProductionShotText(shot: Shot, production: Production) {
     InfinityMetaLine(listOfNotNull(shot.size, shot.camera, shot.cameraMovement, secondsLabel(shot.durationSeconds)), style = MaterialTheme.typography.labelMedium)
     listOfNotNull(shot.visual, shot.performance).filter(String::isNotBlank).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
     shot.dialogue.forEach { line ->
-        Text(listOfNotNull(production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId, line.text, line.tone).joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+        InfinityMetaLine(
+            listOfNotNull(production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId, line.text, line.tone),
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
     listOfNotNull(shot.sound, shot.transition, shot.continuity).filter(String::isNotBlank).takeIf { it.isNotEmpty() }?.let {
         InfinityMetaLine(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

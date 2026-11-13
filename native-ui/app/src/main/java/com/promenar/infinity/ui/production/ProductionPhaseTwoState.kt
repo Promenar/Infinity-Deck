@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.production
 
 import com.promenar.infinity.data.production.*
 import com.promenar.infinity.domain.mediagen.*
+import com.promenar.infinity.ui.common.InfinityMetaSeparator
 
 /** 接线由宿主负责，sourceRef 按规划器实际契约提供，避免跨项目混入任务。 */
 data class ProductionPanelServices(
@@ -24,7 +25,12 @@ data class ProductionPanelServices(
     val reconcileReviews: (suspend () -> Unit)? = null,
     /** 打开面板时扫描项目目录里的未登记文件。 */
     val auditFiles: (suspend () -> Unit)? = null,
+    val channelLabelSegments: (String) -> List<String> = { listOf(channelLabel(it)) },
 )
+
+/** 通道名称作为完整句子的插值使用。 */
+internal fun List<String>.formatChannelLabel(): String =
+    filter(String::isNotBlank).joinToString(" $InfinityMetaSeparator ")
 
 enum class ShotDetailTab { STORYBOARD, CANDIDATES }
 enum class OutputFilter { ALL, REVIEW, REDO, LOCKED, TODO }
@@ -125,9 +131,9 @@ fun Asset.referenceLocations(production: Production): List<ShotLocation> = produ
     shot.appearances.any { it.characterAssetId == id } || shot.inputs.any { it.assetId == id } || shot.locationAssetId == id || id in shot.propAssetIds
 }.toList()
 
-/** 规划摘要只拼接当前有效数据；本地化词汇由界面传入。 */
-fun planSummary(channel: String, mode: String, packing: String?, edited: Boolean, editedLabel: String): String =
-    listOfNotNull(channel.takeIf { it.isNotBlank() }, mode, packing?.takeIf { it.isNotBlank() }, editedLabel.takeIf { edited }).joinToString(" · ")
+/** 规划摘要只包含当前有效数据；本地化词汇由界面传入。 */
+internal fun planSummarySegments(channel: List<String>, mode: String, packing: String?, edited: Boolean, editedLabel: String): List<String> =
+    (channel + listOfNotNull(mode, packing, editedLabel.takeIf { edited })).filter(String::isNotBlank)
 
 /** 进行中的任务可以取消；这是面板上唯一立即生效的动作。 */
 fun MediaTask.canCancel(): Boolean = isActiveTask()

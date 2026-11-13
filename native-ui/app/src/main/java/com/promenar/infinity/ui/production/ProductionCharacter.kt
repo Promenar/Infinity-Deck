@@ -113,7 +113,7 @@ internal fun ProductionCharacterPage(asset: Asset, production: Production, busy:
                             Text(location.shot.code, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
                             Text(location.shot.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Text(
-                                listOfNotNull(usedLook?.name, appearance?.let { stringResource(R.string.p2_slot_count, it.referenceSlotIds.size) }).joinToString(" · "),
+                                listOfNotNull(usedLook?.name, appearance?.let { stringResource(R.string.p2_slot_count, it.referenceSlotIds.size) }).joinToString(" · "), // wrap-check: allow 引用行尾固定单行，保留镜头标题空间
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                             )
                         }

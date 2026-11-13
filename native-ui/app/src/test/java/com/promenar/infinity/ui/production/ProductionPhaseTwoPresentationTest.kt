@@ -39,11 +39,11 @@ class ProductionPhaseTwoPresentationTest {
 
     @Test fun `任务行标题还原镜头编号与标题且只认本项目`() {
         val ref = ProductionSourceRef("p", "S1E01", "SC01-01")
-        assertThat(production.taskTitle(ref.encode())).isEqualTo("SC01-01 · 回头")
-        assertThat(production.taskTitle(ref.copy(dialogueIndex = 0).encode())).isEqualTo("SC01-01 · 回头 · #1")
-        assertThat(production.taskTitle(ref.copy(shotCode = "SC09-09").encode())).isEqualTo("SC09-09")
-        assertThat(production.taskTitle(ref.copy(productionId = "p2").encode())).isNull()
-        assertThat(production.taskTitle("p:task")).isNull()
+        assertThat(production.taskTitleSegments(ref.encode())).containsExactly("SC01-01", "回头").inOrder()
+        assertThat(production.taskTitleSegments(ref.copy(dialogueIndex = 0).encode())).containsExactly("SC01-01", "回头", "#1").inOrder()
+        assertThat(production.taskTitleSegments(ref.copy(shotCode = "SC09-09").encode())).containsExactly("SC09-09")
+        assertThat(production.taskTitleSegments(ref.copy(productionId = "p2").encode())).isEmpty()
+        assertThat(production.taskTitleSegments("p:task")).isEmpty()
     }
 
     @Test fun `页签待审数只看镜头状态且待定场显示圆点`() {
@@ -126,9 +126,10 @@ class ProductionPhaseTwoPresentationTest {
     }
 
     @Test fun `规划摘要包含入参方式和用户改写标记且没有空分隔`() {
-        assertThat(planSummary("A", "参考", "合图", true, "已改写")).isEqualTo("A · 参考 · 合图 · 已改写")
-        assertThat(planSummary("A", "文生", null, false, "已改写")).isEqualTo("A · 文生")
-        assertThat(planSummary("", "文生", "", false, "已改写")).isEqualTo("文生")
+        assertThat(planSummarySegments(listOf("A", "服务方"), "参考", "合图", true, "已改写"))
+            .containsExactly("A", "服务方", "参考", "合图", "已改写").inOrder()
+        assertThat(planSummarySegments(listOf("A"), "文生", null, false, "已改写")).containsExactly("A", "文生").inOrder()
+        assertThat(planSummarySegments(listOf(""), "文生", "", false, "已改写")).containsExactly("文生")
     }
 
     @Test fun `通道选择按模式过滤保留用户顺序并排除音频组`() {

@@ -121,7 +121,7 @@ internal fun ProductionShotDetail(
                             ProductionMutedRow(stringResource(R.string.production_panel_no_takes))
                         }
                         if (shot.takes.isNotEmpty() || placeholders.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabel(take.source.service)) { viewingId = take.id } }
+                            items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabelSegments(take.source.service).formatChannelLabel()) { viewingId = take.id } }
                             items(placeholders, key = { it.key }) { item -> PlaceholderThumb(item, item.key == viewingPlaceholder?.key, now) { viewingId = item.key } }
                         }
                         if (viewing != null) {
@@ -188,11 +188,13 @@ internal fun ProductionShotDetail(
                     ProductionSection(stringResource(R.string.p2_channel_mode)) {
                         ProductionRow(stringResource(R.string.p2_mode), value = shot.mode.label(), enabled = !working, onClick = { sheet = PlanningSheet.MODE })
                         val noChannel = preview != null && preview?.channel == null
-                        val channelName = preview?.channelLabel?.takeIf(String::isNotBlank) ?: shot.channelId?.let(services.channelLabel)
-                            ?: stringResource(if (noChannel) R.string.p2_no_channels else R.string.p2_default_channel)
-                        val channelValue = if (!noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank()) "$channelName · ${stringResource(R.string.p2_default)}" else channelName
-                        ProductionRow(stringResource(R.string.p2_channel), value = channelValue, enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
-                        ProductionRow(stringResource(R.string.p2_specs), value = planSpecsLabel(preview, production, shot))
+                        val channelName = preview?.channelLabel?.takeIf(String::isNotBlank)
+                            ?.split(" $InfinityMetaSeparator ") ?: shot.channelId?.let(services.channelLabelSegments)
+                            ?: listOf(stringResource(if (noChannel) R.string.p2_no_channels else R.string.p2_default_channel))
+                        val defaultLabel = stringResource(R.string.p2_default)
+                            .takeIf { !noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank() }
+                        ProductionRow(stringResource(R.string.p2_channel), valueSegments = channelName + listOfNotNull(defaultLabel), enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
+                        ProductionRow(stringResource(R.string.p2_specs), valueSegments = planSpecsSegments(preview, production, shot))
                         ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
                         shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
                     }
@@ -204,9 +206,11 @@ internal fun ProductionShotDetail(
                     }
                     val images = inputs.count { it.kind == InputKind.IMAGE }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val sectionTitle = stringResource(R.string.production_panel_section_inputs)
                         ProductionSection(
-                            listOfNotNull(stringResource(R.string.production_panel_section_inputs), packing, stringResource(R.string.p2_image_count, images).takeIf { images > 0 }).joinToString(" · "),
-                            trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" · ") ?: it.id) },
+                            sectionTitle,
+                            titleSegments = listOfNotNull(sectionTitle, packing, stringResource(R.string.p2_image_count, images).takeIf { images > 0 }),
+                            trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" $InfinityMetaSeparator ") ?: it.id) },
                         ) {
                             if (loading && preview == null) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
                             inputs.forEach { PlannedInputRow(it) }
@@ -234,8 +238,10 @@ internal fun ProductionShotDetail(
                 }
                 item("prompt") {
                     Column {
+                        val sectionTitle = stringResource(R.string.p2_submission_prompt)
                         ProductionSectionHeader(
-                            listOf(stringResource(R.string.p2_submission_prompt), preview?.promptFormat?.label() ?: stringResource(R.string.p2_format_generic)).joinToString(" · "),
+                            sectionTitle,
+                            titleSegments = listOf(sectionTitle, preview?.promptFormat?.label() ?: stringResource(R.string.p2_format_generic)),
                             action = {
                                 IconButton(onClick = { dialog = PlanningDialog.RECOMPILE }, enabled = !working && services.planner != null, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Refresh, stringResource(R.string.p2_recompile), Modifier.size(20.dp)) }
                                 IconButton(onClick = { dialog = PlanningDialog.PROMPT }, enabled = !working, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Edit, stringResource(R.string.production_panel_edit), Modifier.size(20.dp)) }
@@ -257,7 +263,13 @@ internal fun ProductionShotDetail(
         PlanningSheet.MODE -> ProductionOptionSheet(stringResource(R.string.p2_mode), ShotMode.entries.map { it to it.label() }, shot.mode, { sheet = null }) { onRun(modeSelectionAction(location, it, channels, channelOrder)) }
         PlanningSheet.CHANNEL -> {
             val choices = channelChoices(channels, channelOrder, shot.mode)
-            ProductionOptionSheet(stringResource(R.string.p2_channel), choices.map { it.id to services.channelLabel(it.id) }, shot.channelId ?: choices.firstOrNull()?.id, { sheet = null }) { onRun(ProductionUserAction.SetShotPlan(episodeId, shot.code, it, shot.mode)) }
+            ProductionChoiceSheet(
+                title = stringResource(R.string.p2_channel),
+                options = choices.map { ProductionChoice(it.id, it.id, labelSegments = services.channelLabelSegments(it.id)) },
+                selected = shot.channelId ?: choices.firstOrNull()?.id,
+                onDismiss = { sheet = null },
+                emptyText = stringResource(R.string.p2_no_channels),
+            ) { onRun(ProductionUserAction.SetShotPlan(episodeId, shot.code, it, shot.mode)) }
         }
         PlanningSheet.LOOK -> {
             val character = production.findAsset(lookCharacter.orEmpty())

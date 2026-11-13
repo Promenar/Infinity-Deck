@@ -33,7 +33,7 @@ internal fun MediaModelsScreenContent(
                 rows.forEachIndexed { index, row ->
                     InfinitySettingsItem(
                         title = row.name,
-                        subtitle = channelDescription(row),
+                        subtitleSegments = channelDescriptionSegments(row),
                         subtitleMaxLines = Int.MAX_VALUE,
                         titleMaxLines = 2,
                         onClick = { onOpen(row) },

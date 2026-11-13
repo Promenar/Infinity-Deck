@@ -27,7 +27,7 @@ fun rememberProductionPanelServices(
     val conflict = stringResource(R.string.production_wire_conflict)
     val invalid = stringResource(R.string.production_wire_invalid_content)
     val failed = stringResource(R.string.production_panel_action_failed)
-    val labels by produceState<Map<String, String>>(emptyMap(), runtime) {
+    val labels by produceState<Map<String, List<String>>>(emptyMap(), runtime) {
         value = emptyMap()
         if (runtime != null) {
             val providers = ProviderManager.getInstance()
@@ -36,9 +36,9 @@ fun rememberProductionPanelServices(
                 providers.providerModels,
                 app.comfyMedia.repository.observeTemplates(),
             ) { channels, models, templates ->
-                val names = models.associate { "cloud:${it.id}" to "${it.name} · ${it.providerName}" } +
-                    templates.associate { it.template.channelId to it.template.name }
-                channels.associate { it.id to (names[it.id] ?: it.id) } + names
+                val names = models.associate { "cloud:${it.id}" to listOf(it.name, it.providerName) } +
+                    templates.associate { it.template.channelId to listOf(it.template.name) }
+                channels.associate { it.id to (names[it.id] ?: listOf(it.id)) } + names
             }.collect { value = it }
         }
     }
@@ -60,7 +60,8 @@ fun rememberProductionPanelServices(
             registry = runtime?.let { app.mediaChannelRegistry },
             projectSourcePrefix = { ProductionSourceRef.projectPrefix(it.id) },
             shotSourceRef = { production, location -> ProductionSourceRef(production.id, location.episode.id, location.shot.code).encode() },
-            channelLabel = { labels[it] ?: it },
+            channelLabel = { labels[it]?.formatChannelLabel() ?: it },
+            channelLabelSegments = { labels[it] ?: listOf(it) },
             openRoute = openRoute,
             requestContentChange = { revision, location, proposed ->
                 requestShotContentChange(source, sessionId, revision, location, proposed, conflict, invalid, failed)

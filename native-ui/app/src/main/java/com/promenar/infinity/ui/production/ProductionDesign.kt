@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -53,10 +54,11 @@ internal fun ProductionSection(
     modifier: Modifier = Modifier,
     trailing: String? = null,
     titleAction: (@Composable RowScope.() -> Unit)? = null,
+    titleSegments: List<String>? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth()) {
-        if (title != null) ProductionSectionHeader(title, trailing = trailing, action = titleAction)
+        if (title != null) ProductionSectionHeader(title, trailing = trailing, action = titleAction, titleSegments = titleSegments)
         BettboxListGroup {
             Column(Modifier.padding(vertical = InfinitySpacing.XSmall), content = content)
         }
@@ -71,6 +73,7 @@ internal fun ProductionSectionHeader(
     trailing: String? = null,
     subtitle: String? = null,
     action: (@Composable RowScope.() -> Unit)? = null,
+    titleSegments: List<String>? = null,
 ) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 28.dp).padding(start = InfinitySpacing.RowHorizontal, end = if (action != null) 4.dp else InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.SectionHeaderBottom),
@@ -78,13 +81,14 @@ internal fun ProductionSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.semantics { heading() },
-            )
+            val titleStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+            val heading = Modifier.semantics { heading() }
+            val titleColor = MaterialTheme.colorScheme.primary
+            if (titleSegments != null) {
+                InfinityMetaLine(titleSegments, style = titleStyle, color = titleColor, modifier = heading)
+            } else {
+                Text(title, style = titleStyle, color = titleColor, modifier = heading)
+            }
             subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         trailing?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
@@ -113,12 +117,16 @@ internal fun ProductionRow(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     role: Role = Role.Button,
+    titleSegments: List<String>? = null,
+    valueSegments: List<String>? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val showChevron = chevron ?: (onClick != null)
-    val hasTrailing = value != null || chip != null || trailing != null || showChevron || selected
+    val displayValue = valueSegments?.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: value // wrap-check: allow 右侧数值固定单行省略
+    val hasTrailing = displayValue != null || chip != null || trailing != null || showChevron || selected
     InfinitySettingsRowLayout(
         title = title,
+        titleSegments = titleSegments,
         subtitle = subtitle,
         subtitleSegments = subtitleSegments,
         icon = icon,
@@ -130,7 +138,7 @@ internal fun ProductionRow(
         modifier = modifier.then(if (onClick != null) Modifier.clickable(enabled = enabled, role = role, onClick = onClick) else Modifier),
         trailingContent = if (!hasTrailing) null else ({
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                value?.let {
+                displayValue?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 }
                 chip?.let { ProductionStatusChip(it.text, it.tone) }
@@ -202,9 +210,9 @@ internal fun ProductionTopBar(
             title = title,
             modifier = Modifier.weight(1f).then(if (inPane) Modifier.padding(horizontal = InfinitySpacing.Small) else Modifier),
             meta = if (meta.isEmpty() && metaAccent == null) null else ({
-                Text(meta.joinToString(" · "), maxLines = 1, softWrap = false)
+                Text(meta.joinToString(" · "), maxLines = 1, softWrap = false) // wrap-check: allow 共享页头信息行固定单行横滑
                 metaAccent?.let {
-                    Text(if (meta.isEmpty()) it else " · $it", color = MaterialTheme.infinityDomainColors.onWarningContainer, maxLines = 1, softWrap = false)
+                    Text(if (meta.isEmpty()) it else " · $it", color = MaterialTheme.infinityDomainColors.onWarningContainer, maxLines = 1, softWrap = false) // wrap-check: allow 同一横滑行的独立警告色
                 }
             }),
         )
@@ -236,6 +244,7 @@ internal fun <T> ProductionChoiceSheet(
             options.forEach { option ->
                 ProductionRow(
                     title = option.label,
+                    titleSegments = option.labelSegments,
                     subtitle = option.detail,
                     icon = option.icon,
                     chip = option.chip,
@@ -256,4 +265,5 @@ internal data class ProductionChoice<T>(
     val detail: String? = null,
     val icon: ImageVector? = null,
     val chip: ProductionChipSpec? = null,
+    val labelSegments: List<String>? = null,
 )

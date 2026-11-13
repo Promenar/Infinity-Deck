@@ -597,7 +597,7 @@ private fun ProviderCard(
         )
         Text(metaLine, style = MaterialTheme.typography.bodySmall, color = secondary)
         mediaCounts?.let { countsByType ->
-            Text(providerMediaCountLabel(countsByType), style = MaterialTheme.typography.bodySmall, color = secondary)
+            InfinityMetaLine(providerMediaCountSegments(countsByType), style = MaterialTheme.typography.bodySmall, color = secondary)
         }
         ProviderConnectionLine(provider.id, status, nowMillis)
     }

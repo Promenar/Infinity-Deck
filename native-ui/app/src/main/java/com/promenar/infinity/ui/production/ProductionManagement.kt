@@ -88,12 +88,12 @@ internal fun ProductionManagementTab(
                 if (services.queue == null || services.projectSourcePrefix == null) ProductionMutedRow(stringResource(R.string.p2_queue_unavailable))
                 else if (active.isEmpty() && progress.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_empty_queue))
                 progress.forEach { ProductionProgressRow(it, production, now, busy, onRun, onShot) }
-                active.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitle(it.request.sourceRef), channels) }
+                active.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitleSegments(it.request.sourceRef), channels) }
             }
         }
         if (recent.isNotEmpty()) item("recent") {
             ProductionSection(stringResource(R.string.p2_recent)) {
-                recent.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitle(it.request.sourceRef), channels) }
+                recent.forEach { ProductionTaskRow(it, services, busy, onCancelTask, production.taskTitleSegments(it.request.sourceRef), channels) }
             }
         }
         item("cost") { ProductionCostSection(production, costStats, onShot, onAsset) }
@@ -140,7 +140,8 @@ private fun PendingRow(
         is OverviewItem.ReferenceReview -> {
             val used = item.asset.referenceLocations(production).size
             ProductionRow(
-                listOfNotNull(item.asset.name, item.asset.looks.firstOrNull()?.name).joinToString(" · "),
+                item.asset.name,
+                titleSegments = listOfNotNull(item.asset.name, item.asset.looks.firstOrNull()?.name),
                 icon = Icons.Rounded.Person,
                 subtitle = stringResource(R.string.p2_reference_pending_detail, used),
                 onClick = { onAsset(item.asset.id) },
@@ -149,7 +150,13 @@ private fun PendingRow(
         is OverviewItem.ChangeReview -> {
             val request = item.request
             val target = ReviewTarget.change(request.id)
-            ProductionRow(stringResource(R.string.p2_change_request), icon = Icons.Rounded.EditNote, subtitle = "${request.episodeId} · ${request.shotCode}", chip = production.reviewChipSpec(target), chevron = false)
+            ProductionRow(
+                stringResource(R.string.p2_change_request),
+                icon = Icons.Rounded.EditNote,
+                subtitle = "${request.episodeId} · ${request.shotCode}", // wrap-check: allow 改动请求副标题固定单行横滑
+                chip = production.reviewChipSpec(target),
+                chevron = false,
+            )
             Column(Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal + InfinitySpacing.RowIconSize + InfinitySpacing.RowIconGap, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 request.changes.forEach { (field, change) ->
                     Text(stringResource(R.string.p2_change_diff, contentFieldLabel(field), change.oldValue.toString(), change.newValue.toString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -290,12 +297,11 @@ internal fun stageChip(production: Production, state: StageState, services: Prod
 }
 
 /** 任务行标题：镜头编号与标题，配音追加对白序号；无法解析时由调用方回退到原始引用。 */
-internal fun Production.taskTitle(sourceRef: String): String? {
-    val ref = ProductionSourceRef.parse(sourceRef) ?: return null
-    if (ref.productionId != id) return null
+internal fun Production.taskTitleSegments(sourceRef: String): List<String> {
+    val ref = ProductionSourceRef.parse(sourceRef) ?: return emptyList()
+    if (ref.productionId != id) return emptyList()
     val shot = shotLocations().firstOrNull { it.episode.id == ref.episodeId && it.shot.code == ref.shotCode }?.shot
-    val base = shot?.let { "${it.code} · ${it.title}" } ?: ref.shotCode
-    return ref.dialogueIndex?.let { "$base · #${it + 1}" } ?: base
+    return listOfNotNull(shot?.code ?: ref.shotCode, shot?.title, ref.dialogueIndex?.let { "#${it + 1}" })
 }
 
 internal fun MediaTask.tone(pendingRegistrations: Set<String>): ProductionTone = when {
@@ -324,14 +330,20 @@ private fun MediaTask.kindLabel(channels: List<MediaChannel>): String = stringRe
 
 /** 任务行：对象、种类、通道与错误，右侧状态；进行中的任务只有“取消”。 */
 @Composable
-internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onCancel: (String) -> Unit, title: String? = null, channels: List<MediaChannel> = emptyList()) {
+internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onCancel: (String) -> Unit, titleSegments: List<String> = emptyList(), channels: List<MediaChannel> = emptyList()) {
     val running = task.isActiveTask() && task.state != MediaTaskState.QUEUED
     Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(listOf(title ?: task.request.sourceRef, task.kindLabel(channels)).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val title = titleSegments.ifEmpty { listOf(task.request.sourceRef) } + task.kindLabel(channels)
+                Text(
+                    title.joinToString(" · "), // wrap-check: allow 任务标题固定单行省略，右侧为状态
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 InfinityMetaLine(
-                    segments = listOfNotNull(services.channelLabel(task.request.channelId), task.error),
+                    segments = services.channelLabelSegments(task.request.channelId) + listOfNotNull(task.error),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -410,8 +422,6 @@ private fun OutputShotRow(production: Production, location: ShotLocation, servic
     val running = services.shotSourceRef?.invoke(production, location)?.let { ref -> tasks.lastOrNull { it.request.sourceRef == ref && it.isActiveTask() } }
     val take = shot.displayTake()
     val chip = if (running != null) ProductionChipSpec(running.stateLabel() + (running.progress?.let { " ${(it * 100).toInt()}%" } ?: ""), ProductionTone.INFO) else ProductionChipSpec(shot.status.label(), shot.status.tone())
-    val detail = if (take != null) stringResource(R.string.p2_candidates_channel, shot.takes.size, services.channelLabel(take.source.service))
-    else listOf(resolvedShotChannel(shot, channels, channelOrder)?.id?.let(services.channelLabel) ?: shot.channelId?.let(services.channelLabel) ?: stringResource(R.string.p2_default_channel), shot.mode.label()).joinToString(" · ")
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button) { onShot(location.episode.id, shot.code) }
             .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp),
@@ -426,6 +436,14 @@ private fun OutputShotRow(production: Production, location: ShotLocation, servic
             Row {
                 Text(shot.code, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 Text(" ${shot.title}", style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            val detail = if (take != null) {
+                val channel = services.channelLabelSegments(take.source.service).formatChannelLabel()
+                stringResource(R.string.p2_candidates_channel, shot.takes.size, channel)
+            } else {
+                val channelId = resolvedShotChannel(shot, channels, channelOrder)?.id ?: shot.channelId
+                val channel = channelId?.let(services.channelLabelSegments) ?: listOf(stringResource(R.string.p2_default_channel))
+                (channel + shot.mode.label()).joinToString(" · ") // wrap-check: allow 产出列表副标题固定单行省略
             }
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -482,7 +500,9 @@ internal fun CutTimeline(production: Production, version: ProductionCutVersion, 
                         when {
                             clip.path != null -> {
                                 ProductionThumbnail(clip.path, Modifier.fillMaxSize())
-                                ClipBadge(label + if (shot?.status == ShotStatus.REVIEW && !isPreview) " · ${stringResource(R.string.production_panel_shot_review)}" else "", Modifier.align(Alignment.BottomStart))
+                                val review = if (shot?.status == ShotStatus.REVIEW && !isPreview) stringResource(R.string.production_panel_shot_review) else null
+                                val badge = listOfNotNull(label, review).joinToString(" · ") // wrap-check: allow 剪辑缩略图角标固定单行
+                                ClipBadge(badge, Modifier.align(Alignment.BottomStart))
                             }
                             isPreview -> Column(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
                                 Text(clip.title, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -500,23 +520,27 @@ internal fun CutTimeline(production: Production, version: ProductionCutVersion, 
                     val line = locations.firstOrNull { it.episode.id == clip.episodeId && it.shot.code == clip.shotCode }?.shot?.dialogue?.firstOrNull()
                     if (line == null) Spacer(Modifier.width(clipWidth).height(18.dp))
                     else TrackSpan(
-                        "${production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId} · ${stringResource(if (line.audioSource == DialogueAudioSource.NATIVE) R.string.p2_native else R.string.p2_dubbed)}",
+                        listOf(
+                            production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId,
+                            stringResource(if (line.audioSource == DialogueAudioSource.NATIVE) R.string.p2_native else R.string.p2_dubbed),
+                        ),
                         scheme.tertiaryContainer, scheme.onTertiaryContainer, clipWidth,
                     )
                 }
             }
-            val ambience = locations.mapNotNull { it.shot.sound }.flatMap { it.split(" · ", "·") }.map(String::trim).filter(String::isNotBlank).distinct().take(3)
-            TrackSpan(listOf(stringResource(R.string.p2_track_environment)).plus(ambience).joinToString(" · "), domain.successContainer, domain.onSuccessContainer, width)
+            val ambience = locations.mapNotNull { it.shot.sound }.flatMap { it.split(InfinityMetaSeparator) }.map(String::trim).filter(String::isNotBlank).distinct().take(3)
+            TrackSpan(listOf(stringResource(R.string.p2_track_environment)) + ambience, domain.successContainer, domain.onSuccessContainer, width)
             // 与导出一致：第一个已锁定的声音资产作为音乐铺底。
             val music = production.assets.firstOrNull { it.kind == AssetKind.SOUND && it.status == AssetStatus.LOCKED }?.name ?: stringResource(R.string.p2_none)
-            TrackSpan(listOf(stringResource(R.string.p2_track_music), music).joinToString(" · "), domain.infoContainer, domain.onInfoContainer, width)
+            TrackSpan(listOf(stringResource(R.string.p2_track_music), music), domain.infoContainer, domain.onInfoContainer, width)
         }
     }
 }
 
 @Composable
-private fun TrackSpan(text: String, container: Color, content: Color, width: Dp) {
+private fun TrackSpan(segments: List<String>, container: Color, content: Color, width: Dp) {
     Box(Modifier.width(width).height(18.dp).clip(RoundedCornerShape(5.dp)).background(container).padding(horizontal = 6.dp), contentAlignment = Alignment.CenterStart) {
+        val text = segments.joinToString(" · ") // wrap-check: allow 18dp 剪辑轨道固定单行省略
         Text(text, style = MaterialTheme.typography.labelSmall, color = content, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

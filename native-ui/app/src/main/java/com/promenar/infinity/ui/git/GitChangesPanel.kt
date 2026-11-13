@@ -76,6 +76,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -119,6 +120,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityMetaSeparator
 
 object GitPanelTags {
     const val ROOT = "git_panel_root"
@@ -490,13 +492,16 @@ private fun BranchRefLine(status: GitStatus, modifier: Modifier) {
             )
             when {
                 status.detached || missing -> Unit
-                upstream == null -> Text(
-                    text = " · " + stringResource(R.string.git_panel_no_upstream),
-                    style = InfinityTypography.bodySmall,
-                    color = muted,
-                    maxLines = 1,
-                    softWrap = false,
-                )
+                upstream == null -> {
+                    GitTrackingSeparator(muted)
+                    Text(
+                        text = stringResource(R.string.git_panel_no_upstream),
+                        style = InfinityTypography.bodySmall,
+                        color = muted,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
                 else -> {
                     Text(
                         text = "  →  ",
@@ -541,9 +546,7 @@ private fun SyncLine(status: GitStatus, now: Long) {
     val fetchAge = gitFetchAge(status.lastFetchSeconds, now)
     val ahead = gitTrackingCount(tracking.ahead, tracking.truncated)
     val behind = gitTrackingCount(tracking.behind, tracking.truncated)
-    val separator: @Composable () -> Unit = {
-        Text(" · ", style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, softWrap = false)
-    }
+    val separatorColor = MaterialTheme.colorScheme.outline
     val scroll = rememberScrollState()
     Row(
         modifier = Modifier.heightIn(min = 20.dp)
@@ -560,14 +563,26 @@ private fun SyncLine(status: GitStatus, now: Long) {
                 synced -> SyncCount(Icons.Rounded.Check, stringResource(R.string.git_panel_synced), muted)
                 else -> {
                     behind?.let { SyncCount(Icons.Rounded.ArrowDownward, stringResource(R.string.git_panel_behind, it), MaterialTheme.infinityDomainColors.warning) }
-                    if (behind != null && ahead != null) separator()
+                    if (behind != null && ahead != null) GitTrackingSeparator(separatorColor)
                     ahead?.let { SyncCount(Icons.Rounded.ArrowUpward, stringResource(R.string.git_panel_ahead, it), MaterialTheme.colorScheme.primary) }
                 }
             }
-            separator()
+            GitTrackingSeparator(separatorColor)
         }
         Text(fetchAgeLabel(fetchAge), style = InfinityTypography.bodySmall, color = muted, maxLines = 1, softWrap = false)
     }
+}
+
+@Composable
+private fun GitTrackingSeparator(color: Color) {
+    Text(
+        text = " $InfinityMetaSeparator ",
+        style = InfinityTypography.bodySmall,
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier.clearAndSetSemantics { },
+    )
 }
 
 @Composable

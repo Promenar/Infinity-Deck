@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.*
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.theme.forInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -69,7 +70,14 @@ internal fun ProductionShotContentEditor(location: ShotLocation, production: Pro
 
 @Composable
 private fun ContentField(label: String, value: String, enabled: Boolean, onValueChange: (String) -> Unit) {
-    OutlinedTextField(value, onValueChange = { onValueChange(it.take(PRODUCTION_PROMPT_MAX)) }, label = { Text(label) }, enabled = enabled, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        value,
+        onValueChange = { onValueChange(it.take(PRODUCTION_PROMPT_MAX)) },
+        label = { Text(label) },
+        textStyle = LocalTextStyle.current.forInput(),
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

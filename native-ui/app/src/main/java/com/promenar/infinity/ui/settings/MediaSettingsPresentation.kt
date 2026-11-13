@@ -20,7 +20,7 @@ internal fun referenceInputDescription(caps: MediaCapabilities): ReferenceInputD
 internal data class MediaChannelRow(
     val channel: MediaChannel,
     val name: String,
-    val source: String,
+    val sourceSegments: List<String>,
     val isDefault: Boolean,
     val modelId: String? = null,
     val templateId: String? = null,
@@ -39,9 +39,12 @@ internal fun mediaChannelRows(
         channels.filter { it.group == group }.mapIndexed { index, channel ->
             val model = cloud[channel.id]
             val template = comfy[channel.id]?.template
-            MediaChannelRow(channel, model?.name ?: template?.name ?: channel.id,
-                model?.providerName ?: template?.let { "ComfyUI · ${hostNames[it.hostId].orEmpty()}" }.orEmpty(),
-                index == 0, model?.id, template?.id)
+            val source = when {
+                model != null -> listOf(model.providerName)
+                template != null -> listOfNotNull("ComfyUI", hostNames[template.hostId])
+                else -> emptyList()
+            }
+            MediaChannelRow(channel, model?.name ?: template?.name ?: channel.id, source, index == 0, model?.id, template?.id)
         }
     }
 }
