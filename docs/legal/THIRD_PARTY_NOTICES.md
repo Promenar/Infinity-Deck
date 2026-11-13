@@ -131,5 +131,5 @@ SSH 与终端依赖保持版本固定；终端原生进程桥接库只用于侧�
 ## 录音听写与 GGUF
 
 - [Sherpa-ONNX v2.0.1](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1) 为 Apache-2.0，Android AAR 包含 [ONNX Runtime v1.28.2](https://github.com/microsoft/onnxruntime/tree/v1.28.2)（MIT）。原始许可和 ONNX Runtime 第三方声明随 APK 存放于 `assets/licenses/`。
-- [中英 Zipformer 小版](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/zipformer-transducer-models.html#sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16-bilingual-chinese-english) 源于 [Apache-2.0 权重](https://huggingface.co/csukuangfj/k2fsa-zipformer-bilingual-zh-en-t)，随 APK 分发三份 ONNX 权重和词表。
+- [X-ASR 480ms 中英标点流式 Zipformer2](https://github.com/Gilgamesh-J/X-ASR) 权重采用 Apache-2.0，由 [sherpa-onnx asr-models 发布页](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)分发 `sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2`；随 APK 分发 `encoder.int8.onnx`、`decoder.onnx`、`joiner.int8.onnx` 与 BPE 词表 `tokens.txt`。
 - [llama.cpp b12076](https://github.com/ggml-org/llama.cpp/tree/36ee3caf7aa2dcb0210bedab1b61ee9f269765d3) 为 MIT，用于侧载本地推理。用户可单独选择下载 [Qwen3-0.6B Q8 GGUF](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/tree/23749fefcc72300e3a2ad315e1317431b06b590a)（Apache-2.0）。

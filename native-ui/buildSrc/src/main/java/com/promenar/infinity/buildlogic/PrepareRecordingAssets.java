@@ -12,15 +12,15 @@ import java.nio.file.Path;
 import java.util.Map;
 import javax.inject.Inject;
 
-/** 只打包 Find N5 选型所用的三份权重和词表。 */
+/** 只打包 X-ASR 480ms 中英标点模型的三份权重和 BPE 词表。 */
 @CacheableTask
 public abstract class PrepareRecordingAssets extends DefaultTask {
-    private static final String SOURCE = "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16/";
+    private static final String SOURCE = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05/";
     private static final Map<String, String> FILES = Map.of(
-        "decoder-epoch-99-avg-1.onnx", "89be509a83175261695bdef5fd1c7b9ab1129a663d1284e7ba9f8507b21e0906",
-        "encoder-epoch-99-avg-1.int8.onnx", "db6f51551762e40e549166fe041ea3e45464370b595e9ad23f06478ec3794fbb",
-        "joiner-epoch-99-avg-1.int8.onnx", "bdda356d6f9b8c2d7cee9ee0e26075fa537490f7fd06520be408d287073667b9",
-        "tokens.txt", "a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3"
+        "decoder.onnx", "a1cbc9eac2d5e3fb6617a218c67ad6daaa7f4e0fd225f08b2c22ab0413c8c257",
+        "encoder.int8.onnx", "908596dcc137a73b95be908ca55e88caa1b3dbbe8027c171615f4b0609c5eb1e",
+        "joiner.int8.onnx", "aedb7fa697b2ab43f20499826fff7c997eea7d67db77be97769aeeeb726e63b3",
+        "tokens.txt", "b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c"
     );
 
     @InputFile @PathSensitive(PathSensitivity.NONE)
@@ -41,7 +41,7 @@ public abstract class PrepareRecordingAssets extends DefaultTask {
         for (var entry : FILES.entrySet()) {
             Path file = output.resolve("asr").resolve(entry.getKey());
             if (!Files.isRegularFile(file) || !FetchVerifiedFile.sha256(file).equals(entry.getValue())) {
-                throw new IOException("Zipformer 资产缺失或摘要不符：" + entry.getKey());
+                throw new IOException("X-ASR 资产缺失或摘要不符：" + entry.getKey());
             }
         }
     }

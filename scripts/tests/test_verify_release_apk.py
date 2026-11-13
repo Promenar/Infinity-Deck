@@ -93,10 +93,43 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "缺少离线听写制品"):
             verify_release_apk.verify_recording_artifacts(self.make_apk(native))
         assets = [f"assets/asr/{name}" for name in (
-            "decoder-epoch-99-avg-1.onnx", "encoder-epoch-99-avg-1.int8.onnx", "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt",
+            "decoder.onnx", "encoder.int8.onnx", "joiner.int8.onnx", "tokens.txt",
         )]
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "模型摘要不符"):
             verify_release_apk.verify_recording_artifacts(self.make_apk(native + assets))
+
+    def test_recording_checks_all_four_x_asr_digests(self) -> None:
+        expected = {
+            "encoder.int8.onnx": "908596dcc137a73b95be908ca55e88caa1b3dbbe8027c171615f4b0609c5eb1e",
+            "decoder.onnx": "a1cbc9eac2d5e3fb6617a218c67ad6daaa7f4e0fd225f08b2c22ab0413c8c257",
+            "joiner.int8.onnx": "aedb7fa697b2ab43f20499826fff7c997eea7d67db77be97769aeeeb726e63b3",
+            "tokens.txt": "b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c",
+        }
+        entries = {f"assets/asr/{name}": name.encode() for name in expected}
+        entries.update({f"lib/arm64-v8a/{name}": b"fixture" for name in (
+            "libonnxruntime.so", "libsherpa-onnx-jni.so", "libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so",
+        )})
+        apk = self.make_apk(entries)
+
+        # 用小型命名载荷代替模型大文件，验证逐文件摘要比较及全部四项检查。
+        def digest_for_payload():
+            payload = bytearray()
+            digest = mock.Mock()
+            digest.update.side_effect = payload.extend
+            digest.hexdigest.side_effect = lambda: expected[payload.decode()]
+            return digest
+
+        with mock.patch.object(verify_release_apk.hashlib, "sha256", side_effect=digest_for_payload):
+            verify_release_apk.verify_recording_artifacts(apk)
+            for name in list(expected):
+                with self.subTest(asset=name), mock.patch.dict(expected, {name: "0" * 64}):
+                    with self.assertRaisesRegex(verify_release_apk.VerificationError, f"模型摘要不符：{name}"):
+                        verify_release_apk.verify_recording_artifacts(apk)
+
+    def test_x_asr_joiner_is_subject_to_the_full_sensitive_scan(self) -> None:
+        entry = "assets/asr/joiner.int8.onnx"
+        self.assertEqual([(entry, "私网或 CGNAT 测试地址")],
+                         verify_release_apk.scan_stream(io.BytesIO(b"10.13.31.434"), entry))
 
 
 class ZipAndSizeVerificationTest(ApkFixtureTestCase):
