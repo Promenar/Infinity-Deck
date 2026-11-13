@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.54.0-beta] - 2026-11-13
+
 ### 新增
 
 - 录音整理设置增加热词库，支持搜索、启停、写法与读法、批量导入。单条录音可以添加热词并选择是否使用全局热词库。
