@@ -16,7 +16,7 @@ import zipfile
 
 
 # 为随包分发的双语 Zipformer、多 ABI ONNX Runtime 和侧载 llama.cpp 留出有界空间。
-MAX_APK_BYTES = 180 * 1024 * 1024
+MAX_APK_BYTES = 280 * 1024 * 1024
 READ_CHUNK_BYTES = 1024 * 1024
 SCAN_OVERLAP_BYTES = 512
 MAX_ZIP_ENTRIES = 100_000
@@ -251,10 +251,10 @@ def verify_local_inference_artifacts(apk: Path, distribution: str) -> None:
 def verify_recording_artifacts(apk: Path) -> None:
     """确认离线听写的四份模型资产及各 ABI 的原生运行时完整。"""
     assets = {
-        "decoder-epoch-99-avg-1.onnx": "89be509a83175261695bdef5fd1c7b9ab1129a663d1284e7ba9f8507b21e0906",
-        "encoder-epoch-99-avg-1.int8.onnx": "db6f51551762e40e549166fe041ea3e45464370b595e9ad23f06478ec3794fbb",
-        "joiner-epoch-99-avg-1.int8.onnx": "bdda356d6f9b8c2d7cee9ee0e26075fa537490f7fd06520be408d287073667b9",
-        "tokens.txt": "a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3",
+        "decoder.onnx": "a1cbc9eac2d5e3fb6617a218c67ad6daaa7f4e0fd225f08b2c22ab0413c8c257",
+        "encoder.int8.onnx": "908596dcc137a73b95be908ca55e88caa1b3dbbe8027c171615f4b0609c5eb1e",
+        "joiner.int8.onnx": "aedb7fa697b2ab43f20499826fff7c997eea7d67db77be97769aeeeb726e63b3",
+        "tokens.txt": "b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c",
     }
     with zipfile.ZipFile(apk) as archive:
         names = set(archive.namelist())
@@ -441,9 +441,6 @@ SHERPA_NATIVE_PATTERN = re.compile(r"lib/[^/]+/(?:libonnxruntime|libsherpa-onnx-
 def upstream_allowances(entry_name: str) -> dict[str, re.Pattern[bytes]]:
     if SHERPA_NATIVE_PATTERN.fullmatch(entry_name):
         return {"Linux 用户绝对路径": re.compile(rb"/home/runner/")}
-    if entry_name == "assets/asr/joiner-epoch-99-avg-1.int8.onnx":
-        # 固定权重中的数字序列，末段 434 不是有效的 IPv4。
-        return {"私网或 CGNAT 测试地址": re.compile(rb"10\.13\.31\.434")}
     if TAILNET_BINARY_PATTERN.fullmatch(entry_name):
         return TAILNET_ALLOWANCES
     if PACKAGED_PYTHON_STDLIB_PATTERN.fullmatch(entry_name):

@@ -6,27 +6,18 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.PowerManager
+import android.os.Process
+import com.k2fsa.sherpa.onnx.EndpointConfig
+import com.k2fsa.sherpa.onnx.EndpointRule
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
+import com.promenar.infinity.utils.InfinityLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.RandomAccessFile
-import kotlin.math.sqrt
-
-internal enum class CaptureCommand { Continue, Pause, Finish }
-
-internal data class CaptureFrame(
-    val bytes: Long,
-    val partial: String,
-    val provisional: RecordingSegment?,
-    val segment: RecordingSegment?,
-    val quiet: Boolean,
-    val checkpoint: Boolean,
-    val level: Float,
-)
 
 @SuppressLint("MissingPermission", "WakelockTimeout")
 internal suspend fun captureRecording(
@@ -35,117 +26,104 @@ internal suspend fun captureRecording(
     session: RecordingSession,
     command: () -> CaptureCommand,
     onFrame: suspend (CaptureFrame) -> Unit,
-): CaptureCommand {
+): CaptureCommand = withContext(Dispatchers.IO) {
     val rate = RecordingStore.SAMPLE_RATE
     val minimum = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
     check(minimum > 0)
     val recorder = AudioRecord(
         MediaRecorder.AudioSource.VOICE_RECOGNITION, rate, AudioFormat.CHANNEL_IN_MONO,
-        AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum * 2, rate / 2),
+        AudioFormat.ENCODING_PCM_16BIT,
+        maxOf(minimum * 2, rate * 2 * RecordingCapturePolicy.RECORDER_BUFFER_SECONDS),
     )
-    val wakeLock = context.getSystemService(PowerManager::class.java)
-        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${context.packageName}:recording")
     try {
         check(recorder.state == AudioRecord.STATE_INITIALIZED)
-        val recognizer = OnlineRecognizer(context.assets, OnlineRecognizerConfig(
-            featConfig = FeatureConfig(sampleRate = rate, featureDim = 80),
-            modelConfig = OnlineModelConfig(
-                transducer = OnlineTransducerModelConfig(
-                    encoder = "asr/encoder-epoch-99-avg-1.int8.onnx",
-                    decoder = "asr/decoder-epoch-99-avg-1.onnx",
-                    joiner = "asr/joiner-epoch-99-avg-1.int8.onnx",
-                ),
-                tokens = "asr/tokens.txt",
-                numThreads = 2,
-                modelType = "zipformer",
-            ),
-            enableEndpoint = true,
-        ))
+        val wakeLock = context.getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${context.packageName}:recording")
         try {
-            val stream = recognizer.createStream()
+            val recognizer = OnlineRecognizer(context.assets, OnlineRecognizerConfig(
+                featConfig = FeatureConfig(sampleRate = rate, featureDim = 80),
+                modelConfig = OnlineModelConfig(
+                    transducer = OnlineTransducerModelConfig(
+                        encoder = "asr/encoder.int8.onnx",
+                        decoder = "asr/decoder.onnx",
+                        joiner = "asr/joiner.int8.onnx",
+                    ),
+                    tokens = "asr/tokens.txt",
+                    numThreads = 2,
+                    modelType = "zipformer2",
+                ),
+                endpointConfig = EndpointConfig(
+                    rule1 = EndpointRule(false, RecordingCapturePolicy.ENDPOINT_EMPTY_SILENCE_SECONDS,
+                        RecordingCapturePolicy.ENDPOINT_NO_MIN_UTTERANCE_SECONDS),
+                    rule2 = EndpointRule(true, RecordingCapturePolicy.ENDPOINT_TEXT_SILENCE_SECONDS,
+                        RecordingCapturePolicy.ENDPOINT_NO_MIN_UTTERANCE_SECONDS),
+                    rule3 = EndpointRule(false, RecordingCapturePolicy.ENDPOINT_LONG_SILENCE_SECONDS,
+                        RecordingCapturePolicy.ENDPOINT_LONG_UTTERANCE_SECONDS),
+                ),
+                enableEndpoint = true,
+            ))
             try {
-                RandomAccessFile(store.audio(session.id), "rw").use { file ->
-                    var written = session.audioBytes
-                    file.setLength(RecordingStore.WAV_HEADER_BYTES + written)
-                    RecordingStore.updateWavHeader(file, written)
-                    var segmentStart = session.durationMs
-                    var lastCheckpoint = written
-                    var lastVoice = written
-                    var speechAt: Long? = null
-                    val pcm = ShortArray(640)
-                    val encoded = ByteArray(pcm.size * 2)
-                    val fullFrame = FloatArray(pcm.size)
-                    wakeLock.acquire()
-                    if (command() == CaptureCommand.Continue) {
-                        recorder.startRecording()
-                        check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+                val stream = recognizer.createStream()
+                try {
+                    val source = object : RecordingAudioSource {
+                        override fun start() {
+                            recorder.startRecording()
+                            check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+                        }
+                        override fun read(buffer: ShortArray): Int =
+                            recorder.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
+                        override fun stop() {
+                            if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop()
+                        }
                     }
-                    while (command() == CaptureCommand.Continue && written + encoded.size <= RecordingStore.MAX_AUDIO_BYTES) {
-                        currentCoroutineContext().ensureActive()
-                        val count = recorder.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
-                        check(count > 0)
-                        var energy = 0.0
-                        val waveform = if (count == pcm.size) fullFrame else FloatArray(count)
-                        for (i in 0 until count) {
-                            val sample = pcm[i].toInt()
-                            encoded[2 * i] = sample.toByte()
-                            encoded[2 * i + 1] = (sample shr 8).toByte()
-                            waveform[i] = sample / 32768f
-                            energy += waveform[i] * waveform[i]
+                    val decoder = object : RecordingDecoder {
+                        private var text = ""
+                        override fun accept(pcm: ShortArray): RecordingRecognition {
+                            stream.acceptWaveform(FloatArray(pcm.size) { pcm[it] / 32768f }, rate)
+                            var decoded = false
+                            while (recognizer.isReady(stream)) {
+                                recognizer.decode(stream)
+                                decoded = true
+                            }
+                            if (decoded) text = recognizer.getResult(stream).text
+                            return RecordingRecognition(text, decoded && recognizer.isEndpoint(stream))
                         }
-                        file.write(encoded, 0, count * 2)
-                        written += count * 2
-                        val speech = energy / count >= 0.00005
-                        if (speech) {
-                            if (speechAt == null) speechAt = (written - count * 2) / 32
-                            lastVoice = written
-                        }
-                        stream.acceptWaveform(waveform, rate)
-                        while (recognizer.isReady(stream)) recognizer.decode(stream)
-                        val text = recognizer.getResult(stream).text.trim()
-                        val end = recognizer.isEndpoint(stream) || written / 32 - segmentStart >= 30_000
-                        val segment = if (end && text.isNotEmpty()) {
-                            RecordingSegment((speechAt ?: segmentStart).coerceAtLeast(segmentStart), written / 32, text)
-                        } else null
-                        if (end) {
+                        override fun reset() {
                             recognizer.reset(stream)
-                            segmentStart = written / 32
-                            speechAt = null
+                            text = ""
                         }
-                        val checkpoint = segment != null || written - lastCheckpoint >= rate * 2L * 5
-                        val provisional = if (checkpoint && !end && text.isNotEmpty()) {
-                            RecordingSegment((speechAt ?: segmentStart).coerceAtLeast(segmentStart), written / 32, text)
-                        } else null
-                        if (checkpoint) {
-                            RecordingStore.updateWavHeader(file, written)
-                            file.fd.sync()
-                            lastCheckpoint = written
+                        override fun finish(): String {
+                            stream.acceptWaveform(FloatArray(rate * RecordingCapturePolicy.TAIL_SILENCE_SECONDS), rate)
+                            stream.inputFinished()
+                            while (recognizer.isReady(stream)) recognizer.decode(stream)
+                            return recognizer.getResult(stream).text
                         }
-                        onFrame(CaptureFrame(
-                            bytes = written, partial = if (end) "" else text, provisional = provisional, segment = segment,
-                            quiet = written - lastVoice >= rate * 2L * 4, checkpoint = checkpoint,
-                            level = (sqrt(energy / count).toFloat() * 8).coerceIn(0f, 1f),
-                        ))
                     }
-                    if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop()
-                    stream.acceptWaveform(FloatArray(rate / 3), rate)
-                    stream.inputFinished()
-                    while (recognizer.isReady(stream)) recognizer.decode(stream)
-                    val tail = recognizer.getResult(stream).text.trim().takeIf(String::isNotEmpty)
-                        ?.let { RecordingSegment((speechAt ?: segmentStart).coerceAtLeast(segmentStart), written / 32, it) }
-                    RecordingStore.updateWavHeader(file, written)
-                    file.fd.sync()
-                    onFrame(CaptureFrame(written, "", null, tail, quiet = true, checkpoint = true, level = 0f))
-                    return command().takeUnless { it == CaptureCommand.Continue } ?: CaptureCommand.Finish
+                    RandomAccessFile(store.audio(session.id), "rw").use { file ->
+                        wakeLock.acquire()
+                        recordPcmAudio(source, decoder, file, session.audioBytes, RecordingStore.MAX_AUDIO_BYTES,
+                            command = command,
+                            // 提升优先级失败不影响录音。
+                            onReaderStart = { runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) } },
+                            onBacklog = { backlog ->
+                                InfinityLogger.diagnostic("recording.capture_backlog", mapOf(
+                                    "max_backlog_ms" to backlog.maxQueuedMs,
+                                    "duration_ms" to backlog.durationMs,
+                                ))
+                            },
+                            onFrame = onFrame,
+                        )
+                    }
+                } finally {
+                    stream.release()
                 }
             } finally {
-                stream.release()
+                recognizer.release()
             }
         } finally {
-            recognizer.release()
+            if (wakeLock.isHeld) wakeLock.release()
         }
     } finally {
-        if (wakeLock.isHeld) wakeLock.release()
         recorder.release()
     }
 }

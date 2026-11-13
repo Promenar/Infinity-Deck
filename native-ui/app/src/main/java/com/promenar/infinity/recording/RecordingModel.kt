@@ -71,7 +71,7 @@ internal class RecordingModel(private val app: InfinityApplication) {
             }
         }
         val text = result.toString().substringAfter("</think>").trim()
-        check(finished && text.isNotBlank() && !text.startsWith("<think>"))
-        return text
+        check(finished && !text.startsWith("<think>"))
+        return protectRecordingCorrection(raw, text)
     }
 }

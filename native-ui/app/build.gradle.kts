@@ -325,10 +325,10 @@ val sherpaAndroidAar = tasks.register<FetchVerifiedFile>("fetchSherpaAndroidAar"
     sha256.set("a8d09d1d32f3eb8520482c6d3d43fae674681c5b050385967c70a3c2c9bf0ee7")
     outputFile.set(recordingInputs.resolve("sherpa-onnx-2.0.1.aar"))
 }
-val zipformerModel = "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2"
+val zipformerModel = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2"
 val fetchZipformer = tasks.register<FetchVerifiedFile>("fetchRecordingZipformer") {
     url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$zipformerModel")
-    sha256.set("2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7")
+    sha256.set("fa5f63d618e5a01526e275a358bb7772e403f84808a4769fba52cffd8160bf74")
     outputFile.set(recordingInputs.resolve(zipformerModel))
 }
 val prepareRecordingAssets = tasks.register<PrepareRecordingAssets>("prepareRecordingAssets") {

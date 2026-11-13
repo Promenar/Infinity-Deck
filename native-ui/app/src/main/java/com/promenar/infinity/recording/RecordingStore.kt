@@ -8,8 +8,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.RandomAccessFile
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.UUID
 
 private fun recordingRoot(context: Context) = File(context.filesDir, "recording-sessions")
@@ -104,17 +102,9 @@ internal class RecordingStore(private val context: Context) {
 
     companion object {
         const val WAV_HEADER_BYTES = 44L
-        const val SAMPLE_RATE = 16000
+        const val SAMPLE_RATE = RecordingCapturePolicy.SAMPLE_RATE
         const val MAX_AUDIO_BYTES = 2_000_000_000L
 
-        fun updateWavHeader(file: RandomAccessFile, size: Long) {
-            val header = ByteBuffer.allocate(WAV_HEADER_BYTES.toInt()).order(ByteOrder.LITTLE_ENDIAN)
-            header.put("RIFF".toByteArray()).putInt((size + 36).toInt()).put("WAVEfmt ".toByteArray())
-            header.putInt(16).putShort(1).putShort(1).putInt(SAMPLE_RATE)
-            header.putInt(SAMPLE_RATE * 2).putShort(2).putShort(16).put("data".toByteArray()).putInt(size.toInt())
-            file.seek(0)
-            file.write(header.array())
-            file.seek(WAV_HEADER_BYTES + size)
-        }
+        fun updateWavHeader(file: RandomAccessFile, size: Long) = updateRecordingWavHeader(file, size)
     }
 }

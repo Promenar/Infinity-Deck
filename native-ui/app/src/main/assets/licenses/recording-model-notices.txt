@@ -6,10 +6,11 @@ https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1
 ONNX Runtime v1.28.2 · MIT
 https://github.com/microsoft/onnxruntime/tree/v1.28.2
 
-中英双语 Zipformer 小版 · Apache-2.0
-来源：https://huggingface.co/csukuangfj/k2fsa-zipformer-bilingual-zh-en-t
-转换版：https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/zipformer-transducer-models.html
-随包选用原始发布件内三份 ONNX 文件和词表，许可全文见 sherpa-onnx-LICENSE.txt。
+X-ASR 480ms 中英标点流式 Zipformer2 · Apache-2.0
+上游仓库：https://github.com/Gilgamesh-J/X-ASR
+发布件来源：https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models
+模型包：sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2
+随包选用 encoder.int8.onnx、decoder.onnx、joiner.int8.onnx 与 tokens.txt，输出自带标点和大小写；许可全文见 sherpa-onnx-LICENSE.txt。
 
 llama.cpp b12076 · MIT（本地推理构建）
 https://github.com/ggml-org/llama.cpp/tree/36ee3caf7aa2dcb0210bedab1b61ee9f269765d3
