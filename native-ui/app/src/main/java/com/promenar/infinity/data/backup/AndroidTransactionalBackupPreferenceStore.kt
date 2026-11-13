@@ -3,6 +3,8 @@ package com.promenar.infinity.data.backup
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.AtomicFile
+import com.promenar.infinity.recording.RecordingHotwordPolicy
+import com.promenar.infinity.recording.RecordingHotwordStore
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -33,6 +35,8 @@ internal class AndroidTransactionalBackupPreferenceStore(
 ) : TransactionalBackupPreferenceStore {
     private val appContext = context.applicationContext
     private val atomicLedger = AtomicFile(ledgerFile)
+    private val hotwordFile = File(appContext.filesDir, RecordingHotwordStore.FILE_NAME)
+    private val hotwordStore = RecordingHotwordStore(hotwordFile)
     private val json = Json {
         encodeDefaults = true
         explicitNulls = true
@@ -49,7 +53,10 @@ internal class AndroidTransactionalBackupPreferenceStore(
                 }
             }
         }
-        validateSnapshot(canonicalSnapshot(entries, deriveProviderIds(entries))).also {
+        val withHotwords = if (!hotwordFile.exists()) entries else entries + BackupPreferenceEntry(
+            "recording_hotwords", "library", RecordingHotwordPolicy.encode(hotwordStore.read()), PreferenceValueType.STRING,
+        )
+        validateSnapshot(canonicalSnapshot(withHotwords, deriveProviderIds(withHotwords))).also {
             if (json.encodeToString(it).toByteArray().size.toLong() > maxTotalBytes) {
                 throw BackupValidationException("偏好快照超过内存预算")
             }
@@ -156,6 +163,9 @@ internal class AndroidTransactionalBackupPreferenceStore(
             if (!editor.commit()) throw BackupValidationException("偏好命名空间写入失败: ${spec.logicalName}")
             namespaceAppliedHook(spec.logicalName, direction)
         }
+        val hotwords = byNamespace["recording_hotwords"].orEmpty().singleOrNull()
+        if (hotwords == null) hotwordStore.delete() else hotwordStore.write(RecordingHotwordPolicy.decode(hotwords.value))
+        namespaceAppliedHook("recording_hotwords", direction)
     }
 
     private fun SharedPreferences.Editor.put(entry: BackupPreferenceEntry) {
@@ -218,6 +228,11 @@ internal class AndroidTransactionalBackupPreferenceStore(
 
     private fun validateEntryType(entry: BackupPreferenceEntry) {
         val expected = expectedType(entry.namespace, entry.key)
+        if (entry.namespace == "recording_hotwords") {
+            try { RecordingHotwordPolicy.decode(entry.value) } catch (error: Exception) {
+                throw BackupValidationException("热词库备份内容无效", error)
+            }
+        }
         if (entry.type != expected) throw BackupValidationException("偏好值类型与策略不一致: ${entry.namespace}.${entry.key}")
         if (entry.namespace == "settings" && entry.key.startsWith("session_header_model_") &&
             com.promenar.infinity.data.model.SessionHeaderMode.entries.none { it.name == entry.value }) {
@@ -407,7 +422,7 @@ internal class AndroidTransactionalBackupPreferenceStore(
             NamespaceSpec("ui", "infinity_prefs"),
             NamespaceSpec("backup", "infinity_backup_settings"),
         )
-        val logicalNamespaces = namespaceSpecs.mapTo(mutableSetOf()) { it.logicalName }
+        val logicalNamespaces = namespaceSpecs.mapTo(mutableSetOf()) { it.logicalName } + "recording_hotwords"
         val preferenceTypes = buildMap<Pair<String, String>, PreferenceValueType> {
             fun typed(namespace: String, type: PreferenceValueType, vararg keys: String) {
                 keys.forEach { put(namespace to it, type) }

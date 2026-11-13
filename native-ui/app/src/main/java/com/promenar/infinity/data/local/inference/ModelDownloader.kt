@@ -5,16 +5,24 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import com.promenar.infinity.infra.util.Sha256Utils
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-class ModelDownloader(private val context: Context) {
+class ModelDownloadIntegrityException(message: String) : IOException(message)
+
+class ModelDownloader internal constructor(
+    private val modelsDir: File,
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
+) {
+    constructor(context: Context) : this(File(context.filesDir, "models"))
 
     data class DownloadState(
         val url: String,
@@ -23,21 +31,15 @@ class ModelDownloader(private val context: Context) {
         val downloadedBytes: Long = 0,
         val isDownloading: Boolean = false,
         val isComplete: Boolean = false,
-        val error: String? = null
+        val error: String? = null,
     )
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
-
-    private val modelsDir = File(context.filesDir, "models").also { it.mkdirs() }
-
-    @Volatile
-    private var cancelled = false
+    @Volatile private var cancelled = false
+    @Volatile private var call: Call? = null
 
     fun cancel() {
         cancelled = true
+        call?.cancel()
     }
 
     suspend fun download(
@@ -45,112 +47,116 @@ class ModelDownloader(private val context: Context) {
         fileName: String,
         expectedSha256: String? = null,
         expectedBytes: Long? = null,
-        onProgress: (Float) -> Unit = {}
+        onProgress: (Float) -> Unit = {},
     ): Result<StoredModel> = withContext(Dispatchers.IO) {
+        if (!fileName.endsWith(".gguf", ignoreCase = true)) return@withContext Result.failure(IllegalArgumentException("模型须为 GGUF 文件"))
+        downloadFile(url, fileName, modelsDir, expectedSha256, expectedBytes,
+            validate = { GgufParser.parse(it.absolutePath) },
+            onProgress = { done, total -> if (total > 0) onProgress(done.toFloat() / total) },
+        ).map(::buildStoredModel)
+    }
+
+    /** 普通文件下载与 GGUF 共用断点续传；取消和网络中断保留 part。 */
+    suspend fun downloadFile(
+        url: String,
+        fileName: String,
+        directory: File,
+        expectedSha256: String? = null,
+        expectedBytes: Long? = null,
+        validate: (File) -> Unit = {},
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ): Result<File> = withContext(Dispatchers.IO) {
         cancelled = false
+        var tempFile: File? = null
         try {
-            require(fileName == File(fileName).name && fileName.endsWith(".gguf", ignoreCase = true))
-            val destFile = File(modelsDir, fileName)
-            fun verify(file: File) {
-                require(expectedBytes == null || file.length() == expectedBytes) { "模型文件长度不符" }
-                require(expectedSha256 == null || Sha256Utils.hashFile(file) == expectedSha256) { "模型文件摘要不符" }
+            require(fileName.isNotBlank() && fileName == File(fileName).name && fileName !in setOf(".", ".."))
+            check(directory.isDirectory || directory.mkdirs())
+            val destination = File(directory, fileName)
+            val partial = File(directory, "$fileName.part")
+            tempFile = partial
+            suspend fun checkActive() {
+                currentCoroutineContext().ensureActive()
+                if (cancelled) throw CancellationException("下载已取消")
             }
-            if (destFile.exists()) {
-                verify(destFile)
-                return@withContext Result.success(buildStoredModel(destFile))
-            }
-
-            val tempFile = File(modelsDir, "$fileName.part")
-            var startByte = if (tempFile.exists()) tempFile.length() else 0L
-
-            val request = Request.Builder().url(url).apply {
-                if (startByte > 0) {
-                    header("Range", "bytes=$startByte-")
-                }
-            }.build()
-
-            client.newCall(request).execute().use { response ->
-                val httpCode = response.code
-
-                if (httpCode !in 200..206) {
-                    tempFile.delete()
-                    response.close()
-                    return@withContext Result.failure(
-                        IOException("HTTP $httpCode for $url")
-                    )
-                }
-
-                val body = response.body ?: run {
-                    response.close()
-                    return@withContext Result.failure(IOException("Empty response body"))
-                }
-
-                val serverHonoredRange = httpCode == 206
-                if (!serverHonoredRange) {
-                    startByte = 0L
-                }
-
-                val totalSize = if (serverHonoredRange) {
-                    response.header("Content-Range")
-                        ?.substringAfter("/")?.toLongOrNull()
-                        ?: (body.contentLength() + startByte)
-                } else {
-                    body.contentLength()
-                }
-
-                body.byteStream().use { input ->
-                    FileOutputStream(tempFile, startByte > 0).use { output ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        var totalRead = startByte
-
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            currentCoroutineContext().ensureActive()
-                            if (cancelled) {
-                                output.fd.sync()
-                                return@withContext Result.failure(
-                                    CancellationException("Download cancelled")
-                                )
-                            }
-                            output.write(buffer, 0, bytesRead)
-                            totalRead += bytesRead
-                            if (expectedBytes != null && totalRead > expectedBytes) {
-                                throw IOException("模型文件超出预期大小")
-                            }
-                            if (totalSize > 0) {
-                                onProgress(totalRead.toFloat() / totalSize)
-                            }
+            suspend fun verify(file: File) {
+                checkActive()
+                if (expectedBytes != null && file.length() != expectedBytes) throw ModelDownloadIntegrityException("模型文件长度不符")
+                if (expectedSha256 != null) {
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    file.inputStream().use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            checkActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            digest.update(buffer, 0, count)
                         }
-                        output.fd.sync()
+                    }
+                    if (digest.digest().joinToString("") { "%02x".format(it) } != expectedSha256) {
+                        throw ModelDownloadIntegrityException("模型文件摘要不符")
+                    }
+                }
+                try { validate(file) } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    throw ModelDownloadIntegrityException("模型文件格式无效")
+                }
+            }
+            if (destination.exists()) {
+                try { verify(destination) } catch (e: ModelDownloadIntegrityException) { destination.delete(); throw e }
+                return@withContext Result.success(destination)
+            }
+            if (expectedBytes != null && partial.length() > expectedBytes) partial.delete()
+            var start = partial.length()
+            if (expectedBytes == null || start != expectedBytes) {
+                checkActive()
+                val request = Request.Builder().url(url).apply {
+                    if (start > 0) header("Range", "bytes=$start-")
+                }.build()
+                val requestCall = client.newCall(request)
+                call = requestCall
+                checkActive()
+                requestCall.execute().use { response ->
+                    if (response.code != 200 && response.code != 206) throw IOException("下载响应异常：${response.code}")
+                    val body = response.body ?: throw IOException("下载响应为空")
+                    if (response.code == 206) {
+                        val range = Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(response.header("Content-Range").orEmpty())
+                            ?: throw IOException("下载范围响应无效")
+                        if (range.groupValues[1].toLong() != start ||
+                            expectedBytes != null && range.groupValues[3].toLong() != expectedBytes) throw IOException("下载范围不匹配")
+                    } else start = 0
+                    val total = expectedBytes ?: (body.contentLength().takeIf { it >= 0 }?.plus(start) ?: -1L)
+                    onProgress(start, total)
+                    body.byteStream().use { input ->
+                        FileOutputStream(partial, start > 0).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var done = start
+                            try {
+                                while (true) {
+                                    checkActive()
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    if (expectedBytes != null && count > expectedBytes - done) throw ModelDownloadIntegrityException("模型文件超出预期大小")
+                                    output.write(buffer, 0, count)
+                                    done += count
+                                    onProgress(done, total)
+                                }
+                            } finally { output.fd.sync() }
+                        }
                     }
                 }
             }
-
-            if (cancelled) {
-                return@withContext Result.failure(
-                    CancellationException("Download cancelled")
-                )
-            }
-
-            try {
-                verify(tempFile)
-                GgufParser.parse(tempFile.absolutePath)
-            } catch (failure: Exception) {
-                tempFile.delete()
-                throw failure
-            }
-            currentCoroutineContext().ensureActive()
-            if (cancelled) return@withContext Result.failure(CancellationException("Download cancelled"))
-            java.nio.file.Files.move(tempFile.toPath(), destFile.toPath())
-            Result.success(buildStoredModel(destFile))
-        } catch (e: CancellationException) {
-            Result.failure(e)
+            verify(partial)
+            checkActive()
+            java.nio.file.Files.move(partial.toPath(), destination.toPath())
+            Result.success(destination)
         } catch (e: Exception) {
-            Result.failure(e)
-        }
+            if (e is ModelDownloadIntegrityException) tempFile?.delete()
+            Result.failure(if (cancelled) CancellationException("下载已取消") else e)
+        } finally { call = null }
     }
 
     fun cleanupPartial(fileName: String) {
+        require(fileName == File(fileName).name)
         File(modelsDir, "$fileName.part").delete()
     }
 

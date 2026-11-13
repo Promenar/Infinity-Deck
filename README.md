@@ -176,7 +176,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 
 **Documents & knowledge**
 
-- Record classes or meetings from the Library or Android Quick Settings. Live Chinese–English transcription and audio stay on the device. Transcript cleanup can use the fast model with consent, or a local GGUF model in the sideload build.
+- Record from the Library or Android Quick Settings. Download X-ASR for on-device Chinese–English transcription, add hotwords, and transcribe saved recordings again. Transcript cleanup can use the fast model with consent, or a local GGUF model in the sideload build.
 - Search documents, long-term memory and the knowledge graph together, with cited answers
 - One graph per work — follow how two characters stand with each other, chapter by chapter
 - Mount outside folders; PDF, Word, Markdown, HTML and more

@@ -65,10 +65,10 @@ Android CI 在 PR 与手动触发时运行 `scripts/ci/android-static-checks.sh`
 
 ## 录音听写和本地推理
 
-- 两渠道的 Android 制品都含 Sherpa-ONNX v2.0.1 AAR 和 [X-ASR 480ms 中英标点流式 Zipformer2](https://github.com/Gilgamesh-J/X-ASR)（Apache-2.0，由 [sherpa-onnx asr-models 发布页](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)分发）的 3 份 ONNX 权重与 BPE 词表。构建按 SHA-256 核验官方 AAR（约 47 MiB）与模型压缩包 `sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2`，缓存位于 Gradle 用户目录的 `caches/infinity-recording/`。仅指定的模型文件进入 APK，生成目录为 `app/build/generated/recording/assets`。
+- 两渠道的 APK 随包分发 Sherpa-ONNX v2.0.1 运行时与 `assets/asr/bpe.vocab`。构建按 SHA-256 核验官方 AAR，缓存位于 Gradle 用户目录的 `caches/infinity-recording/`。应用从 [sherpa-onnx 官方模型发行页](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models) 下载固定版 [X-ASR 中英流式模型](https://github.com/Gilgamesh-J/X-ASR)（约 134 MB），验证压缩包及解压后的文件，安装后约 169 MB。听写权重保存在应用私有目录。应用备份包含全局热词库，听写模型在目标设备单独下载。
 - llama.cpp CPU 锁定 `b12076`（`36ee3caf7aa2dcb0210bedab1b61ee9f269765d3`）和源码归档摘要，静态链接到 `libinfinity_llama.so`。签名侧载 Release 和 Debug 包含 JNI，Play Release、DeviceTest、MinifiedTest 关闭 GGUF 本地推理。发行 APK 均不随包分发 GGUF。
-- APK 验真核对各 ABI 的离线听写运行时、四份模型资产摘要与渠道 JNI 边界。为模型和多 ABI 原生库留出空间，APK 大小门限为 280 MiB。敏感扫描对固定 Sherpa/ONNX Runtime 上游构建路径做窄豁免，X-ASR 模型文件使用完整扫描。
-- 合并验收应覆盖两渠道的构建及 16 KiB 页检查，并在 Find N5 检查内外屏、麦克风权限拒绝、磁贴解锁、桌面快捷方式、外部 Intent、息屏长录、暂停续录、杀进程恢复、资料回听、断网重试、端侧 GGUF 固定加载和发热。
+- APK 验真核对各 ABI 的离线听写运行时、BPE 词表摘要与渠道 JNI 边界，拒绝包含 X-ASR 的 ONNX 权重或 `tokens.txt` 的制品。APK 大小门限为 160 MiB。敏感扫描对固定 Sherpa/ONNX Runtime 上游构建路径做窄豁免。
+- 合并验收应覆盖两渠道的构建及 16 KiB 页检查，并在 Find N5 检查内外屏、麦克风权限拒绝、磁贴解锁、桌面快捷方式、外部 Intent、息屏长录、暂停续录、杀进程恢复、资料回听、无模型录音、模型下载续传、热词加权的实时性、重新识别保留手动整理稿、端侧 GGUF 固定加载和发热。
 
 ## 打包 Python
 

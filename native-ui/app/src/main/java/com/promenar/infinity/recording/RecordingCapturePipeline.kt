@@ -21,7 +21,8 @@ internal interface RecordingAudioSource {
 
 internal data class RecordingRecognition(val text: String, val endpoint: Boolean)
 
-internal interface RecordingDecoder {
+internal interface RecordingDecoder : AutoCloseable {
+    override fun close() = Unit
     fun accept(pcm: ShortArray): RecordingRecognition
     fun reset()
     fun finish(): String

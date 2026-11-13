@@ -57,12 +57,16 @@ private fun RecordingExample(
     playing: Boolean = false,
     partial: String = "下一项：核对中英文界面。Check the controls.",
     history: List<RecordingSession> = listOfNotNull(session),
+    asr: RecordingAsrModelState = RecordingAsrModelState.Installed,
+    recognizing: Boolean = false,
 ) {
     val active = session?.phase == RecordingPhase.Recording || session?.phase == RecordingPhase.Paused
     RecordingPageContent(
         state = RecordingScreenState(
             sessions = history,
             activeId = session?.id.takeIf { active },
+            recognizingId = session?.id.takeIf { recognizing },
+            recognizeProgress = if (recognizing) .45f else 0f,
             durationMs = 92_000,
             levels = List(48) { ((it * 7) % 13) / 13f },
             partial = partial,
@@ -76,6 +80,7 @@ private fun RecordingExample(
         route = route,
         playing = playing,
         positionMs = 26_000f,
+        asrModel = asr,
     )
 }
 
@@ -217,7 +222,10 @@ fun recordingEditDarkPreview() = RecordingFrame(InfinityThemeMode.DARK) { Record
 private fun RecordingEditExample() {
     val sample = recordingSample()
     Column(Modifier.padding(InfinitySpacing.ScreenHorizontal)) {
-        RecordingEditorContent(sample.title, sample.glossary, sample.organized, {}, {}, {}, {}, {})
+        RecordingEditorContent(
+            sample.title, listOf("Zipformer", "Infinity Deck"), true, 3, sample.organized,
+            onTitle = {}, onHotwords = {}, onUseLibrary = {}, onDraft = {}, onSave = {}, onCancel = {},
+        )
     }
 }
 
@@ -248,4 +256,39 @@ fun recordingModeSheetPreview() = RecordingFrame(InfinityThemeMode.DARK) {
             onRevoke = {},
         )
     }
+}
+
+@PreviewTest
+@Preview(name = "听写模型下载 浅中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")
+@Composable
+fun recordingAsrDownloadPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    RecordingExample(
+        session = recordingSample().copy(segments = emptyList(), organized = ""),
+        asr = RecordingAsrModelState.Downloading(56_000_000, 134_000_000),
+    )
+}
+
+@PreviewTest
+@Preview(name = "重新识别 深英840 内屏", widthDp = 840, heightDp = 720, locale = "en")
+@Composable
+fun recordingRecognizingPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    RecordingExample(recordingSample().copy(manualEdit = true), recognizing = true)
+}
+
+@PreviewTest
+@Preview(name = "热词库 浅中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")
+@Preview(name = "热词库 浅英840 内屏", widthDp = 840, heightDp = 720, locale = "en", fontScale = 1.3f)
+@Composable
+fun recordingHotwordLibraryPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    RecordingHotwordLibraryContent(
+        entries = listOf(
+            RecordingHotword("a", "Infinity Deck"),
+            RecordingHotword("b", "llama.cpp", "Lama CPP"),
+            RecordingHotword("c", "Zipformer", enabled = false),
+            RecordingHotword("d", "蔺晨"),
+        ),
+        ready = true,
+        unknown = { text -> listOf('蔺').filter { it in text } },
+        onSave = { null }, onDelete = {}, onToggle = { _, _ -> }, onImport = { null }, onBack = {},
+    )
 }

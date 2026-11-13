@@ -15,8 +15,8 @@ import sys
 import zipfile
 
 
-# 为随包分发的双语 Zipformer、多 ABI ONNX Runtime 和侧载 llama.cpp 留出有界空间。
-MAX_APK_BYTES = 280 * 1024 * 1024
+# 为多 ABI ONNX Runtime、侧载 llama.cpp 与 Linux 运行时保留有界空间。
+MAX_APK_BYTES = 160 * 1024 * 1024
 READ_CHUNK_BYTES = 1024 * 1024
 SCAN_OVERLAP_BYTES = 512
 MAX_ZIP_ENTRIES = 100_000
@@ -249,15 +249,15 @@ def verify_local_inference_artifacts(apk: Path, distribution: str) -> None:
 
 
 def verify_recording_artifacts(apk: Path) -> None:
-    """确认离线听写的四份模型资产及各 ABI 的原生运行时完整。"""
-    assets = {
-        "decoder.onnx": "a1cbc9eac2d5e3fb6617a218c67ad6daaa7f4e0fd225f08b2c22ab0413c8c257",
-        "encoder.int8.onnx": "908596dcc137a73b95be908ca55e88caa1b3dbbe8027c171615f4b0609c5eb1e",
-        "joiner.int8.onnx": "aedb7fa697b2ab43f20499826fff7c997eea7d67db77be97769aeeeb726e63b3",
-        "tokens.txt": "b818a60878b9aae978cbb8ad594acbd403d76d1af2e31ef4197c84e2dbdba27c",
-    }
+    """确认听写词表与原生运行时完整，模型权重在安装后下载。"""
+    assets = {"bpe.vocab": "28fc94d67aae53d8c58010fcfb16fc8c2f8dd263e03f3490c98210e354e8f914"}
     with zipfile.ZipFile(apk) as archive:
         names = set(archive.namelist())
+        forbidden = {name for name in names if name.rsplit("/", 1)[-1] in {
+            "encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt",
+        }}
+        if forbidden:
+            raise VerificationError(f"APK 包含听写模型权重：{', '.join(sorted(forbidden))}")
         abis = {"arm64-v8a"} | {name.split("/")[1] for name in names if name.endswith("/libinfinity_workspace_fs.so")}
         libraries = ("libonnxruntime.so", "libsherpa-onnx-jni.so", "libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so")
         required = {f"lib/{abi}/{lib}" for abi in abis for lib in libraries}

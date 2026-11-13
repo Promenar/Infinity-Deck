@@ -36,7 +36,8 @@ internal data class RecordingSession(
     val documentId: String? = null,
     val documentHash: String? = null,
     val manualEdit: Boolean = false,
-    val glossary: String = "Infinity Deck、Zipformer、GGUF、llama.cpp",
+    val hotwords: List<String> = emptyList(),
+    val useHotwordLibrary: Boolean = true,
 ) {
     val durationMs get() = audioBytes / 32
     val organizationCursor get() = reprocessThrough ?: organizedThrough

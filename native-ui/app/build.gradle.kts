@@ -3,7 +3,6 @@ import com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask
 import com.promenar.infinity.buildlogic.BuildTailnetBinary
 import com.promenar.infinity.buildlogic.BuildLinuxRuntime
 import com.promenar.infinity.buildlogic.FetchVerifiedFile
-import com.promenar.infinity.buildlogic.PrepareRecordingAssets
 import com.android.build.api.variant.BuildConfigField
 import com.promenar.infinity.buildlogic.GenerateLauncherIcons
 import com.promenar.infinity.buildlogic.PackagedPythonRelease
@@ -325,19 +324,7 @@ val sherpaAndroidAar = tasks.register<FetchVerifiedFile>("fetchSherpaAndroidAar"
     sha256.set("a8d09d1d32f3eb8520482c6d3d43fae674681c5b050385967c70a3c2c9bf0ee7")
     outputFile.set(recordingInputs.resolve("sherpa-onnx-2.0.1.aar"))
 }
-val zipformerModel = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2"
-val fetchZipformer = tasks.register<FetchVerifiedFile>("fetchRecordingZipformer") {
-    url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$zipformerModel")
-    sha256.set("fa5f63d618e5a01526e275a358bb7772e403f84808a4769fba52cffd8160bf74")
-    outputFile.set(recordingInputs.resolve(zipformerModel))
-}
-val prepareRecordingAssets = tasks.register<PrepareRecordingAssets>("prepareRecordingAssets") {
-    archive.set(fetchZipformer.flatMap { it.outputFile })
-    outputDirectory.set(layout.buildDirectory.dir("generated/recording/assets"))
-}
-
 androidComponents.onVariants { variant ->
-    variant.sources.assets?.addGeneratedSourceDirectory(prepareRecordingAssets, PrepareRecordingAssets::getOutputDirectory)
     if (variant.buildType == "release" && ("distribution" to "sideload") in variant.productFlavors) {
         variant.buildConfigFields?.put("LOCAL_INFERENCE_AVAILABLE", BuildConfigField("boolean", "true", null))
     }
@@ -600,6 +587,7 @@ ksp {
 
 dependencies {
     implementation(files(sherpaAndroidAar.flatMap { it.outputFile }).builtBy(sherpaAndroidAar))
+    implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("io.github.dokar3:quickjs-kt:1.0.17")
     // ─── Jetpack Compose BOM ───
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")

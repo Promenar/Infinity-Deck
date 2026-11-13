@@ -21,8 +21,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.History
@@ -33,6 +37,8 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -67,7 +73,12 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import java.util.Locale
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.*
@@ -98,12 +109,17 @@ private class RecordingView(
     val route: RecordingRoute,
     val playing: Boolean,
     val positionMs: Float,
+    val asrModel: RecordingAsrModelState,
+    val effectiveHotwords: List<RecordingHotword>,
 ) {
     val active = current != null && state.activeId == current.id
     val paused = current?.phase == RecordingPhase.Paused
     val organizing = current != null && state.organizingId == current.id
     val queued = current != null && !organizing && state.failure == R.string.recording_organize_failed
     val consent = current != null && route == RecordingRoute.Consent
+    val recognizing = current != null && state.recognizingId == current.id
+    val canRecognize = asrModel == RecordingAsrModelState.Installed &&
+        current?.let { recordingCanRecognize(it, state.activeId, state.recognizingId) } == true
 }
 
 /** 录音页只渲染状态和派发动作，录音、播放与整理的生命周期由宿主持有。 */
@@ -135,8 +151,17 @@ internal fun RecordingPageContent(
     onPublish: () -> Unit = {},
     onDelete: () -> Unit = {},
     onDismissFailure: (Int) -> Unit = {},
+    asrModel: RecordingAsrModelState = RecordingAsrModelState.Installed,
+    effectiveHotwords: List<RecordingHotword> = emptyList(),
+    onDownloadAsr: () -> Unit = {},
+    onCancelDownload: () -> Unit = {},
+    onRecognize: () -> Unit = {},
+    onCancelRecognize: () -> Unit = {},
 ) {
-    val view = RecordingView(state, current, route, playing, positionMs)
+    val view = RecordingView(state, current, route, playing, positionMs, asrModel, effectiveHotwords)
+    val transcriptTools: @Composable (Boolean) -> Unit = { titled ->
+        TranscriptPaneHeader(view, titled, onExport, onDownloadAsr, onCancelDownload, onRecognize, onCancelRecognize)
+    }
     InfinityPageLayout(
         title = stringResource(R.string.recording_title),
         onBack = onBack,
@@ -166,12 +191,12 @@ internal fun RecordingPageContent(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     if (wide) {
                         RecordingWideBody(
-                            view, onMode, onSelect, onEdit, onConsent, onExport, onPlay,
+                            view, onMode, onSelect, onEdit, onConsent, transcriptTools, onPlay,
                             onTogglePlayback, onSeek, onSeekFinished, onOrganize, buttons,
                         )
                     } else {
                         RecordingNarrowBody(
-                            view, organized, pinned, onMode, onSelect, onOrganizedChange, onEdit, onConsent, onExport,
+                            view, organized, pinned, onMode, onSelect, onOrganizedChange, onEdit, onConsent, transcriptTools,
                             onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize,
                         )
                     }
@@ -206,7 +231,7 @@ private fun RecordingNarrowBody(
     onOrganizedChange: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onConsent: () -> Unit,
-    onExport: () -> Unit,
+    transcriptTools: @Composable (Boolean) -> Unit,
     onPlay: (Long) -> Unit,
     onTogglePlayback: () -> Unit,
     onSeek: (Float) -> Unit,
@@ -244,7 +269,7 @@ private fun RecordingNarrowBody(
                     bleed = edge,
                 )
                 if (organized) OrganizedPaneHeader(view, titled = false, onOrganize)
-                else TranscriptPaneHeader(view, titled = false, onExport)
+                else transcriptTools(false)
             }
         }
     }
@@ -269,7 +294,7 @@ private fun RecordingWideBody(
     onSelect: (RecordingSession) -> Unit,
     onEdit: () -> Unit,
     onConsent: () -> Unit,
-    onExport: () -> Unit,
+    transcriptTools: @Composable (Boolean) -> Unit,
     onPlay: (Long) -> Unit,
     onTogglePlayback: () -> Unit,
     onSeek: (Float) -> Unit,
@@ -297,7 +322,7 @@ private fun RecordingWideBody(
                 }
             } else {
                 Column(column) {
-                    TranscriptPaneHeader(view, titled = true, onExport)
+                    transcriptTools(true)
                     RecordingTranscriptList(view, null, fill = true, padding, onPlay, Modifier.weight(1f).fillMaxWidth())
                 }
                 Column(column) {
@@ -618,25 +643,47 @@ private fun RecordingPaneHeader(title: String?, content: @Composable RowScope.()
 
 private val PaneHeaderHeight = 40.dp
 
-/** 逐字稿页头：段数与“导出逐字稿”。外屏没有可导出的内容时不占位。 */
+/** 逐字稿操作与进度跟随栏位；缺少模型时可在同处下载。 */
 @Composable
-private fun TranscriptPaneHeader(view: RecordingView, titled: Boolean, onExport: () -> Unit) {
+private fun TranscriptPaneHeader(
+    view: RecordingView,
+    titled: Boolean,
+    onExport: () -> Unit,
+    onDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
+    onRecognize: () -> Unit,
+    onCancelRecognize: () -> Unit,
+) {
     val current = view.current ?: return
     val count = current.segments.size
     val exportable = !view.active && count > 0
-    if (!titled && !exportable) return
-    RecordingPaneHeader(if (titled) stringResource(R.string.recording_raw) else null) {
-        Text(
-            if (count > 0) pluralStringResource(R.plurals.recording_ui_segments, count, count) else "",
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (exportable) {
-            InfinityPillButton(text = stringResource(R.string.recording_export_raw), onClick = onExport, compact = true)
+    val canShowActions = exportable || view.canRecognize
+    if (titled) {
+        RecordingPaneHeader(stringResource(R.string.recording_raw)) {
+            Text(
+                if (count > 0) pluralStringResource(R.plurals.recording_ui_segments, count, count) else "",
+                style = InfinityTypography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
+    }
+    if (canShowActions) {
+        InfinityPillRow(Modifier.fillMaxWidth(), reverseWhenStacked = false) {
+            if (view.canRecognize) {
+                InfinityPillButton(stringResource(R.string.recording_recognize), onRecognize, compact = true)
+            }
+            if (exportable) InfinityPillButton(stringResource(R.string.recording_export_raw), onExport, compact = true)
+        }
+    }
+    if (view.recognizing) {
+        RecordingWorkProgress(R.string.recording_recognizing, view.state.recognizeProgress, onCancelRecognize)
+    }
+    val model = view.asrModel
+    if (model != RecordingAsrModelState.Installed) {
+        BettboxListGroup { RecordingAsrControls(model, onDownload, onCancelDownload, inTranscript = true) }
     }
 }
 
@@ -666,6 +713,7 @@ private fun OrganizedPaneHeader(view: RecordingView, titled: Boolean, onOrganize
                     Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = warning, modifier = Modifier.size(StatusIconSize))
                     PaneStatusText(stringResource(R.string.recording_ui_queued), warning)
                 }
+                current.manualEdit -> PaneStatusText(stringResource(R.string.recording_manual_status), muted)
                 !view.consent -> PaneStatusText(stringResource(routeLabel(view.route)), muted)
             }
         }
@@ -713,6 +761,7 @@ private fun RecordingTranscriptList(
     val playingIndex = if (view.playing) recordingSegmentAt(current.segments, view.positionMs.toLong()) else -1
     val stamp = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace)
     val reading = InfinityTypography.bodyLarge.forReading()
+    val hotwordPattern = remember(view.effectiveHotwords) { recordingHotwordPattern(view.effectiveHotwords) }
     LazyColumn(state = list, modifier = modifier, contentPadding = contentPadding) {
         if (leading != null) item(key = "recording_header") { RecordingLeading(leading) }
         itemsIndexed(current.segments, key = { _, segment -> segment.startMs }) { index, segment ->
@@ -731,7 +780,15 @@ private fun RecordingTranscriptList(
                         compact = true,
                     )
                 }
-                Text(segment.text, style = reading)
+                val text = remember(segment.text, hotwordPattern) {
+                    buildAnnotatedString {
+                        append(segment.text)
+                        hotwordPattern?.findAll(segment.text)?.forEach { match ->
+                            addStyle(SpanStyle(textDecoration = TextDecoration.Underline), match.range.first, match.range.last + 1)
+                        }
+                    }
+                }
+                Text(text, style = reading)
             }
         }
         if (live) item(key = "partial") {
@@ -753,6 +810,7 @@ private fun RecordingTranscriptList(
                     Text(
                         when {
                             opening -> stringResource(R.string.recording_ui_opening)
+                            view.state.audioOnly -> stringResource(R.string.recording_asr_audio_only_live)
                             view.state.partial.isBlank() -> stringResource(R.string.recording_ui_listening)
                             else -> view.state.partial
                         },
@@ -760,11 +818,11 @@ private fun RecordingTranscriptList(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (!opening) GenerationDots(Modifier.padding(bottom = lift), dotSize = LiveDotSize)
+                    if (!opening && !view.state.audioOnly) GenerationDots(Modifier.padding(bottom = lift), dotSize = LiveDotSize)
                 }
             }
         }
-        if (current.segments.isEmpty() && !live) item(key = "empty") {
+        if (current.segments.isEmpty() && !live && !view.recognizing) item(key = "empty") {
             RecordingEmpty(fill) {
                 RecordingEmptyLabel(Icons.Rounded.Description, stringResource(R.string.recording_ui_no_raw))
             }
@@ -965,61 +1023,96 @@ private fun RecordingFailureNotice(failure: Int?, onDismiss: (Int) -> Unit, modi
     }
 }
 
-/** 编辑区在这个高度以上时整理稿输入框占满余下空间；更矮（键盘弹出、矮窗口）时三个输入框按自然高度整体滚动。 */
-private val EditFillHeight = 320.dp
-
-/** 对话框与预览共用输入内容：标题与术语表保持紧凑，整理稿用余下高度。 */
-@Composable
-internal fun RecordingEditFields(
-    title: String,
-    glossary: String,
-    draft: String,
-    onTitle: (String) -> Unit,
-    onGlossary: (String) -> Unit,
-    onDraft: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val fill = maxHeight >= EditFillHeight
-        val scroll = rememberScrollState()
-        // 两种高度下输入框保持同一棵组合树，只换修饰符，键盘弹出时焦点不丢。
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .then(if (fill) Modifier.fillMaxHeight() else Modifier.verticalScroll(scroll))
-                .padding(top = InfinitySpacing.Small),
-            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        ) {
-            SettingsInput(title, onTitle, label = stringResource(R.string.recording_document_title))
-            SettingsInput(glossary, onGlossary, label = stringResource(R.string.recording_glossary), singleLine = false, maxLines = 2)
-            SettingsInput(
-                draft, onDraft, label = stringResource(R.string.recording_organized), singleLine = false,
-                maxLines = if (fill) Int.MAX_VALUE else 5,
-                modifier = if (fill) Modifier.weight(1f) else Modifier,
-            )
-        }
-    }
-}
-
-
-/** 编辑面板先为操作区分配高度，输入区使用剩余空间。 */
+/** 表单整体滚动，键盘弹出时标题、热词和整理稿仍可访问。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RecordingEditorContent(
     title: String,
-    glossary: String,
+    hotwords: List<String>,
+    useLibrary: Boolean,
+    enabledHotwordCount: Int,
     draft: String,
     onTitle: (String) -> Unit,
-    onGlossary: (String) -> Unit,
+    onHotwords: (List<String>) -> Unit,
+    onUseLibrary: (Boolean) -> Unit,
     onDraft: (String) -> Unit,
-    onSave: () -> Unit,
+    onSave: (List<String>) -> Unit,
     onCancel: () -> Unit,
 ) {
+    var input by rememberSaveable { mutableStateOf("") }
+    val word = input.trim()
+    val duplicate = hotwords.any { it.lowercase(Locale.ROOT) == word.lowercase(Locale.ROOT) }
+    val canAdd = word.isNotEmpty() && !duplicate && word.length <= RecordingHotwordPolicy.MAX_LENGTH &&
+        hotwords.size < RecordingHotwordPolicy.MAX_SESSION
+    val error = when {
+        word.isEmpty() -> null
+        duplicate -> R.string.recording_hotword_session_duplicate
+        word.length > RecordingHotwordPolicy.MAX_LENGTH || hotwords.size >= RecordingHotwordPolicy.MAX_SESSION ->
+            R.string.recording_hotword_session_limit
+        else -> null
+    }
+    val add = {
+        if (canAdd) {
+            onHotwords(hotwords + word)
+            input = ""
+        }
+    }
     Column(Modifier.fillMaxSize().imePadding(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
         Text(stringResource(R.string.recording_edit), style = InfinityTypography.titleLarge)
-        RecordingEditFields(title, glossary, draft, onTitle, onGlossary, onDraft, modifier = Modifier.weight(1f))
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
+            SettingsInput(title, onTitle, label = stringResource(R.string.recording_document_title))
+            if (hotwords.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
+                    hotwords.forEach { term ->
+                        val removeLabel = stringResource(R.string.recording_hotword_remove, term)
+                        InputChip(
+                            selected = false,
+                            onClick = { onHotwords(hotwords - term) },
+                            label = { Text(term, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            trailingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            modifier = Modifier.semantics { contentDescription = removeLabel },
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                label = { Text(stringResource(R.string.recording_hotword_session)) },
+                singleLine = true,
+                isError = error != null,
+                supportingText = error?.let { { Text(stringResource(it)) } },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                trailingIcon = {
+                    IconButton(onClick = add, enabled = canAdd) {
+                        Icon(Icons.Rounded.Add, stringResource(R.string.recording_hotword_add))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            BettboxListGroup {
+                SettingsToggle(
+                    title = stringResource(R.string.recording_hotword_use_library),
+                    description = stringResource(R.string.recording_hotword_enabled_count, enabledHotwordCount),
+                    checked = useLibrary,
+                    onCheckedChange = onUseLibrary,
+                    descriptionMaxLines = 2,
+                )
+            }
+            SettingsInput(draft, onDraft, label = stringResource(R.string.recording_organized), singleLine = false, maxLines = 8)
+        }
         InfinityPillRow(Modifier.fillMaxWidth(), spacing = InfinitySpacing.Small, stackedSpacing = InfinitySpacing.XSmall) {
-            InfinityPillButton(text = stringResource(R.string.recording_cancel), onClick = onCancel)
-            InfinityPillButton(text = stringResource(R.string.recording_save), onClick = onSave, tone = InfinityPillTone.PRIMARY)
+            InfinityPillButton(stringResource(R.string.recording_cancel), onCancel)
+            InfinityPillButton(
+                stringResource(R.string.recording_save),
+                onClick = { onSave(if (canAdd) hotwords + word else hotwords) },
+                enabled = error == null,
+                tone = InfinityPillTone.PRIMARY,
+            )
         }
     }
 }

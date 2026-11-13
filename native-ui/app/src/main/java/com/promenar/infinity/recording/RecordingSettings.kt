@@ -7,6 +7,7 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -33,6 +35,7 @@ import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.common.LocalInfinitySettingsPaneRoot
 import com.promenar.infinity.ui.common.ProvideUniformRowHeight
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -135,6 +138,14 @@ internal fun RecordingSettingsScreen(
     var mode by remember { mutableStateOf(controller.store.mode) }
     var fallback by remember { mutableStateOf(controller.store.fallback) }
     val shortcuts = context.getSystemService(ShortcutManager::class.java)
+    var showHotwords by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showHotwords) { showHotwords = false }
+    if (showHotwords) {
+        CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
+            RecordingHotwordLibrary(controller, onBack = { showHotwords = false })
+        }
+        return
+    }
 
     InfinitySettingsPageLayout(title = stringResource(R.string.recording_settings), onBack = onBack) { padding ->
         LazyColumn(contentPadding = padding) {
@@ -154,6 +165,11 @@ internal fun RecordingSettingsScreen(
                             },
                         )
                     }
+                }
+            }
+            item {
+                InfinitySettingsSection(title = stringResource(R.string.recording_asr_section)) {
+                    RecordingModelSettings(controller, onHotwords = { showHotwords = true })
                 }
             }
             item {
@@ -193,4 +209,18 @@ internal fun RecordingSettingsScreen(
             }
         }
     }
+}
+
+@Composable
+internal fun RecordingModelSettings(controller: RecordingController, onHotwords: () -> Unit) {
+    val asr by controller.asrModel.collectAsStateWithLifecycle()
+    val hotwords by controller.hotwords.collectAsStateWithLifecycle()
+    RecordingAsrControls(asr, controller::downloadAsrModel, controller::cancelAsrModelDownload)
+    InfinitySettingsItem(
+        title = stringResource(R.string.recording_hotword_library),
+        subtitle = stringResource(R.string.recording_hotword_count, hotwords.count { it.enabled }, hotwords.size),
+        onClick = onHotwords,
+        showChevron = true,
+        subtitleMaxLines = 2,
+    )
 }

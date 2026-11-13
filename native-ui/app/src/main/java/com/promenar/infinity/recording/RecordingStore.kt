@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.UUID
@@ -18,7 +19,10 @@ internal fun hasRecordingSessions(context: Context, ids: Collection<String>): Bo
     return ids.any { id -> runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) && File(root, id).isDirectory }
 }
 
-internal class RecordingStore(private val context: Context) {
+internal class RecordingStore(
+    private val context: Context,
+    private val beforeWrite: () -> Unit = {},
+) {
     private val root = recordingRoot(context)
     private val json = Json { ignoreUnknownKeys = true }
     private val prefs = context.getSharedPreferences("recording_defaults", Context.MODE_PRIVATE)
@@ -43,6 +47,7 @@ internal class RecordingStore(private val context: Context) {
 
     suspend fun write(session: RecordingSession) = withContext(Dispatchers.IO) {
         require(validSessionId(session.id))
+        beforeWrite()
         val file = metadata(session.id)
         val stream = file.startWrite()
         try {
@@ -56,12 +61,20 @@ internal class RecordingStore(private val context: Context) {
 
     suspend fun restore(): List<RecordingSession> = withContext(Dispatchers.IO) {
         root.listFiles().orEmpty().filter { it.isDirectory }.mapNotNull { dir ->
+            var migration = false
             val session = try {
-                json.decodeFromString<RecordingSession>(metadata(dir.name).readFully().decodeToString())
+                val text = metadata(dir.name).readFully().decodeToString()
+                migration = "glossary" in json.parseToJsonElement(text).jsonObject
+                decodeRecordingSession(text)
                     .takeIf { it.id == dir.name && validSessionId(it.id) }
             } catch (_: Exception) {
                 null
             } ?: return@mapNotNull null
+            if (migration) {
+                try { write(session) } catch (failure: Exception) {
+                    if (failure is kotlinx.coroutines.CancellationException) throw failure
+                }
+            }
             if (session.phase != RecordingPhase.Recording && session.phase != RecordingPhase.Paused) {
                 session
             } else {

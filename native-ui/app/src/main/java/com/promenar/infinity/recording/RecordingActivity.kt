@@ -7,16 +7,21 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -32,6 +37,8 @@ import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.BettboxListGroup
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.util.LocaleHelper
 import kotlinx.coroutines.flow.first
@@ -133,6 +140,9 @@ private fun RecordingScreen(
     incomingDocument: String?,
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
+    val asr by controller.asrModel.collectAsStateWithLifecycle()
+    val hotwords by controller.hotwords.collectAsStateWithLifecycle()
+    var showHotwords by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable(incomingDocument) { mutableStateOf(incomingDocument) }
     var organized by rememberSaveable { mutableStateOf(false) }
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -152,7 +162,7 @@ private fun RecordingScreen(
             selected = state.activeId
             organized = false
             // 删除确认只针对打开它时的那条录音；开始新录音后不再保留。
-            if (dialog == "delete") dialog = null
+            if (dialog == "delete" || dialog == "recognize") dialog = null
         }
     }
     val route = chooseRecordingRoute(current?.mode ?: defaultMode, state.cloudKey, current?.cloudConsent, state.localReady, current?.fallback ?: controller.store.fallback)
@@ -173,6 +183,17 @@ private fun RecordingScreen(
             playback.refreshPosition()
         }
     }
+    val closeHotwords = { showHotwords = false; dialog = "mode" }
+    BackHandler(enabled = showHotwords, onBack = closeHotwords)
+    if (showHotwords) {
+        RecordingHotwordLibrary(controller, onBack = closeHotwords)
+        return
+    }
+    val effectiveHotwords = remember(current?.hotwords, current?.useHotwordLibrary, hotwords) {
+        current?.let { effectiveRecordingHotwords(it, hotwords) }.orEmpty()
+    }
+    val canRecognize = current?.let { recordingCanRecognize(it, state.activeId, state.recognizingId) } == true &&
+        asr == RecordingAsrModelState.Installed
     RecordingPageContent(
         state = state,
         current = current,
@@ -207,6 +228,17 @@ private fun RecordingScreen(
         onPublish = { current?.let { controller.publish(it.id) } },
         onDelete = { dialog = "delete" },
         onDismissFailure = controller::dismissFailure,
+        asrModel = asr,
+        effectiveHotwords = effectiveHotwords,
+        onDownloadAsr = controller::downloadAsrModel,
+        onCancelDownload = controller::cancelAsrModelDownload,
+        onRecognize = {
+            if (canRecognize && current != null) {
+                if (current.manualEdit) dialog = "recognize"
+                else controller.recognize(current.id, rewriteOrganized = current.organized.isBlank() && route != RecordingRoute.Raw)
+            }
+        },
+        onCancelRecognize = controller::cancelRecognize,
     )
 
     when (dialog) {
@@ -215,23 +247,29 @@ private fun RecordingScreen(
             onDismiss = { dialog = null },
             title = stringResource(R.string.recording_settings),
             height = InfinitySheetHeight.Content,
+            scrollContent = true,
+            dragGesturesEnabled = false,
         ) {
-            // 面板自带左右留白，选项直接与标题左对齐。
-            RecordingModeSheetContent(
-                selected = current?.mode ?: defaultMode,
-                cloudLabel = state.cloudLabel,
-                localLabel = state.localLabel,
-                cloudAllowed = current?.cloudConsent != null,
-                onSelect = { mode ->
-                    if (current == null) defaultMode = mode
-                    controller.setMode(current?.id, mode)
-                    dialog = null
-                },
-                onRevoke = {
-                    current?.let { controller.allowCloud(it.id, null) }
-                    dialog = null
-                },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
+                RecordingModeSheetContent(
+                    selected = current?.mode ?: defaultMode,
+                    cloudLabel = state.cloudLabel,
+                    localLabel = state.localLabel,
+                    cloudAllowed = current?.cloudConsent != null,
+                    onSelect = { mode ->
+                        if (current == null) defaultMode = mode
+                        controller.setMode(current?.id, mode)
+                        dialog = null
+                    },
+                    onRevoke = {
+                        current?.let { controller.allowCloud(it.id, null) }
+                        dialog = null
+                    },
+                )
+                BettboxListGroup {
+                    RecordingModelSettings(controller, onHotwords = { dialog = null; showHotwords = true })
+                }
+            }
         }
 
         "finish" -> RecordingConfirm(R.string.recording_ui_stop, stringResource(R.string.recording_finish_detail),
@@ -272,8 +310,34 @@ private fun RecordingScreen(
                 isDestructive = true,
             )
         }
-        "edit" -> if (current != null) RecordingEditDialog(current, { dialog = null }) { title, glossary, draft ->
-            controller.updateDraft(current.id, title, glossary, draft)
+        "recognize" -> if (current != null && canRecognize && current.manualEdit) {
+            InfinityBottomSheet(
+                show = true,
+                onDismiss = { dialog = null },
+                title = stringResource(R.string.recording_recognize_manual),
+                scrollContent = true,
+                dragGesturesEnabled = false,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+                    InfinityPillButton(
+                        stringResource(R.string.recording_recognize_raw_only),
+                        { dialog = null; controller.recognize(current.id, rewriteOrganized = false) },
+                        modifier = Modifier.fillMaxWidth(),
+                        tone = InfinityPillTone.PRIMARY,
+                    )
+                    if (route != RecordingRoute.Raw) {
+                        InfinityPillButton(
+                            stringResource(R.string.recording_recognize_rewrite),
+                            { dialog = null; controller.recognize(current.id, rewriteOrganized = true) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    InfinityPillButton(stringResource(R.string.recording_cancel), { dialog = null }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+        "edit" -> if (current != null) RecordingEditDialog(current, hotwords.count { it.enabled }, { dialog = null }) { title, words, useLibrary, draft ->
+            controller.updateDraft(current.id, title, words, useLibrary, draft)
             dialog = null
         }
     }
@@ -292,9 +356,15 @@ private fun RecordingConfirm(title: Int, details: String, confirm: Int, dismiss:
 }
 
 @Composable
-private fun RecordingEditDialog(item: RecordingSession, dismiss: () -> Unit, save: (String, String, String?) -> Unit) {
+private fun RecordingEditDialog(
+    item: RecordingSession,
+    enabledHotwordCount: Int,
+    dismiss: () -> Unit,
+    save: (String, List<String>, Boolean, String?) -> Unit,
+) {
     var title by rememberSaveable(item.id) { mutableStateOf(item.title) }
-    var glossary by rememberSaveable(item.id) { mutableStateOf(item.glossary) }
+    var words by rememberSaveable(item.id) { mutableStateOf(ArrayList(item.hotwords)) }
+    var useLibrary by rememberSaveable(item.id) { mutableStateOf(item.useHotwordLibrary) }
     val original = remember(item.id) { item.organized }
     var draft by remember(item.id) { mutableStateOf(original) }
     InfinityBottomSheet(
@@ -303,8 +373,15 @@ private fun RecordingEditDialog(item: RecordingSession, dismiss: () -> Unit, sav
         height = InfinitySheetHeight.Full,
         dragGesturesEnabled = false,
     ) {
-        RecordingEditorContent(title, glossary, draft, { title = it }, { glossary = it }, { draft = it },
-            onSave = { save(title, glossary, draft.takeIf { it != original }) }, onCancel = dismiss)
+        RecordingEditorContent(
+            title, words, useLibrary, enabledHotwordCount, draft,
+            onTitle = { title = it },
+            onHotwords = { words = ArrayList(it) },
+            onUseLibrary = { useLibrary = it },
+            onDraft = { draft = it },
+            onSave = { save(title, it, useLibrary, draft.takeIf { text -> text != original }) },
+            onCancel = dismiss,
+        )
     }
 }
 

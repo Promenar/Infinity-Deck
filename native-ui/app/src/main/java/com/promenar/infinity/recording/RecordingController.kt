@@ -10,6 +10,8 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.backup.BackupStartupState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +24,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,10 +37,13 @@ internal data class RecordingScreenState(
     val sessions: List<RecordingSession> = emptyList(),
     val activeId: String? = null,
     val opening: Boolean = false,
+    val audioOnly: Boolean = false,
     val partial: String = "",
     val durationMs: Long = 0,
     val levels: List<Float> = emptyList(),
     val organizingId: String? = null,
+    val recognizingId: String? = null,
+    val recognizeProgress: Float = 0f,
     val failure: Int? = null,
     val ready: Boolean = false,
     val cloudKey: String? = null,
@@ -44,11 +53,28 @@ internal data class RecordingScreenState(
     val localReady get() = localLabel != null
 }
 
-internal class RecordingController(private val app: InfinityApplication) {
+internal typealias RecordingAudioCapture = suspend (Context, RecordingStore, RecordingSession, () -> CaptureCommand, RecordingDecoder, suspend (CaptureFrame) -> Unit) -> CaptureCommand
+
+internal class RecordingController(
+    private val app: InfinityApplication,
+    private val io: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val decoderFactory: RecordingDecoderFactory = RecordingDecoderFactory(::createRecordingDecoder),
+    private val recordAudio: RecordingAudioCapture = ::captureRecording,
+    private val organizationEnabled: Boolean = true,
+    private val publishDocument: suspend (RecordingSession) -> RecordingDocument = { RecordingLibrary(app).publish(it) },
+    private val recognizeWithWakeLock: suspend (suspend () -> List<RecordingSegment>) -> List<RecordingSegment> = { withRecordingRecognitionWakeLock(app, it) },
+) {
     val store = RecordingStore(app)
     private val model = RecordingModel(app)
-    private val library = RecordingLibrary(app)
-    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val asr = RecordingAsrModelManager(app, io)
+    val asrModel = asr.state
+    val asrModelInstalledBytes = asr.spec.installedBytes
+    val asrModelDownloadBytes = asr.spec.bytes
+    private val hotwordStore = RecordingHotwordStore(java.io.File(app.filesDir, RecordingHotwordStore.FILE_NAME))
+    private val _hotwords = MutableStateFlow<List<RecordingHotword>>(emptyList())
+    val hotwords = _hotwords.asStateFlow()
+    private val recognizerUse = Mutex()
+    @Volatile private var recognition: Job? = null
     private val lock = Mutex()
     private val publishing = Mutex()
     private val microphone = Mutex()
@@ -69,11 +95,18 @@ internal class RecordingController(private val app: InfinityApplication) {
         }
         io.launch {
             val restored = store.restore()
-            lock.withLock { _state.value = RecordingScreenState(sessions = restored, ready = true) }
+            val hotwordFailure = try {
+                _hotwords.value = hotwordStore.read()
+                null
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                R.string.recording_hotword_storage
+            }
+            lock.withLock { _state.value = RecordingScreenState(sessions = restored, ready = true, failure = hotwordFailure) }
             restored.filter { it.phase == RecordingPhase.Finished && it.documentHash == null }.forEach { publish(it.id) }
             while (true) {
                 try {
-                    lock.withLock { scheduleOrganization() }
+                    lock.withLock { if (organizationEnabled) scheduleOrganization() }
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     report(R.string.recording_organize_failed)
@@ -112,10 +145,11 @@ internal class RecordingController(private val app: InfinityApplication) {
                     if (_state.value.activeId == null) onIdle()
                     return@withLock
                 }
+                recognition?.cancel()
                 quiet = false
                 command.set(CaptureCommand.Continue)
                 organize?.cancel()
-                _state.value = _state.value.copy(activeId = item.id, opening = true, partial = "", durationMs = item.durationMs, levels = emptyList(), failure = null)
+                _state.value = _state.value.copy(activeId = item.id, opening = true, audioOnly = false, partial = "", durationMs = item.durationMs, levels = emptyList(), failure = null)
                 capture = io.launch { record(item, onIdle) }
             }
         }
@@ -125,24 +159,31 @@ internal class RecordingController(private val app: InfinityApplication) {
         var outcome: RecordingPhase
         var lastLevel = item.audioBytes
         try {
-            val result = microphone.withLock {
-                captureRecording(app, store, item, command::get) { frame ->
-                    lock.withLock {
-                        val current = requireNotNull(session(item.id))
-                        if (frame.checkpoint) {
-                            val segments = frame.segment?.let { current.segments + it } ?: current.segments
-                            save(current.copy(audioBytes = frame.bytes, segments = segments, checkpointText = frame.provisional))
+            val result = recognizerUse.withLock {
+                val request = lock.withLock {
+                    decoderRequest(item).also { _state.value = _state.value.copy(audioOnly = it.directory == null) }
+                }
+                decoderFactory.create(request).use { decoder ->
+                    microphone.withLock {
+                        recordAudio(app, store, item, command::get, decoder) { frame ->
+                            lock.withLock {
+                                val current = requireNotNull(session(item.id))
+                                if (frame.checkpoint) {
+                                    val segments = frame.segment?.let { current.segments + it } ?: current.segments
+                                    save(current.copy(audioBytes = frame.bytes, segments = segments, checkpointText = frame.provisional))
+                                }
+                                if (quiet && !frame.quiet) organize?.cancel()
+                                quiet = frame.quiet
+                                val previous = _state.value
+                                val levels = if (frame.bytes - lastLevel >= 3_200) {
+                                    lastLevel = frame.bytes
+                                    previous.levels.takeLast(47) + frame.level
+                                } else previous.levels
+                                _state.value = previous.copy(
+                                    opening = false, partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000, levels = levels,
+                                )
+                            }
                         }
-                        if (quiet && !frame.quiet) organize?.cancel()
-                        quiet = frame.quiet
-                        val previous = _state.value
-                        val levels = if (frame.bytes - lastLevel >= 3_200) {
-                            lastLevel = frame.bytes
-                            previous.levels.takeLast(47) + frame.level
-                        } else previous.levels
-                        _state.value = previous.copy(
-                            opening = false, partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000, levels = levels,
-                        )
                     }
                 }
             }
@@ -208,12 +249,134 @@ internal class RecordingController(private val app: InfinityApplication) {
 
     fun allowCloud(id: String, key: String?) = edit(id) { it?.copy(cloudConsent = key) }
 
-    fun updateDraft(id: String, title: String, glossary: String, editedText: String?) = edit(id) {
-        it?.copy(title = title.trim().take(100).ifBlank { it.title }, glossary = glossary.take(200),
-            organized = editedText ?: it.organized, manualEdit = it.manualEdit || editedText != null,
-            reprocessThrough = it.reprocessThrough.takeIf { editedText == null },
-            reprocessText = it.reprocessText.takeIf { editedText == null }.orEmpty())
+    fun updateDraft(id: String, title: String, hotwords: List<String>, useHotwordLibrary: Boolean, editedText: String?) {
+        val words = try { RecordingHotwordPolicy.sessionWords(hotwords) } catch (_: IllegalArgumentException) {
+            report(R.string.recording_hotword_invalid)
+            return
+        }
+        edit(id) {
+            it?.copy(title = title.trim().take(100).ifBlank { it.title }, hotwords = words, useHotwordLibrary = useHotwordLibrary,
+                organized = editedText ?: it.organized, manualEdit = it.manualEdit || editedText != null,
+                reprocessThrough = it.reprocessThrough.takeIf { editedText == null },
+                reprocessText = it.reprocessText.takeIf { editedText == null }.orEmpty())
+        }
     }
+
+    fun downloadAsrModel() = asr.start()
+    fun cancelAsrModelDownload() = asr.cancel()
+    fun unknownHotwordCharacters(text: String): List<Char>? = asr.unknownCharacters(text)
+
+    private fun effective(item: RecordingSession) = effectiveRecordingHotwords(item, _hotwords.value)
+    private fun decoderRequest(item: RecordingSession): RecordingDecoderRequest {
+        val directory = asr.installedDirectory()
+        val vocabulary = asr.tokenCharacters() ?: directory?.resolve("tokens.txt")?.useLines { recordingTokenCharacters(it) }.orEmpty()
+        return RecordingDecoderRequest(directory, effective(item), vocabulary)
+    }
+
+    private suspend fun writeHotwords(entries: List<RecordingHotword>) {
+        hotwordStore.write(entries)
+        _hotwords.value = entries
+    }
+
+    /** 返回可显示的错误，表单只在持久化成功后关闭。 */
+    suspend fun saveHotword(entry: RecordingHotword): Int? = withContext(Dispatchers.IO) {
+        state.first { it.ready }
+        lock.withLock {
+            try {
+                val clean = RecordingHotwordPolicy.normalize(entry)
+                val entries = _hotwords.value.toMutableList()
+                val index = entries.indexOfFirst { it.id == clean.id }
+                if (index < 0) entries.add(clean) else entries[index] = clean
+                writeHotwords(RecordingHotwordPolicy.validate(entries))
+                null
+            } catch (_: IllegalArgumentException) {
+                R.string.recording_hotword_invalid
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                R.string.recording_hotword_storage
+            }
+        }
+    }
+
+    fun deleteHotword(id: String) = changeHotwords { entries -> entries.filterNot { it.id == id } }
+    fun setHotwordEnabled(id: String, enabled: Boolean) = changeHotwords { entries ->
+        entries.map { if (it.id == id) it.copy(enabled = enabled) else it }
+    }
+
+    private fun changeHotwords(transform: (List<RecordingHotword>) -> List<RecordingHotword>) {
+        io.launch {
+            state.first { it.ready }
+            lock.withLock {
+                try { writeHotwords(transform(_hotwords.value)) } catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    report(R.string.recording_hotword_storage)
+                }
+            }
+        }
+    }
+
+    suspend fun importHotwords(text: String): RecordingHotwordImport? = withContext(Dispatchers.IO) {
+        state.first { it.ready }
+        lock.withLock {
+            val (entries, result) = RecordingHotwordPolicy.import(text, _hotwords.value)
+            try {
+                if (result.added > 0) writeHotwords(entries)
+                result
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                null
+            }
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    fun recognize(id: String, rewriteOrganized: Boolean) {
+        io.launch {
+            state.first { it.ready }
+            lock.withLock {
+                val item = session(id) ?: return@withLock
+                if (!recordingCanRecognize(item, _state.value.activeId, _state.value.recognizingId) ||
+                    capture?.isActive == true || recognition?.isCompleted == false || !asr.isInstalled()) return@withLock
+                if (_state.value.organizingId == id) organize?.cancel()
+                val request = decoderRequest(item)
+                // 即使刚派发就被取消，也要执行 finally 清除界面上的识别状态。
+                recognition = io.launch(start = CoroutineStart.ATOMIC) {
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        val segments = recognizerUse.withLock {
+                            recognizeWithWakeLock {
+                                decoderFactory.create(request).use { decoder ->
+                                    recognizeRecordingWav(store.audio(id), decoder) { progress ->
+                                        lock.withLock { _state.value = _state.value.copy(recognizeProgress = progress.coerceIn(0f, 1f)) }
+                                    }
+                                }
+                            }
+                        }
+                        lock.withLock {
+                            currentCoroutineContext().ensureActive()
+                            val current = session(id) ?: return@withLock
+                            if (current.copy(documentId = item.documentId, documentHash = item.documentHash) != item ||
+                                effective(current) != request.hotwords) return@withLock
+                            withContext(NonCancellable) { save(recordingRecognitionResult(current, segments, rewriteOrganized)) }
+                            nextAttempt = 0
+                            publish(id)
+                        }
+                    } catch (failure: Exception) {
+                        if (failure is CancellationException) throw failure
+                        report(R.string.recording_recognize_failed)
+                    } catch (_: LinkageError) { report(R.string.recording_recognize_failed) }
+                    finally {
+                        withContext(NonCancellable) {
+                            lock.withLock { _state.value = _state.value.copy(recognizingId = null, recognizeProgress = 0f) }
+                        }
+                    }
+                }
+                _state.value = _state.value.copy(recognizingId = id, recognizeProgress = 0f)
+            }
+        }
+    }
+
+    fun cancelRecognize() { recognition?.cancel() }
 
     fun retry(id: String) = edit(id) {
         it?.copy(manualEdit = false, reprocessThrough = 0, reprocessText = "")
@@ -264,6 +427,7 @@ internal class RecordingController(private val app: InfinityApplication) {
     // 调用方持有 publishing 与 lock。删除失败时录音保留并提示。
     private suspend fun discard(id: String) {
         if (id == _state.value.organizingId) organize?.cancel()
+        if (id == _state.value.recognizingId) recognition?.cancel()
         try {
             store.delete(id)
             _state.value = _state.value.copy(sessions = _state.value.sessions.filterNot { it.id == id })
@@ -279,7 +443,7 @@ internal class RecordingController(private val app: InfinityApplication) {
                 val item = lock.withLock { session(id) } ?: return@withLock
                 if (item.phase !in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished)) return@withLock
                 try {
-                    val document = library.publish(item)
+                    val document = publishDocument(item)
                     lock.withLock {
                         val current = session(id) ?: return@withLock
                         save(current.copy(documentId = document.path, documentHash = document.hash))
@@ -348,7 +512,7 @@ internal class RecordingController(private val app: InfinityApplication) {
         if (active != null && !quiet) return
         if (active == null && !foreground && !cloudJobRunning) return
         val item = _state.value.sessions.firstOrNull {
-            !it.manualEdit && it.organizationCursor < it.segments.size &&
+            it.id != _state.value.recognizingId && !it.manualEdit && it.organizationCursor < it.segments.size &&
                 (active == null || it.id == active) &&
                 chooseRecordingRoute(it.mode, cloud?.key, it.cloudConsent, local != null, it.fallback) in
                 (if (active != null || foreground) setOf(RecordingRoute.Cloud, RecordingRoute.Local)
@@ -358,15 +522,16 @@ internal class RecordingController(private val app: InfinityApplication) {
         organizingCloud = useCloud
         val range = nextRecordingBatch(item.segments, item.organizationCursor, if (useCloud) 2000 else 300) ?: return
         _state.value = _state.value.copy(organizingId = item.id)
+        val hotwords = effective(item)
         organize = io.launch {
             try {
                 val result = withTimeoutOrNull(120_000) {
-                    model.organize(item, range, cloud.takeIf { useCloud }, local?.modelName)
+                    model.organize(item, range, cloud.takeIf { useCloud }, local?.modelName, recordingHotwordGlossary(hotwords))
                 } ?: error("整理超时")
                 lock.withLock {
                     val current = session(item.id) ?: return@withLock
                     if (current.mode != item.mode || current.cloudConsent != item.cloudConsent || current.manualEdit ||
-                        current.organizationCursor != range.first || current.glossary != item.glossary
+                        current.organizationCursor != range.first || effective(current) != hotwords
                     ) return@withLock
                     val cursor = range.last + 1
                     val staging = current.reprocessThrough != null
@@ -375,7 +540,7 @@ internal class RecordingController(private val app: InfinityApplication) {
                     val text = listOf(prior, result).filter(String::isNotBlank).joinToString("\n\n")
                     save(if (staging && !done) current.copy(reprocessText = text, reprocessThrough = cursor)
                          else current.copy(organized = text, organizedThrough = cursor, reprocessThrough = null, reprocessText = ""))
-                    if (current.phase == RecordingPhase.Finished && done) publish(current.id)
+                    if (done && current.phase in setOf(RecordingPhase.Finished, RecordingPhase.Interrupted)) publish(current.id)
                     if (_state.value.failure == R.string.recording_organize_failed) {
                         _state.value = _state.value.copy(failure = null)
                     }
