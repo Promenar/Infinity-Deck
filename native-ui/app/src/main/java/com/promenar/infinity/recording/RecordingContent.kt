@@ -2,10 +2,14 @@ package com.promenar.infinity.recording
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -16,6 +20,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.rounded.Edit
@@ -45,6 +50,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CheckBox
+import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.History
@@ -69,6 +77,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +90,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -88,13 +99,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
@@ -107,6 +123,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import java.util.Locale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.activity.compose.BackHandler
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.common.motion.indicatorDesignSize
@@ -122,6 +141,7 @@ import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.ceil
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /** 内容区达到这个宽度与高度时用内屏版式：通栏录音卡加逐字稿、整理稿双栏。 */
 private val RecordingWideWidth = 600.dp
@@ -200,14 +220,52 @@ internal fun RecordingPageContent(
     onDiscard: () -> Unit = {},
     onReturnActive: () -> Unit = onHistory,
     editor: RecordingInlineEditor? = null,
+    batchOperation: RecordingBatchOperation = remember { RecordingBatchOperation() },
+    onDeleteRecordings: suspend (Collection<String>) -> RecordingBatchDeletion = { RecordingBatchDeletion() },
 ) {
     var historyQuery by rememberSaveable { mutableStateOf("") }
+    var selectedRecordings by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var selectingRecordings by rememberSaveable { mutableStateOf(false) }
+    var batchConfirmation by remember { mutableStateOf<List<RecordingSession>?>(null) }
+    var confirmationVisible by remember { mutableStateOf(false) }
+    val deleting = batchOperation.deleting
+    var deleteResult by remember { mutableStateOf<RecordingBatchDeletion?>(null) }
+    val focus = LocalFocusManager.current
+    val eligibleSelection = remember(state.sessions, state.activeId, selectedRecordings) {
+        val selectedIds = selectedRecordings.toSet()
+        state.sessions.filter { it.id in selectedIds && recordingDeletable(it, state.activeId) }
+    }
+    val clearSelection = {
+        selectedRecordings = arrayListOf()
+        selectingRecordings = false
+    }
+    val finishedDeletion = batchOperation.result
+    LaunchedEffect(finishedDeletion) {
+        val result = finishedDeletion ?: return@LaunchedEffect
+        selectedRecordings = ArrayList(result.failed)
+        selectingRecordings = result.failed.isNotEmpty()
+        deleteResult = result
+        batchOperation.consumeResult()
+    }
+    LaunchedEffect(current?.id) {
+        if (current != null && !deleting) {
+            confirmationVisible = false
+            clearSelection()
+        }
+    }
+    val historySelecting = current == null && selectingRecordings
+    val pageBack = {
+        if (historySelecting) {
+            if (!deleting) clearSelection()
+        } else onBack()
+    }
+    BackHandler(enabled = historySelecting, onBack = pageBack)
     val active = current != null && state.activeId == current.id
     val historyList = rememberLazyListState()
     val animationsEnabled = rememberAnimationsEnabled()
     InfinityPageLayout(
         title = stringResource(R.string.recording_title),
-        onBack = onBack,
+        onBack = pageBack,
         scrollable = false,
         bodyPadding = PaddingValues(),
         titleContent = if (current == null) null else {
@@ -223,7 +281,8 @@ internal fun RecordingPageContent(
             }
         },
         actions = {
-            IconButton(onClick = if (current == null) onMode else onRecordMenu) {
+            IconButton(onClick = if (current == null) ({ clearSelection(); onMode() }) else onRecordMenu,
+                enabled = !deleting) {
                 Icon(if (current == null) Icons.Rounded.Settings else Icons.Rounded.MoreHoriz,
                     stringResource(if (current == null) R.string.recording_settings else R.string.recording_actions))
             }
@@ -260,8 +319,30 @@ internal fun RecordingPageContent(
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             if (shown == null) {
-                                RecordingWorkspaceHistory(state, historyList, historyQuery, { historyQuery = it },
-                                    onBegin, onReturnActive, onSelect)
+                                RecordingWorkspaceHistory(
+                                    state, historyList, historyQuery, { historyQuery = it },
+                                    onStart = { clearSelection(); onBegin() },
+                                    onReturn = { clearSelection(); onReturnActive() },
+                                    onSelect = onSelect,
+                                    selecting = historySelecting,
+                                    selected = eligibleSelection.mapTo(mutableSetOf()) { it.id },
+                                    onSelectionChange = {
+                                        selectingRecordings = true
+                                        selectedRecordings = ArrayList(it)
+                                    },
+                                    onExitSelection = clearSelection,
+                                    onDeleteSelection = {
+                                        if (!batchOperation.deleting && batchConfirmation == null && eligibleSelection.isNotEmpty()) {
+                                            focus.clearFocus()
+                                            batchConfirmation = eligibleSelection
+                                            confirmationVisible = true
+                                        }
+                                    },
+                                    enabled = !deleting,
+                                    animationsEnabled = animationsEnabled,
+                                )
+                                RecordingDeleteNotice(deleteResult, animationsEnabled,
+                                    Modifier.align(Alignment.BottomCenter).widthIn(max = FailureNoticeMaxWidth))
                             } else if (wide) {
                                 RecordingWideBody(
                                     view, onMode, onEdit, onConsent, transcriptTools, onPlay,
@@ -307,6 +388,48 @@ internal fun RecordingPageContent(
             }
         }
     }
+    batchConfirmation?.let { confirmed ->
+        RecordingBatchDeleteDialog(
+            confirmed, confirmationVisible && current == null, animationsEnabled,
+            dismiss = { confirmationVisible = false },
+            onExit = { batchConfirmation = null },
+            onConfirm = {
+                if (confirmationVisible && current == null && !batchOperation.deleting) {
+                    confirmationVisible = false
+                    deleteResult = null
+                    batchOperation.submit(confirmed.map { it.id }, onDeleteRecordings)
+                }
+            },
+        )
+    }
+    LaunchedEffect(deleteResult) {
+        if (deleteResult != null) {
+            delay(FailureNoticeMillis)
+            deleteResult = null
+        }
+    }
+}
+
+/** 覆盖配置变化期间的删除请求，重建后由当前录音页面消费结果。 */
+internal class RecordingBatchOperation : ViewModel() {
+    var deleting by mutableStateOf(false)
+        private set
+    var result by mutableStateOf<RecordingBatchDeletion?>(null)
+        private set
+
+    fun submit(ids: List<String>, delete: suspend (Collection<String>) -> RecordingBatchDeletion) {
+        if (deleting) return
+        deleting = true
+        viewModelScope.launch {
+            try {
+                result = delete(ids)
+            } finally {
+                deleting = false
+            }
+        }
+    }
+
+    fun consumeResult() { result = null }
 }
 
 internal class RecordingInlineEditor(val text: String, val onChange: (String) -> Unit, val onSave: () -> Unit, val onCancel: () -> Unit)
@@ -880,6 +1003,8 @@ private val recordingSeekLink = Regex("\\[(\\d+:[\\d:]+)]\\(recording://seek/(\\
 private fun RecordingWorkspaceHistory(
     state: RecordingScreenState, list: LazyListState, query: String, onQuery: (String) -> Unit,
     onStart: () -> Unit, onReturn: () -> Unit, onSelect: (RecordingSession) -> Unit,
+    selecting: Boolean, selected: Set<String>, onSelectionChange: (Set<String>) -> Unit,
+    onExitSelection: () -> Unit, onDeleteSelection: () -> Unit, enabled: Boolean, animationsEnabled: Boolean,
 ) {
     val active = state.sessions.firstOrNull { it.id == state.activeId }
     val today = stringResource(R.string.recording_today)
@@ -899,8 +1024,12 @@ private fun RecordingWorkspaceHistory(
                 else -> dayFormat.format(Date(item.createdAt))
             } }
     }
+    val matching = remember(groups, state.activeId) {
+        groups.values.flatten().filter { recordingDeletable(it, state.activeId) }.mapTo(mutableSetOf()) { it.id }
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= RecordingWideWidth
+        val wideHeader = maxWidth >= (620 * maxOf(1f, LocalDensity.current.fontScale)).dp
         val edge = if (wide) 20.dp else 16.dp
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = edge, end = edge, bottom = 24.dp)) {
             item(key = "recording-start-card") {
@@ -933,25 +1062,17 @@ private fun RecordingWorkspaceHistory(
                             Spacer(Modifier.height(3.dp))
                             InfinityPillButton(stringResource(if (active == null) R.string.recording_start else R.string.recording_return_active),
                                 if (active == null) onStart else onReturn, tone = InfinityPillTone.PRIMARY,
-                                enabled = state.ready, icon = Icons.Rounded.Mic)
+                                enabled = state.ready && enabled, icon = Icons.Rounded.Mic)
                         }
                     }
                 }
             }
-            item(key = "recording-search") {
-                val title: @Composable () -> Unit = { Text(stringResource(R.string.recording_history), style = InfinityTypography.titleMedium) }
-                val search: @Composable (Modifier) -> Unit = { modifier ->
-                    OutlinedTextField(query, onQuery, modifier, singleLine = true, shape = RoundedCornerShape(14.dp),
-                        leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp)) },
-                        placeholder = { Text(stringResource(R.string.recording_search), style = InfinityTypography.bodyMedium) },
-                        textStyle = InfinityTypography.bodyMedium.forInput())
-                }
-                if (wide) Row(Modifier.padding(top = 16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { title() }
-                    search(Modifier.widthIn(max = 230.dp))
-                } else Column(Modifier.padding(top = 17.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    title(); search(Modifier.fillMaxWidth())
-                }
+            item(key = "recording-history-gap") { Spacer(Modifier.height(16.dp)) }
+            stickyHeader(key = "recording-search") {
+                RecordingHistoryHeader(
+                    wideHeader, query, onQuery, selecting, selected, matching, onSelectionChange, onExitSelection,
+                    onDeleteSelection, enabled, animationsEnabled,
+                )
             }
             if (groups.isEmpty()) item(key = "recording-empty") {
                 Box(Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.Center) {
@@ -970,14 +1091,203 @@ private fun RecordingWorkspaceHistory(
                         item.segments.isNotEmpty() -> R.string.recording_raw
                         else -> R.string.recording_original_audio
                     }
-                    InfinitySettingsItem(title = item.title,
-                        subtitleSegments = listOf(timeFormat.format(Date(item.createdAt)), stringResource(condition)),
-                        icon = Icons.Rounded.GraphicEq,
-                        trailingContent = { Text(recordingTimestamp(item.durationMs), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace)) },
-                        onClick = { onSelect(item) }, modifier = Modifier.bettboxListGroupItem(index, sessions.size), showChevron = true)
+                    val canSelect = item.id in matching
+                    val marked = item.id in selected
+                    val toggle = { onSelectionChange(if (marked) selected - item.id else selected + item.id) }
+                    RecordingHistoryRow(
+                        item, listOf(timeFormat.format(Date(item.createdAt)), stringResource(condition)),
+                        modifier = Modifier.bettboxListGroupItem(index, sessions.size),
+                        selecting = selecting, checked = marked, enabled = enabled && (!selecting || canSelect),
+                        onClick = { if (selecting) toggle() else onSelect(item) },
+                        onLongClick = if (enabled && !selecting && canSelect) toggle else null,
+                        animationsEnabled = animationsEnabled,
+                    )
                 }
             }
         }
+    }
+}
+
+private val RecordingSelectionEasing = CubicBezierEasing(.2f, .65f, .35f, 1f)
+
+@Composable
+private fun recordingSelectionProgress(visible: Boolean, animationsEnabled: Boolean): State<Float> =
+    animateFloatAsState(if (visible) 1f else 0f, if (animationsEnabled) tween(220, easing = RecordingSelectionEasing) else snap(),
+        label = "recording_selection")
+
+@Composable
+private fun RecordingHistoryHeader(
+    wide: Boolean, query: String, onQuery: (String) -> Unit, selecting: Boolean,
+    selected: Set<String>, matching: Set<String>, onSelectionChange: (Set<String>) -> Unit,
+    onExitSelection: () -> Unit, onDeleteSelection: () -> Unit, enabled: Boolean, animationsEnabled: Boolean,
+) {
+    val progress = recordingSelectionProgress(selecting, animationsEnabled)
+    val hidden = selected.count { it !in matching }
+    val all = matching.isNotEmpty() && selected.containsAll(matching)
+    val selectLabel = when {
+        all -> R.string.recording_selection_clear
+        query.isNotBlank() -> R.string.recording_selection_results
+        else -> R.string.recording_selection_all
+    }
+    val search: @Composable (Modifier) -> Unit = { modifier ->
+        CompactOutlinedTextField(query, onQuery, modifier.heightIn(min = 48.dp),
+            leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp)) },
+            placeholder = stringResource(R.string.recording_search))
+    }
+    val heading: @Composable (Modifier) -> Unit = { modifier ->
+        val minimumHeight = maxOf(48.dp, with(LocalDensity.current) {
+            InfinityTypography.labelLarge.lineHeight.toDp() + InfinityTypography.labelSmall.lineHeight.toDp() + 6.dp
+        })
+        Box(modifier.heightIn(min = minimumHeight), contentAlignment = Alignment.CenterStart) {
+            Text(stringResource(R.string.recording_history), style = InfinityTypography.titleMedium,
+                modifier = (if (selecting) Modifier.clearAndSetSemantics {} else Modifier).graphicsLayer {
+                    alpha = 1f - progress.value
+                    translationY = -5.dp.toPx() * progress.value
+                })
+            // 只叠放在原栏头。退场保留按钮的尺寸和文案，直到淡出结束。
+            var shownCount by remember { mutableStateOf(selected.size) }
+            var shownHidden by remember { mutableStateOf(hidden) }
+            var shownLabel by remember { mutableStateOf(selectLabel) }
+            if (selecting) {
+                SideEffect {
+                    shownCount = selected.size
+                    shownHidden = hidden
+                    shownLabel = selectLabel
+                }
+            }
+            if (selecting || progress.value > 0f) {
+                Row(
+                    Modifier.matchParentSize()
+                        .then(if (selecting) Modifier else Modifier.clearAndSetSemantics {})
+                        .graphicsLayer { alpha = progress.value; translationY = 5.dp.toPx() * (1f - progress.value) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    IconButton(onClick = onExitSelection, enabled = selecting && enabled) {
+                        Icon(Icons.Rounded.Close, stringResource(R.string.recording_selection_exit),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
+                        val count = if (selecting) selected.size else shownCount
+                        val outside = if (selecting) hidden else shownHidden
+                        Text(pluralStringResource(R.plurals.recording_selection_count, count, count),
+                            style = InfinityTypography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (outside > 0) Text(pluralStringResource(R.plurals.recording_selection_hidden, outside, outside),
+                            style = InfinityTypography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    InfinityPillButton(stringResource(if (selecting) selectLabel else shownLabel),
+                        { if (selecting) onSelectionChange(toggleRecordingSearchSelection(selected, matching)) },
+                        compact = true, enabled = enabled && matching.isNotEmpty())
+                    InfinityPillButton(stringResource(R.string.recording_ui_delete_confirm), { if (selecting) onDeleteSelection() },
+                        compact = true, enabled = enabled && (if (selecting) selected.isNotEmpty() else shownCount > 0),
+                        tone = InfinityPillTone.DANGER)
+                }
+            }
+        }
+    }
+    val surface = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(bottom = 3.dp)
+    if (wide) Row(surface, verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        heading(Modifier.weight(1f))
+        search(Modifier.widthIn(max = 300.dp).fillMaxWidth(.44f))
+    } else Column(surface, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        heading(Modifier.fillMaxWidth())
+        search(Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun RecordingHistoryRow(
+    item: RecordingSession, subtitle: List<String>, modifier: Modifier,
+    selecting: Boolean, checked: Boolean, enabled: Boolean, onClick: () -> Unit,
+    onLongClick: (() -> Unit)?, animationsEnabled: Boolean,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val progress = recordingSelectionProgress(selecting, animationsEnabled)
+    val background = animateColorAsState(
+        if (checked) scheme.secondaryContainer else scheme.surfaceContainerLow,
+        if (animationsEnabled) tween(220, easing = RecordingSelectionEasing) else snap(), label = "recording_selected_color",
+    )
+    val selectItem = stringResource(R.string.recording_selection_item)
+    InfinitySettingsRowLayout(
+        title = item.title,
+        subtitleSegments = subtitle,
+        modifier = modifier.drawBehind { drawRect(background.value) }
+            .combinedClickable(enabled = enabled, role = if (selecting) Role.Checkbox else Role.Button,
+                onClick = onClick, onLongClick = onLongClick, onLongClickLabel = if (onLongClick != null) selectItem else null)
+            .semantics { if (selecting) toggleableState = if (checked) ToggleableState.On else ToggleableState.Off },
+        leadingContent = {
+            Icon(Icons.Rounded.GraphicEq, null, Modifier.size(InfinitySpacing.RowIconSize).graphicsLayer {
+                alpha = 1f - progress.value
+            }, tint = scheme.onSurfaceVariant)
+            Icon(if (checked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank, null,
+                Modifier.size(InfinitySpacing.RowIconSize).graphicsLayer {
+                    alpha = progress.value * if (enabled) 1f else .38f
+                    scaleX = .86f + .14f * progress.value
+                    scaleY = scaleX
+                }, tint = if (checked) scheme.primary else scheme.onSurfaceVariant)
+        },
+        trailingContent = {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(recordingTimestamp(item.durationMs), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace))
+                Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp).graphicsLayer { alpha = 1f - progress.value },
+                    tint = scheme.onSurfaceVariant)
+            }
+        },
+    )
+}
+
+@Composable
+private fun RecordingBatchDeleteDialog(
+    confirmed: List<RecordingSession>, visible: Boolean, animationsEnabled: Boolean,
+    dismiss: () -> Unit, onExit: () -> Unit, onConfirm: () -> Unit,
+) {
+    val count = confirmed.size
+    RecordingDialog(
+        pluralStringResource(R.plurals.recording_selection_delete_question, count, count), dismiss,
+        icon = Icons.Rounded.DeleteOutline, width = 412.dp, destructive = true,
+        dismissEnabled = visible, visible = visible, animationsEnabled = animationsEnabled, onExit = onExit,
+        footer = {
+            RecordingDialogActions(stringResource(R.string.recording_ui_delete_confirm), onConfirm, dismiss,
+                destructive = true, enabled = visible)
+        },
+    ) {
+        Text(stringResource(R.string.recording_ui_delete_detail), style = InfinityTypography.bodyMedium)
+        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                confirmed.take(3).forEach { Text(it.title, style = InfinityTypography.bodySmall, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis) }
+                val remaining = count - 3
+                if (remaining > 0) Text(pluralStringResource(R.plurals.recording_selection_delete_more, remaining, remaining),
+                    style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(stringResource(R.string.recording_selection_keep_documents), style = InfinityTypography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun RecordingDeleteNotice(result: RecordingBatchDeletion?, animationsEnabled: Boolean, modifier: Modifier) {
+    var last by remember { mutableStateOf<RecordingBatchDeletion?>(null) }
+    SideEffect { if (result != null) last = result }
+    AnimatedVisibility(result != null, modifier,
+        enter = if (animationsEnabled) fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 } else EnterTransition.None,
+        exit = if (animationsEnabled) fadeOut(tween(220)) else ExitTransition.None,
+    ) {
+        val shown = result ?: last ?: return@AnimatedVisibility
+        val count = shown.deleted.size
+        val failed = shown.failed.size
+        val message = when {
+            failed > 0 && shown.unavailable > 0 -> stringResource(R.string.recording_selection_delete_partial, count, failed, shown.unavailable)
+            failed > 0 -> stringResource(R.string.recording_selection_delete_failed, count, failed)
+            count == 0 -> stringResource(R.string.recording_selection_delete_unavailable)
+            shown.unavailable > 0 -> stringResource(R.string.recording_selection_delete_skipped, count, shown.unavailable)
+            else -> pluralStringResource(R.plurals.recording_selection_deleted, count, count)
+        }
+        InfinitySnackbar(InfinitySnackbarData(message, if (failed > 0) SnackbarType.ERROR else if (count > 0) SnackbarType.SUCCESS else SnackbarType.INFO),
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
     }
 }
 

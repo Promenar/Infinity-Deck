@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -52,20 +53,29 @@ internal fun RecordingDialog(
     dismissEnabled: Boolean = true,
     back: (() -> Unit)? = null,
     footer: (@Composable () -> Unit)? = null,
+    visible: Boolean = true,
+    animationsEnabled: Boolean = true,
+    onExit: () -> Unit = {},
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val wide = rememberInfinityWideWindow()
     val close by rememberUpdatedState(back ?: dismiss)
     val canClose by rememberUpdatedState(dismissEnabled)
+    val exit by rememberUpdatedState(onExit)
     val preview = LocalInspectionMode.current
     val entrance = remember { Animatable(if (preview) 1f else 0f) }
-    LaunchedEffect(Unit) { entrance.animateTo(1f, tween(190)) }
+    LaunchedEffect(visible, animationsEnabled) {
+        val target = if (visible) 1f else 0f
+        if (animationsEnabled) entrance.animateTo(target, tween(190)) else entrance.snapTo(target)
+        if (!visible) exit()
+    }
     Dialog(
         onDismissRequest = { if (dismissEnabled) close() },
         properties = DialogProperties(dismissOnBackPress = dismissEnabled, dismissOnClickOutside = false,
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = .28f))) {
+        val scrim = MaterialTheme.colorScheme.scrim
+        Box(Modifier.fillMaxSize().drawBehind { drawRect(scrim, alpha = .28f * entrance.value) }) {
             Box(Modifier.matchParentSize().pointerInput(Unit) {
                 detectTapGestures { if (canClose) close() }
             })

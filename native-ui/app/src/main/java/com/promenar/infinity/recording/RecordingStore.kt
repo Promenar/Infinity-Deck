@@ -140,6 +140,10 @@ internal class RecordingStore(
 
     suspend fun restore(): List<RecordingSession> = withContext(Dispatchers.IO) {
         root.listFiles().orEmpty().filter { it.isDirectory }.mapNotNull { dir ->
+            if (dir.name.startsWith(DELETED_PREFIX) && validSessionId(dir.name.removePrefix(DELETED_PREFIX))) {
+                dir.deleteRecursively()
+                return@mapNotNull null
+            }
             if (!validSessionId(dir.name)) return@mapNotNull null
             val pending = runCatching { readJournal(dir.name) }.getOrNull()
             if (pending?.discarding == true) {
@@ -180,11 +184,16 @@ internal class RecordingStore(
         }.sortedByDescending { it.createdAt }
     }
 
-    /** 删除一条录音的目录：音频与逐字稿、整理稿元数据一并移除。 */
+    /** 原子移出可见目录后再清理内容。若清理中断，恢复时继续清理。 */
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         require(validSessionId(id))
         val directory = File(root, id)
-        check(!directory.exists() || directory.deleteRecursively())
+        val deleted = File(root, "$DELETED_PREFIX$id")
+        if (directory.exists()) {
+            check(!deleted.exists() && directory.renameTo(deleted))
+        }
+        if (deleted.isDirectory) deleted.deleteRecursively()
+        Unit
     }
 
     private fun validSessionId(value: String) = runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
@@ -235,3 +244,5 @@ internal class RecordingStore(
         fun updateWavHeader(file: RandomAccessFile, size: Long) = updateRecordingWavHeader(file, size)
     }
 }
+
+private const val DELETED_PREFIX = ".deleted-"

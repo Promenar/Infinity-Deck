@@ -38,6 +38,36 @@
     <string name="recording_start_description">Transcribe live and review the transcript and summary afterward.</string>
     <string name="recording_search">Search recordings</string>
     <string name="recording_search_empty">No matching recordings</string>
+    <string name="recording_selection_exit">Exit multiple selection</string>
+    <string name="recording_selection_item">Select recording</string>
+    <string name="recording_selection_all">Select all</string>
+    <string name="recording_selection_clear">Deselect all</string>
+    <string name="recording_selection_results">Select results</string>
+    <string name="recording_selection_keep_documents">Documents saved to the library will be kept.</string>
+    <string name="recording_selection_delete_failed">Deleted %1$d. Could not delete %2$d. Try again.</string>
+    <string name="recording_selection_delete_skipped">Deleted %1$d. Skipped %2$d unavailable recordings.</string>
+    <string name="recording_selection_delete_partial">Deleted %1$d. Skipped %3$d unavailable recordings. Try again for the %2$d still selected.</string>
+    <string name="recording_selection_delete_unavailable">The selected recordings are no longer available for deletion.</string>
+    <plurals name="recording_selection_count">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <plurals name="recording_selection_hidden">
+        <item quantity="one">%d outside results</item>
+        <item quantity="other">%d outside results</item>
+    </plurals>
+    <plurals name="recording_selection_delete_question">
+        <item quantity="one">Delete %d recording?</item>
+        <item quantity="other">Delete %d recordings?</item>
+    </plurals>
+    <plurals name="recording_selection_delete_more">
+        <item quantity="one">%d more recording</item>
+        <item quantity="other">%d more recordings</item>
+    </plurals>
+    <plurals name="recording_selection_deleted">
+        <item quantity="one">Deleted %d recording</item>
+        <item quantity="other">Deleted %d recordings</item>
+    </plurals>
     <string name="recording_has_summary">Summary available</string>
     <string name="recording_hotword_words">Hotwords, one per line</string>
     <string name="recording_route_title">Organization method</string>

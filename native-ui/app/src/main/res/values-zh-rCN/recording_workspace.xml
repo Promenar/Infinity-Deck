@@ -38,6 +38,31 @@
     <string name="recording_start_description">实时听写，录完查看逐字稿和整理稿。</string>
     <string name="recording_search">搜索录音</string>
     <string name="recording_search_empty">未找到匹配的录音</string>
+    <string name="recording_selection_exit">退出多选</string>
+    <string name="recording_selection_item">选择录音</string>
+    <string name="recording_selection_all">全选</string>
+    <string name="recording_selection_clear">取消全选</string>
+    <string name="recording_selection_results">全选结果</string>
+    <string name="recording_selection_keep_documents">已保存到资料库的文档会保留。</string>
+    <string name="recording_selection_delete_failed">已删除 %1$d 条，%2$d 条未能删除。请重试。</string>
+    <string name="recording_selection_delete_skipped">已删除 %1$d 条，跳过 %2$d 条已不可删除的录音。</string>
+    <string name="recording_selection_delete_partial">已删除 %1$d 条，跳过 %3$d 条已不可删除的录音。仍选中 %2$d 条，可重试。</string>
+    <string name="recording_selection_delete_unavailable">所选录音已不可删除。</string>
+    <plurals name="recording_selection_count">
+        <item quantity="other">已选 %d 条</item>
+    </plurals>
+    <plurals name="recording_selection_hidden">
+        <item quantity="other">%d 条在其他结果</item>
+    </plurals>
+    <plurals name="recording_selection_delete_question">
+        <item quantity="other">删除 %d 条录音？</item>
+    </plurals>
+    <plurals name="recording_selection_delete_more">
+        <item quantity="other">另有 %d 条录音</item>
+    </plurals>
+    <plurals name="recording_selection_deleted">
+        <item quantity="other">已删除 %d 条录音</item>
+    </plurals>
     <string name="recording_has_summary">有整理稿</string>
     <string name="recording_hotword_words">本录音专用词，每行一个</string>
     <string name="recording_route_title">整理方式</string>

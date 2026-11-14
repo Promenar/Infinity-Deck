@@ -171,6 +171,9 @@ internal fun recordingSegmentAt(segments: List<RecordingSegment>, positionMs: Lo
 internal fun recordingDeletable(session: RecordingSession, activeId: String?): Boolean =
     !session.captureRollbackPending && session.id != activeId && session.phase in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished)
 
+internal fun toggleRecordingSearchSelection(selected: Set<String>, matching: Set<String>): Set<String> =
+    if (selected.containsAll(matching)) selected - matching else selected + matching
+
 /** 资料文档被删除后一并删除的录音 id：资料文档的 id 就是录音 id，只取可删除的录音。 */
 internal fun recordingsRemovedWithDocuments(
     sessions: List<RecordingSession>,

@@ -78,6 +78,15 @@ class RecordingPolicyTest {
         assertEquals(emptyList<String>(), recordingsRemovedWithDocuments(sessions, emptyList(), null))
     }
 
+    @Test fun selectingCurrentSearchResultsDoesNotChangeSelectionsOutsideTheSearch() {
+        val selected = setOf("outside", "match-1")
+        val matches = setOf("match-1", "match-2")
+        val all = toggleRecordingSearchSelection(selected, matches)
+        assertEquals(setOf("outside", "match-1", "match-2"), all)
+        assertEquals(setOf("outside"), toggleRecordingSearchSelection(all, matches))
+        assertEquals(all, toggleRecordingSearchSelection(all, emptySet()))
+    }
+
     @Test fun playbackPositionMapsToTheSegmentThatStartedLast() {
         val segments = listOf(
             RecordingSegment(1_000, 5_000, "a"),

@@ -13,11 +13,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -62,6 +64,12 @@ internal typealias RecordingAudioCapture = suspend (
     suspend () -> Unit, RecordingWaveformSampler, suspend (CaptureFrame) -> Unit,
 ) -> CaptureCommand
 internal typealias RecordingDocumentPublisher = suspend (RecordingSession, suspend (String?, String) -> Unit) -> RecordingDocument
+
+internal data class RecordingBatchDeletion(
+    val deleted: Set<String> = emptySet(),
+    val failed: Set<String> = emptySet(),
+    val unavailable: Int = 0,
+)
 
 internal class RecordingController(
     private val app: InfinityApplication,
@@ -831,7 +839,30 @@ internal class RecordingController(
             publishing.withLock {
                 lock.withLock {
                     val item = session(id) ?: return@withLock
-                    if (recordingDeletable(item, _state.value.activeId)) discard(id)
+                    if (recordingDeletable(item, _state.value.activeId) && !discard(id)) {
+                        report(R.string.recording_storage_failed)
+                    }
+                }
+            }
+        }
+    }
+
+    /** 固定确认时的 ID；持锁重新检查录音状态，再逐条提交删除。 */
+    fun deleteBatch(ids: Collection<String>): Deferred<RecordingBatchDeletion> {
+        val confirmed = ids.toSet()
+        return io.async {
+            state.first { it.ready }
+            publishing.withLock {
+                lock.withLock {
+                    val snapshot = _state.value
+                    val eligible = snapshot.sessions.filter { it.id in confirmed && recordingDeletable(it, snapshot.activeId) }
+                    val deleted = mutableSetOf<String>()
+                    val failed = mutableSetOf<String>()
+                    for (item in eligible) {
+                        currentCoroutineContext().ensureActive()
+                        if (discard(item.id)) deleted.add(item.id) else failed.add(item.id)
+                    }
+                    RecordingBatchDeletion(deleted, failed, confirmed.size - eligible.size)
                 }
             }
         }
@@ -845,23 +876,26 @@ internal class RecordingController(
             publishing.withLock {
                 lock.withLock {
                     recordingsRemovedWithDocuments(_state.value.sessions, documentIds, _state.value.activeId)
-                        .forEach { discard(it) }
+                        .forEach { if (!discard(it)) report(R.string.recording_storage_failed) }
                 }
             }
         }
     }
 
-    // 调用方持有 publishing 与 lock。删除失败时录音保留并提示。
-    private suspend fun discard(id: String) {
-        if (id == _state.value.organizingId) organize?.cancel()
-        if (id == _state.value.recognizingId) recognition?.cancel()
-        if (id == _state.value.speakerAnalysisId) speakerJob?.cancel()
+    // 调用方持有 publishing 与 lock。存储提交失败时保留会话及其后台任务。
+    private suspend fun discard(id: String): Boolean = withContext(NonCancellable) {
         try {
             store.delete(id)
+            if (id == _state.value.organizingId) organize?.cancel()
+            if (id == _state.value.recognizingId) recognition?.cancel()
+            if (id == _state.value.speakerAnalysisId) speakerJob?.cancel()
+            nextAttempt.remove(id)
+            speakerAnalysisFailures.remove(id)
             _state.value = _state.value.copy(sessions = _state.value.sessions.filterNot { it.id == id })
+            true
         } catch (failure: Exception) {
             if (failure is CancellationException) throw failure
-            report(R.string.recording_storage_failed)
+            false
         }
     }
 

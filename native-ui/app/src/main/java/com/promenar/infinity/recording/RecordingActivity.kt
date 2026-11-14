@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.withResumed
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
@@ -305,6 +306,8 @@ private fun RecordingScreen(
         onAnalyzeSpeakers = { current?.let { controller.analyzeSpeakers(it.id) } },
         onSpeakerSettings = { dialog = "mode" },
         onSpeakerSelect = { speakerId = it.id; speakerSegment = it.segmentStartMs; dialog = "speaker" },
+        batchOperation = viewModel(),
+        onDeleteRecordings = { controller.deleteBatch(it).await() },
     )
 
     when (dialog) {

@@ -41,6 +41,7 @@ fun CompactOutlinedTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     trailingIcon: (@Composable () -> Unit)? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -77,6 +78,7 @@ fun CompactOutlinedTextField(
                     isError = isError,
                     label = if (label != null) { { Text(label) } } else null,
                     placeholder = if (placeholder != null) { { Text(placeholder) } } else null,
+                    leadingIcon = leadingIcon,
                     trailingIcon = trailingIcon,
                     supportingText = if (supportingText != null) { { Text(supportingText) } } else null,
                     colors = colors,

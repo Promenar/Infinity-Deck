@@ -79,6 +79,66 @@ class RecordingControllerRecognitionTest {
         }
     }
 
+    @Test fun batchDeletionUsesTheConfirmedSnapshotAndPreservesUnselectedAndFailedRecordings() = runBlocking {
+        val f = Fixture()
+        try {
+            val keep = f.original.copy(id = UUID.randomUUID().toString(), title = "保留")
+            val interrupted = f.original.copy(id = UUID.randomUUID().toString(), title = "中断", phase = RecordingPhase.Interrupted)
+            val blocked = f.original.copy(id = UUID.randomUUID().toString(), title = "暂时无法删除")
+            for (item in listOf(f.original, keep, interrupted, blocked)) f.seed(item)
+            val publishing = CompletableDeferred<Unit>()
+            val published = CompletableDeferred<Unit>()
+            val controller = f.controller(publish = {
+                publishing.complete(Unit)
+                published.await()
+                RecordingDocument("doc", "hash")
+            })
+            withTimeout(5_000) { controller.state.first { it.ready } }
+            controller.publish(keep.id)
+            withTimeout(5_000) { publishing.await() }
+            val occupied = f.root.resolve("recording-sessions/.deleted-${blocked.id}").also { it.writeText("冲突") }
+            val request = mutableListOf(f.original.id, blocked.id, interrupted.id, interrupted.id, "missing")
+            val deleting = controller.deleteBatch(request)
+            request.clear()
+            request += keep.id
+            published.complete(Unit)
+            val result = withTimeout(5_000) { deleting.await() }
+            assertEquals(setOf(f.original.id, interrupted.id), result.deleted)
+            assertEquals(setOf(blocked.id), result.failed)
+            assertEquals(1, result.unavailable)
+            assertTrue(controller.store.audio(keep.id).isFile)
+            assertTrue(controller.store.audio(blocked.id).isFile)
+            assertFalse(controller.store.audio(interrupted.id).exists())
+            assertEquals(setOf(keep.id, blocked.id), controller.store.restore().map { it.id }.toSet())
+            assertTrue(occupied.delete())
+            assertEquals(setOf(blocked.id), withTimeout(5_000) { controller.deleteBatch(listOf(blocked.id)).await() }.deleted)
+        } finally { f.close() }
+    }
+
+    @Test fun batchDeletionRechecksEligibilityWhenASelectedRecordingHasResumed() = runBlocking {
+        val f = Fixture()
+        try {
+            val other = f.original.copy(id = UUID.randomUUID().toString(), title = "可删除")
+            f.seed()
+            f.seed(other)
+            val capturing = CompletableDeferred<Unit>()
+            val controller = f.controller(capture = { _, _, _, _, _, onCaptureStarted, _, _ ->
+                onCaptureStarted()
+                capturing.complete(Unit)
+                awaitCancellation()
+            })
+            withTimeout(5_000) { controller.state.first { it.ready } }
+            controller.capture(f.original.id) {}
+            withTimeout(5_000) { capturing.await() }
+            val result = withTimeout(5_000) { controller.deleteBatch(listOf(f.original.id, other.id)).await() }
+            assertEquals(setOf(other.id), result.deleted)
+            assertTrue(result.failed.isEmpty())
+            assertEquals(1, result.unavailable)
+            assertEquals(f.original.id, controller.state.value.activeId)
+            assertTrue(controller.store.audio(f.original.id).isFile)
+        } finally { f.close() }
+    }
+
     @Test fun bothWritebackModesCommitSegmentsAndPublish() = runBlocking {
         for (rewrite in listOf(false, true)) {
             val f = Fixture()
