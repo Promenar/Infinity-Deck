@@ -1071,7 +1071,7 @@ private fun RecordingWorkspaceHistory(
             stickyHeader(key = "recording-search") {
                 RecordingHistoryHeader(
                     wideHeader, query, onQuery, selecting, selected, matching, onSelectionChange, onExitSelection,
-                    onDeleteSelection, enabled, animationsEnabled,
+                    onDeleteSelection, enabled, animationsEnabled, minOf((maxWidth - edge * 2) * .44f, 300.dp),
                 )
             }
             if (groups.isEmpty()) item(key = "recording-empty") {
@@ -1120,6 +1120,7 @@ private fun RecordingHistoryHeader(
     wide: Boolean, query: String, onQuery: (String) -> Unit, selecting: Boolean,
     selected: Set<String>, matching: Set<String>, onSelectionChange: (Set<String>) -> Unit,
     onExitSelection: () -> Unit, onDeleteSelection: () -> Unit, enabled: Boolean, animationsEnabled: Boolean,
+    wideSearchWidth: androidx.compose.ui.unit.Dp,
 ) {
     val progress = recordingSelectionProgress(selecting, animationsEnabled)
     val hidden = selected.count { it !in matching }
@@ -1189,7 +1190,7 @@ private fun RecordingHistoryHeader(
     val surface = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(bottom = 3.dp)
     if (wide) Row(surface, verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         heading(Modifier.weight(1f))
-        search(Modifier.widthIn(max = 300.dp).fillMaxWidth(.44f))
+        search(Modifier.width(wideSearchWidth))
     } else Column(surface, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         heading(Modifier.fillMaxWidth())
         search(Modifier.fillMaxWidth())
