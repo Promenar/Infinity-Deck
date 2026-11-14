@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.56.1-beta] - 2026-11-14
+
+- 新建笔记时为自定义标题补全 Markdown 扩展名，确保正文进入资料索引。
+
 ## [0.56.0-beta] - 2026-11-14
 
 - 资料首页通过「＋ 添加」菜单进入录音、导入文件和新建笔记。

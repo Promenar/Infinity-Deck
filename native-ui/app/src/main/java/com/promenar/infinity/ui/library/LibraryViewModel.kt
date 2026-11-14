@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.document.external.ExternalMarkdown
 import com.promenar.infinity.data.library.LibraryKnowledgeModule
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileManagerServices
@@ -215,7 +216,7 @@ class LibraryViewModel(
     /** 把一段文字存成存储空间根目录下的笔记。 */
     fun saveNote(name: String, text: String) {
         launchNotice(LibraryNotice.Kind.NOTE) {
-            files.operations.importText(text, LIBRARY_ROOT, name)
+            files.operations.importText(text, LIBRARY_ROOT, ExternalMarkdown.ensureMarkdownName(name))
             null
         }
     }
