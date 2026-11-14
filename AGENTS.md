@@ -7,6 +7,7 @@
 - **语言规范**：所有解释、规划、文档、注释必须使用简体中文。技术转译时，禁止直接搬运大段英文日志。
 - **闭环工作流**：在声称任务完成前，必须通过 **DIA 检查**。
 - **文档治理 (DIA 机制)**：每次修改必须评估对核心及按需文档的影响。核心文档包含 `CHANGELOG.md`、`README.md`、`.agent/handover.md`。
+- **全站 UI 门禁**：Infinity Deck 所有用户界面及其评审原型，禁止将无容器、无图标的纯文本作为按钮。文字动作使用带可见填充、描边或明确控件边界的按钮。独立图标按钮须有可访问名称。原型确认和实际界面视觉验收均检查此项。
 
 ## 2. 项目特定架构与文档注册表
 `.agent/`（交接、计划、注册表）与 `.pdec`（开发执行契约）是本地治理目录，不进入本仓库：`.agent/` 本身是私有仓库 `Promenar/Infinity-Workbench-governance` 的工作区，`.pdec` 是指向 `.agent/pdec` 的符号链接。新机器上在仓库根执行 `git clone https://github.com/Promenar/Infinity-Workbench-governance.git .agent && ln -s .agent/pdec .pdec`；写入 handover 后在 `.agent/` 内单独提交推送。
@@ -65,4 +66,4 @@
 - 对外发布：版本提交推送 `main` 后，经用户授权推送注释标签 `v<versionName>`，由 `.github/workflows/release.yml` 构建、验签并发布 GitHub Release；发布说明取自 `CHANGELOG.md` 对应版本小节。流程见 [docs/distribution-builds.md](docs/distribution-builds.md)。
 
 ---
-*规范更新于 2026-11-02。请每次开启新会话时首先阅读本文件，并检查 `.agent/handover.md` 的 Next Steps！*
+*规范更新于 2026-11-14。请每次开启新会话时首先阅读本文件，并检查 `.agent/handover.md` 的 Next Steps！*
