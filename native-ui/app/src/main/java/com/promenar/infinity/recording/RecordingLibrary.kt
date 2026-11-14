@@ -10,7 +10,7 @@ import com.promenar.infinity.infra.util.Sha256Utils
 internal data class RecordingDocument(val path: String, val hash: String)
 
 internal class RecordingLibrary(private val app: InfinityApplication) {
-    suspend fun publish(session: RecordingSession): RecordingDocument {
+    suspend fun publish(session: RecordingSession, prepare: suspend (base: String?, target: String) -> Unit): RecordingDocument {
         check(withTimeoutOrNull(15_000) { app.startupState.first { it == BackupStartupState.Ready } } != null)
         val root = app.globalKnowledgeWorkspaceProvisioner.ensureRoot()
         val repository = app.workspaceRepository
@@ -23,8 +23,10 @@ internal class RecordingLibrary(private val app: InfinityApplication) {
                 repository.confirmCreatedEntry(root.uuid, existing.uuid)
                 return RecordingDocument(existing.materializedPath, existing.hash)
             }
+            check(existing.hash == session.pendingDocumentHash || existing.hash == session.documentHash) { "资料文档版本冲突" }
+            prepare(existing.hash, hash)
             val result = app.fileOperationRepository.writeFileAtomicExact(
-                root.uuid, existing.uuid, content, "recording", requireNotNull(session.documentHash),
+                root.uuid, existing.uuid, content, "recording", existing.hash,
             )
             check(result is WriteResult.Success) { "资料文档版本冲突" }
             return RecordingDocument(existing.materializedPath, result.newHash)
@@ -33,6 +35,7 @@ internal class RecordingLibrary(private val app: InfinityApplication) {
         val title = session.title.map { if (it == '/' || it.code == 92 || it.isISOControl()) ' ' else it }
             .joinToString("").trim().take(70).ifBlank { "Recording" }
         val filename = "$title-${session.id.take(8)}.md"
+        prepare(null, hash)
         val entry = repository.createFileInWorkspaceStreaming(
             workspaceRootUuid = root.uuid,
             uuid = session.id,

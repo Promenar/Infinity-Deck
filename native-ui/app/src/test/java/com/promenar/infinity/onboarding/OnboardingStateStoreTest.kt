@@ -107,6 +107,8 @@ class OnboardingStateStoreTest {
         assertThat(store.recordFirstChatResult("session", assistantSucceeded = false)).isFalse()
         assertThat(store.state.value.step).isEqualTo(OnboardingStep.FIRST_CHAT)
         assertThat(store.recordFirstChatResult("session", assistantSucceeded = true)).isTrue()
+        assertThat(store.state.value.step).isEqualTo(OnboardingStep.RECORDING_SETUP)
+        assertThat(store.completeRecordingSetup()).isTrue()
         assertThat(store.state.value.step).isEqualTo(OnboardingStep.COMPLETED)
         assertThat(context.getSharedPreferences("infinity_prefs", Context.MODE_PRIVATE)
             .getBoolean("has_shown_welcome", false)).isTrue()

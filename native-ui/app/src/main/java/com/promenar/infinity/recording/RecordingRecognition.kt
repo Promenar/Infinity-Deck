@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 internal fun recordingCanRecognize(item: RecordingSession, activeId: String?, recognizingId: String?): Boolean =
-    activeId == null && recognizingId == null && item.audioBytes > 0 &&
+    !item.captureRollbackPending && activeId == null && recognizingId == null && item.audioBytes > 0 &&
         (item.phase == RecordingPhase.Finished || item.phase == RecordingPhase.Interrupted)
 
 /** 只读取本机录音管线生成的 16 kHz、单声道 PCM16 WAV。提交会话前先完整解码。 */
@@ -64,6 +64,9 @@ internal fun recordingRecognitionResult(
     organizedThrough = if (rewriteOrganized) current.organizedThrough.coerceAtMost(segments.size) else segments.size,
     reprocessThrough = if (rewriteOrganized) 0 else null,
     reprocessText = "",
+    draftBatches = emptyList(),
+    summaryPending = rewriteOrganized,
+    summaryProgress = null,
 )
 
 internal suspend fun <T> withRecordingRecognitionWakeLock(context: Context, action: suspend () -> T): T {

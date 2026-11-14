@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 object NavDestinations {
+    const val RECORDING_SETUP = "recording_setup"
     const val WELCOME = "welcome"
     const val MAIN_TAB_SCAFFOLD = "main_tab_scaffold"
     const val CHAT_HERO = "chat_hero/{sessionId}"
@@ -198,6 +199,13 @@ fun InfinityNavGraph(
         }
     }
 
+    LaunchedEffect(onboardingState.step) {
+        if (onboardingState.step == OnboardingStep.RECORDING_SETUP &&
+            navController.currentDestination?.route != NavDestinations.RECORDING_SETUP) {
+            navController.navigate(NavDestinations.RECORDING_SETUP) { launchSingleTop = true }
+        }
+    }
+
     LaunchedEffect(openGenerationRequest, onboardingState.step) {
         val request = openGenerationRequest ?: return@LaunchedEffect
         if (onboardingState.step != OnboardingStep.COMPLETED) return@LaunchedEffect
@@ -240,6 +248,19 @@ fun InfinityNavGraph(
         navController = navController,
         startDestination = startDestination,
     ) {
+        composablePage(NavDestinations.RECORDING_SETUP) {
+            com.promenar.infinity.recording.RecordingSetupPage(onFinish = {
+                if (onboardingStore.completeRecordingSetup() || onboardingStore.state.value.step == OnboardingStep.COMPLETED) {
+                    if (navController.previousBackStackEntry == null) {
+                        navController.navigate(NavDestinations.MAIN_TAB_SCAFFOLD) {
+                            popUpTo(NavDestinations.RECORDING_SETUP) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else navController.popBackStack()
+                }
+            })
+        }
+
         composablePage(NavDestinations.WELCOME) {
             OnboardingRoute(
                 store = onboardingStore,

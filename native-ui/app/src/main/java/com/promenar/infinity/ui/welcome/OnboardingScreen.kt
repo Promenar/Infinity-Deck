@@ -185,7 +185,7 @@ private fun OnboardingFrame(state: OnboardingUiState, actions: OnboardingActions
                                 OnboardingStep.MODEL -> OnboardingModelStep(state, actions)
                                 OnboardingStep.AGENT -> OnboardingAgentStep(state, actions)
                                 OnboardingStep.FIRST_CHAT -> OnboardingReadyStep(state, actions)
-                                OnboardingStep.LANGUAGE, OnboardingStep.COMPLETED -> Unit
+                                OnboardingStep.LANGUAGE, OnboardingStep.RECORDING_SETUP, OnboardingStep.COMPLETED -> Unit
                             }
                         }
                     }

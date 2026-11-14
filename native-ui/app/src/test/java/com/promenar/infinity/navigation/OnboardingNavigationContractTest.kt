@@ -23,8 +23,11 @@ class OnboardingNavigationContractTest {
     }
 
     @Test
-    fun `首聊成功只持久化完成状态而不把当前聊天页替换成主界面`() {
-        assertThat(navGraph).doesNotContain("LaunchedEffect(onboardingState.step)")
+    fun `首聊成功打开离线准备且保留聊天返回栈`() {
+        assertThat(initialOnboardingDestination(OnboardingStep.RECORDING_SETUP)).isEqualTo(NavDestinations.RECORDING_SETUP)
+        val setup = functionBody(navGraph, "LaunchedEffect(onboardingState.step)")
+        assertThat(setup).contains("navController.navigate(NavDestinations.RECORDING_SETUP)")
+        assertThat(setup).doesNotContain("popUpTo")
     }
 
     @Test

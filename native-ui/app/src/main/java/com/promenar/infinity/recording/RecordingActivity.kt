@@ -37,6 +37,8 @@ import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.BettboxListGroup
+import com.promenar.infinity.ui.common.InfinitySettingsItem
+import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.util.LocaleHelper
@@ -71,6 +73,7 @@ class RecordingActivity : ComponentActivity() {
                 RecordingScreen(
                     controller, onBack = ::finish, onBegin = ::requestMicrophone,
                     onFinish = { RecordingService.finish(this) },
+                    onDiscard = { RecordingService.discard(this) },
                     incomingDocument = incomingDocument,
                     incomingRevision = incomingRevision,
                 )
@@ -128,6 +131,7 @@ private fun RecordingScreen(
     onBack: () -> Unit,
     onBegin: (String?) -> Unit,
     onFinish: () -> Unit,
+    onDiscard: () -> Unit,
     incomingDocument: String?,
     incomingRevision: Int,
 ) {
@@ -136,6 +140,7 @@ private fun RecordingScreen(
     val hotwords by controller.hotwords.collectAsStateWithLifecycle()
     var showHotwords by rememberSaveable { mutableStateOf(false) }
     var showVoice by rememberSaveable { mutableStateOf(false) }
+    var showSetup by rememberSaveable { mutableStateOf(false) }
     var speakerId by rememberSaveable { mutableStateOf<Int?>(null) }
     var speakerSegment by rememberSaveable { mutableStateOf<Long?>(null) }
     val speakerModel by controller.speakerModel.collectAsStateWithLifecycle()
@@ -144,7 +149,11 @@ private fun RecordingScreen(
     var organized by rememberSaveable(incomingRevision) { mutableStateOf(false) }
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var defaultMode by remember { mutableStateOf(controller.store.mode) }
-    val current = state.sessions.firstOrNull { it.id == (state.activeId ?: selected) }
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var editorText by rememberSaveable { mutableStateOf("") }
+    var pendingLanguage by rememberSaveable { mutableStateOf<RecordingLanguage?>(null) }
+    var leaveToHistory by rememberSaveable { mutableStateOf(false) }
+    val current = state.sessions.firstOrNull { it.id == selected }
     val active = current != null && state.activeId == current.id
     val paused = current?.phase == RecordingPhase.Paused
     var exportId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -154,20 +163,32 @@ private fun RecordingScreen(
         if (id != null && uri != null) controller.exportRaw(id, uri)
     }
 
+    LaunchedEffect(state.lastDiscardedId) {
+        if (state.lastDiscardedId == selected && state.sessions.none { it.id == selected }) selected = null
+    }
     LaunchedEffect(state.activeId) {
         if (state.activeId != null) {
             selected = state.activeId
             organized = false
+            editing = false
             // 删除确认只针对打开它时的那条录音；开始新录音后不再保留。
             if (dialog == "delete" || dialog == "recognize") dialog = null
         }
     }
     val route = chooseRecordingRoute(current?.mode ?: defaultMode, state.cloudKey, current?.cloudConsent, state.localReady, current?.fallback ?: controller.store.fallback)
     val playback = remember(current?.id, active) { RecordingPlayback() }
+    var playbackEnvelope by remember(current?.id, current?.audioBytes, active) { mutableStateOf(emptyList<Float>()) }
+    LaunchedEffect(current?.id, current?.audioBytes, active, current?.captureRollbackPending) {
+        val item = current?.takeUnless { active || it.captureRollbackPending } ?: return@LaunchedEffect
+        playbackEnvelope = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try { controller.store.playbackEnvelope(item.id, item.audioBytes) }
+            catch (_: java.io.IOException) { emptyList() }
+        }
+    }
     DisposableEffect(playback) { onDispose { playback.release() } }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { playback.release() }
     val play: (Long) -> Unit = { time ->
-        current?.let { item ->
+        current?.takeUnless { it.captureRollbackPending }?.let { item ->
             if (!playback.play(controller.store.audio(item.id), time) {
                 controller.report(R.string.recording_play_failed)
             }) controller.report(R.string.recording_play_failed)
@@ -185,8 +206,21 @@ private fun RecordingScreen(
         historyParent = true
         organized = false
     }
-    val backToHistory = current != null && !active && historyParent
-    BackHandler(enabled = backToHistory, onBack = showHistory)
+    val backToHistory = current != null && (active || historyParent)
+    val backAction: () -> Unit = {
+        if (editing && current != null && editorText != current.organized) {
+            leaveToHistory = true
+            dialog = "unsaved"
+        } else {
+            editing = false
+            if (backToHistory) showHistory() else onBack()
+        }
+    }
+    BackHandler(enabled = backToHistory || editing, onBack = backAction)
+    if (showSetup) {
+        RecordingSetupPage(onFinish = { showSetup = false; dialog = "mode" }, firstRun = false)
+        return
+    }
     val closeHotwords = { showHotwords = false; dialog = "mode" }
     BackHandler(enabled = showHotwords, onBack = closeHotwords)
     if (showHotwords) {
@@ -204,6 +238,12 @@ private fun RecordingScreen(
     }
     val canRecognize = current != null && recordingCanRecognize(current, state.activeId, state.recognizingId) &&
         asr == RecordingAsrModelState.Installed
+    val exportRaw: () -> Unit = {
+        current?.let {
+            exportId = it.id
+            export.launch("recording-${it.id.take(8)}.txt")
+        }
+    }
     RecordingPageContent(
         state = state,
         current = current,
@@ -211,7 +251,8 @@ private fun RecordingScreen(
         route = route,
         playing = playback.playing,
         positionMs = playback.position,
-        onBack = if (backToHistory) showHistory else onBack,
+        playbackEnvelope = playbackEnvelope,
+        onBack = backAction,
         onHistory = showHistory,
         onMode = { dialog = "mode" },
         onSelect = {
@@ -219,15 +260,24 @@ private fun RecordingScreen(
             historyParent = true
             organized = false
         },
-        onOrganizedChange = { organized = it },
-        onEdit = { dialog = "edit" },
+        onOrganizedChange = { if (!editing) organized = it },
+        onEdit = { current?.let { editorText = it.organized; editing = true; organized = true } },
+        onRecordMenu = { dialog = "actions" },
+        onRename = { dialog = "rename" },
+        onLanguage = { pendingLanguage = null; dialog = "language" },
+        onDiscard = { dialog = "discard" },
+        onReturnActive = { selected = state.activeId; organized = false },
+        editor = if (!editing || current == null) null else RecordingInlineEditor(editorText, { editorText = it },
+            onSave = {
+                controller.updateDraft(current.id, current.title, current.hotwords, current.useHotwordLibrary, editorText)
+                editing = false
+            },
+            onCancel = {
+                if (editorText == current.organized) editing = false
+                else { leaveToHistory = false; dialog = "unsaved" }
+            }),
         onConsent = { dialog = "consent" },
-        onExport = {
-            current?.let {
-                exportId = it.id
-                export.launch("recording-${it.id.take(8)}.txt")
-            }
-        },
+        onTranscriptMenu = { dialog = "transcript-actions" },
         onPlay = play,
         onTogglePlayback = {
             if (playback.playing) playback.pause() else play(playback.position.toLong())
@@ -237,10 +287,8 @@ private fun RecordingScreen(
         onBegin = { onBegin(null) },
         onPauseResume = { current?.let { if (paused) onBegin(it.id) else controller.pause() } },
         onFinish = { dialog = "finish" },
-        onContinue = { current?.let { onBegin(it.id) } },
+        onContinue = { dialog = "continue" },
         onOrganize = { dialog = "organize" },
-        onPublish = { current?.let { controller.publish(it.id) } },
-        onDelete = { dialog = "delete" },
         onDismissFailure = controller::dismissFailure,
         asrModel = asr,
         effectiveHotwords = effectiveHotwords,
@@ -248,8 +296,7 @@ private fun RecordingScreen(
         onCancelDownload = controller::cancelAsrModelDownload,
         onRecognize = {
             if (canRecognize && current != null) {
-                if (current.manualEdit) dialog = "recognize"
-                else controller.recognize(current.id, rewriteOrganized = current.organized.isBlank() && route != RecordingRoute.Raw)
+                dialog = "recognize"
             }
         },
         onCancelRecognize = controller::cancelRecognize,
@@ -269,27 +316,29 @@ private fun RecordingScreen(
             dragGesturesEnabled = false,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-                RecordingModeSheetContent(
-                    selected = current?.mode ?: defaultMode,
-                    cloudLabel = state.cloudLabel,
-                    localLabel = state.localLabel,
-                    cloudAllowed = current?.cloudConsent != null,
-                    onSelect = { mode ->
+                RecordingWorkspaceSettings(current?.mode ?: defaultMode, current?.outputLanguage ?: controller.store.outputLanguage,
+                    current?.liveOrganization ?: controller.store.liveOrganization,
+                    current?.distinguishSpeakers ?: controller.store.distinguishSpeakers,
+                    single = current != null, onSave = { mode, language, live, speakers ->
                         if (current == null) defaultMode = mode
-                        controller.setMode(current?.id, mode)
+                        controller.configure(current?.id, mode, language, live, speakers)
                         dialog = null
-                    },
-                    onRevoke = {
-                        current?.let { controller.allowCloud(it.id, null) }
-                        dialog = null
-                    },
-                )
-                BettboxListGroup { RecordingModelDownloads(controller) }
+                    })
+                if (current?.cloudConsent != null) TextButton(onClick = {
+                    controller.allowCloud(current.id, null); dialog = null
+                }) { Text(stringResource(R.string.recording_revoke)) }
                 BettboxListGroup {
-                    RecordingModelSettings(
-                        controller, onHotwords = { dialog = null; showHotwords = true },
-                        onVoice = { dialog = null; showVoice = true }, session = current,
-                    )
+                    InfinitySettingsItem(title = stringResource(R.string.recording_setup_title), showChevron = true, onClick = {
+                        dialog = null; showSetup = true
+                    })
+                }
+                BettboxListGroup {
+                    InfinitySettingsItem(title = stringResource(R.string.recording_hotword_library), showChevron = true, onClick = {
+                        dialog = null; showHotwords = true
+                    })
+                    InfinitySettingsItem(title = stringResource(R.string.recording_speaker_library), showChevron = true, onClick = {
+                        dialog = null; showVoice = true
+                    })
                 }
             }
         }
@@ -299,8 +348,65 @@ private fun RecordingScreen(
                 RecordingSpeakerSheet(current, RecordingSpeakerSelection(id, speakerSegment), controller) { dialog = null }
             }
         }
-        "finish" -> RecordingConfirm(R.string.recording_ui_stop, stringResource(R.string.recording_finish_detail),
-            R.string.recording_ui_stop, { dialog = null }, { dialog = null; onFinish() })
+        "finish" -> RecordingConfirm(R.string.recording_finish_question, stringResource(R.string.recording_finish_detail),
+            R.string.recording_finish_save, { dialog = null }, { dialog = null; organized = true; onFinish() })
+        "continue" -> if (current != null && !active) {
+            RecordingConfirm(R.string.recording_resume, stringResource(R.string.recording_append_detail, current.title),
+                R.string.recording_append_start, { dialog = null }, { dialog = null; onBegin(current.id) })
+        }
+        "discard" -> if (current != null && active) {
+            val detail = stringResource(if (state.appending) R.string.recording_discard_append_detail else R.string.recording_discard_detail)
+            InfinityConfirmDialog(
+                title = stringResource(if (state.appending) R.string.recording_discard_append_question else R.string.recording_discard_question),
+                message = if (current.cloudConsent == null) detail else "$detail\n\n${stringResource(R.string.recording_discard_cloud)}",
+                confirmText = stringResource(if (state.appending) R.string.recording_discard_append else R.string.recording_discard_all),
+                cancelText = stringResource(R.string.recording_return_active), isDestructive = true,
+                onConfirm = { dialog = null; organized = false; onDiscard() }, onCancel = { dialog = null },
+            )
+        }
+        "rename" -> if (current != null) {
+            com.promenar.infinity.ui.chat.RenameDialog(current.title, { dialog = null }) { title ->
+                controller.updateDraft(current.id, title, current.hotwords, current.useHotwordLibrary, null)
+                dialog = null
+            }
+        }
+        "unsaved" -> RecordingConfirm(R.string.recording_discard_edit_question, stringResource(R.string.recording_discard_edit_detail),
+            R.string.recording_discard, { dialog = null }, {
+                dialog = null; editing = false
+                if (leaveToHistory) { if (backToHistory) showHistory() else onBack() }
+            })
+        "actions" -> if (current != null) InfinityBottomSheet(show = true, onDismiss = { dialog = null },
+            title = stringResource(R.string.recording_actions), height = InfinitySheetHeight.Content) {
+            BettboxListGroup {
+                InfinitySettingsItem(title = stringResource(R.string.recording_settings), onClick = { dialog = "mode" })
+                InfinitySettingsItem(title = stringResource(R.string.recording_hotword_session), onClick = { dialog = "hotwords" })
+                if (state.ready && !active && current.segments.isNotEmpty()) {
+                    InfinitySettingsItem(title = stringResource(R.string.recording_ui_reprocess), onClick = { dialog = "organize" })
+                }
+                if (active && route == RecordingRoute.Consent) {
+                    InfinitySettingsItem(title = stringResource(R.string.recording_enable_cloud), onClick = { dialog = "consent" })
+                }
+                if (!active) InfinitySettingsItem(title = stringResource(R.string.recording_ui_delete), onClick = { dialog = "delete" })
+                if (!active && current.documentId == null) InfinitySettingsItem(title = stringResource(R.string.recording_save_library), onClick = {
+                    controller.publish(current.id); dialog = null
+                })
+            }
+        }
+        "language" -> if (current != null) InfinityBottomSheet(show = true, onDismiss = { dialog = null },
+            title = stringResource(R.string.recording_output_language), height = InfinitySheetHeight.Content) {
+            Text(stringResource(R.string.recording_language_detail), style = MaterialTheme.typography.bodySmall)
+            BettboxListGroup {
+                RecordingLanguage.entries.forEach { language ->
+                    InfinitySettingsItem(title = language.label, selected = language == current.outputLanguage, onClick = {
+                        if (language == current.outputLanguage) dialog = null else {
+                            controller.selectLanguage(current.id, language)
+                            pendingLanguage = language
+                            dialog = if (!active && current.organized.isNotBlank()) "organize" else null
+                        }
+                    })
+                }
+            }
+        }
         "consent" -> {
             val key = state.cloudKey
             val name = state.cloudLabel
@@ -310,11 +416,13 @@ private fun RecordingScreen(
             }
         }
         "organize" -> if (current != null) {
-            RecordingConfirm(R.string.recording_ui_reprocess, stringResource(R.string.recording_reorganize_detail),
+            val language = pendingLanguage ?: current.outputLanguage
+            RecordingConfirm(R.string.recording_ui_reprocess, stringResource(R.string.recording_reorganize_language, language.label),
                 R.string.recording_ui_reprocess, { dialog = null }, {
                     dialog = if (route == RecordingRoute.Consent) "consent" else null
                     if (route == RecordingRoute.Local || route == RecordingRoute.Cloud || route == RecordingRoute.Consent) {
-                        controller.retry(current.id)
+                        controller.retry(current.id, language)
+                        pendingLanguage = null
                         organized = true
                     } else controller.report(if (route == RecordingRoute.Raw) R.string.recording_mode_raw else R.string.recording_route_unavailable)
                 })
@@ -337,11 +445,21 @@ private fun RecordingScreen(
                 isDestructive = true,
             )
         }
-        "recognize" -> if (current != null && canRecognize && current.manualEdit) {
+        "transcript-actions" -> if (current != null) InfinityBottomSheet(show = true, onDismiss = { dialog = null },
+            title = stringResource(R.string.recording_transcript_actions), height = InfinitySheetHeight.Content) {
+            BettboxListGroup {
+                InfinitySettingsItem(title = stringResource(R.string.recording_recognize), enabled = canRecognize,
+                    onClick = { dialog = "recognize" })
+                InfinitySettingsItem(title = stringResource(R.string.recording_hotword_session), onClick = { dialog = "hotwords" })
+                InfinitySettingsItem(title = stringResource(R.string.recording_export_raw), enabled = current.segments.isNotEmpty(),
+                    onClick = { dialog = null; exportRaw() })
+            }
+        }
+        "recognize" -> if (current != null && canRecognize) {
             InfinityBottomSheet(
                 show = true,
                 onDismiss = { dialog = null },
-                title = stringResource(R.string.recording_recognize_manual),
+                title = stringResource(R.string.recording_recognize),
                 scrollContent = true,
                 dragGesturesEnabled = false,
             ) {
@@ -363,8 +481,8 @@ private fun RecordingScreen(
                 }
             }
         }
-        "edit" -> if (current != null) RecordingEditDialog(current, hotwords.count { it.enabled }, { dialog = null }) { title, words, useLibrary, draft ->
-            controller.updateDraft(current.id, title, words, useLibrary, draft)
+        "hotwords" -> if (current != null) RecordingSessionHotwords(current, { dialog = null }) { words, useLibrary ->
+            controller.updateDraft(current.id, current.title, words, useLibrary, null)
             dialog = null
         }
     }
@@ -383,33 +501,60 @@ private fun RecordingConfirm(title: Int, details: String, confirm: Int, dismiss:
 }
 
 @Composable
-private fun RecordingEditDialog(
-    item: RecordingSession,
-    enabledHotwordCount: Int,
-    dismiss: () -> Unit,
-    save: (String, List<String>, Boolean, String?) -> Unit,
-) {
-    var title by rememberSaveable(item.id) { mutableStateOf(item.title) }
-    var words by rememberSaveable(item.id) { mutableStateOf(ArrayList(item.hotwords)) }
+private fun RecordingSessionHotwords(item: RecordingSession, dismiss: () -> Unit, save: (List<String>, Boolean) -> Unit) {
+    var words by rememberSaveable(item.id) { mutableStateOf(item.hotwords.joinToString("\n")) }
     var useLibrary by rememberSaveable(item.id) { mutableStateOf(item.useHotwordLibrary) }
-    val original = remember(item.id) { item.organized }
-    var draft by remember(item.id) { mutableStateOf(original) }
-    InfinityBottomSheet(
-        show = true,
-        onDismiss = dismiss,
-        height = InfinitySheetHeight.Full,
-        dragGesturesEnabled = false,
-    ) {
-        RecordingEditorContent(
-            title, words, useLibrary, enabledHotwordCount, draft,
-            onTitle = { title = it },
-            onHotwords = { words = ArrayList(it) },
-            onUseLibrary = { useLibrary = it },
-            onDraft = { draft = it },
-            onSave = { save(title, it, useLibrary, draft.takeIf { text -> text != original }) },
-            onCancel = dismiss,
-        )
+    InfinityBottomSheet(show = true, onDismiss = dismiss, title = stringResource(R.string.recording_hotword_session),
+        height = InfinitySheetHeight.Content, scrollContent = true) {
+        Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+            RowToggle(stringResource(R.string.recording_hotword_use_library), useLibrary) { useLibrary = it }
+            OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 4,
+                label = { Text(stringResource(R.string.recording_hotword_words)) }, textStyle = MaterialTheme.typography.bodyMedium.forInput())
+            InfinityPillButton(stringResource(R.string.recording_save), { save(words.lines(), useLibrary) },
+                modifier = Modifier.fillMaxWidth(), tone = InfinityPillTone.PRIMARY)
+        }
     }
+}
+
+@Composable
+private fun RowToggle(label: String, value: Boolean, update: (Boolean) -> Unit) {
+    InfinitySettingsItem(title = label, onClick = { update(!value) }, trailingContent = {
+        Switch(checked = value, onCheckedChange = null)
+    })
+}
+
+@Composable
+private fun RecordingWorkspaceSettings(
+    mode: RecordingMode, language: RecordingLanguage, live: Boolean, speakers: Boolean, single: Boolean,
+    onSave: (RecordingMode, RecordingLanguage, Boolean, Boolean) -> Unit,
+) {
+    var route by rememberSaveable { mutableStateOf(mode) }
+    var output by rememberSaveable { mutableStateOf(language) }
+    var draft by rememberSaveable { mutableStateOf(live) }
+    var separate by rememberSaveable { mutableStateOf(speakers) }
+    val app = LocalContext.current.applicationContext as InfinityApplication
+    BettboxListGroup {
+        Text(stringResource(R.string.recording_route_title), style = MaterialTheme.typography.labelLarge)
+        RecordingMode.entries.filter { it != RecordingMode.Local || app.localInferenceRuntimeGate.isAvailable }.forEach { option ->
+            val label = when (option) {
+                RecordingMode.Auto -> R.string.recording_mode_auto
+                RecordingMode.Local -> R.string.recording_mode_local
+                RecordingMode.Raw -> R.string.recording_mode_raw
+            }
+            InfinitySettingsItem(title = stringResource(label), selected = route == option, onClick = { route = option })
+        }
+    }
+    BettboxListGroup {
+        Text(stringResource(if (single) R.string.recording_output_language else R.string.recording_default_language),
+            style = MaterialTheme.typography.labelLarge)
+        RecordingLanguage.entries.forEach { option ->
+            InfinitySettingsItem(title = option.label, selected = output == option, onClick = { output = option })
+        }
+        RowToggle(stringResource(R.string.recording_live_setting), draft) { draft = it }
+        RowToggle(stringResource(R.string.recording_speaker_distinguish), separate) { separate = it }
+    }
+    InfinityPillButton(stringResource(R.string.recording_save), { onSave(route, output, draft, separate) },
+        modifier = Modifier.fillMaxWidth(), tone = InfinityPillTone.PRIMARY)
 }
 
 private class RecordingPlayback {

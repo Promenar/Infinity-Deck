@@ -22,7 +22,7 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
 
     private val engine: LocalInferenceEngine = app.localInferenceEngine
     private val storageManager: ModelStorageManager = ModelStorageManager(appContext)
-    private val downloader: ModelDownloader = ModelDownloader(appContext)
+    private val installer = app.recordings.recommendedModel
     private val revisions = LocalModelRevisionStore(appContext)
     private val edits = Mutex()
     private val _pinnedRevision = MutableStateFlow(revisions.read())
@@ -51,11 +51,16 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     private val _importError = MutableStateFlow<String?>(null)
     val importError: StateFlow<String?> = _importError.asStateFlow()
 
-    private val _downloadState = MutableStateFlow<ModelDownloader.DownloadState?>(null)
-    val downloadState: StateFlow<ModelDownloader.DownloadState?> = _downloadState.asStateFlow()
+    val downloadState: StateFlow<ModelDownloader.DownloadState?> = installer.state
 
     init {
         refreshModelList()
+        viewModelScope.launch {
+            installer.state.collect { download ->
+                if (download?.isComplete == true) refreshModelList()
+                if (download?.error != null) _modelError.value = R.string.recording_model_download_failed
+            }
+        }
     }
 
     fun refreshModelList() {
@@ -112,38 +117,9 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
         }
     }
 
-    internal fun installRecordingModel() = downloadModel(
-        RecordingModelPackage.url, RecordingModelPackage.filename, RecordingModelPackage.sha256, RecordingModelPackage.bytes,
-    )
-
-    private fun downloadModel(url: String, fileName: String, sha256: String, bytes: Long) {
-        viewModelScope.launch {
-            if (_downloadState.value?.isDownloading == true) return@launch
-            _modelError.value = null
-            _downloadState.value = ModelDownloader.DownloadState(
-                url = url,
-                fileName = fileName,
-                totalBytes = bytes,
-                isDownloading = true
-            )
-            downloader.download(url, fileName, sha256, bytes) { progress ->
-                _downloadState.value = _downloadState.value?.copy(
-                    downloadedBytes = ((_downloadState.value?.totalBytes ?: 0L) * progress).toLong()
-                )
-            }.onSuccess {
-                _downloadState.value = _downloadState.value?.copy(
-                    isDownloading = false,
-                    isComplete = true
-                )
-                refreshModelList()
-            }.onFailure { e ->
-                if (e !is CancellationException) _modelError.value = R.string.recording_model_download_failed
-                _downloadState.value = _downloadState.value?.copy(
-                    isDownloading = false,
-                    error = e.message
-                )
-            }
-        }
+    internal fun installRecordingModel() {
+        _modelError.value = null
+        installer.start()
     }
 
     internal fun toggleRevision(path: String) {
@@ -173,11 +149,7 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     }
 
     fun cancelDownload() {
-        downloader.cancel()
-    }
-
-    fun clearDownloadState() {
-        _downloadState.value = null
+        installer.pause()
     }
 
     fun setEngineEnabled(enabled: Boolean) {
@@ -204,11 +176,6 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
             bytes >= 1_000 -> "%.1f KB".format(bytes / 1_000.0)
             else -> "$bytes B"
         }
-    }
-
-    override fun onCleared() {
-        downloader.cancel()
-        super.onCleared()
     }
 
     companion object {

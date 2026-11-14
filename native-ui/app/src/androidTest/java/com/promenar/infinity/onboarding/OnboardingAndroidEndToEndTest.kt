@@ -245,6 +245,8 @@ class OnboardingAndroidEndToEndTest {
                 )
             }
         }
+        waitForStep(OnboardingStep.RECORDING_SETUP)
+        rule.onNodeWithTag("recording-setup-skip").performClick()
         waitForStep(OnboardingStep.COMPLETED)
         rule.onNodeWithTag(UiTags.CHAT_ROOT).assertIsDisplayed()
 

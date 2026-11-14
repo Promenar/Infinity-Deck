@@ -13,6 +13,7 @@ enum class OnboardingStep {
     MODEL,
     AGENT,
     FIRST_CHAT,
+    RECORDING_SETUP,
     COMPLETED,
 }
 
@@ -107,12 +108,15 @@ class OnboardingStateStore private constructor(
     fun recordFirstChatResult(sessionId: String, assistantSucceeded: Boolean): Boolean {
         if (!assistantSucceeded) return false
         val advanced = transition(OnboardingStep.FIRST_CHAT) { current ->
-            if (current.sessionId != sessionId) null else current.copy(step = OnboardingStep.COMPLETED)
-        }
-        if (advanced) {
-            legacyPreferences?.edit()?.putBoolean(LEGACY_COMPLETED_KEY, true)?.commit()
+            if (current.sessionId != sessionId) null else current.copy(step = OnboardingStep.RECORDING_SETUP)
         }
         return advanced
+    }
+
+    fun completeRecordingSetup(): Boolean {
+        val completed = transition(OnboardingStep.RECORDING_SETUP) { it.copy(step = OnboardingStep.COMPLETED) }
+        if (completed) legacyPreferences?.edit()?.putBoolean(LEGACY_COMPLETED_KEY, true)?.commit()
+        return completed
     }
 
     /** 向导发起、已暂存待重启提交的备份恢复事务号；没有则为 null。 */

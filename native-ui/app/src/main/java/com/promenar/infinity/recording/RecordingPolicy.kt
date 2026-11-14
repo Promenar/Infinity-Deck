@@ -42,10 +42,19 @@ internal data class RecordingSession(
     val speakers: List<RecordingSpeaker> = emptyList(),
     val speakerAnalyzedBytes: Long = 0,
     val speakerAssignmentsEdited: Boolean = false,
+    val outputLanguage: RecordingLanguage = RecordingLanguage.Chinese,
+    val publishedLanguage: RecordingLanguage? = null,
+    val liveOrganization: Boolean = true,
+    val draftBatches: List<RecordingDraftBatch> = emptyList(),
+    val summaryPending: Boolean = false,
+    val summaryProgress: RecordingSummaryProgress? = null,
+    val captureRollbackPending: Boolean = false,
+    val pendingDocumentHash: String? = null,
 ) {
     val durationMs get() = audioBytes / 32
     val organizationCursor get() = reprocessThrough ?: organizedThrough
-    val canContinue get() = audioBytes < RecordingStore.MAX_AUDIO_BYTES && phase != RecordingPhase.Recording
+    val draftCursor get() = draftBatches.lastOrNull()?.through ?: 0
+    val canContinue get() = audioBytes < RecordingStore.MAX_AUDIO_BYTES && phase != RecordingPhase.Recording && !captureRollbackPending
 }
 
 internal fun recoverRecordingTranscript(session: RecordingSession, audioBytes: Long): RecordingSession {
@@ -56,7 +65,8 @@ internal fun recoverRecordingTranscript(session: RecordingSession, audioBytes: L
     }?.let { raw + it.copy(endMs = minOf(it.endMs, duration)) } ?: raw
     return session.copy(
         phase = RecordingPhase.Interrupted, audioBytes = audioBytes, segments = recovered,
-        checkpointText = null, organizedThrough = minOf(session.organizedThrough, recovered.size),
+        checkpointText = null, draftBatches = session.draftBatches.takeWhile { it.through <= recovered.size },
+        organizedThrough = minOf(session.organizedThrough, recovered.size),
         reprocessThrough = session.reprocessThrough?.coerceAtMost(recovered.size),
     )
 }
@@ -143,7 +153,7 @@ internal fun recordingSegmentAt(segments: List<RecordingSegment>, positionMs: Lo
 
 /** 录音可删除：已结束或中断，且不是正在录的那一条。 */
 internal fun recordingDeletable(session: RecordingSession, activeId: String?): Boolean =
-    session.id != activeId && session.phase in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished)
+    !session.captureRollbackPending && session.id != activeId && session.phase in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished)
 
 /** 资料文档被删除后一并删除的录音 id：资料文档的 id 就是录音 id，只取可删除的录音。 */
 internal fun recordingsRemovedWithDocuments(

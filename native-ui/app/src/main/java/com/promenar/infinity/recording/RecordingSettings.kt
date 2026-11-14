@@ -141,6 +141,11 @@ internal fun RecordingSettingsScreen(
     val shortcuts = context.getSystemService(ShortcutManager::class.java)
     var showHotwords by rememberSaveable { mutableStateOf(false) }
     var showVoice by rememberSaveable { mutableStateOf(false) }
+    var showSetup by rememberSaveable { mutableStateOf(false) }
+    if (showSetup) {
+        RecordingSetupPage(onFinish = { showSetup = false }, firstRun = false)
+        return
+    }
     BackHandler(enabled = showHotwords || showVoice) { showHotwords = false; showVoice = false }
     if (showVoice) {
         CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
@@ -177,6 +182,7 @@ internal fun RecordingSettingsScreen(
             }
             item {
                 InfinitySettingsSection(title = stringResource(R.string.recording_asr_section)) {
+                    InfinitySettingsItem(title = stringResource(R.string.recording_setup_title), showChevron = true, onClick = { showSetup = true })
                     RecordingModelDownloads(controller)
                 }
             }

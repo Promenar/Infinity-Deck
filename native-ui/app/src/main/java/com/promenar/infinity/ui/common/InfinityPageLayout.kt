@@ -53,6 +53,7 @@ fun InfinityPageLayout(
     actions: @Composable RowScope.() -> Unit = {},
     /** 为 false 时不画顶栏；用于检视器的根层，页签已写明所在页。 */
     showTopBar: Boolean = true,
+    titleContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -69,7 +70,7 @@ fun InfinityPageLayout(
         topBar = {
             if (showTopBar) FrostedTopBar(backdrop) { TopAppBar(
                 title = {
-                    Column(modifier = Modifier.padding(start = if (onBack != null) 0.dp else 4.dp)) {
+                    if (titleContent != null) titleContent() else Column(modifier = Modifier.padding(start = if (onBack != null) 0.dp else 4.dp)) {
                         InfinityHeaderTitle(
                             text = title,
                             style = MaterialTheme.typography.titleLarge,

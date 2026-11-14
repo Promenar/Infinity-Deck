@@ -69,6 +69,10 @@ class RecordingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         newestStartId = startId
+        if (intent?.action == "recording.discard") {
+            controller.discardCapture(idle)
+            return START_NOT_STICKY
+        }
         if (intent?.action == "recording.finish") {
             controller.finish(idle)
             return START_NOT_STICKY
@@ -116,6 +120,10 @@ class RecordingService : Service() {
         internal fun begin(context: Context, id: String?) {
             context.startForegroundService(Intent(context, RecordingService::class.java)
                 .setAction("recording.capture").putExtra("session", id))
+        }
+
+        internal fun discard(context: Context) {
+            context.startService(Intent(context, RecordingService::class.java).setAction("recording.discard"))
         }
 
         internal fun finish(context: Context) {

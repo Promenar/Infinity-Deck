@@ -44,6 +44,9 @@ class OnboardingEndToEndTest {
         assertFalse(store.recordFirstChatResult("session-1", assistantSucceeded = false))
         assertEquals(OnboardingStep.FIRST_CHAT, store.state.value.step)
         assertTrue(store.recordFirstChatResult("session-1", assistantSucceeded = true))
+        val restored = OnboardingStateStore(context, linuxOffered = true)
+        assertEquals(OnboardingStep.RECORDING_SETUP, restored.state.value.step)
+        assertTrue(restored.completeRecordingSetup())
         assertEquals(OnboardingStep.COMPLETED, OnboardingStateStore(context, linuxOffered = true).state.value.step)
     }
 }

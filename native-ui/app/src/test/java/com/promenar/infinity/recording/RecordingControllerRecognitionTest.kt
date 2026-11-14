@@ -32,7 +32,9 @@ class RecordingControllerRecognitionTest {
         val app = mockk<InfinityApplication>(relaxed = true)
         val original = RecordingSession(UUID.randomUUID().toString(), 1, "标题", phase = RecordingPhase.Finished,
             audioBytes = 640 * 2L * 4, segments = listOf(RecordingSegment(0, 100, "旧逐字稿")), organized = "手工整理稿",
-            organizedThrough = 1, manualEdit = true, documentId = "doc", documentHash = "hash")
+            organizedThrough = 1, manualEdit = true, documentId = "doc").let { item ->
+            item.copy(documentHash = com.promenar.infinity.infra.util.Sha256Utils.hash(recordingMarkdown(item).toByteArray()))
+        }
         val published = AtomicInteger()
         init {
             every { app.filesDir } returns root
@@ -63,7 +65,7 @@ class RecordingControllerRecognitionTest {
             factory: RecordingDecoderFactory = RecordingDecoderFactory { decoder() },
             capture: RecordingAudioCapture = { _, _, _, _, _, _ -> error("不应打开麦克风") },
             publish: suspend (RecordingSession) -> RecordingDocument = { published.incrementAndGet(); RecordingDocument("doc", "hash") },
-        ) = RecordingController(app, scope, factory, capture, false, publish, { it() })
+        ) = RecordingController(app, scope, factory, capture, false, { item, _ -> publish(item) }, { it() })
         suspend fun close() { scope.coroutineContext[Job]!!.cancelAndJoin(); root.deleteRecursively() }
     }
     companion object {

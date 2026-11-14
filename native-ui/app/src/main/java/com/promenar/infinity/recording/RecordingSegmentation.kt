@@ -14,11 +14,11 @@ internal object RecordingCapturePolicy {
     const val ENDPOINT_NO_MIN_UTTERANCE_SECONDS = 0f
     const val FORCE_SEGMENT_MS = 60_000L
     const val CHECKPOINT_SECONDS = 5
-    const val QUIET_SECONDS = 4
+    const val QUIET_SECONDS = 2
     const val SPEECH_ENERGY = 0.00005
 }
 
-internal enum class CaptureCommand { Continue, Pause, Finish }
+internal enum class CaptureCommand { Continue, Pause, Finish, Discard }
 
 internal data class CaptureFrame(
     val bytes: Long,
