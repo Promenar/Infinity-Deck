@@ -31,9 +31,10 @@ class RecordingRecognitionTest {
             val sizes = mutableListOf<Int>()
             var calls = 0
             val decoder = object : RecordingDecoder {
+                override fun speechWindow(pcm: ShortArray) = RecordingSpeechWindow(end = pcm.size.takeIf { calls == 1 })
                 override fun accept(pcm: ShortArray): RecordingRecognition {
                     sizes += pcm.size
-                    return RecordingRecognition("第${++calls}段", endpoint = calls == 2)
+                    return RecordingRecognition("第${++calls}段")
                 }
                 override fun reset() = Unit
                 override fun finish() = if (calls == 2) "第2段" else "尾段"
@@ -56,7 +57,7 @@ class RecordingRecognitionTest {
             val decoder = object : RecordingDecoder {
                 private var first = true
                 override fun accept(pcm: ShortArray) = RecordingRecognition(
-                    if (first) "断段前" else "断段前最后几个字", false, decodedMs = boundary - 480,
+                    if (first) "断段前" else "断段前最后几个字", decodedMs = boundary - 480,
                 )
                 override fun finish(): String {
                     assertFalse("强制分段不能结束音频流", first)
@@ -101,7 +102,7 @@ class RecordingRecognitionTest {
             var returned = false
             val job = launch {
                 val decoder = object : RecordingDecoder {
-                    override fun accept(pcm: ShortArray) = RecordingRecognition("部分结果", false)
+                    override fun accept(pcm: ShortArray) = RecordingRecognition("部分结果")
                     override fun reset() = Unit
                     override fun finish() = "尾段"
                 }

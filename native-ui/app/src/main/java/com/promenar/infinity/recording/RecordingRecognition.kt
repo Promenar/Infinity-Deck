@@ -40,9 +40,7 @@ internal suspend fun recognizeRecordingWav(
             val pcm = ShortArray(count / 2) { index ->
                 ((bytes[index * 2].toInt() and 0xff) or (bytes[index * 2 + 1].toInt() shl 8)).toShort()
             }
-            val step = decoder.advanceSegment(segmentation, pcm)
-            step.frame.segment?.let(segments::add)
-            if (step.reset) decoder.reset()
+            decoder.advanceSegment(segmentation, pcm) { frame -> frame.segment?.let(segments::add) }
             processed += count
             progress(processed.toFloat() / size)
         }

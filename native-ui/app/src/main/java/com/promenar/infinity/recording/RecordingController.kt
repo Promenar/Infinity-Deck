@@ -43,7 +43,6 @@ internal data class RecordingScreenState(
     val audioOnly: Boolean = false,
     val partial: String = "",
     val durationMs: Long = 0,
-    val levels: List<Float> = emptyList(),
     val organizingId: String? = null,
     val recognizingId: String? = null,
     val recognizeProgress: Float = 0f,
@@ -60,7 +59,7 @@ internal data class RecordingScreenState(
 
 internal typealias RecordingAudioCapture = suspend (
     Context, RecordingStore, RecordingSession, () -> CaptureCommand, WithRecordingDecoder,
-    suspend () -> Unit, suspend (CaptureFrame) -> Unit,
+    suspend () -> Unit, RecordingWaveformSampler, suspend (CaptureFrame) -> Unit,
 ) -> CaptureCommand
 internal typealias RecordingDocumentPublisher = suspend (RecordingSession, suspend (String?, String) -> Unit) -> RecordingDocument
 
@@ -104,6 +103,8 @@ internal class RecordingController(
     private val liveDraftSignals = Channel<Unit>(Channel.CONFLATED)
     private val _state = MutableStateFlow(RecordingScreenState())
     val state = _state.asStateFlow()
+    private val _waveform = MutableStateFlow(RecordingWaveformSamples())
+    val waveform = _waveform.asStateFlow()
     private var capture: Job? = null
     private var organize: Job? = null
     private var quiet = false
@@ -220,15 +221,16 @@ internal class RecordingController(
             command.set(CaptureCommand.Continue)
             organize?.cancel()
             nextAttempt.remove(item.id)
+            if (!fromPause) _waveform.value = RecordingWaveformSamples()
             _state.value = _state.value.copy(activeId = item.id, opening = true,
-                appending = if (fromPause) _state.value.appending else resume != null, lastDiscardedId = null, audioOnly = false, partial = "", durationMs = item.durationMs, levels = emptyList(), failure = null)
+                appending = if (fromPause) _state.value.appending else resume != null, lastDiscardedId = null, audioOnly = false, partial = "", durationMs = item.durationMs, failure = null)
             capture = io.launch { record(item, onIdle) }
         }
     }
 
     private suspend fun record(item: RecordingSession, onIdle: () -> Unit) {
         var outcome: RecordingPhase
-        var lastLevel = item.audioBytes
+        val waveform = RecordingWaveformSampler(_waveform.value) { _waveform.value = it }
         try {
             val result = microphone.withLock {
                 recordAudio(app, store, item, command::get, { decode ->
@@ -240,7 +242,7 @@ internal class RecordingController(
                     }
                 }, {
                     lock.withLock { _state.value = _state.value.copy(opening = false) }
-                }) { frame ->
+                }, waveform) { frame ->
                     lock.withLock {
                         val current = requireNotNull(session(item.id))
                         if (frame.checkpoint) {
@@ -250,13 +252,8 @@ internal class RecordingController(
                         val quietChanged = quiet != frame.quiet
                         if (quiet && !frame.quiet && !organizingCloud && !completingFirstLocalDraft) organize?.cancel()
                         quiet = frame.quiet
-                        val previous = _state.value
-                        val levels = if (frame.bytes - lastLevel >= 3_200) {
-                            lastLevel = frame.bytes
-                            previous.levels.takeLast(47) + frame.level
-                        } else previous.levels
-                        _state.value = previous.copy(
-                            partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000, levels = levels,
+                        _state.value = _state.value.copy(
+                            partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000,
                         )
                         if (organizationEnabled && current.liveOrganization && (frame.segment != null || quietChanged)) {
                             liveDraftSignals.trySend(Unit)
@@ -372,7 +369,7 @@ internal class RecordingController(
         _state.value = current.copy(
             sessions = if (restored == null) current.sessions.filterNot { it.id == id } else current.sessions,
             activeId = null, lastDiscardedId = id.takeUnless { it in unfinishedRollbacks }, opening = false, appending = false,
-            partial = "", levels = emptyList(), durationMs = restored?.durationMs ?: 0,
+            partial = "", durationMs = restored?.durationMs ?: 0,
         )
         capture = null
         quiet = true
@@ -660,7 +657,7 @@ internal class RecordingController(
     private fun decoderRequest(item: RecordingSession): RecordingDecoderRequest {
         val directory = asr.installedDirectory()
         val vocabulary = asr.tokenCharacters() ?: directory?.resolve("tokens.txt")?.useLines { recordingTokenCharacters(it) }.orEmpty()
-        return RecordingDecoderRequest(directory, effective(item), vocabulary)
+        return RecordingDecoderRequest(directory, effective(item), vocabulary, app.assets)
     }
 
     private suspend fun writeHotwords(entries: List<RecordingHotword>) {

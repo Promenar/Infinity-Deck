@@ -1,17 +1,10 @@
 package com.promenar.infinity.recording
 
-import kotlin.math.sqrt
-
 internal object RecordingCapturePolicy {
     const val SAMPLE_RATE = 16_000
     const val BLOCK_SAMPLES = 640
     const val RECORDER_BUFFER_SECONDS = 2
     const val TAIL_SILENCE_SECONDS = 1
-    const val ENDPOINT_EMPTY_SILENCE_SECONDS = 2.4f
-    const val ENDPOINT_TEXT_SILENCE_SECONDS = 2.0f
-    const val ENDPOINT_LONG_SILENCE_SECONDS = 0.6f
-    const val ENDPOINT_LONG_UTTERANCE_SECONDS = 30f
-    const val ENDPOINT_NO_MIN_UTTERANCE_SECONDS = 0f
     const val FORCE_SEGMENT_MS = 60_000L
     const val CHECKPOINT_SECONDS = 5
     const val QUIET_SECONDS = 2
@@ -27,7 +20,6 @@ internal data class CaptureFrame(
     val segment: RecordingSegment?,
     val quiet: Boolean,
     val checkpoint: Boolean,
-    val level: Float,
 )
 
 internal data class RecordingCaptureStep(val frame: CaptureFrame, val reset: Boolean)
@@ -74,13 +66,12 @@ internal class RecordingSegmentation(private val initialBytes: Long) {
             bytes = bytes, partial = if (end) "" else text, provisional = provisional, segment = segment,
             quiet = bytes - lastVoice >= RecordingCapturePolicy.SAMPLE_RATE * 2L * RecordingCapturePolicy.QUIET_SECONDS,
             checkpoint = checkpoint,
-            level = (sqrt(energy / pcm.size).toFloat() * 8).coerceIn(0f, 1f),
         ), reset = end)
     }
 
     fun finish(rawText: String): CaptureFrame {
         val tail = normalizeRecordingText(rawText).takeIf(String::isNotEmpty)?.let(::segment)
-        return CaptureFrame(bytes, "", null, tail, quiet = true, checkpoint = true, level = 0f)
+        return CaptureFrame(bytes, "", null, tail, quiet = true, checkpoint = true)
     }
 
     private fun segment(text: String, endMs: Long = bytes / 32): RecordingSegment {

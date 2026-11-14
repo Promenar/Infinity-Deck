@@ -63,14 +63,14 @@ class RecordingControllerRecognitionTest {
         }
         fun controller(
             factory: RecordingDecoderFactory = RecordingDecoderFactory { decoder() },
-            capture: RecordingAudioCapture = { _, _, _, _, _, _, _ -> error("不应打开麦克风") },
+            capture: RecordingAudioCapture = { _, _, _, _, _, _, _, _ -> error("不应打开麦克风") },
             publish: suspend (RecordingSession) -> RecordingDocument = { published.incrementAndGet(); RecordingDocument("doc", "hash") },
         ) = RecordingController(app, scope, factory, capture, false, { item, _ -> publish(item) }, { it() })
         suspend fun close() { scope.coroutineContext[Job]!!.cancelAndJoin(); root.deleteRecursively() }
     }
     companion object {
         private fun decoder() = object : RecordingDecoder {
-            override fun accept(pcm: ShortArray) = RecordingRecognition("新逐字稿", false)
+            override fun accept(pcm: ShortArray) = RecordingRecognition("新逐字稿")
             override fun reset() = Unit
             override fun finish() = "新逐字稿"
         }
@@ -105,7 +105,7 @@ class RecordingControllerRecognitionTest {
         try {
             f.seed()
             val captured = CompletableDeferred<RecordingSession>()
-            val controller = f.controller(capture = { _, store, item, _, _, onCaptureStarted, emit ->
+            val controller = f.controller(capture = { _, store, item, _, _, onCaptureStarted, _, emit ->
                 onCaptureStarted()
                 captured.complete(item)
                 val end = item.audioBytes + 640 * 2L
@@ -116,7 +116,7 @@ class RecordingControllerRecognitionTest {
                     updateRecordingWavHeader(file, end)
                 }
                 val segment = RecordingSegment(item.durationMs, end / 32, "新增逐字稿")
-                emit(CaptureFrame(end, "", null, segment, quiet = true, checkpoint = true, level = 0f))
+                emit(CaptureFrame(end, "", null, segment, quiet = true, checkpoint = true))
                 CaptureCommand.Finish
             })
             withTimeout(5_000) { controller.state.first { it.ready } }
@@ -150,7 +150,7 @@ class RecordingControllerRecognitionTest {
                             entered.countDown()
                             if (!cancel) error("假解码失败")
                             check(release.await(5, TimeUnit.SECONDS))
-                            return RecordingRecognition("不会提交", false)
+                            return RecordingRecognition("不会提交")
                         }
                         override fun reset() = Unit
                         override fun finish() = "不会提交"
@@ -176,7 +176,7 @@ class RecordingControllerRecognitionTest {
             val captured = CompletableDeferred<RecordingDecoderRequest>()
             val firstCheckpoint = CompletableDeferred<Unit>()
             val factory = RecordingDecoderFactory { request -> captured.complete(request); createRecordingDecoder(request) }
-            val capture: RecordingAudioCapture = { _, store, session, _, withDecoder, onCaptureStarted, frame ->
+            val capture: RecordingAudioCapture = { _, store, session, _, withDecoder, onCaptureStarted, waveform, frame ->
                 var blocks = 0
                 val source = object : RecordingAudioSource {
                     override fun start() = Unit
@@ -188,6 +188,7 @@ class RecordingControllerRecognitionTest {
                         command = { if (blocks < 125) CaptureCommand.Continue else CaptureCommand.Finish },
                         withDecoder = withDecoder,
                         onCaptureStarted = onCaptureStarted,
+                        waveform = waveform,
                         onFrame = { current -> frame(current); if (current.checkpoint) firstCheckpoint.complete(Unit) })
                 }
                 stop.await()
@@ -229,14 +230,14 @@ class RecordingControllerRecognitionTest {
                 object : RecordingDecoder {
                     override fun accept(pcm: ShortArray): RecordingRecognition {
                         if (index == 1) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
-                        return RecordingRecognition("部分结果", false)
+                        return RecordingRecognition("部分结果")
                     }
                     override fun reset() = Unit
                     override fun finish() = "结果"
                     override fun close() { live.decrementAndGet() }
                 }
             }
-            val controller = f.controller(factory, { _, _, _, _, withDecoder, onCaptureStarted, _ ->
+            val controller = f.controller(factory, { _, _, _, _, withDecoder, onCaptureStarted, _, _ ->
                 onCaptureStarted()
                 captures.complete(Unit)
                 withDecoder { CaptureCommand.Pause }
@@ -267,7 +268,7 @@ class RecordingControllerRecognitionTest {
                 object : RecordingDecoder {
                     override fun accept(pcm: ShortArray): RecordingRecognition {
                         decoderEntered.countDown(); check(decoderRelease.await(5, TimeUnit.SECONDS))
-                        return RecordingRecognition("新逐字稿", false)
+                    return RecordingRecognition("新逐字稿")
                     }
                     override fun reset() = Unit
                     override fun finish() = "新逐字稿"
@@ -311,7 +312,7 @@ class RecordingControllerRecognitionTest {
             val active = f.original.copy(id = UUID.randomUUID().toString(), phase = RecordingPhase.Interrupted)
             f.seed(active); f.install()
             val controller = f.controller(RecordingDecoderFactory { creations.incrementAndGet(); decoder() },
-                { _, _, _, _, withDecoder, onCaptureStarted, _ ->
+                { _, _, _, _, withDecoder, onCaptureStarted, _, _ ->
                     onCaptureStarted()
                     withDecoder { started.complete(Unit); stop.await(); CaptureCommand.Pause }
                 })

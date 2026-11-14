@@ -250,8 +250,11 @@ def verify_local_inference_artifacts(apk: Path, distribution: str) -> None:
 
 
 def verify_recording_artifacts(apk: Path) -> None:
-    """确认听写词表与原生运行时完整，模型权重在安装后下载。"""
-    assets = {"bpe.vocab": "28fc94d67aae53d8c58010fcfb16fc8c2f8dd263e03f3490c98210e354e8f914"}
+    """确认听写词表、语音活动检测及原生运行时完整，X-ASR 权重由应用按需下载。"""
+    assets = {
+        "bpe.vocab": "28fc94d67aae53d8c58010fcfb16fc8c2f8dd263e03f3490c98210e354e8f914",
+        "silero_vad.onnx": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+    }
     with zipfile.ZipFile(apk) as archive:
         names = set(archive.namelist())
         forbidden = {name for name in names if name.rsplit("/", 1)[-1] in {

@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.theme.*
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /*
  * 录音听写页：外屏 360dp 为录音卡加页签，内屏 840dp 为通栏录音卡加逐字稿、整理稿双栏。
@@ -62,6 +64,7 @@ private fun RecordingExample(
     analyzing: Boolean = false,
 ) {
     val active = session?.phase == RecordingPhase.Recording || session?.phase == RecordingPhase.Paused
+    val waveform = remember { MutableStateFlow(RecordingWaveformSamples(List(160) { ((it * 7) % 13) / 13f }, 160)) }
     RecordingPageContent(
         state = RecordingScreenState(
             sessions = history,
@@ -71,7 +74,6 @@ private fun RecordingExample(
             speakerAnalysisId = session?.id.takeIf { analyzing },
             speakerProgress = if (analyzing) .45f else 0f,
             durationMs = 92_000,
-            levels = List(48) { ((it * 7) % 13) / 13f },
             partial = partial,
             failure = failure,
             ready = true,
@@ -81,6 +83,7 @@ private fun RecordingExample(
         current = session,
         organized = organized,
         route = route,
+        waveform = waveform,
         playing = playing,
         positionMs = 26_000f,
         asrModel = asr,

@@ -1,19 +1,22 @@
 package com.promenar.infinity.recording
 
-import com.k2fsa.sherpa.onnx.EndpointConfig
-import com.k2fsa.sherpa.onnx.EndpointRule
+import android.content.res.AssetManager
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.VadModelConfig
 import com.promenar.infinity.utils.InfinityLogger
 import java.io.File
 
 internal data class RecordingDecoderRequest(
     val directory: File?,
     val hotwords: List<RecordingHotword>,
-    val vocabulary: Set<Char> = emptySet(),
+    val vocabulary: Set<Char>,
+    val assets: AssetManager,
 )
 
 internal fun interface RecordingDecoderFactory {
@@ -24,7 +27,7 @@ internal fun interface RecordingDecoderFactory {
 private const val X_ASR_DECODE_STEP_MS = 480L
 
 internal object EmptyRecordingDecoder : RecordingDecoder {
-    override fun accept(pcm: ShortArray) = RecordingRecognition("", false)
+    override fun accept(pcm: ShortArray) = RecordingRecognition("")
     override fun reset() = Unit
     override fun finish() = ""
 }
@@ -43,30 +46,57 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
             modelingUnit = if (beamSearch) "bpe" else "",
             bpeVocab = if (beamSearch) path("bpe.vocab") else "",
         ),
-        endpointConfig = EndpointConfig(
-            rule1 = EndpointRule(false, RecordingCapturePolicy.ENDPOINT_EMPTY_SILENCE_SECONDS, RecordingCapturePolicy.ENDPOINT_NO_MIN_UTTERANCE_SECONDS),
-            rule2 = EndpointRule(true, RecordingCapturePolicy.ENDPOINT_TEXT_SILENCE_SECONDS, RecordingCapturePolicy.ENDPOINT_NO_MIN_UTTERANCE_SECONDS),
-            rule3 = EndpointRule(false, RecordingCapturePolicy.ENDPOINT_LONG_SILENCE_SECONDS, RecordingCapturePolicy.ENDPOINT_LONG_UTTERANCE_SECONDS),
-        ),
-        enableEndpoint = true,
+        enableEndpoint = false,
         decodingMethod = if (beamSearch) "modified_beam_search" else "greedy_search",
         maxActivePaths = 4, hotwordsScore = 2.5f,
     ))
     val hotwordList = phrases.joinToString("/")
     val decoder = object : RecordingDecoder {
-        private var stream = try { recognizer.createStream(hotwordList) } catch (error: Throwable) {
+        private val vad = try {
+            Vad(request.assets, VadModelConfig(sileroVadModelConfig = SileroVadModelConfig(
+                model = "asr/silero_vad.onnx",
+                windowSize = RecordingSpeechBoundary.WINDOW_SAMPLES,
+            )))
+        } catch (error: Throwable) {
             recognizer.release()
             throw error
         }
+        private var stream = try { recognizer.createStream(hotwordList) } catch (error: Throwable) {
+            try { vad.release() } finally { recognizer.release() }
+            throw error
+        }
+        private val boundary = RecordingSpeechBoundary(vad::compute)
         private var text = ""
         private val tail = FloatArray(rate * RecordingCapturePolicy.TAIL_SILENCE_SECONDS)
-        private var hasAudio = false
         private var inputFinished = false
+        private var acceptedSamples = 0L
+        private var streamStart = 0L
         private var decodedMs = 0L
+        private var lead: RecordingUtteranceLead? = null
+
+        override fun speechWindow(pcm: ShortArray): RecordingSpeechWindow = boundary.accept(pcm)
 
         override fun accept(pcm: ShortArray): RecordingRecognition {
-            hasAudio = true
-            stream.acceptWaveform(FloatArray(pcm.size) { pcm[it] / 32768f }, rate)
+            lead?.append(pcm)
+            acceptedSamples += pcm.size
+            return decode(pcm)
+        }
+
+        override fun restartAtOnset(onset: Int, pcm: ShortArray): RecordingRecognition {
+            val history = lead ?: return accept(pcm)
+            lead = null
+            // 只有这段此前仍未输出文本才重启，避免替换已显示的低音量发言。
+            val replay = if (text.isBlank()) history.replayFrom(onset) else null
+            if (replay != null) {
+                startStream(streamStart + replay.start)
+                decode(replay.pcm)
+            }
+            return accept(pcm)
+        }
+
+        private fun decode(pcm: ShortArray): RecordingRecognition {
+            val audio = FloatArray(pcm.size) { pcm[it] / 32768f }
+            stream.acceptWaveform(audio, rate)
             var decoded = false
             while (recognizer.isReady(stream)) {
                 recognizer.decode(stream)
@@ -74,26 +104,35 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
                 decoded = true
             }
             if (decoded) text = recognizer.getResult(stream).text
-            return RecordingRecognition(text, decoded && recognizer.isEndpoint(stream), decodedMs)
+            return RecordingRecognition(text, decodedMs)
         }
         override fun reset() {
             if (inputFinished) {
-                val previous = stream
-                stream = recognizer.createStream(hotwordList)
-                previous.release()
-                hasAudio = false
-                decodedMs = 0
+                startStream(acceptedSamples)
             } else {
-                // 分段保留编码器上下文和已接收但还没解码的音频。
+                // 连续说话到达段落上限时，保留尚未解码的音频。
                 recognizer.reset(stream)
             }
+            lead = null
             text = ""
+        }
+        override fun nextUtterance() {
+            startStream(acceptedSamples)
+            lead = RecordingUtteranceLead()
+        }
+        private fun startStream(start: Long) {
+            val previous = stream
+            stream = recognizer.createStream(hotwordList)
+            previous.release()
+            streamStart = start
+            decodedMs = start * 1_000 / rate
             inputFinished = false
+            text = ""
         }
         override fun finish(): String {
             if (inputFinished) return text
             inputFinished = true
-            if (!hasAudio) return ""
+            if (acceptedSamples == streamStart) return ""
             stream.acceptWaveform(tail, rate)
             stream.inputFinished()
             while (recognizer.isReady(stream)) recognizer.decode(stream)
@@ -101,7 +140,9 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
             return text
         }
         override fun close() {
-            try { stream.release() } finally { recognizer.release() }
+            try { stream.release() } finally {
+                try { recognizer.release() } finally { vad.release() }
+            }
         }
     }
     return RecordingReplacingDecoder(RecordingTimedDecoder(decoder, beamSearch, phrases.size), request.hotwords)
@@ -110,12 +151,12 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
 internal class RecordingReplacingDecoder(
     private val delegate: RecordingDecoder,
     entries: List<RecordingHotword>,
-) : RecordingDecoder {
+) : RecordingDecoder by delegate {
     private val replacer = RecordingHotwordReplacer(entries)
     override fun accept(pcm: ShortArray): RecordingRecognition = delegate.accept(pcm).let { it.copy(text = replacer.replace(it.text)) }
+    override fun restartAtOnset(onset: Int, pcm: ShortArray): RecordingRecognition =
+        delegate.restartAtOnset(onset, pcm).let { it.copy(text = replacer.replace(it.text)) }
     override fun finish() = replacer.replace(delegate.finish())
-    override fun reset() = delegate.reset()
-    override fun close() = delegate.close()
 }
 
 private class RecordingTimedDecoder(
@@ -133,6 +174,12 @@ private class RecordingTimedDecoder(
         samples += pcm.size
         return timed { delegate.accept(pcm) }
     }
+    override fun speechWindow(pcm: ShortArray) = timed { delegate.speechWindow(pcm) }
+    override fun restartAtOnset(onset: Int, pcm: ShortArray): RecordingRecognition {
+        samples += pcm.size
+        return timed { delegate.restartAtOnset(onset, pcm) }
+    }
+    override fun nextUtterance() = timed { delegate.nextUtterance() }
     override fun reset() = timed { delegate.reset() }
     override fun finish() = timed { delegate.finish() }
     override fun close() {

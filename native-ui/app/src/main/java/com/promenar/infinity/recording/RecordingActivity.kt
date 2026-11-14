@@ -247,6 +247,7 @@ private fun RecordingScreen(
         current = current,
         organized = organized,
         route = route,
+        waveform = controller.waveform,
         playing = playback.playing,
         positionMs = playback.position,
         playbackEnvelope = playbackEnvelope,

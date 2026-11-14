@@ -23,21 +23,40 @@ internal interface RecordingAudioSource {
 
 internal data class RecordingRecognition(
     val text: String,
-    val endpoint: Boolean,
     val decodedMs: Long? = null,
 )
 
 internal interface RecordingDecoder : AutoCloseable {
     override fun close() = Unit
+    fun speechWindow(pcm: ShortArray): RecordingSpeechWindow = RecordingSpeechWindow.None
+    fun restartAtOnset(onset: Int, pcm: ShortArray): RecordingRecognition = accept(pcm)
     fun accept(pcm: ShortArray): RecordingRecognition
     // 连续输入时开始下一段。在 finish 之后开始一段独立音频。
     fun reset()
+    fun nextUtterance() = reset()
     fun finish(): String
 }
 
-internal fun RecordingDecoder.advanceSegment(state: RecordingSegmentation, pcm: ShortArray): RecordingCaptureStep {
-    val result = accept(pcm)
-    return state.accept(pcm, result.text, result.endpoint, result.decodedMs)
+internal suspend fun RecordingDecoder.advanceSegment(
+    state: RecordingSegmentation,
+    pcm: ShortArray,
+    onFrame: suspend (CaptureFrame) -> Unit,
+) {
+    val speech = speechWindow(pcm)
+    val cut = speech.end
+    if (cut != null) {
+        val prefix = if (cut == pcm.size) pcm else pcm.copyOfRange(0, cut)
+        val partial = accept(prefix)
+        // 在确认静音的样本处排空旧流，避免把同一块里的下一句首音送进去。
+        onFrame(state.accept(prefix, finish().ifBlank { partial.text }, endpoint = true).frame)
+        nextUtterance()
+        if (cut == pcm.size) return
+    }
+    val suffix = if (cut == null) pcm else pcm.copyOfRange(cut, pcm.size)
+    val result = speech.onset?.let { restartAtOnset(it - (cut ?: 0), suffix) } ?: accept(suffix)
+    val step = state.accept(suffix, result.text, endpoint = false, decodedMs = result.decodedMs)
+    onFrame(step.frame)
+    if (step.reset) reset()
 }
 
 internal data class RecordingBacklog(val maxQueuedMs: Long, val durationMs: Long)
@@ -52,6 +71,7 @@ internal suspend fun recordPcmAudio(
     command: () -> CaptureCommand,
     withDecoder: WithRecordingDecoder,
     onCaptureStarted: suspend () -> Unit = {},
+    waveform: RecordingWaveformSampler? = null,
     onReaderStart: () -> Unit = {},
     onBacklog: (RecordingBacklog) -> Unit = {},
     onFrame: suspend (CaptureFrame) -> Unit,
@@ -112,6 +132,7 @@ internal suspend fun recordPcmAudio(
                 }
                 offset += count * 2L
                 written.set(offset)
+                waveform?.accept(block, count)
                 val backlog = offset - consumed.get()
                 maxBacklog.accumulateAndGet(backlog, ::maxOf)
                 changes.trySend(Unit)
@@ -146,10 +167,10 @@ internal suspend fun recordPcmAudio(
                 }
                 encoded.flip()
                 val pcm = ShortArray(count / 2) { encoded.getShort() }
-                val step = decoder.advanceSegment(state, pcm)
-                if (step.frame.checkpoint) checkpoint(step.frame.bytes)
-                onFrame(step.frame)
-                if (step.reset) decoder.reset()
+                decoder.advanceSegment(state, pcm) { frame ->
+                    if (frame.checkpoint) checkpoint(frame.bytes)
+                    onFrame(frame)
+                }
                 offset += count
                 consumed.set(offset)
             } else if (done) break

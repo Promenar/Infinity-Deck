@@ -80,10 +80,8 @@ class RecordingSegmentationTest {
         assertTrue(state.accept(silence, "", false).frame.quiet)
         val spoken = state.accept(voice, "测试", false).frame
         assertFalse(spoken.quiet)
-        assertTrue(spoken.level > 0f)
         val tail = state.finish(" 测试， 完成。 ")
         assertEquals(RecordingSegment(2_000, 2_040, "测试，完成。"), tail.segment)
         assertTrue(tail.quiet)
-        assertEquals(0f, tail.level, 0f)
     }
 }

@@ -20,6 +20,7 @@ internal suspend fun captureRecording(
     command: () -> CaptureCommand,
     withDecoder: WithRecordingDecoder,
     onCaptureStarted: suspend () -> Unit,
+    waveform: RecordingWaveformSampler,
     onFrame: suspend (CaptureFrame) -> Unit,
 ): CaptureCommand = withContext(Dispatchers.IO) {
     val rate = RecordingStore.SAMPLE_RATE
@@ -52,6 +53,7 @@ internal suspend fun captureRecording(
                     command = command,
                     withDecoder = withDecoder,
                     onCaptureStarted = onCaptureStarted,
+                    waveform = waveform,
                     // 提升优先级失败不影响录音。
                     onReaderStart = { runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) } },
                     onBacklog = { backlog ->

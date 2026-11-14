@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -78,6 +76,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -107,6 +106,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import java.util.Locale
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.common.motion.indicatorDesignSize
@@ -120,8 +120,8 @@ import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.ceil
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 
 /** 内容区达到这个宽度与高度时用内屏版式：通栏录音卡加逐字稿、整理稿双栏。 */
 private val RecordingWideWidth = 600.dp
@@ -143,6 +143,7 @@ private class RecordingView(
     val playbackEnvelope: List<Float>,
     val asrModel: RecordingAsrModelState,
     val effectiveHotwords: List<RecordingHotword>,
+    val waveform: StateFlow<RecordingWaveformSamples>,
 ) {
     val active = current != null && state.activeId == current.id
     val paused = current?.phase == RecordingPhase.Paused
@@ -161,6 +162,7 @@ internal fun RecordingPageContent(
     current: RecordingSession?,
     organized: Boolean,
     route: RecordingRoute,
+    waveform: StateFlow<RecordingWaveformSamples>,
     playing: Boolean = false,
     positionMs: Float = 0f,
     playbackEnvelope: List<Float> = emptyList(),
@@ -242,7 +244,7 @@ internal fun RecordingPageContent(
                 label = "recording_navigation",
             ) { shown ->
                 val foreground = (shown == null) == (current == null)
-                val view = RecordingView(state, shown, route, playing, positionMs, playbackEnvelope, asrModel, effectiveHotwords)
+                val view = RecordingView(state, shown, route, playing, positionMs, playbackEnvelope, asrModel, effectiveHotwords, waveform)
                 val transcriptTools: @Composable (Boolean) -> Unit = { titled ->
                     TranscriptPaneHeader(view, titled, onDownloadAsr, onCancelDownload, onTranscriptMenu, onCancelRecognize)
                 }
@@ -408,7 +410,10 @@ private fun WorkspaceRecorder(view: RecordingView, onPlay: () -> Unit, onSeek: (
         modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp).heightIn(min = 52.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(
+                modifier = if (view.active) Modifier.widthIn(min = 73.dp) else Modifier,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
                 Text(recordingTimestamp(elapsed), style = InfinityTypography.headlineSmall.copy(fontFamily = InfinityMonospace),
                     maxLines = 1)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -426,8 +431,10 @@ private fun WorkspaceRecorder(view: RecordingView, onPlay: () -> Unit, onSeek: (
                 }
             }
             if (view.active) {
-                RecordingWaveform(view.state.levels, live = !view.paused && !view.state.opening,
-                    paused = view.paused, description = null, modifier = Modifier.weight(1f).height(32.dp))
+                key(current.id) {
+                    RecordingWaveform(view.waveform, live = !view.paused && !view.state.opening,
+                        paused = view.paused, modifier = Modifier.weight(1f).height(32.dp))
+                }
             } else {
                 val position = view.positionMs.coerceIn(0f, current.durationMs.toFloat())
                 val seekLabel = stringResource(R.string.recording_ui_position)
@@ -479,55 +486,47 @@ private val StatusLineHeight = 24.dp
 private val StatusIconSize = 16.dp
 private val StatusSpinnerSize = 14.dp
 
-private val WaveformHeight = 40.dp
 private val WaveformPitch = 6.dp
 private val WaveformBarWidth = 3.dp
 private val WaveformMinBar = 4.dp
 private val WaveformFade = 30.dp
 
-/** 控制器最多保留 48 个电平采样，按固定间距正好画满这个宽度。 */
-private val WaveformMaxWidth = WaveformPitch * 48
-
 /** 低于这个电平按静音画成圆点。 */
 private const val WaveformSilence = 0.06f
 
-/** 每 3200 字节音频出一个电平采样，即 100 毫秒。 */
-private const val WaveformSampleMillis = 100
-
-/** 采样到得比绘制快时，最多欠下的格数；超过就直接跟上。 */
-private const val WaveformMaxLag = 2f
-
 /**
- * 滚动波形：最新采样在右端，柱条按固定间距向左排开，放不下的部分在左缘淡出。
- * [live] 时每到一个新采样，整组柱条在一个采样间隔内匀速左移一格，采样之间逐帧连续；系统关闭动画时逐格跳动。
+ * 波形只在绘制阶段读取音量和位移。暂停保持最后一帧，系统关闭动画时按采样间距更新。
  */
 @Composable
 private fun RecordingWaveform(
-    levels: List<Float>,
+    waveform: StateFlow<RecordingWaveformSamples>,
     live: Boolean,
     paused: Boolean,
-    description: String?,
     modifier: Modifier = Modifier,
 ) {
-    val voiced = if (paused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
-    val silent = MaterialTheme.colorScheme.outlineVariant
-    val animate = live && rememberAnimationsEnabled() && !LocalInspectionMode.current
-    // 以“格”为单位的右移量：新采样到达时加一格（柱条留在原位），随后匀速回到零。
-    val shift = remember { Animatable(0f) }
-    LaunchedEffect(levels, animate) {
-        if (!animate) {
-            shift.snapTo(0f)
-            return@LaunchedEffect
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val voiced = if (paused) muted else MaterialTheme.colorScheme.primary
+    val smooth = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val samples = waveform.collectAsStateWithLifecycle()
+    val motion = remember(smooth) { RecordingWaveformMotion() }
+    var animated by remember(smooth) { mutableStateOf<RecordingWaveformFrame?>(null) }
+    LaunchedEffect(live, smooth) {
+        try {
+            while (live && smooth) {
+                withFrameNanos { animated = motion.frame(samples.value, it) }
+            }
+        } finally {
+            motion.pause()
         }
-        shift.snapTo((shift.value + 1f).coerceAtMost(WaveformMaxLag))
-        shift.animateTo(0f, tween((WaveformSampleMillis * shift.value).roundToInt(), easing = LinearEasing))
     }
-    Canvas(if (description == null) modifier else modifier.semantics { contentDescription = description }) {
+    Canvas(modifier) {
+        val frame = animated.takeIf { smooth } ?: RecordingWaveformFrame(samples.value.levels, 0f)
+        val levels = frame.levels
         val pitch = WaveformPitch.toPx()
         val bar = WaveformBarWidth.toPx()
         val fade = WaveformFade.toPx()
         val minBar = WaveformMinBar.toPx()
-        val offset = shift.value * pitch
+        val offset = frame.offset * pitch
         val slots = ceil(size.width / pitch).toInt() + 2
         clipRect {
             repeat(slots) { slot ->
@@ -536,7 +535,7 @@ private fun RecordingWaveform(
                 val level = levels.getOrNull(levels.lastIndex - slot)?.coerceIn(0f, 1f) ?: 0f
                 val alpha = ((x + bar / 2) / fade).coerceIn(0f, 1f)
                 if (level < WaveformSilence) {
-                    drawCircle(silent, radius = bar / 2, center = Offset(x, center.y), alpha = alpha)
+                    drawCircle(muted, radius = bar / 2, center = Offset(x, center.y), alpha = alpha * .29f)
                 } else {
                     // 圆头端帽各伸出半个线宽，线段长度相应减去。
                     val half = ((minBar + level * (size.height - minBar) - bar) / 2).coerceAtLeast(0f)

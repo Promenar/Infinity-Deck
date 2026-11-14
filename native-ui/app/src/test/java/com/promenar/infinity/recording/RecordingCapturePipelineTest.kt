@@ -53,7 +53,7 @@ class RecordingCapturePipelineTest {
         override fun accept(pcm: ShortArray): RecordingRecognition {
             if (delayMs > 0) Thread.sleep(delayMs)
             samples.addAll(pcm.toList())
-            return RecordingRecognition("当前 文本", false)
+            return RecordingRecognition("当前 文本")
         }
         override fun reset() = Unit
         override fun finish(): String {
@@ -146,28 +146,41 @@ class RecordingCapturePipelineTest {
     @Test fun endpointPreservesFinalWordsBeforeResettingTheDecoder() = runBlocking {
         withWav { file ->
             val command = AtomicReference(CaptureCommand.Continue)
-            val blocks = List(3) { ShortArray(640) { 1000 } }
+            val blocks = listOf(
+                ShortArray(640) { 1000 },
+                ShortArray(640) { if (it < 128) 0 else 2000 },
+                ShortArray(640) { 3000 },
+            )
             val source = Source(command, blocks, CaptureCommand.Finish)
             val decoder = object : RecordingDecoder {
-                private var accepted = 0
-                private var segment = 0
+                private var blocksSeen = 0
+                val finalizedPcm = mutableListOf<List<Short>>()
+                private val currentPcm = mutableListOf<Short>()
 
+                override fun speechWindow(pcm: ShortArray) = RecordingSpeechWindow(end = 128.takeIf { ++blocksSeen == 2 })
                 override fun accept(pcm: ShortArray): RecordingRecognition {
-                    accepted++
-                    return RecordingRecognition(if (segment == 0) "第一段末尾" else "第二段", accepted == 2)
+                    currentPcm += pcm.toList()
+                    return RecordingRecognition("部分结果", decodedMs = 40)
                 }
 
                 override fun finish(): String {
-                    assertEquals("只有音频流结束才应调用 finish", 1, segment)
-                    return "第二段开头"
+                    finalizedPcm.add(currentPcm.toList())
+                    return if (finalizedPcm.size == 1) "第一段末尾" else "第二段开头"
                 }
-                override fun reset() { accepted = 0; segment++ }
+                override fun reset() {
+                    assertEquals("断句必须先解码音频队列，再切换发言上下文", 1, finalizedPcm.size)
+                    currentPcm.clear()
+                }
             }
             val segments = mutableListOf<RecordingSegment>()
             recordPcmAudio(source, decoder, file, 0, 1_000_000, command::get) { frame ->
                 frame.segment?.let(segments::add)
             }
-            assertEquals(listOf(RecordingSegment(0, 80, "第一段末尾"), RecordingSegment(80, 120, "第二段开头")), segments)
+            assertEquals(listOf(RecordingSegment(0, 48, "第一段末尾"), RecordingSegment(48, 120, "第二段开头")), segments)
+            assertEquals(listOf(
+                blocks[0].toList() + blocks[1].take(128),
+                blocks[1].drop(128) + blocks[2].toList(),
+            ), decoder.finalizedPcm)
             assertWav(file, blocks.flatMap { it.toList() })
         }
     }
@@ -179,6 +192,7 @@ class RecordingCapturePipelineTest {
             val source = Source(command, blocks, ending)
             val decoder = Decoder(source.stopped)
             var started = false
+            val samples = mutableListOf<RecordingWaveformSamples>()
 
             val result = recordPcmAudio(
                 source, file, 0, 10_000, command::get,
@@ -186,9 +200,12 @@ class RecordingCapturePipelineTest {
                     assertTrue(started)
                     assertTrue(source.stopped.await(1, TimeUnit.SECONDS))
                     assertEquals(44L + 3_840, file.length())
+                    assertEquals(1, samples.size)
+                    assertTrue(samples.single().levels.single() > 0)
                     decode(decoder)
                 },
                 onCaptureStarted = { started = true },
+                waveform = RecordingWaveformSampler(RecordingWaveformSamples(), samples::add),
                 onFrame = {},
             )
 
@@ -358,7 +375,7 @@ class RecordingCapturePipelineTest {
             val decoder = object : RecordingDecoder {
                 override fun accept(pcm: ShortArray): RecordingRecognition {
                     if (stage == "decode") throw failure
-                    return RecordingRecognition("测试", false)
+                    return RecordingRecognition("测试")
                 }
                 override fun reset() = Unit
                 override fun finish() = ""

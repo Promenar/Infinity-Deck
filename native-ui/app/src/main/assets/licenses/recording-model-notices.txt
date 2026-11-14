@@ -12,6 +12,11 @@ X-ASR 480ms 中英标点流式 Zipformer2 · Apache-2.0
 模型包：sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05.tar.bz2
 APK 随包分发由 bpe.model 导出的 bpe.vocab。encoder.int8.onnx、decoder.onnx、joiner.int8.onnx 与 tokens.txt 从上述官方发行包按需安装。许可全文见 sherpa-onnx-LICENSE.txt。
 
+Silero VAD v4（k2-fsa 导出的 16 kHz ONNX）· MIT
+上游仓库：https://github.com/snakers4/silero-vad/tree/v4.0
+发布件来源：https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+随 APK 分发，用于端侧语音活动检测。许可全文见 silero-vad-LICENSE.txt。
+
 llama.cpp b12076 · MIT（本地推理构建）
 https://github.com/ggml-org/llama.cpp/tree/36ee3caf7aa2dcb0210bedab1b61ee9f269765d3
 

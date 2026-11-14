@@ -88,7 +88,7 @@ class RecordingHotwordsTest {
 
     @Test fun previewAndCommittedSegmentBothUseWrittenForm() {
         val fake = object : RecordingDecoder {
-            override fun accept(pcm: ShortArray) = RecordingRecognition("lama CPP", false)
+            override fun accept(pcm: ShortArray) = RecordingRecognition("lama CPP")
             override fun finish() = "LamaCPP"
             override fun reset() = Unit
         }

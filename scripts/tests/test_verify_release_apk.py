@@ -99,12 +99,12 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
         )]
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "缺少离线听写制品"):
             verify_release_apk.verify_recording_artifacts(self.make_apk(native))
-        with self.assertRaisesRegex(verify_release_apk.VerificationError, "模型摘要不符"):
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "缺少离线听写制品.*silero_vad"):
             verify_release_apk.verify_recording_artifacts(self.make_apk(native + ["assets/asr/bpe.vocab"]))
 
-    def test_recording_vocab_digest_and_excludes_downloaded_model(self) -> None:
-        vocab = Path(__file__).resolve().parents[2] / "native-ui/app/src/main/assets/asr/bpe.vocab"
-        entries = {"assets/asr/bpe.vocab": vocab.read_bytes()}
+    def test_recording_asset_digests_and_excludes_downloaded_model(self) -> None:
+        assets = Path(__file__).resolve().parents[2] / "native-ui/app/src/main/assets/asr"
+        entries = {f"assets/asr/{name}": (assets / name).read_bytes() for name in ("bpe.vocab", "silero_vad.onnx")}
         entries.update({f"lib/arm64-v8a/{name}": b"fixture" for name in (
             "libonnxruntime.so", "libsherpa-onnx-jni.so", "libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so",
         )})
@@ -112,9 +112,9 @@ class LocalInferenceArtifactVerificationTest(ApkFixtureTestCase):
         for name in ("encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt"):
             with self.subTest(name=name), self.assertRaisesRegex(verify_release_apk.VerificationError, "包含听写模型权重"):
                 verify_release_apk.verify_recording_artifacts(self.make_apk(entries | {f"assets/asr/{name}": b"fixture"}))
-        entries["assets/asr/bpe.vocab"] = b"invalid"
-        with self.assertRaisesRegex(verify_release_apk.VerificationError, "模型摘要不符"):
-            verify_release_apk.verify_recording_artifacts(self.make_apk(entries))
+        for name in ("bpe.vocab", "silero_vad.onnx"):
+            with self.subTest(name=name), self.assertRaisesRegex(verify_release_apk.VerificationError, f"模型摘要不符.*{name}"):
+                verify_release_apk.verify_recording_artifacts(self.make_apk(entries | {f"assets/asr/{name}": b"invalid"}))
 
     def test_x_asr_joiner_is_subject_to_the_full_sensitive_scan(self) -> None:
         entry = "assets/asr/joiner.int8.onnx"
