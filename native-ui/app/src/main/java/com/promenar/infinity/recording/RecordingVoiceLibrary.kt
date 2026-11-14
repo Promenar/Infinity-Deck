@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -162,9 +164,10 @@ private fun RecordingVoicePersonSheet(person: RecordingVoicePerson, controller: 
     var pending by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     fun change(action: suspend () -> Unit, close: Boolean) {
+        if (pending) return
+        pending = true
+        failed = false
         scope.launch {
-            pending = true
-            failed = false
             try {
                 action()
                 if (close) onClose()
@@ -177,55 +180,51 @@ private fun RecordingVoicePersonSheet(person: RecordingVoicePerson, controller: 
             }
         }
     }
-    InfinityBottomSheet(
-        show = true, onDismiss = onClose, dismissEnabled = !pending,
-        scrollContent = true, dragGesturesEnabled = false,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-                RecordingVoiceAvatar(person.name, size = 36.dp)
-                Text(person.name, style = InfinityTypography.titleMedium)
-            }
-            SettingsInput(name, { name = it.take(50) }, stringResource(R.string.recording_speaker_name))
-            Text(stringResource(R.string.recording_voice_samples), style = InfinityTypography.titleSmall)
-            BettboxListGroup {
-                person.samples.forEach { sample ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
-                        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(sample.source, style = InfinityTypography.bodyMedium)
-                            InfinityMetaLine(listOf(voiceDate(sample.createdAt), recordingTimestamp(sample.durationMs)),
-                                style = InfinityTypography.labelSmall)
-                        }
-                        if (person.samples.size > 1) InfinityPillButton(
-                            stringResource(R.string.recording_voice_remove_sample),
-                            { change({ controller.removeVoiceSample(person.id, sample.id) }, close = false) },
-                            enabled = !pending, compact = true, tone = InfinityPillTone.DANGER,
-                        )
-                    }
-                }
-            }
+    if (confirm) {
+        RecordingDialog(stringResource(R.string.recording_voice_remove_person), { confirm = false },
+            icon = Icons.Rounded.Delete, width = 412.dp, destructive = true, dismissEnabled = !pending,
+            footer = {
+                RecordingDialogActions(stringResource(R.string.recording_ui_delete_confirm),
+                    { change({ controller.deleteVoicePerson(person.id) }, close = true) },
+                    { confirm = false }, destructive = true, enabled = !pending)
+            },
+        ) {
+            Text(stringResource(R.string.recording_voice_remove_confirm, person.name), style = InfinityTypography.bodyMedium)
             if (failed) VoiceFailure()
-            if (confirm) {
-                Text(stringResource(R.string.recording_voice_remove_confirm, person.name), style = InfinityTypography.bodyMedium)
-                InfinityPillRow {
-                    InfinityPillButton(stringResource(R.string.recording_cancel), { confirm = false })
-                    InfinityPillButton(stringResource(R.string.recording_ui_delete_confirm), {
-                        confirm = false
-                        change({ controller.deleteVoicePerson(person.id) }, close = true)
-                    }, enabled = !pending, tone = InfinityPillTone.DESTRUCTIVE)
+        }
+        return
+    }
+    RecordingDialog(stringResource(R.string.recording_dialog_voice_person), onClose,
+        icon = Icons.Rounded.Person, width = 560.dp, subtitle = person.name, dismissEnabled = !pending,
+        footer = {
+            RecordingDialogActions(stringResource(R.string.recording_save),
+                { change({ controller.renameVoicePerson(person.id, name.trim()) }, close = true) }, onClose,
+                confirmEnabled = name.isNotBlank(), enabled = !pending)
+        },
+    ) {
+        SettingsInput(name, { name = it.take(50) }, stringResource(R.string.recording_speaker_name))
+        RecordingDialogGroup(stringResource(R.string.recording_voice_samples)) {
+            person.samples.forEach { sample ->
+                Row(Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Small),
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(sample.source, style = InfinityTypography.bodyMedium)
+                        InfinityMetaLine(listOf(voiceDate(sample.createdAt), recordingTimestamp(sample.durationMs)),
+                            style = InfinityTypography.labelSmall)
+                    }
+                    if (person.samples.size > 1) InfinityPillButton(
+                        stringResource(R.string.recording_voice_remove_sample),
+                        { change({ controller.removeVoiceSample(person.id, sample.id) }, close = false) },
+                        enabled = !pending, compact = true, tone = InfinityPillTone.DANGER,
+                    )
                 }
-            } else InfinityPillRow {
-                InfinityPillButton(stringResource(R.string.recording_voice_remove_person), { confirm = true },
-                    enabled = !pending, tone = InfinityPillTone.DANGER)
-                InfinityPillButton(stringResource(R.string.recording_save),
-                    { change({ controller.renameVoicePerson(person.id, name.trim()) }, close = true) },
-                    enabled = !pending && name.isNotBlank(), tone = InfinityPillTone.PRIMARY)
             }
         }
+        RecordingDialogRow(stringResource(R.string.recording_voice_remove_person), {
+            failed = false; confirm = true
+        }, icon = Icons.Rounded.Delete, destructive = true, enabled = !pending)
+        if (failed) VoiceFailure()
     }
 }
 

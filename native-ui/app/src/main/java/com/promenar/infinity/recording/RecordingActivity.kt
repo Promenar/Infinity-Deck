@@ -12,15 +12,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -31,13 +34,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withResumed
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
-import com.promenar.infinity.ui.common.InfinityConfirmDialog
-import com.promenar.infinity.ui.common.InfinityBottomSheet
-import com.promenar.infinity.ui.common.InfinitySheetHeight
-import com.promenar.infinity.ui.common.InfinityPillButton
-import com.promenar.infinity.ui.common.InfinityPillTone
-import com.promenar.infinity.ui.common.BettboxListGroup
-import com.promenar.infinity.ui.common.InfinitySettingsItem
+import com.promenar.infinity.ui.common.SettingsInput
+import com.promenar.infinity.ui.common.rememberInfinityWideWindow
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
@@ -147,11 +145,11 @@ private fun RecordingScreen(
     var selected by rememberSaveable(incomingDocument, incomingRevision) { mutableStateOf(incomingDocument) }
     var historyParent by rememberSaveable(incomingDocument, incomingRevision) { mutableStateOf(incomingDocument == null) }
     var organized by rememberSaveable(incomingRevision) { mutableStateOf(false) }
-    var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    var dialog by rememberSaveable(incomingDocument, incomingRevision) { mutableStateOf<String?>(null) }
     var defaultMode by remember { mutableStateOf(controller.store.mode) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var editorText by rememberSaveable { mutableStateOf("") }
-    var pendingLanguage by rememberSaveable { mutableStateOf<RecordingLanguage?>(null) }
+    var pendingLanguage by rememberSaveable(selected, incomingRevision) { mutableStateOf<RecordingLanguage?>(null) }
     var leaveToHistory by rememberSaveable { mutableStateOf(false) }
     val current = state.sessions.firstOrNull { it.id == selected }
     val active = current != null && state.activeId == current.id
@@ -309,39 +307,30 @@ private fun RecordingScreen(
     )
 
     when (dialog) {
-        "mode" -> InfinityBottomSheet(
-            show = true,
-            onDismiss = { dialog = null },
-            title = stringResource(R.string.recording_settings),
-            height = InfinitySheetHeight.Content,
-            scrollContent = true,
-            dragGesturesEnabled = false,
+        "mode" -> if (state.ready && (selected == null || current != null)) RecordingWorkspaceSettings(
+            current?.mode ?: defaultMode, current?.outputLanguage ?: controller.store.outputLanguage,
+            current?.liveOrganization ?: controller.store.liveOrganization,
+            current?.distinguishSpeakers ?: controller.store.distinguishSpeakers, current != null,
+            dismiss = { dialog = null },
+            onSave = { mode, language, live, speakers ->
+                if (current == null) defaultMode = mode
+                controller.configure(current?.id, mode, language, live, speakers)
+                dialog = null
+            },
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-                RecordingWorkspaceSettings(current?.mode ?: defaultMode, current?.outputLanguage ?: controller.store.outputLanguage,
-                    current?.liveOrganization ?: controller.store.liveOrganization,
-                    current?.distinguishSpeakers ?: controller.store.distinguishSpeakers,
-                    single = current != null, onSave = { mode, language, live, speakers ->
-                        if (current == null) defaultMode = mode
-                        controller.configure(current?.id, mode, language, live, speakers)
-                        dialog = null
-                    })
-                if (current?.cloudConsent != null) TextButton(onClick = {
-                    controller.allowCloud(current.id, null); dialog = null
-                }) { Text(stringResource(R.string.recording_revoke)) }
-                BettboxListGroup {
-                    InfinitySettingsItem(title = stringResource(R.string.recording_setup_title), showChevron = true, onClick = {
-                        dialog = null; showSetup = true
-                    })
-                }
-                BettboxListGroup {
-                    InfinitySettingsItem(title = stringResource(R.string.recording_hotword_library), showChevron = true, onClick = {
-                        dialog = null; showHotwords = true
-                    })
-                    InfinitySettingsItem(title = stringResource(R.string.recording_speaker_library), showChevron = true, onClick = {
-                        dialog = null; showVoice = true
-                    })
-                }
+            if (current?.cloudConsent != null) RecordingDialogRow(stringResource(R.string.recording_revoke), {
+                controller.allowCloud(current.id, null); dialog = null
+            }, icon = Icons.Rounded.Cloud, destructive = true)
+            RecordingDialogGroup(stringResource(R.string.recording_dialog_resources)) {
+                RecordingDialogRow(stringResource(R.string.recording_setup_title), {
+                    dialog = null; showSetup = true
+                }, icon = Icons.Rounded.FileDownload)
+                RecordingDialogRow(stringResource(R.string.recording_hotword_library), {
+                    dialog = null; showHotwords = true
+                }, icon = Icons.Rounded.Description)
+                RecordingDialogRow(stringResource(R.string.recording_speaker_library), {
+                    dialog = null; showVoice = true
+                }, icon = Icons.Rounded.Person)
             }
         }
 
@@ -351,62 +340,71 @@ private fun RecordingScreen(
             }
         }
         "finish" -> RecordingConfirm(R.string.recording_finish_question, stringResource(R.string.recording_finish_detail),
-            R.string.recording_finish_save, { dialog = null }, { dialog = null; organized = true; onFinish() })
+            R.string.recording_finish_save, { dialog = null }, { dialog = null; organized = true; onFinish() },
+            cancel = stringResource(R.string.recording_return_active), icon = Icons.Rounded.Stop,
+            note = stringResource(if (current?.manualEdit == true) R.string.recording_dialog_manual_kept
+                else R.string.recording_dialog_finish_cleanup))
         "continue" -> if (current != null && !active) {
             RecordingConfirm(R.string.recording_resume, stringResource(R.string.recording_append_detail, current.title),
-                R.string.recording_append_start, { dialog = null }, { dialog = null; onBegin(current.id) })
+                R.string.recording_append_start, { dialog = null }, { dialog = null; onBegin(current.id) },
+                icon = Icons.Rounded.Mic, note = stringResource(R.string.recording_dialog_append_position, recordingTimestamp(current.durationMs)))
         }
         "discard" -> if (current != null && active) {
             val detail = stringResource(if (state.appending) R.string.recording_discard_append_detail else R.string.recording_discard_detail)
-            InfinityConfirmDialog(
+            RecordingConfirm(
                 title = stringResource(if (state.appending) R.string.recording_discard_append_question else R.string.recording_discard_question),
-                message = if (current.cloudConsent == null) detail else "$detail\n\n${stringResource(R.string.recording_discard_cloud)}",
-                confirmText = stringResource(if (state.appending) R.string.recording_discard_append else R.string.recording_discard_all),
-                cancelText = stringResource(R.string.recording_return_active), isDestructive = true,
-                onConfirm = { dialog = null; organized = false; onDiscard() }, onCancel = { dialog = null },
+                message = detail,
+                confirm = stringResource(if (state.appending) R.string.recording_discard_append else R.string.recording_discard_all),
+                cancel = stringResource(R.string.recording_return_active), destructive = true,
+                note = if (current.cloudConsent == null) null else stringResource(R.string.recording_discard_cloud),
+                warning = true, action = { dialog = null; organized = false; onDiscard() }, dismiss = { dialog = null },
             )
         }
         "rename" -> if (current != null) {
-            com.promenar.infinity.ui.chat.RenameDialog(current.title, { dialog = null }) { title ->
+            RecordingRenameDialog(current, { dialog = null }) { title ->
                 controller.updateDraft(current.id, title, current.hotwords, current.useHotwordLibrary, null)
                 dialog = null
             }
         }
-        "unsaved" -> RecordingConfirm(R.string.recording_discard_edit_question, stringResource(R.string.recording_discard_edit_detail),
-            R.string.recording_discard, { dialog = null }, {
+        "unsaved" -> RecordingConfirm(stringResource(R.string.recording_discard_edit_question), stringResource(R.string.recording_discard_edit_detail),
+            stringResource(R.string.recording_discard), { dialog = null }, {
                 dialog = null; editing = false
                 if (leaveToHistory) { if (backToHistory) showHistory() else onBack() }
-            })
-        "actions" -> if (current != null) InfinityBottomSheet(show = true, onDismiss = { dialog = null },
-            title = stringResource(R.string.recording_actions), height = InfinitySheetHeight.Content) {
-            BettboxListGroup {
-                InfinitySettingsItem(title = stringResource(R.string.recording_settings), onClick = { dialog = "mode" })
-                InfinitySettingsItem(title = stringResource(R.string.recording_hotword_session), onClick = { dialog = "hotwords" })
-                if (state.ready && !active && current.segments.isNotEmpty()) {
-                    InfinitySettingsItem(title = stringResource(R.string.recording_ui_reprocess), onClick = { dialog = "organize" })
-                }
-                if (active && route == RecordingRoute.Consent) {
-                    InfinitySettingsItem(title = stringResource(R.string.recording_enable_cloud), onClick = { dialog = "consent" })
-                }
-                if (!active) InfinitySettingsItem(title = stringResource(R.string.recording_ui_delete), onClick = { dialog = "delete" })
-                if (!active && current.documentId == null) InfinitySettingsItem(title = stringResource(R.string.recording_save_library), onClick = {
-                    controller.publish(current.id); dialog = null
-                })
+            }, cancel = stringResource(R.string.recording_dialog_keep_editing), destructive = true)
+        "actions" -> if (current != null) RecordingDialog(stringResource(R.string.recording_actions),
+            { dialog = null }, icon = Icons.Rounded.MoreHoriz, width = 412.dp) {
+            RecordingDialogRow(stringResource(R.string.recording_settings), { dialog = "mode" }, icon = Icons.Rounded.Tune)
+            RecordingDialogRow(stringResource(R.string.recording_hotword_session), { dialog = "hotwords" }, icon = Icons.Rounded.Description)
+            if (state.ready && !active && current.segments.isNotEmpty()) {
+                RecordingDialogRow(stringResource(R.string.recording_ui_reprocess), { dialog = "organize" }, icon = Icons.Rounded.Refresh)
             }
+            if (active && route == RecordingRoute.Consent) {
+                RecordingDialogRow(stringResource(R.string.recording_enable_cloud), { dialog = "consent" }, icon = Icons.Rounded.Cloud)
+            }
+            if (!active && current.documentId == null) RecordingDialogRow(stringResource(R.string.recording_save_library), {
+                controller.publish(current.id); dialog = null
+            }, icon = Icons.Rounded.Save)
+            if (!active) RecordingDialogRow(stringResource(R.string.recording_ui_delete), { dialog = "delete" },
+                icon = Icons.Rounded.Delete, destructive = true)
         }
-        "language" -> if (current != null) InfinityBottomSheet(show = true, onDismiss = { dialog = null },
-            title = stringResource(R.string.recording_output_language), height = InfinitySheetHeight.Content) {
-            Text(stringResource(R.string.recording_language_detail), style = MaterialTheme.typography.bodySmall)
-            BettboxListGroup {
-                RecordingLanguage.entries.forEach { language ->
-                    InfinitySettingsItem(title = language.label, selected = language == current.outputLanguage, onClick = {
-                        if (language == current.outputLanguage) dialog = null else {
+        "language" -> if (current != null) {
+            var language by rememberSaveable(current.id) { mutableStateOf(current.outputLanguage) }
+            val dismiss = { dialog = null }
+            RecordingDialog(stringResource(R.string.recording_output_language), dismiss,
+                icon = Icons.Rounded.Language, width = 412.dp,
+                footer = {
+                    RecordingDialogActions(stringResource(R.string.recording_dialog_apply_language), {
+                        if (language == current.outputLanguage) dismiss() else {
                             controller.selectLanguage(current.id, language)
                             pendingLanguage = language
                             dialog = if (!active && current.organized.isNotBlank()) "organize" else null
                         }
-                    })
-                }
+                    }, dismiss)
+                },
+            ) {
+                RecordingLanguageChoices(language, { language = it })
+                RecordingDialogNote(stringResource(R.string.recording_language_detail))
+                RecordingDialogNote(stringResource(R.string.recording_dialog_language_support))
             }
         }
         "consent" -> {
@@ -414,73 +412,56 @@ private fun RecordingScreen(
             val name = state.cloudLabel
             if (current != null && key != null && name != null) {
                 RecordingConfirm(R.string.recording_enable_cloud, stringResource(R.string.recording_consent_detail, name),
-                    R.string.recording_allow, { dialog = null }, { dialog = null; controller.allowCloud(current.id, key) })
+                    R.string.recording_allow, { dialog = null }, { dialog = null; controller.allowCloud(current.id, key) },
+                    icon = Icons.Rounded.Cloud, note = stringResource(R.string.recording_dialog_cloud_audio))
             }
         }
         "organize" -> if (current != null) {
             val language = pendingLanguage ?: current.outputLanguage
             RecordingConfirm(R.string.recording_ui_reprocess, stringResource(R.string.recording_reorganize_language, language.label),
-                R.string.recording_ui_reprocess, { dialog = null }, {
+                R.string.recording_ui_reprocess, { pendingLanguage = null; dialog = null }, {
+                    pendingLanguage = null
                     dialog = if (route == RecordingRoute.Consent) "consent" else null
                     if (route == RecordingRoute.Local || route == RecordingRoute.Cloud || route == RecordingRoute.Consent) {
                         controller.retry(current.id, language)
-                        pendingLanguage = null
                         organized = true
                     } else controller.report(if (route == RecordingRoute.Raw) R.string.recording_mode_raw else R.string.recording_route_unavailable)
-                })
+                }, icon = Icons.Rounded.Refresh, note = stringResource(R.string.recording_dialog_output_note, language.label))
         }
         "delete" -> if (current != null && !active) {
-            InfinityConfirmDialog(
+            RecordingConfirm(
                 title = stringResource(R.string.recording_ui_delete),
-                message = stringResource(
-                    if (current.documentId == null) R.string.recording_ui_delete_detail
-                    else R.string.recording_ui_delete_detail_document,
-                ),
-                confirmText = stringResource(R.string.recording_ui_delete_confirm),
-                cancelText = stringResource(R.string.recording_cancel),
-                onConfirm = {
-                    dialog = null
-                    showHistory()
-                    controller.delete(current.id)
-                },
-                onCancel = { dialog = null },
-                isDestructive = true,
+                message = stringResource(if (current.documentId == null) R.string.recording_ui_delete_detail
+                    else R.string.recording_ui_delete_detail_document),
+                confirm = stringResource(R.string.recording_ui_delete_confirm), destructive = true,
+                action = { dialog = null; showHistory(); controller.delete(current.id) }, dismiss = { dialog = null },
             )
         }
-        "transcript-actions" -> if (current != null) InfinityBottomSheet(show = true, onDismiss = { dialog = null },
-            title = stringResource(R.string.recording_transcript_actions), height = InfinitySheetHeight.Content) {
-            BettboxListGroup {
-                InfinitySettingsItem(title = stringResource(R.string.recording_recognize), enabled = canRecognize,
-                    onClick = { dialog = "recognize" })
-                InfinitySettingsItem(title = stringResource(R.string.recording_hotword_session), onClick = { dialog = "hotwords" })
-                InfinitySettingsItem(title = stringResource(R.string.recording_export_raw), enabled = current.segments.isNotEmpty(),
-                    onClick = { dialog = null; exportRaw() })
-            }
+        "transcript-actions" -> if (current != null) RecordingDialog(stringResource(R.string.recording_transcript_actions),
+            { dialog = null }, icon = Icons.Rounded.Description, width = 412.dp) {
+            RecordingDialogRow(stringResource(R.string.recording_recognize), { dialog = "recognize" },
+                icon = Icons.Rounded.Refresh, enabled = canRecognize)
+            RecordingDialogRow(stringResource(R.string.recording_hotword_session), { dialog = "hotwords" }, icon = Icons.Rounded.Description)
+            RecordingDialogRow(stringResource(R.string.recording_export_raw), { dialog = null; exportRaw() },
+                icon = Icons.Rounded.FileDownload, enabled = current.segments.isNotEmpty())
         }
         "recognize" -> if (current != null && canRecognize) {
-            InfinityBottomSheet(
-                show = true,
-                onDismiss = { dialog = null },
-                title = stringResource(R.string.recording_recognize),
-                scrollContent = true,
-                dragGesturesEnabled = false,
+            var rewrite by rememberSaveable(current.id) { mutableStateOf(false) }
+            val dismiss = { dialog = null }
+            RecordingDialog(stringResource(R.string.recording_recognize), dismiss,
+                icon = Icons.Rounded.Refresh, subtitle = current.title, width = 412.dp,
+                footer = { RecordingDialogActions(stringResource(R.string.recording_dialog_start_recognition), {
+                    dismiss()
+                    controller.recognize(current.id, rewriteOrganized = route != RecordingRoute.Raw && rewrite)
+                }, dismiss) },
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                    InfinityPillButton(
-                        stringResource(R.string.recording_recognize_raw_only),
-                        { dialog = null; controller.recognize(current.id, rewriteOrganized = false) },
-                        modifier = Modifier.fillMaxWidth(),
-                        tone = InfinityPillTone.PRIMARY,
-                    )
-                    if (route != RecordingRoute.Raw) {
-                        InfinityPillButton(
-                            stringResource(R.string.recording_recognize_rewrite),
-                            { dialog = null; controller.recognize(current.id, rewriteOrganized = true) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    InfinityPillButton(stringResource(R.string.recording_cancel), { dialog = null }, modifier = Modifier.fillMaxWidth())
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RecordingDialogRow(stringResource(R.string.recording_recognize_raw_only), { rewrite = false },
+                        stringResource(R.string.recording_dialog_recognize_keep), selected = !rewrite || route == RecordingRoute.Raw)
+                    if (route != RecordingRoute.Raw) RecordingDialogRow(stringResource(R.string.recording_recognize_rewrite),
+                        { rewrite = true }, stringResource(R.string.recording_dialog_recognize_replace), selected = rewrite)
                 }
+                RecordingDialogNote(stringResource(R.string.recording_dialog_recognize_audio))
             }
         }
         "hotwords" -> if (current != null) RecordingSessionHotwords(current, { dialog = null }) { words, useLibrary ->
@@ -491,72 +472,93 @@ private fun RecordingScreen(
 }
 
 @Composable
-private fun RecordingConfirm(title: Int, details: String, confirm: Int, dismiss: () -> Unit, action: () -> Unit) {
-    InfinityConfirmDialog(
-        title = stringResource(title),
-        message = details,
-        confirmText = stringResource(confirm),
-        cancelText = stringResource(R.string.recording_cancel),
-        onConfirm = action,
-        onCancel = dismiss,
-    )
+private fun RecordingRenameDialog(item: RecordingSession, dismiss: () -> Unit, save: (String) -> Unit) {
+    var title by rememberSaveable(item.id) { mutableStateOf(item.title) }
+    RecordingDialog(stringResource(R.string.recording_rename_title), dismiss, icon = Icons.Rounded.Edit, width = 412.dp,
+        footer = { RecordingDialogActions(stringResource(R.string.recording_save), { save(title) }, dismiss,
+            confirmEnabled = title.isNotBlank()) }) {
+        val focus = remember { FocusRequester() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        SettingsInput(title, { title = it.take(100) }, stringResource(R.string.recording_dialog_title),
+            modifier = Modifier.focusRequester(focus))
+        LaunchedEffect(Unit) { focus.requestFocus(); keyboard?.show() }
+    }
 }
 
 @Composable
 private fun RecordingSessionHotwords(item: RecordingSession, dismiss: () -> Unit, save: (List<String>, Boolean) -> Unit) {
     var words by rememberSaveable(item.id) { mutableStateOf(item.hotwords.joinToString("\n")) }
     var useLibrary by rememberSaveable(item.id) { mutableStateOf(item.useHotwordLibrary) }
-    InfinityBottomSheet(show = true, onDismiss = dismiss, title = stringResource(R.string.recording_hotword_session),
-        height = InfinitySheetHeight.Content, scrollContent = true) {
-        Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-            RowToggle(stringResource(R.string.recording_hotword_use_library), useLibrary) { useLibrary = it }
-            OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 4,
-                label = { Text(stringResource(R.string.recording_hotword_words)) }, textStyle = MaterialTheme.typography.bodyMedium.forInput())
-            InfinityPillButton(stringResource(R.string.recording_save), { save(words.lines(), useLibrary) },
-                modifier = Modifier.fillMaxWidth(), tone = InfinityPillTone.PRIMARY)
+    RecordingDialog(stringResource(R.string.recording_hotword_session), dismiss, icon = Icons.Rounded.Description,
+        subtitle = item.title, footer = { RecordingDialogActions(stringResource(R.string.recording_dialog_save_hotwords),
+            { save(words.lines(), useLibrary) }, dismiss) }) {
+        RecordingDialogRow(stringResource(R.string.recording_hotword_use_library), { useLibrary = !useLibrary }, checked = useLibrary)
+        OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 4, maxLines = 6,
+            label = { Text(stringResource(R.string.recording_hotword_words)) }, textStyle = MaterialTheme.typography.bodyMedium.forInput())
+        RecordingDialogNote(stringResource(R.string.recording_dialog_hotword_scope))
+    }
+}
+
+@Composable
+private fun RecordingLanguageChoices(output: RecordingLanguage, select: (RecordingLanguage) -> Unit) {
+    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RecordingLanguage.entries.forEach { option ->
+            RecordingDialogRow(option.label, { select(option) }, selected = option == output)
         }
     }
 }
 
 @Composable
-private fun RowToggle(label: String, value: Boolean, update: (Boolean) -> Unit) {
-    InfinitySettingsItem(title = label, onClick = { update(!value) }, trailingContent = {
-        Switch(checked = value, onCheckedChange = null)
-    })
-}
-
-@Composable
 private fun RecordingWorkspaceSettings(
     mode: RecordingMode, language: RecordingLanguage, live: Boolean, speakers: Boolean, single: Boolean,
-    onSave: (RecordingMode, RecordingLanguage, Boolean, Boolean) -> Unit,
+    dismiss: () -> Unit, onSave: (RecordingMode, RecordingLanguage, Boolean, Boolean) -> Unit,
+    resources: @Composable () -> Unit,
 ) {
     var route by rememberSaveable { mutableStateOf(mode) }
     var output by rememberSaveable { mutableStateOf(language) }
     var draft by rememberSaveable { mutableStateOf(live) }
     var separate by rememberSaveable { mutableStateOf(speakers) }
     val app = LocalContext.current.applicationContext as InfinityApplication
-    BettboxListGroup {
-        Text(stringResource(R.string.recording_route_title), style = MaterialTheme.typography.labelLarge)
-        RecordingMode.entries.filter { it != RecordingMode.Local || app.localInferenceRuntimeGate.isAvailable }.forEach { option ->
-            val label = when (option) {
-                RecordingMode.Auto -> R.string.recording_mode_auto
-                RecordingMode.Local -> R.string.recording_mode_local
-                RecordingMode.Raw -> R.string.recording_mode_raw
+    val wide = rememberInfinityWideWindow()
+    val modes = @Composable {
+        RecordingDialogGroup(stringResource(R.string.recording_route_title)) {
+            Column(Modifier.selectableGroup()) {
+                listOf(
+                    Triple(RecordingMode.Local, R.string.recording_mode_local, R.string.recording_dialog_mode_local),
+                    Triple(RecordingMode.Auto, R.string.recording_mode_auto, R.string.recording_dialog_mode_cloud),
+                    Triple(RecordingMode.Raw, R.string.recording_mode_raw, R.string.recording_dialog_mode_raw),
+                ).forEach { (option, label, detail) ->
+                    if (option != RecordingMode.Local || app.localInferenceRuntimeGate.isAvailable) {
+                        RecordingDialogRow(stringResource(label), { route = option }, stringResource(detail), selected = route == option)
+                    }
+                }
             }
-            InfinitySettingsItem(title = stringResource(label), selected = route == option, onClick = { route = option })
         }
     }
-    BettboxListGroup {
-        Text(stringResource(if (single) R.string.recording_output_language else R.string.recording_default_language),
-            style = MaterialTheme.typography.labelLarge)
-        RecordingLanguage.entries.forEach { option ->
-            InfinitySettingsItem(title = option.label, selected = output == option, onClick = { output = option })
+    val languages = @Composable {
+        RecordingDialogGroup(stringResource(if (single) R.string.recording_output_language else R.string.recording_default_language)) {
+            RecordingLanguageChoices(output) { output = it }
+            Text(stringResource(R.string.recording_dialog_language_support), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        RowToggle(stringResource(R.string.recording_live_setting), draft) { draft = it }
-        RowToggle(stringResource(R.string.recording_speaker_distinguish), separate) { separate = it }
     }
-    InfinityPillButton(stringResource(R.string.recording_save), { onSave(route, output, draft, separate) },
-        modifier = Modifier.fillMaxWidth(), tone = InfinityPillTone.PRIMARY)
+    RecordingDialog(stringResource(R.string.recording_settings), dismiss, icon = Icons.Rounded.Tune,
+        subtitle = stringResource(if (single) R.string.recording_dialog_scope_one else R.string.recording_dialog_scope_new),
+        width = 560.dp, footer = { RecordingDialogActions(stringResource(R.string.recording_dialog_save_settings),
+            { onSave(route, output, draft, separate) }, dismiss) }) {
+        if (wide) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(Modifier.weight(1f)) { modes() }
+            Box(Modifier.weight(1f)) { languages() }
+        } else {
+            modes()
+            languages()
+        }
+        RecordingDialogGroup(stringResource(R.string.recording_dialog_capture_options)) {
+            RecordingDialogRow(stringResource(R.string.recording_live_setting), { draft = !draft }, checked = draft)
+            RecordingDialogRow(stringResource(R.string.recording_speaker_distinguish), { separate = !separate }, checked = separate)
+        }
+        resources()
+    }
 }
 
 private class RecordingPlayback {

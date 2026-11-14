@@ -1,6 +1,12 @@
 package com.promenar.infinity.recording
 
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
@@ -36,12 +42,12 @@ private val SpeakerDarkColors = listOf(0xFF9DB7FF, 0xFFF5C26B, 0xFF6FD6C2, 0xFFF
 internal data class RecordingSpeakerSelection(val id: Int, val segmentStartMs: Long? = null)
 
 @Composable
-internal fun RecordingSpeakerChip(speaker: RecordingSpeaker, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+internal fun RecordingSpeakerChip(speaker: RecordingSpeaker, modifier: Modifier = Modifier, touchTarget: Boolean = false, onClick: (() -> Unit)? = null) {
     val tint = recordingSpeakerTint(speaker.id)
     val name = speaker.name.ifBlank { stringResource(R.string.recording_speaker_default, speaker.id + 1) }
     Surface(modifier = modifier, shape = CircleShape, color = tint.copy(alpha = .16f)) {
         Row(
-            Modifier.widthIn(max = 192.dp).heightIn(min = 32.dp)
+            Modifier.widthIn(max = 192.dp).heightIn(min = if (touchTarget) 48.dp else 32.dp)
                 .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
                 .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -182,9 +188,10 @@ internal fun RecordingSpeakerSheet(
     var failure by remember { mutableStateOf(false) }
     val segments = session.segments.filter { it.speakerId == speaker.id }
     fun storeSample(existing: RecordingVoicePerson?, newName: String) {
+        if (pending) return
+        pending = true
+        failure = false
         coroutine.launch {
-            pending = true
-            failure = false
             try {
                 val sample = controller.speakerSample(session.id, speaker.id)
                 val target = (existing ?: RecordingVoicePerson(name = newName.trim()))
@@ -202,118 +209,118 @@ internal fun RecordingSpeakerSheet(
         }
     }
 
-    InfinityBottomSheet(
-        show = true, onDismiss = onClose, dismissEnabled = !pending,
-        scrollContent = true, dragGesturesEnabled = false,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-            Row(
-                Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-            ) {
-                RecordingSpeakerChip(speaker)
-                Text(
-                    stringResource(R.string.recording_speaker_stats, segments.size, recordingTimestamp(segments.sumOf { it.endMs - it.startMs })),
-                    style = InfinityTypography.bodySmall, modifier = Modifier.weight(1f),
-                )
-                Text(
-                    when {
-                        speaker.confidence != null -> stringResource(R.string.recording_speaker_matched, (speaker.confidence * 100).toInt())
-                        person != null -> stringResource(R.string.recording_speaker_assigned)
-                        else -> stringResource(R.string.recording_speaker_unmatched)
-                    }, style = InfinityTypography.bodySmall,
-                )
-            }
+    val back: (() -> Unit)? = when (page) {
+        "main" -> null
+        "newperson" -> ({ failure = false; page = "assign" })
+        else -> ({ failure = false; page = "main" })
+    }
+    val title = when (page) {
+        "rename" -> stringResource(R.string.recording_speaker_rename)
+        "save" -> stringResource(R.string.recording_speaker_save_sample)
+        "newperson" -> stringResource(R.string.recording_speaker_new_person)
+        "assign" -> stringResource(R.string.recording_speaker_assign)
+        "merge" -> stringResource(R.string.recording_speaker_merge)
+        "update" -> stringResource(R.string.recording_dialog_voice_update_title)
+        else -> name
+    }
+    val enteringName = page in setOf("rename", "save", "newperson")
+    val confirm = stringResource(when (page) {
+        "update" -> R.string.recording_speaker_update_sample
+        "save" -> R.string.recording_speaker_save_sample
+        else -> R.string.recording_save
+    })
+    val footer: (@Composable () -> Unit)? = if (enteringName || page == "update") ({
+        RecordingDialogActions(confirm, onConfirm = {
             when (page) {
-                "rename", "save", "newperson" -> {
-                    val focus = remember { FocusRequester() }
-                    val keyboard = LocalSoftwareKeyboardController.current
-                    SettingsInput(draft, { draft = it.take(50); failure = false },
-                        label = stringResource(R.string.recording_speaker_name), modifier = Modifier.focusRequester(focus))
-                    LaunchedEffect(page) {
-                        focus.requestFocus()
-                        keyboard?.show()
-                    }
-                    InfinityPillRow {
-                        InfinityPillButton(stringResource(R.string.recording_cancel), { page = "main" }, enabled = !pending)
-                        InfinityPillButton(stringResource(R.string.recording_save), {
-                            when (page) {
-                                "rename" -> { controller.updateSpeaker(session.id, speaker.id, draft, speaker.personId); onClose() }
-                                else -> storeSample(null, draft)
-                            }
-                        }, enabled = draft.isNotBlank() && !pending, tone = InfinityPillTone.PRIMARY)
-                    }
+                "rename" -> { controller.updateSpeaker(session.id, speaker.id, draft, speaker.personId); onClose() }
+                "update" -> if (person != null) storeSample(person, person.name)
+                else -> storeSample(null, draft)
+            }
+        }, dismiss = back ?: onClose, confirmEnabled = if (page == "update") person != null else draft.isNotBlank(),
+            enabled = !pending)
+    }) else null
+    val match = when {
+        speaker.confidence != null -> stringResource(R.string.recording_speaker_matched, (speaker.confidence * 100).toInt())
+        person != null -> stringResource(R.string.recording_speaker_assigned)
+        else -> stringResource(R.string.recording_speaker_unmatched)
+    }
+    RecordingDialog(title, onClose, icon = Icons.Rounded.Person,
+        subtitle = if (page == "main") {
+            val stats = stringResource(R.string.recording_speaker_stats, segments.size,
+                recordingTimestamp(segments.sumOf { it.endMs - it.startMs }))
+            "$stats · $match"
+        } else null,
+        width = if (page == "main") 560.dp else 412.dp, dismissEnabled = !pending,
+        back = back, footer = footer,
+    ) {
+        when (page) {
+            "rename", "save", "newperson" -> {
+                val focus = remember { FocusRequester() }
+                val keyboard = LocalSoftwareKeyboardController.current
+                SettingsInput(draft, { draft = it.take(50); failure = false },
+                    label = stringResource(R.string.recording_speaker_name), modifier = Modifier.focusRequester(focus))
+                LaunchedEffect(page) { focus.requestFocus(); keyboard?.show() }
+            }
+            "assign" -> RecordingDialogGroup {
+                people.forEach { target ->
+                    RecordingDialogRow(target.name, {
+                        controller.updateSpeaker(session.id, speaker.id, target.name, target.id); onClose()
+                    }, subtitle = pluralStringResource(R.plurals.recording_voice_sample_count, target.samples.size, target.samples.size),
+                        selected = target.id == speaker.personId)
                 }
-                "assign", "merge" -> {
-                    Text(stringResource(if (page == "assign") R.string.recording_speaker_assign else R.string.recording_speaker_merge),
-                        style = InfinityTypography.titleSmall)
-                    BettboxListGroup {
-                        if (page == "assign") {
-                            people.forEach { target ->
-                                InfinitySettingsItem(
-                                    title = target.name,
-                                    subtitle = pluralStringResource(R.plurals.recording_voice_sample_count, target.samples.size, target.samples.size),
-                                    selected = target.id == speaker.personId,
-                                    leadingContent = { RecordingVoiceAvatar(target.name) },
-                                    onClick = { controller.updateSpeaker(session.id, speaker.id, target.name, target.id); onClose() },
-                                )
-                            }
-                            InfinitySettingsItem(title = stringResource(R.string.recording_speaker_new_person), onClick = {
-                                draft = ""
-                                page = "newperson"
-                            }, showChevron = true)
-                        } else {
-                            others.forEach { target ->
-                                val targetName = target.name.ifBlank { stringResource(R.string.recording_speaker_default, target.id + 1) }
-                                val targetSegments = session.segments.filter { it.speakerId == target.id }
-                                InfinitySettingsItem(
-                                    title = targetName,
-                                    subtitle = stringResource(R.string.recording_speaker_stats, targetSegments.size,
-                                        recordingTimestamp(targetSegments.sumOf { it.endMs - it.startMs })),
-                                    leadingContent = { RecordingVoiceAvatar(targetName) },
-                                    onClick = { controller.moveSpeaker(session.id, speaker.id, target.id); onClose() },
-                                )
-                            }
-                        }
-                    }
-                    InfinityPillButton(stringResource(R.string.recording_cancel), { page = "main" })
+                RecordingDialogRow(stringResource(R.string.recording_speaker_new_person), {
+                    draft = ""; page = "newperson"
+                }, icon = Icons.Rounded.Person)
+            }
+            "merge" -> RecordingDialogGroup {
+                others.forEach { target ->
+                    val targetName = target.name.ifBlank { stringResource(R.string.recording_speaker_default, target.id + 1) }
+                    val targetSegments = session.segments.filter { it.speakerId == target.id }
+                    RecordingDialogRow(targetName, {
+                        controller.moveSpeaker(session.id, speaker.id, target.id); onClose()
+                    }, subtitle = stringResource(R.string.recording_speaker_stats, targetSegments.size,
+                        recordingTimestamp(targetSegments.sumOf { it.endMs - it.startMs })))
                 }
-                else -> {
-                    selection.segmentStartMs?.let { start ->
-                        Text(stringResource(R.string.recording_speaker_this_segment, recordingTimestamp(start)), style = InfinityTypography.titleSmall)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+            }
+            "update" -> if (person != null) {
+                Text(stringResource(R.string.recording_dialog_voice_update_detail, person.name), style = InfinityTypography.bodyMedium)
+            }
+            else -> {
+                selection.segmentStartMs?.let { start ->
+                    RecordingDialogGroup(stringResource(R.string.recording_speaker_this_segment, recordingTimestamp(start))) {
+                        session.segments.firstOrNull { it.startMs == start }?.let { RecordingDialogNote(it.text) }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             others.forEach { target ->
-                                RecordingSpeakerChip(target, Modifier.align(Alignment.CenterVertically)) {
-                                    controller.moveSpeaker(session.id, speaker.id, target.id, start)
-                                    onClose()
+                                RecordingSpeakerChip(target, Modifier.align(Alignment.CenterVertically), touchTarget = true) {
+                                    controller.moveSpeaker(session.id, speaker.id, target.id, start); onClose()
                                 }
                             }
                             InfinityPillButton(stringResource(R.string.recording_speaker_new), {
-                                controller.moveSpeaker(session.id, speaker.id, null, start)
-                                onClose()
+                                controller.moveSpeaker(session.id, speaker.id, null, start); onClose()
                             }, modifier = Modifier.align(Alignment.CenterVertically), compact = true)
                         }
                     }
-                    Text(stringResource(R.string.recording_speaker_all_segments, name, segments.size), style = InfinityTypography.titleSmall)
-                    BettboxListGroup {
-                        InfinitySettingsItem(title = stringResource(R.string.recording_speaker_rename), onClick = { draft = name; page = "rename" }, showChevron = true)
-                        InfinitySettingsItem(title = stringResource(R.string.recording_speaker_assign), subtitle = person?.name ?: stringResource(R.string.recording_speaker_unmatched), onClick = { page = "assign" }, showChevron = true)
-                        if (others.isNotEmpty()) InfinitySettingsItem(title = stringResource(R.string.recording_speaker_merge), onClick = { page = "merge" }, showChevron = true)
-                        if (segments.isNotEmpty()) InfinitySettingsItem(
-                            title = stringResource(if (person == null) R.string.recording_speaker_save_sample else R.string.recording_speaker_update_sample),
-                            subtitle = person?.let { pluralStringResource(R.plurals.recording_voice_sample_count, it.samples.size, it.samples.size) },
-                            onClick = { if (person == null) { draft = ""; page = "save" } else storeSample(person, person.name) },
-                            showChevron = true,
-                        )
-                        if (person != null) InfinitySettingsItem(title = stringResource(R.string.recording_speaker_unmatch), onClick = {
-                            controller.updateSpeaker(session.id, speaker.id, "")
-                            onClose()
-                        })
-                    }
+                }
+                RecordingDialogGroup(stringResource(R.string.recording_speaker_all_segments, name, segments.size)) {
+                    RecordingDialogRow(stringResource(R.string.recording_speaker_rename), { draft = name; page = "rename" },
+                        icon = Icons.Rounded.Edit)
+                    RecordingDialogRow(stringResource(R.string.recording_speaker_assign), { page = "assign" },
+                        subtitle = person?.name ?: stringResource(R.string.recording_speaker_unmatched),
+                        icon = Icons.Rounded.Person)
+                    if (others.isNotEmpty()) RecordingDialogRow(stringResource(R.string.recording_speaker_merge), { page = "merge" },
+                        icon = Icons.Rounded.Link)
+                    if (segments.isNotEmpty()) RecordingDialogRow(
+                        stringResource(if (person == null) R.string.recording_speaker_save_sample else R.string.recording_speaker_update_sample),
+                        { if (person == null) { draft = ""; page = "save" } else page = "update" },
+                        icon = Icons.Rounded.Mic)
+                    if (person != null) RecordingDialogRow(stringResource(R.string.recording_speaker_unmatch), {
+                        controller.updateSpeaker(session.id, speaker.id, ""); onClose()
+                    }, icon = Icons.Rounded.Close)
                 }
             }
-            if (failure) Text(stringResource(R.string.recording_voice_sample_failed), color = MaterialTheme.colorScheme.error)
-            if (pending) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
+        if (failure) Text(stringResource(R.string.recording_voice_sample_failed), color = MaterialTheme.colorScheme.error)
+        if (pending) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
 }

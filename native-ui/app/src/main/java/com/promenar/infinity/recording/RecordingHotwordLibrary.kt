@@ -1,16 +1,15 @@
 package com.promenar.infinity.recording
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -73,7 +72,8 @@ internal fun RecordingHotwordLibraryContent(
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var writing by rememberSaveable { mutableStateOf("") }
     var spoken by rememberSaveable { mutableStateOf("") }
-    var importText by remember { mutableStateOf("") }
+    var enabled by rememberSaveable { mutableStateOf(true) }
+    var importText by rememberSaveable { mutableStateOf("") }
     var importResult by remember { mutableStateOf<RecordingHotwordImport?>(null) }
     var error by remember { mutableStateOf<Int?>(null) }
     var pending by remember { mutableStateOf(false) }
@@ -103,74 +103,14 @@ internal fun RecordingHotwordLibraryContent(
         selectedId = entry?.id
         writing = entry?.text.orEmpty()
         spoken = entry?.spoken.orEmpty()
+        enabled = entry?.enabled ?: true
         error = null
         importResult = null
         pane = HotwordPane.Edit
     }
 
     InfinitySettingsPageLayout(title = stringResource(R.string.recording_hotword_library), onBack = onBack) { padding ->
-        BoxWithConstraints(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            val wide = maxWidth >= 680.dp
-            BackHandler(enabled = pane != null && wide) { if (!pending) closePane() }
-            val editor: @Composable () -> Unit = {
-                when (pane) {
-                    HotwordPane.Edit -> {
-                        Text(
-                            stringResource(if (selectedId == null) R.string.recording_hotword_add else R.string.recording_hotword_edit),
-                            style = InfinityTypography.titleLarge,
-                        )
-                        SettingsInput(writing, { writing = it; error = null }, label = stringResource(R.string.recording_hotword_written))
-                        SettingsInput(spoken, { spoken = it; error = null }, label = stringResource(R.string.recording_hotword_spoken))
-                        HotwordVocabularyNotice(unknown?.invoke(writing + " " + spoken).orEmpty())
-                    }
-                    HotwordPane.Import -> {
-                        Text(stringResource(R.string.recording_hotword_import), style = InfinityTypography.titleLarge)
-                        SettingsInput(
-                            importText, { importText = it; error = null }, label = stringResource(R.string.recording_hotword_import_format),
-                            singleLine = false, maxLines = 8,
-                        )
-                        preview?.let { Text(hotwordImportLabel(it), style = InfinityTypography.bodySmall) }
-                    }
-                    null -> Unit
-                }
-                error?.let {
-                    Text(stringResource(it), color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                }
-                InfinityPillRow(Modifier.fillMaxWidth()) {
-                    if (pane == HotwordPane.Edit && selected != null) {
-                        InfinityPillButton(stringResource(R.string.recording_ui_delete_confirm), { confirmDelete = true }, enabled = !pending)
-                    }
-                    InfinityPillButton(stringResource(R.string.recording_cancel), ::closePane, enabled = !pending)
-                    val importing = pane == HotwordPane.Import
-                    InfinityPillButton(
-                        text = stringResource(if (importing) R.string.recording_hotword_import else R.string.recording_save),
-                        enabled = !pending && if (importing) (preview?.added ?: 0) > 0 else writing.isNotBlank(),
-                        tone = InfinityPillTone.PRIMARY,
-                        onClick = {
-                            if (pending) return@InfinityPillButton
-                            pending = true
-                            val text = importText
-                            val entry = RecordingHotword(selectedId ?: UUID.randomUUID().toString(), writing, spoken, selected?.enabled ?: true)
-                            scope.launch {
-                                try {
-                                    if (importing) {
-                                        val result = onImport(text)
-                                        if (result == null) error = R.string.recording_hotword_storage
-                                        else {
-                                            importResult = result
-                                            closePane()
-                                        }
-                                    } else {
-                                        error = onSave(entry)
-                                        if (error == null) closePane()
-                                    }
-                                } finally { pending = false }
-                            }
-                        },
-                    )
-                }
-            }
-
+        Box(Modifier.fillMaxSize().padding(padding).imePadding()) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XLarge)) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                     SettingsInput(query, { query = it }, label = stringResource(R.string.recording_hotword_search))
@@ -227,34 +167,71 @@ internal fun RecordingHotwordLibraryContent(
                         )
                     }
                 }
-                if (wide) {
-                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Column(
-                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-                    ) {
-                        if (pane == null) {
-                            Text(stringResource(R.string.recording_hotword_select), style = InfinityTypography.bodyMedium,
-                                modifier = Modifier.align(Alignment.CenterHorizontally).padding(InfinitySpacing.XLarge))
-                        } else editor()
-                    }
-                }
             }
-            if (!wide && pane != null) {
-                InfinityBottomSheet(show = true, onDismiss = ::closePane, height = InfinitySheetHeight.Full,
-                    dismissEnabled = !pending, dragGesturesEnabled = false) {
-                    Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) { editor() }
+            val editing = pane == HotwordPane.Edit
+            if (pane != null && !confirmDelete) {
+                val title = if (!editing) R.string.recording_hotword_import
+                    else if (selectedId == null) R.string.recording_hotword_add else R.string.recording_hotword_edit
+                RecordingDialog(stringResource(title), ::closePane,
+                    icon = if (editing) Icons.Rounded.Description else Icons.Rounded.FileDownload,
+                    dismissEnabled = !pending, width = if (editing) 412.dp else 464.dp,
+                    footer = {
+                        RecordingDialogActions(
+                            stringResource(if (editing) R.string.recording_save else R.string.recording_hotword_import),
+                            onConfirm = {
+                                if (!pending) {
+                                    pending = true
+                                    val text = importText
+                                    val entry = RecordingHotword(selectedId ?: UUID.randomUUID().toString(), writing, spoken, enabled)
+                                    scope.launch {
+                                        try {
+                                            if (editing) {
+                                                error = onSave(entry)
+                                                if (error == null) closePane()
+                                            } else {
+                                                val result = onImport(text)
+                                                if (result == null) error = R.string.recording_hotword_storage
+                                                else { importResult = result; closePane() }
+                                            }
+                                        } finally { pending = false }
+                                    }
+                                }
+                            },
+                            dismiss = ::closePane, enabled = !pending,
+                            confirmEnabled = if (editing) writing.isNotBlank() else (preview?.added ?: 0) > 0,
+                            extra = if (editing && selected != null) ({
+                                InfinityPillButton(stringResource(R.string.recording_ui_delete_confirm),
+                                    { focusManager.clearFocus(); confirmDelete = true }, enabled = !pending, tone = InfinityPillTone.DANGER)
+                            }) else null,
+                        )
+                    },
+                ) {
+                    if (editing) {
+                        val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                        val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                        SettingsInput(writing, { writing = it; error = null }, label = stringResource(R.string.recording_hotword_written),
+                            modifier = Modifier.focusRequester(focus))
+                        LaunchedEffect(selectedId) { focus.requestFocus(); keyboard?.show() }
+                        SettingsInput(spoken, { spoken = it; error = null }, label = stringResource(R.string.recording_hotword_spoken))
+                        RecordingDialogRow(stringResource(R.string.recording_dialog_hotword_enabled), { enabled = !enabled }, checked = enabled)
+                        HotwordVocabularyNotice(unknown?.invoke(writing + " " + spoken).orEmpty())
+                    } else {
+                        SettingsInput(importText, { importText = it; error = null },
+                            label = stringResource(R.string.recording_hotword_import_format), singleLine = false, maxLines = 8)
+                        preview?.let { RecordingDialogNote(hotwordImportLabel(it)) }
+                    }
+                    error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
                 }
             }
             if (confirmDelete && selected != null) {
-                InfinityConfirmDialog(
+                RecordingConfirm(
                     title = stringResource(R.string.recording_hotword_delete),
                     message = stringResource(R.string.recording_hotword_delete_detail, selected.text),
-                    confirmText = stringResource(R.string.recording_ui_delete_confirm),
-                    cancelText = stringResource(R.string.recording_cancel),
-                    onConfirm = { confirmDelete = false; onDelete(selected.id); closePane() },
-                    onCancel = { confirmDelete = false },
-                    isDestructive = true,
+                    confirm = stringResource(R.string.recording_ui_delete_confirm),
+                    action = { confirmDelete = false; onDelete(selected.id); closePane() },
+                    dismiss = { confirmDelete = false },
+                    destructive = true,
                 )
             }
         }
