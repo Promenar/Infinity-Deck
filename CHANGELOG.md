@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.57.8-beta] - 2026-11-14
+
+- 用听写词元的时间戳区分停顿中的误识别和真正的起声，恢复被停顿噪声压住的短句。
+
 ## [0.57.7-beta] - 2026-11-14
 
 - 实时听写和重新识别按端侧语音活动判定停顿，排空上一段后为下一段重建识别上下文，修复中英切换时停顿后的英文首句容易漏掉的问题。

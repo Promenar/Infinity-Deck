@@ -73,6 +73,7 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
         private var streamStart = 0L
         private var decodedMs = 0L
         private var lead: RecordingUtteranceLead? = null
+        private var lastToken: Long? = null
 
         override fun speechWindow(pcm: ShortArray): RecordingSpeechWindow = boundary.accept(pcm)
 
@@ -85,8 +86,8 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
         override fun restartAtOnset(onset: Int, pcm: ShortArray): RecordingRecognition {
             val history = lead ?: return accept(pcm)
             lead = null
-            // 只有这段此前仍未输出文本才重启，避免替换已显示的低音量发言。
-            val replay = if (text.isBlank()) history.replayFrom(onset) else null
+            // 停顿里偶发的早期伪文本不能阻止对真实起声重新解码。
+            val replay = history.replayFrom(onset, lastToken)
             if (replay != null) {
                 startStream(streamStart + replay.start)
                 decode(replay.pcm)
@@ -103,7 +104,11 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
                 decodedMs += X_ASR_DECODE_STEP_MS
                 decoded = true
             }
-            if (decoded) text = recognizer.getResult(stream).text
+            if (decoded) {
+                val result = recognizer.getResult(stream)
+                text = result.text
+                lastToken = if (text.isBlank()) null else recordingLastTokenSample(result.timestamps)
+            }
             return RecordingRecognition(text, decodedMs)
         }
         override fun reset() {
@@ -128,6 +133,7 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
             decodedMs = start * 1_000 / rate
             inputFinished = false
             text = ""
+            lastToken = null
         }
         override fun finish(): String {
             if (inputFinished) return text
