@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -121,17 +120,6 @@ class RecordingActivity : ComponentActivity() {
             }
         }
     }
-}
-
-@Composable
-internal fun LibraryRecordingAction() {
-    val context = LocalContext.current
-    InfinityPillButton(
-        text = stringResource(R.string.recording_entry),
-        onClick = { context.startActivity(recordingIntent(context)) },
-        icon = Icons.Rounded.Mic,
-        tone = InfinityPillTone.PRIMARY,
-    )
 }
 
 @Composable

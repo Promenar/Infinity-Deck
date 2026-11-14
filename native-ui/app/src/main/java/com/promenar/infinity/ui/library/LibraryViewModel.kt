@@ -203,7 +203,7 @@ class LibraryViewModel(
         }
     }
 
-    /** 概览“收集”卡：从设备导入到存储空间根目录。 */
+    /** 从设备导入到存储空间根目录。 */
     fun importToLibrary(uris: List<String>) {
         if (uris.isEmpty()) return
         launchNotice(LibraryNotice.Kind.IMPORT) {
@@ -212,7 +212,7 @@ class LibraryViewModel(
         }
     }
 
-    /** 概览“收集”卡：把一段文字存成存储空间根目录下的笔记。 */
+    /** 把一段文字存成存储空间根目录下的笔记。 */
     fun saveNote(name: String, text: String) {
         launchNotice(LibraryNotice.Kind.NOTE) {
             files.operations.importText(text, LIBRARY_ROOT, name)

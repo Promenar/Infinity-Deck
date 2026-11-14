@@ -84,7 +84,6 @@ import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
-import com.promenar.infinity.recording.LibraryRecordingAction
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.InfinitySearchBar
 import com.promenar.infinity.ui.files.FileBreadcrumbs
@@ -211,9 +210,9 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
     ).filter { it.entries.isNotEmpty() }
 }
 
-/** 内屏左列：标题、问资料与四组导航。新建与导入放在右侧内容区，录音入口放在资料标题旁。 */
+/** 内屏左列：标题、添加入口、问资料与四组导航。 */
 @Composable
-internal fun LibraryNavColumn(host: LibraryPageHost) {
+internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> Unit) {
     val groups = rememberLibraryNavGroups(host)
     val selected = libraryRootKey(host.navigator.stack)
     var locationsExpanded by rememberSaveable { mutableStateOf(false) }
@@ -223,7 +222,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost) {
             .background(MaterialTheme.colorScheme.surface)
             .testTag(LibraryTags.NAV_COLUMN),
     ) {
-        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { LibraryRecordingAction() }
+        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { addMenu() }
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,

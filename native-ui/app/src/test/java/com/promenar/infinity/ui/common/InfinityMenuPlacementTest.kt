@@ -27,6 +27,16 @@ class InfinityMenuPlacementTest {
         assertThat(p.originX).isEqualTo(1f)
     }
 
+    @Test fun `贴行尾的菜单在内屏左列也与按钮右边缘对齐`() {
+        val anchor = IntRect(380, 300, 460, 360)
+        val p = infinityMenuPlacement(anchor, null, menu, window, limits, ltr = true, alignToAnchorEnd = true)
+        assertThat(p.offset).isEqualTo(IntOffset(160, 368))
+        assertThat(p.originX).isEqualTo(1f)
+        val rtl = infinityMenuPlacement(anchor, null, menu, window, limits, ltr = false, alignToAnchorEnd = true)
+        assertThat(rtl.offset).isEqualTo(IntOffset(380, 368))
+        assertThat(rtl.originX).isEqualTo(0f)
+    }
+
     @Test fun `下方放不下时翻到按钮上方`() {
         val p = place(IntRect(100, 1700, 160, 1760))
         assertThat(p.offset.y).isEqualTo(1700 - 8 - 400)

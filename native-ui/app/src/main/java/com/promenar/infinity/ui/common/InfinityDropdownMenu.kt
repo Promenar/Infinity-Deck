@@ -119,6 +119,7 @@ internal fun infinityMenuPlacement(
     window: IntSize,
     limits: InfinityMenuLimits,
     ltr: Boolean,
+    alignToAnchorEnd: Boolean = false,
 ): InfinityMenuPlacement {
     val minX = limits.marginPx
     val maxX = (window.width - menu.width - limits.marginPx).coerceAtLeast(minX)
@@ -130,8 +131,7 @@ internal fun infinityMenuPlacement(
         growRight = if (ltr) fitsRight || !fitsLeft else !fitsLeft && fitsRight
         preferredX = if (growRight) touch.x else touch.x - menu.width
     } else {
-        val inLeftHalf = anchor.center.x * 2 < window.width
-        growRight = inLeftHalf
+        growRight = if (alignToAnchorEnd) !ltr else anchor.center.x * 2 < window.width
         preferredX = if (growRight) anchor.left else anchor.right - menu.width
     }
     val x = preferredX.coerceIn(minX, maxX)
@@ -225,6 +225,7 @@ fun Modifier.infinityMenuHost(active: Boolean): Modifier {
  * - 入场：弹出窗口画出 [InfinityMotion.MenuEnterWaitFrames] 帧后开始，透明度 90ms 先到位，缩放 0.92→1 交给弹簧，
  *   菜单项每项错峰 18ms 淡入上移；退场 100ms 淡出并缩到 0.96，播完再移除。
  * [offset] 在算好的位置上再平移（与 Material 下拉菜单的偏移含义一致）。
+ * [alignToAnchorEnd] 用于固定在栏尾的按钮，菜单尾缘对齐锚点，并受窗口安全区约束。
  */
 @Composable
 fun InfinityDropdownMenu(
@@ -236,6 +237,7 @@ fun InfinityDropdownMenu(
     maxWidth: Dp = MenuMaxWidth,
     properties: PopupProperties = PopupProperties(focusable = true),
     touch: InfinityMenuTouch? = null,
+    alignToAnchorEnd: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // 弹出窗口挂载、取得焦点与菜单首次组合都在打开后的头几帧里，直接起动画会在这几帧掉帧。
@@ -276,7 +278,7 @@ fun InfinityDropdownMenu(
     var origin by remember { mutableStateOf(TransformOrigin(0f, 0f)) }
     val openPoint = remember { InfinityMenuOpenPoint() }
     val touchPoint = openPoint.resolve(expanded, touch?.windowPoint)
-    val provider = remember(limits, shift, touchPoint, stagger) {
+    val provider = remember(limits, shift, touchPoint, stagger, alignToAnchorEnd) {
         object : PopupPositionProvider {
             override fun calculatePosition(
                 anchorBounds: IntRect,
@@ -291,6 +293,7 @@ fun InfinityDropdownMenu(
                     window = windowSize,
                     limits = limits,
                     ltr = layoutDirection == LayoutDirection.Ltr,
+                    alignToAnchorEnd = alignToAnchorEnd,
                 )
                 origin = TransformOrigin(placement.originX, placement.originY)
                 // 菜单朝上展开时，菜单项错峰从靠近锚点的底部开始。

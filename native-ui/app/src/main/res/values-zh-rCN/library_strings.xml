@@ -52,10 +52,8 @@
     <string name="library_recent_title">最近加入</string>
     <string name="library_recent_empty">还没有文档</string>
 
-    <string name="library_collect_title">收集</string>
-    <string name="library_collect_hint">放进存储空间根目录并建索引。</string>
-    <string name="library_collect_import">导入文件</string>
-    <string name="library_collect_note">新建笔记</string>
+    <string name="library_add_action">添加</string>
+    <string name="library_add_import">导入文件</string>
     <string name="library_note_title">新建笔记</string>
     <string name="library_note_name">名称</string>
     <string name="library_note_body">内容</string>

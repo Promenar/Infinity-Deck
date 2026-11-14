@@ -52,10 +52,8 @@
     <string name="library_recent_title">Recently added</string>
     <string name="library_recent_empty">No documents yet</string>
 
-    <string name="library_collect_title">Collect</string>
-    <string name="library_collect_hint">Saved to the Storage root and indexed.</string>
-    <string name="library_collect_import">Import files</string>
-    <string name="library_collect_note">New note</string>
+    <string name="library_add_action">Add</string>
+    <string name="library_add_import">Import files</string>
     <string name="library_note_title">New note</string>
     <string name="library_note_name">Name</string>
     <string name="library_note_body">Content</string>

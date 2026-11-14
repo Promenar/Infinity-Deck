@@ -8,15 +8,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
+import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileRef
 import com.promenar.infinity.domain.library.CitedDocument
 import com.promenar.infinity.domain.library.LibraryDocumentSummary
 import com.promenar.infinity.domain.library.LibraryOverview
 import com.promenar.infinity.domain.library.PendingDocument
 import com.promenar.infinity.domain.library.PendingKind
+import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.theme.InfinityColorSource
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityThemeMode
@@ -25,7 +28,7 @@ import com.promenar.infinity.ui.theme.InfinityThemePreferences
 /*
  * 资料概览顶部：问资料搜索框与外屏统计入口卡（图标 + 页面名 + 数量，文档与图谱补统计口径）。
  * 深色中文 411dp 与浅色英文 360dp 1.3 倍字号各一。
- * 宽版四张卡：固定两列各自堆叠。待处理为空、最近加入有多条时，“最近被引用”紧接在待处理卡下方；
+ * 宽版概览固定两列。待处理为空、最近加入有多条时，“最近被引用”紧接在待处理卡下方；
  * 两列条数相当的情况另取一张。示例数据均为虚构。
  */
 
@@ -38,9 +41,14 @@ private val SAMPLE = LibraryOverview(
 private fun OverviewSample(mode: InfinityThemeMode, query: String) {
     InfinityTheme(preferences = InfinityThemePreferences(mode = mode, colorSource = InfinityColorSource.INFINITY)) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                LibraryAskField(query = query, onQueryChange = {}, onSearch = {})
-                LibraryKpiGrid(SAMPLE, entryCards = true, wide = false) { _, _ -> }
+            Column {
+                InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) {
+                    LibraryAddMenu(onRecord = {}, onImport = {}, onNote = {})
+                }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LibraryAskField(query = query, onQueryChange = {}, onSearch = {})
+                    LibraryKpiGrid(SAMPLE, entryCards = true, wide = false) { _, _ -> }
+                }
             }
         }
     }
@@ -52,7 +60,7 @@ private fun OverviewSample(mode: InfinityThemeMode, query: String) {
 fun libraryOverviewDarkPreview() = OverviewSample(InfinityThemeMode.DARK, query = "")
 
 @PreviewTest
-@Preview(name = "资料概览 浅英360 大字", widthDp = 360, heightDp = 520, locale = "en", fontScale = 1.3f)
+@Preview(name = "资料概览 浅英360 大字", widthDp = 360, heightDp = 580, locale = "en", fontScale = 1.3f)
 @Composable
 fun libraryOverviewLightPreview() = OverviewSample(InfinityThemeMode.LIGHT, query = "release notes")
 
@@ -98,7 +106,6 @@ private fun OverviewWideSample(mode: InfinityThemeMode, zh: Boolean, pending: Li
                     pending = { LibraryPendingCard(pending, busy = emptySet(), onViewAll = {}, onOpen = {}, onResolve = {}) },
                     cited = { RecentCitedCardContent(citedSample(zh), onOpen = {}, onViewAll = {}) },
                     recent = { LibraryRecentCard(recentSample(zh, recent), onViewAll = {}, onOpen = {}) },
-                    collect = { LibraryCollectCardContent(onImport = {}, onNote = {}) },
                 )
             }
         }

@@ -19,8 +19,6 @@ import androidx.compose.animation.AnimatedContent
 import android.app.Application
 import android.text.format.DateUtils
 import android.text.format.Formatter
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,11 +56,8 @@ import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
-import androidx.compose.material.icons.rounded.NoteAdd
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sync
-import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,7 +114,6 @@ import com.promenar.infinity.domain.library.DocumentGraphState
 import com.promenar.infinity.domain.library.GraphStopReason
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
-import com.promenar.infinity.recording.LibraryRecordingAction
 import com.promenar.infinity.recording.LibraryRecordingPlayback
 import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.LocalInfinitySettingsLeading
@@ -160,6 +154,7 @@ internal fun LibraryPageContent(
     host: LibraryPageHost,
     leading: LibraryLeading,
     trail: LibraryTrail?,
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
     val title = libraryPageTitle(page, host)
     val crumbs = trail?.let { LibraryCrumbs(it.keys.map { key -> libraryPageTitle(LibraryPageKeys.parse(key), host) }, it.onGo) }
@@ -169,7 +164,7 @@ internal fun LibraryPageContent(
         LibraryPage.Memory -> LibraryMemoryPage(host, title, leading, crumbs)
         is LibraryPage.Document -> LibraryDocumentPage(page.documentId, host, title, leading, crumbs)
         is LibraryPage.FragmentSession -> LibraryFragmentSessionPage(page.sessionId, host, title, leading, crumbs)
-        else -> LibraryPageFrame(title, leading, crumbs, Modifier.testTag(LibraryTags.page(page.javaClass.simpleName))) { padding ->
+        else -> LibraryPageFrame(title, leading, crumbs, Modifier.testTag(LibraryTags.page(page.javaClass.simpleName)), actions = actions) { padding ->
             when (page) {
                 LibraryPage.Overview -> LibraryOverviewContent(host, padding, entryCards = false)
                 LibraryPage.Recent -> LibraryRecentContent(host, padding)
@@ -251,9 +246,9 @@ private fun libraryContentPadding(): PaddingValues = PaddingValues(
 
 /** 外屏首页：问资料、四张入口卡与概览。 */
 @Composable
-internal fun LibraryHome(host: LibraryPageHost) {
+internal fun LibraryHome(host: LibraryPageHost, addMenu: @Composable () -> Unit) {
     Column(Modifier.fillMaxSize().testTag(LibraryTags.page("home"))) {
-        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { LibraryRecordingAction() }
+        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { addMenu() }
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,
@@ -277,26 +272,22 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
     val busy by vm.busyDocuments.collectAsStateWithLifecycle()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= WideContentWidth
-        val sections: List<@Composable () -> Unit> = listOf(
-            {
-                LibraryPendingCard(
-                    pending = pending,
-                    busy = busy,
-                    onViewAll = { host.navigator.openSection(LibraryPageKeys.PENDING) },
-                    onOpen = { host.navigator.push(LibraryPageKeys.document(it.documentId)) },
-                    onResolve = { vm.resolve(it) },
-                )
-            },
-            {
-                LibraryRecentCard(
-                    recent = recent,
-                    onViewAll = { host.navigator.openSection(LibraryPageKeys.RECENT) },
-                    onOpen = { host.navigator.push(LibraryPageKeys.document(it.documentId)) },
-                )
-            },
-            { CollectCard(host) },
-            { RecentCitedCard(host) },
-        )
+        val pendingCard: @Composable () -> Unit = {
+            LibraryPendingCard(
+                pending = pending,
+                busy = busy,
+                onViewAll = { host.navigator.openSection(LibraryPageKeys.PENDING) },
+                onOpen = { host.navigator.push(LibraryPageKeys.document(it.documentId)) },
+                onResolve = { vm.resolve(it) },
+            )
+        }
+        val recentCard: @Composable () -> Unit = {
+            LibraryRecentCard(
+                recent = recent,
+                onViewAll = { host.navigator.openSection(LibraryPageKeys.RECENT) },
+                onOpen = { host.navigator.push(LibraryPageKeys.document(it.documentId)) },
+            )
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = padding,
@@ -310,20 +301,19 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
             }
             if (wide) {
                 item(key = "columns") {
-                    LibraryOverviewColumns(pending = sections[0], cited = sections[3], recent = sections[1], collect = sections[2])
+                    LibraryOverviewColumns(pending = pendingCard, cited = { RecentCitedCard(host) }, recent = recentCard)
                 }
             } else {
-                item(key = "pending") { sections[0]() }
-                item(key = "recent") { sections[1]() }
-                item(key = "cited") { sections[3]() }
-                item(key = "collect") { sections[2]() }
+                item(key = "pending") { pendingCard() }
+                item(key = "recent") { recentCard() }
+                item(key = "cited") { RecentCitedCard(host) }
             }
         }
     }
 }
 
 /**
- * 宽版概览的四张卡固定排成两列：左列待处理、最近被引用，右列最近加入、收集。
+ * 宽版概览排成两列：左列待处理、最近被引用，右列最近加入。
  * 两列各自从上往下堆叠，卡片高度随自身内容，不与另一列的卡片等高。
  */
 @Composable
@@ -331,17 +321,13 @@ internal fun LibraryOverviewColumns(
     pending: @Composable () -> Unit,
     cited: @Composable () -> Unit,
     recent: @Composable () -> Unit,
-    collect: @Composable () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Large), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
             pending()
             cited()
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large)) {
-            recent()
-            collect()
-        }
+        Box(Modifier.weight(1f)) { recent() }
     }
 }
 
@@ -640,91 +626,6 @@ private fun DocumentRow(doc: LibraryDocumentSummary, onOpen: () -> Unit) {
             )
         }
     }
-}
-
-/** 收集卡：导入文件与新建笔记都放进存储空间根目录。 */
-@Composable
-private fun CollectCard(host: LibraryPageHost) {
-    val vm = host.viewModel
-    var noteOpen by rememberSaveable { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        vm.importToLibrary(uris.map { it.toString() })
-    }
-    LibraryCollectCardContent(onImport = { launcher.launch(arrayOf("*/*")) }, onNote = { noteOpen = true })
-    if (noteOpen) {
-        NoteDialog(
-            onDismiss = { noteOpen = false },
-            onSave = { name, text ->
-                noteOpen = false
-                vm.saveNote(name, text)
-            },
-        )
-    }
-}
-
-@Composable
-internal fun LibraryCollectCardContent(onImport: () -> Unit, onNote: () -> Unit) {
-    LibraryCard(title = stringResource(R.string.library_collect_title)) {
-        Text(
-            stringResource(R.string.library_collect_hint),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = InfinitySpacing.Large),
-        )
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        ) {
-            FilledTonalButton(onClick = onImport, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Rounded.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(InfinitySpacing.Small))
-                Text(stringResource(R.string.library_collect_import), maxLines = 1)
-            }
-            FilledTonalButton(onClick = onNote, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Rounded.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(InfinitySpacing.Small))
-                Text(stringResource(R.string.library_collect_note), maxLines = 1)
-            }
-        }
-    }
-}
-
-@Composable
-private fun NoteDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
-    val defaultName = stringResource(R.string.library_note_default_name)
-    var name by rememberSaveable { mutableStateOf(defaultName) }
-    var text by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_note_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.library_note_name)) },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.forInput(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text(stringResource(R.string.library_note_body)) },
-                    minLines = 4,
-                    maxLines = 10,
-                    textStyle = MaterialTheme.typography.bodyLarge.forInput(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(name.trim(), text) }, enabled = name.isNotBlank() && text.isNotBlank()) {
-                Text(stringResource(R.string.library_note_save), maxLines = 1)
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_btn_cancel), maxLines = 1) } },
-    )
 }
 
 // ---------------------------------------------------------------------------------------------

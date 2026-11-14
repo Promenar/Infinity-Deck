@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.library
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.background
@@ -41,6 +43,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.domain.library.ChunkLocator
 import com.promenar.infinity.navigation.InfinityPageStack
+import com.promenar.infinity.recording.recordingIntent
 import com.promenar.infinity.ui.common.FocusDismissArea
 import com.promenar.infinity.ui.MainTabsState
 import com.promenar.infinity.ui.hub.HubListPaneWidth
@@ -152,6 +155,18 @@ internal fun LibraryScreenContent(
     val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
     val askState by askViewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    var noteOpen by rememberSaveable { mutableStateOf(false) }
+    val importFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        viewModel.importToLibrary(uris.map { it.toString() })
+    }
+    val addMenu: @Composable () -> Unit = {
+        LibraryAddMenu(
+            onRecord = { context.startActivity(recordingIntent(context)) },
+            onImport = { importFiles.launch(arrayOf("*/*")) },
+            onNote = { noteOpen = true },
+        )
+    }
     // 外屏的“文件”中转页在两列里没有对应导航项；展开折叠屏时去掉它，左列才能高亮当前位置。
     LaunchedEffect(twoPane) { if (twoPane) state.normalizeLibraryForTwoPane() }
 
@@ -190,6 +205,15 @@ internal fun LibraryScreenContent(
     BackHandler(enabled = navigator.handlesBack) { navigator.handleBack() }
     LibraryNoticeEffect(viewModel, snackbar)
     LibraryGraphConfirmDialog(viewModel)
+    if (noteOpen) {
+        LibraryNoteDialog(
+            onDismiss = { noteOpen = false },
+            onSave = { name, text ->
+                noteOpen = false
+                viewModel.saveNote(name, text)
+            },
+        )
+    }
 
     val host = LibraryPageHost(
         viewModel = viewModel,
@@ -209,8 +233,8 @@ internal fun LibraryScreenContent(
         FocusDismissArea(Modifier.fillMaxSize()) { area ->
             Box(area) {
                 when (layout) {
-                    LibraryLayout.Single -> LibrarySingleLayout(host)
-                    is LibraryLayout.TwoPane -> LibraryTwoPaneLayout(host, layout)
+                    LibraryLayout.Single -> LibrarySingleLayout(host, addMenu)
+                    is LibraryLayout.TwoPane -> LibraryTwoPaneLayout(host, layout, addMenu)
                 }
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             }
@@ -276,7 +300,7 @@ internal class LibraryPageHost(
 )
 
 @Composable
-private fun LibrarySingleLayout(host: LibraryPageHost) {
+private fun LibrarySingleLayout(host: LibraryPageHost, addMenu: @Composable () -> Unit) {
     val stack = host.navigator.stack
     // 与设置页、首页的二级页面相同的视差推入；空栈即资料首页。
     InfinityPageStack(
@@ -287,7 +311,7 @@ private fun LibrarySingleLayout(host: LibraryPageHost) {
     ) { pages ->
         val key = pages.lastOrNull()
         if (key == null) {
-            LibraryHome(host)
+            LibraryHome(host, addMenu)
         } else {
             LibraryPageContent(
                 page = LibraryPageKeys.parse(key),
@@ -300,7 +324,7 @@ private fun LibrarySingleLayout(host: LibraryPageHost) {
 }
 
 @Composable
-private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.TwoPane) {
+private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.TwoPane, addMenu: @Composable () -> Unit) {
     val navigator = host.navigator
     val expansion = layout.expansion
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -318,7 +342,7 @@ private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.Tw
                     .offset { IntOffset((listStart - shift * expansion.value).roundToPx(), 0) }
                     .graphicsLayer { alpha = 1f - expansion.value },
             ) {
-                LibraryNavColumn(host)
+                LibraryNavColumn(host, addMenu)
             }
         }
         // 展开后的图标条：直接切换分区并保持展开。
@@ -354,6 +378,9 @@ private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.Tw
                     host = host,
                     leading = LibraryLeading.Expand(expanded = navigator.expanded, onToggle = navigator::toggleExpanded),
                     trail = pages.takeIf { it.size > 1 }?.let { keys -> LibraryTrail(keys, onGo = navigator::backTo) },
+                    actions = {
+                        if (expansion.value == 1f && pages.last() == LibraryPageKeys.OVERVIEW) addMenu()
+                    },
                 )
             }
         }
