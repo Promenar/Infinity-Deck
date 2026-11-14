@@ -1,6 +1,10 @@
 package com.promenar.infinity.recording
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -62,17 +66,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.Placeholder
@@ -91,6 +98,7 @@ import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.common.motion.indicatorDesignSize
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
@@ -171,22 +179,16 @@ internal fun RecordingPageContent(
     onSpeakerSettings: () -> Unit = {},
     onSpeakerSelect: (RecordingSpeakerSelection) -> Unit = {},
 ) {
-    val view = RecordingView(state, current, route, playing, positionMs, asrModel, effectiveHotwords)
-    val transcriptTools: @Composable (Boolean) -> Unit = { titled ->
-        TranscriptPaneHeader(view, titled, onExport, onDownloadAsr, onCancelDownload, onRecognize, onCancelRecognize)
-    }
-    val speakerTools: @Composable () -> Unit = {
-        if (current?.distinguishSpeakers == true && !view.active) {
-            RecordingSpeakerStatus(current, state, speakerModel, onAnalyzeSpeakers, onSpeakerSettings)
-        }
-    }
+    val active = current != null && state.activeId == current.id
+    val historyList = rememberLazyListState()
+    val animationsEnabled = rememberAnimationsEnabled()
     InfinityPageLayout(
         title = stringResource(R.string.recording_title),
         onBack = onBack,
         scrollable = false,
         bodyPadding = PaddingValues(),
         actions = {
-            if (!view.active && current != null) {
+            if (!active && current != null) {
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.recording_ui_delete))
                 }
@@ -202,36 +204,69 @@ internal fun RecordingPageContent(
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val wide = maxWidth >= RecordingWideWidth && maxHeight >= RecordingWideHeight
             val pinned = maxHeight >= RecordingPinnedHeight
-            val buttons: @Composable (Boolean) -> Unit = { compact ->
-                RecordingActionButtons(view, compact, onBegin, onPauseResume, onFinish, onContinue, onPublish)
-            }
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    if (wide) {
-                        RecordingWideBody(
-                            view, onMode, onSelect, onEdit, onConsent, transcriptTools, onPlay,
-                            onTogglePlayback, onSeek, onSeekFinished, onOrganize, buttons, speakerTools, onSpeakerSelect,
-                        )
-                    } else {
-                        RecordingNarrowBody(
-                            view, organized, pinned, onMode, onSelect, onOrganizedChange, onEdit, onConsent, transcriptTools,
-                            onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onContinue, speakerTools, onSpeakerSelect,
-                        )
-                    }
-                    // 失败提示浮在正文之上、操作区上方，出现与消失都不推动页面内容。
-                    RecordingFailureNotice(
-                        failure = state.failure,
-                        onDismiss = onDismissFailure,
-                        modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = FailureNoticeMaxWidth),
-                    )
+            // 同一录音的实时听写持续更新，只在列表与详情之间播放转场。
+            AnimatedContent(
+                targetState = current,
+                modifier = Modifier.fillMaxSize().clipToBounds(),
+                contentKey = { it != null },
+                transitionSpec = {
+                    if (animationsEnabled) InfinityMotion.sharedAxisX(forward = targetState != null)
+                    else EnterTransition.None togetherWith ExitTransition.None
+                },
+                label = "recording_navigation",
+            ) { shown ->
+                val foreground = (shown == null) == (current == null)
+                val view = RecordingView(state, shown, route, playing, positionMs, asrModel, effectiveHotwords)
+                val transcriptTools: @Composable (Boolean) -> Unit = { titled ->
+                    TranscriptPaneHeader(view, titled, onExport, onDownloadAsr, onCancelDownload, onRecognize, onCancelRecognize)
                 }
-                if (!wide) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    InfinityPillRow(
-                        modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
-                        spacing = InfinitySpacing.Small,
-                        stackedSpacing = InfinitySpacing.XSmall,
-                    ) { buttons(false) }
+                val speakerTools: @Composable () -> Unit = {
+                    if (shown?.distinguishSpeakers == true && !view.active) {
+                        RecordingSpeakerStatus(shown, state, speakerModel, onAnalyzeSpeakers, onSpeakerSettings)
+                    }
+                }
+                val buttons: @Composable (Boolean) -> Unit = { compact ->
+                    RecordingActionButtons(view, compact, onBegin, onPauseResume, onFinish, onContinue, onPublish)
+                }
+                Box(if (foreground) Modifier.fillMaxSize() else Modifier.fillMaxSize().clearAndSetSemantics {}) {
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            if (wide) {
+                                RecordingWideBody(
+                                    view, historyList, onMode, onSelect, onEdit, onConsent, transcriptTools, onPlay,
+                                    onTogglePlayback, onSeek, onSeekFinished, onOrganize, buttons, speakerTools, onSpeakerSelect,
+                                )
+                            } else {
+                                RecordingNarrowBody(
+                                    view, historyList, organized, pinned, onMode, onSelect, onOrganizedChange, onEdit, onConsent,
+                                    transcriptTools, onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onContinue,
+                                    speakerTools, onSpeakerSelect,
+                                )
+                            }
+                            if (foreground) {
+                                // 失败提示只在当前页组合，且浮在操作区上方。
+                                RecordingFailureNotice(
+                                    failure = state.failure,
+                                    onDismiss = onDismissFailure,
+                                    modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = FailureNoticeMaxWidth),
+                                )
+                            }
+                        }
+                        if (!wide) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            InfinityPillRow(
+                                modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
+                                spacing = InfinitySpacing.Small,
+                                stackedSpacing = InfinitySpacing.XSmall,
+                            ) { buttons(false) }
+                        }
+                    }
+                    // 退场内容在过渡期间保持绘制，但不接收点击。
+                    if (!foreground) Box(Modifier.matchParentSize().pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) awaitPointerEvent().changes.forEach { it.consume() }
+                        }
+                    })
                 }
             }
         }
@@ -242,6 +277,7 @@ internal fun RecordingPageContent(
 @Composable
 private fun RecordingNarrowBody(
     view: RecordingView,
+    historyList: LazyListState,
     organized: Boolean,
     pinned: Boolean,
     onMode: () -> Unit,
@@ -308,7 +344,7 @@ private fun RecordingNarrowBody(
         if (pinned) Box(Modifier.padding(start = edge, end = edge, top = edge)) { header() }
         val pane = Modifier.weight(1f).fillMaxWidth()
         when {
-            current == null -> RecordingHistoryList(view.state.sessions, leading, showEmpty = false, padding, onSelect, pane)
+            current == null -> RecordingHistoryList(historyList, view.state.sessions, leading, showEmpty = false, padding, onSelect, pane)
             organized -> RecordingOrganizedList(view, leading, fill = pinned, padding, onMode, pane)
             else -> RecordingTranscriptList(view, leading, fill = pinned, padding, onPlay, pane, onSpeakerSelect)
         }
@@ -319,6 +355,7 @@ private fun RecordingNarrowBody(
 @Composable
 private fun RecordingWideBody(
     view: RecordingView,
+    historyList: LazyListState,
     onMode: () -> Unit,
     onSelect: (RecordingSession) -> Unit,
     onEdit: () -> Unit,
@@ -349,7 +386,7 @@ private fun RecordingWideBody(
             Column(column) {
                 if (view.current == null) {
                     RecordingPaneHeader(stringResource(R.string.recording_history)) {}
-                    RecordingHistoryList(view.state.sessions, null, showEmpty = true, padding, onSelect, Modifier.weight(1f).fillMaxWidth())
+                    RecordingHistoryList(historyList, view.state.sessions, null, showEmpty = true, padding, onSelect, Modifier.weight(1f).fillMaxWidth())
                 } else {
                     transcriptTools(true)
                     speakerTools()
@@ -989,6 +1026,7 @@ private fun RecordingOrganizedList(
 /** 录音记录：标题与时长，中断的录音加注；[showEmpty] 时没有记录也给出说明。 */
 @Composable
 private fun RecordingHistoryList(
+    list: LazyListState,
     sessions: List<RecordingSession>,
     leading: (@Composable () -> Unit)?,
     showEmpty: Boolean,
@@ -997,7 +1035,7 @@ private fun RecordingHistoryList(
     modifier: Modifier = Modifier,
 ) {
     val interrupted = stringResource(R.string.recording_ui_interrupted)
-    LazyColumn(modifier = modifier, contentPadding = contentPadding) {
+    LazyColumn(state = list, modifier = modifier, contentPadding = contentPadding) {
         if (leading != null) item(key = "recording_header") { RecordingLeading(leading) }
         if (sessions.isEmpty() && showEmpty) item(key = "empty") {
             RecordingEmpty(fill = true) {

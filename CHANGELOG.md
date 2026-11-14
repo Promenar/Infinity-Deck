@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 从录音记录打开详情时，列表与详情以横向转场切换。标题栏和系统返回都先回录音记录，并保留列表滚动位置。
+
 ## [0.55.1-beta] - 2026-11-14
 
 - 录音可在本机区分说话人并按时间戳标注，支持改单段归属、改名、指定人员与合并。整理稿可按说话人分段。

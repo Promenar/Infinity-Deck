@@ -49,6 +49,7 @@ class RecordingActivity : ComponentActivity() {
     private val controller get() = recordingController()
     private var resumeAfterPermission: String? = null
     private var incomingDocument by mutableStateOf<String?>(null)
+    private var incomingRevision by mutableIntStateOf(0)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val id = resumeAfterPermission
         resumeAfterPermission = null
@@ -72,6 +73,7 @@ class RecordingActivity : ComponentActivity() {
                     controller, onBack = ::finish, onBegin = ::requestMicrophone,
                     onFinish = { RecordingService.finish(this) },
                     incomingDocument = incomingDocument,
+                    incomingRevision = incomingRevision,
                 )
             }
         }
@@ -87,6 +89,7 @@ class RecordingActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        incomingRevision++
         handleEntry(intent)
     }
 
@@ -138,6 +141,7 @@ private fun RecordingScreen(
     onBegin: (String?) -> Unit,
     onFinish: () -> Unit,
     incomingDocument: String?,
+    incomingRevision: Int,
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val asr by controller.asrModel.collectAsStateWithLifecycle()
@@ -147,8 +151,9 @@ private fun RecordingScreen(
     var speakerId by rememberSaveable { mutableStateOf<Int?>(null) }
     var speakerSegment by rememberSaveable { mutableStateOf<Long?>(null) }
     val speakerModel by controller.speakerModel.collectAsStateWithLifecycle()
-    var selected by rememberSaveable(incomingDocument) { mutableStateOf(incomingDocument) }
-    var organized by rememberSaveable { mutableStateOf(false) }
+    var selected by rememberSaveable(incomingDocument, incomingRevision) { mutableStateOf(incomingDocument) }
+    var historyParent by rememberSaveable(incomingDocument, incomingRevision) { mutableStateOf(incomingDocument == null) }
+    var organized by rememberSaveable(incomingRevision) { mutableStateOf(false) }
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var defaultMode by remember { mutableStateOf(controller.store.mode) }
     val current = state.sessions.firstOrNull { it.id == (state.activeId ?: selected) }
@@ -187,6 +192,13 @@ private fun RecordingScreen(
             playback.refreshPosition()
         }
     }
+    val showHistory = {
+        selected = null
+        historyParent = true
+        organized = false
+    }
+    val backToHistory = current != null && !active && historyParent
+    BackHandler(enabled = backToHistory, onBack = showHistory)
     val closeHotwords = { showHotwords = false; dialog = "mode" }
     BackHandler(enabled = showHotwords, onBack = closeHotwords)
     if (showHotwords) {
@@ -211,10 +223,14 @@ private fun RecordingScreen(
         route = route,
         playing = playback.playing,
         positionMs = playback.position,
-        onBack = onBack,
-        onHistory = { selected = null },
+        onBack = if (backToHistory) showHistory else onBack,
+        onHistory = showHistory,
         onMode = { dialog = "mode" },
-        onSelect = { selected = it.id; organized = false },
+        onSelect = {
+            selected = it.id
+            historyParent = true
+            organized = false
+        },
         onOrganizedChange = { organized = it },
         onEdit = { dialog = "edit" },
         onConsent = { dialog = "consent" },
@@ -326,7 +342,7 @@ private fun RecordingScreen(
                 cancelText = stringResource(R.string.recording_cancel),
                 onConfirm = {
                     dialog = null
-                    selected = null
+                    showHistory()
                     controller.delete(current.id)
                 },
                 onCancel = { dialog = null },

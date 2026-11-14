@@ -536,6 +536,8 @@ run_test onboarding-full "${APP_RUNNER}" \
     -e class com.promenar.infinity.onboarding.OnboardingAndroidEndToEndTest
 run_test prompt-editor-contracts "${APP_RUNNER}" \
     -e class com.promenar.infinity.ui.common.UnifiedPromptEditorE2ETest
+run_test recording-navigation "${APP_RUNNER}" \
+    -e class com.promenar.infinity.recording.RecordingNavigationTest
 run_layout_and_accessibility_contracts
 
 # API 31 minimum 与 API 35 full 共用这些真实设备能力合同。
