@@ -94,6 +94,7 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     fun loadModel(slot: SlotType, modelPath: String) {
         viewModelScope.launch {
             edits.withLock {
+                if (!_isEngineEnabled.value) return@withLock
                 val pin = revisions.read().takeIf { slot == SlotType.MAIN }
                 if (pin != null && (pin.path != modelPath || !revisions.verify(pin))) {
                     _modelError.value = R.string.recording_model_locked
@@ -107,7 +108,7 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
 
     fun unloadModel(slot: SlotType) {
         viewModelScope.launch {
-            engine.unloadModel(slot)
+            edits.withLock { engine.unloadModel(slot) }
         }
     }
 
@@ -187,26 +188,12 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
         } else {
             viewModelScope.launch {
                 edits.withLock {
+                    if (_isEngineEnabled.value) return@withLock
                     engine.unloadModel(SlotType.MAIN)
                     engine.unloadModel(SlotType.EMBEDDING)
                     engine.unloadModel(SlotType.RERANK)
                 }
             }
-        }
-    }
-
-    fun isModelLoadedInSlot(filePath: String): Boolean {
-        return mainSlot.value.modelPath == filePath ||
-                embeddingSlot.value.modelPath == filePath ||
-                rerankSlot.value.modelPath == filePath
-    }
-
-    fun findSlotForModel(filePath: String): SlotType? {
-        return when (filePath) {
-            mainSlot.value.modelPath -> SlotType.MAIN
-            embeddingSlot.value.modelPath -> SlotType.EMBEDDING
-            rerankSlot.value.modelPath -> SlotType.RERANK
-            else -> null
         }
     }
 

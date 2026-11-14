@@ -174,7 +174,9 @@ class ModelDownloader internal constructor(
                 quantization = meta.quantization,
                 contextLength = meta.contextLength,
                 embeddingLength = meta.embeddingLength,
-                parameterCount = meta.parameterCount
+                parameterCount = meta.parameterCount,
+                modelName = meta.modelName,
+                poolingType = meta.poolingType,
             )
         } catch (_: Exception) {
             StoredModel(

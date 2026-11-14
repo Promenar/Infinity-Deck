@@ -27,22 +27,22 @@ class LocalModelsSettingGateTest {
                 )
             }
         }
-        rule.onNodeWithText("guard-test.gguf").performScrollTo().performClick()
+        rule.onNodeWithText("guard-test").performScrollTo().assertHasNoClickAction().performTouchInput { click() }
         assertEquals(0, loads)
         assertEquals(0, unloads)
     }
 
     @Test fun emptyModelEntryCannotOpenAnotherImporterWhileBusy() {
         var imports = 0
-        var emptyTitle = ""
+        var importTitle = ""
         rule.setContent {
             InfinityTheme {
-                emptyTitle = stringResource(R.string.local_models_none_imported)
+                importTitle = stringResource(R.string.local_models_importing)
                 LocalModelsScreenContent(isImporting = true, onImport = { imports++ })
             }
         }
         rule.waitForIdle()
-        rule.onNodeWithText(emptyTitle).performScrollTo().assertIsNotEnabled().performTouchInput { click() }
+        rule.onNodeWithText(importTitle).performScrollTo().assertIsNotEnabled().performTouchInput { click() }
         assertEquals(0, imports)
     }
 }

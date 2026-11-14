@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_models_inference">本地推理</string>
+    <string name="local_models_library">模型库</string>
+    <string name="local_models_assignment">模型分配</string>
+    <string name="local_models_import">导入模型</string>
+    <string name="local_models_download">下载</string>
+    <string name="local_models_downloading">%1$s · 正在下载</string>
+    <string name="local_models_progress">%1$d%%</string>
+    <string name="local_models_downloaded">已下载</string>
+    <string name="local_models_empty_library">暂无本地模型。</string>
+    <string name="local_models_recording_pinned">已固定用于录音整理</string>
+    <string name="local_models_unpin">取消固定用于录音整理</string>
+    <string name="local_models_actions">%1$s 的操作</string>
+    <string name="local_models_details">模型详情</string>
+    <string name="local_models_delete">删除模型</string>
+    <string name="local_models_delete_message">从模型库删除 %1$s？</string>
+    <string name="local_models_delete_loaded">删除 %1$s 时也会卸载该模型。</string>
+    <string name="local_models_unassigned">未分配</string>
+    <string name="local_models_assign_main_description">文本生成</string>
+    <string name="local_models_assign_embedding_description">将资料转换为向量</string>
+    <string name="local_models_assign_rerank_description">重新排序检索结果</string>
+    <string name="local_models_engine_disabled">开启本地推理后可加载模型。</string>
+    <string name="local_models_no_compatible">模型库中没有适用于此用途的模型。</string>
+    <string name="local_models_show_library">查看模型库</string>
+    <string name="local_models_active_assignment">%1$s · 已加载</string>
+    <string name="local_models_unload">卸载模型</string>
+    <string name="local_models_load_failed">无法加载模型。</string>
+</resources>

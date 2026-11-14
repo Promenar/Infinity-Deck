@@ -23,7 +23,9 @@ data class StoredModel(
     val quantization: String = "",
     val contextLength: Int = 0,
     val embeddingLength: Int = 0,
-    val parameterCount: String = ""
+    val parameterCount: String = "",
+    val modelName: String = "",
+    val poolingType: Int? = null,
 )
 
 class ModelStorageManager(private val context: Context) {
@@ -60,6 +62,7 @@ class ModelStorageManager(private val context: Context) {
                 architecture = metadata.architecture, quantization = metadata.quantization,
                 contextLength = metadata.contextLength, embeddingLength = metadata.embeddingLength,
                 parameterCount = metadata.parameterCount,
+                modelName = metadata.modelName, poolingType = metadata.poolingType,
             )
             Result.success(model)
         } catch (cancelled: CancellationException) {
@@ -88,7 +91,9 @@ class ModelStorageManager(private val context: Context) {
                         quantization = meta.quantization,
                         contextLength = meta.contextLength,
                         embeddingLength = meta.embeddingLength,
-                        parameterCount = meta.parameterCount
+                        parameterCount = meta.parameterCount,
+                        modelName = meta.modelName,
+                        poolingType = meta.poolingType,
                     )
                 } catch (_: Exception) {
                     StoredModel(

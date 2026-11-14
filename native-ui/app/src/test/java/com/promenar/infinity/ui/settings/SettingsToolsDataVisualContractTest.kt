@@ -28,10 +28,14 @@ class SettingsToolsDataVisualContractTest {
         listOf(
             "TokenUsageScreen.kt",
             "BackupSettingsScreen.kt",
-            "LocalModelsScreen.kt",
         ).forEach { fileName ->
             assertThat(source(fileName)).contains("InfinitySettingsSection(")
         }
+        val models = source("LocalModelsScreen.kt")
+        assertThat(models).contains("SettingsSectionHeader(")
+        assertThat(models).contains("InfinitySettingsGroup(")
+        assertThat(models).doesNotContain("local_models_active_slots")
+        assertThat(models).doesNotContain("local_models_engine_status")
     }
 
     private fun source(fileName: String): String = Files.readAllBytes(

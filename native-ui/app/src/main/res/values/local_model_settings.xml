@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_models_inference">Local inference</string>
+    <string name="local_models_library">Model library</string>
+    <string name="local_models_assignment">Model assignment</string>
+    <string name="local_models_import">Import model</string>
+    <string name="local_models_download">Download</string>
+    <string name="local_models_downloading">%1$s · Downloading</string>
+    <string name="local_models_progress">%1$d%%</string>
+    <string name="local_models_downloaded">Downloaded</string>
+    <string name="local_models_empty_library">No local models yet.</string>
+    <string name="local_models_recording_pinned">Pinned for recording cleanup</string>
+    <string name="local_models_unpin">Unpin from recording cleanup</string>
+    <string name="local_models_actions">Actions for %1$s</string>
+    <string name="local_models_details">Model details</string>
+    <string name="local_models_delete">Delete model</string>
+    <string name="local_models_delete_message">Delete %1$s from the library?</string>
+    <string name="local_models_delete_loaded">Deleting %1$s will also unload it.</string>
+    <string name="local_models_unassigned">Unassigned</string>
+    <string name="local_models_assign_main_description">Text generation</string>
+    <string name="local_models_assign_embedding_description">Convert material to vectors</string>
+    <string name="local_models_assign_rerank_description">Reorder search results</string>
+    <string name="local_models_engine_disabled">Enable local inference to load models.</string>
+    <string name="local_models_no_compatible">No compatible models in the library.</string>
+    <string name="local_models_show_library">View model library</string>
+    <string name="local_models_active_assignment">%1$s · Loaded</string>
+    <string name="local_models_unload">Unload model</string>
+    <string name="local_models_load_failed">Could not load the model.</string>
+</resources>

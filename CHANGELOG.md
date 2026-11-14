@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.56.2-beta] - 2026-11-14
+
+- 本地模型设置统一显示模型库、下载进度和各用途的加载状态，支持内外屏同一套纵向设置内容。
+- 修正 GGUF 模型文件类型的显示，已下载的 Q8_0 模型正确显示量化规格。
+
 ## [0.56.1-beta] - 2026-11-14
 
 - 新建笔记时为自定义标题补全 Markdown 扩展名，确保正文进入资料索引。

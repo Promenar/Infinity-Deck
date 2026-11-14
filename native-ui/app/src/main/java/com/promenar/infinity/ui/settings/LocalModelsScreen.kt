@@ -1,88 +1,82 @@
 package com.promenar.infinity.ui.settings
 
+import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
-import com.promenar.infinity.ui.common.InfinityIdentifierText
-import com.promenar.infinity.ui.common.InfinityMetaLine
-import com.promenar.infinity.ui.common.InfinityPillButton
-import com.promenar.infinity.ui.common.InfinityPillRow
-import com.promenar.infinity.ui.common.InfinityPillTone
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddCircle
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.SdCard
-import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material.icons.rounded.Warning
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.automirrored.rounded.Subject
+import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
-import com.promenar.infinity.ui.common.InfinityBottomSheet
-import com.promenar.infinity.ui.common.InfinityConfirmDialog
-import com.promenar.infinity.data.local.inference.RecordingModelPackage
 import com.promenar.infinity.data.local.inference.LocalModelRevision
+import com.promenar.infinity.data.local.inference.RecordingModelPackage
 import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.local.inference.SlotType
 import com.promenar.infinity.data.local.inference.StoredModel
-import com.promenar.infinity.ui.common.SettingsSectionHeader
-import com.promenar.infinity.ui.common.BettboxListGroup
-import com.promenar.infinity.ui.common.bettboxListGroup
-import com.promenar.infinity.ui.common.SettingsToggle
+import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityIdentifierText
+import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinitySettingsGroup
+import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
-import com.promenar.infinity.ui.common.InfinitySettingsItem
-import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.common.InfinitySheetHeight
+import com.promenar.infinity.ui.common.SettingsSectionHeader
+import com.promenar.infinity.ui.common.SettingsToggle
+import com.promenar.infinity.ui.common.bettboxListGroupItem
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocalModelsScreen(
     onNavigateBack: () -> Unit,
     viewModel: LocalModelsViewModel = viewModel(
-        factory = LocalModelsViewModel.factory(LocalContext.current.applicationContext as android.app.Application)
+        factory = LocalModelsViewModel.factory(LocalContext.current.applicationContext as Application)
     )
 ) {
     val availableModels by viewModel.availableModels.collectAsState()
@@ -118,13 +112,10 @@ fun LocalModelsScreen(
         modelError = modelError,
         downloadProgress = download?.takeIf { it.isDownloading && it.totalBytes > 0 }
             ?.let { (it.downloadedBytes * 100 / it.totalBytes).toInt() },
-
         onEngineEnabledChange = viewModel::setEngineEnabled,
         onLoadModel = viewModel::loadModel,
         onUnloadModel = viewModel::unloadModel,
         onDeleteModel = viewModel::deleteModel,
-        isModelLoadedInSlot = viewModel::isModelLoadedInSlot,
-        findSlotForModel = viewModel::findSlotForModel,
         formatFileSize = viewModel::formatFileSize,
     )
 }
@@ -144,8 +135,6 @@ internal fun LocalModelsScreenContent(
     onLoadModel: (SlotType, String) -> Unit = { _, _ -> },
     onUnloadModel: (SlotType) -> Unit = {},
     onDeleteModel: (String) -> Unit = {},
-    isModelLoadedInSlot: (String) -> Boolean = { false },
-    findSlotForModel: (String) -> SlotType? = { null },
     formatFileSize: (Long) -> String = { it.toString() },
     onInstall: (() -> Unit)? = null,
     onCancelInstall: () -> Unit = {},
@@ -154,158 +143,250 @@ internal fun LocalModelsScreenContent(
     modelError: Int? = null,
     downloadProgress: Int? = null,
 ) {
+    var openRole by rememberSaveable { mutableStateOf<SlotType?>(null) }
+    var openModelPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    var deletePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val slots = mapOf(SlotType.MAIN to mainSlot, SlotType.EMBEDDING to embeddingSlot, SlotType.RERANK to rerankSlot)
+    val modelByPath = availableModels.associateBy(StoredModel::filePath)
+    val showDownload = onInstall != null && availableModels.none { it.fileName == RecordingModelPackage.filename }
+    val downloadRows = if (showDownload) 1 else 0
+    val libraryRows = availableModels.size + downloadRows
+
     InfinitySettingsPageLayout(
         title = stringResource(R.string.local_models_title),
         onBack = onNavigateBack,
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = paddingValues,
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
+    ) { padding ->
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth(), contentPadding = padding) {
             item {
-                InfinitySettingsSection(
-                    title = stringResource(R.string.local_models_engine_status),
-                ) {
+                InfinitySettingsGroup {
                     SettingsToggle(
-                        title = stringResource(R.string.local_models_enable_engine),
-                        description = stringResource(R.string.settings_batch1_local_engine_summary),
+                        title = stringResource(R.string.local_models_inference),
+                        description = if (gpuAvailable) "llama.cpp · Vulkan" else "llama.cpp · CPU",
                         icon = Icons.Rounded.Memory,
                         checked = engineEnabled,
                         onCheckedChange = onEngineEnabledChange,
                     )
-                    InfinitySettingsItem(
-                        icon = Icons.Rounded.UploadFile,
-                        title = stringResource(if (isImporting) R.string.local_models_importing else R.string.local_models_import_title),
-                        subtitle = stringResource(if (isImporting) R.string.local_models_please_wait else R.string.settings_batch1_local_import_summary),
-                        onClick = onImport,
-                        enabled = !isImporting,
-                        showChevron = true,
-                        trailingContent = if (isImporting) ({ CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }) else null,
-                    )
-                    if (onInstall != null && availableModels.none { it.fileName == RecordingModelPackage.filename }) {
-                        RecordingModelDownloadRow(
-                            progress = downloadProgress,
-                            enabled = !isImporting,
-                            onInstall = onInstall,
-                            onCancel = onCancelInstall,
-                        )
-                    }
-                    if (modelError != null) {
-                        Text(
-                            text = stringResource(modelError),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(
-                                horizontal = InfinitySpacing.RowHorizontal,
-                                vertical = InfinitySpacing.Small,
-                            ),
-                        )
-                    }
-
                 }
             }
-
             item {
-                InfinitySettingsSection(
-                    title = stringResource(R.string.local_models_active_slots),
-                    footer = listOf(
-                        mainSlot to R.string.local_models_slot_main,
-                        embeddingSlot to R.string.local_models_slot_embeddings,
-                        rerankSlot to R.string.local_models_slot_reranker,
-                    ).mapNotNull { (slot, label) ->
-                        (slot.error ?: slot.modelSize.takeIf(String::isNotBlank))?.let { stringResource(label) + ": " + it }
-                    }.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+                Row(
+                    Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    listOf(
-                        Triple(SlotType.MAIN, mainSlot, R.string.local_models_slot_main),
-                        Triple(SlotType.EMBEDDING, embeddingSlot, R.string.local_models_slot_embeddings),
-                        Triple(SlotType.RERANK, rerankSlot, R.string.local_models_slot_reranker),
-                    ).forEach { (type, slot, labelRes) ->
-                        SlotCard(
-                            label = stringResource(labelRes),
-                            slotState = slot,
-                            enabled = engineEnabled,
-                            onLoadClick = { path -> onLoadModel(type, path) },
-                            models = availableModels,
-                            formatFileSize = formatFileSize,
+                    SettingsSectionHeader(
+                        title = stringResource(R.string.local_models_library),
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onImport, enabled = !isImporting) {
+                        if (isImporting) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
+                        }
+                        Text(
+                            stringResource(if (isImporting) R.string.local_models_importing else R.string.local_models_import),
+                            Modifier.padding(start = InfinitySpacing.XSmall),
                         )
                     }
                 }
             }
-
-            item { SettingsSectionHeader(stringResource(R.string.local_models_imported)) }
-
-            if (availableModels.isEmpty()) {
-                item {
-                    InfinitySettingsItem(
-                        title = stringResource(R.string.local_models_none_imported),
-                        enabled = !isImporting,
-                        onClick = onImport,
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (showDownload) {
+                item(key = "download") {
+                    Column(Modifier.bettboxListGroupItem(0, libraryRows)) {
+                        RecordingModelDownloadRow(downloadProgress, !isImporting, formatFileSize, requireNotNull(onInstall), onCancelInstall)
+                    }
                 }
-            } else {
-                items(availableModels, key = { it.id }) { model ->
-                    ModelCard(
-                        model = model,
-                        isLoadedInSlot = isModelLoadedInSlot(model.filePath),
-                        loadedSlot = findSlotForModel(model.filePath),
-                        engineEnabled = engineEnabled,
-                        formatFileSize = { formatFileSize(it) },
-                        onLoad = { slot ->
-                            if (isModelLoadedInSlot(model.filePath)) {
-                                val s = findSlotForModel(model.filePath)
-                                if (s != null) onUnloadModel(s)
-                            } else {
-                                onLoadModel(slot, model.filePath)
+            }
+            itemsIndexed(availableModels, key = { _, model -> model.id }) { index, model ->
+                Column(Modifier.bettboxListGroupItem(index + downloadRows, libraryRows)) {
+                    if (showDownload || index > 0) HorizontalDivider()
+                    val label = model.displayName()
+                    val fixed = pinned?.path == model.filePath
+                    InfinitySettingsRowLayout(
+                        title = label,
+                        icon = Icons.Rounded.Layers,
+                        titleMaxLines = 2,
+                        subtitleContent = {
+                            InfinityMetaLine(
+                                segments = model.specs(formatFileSize),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (fixed || model.fileName == RecordingModelPackage.filename) {
+                                Text(
+                                    stringResource(if (fixed) R.string.local_models_recording_pinned else R.string.local_models_downloaded),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         },
-                        onDelete = { onDeleteModel(model.filePath) },
-                        revision = pinned?.takeIf { it.path == model.filePath },
-                        onTogglePin = onTogglePin?.let { { it(model.filePath) } },
+                        trailingContent = {
+                            val action = stringResource(R.string.local_models_actions, label)
+                            IconButton(onClick = { openModelPath = model.filePath; showDetails = false }) {
+                                Icon(Icons.Rounded.MoreHoriz, contentDescription = action)
+                            }
+                        },
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
-
-            item { SettingsSectionHeader(stringResource(R.string.local_models_engine_status)) }
-
             item {
-                Column(modifier = Modifier.fillMaxWidth().bettboxListGroup()) {
-                    InfinityMetaLine(
-                        segments = listOf("llama.cpp", if (gpuAvailable) "Vulkan GPU" else "CPU"),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                val note = modelError?.let { stringResource(it) }
+                    ?: if (availableModels.isEmpty() && downloadProgress == null) stringResource(R.string.local_models_empty_library) else null
+                if (note != null) {
+                    Text(
+                        note,
+                        Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
+                        color = if (modelError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                    EngineSlotStatus(
-                        label = stringResource(R.string.local_models_slot_main),
-                        modelName = mainSlot.modelName.ifEmpty { null },
-                        active = mainSlot.isLoaded,
-                        isLoading = mainSlot.isLoading,
-                        badge = mainSlot.backendType.displayName
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    EngineSlotStatus(
-                        label = stringResource(R.string.local_models_slot_embeddings),
-                        modelName = embeddingSlot.modelName.ifEmpty { null },
-                        active = embeddingSlot.isLoaded,
-                        isLoading = embeddingSlot.isLoading,
-                        badge = embeddingSlot.backendType.displayName
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    EngineSlotStatus(
-                        label = stringResource(R.string.local_models_slot_reranker),
-                        modelName = rerankSlot.modelName.ifEmpty { null },
-                        active = rerankSlot.isLoaded,
-                        isLoading = rerankSlot.isLoading,
-                        badge = if (rerankSlot.isLoaded) rerankSlot.backendType.displayName else stringResource(R.string.local_models_slot_idle)
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                Spacer(Modifier.height(InfinitySpacing.SectionGap))
+            }
+            item {
+                SettingsSectionHeader(
+                    stringResource(R.string.local_models_assignment),
+                    modifier = Modifier.padding(
+                        start = InfinitySpacing.RowHorizontal,
+                        bottom = InfinitySpacing.SectionHeaderBottom,
+                    ),
+                )
+                InfinitySettingsGroup(footer = if (engineEnabled) null else stringResource(R.string.local_models_engine_disabled)) {
+                    slots.entries.forEachIndexed { index, (role, state) ->
+                        if (index > 0) HorizontalDivider()
+                        val subtitle = modelByPath[state.modelPath]?.displayName()
+                            ?: state.modelName.takeIf(String::isNotBlank)?.substringBeforeLast('.')
+                            ?: stringResource(role.description)
+                        val status = when {
+                            engineEnabled && state.isLoading -> R.string.shared_loading
+                            engineEnabled && state.isLoaded -> R.string.local_models_loaded
+                            else -> R.string.local_models_unassigned
+                        }
+                        InfinitySettingsItem(
+                            title = stringResource(role.title),
+                            subtitle = subtitle,
+                            icon = role.icon,
+                            titleMaxLines = 2,
+                            subtitleMaxLines = 2,
+                            onClick = { openRole = role },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        stringResource(status),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (engineEnabled && state.isLoaded && !state.isLoading)
+                                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Icon(
+                                        Icons.Rounded.ChevronRight, null,
+                                        Modifier.padding(start = 4.dp).size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    openRole?.let { role ->
+        val state = slots.getValue(role)
+        val models = availableModels.filter { it.supportsAssignment(role) }
+        AssignmentSheet(
+            role = role,
+            state = state,
+            models = models,
+            pinned = pinned.takeIf { role == SlotType.MAIN },
+            engineEnabled = engineEnabled,
+            importEnabled = !isImporting,
+            formatFileSize = formatFileSize,
+            onClose = { openRole = null },
+            onEnable = { onEngineEnabledChange(true) },
+            onLoad = { onLoadModel(role, it) },
+            onUnload = { onUnloadModel(role); openRole = null },
+            onImport = { openRole = null; onImport() },
+            onShowLibrary = { openRole = null; scope.launch { listState.animateScrollToItem(1) } },
+        )
+    }
+
+    modelByPath[openModelPath]?.let { model ->
+        val fixed = pinned?.path == model.filePath
+        InfinityBottomSheet(
+            show = true,
+            onDismiss = { openModelPath = null },
+            title = if (showDetails) stringResource(R.string.local_models_details) else model.displayName(),
+            height = InfinitySheetHeight.Content,
+            scrollContent = true,
+            dragGesturesEnabled = false,
+        ) {
+            if (showDetails) {
+                Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+                    Text(model.displayName(), style = MaterialTheme.typography.titleMedium)
+                    SelectionContainer {
+                        InfinityIdentifierText(
+                            text = model.fileName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    InfinityMetaLine(
+                        model.specs(formatFileSize) + model.architecture,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (fixed) {
+                        SelectionContainer {
+                            Text(stringResource(R.string.recording_model_revision, pinned.sha256), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            } else {
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.Description,
+                    title = stringResource(R.string.local_models_details),
+                    onClick = { showDetails = true },
+                    horizontalPadding = 0.dp,
+                )
+                if (onTogglePin != null && model.supportsAssignment(SlotType.MAIN)) {
+                    InfinitySettingsItem(
+                        icon = Icons.Rounded.PushPin,
+                        title = stringResource(if (fixed) R.string.local_models_unpin else R.string.recording_library_ui_pin_model),
+                        enabled = pinned == null || fixed,
+                        titleMaxLines = 2,
+                        onClick = { onTogglePin(model.filePath); openModelPath = null },
+                        horizontalPadding = 0.dp,
+                    )
+                }
+                if (!fixed) {
+                    InfinitySettingsItem(
+                        icon = Icons.Rounded.DeleteOutline,
+                        title = stringResource(R.string.local_models_delete),
+                        titleColor = MaterialTheme.colorScheme.error,
+                        onClick = { deletePath = model.filePath; openModelPath = null },
+                        horizontalPadding = 0.dp,
+                    )
+                }
+            }
+        }
+    }
+
+    modelByPath[deletePath]?.let { model ->
+        val active = slots.values.any { it.modelPath == model.filePath && it.isLoaded }
+        InfinityConfirmDialog(
+            title = stringResource(R.string.local_models_delete),
+            message = stringResource(
+                if (active) R.string.local_models_delete_loaded else R.string.local_models_delete_message,
+                model.displayName(),
+            ),
+            confirmText = stringResource(R.string.local_models_cd_delete),
+            onConfirm = { deletePath = null; onDeleteModel(model.filePath) },
+            onCancel = { deletePath = null },
+            isDestructive = true,
+        )
     }
 }
 
@@ -313,202 +394,156 @@ internal fun LocalModelsScreenContent(
 private fun RecordingModelDownloadRow(
     progress: Int?,
     enabled: Boolean,
+    formatFileSize: (Long) -> String,
     onInstall: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(
-            horizontal = InfinitySpacing.RowHorizontal,
-            vertical = InfinitySpacing.Small,
-        ),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-    ) {
-        Text(
-            text = stringResource(R.string.recording_library_ui_local_model),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = if (progress == null) stringResource(R.string.recording_model_download_details)
-                else stringResource(R.string.recording_model_download_progress, progress),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (progress != null) {
-            LinearProgressIndicator(
-                progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        InfinityPillRow(Modifier.fillMaxWidth()) {
-            InfinityPillButton(
-                text = stringResource(if (progress == null) R.string.recording_library_ui_download else R.string.recording_library_ui_cancel_download),
-                onClick = if (progress == null) onInstall else onCancel,
-                enabled = enabled,
-                tone = if (progress == null) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SlotCard(
-    label: String,
-    slotState: SlotState,
-    enabled: Boolean,
-    onLoadClick: (String) -> Unit,
-    models: List<StoredModel>,
-    formatFileSize: (Long) -> String,
-) {
-    var showModelPicker by remember { mutableStateOf(false) }
-    Column {
-        InfinitySettingsItem(
-            icon = Icons.Rounded.Memory,
-            title = label,
-            subtitle = when {
-                slotState.isLoading -> stringResource(R.string.shared_loading)
-                slotState.isLoaded -> slotState.modelName
-                slotState.error != null -> stringResource(R.string.common_cd_failed)
-                models.isEmpty() -> stringResource(R.string.local_models_slot_empty)
-                else -> stringResource(R.string.local_models_load_model)
-            },
-            onClick = {
-                if (!slotState.isLoaded) {
-                    if (models.size == 1) onLoadClick(models.first().filePath) else showModelPicker = true
-                }
-            },
-            enabled = enabled && !slotState.isLoading && (slotState.isLoaded || models.isNotEmpty()),
-            showChevron = !slotState.isLoaded,
-            trailingContent = {
-                if (slotState.isLoading) {
-                    CircularProgressIndicator(progress = { slotState.loadProgress }, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(slotState.backendType.displayName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-        )
-
-    }
-    if (showModelPicker) {
-        ModelPickerDialog(
-            models = models,
-            formatFileSize = formatFileSize,
-            onDismiss = { showModelPicker = false },
-            onSelect = { model -> showModelPicker = false; onLoadClick(model.filePath) },
-        )
-    }
-}
-
-@Composable
-private fun ModelPickerDialog(
-    models: List<StoredModel>,
-    formatFileSize: (Long) -> String,
-    onDismiss: () -> Unit,
-    onSelect: (StoredModel) -> Unit
-) {
-    // 选择列表用底部面板，不放进对话框。
-    InfinityBottomSheet(
-        show = true,
-        scrollContent = true,
-        onDismiss = onDismiss,
-        title = stringResource(R.string.common_model_picker_title),
-    ) {
-        models.forEach { model ->
-            InfinitySettingsItem(
-                horizontalPadding = 0.dp,
-                title = model.fileName,
-                subtitle = formatFileSize(model.sizeBytes),
-                subtitleIsIdentifier = false,
-                onClick = { onSelect(model) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ModelCard(
-    model: StoredModel,
-    isLoadedInSlot: Boolean,
-    loadedSlot: SlotType?,
-    engineEnabled: Boolean,
-    formatFileSize: (Long) -> String,
-    onLoad: (SlotType) -> Unit,
-    onDelete: () -> Unit,
-    revision: LocalModelRevision? = null,
-    onTogglePin: (() -> Unit)? = null,
-) {
-    InfinitySettingsSection(
-        title = stringResource(R.string.local_models_imported),
-        footer = listOfNotNull(
-            formatFileSize(model.sizeBytes), model.quantization.ifEmpty { "N/A" }, model.architecture.ifEmpty { null },
-            revision?.let { stringResource(R.string.recording_model_revision, it.sha256.take(12)) },
-            if (model.quantization.contains("Q8", ignoreCase = true)) stringResource(R.string.local_models_memory_heavy) else null,
-            if (isLoadedInSlot && loadedSlot != null) stringResource(when (loadedSlot) {
-                SlotType.MAIN -> R.string.local_models_active_main
-                SlotType.EMBEDDING -> R.string.settings_batch1_local_active_embeddings
-                SlotType.RERANK -> R.string.settings_batch1_local_active_reranker
-            }) else null,
-        ).joinToString(", "),
-    ) {
-        InfinitySettingsItem(
-            title = model.fileName,
-            enabled = engineEnabled,
-            onClick = {
-                onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
-            },
-        )
-        InfinityPillRow(
-            modifier = Modifier.fillMaxWidth().padding(
-                horizontal = InfinitySpacing.RowHorizontal,
-                vertical = InfinitySpacing.XSmall,
-            ),
-        ) {
-            InfinityPillButton(
-                text = stringResource(R.string.local_models_cd_delete),
-                onClick = onDelete,
-                tone = InfinityPillTone.DANGER,
-                enabled = revision == null,
-            )
-            InfinityPillButton(
-                text = stringResource(if (isLoadedInSlot) R.string.recording_library_ui_unload else R.string.local_models_load),
-                onClick = {
-                    onLoad(if (isLoadedInSlot && loadedSlot != null) loadedSlot else SlotType.MAIN)
-                },
-                tone = InfinityPillTone.PRIMARY,
-                enabled = engineEnabled,
-            )
-        }
-        if (onTogglePin != null) {
-            SettingsToggle(
-                title = stringResource(R.string.recording_library_ui_pin_model),
-                checked = revision != null,
-                onCheckedChange = { onTogglePin() },
-            )
-        }
-    }
-}
-
-@Composable
-private fun EngineSlotStatus(
-    label: String,
-    modelName: String?,
-    active: Boolean,
-    isLoading: Boolean,
-    badge: String
-) {
     InfinitySettingsRowLayout(
-        title = label,
-        subtitle = when {
-            isLoading -> stringResource(R.string.shared_loading)
-            modelName != null -> modelName
-            else -> stringResource(R.string.local_models_not_loaded)
-        },
-                trailingContent = {
-            Text(
-                text = if (isLoading) "…" else if (active) badge else stringResource(R.string.local_models_slot_idle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        title = stringResource(R.string.recording_library_ui_local_model),
+        icon = Icons.Rounded.Layers,
+        titleMaxLines = 2,
+        subtitle = if (progress == null) stringResource(
+            R.string.recording_model_download_details,
+            RecordingModelPackage.displayName, formatFileSize(RecordingModelPackage.bytes), RecordingModelPackage.quantization,
+        )
+            else stringResource(R.string.local_models_downloading, RecordingModelPackage.displayName),
+        subtitleMaxLines = 2,
+        trailingContent = {
+            TextButton(onClick = if (progress == null) onInstall else onCancel, enabled = enabled || progress != null) {
+                Text(stringResource(if (progress == null) R.string.local_models_download else R.string.common_btn_cancel))
+            }
         },
     )
+    if (progress != null) {
+        Row(
+            Modifier.fillMaxWidth().padding(
+                start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Medium,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0, 100) / 100f },
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(R.string.local_models_progress, progress),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AssignmentSheet(
+    role: SlotType,
+    state: SlotState,
+    models: List<StoredModel>,
+    pinned: LocalModelRevision?,
+    engineEnabled: Boolean,
+    importEnabled: Boolean,
+    formatFileSize: (Long) -> String,
+    onClose: () -> Unit,
+    onEnable: () -> Unit,
+    onLoad: (String) -> Unit,
+    onUnload: () -> Unit,
+    onImport: () -> Unit,
+    onShowLibrary: () -> Unit,
+) {
+    InfinityBottomSheet(
+        show = true,
+        onDismiss = onClose,
+        title = stringResource(role.title),
+        height = InfinitySheetHeight.Content,
+        scrollContent = true,
+        dragGesturesEnabled = false,
+    ) {
+        if (!engineEnabled) {
+            SheetHint(stringResource(R.string.local_models_engine_disabled))
+            InfinitySettingsItem(
+                icon = Icons.Rounded.Memory,
+                title = stringResource(R.string.local_models_enable_engine),
+                onClick = onEnable,
+                horizontalPadding = 0.dp,
+            )
+        } else if (state.isLoading) {
+            LinearProgressIndicator(progress = { state.loadProgress }, modifier = Modifier.fillMaxWidth())
+            SheetHint(stringResource(R.string.shared_loading))
+        } else {
+            if (state.error != null) SheetHint(stringResource(R.string.local_models_load_failed), error = true)
+            if (state.isLoaded) {
+                val name = models.firstOrNull { it.filePath == state.modelPath }?.displayName()
+                    ?: state.modelName.substringBeforeLast('.')
+                SheetHint(stringResource(R.string.local_models_active_assignment, name))
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.VerticalAlignTop,
+                    title = stringResource(R.string.local_models_unload),
+                    onClick = onUnload,
+                    horizontalPadding = 0.dp,
+                )
+            }
+            val options = models.filter { pinned == null || pinned.path == it.filePath }
+            options.filterNot { state.isLoaded && it.filePath == state.modelPath }.forEach { model ->
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.Layers,
+                    title = model.displayName(),
+                    subtitleSegments = model.specs(formatFileSize),
+                    titleMaxLines = 2,
+                    onClick = { onLoad(model.filePath) },
+                    horizontalPadding = 0.dp,
+                )
+            }
+            if (options.isEmpty() && !state.isLoaded) {
+                SheetHint(stringResource(
+                    if (pinned == null) R.string.local_models_no_compatible else R.string.recording_model_locked,
+                ))
+                val seeModelLibrary = role == SlotType.MAIN
+                InfinitySettingsItem(
+                    icon = if (seeModelLibrary) Icons.Rounded.Layers else Icons.Rounded.Add,
+                    title = stringResource(if (seeModelLibrary) R.string.local_models_show_library else R.string.local_models_import),
+                    onClick = if (seeModelLibrary) onShowLibrary else onImport,
+                    enabled = seeModelLibrary || importEnabled,
+                    horizontalPadding = 0.dp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetHint(text: String, error: Boolean = false) {
+    Text(
+        text, Modifier.padding(vertical = InfinitySpacing.Small),
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+private fun StoredModel.displayName(): String = if (fileName == RecordingModelPackage.filename) {
+    RecordingModelPackage.displayName
+} else {
+    modelName.takeIf(String::isNotBlank) ?: fileName.substringBeforeLast('.')
+}
+
+private fun StoredModel.specs(formatSize: (Long) -> String) = listOf(formatSize(sizeBytes), quantization, format)
+
+@get:StringRes
+private val SlotType.title: Int get() = when (this) {
+    SlotType.MAIN -> R.string.local_models_slot_main
+    SlotType.EMBEDDING -> R.string.local_models_slot_embeddings
+    SlotType.RERANK -> R.string.local_models_slot_reranker
+}
+
+@get:StringRes
+private val SlotType.description: Int get() = when (this) {
+    SlotType.MAIN -> R.string.local_models_assign_main_description
+    SlotType.EMBEDDING -> R.string.local_models_assign_embedding_description
+    SlotType.RERANK -> R.string.local_models_assign_rerank_description
+}
+
+private val SlotType.icon: ImageVector get() = when (this) {
+    SlotType.MAIN -> Icons.AutoMirrored.Rounded.Subject
+    SlotType.EMBEDDING -> Icons.Rounded.Hub
+    SlotType.RERANK -> Icons.AutoMirrored.Rounded.Sort
 }

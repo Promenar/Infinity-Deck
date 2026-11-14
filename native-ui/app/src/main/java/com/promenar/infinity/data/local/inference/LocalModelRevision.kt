@@ -7,6 +7,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 internal object RecordingModelPackage {
+    const val quantization = "Q8_0"
+    const val displayName = "Qwen3-0.6B"
     const val revision = "23749fefcc72300e3a2ad315e1317431b06b590a"
     const val sha256 = "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
     const val bytes = 639446688L

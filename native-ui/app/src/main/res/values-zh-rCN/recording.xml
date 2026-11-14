@@ -66,7 +66,7 @@
     <string name="recording_model_import_failed">无法导入 GGUF 模型</string>
     <string name="recording_model_locked">请先解除已固定的主生成器版本，或重新导入匹配文件</string>
     <string name="recording_model_download">下载端侧整理模型</string>
-    <string name="recording_model_download_details">Qwen3-0.6B · Q8 GGUF · 639 MB</string>
+    <string name="recording_model_download_details">%1$s · %2$s · %3$s</string>
     <string name="recording_model_cancel_download">取消模型下载</string>
     <string name="recording_model_download_progress">下载中 · %1$d%%</string>
     <string name="recording_model_download_failed">模型下载或摘要校验失败</string>

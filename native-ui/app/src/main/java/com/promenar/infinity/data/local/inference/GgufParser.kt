@@ -14,7 +14,8 @@ data class GgufMetadata(
     val embeddingLength: Int = 0,
     val parameterCount: String = "",
     val vocabSize: Int = 0,
-    val modelName: String = ""
+    val modelName: String = "",
+    val poolingType: Int? = null
 )
 
 object GgufParser {
@@ -202,7 +203,8 @@ object GgufParser {
             embeddingLength = embeddingLength,
             parameterCount = parameterCount,
             vocabSize = vocabSize,
-            modelName = modelName
+            modelName = modelName,
+            poolingType = (archKey(raw, arch, "pooling_type") as? Number)?.toInt(),
         )
     }
 
@@ -214,32 +216,45 @@ object GgufParser {
         return CANDIDATE_ARCHES.firstNotNullOfOrNull { raw["$it.$suffix"] }
     }
 
-    private fun mapFileType(type: Long): String = when (type.toInt()) {
-        0 -> "F32"
-        1 -> "F16"
-        2 -> "Q4_0"
-        3 -> "Q4_1"
-        6 -> "Q5_0"
-        7 -> "Q5_1"
-        8 -> "Q8_0"
-        9 -> "Q8_1"
-        10 -> "Q2_K"
-        11 -> "Q3_K"
-        12 -> "Q4_K"
-        13 -> "Q5_K"
-        14 -> "Q6_K"
-        15 -> "Q8_K"
-        16 -> "IQ2_XXS"
-        17 -> "IQ2_XS"
-        18 -> "IQ3_XXS"
-        19 -> "IQ1_S"
-        20 -> "IQ4_NL"
-        21 -> "IQ3_S"
-        22 -> "IQ2_S"
-        23 -> "IQ4_XS"
-        28 -> "F64"
-        29 -> "IQ1_M"
-        30 -> "BF16"
+    // general.file_type 使用 llama_ftype 编号。
+    private fun mapFileType(type: Long): String = when (type) {
+        0L -> "F32"
+        1L -> "F16"
+        2L -> "Q4_0"
+        3L -> "Q4_1"
+        7L -> "Q8_0"
+        8L -> "Q5_0"
+        9L -> "Q5_1"
+        10L -> "Q2_K"
+        11L -> "Q3_K_S"
+        12L -> "Q3_K_M"
+        13L -> "Q3_K_L"
+        14L -> "Q4_K_S"
+        15L -> "Q4_K_M"
+        16L -> "Q5_K_S"
+        17L -> "Q5_K_M"
+        18L -> "Q6_K"
+        19L -> "IQ2_XXS"
+        20L -> "IQ2_XS"
+        21L -> "Q2_K_S"
+        22L -> "IQ3_XS"
+        23L -> "IQ3_XXS"
+        24L -> "IQ1_S"
+        25L -> "IQ4_NL"
+        26L -> "IQ3_S"
+        27L -> "IQ3_M"
+        28L -> "IQ2_S"
+        29L -> "IQ2_M"
+        30L -> "IQ4_XS"
+        31L -> "IQ1_M"
+        32L -> "BF16"
+        36L -> "TQ1_0"
+        37L -> "TQ2_0"
+        38L -> "MXFP4"
+        39L -> "NVFP4"
+        40L -> "Q1_0"
+        41L -> "Q2_0"
+        42L -> "F8_E4M3"
         else -> "Unknown($type)"
     }
 

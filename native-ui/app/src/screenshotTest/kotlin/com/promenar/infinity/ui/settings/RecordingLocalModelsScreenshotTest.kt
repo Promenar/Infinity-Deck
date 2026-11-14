@@ -5,6 +5,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.promenar.infinity.data.local.inference.LocalModelRevision
 import com.promenar.infinity.data.local.inference.RecordingModelPackage
+import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.local.inference.StoredModel
 import com.promenar.infinity.ui.theme.*
 
@@ -14,7 +15,7 @@ import com.promenar.infinity.ui.theme.*
 @Composable
 fun recordingModelDownloadPreview() {
     InfinityTheme(preferences = InfinityThemePreferences(mode = InfinityThemeMode.LIGHT, colorSource = InfinityColorSource.INFINITY)) {
-        LocalModelsScreenContent(engineEnabled = true, onInstall = {}, downloadProgress = 42)
+        LocalModelsScreenContent(engineEnabled = true, onInstall = {}, formatFileSize = { "639 MB" }, downloadProgress = 42)
     }
 }
 
@@ -30,10 +31,13 @@ fun recordingModelPinnedPreview() {
         sizeBytes = RecordingModelPackage.bytes,
         format = "GGUF",
         addedAt = 0,
+        quantization = RecordingModelPackage.quantization,
     )
     InfinityTheme(preferences = InfinityThemePreferences(mode = InfinityThemeMode.DARK, colorSource = InfinityColorSource.INFINITY)) {
         LocalModelsScreenContent(
             availableModels = listOf(model), engineEnabled = true, onTogglePin = {},
+            mainSlot = SlotState(modelPath = model.filePath, modelName = model.fileName, isLoaded = true),
+            formatFileSize = { "639 MB" },
             pinned = LocalModelRevision(model.filePath, RecordingModelPackage.sha256),
         )
     }
