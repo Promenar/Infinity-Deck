@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.57.6-beta] - 2026-11-14
+
 - 修复录音听写在停顿和长段切分时丢失词句的问题。实时听写和重新识别均保留断段前已接收的音频，启动录音时麦克风可先于听写模型初始化采集。
 
 ## [0.57.5-beta] - 2026-11-14
